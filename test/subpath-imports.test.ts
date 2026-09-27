@@ -34,17 +34,17 @@ export const used = [a, b, e, f, g, h, i] as D[];
 `;
 
 describe("prefer-subpath-import", () => {
-  it("reports an import climbing three or more levels into an aliased tree", () => {
-    expect(reportedLines("anti-slop", RULE, CLIMBING, SKILL_SCRIPT, ROOT)).toStrictEqual(
+  it("reports an import climbing three or more levels into an aliased tree", async () => {
+    expect(await reportedLines("anti-slop", RULE, CLIMBING, SKILL_SCRIPT, ROOT)).toStrictEqual(
       expectedLines(CLIMBING),
     );
   });
 
-  it("reports nothing where no manifest declares an alias", () => {
-    expect(reportedLines("anti-slop", RULE, CLIMBING, SKILL_SCRIPT)).toStrictEqual([]);
+  it("reports nothing where no manifest declares an alias", async () => {
+    expect(await reportedLines("anti-slop", RULE, CLIMBING, SKILL_SCRIPT)).toStrictEqual([]);
   });
 
-  it("reads the nearest manifest, so a nested package is judged by its own imports", () => {
+  it("reads the nearest manifest, so a nested package is judged by its own imports", async () => {
     const nested = `import { a } from "../../../server/api.ts"; // REPORT the package's own alias
 import { b } from "../../../../../../src/meta/path.ts"; // ADMITTED the root's alias stops at this package
 export const c = [a, b];
@@ -54,26 +54,28 @@ export const c = [a, b];
       ["packages/ui/package.json", JSON.stringify({ imports: { "#ui/*": "./src/*" } })],
     ]);
     const at = "packages/ui/src/a/b/c/x.ts";
-    expect(reportedLines("anti-slop", RULE, nested, at, { files })).toStrictEqual(expectedLines(nested));
-    expect(fixedSource("anti-slop", RULE, nested, at, { files })).toContain('from "#ui/server/api.ts"');
+    expect(await reportedLines("anti-slop", RULE, nested, at, { files })).toStrictEqual(
+      expectedLines(nested),
+    );
+    expect(await fixedSource("anti-slop", RULE, nested, at, { files })).toContain('from "#ui/server/api.ts"');
   });
 
-  it("leaves a relativeOnly tree at its relative spelling at any depth", () => {
+  it("leaves a relativeOnly tree at its relative spelling at any depth", async () => {
     const deep = 'import { a } from "../../../../tools/oxlint/tree-module.ts";\nexport const b = a;\n';
     const at = "src/a/b/c/x.ts";
-    expect(reportedLines("anti-slop", RULE, deep, at, ROOT)).toStrictEqual([1]);
+    expect(await reportedLines("anti-slop", RULE, deep, at, ROOT)).toStrictEqual([1]);
     const options = [{ relativeOnly: ["src"] }];
-    expect(reportedLines("anti-slop", RULE, deep, at, { ...ROOT, options })).toStrictEqual([]);
+    expect(await reportedLines("anti-slop", RULE, deep, at, { ...ROOT, options })).toStrictEqual([]);
   });
 
-  it("rewrites the specifier to the alias in the quote the line already used", () => {
+  it("rewrites the specifier to the alias in the quote the line already used", async () => {
     const before = [
       "import { a } from '../../../../src/meta/path.ts';",
       'const b = await import("../../../../tools/oxlint/tree-module.ts");',
       "export const c = [a, b];",
       "",
     ].join("\n");
-    expect(fixedSource("anti-slop", RULE, before, SKILL_SCRIPT, ROOT)).toBe(
+    expect(await fixedSource("anti-slop", RULE, before, SKILL_SCRIPT, ROOT)).toBe(
       [
         "import { a } from '#src/meta/path.ts';",
         'const b = await import("#tools/oxlint/tree-module.ts");',

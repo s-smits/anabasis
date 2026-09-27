@@ -44,17 +44,17 @@ export type Literals = "a" | "b" | null; // ADMITTED an ordinary union
 `.trimStart();
 
 describe("ana/no-unknown-union", () => {
-  const reports = (fixture: string): number[] => reportedLines("ana", "no-unknown-union", fixture);
+  const reports = (fixture: string): Promise<number[]> => reportedLines("ana", "no-unknown-union", fixture);
 
-  it("rejects absorbed union members in every position while keeping meaningful nullable contracts", () => {
+  it("rejects absorbed union members in every position while keeping meaningful nullable contracts", async () => {
     const expected = expectedLines(POSITIONS);
     expect(expected).toHaveLength(8);
-    expect(reports(POSITIONS)).toStrictEqual(expected);
+    expect(await reports(POSITIONS)).toStrictEqual(expected);
   });
 
-  it("looks through parentheses and nesting, and stops at a container or an intersection", () => {
+  it("looks through parentheses and nesting, and stops at a container or an intersection", async () => {
     const expected = expectedLines(DECLARATIONS);
     expect(expected).toHaveLength(4);
-    expect(reports(DECLARATIONS)).toStrictEqual(expected);
+    expect(await reports(DECLARATIONS)).toStrictEqual(expected);
   });
 });

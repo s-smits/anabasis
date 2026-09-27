@@ -53,34 +53,38 @@ export type Rows = { rows: Record<string, unknown> }; // REPORT a member, not th
 `;
 
 describe("anti-slop/no-runtime-typeof in the representation owner", () => {
-  it("admits the owner's whole-body primitive predicates and nothing else there", () => {
+  it("admits the owner's whole-body primitive predicates and nothing else there", async () => {
     const expected = expectedLines(PREDICATES);
     expect(expected).toHaveLength(6);
-    expect(reportedLines("anti-slop", "no-runtime-typeof", PREDICATES, OWNER)).toStrictEqual(expected);
+    expect(await reportedLines("anti-slop", "no-runtime-typeof", PREDICATES, OWNER)).toStrictEqual(expected);
   });
 
-  it("reports the same predicates anywhere else, and names the owner", () => {
+  it("reports the same predicates anywhere else, and names the owner", async () => {
     const everyTypeof = PREDICATES.split("\n").flatMap((line, index) =>
       line.includes("typeof") ? [index + 1] : [],
     );
     expect(everyTypeof).toHaveLength(9);
-    expect(reportedLines("anti-slop", "no-runtime-typeof", PREDICATES, ELSEWHERE)).toStrictEqual(everyTypeof);
-    expect(reportedMessages("anti-slop", "no-runtime-typeof", PREDICATES, ELSEWHERE)[0]).toContain(OWNER);
+    expect(await reportedLines("anti-slop", "no-runtime-typeof", PREDICATES, ELSEWHERE)).toStrictEqual(
+      everyTypeof,
+    );
+    expect((await reportedMessages("anti-slop", "no-runtime-typeof", PREDICATES, ELSEWHERE))[0]).toContain(
+      OWNER,
+    );
   });
 });
 
 describe("anti-slop/no-unsafe-dictionary-type in the representation owner", () => {
-  it("admits the exported open record alias and nothing else there", () => {
+  it("admits the exported open record alias and nothing else there", async () => {
     const expected = expectedLines(OPEN_RECORD);
     expect(expected).toHaveLength(3);
-    expect(reportedLines("anti-slop", "no-unsafe-dictionary-type", OPEN_RECORD, OWNER)).toStrictEqual(
+    expect(await reportedLines("anti-slop", "no-unsafe-dictionary-type", OPEN_RECORD, OWNER)).toStrictEqual(
       expected,
     );
   });
 
-  it("reports the same alias anywhere else", () => {
-    expect(reportedLines("anti-slop", "no-unsafe-dictionary-type", OPEN_RECORD, ELSEWHERE)).toStrictEqual([
-      2, 3, 4, 5,
-    ]);
+  it("reports the same alias anywhere else", async () => {
+    expect(
+      await reportedLines("anti-slop", "no-unsafe-dictionary-type", OPEN_RECORD, ELSEWHERE),
+    ).toStrictEqual([2, 3, 4, 5]);
   });
 });

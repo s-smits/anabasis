@@ -53,31 +53,32 @@ export const used = [rm, readFileSync];
 `.trimStart();
 
 describe("ana/require-meta-runtime-import", () => {
-  const reports = (at: string): number[] => reportedLines("ana", "require-meta-runtime-import", IMPORTS, at);
+  const reports = (at: string): Promise<number[]> =>
+    reportedLines("ana", "require-meta-runtime-import", IMPORTS, at);
 
-  it("reports a direct builtin import and a direct builtin re-export", () => {
+  it("reports a direct builtin import and a direct builtin re-export", async () => {
     const expected = expectedLines(IMPORTS);
     expect(expected).toHaveLength(3);
-    expect(reports("src/example.ts")).toStrictEqual(expected);
+    expect(await reports("src/example.ts")).toStrictEqual(expected);
   });
 
-  it("exempts the owner of the surface, every test file and operator tooling", () => {
-    expect(reports("src/meta/filesystem.ts")).toStrictEqual([]);
-    expect(reports("test/example.test.ts")).toStrictEqual([]);
-    expect(reports("test/helpers/example.ts")).toStrictEqual([]);
-    expect(reports(".claude/skills/launch-run/scripts/launch.ts")).toStrictEqual([]);
-    expect(reports(".claude/skills/zip-run/scripts/zip-run.mjs")).toStrictEqual([]);
+  it("exempts the owner of the surface, every test file and operator tooling", async () => {
+    expect(await reports("src/meta/filesystem.ts")).toStrictEqual([]);
+    expect(await reports("test/example.test.ts")).toStrictEqual([]);
+    expect(await reports("test/helpers/example.ts")).toStrictEqual([]);
+    expect(await reports(".claude/skills/launch-run/scripts/launch.ts")).toStrictEqual([]);
+    expect(await reports(".claude/skills/zip-run/scripts/zip-run.mjs")).toStrictEqual([]);
   });
 
-  it("finds the tooling root in an absolute path, which is what the linter passes", () => {
+  it("finds the tooling root in an absolute path, which is what the linter passes", async () => {
     const expected = expectedLines(IMPORTS);
-    expect(reports("/checkout/.claude/skills/zip-run/scripts/zip-run.mjs")).toStrictEqual([]);
-    expect(reports("/checkout/src/run/full-run.ts")).toStrictEqual(expected);
-    expect(reports("/checkout/.claude/worktrees/x/src/run/full-run.ts")).toStrictEqual(expected);
+    expect(await reports("/checkout/.claude/skills/zip-run/scripts/zip-run.mjs")).toStrictEqual([]);
+    expect(await reports("/checkout/src/run/full-run.ts")).toStrictEqual(expected);
+    expect(await reports("/checkout/.claude/worktrees/x/src/run/full-run.ts")).toStrictEqual(expected);
   });
 
-  it("joins the import the file already makes, and writes a new one at this file's own depth", () => {
-    expect(fixedSource("ana", "require-meta-runtime-import", MOVABLE, "src/run/example.ts")).toBe(
+  it("joins the import the file already makes, and writes a new one at this file's own depth", async () => {
+    expect(await fixedSource("ana", "require-meta-runtime-import", MOVABLE, "src/run/example.ts")).toBe(
       [
         'import { mkdir } from "../meta/filesystem.ts";',
         'import { parseEnv } from "node:util";',
@@ -92,15 +93,19 @@ describe("ana/require-meta-runtime-import", () => {
     );
   });
 
-  it("leaves the four names the owner takes from the promises module, and moves the rest", () => {
-    const after = fixedSource("ana", "require-meta-runtime-import", DUAL, "src/run/example.ts");
+  it("leaves the four names the owner takes from the promises module, and moves the rest", async () => {
+    const after = await fixedSource("ana", "require-meta-runtime-import", DUAL, "src/run/example.ts");
     expect(after).toContain('import { rm } from "node:fs";');
     expect(after).toContain('import { readFileSync } from "../meta/filesystem.ts";');
-    expect(reportedLines("ana", "require-meta-runtime-import", after, "src/run/example.ts")).toHaveLength(1);
+    expect(
+      await reportedLines("ana", "require-meta-runtime-import", after, "src/run/example.ts"),
+    ).toHaveLength(1);
   });
 
-  it("still reports every builtin it will not move, so the finding outlives the fix", () => {
-    const after = fixedSource("ana", "require-meta-runtime-import", MOVABLE, "src/run/example.ts");
-    expect(reportedLines("ana", "require-meta-runtime-import", after, "src/run/example.ts")).toHaveLength(5);
+  it("still reports every builtin it will not move, so the finding outlives the fix", async () => {
+    const after = await fixedSource("ana", "require-meta-runtime-import", MOVABLE, "src/run/example.ts");
+    expect(
+      await reportedLines("ana", "require-meta-runtime-import", after, "src/run/example.ts"),
+    ).toHaveLength(5);
   });
 });

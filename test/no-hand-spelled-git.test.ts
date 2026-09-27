@@ -28,25 +28,25 @@ export { LIST };
 `.trimStart();
 
 describe("ana/no-hand-spelled-git", () => {
-  const reports = (at: string): number[] => reportedLines("ana", "no-hand-spelled-git", SCRIPT, at);
+  const reports = (at: string): Promise<number[]> => reportedLines("ana", "no-hand-spelled-git", SCRIPT, at);
 
-  it("reports every spelling of a git subprocess and admits the owner's call and git as data", () => {
+  it("reports every spelling of a git subprocess and admits the owner's call and git as data", async () => {
     const expected = expectedLines(SCRIPT);
     expect(expected).toHaveLength(6);
-    expect(reports(".claude/skills/launch-run/scripts/example.mjs")).toStrictEqual(expected);
+    expect(await reports(".claude/skills/launch-run/scripts/example.mjs")).toStrictEqual(expected);
   });
 
-  it("holds src to its own two owners, since it cannot import a skill module", () => {
-    expect(reports("src/run/example.ts")).toStrictEqual(expectedLines(SCRIPT));
-    expect(reports("src/run/source-identity.ts")).toStrictEqual([]);
-    expect(reports("src/author/domain-repo.ts")).toStrictEqual([]);
+  it("holds src to its own two owners, since it cannot import a skill module", async () => {
+    expect(await reports("src/run/example.ts")).toStrictEqual(expectedLines(SCRIPT));
+    expect(await reports("src/run/source-identity.ts")).toStrictEqual([]);
+    expect(await reports("src/author/domain-repo.ts")).toStrictEqual([]);
   });
 
-  it("leaves the skill owners, tests and the tools tree alone", () => {
-    expect(reports(".claude/skills/main/git.ts")).toStrictEqual([]);
-    expect(reports(".claude/skills/main/run.ts")).toStrictEqual([]);
-    expect(reports(".claude/skills/launch-run/scripts/example.test.ts")).toStrictEqual([]);
-    expect(reports("test/example.test.ts")).toStrictEqual([]);
-    expect(reports("tools/runs/example.ts")).toStrictEqual([]);
+  it("leaves the skill owners, tests and the tools tree alone", async () => {
+    expect(await reports(".claude/skills/main/git.ts")).toStrictEqual([]);
+    expect(await reports(".claude/skills/main/run.ts")).toStrictEqual([]);
+    expect(await reports(".claude/skills/launch-run/scripts/example.test.ts")).toStrictEqual([]);
+    expect(await reports("test/example.test.ts")).toStrictEqual([]);
+    expect(await reports("tools/runs/example.ts")).toStrictEqual([]);
   });
 });

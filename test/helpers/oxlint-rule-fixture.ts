@@ -2,7 +2,9 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "../../src/m
 import type { JsonValue } from "../../src/meta/json-shape.ts";
 import { tmpdir } from "../../src/meta/os.ts";
 import { dirname, join, resolve } from "../../src/meta/path.ts";
-import { spawnTextSync } from "./bun-spawn-sync.ts";
+
+/** Long enough for oxlint and its plugin to load on a crowded host, short of the per-test wall. */
+const RUN_TIMEOUT_MS = 30_000;
 
 /**
  * What a fixture needs besides its own text: other files in the temporary tree, such as the
@@ -47,19 +49,47 @@ function stage(plugin: string, rule: string, fixtureText: string, at: string, st
       rules: { [`${plugin}/${rule}`]: level },
     }),
   );
-  // oxlint exits non-zero once it reports, which is the expected path here, so read the
-  // recorded result instead of throwing and digging the output back out of the error.
-  const run = (...extra: string[]): string =>
-    spawnTextSync(
-      Bun.argv[0]!,
-      ["--no-env-file", "node_modules/oxlint/bin/oxlint", "-c", config, ...extra, "--format=unix", fixture],
-      { cwd: repoRoot },
-    ).stdout;
+  // oxlint exits 1 once it reports, which is the expected path here, so read its output whatever
+  // it returns short of a crash. The spawn is asynchronous: a synchronous one inside a test worker
+  // is where Bun 1.4 leaves the worker spinning over an exited child, and it holds every test the
+  // worker runs concurrently until the idle wall ends the suite.
+  const run = async (...extra: string[]): Promise<string> => {
+    const child = Bun.spawn(
+      [
+        Bun.argv[0]!,
+        "--no-env-file",
+        "node_modules/oxlint/bin/oxlint",
+        "-c",
+        config,
+        ...extra,
+        "--format=unix",
+        fixture,
+      ],
+      { cwd: repoRoot, env: Bun.env, stdout: "pipe", stderr: "pipe", timeout: RUN_TIMEOUT_MS },
+    );
+    const [stdout, stderr, code] = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+      child.exited,
+    ]);
+    if (code !== 0 && code !== 1) {
+      throw new Error(
+        `oxlint ${plugin}/${rule} ended with ${String(child.signalCode ?? code)}: ${stderr.trimEnd()}`,
+      );
+    }
+    return stdout;
+  };
   return { fixture, run };
 }
 
 /** One `<line>:<column>: <message>` row per report, in the order oxlint printed them. */
-function runRule(plugin: string, rule: string, fixtureText: string, at: string, staging: Staging): string[] {
+async function runRule(
+  plugin: string,
+  rule: string,
+  fixtureText: string,
+  at: string,
+  staging: Staging,
+): Promise<string[]> {
   const { fixture, run } = stage(plugin, rule, fixtureText, at, staging);
   // oxlint's own built-ins report over the fixture too — `eslint(no-unused-vars)` fires on
   // nearly every parameter a rule fixture declares — so keep only rows this rule tagged.
@@ -70,30 +100,30 @@ function runRule(plugin: string, rule: string, fixtureText: string, at: string, 
   // there read back an empty list and passed, having asked the rule nothing.
   const escaped = fixture.replace(/[.*+?^\\${}()|[\]]/gu, String.raw`\$&`);
   const tagged = new RegExp(`${escaped}:(?<row>\\d+:\\d+: .*\\(${rule}\\)\\])`, "gu");
-  return [...run().matchAll(tagged)].map(([, row]) => row ?? "");
+  return [...(await run()).matchAll(tagged)].map(([, row]) => row ?? "");
 }
 
 /** Lines `plugin/rule` reported over `fixtureText`, ascending. */
-export function reportedLines(
+export async function reportedLines(
   plugin: string,
   rule: string,
   fixtureText: string,
   at = "fixture.ts",
   staging: Staging = {},
-): number[] {
-  return runRule(plugin, rule, fixtureText, at, staging)
+): Promise<number[]> {
+  return (await runRule(plugin, rule, fixtureText, at, staging))
     .map((row) => Number(row.split(":")[0]))
     .sort((a, b) => a - b);
 }
 
 /** The message text `plugin/rule` reported over `fixtureText`, in report order. */
-export function reportedMessages(
+export async function reportedMessages(
   plugin: string,
   rule: string,
   fixtureText: string,
   at = "fixture.ts",
-): string[] {
-  return runRule(plugin, rule, fixtureText, at, {}).map((row) => row.split(": ").slice(1).join(": "));
+): Promise<string[]> {
+  return (await runRule(plugin, rule, fixtureText, at, {})).map((row) => row.split(": ").slice(1).join(": "));
 }
 
 /**
@@ -104,17 +134,17 @@ export function reportedMessages(
  * loop runs until the bytes stop moving, which is what the shared import edit needs: every
  * diagnostic offers it, so whichever copy survives the overlap check lands.
  */
-export function fixedSource(
+export async function fixedSource(
   plugin: string,
   rule: string,
   fixtureText: string,
   at = "fixture.ts",
   staging: Staging = {},
-): string {
+): Promise<string> {
   const { fixture, run } = stage(plugin, rule, fixtureText, at, staging);
   let before = fixtureText;
   for (let pass = 0; pass < 10; pass += 1) {
-    run("--fix");
+    await run("--fix");
     const after = readFileSync(fixture, "utf8");
     if (after === before) return after;
     before = after;

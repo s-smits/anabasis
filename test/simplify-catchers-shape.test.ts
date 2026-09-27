@@ -12,10 +12,10 @@ import { describe, expect, it } from "bun:test";
 import { expectedLines, reportedLines } from "./helpers/oxlint-rule-fixture.ts";
 
 /** Report the fixture's own `// REPORT` lines and nothing else. */
-function pins(rule: string, fixture: string, count: number): void {
+async function pins(rule: string, fixture: string, count: number): Promise<void> {
   const expected = expectedLines(fixture);
   expect(expected).toHaveLength(count);
-  expect(reportedLines("ana", rule, fixture)).toStrictEqual(expected);
+  expect(await reportedLines("ana", rule, fixture)).toStrictEqual(expected);
 }
 
 const ARMS = `
@@ -437,57 +437,57 @@ export const behind = admissible ? String(move === "build" ? 1 : 2) : "none"; //
 `.trimStart();
 
 describe("the simplify shape catchers", () => {
-  it("reads two arms differing in one term, with or without an else", () => {
-    pins("no-arms-differing-in-one-term", ARMS, 4);
+  it("reads two arms differing in one term, with or without an else", async () => {
+    await pins("no-arms-differing-in-one-term", ARMS, 4);
   });
 
-  it("reads a third spelling of one object literal", () => {
-    pins("no-thrice-spelled-object", OBJECTS, 1);
+  it("reads a third spelling of one object literal", async () => {
+    await pins("no-thrice-spelled-object", OBJECTS, 1);
   });
 
-  it("waits for a fifth spelling in a test, where the literal is usually the case being read", () => {
+  it("waits for a fifth spelling in a test, where the literal is usually the case being read", async () => {
     const expected = expectedLines(TEST_OBJECTS);
     expect(expected).toHaveLength(1);
-    expect(reportedLines("ana", "no-thrice-spelled-object", TEST_OBJECTS, "owner.test.ts")).toStrictEqual(
-      expected,
-    );
+    expect(
+      await reportedLines("ana", "no-thrice-spelled-object", TEST_OBJECTS, "owner.test.ts"),
+    ).toStrictEqual(expected);
   });
 
-  it("reads an argument the callee already holds inside another", () => {
-    pins("no-argument-already-carried", CARRIED, 1);
+  it("reads an argument the callee already holds inside another", async () => {
+    await pins("no-argument-already-carried", CARRIED, 1);
   });
 
-  it("reads a temporary that renames and is read on the next line", () => {
-    pins("no-renaming-temporary", TEMPORARIES, 1);
+  it("reads a temporary that renames and is read on the next line", async () => {
+    await pins("no-renaming-temporary", TEMPORARIES, 1);
   });
 
-  it("reads a function whose body only forwards its parameters", () => {
-    pins("no-pass-through-wrapper", WRAPPERS, 2);
+  it("reads a function whose body only forwards its parameters", async () => {
+    await pins("no-pass-through-wrapper", WRAPPERS, 2);
   });
 
-  it("reads a let the next if decides, with a default or with both arms", () => {
-    pins("prefer-const-conditional", CONDITIONALS, 2);
+  it("reads a let the next if decides, with a default or with both arms", async () => {
+    await pins("prefer-const-conditional", CONDITIONALS, 2);
   });
 
-  it("reads a condition spelled as two boolean returns, either way round", () => {
-    pins("prefer-condition-over-boolean-returns", BOOLEANS, 2);
+  it("reads a condition spelled as two boolean returns, either way round", async () => {
+    await pins("prefer-condition-over-boolean-returns", BOOLEANS, 2);
   });
 
-  it("reads three branches comparing one name against literals", () => {
-    pins("prefer-lookup-over-equality-chain", CHAINS, 1);
+  it("reads three branches comparing one name against literals", async () => {
+    await pins("prefer-lookup-over-equality-chain", CHAINS, 1);
   });
 
-  it("reads a constant table inside a function, and nothing the file could write to", () => {
-    pins("no-inline-schema-literal", INLINE_TABLES, 3);
+  it("reads a constant table inside a function, and nothing the file could write to", async () => {
+    await pins("no-inline-schema-literal", INLINE_TABLES, 3);
   });
 
-  it("reads a ternary tail past three cases, and one grown anywhere but the tail", () => {
-    pins("no-tangled-ternary", TERNARIES, 3);
+  it("reads a ternary tail past three cases, and one grown anywhere but the tail", async () => {
+    await pins("no-tangled-ternary", TERNARIES, 3);
   });
 
-  it("says nothing about a fixture in a test file", () => {
-    expect(reportedLines("ana", "no-inline-schema-literal", INLINE_TABLES, "owner.test.ts")).toStrictEqual(
-      [],
-    );
+  it("says nothing about a fixture in a test file", async () => {
+    expect(
+      await reportedLines("ana", "no-inline-schema-literal", INLINE_TABLES, "owner.test.ts"),
+    ).toStrictEqual([]);
   });
 });

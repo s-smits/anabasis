@@ -57,14 +57,14 @@ export function anyAtAll(rows: string[]) {
 `;
 
 describe("ana/prefer-some-over-filter-length", () => {
-  it("reads both spellings of zero and nothing else", () => {
+  it("reads both spellings of zero and nothing else", async () => {
     const expected = expectedLines(COUNTS);
     expect(expected).toHaveLength(10);
-    expect(reportedLines("ana", RULE, COUNTS)).toStrictEqual(expected);
+    expect(await reportedLines("ana", RULE, COUNTS)).toStrictEqual(expected);
   });
 
-  it("rewrites only a predicate it can read and prove has no effect", () => {
-    const fixed = fixedSource("ana", RULE, COUNTS);
+  it("rewrites only a predicate it can read and prove has no effect", async () => {
+    const fixed = await fixedSource("ana", RULE, COUNTS);
     expect(fixed).toContain("return rows.some((row) => !row.verified);");
     expect(fixed).toContain("return !rows.some((row) => !row.verified);");
     expect(fixed).toContain('return (rows ?? fallback).some((row) => row !== "");');

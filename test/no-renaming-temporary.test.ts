@@ -104,23 +104,23 @@ export function paired(input: { value: string }): string {
 `;
 
 describe("ana/no-renaming-temporary", () => {
-  it("reads a rename with one adjacent use and passes over work, snapshots and annotations", () => {
+  it("reads a rename with one adjacent use and passes over work, snapshots and annotations", async () => {
     const expected = expectedLines(TEMPORARIES);
     expect(expected).toHaveLength(3);
-    expect(reportedLines("ana", RULE, TEMPORARIES)).toStrictEqual(expected);
+    expect(await reportedLines("ana", RULE, TEMPORARIES)).toStrictEqual(expected);
   });
 
-  it("puts the expression back at its reader and keeps the note written beside it", () => {
-    const fixed = fixedSource("ana", RULE, TEMPORARIES);
+  it("puts the expression back at its reader and keeps the note written beside it", async () => {
+    const fixed = await fixedSource("ana", RULE, TEMPORARIES);
     expect(fixed).toContain("return bundle.rows.map(toCase);");
     expect(fixed).toContain("return task.owner;");
     expect(fixed).not.toContain("const rows = bundle.rows; // REPORT a dotted path");
     expect(fixed).toContain("// REPORT a dotted path under a second name");
   });
 
-  it("reports a template word, a brace in one, a shorthand key, a bound call, a shared statement, a crossed update and a closure, and edits none", () => {
-    expect(reportedLines("ana", RULE, AWKWARD)).toStrictEqual(expectedLines(AWKWARD));
-    const fixed = fixedSource("ana", RULE, AWKWARD);
+  it("reports a template word, a brace in one, a shorthand key, a bound call, a shared statement, a crossed update and a closure, and edits none", async () => {
+    expect(await reportedLines("ana", RULE, AWKWARD)).toStrictEqual(expectedLines(AWKWARD));
+    const fixed = await fixedSource("ana", RULE, AWKWARD);
     expect(fixed).toContain("return `no rows at all`;");
     expect(fixed).toContain("return { owner };");
     expect(fixed).toContain("return read();");
@@ -138,8 +138,8 @@ describe("ana/no-renaming-temporary", () => {
     expect(fixed).toContain("return () => saved;");
   });
 
-  it("stands down rather than editing the word inside a string", () => {
-    const fixed = fixedSource("ana", RULE, TEMPORARIES);
+  it("stands down rather than editing the word inside a string", async () => {
+    const fixed = await fixedSource("ana", RULE, TEMPORARIES);
     expect(fixed).toContain('return describe("rows");');
     expect(fixed).toContain("const rows = bundle.rows; // REPORT read, but the only other mention is prose");
   });

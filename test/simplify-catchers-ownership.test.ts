@@ -10,10 +10,10 @@ import { describe, expect, it } from "bun:test";
 import { expectedLines, fixedSource, reportedLines } from "./helpers/oxlint-rule-fixture.ts";
 
 /** Report the fixture's own `// REPORT` lines and nothing else, from a named place in the tree. */
-function pins(rule: string, fixture: string, count: number, at = "src/run/fixture.ts"): void {
+async function pins(rule: string, fixture: string, count: number, at = "src/run/fixture.ts"): Promise<void> {
   const expected = expectedLines(fixture);
   expect(expected).toHaveLength(count);
-  expect(reportedLines("ana", rule, fixture, at)).toStrictEqual(expected);
+  expect(await reportedLines("ana", rule, fixture, at)).toStrictEqual(expected);
 }
 
 const ALIASES = `
@@ -302,45 +302,49 @@ export function cases() {
 `.trimStart();
 
 describe("the simplify ownership catchers", () => {
-  it("reads a local alias that only restates one function's return type", () => {
-    pins("no-alias-restating-return", ALIASES, 1);
+  it("reads a local alias that only restates one function's return type", async () => {
+    await pins("no-alias-restating-return", ALIASES, 1);
   });
 
-  it("reads a file that spawns a child and kills it", () => {
-    pins("no-lifetime-outside-owner", LIFETIME, 1);
+  it("reads a file that spawns a child and kills it", async () => {
+    await pins("no-lifetime-outside-owner", LIFETIME, 1);
   });
 
-  it("says nothing about a launch owner, a bare spawn, a liveness probe, or a reaper of found pids", () => {
+  it("says nothing about a launch owner, a bare spawn, a liveness probe, or a reaper of found pids", async () => {
     expect(
-      reportedLines("ana", "no-lifetime-outside-owner", LIFETIME, "src/meta/subprocess.ts"),
+      await reportedLines("ana", "no-lifetime-outside-owner", LIFETIME, "src/meta/subprocess.ts"),
     ).toStrictEqual([]);
-    expect(reportedLines("ana", "no-lifetime-outside-owner", SPAWN_ONLY, "src/run/fixture.ts")).toStrictEqual(
-      [],
-    );
-    expect(reportedLines("ana", "no-lifetime-outside-owner", PROBE, "src/run/fixture.ts")).toStrictEqual([]);
     expect(
-      reportedLines("ana", "no-lifetime-outside-owner", REAPER, "tools/runtime/fixture.ts"),
+      await reportedLines("ana", "no-lifetime-outside-owner", SPAWN_ONLY, "src/run/fixture.ts"),
+    ).toStrictEqual([]);
+    expect(
+      await reportedLines("ana", "no-lifetime-outside-owner", PROBE, "src/run/fixture.ts"),
+    ).toStrictEqual([]);
+    expect(
+      await reportedLines("ana", "no-lifetime-outside-owner", REAPER, "tools/runtime/fixture.ts"),
     ).toStrictEqual([]);
   });
 
-  it("reads one pyramid a function, counting a callback from zero", () => {
-    pins("no-deep-nesting", NESTING, 4);
+  it("reads one pyramid a function, counting a callback from zero", async () => {
+    await pins("no-deep-nesting", NESTING, 4);
   });
 
-  it("reads a meaningful string spelled four times, skipping keys, words, flags and stamps", () => {
-    pins("no-repeated-string-literal", LITERALS, 1);
+  it("reads a meaningful string spelled four times, skipping keys, words, flags and stamps", async () => {
+    await pins("no-repeated-string-literal", LITERALS, 1);
   });
 
-  it("holds a suite to ten spellings, because a case naming its own fixture is a case", () => {
-    pins("no-repeated-string-literal", SUITE, 1, "test/fixture.test.ts");
+  it("holds a suite to ten spellings, because a case naming its own fixture is a case", async () => {
+    await pins("no-repeated-string-literal", SUITE, 1, "test/fixture.test.ts");
   });
 
-  it("says nothing about the same suite in source, where four is already too many", () => {
-    expect(reportedLines("ana", "no-repeated-string-literal", SUITE, "src/run/fixture.ts")).toHaveLength(2);
+  it("says nothing about the same suite in source, where four is already too many", async () => {
+    expect(
+      await reportedLines("ana", "no-repeated-string-literal", SUITE, "src/run/fixture.ts"),
+    ).toHaveLength(2);
   });
 
-  it("names a suite's fixture once, after the imports, and reads every copy back from it", () => {
-    const swept = fixedSource("ana", "no-repeated-string-literal", SUITE, "test/fixture.test.ts");
+  it("names a suite's fixture once, after the imports, and reads every copy back from it", async () => {
+    const swept = await fixedSource("ana", "no-repeated-string-literal", SUITE, "test/fixture.test.ts");
     expect(swept).toContain('const OPENING_JSON = "opening.json";');
     expect(swept.match(/"opening\.json"/gu)).toHaveLength(1);
     expect(swept.match(/OPENING_JSON/gu)).toHaveLength(11);
@@ -348,25 +352,25 @@ describe("the simplify ownership catchers", () => {
     expect(swept.match(/"battery\.json"/gu)).toHaveLength(9);
   });
 
-  it("declares after the leading imports, not after one written below the first statement", () => {
+  it("declares after the leading imports, not after one written below the first statement", async () => {
     const late = SUITE.replace(
       "export function fixture()",
       'const scratch = [];\nimport { helper } from "./helper.ts";\n\nexport function fixture()',
     );
-    const swept = fixedSource("ana", "no-repeated-string-literal", late, "test/fixture.test.ts");
+    const swept = await fixedSource("ana", "no-repeated-string-literal", late, "test/fixture.test.ts");
     expect(swept.indexOf("const OPENING_JSON")).toBeLessThan(swept.indexOf("const scratch"));
   });
 
-  it("takes an `as const` off a copy it names, since the constant already has the literal type", () => {
+  it("takes an `as const` off a copy it names, since the constant already has the literal type", async () => {
     const asserted = SUITE.replace('record("opening.json", "ten")', 'record("opening.json" as const, "ten")');
-    const swept = fixedSource("ana", "no-repeated-string-literal", asserted, "test/fixture.test.ts");
+    const swept = await fixedSource("ana", "no-repeated-string-literal", asserted, "test/fixture.test.ts");
     expect(swept).toContain('record(OPENING_JSON, "ten")');
     expect(swept).not.toContain("as const");
   });
 
-  it("leaves a value it cannot name plainly to its author", () => {
+  it("leaves a value it cannot name plainly to its author", async () => {
     const stamped = SUITE.replaceAll("opening.json", "2026-09-15T00:00:00Z");
-    const swept = fixedSource("ana", "no-repeated-string-literal", stamped, "test/fixture.test.ts");
+    const swept = await fixedSource("ana", "no-repeated-string-literal", stamped, "test/fixture.test.ts");
     expect(swept).toStrictEqual(stamped);
   });
 });

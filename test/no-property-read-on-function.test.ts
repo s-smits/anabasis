@@ -65,17 +65,18 @@ export function shadowed(rows) {
 `.trimStart();
 
 describe("ana/no-property-read-on-function", () => {
-  const reports = (at: string): number[] => reportedLines("ana", "no-property-read-on-function", READS, at);
+  const reports = (at: string): Promise<number[]> =>
+    reportedLines("ana", "no-property-read-on-function", READS, at);
 
-  it("reports every read off a locally declared function and leaves each real read alone", () => {
+  it("reports every read off a locally declared function and leaves each real read alone", async () => {
     const expected = expectedLines(READS);
     expect(expected).toHaveLength(3);
-    expect(reports("src/example.ts")).toStrictEqual(expected);
+    expect(await reports("src/example.ts")).toStrictEqual(expected);
   });
 
-  it("reads untyped skill scripts, which is the file kind the defect was found in", () => {
+  it("reads untyped skill scripts, which is the file kind the defect was found in", async () => {
     const at = ".claude/skills/whole-run-investigation/scripts/archive-shape.mjs";
-    expect(reportedLines("ana", "no-property-read-on-function", SCRIPT, at)).toStrictEqual(
+    expect(await reportedLines("ana", "no-property-read-on-function", SCRIPT, at)).toStrictEqual(
       expectedLines(SCRIPT),
     );
   });

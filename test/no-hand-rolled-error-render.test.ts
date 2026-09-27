@@ -51,22 +51,22 @@ export function typed(cause: unknown): boolean {
 `.trimStart();
 
 describe("ana/no-hand-rolled-error-render", () => {
-  const reports = (at: string): number[] => reportedLines("ana", RULE, CAUGHT, at);
+  const reports = (at: string): Promise<number[]> => reportedLines("ana", RULE, CAUGHT, at);
 
-  it("reports both owned shapes and leaves every near miss alone", () => {
+  it("reports both owned shapes and leaves every near miss alone", async () => {
     const expected = expectedLines(CAUGHT);
     expect(expected).toHaveLength(5);
-    expect(reports(INSIDE)).toStrictEqual(expected);
+    expect(await reports(INSIDE)).toStrictEqual(expected);
   });
 
-  it("stays out of the owner, the browser bundle and the Builder-visible starter", () => {
-    expect(reports("src/meta/runtime-values.ts")).toStrictEqual([]);
-    expect(reports("packages/ui/src/live.ts")).toStrictEqual([]);
-    expect(reports("starters/pi-built-harness/agent/tools.ts")).toStrictEqual([]);
+  it("stays out of the owner, the browser bundle and the Builder-visible starter", async () => {
+    expect(await reports("src/meta/runtime-values.ts")).toStrictEqual([]);
+    expect(await reports("packages/ui/src/live.ts")).toStrictEqual([]);
+    expect(await reports("starters/pi-built-harness/agent/tools.ts")).toStrictEqual([]);
   });
 
-  it("calls the owner and brings both names in through one import", () => {
-    const fixed = fixedSource("ana", RULE, CAUGHT, INSIDE);
+  it("calls the owner and brings both names in through one import", async () => {
+    const fixed = await fixedSource("ana", RULE, CAUGHT, INSIDE);
     expect(fixed).toContain("return errorMessage(cause);");
     // Only a plain name moves: the owner reads its subject once, and a getter or a call read
     // once may answer differently from the same one read three times.

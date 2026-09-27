@@ -12,10 +12,10 @@ import { describe, expect, it } from "bun:test";
 import { expectedLines, reportedLines } from "./helpers/oxlint-rule-fixture.ts";
 
 /** Report the fixture's own `// REPORT` lines and nothing else. */
-function pins(rule: string, fixture: string, count: number): void {
+async function pins(rule: string, fixture: string, count: number): Promise<void> {
   const expected = expectedLines(fixture);
   expect(expected).toHaveLength(count);
-  expect(reportedLines("ana", rule, fixture)).toStrictEqual(expected);
+  expect(await reportedLines("ana", rule, fixture)).toStrictEqual(expected);
 }
 
 const LOOPS = `
@@ -185,31 +185,31 @@ export function joined() {
 `.trimStart();
 
 describe("the simplify platform catchers", () => {
-  it("reads a loop that returns its first match, with or without the element", () => {
-    pins("prefer-find-over-loop", LOOPS, 2);
+  it("reads a loop that returns its first match, with or without the element", async () => {
+    await pins("prefer-find-over-loop", LOOPS, 2);
   });
 
-  it("reads a predicate that mutates a collection outliving the walk", () => {
-    pins("no-side-effect-in-predicate", PREDICATES, 1);
+  it("reads a predicate that mutates a collection outliving the walk", async () => {
+    await pins("no-side-effect-in-predicate", PREDICATES, 1);
   });
 
-  it("reads a promise wrapped around a timer", () => {
-    pins("no-hand-rolled-sleep", SLEEPS, 1);
+  it("reads a promise wrapped around a timer", async () => {
+    await pins("no-hand-rolled-sleep", SLEEPS, 1);
   });
 
-  it("reads a filtered length compared against zero, either way round", () => {
-    pins("prefer-some-over-filter-length", COUNTS, 2);
+  it("reads a filtered length compared against zero, either way round", async () => {
+    await pins("prefer-some-over-filter-length", COUNTS, 2);
   });
 
-  it("reads a key walk that looks the value back up", () => {
-    pins("prefer-entries-over-keys-lookup", KEYS, 1);
+  it("reads a key walk that looks the value back up", async () => {
+    await pins("prefer-entries-over-keys-lookup", KEYS, 1);
   });
 
-  it("reads a map whose result is filtered for presence", () => {
-    pins("prefer-flatmap-over-map-filter", WALKS, 1);
+  it("reads a map whose result is filtered for presence", async () => {
+    await pins("prefer-flatmap-over-map-filter", WALKS, 1);
   });
 
-  it("reads a reduce whose whole step is written inline as a block", () => {
-    pins("no-inline-block-reducer", FOLDS, 1);
+  it("reads a reduce whose whole step is written inline as a block", async () => {
+    await pins("no-inline-block-reducer", FOLDS, 1);
   });
 });

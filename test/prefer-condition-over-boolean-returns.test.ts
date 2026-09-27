@@ -79,14 +79,14 @@ export function compared(row: { readonly name?: string }) {
 `;
 
 describe("ana/prefer-condition-over-boolean-returns", () => {
-  it("reads both orders and refuses a non-literal return and the tail of a run of guards", () => {
+  it("reads both orders and refuses a non-literal return and the tail of a run of guards", async () => {
     const expected = expectedLines(BRANCHES);
     expect(expected).toHaveLength(4);
-    expect(reportedLines("ana", RULE, BRANCHES)).toStrictEqual(expected);
+    expect(await reportedLines("ana", RULE, BRANCHES)).toStrictEqual(expected);
   });
 
-  it("returns the condition where it stands as written, and leaves the negation to its author", () => {
-    const fixed = fixedSource("ana", RULE, BRANCHES);
+  it("returns the condition where it stands as written, and leaves the negation to its author", async () => {
+    const fixed = await fixedSource("ana", RULE, BRANCHES);
     expect(fixed).toContain(
       "return row.pass && row.seen; // REPORT true then false is the condition itself\n}",
     );
@@ -96,15 +96,15 @@ describe("ana/prefer-condition-over-boolean-returns", () => {
     expect(fixed).toContain("if (row.pass) return row.seen;");
   });
 
-  it("rewrites an inferred return only where the test is a boolean by its spelling", () => {
-    expect(reportedLines("ana", RULE, INFERRED)).toStrictEqual(expectedLines(INFERRED));
-    const fixed = fixedSource("ana", RULE, INFERRED);
+  it("rewrites an inferred return only where the test is a boolean by its spelling", async () => {
+    expect(await reportedLines("ana", RULE, INFERRED)).toStrictEqual(expectedLines(INFERRED));
+    const fixed = await fixedSource("ana", RULE, INFERRED);
     expect(fixed).toContain("if (row.name) return true;");
     expect(fixed).toContain("return row.name !== undefined;");
   });
 
-  it("carries the guard's comment onto the answer, and leaves a pair of them where they stand", () => {
-    const fixed = fixedSource("ana", RULE, BRANCHES);
+  it("carries the guard's comment onto the answer, and leaves a pair of them where they stand", async () => {
+    const fixed = await fixedSource("ana", RULE, BRANCHES);
     // Two comments would have to be stacked above the answer and indented to it, which is a
     // layout decision; the report stands and the source keeps both.
     expect(fixed).toContain("if (row.pass) return true; // REPORT two comments in the range");

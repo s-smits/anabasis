@@ -111,8 +111,8 @@ export function reassigned(text: string): number {
 `;
 
 describe(`ana/${RULE}`, () => {
-  it("reads a threaded run of single-use consts and stops at every line that earns itself", () => {
-    expect(reportedLines("ana", RULE, CHAINS)).toStrictEqual(expectedLines(CHAINS));
+  it("reads a threaded run of single-use consts and stops at every line that earns itself", async () => {
+    expect(await reportedLines("ana", RULE, CHAINS)).toStrictEqual(expectedLines(CHAINS));
   });
 
   it("asks each admitted case about one guard, by making it long enough to report without it", () => {

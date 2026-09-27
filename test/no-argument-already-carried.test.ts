@@ -97,8 +97,8 @@ export const ordered = orderView(pack, pack.findings, bump(pack));
 `.trimStart();
 
 describe("ana/no-argument-already-carried", () => {
-  it("drops the parameter, the argument at every call and rewrites the body's reads together", () => {
-    expect(fixedSource("ana", "no-argument-already-carried", SWEPT, "src/example.ts")).toBe(
+  it("drops the parameter, the argument at every call and rewrites the body's reads together", async () => {
+    expect(await fixedSource("ana", "no-argument-already-carried", SWEPT, "src/example.ts")).toBe(
       [
         "declare const pack: { findings: string[]; name: string };",
         "declare const other: { findings: string[]; name: string };",
@@ -113,14 +113,22 @@ describe("ana/no-argument-already-carried", () => {
     );
   });
 
-  it("leaves a call whose comma it could not take without the sentence beside it", () => {
-    expect(fixedSource("ana", "no-argument-already-carried", COMMENTED, "src/example.ts")).toBe(COMMENTED);
-    expect(reportedLines("ana", "no-argument-already-carried", COMMENTED, "src/example.ts")).toHaveLength(1);
+  it("leaves a call whose comma it could not take without the sentence beside it", async () => {
+    expect(await fixedSource("ana", "no-argument-already-carried", COMMENTED, "src/example.ts")).toBe(
+      COMMENTED,
+    );
+    expect(
+      await reportedLines("ana", "no-argument-already-carried", COMMENTED, "src/example.ts"),
+    ).toHaveLength(1);
   });
 
-  it("withdraws from a callee this file cannot close, and keeps reporting all five", () => {
-    expect(fixedSource("ana", "no-argument-already-carried", WITHDRAWN, "src/example.ts")).toBe(WITHDRAWN);
-    expect(reportedLines("ana", "no-argument-already-carried", WITHDRAWN, "src/example.ts")).toHaveLength(5);
+  it("withdraws from a callee this file cannot close, and keeps reporting all five", async () => {
+    expect(await fixedSource("ana", "no-argument-already-carried", WITHDRAWN, "src/example.ts")).toBe(
+      WITHDRAWN,
+    );
+    expect(
+      await reportedLines("ana", "no-argument-already-carried", WITHDRAWN, "src/example.ts"),
+    ).toHaveLength(5);
   });
 
   /**
@@ -130,10 +138,12 @@ describe("ana/no-argument-already-carried", () => {
    * compile either way and both return a different number, which is the one failure a fixer may
    * not have.
    */
-  it("withdraws where the value the read sees moves, and keeps reporting each", () => {
+  it("withdraws where the value the read sees moves, and keeps reporting each", async () => {
     // `twiceView` would evaluate `pack.findings` twice where the call evaluated it once, and
     // `laterView` after a property read a getter could be ordered against.
-    expect(fixedSource("ana", "no-argument-already-carried", MOVED, "src/example.ts")).toBe(MOVED);
-    expect(reportedLines("ana", "no-argument-already-carried", MOVED, "src/example.ts")).toHaveLength(4);
+    expect(await fixedSource("ana", "no-argument-already-carried", MOVED, "src/example.ts")).toBe(MOVED);
+    expect(await reportedLines("ana", "no-argument-already-carried", MOVED, "src/example.ts")).toHaveLength(
+      4,
+    );
   });
 });

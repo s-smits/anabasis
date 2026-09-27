@@ -361,14 +361,14 @@ export type KeyOfMapped = { [K in keyof Money]: unknown }; // ADMITTED keyof a n
 `.trimStart();
 
 describe("anti-slop/no-unsafe-dictionary-type", () => {
-  it("reports dictionaries whose value type is an escape hatch and admits real contracts", () => {
+  it("reports dictionaries whose value type is an escape hatch and admits real contracts", async () => {
     const expected = expectedLines(DICTIONARY);
     expect(expected).toHaveLength(23);
-    expect(reportedLines("anti-slop", "no-unsafe-dictionary-type", DICTIONARY)).toStrictEqual(expected);
+    expect(await reportedLines("anti-slop", "no-unsafe-dictionary-type", DICTIONARY)).toStrictEqual(expected);
   });
 
-  it("names the escape hatch it found, so the message says what to replace", () => {
-    const messages = reportedMessages(
+  it("names the escape hatch it found, so the message says what to replace", async () => {
+    const messages = await reportedMessages(
       "anti-slop",
       "no-unsafe-dictionary-type",
       [
@@ -386,41 +386,43 @@ describe("anti-slop/no-unsafe-dictionary-type", () => {
 });
 
 describe("anti-slop/no-widen-then-assert", () => {
-  it("reports evidence discarded and asserted back, and admits what never had it", () => {
+  it("reports evidence discarded and asserted back, and admits what never had it", async () => {
     const expected = expectedLines(WIDEN_THEN_ASSERT);
     expect(expected).toHaveLength(13);
-    expect(reportedLines("anti-slop", "no-widen-then-assert", WIDEN_THEN_ASSERT)).toStrictEqual(expected);
+    expect(await reportedLines("anti-slop", "no-widen-then-assert", WIDEN_THEN_ASSERT)).toStrictEqual(
+      expected,
+    );
   });
 });
 
 describe("anti-slop/no-known-value-widening", () => {
-  it("reports known values flowing into broad targets and admits genuine unknowns", () => {
+  it("reports known values flowing into broad targets and admits genuine unknowns", async () => {
     const expected = expectedLines(KNOWN_VALUE_WIDENING);
     expect(expected).toHaveLength(17);
-    expect(reportedLines("anti-slop", "no-known-value-widening", KNOWN_VALUE_WIDENING)).toStrictEqual(
+    expect(await reportedLines("anti-slop", "no-known-value-widening", KNOWN_VALUE_WIDENING)).toStrictEqual(
       expected,
     );
   });
 });
 
 describe("the type resolution the three rules share", () => {
-  it("follows substitutions, defaults and hops to the value type a dictionary ends on", () => {
+  it("follows substitutions, defaults and hops to the value type a dictionary ends on", async () => {
     const expected = expectedLines(RESOLUTION_DICTIONARY);
     expect(expected).toHaveLength(6);
-    expect(reportedLines("anti-slop", "no-unsafe-dictionary-type", RESOLUTION_DICTIONARY)).toStrictEqual(
-      expected,
-    );
+    expect(
+      await reportedLines("anti-slop", "no-unsafe-dictionary-type", RESOLUTION_DICTIONARY),
+    ).toStrictEqual(expected);
   });
 
-  it("follows the same paths to decide whether the resolved type is an open container", () => {
+  it("follows the same paths to decide whether the resolved type is an open container", async () => {
     const expected = expectedLines(RESOLUTION_WIDENING);
     expect(expected).toHaveLength(6);
-    expect(reportedLines("anti-slop", "no-known-value-widening", RESOLUTION_WIDENING)).toStrictEqual(
+    expect(await reportedLines("anti-slop", "no-known-value-widening", RESOLUTION_WIDENING)).toStrictEqual(
       expected,
     );
   });
 
-  it("stops at a cycle rather than resolving forever", () => {
+  it("stops at a cycle rather than resolving forever", async () => {
     const cyclic = [
       "export type A = B;",
       "export type B = A;",
@@ -429,35 +431,39 @@ describe("the type resolution the three rules share", () => {
       "export type Used = Record<string, A>;",
       "export type AlsoUsed = Record<string, Generic<unknown>>;",
     ].join("\n");
-    expect(reportedLines("anti-slop", "no-unsafe-dictionary-type", cyclic)).toStrictEqual([]);
+    expect(await reportedLines("anti-slop", "no-unsafe-dictionary-type", cyclic)).toStrictEqual([]);
   });
 
-  it("reads a shadowed built-in as the declaration in scope, not as the built-in", () => {
+  it("reads a shadowed built-in as the declaration in scope, not as the built-in", async () => {
     const expected = expectedLines(SHADOWED);
     expect(expected).toHaveLength(1);
-    expect(reportedLines("anti-slop", "no-unsafe-dictionary-type", SHADOWED)).toStrictEqual(expected);
+    expect(await reportedLines("anti-slop", "no-unsafe-dictionary-type", SHADOWED)).toStrictEqual(expected);
   });
 
-  it("stops treating a wrapper name as transparent once something else binds it", () => {
+  it("stops treating a wrapper name as transparent once something else binds it", async () => {
     const expected = expectedLines(SHADOWED_WRAPPER);
     expect(expected).toHaveLength(1);
-    expect(reportedLines("anti-slop", "no-known-value-widening", SHADOWED_WRAPPER)).toStrictEqual(expected);
+    expect(await reportedLines("anti-slop", "no-known-value-widening", SHADOWED_WRAPPER)).toStrictEqual(
+      expected,
+    );
   });
 
-  it("reads a shadowed key name the same way, so the key set closes", () => {
+  it("reads a shadowed key name the same way, so the key set closes", async () => {
     const expected = expectedLines(SHADOWED_KEY);
     expect(expected).toHaveLength(1);
-    expect(reportedLines("anti-slop", "no-known-value-widening", SHADOWED_KEY)).toStrictEqual(expected);
+    expect(await reportedLines("anti-slop", "no-known-value-widening", SHADOWED_KEY)).toStrictEqual(expected);
   });
 
-  it("reads a mapped type's key before calling it a dictionary", () => {
+  it("reads a mapped type's key before calling it a dictionary", async () => {
     const expected = expectedLines(MAPPED_KEYS);
     expect(expected).toHaveLength(1);
-    expect(reportedLines("anti-slop", "no-unsafe-dictionary-type", MAPPED_KEYS)).toStrictEqual(expected);
+    expect(await reportedLines("anti-slop", "no-unsafe-dictionary-type", MAPPED_KEYS)).toStrictEqual(
+      expected,
+    );
   });
 
-  it("calls a closed mapped target an anonymous object, not an open dictionary", () => {
-    const messages = reportedMessages(
+  it("calls a closed mapped target an anonymous object, not an open dictionary", async () => {
+    const messages = await reportedMessages(
       "anti-slop",
       "no-known-value-widening",
       [
@@ -470,7 +476,7 @@ describe("the type resolution the three rules share", () => {
     expect(messages[1]).toContain("open dictionary");
   });
 
-  it("keeps the transparent wrappers transparent in either order", () => {
+  it("keeps the transparent wrappers transparent in either order", async () => {
     const wrapped = [
       "export type A = Readonly<Partial<Record<string, unknown>>>;",
       "export type B = Partial<Readonly<Record<string, unknown>>>;",
@@ -478,15 +484,15 @@ describe("the type resolution the three rules share", () => {
       "export type D = Readonly<Readonly<Record<string, Money>>>;",
       "export type Money = { currency: string };",
     ].join("\n");
-    expect(reportedLines("anti-slop", "no-unsafe-dictionary-type", wrapped)).toStrictEqual([1, 2, 3]);
+    expect(await reportedLines("anti-slop", "no-unsafe-dictionary-type", wrapped)).toStrictEqual([1, 2, 3]);
   });
 
-  it("treats an unapplied type parameter as the open contract it is", () => {
+  it("treats an unapplied type parameter as the open contract it is", async () => {
     const parameters = [
       "export type Open<T> = Record<string, T>;",
       "export type Closed = Open<{ id: string }>;",
       "export type Opened = Open<unknown>;",
     ].join("\n");
-    expect(reportedLines("anti-slop", "no-unsafe-dictionary-type", parameters)).toStrictEqual([3]);
+    expect(await reportedLines("anti-slop", "no-unsafe-dictionary-type", parameters)).toStrictEqual([3]);
   });
 });

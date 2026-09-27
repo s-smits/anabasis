@@ -39,23 +39,23 @@ console.log(command, rest, spec, bun);
 `.trimStart();
 
 describe("ana/no-hand-read-argv", () => {
-  const reports = (at: string): number[] => reportedLines("ana", "no-hand-read-argv", SCRIPT, at);
+  const reports = (at: string): Promise<number[]> => reportedLines("ana", "no-hand-read-argv", SCRIPT, at);
 
-  it("reports a hand read and admits the executable and every path into the library", () => {
+  it("reports a hand read and admits the executable and every path into the library", async () => {
     const expected = expectedLines(SCRIPT);
     expect(expected).toHaveLength(5);
-    expect(reports(".claude/skills/launch-run/scripts/example.mjs")).toStrictEqual(expected);
-    expect(reports(".claude/skills/launch-run/scripts/example.mts")).toStrictEqual(expected);
+    expect(await reports(".claude/skills/launch-run/scripts/example.mjs")).toStrictEqual(expected);
+    expect(await reports(".claude/skills/launch-run/scripts/example.mts")).toStrictEqual(expected);
   });
 
-  it("speaks to skill scripts only, and never to the parser itself or a skill's test", () => {
-    expect(reports(".claude/skills/main/cli.ts")).toStrictEqual([]);
-    expect(reports(".claude/skills/launch-run/scripts/example.test.ts")).toStrictEqual([]);
-    expect(reports("src/example.ts")).toStrictEqual([]);
-    expect(reports("tools/example.ts")).toStrictEqual([]);
+  it("speaks to skill scripts only, and never to the parser itself or a skill's test", async () => {
+    expect(await reports(".claude/skills/main/cli.ts")).toStrictEqual([]);
+    expect(await reports(".claude/skills/launch-run/scripts/example.test.ts")).toStrictEqual([]);
+    expect(await reports("src/example.ts")).toStrictEqual([]);
+    expect(await reports("tools/example.ts")).toStrictEqual([]);
   });
 
-  it("does not take a local function named like the library for the library", () => {
+  it("does not take a local function named like the library for the library", async () => {
     const local = `
 function parseOrDie(argv) {
   return argv.slice(1);
@@ -63,7 +63,7 @@ function parseOrDie(argv) {
 parseOrDie(Bun.argv.slice(2)); // REPORT not imported from main/cli.ts, so it is a second parser
 `.trimStart();
     expect(
-      reportedLines("ana", "no-hand-read-argv", local, ".claude/skills/zip-run/scripts/a.mjs"),
+      await reportedLines("ana", "no-hand-read-argv", local, ".claude/skills/zip-run/scripts/a.mjs"),
     ).toStrictEqual(expectedLines(local));
   });
 });

@@ -21,11 +21,11 @@ export const borrowed = [/* SAFETY: this sentence is about the 1. */ 1, value as
 `;
 
 describe("require-safety-comment-for-type-assertion", () => {
-  it("reads the justification across the parentheses and no further", () => {
+  it("reads the justification across the parentheses and no further", async () => {
     const expected = expectedLines(ADJACENCY);
     expect(expected).toHaveLength(2);
-    expect(reportedLines("anti-slop", "require-safety-comment-for-type-assertion", ADJACENCY)).toStrictEqual(
-      expected,
-    );
+    expect(
+      await reportedLines("anti-slop", "require-safety-comment-for-type-assertion", ADJACENCY),
+    ).toStrictEqual(expected);
   });
 });

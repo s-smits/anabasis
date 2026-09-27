@@ -104,14 +104,14 @@ export function functionMember(input: {
 `.trimStart();
 
 describe("anti-slop/no-object-parameters", () => {
-  it("reads through the shapes a parameter can hide the broad type in, and stops where the repair is elsewhere", () => {
+  it("reads through the shapes a parameter can hide the broad type in, and stops where the repair is elsewhere", async () => {
     const expected = expectedLines(PARAMETERS);
     expect(expected).toHaveLength(18);
-    expect(reportedLines("anti-slop", "no-object-parameters", PARAMETERS)).toStrictEqual(expected);
+    expect(await reportedLines("anti-slop", "no-object-parameters", PARAMETERS)).toStrictEqual(expected);
   });
 
-  it("names the parameter, so the message says which input to give an owner type", () => {
-    const messages = reportedMessages(
+  it("names the parameter, so the message says which input to give an owner type", async () => {
+    const messages = await reportedMessages(
       "anti-slop",
       "no-object-parameters",
       "export function counted(rows: Map<string, object>): number { return rows.size; }",

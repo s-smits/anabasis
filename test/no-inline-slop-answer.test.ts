@@ -24,14 +24,16 @@ export const said = "// oxlint-disable-next-line ana/no-deep-nesting"; // ADMITT
 `.trimStart();
 
 describe("ana/no-inline-slop-answer", () => {
-  it("reports a disable naming an ana or anti-slop rule, and leaves core rules and prose alone", () => {
+  it("reports a disable naming an ana or anti-slop rule, and leaves core rules and prose alone", async () => {
     const expected = expectedLines(COMMENTS);
     expect(expected).toHaveLength(4);
-    expect(reportedLines("ana", "no-inline-slop-answer", COMMENTS, "src/example.ts")).toStrictEqual(expected);
+    expect(await reportedLines("ana", "no-inline-slop-answer", COMMENTS, "src/example.ts")).toStrictEqual(
+      expected,
+    );
   });
 
-  it("names every slop rule the comment silences", () => {
-    const [message] = reportedMessages(
+  it("names every slop rule the comment silences", async () => {
+    const [message] = await reportedMessages(
       "ana",
       "no-inline-slop-answer",
       "// oxlint-disable-next-line ana/no-deep-nesting, anti-slop/no-runtime-typeof -- why\nexport const one = 1;\n",

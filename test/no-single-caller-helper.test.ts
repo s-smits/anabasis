@@ -259,31 +259,34 @@ const CEILINGS = [
 ].join("\n");
 
 describe("ana/no-single-caller-helper", () => {
-  const reports = (at: string): number[] => reportedLines("ana", "no-single-caller-helper", HELPERS, at);
+  const reports = (at: string): Promise<number[]> =>
+    reportedLines("ana", "no-single-caller-helper", HELPERS, at);
 
-  it("reports a short module-scope helper with one caller and keeps the ones that earn a name", () => {
+  it("reports a short module-scope helper with one caller and keeps the ones that earn a name", async () => {
     const expected = expectedLines(HELPERS);
     expect(expected).toHaveLength(4);
-    expect(reports("src/example.ts")).toStrictEqual(expected);
+    expect(await reports("src/example.ts")).toStrictEqual(expected);
   });
 
-  it("yields where the caller is at a ceiling, or has spent its room on an earlier helper", () => {
+  it("yields where the caller is at a ceiling, or has spent its room on an earlier helper", async () => {
     const expected = expectedLines(CEILINGS);
     expect(expected).toHaveLength(2);
-    expect(reportedLines("ana", "no-single-caller-helper", CEILINGS, "src/ceilings.ts")).toStrictEqual(
+    expect(await reportedLines("ana", "no-single-caller-helper", CEILINGS, "src/ceilings.ts")).toStrictEqual(
       expected,
     );
   });
 
-  it("takes three statements where the call is a statement, and two where it is a term", () => {
+  it("takes three statements where the call is a statement, and two where it is a term", async () => {
     const expected = expectedLines(SITES);
     expect(expected).toHaveLength(4);
-    expect(reportedLines("ana", "no-single-caller-helper", SITES, "src/sites.ts")).toStrictEqual(expected);
+    expect(await reportedLines("ana", "no-single-caller-helper", SITES, "src/sites.ts")).toStrictEqual(
+      expected,
+    );
   });
 
-  it("stays out of tests and components, and holds the plugin tree to the same rule as src", () => {
-    expect(reports("test/example.test.ts")).toStrictEqual([]);
-    expect(reports("packages/ui/src/view.tsx")).toStrictEqual([]);
-    expect(reports("tools/oxlint/anti-slop/rules/example.ts")).toStrictEqual(expectedLines(HELPERS));
+  it("stays out of tests and components, and holds the plugin tree to the same rule as src", async () => {
+    expect(await reports("test/example.test.ts")).toStrictEqual([]);
+    expect(await reports("packages/ui/src/view.tsx")).toStrictEqual([]);
+    expect(await reports("tools/oxlint/anti-slop/rules/example.ts")).toStrictEqual(expectedLines(HELPERS));
   });
 });

@@ -179,35 +179,36 @@ export function reachesConstProof(value: unknown): boolean { return constProof(v
 `.trimStart();
 
 describe("ana/unproven-unknown-parameter", () => {
-  const reports = (fixture: string): number[] => reportedLines("ana", "unproven-unknown-parameter", fixture);
+  const reports = (fixture: string): Promise<number[]> =>
+    reportedLines("ana", "unproven-unknown-parameter", fixture);
 
-  it("reports an unknown parameter the function never proves, and admits one it does", () => {
+  it("reports an unknown parameter the function never proves, and admits one it does", async () => {
     const expected = expectedLines(PROVERS);
     expect(expected).toHaveLength(11);
-    expect(reports(PROVERS)).toStrictEqual(expected);
+    expect(await reports(PROVERS)).toStrictEqual(expected);
   });
 
-  it("accepts every narrowing it recognises and no name that merely resembles one", () => {
+  it("accepts every narrowing it recognises and no name that merely resembles one", async () => {
     const expected = expectedLines(GUARDS);
     expect(expected).toHaveLength(5);
-    expect(reports(GUARDS)).toStrictEqual(expected);
+    expect(await reports(GUARDS)).toStrictEqual(expected);
   });
 
-  it("finds the annotation behind a default, a rest element, a pattern and a parameter property", () => {
+  it("finds the annotation behind a default, a rest element, a pattern and a parameter property", async () => {
     const expected = expectedLines(PARAMETER_FORMS);
     expect(expected).toHaveLength(4);
-    expect(reports(PARAMETER_FORMS)).toStrictEqual(expected);
+    expect(await reports(PARAMETER_FORMS)).toStrictEqual(expected);
   });
 
-  it("reports each of the declaration kinds that have no body to prove with, unless the return type proves", () => {
+  it("reports each of the declaration kinds that have no body to prove with, unless the return type proves", async () => {
     const expected = expectedLines(BODILESS);
     expect(expected).toHaveLength(9);
-    expect(reports(BODILESS)).toStrictEqual(expected);
+    expect(await reports(BODILESS)).toStrictEqual(expected);
   });
 
-  it("carries a proof through two calls, stops it at a nested function, and reports a const arrow once", () => {
+  it("carries a proof through two calls, stops it at a nested function, and reports a const arrow once", async () => {
     const expected = expectedLines(SCOPE);
     expect(expected).toHaveLength(5);
-    expect(reports(SCOPE)).toStrictEqual(expected);
+    expect(await reports(SCOPE)).toStrictEqual(expected);
   });
 });

@@ -98,38 +98,38 @@ export const ALIAS = VALUES; // REPORT the same object wherever it is read
 `;
 
 describe("ana/declarations-before-the-first-function", () => {
-  it("moves what is erased or provably fixed, and leaves an effect, a global read and state alone", () => {
+  it("moves what is erased or provably fixed, and leaves an effect, a global read and state alone", async () => {
     const expected = expectedLines(MIXED);
     expect(expected).toHaveLength(5);
-    expect(reportedLines("ana", RULE, MIXED)).toStrictEqual(expected);
+    expect(await reportedLines("ana", RULE, MIXED)).toStrictEqual(expected);
   });
 
-  it("reads a name as safe and a part of that same name as written to", () => {
-    expect(reportedLines("ana", RULE, PARTS)).toStrictEqual(expectedLines(PARTS));
-    const fixed = fixedSource("ana", RULE, PARTS);
+  it("reads a name as safe and a part of that same name as written to", async () => {
+    expect(await reportedLines("ana", RULE, PARTS)).toStrictEqual(expectedLines(PARTS));
+    const fixed = await fixedSource("ana", RULE, PARTS);
     const code = fixed.indexOf("export function first");
     expect(fixed.indexOf("const COPY = CONFIG;")).toBeLessThan(code);
     expect(fixed.indexOf("const SIZE = CONFIG.limit;")).toBeGreaterThan(code);
   });
 
-  it("leaves a copy of a collection below the writes it copies", () => {
-    expect(reportedLines("ana", RULE, SNAPSHOT)).toStrictEqual(expectedLines(SNAPSHOT));
-    const fixed = fixedSource("ana", RULE, SNAPSHOT);
+  it("leaves a copy of a collection below the writes it copies", async () => {
+    expect(await reportedLines("ana", RULE, SNAPSHOT)).toStrictEqual(expectedLines(SNAPSHOT));
+    const fixed = await fixedSource("ana", RULE, SNAPSHOT);
     const write = fixed.indexOf("VALUES.add(2);");
     expect(fixed.indexOf("export const SNAPSHOT = new Set(VALUES);")).toBeGreaterThan(write);
     expect(fixed.indexOf("export const ALIAS = VALUES;")).toBeLessThan(write);
   });
 
-  it("moves only its own statement when a second one shares the line", () => {
-    expect(reportedLines("ana", RULE, SHARED_LINE)).toStrictEqual(expectedLines(SHARED_LINE));
-    const fixed = fixedSource("ana", RULE, SHARED_LINE);
+  it("moves only its own statement when a second one shares the line", async () => {
+    expect(await reportedLines("ana", RULE, SHARED_LINE)).toStrictEqual(expectedLines(SHARED_LINE));
+    const fixed = await fixedSource("ana", RULE, SHARED_LINE);
     const code = fixed.indexOf("export function first");
     expect(fixed.indexOf("const LIMIT = 3;")).toBeLessThan(code);
     expect(fixed.indexOf("const now = Date.now();")).toBeGreaterThan(code);
   });
 
-  it("hoists to the front, carries the comment with the declaration, and settles the chain it unblocks", () => {
-    const fixed = fixedSource("ana", RULE, MIXED);
+  it("hoists to the front, carries the comment with the declaration, and settles the chain it unblocks", async () => {
+    const fixed = await fixedSource("ana", RULE, MIXED);
     const code = fixed.indexOf("export function first");
     for (const moved of [
       "interface Late",

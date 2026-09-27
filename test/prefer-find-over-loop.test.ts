@@ -115,20 +115,20 @@ export function rowFor(primary: Row[] | undefined, fallback: Row[], id: string):
 `;
 
 describe("ana/prefer-find-over-loop", () => {
-  it("reads a search and passes over a Set, an await, a built answer and an else", () => {
+  it("reads a search and passes over a Set, an await, a built answer and an else", async () => {
     const expected = expectedLines(SEARCHES);
     expect(expected).toHaveLength(9);
-    expect(reportedLines("ana", RULE, SEARCHES)).toStrictEqual(expected);
+    expect(await reportedLines("ana", RULE, SEARCHES)).toStrictEqual(expected);
   });
 
-  it("names the guard as a guard rather than as an answer", () => {
-    const guards = reportedMessages("ana", RULE, SEARCHES).filter((one) => one.includes("if ("));
+  it("names the guard as a guard rather than as an answer", async () => {
+    const guards = (await reportedMessages("ana", RULE, SEARCHES)).filter((one) => one.includes("if ("));
     expect(guards).toHaveLength(1);
     expect(guards[0]).toContain("`if (rows.some(…)) return;`");
   });
 
-  it("puts the method where the loop stood, once the line below agrees with it", () => {
-    const fixed = fixedSource("ana", RULE, SEARCHES);
+  it("puts the method where the loop stood, once the line below agrees with it", async () => {
+    const fixed = await fixedSource("ana", RULE, SEARCHES);
     expect(fixed).toContain("return rows.find((row) => row.id === id);");
     expect(fixed).toContain("return rows.find((row) => !row.verified);");
     expect(fixed).toContain("return (rows ?? fallback).find((row) => row.id === id);");
@@ -139,23 +139,23 @@ describe("ana/prefer-find-over-loop", () => {
     expect(fixed).toContain('note("none settled");');
   });
 
-  it("parenthesises a subject that binds looser than the call it writes", () => {
-    expect(reportedLines("ana", RULE, LOOSE)).toStrictEqual(expectedLines(LOOSE));
-    expect(fixedSource("ana", RULE, LOOSE)).toContain(
+  it("parenthesises a subject that binds looser than the call it writes", async () => {
+    expect(await reportedLines("ana", RULE, LOOSE)).toStrictEqual(expectedLines(LOOSE));
+    expect(await fixedSource("ana", RULE, LOOSE)).toContain(
       "return (primary ?? fallback).find((row) => row.id === id);",
     );
   });
 
-  it("leaves the loop standing where its body carries a sentence the arrow cannot hold", () => {
-    const fixed = fixedSource("ana", RULE, SEARCHES);
+  it("leaves the loop standing where its body carries a sentence the arrow cannot hold", async () => {
+    const fixed = await fixedSource("ana", RULE, SEARCHES);
     expect(fixed).toContain(
       "// a row is open until something settles it, and that is why this reads !settled",
     );
     expect(fixed).not.toContain("rows.find((row) => !row.settled)");
   });
 
-  it("keeps the loop where the rewrite would change what no match returns", () => {
-    const fixed = fixedSource("ana", RULE, SEARCHES);
+  it("keeps the loop where the rewrite would change what no match returns", async () => {
+    const fixed = await fixedSource("ana", RULE, SEARCHES);
     expect(fixed).toContain(
       "for (const row of rows) if (row.id === id) return row; // REPORT read, but the line",
     );

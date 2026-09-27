@@ -37,18 +37,18 @@ export const label = (error) => new Error(\`terminal.json: \${error}\`); // ADMI
 `.trimStart();
 
 describe("ana/no-hand-read-controller-evidence", () => {
-  const reports = (at: string): number[] =>
+  const reports = (at: string): Promise<number[]> =>
     reportedLines("ana", "no-hand-read-controller-evidence", SCRIPT, at);
 
-  it("reports every spelling of the path that reaches a JSON read, and admits every use that parses nothing", () => {
+  it("reports every spelling of the path that reaches a JSON read, and admits every use that parses nothing", async () => {
     const expected = expectedLines(SCRIPT);
     expect(expected).toHaveLength(6);
-    expect(reports(".claude/skills/zip-run/scripts/example.mjs")).toStrictEqual(expected);
+    expect(await reports(".claude/skills/zip-run/scripts/example.mjs")).toStrictEqual(expected);
   });
 
-  it("speaks to skill scripts only, and never to the owner or a skill's test", () => {
-    expect(reports(".claude/skills/main/run.ts")).toStrictEqual([]);
-    expect(reports(".claude/skills/zip-run/scripts/example.test.ts")).toStrictEqual([]);
-    expect(reports("src/run/example.ts")).toStrictEqual([]);
+  it("speaks to skill scripts only, and never to the owner or a skill's test", async () => {
+    expect(await reports(".claude/skills/main/run.ts")).toStrictEqual([]);
+    expect(await reports(".claude/skills/zip-run/scripts/example.test.ts")).toStrictEqual([]);
+    expect(await reports("src/run/example.ts")).toStrictEqual([]);
   });
 });

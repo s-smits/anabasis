@@ -53,11 +53,12 @@ export function threeAcross(first: string, second: string, third: string): strin
 `.trimStart();
 
 describe("ana/no-transposed-argument", () => {
-  const reports = (at: string): number[] => reportedLines("ana", "no-transposed-argument", CALLS, at);
+  const reports = (at: string): Promise<number[]> =>
+    reportedLines("ana", "no-transposed-argument", CALLS, at);
 
-  it("reports a crossed pair and nothing that merely resembles one", () => {
+  it("reports a crossed pair and nothing that merely resembles one", async () => {
     const expected = expectedLines(CALLS);
     expect(expected).toHaveLength(3);
-    expect(reports("src/example.ts")).toStrictEqual(expected);
+    expect(await reports("src/example.ts")).toStrictEqual(expected);
   });
 });

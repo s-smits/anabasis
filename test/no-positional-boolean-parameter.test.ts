@@ -97,16 +97,16 @@ export function sentence(handle: string, everyBattery: boolean) { // REPORT expo
 `.trimStart();
 
 describe("ana/no-positional-boolean-parameter", () => {
-  const reports = (at: string): number[] =>
+  const reports = (at: string): Promise<number[]> =>
     reportedLines("ana", "no-positional-boolean-parameter", PARAMETERS, at);
 
-  it("reports an annotated boolean on a function and a method, and admits the union that replaces it", () => {
+  it("reports an annotated boolean on a function and a method, and admits the union that replaces it", async () => {
     const expected = expectedLines(PARAMETERS);
     expect(expected).toHaveLength(10);
-    expect(reports("src/example.ts")).toStrictEqual(expected);
+    expect(await reports("src/example.ts")).toStrictEqual(expected);
   });
 
-  it("says nothing in a test, where both arguments are read beside each other", () => {
-    expect(reports("test/example.test.ts")).toStrictEqual([]);
+  it("says nothing in a test, where both arguments are read beside each other", async () => {
+    expect(await reports("test/example.test.ts")).toStrictEqual([]);
   });
 });

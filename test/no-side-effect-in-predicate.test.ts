@@ -43,10 +43,10 @@ export function free(rows: string[]) {
 `;
 
 describe("ana/no-side-effect-in-predicate", () => {
-  it("reports a mutation with a receiver inside a predicate, and nothing else", () => {
+  it("reports a mutation with a receiver inside a predicate, and nothing else", async () => {
     // The rule reports the method name, so a block body's report sits on the walk, not the
     // mutation: the expectation is the two walks, read off the markers by line.
     expect(expectedLines(WALKS)).toHaveLength(2);
-    expect(reportedLines("ana", RULE, WALKS)).toStrictEqual([6, 10]);
+    expect(await reportedLines("ana", RULE, WALKS)).toStrictEqual([6, 10]);
   });
 });

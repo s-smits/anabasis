@@ -109,14 +109,14 @@ export function apart(): Spawn {
 `;
 
 describe("ana/prefer-key-if-defined", () => {
-  it("reads a run of guards below a literal and refuses its seven neighbours", () => {
+  it("reads a run of guards below a literal and refuses its seven neighbours", async () => {
     const expected = expectedLines(GUARDS);
     expect(expected).toHaveLength(3);
-    expect(reportedLines("ana", RULE, GUARDS)).toStrictEqual(expected);
+    expect(await reportedLines("ana", RULE, GUARDS)).toStrictEqual(expected);
   });
 
-  it("folds each guard into the literal as the owner's spread, removes the lines and imports once", () => {
-    const fixed = fixedSource("ana", RULE, GUARDS);
+  it("folds each guard into the literal as the owner's spread, removes the lines and imports once", async () => {
+    const fixed = await fixedSource("ana", RULE, GUARDS);
     expect(fixed).toContain(
       'const spawn: Spawn = { cwd: ".", ...keyIfDefined("cwd", options.cwd), ...keyIfDefined("env", options.env), ...keyIfDefined("stdin", options.stdin) }; // REPORT',
     );

@@ -156,27 +156,27 @@ export const rowShapes = 1; // REPORT the plural
 
 describe("anti-slop rules that no other fixture exercises", () => {
   for (const [rule, fixture] of FIXTURES) {
-    it(`${rule} still reports, and only where it should`, () => {
+    it(`${rule} still reports, and only where it should`, async () => {
       const expected = expectedLines(fixture);
       expect(expected).toHaveLength(1);
-      expect(reportedLines("anti-slop", rule, fixture)).toStrictEqual(expected);
+      expect(await reportedLines("anti-slop", rule, fixture)).toStrictEqual(expected);
     });
   }
 });
 
 describe("anti-slop/no-reflect-get and a Proxy get trap", () => {
-  it("admits a get trap forwarding its own parameters, and reports every other receiver", () => {
+  it("admits a get trap forwarding its own parameters, and reports every other receiver", async () => {
     const expected = expectedLines(REFLECT_GET_TRAP);
     expect(expected).toHaveLength(3);
-    expect(reportedLines("anti-slop", "no-reflect-get", REFLECT_GET_TRAP)).toStrictEqual(expected);
+    expect(await reportedLines("anti-slop", "no-reflect-get", REFLECT_GET_TRAP)).toStrictEqual(expected);
   });
 });
 
 describe("anti-slop/no-shape-in-symbol-names reads whole words", () => {
-  it("reports the word in every spelling convention, and admits a longer word holding its letters", () => {
+  it("reports the word in every spelling convention, and admits a longer word holding its letters", async () => {
     const expected = expectedLines(FORBIDDEN_TERM_WORDS);
     expect(expected).toHaveLength(5);
-    expect(reportedLines("anti-slop", "no-shape-in-symbol-names", FORBIDDEN_TERM_WORDS)).toStrictEqual(
+    expect(await reportedLines("anti-slop", "no-shape-in-symbol-names", FORBIDDEN_TERM_WORDS)).toStrictEqual(
       expected,
     );
   });

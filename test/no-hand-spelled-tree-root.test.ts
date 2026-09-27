@@ -33,27 +33,30 @@ export function elsewhere(repoRoot: string) {
 `.trimStart();
 
 describe("ana/no-hand-spelled-tree-root", () => {
-  const reports = (at: string): number[] => reportedLines("ana", "no-hand-spelled-tree-root", PATHS, at);
+  const reports = (at: string): Promise<number[]> =>
+    reportedLines("ana", "no-hand-spelled-tree-root", PATHS, at);
 
-  it("reports a segment joined onto a root and admits one that starts a relative string", () => {
+  it("reports a segment joined onto a root and admits one that starts a relative string", async () => {
     const expected = expectedLines(PATHS);
     expect(expected).toHaveLength(4);
-    expect(reports("src/example.ts")).toStrictEqual(expected);
+    expect(await reports("src/example.ts")).toStrictEqual(expected);
   });
 
-  it("reads a skill script as a live reader too, and leaves a skill's own test fixture alone", () => {
-    expect(reports(".claude/skills/launch-run/scripts/example.mts")).toStrictEqual(expectedLines(PATHS));
-    expect(reports(".claude/skills/launch-run/scripts/example.test.ts")).toStrictEqual([]);
+  it("reads a skill script as a live reader too, and leaves a skill's own test fixture alone", async () => {
+    expect(await reports(".claude/skills/launch-run/scripts/example.mts")).toStrictEqual(
+      expectedLines(PATHS),
+    );
+    expect(await reports(".claude/skills/launch-run/scripts/example.test.ts")).toStrictEqual([]);
   });
 
-  it("speaks to live readers only, and never to the two files that own the answer", () => {
-    expect(reports("tools/report/example.ts")).toStrictEqual([]);
-    expect(reports("src/meta/campaign-root.ts")).toStrictEqual([]);
-    expect(reports("src/run/product-versions.ts")).toStrictEqual([]);
+  it("speaks to live readers only, and never to the two files that own the answer", async () => {
+    expect(await reports("tools/report/example.ts")).toStrictEqual([]);
+    expect(await reports("src/meta/campaign-root.ts")).toStrictEqual([]);
+    expect(await reports("src/run/product-versions.ts")).toStrictEqual([]);
   });
 
-  it("picks the owner from whether a slug follows, and leaves the one with a tail to the author", () => {
-    const fixed = fixedSource("ana", "no-hand-spelled-tree-root", PATHS, "src/example.ts");
+  it("picks the owner from whether a slug follows, and leaves the one with a tail to the author", async () => {
+    const fixed = await fixedSource("ana", "no-hand-spelled-tree-root", PATHS, "src/example.ts");
     expect(fixed).toContain("return campaignRoot(repoRoot);");
     expect(fixed).toContain("return campaignDir(repoRoot, slug);");
     expect(fixed).toContain("return defaultProductDir(repoRoot, slug);");

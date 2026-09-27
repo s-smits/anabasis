@@ -64,17 +64,17 @@ export function keptNull() {
 `.trimStart();
 
 describe("ana/require-type-for-null-default", () => {
-  it("reports an undeclared null default and admits either declaration of it", () => {
+  it("reports an undeclared null default and admits either declaration of it", async () => {
     const expected = expectedLines(FIXTURE);
     expect(expected).toHaveLength(5);
     expect(
-      reportedLines("ana", "require-type-for-null-default", FIXTURE, "scripts/example.mjs"),
+      await reportedLines("ana", "require-type-for-null-default", FIXTURE, "scripts/example.mjs"),
     ).toStrictEqual(expected);
   });
 
-  it("says nothing about a file that can annotate", () => {
-    expect(reportedLines("ana", "require-type-for-null-default", FIXTURE, "src/example.ts")).toStrictEqual(
-      [],
-    );
+  it("says nothing about a file that can annotate", async () => {
+    expect(
+      await reportedLines("ana", "require-type-for-null-default", FIXTURE, "src/example.ts"),
+    ).toStrictEqual([]);
   });
 });

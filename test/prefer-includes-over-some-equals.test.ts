@@ -46,14 +46,14 @@ export function ordered(values: string[]) {
 `.trimStart();
 
 describe("ana/prefer-includes-over-some-equals", () => {
-  it("reports a string or boolean literal from either side and nothing whose type it cannot settle", () => {
+  it("reports a string or boolean literal from either side and nothing whose type it cannot settle", async () => {
     const expected = expectedLines(CLOSURES);
     expect(expected).toHaveLength(4);
-    expect(reportedLines("ana", "prefer-includes-over-some-equals", CLOSURES)).toStrictEqual(expected);
+    expect(await reportedLines("ana", "prefer-includes-over-some-equals", CLOSURES)).toStrictEqual(expected);
   });
 
-  it("fixes every site it reports, and leaves the source of the others untouched", () => {
-    const fixed = fixedSource("ana", "prefer-includes-over-some-equals", CLOSURES);
+  it("fixes every site it reports, and leaves the source of the others untouched", async () => {
+    const fixed = await fixedSource("ana", "prefer-includes-over-some-equals", CLOSURES);
     expect(fixed).toContain('return segments.includes("");');
     expect(fixed).toContain("return flags.includes(true);");
     expect(fixed).toContain('return segments.includes("done");');
@@ -62,8 +62,8 @@ describe("ana/prefer-includes-over-some-equals", () => {
     expect(fixed).toContain("return ids.some((id) => id === null);");
   });
 
-  it("leaves the closure standing where the literal cannot carry what is written inside it", () => {
-    const fixed = fixedSource("ana", "prefer-includes-over-some-equals", CLOSURES);
+  it("leaves the closure standing where the literal cannot carry what is written inside it", async () => {
+    const fixed = await fixedSource("ana", "prefer-includes-over-some-equals", CLOSURES);
     expect(fixed).toContain('return owners.some((owner) => owner === /* the 2026-08 spelling */ "brief");');
     expect(fixed).not.toContain("owners.includes");
   });

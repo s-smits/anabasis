@@ -524,24 +524,36 @@ export async function preflightPiBuilt(runtime: PiBuiltRuntime) {
     // reporting a real gap rather than a test shortcut.
     ...keysIf(runtime.profile.transport === "claude", () => ({ claudeCliPath: claudeCliExecutable() })),
   };
-  const result = await startPiBuiltWorker({
-    runtime,
-    bundle: await bundleWorker(),
-    start,
-    conditionDigest: conditionDigest(start),
-    tools: new Map(),
-    onMessage: () => {},
-  }).catch((cause: unknown) => {
-    // Before the ready handshake nothing product-owned has run, which is why the bundle the wall
-    // cannot read and the worker the host ended are both raised as an `EnvironmentRefusal`: they
-    // belong to the environment owner, and `controller-unclassified` would name nobody.
-    if (cause instanceof PiBuiltWorkerNonResult && cause.modelWorker.modelSelection === null) {
-      throw new EnvironmentRefusal(
-        `Pi Built preflight worker never reached its ready handshake: ${cause.message}`,
-      );
-    }
-    throw cause;
-  });
+  const bundle = await bundleWorker();
+  const attempt = () =>
+    startPiBuiltWorker({
+      runtime,
+      bundle,
+      start,
+      conditionDigest: conditionDigest(start),
+      tools: new Map(),
+      onMessage: () => {},
+    });
+  const beforeReady = (cause: unknown): cause is PiBuiltWorkerNonResult =>
+    cause instanceof PiBuiltWorkerNonResult && cause.modelWorker.modelSelection === null;
+  // A loaded host can hold a worker past its ready wall, so a start that never became ready gets one
+  // fresh start before it refuses: one missed handshake otherwise ends the whole run.
+  const result = await attempt()
+    .catch(async (cause: unknown) => {
+      if (!beforeReady(cause)) throw cause;
+      return await attempt();
+    })
+    .catch((cause: unknown) => {
+      // Before the ready handshake nothing product-owned has run, which is why the bundle the wall
+      // cannot read and the worker the host ended are both raised as an `EnvironmentRefusal`: they
+      // belong to the environment owner, and `controller-unclassified` would name nobody.
+      if (beforeReady(cause)) {
+        throw new EnvironmentRefusal(
+          `Pi Built preflight worker never reached its ready handshake: ${cause.message}`,
+        );
+      }
+      throw cause;
+    });
   if (result.modelWorker.confinedPid === null || result.modelWorker.modelSelection === null) {
     throw new Error("Pi Built preflight completed without complete worker evidence");
   }

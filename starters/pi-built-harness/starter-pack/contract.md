@@ -56,6 +56,12 @@ it enforces as `citedDecisionIds` (an undeclared id, or only private ones, is re
   register writes the build emits for it, the force computed in that member. A library symbol or a
   constant found anywhere in the build proves the answer mentions the resource, not that it
   behaves, and an answer driving the wrong pin carries the same symbols.
+- Where the request names several targets, observe that behaviour on each one an established public
+  simulator runs, not only the first. A named target nothing can run is an omission: say so in a
+  `decisions` row, because a build that merely compiles for it proves no behaviour there.
+- A check comparing what the answer reports about itself with what it is, such as reported sizes
+  against measured ones, enforces no rule of the field: an honest answer and a wrong one pass it
+  alike. Decide from the measured quantity against the limit the task publishes.
 - A multi-file answer is one root with `fileMap: true` and the `files` preset.
 - Where a rule turns on a numeric constant, give the check itself, beside `execution`,
   `numericBoundaries: [{publicInputPath, constantName, artifactPath, direction}]`: the task path
@@ -122,6 +128,19 @@ macOS): what an earlier `correctness_check` or `submit` stored there for the sam
 there; one under TMPDIR is rebuilt on every run.
 - Args carry flags and names; files and stdin carry operands. Omit `stdin` when the command has
   none. A nonzero exit is a completed result for your code to interpret.
+- A check decides false only from output its instrument produced. A run the host could not
+  complete, such as a missing tool, a refused wall or a timeout, is already a non-result whatever
+  the check returns. A tool that starts and exits without printing its result, such as a wrapper
+  whose Python environment fails on import, is a completed run, and returning false there records a fail for
+  an answer nothing read. Throw instead: a thrown check makes a measured case a non-result, never a
+  fail, and at the gate it is a finding on the evaluator.
+
+  ```ts
+  const run = await runtime.tools.run({ toolId: "domain-solver", files: { "answer.json": JSON.stringify(artifact) } });
+  const line = run.stdout.split("\n").find((row) => row.startsWith("utilisation "));
+  if (line === undefined) throw new Error(`domain-solver printed no result (exit ${run.exitCode})`);
+  return Number(line.slice("utilisation ".length)) <= 1;
+  ```
 - A tool a check or the solver runs prints only what its reader needs. The host reads at most
   1 MiB of a check's tool stdout, and a run printing more is a protocol non-result rather than a
   verdict, so the check, and any rehearsal it grades, decides nothing. Write a full dump to a file
@@ -170,7 +189,9 @@ deliberately incorrect rows, each meaningfully different. Every row has `id`, `t
 expectations by check id. Accepts pass under their task's own hidden rows. Build each reject from
 the same task's accept with one fact changed so that its expected check fails, choosing the
 mutations a careless or dishonest solver would produce in this field. Give every check at least
-one such reject, so that each check is seen to say no. A join reject carries `targetsJoin` plus
+one such reject, so that each check is seen to say no, and every limit or clause a check enforces
+its own reject crossing it: a check holding a cap and a clearance, whose rejects all break only how
+the answer reports a value, has never been seen to enforce either. A join reject carries `targetsJoin` plus
 `decoyClass`. The census reruns every control against the submitted tasks and evaluator, so settle
 limits and checks first.
 

@@ -511,7 +511,7 @@ function acceptedOutcome(
   }
   if (scoped.verdict === null) {
     return nonResult(
-      `verifier threw (${errorMessage(scoped.failure)}) — a declared check returns a Boolean, never throws`,
+      `verifier threw (${errorMessage(scoped.failure)}) — a check throws only when it could not decide, so the case reached no verdict`,
       evaluatorProcessKind(scoped.failure) ?? "verifier-throw",
     );
   }

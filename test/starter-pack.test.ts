@@ -173,6 +173,20 @@ describe("pi starter pack brief vocabulary", () => {
     );
   });
 
+  // A check that fails on its own instrument's silence, one that grades the answer's report of
+  // itself, a named target no check runs and a limit no reject crosses each score an answer on
+  // something other than the rule it cites.
+  it.concurrent("contract.md keeps each check deciding the rule from what its instrument measured", () => {
+    const text = STARTER_DOC.replace(/\s+/g, " ");
+    expect(text).toContain("A check decides false only from output its instrument produced.");
+    expect(text).toContain("a thrown check makes a measured case a non-result, never a fail");
+    expect(text).toContain("throw new Error(`domain-solver printed no result");
+    expect(text).toContain("observe that behaviour on each one an established public simulator runs");
+    expect(text).toContain("A named target nothing can run is an omission");
+    expect(text).toContain("enforces no rule of the field: an honest answer and a wrong one pass it alike");
+    expect(text).toContain("every limit or clause a check enforces its own reject crossing it");
+  });
+
   it.concurrent("contract.md tells the guide to name programs the solver's shell can run", () => {
     const text = STARTER_DOC.replace(/\s+/g, " ");
     expect(text).toContain(

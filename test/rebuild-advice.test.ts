@@ -25,7 +25,7 @@
  */
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { hashJsonBytes } from "../src/meta/json-runtime.ts";
-import { mkdirSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { chmodSync, mkdirSync, realpathSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { writeCompleted } from "../src/meta/completed-json.ts";
 import { join } from "../src/meta/path.ts";
 import { afterEach, describe, expect, it } from "bun:test";
@@ -38,7 +38,10 @@ import {
 } from "../src/analyse/iteration-analysis.ts";
 import type { JudgeReviewsResult } from "../src/analyse/judge-reviews.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
-import { double } from "./helpers/doubles.ts";
+import { double, required } from "./helpers/doubles.ts";
+import { EvidenceLog } from "../src/claim/evidence-log.ts";
+import { verifierEnvironmentHashOfTools } from "../src/correctness-bundle/verifier-environment.ts";
+import { resolveToolInventory } from "../src/verify/tool-inventory.ts";
 import {
   type BatteryCondition,
   batteryCondition,
@@ -181,6 +184,7 @@ function admission(admitted: AnalysisFinding[] = []): AdmittedEvidence {
 function conditionOf(data: IterationAnalysis, overrides?: Partial<BatteryCondition>): BatteryCondition {
   return {
     scoringHash: MEASURED_UNDER.scoringHash,
+    checkTools: MEASURED_UNDER.checkTools,
     measuredCondition: MEASURED_UNDER.measuredCondition,
     familyInputs: new Map(data.cases.map((row) => [row.family, MEASURED_UNDER.publicInputs] as const)),
     ...overrides,
@@ -1102,6 +1106,32 @@ describe("whether an absence is comparable evidence", () => {
     expect(weaker.map(issueStatusWord)).toEqual(["unmeasured"]);
   });
 
+  it("reads an absence after a tool the checks ran moved as unmeasured, even with the scoring hash unchanged", () => {
+    // The scoring hash covers evaluator.ts and what it imports. An analyser a check runs is outside
+    // it, so a round that replaced the analyser asked the checks a different question.
+    const replaced = advanceIssues(
+      [issue()],
+      [],
+      "r2",
+      { ...MEASURED_UNDER, families: ran(), checkTools: other("6") },
+      "complete",
+    );
+    expect(replaced[0]?.unmeasured).toEqual(["check-tools"]);
+    expect(replaced.map(issueStatusWord)).toEqual(["unmeasured"]);
+    expect(renderRebuildAdvice(advicePacket(replaced))).toContain(
+      "beams (verified-fail: check tools changed)",
+    );
+    // A battery whose record could not be vouched for compares with nothing.
+    const unvouched = advanceIssues(
+      [issue()],
+      [],
+      "r2",
+      { ...MEASURED_UNDER, families: ran(), checkTools: null },
+      "complete",
+    );
+    expect(unvouched[0]?.unmeasured).toEqual(["check-tools"]);
+  });
+
   it("reads an absence under another Built model or resource condition as unmeasured", () => {
     const otherModel = advanceIssues(
       [issue()],
@@ -1138,6 +1168,7 @@ describe("whether an absence is comparable evidence", () => {
       familyInputs: new Map([["beams", other("5")]]),
     });
     expect(result.scoringHash).toBe(MEASURED_UNDER.scoringHash);
+    expect(result.checkTools).toBe(MEASURED_UNDER.checkTools);
     expect(result.measuredCondition).toBe(MEASURED_UNDER.measuredCondition);
     expect(result.families.map((row) => row.publicInputs)).toEqual([other("5")]);
     expect(result.issues[0]?.observedUnder).toEqual({ ...MEASURED_UNDER, publicInputs: other("5") });
@@ -1196,5 +1227,153 @@ describe("measuredConditionDigest", () => {
     const before = batteryCondition(recorded, tree).measuredCondition;
     writeFileSync(join(tree, "agent", "config.yaml"), "solver:\n  max_turns: 24\n  solve_minutes: 120\n");
     expect(batteryCondition(recorded, tree).measuredCondition).toBe(before);
+  });
+});
+
+describe("the tools a battery's checks ran", () => {
+  const script = {
+    digest: "a".repeat(64),
+    kind: "script",
+    interpreter: "sh",
+    interpreterDigest: "b".repeat(64),
+  };
+  // A workspace tool is recorded with its portable digest, the file with the tree's path taken out.
+  const analyser = { ...script, source: "workspace-toolchain", portableDigest: "9".repeat(64) };
+  const families = [
+    {
+      family: "beams",
+      verified: 2,
+      passed: 2,
+      unaccepted: 0,
+      nonResults: 0,
+      publicInputs: MEASURED_UNDER.publicInputs,
+    },
+  ];
+
+  /** One measured battery whose checks ran `tool` out of a tool tree with digest `tree`, or off the
+   *  host PATH when `tree` is null, recorded the way a battery closes: the tool map and its
+   *  environment hash under `execution`, the file named by the run's manifest. `execution`
+   *  overrides what the record says. */
+  function recordBattery(
+    tool: Omit<typeof script, "interpreter" | "interpreterDigest"> & {
+      source: string;
+      interpreter: string | null;
+      interpreterDigest?: string;
+      portableDigest?: string;
+    },
+    tree: string | null,
+    execution?: { verifierEnvironmentHash: string },
+  ) {
+    const measuredDir = scratchDir("ana-check-tools-");
+    const tools = { "truss-analyze": tree === null ? tool : { ...tool, treeDigest: tree } };
+    const environment = verifierEnvironmentHashOfTools(tools);
+    const log = new EvidenceLog(join(measuredDir, "runs", "r2"));
+    log.write("battery.json", {
+      runId: "r2",
+      cases: [],
+      execution: { executed: [], verifierEnvironmentHash: environment, tools, ...execution },
+    });
+    log.record();
+    const recorded = double<Parameters<typeof batteryCondition>[0]>({
+      runId: "r2",
+      cases: [],
+      identities: {
+        backendPin: "codex:built-model:high",
+        isolationStrength: "physical",
+        bundleSnapshot: { scoringHash: MEASURED_UNDER.scoringHash },
+      },
+      battery: { condition: { variant: "shipping", advisorsRemoved: [] } },
+    });
+    return { measuredDir, environment, checkTools: batteryCondition(recorded, measuredDir).checkTools };
+  }
+
+  const absentUnder = (was: string | null, now: string | null) =>
+    advanceIssues(
+      [issue({ observedUnder: { ...MEASURED_UNDER, checkTools: was } })],
+      [],
+      "r3",
+      { ...MEASURED_UNDER, families, checkTools: now },
+      "complete",
+    );
+
+  it("leaves an issue tentatively fixed when only the tree around the check tools moved", () => {
+    // A round that installed or repaired a solver tool rewrote the one .toolchain tree the check
+    // tools sit in. The verifier environment hash covers that whole tree, so it moved; the checks
+    // were asked nothing new.
+    const was = recordBattery(analyser, "5".repeat(64));
+    const solverOnly = recordBattery(analyser, "6".repeat(64));
+    expect(solverOnly.environment).not.toBe(was.environment);
+    expect(solverOnly.checkTools).toMatch(/^[0-9a-f]{64}$/);
+    expect(solverOnly.checkTools).toBe(was.checkTools);
+    expect(absentUnder(was.checkTools, solverOnly.checkTools).map(issueStatusWord)).toEqual([
+      "tentatively-fixed",
+    ]);
+  });
+
+  it("leaves an issue tentatively fixed when a reseed only rewrote the tree path a wrapper names", () => {
+    // A wrapper that names its tree by absolute path has other raw bytes in every workspace the
+    // tree is copied into, while the file with that path taken out is the same file.
+    const installedIn = (workspace: string) => {
+      const tree = join(workspace, ".toolchain");
+      const wrapper = join(tree, "bin", "truss-analyze");
+      mkdirSync(join(tree, "bin"), { recursive: true });
+      writeFileSync(wrapper, `#!/bin/sh\nexec "${realpathSync.native(tree)}/lib/truss_cli.sh" "$@"\n`);
+      chmodSync(wrapper, 0o755);
+      const found = resolveToolInventory({ toolIds: ["truss-analyze"], toolTree: tree, pathDirs: [] });
+      const entry = required(found.inventory["truss-analyze"], "installed wrapper");
+      const recorded = {
+        digest: entry.digest,
+        source: entry.source,
+        kind: entry.kind,
+        interpreter: entry.interpreter,
+        ...keyIfDefined("interpreterDigest", entry.interpreterDigest),
+        ...keyIfDefined("portableDigest", entry.portableDigest),
+      };
+      return { entry, battery: recordBattery(recorded, required(entry.treeDigest, "tree digest")) };
+    };
+    const was = installedIn(scratchDir("ana-workspace-"));
+    const reseeded = installedIn(scratchDir("ana-reseeded-workspace-"));
+    expect(reseeded.entry.digest).not.toBe(was.entry.digest);
+    expect(reseeded.battery.checkTools).toMatch(/^[0-9a-f]{64}$/);
+    expect(reseeded.battery.checkTools).toBe(was.battery.checkTools);
+    expect(absentUnder(was.battery.checkTools, reseeded.battery.checkTools).map(issueStatusWord)).toEqual([
+      "tentatively-fixed",
+    ]);
+  });
+
+  it("reads an issue as unmeasured when a check tool's own bytes or its interpreter moved", () => {
+    const was = recordBattery(analyser, "5".repeat(64));
+    for (const moved of [
+      recordBattery({ ...analyser, portableDigest: "c".repeat(64) }, "5".repeat(64)),
+      recordBattery({ ...analyser, interpreterDigest: "d".repeat(64) }, "5".repeat(64)),
+      recordBattery({ ...script, source: "host" }, null),
+    ]) {
+      expect(moved.checkTools).toMatch(/^[0-9a-f]{64}$/);
+      expect(moved.checkTools).not.toBe(was.checkTools);
+      expect(absentUnder(was.checkTools, moved.checkTools)[0]?.unmeasured).toEqual(["check-tools"]);
+    }
+  });
+
+  it("compares a battery record it cannot vouch for with nothing", () => {
+    const was = recordBattery(analyser, "5".repeat(64));
+    expect(was.checkTools).toMatch(/^[0-9a-f]{64}$/);
+    // An environment hash the tool map does not recompute is a record no reader can trust.
+    expect(
+      recordBattery(analyser, "5".repeat(64), { verifierEnvironmentHash: "e".repeat(64) }).checkTools,
+    ).toBeNull();
+    // A workspace tool recorded without its portable digest is an older record.
+    expect(recordBattery({ ...script, source: "workspace-toolchain" }, "5".repeat(64)).checkTools).toBeNull();
+    // Bytes that moved after the manifest recorded them are damaged evidence.
+    const damaged = recordBattery(analyser, "5".repeat(64));
+    writeFileSync(join(damaged.measuredDir, "runs", "r2", "battery.json"), "{}");
+    const reread = double<Parameters<typeof batteryCondition>[0]>({
+      runId: "r2",
+      cases: [],
+      identities: { backendPin: "p", isolationStrength: "physical", bundleSnapshot: { scoringHash: "s" } },
+      battery: { condition: { variant: "shipping", advisorsRemoved: [] } },
+    });
+    expect(batteryCondition(reread, damaged.measuredDir).checkTools).toBeNull();
+    expect(absentUnder(was.checkTools, null)[0]?.unmeasured).toEqual(["check-tools"]);
+    expect(absentUnder(null, was.checkTools)[0]?.unmeasured).toEqual(["check-tools"]);
   });
 });

@@ -14,10 +14,10 @@
  * latest such battery was not comparable, `returned` says the latest observation followed an
  * absence, and `retired` says the family left the task set; `issueStatusWord` derives from them the
  * word every reader used to store for itself, because two representations of one lifecycle can
- * disagree. Comparable means the family's public inputs, the scoring program and the Built
- * condition all match the battery that last observed the issue (`issue-condition.ts`). Issue
- * identity is `kind + family + detail` and deliberately excludes the harness identity, which is
- * what lets one issue be followed across a rebuild.
+ * disagree. Comparable means the family's public inputs, the scoring program, the tools its checks
+ * ran and the Built condition all match the battery that last observed the issue
+ * (`issue-condition.ts`). Issue identity is `kind + family + detail` and deliberately excludes the
+ * harness identity, which is what lets one issue be followed across a rebuild.
  *
  * Everything the rows already determine is derived rather than stored — the battery's totals, and
  * how many consecutive packets have carried an unowned diagnosis. Only `diagnosis` and `dispute`
@@ -58,7 +58,7 @@ import {
   conditionGaps,
 } from "./issue-condition.ts";
 
-export const REBUILD_ADVICE_SCHEMA = "rebuild-advice/v8";
+export const REBUILD_ADVICE_SCHEMA = "rebuild-advice/v9";
 const REBUILD_ADVICE_LATEST = "rebuild-advice-latest.json";
 
 /** Batteries of recorded absence after which a fix reads as confirmed rather than tentative. */
@@ -190,9 +190,10 @@ export type RebuildAdvicePacket = {
   /** The Built model pin the battery was measured under, which is the pin its climb readout is read
    *  under when a later reader has only this packet. */
   backendPin: string;
-  /** The scoring program and the measured condition the battery ran under; with each family's
-   *  `publicInputs`, the condition its issues were observed under. */
+  /** The scoring program, the tools its checks ran and the measured condition the battery ran
+   *  under; with each family's `publicInputs`, the condition its issues were observed under. */
   scoringHash: string;
+  checkTools: string | null;
   measuredCondition: string;
   /** The battery, one row per family. The totals are read off these rows rather than stored beside
    *  them, where the two could come to disagree. */
@@ -217,11 +218,11 @@ type Observed = {
   denominator: number;
 };
 
-/** The battery an advance reads: the families it ran, with the scoring program and the Built
- *  condition every one of them ran under. */
+/** The battery an advance reads: the families it ran, with the scoring program, the check tools and
+ *  the Built condition every one of them ran under. */
 type MeasuredBattery = { families: readonly AdviceFamilyRow[] } & Pick<
   IssueCondition,
-  "scoringHash" | "measuredCondition"
+  "scoringHash" | "checkTools" | "measuredCondition"
 >;
 
 /** Standing issues the render shows, and the findings and claim length beside them. Unbounded, one
@@ -236,6 +237,7 @@ const FINDING_CLAIM_BYTES = 600;
 const GAP_WORDS: Record<ConditionGap, string> = {
   "public-inputs": "public inputs",
   scoring: "scoring program",
+  "check-tools": "check tools",
   "built-condition": "Built model or resources",
 };
 
@@ -382,6 +384,7 @@ export function advanceIssues(
   const conditionOf = (family: string): IssueCondition => ({
     publicInputs: byFamily.get(family)?.publicInputs ?? null,
     scoringHash: battery.scoringHash,
+    checkTools: battery.checkTools,
     measuredCondition: battery.measuredCondition,
   });
   const byId = new Map(previous.map((issue) => [issue.id, issue] as const));
@@ -535,6 +538,7 @@ export function deriveRebuildAdvice(
     analysisDigest: hashJsonBytes(analysis),
     backendPin: analysis.identities.backendPin,
     scoringHash: condition.scoringHash,
+    checkTools: condition.checkTools,
     measuredCondition: condition.measuredCondition,
     families,
     blockingByCheck: analysis.battery.blockingByCheck,
@@ -543,7 +547,12 @@ export function deriveRebuildAdvice(
       previous?.issues ?? [],
       observed,
       analysis.runId,
-      { families, scoringHash: condition.scoringHash, measuredCondition: condition.measuredCondition },
+      {
+        families,
+        scoringHash: condition.scoringHash,
+        checkTools: condition.checkTools,
+        measuredCondition: condition.measuredCondition,
+      },
       judgeReview,
     ),
     // Advice only: counts and families, never task ids.

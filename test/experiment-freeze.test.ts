@@ -15,7 +15,9 @@ import {
   candidateExperimentAuthoring,
   candidateExperimentScope,
   changedFamilies,
+  draftTaskRows,
   experimentFreeze,
+  publicTaskRows,
 } from "../src/run/experiment-freeze.ts";
 import { hashJsonValue } from "../src/meta/stable-json.ts";
 import { fingerprintSlug } from "../src/claim/fingerprint.ts";
@@ -175,6 +177,26 @@ it("reads the changed families from each task's public condition, and a brief-wi
   expect(changedFamilies(base, candidate)).toEqual(["single-part", "two-part"]);
   writeFileSync(join(candidate, briefPath), "{");
   expect(changedFamilies(base, candidate)).toBeNull();
+});
+
+// The starter seeds tasks.json as a bare `[]`. The readers that meet a draft in that state, the plan
+// advice, the authoring review and the Epoch Reviewer's task list, read it as holding no task. The
+// strict reader still refuses it, and every caller of that reader runs behind the bundle stage,
+// which refuses the seed as empty, and a wrapped empty list by its shape, before any attribution
+// reads either.
+it("reads a draft with no task yet as changing no family, and leaves the empty battery to the gate", () => {
+  const { base, candidate } = pair();
+  for (const [seeded, refusal] of [
+    ["[]", "tasks-empty"],
+    [JSON.stringify({ tasks: [] }), "tasks-shape"],
+  ] as const) {
+    writeFileSync(join(candidate, TASKS_JSON), seeded);
+    expect(draftTaskRows(candidate)).toEqual([]);
+    expect(changedFamilies(base, candidate)).toEqual([]);
+    expect(() => publicTaskRows(candidate)).toThrow("nonempty captured task battery");
+    const codes = loadValidatedBundle(candidate, { slug: "matching" }).findings.map((row) => row.code);
+    expect(codes).toContain(refusal);
+  }
 });
 
 it("reads a base conformance record without its verifier identity as no fixed product", () => {

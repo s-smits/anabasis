@@ -1000,8 +1000,11 @@ describe("what a finding's typed fields carry to authoring", () => {
       id: adviceIssueId("judge-failed-verifier-passed", "roof", null),
       kind: "judge-failed-verifier-passed",
       family: "roof",
+      count: 1,
     });
-    const projected = publicEpochReview({ status: "completed", ...state }, { brief, vetoed: [contestedRow] });
+    const opened = { ...contestedRow, artifact: "runs/r/cases/t1/artifact.json" };
+    const read = { status: "completed" as const, ...state, contestedReads: [opened.artifact] };
+    const projected = publicEpochReview(read, { brief, vetoed: [opened] });
     expect(projected.settledJudge).toEqual([vetoedIssue.id]);
     expect(projected.findings[0]?.claim).toContain(
       "The review settled the Judge's disagreement on 1 case(s) in roof in the check's favour",
@@ -1018,8 +1021,8 @@ describe("what a finding's typed fields carry to authoring", () => {
 
     // The same observation without the flag settles nothing, and the issue stays standing.
     const unsettled = publicEpochReview(
-      { status: "completed", ...state, findings: state.findings.map(({ settlesJudge: _, ...rest }) => rest) },
-      { brief, vetoed: [contestedRow] },
+      { ...read, findings: state.findings.map(({ settlesJudge: _, ...rest }) => rest) },
+      { brief, vetoed: [opened] },
     );
     expect(unsettled.settledJudge).toEqual([]);
     expect(
@@ -1027,6 +1030,56 @@ describe("what a finding's typed fields carry to authoring", () => {
         issueStatusWord,
       ),
     ).toEqual(["active"]);
+  });
+
+  // The probe ran on an accept control, so it shows how the check reads its rule; the case it
+  // settles is the one whose artifact the review read against that rule, and no sibling that merely
+  // names the same check, in the same family or another.
+  test("a settlesJudge observation settles only the cases whose artifact the review opened", async () => {
+    const state = reviewState();
+    state.probes.rows.push(probeRow(1, ["deflection"]));
+    await call(
+      recordFindingTool([], [], evidence, state, { identities, contested: new Set(["deflection"]) }),
+      {
+        defect: false,
+        claim: "the Judge misread span/250",
+        severity: "advisory",
+        checkId: "deflection",
+        settlesJudge: true,
+        citations: CITATIONS,
+        probeIds: [1],
+      },
+    );
+    const at = (task: string) => `runs/r/cases/${task}/artifact.json`;
+    const vetoed = [
+      { ...contestedRow, artifact: at("t1") },
+      { ...contestedRow, taskId: "t2", family: "walls", artifact: at("t2") },
+      { ...contestedRow, taskId: "t3", artifact: at("t3") },
+    ];
+    const project = (contestedReads: string[]) =>
+      publicEpochReview({ status: "completed", ...state, contestedReads }, { brief, vetoed });
+    const judgeIssue = (family: string, count: number) =>
+      issue({
+        id: adviceIssueId("judge-failed-verifier-passed", family, null),
+        kind: "judge-failed-verifier-passed",
+        family,
+        count,
+      });
+    const statuses = (contestedReads: string[]) =>
+      attachIssueReadings(advicePacket([judgeIssue("roof", 2), judgeIssue("walls", 1)]), {
+        settled: project(contestedReads).settledJudge,
+      }).issues.map(issueStatusWord);
+
+    const claim = project([at("t1")]).findings[0]?.claim ?? "";
+    expect(claim).toContain(
+      "The review settled the Judge's disagreement on 1 case(s) in roof in the check's favour",
+    );
+    for (const word of ["t1", "t2", "walls", "PRIVATE", "misread"]) expect(claim).not.toContain(word);
+    expect(project([]).findings[0]?.claim).not.toContain("settled the Judge");
+    // One opened case of roof's two leaves roof standing, and walls, never opened, stands too.
+    expect(statuses([at("t1")])).toEqual(["active", "active"]);
+    expect(statuses([at("t1"), at("t3")])).toEqual(["settled", "active"]);
+    expect(statuses([at("t1"), at("t2"), at("t3")])).toEqual(["settled", "settled"]);
   });
 
   // A probe that wrote a valid variant the check refused, and one that wrote an invalid variant the

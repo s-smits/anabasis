@@ -158,27 +158,24 @@ function publicFindingClaim(finding: AnalysisFinding, deferred: boolean, brief: 
   return `${heading}: ${named === "" ? (inputPath ?? "the contract") : `${named}${input}`}; ${publicAct(finding, deferred)}.`;
 }
 
-/** The contested rows a finding settles: a contract defect on a check the row names, over an
- *  artifact the reviewer opened. A second case naming the same check is not settled by reading
+/** The contested rows naming the finding's check whose artifact the reviewer opened, the only cases
+ *  a finding settles: against the check for a contract defect, in its favour for a `settlesJudge`
+ *  observation, whose probe ran on an accept control and so shows how the check reads its rule, not
+ *  what a contested artifact holds. A second case naming the same check is not settled by reading
  *  the first, so the public counts and families come from the opened cases alone. */
-function settledRows(
-  finding: AnalysisFinding,
-  rows: readonly ContestedCase[],
-  opened: readonly string[],
-): ContestedCase[] {
-  if (!contractDefect(finding) || finding.checkId === undefined) return [];
+function openedRows(finding: AnalysisFinding, rows: readonly ContestedCase[], opened: readonly string[]) {
+  const { checkId } = finding;
+  if (checkId === undefined) return [];
   return rows.filter(
-    (row) =>
-      row.checkIds.includes(finding.checkId ?? "") && row.artifact !== null && opened.includes(row.artifact),
+    (row) => row.checkIds.includes(checkId) && row.artifact !== null && opened.includes(row.artifact),
   );
 }
 
-/** The contested rows a `settlesJudge` observation settles in the check's favour: every row naming
- *  the check it cites. The probe it had to cite at record time is what makes that a settlement. */
-function judgeRows(finding: AnalysisFinding, rows: readonly ContestedCase[]): ContestedCase[] {
-  if (finding.settlesJudge !== true || finding.checkId === undefined) return [];
-  return rows.filter((row) => row.checkIds.includes(finding.checkId ?? ""));
-}
+const settledRows = (finding: AnalysisFinding, rows: readonly ContestedCase[], opened: readonly string[]) =>
+  contractDefect(finding) ? openedRows(finding, rows, opened) : [];
+
+const judgeRows = (finding: AnalysisFinding, rows: readonly ContestedCase[], opened: readonly string[]) =>
+  finding.settlesJudge === true ? openedRows(finding, rows, opened) : [];
 
 function familiesOf(rows: readonly ContestedCase[]): string {
   return [...new Set(rows.map((row) => row.family))].sort().join(", ");
@@ -186,8 +183,7 @@ function familiesOf(rows: readonly ContestedCase[]): string {
 
 /** A settled Judge disagreement crosses as its outcome alone: the check stands, and in which
  *  families. The Judge's reason and the probe's values stay private. */
-function settlementLines(finding: AnalysisFinding, rows: readonly ContestedCase[]): string[] {
-  const judged = judgeRows(finding, rows);
+function settlementLines(judged: readonly ContestedCase[]): string[] {
   return judged.length === 0
     ? []
     : [
@@ -295,7 +291,7 @@ function publicFinding(
     claim: [
       publicFindingClaim(finding, deferred, contract.brief),
       ...(finding.demandGap === undefined ? [] : [DEMAND_GAP_SENTENCES[finding.demandGap]]),
-      ...settlementLines(finding, [...vetoed, ...disputed]),
+      ...settlementLines(judgeRows(finding, [...vetoed, ...disputed], opened)),
       ...context,
       ...probed,
       ...repair,
@@ -317,6 +313,7 @@ export function publicEpochReview(
   const vetoed = contract.vetoed ?? [];
   const disputed = contract.disputed ?? [];
   const opened = review.contestedReads ?? [];
+  const contested = [...vetoed, ...disputed];
   // An unfinished review has not weighed the complete contract, so its observations stay private:
   // neither an owner reopen nor a suspended diagnosis may come from a partial reading. One reading
   // is complete on its own, and that is a vetoed case the reviewer settled against the check after
@@ -327,7 +324,7 @@ export function publicEpochReview(
     review.status === "completed"
       ? review.findings
       : review.findings.flatMap((finding) => {
-          const read = settledRows(finding, [...vetoed, ...disputed], opened).length > 0;
+          const read = settledRows(finding, contested, opened).length > 0;
           return read ? [{ ...finding, severity: "advisory" as const }] : [];
         });
   return {
@@ -339,26 +336,22 @@ export function publicEpochReview(
             reason: "The epoch review disputes this issue as an evaluation defect.",
           }))
         : [],
-    settledJudge: review.status === "completed" ? settledJudgeIssues(review.findings, vetoed, disputed) : [],
+    settledJudge: review.status === "completed" ? settledJudgeIssues(review.findings, contested, opened) : [],
   };
 }
 
-/** The Judge issue ids a completed review settled in the check's favour, in the id form the rebuild
- *  advice keys its Judge issues by: one per family and direction. */
+/** The Judge issue ids a completed review settled in the check's favour, once per settled case, in
+ *  the id form the rebuild advice keys its Judge issues by: one per family and the side the Judge
+ *  took. The advice settles an issue only once every case it counts appears here. */
 function settledJudgeIssues(
   findings: readonly AnalysisFinding[],
-  vetoed: readonly ContestedCase[],
-  disputed: readonly ContestedCase[],
-): string[] {
-  const ids = findings.flatMap((finding) => [
-    ...judgeRows(finding, vetoed).map((row) =>
-      adviceIssueId("judge-failed-verifier-passed", row.family, null),
-    ),
-    ...judgeRows(finding, disputed).map((row) =>
-      adviceIssueId("judge-passed-verifier-failed", row.family, null),
-    ),
-  ]);
-  return [...new Set(ids)].sort();
+  rows: readonly ContestedCase[],
+  opened: readonly string[],
+) {
+  const settled = new Set(findings.flatMap((finding) => judgeRows(finding, rows, opened)));
+  const kind = (row: ContestedCase) =>
+    row.judge ? "judge-passed-verifier-failed" : "judge-failed-verifier-passed";
+  return [...settled].map((row) => adviceIssueId(kind(row), row.family, null)).sort();
 }
 
 /** Earlier task-set findings over the task set now under review, each in the public form its round's

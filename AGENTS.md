@@ -653,13 +653,16 @@ the battery was paid for.
    in four earlier reviews, and a naming count cannot tell two defects on one check apart.
 
    An observation with `settlesJudge` — a check that a vetoed or disputed row names, plus a conclusive
-   probe that moved it — settles that Judge issue. Only a `correctness-model/` defect may dispute an
-   issue, and a dispute keeps the issue counted while withholding the agent advice. Public candidate
-   analysis and checks of published limits are legitimate solving support; a tool is an answer shortcut
-   only when it makes the solver's remaining decision. While the measured `.toolchain` digest still
-   matches a recorded tool, the reviewer may read any text file of that tree by name (`toolchain:<path>`,
-   installed packages included, each at most 1 MiB) as long as the file still counts as the recorded tree
-   digest took it, and a directory reads as its listing.
+   probe that moved it — settles the cases naming that check whose artifact the review opened, because
+   the probe ran on an accept control and shows how the check reads its rule, not what a case's artifact
+   holds. A family's Judge issue stops standing only once every case it counts is settled. Only a
+   `correctness-model/` defect may dispute an issue, and a dispute keeps the issue counted while
+   withholding the agent advice. Public candidate analysis and checks of published limits are legitimate
+   solving support; a tool is an answer shortcut only when it makes the solver's remaining decision.
+   While the measured `.toolchain` digest still matches a recorded tool, the reviewer may read any text
+   file of that tree by name (`toolchain:<path>`, installed packages included, each at most 1 MiB) as
+   long as the file still counts as the recorded tree digest took it, and a directory reads as its
+   listing.
 
    An authoring review also reads the bytes of the round's failing blind rehearsals beside their verdict;
    the Builder saw only the verdict, and passing bytes reach it through `context`. It reads the previous
@@ -706,9 +709,9 @@ the battery was paid for.
     `rebuild-advice-latest.json` beside it), bound by digest to the iteration that consumes it, and
     rendered once per rebuild kickoff from recorded rows, Judge reviews and admitted aggregate findings,
     never per-case ones. It states each issue's owner, not what to rebuild. Each issue keeps a stable id
-    and one state: `active`, `tentatively-fixed`, `confirmed-fixed`, `regressed`, `retired`, `disputed`
-    or `unmeasured`. A family leaving the set makes its issue `retired`, which proves no fix at all.
-    Absence counts toward a fix only when every case of the family was truth-verified under the
+    and one state: `active`, `tentatively-fixed`, `confirmed-fixed`, `regressed`, `retired`, `disputed`,
+    `settled` or `unmeasured`. A family leaving the set makes its issue `retired`, which proves no fix
+    at all. Absence counts toward a fix only when every case of the family was truth-verified under the
     condition that observed the issue: the same public inputs, `scoringHash`, Built model and solver
     walls (`src/author/issue-condition.ts`). A recheck that lost a case to a non-result or an unaccepted
     attempt carries the issue unchanged, because the lost case may be the one that failed. Under another

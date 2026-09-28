@@ -149,9 +149,10 @@ export type AdviceIssue = {
    *  counting a disputed issue: a dispute is a reason not to rebuild the agent around it, never a
    *  reason to stop observing it. Like the diagnosis, it survives no change of condition. */
   dispute: string | null;
-  /** A Judge issue this battery's epoch review settled in the check's favour, with a probe in which
-   *  the Judge's reading moved the check. It stops the issue standing for this battery alone: the
-   *  next battery that observes the disagreement records it afresh, without the flag. */
+  /** A Judge issue every one of whose counted cases this battery's epoch review settled in the
+   *  check's favour, each on an artifact it read, with a probe in which the Judge's reading moved the
+   *  check. It stops the issue standing for this battery alone: the next battery that observes the
+   *  disagreement records it afresh, without the flag. */
   judgeSettled?: true;
 };
 
@@ -466,7 +467,7 @@ export function attachIssueReadings(
   readings: {
     diagnoses?: ReadonlyArray<{ issueIds: readonly string[]; diagnosis: IssueDiagnosis }>;
     disputes?: ReadonlyArray<{ issueId: string; reason: string }>;
-    /** Judge issue ids the epoch review settled in the check's favour. */
+    /** Judge issue ids the epoch review settled in the check's favour, one per settled case. */
     settled?: readonly string[];
   },
 ): RebuildAdvicePacket {
@@ -478,15 +479,17 @@ export function attachIssueReadings(
     ),
   );
   const disputed = new Map((readings.disputes ?? []).map((row) => [row.issueId, row.reason] as const));
-  const settled = new Set(readings.settled ?? []);
-  if (diagnosed.size === 0 && disputed.size === 0 && settled.size === 0) return packet;
+  const settled = readings.settled ?? [];
+  if (diagnosed.size === 0 && disputed.size === 0 && settled.length === 0) return packet;
   return {
     ...packet,
     issues: packet.issues.map((issue) => {
       const reading = diagnosed.get(issue.id);
       const standing = isStanding(issue);
       const dispute = standing ? disputed.get(issue.id) : undefined;
-      const settles = standing && dispute === undefined && settled.has(issue.id);
+      // Settled once every case the issue counts is, so one settled case leaves its siblings standing.
+      const settles =
+        standing && dispute === undefined && settled.filter((id) => id === issue.id).length >= issue.count;
       if (reading === undefined && dispute === undefined && !settles) return issue;
       return {
         ...issue,

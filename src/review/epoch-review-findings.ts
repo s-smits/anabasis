@@ -436,7 +436,8 @@ const knownDemandGap: FindingRule = ({ parsed, args }) =>
 /** Settling a Judge disagreement as the Judge's error takes an executed case, not a reading: an
  *  observation on a check a confirmed disagreement names, citing a probe that wrote the Judge's
  *  reading into an accept control and moved that check. Without the probe the settlement is one
- *  model's reading against another's, and it stays in the closing message. */
+ *  model's reading against another's, and it stays in the closing message. With it, what it settles
+ *  is still only the cases whose artifact the review opened, which the public projection decides. */
 const judgeSettlement: FindingRule = ({ parsed, args, state, contested }) => {
   if (!parsed.settlesJudge) return null;
   const { checkId } = parsed;
@@ -641,7 +642,7 @@ function findingParameters(disputable: readonly string[]) {
       settlesJudge: {
         type: "boolean",
         description:
-          "True on an observation (defect false) that settles a listed Judge disagreement as the Judge's error: name the deciding check in checkId and cite in probeIds the probe that wrote the Judge's reading into an accept control and moved that check. The Judge issue then stops standing, so no authoring pass acts on it.",
+          "True on an observation (defect false) that settles a listed Judge disagreement as the Judge's error: name the deciding check in checkId and cite in probeIds the probe that wrote the Judge's reading into an accept control and moved that check. It settles each listed case on that check whose artifact you read with read_source, and the Judge issue stops standing once every case it counts is settled.",
       },
     },
   };

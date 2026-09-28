@@ -1,6 +1,18 @@
 #!/usr/bin/env bun
+/**
+ * One command from a launch request to running controllers. It resolves the source, captures each
+ * selected credential once, forks one worktree per run, probes each through the launched tree's own
+ * `probe.ts`, settles the source gate at most once, then starts each controller detached under the
+ * user's service manager and waits for the opening that says it started what was planned.
+ *
+ * Every run leaves `.scratch/quick-run/launch.json`: `started` once its opening checks out,
+ * `start-unconfirmed` when its launch did not, and `refused` with the stage when the batch stopped
+ * before launching anything. `tools/runs` reads it, and the receipt never claims the run is still
+ * alive: that is the controller's terminal to say.
+ */
 import { boundText } from "#src/meta/bounded-text.ts";
 import {
+  appendFileSync,
   chmodSync,
   closeSync,
   copyFileSync,
@@ -15,7 +27,7 @@ import {
   writeFileSync,
 } from "#src/meta/filesystem.ts";
 import { dirname, isAbsolute, join, resolve } from "#src/meta/path.ts";
-import { homedir } from "#src/meta/os.ts";
+import { homedir, loadavg } from "#src/meta/os.ts";
 import { parseEnv } from "#src/meta/env-parser.ts";
 import {
   CONDITIONS,
@@ -23,15 +35,18 @@ import {
   HELP,
   LAUNCH_ARGUMENTS,
   PRESETS,
+  SCRATCH,
   fullrunArgs,
   launchOptions,
   openingProblems,
   planRuns,
+  probeArgs,
   record,
   requestIdentity,
   slotEnvironment,
   sourceIdentity,
   type Backend,
+  type Gate,
   type LaunchOptions,
   type OpeningPlan,
   type RunPlan,
@@ -45,6 +60,7 @@ import { openRecordedRun, type RecordedRun } from "#skills/main/run.ts";
 import { isNumber, isString } from "#src/meta/json-shape.ts";
 import type { JsonObject } from "#src/meta/json-shape.ts";
 import { hasText } from "#src/meta/text.ts";
+import { sha256 } from "#src/meta/digest.ts";
 import { campaignRoot } from "#src/meta/campaign-root.ts";
 import { CODEX_AUTH_FILE } from "#src/backends/login-state.ts";
 import { OPENING_FILE } from "#src/run/controller-lineage.ts";
@@ -89,29 +105,43 @@ interface Credentials {
   kind: Backend;
   origin: string;
   bytes: string | Uint8Array;
+  /** Twelve hex of a digest of what names the account, so two runs sharing one read as sharing it. */
+  account: string;
 }
 interface Context {
   commit: string;
   /** Recorded in each run's receipt and handed to its controller for the opening. */
   sourceRef?: SourceRef;
+  /** The commit of the checkout this launcher runs from, which owns the options and pins. */
+  launcher: string;
   uid: number;
   sharedRoot: string;
   credentials: Partial<Record<Backend, Credentials>>;
   manager: ServiceManager;
-  gate?: string[];
+  /** The pre-push hook's `ana-gate-passed`, which `bun run land` and a passing launch gate share. */
+  passRecord: string;
 }
 interface PreparedRun extends OpeningPlan {
   environment: Environment;
+  sourceRef: SourceRef | null;
   argv: string[];
   credentialSource: string;
-  gateLog?: string;
+  credentialAccount: string;
+}
+/** How the batch settled its source gate, the same in every receipt of the batch. */
+interface GateReceipt {
+  policy: Gate;
+  decision: "ran" | "recorded-pass" | "operator-skip";
+  /** The gate's log when it ran, the pass record when a recorded pass stood in for it. */
+  evidence: string | null;
+  seconds: number | null;
+  /** The one-minute load average as the gate started, since a loaded host is what fails it. */
+  load: number | null;
 }
 interface Opened {
   project: string;
   opening: string;
   campaign: string;
-  terminal: false;
-  running: true;
 }
 type LaunchResult =
   | ({ runId: string; source: string; condition: RunPlan["condition"]; log: string } & Opened)
@@ -221,14 +251,16 @@ export function sourceRef(requested: string, commit: string, repo = REPO): Sourc
   return { requested, main: mainHead, ...stackOf(commit, mainHead, open, contains) };
 }
 
+const fingerprint = (value: string): string => sha256(value).slice(0, 12);
+
+/** The one credential a backend kind reads, captured once for the whole batch. */
 export function readCredentials(
+  kind: Backend,
   options: LaunchOptions,
   mainRepo: string,
   environment: Environment = process.env,
 ): Credentials {
-  const condition = options.conditions[0];
-  if (!condition) throw new Error("missing credential condition");
-  if (CONDITIONS[condition].kind === "claude") {
+  if (kind === "claude") {
     const path = options["env-file"] ?? join(mainRepo, ".env");
     // parseEnv answers with every key it read and no promise that a value is present, so the
     // token map carries the same optional shape the process environment has.
@@ -246,41 +278,52 @@ export function readCredentials(
         `${path}: a single-line CLAUDE_CODE_OAUTH_TOKEN is required; no API-key or shell fallback`,
       );
     }
-    return { kind: "claude", origin: path, bytes: `CLAUDE_CODE_OAUTH_TOKEN=${token}\n` };
+    // `claude setup-token` mints one token per account, so the token itself names the account.
+    return { kind, origin: path, bytes: `CLAUDE_CODE_OAUTH_TOKEN=${token}\n`, account: fingerprint(token) };
   }
   const codexHome = options["codex-home"] ?? environment.CODEX_HOME ?? join(homedir(), ".codex");
   if (!isAbsolute(codexHome)) throw new Error("the selected CODEX_HOME must be absolute");
   const path = join(codexHome, CODEX_AUTH_FILE);
   let bytes: Uint8Array;
+  let tokens: JsonObject;
   try {
     bytes = readFileSync(path);
-    const auth = record(JSON.parse(new TextDecoder().decode(bytes)));
-    const token = record(auth.tokens).access_token;
-    if (!isString(token) || !token) throw new Error("missing token");
+    tokens = record(record(JSON.parse(new TextDecoder().decode(bytes))).tokens);
+    if (!isString(tokens.access_token) || !tokens.access_token) throw new Error("missing token");
   } catch {
     throw new Error(`${path}: readable Codex subscription auth with an access token is required`);
   }
-  return { kind: "codex", origin: path, bytes };
+  // The access token rotates on refresh, so the account id names the account where it is recorded.
+  const account = isString(tokens.account_id) ? tokens.account_id : tokens.access_token;
+  return { kind, origin: path, bytes, account: fingerprint(account) };
 }
 
+/**
+ * The run's frozen environment: private home roots under its scratch directory, a worker temp root
+ * outside the checkout, the credential snapshot where its backend reads it, and the condition's
+ * slot pins. Nothing from the launcher's own environment is carried except absolute PATH entries.
+ */
 export function prepareEnvironment(
   plan: RunPlan,
   credentials: Credentials,
   pathValue = process.env.PATH ?? "",
 ): Environment {
-  const scratch = join(plan.dir, ".scratch/quick-run");
   if (existsSync(join(plan.dir, ".env"))) {
     throw new Error(`${plan.runId}: credential snapshot already exists`);
   }
   if (credentials.kind !== CONDITIONS[plan.condition].kind) {
     throw new Error(`${plan.runId}: credential kind does not match condition`);
   }
+  const scratch = join(plan.dir, SCRATCH);
   // The Built wall closes the checkout; the generated worker must live outside it, on the
   // disk-backed temp root: a Linux /tmp is often a small tmpfs.
-  plan.runtimeTemp = mkdtempSync(
-    join(process.platform === "darwin" ? "/private/var/tmp" : "/var/tmp", "ana-quick-run-"),
-  );
-  const roots = { HOME: join(scratch, "home"), CODEX_HOME: join(scratch, "codex"), TMPDIR: plan.runtimeTemp };
+  const roots = {
+    HOME: join(scratch, "home"),
+    CODEX_HOME: join(scratch, "codex"),
+    TMPDIR: mkdtempSync(
+      join(process.platform === "darwin" ? "/private/var/tmp" : "/var/tmp", "ana-quick-run-"),
+    ),
+  };
   for (const path of Object.values(roots)) mkdirSync(path, { recursive: true, mode: 0o700 });
   const paths = [...new Set([dirname(process.execPath), ...pathValue.split(":").filter(isAbsolute)])];
   const target =
@@ -290,44 +333,26 @@ export function prepareEnvironment(
   return { ...roots, PATH: paths.join(":"), ...slotEnvironment(plan.condition) };
 }
 
-export async function inspectTarget(
-  plan: RunPlan & { environment: Environment },
+/** The launched tree's own probe: it imports that tree's modules, so it matches their layout by
+ *  construction, where the launcher's modules may have moved since. */
+async function probeTarget(
+  plan: RunPlan,
+  environment: Environment,
   options: LaunchOptions,
-  command: Command = spawnCommand,
+  command: Command,
 ) {
-  const args = [
-    "custom",
-    "--prompt",
-    plan.prompt,
-    "--run",
-    plan.runId,
-    "--condition",
-    plan.condition,
-    "--budget",
-    options.budget,
-    "--tasks",
-    options.tasks,
-  ];
-  for (const key of ["max-iterations", "stop-after-ms", "project"] as const) {
-    if (options[key] !== undefined) args.push(`--${key}`, options[key]);
-  }
-  // The launched tree's own probe: it imports that tree's modules, so it matches their layout by
-  // construction. Main's probe cannot open a tree whose backend layer has moved a module since,
-  // and the layouts diverge exactly when the launch is worth probing.
   const probe = join(plan.dir, ".claude/skills/launch-run/scripts/probe.ts");
-  const result = await command([WORKTREE, "run", plan.dir, "bun", "--no-env-file", probe, ...args], {
-    cwd: plan.dir,
-    env: plan.environment,
-    quiet: true,
-  });
+  const result = await command(
+    [WORKTREE, "run", plan.dir, "bun", "--no-env-file", probe, ...probeArgs(plan, options)],
+    { cwd: plan.dir, env: environment, quiet: true },
+  );
   const row = record(JSON.parse(result.out));
-  const source = sourceIdentity(row.source),
-    identity = requestIdentity(row);
-  const worker = record(row.worker),
-    condition = CONDITIONS[plan.condition];
+  const source = sourceIdentity(row.source);
+  const worker = record(row.worker);
+  const { model, efforts } = CONDITIONS[plan.condition];
   if (
-    worker.model !== condition.model ||
-    worker.reasoningEffort !== condition.efforts[1] ||
+    worker.model !== model ||
+    worker.reasoningEffort !== efforts[1] ||
     !isNumber(worker.confinedPid) ||
     worker.confinedPid <= 0
   ) {
@@ -335,11 +360,10 @@ export async function inspectTarget(
   }
   const allowance = record(row.allowance);
   if (allowance.ok !== true) {
-    throw new Error(
-      `${plan.runId}: the provider refused the Builder slot's allowance probe: ${isString(allowance.message) ? allowance.message : "no reason recorded"}`,
-    );
+    const reason = isString(allowance.message) ? allowance.message : "no reason recorded";
+    throw new Error(`${plan.runId}: the provider refused the Builder slot's allowance probe: ${reason}`);
   }
-  return { source, ...identity, worker, allowance };
+  return { source, ...requestIdentity(row), worker, allowance };
 }
 
 async function prepare(
@@ -363,24 +387,24 @@ async function prepare(
   console.log(
     `${plan.runId}: checking source, request, confined worker and the provider allowance with one minimal turn`,
   );
-  const { worker, ...identity } = await inspectTarget({ ...plan, environment }, options, command);
+  const { worker, ...identity } = await probeTarget(plan, environment, options, command);
   if (identity.source.commit !== context.commit || identity.source.dirty) {
     throw new Error(`${plan.runId}: target did not return the requested clean source`);
   }
-  writeFileSync(
-    join(plan.dir, ".scratch/quick-run/probe.json"),
-    JSON.stringify({ ...identity, worker }, null, 2),
-    { mode: 0o600 },
-  );
-  return Object.assign(plan, {
+  writeFileSync(join(plan.dir, SCRATCH, "probe.json"), JSON.stringify({ ...identity, worker }, null, 2), {
+    mode: 0o600,
+  });
+  return {
+    ...plan,
     environment,
     sourceRef: context.sourceRef ?? null,
     ...identity,
     argv: fullrunArgs(plan, options, identity.source),
     budget: options.budget,
     credentialSource: credentials.origin,
+    credentialAccount: credentials.account,
     service: context.manager.service(context.uid, plan.label),
-  });
+  };
 }
 
 export function findOpening(plan: RunPlan, root = campaignRoot(plan.dir)): string | null {
@@ -394,10 +418,8 @@ export function findOpening(plan: RunPlan, root = campaignRoot(plan.dir)): strin
 }
 
 /** Whether the service manager still reports this plan's launcher as running. The query runs with
- *  `check: false`, so a service the manager no longer knows about exits non-zero here and reads as
- *  not-running rather than throwing: both callers want that answer as a boolean, because what they
- *  do with a false is raise the error that names the launcher log, and a raw command failure would
- *  lose that path. */
+ *  `check: false`, so a service the manager no longer knows about reads as not running rather than
+ *  throwing, and the caller raises the error that names the launcher log. */
 async function launcherRunning(
   plan: OpeningPlan,
   command: Command,
@@ -460,13 +482,7 @@ export async function checkOpening(
           `${plan.runId}: opening exists but launcher is no longer running; inspect ${plan.log}`,
         );
       }
-      return {
-        project,
-        opening: path,
-        campaign: resolve(dirname(path), "../.."),
-        terminal: false,
-        running: true,
-      };
+      return { project, opening: path, campaign: resolve(dirname(path), "../..") };
     }
     if (!(await launcherRunning(plan, command, manager))) {
       throw new Error(`${plan.runId}: launcher stopped without an opening; inspect ${plan.log}`);
@@ -484,8 +500,10 @@ export async function checkOpening(
 function reportPath(plan: RunPlan): string {
   return join(plan.dir, LAUNCH_RECEIPT_PATH);
 }
-function writeReport(plan: PreparedRun, status: string, extra: JsonObject = {}): void {
+/** The run's receipt, holding everything planned and prepared except its environment. */
+function writeReport(plan: RunPlan, status: string, extra: JsonObject = {}): void {
   const publicPlan = Object.fromEntries(Object.entries(plan).filter(([key]) => key !== "environment"));
+  mkdirSync(dirname(reportPath(plan)), { recursive: true });
   writeFileSync(reportPath(plan), JSON.stringify({ ...publicPlan, status, ...extra }, null, 2) + "\n", {
     mode: 0o600,
   });
@@ -496,12 +514,123 @@ function writeReport(plan: PreparedRun, status: string, extra: JsonObject = {}):
  *  procedure comes from main, never from the revision being measured. The copy keeps the skills
  *  tree's layout, so the stop script's relative import of `main/cli.ts` finds the launcher's parser. */
 function stageStopTimer(runDir: string): string {
-  const staged = join(runDir, ".scratch/quick-run/stop-timer");
+  const staged = join(runDir, SCRATCH, "stop-timer");
   for (const file of STOP_TIMER_FILES) {
     mkdirSync(dirname(join(staged, file)), { recursive: true });
     copyFileSync(join(SKILLS, file), join(staged, file));
   }
   return join(staged, STOP_TIMER_FILES[0]);
+}
+
+/** `argv` started detached by the service manager in the run tree, under its frozen environment. */
+function serviceArgv(plan: PreparedRun, manager: ServiceManager, label: string, log: string, argv: string[]) {
+  const environment = Object.entries(plan.environment).flatMap(([key, value]) =>
+    value === undefined ? [] : ["--env", `${key}=${value}`],
+  );
+  return [
+    join(plan.dir, manager.launcher),
+    "--worktree",
+    plan.dir,
+    "--log",
+    log,
+    "--label",
+    label,
+    ...environment,
+    "--",
+    ...argv,
+  ];
+}
+
+async function armStopTimer(plan: PreparedRun, killAfterMs: string, context: Context, command: Command) {
+  const deadline = Date.now() + Number(killAfterMs);
+  const timer = [process.execPath, "--no-env-file", stageStopTimer(plan.dir), "--worktree", plan.dir];
+  timer.push(
+    "--run",
+    plan.runId,
+    "--service",
+    plan.service,
+    "--deadline",
+    String(deadline),
+    "--grace",
+    "30000",
+  );
+  const log = join(plan.dir, SCRATCH, "stop.log");
+  await command(serviceArgv(plan, context.manager, `${plan.label}.stop`, log, timer));
+  const ready = join(plan.dir, `${STOP_RECEIPT_PATH}.ready`);
+  for (let attempt = 0; attempt < 50 && !existsSync(ready); attempt++) await Bun.sleep(100);
+  if (!existsSync(ready)) {
+    throw new Error(`${plan.runId}: stop timer did not confirm readiness; controller not launched`);
+  }
+  if (Date.now() >= deadline || existsSync(join(plan.dir, STOP_RECEIPT_PATH))) {
+    throw new Error(`${plan.runId}: stop deadline elapsed before controller launch`);
+  }
+}
+
+/** Whether the pass record holds `<commit> --at`: the whole gate passed on a checkout holding
+ *  nothing but that commit's bytes, which is exactly what a launch gate would prove again. */
+function recordedPass(passRecord: string, commit: string): boolean {
+  return existsSync(passRecord) && readFileSync(passRecord, "utf8").split("\n").includes(`${commit} --at`);
+}
+
+/**
+ * The source gate, run at most once per batch and, through the shared pass record, once per commit.
+ * A pass on the first run's clean tree is recorded as the hook records its own, so the next launch
+ * or push of the same commit does not pay for it again.
+ */
+async function settleGate(
+  first: PreparedRun,
+  policy: Gate,
+  context: Context,
+  command: Command,
+): Promise<GateReceipt> {
+  const short = context.commit.slice(0, 9);
+  if (policy === "skip") {
+    console.log(`${short}: launching without bun run gate, as --gate skip asked`);
+    return { policy, decision: "operator-skip", evidence: null, seconds: null, load: null };
+  }
+  if (policy === "auto" && recordedPass(context.passRecord, context.commit)) {
+    console.log(`${short} already passed the whole gate on its own bytes; ${context.passRecord}`);
+    return { policy, decision: "recorded-pass", evidence: context.passRecord, seconds: null, load: null };
+  }
+  const log = join(first.dir, SCRATCH, "gate.log");
+  const load = Math.round((loadavg()[0] ?? 0) * 10) / 10;
+  console.log(`Checking the source gate once for ${short} at load ${load}; ${log}`);
+  if (policy === "auto") {
+    console.log("No recorded pass for this commit; --gate skip launches without the gate.");
+  }
+  // The run tree's campaigns and domains link into the shared root, and the observatory build inside
+  // the gate reads its evidence snapshot there. No ANA_TESTED_COMMIT: a wrapper checking the named
+  // commit refuses those links as a changed tree, and the probe already proved the clean source.
+  const env: Environment = { ...process.env, ANA_UI_REPO_ROOT: context.sharedRoot };
+  delete env.ANA_TESTED_COMMIT;
+  const started = performance.now();
+  await command([WORKTREE, "run", first.dir, "bun", "run", "gate"], { log, env });
+  const seconds = Math.round((performance.now() - started) / 1000);
+  // The hook's own condition: the tree still holds nothing but the commit's bytes after the gate.
+  if (gitMaybe(first.dir, "status", "--porcelain") === "") {
+    appendFileSync(context.passRecord, `${context.commit} --at\n`);
+  }
+  return { policy, decision: "ran", evidence: log, seconds, load };
+}
+
+/** Prepares and probes every run and settles the gate; a failure leaves a `refused` receipt in each
+ *  tree it created, naming the stage, before it is rethrown. */
+async function prepareBatch(plans: RunPlan[], options: LaunchOptions, context: Context, command: Command) {
+  const prepared: PreparedRun[] = [];
+  let stage = "prepare";
+  try {
+    for (const plan of plans) prepared.push(await prepare(plan, options, context, command));
+    const first = prepared[0];
+    if (!first) throw new Error("no runs requested");
+    stage = "gate";
+    return { prepared, gate: await settleGate(first, options.gate, context, command) };
+  } catch (error) {
+    for (const plan of plans) {
+      const row = prepared.find((item) => item.runId === plan.runId) ?? plan;
+      if (existsSync(plan.dir)) writeReport(row, "refused", { stage, error: errorMessage(error) });
+    }
+    throw error;
+  }
 }
 
 export async function launchBatch(
@@ -510,87 +639,21 @@ export async function launchBatch(
   context: Context,
   command: Command = spawnCommand,
 ): Promise<LaunchResult[]> {
-  const prepared: PreparedRun[] = [];
-  for (const plan of plans) prepared.push(await prepare(plan, options, context, command));
-  const first = prepared[0];
-  if (!first) throw new Error("no runs requested");
-  const gateLog = join(first.dir, ".scratch/quick-run/gate.log");
-  console.log(`Checking the source gate once for ${context.commit.slice(0, 9)}; ${gateLog}`);
-  // The run tree's campaigns and domains are links into the shared root; the observatory build
-  // inside the gate reads its evidence snapshot from that root instead of refusing the links.
-  // No ANA_TESTED_COMMIT: a gate wrapper that checks the named commit refuses the untracked
-  // campaigns and domains links as a changed tree. The probe above already proved the clean
-  // requested source.
-  const gateEnv = { ...process.env };
-  delete gateEnv.ANA_TESTED_COMMIT;
-  await command([WORKTREE, "run", first.dir, ...(context.gate ?? ["bun", "run", "gate"])], {
-    log: gateLog,
-    env: { ...gateEnv, ANA_UI_REPO_ROOT: context.sharedRoot },
-  });
+  const { prepared, gate } = await prepareBatch(plans, options, context, command);
+  const extra = { gate: { ...gate }, launcher: context.launcher };
   const results: LaunchResult[] = [];
   for (const plan of prepared) {
-    plan.gateLog = gateLog;
     console.log(
       `${plan.runId}: launching; log: ${plan.log}\nStop: ${context.manager.terminate(plan.service).join(" ")}`,
     );
-    const environmentArgs = Object.entries(plan.environment).flatMap(([key, value]) =>
-      value === undefined ? [] : ["--env", `${key}=${value}`],
-    );
     try {
-      writeReport(plan, "starting");
-      if (options["kill-after-ms"] !== undefined) {
-        const deadline = Date.now() + Number(options["kill-after-ms"]);
-        await command([
-          join(plan.dir, context.manager.launcher),
-          "--worktree",
-          plan.dir,
-          "--log",
-          join(plan.dir, ".scratch/quick-run/stop.log"),
-          "--label",
-          `${plan.label}.stop`,
-          ...environmentArgs,
-          "--",
-          process.execPath,
-          "--no-env-file",
-          stageStopTimer(plan.dir),
-          "--worktree",
-          plan.dir,
-          "--run",
-          plan.runId,
-          "--service",
-          plan.service,
-          "--deadline",
-          String(deadline),
-          "--grace",
-          "30000",
-        ]);
-        const ready = join(plan.dir, `${STOP_RECEIPT_PATH}.ready`);
-        for (let attempt = 0; attempt < 50 && !existsSync(ready); attempt++) await Bun.sleep(100);
-        if (!existsSync(ready)) {
-          throw new Error(`${plan.runId}: stop timer did not confirm readiness; controller not launched`);
-        }
-        if (Date.now() >= deadline || existsSync(join(plan.dir, STOP_RECEIPT_PATH))) {
-          throw new Error(`${plan.runId}: stop deadline elapsed before controller launch`);
-        }
-      }
-      await command([
-        join(plan.dir, context.manager.launcher),
-        "--worktree",
-        plan.dir,
-        "--log",
-        plan.log,
-        "--label",
-        plan.label,
-        ...environmentArgs,
-        "--",
-        "bun",
-        "run",
-        "fullrun",
-        "--",
-        ...plan.argv,
-      ]);
+      writeReport(plan, "starting", extra);
+      const killAfter = options["kill-after-ms"];
+      if (killAfter !== undefined) await armStopTimer(plan, killAfter, context, command);
+      const fullrun = ["bun", "run", "fullrun", "--", ...plan.argv];
+      await command(serviceArgv(plan, context.manager, plan.label, plan.log, fullrun));
       const opened = await checkOpening(plan, command, { manager: context.manager });
-      writeReport(plan, "running", { ...opened });
+      writeReport(plan, "started", { ...extra, ...opened });
       results.push({
         runId: plan.runId,
         source: plan.source.commit,
@@ -600,7 +663,7 @@ export async function launchBatch(
       });
       console.log(`${plan.runId}: opening verified and process running; project ${opened.project}`);
     } catch (error) {
-      writeReport(plan, "start-unconfirmed", { error: errorMessage(error) });
+      writeReport(plan, "start-unconfirmed", { ...extra, error: errorMessage(error) });
       console.error(
         `${plan.runId}: ${errorMessage(error)}\nReceipt: ${reportPath(plan)}\nNo retry or signal was sent.`,
       );
@@ -609,6 +672,16 @@ export async function launchBatch(
     }
   }
   return results;
+}
+
+/** What `--dry-run` says the gate will do, read from the same record the launch reads. */
+function plannedGate(policy: Gate, passRecord: string, commit: string | null): string {
+  if (policy === "skip") return "skipped by --gate skip";
+  if (policy === "run") return "bun run gate once before launch";
+  if (commit === null) return "skipped when the hook recorded a whole-gate pass, run once otherwise";
+  return recordedPass(passRecord, commit)
+    ? `skipped: ${commit.slice(0, 9)} passed the whole gate (${passRecord})`
+    : `bun run gate once before launch: no recorded pass for ${commit.slice(0, 9)}`;
 }
 
 const die: ExitWith = exitWith("launch-run");
@@ -623,26 +696,25 @@ export async function main(argv: readonly string[]): Promise<number> {
     console.log(JSON.stringify(PRESETS, null, 2));
     return 0;
   }
-  const mainRepo = dirname(gitText(REPO, "rev-parse", "--path-format=absolute", "--git-common-dir")),
-    parent = options["output-dir"] ?? dirname(mainRepo);
+  const commonDir = gitText(REPO, "rev-parse", "--path-format=absolute", "--git-common-dir"),
+    mainRepo = dirname(commonDir),
+    parent = options["output-dir"] ?? dirname(mainRepo),
+    passRecord = join(commonDir, "ana-gate-passed");
   const suffix = `${new Date().toISOString().replace(/[-:.]/g, "")}-${crypto.randomUUID().slice(0, 6)}`;
   const plans = planRuns(options, parent, suffix);
   if (options["dry-run"]) {
-    console.log(
-      JSON.stringify(
-        {
-          source: options.source,
-          condition: options.condition,
-          budgetPerRun: Number(options.budget),
-          tasks: Number(options.tasks),
-          pins: Object.fromEntries(options.conditions.map((name) => [name, slotEnvironment(name)])),
-          gate: "once before launch",
-          runs: plans,
-        },
-        null,
-        2,
-      ),
-    );
+    // A dry run fetches nothing, so only a full commit named outright reads the record.
+    const commit = /^[0-9a-f]{40}$/.test(options.source) ? options.source : null;
+    const summary = {
+      source: options.source,
+      condition: options.condition,
+      budgetPerRun: Number(options.budget),
+      tasks: Number(options.tasks),
+      pins: Object.fromEntries(options.conditions.map((name) => [name, slotEnvironment(name)])),
+      gate: plannedGate(options.gate, passRecord, commit),
+      runs: plans,
+    };
+    console.log(JSON.stringify(summary, null, 2));
     return 0;
   }
   const manager = serviceManager();
@@ -669,7 +741,7 @@ export async function main(argv: readonly string[]): Promise<number> {
   const credentials: Partial<Record<Backend, Credentials>> = {};
   for (const condition of options.conditions) {
     const kind = CONDITIONS[condition].kind;
-    credentials[kind] ??= readCredentials({ ...options, condition, conditions: [condition] }, mainRepo);
+    credentials[kind] ??= readCredentials(kind, options, mainRepo);
   }
   const commit = resolveSource(options.source);
   const ref = sourceRef(options.source, commit);
@@ -677,15 +749,19 @@ export async function main(argv: readonly string[]): Promise<number> {
     `${plans.length} run(s), ${options.condition}, ${options.budget} provider turns each; source ${commit} (${describeSourceRef(ref)})`,
   );
   for (const credential of Object.values(credentials)) {
-    console.log(`Credential source: ${credential.origin}; captured for this batch`);
+    console.log(
+      `Credential source: ${credential.origin}, account ${credential.account}; captured for this batch`,
+    );
   }
   const results = await launchBatch(plans, options, {
     commit,
     sourceRef: ref,
+    launcher: gitText(REPO, "rev-parse", "HEAD"),
     credentials,
     sharedRoot: mainRepo,
     uid: process.getuid(),
     manager,
+    passRecord,
   });
   console.log(JSON.stringify(results, null, 2));
   return results.length === plans.length && results.every((row) => !("error" in row)) ? 0 : 1;

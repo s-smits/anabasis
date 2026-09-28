@@ -49,13 +49,10 @@ const IMPORT_LINE = /^\s*import\s|^\s*export\s+[*{]|\bfrom\s*"/u;
 /**
  * A specifier inside an inline `import("…")`, wherever on the line it sits.
  *
- * `.claude/skills/launch-run/scripts/probe.ts` loads each module out of the *target* checkout, so
- * every call spells the path twice: `target<typeof import("../../../../src/run/source-identity.ts")>`
- * takes the repo-relative `"src/run/source-identity.ts"` as its argument. The type half is the
- * module system's own spelling and the compiler resolves it; the runtime half is the same name one
- * directory prefix shorter. A loader naming a module in another tree has no third spelling
- * available, because TypeScript cannot take an `import()` type from a runtime string, so the pair
- * is the helper working as intended. Five of 37 rows were this one file.
+ * A loader that names a module in another tree spells its path twice: once in an `import()` type,
+ * which the compiler resolves, and once as the runtime string it loads, the same name with a
+ * shorter directory prefix. TypeScript cannot take an `import()` type from a runtime string, so the
+ * pair is the loader working as intended rather than a second identity.
  */
 const INLINE_IMPORT = /\bimport\(\s*"((?:[^"\\\n]|\\.)*)"/gu;
 

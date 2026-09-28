@@ -1,59 +1,50 @@
 #!/usr/bin/env bun
-/** Execute against the selected product tree, never the helper's own source revision. */
-import { join, dirname } from "#src/meta/path.ts";
+/**
+ * The launched tree's preflight, run by `launch.ts` from that tree's own copy of this file, so every
+ * import below resolves in the revision being launched. It proves the source is clean, computes the
+ * request and command digests the opening must record, starts the confined Built worker without a
+ * model turn, and spends one minimal Builder turn to see the account's allowance.
+ *
+ * Its argument list is `probeArgs` and its printed JSON is what `launch.ts` reads. Both cross
+ * revisions — a later launcher runs an earlier probe — so neither changes shape without the other.
+ */
+import { resolve } from "#src/meta/path.ts";
 import { tmpdir } from "#src/meta/os.ts";
+import { sha256 } from "#src/meta/digest.ts";
+import { errorMessage } from "#src/meta/runtime-values.ts";
+import { hashJsonBytes } from "#src/meta/json-runtime.ts";
+import { hashJsonValue } from "#src/meta/stable-json.ts";
+import { SOURCE_IDENTITY } from "#src/run/source-identity.ts";
+import { parseFullRunArgs } from "#src/run/launch-arguments.ts";
+import { builtSolveIsolation } from "#src/run/built-agent-runtime.ts";
+import { loadRepoEnv } from "#src/backends/env.ts";
+import { resolvedSlot } from "#src/backends/resolve.ts";
+import { piBuiltReadAllowRoots, preflightPiBuilt, resolvePiBuiltRuntime } from "#src/backends/pi-built.ts";
+import { resolvePiSlot } from "#src/backends/pi-providers.ts";
+import { openHostSession } from "#src/backends/pi-session.ts";
 import { type ExitWith, exitWith, parseOrDie } from "#skills/main/cli.ts";
 import {
   CONDITIONS,
-  fullrunArgs,
+  type Condition,
   LAUNCH_ARGUMENTS,
   type LaunchOptions,
+  fullrunArgs,
   launchOptions,
   planRuns,
   sourceIdentity,
 } from "./options.ts";
-import { sha256 } from "#src/meta/digest.ts";
-import { errorMessage } from "#src/meta/runtime-values.ts";
 
-const root = process.cwd();
-// Module URLs select the measured revision; types describe the existing product interfaces.
-async function target<T>(path: string): Promise<T> {
-  // SAFETY: `T` is the caller's declaration of the interface it expects in the measured tree, whose
-  // modules this helper never type-checks against. A tree that has moved a symbol elsewhere gives an
-  // empty binding, which the call below fails on and the catch at the end of this file explains.
-  return (await import(Bun.pathToFileURL(join(root, path)).href)) as T;
-}
+const ROOT = resolve(import.meta.dirname, "../../../..");
 
 export async function probe(options: LaunchOptions) {
-  const plan = planRuns(options, dirname(root), "probe")[0];
-  if (!plan || options.conditions.length !== 1 || options.names.length !== 1) {
-    throw new Error("probe requires exactly one run");
-  }
-  const { SOURCE_IDENTITY } = await target<typeof import("#src/run/source-identity.ts")>(
-    "src/run/source-identity.ts",
-  );
+  const [plan, ...others] = planRuns(options, ROOT, "probe");
+  if (plan === undefined || others.length > 0) throw new Error("probe requires exactly one run");
   const source = sourceIdentity(SOURCE_IDENTITY);
   if (source.dirty) throw new Error("target source is dirty");
-  const args = fullrunArgs(plan, options, source);
-  const { parseFullRunArgs } = await target<typeof import("#src/run/launch-arguments.ts")>(
-    "src/run/launch-arguments.ts",
-  );
-  const { hashJsonBytes } =
-    await target<typeof import("#src/meta/json-runtime.ts")>("src/meta/json-runtime.ts");
-  const { hashJsonValue } =
-    await target<typeof import("#src/meta/stable-json.ts")>("src/meta/stable-json.ts");
-  const parsed = parseFullRunArgs(args);
-  const contextDigest = sha256("[]");
-  const requestDigest = hashJsonBytes({ prompt: parsed.prompt, contextDigest });
+  const parsed = parseFullRunArgs(fullrunArgs(plan, options, source));
+  const requestDigest = hashJsonBytes({ prompt: parsed.prompt, contextDigest: sha256("[]") });
   const commandDigest = hashJsonValue({ ...parsed, prompt: null, contextPaths: null, requestDigest });
-  const { loadRepoEnv } = await target<typeof import("#src/backends/env.ts")>("src/backends/env.ts");
-  const { resolvedSlot } = await target<typeof import("#src/backends/resolve.ts")>("src/backends/resolve.ts");
-  const { builtSolveIsolation } = await target<typeof import("#src/run/built-agent-runtime.ts")>(
-    "src/run/built-agent-runtime.ts",
-  );
-  const { piBuiltReadAllowRoots, resolvePiBuiltRuntime, preflightPiBuilt } =
-    await target<typeof import("#src/backends/pi-built.ts")>("src/backends/pi-built.ts");
-  const env = loadRepoEnv(root).env;
+  const env = loadRepoEnv(ROOT).env;
   const slot = (side: "builder" | "built" | "review") =>
     resolvedSlot(CONDITIONS[plan.condition].kind, env, side, "operator");
   const slots = {
@@ -63,9 +54,9 @@ export async function probe(options: LaunchOptions) {
     built: slot("built"),
     review: { ...slot("review"), source: "operator" as const, enabled: true as const },
   };
-  const policy = builtSolveIsolation(root, piBuiltReadAllowRoots(slots));
-  const worker = await preflightPiBuilt(resolvePiBuiltRuntime(slots, root, policy));
-  const allowance = await checkAllowance(CONDITIONS[plan.condition], env);
+  const policy = builtSolveIsolation(ROOT, piBuiltReadAllowRoots(slots));
+  const worker = await preflightPiBuilt(resolvePiBuiltRuntime(slots, ROOT, policy));
+  const allowance = await checkAllowance(plan.condition, env);
   return { source, requestDigest, commandDigest, worker, allowance };
 }
 
@@ -73,21 +64,13 @@ export async function probe(options: LaunchOptions) {
  *  the account refuses here, before the gate and the worktree spend, with the provider's own reset
  *  clause. The allowance belongs to the account rather than the effort, so the turn asks for the
  *  least reasoning the model serves. */
-async function checkAllowance(
-  { kind, model }: (typeof CONDITIONS)[keyof typeof CONDITIONS],
-  env: Record<string, string | undefined>,
-) {
-  const { resolvePiSlot } = await target<typeof import("#src/backends/pi-providers.ts")>(
-    "src/backends/pi-providers.ts",
-  );
-  const { openHostSession } = await target<typeof import("#src/backends/pi-session.ts")>(
-    "src/backends/pi-session.ts",
-  );
+async function checkAllowance(condition: Condition, env: Record<string, string | undefined>) {
+  const { kind, model } = CONDITIONS[condition];
   const slot = resolvePiSlot(
     "builder",
     { kind, model, reasoningEffort: "low" },
     { webSearch: false },
-    root,
+    ROOT,
     env,
   );
   const session = await openHostSession({
@@ -113,18 +96,6 @@ if (import.meta.main) {
   try {
     console.log(JSON.stringify(await probe(options)));
   } catch (error) {
-    const message = errorMessage(error);
-    // The product modules are imported from the launched tree by path, so a symbol that source has
-    // since moved to another file arrives as an empty binding, and the launch fails with
-    // `<name> is not a function` — which reads as a defect in the run's own bytes. On 2026-09-20 it
-    // was `parseFullRunArgs`, split out of `full-run-launch.ts` by the launched source while the
-    // launcher came from main. Nothing is spent when this happens, because the probe refuses before
-    // the gate and before the allowance turn, so the hint only has to name the one remedy.
-    die(
-      message.includes(" is not a function")
-        ? `${message} — if the launched source moved a module this launcher imports by path, run the launcher from a worktree at that source`
-        : message,
-      1,
-    );
+    die(errorMessage(error), 1);
   }
 }

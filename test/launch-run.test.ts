@@ -37,14 +37,14 @@ import {
 import { ownedService, stopRun, validateStopPlan } from "../.claude/skills/launch-run/scripts/stop.ts";
 import { serviceManager } from "../.claude/skills/launch-run/scripts/service.ts";
 import { solveIsolationPolicy, spawnUnderSolveIsolation } from "../src/verify/solve-sandbox.ts";
-import { isRecord } from "../src/meta/json-shape.ts";
+import { sha256 } from "../src/meta/digest.ts";
 import { hasText } from "../src/meta/text.ts";
 import { double, required } from "./helpers/doubles.ts";
+import { gitOutput } from "../.claude/skills/main/git.ts";
 
 type Context = Parameters<typeof launchBatch>[2];
 type LaunchRow = Awaited<ReturnType<typeof launchBatch>>[number];
 type Environment = Record<string, string | undefined>;
-type PreparedPlan = OpeningPlan & { environment: Environment; argv: string[] };
 interface BatchFixtureOptions {
   failGate?: boolean;
   failLaunch?: boolean;
@@ -62,7 +62,6 @@ interface ModelSlot {
 // A custom one-liner beside the truss preset gives a batch two distinct presets and projects.
 const CUSTOM = ["custom", "--prompt", "Design steel roof trusses to Eurocode 3."] as const;
 const dirs: string[] = [];
-const preparedPlans: RunPlan[] = [];
 const source = { commit: "a".repeat(40), sourceDigest: "b".repeat(64), dirty: false };
 const manager = serviceManager();
 
@@ -72,7 +71,6 @@ function temp(): string {
   return dir;
 }
 afterEach(() => {
-  for (const plan of preparedPlans.splice(0)) if (hasText(plan.runtimeTemp)) dirs.push(plan.runtimeTemp);
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -80,22 +78,35 @@ afterEach(() => {
 function launched(result: LaunchRow | undefined) {
   const value = required(result, "launch row");
   return {
-    running: "running" in value && value.running,
+    started: !("error" in value),
     project: "project" in value ? value.project : undefined,
     source: "source" in value ? value.source : undefined,
     condition: "condition" in value ? value.condition : undefined,
     error: "error" in value ? value.error : undefined,
   };
 }
-/** A plan after `launchBatch` prepared it, which assigns its opening identities, environment and argv in place. */
-function prepared(plan: RunPlan | undefined): PreparedPlan {
-  const value = required(plan, "plan");
-  if (!("environment" in value) || !isRecord(value.environment)) throw new Error("plan was not prepared");
-  if (!("argv" in value) || !Array.isArray(value.argv)) throw new Error("plan carries no argv");
-  return double<PreparedPlan>(value);
-}
 /** Whether a recorded command runs the service manager's launcher script. */
 const isLauncher = (argv: string[]): boolean => argv[0]?.endsWith(manager.launcher) === true;
+/** The frozen environment and controller arguments the service launch of `plan` carried. */
+function launchOf(calls: string[][], plan: RunPlan | undefined) {
+  const dir = required(plan, "plan").dir;
+  const call = required(
+    calls.find(
+      (args) =>
+        isLauncher(args) && !args.includes("--deadline") && args[args.indexOf("--worktree") + 1] === dir,
+    ),
+    "launch call",
+  );
+  const pairs = call
+    .slice(0, call.indexOf("--"))
+    .flatMap((arg, i, all) => (all[i - 1] === "--env" ? [arg] : []));
+  const environment: Environment = Object.fromEntries(
+    pairs.map((pair) => [pair.slice(0, pair.indexOf("=")), pair.slice(pair.indexOf("=") + 1)]),
+  );
+  return { environment, argv: call.slice(call.indexOf("fullrun") + 2) };
+}
+const readReport = (plan: RunPlan) =>
+  JSON.parse(readFileSync(join(plan.dir, ".scratch/quick-run/launch.json"), "utf8"));
 const envPath = (environment: Environment, key: string): string => required(environment[key], key);
 /** A planned run carrying the identities `openingProblems` and `checkOpening` compare against. */
 function opened(plan: RunPlan | undefined, argv: string[]): OpeningPlan {
@@ -152,6 +163,8 @@ function batchFixture({
   let gateOptions: Parameters<Command>[1];
   const context: Context = {
     commit: source.commit,
+    launcher: "c".repeat(40),
+    passRecord: join(temp(), "ana-gate-passed"),
     uid: 501,
     sharedRoot: temp(),
     manager,
@@ -160,11 +173,13 @@ function batchFixture({
         kind: "claude",
         origin: "/fixture/.env",
         bytes: "CLAUDE_CODE_OAUTH_TOKEN=fixture-only-token\n",
+        account: "claude-acct",
       },
       codex: {
         kind: "codex",
         origin: "/fixture/auth.json",
         bytes: '{"tokens":{"access_token":"fixture-codex-token"}}',
+        account: "codex-acct",
       },
     },
   };
@@ -176,8 +191,16 @@ function batchFixture({
       writeFileSync(join(required(dir, "worktree"), ".scratch/quick-run/stop.json.ready"), "fixture-ready");
       return { code: 0, out: "", err: "" };
     }
-    if (argv[1] === "new") mkdirSync(required(argv[3], "new worktree"), { recursive: true });
+    if (argv[1] === "new") {
+      // A checkout of its own, as `worktree.sh new` makes, ignoring everything the launch writes.
+      const dir = required(argv[3], "new worktree");
+      mkdirSync(dir, { recursive: true });
+      gitOutput(dir, "init", "-q");
+      writeFileSync(join(dir, ".gitignore"), "*\n!/dirty\n");
+    }
     if (argv.some((arg) => arg.endsWith("/probe.ts"))) {
+      // The probe runs under the run's frozen environment, whose worker temp root sits outside it.
+      dirs.push(required(commandOptions?.env?.TMPDIR, "probe TMPDIR"));
       if (failWorker) throw new Error("fixture worker could not load");
       const plan = required(
         plans.find((item) => item.dir === argv[2]),
@@ -215,11 +238,12 @@ function batchFixture({
       );
       const path = join(plan.dir, "campaigns", `${plan.preset}-project`, "controller", plan.runId);
       mkdirSync(path, { recursive: true });
-      writeFileSync(join(path, "opening.json"), JSON.stringify(openingFor(plan)));
+      // The opening records the digests of the arguments the controller was actually started with.
+      const identity = requestIdentity(argv.slice(argv.indexOf("fullrun") + 2));
+      writeFileSync(join(path, "opening.json"), JSON.stringify(openingFor({ ...plan, ...identity })));
     }
     return { code: 0, out: argv[0] === manager.query("")[0] ? liveState("/fixture", "") : "", err: "" };
   };
-  preparedPlans.push(...plans);
   return { options, plans, context, calls, command, gateOptions: () => gateOptions };
 }
 
@@ -227,7 +251,7 @@ describe("one-command run launcher", () => {
   it("starts a separate operator timer before the controller launch without forwarding a retired wall", async () => {
     const fixture = batchFixture({ args: ["truss", "--kill-after-ms", "180000"] });
     const [result] = await launchBatch(fixture.plans, fixture.options, fixture.context, fixture.command);
-    expect(launched(result).running).toBe(true);
+    expect(launched(result).started).toBe(true);
     const timer = required(
       fixture.calls.find((args) => args.includes("--deadline")),
       "timer call",
@@ -491,9 +515,11 @@ describe("one-command run launcher", () => {
       join(root, ".env"),
       'CLAUDE_CODE_OAUTH_TOKEN="fixture-current"\nCLAUDE_CODE_OAUTH_TOKEN3=fixture-other\nANTHROPIC_API_KEY=fixture-api\nCUSTOM_ADDRESS=https://invalid.test\n',
     );
-    const credentials = readCredentials(parseOptions(["truss"]), root, {
+    const credentials = readCredentials("claude", parseOptions(["truss"]), root, {
       CLAUDE_CODE_OAUTH_TOKEN: "fixture-stale",
     });
+    // The account is named by a digest of the token, never the token.
+    expect(credentials.account).toMatch(/^[0-9a-f]{12}$/);
     const plan = required(planRuns(parseOptions(["truss"]), root, "credential")[0], "plan");
     mkdirSync(plan.dir);
     const environment = prepareEnvironment(plan, credentials, "/usr/bin:/bin:/usr/bin:relative");
@@ -513,21 +539,29 @@ describe("one-command run launcher", () => {
     expect(() => prepareEnvironment(plan, credentials)).toThrow("credential snapshot already exists");
     // A numbered token alone is not the one the run reads.
     writeFileSync(join(root, ".env"), "CLAUDE_CODE_OAUTH_TOKEN3=fixture-other\n");
-    expect(() => readCredentials(parseOptions(["truss"]), root, {})).toThrow("no API-key or shell fallback");
+    expect(() => readCredentials("claude", parseOptions(["truss"]), root, {})).toThrow(
+      "no API-key or shell fallback",
+    );
     writeFileSync(join(root, ".env"), "ANTHROPIC_API_KEY=fixture-api\n");
     expect(() =>
-      readCredentials(parseOptions(["truss"]), root, { CLAUDE_CODE_OAUTH_TOKEN: "fixture-stale" }),
+      readCredentials("claude", parseOptions(["truss"]), root, { CLAUDE_CODE_OAUTH_TOKEN: "fixture-stale" }),
     ).toThrow("no API-key or shell fallback");
   });
 
   it("captures Sol auth in its private home and refuses a missing or malformed credential", () => {
     const root = temp();
     const auth = JSON.stringify({
-      tokens: { access_token: "fixture-access", refresh_token: "fixture-refresh" },
+      tokens: {
+        access_token: "fixture-access",
+        refresh_token: "fixture-refresh",
+        account_id: "fixture-account",
+      },
     });
     writeFileSync(join(root, "auth.json"), auth);
     const options = parseOptions(["truss", "--condition", "sol", "--codex-home", root]);
-    const credentials = readCredentials(options, root);
+    const credentials = readCredentials("codex", options, root);
+    // The access token rotates on refresh, so the account id is what names the account.
+    expect(credentials.account).toBe(sha256("fixture-account").slice(0, 12));
     const plan = required(planRuns(options, root, "codex")[0], "plan");
     mkdirSync(plan.dir);
     const environment = prepareEnvironment(plan, credentials);
@@ -536,7 +570,7 @@ describe("one-command run launcher", () => {
     expect(statSync(join(envPath(environment, "CODEX_HOME"), "auth.json")).mode & 0o777).toBe(0o600);
     expect(JSON.stringify(environment)).not.toContain("fixture-access");
     writeFileSync(join(root, "auth.json"), "{}");
-    expect(() => readCredentials(options, root)).toThrow("access token is required");
+    expect(() => readCredentials("codex", options, root)).toThrow("access token is required");
   });
 
   it("prepares and probes both runs, gates the source once, and verifies both openings", async () => {
@@ -557,13 +591,16 @@ describe("one-command run launcher", () => {
     expect(gateEnv.ANA_TESTED_COMMIT).toBeUndefined();
     expect(JSON.stringify(launches)).not.toContain("fixture-only-token");
     for (const plan of fixture.plans) {
-      const report = JSON.parse(readFileSync(join(plan.dir, ".scratch/quick-run/launch.json"), "utf8"));
+      const report = readReport(plan);
       expect(report).toMatchObject({
-        status: "running",
-        running: true,
+        status: "started",
         source,
         project: `${plan.preset}-project`,
+        launcher: fixture.context.launcher,
+        gate: { policy: "auto", decision: "ran" },
       });
+      // The receipt says the run started; whether it is still running is the controller's to say.
+      expect(report.running).toBeUndefined();
       expect(lstatSync(join(plan.dir, "campaigns")).isSymbolicLink()).toBe(true);
       expect(
         existsSync(
@@ -577,9 +614,60 @@ describe("one-command run launcher", () => {
           ),
         ),
       ).toBe(true);
-      expect(report.gateLog).toBeString();
+      expect(report.gate.evidence).toBe(
+        join(required(fixture.plans[0], "plan").dir, ".scratch/quick-run/gate.log"),
+      );
       expect(report.environment).toBeUndefined();
     }
+    // A pass on the clean run tree is recorded as the hook records one, so the commit is gated once.
+    expect(readFileSync(fixture.context.passRecord, "utf8")).toBe(`${source.commit} --at\n`);
+  });
+
+  it.each([
+    ["auto", [`${"b".repeat(40)} --at`, `${source.commit} --at`], "recorded-pass"],
+    ["auto", [`${source.commit} --static`, `${"b".repeat(40)} --at`], "ran"],
+    ["run", [`${source.commit} --at`], "ran"],
+    ["skip", [], "operator-skip"],
+  ] as const)("settles --gate %s over the pass record %j as %s", async (policy, lines, decision) => {
+    const fixture = batchFixture({ args: [...CUSTOM, "truss", "--gate", policy] });
+    writeFileSync(fixture.context.passRecord, lines.map((line) => `${line}\n`).join(""));
+    const result = await launchBatch(fixture.plans, fixture.options, fixture.context, fixture.command);
+    expect(result.map((item) => launched(item).project)).toEqual(["custom-project", "truss-project"]);
+    // Only a whole-gate pass of this exact commit stands in for the gate; a static pass does not.
+    expect(fixture.calls.filter((args) => args.at(-1) === "gate")).toHaveLength(decision === "ran" ? 1 : 0);
+    for (const plan of fixture.plans) {
+      const { gate } = readReport(plan);
+      expect(gate).toMatchObject({ policy, decision });
+      expect(gate.evidence).toBe(
+        decision === "ran"
+          ? join(required(fixture.plans[0], "plan").dir, ".scratch/quick-run/gate.log")
+          : decision === "recorded-pass"
+            ? fixture.context.passRecord
+            : null,
+      );
+    }
+  });
+
+  it("records a pass only from a clean run tree, and the next batch on that commit skips the gate", async () => {
+    const dirty = batchFixture();
+    // A gate that leaves a file behind has passed on bytes the commit does not hold.
+    const command: Command = async (argv, commandOptions) => {
+      if (argv.at(-1) === "gate") writeFileSync(join(required(argv[2], "gated tree"), "dirty"), "");
+      return dirty.command(argv, commandOptions);
+    };
+    await launchBatch(dirty.plans, dirty.options, dirty.context, command);
+    expect(existsSync(dirty.context.passRecord)).toBe(false);
+    const first = batchFixture();
+    await launchBatch(first.plans, first.options, first.context, first.command);
+    const second = batchFixture();
+    await launchBatch(
+      second.plans,
+      second.options,
+      { ...second.context, passRecord: first.context.passRecord },
+      second.command,
+    );
+    expect(second.calls.filter((args) => args.at(-1) === "gate")).toHaveLength(0);
+    expect(readReport(required(second.plans[0], "plan")).gate).toMatchObject({ decision: "recorded-pass" });
   });
 
   it("refuses deadline flags before fresh-launch setup, including a complete valid pair", () => {
@@ -596,11 +684,11 @@ describe("one-command run launcher", () => {
     const fixture = batchFixture({ args: ["truss", "--model", "sol,astra,opus"] });
     const result = await launchBatch(fixture.plans, fixture.options, fixture.context, fixture.command);
     expect(result.map((item) => launched(item).condition)).toEqual(["sol", "astra", "opus"]);
-    expect(result.every((item) => launched(item).running && launched(item).source === source.commit)).toBe(
+    expect(result.every((item) => launched(item).started && launched(item).source === source.commit)).toBe(
       true,
     );
     expect(fixture.calls.filter((args) => args.at(-1) === "gate")).toHaveLength(1);
-    const [sol, astra, opus] = fixture.plans.map(prepared);
+    const [sol, astra, opus] = fixture.plans.map((plan) => ({ ...plan, ...launchOf(fixture.calls, plan) }));
     expect(
       readFileSync(join(envPath(required(sol, "sol").environment, "CODEX_HOME"), "auth.json"), "utf8"),
     ).toContain("fixture-codex-token");
@@ -643,16 +731,16 @@ describe("one-command run launcher", () => {
     ]);
     const result = await launchBatch(fixture.plans, fixture.options, fixture.context, fixture.command);
     expect(result).toHaveLength(6);
-    expect(result.every((item) => launched(item).running && launched(item).source === source.commit)).toBe(
+    expect(result.every((item) => launched(item).started && launched(item).source === source.commit)).toBe(
       true,
     );
     expect(new Set(fixture.plans.map((plan) => plan.dir)).size).toBe(6);
     expect(fixture.calls.filter((args) => args.at(-1) === "gate")).toHaveLength(1);
-    for (const plan of fixture.plans.map(prepared)) {
-      expect(parseFullRunArgs(plan.argv).stopAfterMs).toBe(14400000);
-      expect(plan.environment.CODEX_BUILT_MODEL).toBe(
-        plan.condition === "astra" ? "gpt-6-astra" : "gpt-6-sol",
-      );
+    for (const planned of fixture.plans) {
+      const { environment, argv } = launchOf(fixture.calls, planned);
+      expect(parseFullRunArgs(argv).stopAfterMs).toBe(14400000);
+      expect(environment.CODEX_BUILT_MODEL).toBe(planned.condition === "astra" ? "gpt-6-astra" : "gpt-6-sol");
+      const plan = opened(planned, argv);
       const wrong = openingFor(plan);
       wrong.modelSlots.built.model = "unrequested-model";
       expect(openingProblems(wrong, plan)).toContain("built model slot");
@@ -702,11 +790,26 @@ describe("one-command run launcher", () => {
       "gate refused",
     );
     expect(failed.calls.some((args) => isLauncher(args))).toBe(false);
+    // Every tree the refused batch created says which stage stopped it, and a failed gate records no pass.
+    for (const plan of failed.plans) {
+      expect(readReport(plan)).toMatchObject({
+        status: "refused",
+        stage: "gate",
+        error: "fixture gate refused",
+      });
+    }
+    expect(existsSync(failed.context.passRecord)).toBe(false);
     const badWorker = batchFixture({ failWorker: true });
     await expect(
       launchBatch(badWorker.plans, badWorker.options, badWorker.context, badWorker.command),
     ).rejects.toThrow("worker could not load");
     expect(badWorker.calls.some((args) => args.at(-1) === "gate" || isLauncher(args))).toBe(false);
+    const [probed, unstarted] = badWorker.plans;
+    expect(readReport(required(probed, "probed plan"))).toMatchObject({
+      status: "refused",
+      stage: "prepare",
+    });
+    expect(existsSync(required(unstarted, "second plan").dir)).toBe(false);
     const refused = batchFixture({ refuseAllowance: true, args: ["truss", "--model", "opus"] });
     await expect(
       launchBatch(refused.plans, refused.options, refused.context, refused.command),

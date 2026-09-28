@@ -12,11 +12,13 @@ when the user specifies a non-default requirement. `--condition` remains a legac
 never supply both. The launcher's `CONDITIONS` table owns the model and three slot settings.
 
 Use the TypeScript launcher from current main with the selected source's pinned Bun. It probes
-the launched source before spending by running that tree's own `probe.ts`, which imports that
-tree's product modules. A source whose modules moved therefore still probes: main's probe could
+the launched source before spending by running that tree's own `probe.ts`, whose static imports
+resolve in the launched tree, so a source whose modules moved still probes: main's probe could
 not open 03b8cb266, whose pi layer had replaced `src/backends/claude-backend.ts`, and the
-launch of run 08c0f2 had to borrow the source tree's launcher. The launcher itself (options,
-credential capture, gate, startup checks) stays main's; never select an older runtime or
+launch of run 08c0f2 had to borrow the source tree's launcher. The two copies meet only at
+`probeArgs` and the JSON the probe prints, which is why neither changes shape without the other.
+The launcher itself (options, credential capture, gate, startup checks) stays main's, and
+`launch.json` records its commit as `launcher`; never select an older runtime or
 silently drop the timed stop. Bun executes the launcher directly; no build step or generated
 driver is needed. A launch request authorises the command.
 
@@ -36,7 +38,15 @@ the Builder chooses the next experiment from evidence.
 Use one or two lines through `custom --prompt`, or the `truss` preset in `scripts/options.ts` (`--list` prints it).
 Public files enter through `fullrun --context`; do not create `asks/`, verifier manifests or a second domain brief.
 Put the requested pair in one invocation. It prepares each worktree once, runs one TypeScript
-probe per run, gates the shared source once with `bun run gate`, then starts the runs in quick succession.
+probe per run, settles the shared source's gate once, then starts the runs in quick succession.
+`--gate auto`, the default, runs `bun run gate` only when the commit has no whole-gate pass in
+`ana-gate-passed` under the common Git directory, the record the pre-push hook writes when a tip
+passes on a checkout holding only its own bytes; a pass the launcher runs on its clean run tree is
+recorded there the same way, so one commit is gated once however many batches launch it. Of the
+25 launch gates recorded between 2026-09-24 and 2026-09-28, 22 passed, two were ended by the host
+and the one refusal was of a commit never pushed, so a published stack head, which the hook has
+already gated, rarely leaves the launch gate anything to find. `--gate run` gates regardless; `--gate skip` launches without it and says so in
+every receipt.
 Keep the existing worktree checks and the detachment into the per-user service manager
 (launchd on macOS, `systemd-run --user` on Linux; `scripts/service.ts` owns the difference); do
 not add wrapper scripts, repeat installations or run a gate separately before this command.
@@ -69,6 +79,13 @@ the provider's reset clause. Its temporary files stay
 outside the closed checkout. The launcher verifies the opening's source, prompt, arguments,
 budget and three model slots, rejects an immediate terminal, and checks that the process is
 still running. Startup proves neither useful model work nor an outcome.
+
+Each run's `launch.json` moves through `starting`, then `started` once the opening matched, or
+`start-unconfirmed` when it could not tell, or `refused` with the `stage` (`prepare` or `gate`)
+and the error that stopped the batch before any controller started. It records the gate's
+decision, seconds and load, the launcher commit, and the credential's account as a 12-hex digest.
+It says nothing about whether the run is still going: that is `bun run runs`, read from the
+controller's own evidence.
 
 Claude uses `CLAUDE_CODE_OAUTH_TOKEN` from the main checkout's `.env`, or explicit `--env-file`,
 and carries it into the run's frozen env. Codex conditions use the selected `CODEX_HOME/auth.json`, defaulting to the current account.

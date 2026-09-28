@@ -34,12 +34,12 @@ import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { isControllerBatteryRunId } from "#src/run/controller-battery-record-policy.ts";
 import { controllerEvidenceDir, OPENING_FILE, TERMINAL_FILE } from "#src/run/controller-lineage.ts";
 import { findRun, readLaunchRecord } from "#tools/runs/discover.ts";
+import { SCRATCH } from "#skills/launch-run/scripts/options.ts";
 
 const LEVELS = ["light", "medium", "verbose"] as const;
 type Level = (typeof LEVELS)[number];
 const LIGHT_CAP_MB = 2;
 const VERBOSE_MAX_FILE_BYTES = 8 * 1024 * 1024;
-const SCRATCH_ROOT = ".scratch/quick-run";
 
 /** Never zipped at any depth: installed binaries, dependency trees, scratch, candidate snapshots
  *  (the accepted ones are under versions/) and provider credentials. */
@@ -159,7 +159,7 @@ function selectFiles(campaign: string, runId: string, runDir: string | null, lev
   };
 
   if (runDir !== null) {
-    const scratch = join(runDir, SCRATCH_ROOT);
+    const scratch = join(runDir, SCRATCH);
     for (const name of QUICK_RUN_LIGHT) add(join(scratch, name), "launch", join("launch", name));
     if (at("verbose")) tree(join(scratch, "codex", "sessions"), "transcripts", "transcripts/codex-sessions");
   }

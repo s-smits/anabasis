@@ -56,7 +56,7 @@ function readSavedProduct(
   const manifest = asRecord(readJsonFile(join(row.path, "version.json")));
   if (
     manifest === null ||
-    manifest.schema !== "product-version/v1" ||
+    manifest.schema !== "product-version/v2" ||
     manifest.id !== row.id ||
     asRecord(manifest.fingerprint)?.slug !== slug
   ) {

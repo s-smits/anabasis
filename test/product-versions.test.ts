@@ -197,6 +197,35 @@ test("publication preserves accepted file bytes and tool reference without impor
   expect(() => readProductVersion(root, slug, "first")).toThrow("tool-tree reference changed");
 });
 
+test("a battery binds a retained version only while its tool tree holds the bytes it was published with", () => {
+  const { root, source } = fixture();
+  const input = source("first");
+  const tools = join(input.acceptedSnapshot, ".toolchain");
+  mkdirSync(join(tools, "bin"), { recursive: true });
+  writeFileSync(join(tools, "bin", "analyse"), "#!/bin/sh\necho one\n");
+  const version = publishProductVersion(input);
+  bindProductMeasurement(root, slug, "first-battery", version);
+  // A run's own bytecode is not an edit, so a reused round binds the same version again.
+  mkdirSync(join(tools, "lib", "__pycache__"), { recursive: true });
+  writeFileSync(join(tools, "lib", "__pycache__", "cli.pyc"), "bytecode");
+  bindProductMeasurement(root, slug, "reused-battery", version);
+  // Same path, same length, other bytes: the link still names the tree it named at publication.
+  writeFileSync(join(tools, "bin", "analyse"), "#!/bin/sh\necho two\n");
+  expect(readProductVersion(root, slug, "first")).toBe(version);
+  expect(() => bindProductMeasurement(root, slug, "edited-battery", version)).toThrow(
+    "tool tree changed since publication",
+  );
+  // A reclaimed tree leaves history readable and the version unmeasurable.
+  rmSync(tools, { recursive: true });
+  expect(readProductVersion(root, slug, "first")).toBe(version);
+  expect(() => bindProductMeasurement(root, slug, "reclaimed-battery", version)).toThrow(
+    "tool tree changed since publication",
+  );
+  using ledger = ControllerLedger.open(campaignDir(root, slug));
+  expect(ledger.measuredProduct("reused-battery")).toBe("first");
+  expect(ledger.measuredProduct("edited-battery")).toBeNull();
+});
+
 test("changed file sets and linked product directories are refused even when link targets match", () => {
   const { root, source } = fixture();
   const input = source("first");

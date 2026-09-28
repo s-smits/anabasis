@@ -31,7 +31,7 @@ function submitWith(holds: (SubmitHold | null)[]) {
     recorder,
     feedback: new BuilderAuthorFeedback(),
   });
-  return { tool, state, gateCalls: () => gateCalls };
+  return { tool, state, recorder, gateCalls: () => gateCalls };
 }
 
 const run = async (tool: ReturnType<typeof submitWith>["tool"]) => {
@@ -46,7 +46,7 @@ describe("submit's hold", () => {
       text: "Nothing was submitted. A review finished with findings you have not read.",
       reason: "review-unread",
     };
-    const { tool, state, gateCalls } = submitWith([hold, hold]);
+    const { tool, state, recorder, gateCalls } = submitWith([hold, hold]);
     for (const _ of [1, 2]) {
       const held = await run(tool);
       expect(held.text).toBe(hold.text);
@@ -58,5 +58,12 @@ describe("submit's hold", () => {
     expect((await run(tool)).text).toStartWith("Submit 1 was refused at gates");
     expect(state.attempts).toBe(1);
     expect(gateCalls()).toBe(1);
+    // Each held call returned a review's findings, so each is a review the record counts; the released
+    // call returned none.
+    const reviews = recorder.finish("turn-bound").authoringReviews;
+    expect(reviews.map(({ turn, tool: name, adviceChars }) => [turn, name, adviceChars])).toEqual([
+      [1, "submit", hold.text.length],
+      [1, "submit", hold.text.length],
+    ]);
   });
 });

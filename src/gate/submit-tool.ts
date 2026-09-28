@@ -235,7 +235,7 @@ async function settleSubmit(binding: SubmitToolBinding) {
 }
 
 export function makeSubmitTool(binding: SubmitToolBinding): AgentTool<typeof SubmitParams> {
-  const { state } = binding;
+  const { state, recorder } = binding;
   let inFlight = false;
   return {
     name: "submit",
@@ -272,9 +272,14 @@ export function makeSubmitTool(binding: SubmitToolBinding): AgentTool<typeof Sub
         // A hold with nothing to wait for answers at once, and is not awaited, so the gate run this
         // call starts is still published before its first await and a preview started meanwhile
         // joins it.
+        const started = Date.now();
         const holding = binding.hold?.() ?? null;
         const held = holding instanceof Promise ? await holding : holding;
-        if (held !== null) return text(held.text, { outcome: "blocked", reason: held.reason });
+        if (held !== null) {
+          // The review's findings ride this call's result, as they ride any other tool's.
+          recorder.authoringReviewed(state.activeTurn, "submit", held.text.length, Date.now() - started);
+          return text(held.text, { outcome: "blocked", reason: held.reason });
+        }
         state.attempts += 1;
         return await settleSubmit(binding);
       } finally {

@@ -56,9 +56,17 @@ it enforces as `citedDecisionIds` (an undeclared id, or only private ones, is re
   register writes the build emits for it, the force computed in that member. A library symbol or a
   constant found anywhere in the build proves the answer mentions the resource, not that it
   behaves, and an answer driving the wrong pin carries the same symbols.
+- An identifier a check reads, such as a load case, a member or a pin, is bound to what it names
+  in the public input: the check finds that geometry or scenario in the task and matches the
+  answer's rows to it, so an answer that relabels its members or cases cannot pass on the labels.
 - Where the request names several targets, observe that behaviour on each one an established public
   simulator runs, not only the first. A named target nothing can run is an omission: say so in a
   `decisions` row, because a build that merely compiles for it proves no behaviour there.
+- Each behavioural obligation names, in a `decisions` row, what observes it: the real compiler for
+  building, a simulator or model validated against the target for behaviour (for a microcontroller,
+  one the field already uses, such as avr8js or rp2040js, built and smoke-tested through
+  `verifier_workshop`), or "not established" where nothing does. An obligation a stand-in of your
+  own decides is observed by that stand-in, and the row says so.
 - A check comparing what the answer reports about itself with what it is, such as reported sizes
   against measured ones, enforces no rule of the field: an honest answer and a wrong one pass it
   alike. Decide from the measured quantity against the limit the task publishes.
@@ -159,7 +167,10 @@ there; one under TMPDIR is rebuilt on every run.
   answer with one identifier it declares renamed, and one value it writes out replaced by the name
   the target predefines for it: the real toolchain gives both the same verdict, so the stand-in
   must too. An answer the real toolchain builds and runs correctly that the stand-in cannot build
-  is the stand-in's defect.
+  is the stand-in's defect. The recorded shape is a host double of the Arduino headers that fixed a
+  display's width at 128, left out `constrain`, declared `min` for one argument type only and
+  compiled the sketch's globals into its own driver's translation unit: each defect failed a sketch
+  the board's own toolchain builds and runs.
 - Declare `hidden: "required"` to receive private cases; the host binds that row to this check
   and records its digest with the tool inputs. Private cases test the published rule within its
   public domain; a published finite answer table cannot establish an unrestricted behaviour rule.
@@ -188,12 +199,18 @@ deliberately incorrect rows, each meaningfully different. Every row has `id`, `t
 `artifact`; a reject adds `mutationClass` and `expectedCheckId`, and may override hidden
 expectations by check id. Accepts pass under their task's own hidden rows. Build each reject from
 the same task's accept with one fact changed so that its expected check fails, choosing the
-mutations a careless or dishonest solver would produce in this field. Give every check at least
-one such reject, so that each check is seen to say no, and every limit or clause a check enforces
-its own reject crossing it: a check holding a cap and a clearance, whose rejects all break only how
-the answer reports a value, has never been seen to enforce either. A join reject carries `targetsJoin` plus
-`decoyClass`. The census reruns every control against the submitted tasks and evaluator, so settle
-limits and checks first.
+mutations a careless or dishonest solver would produce in this field. A reject that differs from
+its accept at several leaves proves nothing about the check it names, since any of them could be
+what failed. Give every check at least one such reject, so that each check is seen to say no, and
+every limit or clause a check enforces its own reject crossing it: a check holding a cap and a
+clearance, whose rejects all break only how the answer reports a value, has never been seen to
+enforce either. A join reject carries `targetsJoin` plus `decoyClass`. The census reruns every
+control against the submitted tasks and evaluator, so settle limits and checks first.
+
+Calibrate every check in both directions. Rejects are invalid variants it must fail; accepts
+include valid variants it must pass, answers obtained independently of your reference, such as
+another practitioner's construction or an equivalent spelling of yours. A check that fails a valid
+answer is an evaluator defect however many rejects it catches.
 
 ## Harness tests
 

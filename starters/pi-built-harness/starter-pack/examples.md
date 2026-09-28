@@ -76,6 +76,30 @@ Examples of invalid designs: a `report` or `summary` root no check reads; a rule
 twenty-five tasks from one template; a tool that reports the installed toolchain; an adviser that
 returns a complete valid answer or the per-check verdict before submit.
 
+## A target the solver does not reliably meet
+
+A reference that replays a stored answer is already the usual shape, and on its own it is not
+enough: the blind solver reaches the author's own answer on most tasks, well inside its wall,
+because the search that found that answer is one the solver can run too. Two constructions may
+help; neither is required, and another method is as welcome.
+
+- **A search past the solver's wall.** Run an offline search far longer than one solve may take,
+  keep its best incumbents, and store the best as the answer `reference/` replays, which F2 admits
+  as it admits any stored answer. The limit then sits between what the long search found and what a
+  short one finds. It fails when the long search finds nothing a short one does not.
+- **A planted design.** Choose a design first, derive the requirements from it and publish only the
+  requirements. It fails when the derived requirements point straight back at the planted design,
+  when many simpler answers meet them too, or when they are requirements the field would not hold.
+
+Tightening one limit everywhere buys less than it looks: good designs already sit near their
+allowance, so a global cut mostly lands on the reference itself. The slack a solver leaves is
+usually local, in one member, one load case or one scenario, which is why a stronger answer or a
+demand the solver has to search for moves more than a smaller number.
+
+`harness_trial` estimates how reliably the solver meets a task; it does not veto one. A mass limit
+met by 3 of 6 blind solves is a task the battery can measure, not one to discard. A trial can take
+an hour and can come back `not-run`, so it is a sample you may buy, not a step you owe.
+
 ## The worked domain
 
 One rostering domain runs through the brief, tasks, controls, evaluator and reference below.

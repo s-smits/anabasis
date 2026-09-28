@@ -180,6 +180,30 @@ describe("pi starter pack brief vocabulary", () => {
     expect(text).toContain("every limit or clause a check enforces its own reject crossing it");
   });
 
+  // A host double of the board headers failed equivalent sketches, relabelled answers passed loss
+  // ids a check never bound to geometry, and rejects differing at several leaves proved no check:
+  // each makes a placement measure the evaluator rather than the solver.
+  it.concurrent("contract.md names what observes each obligation and calibrates checks both ways", () => {
+    const text = STARTER_DOC.replace(/\s+/g, " ");
+    expect(text).toContain('or "not established" where nothing does');
+    expect(text).toContain("so an answer that relabels its members or cases cannot pass on the labels");
+    expect(text).toContain("A reject that differs from its accept at several leaves proves nothing");
+    expect(text).toContain("Calibrate every check in both directions.");
+    expect(text).toContain("fixed a display's width at 128, left out `constrain`");
+  });
+
+  // A replayed witness is already normal and the solver reaches it, so the worked routes are to a
+  // target it does not reliably meet, and a rehearsal is a sample rather than a veto.
+  it.concurrent("examples.md offers routes to a target the solver does not reliably meet", () => {
+    const text = STARTER_DOC.replace(/\s+/g, " ");
+    expect(text).toContain("## A target the solver does not reliably meet");
+    expect(text).toContain("**A search past the solver's wall.**");
+    expect(text).toContain("**A planted design.**");
+    expect(text).toContain(
+      "`harness_trial` estimates how reliably the solver meets a task; it does not veto one.",
+    );
+  });
+
   it.concurrent("contract.md tells the guide to name programs the solver's shell can run", () => {
     const text = STARTER_DOC.replace(/\s+/g, " ");
     expect(text).toContain(

@@ -552,4 +552,13 @@ describe("what the reviewer is told a probe can reach", () => {
     expect(EPOCH_REVIEW_PROMPT.split("two readings of a requirement").length - 1).toBe(1);
     expect(EPOCH_REVIEW_PROMPT.split("`find`").length - 1).toBe(2);
   });
+
+  // A host double that rejects equivalent code fails valid answers while every accept control, all
+  // written the reference's way, still passes; only a probe writing the valid variant shows it.
+  it("the prompt runs a probe the other way, to a valid variant a check refuses", () => {
+    expect(EPOCH_REVIEW_PROMPT).toContain("The probe runs the other way too");
+    expect(EPOCH_REVIEW_PROMPT).toContain(
+      "a declared check that now refuses it has rejected a valid answer, a defect owned by correctness-model/evaluator.ts",
+    );
+  });
 });

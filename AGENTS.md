@@ -637,22 +637,27 @@ the battery was paid for.
 
    The reviewer may also execute. `probe_check` takes one accept control, one rooted path already in its
    artifact (`$.layout.members[0].area`, read through `jsonPathTokens`) and one change: either a
-   replacement value, or a `find` that occurs exactly once in a text leaf together with the `replace` that
-   takes its place. A call sending both or neither is refused. The edit exists because a field holding a
-   whole source file can exceed the `VALUE_MAX_CHARS` of 4,000. It runs the declared checks over the
-   original and the changed artifact and reports which checks moved, at most 8 per review (`PROBE_BUDGET`,
-   `src/review/review-probe.ts`). A probe whose original did not pass, or whose change reached no verdict,
-   is not evidence. Every defect not owned by the task set cites its `probeIds`, or `[]` for a source-only
-   reading, and a `probeDirection` (false rejection or false acceptance) is recorded only where the cited
-   probes show it (`probeShows`), so a probe that moved nothing never reads as a check refusing a valid
-   answer. Severity reads that one finding's evidence and nothing else (`admitSeverity`): an observation,
-   or a defect without a demonstration and citations, is advice; a demonstrated defect keeps the severity
-   the reviewer chose; and an `agent/` defect read from source with no probe stays advice, because a probe
-   runs the evaluation's checks and never exercises the Builder's tools. Neither how often a check was
-   named before nor the order a review records its findings moves it. Until 2026-09-28 a first recurrence
-   of a check's name raised a finding and two held it at advice, so a firmware review whose two probes
-   showed a check refusing the published default pins was admitted as advice: that check had been named
-   in four earlier reviews, and a naming count cannot tell two defects on one check apart.
+   replacement value, or a `find` that occurs exactly once in a text leaf together with the `replace`
+   that takes its place. A call sending both or neither is refused. The edit exists because a field
+   holding a whole source file can exceed the `VALUE_MAX_CHARS` of 4,000. It runs the declared checks
+   over the original and the changed artifact and reports which checks moved, at most 8 per review
+   (`PROBE_BUDGET`, `src/review/review-probe.ts`). A measured review's probe runs only while the
+   `.toolchain` still matches the tree digest its battery recorded, the test `read_source` applies
+   (`toolchainReach`). A probe whose original did not pass, or whose change reached no verdict, is not
+   evidence. Every defect not owned by the task set cites its `probeIds`, or `[]` for a source-only
+   reading, and a `probeDirection` (false rejection or false acceptance) is recorded only where some
+   cited probe shows it (`probeShows`), reading the named check's own state on each side: pass, fail, no
+   verdict, or not applicable to the control's task. So a probe that moved nothing never reads as a
+   check refusing a valid answer, and one whose check did not apply or reached no verdict never reads as
+   a check letting an invalid one through. Severity reads that one finding's evidence and nothing else
+   (`admitSeverity`): an observation, or a defect without a demonstration and citations, is advice; a
+   demonstrated defect keeps the severity the reviewer chose; and an `agent/` defect read from source
+   with no probe stays advice, because a probe runs the evaluation's checks and never exercises the
+   Builder's tools. Neither how often a check was named before nor the order a review records its
+   findings moves it. Until 2026-09-28 a first recurrence of a check's name raised a finding and two
+   held it at advice, so a firmware review whose two probes showed a check refusing the published
+   default pins was admitted as advice: that check had been named in four earlier reviews, and a naming
+   count cannot tell two defects on one check apart.
 
    An observation with `settlesJudge` — a check that a vetoed or disputed row names, plus a conclusive
    probe that moved it — settles the cases naming that check whose artifact the review opened, because

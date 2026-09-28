@@ -55,12 +55,13 @@ import {
   closeVerifierLifetime,
   createVerifierLifetime,
 } from "../verify/verifier-lifetime.ts";
-import type { VerifierHostHandle } from "../verify/verifier-port.ts";
+import type { ToolEntry, VerifierHostHandle } from "../verify/verifier-port.ts";
 import { parseJsonAs } from "../meta/json-runtime.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { jsonPathTokens, plainRecord } from "../meta/json-evidence.ts";
 import { type JsonValue, isNumber, isString } from "../meta/json-shape.ts";
 import { type ReaderTool, type ReaderToolResult, readerParameters, readerToolText } from "./review-reader.ts";
+import { toolchainReach } from "./review-sources.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { boundText } from "../meta/bounded-text.ts";
 import { BRIEF_FILE, CONTROLS_FILE } from "../meta/bundle-layout.ts";
@@ -361,25 +362,19 @@ async function runPair(
   artifact: JsonValue,
   mutated: JsonValue,
 ): Promise<ControlReceipt[]> {
-  const corpus: ControlCorpus = {
-    accept: [
-      { id: baselineId(probe), taskId, artifact },
-      { id: mutatedId(probe), taskId, artifact: mutated },
-    ],
-    reject: [],
-  };
-  const execution = await runControls(
+  const accept = [
+    { id: baselineId(probe), taskId, artifact },
+    { id: mutatedId(probe), taskId, artifact: mutated },
+  ];
+  const options = { brief: candidate.brief, lanes: 1, verifierLifetime: candidate.lifetime };
+  const run = await runControls(
     candidate.evaluate,
-    corpus,
+    { accept, reject: [] },
     candidate.tasks,
-    {
-      brief: candidate.brief,
-      lanes: 1,
-      verifierLifetime: candidate.lifetime,
-    },
+    options,
     candidate.verifier,
   );
-  return execution.controlReceipts;
+  return run.controlReceipts;
 }
 
 /** The reply names an edit by its size rather than echoing it, because the reviewer wrote both
@@ -480,8 +475,18 @@ const PROBE_CHECK_CONTRACT = {
  * and the budget are read off `state.rows` at the moment a probe starts: two probes started
  * together would take the same id, which names their synthetic control subjects and is what a
  * finding cites, and both would pass the last budget slot.
+ *
+ * `tools` are the verifier tools a measured battery recorded, none for an authoring review. Where
+ * they name a tool tree, the candidate opens only while its `.toolchain` is one of those trees, and
+ * the host then refuses the tools of any evaluation that finds the tree moved from the one it resolved.
  */
-export function probeTool(root: string, lifetimeRoot: string, state: ProbeState): ReviewProbeHandle {
+export function probeTool(
+  root: string,
+  lifetimeRoot: string,
+  state: ProbeState,
+  tools: Readonly<Record<string, ToolEntry>>,
+): ReviewProbeHandle {
+  const measuredTree = Object.values(tools).some((tool) => tool.treeDigest !== undefined);
   let opened: Promise<ProbeCandidate> | null = null;
   const refuse = (why: string): Promise<ReaderToolResult> => {
     state.refused += 1;
@@ -500,6 +505,11 @@ export function probeTool(root: string, lifetimeRoot: string, state: ProbeState)
       if ("value" in request.change) value = parseJsonAs<JsonValue>(request.change.value);
     } catch {
       return refuse("value must be JSON text; quote a string value");
+    }
+    if (opened === null && measuredTree && toolchainReach(root, tools) === null) {
+      return refuse(
+        "the candidate's .toolchain is not the tool tree its measured battery ran, so a probe here would report verdicts from a tool environment the measurement never used",
+      );
     }
     const id = state.rows.length + 1;
     const base = { id, controlId: request.controlId, path: request.path, change: request.change };

@@ -15,6 +15,9 @@ import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { JsonValue } from "../src/meta/json-shape.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import type { Brief } from "../src/correctness-bundle/brief.ts";
+import { bundleSnapshotToolTree } from "../src/claim/bundle-snapshot.ts";
+import { portableToolTreeDigest } from "../src/verify/tool-inventory.ts";
+import type { ToolEntry } from "../src/verify/verifier-port.ts";
 import {
   PROBE_BUDGET,
   type ReviewProbeRow,
@@ -307,7 +310,7 @@ describe("probe_check — the candidate's own checks over one changed field", ()
   it("names the checks a changed field moves, and reports the silence when none does", async () => {
     const dir = candidateTree();
     const state = emptyProbeState();
-    const probe = probeTool(dir, join(dir, "probe-lifetime"), state);
+    const probe = probeTool(dir, join(dir, "probe-lifetime"), state, {});
     try {
       const moved = await run(probe.tool, "1", { controlId: "accept-a", path: ANSWER, value: '"a"' });
       expect(text(moved)).toContain("original: pass");
@@ -353,7 +356,7 @@ describe("probe_check — the candidate's own checks over one changed field", ()
   it("edits one passage of a text leaf, however long the leaf, and records the edit it ran", async () => {
     const dir = candidateTree();
     const state = emptyProbeState();
-    const probe = probeTool(dir, join(dir, "probe-lifetime"), state);
+    const probe = probeTool(dir, join(dir, "probe-lifetime"), state, {});
     try {
       const moved = await run(probe.tool, "1", {
         controlId: "accept-b",
@@ -390,7 +393,7 @@ describe("probe_check — the candidate's own checks over one changed field", ()
   it("refuses an unknown control, an absent path, a malformed change and the probe past the budget", async () => {
     const dir = candidateTree();
     const state = emptyProbeState();
-    const probe = probeTool(dir, join(dir, "probe-lifetime"), state);
+    const probe = probeTool(dir, join(dir, "probe-lifetime"), state, {});
     const refusal = async (id: string, args: Record<string, JsonValue>) =>
       text(await run(probe.tool, id, args));
     try {
@@ -493,7 +496,7 @@ describe("probe_check — the candidate's own checks over one changed field", ()
     const dir = candidateTree();
     const state = emptyProbeState();
     for (let i = 0; i < PROBE_BUDGET - 2; i += 1) state.rows.push(heldRow(i + 1, "held"));
-    const probe = probeTool(dir, join(dir, "probe-lifetime"), state);
+    const probe = probeTool(dir, join(dir, "probe-lifetime"), state, {});
     try {
       // Four calls issued together: each awaits the candidate load and the check run before it
       // records, which is where two unserialised probes once read the same row count.
@@ -518,7 +521,7 @@ describe("probe_check — the candidate's own checks over one changed field", ()
       const lifetimeRoot = join(dir, "probe-lifetime");
       // An unreadable receipt left by an earlier owner is unresolved cleanup from the start.
       mkdirSync(join(lifetimeRoot, "stale-receipt"), { recursive: true });
-      const probe = probeTool(dir, lifetimeRoot, emptyProbeState());
+      const probe = probeTool(dir, lifetimeRoot, emptyProbeState(), {});
       await run(probe.tool, "1", { controlId: "accept-a", path: ANSWER, value: '"a"' });
       if (failed) await probe.close(true);
       else await expect(probe.close(false)).rejects.toBeInstanceOf(VerifierOperationalStop);
@@ -563,11 +566,41 @@ describe("probe_check — the candidate's own checks over one changed field", ()
     expect(settled).toBe(true);
   }, 120_000);
 
+  // A measured review's recorded verifier tools name the tool tree its battery ran. A probe over a
+  // tree that has moved since would report verdicts from an environment the measurement never used.
+  it("runs a measured review's probe only over a tool tree its battery recorded", async () => {
+    const dir = candidateTree();
+    const helper = join(dir, ".toolchain/bin/helper");
+    mkdirSync(join(dir, ".toolchain/bin"), { recursive: true });
+    writeFileSync(helper, "#!/bin/sh\nexit 0\n");
+    const recorded = {
+      helper: double<ToolEntry>({ treeDigest: portableToolTreeDigest(bundleSnapshotToolTree(dir)!) }),
+    };
+    const probeOnce = async (lifetime: string) => {
+      const state = emptyProbeState();
+      const probe = probeTool(dir, join(dir, lifetime), state, recorded);
+      try {
+        const reply = text(await run(probe.tool, "1", { controlId: "accept-a", path: ANSWER, value: '"a"' }));
+        return { reply, state };
+      } finally {
+        await probe.close(false);
+      }
+    };
+    const same = await probeOnce("probe-lifetime-same");
+    expect(same.state.rows.map((row) => row.movedCheckIds)).toEqual([["answer"]]);
+    writeFileSync(helper, "#!/bin/sh\nexit 1\n");
+    const moved = await probeOnce("probe-lifetime-moved");
+    expect(moved.reply).toContain(
+      "refused: the candidate's .toolchain is not the tool tree its measured battery ran",
+    );
+    expect(moved.state).toEqual({ rows: [], refused: 1 });
+  }, 120_000);
+
   it("records a candidate it cannot load as a refused row rather than throwing the review away", async () => {
     const dir = mkdtempSync(join(import.meta.dir, ".ana-scratch-review-probe-empty-"));
     trees.push(dir);
     const state = emptyProbeState();
-    const probe = probeTool(dir, join(dir, "probe-lifetime"), state);
+    const probe = probeTool(dir, join(dir, "probe-lifetime"), state, {});
     try {
       expect(
         text(await run(probe.tool, "1", { controlId: "accept-a", path: ANSWER, value: '"x"' })),
@@ -586,7 +619,7 @@ describe("probe_check — the candidate's own checks over one changed field", ()
 describe("what the reviewer is told a probe can reach", () => {
   it("the tool contract offers the edit as the alternative to a value", () => {
     const dir = candidateTree();
-    const { tool } = probeTool(dir, join(dir, "probe-lifetime"), emptyProbeState());
+    const { tool } = probeTool(dir, join(dir, "probe-lifetime"), emptyProbeState(), {});
     const contract = JSON.stringify(tool.parameters);
     expect(contract).toContain('"required":["controlId","path"]');
     expect(contract).toContain('"find"');

@@ -691,7 +691,8 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
     disputes: [],
     admission: { continuations: 0, citationRefusals: 0, severityAdjusted: [] },
   };
-  const probe = probeTool(root, join(analysisDir, `${input.runId}-probe-lifetime`), state.probes);
+  const lifetime = join(analysisDir, `${input.runId}-probe-lifetime`);
+  const probe = probeTool(root, lifetime, state.probes, verifier.tools);
   const measured = measuredContext(input, evidence, analysisDir, state.findings);
   const identities = briefIdentities(root);
   const clauses = requestDuty(input.publicRequest, identities.checkIds, state.findings);

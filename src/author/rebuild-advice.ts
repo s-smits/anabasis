@@ -627,11 +627,10 @@ export function environmentOwned(issue: AdviceIssue): boolean {
 
 function issueLine(issue: AdviceIssue): string {
   const kind = issue.detail ?? "unknown";
-  // The line says which side of the split a non-result fell on, because the standing-issues heading
-  // tells the author an environment non-result calls for an unchanged rerun, and a `verifier` kind
-  // sitting silently under that sentence reads as covered by it when it is not.
+  // The line says which side of the split a non-result fell on, because rule 15 gives an
+  // environment failure to the environment owner, and a `verifier` kind is not one.
   const nonResult = environmentOwned(issue)
-    ? `environment non-results of kind ${kind}`
+    ? `environment non-results of kind ${kind}, owned by the environment`
     : `runtime non-results of kind ${kind}, a kind that does not establish an environment failure`;
   const words = issue.kind === "non-result" ? nonResult : ISSUE_WORDS[issue.kind];
   const diagnosis = issue.diagnosis === null ? "" : `\n  ${diagnosisLine(issue.diagnosis)}`;
@@ -666,10 +665,7 @@ function standingLines(issues: readonly AdviceIssue[]): string[] {
   if (standing.length === 0) return [];
   const shown = standing.slice(0, RENDERED_ISSUES);
   const omitted = standing.length > shown.length ? ` (${shown.length} of ${standing.length} shown)` : "";
-  return [
-    `Standing issues, largest first${omitted}. Use the recorded owners as starting points for diagnosis. An environment non-result alone calls for an unchanged rerun, not a harness change.`,
-    ...shown.map(issueLine),
-  ];
+  return [`Standing issues, largest first${omitted}:`, ...shown.map(issueLine)];
 }
 
 /** Issues the latest battery could not measure, named as such. Left out, an issue that vanished
@@ -765,10 +761,10 @@ export function renderRebuildAdvice(packet: RebuildAdvicePacket): string {
     unmeasuredLine(packet.issues),
     disputed.length === 0
       ? null
-      : `Disputed issues — an epoch review argued these come from the evaluation rather than the harness, so do not rebuild the agent around them: ${disputed.map((issue) => `${issue.family} (${issue.kind})`).join("; ")}.`,
+      : `Disputed issues — an epoch review argued these come from the evaluation rather than the harness: ${disputed.map((issue) => `${issue.family} (${issue.kind})`).join("; ")}.`,
     settled.length === 0
       ? null
-      : `Settled Judge disagreements — an epoch review showed by execution that the check stands, so neither the evaluation nor the agent is asked to change for them: ${settled.map((issue) => `${issue.family} (${issue.kind})`).join("; ")}.`,
+      : `Settled Judge disagreements — an epoch review showed by execution that the check stands: ${settled.map((issue) => `${issue.family} (${issue.kind})`).join("; ")}.`,
     blockingLine(packet.blockingByCheck, packet.applicableByCheck, totals.verified, totals.passed),
     packet.judge === null || packet.judge.exit === "none"
       ? null

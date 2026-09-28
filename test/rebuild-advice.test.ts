@@ -1049,10 +1049,9 @@ describe("what the author reads", () => {
     );
   });
 
-  it("environment non-results do not instruct a rebuild to change the harness", () => {
+  it("names the environment as the owner of an environment non-result, and only of one", () => {
     const rendered = renderRebuildAdvice(advicePacket([issue({ kind: "non-result", detail: "provider" })]));
-    expect(rendered).toContain("environment non-result alone calls for an unchanged rerun");
-    expect(rendered).toContain("environment non-results of kind provider");
+    expect(rendered).toContain("environment non-results of kind provider, owned by the environment");
     expect(rendered).not.toContain("an active or regressed issue is what the rebuild must move");
     // A `verifier` kind is not an environment failure and must not read as one.
     const verifier = renderRebuildAdvice(advicePacket([issue({ kind: "non-result", detail: "verifier" })]));

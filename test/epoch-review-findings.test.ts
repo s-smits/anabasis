@@ -325,7 +325,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
     expect(disputed?.dispute).toContain("reference mass");
     expect(disputed === null ? null : issueStatusWord(disputed)).toBe("disputed");
     const rendered = renderRebuildAdvice(advicePacket(disputed === null ? [] : [disputed]));
-    expect(rendered).toContain("do not rebuild the agent around them: beams (verified-fail)");
+    expect(rendered).toContain("rather than the harness: beams (verified-fail)");
   });
 
   test("only the first blocking defect reopens an authoring area", async () => {

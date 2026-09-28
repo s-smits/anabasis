@@ -272,7 +272,9 @@ export function testCommand(requested: readonly string[], workers: string | unde
     "--no-isolate",
     ...COMMON_FLAGS,
   ];
-  return requested.length === 0 ? [...command, "test"] : [...command, ...requested];
+  // `./test` names the directory. Bun reads a bare `test` as a filter on every path it discovers,
+  // which takes in any ignored tree holding a test file, such as a bundle copied under `notes/`.
+  return requested.length === 0 ? [...command, "./test"] : [...command, ...requested];
 }
 
 /** A reader for the lines Bun's parallel coordinator prints about files it did not finish: the

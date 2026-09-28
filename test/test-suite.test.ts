@@ -70,7 +70,7 @@ describe("the command a request becomes", () => {
       "--timeout=60000",
       `--timings=${join(REPO_ROOT, "test/.test-timings.json")}`,
       "--update-timings",
-      "test",
+      "./test",
     ]);
   });
 

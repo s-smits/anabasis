@@ -14,12 +14,8 @@ import type { JsonValue } from "../src/meta/json-shape.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { type EpochReviewEvidence, recordFindingTool } from "../src/review/epoch-review-findings.ts";
 import { publicEpochReview } from "../src/review/epoch-review-public.ts";
-import {
-  type Demonstrations,
-  NOTHING_CARRIED,
-  carriedDemonstrations,
-  runEpochReview,
-} from "../src/review/epoch-reviewer.ts";
+import { runEpochReview } from "../src/review/epoch-reviewer.ts";
+import { type Demonstrations, NOTHING_CARRIED, carriedDemonstrations } from "../src/review/review-carry.ts";
 import type { ReviewProbeRow } from "../src/review/review-probe.ts";
 import type { ReaderTool } from "../src/review/review-reader.ts";
 import { keyIfNotNull } from "../src/meta/optional-key.ts";
@@ -160,7 +156,12 @@ describe("the probes an authoring review rested its findings on, carried to the 
   it("carries the probes a finding rested on, and no other, as the change that ran and the checks it moved", async () => {
     const state = await massReview();
     const carried = required(
-      carriedDemonstrations({ status: "completed", probes: state.probes.rows, findings: state.findings }),
+      carriedDemonstrations({
+        runId: "authoring-0",
+        status: "completed",
+        probes: state.probes.rows,
+        findings: state.findings,
+      }),
       "a finished review's demonstrations",
     );
     expect(carried.named).toEqual([{ checkId: "catalogue-mass-budget", severity: "blocking" }]);
@@ -180,20 +181,36 @@ describe("the probes an authoring review rested its findings on, carried to the 
     // A failed turn keeps its probes and drops its findings, so a probe one of them cited is no
     // longer anything a recorded finding rests on.
     const { probes, findings } = await massReview();
-    expect(carriedDemonstrations({ status: "failed", probes: probes.rows, findings })).toBeNull();
-    expect(carriedDemonstrations({ status: "skipped", probes: probes.rows, findings })).toBeNull();
+    expect(
+      carriedDemonstrations({ runId: "authoring-0", status: "failed", probes: probes.rows, findings }),
+    ).toBeNull();
+    expect(
+      carriedDemonstrations({ runId: "authoring-0", status: "skipped", probes: probes.rows, findings }),
+    ).toBeNull();
     // A review that finished, rested nothing on a probe and named no check ends the chain.
-    expect(carriedDemonstrations({ status: "completed", probes: fa03b7Rows(), findings: [] })).toEqual(
+    expect(
+      carriedDemonstrations({
+        runId: "authoring-0",
+        status: "completed",
+        probes: fa03b7Rows(),
+        findings: [],
+      }),
+    ).toEqual(NOTHING_CARRIED);
+    expect(carriedDemonstrations({ runId: "authoring-0", status: "incomplete", findings: [] })).toEqual(
       NOTHING_CARRIED,
     );
-    expect(carriedDemonstrations({ status: "incomplete", findings: [] })).toEqual(NOTHING_CARRIED);
   });
 
   it("shows the next review each carried probe as the call that re-runs it, and no probe number", async () => {
     const root = candidateTree();
     const mass = await massReview();
     const carried = required(
-      carriedDemonstrations({ status: "completed", probes: mass.probes.rows, findings: mass.findings }),
+      carriedDemonstrations({
+        runId: "authoring-0",
+        status: "completed",
+        probes: mass.probes.rows,
+        findings: mass.findings,
+      }),
       "carried rows",
     );
     const edit: ReviewProbeRow = {
@@ -265,6 +282,7 @@ describe("the probes an authoring review rested its findings on, carried to the 
     const root = candidateTree();
     const carried = required(
       carriedDemonstrations({
+        runId: "authoring-0",
         status: "completed",
         probes: [
           {
@@ -340,7 +358,12 @@ function carriedNaming(findingCheck: string, probeCheck: string) {
     checkId: findingCheck,
   } as const;
   return required(
-    carriedDemonstrations({ status: "completed", probes: [probe], findings: [finding] }),
+    carriedDemonstrations({
+      runId: "authoring-0",
+      status: "completed",
+      probes: [probe],
+      findings: [finding],
+    }),
     "carried",
   );
 }

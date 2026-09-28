@@ -30,7 +30,6 @@ import { existsSync, readFileSync } from "../meta/filesystem.ts";
 import { campaignDir } from "../meta/campaign-root.ts";
 import { join, relative } from "../meta/path.ts";
 import type { IterationAnalysis } from "../analyse/iteration-analysis.ts";
-import { findingSeverity } from "../analyse/finding-owner.ts";
 import {
   isStanding,
   type AdviceIssue,
@@ -53,7 +52,8 @@ import type { ReviewChoice } from "../backends/resolve.ts";
 import type { RunObserver } from "../observe/run-observer.ts";
 import type { ProviderResourceBudget } from "../run/provider-resource-budget.ts";
 import { runReaderTurn } from "./review-reader.ts";
-import { type ReviewProbeRow, emptyProbeState, probeTool } from "./review-probe.ts";
+import { emptyProbeState, probeTool } from "./review-probe.ts";
+import { type AdvisoryDefect, type Demonstrations, NOTHING_CARRIED, advisoryRecord } from "./review-carry.ts";
 import { EPOCH_REVIEW_PROMPT } from "./epoch-review-prompt.ts";
 import { roundPlanLines } from "./round-plan-lines.ts";
 import { reviewSlotPin } from "./review-session.ts";
@@ -77,6 +77,7 @@ import {
   conditionAlreadyReviewed,
   measuredConditionOf,
   earlierTaskFindings,
+  measuredAdvisory,
   recordFindingTool,
   recurringDemandOwners,
   recurringDefects,
@@ -128,16 +129,6 @@ export interface EpochReviewInput {
    *  model. */
   readerTurn?: typeof runReaderTurn;
 }
-
-/** What an authoring review hands the next one of its round: the probes its recorded findings
- *  rested on, and the declared check each finding named with the severity it was admitted at. */
-export interface Demonstrations {
-  probes: readonly ReviewProbeRow[];
-  named: ReadonlyArray<{ checkId: string; severity: "blocking" | "advisory" }>;
-}
-
-/** What the first review of a round is handed. */
-export const NOTHING_CARRIED: Demonstrations = { probes: [], named: [] };
 
 /** One blind rehearsal under the measured projection: the bytes the Built solver submitted, or null
  *  when it accepted none, and the one verdict the declared checks gave them. `current` says whether
@@ -332,24 +323,6 @@ function rehearsalLines(rehearsals: readonly RehearsalCase[]): string[] {
       return `- ${rehearsalName(row)} (${row.family ?? "no family"}): ${row.verdict}${note}.`;
     }),
   ];
-}
-
-/**
- * What an authoring review hands the next one of its round, or null when it recorded no findings,
- * because a review that failed or never ran has weighed nothing and the set the one before it
- * carried still stands. A finished review that rested nothing on a probe and named no check
- * carries empty sets, which ends the chain.
- */
-export function carriedDemonstrations(
-  review: Pick<EpochReviewEvidence, "status" | "probes" | "findings">,
-): Demonstrations | null {
-  if (review.status !== "completed" && review.status !== "incomplete") return null;
-  return {
-    probes: (review.probes ?? []).filter((row) => row.cited === true),
-    named: review.findings.flatMap((finding) =>
-      finding.checkId === undefined ? [] : [{ checkId: finding.checkId, severity: findingSeverity(finding) }],
-    ),
-  };
 }
 
 /**
@@ -649,6 +622,13 @@ function recordedReview(
   };
 }
 
+/** The advisory defects the review before this one left: the round's previous review's at an
+ *  authoring checkpoint, and the previous battery's completed review's for a measured one. */
+function earlierAdvisory(input: EpochReviewInput, analysisDir: string): readonly AdvisoryDefect[] {
+  if (input.analysis === null) return input.demonstrations?.advisory ?? [];
+  return measuredAdvisory(analysisDir, input.priorAdvice?.runId);
+}
+
 /** The owners whose demand defect recurs across this battery and the one before it, both passing in
  *  full. The previous battery is the one the prior advice packet was derived from, and its counts
  *  are read from that packet; an authoring checkpoint has no battery of its own and escalates
@@ -813,15 +793,13 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
   const contestedReads = [...contested].flatMap(([path, artifact]) =>
     state.reads.includes(path) ? [artifact] : [],
   );
-  return {
-    ...recordedReview(
-      { ...evidence, contestedReads },
-      turn,
-      state,
-      reviewCoverage(inventory, verifier, state),
-      verifier,
-    ),
-    ...measured.settle(turn),
-    ...clauses.settle(turn),
-  };
+  const recorded = recordedReview(
+    { ...evidence, contestedReads },
+    turn,
+    state,
+    reviewCoverage(inventory, verifier, state),
+    verifier,
+  );
+  const settled = { ...recorded, ...measured.settle(turn), ...clauses.settle(turn) };
+  return { ...settled, ...advisoryRecord(recorded, earlierAdvisory(input, analysisDir)) };
 }

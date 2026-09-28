@@ -46,6 +46,7 @@ import { BRIEF_FILE, TASKS_FILE } from "../meta/bundle-layout.ts";
 import { readJsonFile } from "../meta/completed-json.ts";
 import { boundText } from "../meta/bounded-text.ts";
 import type { AboveAimDuty, ClauseDisposal } from "./review-duties.ts";
+import { type AdvisoryDefect, type AdvisoryDisposition, advisoryDefects } from "./review-carry.ts";
 
 export const EPOCH_REVIEW_SCHEMA = "epoch-review/v5";
 /** Product identity; review procedure belongs to the review request. */
@@ -111,6 +112,10 @@ export type EpochReviewEvidence = {
   /** Each clause of the one-line request as the finished review's closing message disposed of it.
    *  Absent where the review had no request to split or ended in an error. */
   requestClauses?: ClauseDisposal[];
+  /** Each advisory defect the previous completed review recorded, as this completed review left it
+   *  (`advisoryRecord`): the previous battery's review for a measured one, the round's previous
+   *  review for an authoring one. Absent where there was none, or this review did not complete. */
+  earlierAdvisory?: AdvisoryDisposition[];
   report: string | null;
 };
 
@@ -317,6 +322,13 @@ export function earlierTaskFindings(
     }))
     .filter((row) => row.findings.length > 0)
     .sort((a, b) => a.runId.localeCompare(b.runId));
+}
+
+/** The advisory defects the completed review of battery `runId` recorded, which the next measured
+ *  review's record disposes of. None when that review did not complete or there is no such run. */
+export function measuredAdvisory(analysisDir: string, runId: string | undefined): AdvisoryDefect[] {
+  const review = completedReviews(analysisDir).find((row) => row.runId === runId);
+  return review === undefined ? [] : advisoryDefects(review);
 }
 
 /** Whether a battery passed every case it verified, with at least one verified and none left

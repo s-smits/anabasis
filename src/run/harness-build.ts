@@ -11,12 +11,8 @@ import {
   latestRebuildAdvicePath,
   readLatestRebuildAdvice,
 } from "../author/rebuild-advice.ts";
-import {
-  type EpochReviewInput,
-  NOTHING_CARRIED,
-  carriedDemonstrations,
-  runEpochReview,
-} from "../review/epoch-reviewer.ts";
+import { type EpochReviewInput, runEpochReview } from "../review/epoch-reviewer.ts";
+import { NOTHING_CARRIED, carriedDemonstrations } from "../review/review-carry.ts";
 import { publicEpochReview } from "../review/epoch-review-public.ts";
 import type {
   AdmissionLineage,
@@ -291,9 +287,10 @@ export function recordAuthoringDisputes(
  *  the Builder.
  *
  *  One reviewer serves one round, and the probes each review rested its findings on, with the
- *  checks its findings named, are handed to the next review of that round. They are carried here
- *  rather than by `AuthoringReviews`, which is the Builder's side of the join: a probe row holds a
- *  counterexample value and the checks it moved, so it stays on the reviewer's side. */
+ *  checks its findings named and its advisory defects, are handed to the next review of that
+ *  round. They are carried here rather than by `AuthoringReviews`, which is the Builder's side of
+ *  the join: a probe row holds a counterexample value and the checks it moved, so it stays on the
+ *  reviewer's side. */
 function authoringReviewer(binding: AuthoringReviewBinding): ReviewAuthoring {
   const { repoRoot, slug, review, publicRequest, observer, providerBudget } = binding;
   let demonstrations = NOTHING_CARRIED;

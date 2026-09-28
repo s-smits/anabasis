@@ -949,28 +949,28 @@ Starts from block 2b's `CENSUS WITH DISAGREEMENT (lane 16)` beside lane 16, and 
 read as a standing lane, because Judge agreement is the only second opinion a battery gets.
 
 The question is what a Judge pass actually decided. Lane 16 reads the fails; this lane reads the
-passes, which are most of the Judge's output and the part a reader is tempted to count as
-agreement. The Judge's census prompt (`ACTIVE_JUDGE_PROMPTS` in
-`src/review/judge-prompt-policy.ts`) tells it to name a rule decided by running the output as "not
-decidable here" rather than pass or fail it, and a pass rationale that says so is a partial check
-with a declared gap. So classify every pass rationale from `cases/<taskId>/judge.json` into three
-kinds — every shown rule decided, decided with a declared gap, or nothing stated — and report the
-three counts per battery and per Judge pin, since the pins differ in how often they fail and how
-often they declare gaps. Then read what a Judge fail could cite at all: `citableRules` in
-`src/review/judge-drivers.ts` admits the shown validity assertions, the public rule decisions and
-two fixed citations, and not the original request, which the Judge sees but cannot cite. So a
-Judge cannot fail an artifact for missing what the request asks when the brief also missed it, and
-a Judge whose citable set converges on the checks' own rules tests the Builder's reading twice.
-Agreement between the Judge and the verifier therefore does not test for a fault both miss, and the
-fails lane 16 reads are a sample of what the Judge noticed, not of false accepts. When a pass count
-looks low on decided rules, name the rival causes before choosing one — the prompt's
-not-decidable sentence, its instruction not to fail on a rule the material does not show, the
-binary verdict schema, and the pin — and say which recorded evidence separates them. Report
-counts and pass kinds; propose no counting semantics for a partial pass, which is an operator
+passes, which are most of the Judge's output and the part a reader is tempted to count as agreement.
+The Judge's census prompt (`ACTIVE_JUDGE_PROMPTS` in `src/review/judge-prompt-policy.ts`) tells it
+to name a rule decided by running the output as "not decidable here" rather than pass or fail it,
+and a pass rationale that says so is a partial check with a declared gap. So classify every pass
+rationale from `cases/<taskId>/judge.json` into three kinds — every shown rule decided, decided with
+a declared gap, or nothing stated — and report the three counts per battery and per Judge pin, since
+the pins differ in how often they fail and how often they declare gaps. Then read what a Judge fail
+could cite at all: `citableRules` in `src/review/judge-drivers.ts` admits the shown validity
+assertions, the public rule decisions and two fixed citations, and not the original request, which
+the Judge sees but cannot cite. So a Judge cannot fail an artifact for missing what the request asks
+when the brief also missed it, and a Judge whose citable set converges on the checks' own rules
+tests the Builder's reading twice. Agreement between the Judge and the verifier therefore does not
+test for a fault both miss, and the fails lane 16 reads are a sample of what the Judge noticed, not
+of false accepts. When a pass count looks low on decided rules, name the rival causes before
+choosing one — the prompt's not-decidable sentence, its instruction not to fail on a rule the
+material does not show, the verdict schema, whose only undecided word is `abstain`
+(`src/review/judge-drivers.ts`), and the pin — and say which recorded evidence separates them.
+Report counts and pass kinds; propose no counting semantics for a partial pass, which is an operator
 decision still open. The decision it changes is how much weight a Judge pass may carry in the
 synthesis; it routes to `judge` for the verdicts and to `controller-source`
-(`src/review/judge-prompt-policy.ts`, `src/review/judge-drivers.ts`) for the prompt and the
-citable set.
+(`src/review/judge-prompt-policy.ts`, `src/review/judge-drivers.ts`) for the prompt and the citable
+set.
 
 **33. Reference provenance and witness strength.**
 
@@ -981,21 +981,22 @@ The question is what the reference solve is, and so what its witness proves. F2 
 `correctness-model/reference/index.ts` over every task and proves the submission path works. A
 reference can compute its answer from the public input, or it can return a stored answer keyed by
 task id; a lookup such as `answers[task.taskId]` or a per-task table indexed the same way passes F2
-exactly as a search does. So read the reference and each helper it imports, and classify it per
-task as computing, replaying or mixed, and count each kind per domain; replay is common in some
-domains and rare in others, so do not generalise from one. Then compare the accept controls with
-the reference output: accepts that equal the reference byte for byte were produced by it, and they
-calibrate the checks only around the Builder's own answer. A witness proves a task feasible, with
-the optimum at or below the reference and the reference at or below the limit; it never proves the
-task difficult. Whether the reference's strength bounds the difficulty the Builder can publish is a
-question to settle per domain: compare the solver's shipping margins with the reference's on the
-same tasks, say how often and by how much the solver beat it, and state what that comparison can
-and cannot tell you about the Builder's ceiling, since a replaying reference searched nothing and a
-solver beating it says only that the stored answer was not tight. Report counts, ratios and
-classifications, never a reference value or a stored answer. The decision it changes is how the
-synthesis reads "every task was solved"; it routes to `correctness-model/reference/index.ts` for a
-reference that replays where the contract expects a search, and to
-`correctness-model/controls.json` when the accepts are the reference's own output.
+exactly as a search does. So read the reference and each helper it imports, and classify it per task
+as computing, replaying or mixed, and count each kind per domain; replay is common in some domains
+and rare in others, so do not generalise from one. Then compare the accept controls with the
+reference output: accepts that are byte-identical to the reference output calibrate the checks only
+around the Builder's own answer, whichever way they were made. Equality does not show that they were
+derived from the reference, so say how they were made only where the Builder's recorded session
+shows it. A witness proves a task feasible, with the optimum at or below the reference and the
+reference at or below the limit; it never proves the task difficult. Whether the reference's
+strength bounds the difficulty the Builder can publish is a question to settle per domain: compare
+the solver's shipping margins with the reference's on the same tasks, say how often and by how much
+the solver beat it, and state what that comparison can and cannot tell you about the Builder's
+ceiling, since a replaying reference searched nothing and a solver beating it says only that the
+stored answer was not tight. Report counts, ratios and classifications, never a reference value or a
+stored answer. The decision it changes is how the synthesis reads "every task was solved"; it routes
+to `correctness-model/reference/index.ts` for a reference that replays where the contract expects a
+search, and to `correctness-model/controls.json` when the accepts are the reference's own output.
 
 **34. Check mirroring in solver tools.**
 

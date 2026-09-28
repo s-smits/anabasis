@@ -34,6 +34,7 @@ import { compilePublicArtifactSchema } from "../solve/public-artifact-schema.ts"
 import { defineTool } from "../solve/define-tool.ts";
 import { SUBMIT_MAX_ATTEMPTS } from "../correctness-bundle/battery-record.ts";
 import { commitPublicTask } from "../correctness-bundle/task-split.ts";
+import { publishedMargins } from "../correctness-bundle/numeric-boundary.ts";
 import { builtStarterFactoryForSolver } from "../correctness-bundle/solve.ts";
 import type { Solver } from "../correctness-bundle/solve.ts";
 import { authorFindingOverview } from "./author-feedback.ts";
@@ -416,7 +417,14 @@ async function gradeBlind(grade: BlindGrade, signal?: AbortSignal) {
       ordinal,
       taskId,
       solverTraceLines(heading, solved.solved.trace, wallMinutes),
-      artifact,
+      artifact === null
+        ? null
+        : {
+            artifact,
+            margins: publishedMargins(loaded.brief),
+            family: family ?? "",
+            publicInput: loaded.task.publicInput,
+          },
     );
   }
   binding.onRehearsal?.(

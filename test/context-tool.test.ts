@@ -234,6 +234,40 @@ async function tracesOf(
   };
 }
 
+describe("a passing rehearsal's artifact", () => {
+  // The same margin lines a measured pass carries, read from the brief the rehearsal was graded under.
+  it("is served with its margin lines against each limit the brief publishes", async () => {
+    const rehearsals = new RehearsalTraces();
+    const artifact = '{"report":{"massKg":2160.912}}';
+    rehearsals.addPass(1, "t0", ["t0 in rehearsal 1: passed."], {
+      artifact,
+      margins: [
+        {
+          label: "massBudgetKg",
+          artifactPath: "$.report.massKg",
+          publicInputPath: "$.limits.massKg",
+          direction: "atMost",
+          families: null,
+        },
+      ],
+      family: "frame",
+      publicInput: { limits: { massKg: 2171.4 } },
+    });
+    rehearsals.addPass(2, "t1", ["t1 in rehearsal 2: passed."], null);
+    const bound = binding({ rehearsals });
+    expect(rehearsals.list().map((doc) => doc.id)).toEqual([
+      "traces/rehearsal-1/t0",
+      "traces/rehearsal-1/t0/artifact",
+      "traces/rehearsal-2/t1",
+    ]);
+    const page = (await ask(bound, { depth: "page", id: "traces/rehearsal-1/t0/artifact" })).text;
+    expect(page).toContain(artifact);
+    expect(page).toContain(
+      "Published limits, measured on the artifact this solve submitted:\n- massBudgetKg: 2160.912, at most 2171.4; 10.488 to spare (0.4830063553%).",
+    );
+  });
+});
+
 describe("the traces source", () => {
   it("offers each passing case's solve and recorded artifact, and never a failing one or a non-result", async () => {
     const { ids, text, artifact } = await tracesOf(recordedTree("secret-verifier-a"));

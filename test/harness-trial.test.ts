@@ -37,6 +37,7 @@ import {
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
+import { sha256 } from "../src/meta/digest.ts";
 import { keyIfNotNull, keysIf } from "../src/meta/optional-key.ts";
 import { asRecord, isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { type RehearsalRow, createHarnessTrialTool, verifierView } from "../src/builder/harness-trial.ts";
@@ -464,6 +465,33 @@ describe("what a rehearsal hands the authoring review", () => {
     for (const text of texts) expectNoProtectedDetail(text);
     expect(texts[1]).toContain(RIGHT_SLOT);
     expect(texts.join("\n")).not.toContain(WRONG_SLOT);
+  }, 60_000);
+
+  // Rule 4's mechanical test on the one document a rehearsal adds: two passing solves graded by
+  // evaluators that differ only in their own source and what they write to stderr must serve the
+  // same trace and artifact bytes. Stdout is the check child's protocol channel, so it is not varied.
+  it("serves the same passing artifact whatever protected detail the verifier held", async () => {
+    const served = async (marker: string) => {
+      const dir = workspace();
+      const bodies = [PASSING_CHECK, FAILING_CHECK].map(
+        (id) => `"${id}": () => { console.error("${marker}"); return true; }`,
+      );
+      writeFileSync(
+        join(dir, "correctness-model/evaluator.ts"),
+        `// ${marker}\nexport const checks = { ${bodies.join(", ")} };`,
+      );
+      const rehearsals = new RehearsalTraces();
+      const plan = { rehearsals };
+      const body = modelVisible(await rehearse(round(dir, assigningSolver(RIGHT_SLOT), true, plan).tool));
+      expect(body.truth).toEqual({ verdict: "pass" });
+      const artifact = rehearsals.list().find((doc) => doc.id.endsWith("/artifact"));
+      return artifact !== undefined && "text" in artifact ? artifact.text() : "";
+    };
+    const a = await served("stderr-marker-a");
+    const b = await served("stderr-marker-b");
+    expect(a).toContain(RIGHT_SLOT);
+    expect(sha256(b)).toBe(sha256(a));
+    expect(a).not.toContain("stderr-marker");
   }, 60_000);
 });
 

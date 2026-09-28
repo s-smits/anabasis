@@ -150,11 +150,12 @@ interface DiagnosisReaderInput {
   readerTurn?: typeof runReaderTurn;
 }
 
-/** The issues this reader can say something about: standing, not the environment's, and about the
- *  solve rather than the evaluation. Worst share first. */
-export function diagnosableIssues(issues: readonly AdviceIssue[]): AdviceIssue[] {
+/** What this reader can speak to, worst share first: standing issues that battery `runId` saw, since
+ *  only its traces are read, and that belong to the solve, not the environment or the evaluation. */
+export function diagnosableIssues(issues: readonly AdviceIssue[], runId: string): AdviceIssue[] {
+  const solveSide = (issue: AdviceIssue) => !environmentOwned(issue) && !issue.kind.startsWith("judge-");
   return issues
-    .filter((issue) => isStanding(issue) && !environmentOwned(issue) && !issue.kind.startsWith("judge-"))
+    .filter((issue) => isStanding(issue) && issue.lastSeenRunId === runId && solveSide(issue))
     .sort((a, b) => b.count / Math.max(b.denominator, 1) - a.count / Math.max(a.denominator, 1));
 }
 
@@ -355,7 +356,7 @@ export function diagnosisPacket(
  */
 export async function readDiagnoses(input: DiagnosisReaderInput): Promise<DiagnosisReaderEvidence> {
   const { analysis, repoRoot } = input;
-  const diagnosable = diagnosableIssues(input.advice.issues);
+  const diagnosable = diagnosableIssues(input.advice.issues, analysis.runId);
   const issues = diagnosable.slice(0, MAX_ISSUES);
   const evidence: DiagnosisReaderEvidence = {
     schema: DIAGNOSIS_READING_SCHEMA,

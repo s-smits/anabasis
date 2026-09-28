@@ -21,7 +21,12 @@ import type { ReadCaseTrace } from "../src/claim/trace-read.ts";
 import type { JsonValue } from "../src/meta/json-shape.ts";
 import type { CaseEvidence } from "../src/analyse/iteration-analysis.ts";
 import type { ReaderTool, runReaderTurn } from "../src/review/review-reader.ts";
-import { adviceIssueId, attachIssueReadings, renderRebuildAdvice } from "../src/author/rebuild-advice.ts";
+import {
+  adviceIssueId,
+  attachIssueReadings,
+  isStanding,
+  renderRebuildAdvice,
+} from "../src/author/rebuild-advice.ts";
 import {
   type DiagnosisReaderEvidence,
   diagnosableIssues,
@@ -122,6 +127,9 @@ function onlyTool(tools: readonly ReaderTool[]): ReaderTool {
   return tool;
 }
 
+/** An issue the battery `r2` observed, which is the only kind the reader is offered. */
+const observed = (overrides?: Parameters<typeof issue>[0]) => issue({ lastSeenRunId: "r2", ...overrides });
+
 function battery(rows: readonly Row[] = ROWS) {
   const root = scratchDir("ana-diagnosis-reader-");
   const domain = join(root, "domains", "truss");
@@ -189,8 +197,8 @@ function battery(rows: readonly Row[] = ROWS) {
   );
   const analysis = { slug: "truss", runId: "r2", cases };
   const advice = advicePacket([
-    issue({ count: 3, denominator: 4 }),
-    issue({ id: JOINTS, kind: "unaccepted", family: "joints", count: 1, denominator: 1 }),
+    observed({ count: 3, denominator: 4 }),
+    observed({ id: JOINTS, kind: "unaccepted", family: "joints", count: 1, denominator: 1 }),
   ]);
   return { root, log, measuredDir, analysis, advice };
 }
@@ -309,7 +317,7 @@ describe("what the diagnosis reader is shown", () => {
     const fixture = {
       ...battery(),
       advice: advicePacket(
-        families.map((family) => issue({ id: adviceIssueId("verified-fail", family, null), family })),
+        families.map((family) => observed({ id: adviceIssueId("verified-fail", family, null), family })),
       ),
     };
     const { evidence } = await read(fixture);
@@ -320,14 +328,26 @@ describe("what the diagnosis reader is shown", () => {
   test("offers only standing solve-side issues, never the Judge's disagreements or the environment's", () => {
     const judge = adviceIssueId("judge-failed-verifier-passed", "beams", null);
     const provider = adviceIssueId("non-result", "beams", "provider");
-    const offered = diagnosableIssues([
-      issue({ id: judge, kind: "judge-failed-verifier-passed" }),
-      issue({ id: provider, kind: "non-result", detail: "provider" }),
-      issue({ id: JOINTS, kind: "unaccepted", family: "joints", count: 1, denominator: 1 }),
-      issue({ count: 1, denominator: 4 }),
-      issue({ id: adviceIssueId("verified-fail", "old", null), family: "old", absentBatteries: 2 }),
-    ]);
+    const offered = diagnosableIssues(
+      [
+        observed({ id: judge, kind: "judge-failed-verifier-passed" }),
+        observed({ id: provider, kind: "non-result", detail: "provider" }),
+        observed({ id: JOINTS, kind: "unaccepted", family: "joints", count: 1, denominator: 1 }),
+        observed({ count: 1, denominator: 4 }),
+        observed({ id: adviceIssueId("verified-fail", "old", null), family: "old", absentBatteries: 2 }),
+      ],
+      "r2",
+    );
     expect(offered.map((row) => row.id)).toEqual([JOINTS, BEAMS]);
+  });
+
+  test("offers no standing issue an earlier battery last saw, since these traces hold no failing solve of it", () => {
+    // A family that left a case without a verdict carries its unobserved issues unchanged, and they
+    // stand; offered here, each would arrive as "Showing 0 of 0 failing solves".
+    const carried = issue({ lastSeenRunId: "r1" });
+    expect(isStanding(carried)).toBe(true);
+    const seen = observed({ id: JOINTS, kind: "unaccepted", family: "joints" });
+    expect(diagnosableIssues([carried, seen], "r2").map((row) => row.id)).toEqual([JOINTS]);
   });
 });
 

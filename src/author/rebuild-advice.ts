@@ -242,8 +242,8 @@ const GAP_WORDS: Record<ConditionGap, string> = {
   "built-condition": "Built model or resources",
 };
 
-/** An issue this battery observed, that nothing contests and whose family is still in the task set:
- *  the one thing the diagnosis reader, the epoch reviewer and the render all mean by "standing". */
+/** No absence recorded, comparable or not, no dispute or settlement, and a family still in the task
+ *  set: an issue this battery observed, or one it carried because it could not recheck it. */
 export function isStanding(issue: AdviceIssue): boolean {
   return (
     !issue.retired &&

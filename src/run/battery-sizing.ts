@@ -72,10 +72,11 @@ export function batterySize(requested: number | undefined): number {
 
 /**
  * The smallest battery `placeOnBand` still reads as too easy at the rate just measured, or
- * `requested` when no smaller one does. A battery read significantly too easy spends
- * its whole size to say one thing, and a gate that reads no landing past the probe makes the
- * adopted size the state, so one weak probe commits the product to the requested size for every
- * later round.
+ * `requested` when no smaller one does. It preserves a too-easy reading the landing made and never
+ * extrapolates one it did not: 5 of 6 is not significantly too easy, though 9 of 11 at its rate is.
+ * A battery read significantly too easy spends its whole size to say one thing, and a gate that
+ * reads no landing past the probe makes the adopted size the state, so one weak probe commits the
+ * product to the requested size for every later round.
  *
  * The saving never buys the reading, so the rate is realised with `Math.floor`, the least
  * favourable count at each size, and a size is never chosen because rounding flattered it. A rate
@@ -90,7 +91,7 @@ export function batterySize(requested: number | undefined): number {
  * `placeOnBand` refuses a placement it cannot make rather than misplacing it.
  */
 function smallestSizeHoldingTooEasy(landed: ProbeLanding, requested: number, band: [number, number]): number {
-  if (landed.n === 0) return requested;
+  if (placeOnBand(landed.passes, landed.n, band)?.zone !== "too-easy") return requested;
   const rate = landed.passes / landed.n;
   for (let n = BATTERY_SIZE.probe.max + 1; n < requested; n += 1) {
     if (placeOnBand(Math.floor(rate * n), n, band)?.zone === "too-easy") return n;

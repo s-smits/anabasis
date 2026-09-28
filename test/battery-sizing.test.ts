@@ -85,8 +85,14 @@ describe("batterySizingGate", () => {
   it("sizes a product past the probe to the smallest battery that still carries its last reading", () => {
     // A battery that read too easy at 25 is re-read for less: nine of eleven still reads significantly too easy, so eleven buys the reading for 44% of it.
     expect(batterySizingGate(25, 25, landed(22, 25))).toEqual({ min: 11, max: 11 });
-    expect(batterySizingGate(25, 25, landed(6, 6))).toEqual({ min: 11, max: 11 });
     expect(batterySizingGate(25, 25, landed(20, 25))).toEqual({ min: 14, max: 14 });
+  });
+
+  it("carries a too-easy reading the landing made, and never one only its projection makes", () => {
+    // 6 of 6 is significantly too easy, so eleven re-reads it; 5 of 6 is not, though 9 of 11 at the
+    // same rate would be, and shrinking on that would spend a round on a reading nobody observed.
+    expect(batterySizingGate(25, 25, landed(6, 6))).toEqual({ min: 11, max: 11 });
+    expect(batterySizingGate(25, 25, landed(5, 6))).toEqual({ min: 25, max: 25 });
   });
 
   it("keeps the requested size whenever no smaller battery holds the reading", () => {

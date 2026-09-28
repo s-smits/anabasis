@@ -87,8 +87,8 @@ describe("published margins", () => {
 
   // An unreadable operand is unknown, not a breach: the verifier owns correctness and a missing
   // number must not read as a failure the solver then chases.
-  it("reads a missing or non-numeric operand as unchecked", () => {
-    const readings = readMargins(MARGINS, "wide", { limits: {} }, { report: { massKg: "heavy", spanM: 14 } });
+  it("reads a missing operand as unchecked", () => {
+    const readings = readMargins(MARGINS, "wide", { limits: {} }, { report: { spanM: 14 } });
     expect(readings.every(({ breached, slack }) => !breached && slack === null)).toBe(true);
     const table = renderMargins(readings);
     expect(table).toContain("massBudgetKg: not checked — your answer reports nothing at $.report.massKg.");
@@ -109,6 +109,15 @@ describe("published margins", () => {
     expect(derived("$.report.massKg")).toEqual([false]);
     expect(derived("$.report.absent")).toEqual([false]);
     expect(derived("$.report.note")).toEqual([false]);
+    // The solver reads the same fact: the path is there, and it holds nothing this table can compare.
+    const table = renderMargins(readMargins(at("$.report.design"), "wide", TASK, answer));
+    expect(table).toContain(
+      "massBudgetKg: not checked — the value at $.report.design in your answer is not a number, so this limit is not read against it.",
+    );
+    // A string where a number belongs is the same fact, and still no breach.
+    const heavy = readMargins(at("$.report.massKg"), "wide", TASK, { report: { massKg: "heavy" } });
+    expect(heavy.map((reading) => [reading.derived, reading.breached])).toEqual([[true, false]]);
+    expect(renderMargins(heavy)).toContain("the value at $.report.massKg in your answer is not a number");
   });
 
   it("states the host binding without a count, so one registration serves every family", () => {

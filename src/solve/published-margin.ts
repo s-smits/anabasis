@@ -113,8 +113,9 @@ function decimal(value: number): string {
 function marginLine(reading: MarginReading): string {
   const bound = reading.direction === "atMost" ? "at most" : "at least";
   if (reading.slack === null) {
-    const missing =
-      reading.reported === null
+    const missing = reading.derived
+      ? `the value at ${reading.artifactPath} in your answer is not a number, so this limit is not read against it`
+      : reading.reported === null
         ? `your answer reports nothing at ${reading.artifactPath}`
         : "this task states no limit";
     return `${reading.label}: not checked — ${missing}.`;

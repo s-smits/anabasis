@@ -1,7 +1,7 @@
 /** Authoring receives typed findings and the reviewed public obligations, never review prose. */
 import { jsonPathTokens } from "../meta/json-evidence.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
-import type { AnalysisFinding, DemandGap } from "../analyse/iteration-analysis.ts";
+import type { AnalysisFinding, DemandGap, ProbeDirection } from "../analyse/iteration-analysis.ts";
 import { contractDefect } from "../analyse/finding-owner.ts";
 import type { ContestedCase } from "../analyse/judge-contested.ts";
 import type { Brief } from "../correctness-bundle/brief.ts";
@@ -28,6 +28,16 @@ const DEMAND_GAP_SENTENCES: Record<DemandGap, string> = {
   "limit-cleared-widely": "The first reasonable candidate clears a published limit widely.",
   "solver-tool-reports-margins": "A solver tool reports every margin a declared check reads.",
   "rule-outside-request": "A rule stands that no practitioner of the request would hold.",
+};
+
+/** Which way a probe-backed check is wrong, as the author reads it. The moved checks read the same
+ *  either way and the two repairs are opposite, so the direction crosses as fixed text keyed by the
+ *  typed field; the probe's value, its edit and the reviewer's reading of it stay private. */
+const PROBE_DIRECTION_SENTENCES: Record<ProbeDirection, string> = {
+  "rejects-valid":
+    "The review's probe wrote an answer the published rule allows, and the check refused it: a false rejection, so the repair loosens the check to what the published rule and the original request allow, and does not tighten it or publish the restriction as a new rule.",
+  "accepts-invalid":
+    "The review's probe wrote an answer the published rule forbids, and the check let it through: a false acceptance, so the repair makes the check refuse what the published rule forbids.",
 };
 
 /** A task-set finding's act where its demand gap asks for something other than a difference in what
@@ -275,6 +285,9 @@ function publicFinding(
                 }`,
             )
             .join("; ")}.`,
+          ...(finding.probeDirection === undefined
+            ? []
+            : [PROBE_DIRECTION_SENTENCES[finding.probeDirection]]),
         ];
   // The request is not repeated here. Every prompt that renders these rows states it once under its
   // own heading, and a copy per finding puts it several times into one authoring prompt, in front

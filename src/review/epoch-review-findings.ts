@@ -22,6 +22,7 @@ import {
   type AnalysisFinding,
   DEMAND_GAPS,
   type FindingPlacement,
+  PROBE_DIRECTIONS,
   namedSubject,
 } from "../analyse/iteration-analysis.ts";
 import { contractDefect } from "../analyse/finding-owner.ts";
@@ -36,9 +37,11 @@ import { type JsonValue, isBoolean, isString } from "../meta/json-shape.ts";
 import { keyIfNotNull, keysIf } from "../meta/optional-key.ts";
 import { type ReaderTool, readerParameters, readerToolText } from "./review-reader.ts";
 import {
+  PROBE_DIRECTION_PARAMETER,
   type ProbeState,
   type ReviewProbeRow,
   probeBackedRows,
+  probeShows,
   probeCitationRefusal,
 } from "./review-probe.ts";
 import { type ReviewVerifierEvidence, type SourceReadState, deliveredSource } from "./review-sources.ts";
@@ -441,6 +444,7 @@ function findingArgs(args: Record<string, JsonValue>) {
     publicInputPath: optional("publicInputPath"),
     secondPublicInputPath: optional("secondPublicInputPath"),
     demandGap: DEMAND_GAPS.find((gap) => gap === args.demandGap) ?? null,
+    probeDirection: PROBE_DIRECTIONS.find((direction) => direction === args.probeDirection) ?? null,
     settlesJudge: args.settlesJudge === true,
     unobserved: args.unobserved === true,
   };
@@ -637,6 +641,10 @@ function recordedFinding(
     ...keysIf(parsed.unobserved, () => ({ unobserved: true as const })),
     ...keysIf(probes.length > 0, () => ({
       probes: probes.map(({ controlId, path, movedCheckIds }) => ({ controlId, path, movedCheckIds })),
+      ...keyIfNotNull(
+        "probeDirection",
+        parsed.probeDirection === probeShows(probes, parsed.checkId) ? parsed.probeDirection : null,
+      ),
     })),
   };
 }
@@ -717,6 +725,7 @@ function findingParameters(disputable: readonly string[]) {
         description:
           "The probe_check numbers whose executed result this finding rests on. Cite only probes that ran: a probe-backed defect may be admitted blocking on its first occurrence.",
       },
+      probeDirection: PROBE_DIRECTION_PARAMETER,
       publicInputPath: {
         type: "string",
         description:

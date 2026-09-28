@@ -1057,4 +1057,75 @@ describe("what a finding's typed fields carry to authoring", () => {
       ),
     ).toEqual(["active"]);
   });
+
+  // A probe that wrote a valid variant the check refused, and one that wrote an invalid variant the
+  // check passed, both reach the author as "a check moved"; the two repairs are opposite.
+  test("a probe-backed defect's direction crosses as fixed text, and the probe's value does not", async () => {
+    const defect = {
+      defect: true,
+      claim: "an ignorable line before the report is refused",
+      severity: "advisory",
+      owner: "correctness-model/evaluator.ts",
+      checkId: "deflection",
+      citations: CITATIONS,
+      probeIds: [1],
+    };
+    const project = async (probeDirection: string, value: string) => {
+      const state = reviewState();
+      const moved = probeDirection === "rejects-valid" ? ["deflection"] : [];
+      state.probes.rows.push({ ...probeRow(1, moved), change: { value } });
+      const recorded = await call(recordFindingTool([], [], evidence, state, { identities }), {
+        ...defect,
+        probeDirection,
+      });
+      expect(recorded).toStartWith("recorded defect");
+      return publicEpochReview({ status: "completed", ...state }, { brief }).findings[0]?.claim ?? "";
+    };
+    const rejects = await project("rejects-valid", '"diag: boot, then report"');
+    expect(rejects).toContain(
+      "The review's probe wrote an answer the published rule allows, and the check refused it: a false rejection, so the repair loosens the check to what the published rule and the original request allow, and does not tighten it or publish the restriction as a new rule.",
+    );
+    expect(rejects).not.toContain("diag");
+    const accepts = await project("accepts-invalid", '"diag: boot, then report"');
+    expect(accepts).toContain("the check let it through: a false acceptance");
+    expect(accepts).not.toBe(rejects);
+    // Rule 4: the probe's replacement value is protected, so changing it alone moves nothing.
+    expect(await project("rejects-valid", '"another private counterexample"')).toBe(rejects);
+  });
+
+  // A pass/pass probe moved no check, so it cannot be projected as the check refusing an answer.
+  test("a direction is kept only where the cited probe shows it, and one off the closed set reads as none", async () => {
+    const state = reviewState();
+    state.probes.rows.push(probeRow(1, ["deflection"]), probeRow(2, []));
+    const tool = recordFindingTool([], [], evidence, state, { identities });
+    const base = {
+      defect: true,
+      claim: "c",
+      severity: "advisory",
+      owner: "correctness-model/evaluator.ts",
+      checkId: "deflection",
+      citations: CITATIONS,
+      probeDirection: "rejects-valid",
+    };
+    expect(await call(tool, { ...base, probeIds: [] })).toStartWith("recorded defect");
+    expect(await call(tool, { ...base, probeIds: [1], probeDirection: "loose" })).toStartWith(
+      "recorded defect",
+    );
+    expect(await call(tool, { ...base, probeIds: [1] })).toStartWith("recorded defect");
+    expect(await call(tool, { ...base, probeIds: [2] })).toStartWith("recorded defect");
+    expect(await call(tool, { ...base, probeIds: [2], probeDirection: "accepts-invalid" })).toStartWith(
+      "recorded defect",
+    );
+    expect(await call(tool, { ...base, probeIds: [1], probeDirection: "accepts-invalid" })).toStartWith(
+      "recorded defect",
+    );
+    expect(state.findings.map((row) => row.probeDirection)).toEqual([
+      undefined,
+      undefined,
+      "rejects-valid",
+      undefined,
+      "accepts-invalid",
+      undefined,
+    ]);
+  });
 });

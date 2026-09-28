@@ -65,6 +65,7 @@ import { errorMessage } from "../meta/runtime-values.ts";
 import { boundText } from "../meta/bounded-text.ts";
 import { BRIEF_FILE, CONTROLS_FILE } from "../meta/bundle-layout.ts";
 import { contractDefect } from "../analyse/finding-owner.ts";
+import { PROBE_DIRECTIONS, type ProbeDirection } from "../analyse/iteration-analysis.ts";
 
 /** Probes per review. Each one loads the generated check program in a confined child and may launch
  *  the declared external tools, so it costs about what one census control costs. Eight is enough to
@@ -75,6 +76,15 @@ export const PROBE_BUDGET = 8;
  *  passage. A whole file past this ceiling is still reachable, by an edit of the passage that
  *  matters rather than a retyped file. */
 const VALUE_MAX_CHARS = 4_000;
+/** `record_finding`'s `probeDirection` as the reviewer reads it. The direction is what the probe
+ *  was meant to be, decided against the public rule before its verdict, so it rides only on a
+ *  defect that cites one that ran and only where that probe shows it (`probeShows`). */
+export const PROBE_DIRECTION_PARAMETER = {
+  type: "string",
+  enum: [...PROBE_DIRECTIONS],
+  description:
+    "For a defect citing probeIds: decide before reading the probe's verdict whether its changed artifact stays valid under the public rule you cite, and name what the check then did. rejects-valid: the rule allows the variant and the check refused it. accepts-invalid: the rule forbids the variant and the check passed it. Leave it out when the probe does not establish which. It crosses to authoring as fixed text, and the two repairs are opposite.",
+};
 /** What a probe changed: a whole replacement value as the reviewer wrote it, or the one passage of
  *  a text leaf that `find` names, rewritten to `replace`. */
 type ProbeEdit = { find: string; replace: string };
@@ -150,6 +160,16 @@ function conclusive(row: ReviewProbeRow): boolean {
  *  It returns the rows rather than their numbers, because the recorder needs both — the numbers for
  *  the reviewer's own evidence prose, and the control, path and moved checks for the public
  *  projection, which the finding otherwise reaches with its check name alone. */
+/** The direction cited probes show for a check: a false rejection where they moved it, a false
+ *  acceptance where they left it passing. A stated direction they contradict is not recorded, so a
+ *  probe that moved nothing never reads as a check refusing a valid answer. */
+export function probeShows(rows: readonly ReviewProbeRow[], checkId: string | null): ProbeDirection {
+  const moved = rows.some((row) =>
+    checkId === null ? row.movedCheckIds.length > 0 : row.movedCheckIds.includes(checkId),
+  );
+  return PROBE_DIRECTIONS[moved ? 0 : 1];
+}
+
 export function probeBackedRows(state: ProbeState, cited: JsonValue | undefined): ReviewProbeRow[] {
   if (!Array.isArray(cited)) return [];
   const numbers = new Set(cited.filter(isNumber));

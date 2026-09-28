@@ -172,6 +172,11 @@ type FindingBody = {
   demandGap?: DemandGap;
   /** A second public input the finding relates the first to, validated like `publicInputPath`. */
   secondPublicInputPath?: string;
+  /** Which way a probe-backed defect's check is wrong, from a closed set: it refused a variant the
+   *  published rule allows, or passed one the rule forbids. Absent when the reviewer did not
+   *  establish which. The moved checks alone read the same both ways, and the two repairs are
+   *  opposite, so an author left to guess tightens a check that was already refusing a valid answer. */
+  probeDirection?: ProbeDirection;
   /** An observation that settles a listed Judge disagreement on its `checkId` as the Judge's error,
    *  backed by a cited probe that moved that check. The Judge issue it settles stops standing. */
   settlesJudge?: true;
@@ -189,6 +194,11 @@ export const DEMAND_GAPS = [
   "rule-outside-request",
 ] as const;
 export type DemandGap = (typeof DEMAND_GAPS)[number];
+
+/** Whether a probe's changed artifact was meant to stay valid under the cited public rule, read
+ *  against what the checks did with it: a valid variant refused, or an invalid one passed. */
+export const PROBE_DIRECTIONS = ["rejects-valid", "accepts-invalid"] as const;
+export type ProbeDirection = (typeof PROBE_DIRECTIONS)[number];
 
 export interface AdmittedEvidence {
   digest: string;

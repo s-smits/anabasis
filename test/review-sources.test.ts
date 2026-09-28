@@ -10,7 +10,9 @@ import {
   reviewVerifierEvidence,
   reviewCoverage,
   TOOLCHAIN_PREFIX,
-  toolchainTexts,
+  type ToolchainReach,
+  namedTexts,
+  toolchainReach,
 } from "../src/review/review-sources.ts";
 import { portableToolTreeDigest } from "../src/verify/tool-inventory.ts";
 import type { ToolEntry } from "../src/verify/verifier-port.ts";
@@ -20,7 +22,7 @@ import { verifierEnvironmentHashOfTools } from "../src/correctness-bundle/verifi
 import { sha256 } from "../src/meta/digest.ts";
 import { type EpochReviewInput, runEpochReview } from "../src/review/epoch-reviewer.ts";
 import { publicEpochReview } from "../src/review/epoch-review-public.ts";
-import { double } from "./helpers/doubles.ts";
+import { double, required } from "./helpers/doubles.ts";
 import { reviewSlotPin } from "../src/review/review-session.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import { call } from "./helpers/review-fixtures.ts";
@@ -972,7 +974,15 @@ describe("what the reviewer may open", () => {
   });
 });
 
-describe("tool-tree text a recorded tree digest covers", () => {
+/**
+ * The tool tree a recorded verifier digest covers. A checker's model of an installed tool can only be
+ * checked against the tool's own files, and those sit wherever the tool put them: a fixed window of
+ * the shallowest files reaches the shims at the top and none of the definitions below. So the whole
+ * tree reads by name, each file only while it still counts as it did when the review opened, since
+ * that count is what the recorded digest was computed from.
+ */
+describe("the tool tree a recorded digest covers", () => {
+  const P = TOOLCHAIN_PREFIX;
   const tree = (root: string) => join(root, ".toolchain");
   const write = (root: string, rel: string, bytes: string | Uint8Array) => {
     mkdirSync(dirname(join(tree(root), rel)), { recursive: true });
@@ -989,29 +999,63 @@ describe("tool-tree text a recorded tree digest covers", () => {
       ...(treeDigest === undefined ? null : { treeDigest }),
     } satisfies ToolEntry,
   });
-
-  test("offers the script behind a shim, and no binary, oversized file or installed package", () => {
-    const root = scratchDir("ana-review-toolchain-");
-    write(root, "bin/solve", '#!/bin/sh\nexec python3 "$ROOT/libexec/solver.py" "$@"\n');
-    write(root, "libexec/solver.py", "def solve(frame):\n    return frame\n");
-    write(root, "libexec/engine.so", new Uint8Array([0x7f, 0x45, 0x4c, 0x46, 0, 1, 2]));
-    write(root, "share/table.csv", "x".repeat(2 * 1024 * 1024));
-    write(root, "venv/lib/python3.12/site-packages/numpy/core.py", "import os\n");
-    write(root, "node_modules/left-pad/index.js", "module.exports = 1;\n");
-    const texts = toolchainTexts(root, entry(portableToolTreeDigest(tree(root))));
-    expect([...texts.keys()]).toEqual([
-      `${TOOLCHAIN_PREFIX}bin/solve`,
-      `${TOOLCHAIN_PREFIX}libexec/solver.py`,
-    ]);
-    expect(texts.get(`${TOOLCHAIN_PREFIX}libexec/solver.py`)).toContain("def solve");
-  });
+  const verified = (root: string) =>
+    required(toolchainReach(root, entry(portableToolTreeDigest(tree(root)))), "a verified tool tree");
+  /** A reader over no source of its own, so every tree file is read by name. */
+  const reader = (root: string, reach: ToolchainReach, state = reviewState()) =>
+    readSourceTool(root, new Set(), state, {}, namedTexts(new Map(), reach));
 
   test("grants nothing when no recorded tree digest matches the tree as it is now", () => {
     const root = scratchDir("ana-review-toolchain-");
     write(root, "libexec/solver.py", "def solve(frame):\n    return frame\n");
     const recorded = portableToolTreeDigest(tree(root));
     write(root, "libexec/solver.py", "def solve(frame):\n    return None\n");
-    expect(toolchainTexts(root, entry(recorded)).size).toBe(0);
-    expect(toolchainTexts(root, entry(undefined)).size).toBe(0);
+    expect(toolchainReach(root, entry(recorded))).toBeNull();
+    expect(toolchainReach(root, entry(undefined))).toBeNull();
+  });
+
+  test("reads any file of the tree by name however deep, installed packages included, and a directory as its listing", async () => {
+    const root = scratchDir("ana-review-toolchain-");
+    for (let i = 0; i < 101; i += 1) write(root, `bin/tool-${String(i)}`, "#!/bin/sh\n");
+    write(root, "share/lib/a/b/c/d/defs.h", "#define DEFAULT_PORT 21\n");
+    write(root, "node_modules/pkg/index.js", "module.exports = 1;\n");
+    const tool = reader(root, verified(root));
+    expect(await call(tool, { path: `${P}share/lib/a/b/c/d/defs.h` })).toContain("#define DEFAULT_PORT 21");
+    expect(await call(tool, { path: `${P}node_modules/pkg/index.js` })).toContain("module.exports");
+    const top = await call(tool, { path: P });
+    for (const child of ["bin/", "node_modules/", "share/"]) expect(top).toContain(child);
+    expect(await call(tool, { path: `${P}share/lib/a` })).toContain("b/");
+  });
+
+  test("refuses a file changed since the review opened, and any path that is no text file or directory of the tree", async () => {
+    const root = scratchDir("ana-review-toolchain-");
+    write(root, "libexec/solver.py", "def solve(frame):\n    return frame\n");
+    write(root, "libexec/engine.so", new Uint8Array([0x7f, 0x45, 0x4c, 0x46, 0, 1, 2]));
+    write(root, "share/table.csv", "x".repeat(2 * 1024 * 1024));
+    symlinkSync("solver.py", join(tree(root), "libexec/alias.py"));
+    const tool = reader(root, verified(root));
+    write(root, "libexec/solver.py", "def solve(frame):\n    return None\n");
+    const changed = await call(tool, { path: `${P}libexec/solver.py` });
+    expect(changed).toStartWith("refused:");
+    expect(changed).toContain("changed since the review opened");
+    for (const rel of [
+      "../escape.txt",
+      "libexec/missing.py",
+      "libexec/engine.so",
+      "share/table.csv",
+      "libexec/alias.py",
+    ]) {
+      expect(await call(tool, { path: `${P}${rel}` }), rel).toStartWith("refused:");
+    }
+    // A path outside the tree's prefix is still held to the inventory.
+    expect(await call(tool, { path: "evaluator.ts" })).toContain("is not in the inventory");
+  });
+
+  test("keeps the automatic scan off the tree, so a file nobody named is never read", async () => {
+    const root = scratchDir("ana-review-toolchain-");
+    write(root, "bin/solve", "#!/bin/sh\n");
+    const state = reviewState();
+    expect(await call(reader(root, verified(root), state), {})).toContain("No unread source remains");
+    expect(state.reads).toHaveLength(0);
   });
 });

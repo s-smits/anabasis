@@ -17,7 +17,12 @@ import { BUNDLE_FILES } from "../author/feedback-routing.ts";
 import { HARNESS_CONFIG_FILE } from "../correctness-bundle/harness-config.ts";
 import { readRecordedBatteryRecord } from "../correctness-bundle/battery-record.ts";
 import { verifierEnvironmentHashOfTools } from "../correctness-bundle/verifier-environment.ts";
-import { TOOL_ID_RE, portableToolTreeDigest } from "../verify/tool-inventory.ts";
+import {
+  TOOL_ID_RE,
+  portableFileCount,
+  portableToolTreeCounts,
+  toolTreeCountsDigest,
+} from "../verify/tool-inventory.ts";
 import { bundleSnapshotToolTree } from "../claim/bundle-snapshot.ts";
 import type { ToolEntry, VerifierExecutionEvidence } from "../verify/verifier-port.ts";
 import { type ReaderTool, readerParameters, readerToolText } from "./review-reader.ts";
@@ -33,19 +38,24 @@ const INVENTORY_MAX_FILES = 400;
 const SKIP_DIRS = new Set(["node_modules", ".git", ".toolchain", "runs", "scratch", "dist"]);
 // Every bundle file but the optional walls, whose absence is the defaults rather than a gap.
 const CORE_FILES = BUNDLE_FILES.filter((file) => file !== HARNESS_CONFIG_FILE);
-/** The tool-tree text a review may read: files the tree digest hashes by their bytes (the same 1 MiB
- *  line `toolTreeCounts` draws), outside installed third-party packages, which are upstream code
- *  rather than the program the Builder wrote around them. */
+/** A text file of the tool tree the reviewer can read: at most 1 MiB, no NUL byte, valid UTF-8. */
 const TOOLCHAIN_TEXT_BYTES = 1024 * 1024;
-const TOOLCHAIN_TEXT_FILES = 100;
-const TOOLCHAIN_SKIP_DIRS = new Set([
-  "node_modules",
-  "site-packages",
-  "dist-packages",
-  "__pycache__",
-  ".git",
-]);
+/** A regular file's count; a link, an external target or a special file counts otherwise. */
+const FILE_COUNT = /^[0-9a-f]{64}$/;
 export const TOOLCHAIN_PREFIX = "toolchain:";
+/**
+ * The measured tree's `.toolchain`, when a recorded verifier tool's tree digest still covers it. An
+ * entry point is often a shim over a script beside it, and what a checker's model of the tool has to
+ * agree with often sits in a file the tool installed far below both, so the whole tree reads by name
+ * rather than a window of it. `counts` holds each entry's count as the recorded digest took it when
+ * the review opened, and a file reads only while it still counts the same, so every byte the reviewer
+ * reads is one that digest covered. A directory reads as its listing, which is how the reviewer
+ * finds a file from the top.
+ */
+export type ToolchainReach = { tree: string; counts: ReadonlyMap<string, string> };
+/** Text a review reads by name beside its measured source: a recorded text, or a path of the tool
+ *  tree, whose read throws the reason it cannot give the file. */
+type NamedTexts = Pick<ReadonlyMap<string, string>, "get" | "has">;
 export interface ReviewInventory {
   files: string[];
   truncated: boolean;
@@ -249,46 +259,64 @@ export function reviewVerifierEvidence(root: string, runId: string): ReviewVerif
   }
 }
 
-/**
- * The text files of the measured tree's `.toolchain`, readable when a recorded verifier tool's tree
- * digest covers them. An entry point's own bytes are often a shim over a script beside it — `exec
- * python3 "$ROOT/libexec/solver.py"` — so the entry-point read shows the reviewer the shim and not
- * the program that decided. The tree digest a workspace tool recorded at measurement is what binds
- * the rest of the tree to the verdicts; a tree whose digest no longer matches any recorded one has
- * moved since, and grants nothing.
- *
- * Only text is offered: at most 1 MiB, no NUL byte and valid UTF-8, shallowest paths first and at
- * most a hundred of them, under `toolchain:<path>`. Installed packages (`node_modules`,
- * `site-packages`) are left out. The texts are captured once, when the review opens, so a later
- * edit of the tree cannot change what a quote was checked against.
- */
-export function toolchainTexts(
+export function toolchainReach(
   root: string,
   tools: Readonly<Record<string, ToolEntry>>,
-): Map<string, string> {
+): ToolchainReach | null {
   const recorded = new Set(
     Object.values(tools).flatMap((tool) => (tool.treeDigest === undefined ? [] : [tool.treeDigest])),
   );
   const tree = recorded.size === 0 ? null : bundleSnapshotToolTree(root);
-  if (tree === null || !recorded.has(portableToolTreeDigest(tree))) return new Map();
-  const found: string[] = [];
-  const walk = (dir: string) => {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      if (TOOLCHAIN_SKIP_DIRS.has(entry.name)) continue;
-      const abs = join(dir, entry.name);
-      if (entry.isDirectory()) walk(abs);
-      else if (entry.isFile()) found.push(relative(tree, abs));
-    }
+  if (tree === null) return null;
+  const counts = portableToolTreeCounts(tree);
+  if (!recorded.has(toolTreeCountsDigest(counts))) return null;
+  return { tree, counts };
+}
+
+/** The recorded texts, and any `toolchain:` path of the reach, read by name. */
+export function namedTexts(texts: ReadonlyMap<string, string>, toolchain: ToolchainReach | null): NamedTexts {
+  const reaches = (path: string) => toolchain !== null && path.startsWith(TOOLCHAIN_PREFIX);
+  return {
+    has: (path) => texts.has(path) || reaches(path),
+    get: (path) =>
+      texts.get(path) ?? (toolchain !== null && reaches(path) ? toolchainRead(toolchain, path) : undefined),
   };
-  walk(tree);
-  const depth = (path: string) => path.split("/").length;
-  const texts = new Map<string, string>();
-  for (const rel of found.sort((a, b) => depth(a) - depth(b) || compareCodeUnits(a, b))) {
-    if (texts.size >= TOOLCHAIN_TEXT_FILES) break;
-    const text = toolchainText(join(tree, rel));
-    if (text !== null) texts.set(`${TOOLCHAIN_PREFIX}${rel}`, text);
+}
+
+/** One `toolchain:` path of the reach: a text file's contents while it still counts as the recorded
+ *  digest took it, or a directory's entries. */
+function toolchainRead(reach: ToolchainReach, path: string): string {
+  const rel = path.slice(TOOLCHAIN_PREFIX.length).replace(/\/+$/, "");
+  const count = reach.counts.get(rel);
+  if (count === undefined) return toolchainListing(reach, path, rel);
+  if (!FILE_COUNT.test(count)) throw new Error(`${path} is a link or special file; read the file it names`);
+  const abs = join(reach.tree, rel);
+  // The count hashes a read of its own, so the text is the bytes it covered only when no write
+  // landed between the two; a rewrite that puts the same bytes back still moves the change time.
+  const written = statSync(abs, { bigint: true }).ctimeNs;
+  const text = toolchainText(abs);
+  if (text === null) throw new Error(`${path} is not text of at most 1 MiB`);
+  if (portableFileCount(abs, reach.tree) !== count || statSync(abs, { bigint: true }).ctimeNs !== written) {
+    throw new Error(
+      `${path} changed since the review opened, so the recorded tree digest no longer covers it`,
+    );
   }
-  return texts;
+  return text;
+}
+
+/** A directory of the reach, one entry per line, a directory's name ending in a slash. */
+function toolchainListing(reach: ToolchainReach, path: string, rel: string): string {
+  const prefix = rel === "" ? "" : `${rel}/`;
+  const entries = new Set<string>();
+  for (const key of reach.counts.keys()) {
+    if (!key.startsWith(prefix)) continue;
+    const rest = key.slice(prefix.length);
+    const cut = rest.indexOf("/");
+    entries.add(cut === -1 ? rest : rest.slice(0, cut + 1));
+  }
+  if (entries.size === 0) throw new Error(`${path} is no file or directory of the verified tool tree`);
+  const noun = entries.size === 1 ? "entry" : "entries";
+  return `Directory ${path} (${String(entries.size)} ${noun}; a name ending in / is a directory):\n${[...entries].sort(compareCodeUnits).join("\n")}`;
 }
 
 /** One tool-tree file as text, or null for a file too large, binary by its NUL bytes, or not UTF-8. */
@@ -353,7 +381,7 @@ export function readSourceTool(
   inventory: ReadonlySet<string>,
   state: SourceReadState,
   tools: Readonly<Record<string, ToolEntry>>,
-  texts: ReadonlyMap<string, string>,
+  texts: NamedTexts,
 ): ReaderTool {
   const reply = (text: string) => Promise.resolve(readerToolText(text));
   const refuse = (why: string) => {
@@ -415,7 +443,7 @@ export function readSourceTool(
         path: {
           type: "string",
           description:
-            "A path or verifier alias exactly as the inventory lists it; omit to read the next unread page. Each call continues the path, and a completely delivered file returns a note.",
+            "A path or verifier alias exactly as the inventory lists it, or a toolchain: path of the verified tool tree; omit to read the next unread page. Each call continues the path, and a completely delivered file returns a note.",
         },
         reread: {
           type: "boolean",
@@ -434,7 +462,7 @@ export function readSourceTool(
       }
       if (named !== undefined) {
         if (!isString(named)) return refuse("path names an inventory entry, as a string");
-        if (!inventory.has(named)) return refuse(`${named} is not in the inventory`);
+        if (!inventory.has(named) && !texts.has(named)) return refuse(`${named} is not in the inventory`);
         if (state.readChars >= READ_CHARS_TOTAL) return refuse("the review's read budget is spent");
         const read = page(named, reread === true, false);
         return "why" in read ? refuse(read.why) : reply(read.text);

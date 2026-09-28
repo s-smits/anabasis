@@ -655,8 +655,9 @@ the battery was paid for.
    issue, and a dispute keeps the issue counted while withholding the agent advice. Public candidate
    analysis and checks of published limits are legitimate solving support; a tool is an answer shortcut
    only when it makes the solver's remaining decision. While the measured `.toolchain` digest still
-   matches a recorded tool, the reviewer may read its text files (`toolchain:<path>`, at most 100 files,
-   each at most 1 MiB).
+   matches a recorded tool, the reviewer may read any text file of that tree by name (`toolchain:<path>`,
+   installed packages included, each at most 1 MiB) as long as the file still counts as the recorded tree
+   digest took it, and a directory reads as its listing.
 
    An authoring review also reads the bytes of the round's failing blind rehearsals beside their verdict;
    the Builder saw only the verdict, and passing bytes reach it through `context`. It reads the previous

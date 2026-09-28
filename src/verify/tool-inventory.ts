@@ -327,8 +327,24 @@ function linkCount(path: string, toolTree: string, root: string): string {
 }
 
 function treeDigestOf(toolTree: string, side: TreeSide): string {
-  const rows = toolTreeCounts(toolTree, side).map(([rel, count]) => `${rel}\0${count}`);
+  return toolTreeCountsDigest(toolTreeCounts(toolTree, side));
+}
+
+/** The digest of a tree's counts, as `portableToolTreeDigest` takes it from them. */
+export function toolTreeCountsDigest(counts: Iterable<readonly [string, string]>): string {
+  const rows = [...counts].map(([rel, count]) => `${rel}\0${count}`);
   return hashJsonValue(rows.sort(compareCodeUnits));
+}
+
+/** Every entry of a tree by its path, with the count the portable digest takes of it, so a reader
+ *  can hold one file to the count its tree was digested from. */
+export function portableToolTreeCounts(toolTree: string): Map<string, string> {
+  return new Map(toolTreeCounts(toolTree, "portable"));
+}
+
+/** One file's portable count now, to compare with the count in `portableToolTreeCounts`. */
+export function portableFileCount(path: string, toolTree: string): string {
+  return fileCount(path, "portable", realpathSync.native(toolTree));
 }
 
 /** The tree digest this host's session keys its gate cache and no-op strikes on. */

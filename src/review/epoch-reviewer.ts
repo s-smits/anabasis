@@ -63,7 +63,10 @@ import {
   type ReviewVerifierEvidence,
   deliveredSource,
   readSourceTool,
-  toolchainTexts,
+  type ToolchainReach,
+  TOOLCHAIN_PREFIX,
+  namedTexts,
+  toolchainReach,
   reviewCoverage,
   reviewInventory,
   reviewVerifierEvidence,
@@ -563,13 +566,13 @@ function orientation(
     .join("\n");
 }
 
-/** The tool-tree files the review may read, when the recorded tree digest still covers the tree. */
-function toolchainLines(toolchain: ReadonlyMap<string, string>): string[] {
-  if (toolchain.size === 0) return [];
-  return [
-    `Tool-tree text the recorded verifier tree digest covers (${toolchain.size}; installed packages left out), readable by name and outside the coverage this review is held to:`,
-    [...toolchain.keys()].join("\n"),
-  ];
+/** The tool tree the review may read, when the recorded tree digest still covers the tree. */
+function toolchainLines(toolchain: ToolchainReach | null): string[] {
+  return toolchain === null
+    ? []
+    : [
+        `The recorded verifier tree digest covers the tool tree, which lies outside the coverage this review is held to. Every file and directory in it reads by name as ${TOOLCHAIN_PREFIX}<path>, installed packages included, and a directory reads as its listing (${TOOLCHAIN_PREFIX} alone for the top).`,
+      ];
 }
 
 /** Resume a reader that stopped while pages remain, and count the resumption. It resumes only
@@ -732,10 +735,11 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
     ...rehearsed.keys(),
   ]);
   const unread = unreadSourcePrompt(state, sourcePaths);
-  // The tool tree's text is offered beside the source and outside it: not in the coverage the
-  // review is held to, and not among the pages the unread prompt resumes the reader for.
-  const toolchain = toolchainTexts(root, verifier.tools);
-  const readable = new Set([...sourcePaths, ...toolchain.keys()]);
+  // The tool tree is readable beside the source and outside it: not in the coverage the review is
+  // held to, and not among the pages the unread prompt resumes the reader for, so the automatic
+  // scan reads none of it: every tree file is read by name.
+  const toolchain = toolchainReach(root, verifier.tools);
+  const readable = new Set(sourcePaths);
   // The task ids a finding may not name, since a finding is about a family and a claim pinned to
   // one task cannot direct an authoring pass. A measured battery supplies them; at an authoring
   // checkpoint they come from the draft's own task file, and a partial draft still gets a reading.
@@ -762,7 +766,7 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
       repoRoot: input.repoRoot,
       role: "epoch-reviewer",
       tools: [
-        readSourceTool(root, readable, state, verifier.tools, new Map([...rehearsed, ...toolchain])),
+        readSourceTool(root, readable, state, verifier.tools, namedTexts(rehearsed, toolchain)),
         probe.tool,
         recordFindingTool(
           issues,

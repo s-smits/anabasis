@@ -94,8 +94,14 @@ export type WallsReport = ReturnType<typeof buildWalls>;
 const share = (used: number, wall: number): number | null =>
   wall > 0 ? Math.round((used / wall) * 1000) / 1000 : null;
 const minutes = (ms: number): number => Math.round(ms / 600) / 100;
-const median = (values: readonly number[]): number | null =>
-  values.length === 0 ? null : ([...values].sort((a, b) => a - b)[Math.floor(values.length / 2)] ?? null);
+// An even count averages its two middle values, so a battery of six is not read at its fourth case.
+function median(values: readonly number[]): number | null {
+  if (values.length === 0) return null;
+  const sorted = values.toSorted((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  const upper = sorted[middle] ?? 0;
+  return sorted.length % 2 === 1 ? upper : ((sorted[middle - 1] ?? 0) + upper) / 2;
+}
 
 /** Every case row the campaign recorded, grouped by the battery that ran it, through the strict reader. */
 function caseRows(campaign: string): Map<string, CaseRecordRow[]> {

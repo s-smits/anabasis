@@ -158,6 +158,8 @@ describe("solve budget against the declared walls", () => {
     expect(battery.boundedWithoutPass).toEqual(["at-wall", "turns"]);
     // Tool calls, not a turn share: one turn of twenty-four is what an uninterrupted solve records.
     expect(battery.toolCalls).toEqual({ median: 3, max: 12 });
+    // Six shares, so the median is the mean of the third and fourth (0.15 and 0.333), not the fourth.
+    expect(battery.time.median).toBeCloseTo(0.2415, 6);
     const text: string = renderWalls(report);
     expect(text).toContain("moved from the seeded default: solveMs 7200000 to 3600000, maxTurns 24 to 4");
     expect(text).toContain("tool calls: median 3, max 12");

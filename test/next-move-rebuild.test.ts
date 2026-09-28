@@ -1,7 +1,7 @@
 /**
  * The next move after a measured round. The host admits the round and the Builder chooses what
  * changes in it, so the host has two answers only: a blocking environment row stops, and everything
- * else reopens the adopted product, however long an off-aim streak has run.
+ * else reopens the adopted product, however many rounds have been measured.
  *
  * The on-disk cases hold the reopen key: steady when the checkout moves, different when the
  * adopted product is another retained version.
@@ -18,7 +18,7 @@ import { EvidenceLog } from "../src/claim/evidence-log.ts";
 import { claimsDirFor } from "../src/run/claim-write.ts";
 import { BATTERY_SIZE } from "../src/run/battery-sizing.ts";
 import { decideNextMove, selectNextMoveFromDisk } from "../src/run/next-move.ts";
-import type { ClimbReadout, OffAimAllowance } from "../src/run/climb-readout.ts";
+import { type ClimbReadout, renderReadout } from "../src/run/climb-readout.ts";
 import { ControllerLedger } from "../src/run/controller-ledger.ts";
 import { FEEDBACK_POLICY } from "../src/analyse/iteration-analysis.ts";
 import { SHIPPING_VARIANT } from "../src/run/run-driver.ts";
@@ -35,40 +35,31 @@ const rows = (severity: CampaignFeedback["severity"], ...owners: FeedbackOwner[]
     evidence: `campaigns/${SLUG}/analysis/r1.json`,
   }));
 
-/** A readout whose streak ran `placed` rounds on `side` of the aim with `refused` claim-refused
- *  rounds inside it. The walk that builds a streak from recorded batteries is climb-history's. */
-function streak(
-  placed: number,
-  side: OffAimAllowance["side"] = "above",
-  refused = 0,
-  excluded = refused,
-): ClimbReadout {
+/** A readout of `admitted` placed rounds and `excluded` claim-refused ones. */
+function measured(admitted: number, excluded = 0): ClimbReadout {
   return {
     band: [0.2, 0.5],
     decision: { placement: null, rationale: "fixture", evidence: [] },
-    admitted: placed,
+    admitted,
     excluded: Array.from({ length: excluded }, (_, i) => ({
       runId: `r${String(i)}`,
       reason: "claim refused",
       claimRefused: true,
     })),
     rows: [],
-    allowance:
-      placed === 0 ? null : { rounds: placed + refused, placed, refused, side, products: 1, sameSchema: 0 },
   };
 }
 
-describe("an off-aim streak", () => {
-  it("leaves the round to the Builder however long the streak has run, on either side", () => {
-    expect(decideNextMove("adopted", [], streak(3))).toMatchObject({ move: "rebuild", seed: "adopted" });
-    expect(decideNextMove("adopted", [], streak(3, "below")).move).toBe("rebuild");
-    expect(decideNextMove("adopted", [], streak(1, "above", 2)).move).toBe("rebuild");
+describe("a measured round", () => {
+  it("leaves the round to the Builder however many rounds have been measured", () => {
+    expect(decideNextMove("adopted", [], measured(3))).toMatchObject({ move: "rebuild", seed: "adopted" });
+    expect(decideNextMove("adopted", [], measured(1, 2)).move).toBe("rebuild");
     // Refusals with no placement still count as an observed round: a rebuild, not a first measurement.
-    expect(decideNextMove("adopted", [], streak(0, "above", 0, 5)).move).toBe("rebuild");
+    expect(decideNextMove("adopted", [], measured(0, 5)).move).toBe("rebuild");
   });
 
-  it("stops on a blocking environment row whatever the streak", () => {
-    const blocked = decideNextMove("adopted", rows("blocking", "environment"), streak(3));
+  it("stops on a blocking environment row", () => {
+    const blocked = decideNextMove("adopted", rows("blocking", "environment"), measured(3));
     expect(blocked.move).toBe("stop");
     expect(blocked.reason).toContain("environment outside the product");
   });
@@ -98,7 +89,7 @@ describe("a battery the environment cut short", () => {
   const remeasure = { of: "r1", taskIds: ["t4", "t5"] };
 
   it("is measured again in place of a rebuild, carrying the cases it solves again", () => {
-    const move = decideNextMove("adopted", rows("advisory", "environment"), streak(1), false, remeasure);
+    const move = decideNextMove("adopted", rows("advisory", "environment"), measured(1), false, remeasure);
     expect(move).toMatchObject({ move: "measure", remeasure });
     expect(move.reason).toContain("rerun them without changing the harness");
   });
@@ -107,12 +98,12 @@ describe("a battery the environment cut short", () => {
     const blocked = decideNextMove(
       "adopted",
       rows("blocking", "correctness-model/tasks.json"),
-      streak(1),
+      measured(1),
       false,
       remeasure,
     );
     expect(blocked.move).toBe("rebuild");
-    expect(decideNextMove("adopted", [], streak(1), true, remeasure).move).toBe("rebuild");
+    expect(decideNextMove("adopted", [], measured(1), true, remeasure).move).toBe("rebuild");
   });
 });
 
@@ -172,11 +163,16 @@ function writeBlockingTests(root: string, runId: string): void {
   );
 }
 
-const selectAs = (root: string, runId: string, domainDir = join(root, "domains", SLUG)) =>
+const selectAs = (
+  root: string,
+  runId: string,
+  domainDir = join(root, "domains", SLUG),
+  kickoff = "design a steel truss bridge",
+) =>
   selectNextMoveFromDisk({
     repoRoot: root,
     manifest: { slug: SLUG, domain: SLUG, expectedTasks: BATTERY_SIZE.default },
-    baseKickoff: "design a steel truss bridge",
+    baseKickoff: kickoff,
     runPin: pinOf(root),
     runId,
     domainDir,
@@ -208,5 +204,24 @@ describe("the next move on disk", () => {
     const open = selectAs(root, "round-1").decision;
     expect(open).toMatchObject({ move: "rebuild", seed: "adopted" });
     expect(open.reason).toContain("Builder");
+  });
+
+  /** The pass is measurement identity: the adopted product, the admission and the readout's
+   *  recorded facts. A readout sentence reworded, or a kickoff changed, must not reach it; the
+   *  kickoff opens its own epoch through the binding's `kickoffHash` instead (campaign-epoch). */
+  it("keys the pass on recorded facts, never on the readout's sentences or the kickoff", () => {
+    const root = scratchRepo();
+    writeBlockingTests(root, "base");
+    sealSaturatedBattery(root, "saturated-1", "2026-08-10T01:00:00Z");
+    const selected = selectAs(root, "round-1");
+    const recorded = JSON.stringify(selected.readout);
+    const sentences = renderReadout(selected.readout, "reason")
+      .split("\n\n")
+      .slice(1)
+      .filter((part) => !part.startsWith("|"));
+    expect(sentences.length).toBeGreaterThan(2);
+    for (const sentence of sentences) expect(recorded).not.toContain(sentence);
+    const other = selectAs(root, "round-2", join(root, "domains", SLUG), "design a timber roof truss");
+    expect(other.decision.reopenKey).toBe(selected.decision.reopenKey);
   });
 });

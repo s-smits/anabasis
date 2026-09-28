@@ -92,15 +92,9 @@ function readIteration(file: string): IterationEvidence {
     throw new Error(`${file}: completed iteration has no feedback array`);
   }
   // `stampSubmissionCondition` stamps every record before its one writer writes it.
-  const { submissionConditionId, candidateConditionId } = evidence;
+  const { submissionConditionId } = evidence;
   if (!isString(submissionConditionId) || submissionConditionId.length === 0) {
     throw new Error(`${file}: completed iteration states no submission condition`);
-  }
-  if (
-    candidateConditionId !== undefined &&
-    (!isString(candidateConditionId) || candidateConditionId.length === 0)
-  ) {
-    throw new Error(`${file}: completed iteration has an invalid submission condition`);
   }
   return evidence;
 }
@@ -135,7 +129,7 @@ function replay(dirs: string[]): CampaignMemory {
     memory.unchangedCandidateCommits = countUnchanged(memory.unchangedCandidateCommits, evidence);
     // Only a blocked pass moves the blocked-candidate streak; a fingerprinted one leaves it be.
     if (evidence.outcome !== "gates-blocked") continue;
-    const candidateId = evidence.candidateConditionId ?? evidence.submissionConditionId ?? null;
+    const candidateId = evidence.submissionConditionId ?? null;
     memory.lastBlockedCandidateStrikes =
       candidateId !== null && candidateId === memory.lastBlockedCandidateId
         ? memory.lastBlockedCandidateStrikes + 1

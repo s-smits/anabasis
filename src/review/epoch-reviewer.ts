@@ -38,13 +38,13 @@ import {
   blockingLine,
   diagnosisLine,
 } from "../author/rebuild-advice.ts";
-import type { ExperimentSubmission, RehearsalRow } from "../author/experiment-plan.ts";
+import { NO_PLAN, type RoundPlan } from "../author/experiment-plan.ts";
+import type { RehearsalRow } from "../builder/harness-trial.ts";
 import { familyTally } from "../claim/case-record.ts";
 import { FROZEN_MANIFEST_PATH } from "../critic/manifest.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { claimsDirFor } from "../run/claim-write.ts";
-import { type ClimbReadout, readClimbReadout } from "../run/climb-readout.ts";
-import { FRAME, fill } from "../run/climb-readout-frame.ts";
+import { type ClimbReadout, readClimbReadout, readingSentence } from "../run/climb-readout.ts";
 import { selectedProductDir } from "../run/product-versions.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { keyIfDefined, keysIf } from "../meta/optional-key.ts";
@@ -101,10 +101,10 @@ export interface EpochReviewInput {
    *  and null leaves the comparison unmade rather than guessing; `whoseBattery` words all three, so
    *  that a null cannot fall through to the confident sentence and assert what it withholds. */
   priorAdviceOnSeededTree?: boolean | null;
-  /** The round's `EXPERIMENT.json`: at a checkpoint the plan the workspace holds now, beside a
-   *  measured battery the plan recorded with it. Null states that there is none; left out, the
-   *  orientation says the same, because a caller that has no plan to hand has none to show. */
-  experiment?: ExperimentSubmission | null;
+  /** The round's `EXPERIMENT.json` and the families its bytes changed: at a checkpoint the plan the
+   *  workspace holds now, beside a measured battery the plan recorded with it. Left out, the
+   *  orientation says there is none, because a caller with no plan to hand has none to show. */
+  roundPlan?: RoundPlan;
   /** Verifier passes the Main Judge failed with a citation; each must be settled. Empty at an
    *  authoring checkpoint and for batteries reviewed without a Judge. */
   vetoed?: readonly ContestedCase[];
@@ -409,7 +409,7 @@ function checkpointLines(input: EpochReviewInput): string[] {
  * that this is eight passing cases above the top of the aim, which is the shape design prior 10
  * exists to catch. The climb readout already owns that reading for the author, and `placeOnBand`
  * already placed each of its rows, so the review takes the readout's own row for the battery and
- * renders it through the same `FRAME` line the author reads. Placing or wording it here would be a
+ * renders it through the same `readingSentence` the author reads. Placing or wording it here would be a
  * second standard: one battery could then reach the author as on the aim and the reviewer as
  * significantly too easy.
  *
@@ -455,23 +455,12 @@ function aimLine(
     const decided = readout.decision.evidence.at(-1)?.runId === runId;
     return unplaced(
       decided
-        ? fill(FRAME.readout.unplaced, { rationale: readout.decision.rationale })
+        ? `Reading: ${readout.decision.rationale}.`
         : "Aim: the climb readout placed no zone for this battery; read the counts alone.",
     );
   }
-  const reading = fill(FRAME.readout.reading, {
-    population: deciding.population,
-    passes: deciding.passes,
-    n: deciding.n,
-    wlo: wilson[0].toFixed(3),
-    whi: wilson[1].toFixed(3),
-    blo: readout.band[0],
-    bhi: readout.band[1],
-    lo: aim[0],
-    hi: aim[1],
-    zone: FRAME.zoneWords[zone],
-  });
-  return { text: `${reading}${lead(toAim)}`, toAim };
+  const reading = readingSentence({ deciding, wilson, aim, zone }, readout.band);
+  return { text: `${reading ?? ""}${lead(toAim)}`, toAim };
 }
 
 /**
@@ -491,7 +480,7 @@ function aimLine(
  * first probe goes to the check the orientation lists first under verified failures, the one that
  * blocked the most: a check reading narrower than its published rule fails valid work and reads
  * exactly like difficulty from the counts. That instruction is the reviewer's own, which is why it
- * is not the author's ladder pointer from `FRAME`.
+ * is the reviewer's alone.
  */
 function lead(toAim: number): string {
   if (toAim === 0) return "";
@@ -544,7 +533,7 @@ function orientation(
           measured.aim,
           ...measured.earlier,
         ]),
-    ...roundPlanLines(input.experiment ?? null, analysis),
+    ...roundPlanLines(input.roundPlan ?? NO_PLAN, analysis),
     ...contestedLines(input),
     ...rehearsalLines(input.rehearsals ?? []),
     ...demonstrationLines(input.demonstrations ?? []),

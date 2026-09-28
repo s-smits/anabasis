@@ -88,7 +88,7 @@ function opening(root: string, runId: string, writtenAt?: string): string {
 function terminal(root: string, runId: string, writtenAt: string): void {
   writeFileSync(
     join(opening(root, runId), "terminal.json"),
-    JSON.stringify({ schema: "campaign-terminal/v4", outcome: "completed", writtenAt }),
+    JSON.stringify({ schema: "campaign-terminal/v5", outcome: "completed", writtenAt }),
   );
 }
 
@@ -443,7 +443,7 @@ describe("what the reader derives", () => {
     const { epochDir } = campaign();
     const refused = {
       outcome: "refused" as const,
-      stage: "validation" as const,
+      stage: "gates" as const,
       findingsDigest: "d",
       findingCodes: ["missing-check"],
     };

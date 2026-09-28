@@ -19,7 +19,6 @@ import {
   readableFingerprint,
 } from "../run/experiment-freeze.ts";
 import { compilePublicArtifactSchema } from "../solve/public-artifact-schema.ts";
-import type { ContractFinding } from "../correctness-bundle/brief.ts";
 import { isControlCorpus } from "../correctness-bundle/controls.ts";
 import { CONTROLS_FILE } from "../meta/bundle-layout.ts";
 
@@ -133,10 +132,4 @@ export function experimentOperation(
     moved,
     ...keyIfDefined("correctnessModelChangedFiles", changedFiles.length > 0 ? changedFiles : undefined),
   };
-}
-
-/** Every admission finding on this candidate: an EXPERIMENT.json that could not be captured. It is
- *  reported beside the executed stages, never in place of them. */
-export function admissionFindings(candidate: CandidateSnapshot): ContractFinding[] {
-  return candidate.proposalFindings ?? [];
 }

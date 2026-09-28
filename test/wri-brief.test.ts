@@ -68,7 +68,7 @@ function campaignWith(rows: CaseRecordRow[], { epochs = 1, terminal = false } = 
     writeFileSync(
       join(controller, "terminal.json"),
       json({
-        schema: "campaign-terminal/v4",
+        schema: "campaign-terminal/v5",
         writtenAt: "2026-09-19T03:00:00.000Z",
         source: opening.source,
         budget: BUDGET,
@@ -315,7 +315,8 @@ describe("what the read said", () => {
 
   it("maps each digest trigger to the lanes the catalogue starts from it, and names the launch spec", () => {
     expect(lanesForTrigger("OFF-AIM STREAK (lane 10)")).toEqual([10]);
-    expect(lanesForTrigger("TARGET MISSED (lane 10)")).toEqual([10]);
+    // The plan declares no target, so no target trigger maps anywhere.
+    expect(lanesForTrigger("TARGET MISSED (lane 10)")).toEqual([]);
     expect(lanesForTrigger("REPEATED CONDITION (lane 20)")).toEqual([20]);
     expect(lanesForTrigger("MEMORY OVER READ CAP (lane 26)")).toEqual([26]);
     // The one unsuffixed trigger argues for two lanes, and a qualifier after its text still matches.

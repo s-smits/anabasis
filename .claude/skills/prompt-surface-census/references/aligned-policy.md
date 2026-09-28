@@ -24,11 +24,10 @@ thing to correct.
 | review clock and hold | `REVIEW_INTERVAL_MS` (`src/gate/review-clock.ts`), `READER_DEADLINE_MS` (`src/review/review-reader.ts`) | a review after 40 min without one; a held submit waits at most 1 h |
 | Epoch Reviewer probes | `PROBE_BUDGET`, `VALUE_MAX_CHARS` (`src/review/review-probe.ts`) | 8 probes per review, replacement values up to 4,000 characters |
 
-The model-visible difficulty surface is `renderBatteryContract` (`src/run/climb-readout.ts`),
-whose every sentence is a line of `FRAME` (`src/run/climb-readout-frame.ts`). It derives the first
-battery's count, the no-limit count and the aim from the band it is passed, so a band change
-rewrites the sentences with it, and `FRAME_REVISION` records the wording a decision was rendered
-from.
+The model-visible difficulty surface is `renderBatteryContract` (`src/run/climb-readout.ts`). It
+derives the aim and the no-limit count for each size from the band it is passed, so a band change
+rewrites the sentences with it; it states no first-battery count. The readout beside it,
+`renderReadout`, states counts and placements alone, and no revision of its wording is recorded.
 
 ## Retired spellings a census should flag as stale
 

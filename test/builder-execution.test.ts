@@ -22,7 +22,6 @@ import {
 } from "../src/author/builder-execution.ts";
 import { turnEventRecorder } from "../src/author/builder-turn-loop.ts";
 import { isCurrentExecutionRecord } from "../tools/outcome/builder-execution-current.ts";
-import { PLAN_FIELDS } from "./helpers/experiment-plan.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import { executionRecord } from "./helpers/session-execution-record.ts";
 
@@ -36,30 +35,23 @@ const ended = (toolName: string, toolCallId: string, isError = false) =>
   ({ type: "tool_ended", toolName, toolCallId, isError }) as const;
 
 describe("the submission rows", () => {
-  it("retains a captured proposal on refusal, and the reader refuses one whose digest no longer matches", () => {
+  it("retains a captured plan on refusal, and the reader refuses one whose digest no longer matches", () => {
     const recorder = new BuilderExecutionRecorder(Date.now());
-    const proposal = {
-      scope: "product" as const,
-      target: { comparator: "at-least" as const, verifiedPasses: 0 },
-      gap: "Public gap",
-      change: "Proposed repair",
-      ...PLAN_FIELDS,
-      expectedResult: "Next measured result",
-    };
+    const plan = { gap: "Public gap", change: "Proposed repair", expectedPasses: { atLeast: 1, atMost: 3 } };
     recorder.recordSubmit({
       ...refusedSubmit,
       turn: 1,
       stage: "bundle",
       commit: commit("a"),
-      experimentProposal: { ...proposal, digest: hashJsonValue(proposal) },
+      experimentPlan: { ...plan, digest: hashJsonValue(plan) },
     });
     const evidence = recorder.finish("turn-bound");
     expect(isCurrentExecutionRecord(evidence)).toBe(true);
-    expect(evidence.submits[0]?.experimentProposal).toEqual({ ...proposal, digest: hashJsonValue(proposal) });
+    expect(evidence.submits[0]?.experimentPlan).toEqual({ ...plan, digest: hashJsonValue(plan) });
     const altered = structuredClone(evidence);
-    altered.submits[0]!.experimentProposal!.gap = "A different proposal";
+    altered.submits[0]!.experimentPlan!.gap = "A different gap";
     expect(isCurrentExecutionRecord(altered)).toBe(false);
-    delete altered.submits[0]!.experimentProposal;
+    delete altered.submits[0]!.experimentPlan;
     expect(isCurrentExecutionRecord(altered)).toBe(true);
   });
 
@@ -137,7 +129,7 @@ describe("the submission rows", () => {
     recorder.recordSubmit({
       ...refusedSubmit,
       turn: 1,
-      stage: "validation",
+      stage: "bundle",
       commit: "a1b2c3d",
       findings: [{ code: "tasks-self-reported-expectation", path: "tasks", detail: "d" }],
     });

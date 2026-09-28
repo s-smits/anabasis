@@ -39,9 +39,8 @@ import {
 import { join } from "../src/meta/path.ts";
 import { keyIfNotNull, keysIf } from "../src/meta/optional-key.ts";
 import { asRecord, isString, type JsonObject } from "../src/meta/json-shape.ts";
-import { createHarnessTrialTool, verifierView } from "../src/builder/harness-trial.ts";
+import { type RehearsalRow, createHarnessTrialTool, verifierView } from "../src/builder/harness-trial.ts";
 import { RehearsalTraces } from "../src/builder/context-tool.ts";
-import type { RehearsalRow } from "../src/author/experiment-plan.ts";
 import { createBuiltStarter } from "../src/solve/built-starter.ts";
 import { defineDraftTool } from "../src/solve/draft-tool.ts";
 import { type Solver, withSolverBuiltStarterFactory } from "../src/correctness-bundle/solve.ts";
@@ -138,8 +137,6 @@ const PERMITTED_KEY_PATHS: readonly string[] = [
   "solve.nonResult",
   // What the solve spent, as a plain fact: minutes against the wall, tool calls and cost.
   "solve.effort",
-  // Where EXPERIMENT.json and the round's rehearsal verdicts disagree: the verdicts already returned.
-  "planAdvice[]",
   "error",
   // Public identities of the task the caller selected, which the caller authored.
   "task.taskId",
@@ -173,8 +170,6 @@ const PERMITTED_KEY_PATHS: readonly string[] = [
   "validation.round.passed",
   "validation.round.passedInOneTurn",
   "nextAction",
-  // A verdict the round plan does not count, because a preview rejected an accept control.
-  "calibration",
 ];
 
 /** The exact census of a rehearsal that reached a verdict. The union above catches an addition
@@ -435,25 +430,17 @@ describe("what a rehearsal may tell its author about its own answer key", () => 
   }, 60_000);
 });
 
-describe("what a rehearsal hands the round plan", () => {
-  // The plan's evidence and the traces source receive the verdict the result already states and
-  // what the solve spent; a failing solve's trace would show where a check bit, so it stays out.
-  it("records the verdict and effort, returns the plan's advice, and offers only a passing trace and its artifact", async () => {
+describe("what a rehearsal hands the authoring review", () => {
+  // The review and the traces source receive the verdict the result already states and what the
+  // solve spent; a failing solve's trace would show where a check bit, so it stays out.
+  it("records the verdict and effort, and offers only a passing trace and its artifact", async () => {
     const dir = workspace();
     const rehearsals = new RehearsalTraces();
     const rows: RehearsalRow[] = [];
-    const plan = {
-      rehearsals,
-      onRehearsal: (row: RehearsalRow) => {
-        rows.push(row);
-        return { advice: row.verdict === "pass" ? ["Advice: a stand-in line."] : [], counted: true };
-      },
-    };
+    const plan = { rehearsals, onRehearsal: (row: RehearsalRow) => void rows.push(row) };
     const passing = modelVisible(await rehearse(round(dir, assigningSolver(RIGHT_SLOT), true, plan).tool));
-    const failing = modelVisible(await rehearse(round(dir, assigningSolver(WRONG_SLOT), true, plan).tool));
+    await rehearse(round(dir, assigningSolver(WRONG_SLOT), true, plan).tool);
 
-    expect(passing.planAdvice).toEqual(["Advice: a stand-in line."]);
-    expect(failing.planAdvice).toBeUndefined();
     expectWithinCensus(passing);
     expect(rows.map((row) => [row.taskId, row.verdict, row.toolCalls, row.wallMinutes])).toEqual([
       [TASK_ID, "pass", 2, 120],
@@ -463,6 +450,7 @@ describe("what a rehearsal hands the round plan", () => {
       "costUsd",
       "family",
       "minutes",
+      "submitted",
       "taskId",
       "toolCalls",
       "verdict",
@@ -476,19 +464,6 @@ describe("what a rehearsal hands the round plan", () => {
     for (const text of texts) expectNoProtectedDetail(text);
     expect(texts[1]).toContain(RIGHT_SLOT);
     expect(texts.join("\n")).not.toContain(WRONG_SLOT);
-  }, 60_000);
-
-  // The verdict still crosses, but a check program that refused a known-good answer may have decided
-  // it, so the result reads no battery difficulty from it and the round count passes over it.
-  it("reads no difficulty from a verdict the plan does not count", async () => {
-    const plan = { onRehearsal: () => ({ advice: ["Advice: uncounted."], counted: false }) };
-    const failing = modelVisible(
-      await rehearse(round(workspace(), assigningSolver(WRONG_SLOT), true, plan).tool),
-    );
-    expect(failing).toMatchObject({ truth: { verdict: "fail" }, calibration: "uncounted" });
-    expect(failing.validation).toMatchObject({ truthVerdict: "fail", round: { graded: 0, passed: 0 } });
-    expect(failing.nextAction).not.toEqual(expect.stringContaining("scores near"));
-    expect(failing.nextAction).toEqual(expect.stringContaining("rejected one of its own accept controls"));
   }, 60_000);
 });
 
@@ -528,14 +503,21 @@ describe("the four facts that do cross", () => {
     });
   }, 60_000);
 
-  it("says a solve that submitted nothing is unaccepted, and reaches no verdict over bytes that do not exist", async () => {
+  // A measured battery counts an unaccepted attempt towards difficulty, so a rehearsal that ran and
+  // submitted nothing is a fail. The verifier still runs over nothing.
+  it("scores a solve that submitted nothing as an unaccepted fail, without grading bytes that do not exist", async () => {
     const dir = workspace();
-    const body = modelVisible(await rehearse(round(dir, assigningSolver(RIGHT_SLOT, false)).tool));
+    const rows: RehearsalRow[] = [];
+    const plan = { onRehearsal: (row: RehearsalRow) => void rows.push(row) };
+    const body = modelVisible(
+      await rehearse(round(dir, assigningSolver(RIGHT_SLOT, false), true, plan).tool),
+    );
 
     expect(body.status).toBe("unaccepted");
     expect(asRecord(body.solve)?.accepted).toBe(false);
-    expect(body.truth).toEqual({ verdict: "not-run" });
+    expect(body.truth).toEqual({ verdict: "fail" });
     expect(body.verifier).toEqual({ status: "not-run" });
+    expect(rows.map((row) => [row.verdict, row.submitted])).toEqual([["fail", false]]);
     expectWithinCensus(body);
   }, 60_000);
 

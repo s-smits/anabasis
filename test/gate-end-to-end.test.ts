@@ -78,7 +78,6 @@ describe("the submit gate end to end", () => {
     const outcome = await preview("clean");
     expect(status(outcome)).toEqual({
       bundle: "passed",
-      validation: "passed",
       conformance: "passed",
       gates: "passed",
     });
@@ -92,7 +91,6 @@ describe("the submit gate end to end", () => {
     );
     expect(status(outcome)).toEqual({
       bundle: "refused",
-      validation: "not-run",
       conformance: "not-run",
       gates: "not-run",
     });
@@ -116,7 +114,6 @@ describe("the submit gate end to end", () => {
     // The census needs no generated tool, so it still runs; F2 does, so it is left out.
     expect(status(outcome)).toEqual({
       bundle: "passed",
-      validation: "passed",
       conformance: "refused",
       gates: "passed",
     });

@@ -4,6 +4,7 @@ import { join } from "../src/meta/path.ts";
 import { isString } from "../src/meta/json-shape.ts";
 import { hashJsonBytes, parseJsonAs } from "../src/meta/json-runtime.ts";
 import { admitFindings, deriveIterationAnalysis, hostFindings } from "../src/analyse/iteration-analysis.ts";
+import { NO_PLAN } from "../src/author/experiment-plan.ts";
 import { latestRebuildAdvicePath } from "../src/author/rebuild-advice.ts";
 import { loadRepoEnv } from "../src/backends/env.ts";
 import { resolveSlots } from "../src/backends/resolve.ts";
@@ -16,7 +17,6 @@ import { MATCHING_TASKS, scriptedMatchingSolver } from "./helpers/matching-fixtu
 import { builtSession, fullFakeHost, probeEvidence } from "./helpers/measure-doubles.ts";
 import { DRIVER_ID, measure, measureScratch, scaffoldRepo } from "./helpers/measure-repo.ts";
 import { cleanupScratch } from "./helpers/scratch.ts";
-import { PLAN_FIELDS } from "./helpers/experiment-plan.ts";
 import { hashJsonValue } from "../src/meta/stable-json.ts";
 
 /**
@@ -246,19 +246,16 @@ describe("measureHarness", () => {
 
   // The review of a measured battery is shown the plan that battery was measured under, read from
   // the battery's own record rather than from a workspace that may have moved on since. A battery
-  // measured with no plan hands the reviewer null, which it states rather than omits.
+  // measured with no plan hands the reviewer no plan, which it states rather than omits.
   it.concurrent("hands the epoch reviewer the plan recorded with the battery it reads", async () => {
     const repo = scaffoldRepo(join(SCRATCH_ROOT, "analyse-plan"), { toolsSpec: true, conformance: true });
     const processEnv = { HARNESS_BUILT_BACKEND: "codex", CODEX_BUILT_MODEL: "gpt-5.5" };
     const body = {
-      ...PLAN_FIELDS,
-      scope: "product" as const,
       gap: "Every family passes.",
       change: "Couple two published limits.",
-      expectedResult: "At most one pass.",
-      target: { comparator: "at-most" as const, verifiedPasses: 1 },
+      expectedPasses: { atMost: 1 },
     };
-    const proposal = { ...body, digest: hashJsonValue(body) };
+    const plan = { ...body, digest: hashJsonValue(body) };
     const base = {
       repoRoot: repo,
       processEnv,
@@ -271,7 +268,8 @@ describe("measureHarness", () => {
       ...base,
       runId: "m4-plan",
       experimentAuthoring: {
-        proposal,
+        plan,
+        changedFamilies: null,
         operation: { operation: "harness-intervention", moved: ["harness"] },
         actual: "build",
         baseline: { agentHash: "a", correctnessModelHash: "c", taskSetHash: "t" },
@@ -289,7 +287,7 @@ describe("measureHarness", () => {
       await analyseStep(repo, "bridge-truss", runId, measured, {
         resolvedSlots,
         epochReview: async (input) => {
-          shown.set(runId, input.experiment);
+          shown.set(runId, input.roundPlan);
           return {
             schema: EPOCH_REVIEW_SCHEMA,
             slug: "bridge-truss",
@@ -311,8 +309,8 @@ describe("measureHarness", () => {
         },
       });
     }
-    expect(shown.get("m4-plan")).toEqual(proposal);
-    expect(shown.get("m4-noplan")).toBeNull();
+    expect(shown.get("m4-plan")).toEqual({ plan, changedFamilies: null });
+    expect(shown.get("m4-noplan")).toEqual(NO_PLAN);
   });
 
   it.concurrent("drives one battery through measurement and records its claim and case rows", async () => {

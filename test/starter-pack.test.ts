@@ -8,14 +8,7 @@ import { type ControlCorpus, validateControls } from "../src/correctness-bundle/
 import { type BuildTask, validateTasks } from "../src/correctness-bundle/tasks.ts";
 import { validateToolsSpec } from "../src/correctness-bundle/tools-spec.ts";
 import { MATCHING_ACCEPTS, MATCHING_BRIEF, MATCHING_TASKS } from "./helpers/matching-fixture.ts";
-import {
-  STARTER_DOC,
-  STARTER_ENTRY,
-  STARTER_LADDER,
-  brief,
-  fence,
-  fileMapBrief,
-} from "./helpers/starter-contracts.ts";
+import { STARTER_DOC, STARTER_ENTRY, brief, fence, fileMapBrief } from "./helpers/starter-contracts.ts";
 import { EVALUATOR_CALIBRATION_POLICY } from "../src/claim/calibration.ts";
 import { hashJsonBytes, parseJsonAs } from "../src/meta/json-runtime.ts";
 import { STDOUT_MAX_BYTES, createVerifierHost } from "../src/verify/host.ts";
@@ -194,14 +187,6 @@ describe("pi starter pack brief vocabulary", () => {
     );
     expect(text).toContain("Give a configured wrapper the tool's own name in `.toolchain/bin`");
     expect(text).toContain("carries no numpy or scipy you can count on");
-  });
-
-  it.concurrent("the ladder calls the solver walls working conditions, not a difficulty setting", () => {
-    const text = STARTER_LADDER.replace(/\s+/g, " ");
-    expect(text).toContain(
-      "The solver's walls in `agent/config.yaml` are working conditions, not a difficulty setting.",
-    );
-    expect(text).toContain("measures the wall");
   });
 
   it.concurrent("the file-map brief contract passes validateBrief unchanged", () => {

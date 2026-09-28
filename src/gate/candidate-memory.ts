@@ -49,7 +49,7 @@ function authoringStalledFinding(strikes: number) {
   return controllerValidatedFinding({
     code: "authoring-stalled",
     path: "submit",
-    detail: `the same candidate and verifier condition was refused ${strikes + 1} times in a row; proposal or memory edits do not change that condition. The refusal above is final, and the campaign ends here as build-failed`,
+    detail: `the same candidate and verifier condition was refused ${strikes + 1} times in a row; plan or memory edits do not change that condition. The refusal above is final, and the campaign ends here as build-failed`,
   });
 }
 

@@ -321,42 +321,40 @@ catch a too-easy battery before payment could grade only the fast families. Read
 durations in the graded battery's `verifier.json`, and the harness's declared walls. A `not-run`
 whose row reason is a provider allowance is lane 24's. Do not read per-check results, which the
 instrument withholds by design. The decision it changes is whether rehearsal evidence covers the
-families the target is about; it routes to `src/correctness-bundle/solve-case.ts` when the deadline is the
+families the plan is about; it routes to `src/correctness-bundle/solve-case.ts` when the deadline is the
 limit and to `instructions` when the guide sends the solver into work the rehearsal cannot grade.
 
 **10. Difficulty calibration loop.**
 
-Starts from block 4b's `OFF-AIM STREAK (lane 10)` and `TARGET MISSED (lane 10)`, from the
-calibration table the `handoff` lane prints, and from the `climb` lane's edge labels.
+Starts from block 4b's `OFF-AIM STREAK (lane 10)`, from the calibration table the `handoff` lane
+prints, and from the `climb` lane's edge labels.
 
-The question is whether the Builder's prediction gets better round over round. Each accepted
-submit carries an `experimentProposal`, and `EXPERIMENT.json` declares `target{comparator,
-verifiedPasses}`, `families[]` with a level and move each, and per-task `predictions[]`
-(`src/author/experiment-plan.ts`). Each battery's `difficulty-decisions/<runId>-<digest>.json`
-(`difficulty-decision/v7`) records the `ClimbReadout`: `placement.zone`, `aim`, `toAim`, the
-Wilson interval, the target's `result` and `missedBy`, and the `allowance` with its `rounds` and
-`side`. The battery contract's own sentences are `FRAME` in `src/run/climb-readout-frame.ts`, so
-compare per round, in claim `createdAt` order, the counts the Builder was told (first battery,
-no-limit, aim), the comparator and count it declared, and the count it measured, and say whether
-the error closes. A target above the aim is a choice the placement reads as over-aim; a met target
-on an unchanged public task set predicts a repeat, not a harder battery; and a streak counts
-consecutive rounds on one side of the aim, so say which side and whether the
-comparator named it. Do not prescribe the route, which is the Builder's. The decision it changes
-is the next round's comparator; it routes to the Builder prompt when the counts were not stated
-and to `tests` when the task set did not move.
+The question is whether the batteries move towards the aim round over round. Each accepted submit
+records the round's plan, and `EXPERIMENT.json` (`src/author/experiment-plan.ts`) states, each
+field optional, the gap, the change, the families whose tasks the round changes and the verified
+passes it expects. The readout scores it twice: the named families against the families whose
+public tasks changed from the adopted product, and the expected range against the measured count.
+Each battery's `difficulty-decisions/<runId>-<digest>.json` (`difficulty-decision/v9`) records the
+`ClimbReadout`: `placement.zone`, `aim`, `toAim`, the Wilson interval and the plan recorded with
+the battery. So compare per round, in claim `createdAt` order, the counts the battery contract
+states (`renderBatteryContract`: the aim and the no-limit count per size), the passes the plan
+expected, the families it named and changed, and the count it measured. An unchanged public task set predicts a repeat, not a
+harder battery, and a digest streak counts consecutive placements on one side of the aim, so say
+which side. Do not prescribe the route, which is the Builder's. The decision it changes is the
+next round's move; it routes to the Builder prompt when the counts were not stated and to `tests`
+when the task set did not move.
 
 **11. Submit decision against rehearsal evidence.**
 
-Starts from block 6's `SUBMITTED BYTES NEVER REHEARSED (lane 11)` and `REHEARSAL CONTRADICTS
-TARGET (lane 11)`, and from the `yield` lane's `harness-trial` component.
+Starts from block 6's `SUBMITTED BYTES NEVER REHEARSED (lane 11)` and from the `yield` lane's
+`harness-trial` component.
 
 The question is what the Builder did with each rehearsal verdict before it submitted. Each
 `harness_trial` row's `semantic` carries `truthVerdict`, `turns`, `submitted` and `candidateId`,
 and the accepted submit's own `candidateId` is the join: a submit whose candidate no rehearsal
 graded was calibrated from belief, and a Builder whose `MEMORY.md` says the battery is untested
-against the solver has said so itself. A `pass` on the submitted bytes for a task the plan's
-`predictions[]` put at fail, or passes already at an `at-most` count, contradicts the target before
-the battery was paid for. Read the `customCalls[]` and `submits[]` of each `builder-execution*.json`
+against the solver has said so itself. A `pass` on the submitted bytes of every rehearsed task
+says the battery was likely to land above the aim before it was paid for. Read the `customCalls[]` and `submits[]` of each `builder-execution*.json`
 in turn order, the `rehearsals/rehearsal-<n>/` evidence, and `builder-path-record.jsonl` for
 whether the rehearsal traces the `context` tool offers were opened before the proposal was
 written. Do not charge a `not-run` to the Builder, which lane 9 owns. The decision it changes is
@@ -473,7 +471,7 @@ Starts from the census table the `handoff` lane prints, on a run with two or mor
 rounds.
 
 The question is which of the channels one round hands the next were present, served, read back and
-acted on. The channels are the round facts, the climb readout and battery contract (`FRAME`), the
+acted on. The channels are the round facts, the climb readout and battery contract, the
 rebuild advice packet, the Epoch Reviewer's public projection, diagnosis issues, `EXPERIMENT.json`,
 memory notes, the `context` tool, and the solver traces and rehearsals it offers. Read the full
 Builder kickoff in `observability/<runId>.jsonl` (`prompt-ingested`, role `builder`), each epoch's
@@ -540,8 +538,8 @@ decision rows' `operation` from `src/gate/experiment-admission.ts` — `task-pro
 `agentHash`, `correctnessModelHash`, `scoringHash` and `taskSetHash` moved — and the plan's
 declared `scope`. Attribution follows accepted bytes and never the plan's name: a plan declaring
 `tasks` whose bytes moved the evaluator receives build attribution. `adjusted` deliberately states no direction, because a moved limit
-is a climb only when it moves inward, and the difficulty decision's `allowance.sameSchema` counts
-rounds that re-posed the same public schemas under new values. Do not read a new hash, id, family
+is a climb only when it moves inward, and a round that re-posed the same public schemas under new
+values is the `adjusted` edge read round over round. Do not read a new hash, id, family
 name or longer description as a harder problem; the Builder names the public requirement that
 changed and the reasoning interaction it adds, or the change is coverage. The decision it changes
 is the attribution and the refusal of a repeated condition; it routes to `tests`, `controls` and
@@ -701,9 +699,8 @@ ended `repaired-tool-condition` passed on the same bundle after the installed to
 the tool work between the receipts before crediting either side. One that ended
 `cleared-without-edit` refused a submission condition that then passed unchanged, bundle and tools
 alike, so it refused something other than the candidate — most often a timeout charged to the
-author, which rule 15 gives to the environment. `cleared-plan-unrecorded` and
-`bundle-unchanged-condition-unknown` are that shape with one input unrecorded, the plan or the
-tools, so they need the workspace commits or the tool work before they can be read either way. A
+author, which rule 15 gives to the environment. `bundle-unchanged-condition-unknown` is that shape
+with the tools unrecorded, so it needs the tool work before it can be read either way. A
 stall, a hold chain or a ceiling that ended the run is the `pStall` side: say whether the round that
 was stopped had a next move the evidence supported, and what it cost in minutes and rounds. The
 converse matters as much, and no trigger reads it: take each defect this run's batteries, vetoes or
@@ -825,7 +822,8 @@ is no contest with current; the separate `DIFFICULTY.json` session and the diffi
 since there is one authoring path; controller memory curation, since `MEMORY.md` is the Builder's
 own and the cap is a read cap; the cross-harness adapter and the weak-solver baseline, since a
 comparison runs on one shared pack or not at all; the `climb`, `hold-limit` and `ease` actions,
-since `placement.zone` already says where a battery landed; `rungPrediction`, since the plan
-declares one target and per-task `predictions[]`; the saturation ledger, which read fields no
+since `placement.zone` already says where a battery landed; `rungPrediction`, the plan's target
+and its per-task `predictions[]`, the submit hold and the off-aim allowance, since no battery ever
+answered them; the saturation ledger, which read fields no
 difficulty decision carries; and the recurrence reader over the notes archive, since lane 14 reads
 recurrence from the recorded epoch reviews and admissions themselves.

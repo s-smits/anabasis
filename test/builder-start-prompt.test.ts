@@ -16,7 +16,7 @@ import { describe, expect, it } from "bun:test";
 
 import { existsSync, readFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
-import { STARTER_DOC, STARTER_ENTRY, STARTER_LADDER } from "./helpers/starter-contracts.ts";
+import { STARTER_DOC, STARTER_ENTRY } from "./helpers/starter-contracts.ts";
 // The producer's own module. builder-session.ts re-exports the prompt, but a prompt test that names
 // the barrel says the session owns the prompt text.
 import {
@@ -209,9 +209,9 @@ describe("Builder start prompt", () => {
     ]) {
       expect(PROMPT, recipe).not.toContain(recipe);
     }
-    const contract = flat(renderBatteryContract(25));
-    expect(contract).toContain("Author the first battery above what you believe the harness handles");
-    expect(contract).toContain("let your rehearsals rather than your belief confirm");
+    expect(flat(renderBatteryContract(25))).toContain(
+      "only a blind measured battery shows where a battery lands",
+    );
   });
 
   /** A Builder told that "verifier-required" is an available answer reaches for it: it settles
@@ -238,10 +238,9 @@ describe("Builder start prompt", () => {
 
 const STAGES = [
   "1. Bundle contract.",
-  "2. Validation.",
-  "3. Conformance.",
-  "4. Control census.",
-  "5. F2 reference solve.",
+  "2. Conformance.",
+  "3. Control census.",
+  "4. F2 reference solve.",
 ] as const;
 
 describe("STARTER.md gate map", () => {
@@ -259,14 +258,10 @@ describe("STARTER.md gate map", () => {
     }
   });
 
-  /** One direction for the first battery, stated once, and none after it. An entry reading "from
-   *  easy to hard" beside an authoring context reading "above what you believe the harness handles"
-   *  is two owners pointing opposite ways at the decision that sets a campaign's whole climb, and the
-   *  entry is the one read first. The counts belong to the prompt, and the route after a measured
-   *  battery belongs to the Builder. */
-  it("points the first battery at the top tier and prescribes no counts or course", () => {
+  /** The entry states no direction for the first battery and no course after one: the counts
+   *  belong to the round's battery contract, and the route belongs to the Builder. */
+  it("prescribes no direction, counts or course", () => {
     const starter = flat(STARTER_ENTRY);
-    expect(starter).toContain("— **frontier**, where the first battery starts —");
     // A downward direction, a count the prompt owns, or a course after a measured battery.
     for (const stated of [
       "easy to hard",
@@ -310,31 +305,6 @@ describe("STARTER.md gate map", () => {
       );
       expect(codes.length, section.slice(0, 30)).toBeGreaterThanOrEqual(2);
       for (const code of codes) expect(SOURCE_TEXT.includes(`"${code}"`), code).toBe(true);
-    }
-  });
-
-  /** The ladder is the Builder-visible face of the tier scale `query-complexity.ts` classifies a
-   *  measured battery against, so one vocabulary covers authoring and review. Every worked domain
-   *  carries all four tiers and a reporting duty, no measured domain appears, and both sides of the
-   *  aim have a section: with only the above-the-aim one, a battery that passes almost nothing is
-   *  told nothing on the side a first battery is authored to land on. */
-  it("grades every worked domain on all four tiers and answers both sides of the aim", () => {
-    for (const tier of ["easy", "medium", "hard", "frontier"]) {
-      expect(STARTER_LADDER).toContain(`- **${tier}**`);
-    }
-    const domains = [...STARTER_LADDER.matchAll(/^\*\*([^*]+)\*\* —/gm)].map(([, name]) => name ?? "");
-    expect(domains.length).toBeGreaterThanOrEqual(6);
-    for (const domain of domains) {
-      const rows = STARTER_LADDER.split(`**${domain}**`)[1]?.split("\n**")[0] ?? "";
-      for (const tier of ["- easy —", "- medium —", "- hard —", "- frontier —"]) {
-        expect(rows, domain).toContain(tier);
-      }
-      expect(rows, domain).toContain("report");
-    }
-    expect(STARTER_LADDER).not.toMatch(/truss/i);
-    for (const section of ["## When a battery lands below the aim", "## Reading a measured battery"]) {
-      const body = STARTER_LADDER.split(section)[1]?.split("\n## ")[0]?.trim() ?? "";
-      expect(body, section).not.toBe("");
     }
   });
 });

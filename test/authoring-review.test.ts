@@ -24,7 +24,6 @@ import {
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import { double, required, scriptedSession, toolDouble } from "./helpers/doubles.ts";
 import { MATCHING_OPERATING_GUIDE } from "./helpers/matching-fixture.ts";
-import { PLAN_FIELDS } from "./helpers/experiment-plan.ts";
 import { runBuilderCampaign } from "../src/run/builder-campaign.ts";
 import type { BuilderCampaignDeps } from "../src/run/builder-campaign.ts";
 import { readExecutionEvidence } from "../tools/outcome/builder-execution-facts.ts";
@@ -81,7 +80,7 @@ class HeldReviews {
     rehearsals: readonly unknown[],
   ) => {
     const settle = Promise.withResolvers<AuthoringAdvice>();
-    this.calls.push({ root, trigger, gap: plan?.gap ?? null, rehearsals, settle });
+    this.calls.push({ root, trigger, gap: plan.plan?.gap ?? null, rehearsals, settle });
     return settle.promise;
   };
 
@@ -114,14 +113,7 @@ function authorable(workspace: string): void {
   installTool(workspace, "field-engine");
   writeFileSync(
     join(workspace, "EXPERIMENT.json"),
-    JSON.stringify({
-      ...PLAN_FIELDS,
-      scope: "product",
-      gap: GAP,
-      change: "Add pinned joints to the writer.",
-      expectedResult: "More accepted submissions.",
-      target: { comparator: "at-least", verifiedPasses: 1 },
-    }),
+    JSON.stringify({ gap: GAP, change: "Add pinned joints to the writer.", expectedPasses: { atLeast: 1 } }),
   );
 }
 
@@ -430,6 +422,32 @@ describe("the Epoch Reviewer beside an authoring session", () => {
       expect(held.calls).toHaveLength(2);
       expect(held.calls[1]!.rehearsals).toMatchObject([{ ordinal: 1, verdict: "fail", current: false }]);
     });
+  }, 60_000);
+
+  // Submit used to be held while the round's rehearsals passed above the aim or past the plan's
+  // pass-count target. Both are gone: a rehearsal pass is evidence the Builder reads, and submit
+  // judges the bytes as they stand.
+  it("accepts a submit after a rehearsal passed, holding nothing on the plan", async () => {
+    const held = new HeldReviews();
+    const parent = scratchDir(".ana-scratch-review-no-plan-hold-", import.meta.dir);
+    const deps = {
+      builtSolver: () => bindingSolver("s3"),
+      verifierLifetime: createVerifierLifetime({ root: join(parent, ".verifier") }),
+    };
+    const { workspace, run } = campaign("ana-review-no-plan-hold-", held, deps, parent);
+    const outcome = await run(async (tools) => {
+      completeBundle(workspace);
+      const plan = { gap: GAP, change: "c", expectedPasses: { atMost: 0 } };
+      writeFileSync(join(workspace, "EXPERIMENT.json"), JSON.stringify(plan));
+      const trial = JSON.stringify(
+        await namedTool(tools, "harness_trial").execute("rehearse", { taskId: "t1" }),
+      );
+      expect(trial).toContain(String.raw`\"verdict\":\"pass\"`);
+      const result = await promptly(submitTool(tools).execute("submit", {}));
+      expect(result).toContain("Accepted.");
+      expect(result).not.toContain("Nothing was submitted.");
+    });
+    expect(outcome.buildAdmissible).toBe(true);
   }, 60_000);
 
   it("does not review a draft that cannot be frozen, and tries again at the next completed call", async () => {

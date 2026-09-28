@@ -67,11 +67,11 @@ whether the brief and tools publish a sufficient construction algorithm.
 **9. Rehearsal instrument reach.** From `REHEARSAL NOT-RUN`, say which families the rehearsal
 verifier deadline lets the instrument grade at all.
 
-**10. Difficulty calibration loop.** From `OFF-AIM STREAK`, `TARGET MISSED`, the calibration table
-and the climb edges, say whether the Builder's prediction error closes round over round.
+**10. Difficulty calibration loop.** From `OFF-AIM STREAK`, the calibration table and the climb
+edges, say whether the batteries move towards the aim round over round.
 
-**11. Submit decision against rehearsal evidence.** From `SUBMITTED BYTES NEVER REHEARSED` and
-`REHEARSAL CONTRADICTS TARGET`, say what the Builder did with each verdict before submitting.
+**11. Submit decision against rehearsal evidence.** From `SUBMITTED BYTES NEVER REHEARSED`, say
+what the Builder did with each verdict before submitting.
 
 **12. Epoch Reviewer standing duties.** From the `epoch-reviewer` yield rows and a review labelled
 incomplete on the seed, say whether each standing duty fired before a new one is proposed.

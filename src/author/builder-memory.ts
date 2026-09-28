@@ -59,7 +59,7 @@ file records what the next build would otherwise need to learn again.
 ## Known failures and fixes
 
 ## Risk
-<!-- One line: what most threatens the next battery's reading. The round plan view quotes it. -->
+<!-- One line: what most threatens the next battery's reading. -->
 `;
 
 const STARTER_SCRATCHPAD = `# Scratchpad
@@ -166,8 +166,8 @@ function withoutRepeatedSections(text: string): string {
  * newest note goes: most write newest-first or under a title and fixed section headings, so a cut
  * that kept only the tail dropped exactly the note the last pass wrote, while an append-only writer
  * puts it at the end. Two thirds of the budget go to the head and the rest to the tail, so either
- * convention keeps its newest note, and the Risk section the round plan view quotes, which closes
- * the starter layout, stays too.
+ * convention keeps its newest note, and the Risk section, which closes the starter layout, stays
+ * too.
  *
  * The marker sits where the text went and names how many bytes went, so a writer sees that its file
  * was cut instead of meeting a shorter file with no explanation; earlier markers fold into the new

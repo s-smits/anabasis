@@ -4,7 +4,7 @@
 //
 //   lane 17  round hand-off census — per round and per channel, whether the channel's bytes were
 //            present, served in the kickoff prompt, read back through a tool call, and acted on;
-//   lane 10  difficulty calibration — rehearsals, declared target against verified passes, and
+//   lane 10  difficulty calibration — rehearsals, verified passes and the recorded zone, and
 //            whether rehearsal or trace evidence was opened before the battery was authored;
 //   lane 15  triage hand-off — per failing family, what the Epoch Reviewer and the advice packet
 //            said, and which side of the product the successor battery actually moved;
@@ -48,12 +48,12 @@ const PREVIEW = "correctness_check";
 const REPAIR_OPERATION = { harness: "harness-intervention", evaluation: "evaluation-correction" };
 
 /** The tool evidence that counts as opening a channel. */
-export type ReadKind = "history" | "ladder" | "experiment" | "memory" | "context" | "traces";
+export type ReadKind = "history" | "experiment" | "memory" | "context" | "traces";
 
 /** One channel a round can hand the next. */
 export interface Channel {
   name: string;
-  marker: string | RegExp;
+  marker: string;
   read: ReadKind | null;
   alternative: string;
 }
@@ -72,19 +72,12 @@ export const CHANNELS: readonly Channel[] = [
     read: null,
     alternative: "re-serve through an existing harness_inspect mode",
   },
-  // src/run/climb-readout-frame.ts
+  // src/run/climb-readout.ts
   {
     name: "climb-readout",
-    marker: "Climb readout (",
+    marker: "Recorded batteries (controller-derived data",
     read: "history",
     alternative: "harness_inspect history exists; name it where the target is chosen",
-  },
-  // src/run/climb-readout-frame.ts, src/author/domain-repo.ts
-  {
-    name: "ladder",
-    marker: "difficulty-ladder.md",
-    read: "ladder",
-    alternative: "quote the zone's ladder section inside the readout",
   },
   // src/author/rebuild-advice.ts
   {
@@ -93,10 +86,10 @@ export const CHANNELS: readonly Channel[] = [
     read: null,
     alternative: "return the current packet from harness_inspect feedback",
   },
-  // src/author/rebuild-advice.ts (v1 and later renderings)
+  // src/author/rebuild-advice.ts
   {
     name: "diagnosis",
-    marker: /confidence, points at|First failure boundary /,
+    marker: "First failure boundary ",
     read: null,
     alternative: "ride the advice packet's inspect route",
   },
@@ -107,12 +100,12 @@ export const CHANNELS: readonly Channel[] = [
     read: null,
     alternative: "return the latest public projection from harness_inspect feedback",
   },
-  // src/run/climb-readout-frame.ts
+  // src/run/climb-readout.ts planLine, scoring the last round's plan
   {
     name: "experiment",
-    marker: "before preview or submit as {",
+    marker: "Plan: the plan ",
     read: "experiment",
-    alternative: "none: submit already refuses a missing proposal",
+    alternative: "none: every correctness_check already returns the plan's advice",
   },
   // src/author/builder-memory.ts, rendered by roundPrompt in src/author/builder-session.ts for any
   // round opening in a workspace the conversation has not worked in, resumed sessions included
@@ -130,17 +123,16 @@ export const CHANNELS: readonly Channel[] = [
     read: "context",
     alternative: "none when no files were supplied",
   },
-  // src/run/climb-readout-frame.ts
+  // src/run/climb-readout.ts
   {
     name: "traces",
-    marker: "harness_inspect history holds every row",
+    marker: "history source holds every row",
     read: "traces",
     alternative: "an inspect mode summarising the last battery's traces",
   },
 ];
 
 const READ_PATHS = {
-  ladder: /starter-pack\/difficulty-ladder\.md$/,
   experiment: /\/EXPERIMENT\.json$/,
   memory: /\/MEMORY\.md$/,
   traces: /\/(rehearsals|trials|cases)\/|trace/,
@@ -159,28 +151,10 @@ interface ClaimedBattery {
   at: number;
 }
 
-/** The declared target of an accepted experiment proposal. */
-export interface ProposalTarget {
-  comparator: JsonValue;
-  verifiedPasses: number;
-}
-
-/** The experiment proposal an accepted submit recorded, as this reader meets it. */
-interface ExperimentProposal {
-  target?: ProposalTarget | null;
-}
-
-/** A difficulty decision's per-battery prediction score. */
-export interface PredictionScore {
-  expected?: number;
-  observed?: number;
-  brier?: number;
-  scored?: number;
-}
-
-/** The target result a difficulty row recorded. */
-interface RowTarget {
-  result?: JsonValue;
+/** The round plan an accepted submit recorded, as this reader meets it. */
+interface PlanRow {
+  families?: JsonValue;
+  expectedPasses?: JsonValue;
 }
 
 /** One battery's difficulty row, as this reader meets it. */
@@ -191,8 +165,6 @@ interface DecisionRow {
   unaccepted?: number;
   zone?: JsonValue;
   operation?: string | null;
-  target?: RowTarget | null;
-  calibration?: PredictionScore | null;
 }
 
 interface DecisionFile {
@@ -214,7 +186,7 @@ interface CustomCallRow {
 interface SubmitRow {
   outcome?: string;
   atMs?: number;
-  experimentProposal?: ExperimentProposal | null;
+  experimentPlan?: PlanRow | null;
 }
 
 interface ToolCallCounts {
@@ -277,7 +249,7 @@ interface Round {
   sessions: Session[];
   paths: PathHit[];
   prompts: string[];
-  proposal: ExperimentProposal | null;
+  plan: PlanRow | null;
   battery: string | null;
   prior: ClaimedBattery[];
 }
@@ -341,21 +313,14 @@ export interface CalibrationRound {
   battery: string | null;
   rehearsals: number;
   rehearsalVerdicts: JsonValue[];
-  target: ProposalTarget | null;
   passed: number | null;
   verified: number | null;
-  error: number | null;
-  result: JsonValue;
   zone: JsonValue;
   beforeAuthoring: BeforeAuthoring;
-  predictions: PredictionScore | null;
 }
-
-export type ErrorTrend = "insufficient" | "shrinking" | "flat" | "not-shrinking";
 
 export interface Calibration {
   rounds: CalibrationRound[];
-  errorTrend: ErrorTrend;
   onAim: number;
   placed: number;
 }
@@ -637,7 +602,7 @@ function roundsOf(campaign: string, runId: string | null, batteries: readonly Cl
         at: Date.parse(row.at ?? ""),
       })),
       prompts: prompts.get(epoch.key) ?? [],
-      proposal: accepted.at(-1)?.experimentProposal ?? null,
+      plan: accepted.at(-1)?.experimentPlan ?? null,
       battery: battery?.runId ?? null,
       prior: batteries.filter((b) => b.at < start),
     };
@@ -675,8 +640,6 @@ function presentOf(campaign: string, round: Round, name: string): boolean {
     case "round-facts":
     case "context":
       return true;
-    case "ladder":
-      return existsSync(join(round.dir, "workspace", "starter-pack", "difficulty-ladder.md"));
     case "rebuild-advice":
       return records(recordOf(advice)?.issues).length > 0;
     case "diagnosis":
@@ -691,9 +654,10 @@ function presentOf(campaign: string, round: Round, name: string): boolean {
 }
 
 function actedOf(round: Round, name: string): boolean | null {
-  const proposal = recordOf(round.proposal);
-  if (name === "climb-readout") return recordOf(proposal?.target) !== null;
-  if (name === "experiment") return pathHits(round, "write", READ_PATHS.experiment) > 0 && proposal !== null;
+  const plan = recordOf(round.plan);
+  // The readout places each battery on the band, so a plan stating a pass range is the readout acted on.
+  if (name === "climb-readout") return isRecord(plan?.expectedPasses);
+  if (name === "experiment") return pathHits(round, "write", READ_PATHS.experiment) > 0 && plan !== null;
   if (name === "memory") return pathHits(round, "write", READ_PATHS.memory) > 0;
   if (name === "traces") return calls(round, TRIAL).length > 0;
   return null;
@@ -704,8 +668,7 @@ function census(campaign: string, rounds: readonly Round[]): CensusRow[] {
   return rounds.map((round) => {
     const text = round.prompts.join("\n");
     const channels = CHANNELS.map((channel) => {
-      const marker = channel.marker;
-      let served = isString(marker) ? text.includes(marker) : marker.test(text);
+      let served = text.includes(channel.marker);
       if (channel.name === "epoch-review") served ||= round.sessions.some((s) => s.reviews > 0);
       if (channel.name === "traces") served ||= calls(round, TRIAL).length > 0;
       const read = readCount(round, channel.read);
@@ -740,7 +703,7 @@ function census(campaign: string, rounds: readonly Round[]): CensusRow[] {
   });
 }
 
-/** When the round started committing to a battery: its first proposal write, preview or submit. */
+/** When the round started committing to a battery: its first plan write, preview or submit. */
 function authoringMark(round: Round): number {
   const writes = round.paths.filter(
     (row) => row.capability === "write" && READ_PATHS.experiment.test(row.resolved ?? ""),
@@ -752,26 +715,12 @@ function authoringMark(round: Round): number {
   return times.length === 0 ? Infinity : Math.min(...times);
 }
 
-/** Whether the magnitude of the prediction error closes across the rounds that declared a target. */
-function errorTrend(errors: readonly number[]): ErrorTrend {
-  const [first] = errors;
-  const last = errors.at(-1);
-  if (errors.length < 2 || first === undefined || last === undefined) return "insufficient";
-  const closing = errors.every((e, i) => {
-    const previous = errors[i - 1];
-    return previous === undefined || e <= previous;
-  });
-  if (closing && last < first) return "shrinking";
-  return errors.every((e) => e === first) ? "flat" : "not-shrinking";
-}
-
-/** Lane 10: per round, the rehearsals, the declared target against the verified count, and the
+/** Lane 10: per round, the rehearsals, the verified count and the recorded zone, and the
  *  evidence the round opened before it committed to a battery. */
 function calibration(rounds: readonly Round[], rows: ReadonlyMap<string, DecisionRow>): Calibration {
   const out = rounds.map((round) => {
     const row = round.battery === null ? null : (rows.get(round.battery) ?? null);
     const trials = calls(round, TRIAL);
-    const target = recordOf(recordOf(round.proposal)?.target);
     const recordedPassed = row?.passed;
     const recordedVerified = row?.verified;
     const passed = isNumber(recordedPassed) ? recordedPassed : null;
@@ -784,26 +733,19 @@ function calibration(rounds: readonly Round[], rows: ReadonlyMap<string, Decisio
         const semantic = recordOf(c.semantic);
         return semantic === null ? null : (semantic.truthVerdict ?? "not-run");
       }),
-      target:
-        target === null ? null : { comparator: target.comparator, verifiedPasses: target.verifiedPasses },
       passed,
       verified: isNumber(recordedVerified) ? recordedVerified : null,
-      error: target === null || passed === null ? null : passed - target.verifiedPasses,
-      result: recordOf(row?.target)?.result ?? null,
       zone: row?.zone ?? null,
       beforeAuthoring: {
         history: readCount(round, "history", mark),
         rehearsals: trials.filter((c) => c.at !== null && c.at < mark).length,
         traceReads: pathHits(round, "read", READ_PATHS.traces, mark),
       },
-      // The decision row scores the plan's per-task pass probabilities against the verdicts.
-      predictions: recordOf(row?.calibration),
     };
   });
   const placed = [...rows.values()].filter((row) => isString(row.zone));
   return {
     rounds: out,
-    errorTrend: errorTrend(out.flatMap((r) => (r.error === null ? [] : [Math.abs(r.error)]))),
     onAim: placed.filter((row) => row.zone === "on-aim").length,
     placed: placed.length,
   };
@@ -1066,14 +1008,12 @@ function renderCensus(report: ReadHandoffs): string[] {
 function renderCalibration({ calibration: c }: ReadHandoffs): string[] {
   const lines = ["lane 10 difficulty calibration"];
   for (const r of c.rounds) {
-    const target =
-      r.target === null ? "no target" : `${jsonText(r.target.comparator)} ${r.target.verifiedPasses}`;
     const b = r.beforeAuthoring;
     lines.push(
-      `  r${r.round} ${short(r.battery)}: rehearsals ${r.rehearsals} [${jsonText(r.rehearsalVerdicts)}]; ${target} -> ${shown(r.passed)}/${shown(r.verified)} (error ${shown(r.error)}, target ${shown(r.result)}); zone ${shown(r.zone)}; predictions ${r.predictions === null ? "unrecorded" : `expected ${r.predictions.expected} observed ${r.predictions.observed} brier ${r.predictions.brier} over ${r.predictions.scored}`}; before authoring: history ${b.history}, rehearsals ${b.rehearsals}, trace reads ${b.traceReads}`,
+      `  r${r.round} ${short(r.battery)}: rehearsals ${r.rehearsals} [${jsonText(r.rehearsalVerdicts)}]; passed ${shown(r.passed)}/${shown(r.verified)}; zone ${shown(r.zone)}; before authoring: history ${b.history}, rehearsals ${b.rehearsals}, trace reads ${b.traceReads}`,
     );
   }
-  lines.push(`  error trend ${c.errorTrend}; on-aim ${c.onAim} of ${c.placed} placed batteries`);
+  lines.push(`  on-aim ${c.onAim} of ${c.placed} placed batteries`);
   return lines;
 }
 

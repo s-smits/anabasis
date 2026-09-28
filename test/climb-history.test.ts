@@ -1,6 +1,6 @@
 /**
- * The climb-evidence reader: one recorded population, and the climb readout's off-aim allowance
- * read from it on disk.
+ * The climb-evidence reader: one recorded population, and the climb readout read from it on
+ * disk.
  *
  * `admitBattery` decides whether each run directory belongs here at all and names every refusal;
  * `test/climb-battery-admission.test.ts` owns those gates. What is left — and what this file states
@@ -18,7 +18,6 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { type JsonValue, isString } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
-import { hashJsonValue } from "../src/meta/stable-json.ts";
 import { EvidenceLog } from "../src/claim/evidence-log.ts";
 import {
   type AdmittedClimbRow,
@@ -27,8 +26,7 @@ import {
   excludedSummary,
   readClimbBatteries,
 } from "../src/run/climb-history.ts";
-import { type OffAimAllowance, readClimbReadout, renderReadout } from "../src/run/climb-readout.ts";
-import { PLAN_FIELDS } from "./helpers/experiment-plan.ts";
+import { readClimbReadout, renderReadout } from "../src/run/climb-readout.ts";
 import { required } from "./helpers/doubles.ts";
 import { fixtureThresholdDigest } from "./helpers/thresholds.ts";
 
@@ -278,7 +276,6 @@ describe("what one battery contributes to the reading", () => {
         },
       },
     ],
-    ["states no calibration without a bound plan", passes(2), {}, { authoring: { calibration: null } }],
   ])("%s", (_name, cases, overrides, expected) => {
     const tree = tmp();
     writeBattery(tree, "r1", cases, RECORDED_AT, overrides);
@@ -336,41 +333,6 @@ describe("what one battery contributes to the reading", () => {
     expect(battery).not.toHaveProperty("failedTaskIds");
   });
 
-  it("scores the bound plan's predictions against the verdicts", () => {
-    const plan = {
-      ...PLAN_FIELDS,
-      scope: "tasks" as const,
-      gap: "g",
-      change: "c",
-      expectedResult: "r",
-      target: { comparator: "at-most" as const, verifiedPasses: 1 },
-      predictions: [
-        { taskId: "t1", pass: 0.2 },
-        { taskId: "t2", pass: 0.9 },
-        { taskId: "unmeasured", pass: 0.5 },
-      ],
-    };
-    const experimentAuthoring = {
-      proposal: { ...plan, digest: hashJsonValue(plan) },
-      operation: { operation: "task-probe", moved: ["tasks"] },
-      baseline: { agentHash: "agent", correctnessModelHash: "model", taskSetHash: "tasks" },
-      actual: "climb",
-      changedTaskIds: [],
-    };
-    const tree = tmp();
-    const cases = [
-      { taskId: "t1", pass: true },
-      { taskId: "t2", pass: false },
-    ];
-    writeBattery(tree, "r1", cases, RECORDED_AT, { experimentAuthoring });
-    expect(read(tree).admitted[0]?.authoring.calibration).toEqual({
-      scored: 2,
-      brier: 0.725,
-      expected: 1.1,
-      observed: 1,
-    });
-  });
-
   it("reads history across model pins when no pin is stated, keeping each battery's own label", () => {
     const tree = tmp();
     writeBattery(tree, "r1", passes(3), RECORDED_AT, { backendPin: "other/pin" });
@@ -399,7 +361,7 @@ describe("what one battery contributes to the reading", () => {
     const a = rendered("secret-verifier-a");
     expect(rendered("secret-verifier-b")).toBe(a);
     expect(a).not.toContain("secret-verifier");
-    expect(a).toContain("Solve effort by family");
+    expect(a).toContain("Battery r1 passed 1 case;");
   });
 });
 
@@ -446,11 +408,9 @@ describe("the frozen climb thresholds a round reads", () => {
   });
 });
 
-describe("the off-aim allowance, read from recorded batteries", () => {
+describe("the climb readout, read from recorded batteries", () => {
   /** A battery of five, all passing: above the aim of 1 to 2, and significantly so. */
   const above = 5;
-  /** A battery of five passing one: on the aim, which ends a run of misses. */
-  const onAim = 1;
 
   type Round = { passed: number | null; agent?: string | null; inputs?: readonly JsonValue[] };
 
@@ -482,66 +442,7 @@ describe("the off-aim allowance, read from recorded batteries", () => {
   const readout = (tree: string, manifest?: string) =>
     required(readClimbReadout(tree, RUN_PIN, join(tree, "claims"), manifest), "a climb readout");
 
-  const streak = 3;
-  const products = Array.from({ length: streak }, (_, i) => ({ passed: above, agent: `agent-${String(i)}` }));
-  const olderRefusals = [{ passed: null }, { passed: null }, { passed: 2 }, { passed: above }];
-
-  it.each<[string, Round[], Partial<OffAimAllowance>]>([
-    [
-      "counts every trailing miss on one side, and stops at a battery on the aim",
-      [{ passed: above }, { passed: onAim }, { passed: above }, { passed: above }],
-      { rounds: 2, placed: 2, refused: 0, side: "above", products: 1, sameSchema: 0 },
-    ],
-    [
-      "stops where the product crossed the aim, because that is two runs of misses",
-      [{ passed: above }, { passed: above }, { passed: 0 }],
-      { rounds: 1, side: "below" },
-    ],
-    [
-      "counts product identities across the run",
-      [{ passed: above, agent: "agent-old" }, { passed: above }, { passed: above }],
-      { rounds: 3, products: 2 },
-    ],
-    // A null identity never proves sameness.
-    [
-      "counts two unidentified batteries as two products",
-      [
-        { passed: above, agent: null },
-        { passed: above, agent: null },
-      ],
-      { rounds: 2, products: 2 },
-    ],
-    // Refusals behind a battery that then landed on the aim are an earlier story.
-    [
-      "counts a refused round inside the run as one, and none from before it",
-      [
-        { passed: null },
-        { passed: null },
-        { passed: onAim },
-        { passed: above },
-        { passed: null },
-        { passed: above },
-      ],
-      { rounds: 3, placed: 2, refused: 1, side: "above", products: 1, sameSchema: 0 },
-    ],
-    // Reading the campaign-wide exclusion list into the count would start a new run mid-streak.
-    ["does not count refusals older than the run", olderRefusals, { rounds: 1, refused: 0 }],
-    [
-      "counts a refusal beside the run's own miss",
-      [...olderRefusals, { passed: null }],
-      { rounds: 2, placed: 1, refused: 1 },
-    ],
-    [
-      "counts a streak of above-aim rounds, each product identity once",
-      products,
-      { rounds: streak, placed: streak, refused: 0, side: "above", products: streak },
-    ],
-    ["counts one fewer when the oldest product leaves the window", products.slice(1), { rounds: streak - 1 }],
-  ])("%s", (_name, rounds, allowance) => {
-    expect(readout(roundsTree(rounds)).allowance).toMatchObject(allowance);
-  });
-
-  it("reads an unplaced round as the end of the run, since it was not placed off the aim", () => {
+  it("places no battery whose every attempt was refused at submission", () => {
     // Every attempt refused at submission is no difficulty evidence, not a battery below the aim.
     const tree = roundsTree([{ passed: above }, { passed: above }]);
     writeBattery(
@@ -553,46 +454,31 @@ describe("the off-aim allowance, read from recorded batteries", () => {
     const seen = readout(tree);
     expect(seen.decision.placement).toBeNull();
     expect(seen.rows[0]).toMatchObject({ runId: "r9", zone: null });
-    expect(seen.allowance).toBeNull();
   });
 
-  it("names the batteries that posed the latest one's task schemas again, whatever values they published", () => {
-    // Re-tuned published numbers under one set of schemas are not a new exam.
-    const truss = (span: number) => ({ span, load: "snow", bays: [2, 4] });
-    const frame = (storeys: number) => ({ storeys, braced: true });
-    const mixed = (scale: number) => [
-      truss(6 * scale),
-      frame(scale),
-      truss(9 * scale),
-      truss(12 * scale),
-      frame(2),
-    ];
-    // A new mix of the same two kinds, in another order: neither a task count nor an order counts.
-    const remixed = [frame(7), frame(3), truss(90), frame(4), frame(1)];
-    const sentence =
-      "of the batteries placed above the aim before the latest one posed its set of public task schemas";
-    const retuned = readout(
+  // The off-aim streak and its same-schema count, and the calibration of per-task predictions, left
+  // the readout with the plan's target and predictions: a run of batteries above the aim, however
+  // long and however re-tuned, is read through its placements alone.
+  it("states no off-aim streak, schema count or prediction calibration after rounds above the aim", () => {
+    const inputs = (scale: number) => [1, 2, 3, 4, 5].map((span) => ({ span: span * scale, load: "snow" }));
+    const seen = readout(
       roundsTree([
-        { passed: above, inputs: mixed(1) },
-        { passed: above, inputs: mixed(10) },
-        { passed: above, inputs: remixed },
+        { passed: above, inputs: inputs(1) },
+        { passed: above, inputs: inputs(10) },
+        { passed: above, inputs: inputs(100) },
       ]),
     );
-    expect(retuned.allowance).toMatchObject({ rounds: 3, placed: 3, sameSchema: 2 });
-    expect(renderReadout(retuned, "choose the next experiment")).toContain(`2 ${sentence}`);
-    // A new field, or a value of another type, is another question, and the sentence is not printed.
-    const newQuestions = readout(
-      roundsTree([
-        { passed: above, inputs: mixed(1) },
-        { passed: above, inputs: mixed(1).map((input) => ({ ...input, support: "pinned" })) },
-        {
-          passed: above,
-          inputs: mixed(1).map((input) => ("storeys" in input ? { ...input, storeys: "1" } : input)),
-        },
-      ]),
-    );
-    expect(newQuestions.allowance).toMatchObject({ rounds: 3, placed: 3, sameSchema: 0 });
-    expect(renderReadout(newQuestions, "choose the next experiment")).not.toContain(sentence);
+    expect(seen).not.toHaveProperty("allowance");
+    const rendered = renderReadout(seen, "choose the next experiment");
+    expect(rendered).toContain("too-easy");
+    for (const gone of [
+      "Off-aim streak",
+      "posed its set of public task schemas",
+      "Predictions bound to",
+      "Brier",
+    ]) {
+      expect(rendered).not.toContain(gone);
+    }
   });
 
   it("reads the frozen manifest's band, so an override reaches every placement", () => {

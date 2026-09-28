@@ -149,7 +149,7 @@ describe("admission — the gates over the battery's own bytes", () => {
       { experimentAuthoring: { actual: "climb" } },
       RUN_PIN,
       UNSTATED,
-      "malformed or has an unbound proposal digest",
+      "recorded experiment authoring is malformed",
     ],
     [
       "a foreign pin, which is not this condition's history",

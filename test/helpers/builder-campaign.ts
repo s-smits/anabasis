@@ -9,7 +9,6 @@
  *
  * These checks prove routing and recording, not model authoring or solve quality.
  */
-import { PLAN_FIELDS } from "./experiment-plan.ts";
 import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "../../src/meta/filesystem.ts";
 import { join } from "../../src/meta/path.ts";
 import { expect } from "bun:test";
@@ -125,21 +124,13 @@ export function completeBundle(workspace: string): void {
   writeFileSync(join(workspace, "agent/BUILT_AGENTS.md"), MATCHING_OPERATING_GUIDE);
 }
 
-export function proposeExperiment(
+export function writePlan(
   workspace: string,
-  scope: "tasks" | "product" = "product",
   gap = "The previous condition leaves a public capability unmeasured.",
 ) {
-  const proposal = {
-    scope,
-    target: { comparator: "at-least" as const, verifiedPasses: 0 },
-    gap,
-    change: "Revise the public harness condition.",
-    ...PLAN_FIELDS,
-    expectedResult: "The next measurement distinguishes the revised condition.",
-  };
-  writeFileSync(join(workspace, "EXPERIMENT.json"), JSON.stringify(proposal));
-  return { ...proposal, digest: hashJsonValue(proposal) };
+  const plan = { gap, change: "Revise the public harness condition.", expectedPasses: { atMost: 3 } };
+  writeFileSync(join(workspace, "EXPERIMENT.json"), JSON.stringify(plan));
+  return { ...plan, digest: hashJsonValue(plan) };
 }
 
 /** A host over one installed tool the fixture writes itself, so a census test settles on a row the

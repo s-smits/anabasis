@@ -151,17 +151,6 @@ describe("turn-budget steering", () => {
     expect(uncapped).not.toContain("turns remain");
   });
 
-  it("carries the round plan's view between the round's facts and its next action, only when given one", () => {
-    const text = goal({
-      activeTurn: 2,
-      planView: "Round plan (experiment-plan/v2, tasks scope): target at-most 2.",
-    });
-    expect(text).toContain(
-      "This round so far: turn 2, no submit yet.\n\nRound plan (experiment-plan/v2, tasks scope): target at-most 2.\n\nFinish the candidate",
-    );
-    expect(goal({ activeTurn: 2 })).not.toContain("Round plan");
-  });
-
   it("asks for authoring after eight turns or two hours without a submit, and for a batched repair after one", () => {
     expect(goal({ activeTurn: 8 })).toContain("move to authoring now");
     expect(goal({ activeTurn: 7 })).not.toContain("move to authoring now");

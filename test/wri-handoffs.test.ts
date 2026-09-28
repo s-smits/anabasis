@@ -60,9 +60,9 @@ function campaign(options: { toolCalls?: boolean } = {}): string {
     [
       `Work in ${dir}/${epochs[1].key}/workspace`,
       "Task count: 3",
-      "Climb readout (run): read starter-pack/difficulty-ladder.md",
+      "Recorded batteries (controller-derived data, oldest first):",
       "Standing issues, largest first.",
-      "Write EXPERIMENT.json before preview or submit as {...}",
+      "Plan: the plan expects 2–3 verified passes and the battery holds 2: met.",
     ].join("\n"),
   ];
   writeText(
@@ -74,15 +74,15 @@ function campaign(options: { toolCalls?: boolean } = {}): string {
   // Round 1 runs 00:00-01:00 and its accepted submit feeds battery 1, claimed at 01:30.
   // Round 2 runs 02:00-03:00 and feeds battery 2, claimed at 03:30.
   const rounds = [
-    { start: Date.parse("2026-09-19T00:00:00.000Z"), trials: ["fail"], target: null },
-    { start: Date.parse("2026-09-19T02:00:00.000Z"), trials: ["pass", "pass"], target: 1 },
+    { start: Date.parse("2026-09-19T00:00:00.000Z"), trials: ["fail"], planned: false },
+    { start: Date.parse("2026-09-19T02:00:00.000Z"), trials: ["pass", "pass"], planned: true },
   ];
   rounds.forEach((round, index) => {
     const epoch = join(dir, required(epochs[index], "epoch").key);
     const hour = 3_600_000;
     const submit: JsonObject = { outcome: "accepted", atMs: hour - 1_000 };
-    if (round.target !== null) {
-      submit.experimentProposal = { target: { comparator: "at-most", verifiedPasses: round.target } };
+    if (round.planned) {
+      submit.experimentPlan = { families: ["alpha"], expectedPasses: { atLeast: 2, atMost: 3 }, digest: "d" };
     }
     const record: JsonObject = {
       schema: "builder-execution/v6",
@@ -111,18 +111,10 @@ function campaign(options: { toolCalls?: boolean } = {}): string {
         { capability: "read", at: at(1), resolved: `${epoch}/workspace/MEMORY.md` },
         { capability: "write", at: at(50), resolved: `${epoch}/workspace/MEMORY.md` },
         ...(index === 1
-          ? [
-              {
-                capability: "read",
-                at: at(2),
-                resolved: `${epoch}/workspace/starter-pack/difficulty-ladder.md`,
-              },
-              { capability: "write", at: at(20), resolved: `${epoch}/workspace/EXPERIMENT.json` },
-            ]
+          ? [{ capability: "write", at: at(20), resolved: `${epoch}/workspace/EXPERIMENT.json` }]
           : []),
       ]),
     );
-    writeText(join(epoch, "workspace", "starter-pack", "difficulty-ladder.md"), "ladder");
   });
   const claims = [
     { runId: RUN, createdAt: "2026-09-19T01:30:00.000Z" },
@@ -132,18 +124,16 @@ function campaign(options: { toolCalls?: boolean } = {}): string {
     write(join(dir, "claims", `${claim.runId}.json`), { schema: "run-claim/v1", ...claim });
   }
   write(join(dir, "difficulty-decisions", `${SECOND}-x.json`), {
-    schema: "difficulty-decision/v7",
+    schema: "difficulty-decision/v9",
     difficulty: {
       rows: [
-        { runId: RUN, passed: 1, verified: 3, unaccepted: 0, zone: "on-aim", target: null, operation: null },
+        { runId: RUN, passed: 1, verified: 3, unaccepted: 0, zone: "on-aim", operation: null },
         {
           runId: SECOND,
           passed: 3,
           verified: 3,
           unaccepted: 0,
           zone: "too-easy",
-          target: { result: "missed", missedBy: 2 },
-          calibration: { scored: 3, brier: 0.3, expected: 1.2, observed: 3 },
           operation: "evaluation-correction",
         },
       ],
@@ -199,31 +189,27 @@ describe("round hand-offs", () => {
     const second = required(census[1], "second round");
     const cell = (name: string) => second.channels.find((c: { name: string }) => c.name === name);
     expect(cell("rebuild-advice")).toMatchObject({ present: true, served: true, read: null });
-    expect(cell("ladder")).toMatchObject({ served: true, read: 1 });
+    expect(cell("experiment")).toMatchObject({ served: true, acted: true });
     expect(cell("memory")).toMatchObject({ present: true, served: false, read: 1, acted: true });
     expect(cell("climb-readout")).toMatchObject({ served: true, read: 1, acted: true });
     expect(second.servedNotRead.map((u: { name: string }) => u.name)).toContain("rebuild-advice");
-    expect(second.servedNotRead.map((u: { name: string }) => u.name)).not.toContain("ladder");
     // The first round's prompt carries no readout, and its memory note was written, not handed on.
     expect(census[0]?.channels.find((c: { name: string }) => c.name === "climb-readout")?.served).toBe(false);
     expect(second.bashCalls).toBe(6);
   });
 
-  it("reports the calibration error per round and what was opened before the battery was authored", () => {
+  it("reports each round's rehearsals and zone, and what was opened before the battery was authored", () => {
     const calibration = required(report.calibration, "calibration");
-    expect(calibration.rounds[0]).toMatchObject({ battery: RUN, rehearsals: 1, target: null, error: null });
+    expect(calibration.rounds[0]).toMatchObject({ battery: RUN, rehearsals: 1 });
+    expect(calibration.rounds[0]).not.toHaveProperty("target");
     expect(calibration.rounds[1]).toMatchObject({
       battery: SECOND,
       rehearsalVerdicts: ["pass", "pass"],
-      target: { comparator: "at-most", verifiedPasses: 1 },
-      error: 2,
-      result: "missed",
-      // The history call and both trials precede the proposal write twenty minutes into the round.
+      // The history call and both trials precede the plan write twenty minutes into the round.
       beforeAuthoring: { history: 1, rehearsals: 2, traceReads: 0 },
-      predictions: { scored: 3, brier: 0.3, expected: 1.2, observed: 3 },
     });
-    expect(calibration.rounds[0]?.predictions).toBeNull();
-    expect(calibration).toMatchObject({ errorTrend: "insufficient", onAim: 1, placed: 2 });
+    expect(calibration.rounds[1]).not.toHaveProperty("predictions");
+    expect(calibration).toMatchObject({ onAim: 1, placed: 2 });
   });
 
   it("follows a disputed family to an evaluation correction and flags its retirement on names alone", () => {
@@ -277,7 +263,7 @@ describe("round hand-offs", () => {
     const unversioned = campaign();
     write(join(unversioned, "difficulty-decisions", `${SECOND}-x.json`), { difficulty: { rows: [] } });
     expect(() => buildHandoffs({ campaign: unversioned, runId: RUN })).toThrow(
-      `difficulty-decisions/${SECOND}-x.json is not difficulty-decision/v7`,
+      `difficulty-decisions/${SECOND}-x.json is not difficulty-decision/v9`,
     );
   });
 

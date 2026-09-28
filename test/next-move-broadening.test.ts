@@ -1,4 +1,3 @@
-import { PLAN_FIELDS } from "./helpers/experiment-plan.ts";
 import { afterAll, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
@@ -53,7 +52,7 @@ function tasks(prefix: string): BuildTask[] {
 }
 
 /** Record two passing levels through the real evidence writer, then ask the disk selector. Family
- * scope is what this file is about, and test/next-move-rebuild.test.ts owns the off-aim streak. */
+ * scope is what this file is about, and test/next-move-rebuild.test.ts owns the move after a measured round. */
 function saturatedRoot(brief: typeof MATCHING_BRIEF, previous: BuildTask[]): string {
   const root = mkdtempSync(join(tmpdir(), "ana-broaden-scope-"));
   scratch.push(root);
@@ -238,8 +237,8 @@ it("keeps another pin's and another threshold's public tasks readable, outside t
       builder: { kind: "codex", model: "test-model", reasoningEffort: "low" },
     });
   const alone = select();
-  // Two more passing batteries, newer than the run's own: a third same-side round would lengthen
-  // the off-aim streak, so either one entering the readout shows at once.
+  // Two more passing batteries, newer than the run's own: either one entering the readout would
+  // add a row, so it shows at once.
   recordBattery(root, "other-pin", previous, { level: 2, condition: { backendPin: "other-model" } });
   recordBattery(root, "other-thresholds", previous, {
     level: 3,
@@ -250,7 +249,6 @@ it("keeps another pin's and another threshold's public tasks readable, outside t
   expect(selected.decision.move).toBe("rebuild");
   expect(readout.decision).toEqual(required(alone.readout, "the prior readout").decision);
   expect(readout.rows).toEqual(required(alone.readout, "the prior readout").rows);
-  expect(readout.allowance).toEqual(required(alone.readout, "the prior readout").allowance);
   expect(readout.excluded.map((row) => row.runId)).toEqual(["other-pin", "other-thresholds"]);
 
   let pages: unknown[] = [];
@@ -320,15 +318,12 @@ it("carries accepted intent and the host-derived changed subset out of the build
   const acceptedSnapshot = join(root, "accepted");
   for (const dir of [baseline, acceptedSnapshot]) writeMatchingBuildFixture(dir);
   writeFileSync(join(acceptedSnapshot, "correctness-model/tasks.json"), JSON.stringify(tasks("new")));
-  const proposal = {
-    scope: "tasks" as const,
-    target: { comparator: "at-least" as const, verifiedPasses: 0 },
+  const plan = {
     gap: "Coverage was narrow.",
     change: "Author new families.",
-    ...PLAN_FIELDS,
-    expectedResult: "Test coordination.",
+    expectedPasses: { atMost: 12 },
   };
-  const experimentProposal = { ...proposal, digest: hashJsonValue(proposal) };
+  const experimentPlan = { ...plan, digest: hashJsonValue(plan) };
   const result = await runBuildStep(
     double({
       args: {},
@@ -343,7 +338,7 @@ it("carries accepted intent and the host-derived changed subset out of the build
           buildAdmissible: true,
           adopted: true,
           acceptedSnapshot,
-          experimentProposal,
+          experimentPlan,
           experimentScope: { actual: "climb", operation: { operation: "task-probe", moved: ["tasks"] } },
           iterations: [],
         }),
@@ -355,7 +350,7 @@ it("carries accepted intent and the host-derived changed subset out of the build
   );
   expect(result.build).toBe("candidate");
   expect(result.experiment).toBe("climb");
-  expect(result.experimentAuthoring?.proposal).toEqual(experimentProposal);
+  expect(result.experimentAuthoring?.plan).toEqual(experimentPlan);
   expect(result.experimentAuthoring?.changedTaskIds).toEqual(tasks("new").map((task) => task.taskId));
   const fingerprint = fingerprintSlug(baseline);
   if (!fingerprint.ok || fingerprint.taskSetHash === null) throw new Error("fixture baseline refused");

@@ -1,7 +1,6 @@
 /**
- * The run-end numbers: where each battery landed on the band, how far the Builder's own target
- * and predictions were from what it measured and from what its round's trials showed, and how
- * many truth checks ran through a tool that had public packages installed beside it.
+ * The run-end numbers: where each battery landed on the band, how it read against its round's
+ * plan, and how many truth checks ran through a tool that had public packages installed beside it.
  *
  * The controller records them once, in `terminal.json`, from a readout it takes at the close; the
  * outcome report reads that record, and reads the same numbers live from the newest difficulty
@@ -13,37 +12,15 @@ import { existsSync, readdirSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
 import { readJsonFileOrNull } from "../meta/completed-json.ts";
 import { isNumber, isRecord, isString } from "../meta/json-shape.ts";
-import { keyIfDefined, keyIfNotNull } from "../meta/optional-key.ts";
+import { keyIfDefined } from "../meta/optional-key.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
-import { EVIDENCE_SCHEMA, EVIDENCE_STEM, type PredictionScore } from "../author/experiment-plan.ts";
+import { NO_PLAN, planScoreLine } from "../author/experiment-plan.ts";
 import type { ClaimStatement } from "../claim/claim-evidence.ts";
 import type { ClimbReadout } from "./climb-readout.ts";
 import { DIFFICULTY_DECISION_SCHEMA, type DifficultyDecisionEvidence } from "./difficulty-decision.ts";
 
 type ReadoutRow = ClimbReadout["rows"][number];
-
-/** A round's `harness_trial` evidence, joined to the battery by the digest of the plan it
- *  measured. `none` when no trial ran under that exact plan — including a plan edited after its
- *  last trial — `ambiguous` when several rounds rehearsed byte-identical plans, and `refused` when
- *  the plan's evidence is under a schema this reader does not take, which is not the same as none. */
-type TrialsReading =
-  | ({ state: "recorded" } & TrialsFile)
-  | { state: "none" }
-  | { state: "ambiguous"; evidence: string[] }
-  | { state: "refused"; evidence: string[] };
-
-type RefusedTrials = { evidence: string; refused: true };
-
-type TrialsFile = {
-  /** Relative to the campaign. */
-  evidence: string;
-  rehearsals: number;
-  /** Distinct tasks a trial passed, to read against the plan's target. */
-  passedTasks: number;
-  /** The plan's predictions against the trial verdicts, as the controller recorded it. */
-  predictionScore: PredictionScore | null;
-};
 
 type ClimbRunEnd = {
   /** The decision file the rows come from, relative to the campaign, or `terminal` for the
@@ -60,12 +37,9 @@ type ClimbRunEnd = {
     zone: ReadoutRow["zone"];
     passed: number | null;
     verified: number;
-    /** The plan's target read against the verified passes. */
-    target?: NonNullable<ReadoutRow["target"]>;
-    /** The per-task predictions against the verdicts: expected against observed passes. */
-    calibration?: NonNullable<ReadoutRow["calibration"]>;
-    /** Absent when the battery bound no plan. */
-    trials?: TrialsReading;
+    /** The round plan scored against its bytes and the verified count; absent when the battery
+     *  bound no plan or the plan stated neither families nor a range. */
+    plan?: string;
   }>;
 };
 
@@ -100,7 +74,7 @@ export function runEndAtClose(
   try {
     const readout = readClimb?.() ?? null;
     return {
-      climb: readout === null ? null : climbFromReadout(campaignDir, "terminal", readout),
+      climb: readout === null ? null : climbFromReadout("terminal", readout),
       provenance: batteryRunIds.flatMap((runId) => provenanceRunEnd(campaignDir, runId) ?? []),
     };
   } catch (error) {
@@ -121,89 +95,24 @@ export function climbRunEnd(campaignDir: string): ClimbRunEnd | null {
     if (newest === null || seesLater(evidence, newest.evidence)) newest = { file, evidence };
   }
   if (newest === null) return null;
-  return climbFromReadout(campaignDir, join("difficulty-decisions", newest.file), newest.evidence.difficulty);
+  return climbFromReadout(join("difficulty-decisions", newest.file), newest.evidence.difficulty);
 }
 
-function climbFromReadout(campaignDir: string, readFrom: string, readout: ClimbReadout): ClimbRunEnd {
+function climbFromReadout(readFrom: string, readout: ClimbReadout): ClimbRunEnd {
   const { rows, band } = readout;
-  const trials = trialsByPlan(campaignDir);
-  const batteries = rows.toReversed().map((row) => {
-    const digest = row.experiment?.proposal.digest;
-    return {
-      runId: row.runId,
-      zone: row.zone,
-      passed: row.passed,
-      verified: row.verified,
-      ...keyIfNotNull("target", row.target),
-      ...keyIfNotNull("calibration", row.calibration),
-      ...keyIfDefined("trials", digest === undefined ? undefined : trialsReading(trials.get(digest) ?? [])),
-    };
-  });
+  const batteries = rows.toReversed().map((row) => ({
+    runId: row.runId,
+    zone: row.zone,
+    passed: row.passed,
+    verified: row.verified,
+    ...keyIfDefined("plan", planScoreLine(row.experiment ?? NO_PLAN, row.passed) ?? undefined),
+  }));
   return {
     readFrom,
     band,
     onAim: rows.filter((row) => row.zone === "on-aim").length,
     placed: rows.filter((row) => row.zone !== null).length,
     batteries,
-  };
-}
-
-function trialsReading(files: readonly (TrialsFile | RefusedTrials)[]): TrialsReading {
-  const read = files.flatMap((file) => ("refused" in file ? [] : [file]));
-  if (read.length < files.length) {
-    return {
-      state: "refused",
-      evidence: files.flatMap((file) => ("refused" in file ? [file.evidence] : [])).sort(),
-    };
-  }
-  const [only] = read;
-  if (only === undefined) return { state: "none" };
-  if (read.length > 1) return { state: "ambiguous", evidence: read.map((file) => file.evidence).sort() };
-  return { state: "recorded", ...only };
-}
-
-/** Every round's trial evidence in the campaign, keyed by the plan digest it was last scored
- *  against. A round writes its file under its own epoch, so the walk covers each epoch's
- *  `rehearsals/`, reads the one schema the controller writes and names any other as refused. */
-function trialsByPlan(campaignDir: string): Map<string, (TrialsFile | RefusedTrials)[]> {
-  const byPlan = new Map<string, (TrialsFile | RefusedTrials)[]>();
-  const epochs = existsSync(campaignDir)
-    ? readdirSync(campaignDir).filter((name) => name.startsWith("epoch-"))
-    : [];
-  for (const epoch of epochs) {
-    const dir = join(campaignDir, epoch, "rehearsals");
-    if (!existsSync(dir)) continue;
-    for (const name of readdirSync(dir)) {
-      if (!name.startsWith(EVIDENCE_STEM) || !name.endsWith(".json")) continue;
-      const evidence = join(epoch, "rehearsals", name);
-      const read = readTrials(join(campaignDir, evidence));
-      if (read === null) continue;
-      byPlan.set(read.planDigest, [...(byPlan.get(read.planDigest) ?? []), { evidence, ...read.facts }]);
-    }
-  }
-  return byPlan;
-}
-
-function readTrials(
-  path: string,
-): { planDigest: string; facts: Omit<TrialsFile, "evidence"> | { refused: true } } | null {
-  const parsed = readJsonFileOrNull(path);
-  if (!isRecord(parsed) || !isString(parsed.planDigest)) return null;
-  if (parsed.schema !== EVIDENCE_SCHEMA) return { planDigest: parsed.planDigest, facts: { refused: true } };
-  if (!Array.isArray(parsed.rehearsals)) return null;
-  const passed = parsed.rehearsals.flatMap((row) =>
-    isRecord(row) && row.verdict === "pass" && isString(row.taskId) ? [row.taskId] : [],
-  );
-  const score = parsed.predictionScore;
-  return {
-    planDigest: parsed.planDigest,
-    facts: {
-      rehearsals: parsed.rehearsals.length,
-      passedTasks: new Set(passed).size,
-      predictionScore: isRecord(score)
-        ? /* SAFETY: the one schema PlanEvidence writes, whose score is predictionScore()'s result. */ (score as PredictionScore)
-        : null,
-    },
   };
 }
 
@@ -215,6 +124,9 @@ function seesLater(candidate: DifficultyDecisionEvidence, current: DifficultyDec
   return order > 0 || (order === 0 && candidate.difficulty.rows.length > current.difficulty.rows.length);
 }
 
+/** A decision under the current schema, or null. A continued project keeps the decisions its
+ *  earlier runs wrote under older schemas, which belong to those runs and not to the live reading,
+ *  so they are passed over; a campaign holding none under this one reads as climb unavailable. */
 function readDecision(path: string): DifficultyDecisionEvidence | null {
   const parsed = readJsonFileOrNull(path);
   if (!isRecord(parsed) || parsed.schema !== DIFFICULTY_DECISION_SCHEMA) return null;

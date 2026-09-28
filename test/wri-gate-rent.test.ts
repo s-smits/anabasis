@@ -320,14 +320,6 @@ describe("gate-rent episodes", () => {
     expect(triggerNames(report)).toContain("GATE CLEARED WITHOUT EDIT (lane 27)");
   });
 
-  it("never calls a plan refusal cleared without edit, because the condition does not cover the plan", () => {
-    const report = buildGateRent({
-      campaign: campaign([[refusal("c1", "validation:experiment-proposal-shape"), edit(), clear("c1")]]),
-    });
-    expect(report.episodes[0]).toMatchObject({ answer: "cleared-plan-unrecorded", edits: 1 });
-    expect(triggerNames(report)).not.toContain("GATE CLEARED WITHOUT EDIT (lane 27)");
-  });
-
   it("says the tool condition is unknown where the receipts recorded the bytes alone", () => {
     const report = buildGateRent({
       campaign: campaign([

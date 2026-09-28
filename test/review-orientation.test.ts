@@ -10,7 +10,7 @@ import { mkdirSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 import type { IterationAnalysis } from "../src/analyse/iteration-analysis.ts";
 import type { AdviceIssue, RebuildAdvicePacket } from "../src/author/rebuild-advice.ts";
-import type { ExperimentSubmission } from "../src/author/experiment-plan.ts";
+import { NO_PLAN, type RecordedPlan, type RoundPlan } from "../src/author/experiment-plan.ts";
 import { hashJsonValue } from "../src/meta/stable-json.ts";
 import { BEAMS, JOINTS, READING, issue } from "./helpers/review-fixtures.ts";
 import { EvidenceLog } from "../src/claim/evidence-log.ts";
@@ -212,7 +212,7 @@ describe("the epoch reviewer's orientation", () => {
     expect(prompt).not.toContain("start from the first one listed");
   });
 
-  /** The placement sentence is the author's own `FRAME` line, filled from the readout row, so the
+  /** The placement sentence is the author's own `readingSentence`, filled from the readout row, so the
    *  reviewer and the author cannot be told two different things about one battery. The lead is the
    *  question the placement opens, and the two sides do not open the same one.
    *  Both sides used to receive the question written for the side above the aim: a review of a
@@ -221,7 +221,7 @@ describe("the epoch reviewer's orientation", () => {
    *  and nowhere else, since the Builder never sees a verifier verdict. */
   for (const [zone, passed, placement] of [
     ["under-aim", 2, "aim 5 to 12 of 25): in range, below the aim."],
-    ["too-hard", 0, "target range [0.2, 0.5], aim 5 to 12 of 25): significantly too hard."],
+    ["too-hard", 0, "band [0.2, 0.5], aim 5 to 12 of 25): significantly too hard."],
   ] as const) {
     it(`places a ${zone} battery and asks what else fails every task before it calls the tasks hard`, async () => {
       const prompt = await shown(battery(passed, 25));
@@ -249,7 +249,7 @@ describe("the epoch reviewer's orientation", () => {
     // aimCounts(1, [0.2, 0.5]) is [1, 0]: every count of a one-case battery is off the aim in both
     // directions and none can be on it, so there is nothing to read and the review is told so.
     const prompt = await shown(battery(1, 1));
-    expect(prompt).toContain("Reading: the deciding sample of 1/1 cannot be placed");
+    expect(prompt).toContain("Reading: 1/1 against band [0.2, 0.5]: cannot be placed.");
     expect(prompt).not.toContain("above the aim");
   });
 
@@ -320,30 +320,26 @@ describe("the epoch reviewer's orientation", () => {
 });
 
 /**
- * The round's own intent beside what it measured. The Builder writes `EXPERIMENT.json` before a
- * round is measured — the gap it saw, the change it made, the result it expected, a pass-count
- * target and a pass probability per task — and until now nothing that reads the measured tree was
- * shown it. A reviewer of a battery that passed five of five could not tell that the round had
- * predicted one or two, which is the contradiction that makes the battery worth reading.
+ * The round's own intent beside what it measured. The Builder may write `EXPERIMENT.json` before a
+ * round is measured: the gap it saw, the change it made, the families it changed and the verified
+ * passes it expects. The reviewer reads it with its two scores, the declared families against the
+ * families whose public tasks changed and the pass range against the measured battery, so that a
+ * battery which passed five of five is read beside what the round set out to change.
  */
 describe("the round plan and the diagnosed issues reach the reviewer", () => {
-  const plan: ExperimentSubmission = (() => {
+  const plan: RecordedPlan = (() => {
     const body = {
-      schema: "experiment-plan/v2" as const,
-      scope: "tasks" as const,
       gap: "The last battery found no limit: every family cleared its published limit.",
       change: "Tighten the deflection limit and couple it to the published load case.",
-      expectedResult: "One or two of five verified cases pass.",
-      target: { comparator: "at-most" as const, verifiedPasses: 2 },
-      families: [{ family: "core", level: "hard" as const, move: "Couple deflection to the load case." }],
-      predictions: Array.from({ length: 5 }, (_, i) => ({ taskId: `t${String(i)}`, pass: 0.3 })),
+      families: ["core"],
+      expectedPasses: { atMost: 2 },
     };
     return { ...body, digest: hashJsonValue(body) };
   })();
 
   async function oriented(input: {
     measured: boolean;
-    experiment: ExperimentSubmission | null;
+    roundPlan: RoundPlan;
     issues?: AdviceIssue[];
   }): Promise<string> {
     const root = tree();
@@ -364,7 +360,7 @@ describe("the round plan and the diagnosed issues reach the reviewer", () => {
       treeRoot: ".",
       analysis: input.measured ? analysisOf(counts) : null,
       priorAdvice: input.issues === undefined ? packet : { ...adviceOf(counts), issues: input.issues },
-      experiment: input.experiment,
+      roundPlan: input.roundPlan,
       publicRequest: "solves the domain",
       review,
       readerTurn: async (turn) => {
@@ -375,48 +371,55 @@ describe("the round plan and the diagnosed issues reach the reviewer", () => {
     return prompt;
   }
 
-  it("sets a measured battery beside the plan that predicted it", async () => {
-    const prompt = await oriented({ measured: true, experiment: plan });
-    expect(prompt).toContain("Round plan (EXPERIMENT.json, tasks scope)");
+  it("sets a measured battery beside the plan it was authored under, with both scores", async () => {
+    const prompt = await oriented({ measured: true, roundPlan: { plan, changedFamilies: ["core"] } });
+    expect(prompt).toContain("Round plan (EXPERIMENT.json), the Builder's stated intent for this round:");
     expect(prompt).toContain(`Gap: ${plan.gap}`);
     expect(prompt).toContain(`Change: ${plan.change}`);
-    expect(prompt).toContain(`Expected result: ${plan.expectedResult}`);
     expect(prompt).toContain(
-      "Target: at most 2 verified passes; this battery passed 5, so the target was missed.",
+      "Scored: the plan names core as changed and the public tasks changed from the adopted product in core: met; " +
+        "the plan expects at most 2 verified passes and the battery holds 5: missed, above.",
     );
-    expect(prompt).toContain("Families: core at hard — Couple deflection to the load case.");
-    expect(prompt).toContain("Predictions: 5 tasks summing to 1.5 expected passes");
-    expect(prompt).toContain("scored against the 5 predicted tasks that reached a verdict");
-    expect(prompt).toContain("5 passed where 1.5 were expected (Brier 0.49");
+    // Each stated field is shown once, inside the score that reads it.
+    expect(prompt).not.toMatch(/Families named as changed|Expected verified passes/);
   });
 
-  it("names one predicted task in the singular", async () => {
-    const one = { ...plan, predictions: [{ taskId: "t0", pass: 0.3 }] };
-    const prompt = await oriented({ measured: true, experiment: one });
-    expect(prompt).toContain("Predictions: 1 task summing to 0.3 expected passes");
-    expect(prompt).toContain("scored against the 1 predicted task that reached a verdict");
+  it("lists the named families alone when there is no adopted product to score them against", async () => {
+    const prompt = await oriented({ measured: true, roundPlan: { plan, changedFamilies: null } });
+    expect(prompt).toContain("Families named as changed: core");
+    expect(prompt).toContain(
+      "Scored: the plan expects at most 2 verified passes and the battery holds 5: missed, above.",
+    );
   });
 
   it("states a missing plan as missing rather than showing nothing", async () => {
-    const prompt = await oriented({ measured: true, experiment: null });
+    const prompt = await oriented({ measured: true, roundPlan: NO_PLAN });
     expect(prompt).toContain("Round plan: no EXPERIMENT.json was recorded with this battery");
-    expect(prompt).not.toContain("Target:");
+    expect(prompt).not.toContain("Scored:");
   });
 
-  it("shows a checkpoint the plan it is authoring towards, with nothing measured against it", async () => {
-    const prompt = await oriented({ measured: false, experiment: plan });
-    expect(prompt).toContain("Round plan (EXPERIMENT.json, tasks scope)");
-    expect(prompt).toContain("Target: at most 2 verified passes.");
-    expect(prompt).not.toContain("so the target was");
-    expect(prompt).not.toContain("were expected (Brier");
-    const unwritten = await oriented({ measured: false, experiment: null });
+  it("shows a checkpoint the range it is authoring towards and the families its draft has changed", async () => {
+    const prompt = await oriented({
+      measured: false,
+      roundPlan: { plan, changedFamilies: ["core", "joints"] },
+    });
+    expect(prompt).toContain("Expected verified passes: at most 2");
+    expect(prompt).toContain(
+      "Scored: the plan names core as changed and the public tasks changed from the adopted product in core, joints: " +
+        "missed, joints changed but not named.",
+    );
+    const unwritten = await oriented({ measured: false, roundPlan: NO_PLAN });
     expect(unwritten).toContain("Round plan: the Builder has not yet written an EXPERIMENT.json");
   });
 
   it("carries each standing issue's diagnosis, cause included, and says when there is none", async () => {
     const diagnosed = issue({ diagnosis: READING });
     const bare = issue({ id: JOINTS, kind: "unaccepted", family: "joints" });
-    const prompt = await oriented({ measured: true, experiment: plan, issues: [diagnosed, bare] });
+    const prompt = await oriented({
+      measured: true,
+      roundPlan: { plan, changedFamilies: ["core"] },
+      issues: [diagnosed, bare],
+    });
     expect(prompt).toContain(`${BEAMS.slice(0, 12)} (beams, verified-fail, 2/5)`);
     expect(prompt).toContain("agent/tools-spec.json. First failure boundary");
     expect(prompt).toContain(`Falsifier: ${READING.falsifier}`);

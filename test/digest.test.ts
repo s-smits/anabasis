@@ -16,7 +16,7 @@ import { dirname, join } from "../src/meta/path.ts";
 import { recordedController } from "./helpers/recorded-controller.ts";
 import {
   executionRecord,
-  experimentProposal,
+  experimentPlan,
   submitCall,
   trialCall,
 } from "./helpers/builder-execution-record.ts";
@@ -233,12 +233,12 @@ describe("digest", () => {
     writeFileSync(
       join(dir, "0.json"),
       JSON.stringify({
-        schema: "difficulty-decision/v7",
+        schema: "difficulty-decision/v9",
         runId: "placed-0",
         difficulty: {
           band: [0.2, 0.5],
           decision: {
-            rationale: "5/6, Wilson interval [0.436, 0.970] against target range [0.2, 0.5]",
+            rationale: "5/6 against band [0.2, 0.5]: over-aim",
             placement: { passes: 5, n: 6, zone: "over-aim", aim: [2, 3], toAim: -2 },
           },
           admitted: 1,
@@ -250,7 +250,7 @@ describe("digest", () => {
     writeFileSync(
       join(dir, "1.json"),
       JSON.stringify({
-        schema: "difficulty-decision/v7",
+        schema: "difficulty-decision/v9",
         runId: "unplaced-1",
         difficulty: {
           decision: { placement: null, rationale: "no batteries recorded" },
@@ -278,12 +278,13 @@ describe("digest", () => {
     ["a v4 record", { schema: "difficulty-decision/v4", runId: "old-4" }, "difficulty-decision/v4"],
     ["a v5 record", { schema: "difficulty-decision/v5", runId: "old-5" }, "difficulty-decision/v5"],
     ["a v6 record", { schema: "difficulty-decision/v6", runId: "old-6" }, "difficulty-decision/v6"],
+    ["a v8 record", { schema: "difficulty-decision/v8", runId: "old-8" }, "difficulty-decision/v8"],
   ])("refuses %s by name rather than reading it or calling it never recorded", (_title, record, reason) => {
     const paths = fixture();
     mkdirSync(join(paths.campaign, "difficulty-decisions"));
     writeFileSync(join(paths.campaign, "difficulty-decisions", "0.json"), JSON.stringify(record));
     const digest = digestOf(paths);
-    expect(digest).toContain(`refused, not difficulty-decision/v7 — 0.json: ${reason}`);
+    expect(digest).toContain(`refused, not difficulty-decision/v9 — 0.json: ${reason}`);
     expect(digest).not.toContain(record.runId);
     expect(digest).not.toContain("no recorded difficulty decisions");
     expect(digest).not.toMatch(/satClimbs|satLevelled|satRange|satBroadens|THRESHOLD DRIFT/);
@@ -297,7 +298,7 @@ describe("digest", () => {
       writeFileSync(
         join(dir, "0.json"),
         JSON.stringify({
-          schema: "difficulty-decision/v7",
+          schema: "difficulty-decision/v9",
           // run-4 graded 1 and passed 1, so a decision that read it above the aim and got a
           // perfect battery back is lane 5's question.
           runId: "run-4",
@@ -673,7 +674,7 @@ describe("digest", () => {
     writeFileSync(
       join(paths.campaign, "difficulty-decisions", "run-3.json"),
       JSON.stringify({
-        schema: "difficulty-decision/v7",
+        schema: "difficulty-decision/v9",
         runId: "run-3",
         difficulty: {
           decision: { placement: { zone: "on-aim" }, evidence: [{ runId: "run-2" }] },
@@ -778,7 +779,7 @@ describe("digest", () => {
     expect(refused).toContain("advisory in 2 measured reviews (run-1, run-2)");
   });
 
-  it("joins each rehearsal to the accepted submit's candidate and reads the declared target against it", () => {
+  it("joins each rehearsal to the accepted submit's candidate", () => {
     const paths = fixture();
     const candidate = "c".repeat(64);
     for (const [n, taskId] of [
@@ -789,22 +790,18 @@ describe("digest", () => {
         recursive: true,
       });
     }
-    const write = (submitted: string, verifiedPasses: number) =>
+    const write = (submitted: string) =>
       writeFileSync(
         join(paths.campaign, "epoch-aa", "builder-execution.json"),
-        executionRecord(
-          [{ experimentProposal: experimentProposal({ comparator: "at-most", verifiedPasses }) }],
-          0,
-          {
-            customCalls: [
-              trialCall(1, "t1", candidate, "pass"),
-              trialCall(2, "t2", candidate, "not-run"),
-              submitCall(3, submitted),
-            ],
-          },
-        ),
+        executionRecord([{ experimentPlan: experimentPlan() }], 0, {
+          customCalls: [
+            trialCall(1, "t1", candidate, "pass"),
+            trialCall(2, "t2", candidate, "not-run"),
+            submitCall(3, submitted),
+          ],
+        }),
       );
-    write(candidate, 0);
+    write(candidate);
     const digest = digestOf(paths);
     expect(digest).toContain(
       "epoch-aa/builder-execution.json: rehearsals 2 (pass 1, not-run 1) · accepted submits 1",
@@ -812,22 +809,12 @@ describe("digest", () => {
     expect(digest).not.toContain("rehearsal case directories");
     expect(digest).toContain("REHEARSAL NOT-RUN (lane 9): 1 of 2 rehearsals reached no verdict");
     expect(digest).not.toContain("SUBMITTED BYTES NEVER REHEARSED");
-    // A pass the rehearsal already recorded on the frozen bytes is a verified pass the battery will
-    // find again, so an at-most 0 target is contradicted before the battery runs.
-    expect(digest).toContain(
-      "REHEARSAL CONTRADICTS TARGET (lane 11): epoch-aa declared at-most 0 verified passes; 1 rehearsal pass(es) on the submitted bytes already exceed it (1 > 0)",
-    );
-    write(candidate, 1);
-    expect(digestOf(paths)).toContain(
-      "target at-most 1 · rehearsal passes on the submitted bytes 1 · not contradicted",
-    );
     // Rehearsals of other bytes say nothing about the candidate the submit froze.
-    write("d".repeat(64), 0);
+    write("d".repeat(64));
     const other = digestOf(paths);
     expect(other).toContain(
       "SUBMITTED BYTES NEVER REHEARSED (lane 11): epoch-aa candidate dddddddddddddddd · 2 rehearsal(s) on other bytes",
     );
-    expect(other).not.toContain("REHEARSAL CONTRADICTS TARGET");
     rmSync(join(paths.campaign, "epoch-aa", "rehearsals", "rehearsal-2"), { recursive: true });
     expect(digestOf(paths)).toContain("rehearsal case directories 1 against 2 recorded call(s)");
   });
@@ -889,7 +876,7 @@ describe("digest", () => {
     expect(digest).not.toContain("WRAPPER-ONLY TOOL DIGEST (lane 2): run-1 tree-wrap");
   });
 
-  it("reads an off-aim streak and a missed target from the recorded readout rows", () => {
+  it("reads an off-aim streak from the recorded placements, and states no target", () => {
     const paths = fixture();
     const dir = join(paths.campaign, "difficulty-decisions");
     mkdirSync(dir);
@@ -897,7 +884,7 @@ describe("digest", () => {
       writeFileSync(
         join(dir, `${name}.json`),
         JSON.stringify({
-          schema: "difficulty-decision/v7",
+          schema: "difficulty-decision/v9",
           runId,
           difficulty: {
             decision: { placement: { passes: 5, n: 6, zone: "over-aim", aim: [2, 3], toAim } },
@@ -913,14 +900,10 @@ describe("digest", () => {
         passed: 5,
         verified: 6,
         zone: "over-aim",
-        target: { comparator: "at-most", verifiedPasses: 2, result: "missed", missedBy: 3 },
       },
     ]);
     const one = digestOf(paths);
-    expect(one).toContain("  run-1: target at-most 2 · passed 5/6 · missed");
-    expect(one).toContain(
-      "TARGET MISSED (lane 10): run-1 declared at-most 2 verified passes and measured 5, missed by 3",
-    );
+    expect(one).not.toContain("TARGET MISSED");
     expect(one).not.toContain("OFF-AIM STREAK");
     decision("1", "d2", -2, []);
     expect(digestOf(paths)).toContain(

@@ -97,7 +97,7 @@ function campaign(prefix: string = "outcome-") {
       };
       write(openingPath, opening);
       write(terminalPath, {
-        schema: "campaign-terminal/v4",
+        schema: "campaign-terminal/v5",
         source: SOURCE,
         budget: BUDGET,
         epoch: EPOCH,

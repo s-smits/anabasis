@@ -216,17 +216,6 @@ const REFUSALS = {
     clause: "grounding-missing",
     repairable: false,
   },
-  "a refuted prediction with no disposition": {
-    evidence: { predictions: [{ id: "p1", outcome: "refuted" }] },
-    clause: "prediction-record-open",
-    repairable: true,
-    detail: 'prediction "p1" is refuted',
-  },
-  "an unexercised prediction closed by a repair, which closes nothing": {
-    evidence: { predictions: [{ id: "p1", outcome: "unexercised", disposition: "repair" }] },
-    clause: "prediction-record-open",
-    repairable: true,
-  },
 } satisfies Record<string, Refusal>;
 
 describe("a single changed fact refuses with exactly the clause that owns it", () => {
@@ -269,12 +258,6 @@ const CLAIMABLE = {
   "a single flake in a small battery, since the ratio needs two non-results": {
     evidence: { runStatus: terminal(2, { solver: 1 }), runtimeIdentities: firstCases(2).runtimeIdentities },
     score: firstCases(2).score,
-  },
-  "a refuted prediction closed by a repair": {
-    evidence: { predictions: [{ id: "p1", outcome: "refuted", disposition: "repair" }] },
-  },
-  "an absent prediction sidecar, which is no record rather than an open one": {
-    evidence: { predictions: null },
   },
 } satisfies Record<string, Claimable>;
 

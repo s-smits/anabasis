@@ -6,7 +6,6 @@
  * counts its calls per battery, so "no solve" is a count of zero rather than an inference from
  * timing.
  */
-import { PLAN_FIELDS } from "./helpers/experiment-plan.ts";
 import { afterEach, describe, expect, it } from "bun:test";
 import {
   chmodSync,
@@ -202,12 +201,9 @@ async function twoRounds(
       writeFileSync(
         join(ctx.workspace, "EXPERIMENT.json"),
         JSON.stringify({
-          scope: "product",
           gap: "the evaluator failed an answer the request accepts",
           change: "compare the answer without regard to case",
-          ...PLAN_FIELDS,
-          expectedResult: "the same artifacts score at least as well",
-          target: { comparator: "at-least", verifiedPasses: 1 },
+          families: [],
         }),
       );
     }

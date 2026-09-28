@@ -71,15 +71,9 @@ function binding(overrides: Partial<ContextBinding> = {}): ContextBinding {
     join(workspace, "MEMORY.md"),
     "# Memory\nRisk: the frontier family passed every rehearsal.\n",
   );
-  writeFileSync(
-    join(workspace, "EXPERIMENT.json"),
-    '{"target":{"comparator":"at-most","verifiedPasses":2}}\n',
-  );
+  writeFileSync(join(workspace, "EXPERIMENT.json"), '{"scope":"tasks","gap":"the limit is unmeasured"}\n');
   mkdirSync(join(workspace, "starter-pack"));
-  writeFileSync(
-    join(workspace, "starter-pack", "difficulty-ladder.md"),
-    "- frontier — the rehearsal fails\n",
-  );
+  writeFileSync(join(workspace, "starter-pack", "contract.md"), "- frontier — the rehearsal fails\n");
   return {
     round: "Round 3 of this run.\nThe last battery: every frontier task passed.",
     workspace,
@@ -110,7 +104,7 @@ describe("the context tool", () => {
       "Citations 1-4 of 4 over 5 document(s), best match first. Page an id for the surrounding lines.",
       "[workspace/MEMORY.md:L2] Risk: the frontier family passed every rehearsal.",
       "[round/opening:L2] The last battery: every frontier task passed.",
-      "[workspace/starter-pack/difficulty-ladder.md:L1] - frontier — the rehearsal fails",
+      "[workspace/starter-pack/contract.md:L1] - frontier — the rehearsal fails",
       "[traces/rehearsal-1/t4:L1] t4: rehearsal passed in 3 of 120 solve minutes",
     ]);
     expect(details).toMatchObject({
@@ -131,7 +125,7 @@ describe("the context tool", () => {
         "documents 1-3 of 3:",
         "- workspace/EXPERIMENT.json (workspace): EXPERIMENT.json",
         "- workspace/MEMORY.md (workspace): MEMORY.md",
-        "- workspace/starter-pack/difficulty-ladder.md (workspace): starter-pack/difficulty-ladder.md",
+        "- workspace/starter-pack/contract.md (workspace): starter-pack/contract.md",
       ].join("\n"),
     );
     const page = (await ask(bound, { depth: "page", id: "workspace/MEMORY.md", offset: 2 })).text;
@@ -239,17 +233,6 @@ async function tracesOf(
       : "",
   };
 }
-
-describe("the round plan document", () => {
-  it("is offered on a continuation that binds one, and absent otherwise", async () => {
-    const bound = binding({ plan: () => "Round plan (experiment-plan/v2, tasks scope): target at-most 2." });
-    const page = (await ask(bound, { depth: "page", id: "round/plan" })).text;
-    expect(page).toBe(
-      "round/plan the round plan and its evidence — lines 1-1 of 1\n\nRound plan (experiment-plan/v2, tasks scope): target at-most 2.",
-    );
-    await expect(ask(binding(), { depth: "page", id: "round/plan" })).rejects.toThrow(/unknown context id/);
-  });
-});
 
 describe("the traces source", () => {
   it("offers each passing case's solve and recorded artifact, and never a failing one or a non-result", async () => {

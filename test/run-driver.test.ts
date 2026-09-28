@@ -457,7 +457,7 @@ describe("battery run evidence", () => {
     ).toThrow(/mismatched non-result evidence/);
   });
 
-  it("keeps predictions outside product evidence while projecting accepted and unaccepted cases", () => {
+  it("projects accepted and unaccepted cases into the claim score", () => {
     const battery = double<BatteryRecord>({
       terminalReason: "complete",
       capabilities: [],
@@ -505,7 +505,6 @@ describe("battery run evidence", () => {
       ]),
       { accept: [], reject: [] },
     );
-    expect(projected.evidence.predictions).toBeNull();
     expect(projected.score).toEqual([
       { caseId: "verified", passed: false, truthVerified: true, checkIds: ["compile"] },
       { caseId: "unaccepted", passed: false, truthVerified: false, checkIds: ["compile"] },

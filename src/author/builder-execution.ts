@@ -22,7 +22,7 @@ import type { AgentTurnEvent, AgentTurnResult, TurnUsage } from "../backends/bac
 import type { BackendKind } from "../backends/resolve.ts";
 import type { RuntimeModelIdentity } from "../claim/runtime-model-identity.ts";
 import type { BuilderExecutionInvocation } from "../run/builder-execution-closure.ts";
-import type { ExperimentSubmission } from "./experiment-plan.ts";
+import type { RecordedPlan } from "./experiment-plan.ts";
 import type { JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { compareCodeUnits, hashJsonValue } from "../meta/stable-json.ts";
@@ -55,7 +55,7 @@ export const HANDOVER_FILES = [EXPERIMENT_FILE, MEMORY_FILE, SCRATCHPAD_FILE] as
 const MAX_CUSTOM_CALL_RECEIPTS = 512;
 
 export interface BuilderSubmitAttempt {
-  experimentProposal?: ExperimentSubmission;
+  experimentPlan?: RecordedPlan;
   /** A real candidate tree, or only a controller stop. The outcome reader refuses a row that does
    *  not say, rather than leaving a reader to infer a stop from a commit that looks like one. */
   kind: "candidate" | "controller-terminal";
@@ -528,7 +528,7 @@ export class BuilderExecutionRecorder {
 
   /** Records a submission and compares it here, where the earlier submissions are already known. */
   recordSubmit(input: {
-    experimentProposal?: ExperimentSubmission;
+    experimentPlan?: RecordedPlan;
     kind?: BuilderSubmitAttempt["kind"];
     turn: number;
     outcome: "accepted" | "refused";
@@ -553,7 +553,7 @@ export class BuilderExecutionRecorder {
     const codes = input.findings.map((f) => f.code);
     const prior = candidate ? this.submits.findLast(isCandidateSubmit) : undefined;
     const attempt: BuilderSubmitAttempt = {
-      ...keyIfDefined("experimentProposal", input.experimentProposal),
+      ...keyIfDefined("experimentPlan", input.experimentPlan),
       kind,
       ordinal: this.submits.length + 1,
       turn: input.turn,

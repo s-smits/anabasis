@@ -3,8 +3,8 @@
  *
  * `list` and `show` answer where a run stands; a run that is being watched raises a different
  * question every few minutes, which is what moved. Answering it by hand meant re-reading the
- * observability journal, the Builder's execution checkpoint, the rehearsal evidence, the plan and
- * the case record for every run and remembering what each said last time. This keeps one reading
+ * observability journal, the Builder's execution checkpoint with its rehearsals, the plan and the
+ * case record for every run and remembering what each said last time. This keeps one reading
  * per run between looks and prints the difference as events: `◆` a stage worth reading (a round
  * opened, a battery recorded, the run ended), `⚠` something that may be wrong (an error row, a
  * quiet Builder, a non-result, a not-run rehearsal), `·` a smaller fact. The readings are kept in
@@ -14,22 +14,16 @@
  * Read-only, like the rest of `runs`: every value comes from a recorded file through its owner's
  * reader, and a file that cannot be read leaves its part of the reading empty rather than guessed.
  */
-import { readExecutionEvidence } from "../outcome/builder-execution-facts.ts";
-import { readEpochRecord } from "../../src/author/campaign-epoch.ts";
-import { EXPERIMENT_FILE } from "../../src/author/builder-memory.ts";
-import { currentPlan, EVIDENCE_SCHEMA, EVIDENCE_STEM } from "../../src/author/experiment-plan.ts";
-import { placeOnBand, type BandZone } from "../../src/claim/battery-difficulty.ts";
+import type { BandZone } from "../../src/claim/battery-difficulty.ts";
 import { CASE_RECORD_FILE } from "../../src/claim/case-record.ts";
 import { FROZEN_MANIFEST_PATH } from "../../src/critic/manifest.ts";
-import { existsSync, readFileSync, readdirSync, statfsSync } from "../../src/meta/filesystem.ts";
-import { parseJsonAs } from "../../src/meta/json-runtime.ts";
-import { isNumber, isRecord, isString, type JsonValue } from "../../src/meta/json-shape.ts";
-import { loadavg } from "../../src/meta/os.ts";
+import { statfsSync } from "../../src/meta/filesystem.ts";
+import { isNumber, isRecord, isString } from "../../src/meta/json-shape.ts";
+import { availableParallelism, loadavg } from "../../src/meta/os.ts";
 import { join } from "../../src/meta/path.ts";
-import { parseSafeguardLog, safeguardLogFile } from "../../src/meta/safeguard.ts";
 import { climbThresholds } from "../../src/run/climb-history.ts";
 import { DEFAULT_DISK_MIN_GIB } from "../../.claude/skills/launch-run/scripts/options.ts";
-import { readDifficultyDecisions, readObservations, readRunEvidence, type Observation } from "./evidence.ts";
+import type { Observation } from "./evidence.ts";
 import { duration, shortPath } from "./format.ts";
 import {
   busyUnder,
@@ -39,14 +33,24 @@ import {
   type Busy,
   type PulseMemory,
 } from "./pulse-host.ts";
+import {
+  emptyRound,
+  PHASE_TRANSITION,
+  pulseLabel,
+  readPulse,
+  roundsOpened,
+  topLevel,
+  type PulseBattery,
+  type PulsePlan,
+  type PulseReading,
+  type PulseRehearsal,
+} from "./pulse-read.ts";
 import { collectRows, type RunRow } from "./rows.ts";
 
 /** A Builder checkpoint older than this, in a build, is worth a look. */
 const QUIET_MS = 20 * 60_000;
 /** Failed Builder calls between two looks that make a burst rather than ordinary friction. */
 const FAILED_BURST = 3;
-/** How far a verdict may land from the probability predicted for it before it is a surprise. */
-const SURPRISE = 0.7;
 const MEASURING = new Set(["adopt", "controls", "solve", "measure-on", "grade"]);
 const REVIEWING = new Set(["judge", "claim", "analyse", "admission", "next"]);
 /** Top-level transitions that are the loop's ordinary machinery and would bury the rest. */
@@ -65,7 +69,6 @@ const ROUTINE = new Set([
   "judge:completed",
   "analyse:started",
 ]);
-const PHASE_TRANSITION = "phase-transition";
 /** Transitions worth a `◆`, with the words to use; null keeps the row's own summary. */
 const LOUD = new Map<string, string | null>([
   ["adopt:completed", "product adopted; its battery is next"],
@@ -73,75 +76,6 @@ const LOUD = new Map<string, string | null>([
   ["analyse:completed", null],
   ["admission:completed", null],
 ]);
-
-type RunState = RunRow["liveness"]["state"];
-
-interface PulseRehearsal {
-  taskId: string;
-  verdict: string;
-  predicted: number | null;
-}
-
-interface PulsePlan {
-  comparator: "at-least" | "at-most";
-  verifiedPasses: number;
-  /** The pass count the plan's own predictions add up to. */
-  expected: number;
-  predictions: number;
-}
-
-/** The authoring round in progress, or the last one when the run has moved on to measure it. */
-export interface PulseRound {
-  /** The round's ordinal among the run's `build:started` rows; 0 before the first. */
-  number: number;
-  epoch: string | null;
-  checkpointAt: string | null;
-  toolCalls: number | null;
-  failedCalls: number | null;
-  previews: number;
-  clearPreviews: number;
-  /** Milliseconds from the session's start to its first clear preview. */
-  firstClearMs: number | null;
-  accepted: number;
-  refused: number;
-  refusalCodes: string[];
-  rehearsals: PulseRehearsal[];
-  plan: PulsePlan | null;
-  /** The last heading of the Builder's latest message or reasoning row: a hint of what it is doing,
-   *  never evidence of what it did. */
-  headline: string | null;
-  /** Files the round wrote that this tree's readers refuse, such as an older evidence schema from a
-   *  run launched on an older source. Said rather than read as empty. */
-  unread: string[];
-}
-
-export interface PulseBattery {
-  passed: number;
-  verified: number;
-  unaccepted: number;
-  nonResults: number;
-  zone: BandZone | null;
-  /** The zone came from a recorded difficulty decision; otherwise it is placed here, provisionally. */
-  recorded: boolean;
-}
-
-export interface PulseReading {
-  runId: string;
-  label: string;
-  state: RunState;
-  now: number;
-  startedAt: string | null;
-  observations: Observation[];
-  round: PulseRound;
-  batteries: PulseBattery[];
-  /** Safeguard names in firing order. A firing is a lead, and never changes a kind or a route. */
-  safeguards: string[];
-  /** The terminal's outcome and reason, once recorded. */
-  terminal: string | null;
-  /** What the controller is waiting on at the look, from the process table: a live fact, never
-   *  evidence, and the one that tells a quiet Builder's long command from a stalled session. */
-  busy: Busy | null;
-}
 
 interface PulseEvent {
   mark: "◆" | "⚠" | "·";
@@ -152,19 +86,6 @@ interface PulseEvent {
 }
 
 type Stage = "opening" | "build" | "measuring" | "reviewing" | "ended";
-
-/** The run id without its launch instant, which every run id carries and none is told apart by. */
-export function pulseLabel(runId: string): string {
-  return runId.replace(/-\d{8}T\d{6,9}Z(?=-)/, "");
-}
-
-function topLevel(observations: readonly Observation[]): Observation[] {
-  return observations.filter((row) => row.parentId === null && row.type === PHASE_TRANSITION);
-}
-
-function roundsOpened(observations: readonly Observation[]): number {
-  return topLevel(observations).filter((row) => row.phase === "build" && row.state === "started").length;
-}
 
 function stageOf(reading: PulseReading): Stage {
   if (reading.terminal !== null) return "ended";
@@ -208,8 +129,12 @@ function batteryText(battery: PulseBattery): string {
 }
 
 function planText(plan: PulsePlan): string {
-  const bound = plan.comparator === "at-most" ? "≤" : "≥";
-  return `plan ${bound}${String(plan.verifiedPasses)}, predictions expect ${String(plan.expected)} of ${String(plan.predictions)}`;
+  const families =
+    plan.families === null
+      ? null
+      : `${String(plan.families)} famil${plan.families === 1 ? "y" : "ies"} changed`;
+  const expected = plan.expected === null ? null : `expects ${plan.expected} passes`;
+  return ["plan", families, expected].filter((part) => part !== null).join(", ");
 }
 
 /** The row's evidence as paths inside its campaign, with the run id, which every one repeats, as `<run>`. */
@@ -219,27 +144,6 @@ function evidenceLook(row: Observation, reading: PulseReading, slug: string): st
     const inside = path.startsWith(prefix) ? path.slice(prefix.length) : path;
     return inside.replaceAll(reading.runId, "<run>");
   });
-}
-
-/** A round nothing has been recorded for yet. */
-function emptyRound(number: number, epoch: string | null): PulseRound {
-  return {
-    number,
-    epoch,
-    checkpointAt: null,
-    toolCalls: null,
-    failedCalls: null,
-    previews: 0,
-    clearPreviews: 0,
-    firstClearMs: null,
-    accepted: 0,
-    refused: 0,
-    refusalCodes: [],
-    rehearsals: [],
-    plan: null,
-    headline: null,
-    unread: [],
-  };
 }
 
 /** The latest battery with its placement and the streak it extends, or null before the first. */
@@ -303,33 +207,11 @@ function observationEvents(before: PulseReading, after: PulseReading, slug: stri
 }
 
 function rehearsalEvent(label: string, round: number, index: number, rehearsal: PulseRehearsal): PulseEvent {
-  const { verdict, predicted } = rehearsal;
-  const surprise = predicted !== null && Math.abs((verdict === "pass" ? 1 : 0) - predicted) >= SURPRISE;
-  const mark = verdict === "not-run" ? "⚠" : surprise ? "◆" : "·";
-  const prediction = predicted === null ? ", no prediction" : `, predicted ${String(predicted)}`;
-  const against = surprise ? ", against its prediction" : "";
+  const { verdict } = rehearsal;
   return {
-    mark,
+    mark: verdict === "not-run" ? "⚠" : "·",
     label,
-    text: `r${String(round)} rehearsal ${String(index + 1)} ${rehearsal.taskId}: ${verdict}${prediction}${against}`,
-    look: [],
-  };
-}
-
-function planEvent(label: string, round: number, plan: PulsePlan): PulseEvent {
-  // How far the plan's own predictions sit on the wrong side of its target: above an at-most
-  // target, or below an at-least one.
-  const gap =
-    plan.comparator === "at-most" ? plan.expected - plan.verifiedPasses : plan.verifiedPasses - plan.expected;
-  const contradiction = Math.round(gap * 10) / 10;
-  const flag =
-    contradiction >= 1
-      ? `; its predictions sit ${String(contradiction)} on the wrong side of its own target`
-      : "";
-  return {
-    mark: contradiction >= 1 ? "⚠" : "·",
-    label,
-    text: `r${String(round)} ${planText(plan)}${flag}`,
+    text: `r${String(round)} rehearsal ${String(index + 1)} ${rehearsal.taskId}: ${verdict}${rehearsal.submitted === false ? " (nothing submitted)" : ""}`,
     look: [],
   };
 }
@@ -358,7 +240,7 @@ function roundEvents(before: PulseReading, after: PulseReading): PulseEvent[] {
     ...now.rehearsals.slice(heard).map((row, index) => rehearsalEvent(label, now.number, heard + index, row)),
   );
   if (now.plan !== null && JSON.stringify(was.plan) !== JSON.stringify(now.plan)) {
-    events.push(planEvent(label, now.number, now.plan));
+    say("·", planText(now.plan));
   }
   const burst = (now.failedCalls ?? 0) - (was.failedCalls ?? 0);
   if (burst >= FAILED_BURST) {
@@ -386,7 +268,7 @@ function heldEvents(before: PulseReading, after: PulseReading): PulseEvent[] {
     events.push({
       mark: "⚠",
       label,
-      text: `no Builder checkpoint for ${duration(quietMs)} in round ${String(after.round.number)}; ${busyText(after.busy) ?? "no command running, so the model turn itself is long"}`,
+      text: `no Builder checkpoint for ${duration(quietMs)} in round ${String(after.round.number)}; ${inFlightText(after) ?? busyText(after.busy) ?? "no command running, so the model turn itself is long"}`,
       look: [`${after.round.epoch ?? "?"}/builder-prose.jsonl`],
     });
   }
@@ -414,6 +296,28 @@ function heldEvents(before: PulseReading, after: PulseReading): PulseEvent[] {
     });
   }
   return events;
+}
+
+/** Each Epoch Review recorded since the last look, and a review of a battery above the aim that was
+ *  never asked the above-aim duty, which is the one reading of such a battery that says why. */
+function reviewEvents(before: PulseReading, after: PulseReading): PulseEvent[] {
+  return after.batteries.flatMap((battery, index) => {
+    const review = battery.review;
+    const was = before.batteries[index];
+    if (review === undefined || review === null || (was !== undefined && was.review !== null)) return [];
+    const blocking = review.blocking === 0 ? "" : `, ${String(review.blocking)} blocking`;
+    const above = sideOf(battery.zone) === "above";
+    const unasked = above ? "; the above-aim duty was not asked" : "";
+    const duty = review.duty === null ? unasked : `; above-aim duty: ${review.duty}`;
+    return [
+      {
+        mark: above && (review.duty === null || review.duty === "undischarged") ? "⚠" : "◆",
+        label: after.label,
+        text: `review of battery ${String(index + 1)} ${review.status}: ${String(review.findings)} finding(s)${blocking}${duty}`,
+        look: [review.file.replaceAll(after.runId, "<run>")],
+      },
+    ];
+  });
 }
 
 /** Safeguards that fired since the last look, one line per name. */
@@ -444,12 +348,21 @@ export function pulseEvents(
     ...observationEvents(before, after, slug),
     ...roundEvents(before, after),
     ...heldEvents(before, after),
+    ...reviewEvents(before, after),
     ...safeguardEvents(before, after),
   ];
   if (after.terminal !== null && before.terminal === null) {
     events.push({ mark: "◆", label: after.label, text: `ended: ${after.terminal}`, look: [] });
   }
   return events;
+}
+
+/** A rehearsal holds one Builder tool call for up to the solve wall, which reads as a quiet
+ *  checkpoint unless it is named. */
+function inFlightText(reading: PulseReading): string | null {
+  const running = reading.round.inFlight;
+  if (running === null) return null;
+  return `${running.stage === "solving" ? "rehearsing" : "grading"} ${running.taskId} for ${duration(reading.now - Date.parse(running.startedAt))}`;
 }
 
 function busyText(busy: Busy | null): string | null {
@@ -474,13 +387,14 @@ function buildStatus(reading: PulseReading): string {
       ? null
       : `submits ${String(round.accepted)} accepted, ${String(round.refused)} refused`,
     round.plan === null ? null : planText(round.plan),
+    round.planAdvice,
     round.toolCalls === null
       ? null
       : `${String(round.toolCalls)} tool calls (${String(round.failedCalls ?? 0)} failed)`,
     checkpoint === null ? null : `checkpoint ${duration(checkpoint)} ago`,
+    inFlightText(reading),
     busyText(reading.busy),
     round.headline === null || round.headline === "" ? null : `"${round.headline}"`,
-    round.unread.length === 0 ? null : `not read by this tree: ${round.unread.join(", ")}`,
   ]
     .filter((part) => part !== null)
     .join(" · ");
@@ -523,180 +437,6 @@ export function statusLine(reading: PulseReading, width: number): string {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Reading one run from its recorded files.
-
-function readJson(path: string): JsonValue | null {
-  try {
-    return existsSync(path) ? parseJsonAs<JsonValue>(readFileSync(path, "utf8")) : null;
-  } catch {
-    return null;
-  }
-}
-
-/** The round's rehearsals, from every evidence file the controller wrote for this epoch. */
-function readRehearsals(epochDir: string) {
-  const dir = join(epochDir, "rehearsals");
-  const rows: PulseRehearsal[] = [];
-  const unread: string[] = [];
-  if (!existsSync(dir)) return { rows, unread };
-  const ordinal = (name: string) => Number(/-(\d+)\.json$/.exec(name)?.[1] ?? 1);
-  const files = readdirSync(dir)
-    .filter((name) => name.startsWith(EVIDENCE_STEM) && name.endsWith(".json"))
-    .sort((left, right) => ordinal(left) - ordinal(right));
-  for (const name of files) {
-    const parsed = readJson(join(dir, name));
-    if (!isRecord(parsed) || parsed.schema !== EVIDENCE_SCHEMA || !Array.isArray(parsed.rehearsals)) {
-      const schema = isRecord(parsed) && isString(parsed.schema) ? parsed.schema : "unparsed";
-      unread.push(`${name} (${schema})`);
-      continue;
-    }
-    for (const row of parsed.rehearsals) {
-      if (!isRecord(row) || !isString(row.taskId) || !isString(row.verdict)) continue;
-      rows.push({
-        taskId: row.taskId,
-        verdict: row.verdict,
-        predicted: isNumber(row.predicted) ? row.predicted : null,
-      });
-    }
-  }
-  return { rows, unread };
-}
-
-function readPlan(workspace: string): PulsePlan | null {
-  const plan = currentPlan(workspace);
-  if (plan === null) return null;
-  const expected = plan.predictions.reduce((sum, prediction) => sum + prediction.pass, 0);
-  return {
-    comparator: plan.target.comparator,
-    verifiedPasses: plan.target.verifiedPasses,
-    expected: Math.round(expected * 10) / 10,
-    predictions: plan.predictions.length,
-  };
-}
-
-function readHeadline(path: string): string | null {
-  let lines: string[];
-  try {
-    lines = readFileSync(path, "utf8").trimEnd().split("\n");
-  } catch {
-    return null;
-  }
-  for (const line of lines.toReversed()) {
-    const row = parseJsonAs<JsonValue>(line);
-    if (!isRecord(row) || !isString(row.text) || (row.kind !== "reasoning" && row.kind !== "message")) {
-      continue;
-    }
-    const heading = [...row.text.matchAll(/\*\*([^*\n]+)\*\*/g)].at(-1)?.[1] ?? row.text.split("\n")[0] ?? "";
-    return heading.trim().slice(0, 60);
-  }
-  return null;
-}
-
-function currentEpoch(campaignDir: string): string | null {
-  try {
-    return readEpochRecord(campaignDir)?.current ?? null;
-  } catch {
-    return null;
-  }
-}
-
-function readRound(campaignDir: string, number: number): PulseRound {
-  const epoch = currentEpoch(campaignDir);
-  const empty = emptyRound(number, epoch);
-  if (epoch === null) return empty;
-  const epochDir = join(campaignDir, epoch);
-  let records: ReturnType<typeof readExecutionEvidence>;
-  try {
-    records = readExecutionEvidence(epochDir);
-  } catch {
-    records = [];
-  }
-  const record = records.reduce<(typeof records)[number] | null>(
-    (latest, next) => (latest === null || next.writtenAt > latest.writtenAt ? next : latest),
-    null,
-  );
-  const rehearsals = readRehearsals(epochDir);
-  const workspace = join(epochDir, "workspace");
-  const plan = readPlan(workspace);
-  const planUnread = plan === null && existsSync(join(workspace, EXPERIMENT_FILE)) ? [EXPERIMENT_FILE] : [];
-  const round = {
-    ...empty,
-    rehearsals: rehearsals.rows,
-    plan,
-    unread: [...rehearsals.unread, ...planUnread],
-  };
-  if (record === null) return round;
-  const previews = record.customCalls.filter((call) => call.tool === "correctness_check");
-  const clear = previews.filter((call) => call.semantic?.outcome === "clear");
-  const candidates = record.submits.filter((submit) => submit.kind === "candidate");
-  const refused = candidates.filter((submit) => submit.outcome === "refused");
-  return {
-    ...round,
-    checkpointAt: record.writtenAt,
-    headline:
-      record.proseCapture === undefined ? null : readHeadline(join(epochDir, record.proseCapture.file)),
-    toolCalls: record.toolCalls.total,
-    failedCalls: record.toolCalls.failed,
-    previews: previews.length,
-    clearPreviews: clear.length,
-    firstClearMs: clear[0]?.startedAtMs ?? null,
-    accepted: candidates.length - refused.length,
-    refused: refused.length,
-    refusalCodes: [...new Set(refused.flatMap((submit) => submit.findingCodes))],
-  };
-}
-
-/** Each battery with the zone its recorded decision placed it in, or a provisional one. */
-function readBatteries(row: RunRow, band: readonly [number, number]): PulseBattery[] {
-  const decisions = readDifficultyDecisions(row.location).rows;
-  return row.cases.batteries.map(({ runId, tally }) => {
-    const decided = decisions.find((decision) => decision.evidenceRunIds.at(-1) === runId)?.placement ?? null;
-    // The difficulty denominator keeps unaccepted attempts as fails once any case is verified.
-    const scored = tally.verified === 0 ? 0 : tally.verified + tally.unaccepted;
-    const placed = decided?.zone ?? placeOnBand(tally.passed, scored, band)?.zone ?? null;
-    return {
-      passed: tally.passed,
-      verified: tally.verified,
-      unaccepted: tally.unaccepted,
-      nonResults: tally.nonResults,
-      zone: placed,
-      recorded: decided !== null,
-    };
-  });
-}
-
-function readPulse(row: RunRow, now: number, band: readonly [number, number], busy: Busy | null) {
-  const { campaignDir } = row.location;
-  const observations = readObservations(campaignDir, row.runId);
-  const terminal = row.liveness.state === "closed" ? readRunEvidence(row.location).terminal : null;
-  const safeguardLog = safeguardLogFile(campaignDir, row.runId);
-  let safeguards: string[] = [];
-  try {
-    safeguards = parseSafeguardLog(readFileSync(safeguardLog, "utf8")).firings.map((firing) => firing.name);
-  } catch {
-    // No safeguard fired, or the log cannot be read; either way there is no lead to report.
-  }
-  return {
-    runId: row.runId,
-    label: pulseLabel(row.runId),
-    state: row.liveness.state,
-    now,
-    startedAt: row.startedAt,
-    observations,
-    round: readRound(campaignDir, roundsOpened(observations)),
-    batteries: readBatteries(row, band),
-    safeguards,
-    terminal:
-      terminal === null
-        ? null
-        : [terminal.outcome ?? "no outcome", terminal.terminalReason?.slice(0, 160)]
-            .filter(Boolean)
-            .join(": "),
-    busy,
-  } satisfies PulseReading;
-}
-
-// ---------------------------------------------------------------------------------------------
 // The loop.
 
 /**
@@ -730,7 +470,10 @@ function isKeptRound(round: unknown): boolean {
     isNumber(round.refused) &&
     Array.isArray(round.refusalCodes) &&
     Array.isArray(round.rehearsals) &&
-    (round.plan === null || isRecord(round.plan))
+    (round.plan === null ||
+      (isRecord(round.plan) &&
+        (round.plan.families === null || isNumber(round.plan.families)) &&
+        (round.plan.expected === null || isString(round.plan.expected))))
   );
 }
 
@@ -760,7 +503,7 @@ function hostLine(repoRoot: string, memory: PulseMemory<PulseReading>): string {
   const moved = memory.freeGiB === null ? 0 : freeGiB - memory.freeGiB;
   const delta = moved === 0 ? "" : ` (${moved > 0 ? "+" : ""}${String(moved)} since the last look)`;
   memory.freeGiB = freeGiB;
-  return `load ${loadavg()[0]?.toFixed(1) ?? "?"} · ${String(freeGiB)} GiB free${delta}${floor}`;
+  return `load ${loadavg()[0]?.toFixed(1) ?? "?"} of ${String(availableParallelism())} cores · ${String(freeGiB)} GiB free${delta}${floor}`;
 }
 
 /** One look at the selected runs: a status line each, then what moved since the previous look. */

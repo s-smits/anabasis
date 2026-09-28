@@ -12,7 +12,7 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { hashJsonValue } from "../src/meta/stable-json.ts";
-import type { RehearsalRow } from "../src/author/experiment-plan.ts";
+import type { RehearsalRow } from "../src/builder/harness-trial.ts";
 import { bundleSnapshotIdOf } from "../src/claim/bundle-snapshot.ts";
 import { fingerprintSlug } from "../src/claim/fingerprint.ts";
 import { AuthoringReviewClock } from "../src/gate/review-clock.ts";
@@ -110,6 +110,7 @@ function rehearsal(
       taskId: "t1",
       family: "single-part",
       verdict,
+      submitted: artifact !== null,
       wallMinutes: 120,
       minutes: 1,
       toolCalls: 2,
@@ -132,6 +133,7 @@ async function handed(rehearsals: readonly Rehearsal[]) {
   const reviews = new AuthoringReviews(
     workspace,
     SLUG,
+    undefined,
     new AuthoringReviewClock(null, 0),
     async (root, _trigger, _plan, cases?: readonly unknown[]) => {
       seen = { root, rehearsals: cases ?? [] };
@@ -158,7 +160,6 @@ async function shown(root: string, rehearsals: readonly unknown[]) {
     treeRoot: ".",
     analysis: null,
     priorAdvice: null,
-    experiment: null,
     review,
     publicRequest: REQUEST,
     ...double<object>({ rehearsals }),

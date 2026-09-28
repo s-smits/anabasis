@@ -119,7 +119,6 @@ async function reviewed(
     treeRoot: ".",
     analysis: null,
     priorAdvice: null,
-    experiment: null,
     ...keyIfNotNull("demonstrations", demonstrations),
     review,
     publicRequest: REQUEST,

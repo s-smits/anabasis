@@ -141,25 +141,17 @@ function authoringLines(evidence: RunEvidence): string[] {
 }
 
 /**
- * What the batteries above were decided under, and which of this run's records were left out of
- * them. One frame revision covers every row, because a run is one controller process and
- * `FRAME_REVISION` is computed once at import — so this names the sentences about the band that
- * the Builder actually read, rather than comparing revisions that cannot differ here. The refusal
- * line is the other half: a battery absent from the table because its record predates the current
- * schema reads exactly like a battery that never ran, so the count and the versions are printed.
+ * Which of this run's climb records were left out of the batteries above. A battery absent from the
+ * table because its record predates the current schema reads exactly like a battery that never
+ * ran, so the count and the versions are printed.
  */
 function climbConditionLines(decisions: DifficultyDecisions): string[] {
-  const lines: string[] = [];
-  const frame = decisions.rows[0]?.frame;
-  if (frame !== undefined) lines.push(`  Climb wording: ${frame.slice(0, 12)}`);
-  if (decisions.refused.length > 0) {
-    const versions = [...new Set(decisions.refused)].sort().join(", ");
-    lines.push(
-      `  Climb records refused: ${decisions.refused.length} (${versions}) — not ${DIFFICULTY_DECISION_SCHEMA},`,
-      "  so their action words were chosen by code this reader cannot account for.",
-    );
-  }
-  return lines;
+  if (decisions.refused.length === 0) return [];
+  const versions = [...new Set(decisions.refused)].sort().join(", ");
+  return [
+    `  Climb records refused: ${decisions.refused.length} (${versions}) — not ${DIFFICULTY_DECISION_SCHEMA},`,
+    "  so their action words were chosen by code this reader cannot account for.",
+  ];
 }
 
 function batteryLines(detail: RunDetail): string[] {

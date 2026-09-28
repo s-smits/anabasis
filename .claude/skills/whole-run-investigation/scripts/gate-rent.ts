@@ -19,9 +19,6 @@
 //                                       moved, so a repair to the tools answered it
 //   cleared-without-edit                the whole submission condition is the same, bytes and
 //                                       tools: the refusal was about something other than them
-//   cleared-plan-unrecorded             the same, for a refusal of the round's plan, which the
-//                                       condition does not cover: an EXPERIMENT.json edit may
-//                                       have answered it
 //   bundle-unchanged-condition-unknown  the bytes are the same and the receipts recorded no tool
 //                                       condition, so whether the tools moved is not known
 //   answered-identity-unrecorded        one of the two receipts named no candidate
@@ -97,8 +94,6 @@ const REFUSED = new Set(["findings", "refused"]);
 const CLEARED = new Set(["clear", "accepted"]);
 /** The forms under which a component still refuses; a firing below the bar in one is a lead. */
 const LIVE_FORMS = new Set(["kept", "narrowed", "rewritten"]);
-/** The stage that reads the round's EXPERIMENT.json, which the submission condition does not cover. */
-const PLAN_STAGE = "validation";
 const TASKS_FILE = "correctness-model/tasks.json";
 
 /** One gate receipt of a session, with the calls the Builder made since the previous one. */
@@ -135,7 +130,6 @@ export type EpisodeAnswer =
   | "repaired"
   | "repaired-tool-condition"
   | "cleared-without-edit"
-  | "cleared-plan-unrecorded"
   | "bundle-unchanged-condition-unknown"
   | "answered-identity-unrecorded"
   | "unanswered";
@@ -401,12 +395,12 @@ function episodesOf(receipts: readonly Receipt[], where: string, accepted: boole
 
 /** How the receipt that no longer carried a component answered it. The full condition decides
  *  where both receipts recorded one; otherwise the snapshot alone, which cannot see the tools. */
-function answerOf(episode: OpenEpisode, first: Receipt, end: Receipt): EpisodeAnswer {
+function answerOf(first: Receipt, end: Receipt): EpisodeAnswer {
   if (first.conditionId !== null && end.conditionId !== null) {
     if (first.conditionId !== end.conditionId) {
       return first.candidateId === end.candidateId ? "repaired-tool-condition" : "repaired";
     }
-    return episode.stages.includes(PLAN_STAGE) ? "cleared-plan-unrecorded" : "cleared-without-edit";
+    return "cleared-without-edit";
   }
   if (first.candidateId === null || end.candidateId === null) return "answered-identity-unrecorded";
   return first.candidateId === end.candidateId ? "bundle-unchanged-condition-unknown" : "repaired";
@@ -434,7 +428,7 @@ function close(episode: OpenEpisode, end: Receipt | null): Omit<Episode, "where"
   return {
     ...shared,
     carried: episode.carried,
-    answer: answerOf(episode, first, end),
+    answer: answerOf(first, end),
     minutes: first.atMs !== null && end.atMs !== null ? minutes(end.atMs - first.atMs) : null,
     edits: episode.edits + end.editsBefore,
     toolWork,

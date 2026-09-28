@@ -1,8 +1,7 @@
 // Deterministic ledgers the digest appends after its product blocks: which checks the controls
 // exercise but measured submissions never fail (lanes 5 and 6), whether the Judge census could be
 // valid at all (lane 16), per-family pass counts hidden by one aggregate, whether any battery
-// repeated a condition (lane 20), where each battery landed on the band and whether the declared
-// target was met (lane 10), which role spent the provider allowance and whether a battery was
+// repeated a condition (lane 20), where each battery landed on the band (lane 10), which role spent the provider allowance and whether a battery was
 // censored by provider non-results (lane 24), whether admitted findings had a repair route and
 // whether an advisory finding keeps coming back (lane 14), the Builder memory byte cap (lane 26)
 // and served-model attestation.
@@ -62,7 +61,6 @@ export interface ReadoutRow {
   passed: number | null;
   verified: number | null;
   zone: string | null;
-  target: JsonObject | null;
 }
 
 /** One difficulty decision this reader opened. */
@@ -72,7 +70,6 @@ export interface DecisionRow {
   conflict: boolean;
   placement: RecordedPlacement | null;
   zone: string | null;
-  allowance: JsonObject | null;
   rows: ReadoutRow[];
   admitted: number | null;
   excluded: number;
@@ -266,8 +263,8 @@ function placementOf(decision: JsonObject): RecordedPlacement | null {
   };
 }
 
-/** The readout rows a decision carries, keeping the fields the ledger prints: the battery's counts,
- *  the zone it read and the target it declared with the result the controller recorded against it. */
+/** The readout rows a decision carries, keeping the fields the ledger prints: the battery's counts
+ *  and the zone it read. */
 function readoutRowsOf(counters: JsonObject): ReadoutRow[] {
   return (Array.isArray(counters.rows) ? counters.rows : []).flatMap((row) =>
     isRecord(row) && isString(row.runId)
@@ -277,7 +274,6 @@ function readoutRowsOf(counters: JsonObject): ReadoutRow[] {
             passed: isNumber(row.passed) ? row.passed : null,
             verified: isNumber(row.verified) ? row.verified : null,
             zone: isString(row.zone) ? row.zone : null,
-            target: isRecord(row.target) ? row.target : null,
           },
         ]
       : [],
@@ -323,7 +319,6 @@ export function readDifficultyDecisions(campaign: string): DifficultyDecisions {
       // Where the decision placed the battery it read, repeated at the top level because the
       // check-informativeness block keys its perfect-battery lead on it.
       zone: placementOf(decision)?.zone ?? null,
-      allowance: isRecord(counters.allowance) ? counters.allowance : null,
       rows: readoutRowsOf(counters),
       admitted: isNumber(counters.admitted) ? counters.admitted : null,
       excluded: Array.isArray(counters.excluded) ? counters.excluded.length : 0,
@@ -353,11 +348,7 @@ function decisionLine(row: DecisionRow): string {
       : ` ${placement.zone ?? "?"} · ${placement.passes ?? "?"}/${placement.n ?? "?"}` +
         ` aim [${placement.aim === null ? "?" : placement.aim.join(",")}] toAim ${placement.toAim ?? "?"}`;
   const facts = `${row.repeated ? " · repeated failures" : ""}${row.conflict ? " · family conflict" : ""}`;
-  const allowance =
-    row.allowance === null
-      ? ""
-      : ` · allowance ${jsonText(row.allowance.rounds ?? "?")} round(s) ${jsonText(row.allowance.side ?? "?")} over ${jsonText(row.allowance.products ?? "?")} product(s)`;
-  return `${row.runId}:${placed}${facts} · admitted ${row.admitted ?? "-"} excluded ${row.excluded}${allowance}`;
+  return `${row.runId}:${placed}${facts} · admitted ${row.admitted ?? "-"} excluded ${row.excluded}`;
 }
 
 /** The longest run of consecutive placements on one off-aim side, ending at its last member. */
@@ -378,8 +369,8 @@ function offAimStreaks(rows: readonly DecisionRow[]): OffAimStreak[] {
 }
 
 /**
- * Section 4b: one line per decision this reader opened, the declared target of every battery the
- * decisions carry a readout row for, then one line per record it refused. The section reads the
+ * Section 4b: one line per decision this reader opened, any run of placements on one side of the
+ * aim, then one line per record it refused. The section reads the
  * placement the controller recorded and never re-derives one, so a lead here disagrees with the
  * controller only when the record does.
  */
@@ -394,24 +385,6 @@ export function bandPlacementLines({ rows, refused }: DifficultyDecisions): stri
     );
   }
   for (const row of rows) lines.push(decisionLine(row));
-  // Every decision restates the whole readout, so the last decision naming a battery owns its row.
-  const targets = new Map<string, ReadoutRow>();
-  for (const row of rows) {
-    for (const readout of row.rows) if (readout.target !== null) targets.set(readout.runId, readout);
-  }
-  for (const readout of targets.values()) {
-    const target = readout.target;
-    // Unreachable: only a row with a target enters the map.
-    if (target === null) continue;
-    lines.push(
-      `  ${readout.runId}: target ${jsonText(target.comparator ?? "?")} ${jsonText(target.verifiedPasses ?? "?")} · passed ${readout.passed ?? "?"}/${readout.verified ?? "?"} · ${jsonText(target.result ?? "?")}`,
-    );
-    if (target.result === "missed") {
-      lines.push(
-        `  TARGET MISSED (lane 10): ${readout.runId} declared ${jsonText(target.comparator ?? "?")} ${jsonText(target.verifiedPasses ?? "?")} verified passes and measured ${readout.passed ?? "?"}, missed by ${jsonText(target.missedBy ?? "?")}`,
-      );
-    }
-  }
   for (const streak of offAimStreaks(rows)) {
     lines.push(
       `OFF-AIM STREAK (lane 10): ${streak.runIds.length} consecutive placements ${streak.side} the aim (${streak.runIds.join(", ")})`,

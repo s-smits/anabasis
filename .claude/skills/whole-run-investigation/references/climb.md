@@ -22,10 +22,9 @@ owner and the battery sizes are frozen policy.
 `recordDifficultyDecision` (`src/run/difficulty-decision.ts`) writes one file per round under
 `difficulty-decisions/<runId>-<digest>.json`, with the schema `DIFFICULTY_DECISION_SCHEMA` names;
 a reader takes that schema and refuses any other. The record carries the run, the slug, the
-measured-condition digest, `frame: FRAME_REVISION` and the `ClimbReadout` itself. The frame matters
-because every sentence the readout sent the Builder is a line of `FRAME`
-(`src/run/climb-readout-frame.ts`), so two records at different revisions were authored under
-different wording and are different conditions.
+measured-condition digest, the rationale and the `ClimbReadout` itself. It carries no wording
+revision: the readout states counts and placements alone, and an epoch's `pass` hashes those facts
+rather than the sentences that render them, so a reworded readout is not a new condition.
 
 Inside the readout, read these fields and nothing looser:
 
@@ -36,8 +35,6 @@ Inside the readout, read these fields and nothing looser:
 | a row's `toAim` | signed distance in verified passes from the aim; negative is above it |
 | a row's `wilson` | the interval at `REPORTING_Z` (`src/claim/estimation.ts`), the only sample-size owner |
 | `admitted` and `excluded` | what `admitBattery` let in and what `excludedSummary` names; an excluded battery is the usual reason a climb looks stalled |
-| `allowance` | the `OffAimAllowance`: `rounds` on one `side` of the aim, how many `placed` and how many `refused` |
-| a row's target | the Builder's `EXPERIMENT.json` `{comparator, verifiedPasses}` with `result` `met`, `missed`, `undetermined` or `unadmitted`, and `missedBy` when missed |
 
 There is no climb, hold or ease verb, no level label and no ladder to read, and a note that names
 one is describing a mechanism the source no longer has. `readClimbReadout`
@@ -84,11 +81,9 @@ A battery that sits `over-aim` or `too-easy` while its checks all pass has not f
 the reason is one of two. Either the checks have slack, so that no accepted artifact tripped the
 check the request depends on — lane 5's `UNTRIPPED IN SHIPPING` and `PERFECT BATTERY OVER AIM`
 where the limit is anchored to the Builder's own reference, lane 6's `REACH-ONLY CHECKS` where the
-check cannot bind to what it judges; or the Builder declared a target its own rehearsal
-contradicted or never tested, which is lane 11's `SUBMITTED BYTES NEVER REHEARSED` and `REHEARSAL
-CONTRADICTS TARGET`, or could not test, which is lane 9's `REHEARSAL NOT-RUN`. The `allowance` says
-how many rounds the streak has run and on which side; `OFF-AIM STREAK` and `TARGET MISSED` send the
-round-over-round reading to lane 10. What the Builder then changed, and whether the changed bytes
+check cannot bind to what it judges; or the Builder submitted bytes its own rehearsal never tested,
+which is lane 11's `SUBMITTED BYTES NEVER REHEARSED`, or could not test, which is lane 9's
+`REHEARSAL NOT-RUN`. `OFF-AIM STREAK` sends the round-over-round reading to lane 10. What the Builder then changed, and whether the changed bytes
 carry a changed demand, is lane 20's question, and `REPEATED CONDITION` is the case where they
 carry none; whether the changed source reached anything is lane 21's.
 
@@ -108,7 +103,6 @@ candidate.
 Name the owner, live consumer, decision changed and falsifier, then replay the mechanism over
 recorded campaigns and count the rounds it would have engaged; a refusal reachable only after the
 behaviour it exists to cause is decoration. Prefer deleting a competing owner to adding one. Return
-the recorded decision and its zone, admitted and excluded batteries, the allowance, the target and
-its result, whether the public condition grew and how, the three denominators, the prediction
+the recorded decision and its zone, admitted and excluded batteries, whether the public condition grew and how, the three denominators, the prediction
 outcomes, the change with its falsifier and the next question. Paid work stays with
 `run-improvement-campaign` and `launch-run`.

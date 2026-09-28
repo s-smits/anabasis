@@ -221,7 +221,7 @@ function settleBuildOutcome(
  *  states no measurement. The advice packet is families, kinds and counts by construction
  *  (rebuild-advice.ts), so nothing protected crosses. The same read supplies the sizing landing. The
  *  history pages read every recorded model pin and threshold manifest with its condition labels:
- *  another condition enters no placement or allowance, and its public tasks stay readable. */
+ *  another condition enters no placement, and its public tasks stay readable. */
 function composeAuthoringMemory(
   input: IterationInput,
   decision: NextMove,
@@ -353,12 +353,11 @@ export async function runBuildStep(
   );
   if (
     outcome.buildAdmissible &&
-    outcome.experimentProposal !== undefined &&
     outcome.experimentScope?.operation !== undefined &&
     result.experiment !== null
   ) {
     result.experimentAuthoring = candidateExperimentAuthoring(
-      outcome.experimentProposal,
+      outcome.experimentPlan ?? null,
       outcome.experimentScope.operation,
       result.experiment,
       domainDir,

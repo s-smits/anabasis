@@ -21,7 +21,7 @@ import type { BuildTask } from "./tasks.ts";
 /** The per-case solve evidence `solveCase` writes, carried into the new run directory so a trace
  *  reader, the diagnosis reader and a later replay find each reused case where a fresh one would
  *  be. The first two are required; the rest exist only for some solves. */
-const PUBLIC_TASK_FILE = "public-task.json";
+export const PUBLIC_TASK_FILE = "public-task.json";
 const FINAL_SUBMISSION_FILE = "final-submission.json";
 const OPTIONAL_SOLVE_FILES = [
   "built-registration.json",

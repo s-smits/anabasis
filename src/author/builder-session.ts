@@ -44,7 +44,7 @@ import type { CandidateSnapshot } from "./candidate-check.ts";
 import { BUILDER_TURN_SETTLE_MS, runBuilderTurn, turnEventRecorder } from "./builder-turn-loop.ts";
 import { realpathSync } from "../meta/filesystem.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
-import { type BuilderSubmitOutcome, makeSubmitTool } from "../gate/submit-tool.ts";
+import { type BuilderSubmitOutcome, type SubmitHold, makeSubmitTool } from "../gate/submit-tool.ts";
 export type { BuilderSubmitOutcome } from "../gate/submit-tool.ts";
 export {
   BUILDER_WORKSPACE_CARD,
@@ -64,8 +64,6 @@ interface BuilderSessionInput {
    *  opening would state them twice; after compaction the context tool's round source still has
    *  them. */
   freshContext?: string;
-  /** The round plan's compact view, which every continuation carries. */
-  planView?: () => string;
   /** The operator's cap on session work (`--max-builder-turns`), which model turns and refused
    *  submits share. A turn is one prompt and the tool iterations inside it are free, so a session
    *  can author everything within turn 1 and make a dozen refused submits that all record
@@ -120,9 +118,9 @@ export interface BuilderSessionDeps {
    *  the session is still authoring; the public advice it returns rides that tool's result, so the
    *  review reaches the Builder without a turn of its own. */
   afterTool?: () => Promise<string | null>;
-  /** Submit's join with that review: text returned here replaces the submit's verdict, and the call
-   *  counts as no submit. */
-  beforeSubmit?: () => Promise<string | null>;
+  /** Submit's hold: the join with that review. A hold returned here replaces the submit's verdict,
+   *  and the call counts as no submit. */
+  beforeSubmit?: () => SubmitHold | null | Promise<SubmitHold | null>;
   /** Opens the Builder slot's host session; a continued conversation reconfigures its own instead. */
   open: OpenSession;
   /** Record what this round's session exposes, every round and before it begins, whether the round
@@ -258,12 +256,12 @@ function roundPrompt(input: BuilderSessionInput, previous: PreviousRound | null)
     // A bound the model cannot observe cannot steer it, so an operator cap is stated rather than
     // merely enforced. A Claude session can run as a single turn, which makes a turn reserve
     // meaningless as a pace signal; left with one, a session authors for hours past its first clear
-    // preview without submitting. So the pace is stated as an action instead. Readiness names the
-    // rehearsals as well as the preview: judged by validity alone, a Builder whose rehearsals all
-    // passed submitted anyway, declared a target below what they implied, and measured a full pass.
+    // preview without submitting. So the pace is stated as an action instead. It names no rehearsal
+    // condition: rehearsals pass far more often than a Builder predicts, so asking them to agree with
+    // an aim below the band held rounds back for hours without changing where the battery landed.
     `${input.maxTurns === undefined ? "" : `Round limit: ${input.maxTurns} assistant turns. `}Build, check and rehearse the candidate, and submit` +
-      ` once a clear preview says it works and your rehearsals agree with the aim; further polish belongs to the next` +
-      ` round.`,
+      ` once a clear preview says it works; the measured battery, not a rehearsal, decides where it lands, and further` +
+      ` polish belongs to the next round.`,
     HANDOVER,
   ];
   const context = [input.advisory ?? "", previous === null ? (input.freshContext ?? "") : ""]
@@ -430,7 +428,6 @@ async function runRoundTurns(
       checkpoint,
       kickoff: input.kickoff,
       ...keyIfDefined("maxTurns", maxTurns),
-      ...keyIfDefined("planView", input.planView),
       openedAtMs,
       ...keyIfDefined("observer", deps.observer),
       // The operator's cap applies across the whole session, so each new turn receives only what

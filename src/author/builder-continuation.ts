@@ -42,8 +42,6 @@ interface GoalState {
   readonly maxTurns: number | undefined;
   /** Zero for a caller that keeps no start time; under a minute is not stated. */
   readonly elapsedMs: number;
-  /** The round plan's compact view, restated at every turn boundary. */
-  readonly planView?: string;
 }
 
 const persist =
@@ -89,7 +87,6 @@ export function continuePrompt(goal: GoalState): string {
     persist,
     `The user's request, unchanged:\n${goal.kickoff}`,
     goalFacts(goal),
-    ...(goal.planView === undefined ? [] : [goal.planView]),
     nextAction(goal),
     progress,
   ].join("\n\n");

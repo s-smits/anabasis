@@ -48,7 +48,7 @@ function root(): string {
 function recordedCampaign(
   abandonedRuns: JsonValue | typeof ABSENT = [],
   verifierCleanup?: JsonValue,
-  terminalSchema = "campaign-terminal/v4",
+  terminalSchema = "campaign-terminal/v5",
 ): string {
   const campaignDir = join(root(), "campaigns", "project");
   const controllerDir = join(campaignDir, "controller", RUN);
@@ -131,13 +131,13 @@ describe("the recorded terminal the strict reader admits", () => {
     expect(() => readControllerEvidence(recordedCampaign(abandonedRuns), RUN)).toThrow(/abandonedRuns/);
   });
 
-  it("refuses an empty pending cleanup, a terminal from before the run-end numbers, and one without absent steps", () => {
+  it("refuses an empty pending cleanup, a terminal from before the plan score, and one without absent steps", () => {
     expect(() =>
       readControllerEvidence(recordedCampaign([], { state: "pending", receiptIds: [] }), RUN),
     ).toThrow("verifierCleanup");
     expect(() =>
-      readControllerEvidence(recordedCampaign([], undefined, "campaign-terminal/v3"), RUN),
-    ).toThrow(/campaign-terminal\/v3.*campaign-terminal\/v4/);
+      readControllerEvidence(recordedCampaign([], undefined, "campaign-terminal/v4"), RUN),
+    ).toThrow(/campaign-terminal\/v4.*campaign-terminal\/v5/);
     const campaign = recordedCampaign([]);
     const terminalPath = join(campaign, "controller", RUN, "terminal.json");
     const { absentSteps: _dropped, ...rest } = JSON.parse(readFileSync(terminalPath, "utf8"));
@@ -231,7 +231,7 @@ describe("the typed owner an abort records", () => {
       token: "t",
       ownedAtRecord: true,
     });
-    expect(readJsonFile(path)).toMatchObject({ schema: "campaign-terminal/v4", runEnd });
+    expect(readJsonFile(path)).toMatchObject({ schema: "campaign-terminal/v5", runEnd });
   });
 });
 

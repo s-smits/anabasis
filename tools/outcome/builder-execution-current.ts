@@ -11,13 +11,15 @@ import {
   HANDOVER_FILES,
   type BuilderSubmitAttempt,
 } from "../../src/author/builder-execution.ts";
-import { parseExperimentSubmission } from "../../src/author/experiment-plan.ts";
+import { Check as validateSchema } from "typebox/value";
+import { RecordedPlanSchema } from "../../src/author/experiment-plan.ts";
 import {
   CUSTOM_TOOL_NAMES,
   bareCustomToolName,
   declaredSemanticOutcome,
 } from "../../src/author/builder-custom-tool-call.ts";
 import { plainRecord } from "../../src/meta/json-evidence.ts";
+import { hashJsonValue } from "../../src/meta/stable-json.ts";
 import { isBoolean, isNumber, isString } from "../../src/meta/json-shape.ts";
 import {
   isNonNegativeInteger,
@@ -46,8 +48,12 @@ const CURRENT_EXECUTION_OUTCOMES = new Set([
   "recorded-at-terminal",
 ]);
 
-function currentExperimentProposal(value: unknown): boolean {
-  return value === undefined || parseExperimentSubmission(value) !== null;
+/** Absent, or a plan whose digest is the digest of its other fields, so an edited plan reads stale. */
+function currentExperimentPlan(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (!validateSchema(RecordedPlanSchema, value)) return false;
+  const { digest, ...plan } = value;
+  return digest === hashJsonValue(plan);
 }
 
 function validBackend(value: unknown): boolean {
@@ -249,15 +255,11 @@ function currentSubmitIdentity(row: EvidenceRecord): boolean {
     isPositiveInteger(row.turn) &&
     isNonNegativeInteger(row.atMs) &&
     (row.outcome === "accepted" || row.outcome === "refused") &&
-    (row.stage === null ||
-      row.stage === "bundle" ||
-      row.stage === "validation" ||
-      row.stage === "conformance" ||
-      row.stage === "gates") &&
+    (row.stage === null || row.stage === "bundle" || row.stage === "conformance" || row.stage === "gates") &&
     isString(row.commit) &&
     row.commit.length > 0 &&
     isBoolean(row.terminal) &&
-    currentExperimentProposal(row.experimentProposal)
+    currentExperimentPlan(row.experimentPlan)
   );
 }
 

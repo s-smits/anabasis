@@ -31,7 +31,7 @@ const VARIANT_INDEX_BYTES = 160;
 export const FEEDBACK_NAVIGATION =
   'Use harness_inspect {"action":"feedback"} to page every group; add "group", "field" and "offset" to read an exact code, path or detail.';
 
-export type AuthorCheckStage = "bundle" | "validation" | "conformance" | "gates";
+export type AuthorCheckStage = "bundle" | "conformance" | "gates";
 interface AuthorRefusalIdentity {
   attempt: number;
   turn: number;

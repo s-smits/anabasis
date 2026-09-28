@@ -12,7 +12,7 @@ import type {
   BuilderSubmitAttempt,
 } from "../author/builder-execution.ts";
 import { type CandidateSnapshot, conditionKey } from "../author/candidate-check.ts";
-import type { ExperimentSubmission } from "../author/experiment-plan.ts";
+import type { RecordedPlan } from "../author/experiment-plan.ts";
 import {
   type AuthorCheckStage,
   type BuilderAuthorFeedback,
@@ -43,8 +43,8 @@ export type BuilderSubmitOutcome =
       terminal?: boolean;
       /** A controller stop that did not validate or inspect a candidate tree. */
       kind?: "controller-terminal";
-      experimentProposal?: ExperimentSubmission;
-      /** Where the plan and this round's rehearsals disagree: advice, never a refusal. */
+      experimentPlan?: RecordedPlan;
+      /** On a refusal, what the round's plan advises (`planAdvice`): advice, never a refusal. */
       advice?: readonly string[];
       /** The stages that reached a verdict and each code under its stage (`stagesOf`), for a
        *  refusal a gate run produced; `stage` names only the first stage that refused. */
@@ -76,11 +76,18 @@ const SubmitParams = Type.Object({}, { additionalProperties: false });
 export const SUBMIT_DESCRIPTION =
   "Run the authoritative gates over the current candidate package and freeze its bytes if accepted. A refusal returns a bounded repair overview; read exact findings through harness_inspect feedback, repair them, then retry. A refused candidate resubmitted with its files and installed tools unchanged returns the same refusal and counts toward ending the round; one refused by a runtime non-result may be retried as it is.";
 
+/** A submit the controller holds before counting it, and why: an Epoch review with a blocking
+ *  finding the Builder has not read. */
+export interface SubmitHold {
+  text: string;
+  reason: "review-unread";
+}
+
 interface SubmitToolBinding {
   submit(input: { turn: number }): BuilderSubmitOutcome | Promise<BuilderSubmitOutcome>;
-  /** Asked before any attempt is counted. Text it returns is this call's whole result: nothing was
-   *  submitted, and no attempt is recorded. */
-  hold?: () => Promise<string | null>;
+  /** Asked before any attempt is counted. A hold's text is this call's whole result: nothing was
+   *  submitted, no attempt is recorded, and no strike is counted. */
+  hold?: () => SubmitHold | null | Promise<SubmitHold | null>;
   state: SubmitSessionState;
   recorder: BuilderExecutionRecorder;
   /** The operator's turn cap, which also bounds refused submits; absent, the round has none. */
@@ -179,7 +186,7 @@ async function settleSubmit(binding: SubmitToolBinding) {
   // Read before this attempt joins the record, so it names a strictly earlier submission.
   const closest = outcome.ok ? null : recorder.fewestFindingsRefusal(outcome.stage);
   const attempt = recorder.recordSubmit({
-    ...keyIfDefined("experimentProposal", outcome.experimentProposal),
+    ...keyIfDefined("experimentPlan", outcome.experimentPlan),
     kind: outcome.ok ? "candidate" : (outcome.kind ?? "candidate"),
     turn: state.activeTurn,
     outcome: outcome.ok ? "accepted" : "refused",
@@ -262,8 +269,12 @@ export function makeSubmitTool(binding: SubmitToolBinding): AgentTool<typeof Sub
       }
       inFlight = true;
       try {
-        const held = binding.hold === undefined ? null : await binding.hold();
-        if (held !== null) return text(held, { outcome: "blocked", reason: "review-unread" });
+        // A hold with nothing to wait for answers at once, and is not awaited, so the gate run this
+        // call starts is still published before its first await and a preview started meanwhile
+        // joins it.
+        const holding = binding.hold?.() ?? null;
+        const held = holding instanceof Promise ? await holding : holding;
+        if (held !== null) return text(held.text, { outcome: "blocked", reason: held.reason });
         state.attempts += 1;
         return await settleSubmit(binding);
       } finally {

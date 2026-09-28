@@ -19,7 +19,6 @@ import { isBoolean, isNumber, isString, type JsonValue } from "../meta/json-shap
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { BATTERY_FILE } from "../correctness-bundle/battery-record.ts";
 import { recordedVerifierHash } from "../correctness-bundle/verifier-environment.ts";
-import { parseExperimentSubmission } from "../author/experiment-plan.ts";
 import { ExperimentAuthoringSchema, type ExperimentAuthoring } from "./experiment-freeze.ts";
 import { SHIPPING_VARIANT } from "./run-driver.ts";
 
@@ -38,7 +37,7 @@ import { SHIPPING_VARIANT } from "./run-driver.ts";
 const ENVIRONMENT_CLAUSES = new Set(["runtime-model-identity-unproven", "non-result-ratio-excessive"]);
 
 /** Partial recorded battery shape. Admission validates the experiment authoring before returning
- *  the evidence, because a malformed proposal digest is a refusal rather than a field to skip; the
+ *  the evidence, because a malformed plan digest is a refusal rather than a field to skip; the
  *  history reader checks the remaining fields it consumes, at the point it consumes them. */
 export interface BatteryEvidence {
   runId?: unknown;
@@ -331,10 +330,9 @@ export function admitBattery(
   }
   if (
     evidence.experimentAuthoring !== undefined &&
-    (!validateSchema(ExperimentAuthoringSchema, evidence.experimentAuthoring) ||
-      parseExperimentSubmission(evidence.experimentAuthoring.proposal) === null)
+    !validateSchema(ExperimentAuthoringSchema, evidence.experimentAuthoring)
   ) {
-    return refuse("recorded experiment authoring is malformed or has an unbound proposal digest");
+    return refuse("recorded experiment authoring is malformed");
   }
   if (evidence.runId !== name) {
     return refuse(

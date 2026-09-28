@@ -67,7 +67,7 @@ dated state of earlier passes lives too. Write each field as a sentence with its
   Zero is stated as zero, and a decision resting on zero rests on construction.
 - **The 98% sentence.** The wrong thing the component refuses, whether a correct candidate can trip
   it, and the fixture or firing showing each.
-- **Told.** Every sentence in `starters/`, the Builder system prompt, `FRAME`, tool descriptions,
+- **Told.** Every sentence in `starters/`, the Builder system prompt, the round prompt and battery contract, tool descriptions,
   AGENTS.md and the skills that states the rule, and what each says after the change. A rule the
   Builder is told and nothing enforces is worse than no rule.
 - **Tests, falsifier, refuter.** The positive and nearest hostile case with the revert proof; the

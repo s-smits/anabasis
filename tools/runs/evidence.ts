@@ -144,7 +144,7 @@ export interface ClaimFacts {
   clauses: string[];
 }
 
-/** One recorded climb decision, as the difficulty evidence states it. The rationale, frame and
+/** One recorded climb decision, as the difficulty evidence states it. The rationale and
  *  admitted count are not nullable, because the schema declares them mandatory; a record claiming
  *  the current schema without them is damaged rather than older, and is refused beside the older
  *  ones. */
@@ -162,10 +162,6 @@ interface DifficultyFacts {
   admitted: number;
   /** The battery run ids the decision derives from, in recorded order. */
   evidenceRunIds: string[];
-  /** The climb-readout frame the round's sentences were rendered from. The Builder that authored
-   *  this battery read those exact words about the band, so the revision names which guidance it
-   *  was answering. */
-  frame: string;
 }
 
 /** What one run's recorded climb decisions came to. `refused` holds the declared version of every
@@ -534,14 +530,13 @@ function decisionFacts(raw: JsonObject, runId: string): DifficultyFacts | null {
   const difficulty = nested(raw, "difficulty");
   const decision = nested(difficulty, "decision");
   const rationale = stringOr(decision?.rationale);
-  const frame = stringOr(raw.frame);
   const admitted = numberOr(difficulty?.admitted);
   const evidence = evidenceRunIds(decision);
   const placed = nested(decision, "placement");
   const zone = stringOr(placed?.zone);
   const passes = numberOr(placed?.passes);
   const n = numberOr(placed?.n);
-  if (rationale === null || frame === null || admitted === null || evidence === null) return null;
+  if (rationale === null || admitted === null || evidence === null) return null;
   const placement = isBandZone(zone) && passes !== null && n !== null ? { passes, n, zone } : null;
   if (placed !== null && placement === null) return null;
   return {
@@ -552,7 +547,6 @@ function decisionFacts(raw: JsonObject, runId: string): DifficultyFacts | null {
     conflict: nested(decision, "conflict") !== null,
     admitted,
     evidenceRunIds: evidence,
-    frame,
   };
 }
 

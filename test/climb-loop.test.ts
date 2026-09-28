@@ -9,7 +9,6 @@
  * attribution from accepted bytes, the real census, solvability and adoption path, and the real
  * recorded evidence the next round reads.
  */
-import { PLAN_FIELDS } from "./helpers/experiment-plan.ts";
 import { afterEach, describe, expect, it } from "bun:test";
 import {
   mkdirSync,
@@ -148,12 +147,10 @@ function climbScript(submits: Accepted[]): ScriptedTurn {
       writeFileSync(
         join(ctx.workspace, "EXPERIMENT.json"),
         JSON.stringify({
-          scope: "tasks",
           gap: "the measured battery says nothing about inputs the solver has not been asked to uppercase",
           change: `lengthen ${past} of the ${TASKS} inputs past two characters`,
-          ...PLAN_FIELDS,
-          expectedResult: "fewer verified passes on the same product, from the longer inputs alone",
-          target: { comparator: "at-most", verifiedPasses: TASKS - past },
+          families: ["uppercase"],
+          expectedPasses: { atMost: TASKS - past },
         }),
       );
     }
@@ -208,7 +205,7 @@ function decisionsOf(root: string): Record<string, string> {
 }
 
 describe("the climb: one product, five batteries, one fixed competence", () => {
-  it("measures a falling pass rate from the tasks alone, attributes each round to its bytes, and runs on through the streak", async () => {
+  it("measures a falling pass rate from the tasks alone, attributes each round to its bytes, and runs on below the aim", async () => {
     const root = scratchRepo();
     const submits: Accepted[] = [];
     const { repoRoot, ...runArgs } = {
@@ -243,8 +240,8 @@ describe("the climb: one product, five batteries, one fixed competence", () => {
       analyse: analyseStep,
     });
 
-    // One authored product, then four rounds that reopen and keep it: the fifth reads a streak of
-    // three batteries below the aim and still opens its session, because the route is the Builder's.
+    // One authored product, then four rounds that reopen and keep it: the fifth follows three
+    // batteries below the aim and still opens its session, because the route is the Builder's.
     expect(outcome.rounds.map((round) => [round.move, round.build, round.promotion, round.measured])).toEqual(
       [
         ["build", "adopted", null, true],
@@ -289,8 +286,8 @@ describe("the climb: one product, five batteries, one fixed competence", () => {
     // sample the note quotes, so stream and note cannot tell two stories about one battery.
     const climb = observations(root).flatMap(([, row]) => (row.owner === "climb" ? [row.claim] : []));
     expect(climb.slice(0, 2)).toEqual([
-      "too-easy: 6/6, Wilson interval [0.610, 1.000] against target range [0.2, 0.5]: significantly too easy",
-      "under-aim: 0/2, Wilson interval [0.000, 0.658] against target range [0.2, 0.5]: in range, below the aim",
+      "6/6 against band [0.2, 0.5]: too-easy",
+      "0/2 against band [0.2, 0.5]: under-aim",
     ]);
 
     // Every span the run opened also settled, success included: a reader of a live stream sees an

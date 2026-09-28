@@ -99,7 +99,7 @@ function submit(
     turn: ordinal,
     atMs: ordinal * 100,
     outcome,
-    stage: outcome === "accepted" ? null : "validation",
+    stage: outcome === "accepted" ? null : "gates",
     commit: `commit-${ordinal}`,
     findingsDigest: outcome === "accepted" ? null : `digest-${ordinal}`,
     findingCodes: [],

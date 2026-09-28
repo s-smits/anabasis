@@ -293,7 +293,7 @@ export function recordAuthoringDisputes(
 function authoringReviewer(binding: AuthoringReviewBinding): ReviewAuthoring {
   const { repoRoot, slug, review, publicRequest, observer, providerBudget } = binding;
   let demonstrations: readonly ReviewProbeRow[] = [];
-  return async (root, trigger, experiment, rehearsals) => {
+  return async (root, trigger, roundPlan, rehearsals) => {
     const runId = `authoring-${Bun.randomUUIDv7()}`;
     const advice = readLatestRebuildAdvice(repoRoot, slug);
     const result = await runEpochReview({
@@ -304,7 +304,7 @@ function authoringReviewer(binding: AuthoringReviewBinding): ReviewAuthoring {
       analysis: null,
       priorAdvice: advice,
       priorAdviceOnSeededTree: advice === null ? null : measuredSelectedProduct(repoRoot, slug, advice.runId),
-      experiment,
+      roundPlan,
       rehearsals,
       demonstrations,
       review,

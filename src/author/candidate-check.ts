@@ -1,6 +1,6 @@
 /**
  * Captures and validates a candidate from the Builder's workspace repository. The Builder writes
- * its files through confined tools, so what is on disk at submit is the proposal; this check
+ * its files through confined tools, so what is on disk at submit is the candidate; this check
  * records that working tree in Git, fingerprints the bundle, creates an immutable snapshot and then
  * validates the files read back from that snapshot rather than from the workspace. Every later
  * adoption gate reads those same captured bytes, which is what makes one submit one condition:
@@ -20,7 +20,7 @@
  * by default and so keeps public authoring feedback separate from protected verifier output.
  */
 import { capturedJsonParse } from "../meta/json-runtime.ts";
-import { existsSync, readFileSync } from "../meta/filesystem.ts";
+import { readFileSync } from "../meta/filesystem.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { join } from "../meta/path.ts";
 import { createBundleSnapshot, bundleSnapshotToolTree } from "../claim/bundle-snapshot.ts";
@@ -51,8 +51,7 @@ import { resolveToolInventory, toolTreeDigest } from "../verify/tool-inventory.t
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { commitAll } from "./domain-repo.ts";
 import { isString, type JsonValue } from "../meta/json-shape.ts";
-import { EXPERIMENT_FILE } from "./builder-memory.ts";
-import { type ExperimentSubmission, captureExperimentSubmission } from "./experiment-plan.ts";
+import { type RecordedPlan, capturePlan } from "./experiment-plan.ts";
 import { freshCandidateFindings, freshTaskValidationContext } from "./fresh-candidate-contract.ts";
 import { BRIEF_FILE, CONTROLS_FILE, TASKS_FILE, TOOLS_SPEC_FILE } from "../meta/bundle-layout.ts";
 
@@ -75,13 +74,6 @@ export interface CandidateCheckContext {
    *  fresh product's probe batteries are sized: the Builder picks, and the floor keeps the pick
    *  from becoming a battery too small to read. */
   minTasks?: number;
-  /** Whether this round must capture an `EXPERIMENT.json`. The controller sets it, never a draft
-   *  carried in the workspace, because the decision is whether a continuation from an adopted
-   *  product is being made at all, and a Builder that could answer that for itself could declare
-   *  its way out of the record. A fresh build is not required to write one, but one it did write is
-   *  captured and read like any other: the first battery's predictions are the ones most often
-   *  wrong, and a free-form plan left them unscored. */
-  experimentProposalRequired?: boolean;
 }
 
 export type CandidateCheckOutcome = (
@@ -117,11 +109,7 @@ export type CandidateCheckOutcome = (
       commit: string;
     }
 ) & {
-  experimentProposal?: ExperimentSubmission;
-  /** Why a required EXPERIMENT.json could not be captured. It is an admission finding reported
-   *  beside the bundle verdict rather than inside it, because the file contract is decided by the
-   *  bundle's own four files and a missing proposal says nothing about them. */
-  proposalFindings?: ContractFinding[];
+  experimentPlan?: RecordedPlan;
 };
 
 /** A captured candidate that passed the bundle contract: the one snapshot every later stage reads. */
@@ -520,14 +508,8 @@ export function checkCandidate(
   commitMessage = `submit: candidate for validation (${context.slug})`,
 ): CandidateCheckOutcome {
   const change = commitAll(workspace, commitMessage);
-  const proposal =
-    context.experimentProposalRequired === true || existsSync(join(workspace, EXPERIMENT_FILE))
-      ? captureExperimentSubmission(workspace)
-      : undefined;
-  const proposalKeys = {
-    ...keyIfDefined("experimentProposal", proposal?.ok === true ? proposal.experiment : undefined),
-    ...keyIfDefined("proposalFindings", proposal?.ok === false ? proposal.findings : undefined),
-  };
+  // The round plan is recorded with the candidate it was written for and decides nothing here.
+  const planKeys = keyIfDefined("experimentPlan", capturePlan(workspace).plan ?? undefined);
   const fingerprint = fingerprintSlug(workspace, { slug: context.slug });
   if (!fingerprint.ok) {
     return {
@@ -535,7 +517,7 @@ export function checkCandidate(
       stage: "bundle",
       findings: fingerprintRefusal(fingerprint.findings),
       commit: change.commit,
-      ...proposalKeys,
+      ...planKeys,
     };
   }
   const snapshot = createBundleSnapshot(workspace, fingerprint);
@@ -547,7 +529,7 @@ export function checkCandidate(
   const toolCondition = candidateToolVerdict(snapshot.dir, requiredToolIds, toolFindings);
   const findings = [...loaded.findings, ...toolFindings];
   if (findings.length > 0) {
-    return { ok: false, stage: "bundle", findings, commit: change.commit, ...proposalKeys };
+    return { ok: false, stage: "bundle", findings, commit: change.commit, ...planKeys };
   }
   return {
     ok: true,
@@ -561,6 +543,6 @@ export function checkCandidate(
     bundle: validatedBundle(snapshot.dir, loaded),
     ...toolCondition,
     advisories: loaded.advisories,
-    ...proposalKeys,
+    ...planKeys,
   };
 }

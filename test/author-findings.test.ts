@@ -63,7 +63,7 @@ describe("the shared Builder repair feedback", () => {
       turn: 3,
       atMs: 1,
       outcome: "refused",
-      stage: "validation",
+      stage: "gates",
       commit: "c".repeat(40),
       findingsDigest: "digest",
       findingCodes: ["DISCRIMINATION_ACCEPT_REJECTED", "x"],
@@ -77,7 +77,7 @@ describe("the shared Builder repair feedback", () => {
       renderRefusal(
         {
           ok: false,
-          stage: "validation",
+          stage: "gates",
           commit: attempt.commit,
           findings: [
             generatedExecutionFinding(

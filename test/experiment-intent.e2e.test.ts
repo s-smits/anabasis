@@ -1,6 +1,6 @@
 /**
  * Experiment intent composed through immutable submit, census and full-task F2 over an adopted
- * product: the accepted bytes, not the declared scope, decide whether a continuation is a task-only
+ * product: the accepted bytes, not the plan, decide whether a continuation is a task-only
  * climb, an evaluation correction or a build. One row per composition the static attribution cases
  * cannot reach; the byte rules themselves belong to the static cases. These rows continue the
  * product with authored checks alone; experiment-intent-tool.e2e.test.ts holds the rows over an
@@ -18,18 +18,17 @@ import { cleanupScratch } from "./helpers/scratch.ts";
 
 const ROWS: Array<[string, IntentRow]> = [
   [
-    "a product proposal whose bytes moved only the battery is a climb",
-    { tool: false, scope: "product", redesign: true, admitted: "climb" },
+    "a continuation whose bytes moved only the battery is a climb",
+    { tool: false, redesign: true, admitted: "climb" },
   ],
   [
-    "a tasks proposal over a moved submission schema is admitted as a build",
-    { tool: false, scope: "tasks", redesign: true, edit: EDITS.schema, admitted: "build" },
+    "a battery change over a moved submission schema is a build",
+    { tool: false, redesign: true, edit: EDITS.schema, admitted: "build" },
   ],
   [
     "a controls correction answering an evaluation finding is an evaluation",
     {
       tool: false,
-      scope: "product",
       redesign: false,
       owner: "correctness-model/evaluator.ts",
       edit: EDITS.controls,
@@ -40,7 +39,6 @@ const ROWS: Array<[string, IntentRow]> = [
     "the same correction with no conformance probes run is an unproven build",
     {
       tool: false,
-      scope: "product",
       redesign: false,
       owner: "correctness-model/evaluator.ts",
       edit: EDITS.controls,

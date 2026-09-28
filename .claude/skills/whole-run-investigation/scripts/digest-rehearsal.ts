@@ -1,8 +1,8 @@
 // The two digest blocks that read what the Builder did with its rehearsal instrument and what the
 // retained version actually holds. Block 6 joins every `harness_trial` call in an epoch's
 // execution record to the candidate its accepted submit froze, through the `candidateId` both
-// rows carry, and compares the rehearsal passes on those bytes with the target the submit
-// declared (lane 11; a rehearsal that reached no verdict is lane 9's). Block 6b checks that each retained version's `.toolchain` is a real
+// rows carry, and names an accepted candidate no rehearsal ran on (lane 11; a rehearsal that
+// reached no verdict is lane 9's). Block 6b checks that each retained version's `.toolchain` is a real
 // directory and that each claim's verifier tools were hashed as binaries rather than as the
 // wrapper script in front of one (lane 2).
 //
@@ -68,18 +68,8 @@ interface RehearsalCalls {
   submits: AcceptedSubmit[];
 }
 
-interface DeclaredTarget {
-  comparator: string;
-  verifiedPasses: number;
-}
-
 interface EpochRehearsal extends RehearsalEntry {
   epochDir: string | null;
-}
-
-/** A recorded call sequence as a template literal would print it. */
-function sequenceText(sequence: JsonValue | undefined): string {
-  return `${sequence === undefined ? sequence : jsonText(sequence)}`;
 }
 
 // --- 6: rehearsal ledger ----------------------------------------------------------------------
@@ -107,16 +97,6 @@ function rehearsalCalls(record: RehearsalRecord): RehearsalCalls {
     }
   }
   return { trials, submits };
-}
-
-/** The target the last accepted submit declared, from the `submits[]` proposal the record keeps. */
-function declaredTarget(record: RehearsalRecord): DeclaredTarget | null {
-  const submits = Array.isArray(record.submits) ? record.submits : [];
-  const accepted = submits.findLast((row) => isRecord(row) && row.outcome === "accepted");
-  const target = asRecord(asRecord(asRecord(accepted)?.experimentProposal)?.target);
-  return target !== null && isString(target.comparator) && isNumber(target.verifiedPasses)
-    ? { comparator: target.comparator, verifiedPasses: target.verifiedPasses }
-    : null;
 }
 
 /** How many rehearsal case directories the epoch holds, so a record that omitted custom calls can
@@ -150,34 +130,16 @@ function epochRehearsalLines({ epoch, file, record, epochDir }: EpochRehearsal):
     lines.push(`  REHEARSAL NOT-RUN (lane 9): ${notRun} of ${trials.length} rehearsals reached no verdict`);
   }
   const rehearsed = new Set(trials.map((trial) => trial.candidateId).filter((id) => id !== null));
-  const target = declaredTarget(record);
   for (const submit of submits) {
     if (submit.candidateId === null) {
       lines.push(
-        `  accepted submit at call ${sequenceText(submit.sequence)}: no candidateId recorded, rehearsal join unobservable`,
+        `  accepted submit at call ${submit.sequence === undefined ? "undefined" : jsonText(submit.sequence)}: no candidateId recorded, rehearsal join unobservable`,
       );
       continue;
     }
     if (!rehearsed.has(submit.candidateId)) {
       lines.push(
         `  SUBMITTED BYTES NEVER REHEARSED (lane 11): ${epoch} candidate ${submit.candidateId.slice(0, 16)} · ${trials.length} rehearsal(s) on other bytes`,
-      );
-    }
-    // Distinct tasks that passed on the frozen bytes are verified passes the battery will find
-    // again, since the rehearsal grades what the measured solver submitted unaided.
-    const passedTasks = new Set(
-      trials
-        .filter((trial) => trial.candidateId === submit.candidateId && trial.verdict === "pass")
-        .map((trial) => trial.taskId ?? `call ${sequenceText(trial.sequence)}`),
-    );
-    if (target === null) continue;
-    if (target.comparator === "at-most" && passedTasks.size > target.verifiedPasses) {
-      lines.push(
-        `  REHEARSAL CONTRADICTS TARGET (lane 11): ${epoch} declared at-most ${target.verifiedPasses} verified passes; ${passedTasks.size} rehearsal pass(es) on the submitted bytes already exceed it (${passedTasks.size} > ${target.verifiedPasses})`,
-      );
-    } else {
-      lines.push(
-        `  target ${target.comparator} ${target.verifiedPasses} · rehearsal passes on the submitted bytes ${passedTasks.size} · not contradicted`,
       );
     }
   }

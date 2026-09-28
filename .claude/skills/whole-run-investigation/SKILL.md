@@ -121,8 +121,8 @@ could change.
 | 6b `VERSION TOOLCHAIN IS A SYMLINK`, `VERSION TOOLCHAIN DANGLING` or `WRAPPER-ONLY TOOL DIGEST` | 2 |
 | an artifact root or declared input that no check reads; a relation no check enforces | 1 |
 | 6 `REHEARSAL NOT-RUN` | 9 |
-| 4b `TARGET MISSED` or `OFF-AIM STREAK`; the `handoff` calibration table; a `climb` edge label beside a placement | 10 |
-| 6 `SUBMITTED BYTES NEVER REHEARSED` or `REHEARSAL CONTRADICTS TARGET`; the `yield` `harness-trial` row | 11 |
+| 4b `OFF-AIM STREAK`; the `handoff` calibration table; a `climb` edge label beside a placement | 10 |
+| 6 `SUBMITTED BYTES NEVER REHEARSED`; the `yield` `harness-trial` row | 11 |
 | the `yield` `epoch-reviewer` row; a review the census marks incomplete | 12 |
 | 4d `FINDINGS WITHOUT OWNER` or `ADVISORY FINDING RECURS UNROUTED`; the `yield` `epoch-reviewer` row | 14 |
 | the `handoff` triage table | 15 |
@@ -193,10 +193,11 @@ Calibration:
 
 9. **Rehearsal instrument reach.** The rehearsal verifier deadline against the declared check walls;
    not-run verdicts; which families it can grade at all.
-10. **Difficulty calibration loop.** Prediction against `FRAME` counts against measured, round over
-    round; target comparator against the aim; the off-aim streak.
-11. **Submit decision against rehearsal evidence.** An unrehearsed submitted candidate; a rehearsal
-    pass contradicting an `at-most` target; what the Builder did with each verdict.
+10. **Difficulty calibration loop.** The battery contract's counts and the plan's expected passes
+    against measured, round over round; the families the plan named against those it changed; the
+    digest's off-aim streak.
+11. **Submit decision against rehearsal evidence.** An unrehearsed submitted candidate; what the
+    Builder did with each verdict.
 
 Review loop:
 

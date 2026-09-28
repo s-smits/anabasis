@@ -10,7 +10,6 @@ import {
   taskCountSentence,
 } from "../src/run/battery-sizing.ts";
 import { directManifest } from "../src/run/direct-input.ts";
-import { POLICY } from "../src/critic/policy.ts";
 import { readClimbReadout, renderBatteryContract, renderProbeSizing } from "../src/run/climb-readout.ts";
 import { EvidenceLog } from "../src/claim/evidence-log.ts";
 import { fingerprintSlug } from "../src/claim/fingerprint.ts";
@@ -31,9 +30,6 @@ import { fixtureThresholdDigest, writeFixtureThresholds } from "./helpers/thresh
 import { double, required } from "./helpers/doubles.ts";
 
 const PROBE = BATTERY_SIZE.probe;
-
-const continuation = (n: number, min = n, band = POLICY.climb.band) =>
-  renderBatteryContract(n, min, band, true);
 
 describe("batterySize", () => {
   it("accepts every size inside the policy bounds and REFUSES outside them instead of clamping", () => {
@@ -289,19 +285,9 @@ describe("runBuildStep battery sizing", () => {
     // And the band the controller read is the one the authoring session is handed.
     expect(round.band).toEqual(declared);
     // The Builder's sentences are written from that band, not from the policy row.
-    expect(continuation(25, 25, declared)).toContain("At 25 cases no pass count is significantly too easy");
-  });
-
-  /** The readout reports the latest battery's target either way — met, missed with a distance, or
-   *  undetermined by non-results — so the contract names the comparator's direction and that one
-   *  reader, and no reader that does not exist. */
-  it("says which comparator the direction asks for, and what the next round does with it", () => {
-    const contract = continuation(25);
-    expect(contract).toContain(
-      "at-most when this battery should pass fewer cases than the last one did, at-least when more",
+    expect(renderBatteryContract(25, 25, declared)).toContain(
+      "25 tasks: aim 5 to 23 passing, no count finds no limit",
     );
-    expect(contract).toContain("reports whether that target was met and, when it was missed, by how much");
-    expect(contract).not.toContain("the next round reports how far the measurement landed from it");
   });
 });
 

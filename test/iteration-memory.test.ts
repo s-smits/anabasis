@@ -1,4 +1,3 @@
-import { PLAN_FIELDS } from "./helpers/experiment-plan.ts";
 import { describe, expect, it, afterEach } from "bun:test";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
@@ -51,39 +50,28 @@ const briefRefusal = (code: string): CampaignFeedback => ({
 const detailOf = (dir: string): string => iterationMemoryFindings(dir)[0]?.detail ?? "";
 
 describe("cross-iteration Builder memory", () => {
-  it("restores captured intent beside its outcome without trusting a changed digest", () => {
+  it("restores the recorded plan beside its outcome, and what the bytes were admitted as with or without one", () => {
     const dir = tmp();
-    const proposal = {
-      scope: "tasks" as const,
-      target: { comparator: "at-least" as const, verifiedPasses: 0 },
-      gap: "Untested coupling.",
-      change: "Change task coupling.",
-      ...PLAN_FIELDS,
-      expectedResult: "More failures would support the hypothesis.",
-    };
+    const plan = { gap: "Untested coupling.", change: "Change task coupling.", families: ["uppercase"] };
+    const climb = { actual: "climb" as const, freeze: { state: "held" as const, clauses: [] } };
     settle(dir, {
       ordinal: 1,
       outcome: "gates-blocked",
-      experimentProposal: { ...proposal, digest: hashJsonValue(proposal) },
-      experimentScope: { actual: "climb", freeze: { state: "held", clauses: [] } },
+      experimentPlan: { ...plan, digest: hashJsonValue(plan) },
+      experimentScope: climb,
     });
-    expect(detailOf(dir)).toContain("Untested coupling");
-    expect(detailOf(dir)).toContain("admitted as climb");
-    expect(detailOf(dir)).toContain("gates-blocked");
-    settle(dir, { ordinal: 2, experimentProposal: { ...proposal, gap: "tampered intent", digest: "wrong" } });
-    expect(detailOf(dir)).not.toContain("tampered intent");
+    settle(dir, { ordinal: 2, outcome: "fingerprinted", experimentScope: climb });
+    settle(dir, { ordinal: 3, outcome: "fingerprinted", experimentPlan: { digest: hashJsonValue({}) } });
+    expect(detailOf(dir)).toBe(
+      "Earlier build attempts: " +
+        '01 gates-blocked; planned gap "Untested coupling.", change "Change task coupling."; admitted as climb; ' +
+        "02 fingerprinted; admitted as climb; 03 fingerprinted; planned.",
+    );
   });
   it("bounds a long recorded gap and marks what it left out", () => {
     const dir = tmp();
-    const proposal = {
-      scope: "tasks" as const,
-      target: { comparator: "at-least" as const, verifiedPasses: 0 },
-      gap: "x".repeat(300),
-      change: "Change task coupling.",
-      ...PLAN_FIELDS,
-      expectedResult: "More failures would support the hypothesis.",
-    };
-    settle(dir, { ordinal: 1, experimentProposal: { ...proposal, digest: hashJsonValue(proposal) } });
+    const plan = { gap: "x".repeat(300), change: "Change task coupling." };
+    settle(dir, { ordinal: 1, experimentPlan: { ...plan, digest: hashJsonValue(plan) } });
     expect(detailOf(dir)).toContain(
       `gap "${"x".repeat(240)} […60 bytes omitted]", change "Change task coupling."`,
     );

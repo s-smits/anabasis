@@ -59,8 +59,6 @@ interface BuilderTurnInput {
   authoring: { workspace: string; paths: readonly string[]; openingIdentity: string };
   /** When the session opened, so the continuation can read elapsed time and not only turns. */
   openedAtMs: number;
-  /** The round plan's compact view, read afresh at each turn boundary. */
-  planView?: () => string;
 }
 
 /** The turn's event sink, including at most one liveness checkpoint per minute. */
@@ -205,7 +203,6 @@ function nextTurnPrompt(input: BuilderTurnInput, result: AgentTurnResult): strin
     activeTurn: state.activeTurn,
     maxTurns: input.maxTurns,
     elapsedMs: Date.now() - input.openedAtMs,
-    ...keyIfDefined("planView", input.planView?.()),
   };
   return [
     continuePrompt(goal),

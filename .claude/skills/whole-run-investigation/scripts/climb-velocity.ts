@@ -57,10 +57,10 @@ import {
   readVersionDir,
   renderBattery,
 } from "../classifier/query-complexity.ts";
-import { isNumber, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
+import { isNumber } from "#src/meta/json-shape.ts";
 import { compareCodeUnits } from "#src/meta/stable-json.ts";
 import { readDifficultyDecisions } from "./digest-ledgers.ts";
-import { jsonText, readJsonAs } from "./run-overview.ts";
+import { readJsonAs } from "./run-overview.ts";
 
 export const VELOCITY_SCHEMA = "climb-velocity/v1";
 /** Cosine at or above this between a family's prose and its nearest predecessor reads as the same
@@ -132,7 +132,6 @@ export type EdgeVerdict =
 /** The controller's recorded placement of one battery. */
 export interface RecordedPlacement {
   zone: string | null;
-  target: JsonObject | null;
   decidedBy: string;
   toAim?: number | null;
 }
@@ -151,10 +150,6 @@ export type Velocity =
 export type ClimbReport = Awaited<ReturnType<typeof readCampaign>>;
 
 type ClimbBatteryRow = ClimbReport["batteries"][number];
-
-/** The text `String(value)` gives a recorded field, which may be absent. */
-const textOf = (value: JsonValue | undefined): string =>
-  value === undefined ? "undefined" : jsonText(value);
 
 /** The controller's own placement of one battery, so this reader and the decision it sets out to
  *  explain cannot disagree: `decidingSample` picks the changed subset when the host recorded one
@@ -364,18 +359,17 @@ export function verdictOf(
 }
 
 /** The controller's own placement of each battery, from the last difficulty decision that carried
- *  its readout row: the zone, the distance to the aim and the declared target with its result. */
+ *  its readout row: the zone and the distance to the aim. */
 function recordedPlacements(campaign: string): RecordedPlacements {
   const decisions = readDifficultyDecisions(campaign);
   const byRun = new Map<string, RecordedPlacement>();
   for (const decision of decisions.rows) {
     for (const row of decision.rows) {
-      byRun.set(row.runId, { zone: row.zone, target: row.target, decidedBy: decision.runId });
+      byRun.set(row.runId, { zone: row.zone, decidedBy: decision.runId });
     }
     if (decision.placement !== null) {
       const own: RecordedPlacement = byRun.get(decision.runId) ?? {
         zone: decision.zone,
-        target: null,
         decidedBy: decision.runId,
       };
       byRun.set(decision.runId, { ...own, toAim: decision.placement.toAim });
@@ -496,12 +490,8 @@ function recordedLine(battery: ClimbBatteryRow): string {
   const computed =
     battery.placement === null ? "no computed placement" : `computed ${battery.placement.zone}`;
   if (battery.recorded === null) return `${computed}; no recorded difficulty decision names this battery`;
-  const target =
-    battery.recorded.target === null
-      ? "no target"
-      : `target ${textOf(battery.recorded.target.comparator)} ${textOf(battery.recorded.target.verifiedPasses)} ${textOf(battery.recorded.target.result)}`;
   const toAim = battery.recorded.toAim === undefined ? "" : ` toAim ${battery.recorded.toAim}`;
-  return `${computed}; recorded ${battery.recorded.zone ?? "?"}${toAim} · ${target} (decision ${battery.recorded.decidedBy})`;
+  return `${computed}; recorded ${battery.recorded.zone ?? "?"}${toAim} (decision ${battery.recorded.decidedBy})`;
 }
 
 export function render(report: ClimbReport, band?: readonly [number, number]): string {

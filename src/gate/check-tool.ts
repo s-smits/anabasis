@@ -47,7 +47,8 @@ interface CorrectnessCheckBinding {
   /** The same store submit records its refusal into, so `harness_inspect feedback` pages a check's
    *  rows exactly as it pages a refusal's and the Builder has one place to read findings. */
   feedback: BuilderAuthorFeedback;
-  /** Where EXPERIMENT.json and this round's rehearsals disagree, as advice that refuses nothing. */
+  /** What the plan reader says of EXPERIMENT.json: a field it did not read, a missing plan, or
+   *  declared families the changed public inputs do not match. Advice that refuses nothing. */
   planAdvice: () => string[];
 }
 
@@ -64,7 +65,7 @@ const REPAIR =
 const CLEAR =
   "The validation sequence found no blocking row on these bytes. Its controls cannot detect an obligation omitted by both the evaluator and the corpus. Reconcile the declared coverage with your public contract using harness_inspect coverage; submit when every obligation has an observation and a one-fact control. Checking unchanged bytes repeats this result without new evidence.";
 const REPEATED =
-  "the workspace and installed-tool bytes are unchanged: conformance and gate rows are remembered, not re-run; bundle and candidate validation were checked again";
+  "the workspace and installed-tool bytes are unchanged: conformance and gate rows are remembered, not re-run; the bundle was checked again";
 const BLOCKED =
   "This tree produced no reusable check result. Resolve the reported mechanism or change the files, then check or submit again.";
 
@@ -76,7 +77,7 @@ const INCOMPLETE_NAVIGATION =
  *  nothing here says how to repair anything either, since the repair sentence belongs to the result
  *  and rule 14 gives each duty one owner. */
 const DESCRIPTION =
-  "Run every gate submit runs, on the same immutable snapshot submit would adopt, without adopting: the static bundle and installed tools, candidate validation (which reads EXPERIMENT.json), generated-tool conformance, the control census and the F2 solvability census. It returns every blocking row a submit would refuse with, the advisory rows, a receipt per stage and a coverage summary. " +
+  "Run every gate submit runs, on the same immutable snapshot submit would adopt, without adopting: the static bundle and installed tools, generated-tool conformance, the control census and the F2 solvability census. It returns every blocking row a submit would refuse with, the advisory rows, a receipt per stage and a coverage summary. " +
   "No arguments. Unchanged bytes return the remembered rows once a run reached a verdict and run again otherwise; changed bytes run again as often as you like. " +
   "It freezes a copy of the workspace when it starts and runs for minutes, so keep editing while it runs; the result describes the frozen copy. " +
   "It accepts nothing and returns no correctness verdict: a clear result covers the authored checks and controls, not omitted public obligations, and submit remains the only acceptance path.";

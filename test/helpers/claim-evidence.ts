@@ -128,7 +128,6 @@ export function greenEvidence(overrides: Partial<ClaimEvidence> = {}): ClaimEvid
     runtimeIdentities: codexIdentities(),
     thresholdManifestDigest: "f".repeat(64),
     capabilities: ["web-search:off"],
-    predictions: [{ id: "p1", outcome: "held" }],
     bundles: {
       agentHash: "a".repeat(64),
       correctnessModelHash: "g".repeat(64),

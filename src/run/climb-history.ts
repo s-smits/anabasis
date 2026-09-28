@@ -5,9 +5,8 @@
  * `climb-battery-admission.ts` opens each recorded run directory and answers with either an
  * admitted battery or a named exclusion, and this module never re-derives one of those decisions.
  * What it adds is one row per battery in claim-clock order. `climb-readout.ts` is the single
- * reading of those rows: the difficulty decision, the allowance, the targets and every sentence a
- * Builder gets to read about them come from there, so a fact absent from a row here is a fact no
- * Builder can act on.
+ * reading of those rows: the difficulty decision and every sentence a Builder gets to read about
+ * them come from there, so a fact absent from a row here is a fact no Builder can act on.
  */
 import { existsSync, readdirSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
@@ -18,7 +17,7 @@ import { POLICY } from "../critic/policy.ts";
 import { band01, policyRow } from "../critic/manifest.ts";
 import { sha256 } from "../meta/digest.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
-import { type JsonValue, isBoolean, isNumber, isRecord, isString, jsonKind } from "../meta/json-shape.ts";
+import { isBoolean, isNumber, isRecord, isString } from "../meta/json-shape.ts";
 import { canonicalJson } from "../meta/stable-json.ts";
 import { parseJsonAs } from "../meta/json-runtime.ts";
 import { recordedEvidence, verifyRunDir } from "../claim/evidence-log.ts";
@@ -30,7 +29,6 @@ import {
   currentThresholdDigest,
 } from "./climb-battery-admission.ts";
 import type { ExperimentAuthoring } from "./experiment-freeze.ts";
-import { type PredictionScore, predictionScore } from "../author/experiment-plan.ts";
 import { productHistoryDirs } from "./product-versions.ts";
 import { HarnessConfigError, harnessSettings } from "../correctness-bundle/harness-config.ts";
 
@@ -120,6 +118,8 @@ type CaseRows = NonNullable<BatteryEvidence["cases"]>;
  *  `runs/<runId>/cases/<taskId>/public-task.json`; `publicTaskProjection` digest-reads them. */
 interface ClimbAuthoringRow {
   taskSetHash: string | null;
+  /** The measured agent bundle's hash, null when the record states none. */
+  agentHash: string | null;
   /** Every recorded case's identifier, in evidence order, non-results included; null entries
    *  disclose rows without one. */
   caseIds: Array<string | null>;
@@ -129,9 +129,6 @@ interface ClimbAuthoringRow {
   effort: ClimbEffort | null;
   /** Per family, over the cases that name one and recorded a solver block. */
   familyEffort: FamilyEffort[];
-  /** The plan's per-task predictions scored against the scored cases' verdicts; null when the
-   *  battery bound no plan or no prediction names a scored task. */
-  calibration: PredictionScore | null;
   /** The scored cases that passed, by task id: which solver traces the Builder may read as a
    *  passing solve. Rule 4 lets a measured battery publish each task's aggregate bit. */
   passedTaskIds: string[];
@@ -142,8 +139,6 @@ interface ClimbAuthoringRow {
    *  `solve_minutes`, since a failure the wall caused measures the wall rather than the task. Zero
    *  when the wall is unknown. */
   wallBound: number;
-  /** The recorded `agentHash` of the bundle this battery measured; null when the record holds none. */
-  agentHash: string | null;
   experimentAuthoring?: ExperimentAuthoring;
 }
 
@@ -188,8 +183,8 @@ const WALL_BOUND_SHARE = 0.95;
 
 /** The sample a battery is read over: the host-identified changed subset when one was recorded,
  *  even at zero attempts, and otherwise the whole battery. Unchanged successes cannot be allowed
- *  to dilute a changed subset's result. It is one function so that the decision, the table and the
- *  allowance all read a battery the same way: a second reader computing its own interval over
+ *  to dilute a changed subset's result. It is one function so that the decision and the table
+ *  read a battery the same way: a second reader computing its own interval over
  *  `passed/n` puts the same battery into one prompt twice, once as 20 of 25 and once as 0 of 5. */
 export function decidingSample({ measured: { changedSubset }, passed, n }: ClimbBattery) {
   return changedSubset === undefined
@@ -309,17 +304,6 @@ function wallBoundCount(scored: CaseRows, wallMinutes: number | null): number {
   ).length;
 }
 
-/** The bound plan's predictions against the scored verdicts. Only the aggregate score leaves here;
- *  the per-task pairs are the battery's own published pass bits and are not restated. */
-function calibrationOf(evidence: BatteryEvidence, scored: CaseRows): PredictionScore | null {
-  const predictions = evidence.experimentAuthoring?.proposal.predictions;
-  if (predictions === undefined) return null;
-  const verdicts = new Map(
-    scored.flatMap((row) => (isString(row.taskId) ? [[row.taskId, row.pass === true] as const] : [])),
-  );
-  return predictionScore(predictions, verdicts);
-}
-
 /** The named families none of whose cases produced a scored row, or undefined when there are none. */
 function censoredFamilies(rows: CaseRows): string[] | undefined {
   const scoredByFamily = new Map<string, boolean>();
@@ -354,15 +338,14 @@ function admittedClimbRow(
     excludedReason: admitted.excluded?.reason ?? null,
     authoring: {
       taskSetHash,
+      agentHash: isString(evidence.bundleSnapshot?.agentHash) ? evidence.bundleSnapshot.agentHash : null,
       caseIds: (evidence.cases ?? []).map((row) => (isString(row.taskId) ? row.taskId : null)),
       familySummary: familySummary(measured),
       effort: solveEffort(evidence.cases ?? []),
       familyEffort: familyEffort(evidence.cases ?? []),
-      calibration: calibrationOf(evidence, scored),
       passedTaskIds: scored.flatMap((row) => (row.pass === true && isString(row.taskId) ? [row.taskId] : [])),
       solveWallMinutes: wallMinutes,
       wallBound: wallBoundCount(scored, wallMinutes),
-      agentHash: isString(evidence.bundleSnapshot?.agentHash) ? evidence.bundleSnapshot.agentHash : null,
       ...keyIfDefined("experimentAuthoring", evidence.experimentAuthoring),
     },
     battery: {
@@ -513,34 +496,5 @@ export function publicBatteryFingerprint(tasks: ReadonlyArray<{ publicInput: unk
       .map((task) => canonicalJson(task.publicInput))
       .sort()
       .join("\n"),
-  );
-}
-
-/** A value with its data dropped: field names, value types, and an array reduced to the set of its
- *  elements' schemas, so that neither its length nor its order counts. Over a battery's public
- *  inputs that makes a new mix of the same task kinds the same question: going from 25 tasks of
- *  two kinds to 21 and then 17 of the same two is one exam asked three times, and only a battery
- *  whose task kinds actually change reads as new. */
-function valueSchema(value: unknown): JsonValue {
-  if (Array.isArray(value)) {
-    return [...new Set(value.map((element) => canonicalJson(valueSchema(element))))].sort();
-  }
-  if (isRecord(value)) {
-    return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, valueSchema(child)]));
-  }
-  return jsonKind(value) ?? "unknown";
-}
-
-/** A battery's set of public task schemas, which is the climb readout's same-question count. Null
- *  when its public tasks cannot be vouched for, so an unreadable battery matches nothing rather
- *  than matching everything. */
-export function publicSchemaPrint(
-  domainDir: string,
-  row: Pick<AdmittedClimbRow, "battery" | "authoring">,
-): string | null {
-  const projection = publicTaskProjection(domainDir, row.battery.runId, row.authoring.caseIds);
-  if (!("tasks" in projection)) return null;
-  return canonicalJson(
-    valueSchema(projection.tasks.map((task) => (isRecord(task) ? task.publicInput : null))),
   );
 }

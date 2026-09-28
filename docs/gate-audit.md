@@ -114,12 +114,6 @@ closure says nothing about what runs, and the scan falls back to every code file
 correctness models under `campaigns/` has an opaque closure, so the fallback changes no recorded
 outcome.
 
-### experiment-plan-schema
-
-Refuses an `EXPERIMENT.json` that does not read as `experiment-plan/v2` (`experiment-plan-schema`,
-`experiment-proposal-shape`, `experiment-proposal-read`; `src/author/experiment-plan.ts`). The plan
-feeds prediction scoring and the reviewer's orientation, which read only its one schema.
-
 ### f2-reference-verdict
 
 Refuses a candidate whose reference solve is rejected by its own checks, with
@@ -414,6 +408,18 @@ constant-uncited`, `brief-join-no-decoys`, `agent-deciding-computation`, `repeat
 probe and the reviewer's most-failed-check probe now ask by measurement) and `census-inert-tool`
 (readiness's `inertToolFindings` already bounds the claim on the same fact). Two live refusals with no producer left to
 refuse went with them: `tasks-difficulty-unrequested` and `tools-data-reader-state`.
+
+## Moved to advice, 2026-09-28
+
+`experiment-plan-schema` refused an `EXPERIMENT.json` that did not read as `experiment-plan/v3`
+(`experiment-plan-schema`, `experiment-proposal-shape`, `experiment-proposal-read`). Its presence
+switches nothing any more: attribution, the submission condition and every gate read the bytes, so a
+refusal of the plan refused a candidate over text that decides no outcome. `capturePlan`
+(`src/author/experiment-plan.ts`) now reads each field on its own, ignores fields it does not know,
+and names a field that does not read in one advice line while the rest of the plan stands. The plan
+is scored instead of checked: its declared families against the families whose public inputs
+changed, at `correctness_check` and a refused `submit`, and its pass range against the measured
+battery, in the next round's climb readout, the Epoch Reviewer's orientation and the run end.
 
 ## Correctness-check triage, 2026-09-27
 

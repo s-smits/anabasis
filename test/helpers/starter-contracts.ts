@@ -12,14 +12,6 @@ export const STARTER_ENTRY = readFileSync(
   "utf8",
 );
 
-/** The graded corpus the entry links to. Its four tiers are the scale
- *  `.claude/skills/whole-run-investigation/classifier/query-complexity.ts` later classifies a
- *  measured battery against, so the Builder authors against the scale its own tasks are read on. */
-export const STARTER_LADDER = readFileSync(
-  new URL("../../starters/pi-built-harness/starter-pack/difficulty-ladder.md", import.meta.url),
-  "utf8",
-);
-
 export const STARTER_DOC = ["contract.md", "examples.md"]
   .map((name) =>
     readFileSync(new URL(`../../starters/pi-built-harness/starter-pack/${name}`, import.meta.url), "utf8"),

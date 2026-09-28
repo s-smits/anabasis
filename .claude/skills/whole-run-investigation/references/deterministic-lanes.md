@@ -48,10 +48,9 @@ nothing; block 3c, the repeated-condition census, prints `REPEATED CONDITION (la
 public condition recurs on a fixed product.
 
 Block 4, workshop and spend, reads the tool installs and the ledger. Block 4b, band placement,
-reads `difficulty-decisions/<runId>-<digest>.json` (`difficulty-decision/v7`) for the
-`placement.zone`, the target result and the off-aim allowance: `TARGET MISSED (lane 10)` where
-the declared `target` reads `missed`, and `OFF-AIM STREAK (lane 10)` where two or more
-consecutive placements sit on one side of the aim; an over-aim zone with no trigger of its own is
+reads `difficulty-decisions/<runId>-<digest>.json` (`difficulty-decision/v9`) for the
+`placement.zone`: `OFF-AIM STREAK (lane 10)` where two or more consecutive placements sit on one
+side of the aim; an over-aim zone with no trigger of its own is
 read by lanes 5 and 12. Block 4c, role spend and censoring, reads `providerResourceBudget.byRole`
 and the retry rows: `REVIEW TURNS EXCEED SOLVER TURNS (lane 24)`, `DECISION ON CENSORED BATTERY
 (lane 24)` where a decision was taken on a battery the environment cut short, and `EXPLICIT
@@ -64,9 +63,8 @@ prints `MEMORY OVER READ CAP (lane 26)`.
 Block 5, integrity probes, and block 5b, served-model attestation, belong to rows H and I:
 `SERVED MODEL MISMATCH` and `UNATTESTED ROWS` carry no lane suffix because the primary settles
 them. Block 6, the rehearsal ledger, joins every `harness_trial` row to the accepted submit by
-`candidateId`: `SUBMITTED BYTES NEVER REHEARSED (lane 11)` and `REHEARSAL CONTRADICTS TARGET
-(lane 11)` where a rehearsed pass sits against the plan's own prediction, and `REHEARSAL NOT-RUN
-(lane 9)` where a verdict is `not-run`. Block 6b, toolchain retention, reads each
+`candidateId`: `SUBMITTED BYTES NEVER REHEARSED (lane 11)` where no rehearsal ran on the accepted
+bytes, and `REHEARSAL NOT-RUN (lane 9)` where a verdict is `not-run`. Block 6b, toolchain retention, reads each
 `versions/<id>/.toolchain` without following it: `VERSION TOOLCHAIN IS A SYMLINK (lane 2)`,
 `VERSION TOOLCHAIN DANGLING (lane 2)`, and `WRAPPER-ONLY TOOL DIGEST (lane 2)` where a
 `verifierTools[]` entry of `kind: "script"` hashes a wrapper and nothing behind it.
@@ -125,9 +123,7 @@ component emits on one receipt are one firing, and a qualifier such as `tool-tim
 where it rides beside no code of the component it details. Consecutive refusals carrying one
 component are one episode, and each ends `repaired` (the component went away and the bundle moved),
 `repaired-tool-condition` (the bundle stayed and the installed-tool condition moved),
-`cleared-without-edit` (the whole submission condition stayed), `cleared-plan-unrecorded` (the same
-for a refusal of `EXPERIMENT.json`, which the condition does not cover),
-`bundle-unchanged-condition-unknown` (the bundle stayed and the receipts recorded no tool
+`cleared-without-edit` (the whole submission condition stayed), `bundle-unchanged-condition-unknown` (the bundle stayed and the receipts recorded no tool
 condition), `answered-identity-unrecorded` or `unanswered`. Only a receipt that cleared, or that
 refused having run the stage each of the episode's codes came from, can answer it: a check that
 stopped at conformance never ran the reference solve, and a code its receipt did not stage is not

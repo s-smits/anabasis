@@ -40,9 +40,6 @@ export type BuildTask = GeneratedTask<JsonValue, HiddenExpectation[]> & {
   intendedFeatures?: JsonValue;
   difficultyAxes?: JsonValue;
   difficultyAxisPath?: string;
-  /** An authored ordinal label. Nothing prescribes or refuses it: the controller reads difficulty
-   *  from the measured band, and records the tally beside the decision as a reading. */
-  level?: number;
   /** Optional ancestry: the previous task this one follows. The public projection excludes it, and
    *  no authoring path requires a one-to-one parent map. */
   parentTaskId?: string;

@@ -8,7 +8,7 @@ import type { Brief, ContractFinding } from "../correctness-bundle/brief.ts";
 import type { ControlCorpus } from "../correctness-bundle/controls.ts";
 import type { TaskBattery } from "../correctness-bundle/tasks.ts";
 import type { ToolsSpec } from "../correctness-bundle/tools-spec.ts";
-import type { ExperimentSubmission } from "./experiment-plan.ts";
+import type { RecordedPlan } from "./experiment-plan.ts";
 import type { BundleFile } from "./feedback-routing.ts";
 import type { WorkspaceChange } from "./domain-repo.ts";
 
@@ -54,7 +54,7 @@ export type AdmissionLineage = { digest: string };
 type IterationOutcome = "fingerprinted" | "gates-blocked";
 
 export type IterationEvidence = {
-  experimentProposal?: ExperimentSubmission;
+  experimentPlan?: RecordedPlan;
   experimentScope?: ExperimentScope;
   ordinal: number;
   dir: string;
@@ -68,8 +68,6 @@ export type IterationEvidence = {
    *  `stampSubmissionCondition` sets it before the record is written, so a completed record without
    *  it is refused rather than read as a condition nobody stamped. */
   submissionConditionId?: string;
-  /** Battery-only authoring's gate identity excludes explanatory metadata from repetition accounting. */
-  candidateConditionId?: string;
   consumedEvidenceDigests?: string[];
   /** Present exactly when this iteration read a current-policy packet that seeded no owner, so a
    * review can tell an unseeded build from one that had no packet at all. */
@@ -106,4 +104,4 @@ export type CampaignOutcome = (
       unchangedCandidateSubmissions: number;
     }
   | { buildAdmissible: false; clause: CampaignClause; iterations: IterationEvidence[] }
-) & { experimentProposal?: ExperimentSubmission };
+) & { experimentPlan?: RecordedPlan };

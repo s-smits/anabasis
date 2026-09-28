@@ -27,6 +27,7 @@ import {
   type CandidateCheckOutcome,
   loadValidatedBundle,
   checkCandidate,
+  conditionKey,
   validatedBundle,
 } from "../src/author/candidate-check.ts";
 import { double, required } from "./helpers/doubles.ts";
@@ -383,20 +384,15 @@ describe("what a candidate owes beyond a readable bundle", () => {
     );
   });
 
-  // Levels are ordinal labels, not difficulty: only a kickoff-pinned level is enforced, and that
-  // has its own finding (tasks-kickoff-level-mismatch).
-  it("reads task levels and parents in fresh and historical bundles alike", () => {
+  it("reads task parents in fresh and historical bundles alike", () => {
     const dir = workspace();
     const tasks = structuredClone(MATCHING_TASKS);
     tasks.forEach((task, index) => {
-      task.level = 1;
       task.parentTaskId = `parent-${String(index)}`;
     });
     writeJson(dir, "correctness-model/tasks.json", tasks);
     for (const context of [{ exactTasks: 2, fresh: true as const }, { exactTasks: 2 }]) {
-      expect(
-        bundleCodes(dir, context).filter((code) => code.includes("level") || code.includes("parent")),
-      ).toEqual([]);
+      expect(bundleCodes(dir, context).filter((code) => code.includes("parent"))).toEqual([]);
     }
   });
 });
@@ -479,5 +475,22 @@ describe("acceptance", () => {
     if (!again.ok) throw new Error(JSON.stringify(again.findings));
     expect(again.changedPaths).toEqual([]);
     expect(again.commit).toBe(outcome.commit);
+  });
+
+  it("records the round plan beside the candidate, and a reworded plan keeps its condition", () => {
+    const dir = workspace();
+    const unplanned = checkCandidate(dir, ASK);
+    writeFileSync(join(dir, "EXPERIMENT.json"), JSON.stringify({ gap: "g", families: ["single-part"] }));
+    const planned = checkCandidate(dir, ASK);
+    writeFileSync(
+      join(dir, "EXPERIMENT.json"),
+      JSON.stringify({ gap: "reworded", expectedPasses: { atMost: 2 } }),
+    );
+    const reworded = checkCandidate(dir, ASK);
+    if (!unplanned.ok || !planned.ok || !reworded.ok) throw new Error("fixture refused");
+    expect(unplanned.experimentPlan).toBeUndefined();
+    expect(planned.experimentPlan?.families).toEqual(["single-part"]);
+    expect(reworded.experimentPlan?.expectedPasses).toEqual({ atMost: 2 });
+    expect(new Set([unplanned, planned, reworded].map(conditionKey)).size).toBe(1);
   });
 });

@@ -1,12 +1,11 @@
 /**
  * Experiment attribution read off two frozen trees (src/run/experiment-freeze.ts) and the operation
- * admission derives from them (src/gate/experiment-admission.ts): accepted bytes, not the proposal,
+ * admission derives from them (src/gate/experiment-admission.ts): accepted bytes, not the plan,
  * decide whether a continuation is a build, an evaluation correction or a task-only climb, and an
  * unverified claim of unchanged conditions is recorded as unproven. Each case compares a candidate
  * with a base built from the matching fixture. Their composition through a real submit, census and
  * F2 belongs to experiment-intent.e2e.test.ts.
  */
-import { PLAN_FIELDS } from "./helpers/experiment-plan.ts";
 import { afterAll, expect, it } from "bun:test";
 import { double, required } from "./helpers/doubles.ts";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
@@ -15,6 +14,7 @@ import { readBoundConformance } from "../src/claim/conformance-evidence.ts";
 import {
   candidateExperimentAuthoring,
   candidateExperimentScope,
+  changedFamilies,
   experimentFreeze,
 } from "../src/run/experiment-freeze.ts";
 import { hashJsonValue } from "../src/meta/stable-json.ts";
@@ -76,25 +76,13 @@ function repairEvaluator(dir: string): void {
   writeFileSync(evaluator, `import "./check-helper.ts";\n${readFileSync(evaluator, "utf8")}`);
 }
 
-/** A captured proposal, bound by its digest. */
-function proposalOf(scope: "product" | "tasks", passes: number, change: string) {
-  const proposal = {
-    scope,
-    target: { comparator: "at-least" as const, verifiedPasses: passes },
-    gap: "Gap.",
-    change,
-    ...PLAN_FIELDS,
-    expectedResult: "Result.",
-  };
-  return { ...proposal, digest: hashJsonValue(proposal) };
+/** A captured plan, bound by its digest. */
+function planOf(change: string) {
+  const plan = { gap: "Gap.", change, families: ["single-part"], expectedPasses: { atMost: 2 } };
+  return { ...plan, digest: hashJsonValue(plan) };
 }
 
-function snapshotOf(
-  candidate: string,
-  passes = 0,
-  scope: "product" | "tasks" = "product",
-  change = "Change.",
-): CandidateSnapshot {
+function snapshotOf(candidate: string): CandidateSnapshot {
   const fingerprint = fingerprintSlug(candidate);
   if (!fingerprint.ok) throw new Error("fixture fingerprint refused");
   // The parts as parsed, validated or not: these cases move bytes a real submit would refuse, and
@@ -105,24 +93,32 @@ function snapshotOf(
     fingerprint,
     bundle: { brief, battery, corpus, toolsSpec },
     verifierEnvironmentHash: null,
-    experimentProposal: proposalOf(scope, passes, change),
   });
 }
 
 it("records only changed public inputs and refuses drifted attribution", () => {
   const { base, candidate } = pair();
+  const probe = { operation: "task-probe" as const, moved: ["tasks" as const] };
+  const changedIds = (plan: ReturnType<typeof planOf> | null) =>
+    candidateExperimentAuthoring(plan, probe, "climb", base, candidate).changedTaskIds;
+  // A private operand is no public condition, so moving one alone attributes no task.
+  const hiddenOnly = structuredClone(MATCHING_TASKS);
+  required(required(hiddenOnly[0], "first task").hidden[0], "hidden row").expectation = { parts: ["moved"] };
+  writeTasks(candidate, hiddenOnly);
+  expect(changedIds(null)).toEqual([]);
   const tasks = structuredClone(MATCHING_TASKS);
   const first = required(tasks[0], "first task");
   first.taskId = "renamed";
   first.family = "renamed-family";
-  first.level = 42;
   required(tasks[1], "second task").publicInput = { changed: true };
   writeTasks(candidate, tasks);
-  const captured = proposalOf("tasks", 0, "Change public input.");
-  const probe = { operation: "task-probe" as const, moved: ["tasks" as const] };
-  expect(candidateExperimentAuthoring(captured, probe, "climb", base, candidate).changedTaskIds).toEqual([
-    required(tasks[1], "second task").taskId,
-  ]);
+  const captured = planOf("Change public input.");
+  expect(changedIds(captured)).toEqual([required(tasks[1], "second task").taskId]);
+  // The plan decides none of it: without one, the same bytes attribute the same tasks and families.
+  const { plan: _plan, ...planned } = candidateExperimentAuthoring(captured, probe, "climb", base, candidate);
+  const { plan: absent, ...unplanned } = candidateExperimentAuthoring(null, probe, "climb", base, candidate);
+  expect(absent).toBeNull();
+  expect(unplanned).toEqual(planned);
   expect(candidateExperimentAuthoring(captured, probe, "build", base, candidate).changedTaskIds).toBeNull();
   writeFileSync(join(candidate, "agent/tools.ts"), "export const changed = true;");
   expect(() => candidateExperimentAuthoring(captured, probe, "climb", base, candidate)).toThrow(
@@ -135,9 +131,11 @@ it("binds a fresh build's plan with no baseline, and still refuses a missing one
   // with a null baseline rather than aborting the run.
   const { candidate } = pair();
   const absent = join(scratchDir("ana-no-adopted-"), "domain");
-  const captured = proposalOf("tasks", 1, "Author the first battery.");
+  const captured = planOf("Author the first battery.");
   const fresh = { operation: "new-baseline" as const, moved: [], unproven: "no adopted baseline" };
   expect(candidateExperimentAuthoring(captured, fresh, "build", absent, candidate)).toMatchObject({
+    plan: captured,
+    changedFamilies: null,
     actual: "build",
     baseline: null,
     changedTaskIds: null,
@@ -145,6 +143,38 @@ it("binds a fresh build's plan with no baseline, and still refuses a missing one
   expect(() => candidateExperimentAuthoring(captured, fresh, "climb", absent, candidate)).toThrow(
     "positively fingerprinted",
   );
+});
+
+// The plan's families are read against each task's public condition as the solver meets it: its
+// input and the rules its family's checks assert. A rule-only round moves a family with every input
+// unchanged, and a relabelled id moves nothing.
+it("reads the changed families from each task's public condition, and a brief-wide rule as every family", () => {
+  const { base, candidate } = pair();
+  const briefPath = "correctness-model/brief.json";
+  const writeBrief = (dir: string, brief: typeof MATCHING_BRIEF) =>
+    writeFileSync(join(dir, briefPath), JSON.stringify(brief));
+  const scoped = structuredClone(MATCHING_BRIEF);
+  required(scoped.truthChecks[0], "first check").execution.families = ["single-part"];
+  for (const dir of [base, candidate]) writeBrief(dir, scoped);
+  expect(changedFamilies(base, candidate)).toEqual([]);
+  writeTasks(
+    candidate,
+    MATCHING_TASKS.map((task) => ({ ...task, taskId: `${task.taskId}-renamed` })),
+  );
+  expect(changedFamilies(base, candidate)).toEqual([]);
+  writeTasks(candidate, movedBattery());
+  expect(changedFamilies(base, candidate)).toEqual(["single-part"]);
+  writeTasks(candidate, MATCHING_TASKS);
+  const reworded = structuredClone(scoped);
+  required(reworded.truthChecks[0], "first check").assertion = "each declared part binds one slot";
+  writeBrief(candidate, reworded);
+  expect(changedFamilies(base, candidate)).toEqual(["single-part"]);
+  const decided = structuredClone(scoped);
+  required(decided.ruleDecisions?.[0], "first rule decision").statement = "parts may remain unassigned";
+  writeBrief(candidate, decided);
+  expect(changedFamilies(base, candidate)).toEqual(["single-part", "two-part"]);
+  writeFileSync(join(candidate, briefPath), "{");
+  expect(changedFamilies(base, candidate)).toBeNull();
 });
 
 it("reads a base conformance record without its verifier identity as no fixed product", () => {
@@ -176,7 +206,7 @@ it.each(["helper", "hidden", "controls"] as const)(
       writeTasks(candidate, tasks);
     }
     writeBoundRepresentation(candidate);
-    expect(candidateExperimentScope("build", base, candidate, undefined, "product")).toEqual({
+    expect(candidateExperimentScope(base, candidate)).toEqual({
       actual: "evaluation",
       freeze: { state: "held", clauses: [] },
     });
@@ -200,7 +230,7 @@ it.each(["constant", "assertion", "rule", "set", "applicability", "private-rule"
     if (kind === "applicability") brief.truthChecks[0]!.execution.families = ["another-family"];
     writeFileSync(join(candidate, "correctness-model/brief.json"), JSON.stringify(brief));
     writeBoundRepresentation(candidate);
-    const scope = candidateExperimentScope("build", base, candidate, undefined, "product");
+    const scope = candidateExperimentScope(base, candidate);
     if (kind === "private-rule") {
       expect(scope).toEqual({ actual: "evaluation", freeze: { state: "held", clauses: [] } });
       return;
@@ -228,13 +258,7 @@ it.each(["agent", "exam", "schema", "unreadable", "absent"] as const)(
       rmSync(path);
       mkdirSync(path);
     }
-    const scope = candidateExperimentScope(
-      "build",
-      kind === "absent" ? undefined : base,
-      candidate,
-      undefined,
-      "product",
-    );
+    const scope = candidateExperimentScope(kind === "absent" ? undefined : base, candidate);
     expect(scope.actual).toBe("build");
     expect(scope.freeze?.state).not.toBe("held");
   },
@@ -251,8 +275,8 @@ it.each(["tools", "tasks", "absent"] as const)(
       kind === "absent"
         ? null
         : { ...bound, [kind === "tools" ? "toolsSpecHash" : "taskSetHash"]: "mismatched" };
-    // A failed evaluation proof cannot become a held task-only proof through the proposal fallback.
-    const scope = candidateExperimentScope("build", base, candidate, proof, "product");
+    // A failed evaluation proof cannot become a held task-only proof.
+    const scope = candidateExperimentScope(base, candidate, proof);
     expect(scope.actual).toBe("build");
     expect(scope.freeze?.state).toBe("unproven");
     expect(scope.freeze?.clauses).toContainEqual(expect.stringContaining("submission-schema-unverifiable"));

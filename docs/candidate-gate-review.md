@@ -42,7 +42,6 @@ reading cannot be allowed to refuse a submit on its own.
 | Stage | Owner | Refuses | Cannot catch |
 | --- | --- | --- | --- |
 | bundle | `checkCandidate`, `src/author/candidate-check.ts:545` | schema, brief, tasks, controls and tools-spec shape; the solver shell preset; undeclared roots; path grammar | anything semantic: a check that is well-formed and wrong |
-| validation | `admit`, `src/gate/validation-pipeline.ts:369` | a missing or malformed `EXPERIMENT.json`, a repeated public condition | whether the stated experiment is the one the bytes make |
 | conformance | `executeStages`, `validation-pipeline.ts:273` | a generated tool that does not load, answer or keep one registration across tasks | whether the tools help the solver |
 | gates: census | `makeCensusGate`, `src/run/census-gate.ts:532` | an accept that fails, a reject that passes or fails elsewhere, an unread root, transplanted deliverables | a reject that is a one-fact edit of the Builder's own answer, which calibrates only against the Builder's own misconceptions |
 | gates: F2 | `makeSolvabilityCensusGate`, `src/run/solvability-gate.ts:99`, over `src/correctness-bundle/solvability.ts` | a task the reference cannot submit through the generated tools | a reference that replays a precomputed design: it proves the submission path, as rule 12 already says, and not solvability from public input |

@@ -1,4 +1,3 @@
-import { PLAN_FIELDS } from "./helpers/experiment-plan.ts";
 import { required, text } from "./helpers/doubles.ts";
 import { MATCHING_BRIEF, MATCHING_TASKS, writeMatchingBuildFixture } from "./helpers/matching-fixture.ts";
 import { loadSolvabilityPublicSchema } from "../src/correctness-bundle/solvability-artifact-schema.ts";
@@ -38,7 +37,6 @@ import {
 } from "../src/claim/bundle-snapshot.ts";
 import { type FingerprintEvidence, fingerprintSlug } from "../src/claim/fingerprint.ts";
 import { type JsonObject, asRecord, isString } from "../src/meta/json-shape.ts";
-import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import {
   type Gate,
@@ -66,7 +64,6 @@ interface Session {
   gate: Gate;
   feedback?: BuilderAuthorFeedback;
   trialsDir?: string;
-  experimentProposalRequired?: true;
   planAdvice?: () => string[];
   /** Extra validation sequence input, e.g. an adopted baseline. */
   validation?: Partial<Pick<PipelineInput, "adoptedDir" | "toolsProbes">>;
@@ -137,7 +134,6 @@ function session(dir: string, options: Session) {
         {
           slug: "matching",
           exactTasks: 4,
-          ...keyIfDefined("experimentProposalRequired", options.experimentProposalRequired),
         },
         {
           input: {
@@ -343,7 +339,7 @@ describe("correctness_check", () => {
       feedback: new BuilderAuthorFeedback(),
       planAdvice: () => [],
     });
-    for (const gate of ["installed tools", "EXPERIMENT.json", "conformance", "control census", "F2"]) {
+    for (const gate of ["installed tools", "conformance", "control census", "F2"]) {
       expect(description).toContain(gate);
     }
     expect(description).toContain("submit remains the only acceptance path");
@@ -393,17 +389,8 @@ describe("correctness_check", () => {
     );
     const dir = workspace("operation-candidate");
     writeFileSync(join(dir, "agent/BUILT_AGENTS.md"), "A changed solving method.");
-    const proposal = {
-      scope: "product",
-      target: { comparator: "at-least", verifiedPasses: 2 },
-      gap: "Gap.",
-      change: "Change.",
-      ...PLAN_FIELDS,
-      expectedResult: "Result.",
-    };
-    writeFileSync(join(dir, EXPERIMENT_FILE), JSON.stringify(proposal));
+    // No plan is written: the operation is read from the bytes alone.
     const { check } = session(dir, {
-      experimentProposalRequired: true,
       validation: { adoptedDir },
       gate: async () => [],
     });
@@ -457,7 +444,7 @@ describe("correctness_check", () => {
     const body = await check();
     expect(body.status).toBe("findings");
     expect(body.stage).toBe("bundle");
-    expect(body.notReached).toEqual(["validation", "conformance", "gates"]);
+    expect(body.notReached).toEqual(["conformance", "gates"]);
     expect(gated).toBe(false);
     expect(existsSync(trialsDir)).toBe(false);
     expect(nested(body, "findings").totalFindings).toBeGreaterThan(0);
@@ -577,12 +564,11 @@ describe("correctness_check", () => {
     expect(gateCalls).toBe(1);
     expect(readdirSync(trialsDir)).toEqual([text(first.snapshotId)]);
     expect(second.repeated).toBe(
-      "the workspace and installed-tool bytes are unchanged: conformance and gate rows are remembered, not re-run; bundle and candidate validation were checked again",
+      "the workspace and installed-tool bytes are unchanged: conformance and gate rows are remembered, not re-run; the bundle was checked again",
     );
     expect(rowsOf(second)).toEqual(rowsOf(first));
     expect(second.stages).toEqual([
       { stage: "bundle", status: "passed", source: "executed", ms: expect.any(Number) },
-      { stage: "validation", status: "passed", source: "executed", ms: expect.any(Number) },
       { stage: "conformance", status: "passed", source: "reused", ms: 0 },
       { stage: "gates", status: "refused", source: "reused", ms: 0 },
     ]);
@@ -727,7 +713,7 @@ describe("correctness_check", () => {
       findingCodes: ["gate-unvalidated", "tasks-hidden-operand-unexpected"],
       // Each code under the stage that emitted it, and the stages that ran, so a later receipt that
       // never reached this stage is not read as having answered it.
-      stagesRun: ["bundle", "validation", "conformance", "gates"],
+      stagesRun: ["bundle", "conformance", "gates"],
       stagedCodes: ["gates:gate-unvalidated", "gates:tasks-hidden-operand-unexpected"],
     });
     expect(JSON.stringify(body)).not.toContain("findingCodes");
@@ -831,7 +817,7 @@ describe("correctness_check", () => {
     expect(body.status).toBe("findings");
     expect(body.stage).toBe("bundle");
     expect(codesOf(body)).toEqual(["tool-missing"]);
-    expect(body.notReached).toEqual(["validation", "conformance", "gates"]);
+    expect(body.notReached).toEqual(["conformance", "gates"]);
     expect(gateRan).toBe(false);
     expect(existsSync(trialsDir)).toBe(false);
   });
@@ -849,7 +835,7 @@ describe("correctness_check", () => {
     const body = await check();
     expect(body.status).toBe("findings");
     expect(body.stage).toBe("bundle");
-    expect(body.notReached).toEqual(["validation", "conformance", "gates"]);
+    expect(body.notReached).toEqual(["conformance", "gates"]);
     expect(gated).toBe(false);
     expect(JSON.stringify(body.findings)).toContain("non-regular-entry");
   });
@@ -911,60 +897,14 @@ describe("correctness_check", () => {
     expect(clearPreview(memory, key)).toBeDefined();
   });
 
-  it("records no clear preview when admission refused beside clear gates", async () => {
-    const dir = workspace("clear-admission-refused");
+  // A plan is read beside the gate and never by it: one that does not parse leaves the verdict the
+  // bytes earn.
+  it("gives a candidate whose plan does not parse the verdict its bytes earn", async () => {
+    const dir = workspace("unparsed-plan");
     writeBoundRepresentation(dir, undefined, readFileSync(join(dir, "agent/tools-spec.json"), "utf8"));
-    writeFileSync(join(dir, EXPERIMENT_FILE), "{}");
-    const { check, memory } = session(dir, {
-      gate: async () => [],
-      experimentProposalRequired: true,
-      validation: { adoptedDir: dir },
-    });
-    const body = await check();
-    expect(body.stage).toBe("validation");
-    expect(clearPreview(memory, text(body.snapshotId))).toBeUndefined();
-    expect(memory.previews.has(text(body.snapshotId))).toBe(true);
-  });
-
-  // A fresh build is not required to plan, but a plan it wrote is read: the first battery's
-  // free-form plans went unscored in every recorded run, and the first battery is the one whose
-  // predictions miss the most.
-  it("reads a fresh build's own plan and refuses it when it does not parse", async () => {
-    const dir = workspace("fresh-plan");
-    writeBoundRepresentation(dir, undefined, readFileSync(join(dir, "agent/tools-spec.json"), "utf8"));
-    const { check } = session(dir, { gate: async () => [] });
+    const { check } = session(dir, { gate: async () => [], validation: { adoptedDir: dir } });
+    writeFileSync(join(dir, EXPERIMENT_FILE), "not a plan");
     expect((await check()).status).toBe("clear");
-    writeFileSync(join(dir, EXPERIMENT_FILE), "{}");
-    const refused = await check();
-    expect(refused.status).toBe("findings");
-    expect(refused.stage).toBe("validation");
-  });
-
-  it("a cached refusal still returns repeated instead of re-running its stages", async () => {
-    const dir = workspace("refused-memo");
-    writeBoundRepresentation(dir, undefined, readFileSync(join(dir, "agent/tools-spec.json"), "utf8"));
-    writeFileSync(join(dir, EXPERIMENT_FILE), "{}");
-    let gateCalls = 0;
-    // A continuation whose plan does not parse refuses at admission; the gates still run once
-    // beside it, and the executed stages are remembered by condition.
-    const { check } = session(dir, {
-      gate: async () => {
-        gateCalls += 1;
-        return [];
-      },
-      experimentProposalRequired: true,
-      validation: { adoptedDir: dir },
-    });
-    const first = await check();
-    expect(first.status).toBe("findings");
-    expect(first.stage).toBe("validation");
-    expect(gateCalls).toBe(1);
-    const second = await check();
-    expect(gateCalls).toBe(1);
-    expect(second.repeated).toBe(
-      "the workspace and installed-tool bytes are unchanged: conformance and gate rows are remembered, not re-run; bundle and candidate validation were checked again",
-    );
-    expect(rowsOf(second)).toEqual(rowsOf(first));
   });
 });
 
@@ -1125,28 +1065,27 @@ describe("stagesOf", () => {
     stagesOf({
       gated: { trialDir: "", feedback: [], conditionDigest: null, scope: { referenceSolve } },
       receipts: [
-        { stage: "bundle", status: "passed", source: "executed", ms: 0 },
-        { stage: "validation", status: "refused", source: "executed", ms: 0 },
+        { stage: "bundle", status: "refused", source: "executed", ms: 0 },
         { stage: "conformance", status: "passed", source: "executed", ms: 0 },
         { stage: "gates", status: "refused", source: "executed", ms: 0 },
       ],
       refusals: [
-        { stage: "validation", findings: [finding("experiment-proposal-shape")] },
+        { stage: "bundle", findings: [finding("tasks-self-reported-expectation")] },
         { stage: "gates", findings: [finding("DISCRIMINATION_ACCEPT_REJECTED")] },
       ],
     });
 
   it("files each code under the stage that emitted it", () => {
     expect(ran(true)).toEqual({
-      stagesRun: ["bundle", "validation", "conformance", "gates"],
-      stagedCodes: ["gates:DISCRIMINATION_ACCEPT_REJECTED", "validation:experiment-proposal-shape"],
+      stagesRun: ["bundle", "conformance", "gates"],
+      stagedCodes: ["bundle:tasks-self-reported-expectation", "gates:DISCRIMINATION_ACCEPT_REJECTED"],
     });
   });
 
   it("names a gates run that skipped the reference solve `census`, so it answers no reference-solve code", () => {
     expect(ran(false)).toEqual({
-      stagesRun: ["bundle", "validation", "conformance", "census"],
-      stagedCodes: ["census:DISCRIMINATION_ACCEPT_REJECTED", "validation:experiment-proposal-shape"],
+      stagesRun: ["bundle", "conformance", "census"],
+      stagedCodes: ["bundle:tasks-self-reported-expectation", "census:DISCRIMINATION_ACCEPT_REJECTED"],
     });
   });
 

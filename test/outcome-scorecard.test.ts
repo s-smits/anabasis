@@ -1,10 +1,8 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import { mkdirSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
-import {
-  DIFFICULTY_DECISION_SCHEMA,
-  type DifficultyDecisionEvidence,
-} from "../src/run/difficulty-decision.ts";
+import { DIFFICULTY_DECISION_SCHEMA } from "../src/run/difficulty-decision.ts";
+import type { RoundPlan } from "../src/author/experiment-plan.ts";
 import { type RunEnd, climbRunEnd, provenanceRunEnd, runEndAtClose } from "../src/run/run-end.ts";
 import type { ClimbReadout } from "../src/run/climb-readout.ts";
 import type { ToolCheckCoverage } from "../src/correctness-bundle/grounding-coverage.ts";
@@ -478,22 +476,18 @@ function coverage(
 describe("the run-end numbers", () => {
   afterAll(cleanupScratch);
 
-  type Target = NonNullable<DifficultyDecisionEvidence["difficulty"]["rows"][number]["target"]>;
   const row = (
     runId: string,
     createdAt: string,
     zone: string | null,
-    target: Target | null = null,
-    planDigest: string | null = null,
+    experiment: RoundPlan | null = null,
   ) => ({
     runId,
     createdAt,
     zone,
     passed: zone === null ? null : 4,
     verified: 20,
-    target,
-    calibration: null,
-    experiment: planDigest === null ? null : { proposal: { digest: planDigest, predictions: [] } },
+    experiment,
   });
   const decision = (schema: string, rows: Array<ReturnType<typeof row>>) =>
     JSON.stringify({
@@ -508,11 +502,10 @@ describe("the run-end numbers", () => {
   it("reads the newest current decision, oldest battery first, and leaves an older schema unread", () => {
     const dir = scratchDir("run-end-");
     mkdirSync(join(dir, "difficulty-decisions"), { recursive: true });
-    const target: Target = { comparator: "at-most", verifiedPasses: 3, result: "missed", missedBy: 1 };
     writeFileSync(
       join(dir, "difficulty-decisions", "a.json"),
       decision(DIFFICULTY_DECISION_SCHEMA, [
-        row("b2", "2026-09-02", "on-aim", target),
+        row("b2", "2026-09-02", "on-aim"),
         row("b1", "2026-09-01", "too-easy"),
       ]),
     );
@@ -528,8 +521,8 @@ describe("the run-end numbers", () => {
     expect(climb?.readFrom).toBe(join("difficulty-decisions", "a.json"));
     expect(climb?.batteries.map((battery) => battery.runId)).toEqual(["b1", "b2"]);
     expect([climb?.onAim, climb?.placed]).toEqual([1, 2]);
-    expect(climb?.batteries[1]?.target).toEqual(target);
-    expect(climb?.batteries[0]).not.toHaveProperty("target");
+    // A battery with no plan recorded states its placement alone.
+    expect(climb?.batteries[1]).not.toHaveProperty("plan");
   });
 
   it("counts a check as beside packages only when a tool it names ran with packages", () => {
@@ -605,70 +598,23 @@ describe("the run-end numbers", () => {
     expect(provenanceRunEnd(dir, "b2")).toBeNull();
   });
 
-  const evidence = (
-    planDigest: string,
-    verdicts: Array<[string, "pass" | "fail" | "not-run"]>,
-    schema = "experiment-evidence/v3",
-  ) =>
-    JSON.stringify({
-      schema,
-      planDigest,
-      rehearsals: verdicts.map(([taskId, verdict]) => ({ taskId, family: null, verdict, wallMinutes: 1 })),
-      predictionScore: { scored: 2, brier: 0.125, expected: 1.5, observed: 1 },
-    });
-
-  it("joins each battery's trials by the measured plan's digest, and says so when several match or a schema is refused", () => {
+  it("scores each battery's plan against its changed families and its verified count", () => {
     const dir = scratchDir("run-end-");
     mkdirSync(join(dir, "difficulty-decisions"), { recursive: true });
-    for (const epoch of ["epoch-a", "epoch-b"]) {
-      mkdirSync(join(dir, epoch, "rehearsals"), { recursive: true });
-    }
+    const plan = { families: ["spans"], expectedPasses: { atLeast: 5, atMost: 8 }, digest: "p" };
     writeFileSync(
       join(dir, "difficulty-decisions", "a.json"),
       decision(DIFFICULTY_DECISION_SCHEMA, [
-        row("b5", "2026-09-05", "on-aim", null, "p5"),
-        row("b4", "2026-09-04", "on-aim"),
-        row("b3", "2026-09-03", "on-aim", null, "p3"),
-        row("b2", "2026-09-02", "on-aim", null, "p2"),
-        row("b1", "2026-09-01", "too-easy", null, "p1"),
+        row("b3", "2026-09-03", "on-aim", { plan: { digest: "q" }, changedFamilies: ["spans"] }),
+        row("b2", "2026-09-02", "on-aim", { plan, changedFamilies: ["spans", "joints"] }),
+        row("b1", "2026-09-01", "too-easy", { plan: null, changedFamilies: null }),
       ]),
     );
-    const put = (path: string, text: string) => writeFileSync(join(dir, path), text);
-    put(
-      "epoch-a/rehearsals/experiment-evidence.json",
-      evidence("p1", [
-        ["t1", "pass"],
-        ["t1", "pass"],
-        ["t2", "fail"],
-        ["t3", "not-run"],
-      ]),
-    );
-    put("epoch-a/rehearsals/experiment-evidence-2.json", evidence("p3", [["t1", "pass"]]));
-    put("epoch-b/rehearsals/experiment-evidence.json", evidence("p3", [["t2", "pass"]]));
-    // The right digest under a schema this reader does not take is refused by name, never read as none.
-    put(
-      "epoch-b/rehearsals/experiment-evidence-2.json",
-      evidence("p2", [["t1", "pass"]], "experiment-evidence/v1"),
-    );
-    const batteries = climbRunEnd(dir)?.batteries ?? [];
-    expect(batteries.map((battery) => battery.trials)).toEqual([
-      {
-        state: "recorded",
-        evidence: join("epoch-a", "rehearsals", "experiment-evidence.json"),
-        rehearsals: 4,
-        passedTasks: 1,
-        predictionScore: { scored: 2, brier: 0.125, expected: 1.5, observed: 1 },
-      },
-      { state: "refused", evidence: [join("epoch-b", "rehearsals", "experiment-evidence-2.json")] },
-      {
-        state: "ambiguous",
-        evidence: [
-          join("epoch-a", "rehearsals", "experiment-evidence-2.json"),
-          join("epoch-b", "rehearsals", "experiment-evidence.json"),
-        ],
-      },
+    expect(climbRunEnd(dir)?.batteries.map((battery) => battery.plan)).toEqual([
       undefined,
-      { state: "none" },
+      "the plan names spans as changed and the public tasks changed from the adopted product in spans, joints: " +
+        "missed, joints changed but not named; the plan expects 5–8 verified passes and the battery holds 4: missed, below",
+      undefined,
     ]);
   });
 

@@ -105,13 +105,6 @@ export type TruthCheckFiringEvidence = {
   verifierVerifiedCount: number;
 };
 
-/** One improvement-memory prediction with its post-battery classification and closing disposition. */
-export interface PredictionItem {
-  id: string;
-  outcome: "open" | "held" | "refuted" | "inconclusive" | "unexercised";
-  disposition?: "repair" | "delete" | "retest";
-}
-
 /** The recorded harness's three separate content hashes, matching FingerprintEvidence.
  *  correctnessModelHash excludes tasks.json. Without taskSetHash, changed questions or hidden
  *  expectations could appear to be the same measured condition. */
@@ -135,8 +128,6 @@ export interface ClaimEvidence {
   /** Resolved Built Harness capabilities, e.g. ["web-search:off"], as the battery recorded them:
    *  the claim states whether web search was available and by which mechanism. */
   capabilities: string[];
-  /** Registered prediction record, or null when no improvement-memory sidecar exists for this slug. */
-  predictions: PredictionItem[] | null;
   /** Per-check execution counts from the battery. The evaluation runner records them on every
    *  battery, a skipped one included, with every declared check at zero until it fires. */
   truthCheckFiring: TruthCheckFiringEvidence;
@@ -186,7 +177,7 @@ export interface ClaimCreationInput {
 export interface ClaimClause {
   clause: string;
   detail: string;
-  /** True when the remedy is in-loop: resume, rerun or prediction closure. */
+  /** True when the remedy is in-loop: a resume or a rerun. */
   repairable: boolean;
 }
 

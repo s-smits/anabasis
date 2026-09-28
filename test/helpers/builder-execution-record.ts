@@ -3,7 +3,7 @@ import type {
   BuilderExecutionEvidence,
   BuilderSubmitAttempt,
 } from "../../src/author/builder-execution.ts";
-import type { ExperimentSubmission } from "../../src/author/experiment-plan.ts";
+import type { RecordedPlan } from "../../src/author/experiment-plan.ts";
 import { hashJsonValue } from "../../src/meta/stable-json.ts";
 
 /** A complete `builder-execution/v6` record, since the readers open it through the strict reader.
@@ -21,7 +21,7 @@ export function executionRecord(
       atMs: (index + 1) * 1000,
       kind: "candidate",
       outcome: "accepted",
-      stage: row.outcome === undefined || row.outcome === "accepted" ? null : "validation",
+      stage: row.outcome === undefined || row.outcome === "accepted" ? null : "gates",
       commit: "c".repeat(40),
       findingsDigest: row.outcome === undefined || row.outcome === "accepted" ? null : `digest-${index + 1}`,
       findingCodes: [],
@@ -98,17 +98,13 @@ export function submitCall(sequence: number, candidateId: string): BuilderCustom
   };
 }
 
-/** A captured experiment plan declaring `target`, digested the way the capture digests one. */
-export function experimentProposal(target: ExperimentSubmission["target"]): ExperimentSubmission {
+/** A captured experiment plan, digested the way the capture digests one. */
+export function experimentPlan(): RecordedPlan {
   const plan = {
-    schema: "experiment-plan/v2",
-    scope: "tasks",
     gap: "the last battery found no limit",
     change: "harder spans",
-    expectedResult: "fewer verified passes",
-    target,
-    families: [{ family: "fam", level: "hard", move: "longer spans" }],
-    predictions: [],
-  } as const;
-  return { ...plan, families: [...plan.families], predictions: [], digest: hashJsonValue(plan) };
+    families: ["fam"],
+    expectedPasses: { atMost: 2 },
+  };
+  return { ...plan, digest: hashJsonValue(plan) };
 }

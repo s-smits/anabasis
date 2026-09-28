@@ -20,22 +20,22 @@ import {
   type ConformanceEvidence,
 } from "../claim/conformance-evidence.ts";
 import { fingerprintSlug, type FingerprintEvidence } from "../claim/fingerprint.ts";
-import type { HarnessAuthoring, HarnessExperiment } from "../critic/types.ts";
+import type { HarnessExperiment } from "../critic/types.ts";
 import type { Brief } from "../correctness-bundle/brief.ts";
-import { briefPublicResources, judgePublicTaskOf } from "../correctness-bundle/public-resources.ts";
+import {
+  briefPublicResources,
+  judgePublicTaskOf,
+  readValidatedBrief,
+} from "../correctness-bundle/public-resources.ts";
 import { validateBrief } from "../correctness-bundle/brief-validator.ts";
 import type { BuildTask } from "../correctness-bundle/tasks.ts";
-import {
-  type ExperimentPlan,
-  ExperimentSubmissionSchema,
-  type ExperimentSubmission,
-} from "../author/experiment-plan.ts";
+import { RecordedPlanSchema, type RecordedPlan } from "../author/experiment-plan.ts";
 import { BRIEF_FILE, CONTROLS_FILE, TASKS_FILE } from "../meta/bundle-layout.ts";
 
 export type ExperimentFreeze = { state: "held" | "unproven" | "broken"; clauses: string[] };
 
 const DimensionSchema = Type.Union([Type.Literal("harness"), Type.Literal("tasks"), Type.Literal("scoring")]);
-/** Host-derived from accepted bytes; the author declares only the target. */
+/** Host-derived from accepted bytes; the plan decides none of it. */
 const ExperimentOperationSchema = Type.Object(
   {
     operation: Type.Union([
@@ -55,7 +55,10 @@ export type ExperimentDimension = Static<typeof DimensionSchema>;
 export type ExperimentOperation = Static<typeof ExperimentOperationSchema>;
 
 const experimentAuthoringFields = {
-  proposal: ExperimentSubmissionSchema,
+  /** The round plan beside the families whose public tasks the accepted bytes changed, which is
+   *  what its declared families are scored against; neither decides anything. */
+  plan: Type.Union([RecordedPlanSchema, Type.Null()]),
+  changedFamilies: Type.Union([Type.Array(Type.String()), Type.Null()]),
   operation: ExperimentOperationSchema,
   /** Null only for a build with no adopted product: a fresh build's plan is scored, and a build
    *  attributes no task, so nothing reads a baseline it does not have. */
@@ -88,16 +91,12 @@ export const ExperimentAuthoringSchema = Type.Union([
 ]);
 export type ExperimentAuthoring = Static<typeof ExperimentAuthoringSchema>;
 
-/** The captured battery: its task rows in whichever of the two shapes the file holds, and the
- *  document around them, which the exam hash keeps. The requirement is the caller's, because an
- *  empty battery means something different to the authoring reader and to the exam commitment. */
-
 /** Repair direction is advisory. A broader candidate is a build, and can never inherit the
  * attribution or admission-pointer privileges of a proved evaluation-only correction. */
 export type ExperimentScope = {
   actual: HarnessExperiment;
-  freeze: ExperimentFreeze | null;
-  /** What the accepted bytes moved, when the author bound an experiment proposal. */
+  freeze: ExperimentFreeze;
+  /** What the accepted bytes moved against the adopted product. */
   operation?: ExperimentOperation;
 };
 
@@ -153,7 +152,7 @@ export function publicTaskRows(
 /** Only new public inputs count as changed tasks; relabelling ids, families or levels cannot
  * manufacture a harder subset. Both inputs are controller-owned frozen bundles. */
 export function candidateExperimentAuthoring(
-  proposal: ExperimentSubmission,
+  plan: RecordedPlan | null,
   operation: ExperimentOperation,
   actual: HarnessExperiment,
   baseDir: string,
@@ -162,7 +161,7 @@ export function candidateExperimentAuthoring(
   const base = fingerprintSlug(baseDir);
   const candidate = fingerprintSlug(candidateDir);
   if (!base.ok && actual === "build" && operation.operation === "new-baseline") {
-    return { proposal, operation, actual, baseline: null, changedTaskIds: null };
+    return { plan, changedFamilies: null, operation, actual, baseline: null, changedTaskIds: null };
   }
   if (!base.ok || !candidate.ok || base.taskSetHash === null || candidate.taskSetHash === null) {
     throw new Error(
@@ -180,23 +179,55 @@ export function candidateExperimentAuthoring(
     correctnessModelHash: base.correctnessModelHash,
     taskSetHash: base.taskSetHash,
   };
-  const declared = { proposal, operation };
-  if (actual !== "climb") return { ...declared, actual, baseline, changedTaskIds: null };
+  const declared = { plan, changedFamilies: changedFamilies(baseDir, candidateDir), operation, baseline };
+  if (actual !== "climb") return { ...declared, actual, changedTaskIds: null };
   const previous = new Set(publicTaskRows(baseDir).map((task) => canonicalJson(task.publicInput)));
-  const changedTaskIds = publicTaskRows(candidateDir)
-    .filter((task) => !previous.has(canonicalJson(task.publicInput)))
-    .map((task) => task.taskId);
-  return { ...declared, actual, baseline, changedTaskIds };
+  const changed = publicTaskRows(candidateDir).filter(
+    (task) => !previous.has(canonicalJson(task.publicInput)),
+  );
+  return { ...declared, actual, changedTaskIds: changed.map((task) => task.taskId) };
 }
 
+/** Each task's public condition as the solver meets it, its input and the public rules its
+ *  family's checks assert, without the id or family name a relabelling would change; and the
+ *  brief-wide public resources beside the rules, which every family reads. Null when the brief does
+ *  not validate, as a draft's may not mid-edit. */
+function publicConditions(dir: string) {
+  const brief = readValidatedBrief(dir);
+  if (brief === null) return null;
+  const tasks = draftTaskRows(dir).map((task) => {
+    const judged = judgePublicTaskOf(brief, { ...task, family: task.family ?? "", hidden: [] });
+    const condition = { publicInput: judged.publicInput, rules: judged.publicValidityRules ?? [] };
+    return { family: task.family ?? "(no family)", condition: canonicalJson(condition) };
+  });
+  const shared = briefPublicResources(brief).filter((resource) => resource.name !== "public-validity-rules");
+  return { tasks, shared: canonicalJson(shared) };
+}
+
+/** The families of a draft whose public tasks the adopted product does not hold, which the round
+ *  plan's declared families are read against. A changed brief-wide resource, a rule decision, a
+ *  constant, a rule set or the artifact schema, counts for every family. Null when either side does
+ *  not read. */
+export function changedFamilies(baseDir: string, draftDir: string): string[] | null {
+  try {
+    const [base, draft] = [publicConditions(baseDir), publicConditions(draftDir)];
+    if (base === null || draft === null) return null;
+    const held = new Set(base.tasks.map((task) => task.condition));
+    const changed =
+      base.shared === draft.shared ? draft.tasks.filter((task) => !held.has(task.condition)) : draft.tasks;
+    return [...new Set(changed.map((task) => task.family))];
+  } catch {
+    return null;
+  }
+}
+
+/** What the accepted bytes are allowed to be attributed as: an evaluation correction when the
+ *  evaluation freeze holds, a task probe when the task freeze holds, and otherwise a build. */
 export function candidateExperimentScope(
-  requested: HarnessAuthoring,
   baseDir: string | undefined,
   candidateDir: string,
   conformance?: ConformanceEvidence | null,
-  proposalScope?: ExperimentPlan["scope"],
 ): ExperimentScope {
-  if (proposalScope === undefined) return { actual: requested, freeze: null };
   let freeze: ExperimentFreeze;
   try {
     freeze =

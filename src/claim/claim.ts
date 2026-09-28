@@ -21,7 +21,6 @@ import type {
   ClaimCreationInput,
   ClaimEvidence,
   ClaimStatement,
-  PredictionItem,
   RunStatusEvidence,
   ScoredCase,
 } from "./claim-evidence.ts";
@@ -31,10 +30,10 @@ import { runtimeIdentityFindings } from "./runtime-model-identity.ts";
 import { hasText } from "../meta/text.ts";
 
 /** Whether a clause's remedy is in-loop. `BLOCKING` needs the product rebuilt before another run,
- *  while `IN_LOOP` is a resume, rerun or prediction closure, and a refusal counts as repairable
- *  only when every clause on it is in-loop — one blocking clause is enough to mean the bytes have
- *  to change. They are declared here rather than beside their first user because the clause
- *  producers below all read them. */
+ *  while `IN_LOOP` is a resume or a rerun, and a refusal counts as repairable only when every
+ *  clause on it is in-loop — one blocking clause is enough to mean the bytes have to change. They
+ *  are declared here rather than beside their first user because the clause producers below all
+ *  read them. */
 const BLOCKING = "blocking";
 const IN_LOOP = "in-loop";
 
@@ -104,7 +103,6 @@ export class Claim {
       ...bundleClauses(evidence.bundles),
       ...groundingClauses(evidence),
       ...truthCheckFiringClauses(evidence),
-      ...predictionClauses(evidence.predictions),
       ...denominatorClauses(evidence.runStatus, score.length),
     ];
     if (clauses.length > 0) return new NonClaimable(clauses);
@@ -451,34 +449,6 @@ function truthCheckFiringClauses(evidence: ClaimEvidence): ClaimClause[] {
       BLOCKING,
     ),
   ];
-}
-
-/**
- * Prediction closure rule. A `held` prediction needs no further disposition; `refuted` needs
- * repair or deletion; `inconclusive` and `unexercised` need retesting or deletion, because
- * repairing what never ran closes nothing. An `open` prediction remains unfinished.
- */
-function predictionClosed(p: PredictionItem): boolean {
-  return (
-    p.outcome === "held" ||
-    (p.outcome === "refuted" && (p.disposition === "repair" || p.disposition === "delete")) ||
-    ((p.outcome === "inconclusive" || p.outcome === "unexercised") &&
-      (p.disposition === "retest" || p.disposition === "delete"))
-  );
-}
-
-function predictionClauses(predictions: PredictionItem[] | null): ClaimClause[] {
-  return (predictions ?? []).flatMap((p) =>
-    predictionClosed(p)
-      ? []
-      : [
-          clause(
-            "prediction-record-open",
-            `prediction "${p.id}" is ${p.outcome} without a final outcome; classify every item before creating a claim`,
-            IN_LOOP,
-          ),
-        ],
-  );
 }
 
 /** Explains why too many attempted cases are absent from the score denominator. The ratio decides

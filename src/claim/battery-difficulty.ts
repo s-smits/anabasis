@@ -51,9 +51,6 @@ export type BandPlacement = {
   toAim: number;
 };
 
-/** A first battery's aim, about 3 of 25 verified passes (operator decision). */
-const FIRST_BATTERY_RATE = 0.12;
-
 /** Scale a rate to n, rounded first so 0.2 × 15 = 3.0000000000000004 reads as 3. */
 const scaled = (rate: number, n: number) => Number((rate * n).toFixed(9));
 
@@ -101,16 +98,14 @@ function bandZone(
   return "on-aim";
 }
 
-/** The pass counts a battery of n cases reads as under the band: too hard at or below
- *  `tooHardUpTo`, too easy from `tooEasyFrom` (null when no count qualifies), the aim, and the
- *  first battery's overshoot. Derived by placing every count, so sentences and decisions agree. */
+/** The pass counts a battery of n cases reads as under the band: the aim, and too easy from
+ *  `tooEasyFrom` (null when no count qualifies). Derived by placing every count, so sentences and
+ *  decisions agree. */
 export function bandLandmarks(n: number, band: readonly [number, number]) {
   const placed = Array.from({ length: n + 1 }, (_, k) => placeOnBand(k, n, band)).filter((p) => p !== null);
   return {
-    tooHardUpTo: placed.findLast((p) => p.zone === "too-hard")?.passes ?? null,
     aim: aimCounts(n, band),
     tooEasyFrom: placed.find((p) => p.zone === "too-easy")?.passes ?? null,
-    first: Math.max(1, Math.round(scaled(FIRST_BATTERY_RATE, n))),
   };
 }
 

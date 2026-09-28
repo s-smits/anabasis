@@ -7,7 +7,7 @@ import { BuildAgentTurnNonResult } from "../author/build-agent.ts";
 import { writeAuthoringAttemptEvidence } from "../author/build-attempt-evidence.ts";
 import { builderExecutionEvidenceWriter } from "../author/builder-execution-writer.ts";
 import { WORKSPACE_DIR } from "../author/builder-memory.ts";
-import { type ExperimentSubmission, PlanEvidence } from "../author/experiment-plan.ts";
+import { type RecordedPlan, capturePlan, familyAdvice } from "../author/experiment-plan.ts";
 import { iterationMemoryFindings } from "../author/iteration-memory.ts";
 import { advisory } from "../author/feedback-routing.ts";
 import {
@@ -17,6 +17,7 @@ import {
   runBuilderSession,
 } from "../author/builder-session.ts";
 import { writeCompleted } from "../author/campaign-epoch.ts";
+import type { SubmitHold } from "../gate/submit-tool.ts";
 import {
   type CampaignMemory,
   nextOrdinal,
@@ -66,7 +67,7 @@ import { createHarnessTrialTool } from "../builder/harness-trial.ts";
 import { createCorrectnessCheckTool } from "../gate/check-tool.ts";
 import { controllerValidatedFinding } from "../correctness-bundle/brief.ts";
 import { TASKS_FILE } from "../meta/bundle-layout.ts";
-import { admissionFindings, experimentOperation } from "../gate/experiment-admission.ts";
+import { experimentOperation } from "../gate/experiment-admission.ts";
 import {
   type Gate,
   type GateReport,
@@ -88,7 +89,7 @@ import { decorateIterationEvidence, stampSubmissionCondition } from "./campaign-
 import { keyIfDefined, keyIfTruthy, keysIf } from "../meta/optional-key.ts";
 import type { ProviderResourceBudget } from "./provider-resource-budget.ts";
 import type { Solver } from "../correctness-bundle/solve.ts";
-import { readableFingerprint, type ExperimentScope } from "./experiment-freeze.ts";
+import { changedFamilies, readableFingerprint, type ExperimentScope } from "./experiment-freeze.ts";
 
 export interface BuilderCampaignInput {
   campaignDir: string;
@@ -167,7 +168,7 @@ export interface BuilderCampaignDeps {
 
 type Refused = Extract<BuilderSubmitOutcome, { ok: false }>;
 type Accepted = {
-  experimentProposal?: ExperimentSubmission;
+  experimentPlan?: RecordedPlan;
   experimentScope?: ExperimentScope;
   harness: BuiltHarness;
   iterationDir: string;
@@ -176,11 +177,6 @@ type Accepted = {
 };
 
 type Iteration = { ordinal: number; dir: string; iterationDir: string };
-
-/** A draft never opens scope: only the controller's adopted continuation does. */
-function proposesExperiment(input: Pick<BuilderCampaignInput, "adoptedDir">): boolean {
-  return input.adoptedDir !== undefined;
-}
 
 /** The clause that ends this campaign before a model session opens: exhausted authoring, an
  *  environment blocker or a spent durable cap, none of which a provider turn could change. */
@@ -210,12 +206,11 @@ function preSessionClause(
 /** What the controller asks of this round: how many tasks, and the contract those tasks are
  *  written under. The round states it once, and `harness_inspect readiness` serves these same
  *  bytes, so a session whose opening turn compaction cut recovers the ask without a gate call.
- *  One owner rather than two: a second author would drift, and `FRAME_REVISION` identifies these
- *  lines as a recorded condition. */
+ *  One owner rather than two: a second author would drift. */
 function roundContract(input: BuilderCampaignInput): string {
   return [
     taskCountSentence(input),
-    renderBatteryContract(input.expectedTasks, input.minTasks, input.band, proposesExperiment(input)),
+    renderBatteryContract(input.expectedTasks, input.minTasks, input.band),
   ].join("\n\n");
 }
 
@@ -230,7 +225,7 @@ class BuilderCampaignController {
   readonly workspace: string;
   readonly iterations: IterationEvidence[] = [];
   accepted: Accepted | null = null;
-  experimentProposal: ExperimentSubmission | undefined;
+  experimentPlan: RecordedPlan | undefined;
   /** The contract-root identity this call submitted; undefined until a candidate was captured, so
    *  a controller stop that inspected no tree reports none rather than an empty one. */
   private submittedTree: string | undefined;
@@ -244,8 +239,6 @@ class BuilderCampaignController {
   private readonly candidates: CandidateMemory<Refused>;
   /** This round's passing rehearsals, written by harness_trial and read by the context tool. */
   readonly rehearsals = new RehearsalTraces();
-  /** The round plan's evidence: every rehearsal's verdict and effort, and how the plan scores. */
-  readonly plan: PlanEvidence;
 
   constructor(
     private readonly input: BuilderCampaignInput,
@@ -259,11 +252,16 @@ class BuilderCampaignController {
     );
     this.roundBaseCommit = workspaceHead(this.workspace);
     this.candidates = new CandidateMemory(memory);
-    this.plan = new PlanEvidence(this.workspace, join(input.campaignDir, "rehearsals"));
     this.reviews =
       deps.reviewAuthoring === undefined
         ? null
-        : new AuthoringReviews(this.workspace, input.slug, this.reviewClock, deps.reviewAuthoring);
+        : new AuthoringReviews(
+            this.workspace,
+            input.slug,
+            input.adoptedDir,
+            this.reviewClock,
+            deps.reviewAuthoring,
+          );
   }
 
   /** What every opening turn carries, in the order the author reads it: what the round asks for,
@@ -302,21 +300,43 @@ class BuilderCampaignController {
     this.lastRecordedTurn = error.turns;
   }
 
+  private budgetSpent(): boolean {
+    return this.deps.budget?.status() === "budget_limited";
+  }
+
+  /** Submit's hold: an unread blocking review. With no review beside the session it answers
+   *  without awaiting anything. */
+  readonly holdSubmit = (): SubmitHold | null | Promise<SubmitHold | null> => {
+    if (this.reviews === null) return null;
+    return this.reviews
+      .join()
+      .then((review) => (review === null ? null : { text: review, reason: "review-unread" }));
+  };
+
+  /** The plan read as advice: what did not read, and on a continuation the declared families
+   *  against the families whose public tasks changed. It refuses nothing. */
+  planAdvice(): string[] {
+    const { plan, advice } = capturePlan(this.workspace);
+    const { adoptedDir } = this.input;
+    if (plan === null || adoptedDir === undefined) return advice;
+    return [...advice, ...familyAdvice(plan, changedFamilies(adoptedDir, this.workspace))];
+  }
+
   async submit({ turn }: { turn: number }): Promise<BuilderSubmitOutcome> {
-    this.experimentProposal = undefined;
+    this.experimentPlan = undefined;
     this.submittedTree = undefined;
     const outcome = await this.checkSubmission(turn);
-    const advice = this.plan.advice();
+    const advice = this.planAdvice();
     return {
       ...outcome,
       ...keysIf(!outcome.ok && advice.length > 0, () => ({ advice })),
-      ...keyIfDefined("experimentProposal", this.experimentProposal),
+      ...keyIfDefined("experimentPlan", this.experimentPlan),
       ...keyIfDefined("treeId", this.submittedTree),
     };
   }
 
   private async checkSubmission(turn: number): Promise<BuilderSubmitOutcome> {
-    if (this.deps.budget?.status() === "budget_limited") {
+    if (this.budgetSpent()) {
       this.terminalClause = "budget-limited";
       return {
         ok: false,
@@ -335,7 +355,7 @@ class BuilderCampaignController {
       };
     }
     const candidate = checkCandidate(this.workspace, this.candidateCheckContext());
-    this.experimentProposal = candidate.experimentProposal;
+    this.experimentPlan = candidate.experimentPlan;
     // A repaired executable is a new submission condition even when the candidate files did not
     // change, so a valid candidate is keyed by its submission condition and a malformed one by its
     // committed contract-root tree. The candidate memory keys its remembered refusals and its no-op
@@ -345,33 +365,13 @@ class BuilderCampaignController {
     this.submittedTree = tree;
     // Bundle findings, a missing installed tool among them, are ordinary repairable defects: the
     // refusal keeps the session, and it is the byte-identical resubmit that strikes.
-    if (!candidate.ok) {
-      return this.strike(tree, {
-        ...candidate,
-        findings: [...candidate.findings, ...(candidate.proposalFindings ?? [])],
-      });
-    }
+    if (!candidate.ok) return this.strike(tree, candidate);
     const candidateId = conditionKey(candidate);
     const exam = this.identicalExam(candidate);
     if (exam !== null) return this.strike(candidateId, exam);
-    // Admission reads EXPERIMENT.json, which the key leaves out, so it is recomputed beside a
-    // remembered refusal (A → B → A) rather than remembered with it.
     const cached = this.candidates.refusalFor(candidateId);
-    if (cached !== undefined) {
-      const admission = admissionFindings(candidate);
-      if (admission.length > 0 || cached.findings.length > 0) {
-        return this.strike(
-          candidateId,
-          admission.length === 0
-            ? { ...cached, commit: candidate.commit }
-            : {
-                ...cached,
-                commit: candidate.commit,
-                stage: "validation",
-                findings: [...admission, ...cached.findings],
-              },
-        );
-      }
+    if (cached !== undefined && cached.findings.length > 0) {
+      return this.strike(candidateId, { ...cached, commit: candidate.commit });
     }
     const { outcome, retryable } = await this.validate(candidate, turn);
     // A typed runtime non-result or a host refusal says nothing about these bytes, so resubmitting
@@ -413,7 +413,7 @@ class BuilderCampaignController {
 
   /**
    * Runs the pipeline on submit's own snapshot load, sharing the gate run. Every stage that can
-   * run reports, but only a candidate clean through admission and conformance writes an iteration,
+   * run reports, but only a candidate clean through conformance writes an iteration,
    * so the persisted diagnosis history counts gate verdicts alone. A session can submit many times
    * in one provider turn, which is why the executed stages are remembered per condition; a runtime
    * non-result or a host refusal is not remembered, since neither is a verdict on the bytes.
@@ -453,8 +453,7 @@ class BuilderCampaignController {
     const outcome = settled.outcome.ok ? settled.outcome : { ...settled.outcome, ...stagesOf(report) };
     // Safeguard 33: the preview promises parity with submit on unchanged bytes, so a clear check
     // followed by a refused submit of the same snapshot says the two paths diverged, and nothing
-    // else records the pair. Admission is left out because it reads EXPERIMENT.json, which the
-    // preview judged separately and may have seen change since.
+    // else records the pair.
     if (clear !== undefined && !outcome.ok && executed.findings.length > 0) {
       safeguardTriggered(
         "33-preview-clear-submit-refused",
@@ -479,7 +478,6 @@ class BuilderCampaignController {
       slug: this.input.slug,
       exactTasks: this.input.expectedTasks,
       ...keyIfDefined("minTasks", this.input.minTasks),
-      ...keyIfTruthy("experimentProposalRequired", proposesExperiment(this.input)),
     };
   }
 
@@ -517,20 +515,12 @@ class BuilderCampaignController {
       trialsDir: join(this.input.campaignDir, "trials"),
       memory: this.candidates.validation,
     });
-    const rejected = report.refusals.some(({ findings }) =>
-      findings.some(({ code }) => code === "DISCRIMINATION_ACCEPT_REJECTED"),
-    );
     const clear =
       report.harness !== null &&
       report.gated !== null &&
       report.blocked === null &&
       report.refusals.length === 0;
     if (report.harness !== null && clear) this.reviewClock.validatedProduct(report.harness.fingerprint);
-    // Only a preview that read the controls moves a rehearsal's calibration: a blocked or refused
-    // one on other grounds says nothing about whether this candidate's check program accepts them.
-    if (report.snapshotId !== null && (rejected || clear)) {
-      this.plan.previewed(report.snapshotId, rejected ? "rejected" : "clear");
-    }
     return report;
   }
 
@@ -572,7 +562,7 @@ class BuilderCampaignController {
     this.iterations.push(evidence);
     if (step.kind === "build-admissible") {
       this.accepted = {
-        ...keyIfDefined("experimentProposal", candidate.experimentProposal),
+        ...keyIfDefined("experimentPlan", candidate.experimentPlan),
         harness,
         iterationDir,
         ordinal,
@@ -600,12 +590,11 @@ class BuilderCampaignController {
   /** A candidate refused before settlement writes no iteration, but a gate run it executed still
    *  ends the session on a blocking environment row. */
   private unsettled(candidate: CandidateSnapshot, report: GateReport) {
-    const refused = unsettledRefusal(candidate, report);
-    if (report.gated === null) return refused;
+    const executed = unsettledRefusal(candidate, report);
+    if (report.gated === null) return { outcome: executed, executed };
     const clause = gateTerminalClause(report.gated.feedback);
     if (clause !== null) this.terminalClause = clause;
-    const outcome: Refused = { ...refused.outcome, ...keyIfTruthy("terminal", clause !== null) };
-    return { outcome, executed: refused.executed };
+    return { outcome: { ...executed, ...keyIfTruthy("terminal", clause !== null) }, executed };
   }
 
   /** The advisory tools the session mounts beside submit: static inspection, one bounded
@@ -630,7 +619,6 @@ class BuilderCampaignController {
     // is how a continued conversation reaches refusals compaction has since cut.
     const context = createContextTool({
       round: [this.openingContext(), this.freshContext()].filter(Boolean).join("\n\n"),
-      plan: () => this.plan.view(),
       workspace: this.workspace,
       ...keyIfDefined("history", input.measured?.history),
       ...keyIfDefined("traces", input.measured?.traces),
@@ -643,10 +631,7 @@ class BuilderCampaignController {
       context: toolContext,
       rehearsalDir: join(input.campaignDir, "rehearsals"),
       rehearsals: this.rehearsals,
-      onRehearsal: (row, submitted) => {
-        this.reviews?.rehearsed(row, submitted);
-        return this.plan.record(row, submitted.candidateId);
-      },
+      onRehearsal: (row, submitted) => this.reviews?.rehearsed(row, submitted),
       ...keyIfDefined(
         "builtSolver",
         builtSolver === undefined ? undefined : () => builtSolver(deps.providerBudget),
@@ -667,24 +652,21 @@ class BuilderCampaignController {
       expectedTasks: input.expectedTasks,
       ...keyIfDefined("minTasks", input.minTasks),
       feedback,
-      planAdvice: () => this.plan.advice(),
+      planAdvice: () => this.planAdvice(),
     });
     return [context, inspect, trial, reset, correctnessCheck];
   }
 }
 
 /** A candidate refused before settlement: every executed stage's findings, no iteration, recorded
- *  at the first stage that refused. The executed part leaves out admission, which reads
- *  EXPERIMENT.json, and is what a later call on the same condition may reuse. */
-function unsettledRefusal(candidate: CandidateSnapshot, report: GateReport) {
-  const refused = (rows: GateReport["refusals"]): Refused => ({
+ *  at the first stage that refused, and what a later call on the same condition may reuse. */
+function unsettledRefusal(candidate: CandidateSnapshot, report: GateReport): Refused {
+  return {
     ok: false,
-    stage: rows[0]?.stage ?? "gates",
+    stage: report.refusals[0]?.stage ?? "gates",
     commit: candidate.commit,
-    findings: rows.flatMap((row) => row.findings),
-  });
-  const executed = refused(report.refusals.filter((row) => row.stage !== "validation"));
-  return { outcome: refused(report.refusals), executed };
+    findings: report.refusals.flatMap((row) => row.findings),
+  };
 }
 
 /**
@@ -726,7 +708,6 @@ export async function runBuilderCampaign(
         seed,
         advisory: controller.openingContext(),
         freshContext: controller.freshContext(),
-        planView: () => controller.plan.view(),
         ...keyIfDefined("maxTurns", input.maxTurns),
         ...keyIfDefined("webSearch", input.webSearch),
       },
@@ -738,7 +719,7 @@ export async function runBuilderCampaign(
         // settled round runs neither, because the session stops calling both once submit has
         // accepted or finally refused. An adopted product is reviewed after measurement instead.
         ...keyIfDefined("afterTool", controller.reviews?.afterTool),
-        ...keyIfDefined("beforeSubmit", controller.reviews?.join),
+        beforeSubmit: controller.holdSubmit,
         tools: [...deps.tools, ...authoringTools],
         ...keyIfDefined("turnTimeoutMs", deps.turnTimeoutMs),
         ...keyIfDefined("observer", deps.observer),
@@ -774,7 +755,7 @@ export async function runBuilderCampaign(
       iterationDir: admitted.iterationDir,
       acceptedSnapshot: admitted.snapshotDir,
       ...keyIfDefined("experimentScope", admitted.experimentScope),
-      ...keyIfDefined("experimentProposal", admitted.experimentProposal),
+      ...keyIfDefined("experimentPlan", admitted.experimentPlan),
       harness: admitted.harness,
       iterations: controller.iterations,
       unchangedCandidateSubmissions: unchangedCandidateSubmissions(memory, controller.iterations),
@@ -783,7 +764,7 @@ export async function runBuilderCampaign(
   const exhausted = deps.budget?.status() === "budget_limited";
   return {
     buildAdmissible: false,
-    ...keyIfDefined("experimentProposal", controller.experimentProposal),
+    ...keyIfDefined("experimentPlan", controller.experimentPlan),
     clause:
       outcome.terminalClause ??
       controller.terminalClause ??

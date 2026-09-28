@@ -76,11 +76,13 @@ NEXT MOVE  boundary (code)  ── build | measure | rebuild | stop
    changes a pass, an acceptance or a claim.
 6. **Next move.** Code admits construction, measurement, an adopted-product continuation or a typed
    stop. The Builder that already exists chooses the next experiment from the recorded evidence;
-   there is no separate planner to hand the decision to. Its bounded `EXPERIMENT.json`
-   (`experiment-plan/v2`, owned by `src/author/experiment-plan.ts`) records the gap, the change,
-   the expected result, the scope, a `target` of `{comparator: "at-least" | "at-most",
-   verifiedPasses}`, each family's ladder `level` and `move`, and a predicted pass probability
-   per task.
+   there is no separate planner to hand the decision to. Its `EXPERIMENT.json` (owned by
+   `src/author/experiment-plan.ts`) pre-registers what the round is for — the gap, the change, the
+   families whose tasks it changes and the verified passes the next blind battery should hold, each
+   field optional — and switches nothing. It is scored against the two things that can prove it
+   wrong, the public tasks the accepted bytes changed and the measured battery's verified count,
+   and never against rehearsals, which passed 96 of 99 times where the Builder had predicted a pass
+   at 0.3 or less.
 
 ### Design priors
 
@@ -126,14 +128,17 @@ and each is here because moving it cost something.
     manufactured failures. **No course is prescribed**, because campaign 3fd52f9e-28 moved only its
     published magnitudes for four consecutive batteries, exactly as a prescribed three-stage course
     had told it to, so the prompts alone state the band's counts and the route is the Builder's.
-    `renderBatteryContract` (`src/run/climb-readout.ts`) states the first battery's count, the
-    count that would find no limit and the aim, per size; a continuation never states the first
-    count. Every sentence it and the climb readout send is a line of `FRAME`
-    (`src/run/climb-readout-frame.ts`), and `FRAME_REVISION` is recorded in
-    `difficulty-decision/v7`, so rewording one is a new recorded condition. The readout states each
-    family's solve effort (median and most minutes against `solve_minutes`, median tool calls) and
-    scores the plan's per-task predictions, but never reads effort as difficulty: within a battery
-    it does not separate passes from fails. Useful adopted work is retained.
+    `renderBatteryContract` (`src/run/climb-readout.ts`) states, for each size the round may
+    measure, the counts that are on the aim and the count from which a battery finds no limit, beside
+    the witness sentence and the publication boundary; it states no first-battery count, because
+    how a round reaches the counts is the Builder's. The climb readout beside it (`renderReadout`) states counts and placements and nothing
+    else: the newest rows, the latest reading through `readingSentence`, the round plan's score,
+    the latest battery's families and where its passing artifacts are. Its wording is not a
+    recorded condition. `difficulty-decision/v9` dropped the frame revision v8 carried, and an
+    epoch's `pass` hashes the readout's facts rather than its sentences, so a reworded readout opens
+    no new epoch. Each row's solve effort (median and most minutes against `solve_minutes`, median
+    tool calls) is served through the context tool's history source and never read as difficulty:
+    within a battery it does not separate passes from fails. Useful adopted work is retained.
 
 ## Evidence and implementation status
 
@@ -499,11 +504,14 @@ live evidence.
    of the request would hold.
 
    The orientation also carries the round's own `EXPERIMENT.json` — the gap, the change, the
-   expected result, the target and the per-task predictions — because a reviewer asked whether a
-   result was earned was never told what the round set out to earn. A measured battery reads the
-   plan recorded with it, stated as met or missed against its target and with its predictions
-   scored by `predictionScore`; a checkpoint reads the plan the workspace holds now, which the
-   controller passes because a repair review's snapshot does not contain it. The plan is intent and
+   families it names and the verified passes it expects — because a reviewer asked whether a
+   result was earned was never told what the round set out to earn. Beside it stand the plan's two
+   scores (`roundPlanLines`, `src/review/round-plan-lines.ts`): the named families against the
+   families whose public tasks the reviewed bytes changed from the adopted product, and the
+   expected range against the battery's verified count. A measured battery reads the plan recorded
+   with it; a checkpoint reads the plan the workspace holds now, which the controller passes
+   because a repair review's snapshot does not contain it, and states the range it expects with no
+   battery yet to score it. The plan is intent and
    never evidence of success, and it enters no condition digest, so a different plan over identical
    bytes does not buy a second review. The reviewer's closing message is recorded as its `report`,
    and it is told so and asked for plain prose; its tools refuse only what a decision or rule 4
@@ -604,11 +612,12 @@ live evidence.
     rather than resetting the spend.
 
     The controller loop ceilings live in `src/critic/policy.ts`: `environmentBlockedRounds 3`,
-    `buildFailedRounds 3`, `noopSubmitStrikes 3` and `unchangedCandidateStrikes 3`. The off-aim
-    streak — consecutive rounds reading one side of the aim, counted in batteries, where a round
-    whose claim was refused counts behind a placement but never on its own — is a readout fact and
-    stops nothing, because the route after it belongs to the Builder. Nothing is held fixed while
-    the streak runs; the Builder keeps choosing what to change.
+    `buildFailedRounds 3`, `noopSubmitStrikes 3` and `unchangedCandidateStrikes 3`. There is no
+    off-aim streak any more. It was a readout line counting consecutive rounds on one side of the
+    aim, and it stopped nothing, because the route after it belongs to the Builder; batteries of
+    5/5, 6/6 and 6/6 kept arriving beside it, so it was removed with the plan's target. The
+    operator's `runs pulse` and the whole-run digest still count one from the recorded placements,
+    for a human reader.
 
 11. **Distinguish task demands from coverage and repair.** A level is an ordinal label, not an
     explanation of difficulty. New hashes, new ids, new family names, longer descriptions or more
@@ -627,13 +636,14 @@ live evidence.
     None of these, nor tightening a feasible limit toward a stronger witness (a legitimate route),
     proves a task harder or easier by itself; blind measurement decides.
 
-    So the prompts now say it once each: `starter-pack/difficulty-ladder.md` owns the argument,
-    `STARTER.md` owns the tier entry, the Builder system prompt owns the clauses, and the round's
-    own text — `roundPrompt` and the `FRAME` battery contract — owns when to submit and when a
-    limit only the reference search reaches is a difficulty: when the solver cannot run that search
-    inside its walls. The same pass tied submit to the rehearsals: a Builder submits once a clear
-    preview and its own `harness_trial` results agree with the aim, and a target every outcome
-    meets predicts nothing.
+    So the prompts now say it once each: `STARTER.md` owns the tier entry, the Builder system prompt
+    owns the clauses, and the round's own text — `roundPrompt` and the battery contract
+    `renderBatteryContract` renders — owns when to submit and what a witness proves. The round
+    prompt asks for a submit once a clear preview says the candidate works, because the measured
+    battery, not a rehearsal, decides where it lands. Until 2026-09-28 it asked the Builder to wait
+    until its `harness_trial` results agreed with the aim, and rehearsals passed 96 of the 99 times
+    the Builder had predicted a pass at 0.3 or less, so that sentence held rounds back for hours
+    without changing where a battery landed. Nothing holds a submit on the rehearsals.
 
     Battery size has one owner, and it is not the file named after it: the numbers sit in
     `POLICY.battery` in `src/critic/policy.ts`, beside the loop ceilings, as `floor 5`,
@@ -646,18 +656,14 @@ live evidence.
     `placeOnBand` refused it, and states a repeated failure set or a family conflict as a fact
     beside the placement rather than in place of it. Until `difficulty-decision/v7` those two shapes
     were actions that set the zone aside, so a battery whose same cases failed twice was placed
-    nowhere and dropped out of the off-aim streak however far above the aim it read. The reading
+    nowhere however far above the aim it read. The reading
     itself belongs to `placement.zone`, which `placeOnBand` has already decided. No source file and no row of `thresholds.frozen.yaml` carries the
     `climb.limitHoldRounds = 4` this contract used to cite, and that absence is the design prior
     rather than a defect — the route after a battery at the limit belongs to the Builder.
 
-    All four off-aim zones feed one trailing streak and receive the same course, with only the
-    direction-bound words changed: the streak stops where the product crossed the aim, and a
-    battery below the aim reads the same scores, repeated task sets, attribution and calibration
-    that a battery above it reads. Until 2026-09-18 the streak counted the above-aim side alone,
-    the side a first battery's suggested count sits away from. A target enters the
-    calibration count only when its comparator names the side the streak is on, so the Builder is
-    told which comparator to declare. Sample size has one owner too, the Wilson interval at
+    All four off-aim zones receive the same course, with only the direction-bound words changed: a
+    battery below the aim reads the same scores, repeated task sets and attribution that a battery
+    above it reads. Sample size has one owner too, the Wilson interval at
     `climb.confidence` 0.95 two-sided, whose single quantile is `REPORTING_Z` in
     `src/claim/estimation.ts`; a battery too small to hold a whole count inside the band is refused
     a placement rather than misplaced into one. Both second owners went on 2026-09-18: `wilsonZ`
@@ -669,22 +675,25 @@ live evidence.
     display, the single peripheral the request had named. That is why no validation rule asks a
     family's tasks to vary any longer.
 
-    An open continuation records `EXPERIMENT.json` before preview or submit. Intent cannot change a
-    score, override a gate or make identical bytes new. Changed bytes establish membership rather
-    than semantic difficulty, and with no observations the result stays unknown.
+    A round writes its `EXPERIMENT.json` before it previews or submits, and nothing enforces that:
+    intent cannot change a score, override a gate or make identical bytes new, so a missing plan
+    costs only the reading it would have bought. Changed bytes establish membership rather than
+    semantic difficulty, and with no observations the result stays unknown.
 
-    `src/author/experiment-plan.ts` owns the plan's two files. The Builder alone writes
-    `EXPERIMENT.json`, as `experiment-plan/v2` with a level and a move per family and a pass
-    probability per task, and `readPlan` refuses any other schema. The controller alone writes
-    `PlanEvidence` to `<campaignDir>/rehearsals/experiment-evidence*.json`, claiming the next free
-    name so no round overwrites another; it sits outside the workspace and the fingerprint, and holds
-    the round's rehearsal verdicts, their effort and the prediction score. Each rehearsal row records
-    the bytes it solved (`publicTaskDigest`, `scoringHash`, `agentHash`), and only a rehearsal at a
-    task's current bytes counts towards the target, the predictions and the score; the advice names
-    each task rehearsed only at earlier bytes. Where rehearsals contradict
-    the target or a prediction, `harness_trial`, `correctness_check` and a refused `submit` say so as
-    advice that refuses nothing, and `renderPlanView` gives the one compact view that every
-    continuation and the context tool's `round/plan` document carry.
+    `src/author/experiment-plan.ts` owns the plan, and the Builder alone writes it. It is four
+    optional fields — `gap`, `change`, `families` and `expectedPasses` with an `atLeast` or an
+    `atMost` — read leniently by `capturePlan`: an unknown field is ignored, a field that does not
+    read is named in one advice line while the rest stands, and a missing or unreadable file is
+    advice alone. The plan's digest covers only the fields that read, so rewording an ignored field
+    makes no plan new. It is scored twice and never against rehearsals. `familyAdvice` reads the
+    named families against `changedFamilies` (`src/run/experiment-freeze.ts`), the families whose
+    judged public tasks, inputs or rules changed from the adopted product, and rides every
+    `correctness_check` and every refused `submit` as advice that refuses nothing.
+    `planScoreLine` joins that reading to the expected range read against the measured battery's
+    verified count, and the climb readout, the Epoch Reviewer and the run end in `terminal.json`
+    all read it from the plan recorded with the accepted candidate. A plan whose `families` or
+    `expectedPasses` do not read is not scored on that side, and a plan stating neither is not
+    scored at all.
 
 12. **Evaluate the requested artifact, not decorative output.** Every artifact-schema root must be
     reached by a material truth check, and every advertised capability must map to checks that can
@@ -765,7 +774,8 @@ live evidence.
     `tool_run_seconds` as a measured battery is. Each rehearsal costs one measured case from the
     provider budget, which is the only bound on how many a round runs, and writes its solve evidence
     under `<campaignDir>/rehearsals/`. A passing rehearsal's trace and the artifact it submitted join the
-    context tool's traces source, and each rehearsal's verdict and effort join the round's plan evidence. Parameterless `submit` alone freezes and accepts candidate bytes.
+    context tool's traces source, and each rehearsal's verdict and effort are read back from the
+    round's execution record. Parameterless `submit` alone freezes and accepts candidate bytes.
 
     Two of the fifteen tools in `BUILDER_TOOLS` (`src/builder/builder-tool-interface.ts`) are the
     ones rule 1 depends on without naming, and an agent that has not met them will try to install a

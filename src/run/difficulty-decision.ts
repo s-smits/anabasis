@@ -4,25 +4,22 @@ import { join } from "../meta/path.ts";
 import { readJsonFile, writeCompleted } from "../meta/completed-json.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import type { ClimbReadout } from "./climb-readout.ts";
-import { FRAME_REVISION } from "./climb-readout-frame.ts";
 
 /**
  * The one schema `recordDifficultyDecision` writes, and so the only one a reader opens. A record
  * written under an earlier schema can carry a field of the same name that meant something else:
  * v6 set a battery with a repeated failing core aside with no placement, where v7 places it and
- * states the core beside the placement. Nothing inside the record separates those two cases, which
- * leaves the declared version as the whole of the evidence.
+ * states the core beside the placement, and v9 drops the frame revision v8 carried, whose sentences
+ * are no longer recorded. Nothing inside the record separates those cases, which leaves the
+ * declared version as the whole of the evidence.
  */
-export const DIFFICULTY_DECISION_SCHEMA = "difficulty-decision/v7";
+export const DIFFICULTY_DECISION_SCHEMA = "difficulty-decision/v9";
 
 export type DifficultyDecisionEvidence = {
   schema: typeof DIFFICULTY_DECISION_SCHEMA;
   runId: string;
   slug: string;
   digest: string;
-  /** The frame revision the round's sentences were rendered from: a reworded sentence is a new
-   *  recorded condition. */
-  frame: string;
   difficulty: ClimbReadout;
 };
 
@@ -50,7 +47,6 @@ export function recordDifficultyDecision(input: {
     runId: input.runId,
     slug: input.slug,
     digest,
-    frame: FRAME_REVISION,
     difficulty: input.difficulty,
   };
   const dir = join(input.campaignRoot, DIRECTORY);

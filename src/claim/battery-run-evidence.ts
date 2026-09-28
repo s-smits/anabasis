@@ -99,7 +99,6 @@ export function batteryClaimInput(
       thresholdManifestDigest: battery.thresholdManifestDigest,
       runtimeIdentities: runtimeIdentityCensus(battery.cases),
       capabilities: [...battery.capabilities],
-      predictions: null,
       truthCheckFiring: battery.truthCheckFiring,
       judge: battery.judge,
     },

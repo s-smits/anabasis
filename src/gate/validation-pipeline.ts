@@ -4,7 +4,6 @@
  * the same frozen bytes.
  *
  *   bundle      the file contract and installed-tool resolution (checkCandidate)
- *   validation  experiment admission against the adopted product (experiment-admission.ts)
  *   conformance generated-tool load and the conformance probe on every task
  *   gates       the control census and, beside it, the F2 reference solve (census-gate.ts)
  *
@@ -20,9 +19,7 @@
  * condition and scope, in either call order; a host refusal is forgotten, so a recovered host may
  * judge the same bytes rather than inheriting its predecessor's verdict. A preview remembers its
  * executed stages per condition, a call in flight included, so unchanged bytes never buy a verdict
- * twice; a run that ended blocked or in a runtime non-result is forgotten and runs again. Admission is
- * recomputed on every call because it reads EXPERIMENT.json, which the condition key leaves out on
- * purpose: a revised proposal is a new question about bytes that did not change. Submit keeps its
+ * twice; a run that ended blocked or in a runtime non-result is forgotten and runs again. Submit keeps its
  * own snapshot load and reuses only the shared gate run, so a preview starting while submit runs
  * joins submit's stages instead of loading the generated tools a second time. Every executed gate
  * run writes into its own new directory, so a run another call reuses still holds exactly the
@@ -48,7 +45,7 @@ import {
   type SolvabilityStageCache,
   createSolvabilityStageCache,
 } from "../correctness-bundle/solvability-stages.ts";
-import { type AdmissionInput, admissionFindings, experimentOperation } from "./experiment-admission.ts";
+import { type AdmissionInput, experimentOperation } from "./experiment-admission.ts";
 
 /** The codes of a run that did not finish in time: a check's tool run, or the whole census wall. */
 const TIMEOUT_CODES = new Set(["tool-timeout", "census-wall-exceeded"]);
@@ -129,8 +126,8 @@ type SharedGateDeps = {
 interface ExecuteDeps {
   gates: Gate;
   memory: ValidationMemory;
-  /** A new directory for one executed gate run's host evidence, given whether conformance and
-   *  admission passed and the run's scope label. */
+  /** A new directory for one executed gate run's host evidence, given whether conformance passed
+   *  and the run's scope label. */
   runDir(clean: boolean, label: string): string;
 }
 
@@ -276,7 +273,6 @@ async function sharedGate(
 async function executeStages(
   candidate: CandidateSnapshot,
   input: PipelineInput,
-  admitted: "clean" | "refused",
   deps: ExecuteDeps,
 ): Promise<ExecutedStages> {
   const load = await timed(() => loadHarness(candidate, input.toolsProbes(candidate.snapshotDir)));
@@ -309,7 +305,7 @@ async function executeStages(
     };
   }
   const scope = { referenceSolve: findings.length === 0 };
-  const runDir = (label: string) => deps.runDir(admitted === "clean" && findings.length === 0, label);
+  const runDir = (label: string) => deps.runDir(findings.length === 0, label);
   const gate = await timed(() => sharedGate(candidate, harness, runDir, deps, scope));
   if ("cause" in gate) {
     return {
@@ -354,16 +350,9 @@ export function stagesOf(gateReport: Pick<GateReport, "gated" | "receipts" | "re
   };
 }
 
-function report(
-  candidate: CandidateSnapshot,
-  admission: ContractFinding[],
-  admissionMs: number,
-  executed: ExecutedStages,
-  bundleMs: number,
-): GateReport {
+function report(candidate: CandidateSnapshot, executed: ExecutedStages, bundleMs: number): GateReport {
   const gateRows = executed.gated === null ? [] : gateFeedbackFindings(blockingOf(executed.gated.feedback));
   const refusals = [
-    { stage: "validation" as const, findings: admission },
     { stage: "conformance" as const, findings: executed.conformance },
     { stage: "gates" as const, findings: gateRows },
   ].filter((row) => row.findings.length > 0);
@@ -372,23 +361,8 @@ function report(
     snapshotId: candidate.snapshotId,
     conditionId: conditionKey(candidate),
     refusals,
-    receipts: [
-      { stage: "bundle", status: "passed", source: "executed", ms: bundleMs },
-      {
-        stage: "validation",
-        status: admission.length > 0 ? "refused" : "passed",
-        source: "executed",
-        ms: admissionMs,
-      },
-      ...executed.receipts,
-    ],
+    receipts: [{ stage: "bundle", status: "passed", source: "executed", ms: bundleMs }, ...executed.receipts],
   };
-}
-
-function admit(candidate: CandidateSnapshot) {
-  const started = performance.now();
-  const findings = admissionFindings(candidate);
-  return { findings, ms: Math.round(performance.now() - started) };
 }
 
 /** Submit's sequence on its captured candidate: its own snapshot load, the shared gate run. A
@@ -400,15 +374,9 @@ export async function submitStages(
   deps: ExecuteDeps,
 ): Promise<GateReport> {
   const key = conditionKey(candidate);
-  const admission = admit(candidate);
-  const pending = executeStages(
-    candidate,
-    input,
-    admission.findings.length === 0 ? "clean" : "refused",
-    deps,
-  );
+  const pending = executeStages(candidate, input, deps);
   const executed = await (deps.memory.previews.has(key) ? pending : track(deps.memory, key, pending));
-  return report(candidate, admission.findings, admission.ms, executed, 0);
+  return report(candidate, executed, 0);
 }
 
 /** A result that judges the bytes: not blocked, no runtime non-result, no host refusal and not only a timeout. */
@@ -465,7 +433,6 @@ export async function previewCandidate(
   );
   const bundleMs = Math.round(performance.now() - started);
   if (!candidate.ok) {
-    const proposal = candidate.proposalFindings ?? [];
     return {
       snapshotId: null,
       conformance: [],
@@ -473,32 +440,22 @@ export async function previewCandidate(
       gated: null,
       blocked: null,
       runtimeNonResult: false,
-      refusals: [
-        { stage: "bundle" as const, findings: candidate.findings },
-        { stage: "validation" as const, findings: proposal },
-      ].filter((row) => row.findings.length > 0),
+      refusals: [{ stage: "bundle" as const, findings: candidate.findings }],
       receipts: [
         { stage: "bundle", status: "refused", source: "executed", ms: bundleMs },
-        {
-          stage: "validation",
-          status: proposal.length > 0 ? "refused" : "not-run",
-          source: "executed",
-          ms: 0,
-        },
         { stage: "conformance", status: "not-run", source: "executed", ms: 0 },
         { stage: "gates", status: "not-run", source: "executed", ms: 0 },
       ],
     };
   }
   const key = conditionKey(candidate);
-  const admission = admit(candidate);
   const measured =
-    candidate.experimentProposal === undefined
+    deps.input.adoptedDir === undefined
       ? {}
       : { experiment: experimentOperation(candidate, deps.input.adoptedDir) };
   const reported = (executed: ExecutedStages): GateReport => {
     const result = {
-      ...report(candidate, admission.findings, admission.ms, executed, bundleMs),
+      ...report(candidate, executed, bundleMs),
       ...measured,
     };
     // A clear report: no refusal, which a blocking gate row carries, no
@@ -520,14 +477,7 @@ export async function previewCandidate(
     return memorable(executed) ? { ...reported(reused), repeated: true } : reported(executed);
   }
   const runDir = (_clean: boolean, label: string) => freshRunDir(join(deps.trialsDir, key), label);
-  const executed = await track(
-    deps.memory,
-    key,
-    executeStages(candidate, deps.input, admission.findings.length === 0 ? "clean" : "refused", {
-      ...deps,
-      runDir,
-    }),
-  );
+  const executed = await track(deps.memory, key, executeStages(candidate, deps.input, { ...deps, runDir }));
   return reported(executed);
 }
 

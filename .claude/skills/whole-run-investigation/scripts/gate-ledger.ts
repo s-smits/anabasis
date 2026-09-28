@@ -148,10 +148,11 @@ export const GATE_LEDGER: readonly LedgerEntry[] = [
     "an accept off the schema calibrates nothing",
   ),
   row(
-    ["SH-7", "experiment-plan-schema", "kept"],
-    [0.98, 0.02],
+    ["SH-7", "experiment-plan-schema", "readout"],
+    [null, 0],
+    [],
+    "the plan decides nothing, so an unread field is advice and the rest of the plan stands; retired 2026-09-28",
     ["experiment-plan-schema", "experiment-proposal-read", "experiment-proposal-shape"],
-    "a plan the controller cannot score",
   ),
   // ID: identity and condition
   row(

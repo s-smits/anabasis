@@ -1,6 +1,6 @@
 ---
 name: wave-audit
-description: "Audit whether a new wave of Anabasis runs improved on the wave it replaced. Pairs each run with its baseline of the same condition, proves the source commit is the one variable that moved, dates the prediction, reads the same measures on both sides over equal windows (band placements, climb edges, target and prediction calibration, rehearsal use, gate rent, evaluation corrections, denominators, pace), ties every movement to a fix whose branch fired, and gives a verdict per pair, per wave and per prediction at three checkpoints. Use when asked 'is there an improvement at the runs', 'did the fixes work', 'is this wave better than the last', 'compare the new runs with the old ones', or before relaunching on a new source."
+description: "Audit whether a new wave of Anabasis runs improved on the wave it replaced. Pairs each run with its baseline of the same condition, proves the source commit is the one variable that moved, dates the prediction, reads the same measures on both sides over equal windows (band placements, climb edges, rehearsal use, gate rent, evaluation corrections, denominators, pace), ties every movement to a fix whose branch fired, and gives a verdict per pair, per wave and per prediction at three checkpoints. Use when asked 'is there an improvement at the runs', 'did the fixes work', 'is this wave better than the last', 'compare the new runs with the old ones', or before relaunching on a new source."
 ---
 
 # Wave audit: did the new source improve the runs
@@ -105,7 +105,7 @@ commit by where it can act, because that decides what can show its effect:
 
 | reach | shows up in | example evidence |
 | --- | --- | --- |
-| model-visible Builder text (prompt, `FRAME`, starter, tool descriptions) | `framingDigest` changes; Builder behaviour | plan and targets, rehearsal use, notes |
+| model-visible Builder text (prompt, battery contract, starter, tool descriptions) | `framingDigest` changes; Builder behaviour | plan and its score, rehearsal use, notes |
 | Builder tool or gate behaviour | gate receipts, `correctness_check` rows | finding codes, episode endings in `gates` |
 | controller routing and readouts | observations, difficulty decisions, advice packets | `difficulty-decisions/*.json`, `analysis/*-rebuild-advice.json` |
 | verifier and host execution | case records, `verifier.json` | case kinds, non-result types |
@@ -152,7 +152,7 @@ overwriting them:
 
 | checkpoint | reached when | what it can show |
 | --- | --- | --- |
-| first battery | both runs of the pair have a claimed battery (`runs show` Batteries, or `claims/`) | the Builder's opening calibration: target, predictions, rehearsal use, first placement |
+| first battery | both runs of the pair have a claimed battery (`runs show` Batteries, or `claims/`) | the Builder's opening calibration: rehearsal use, first placement |
 | third round | both have three placed batteries or three rounds recorded | the climb: edge verdicts, streaks, correction loops |
 | terminal | both have `terminal.json` | the whole run: the terminal code, `runEnd`, denominators, pace |
 
@@ -181,7 +181,7 @@ plus `unplaced` when no verified case or `placeOnBand` refused it. The band is `
 `[0.2, 0.50]` in `thresholds.frozen.yaml`, placed by a Wilson interval at `REPORTING_Z`.
 
 - **Readers.** For a finished run, `terminal.json` → `runEnd.climb.batteries[]`: zone, passed,
-  verified, target, calibration, trials. For a live run, `bun run outcome <campaign> <runId> --scorecard`
+  verified, trials. For a live run, `bun run outcome <campaign> <runId> --scorecard`
   (its runEnd section reads the newest difficulty decision). `bun run runs show <runId>` gives the
   Batteries table (BATTERY, CLAIMED, PASSED, CLIMB, RATIONALE), and `difficulty-decisions/*.json`
   gives the full record.
@@ -194,8 +194,7 @@ plus `unplaced` when no verified case or `placeOnBand` refused it. The band is `
     is not progress, so read `verified` beside every zone.
   - `too-hard` is not automatically progress. Check the denominators (§5f) and the evaluation
     corrections (§5e): a broken evaluator or a dead solver also lands there.
-  - A battery whose claim was refused is `unplaced` and counts behind the off-aim streak, never on
-    its own.
+  - A battery whose claim was refused is `unplaced`.
 
 ### 5b. What each edge asked of the solver
 
@@ -222,21 +221,16 @@ Each edge between consecutive batteries gets one verdict:
 
 ### 5c. Calibration: did the Builder know how hard its exam was?
 
-- **Target.** Read `runEnd.climb.batteries[].target` for `comparator`, `verifiedPasses`, `result`
-  (`met`, `missed` or `undetermined`) and `missedBy`. On the recorded corpus, an `at-most` target
-  that was `missed` means the exam was easier than the Builder meant it to be. Better is fewer misses
-  and smaller `missedBy`. A target no outcome can miss, such as `at-most` equal to the battery size,
-  counts as no target.
-- **Predictions.** Read `calibration.brier` with its `expected` and `observed` fields. Better is a
-  lower Brier score and `expected` nearer `observed`. The pulse plan line ("predictions expect 2 of
-  6") shows the same prediction live.
-- **Rehearsals.** Read `trials.rehearsals`, `trials.passedTasks` and `trials.predictionScore`, from
-  `epoch-*/rehearsals/experiment-evidence*.json`. The question is whether a rehearsal that
-  contradicted the target was acted on before submit. Each rehearsal row records the
-  `publicTaskDigest` it solved, so compare those digests with the submitted battery's tasks: a
-  contradicting pass on a task that was then changed was acted on, and one on a task submitted
-  unchanged was ignored. Better is contradictions acted on, and submitted bytes that were
-  rehearsed at all.
+- **The plan's score.** `EXPERIMENT.json` states, each field optional, the families a round
+  changes and the verified passes it expects, and the run end records one score line per battery
+  (`runEnd.climb.batteries[].plan`). Better is a range the battery met and named families that
+  match the families changed. A run whose source predates this plan declares neither, so a pair
+  spanning the change reads them as absent on that side, not as missed.
+- **Rehearsals.** Read the `harness_trial` calls in `epoch-*/builder-execution.json`: each carries
+  its task, its verdict and the `candidateId` it solved. The question is whether a rehearsal pass
+  was acted on before submit, so join those rows to the accepted submit's `candidateId`: a pass on
+  bytes that were then changed was acted on, and one on the bytes submitted unchanged was not.
+  Better is passes acted on, and submitted bytes that were rehearsed at all.
 - **Readers.** WRI's `handoff` lane has a calibration table, and lanes 10 and 11 read the semantic
   side:
 
@@ -251,7 +245,6 @@ The `gates` reader (`gate-rent.ts`) lists each refusal episode and how it ended:
 - `repaired`
 - `repaired-tool-condition`
 - `cleared-without-edit`
-- `cleared-plan-unrecorded`
 - `bundle-unchanged-condition-unknown`
 - `answered-identity-unrecorded`
 - `unanswered`
@@ -332,7 +325,7 @@ run. For every commit classified in §2, fill in:
 | --- | --- | --- | --- | --- |
 
 The recorded output is a finding code in a gate receipt, an advice line, an evidence field, a
-`FRAME` sentence in the recorded prompt, or a safeguard firing (`bun run outcome --safeguards
+battery-contract sentence in the recorded prompt, or a safeguard firing (`bun run outcome --safeguards
 <campaign>`, or `campaigns/<project>/safeguards/<runId>/SAFEGUARDS_LOG.txt`). This is
 [attribution-and-proof](../attribution-and-proof/SKILL.md)'s "was the intended mechanism live",
 applied commit by commit. Read each result like this:
@@ -371,7 +364,7 @@ sentence only when the Builder's own plan, notes or prose cite what that sentenc
   way, and the confounds of §7 are ruled out or named.
 - `regressed`: the mirror of `improved`.
 - `unchanged`: the rows sit within what one Builder resample plausibly moves. For example, both sides
-  are all `too-easy`, targets are missed by similar amounts, and the edge mix is the same.
+  are all `too-easy`, rehearsals passed at similar rates, and the edge mix is the same.
 - `undetermined`: before the checkpoint, or when rows disagree in direction, or when a confound can
   explain the difference.
 
@@ -431,8 +424,8 @@ Predictions:         <id or plan line> — frozen <ledger | file time | post hoc
 Window:              <round r | elapsed hh:mm> on both sides
 
 Per pair:
-  <condition>  zones <b: too-easy×4> → <c: over-aim, too-easy>  edges <…>  target <missed 3 → met>
-               brier <0.40 → 0.22>  rehearsal contradictions acted on <0/1 → 1/1>  gate <…>  corrections <…>
+  <condition>  zones <b: too-easy×4> → <c: over-aim, too-easy>  edges <…>
+               rehearsal passes acted on <0/1 → 1/1>  gate <…>  corrections <…>
                denominators <v/u/nr → v/u/nr>  pace <…>
                verdict <improved | …> on <deciding rows>; attribution <level>; mechanisms fired <commit: output>
 Wave:                <k of n> improved, <…> unchanged, <…> regressed, <…> undetermined (sign-test p ≈ <…>)

@@ -102,7 +102,6 @@ const STARTER_REFERENCES = [
   "starter-pack/contract.md",
   "starter-pack/examples.md",
   "starter-pack/add-ons.json",
-  "starter-pack/difficulty-ladder.md",
 ] as const;
 
 /** Point the workspace's runtime link at this controller's interpreter, resolved rather than as

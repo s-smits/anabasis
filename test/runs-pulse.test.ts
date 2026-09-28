@@ -1,20 +1,17 @@
 import { describe, expect, it } from "bun:test";
-import { mkdtempSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import type { Observation } from "../tools/runs/evidence.ts";
 import { busyUnder, elapsedMs, loadMemory, parseProcessTable, saveMemory } from "../tools/runs/pulse-host.ts";
+import { isPulseReading, offAimStreak, pulseEvents, selected, statusLine } from "../tools/runs/pulse.ts";
 import {
-  isPulseReading,
-  offAimStreak,
-  pulseEvents,
   pulseLabel,
-  selected,
-  statusLine,
+  readInFlight,
   type PulseBattery,
   type PulseReading,
   type PulseRound,
-} from "../tools/runs/pulse.ts";
+} from "../tools/runs/pulse-read.ts";
 
 const SLUG = "design-lightweight-steel-trusses-3fd52f9e-4";
 const RUN_ID = "truss-opus-20260925T042950810Z-371f8f";
@@ -59,9 +56,10 @@ function round(extra: Partial<PulseRound> = {}): PulseRound {
     refused: 0,
     refusalCodes: [],
     rehearsals: [],
+    inFlight: null,
     plan: null,
+    planAdvice: null,
     headline: null,
-    unread: [],
     ...extra,
   };
 }
@@ -160,37 +158,74 @@ describe("runs pulse", () => {
     expect(texts(before, after)).toEqual(["⚠ grade:failed host wall refused"]);
   });
 
-  it("marks a rehearsal that lands against its prediction and one that could not run", () => {
+  it("says each rehearsal's verdict, and marks one that could not run", () => {
     const before = reading(30);
     const after = {
       ...before,
       round: round({
         checkpointAt: at(30),
         rehearsals: [
-          { taskId: "t1", verdict: "pass", predicted: 0.05 },
-          { taskId: "t2", verdict: "not-run", predicted: 0.5 },
-          { taskId: "t3", verdict: "fail", predicted: 0.4 },
+          { taskId: "t1", verdict: "pass", submitted: true },
+          { taskId: "t2", verdict: "not-run", submitted: null },
+          { taskId: "t3", verdict: "fail", submitted: false },
         ],
       }),
     };
     expect(texts(before, after)).toEqual([
-      "◆ r1 rehearsal 1 t1: pass, predicted 0.05, against its prediction",
-      "⚠ r1 rehearsal 2 t2: not-run, predicted 0.5",
-      "· r1 rehearsal 3 t3: fail, predicted 0.4",
+      "· r1 rehearsal 1 t1: pass",
+      "⚠ r1 rehearsal 2 t2: not-run",
+      "· r1 rehearsal 3 t3: fail (nothing submitted)",
     ]);
   });
 
-  it("flags a plan whose predictions sit on the wrong side of its own target, in either direction", () => {
+  it("says a changed plan by its families and range, and raises no target or hold alert on passing rehearsals", () => {
+    const plan = { families: 2, expected: "2–3" };
+    const pass = (taskId: string) => ({ taskId, verdict: "pass", submitted: true });
     const before = reading(30);
-    const atMost = { comparator: "at-most" as const, verifiedPasses: 2, expected: 4, predictions: 6 };
-    const atLeast = { comparator: "at-least" as const, verifiedPasses: 2, expected: 4, predictions: 6 };
-    const flagged = texts(before, { ...before, round: round({ checkpointAt: at(30), plan: atMost }) });
-    expect(flagged).toEqual([
-      "⚠ r1 plan ≤2, predictions expect 4 of 6; its predictions sit 2 on the wrong side of its own target",
+    expect(texts(before, { ...before, round: round({ checkpointAt: at(30), plan }) })).toEqual([
+      "· r1 plan, 2 families changed, expects 2–3 passes",
     ]);
-    expect(texts(before, { ...before, round: round({ checkpointAt: at(30), plan: atLeast }) })).toEqual([
-      "· r1 plan ≥2, predictions expect 4 of 6",
+    const held = round({ checkpointAt: at(31), plan, rehearsals: [pass("t1"), pass("t2"), pass("t3")] });
+    const passed = texts(
+      reading(30, { round: round({ checkpointAt: at(30), plan }) }),
+      reading(31, { round: held }),
+    );
+    expect(passed).toEqual([
+      "· r1 rehearsal 1 t1: pass",
+      "· r1 rehearsal 2 t2: pass",
+      "· r1 rehearsal 3 t3: pass",
     ]);
+    expect(statusLine(reading(31, { round: held }), 10)).toContain(
+      "plan, 2 families changed, expects 2–3 passes",
+    );
+    expect(statusLine(reading(31, { round: held }), 10)).not.toMatch(/passed past|predictions expect|hold/);
+  });
+
+  it("reads each battery's Epoch Review once, and flags an above-aim battery never asked its duty", () => {
+    const review = (duty: string | null) => ({
+      status: "completed",
+      findings: 2,
+      blocking: 1,
+      duty,
+      file: `analysis/${RUN_ID}-i02-epoch-review.json`,
+    });
+    const before = reading(60, { batteries: [{ ...battery(6, 6, "too-easy"), review: null }] });
+    const unasked = { ...before, batteries: [{ ...battery(6, 6, "too-easy"), review: review(null) }] };
+    expect(pulseEvents(before, unasked, SLUG)[0]?.look).toEqual(["analysis/<run>-i02-epoch-review.json"]);
+    expect(texts(before, unasked)).toEqual([
+      "⚠ review of battery 1 completed: 2 finding(s), 1 blocking; the above-aim duty was not asked",
+    ]);
+    const answered = { ...before, batteries: [{ ...battery(6, 6, "too-easy"), review: review("finding") }] };
+    expect(texts(before, answered)).toEqual([
+      "◆ review of battery 1 completed: 2 finding(s), 1 blocking; above-aim duty: finding",
+    ]);
+    const onAim = reading(60, { batteries: [{ ...battery(3, 6, "on-aim"), review: null }] });
+    expect(
+      texts(onAim, { ...onAim, batteries: [{ ...battery(3, 6, "on-aim"), review: review(null) }] }),
+    ).toEqual(["◆ review of battery 1 completed: 2 finding(s), 1 blocking"]);
+    expect(texts(answered, answered)).toEqual([]);
+    const kept = reading(60, { batteries: [battery(6, 6, "too-easy")] });
+    expect(texts(kept, answered)).toEqual([]);
   });
 
   it("says a quiet Builder once when the silence starts and once when it ends", () => {
@@ -207,6 +242,40 @@ describe("runs pulse", () => {
     ]);
     expect(texts(quietFrom, stillQuiet)).toEqual([]);
     expect(texts(stillQuiet, fresh)).toEqual(["· Builder checkpoints again"]);
+  });
+
+  it("names the rehearsal a quiet Builder is inside, and how long it has run", () => {
+    const rehearsing = reading(40, {
+      round: round({
+        checkpointAt: at(15),
+        inFlight: { taskId: "truss-5", stage: "solving", startedAt: at(16) },
+      }),
+    });
+    expect(texts(reading(34, { round: round({ checkpointAt: at(15) }) }), rehearsing)).toEqual([
+      "⚠ no Builder checkpoint for 25m 0s in round 1; rehearsing truss-5 for 24m 0s",
+    ]);
+    expect(statusLine(rehearsing, 18)).toContain("checkpoint 25m 0s ago · rehearsing truss-5 for 24m 0s");
+  });
+
+  it("reads the newest rehearsal still running, and not one an earlier session left unfinished", () => {
+    const epoch = mkdtempSync(join(tmpdir(), "pulse-inflight-"));
+    const started = (ordinal: number, minutes: number) => {
+      const task = join(epoch, "rehearsals", `rehearsal-${String(ordinal)}`, "cases", "truss-5");
+      mkdirSync(task, { recursive: true });
+      writeFileSync(join(task, "public-task.json"), "{}");
+      utimesSync(join(task, "public-task.json"), new Date(at(minutes)), new Date(at(minutes)));
+      return task;
+    };
+    expect(readInFlight(epoch, null)).toBeNull();
+    started(2, 10);
+    // Interrupted before its checks were written, and older than the last checkpoint.
+    expect(readInFlight(epoch, at(12))).toBeNull();
+    const task = started(10, 20);
+    expect(readInFlight(epoch, at(12))).toEqual({ taskId: "truss-5", stage: "solving", startedAt: at(20) });
+    writeFileSync(join(task, "trace.json"), "{}");
+    expect(readInFlight(epoch, at(12))?.stage).toBe("grading");
+    writeFileSync(join(epoch, "rehearsals", "rehearsal-10", "checks.json"), "{}");
+    expect(readInFlight(epoch, at(12))).toBeNull();
   });
 
   it("is not a quiet Builder while the run is measuring", () => {
@@ -264,23 +333,23 @@ describe("runs pulse", () => {
     expect(statusLine(reading(5, { observations: unopened }), 10)).toContain("gating: controls 3m 0s");
   });
 
-  it("states a build round by its counts and names what this tree could not read", () => {
+  it("states a build round by its counts and the plan's own advice", () => {
     const line = statusLine(
       reading(45, {
         round: round({
           checkpointAt: at(44),
           previews: 2,
           clearPreviews: 1,
-          rehearsals: [{ taskId: "t1", verdict: "pass", predicted: null }],
+          rehearsals: [{ taskId: "t1", verdict: "pass", submitted: true }],
           headline: "Running design 5 rehearsal",
-          unread: ["experiment-evidence.json (experiment-evidence/v2)"],
+          planAdvice: "Advice: no EXPERIMENT.json yet.",
         }),
       }),
       18,
     );
     expect(line).toContain("r1 build 44m 0s · previews 2 (1 clear) · rehearsals 1/1 pass");
     expect(line).toContain('"Running design 5 rehearsal"');
-    expect(line).toContain("not read by this tree: experiment-evidence.json (experiment-evidence/v2)");
+    expect(line).toContain("Advice: no EXPERIMENT.json yet.");
   });
 });
 
@@ -329,6 +398,10 @@ describe("pulse host reads", () => {
     expect(loadMemory(path, isPulseReading)).toEqual({ freeGiB: null, readings: {} });
     expect(saveMemory(path, { freeGiB: 12, readings: { [RUN_ID]: reading(5) } })).toBeNull();
     expect(loadMemory(path, isPulseReading).readings[RUN_ID]).toEqual(reading(5));
+    // A kept round holding a plan is kept too, so the next look reports what moved since.
+    const planned = reading(6, { round: round({ plan: { families: null, expected: "at least 3" } }) });
+    expect(saveMemory(path, { freeGiB: null, readings: { [RUN_ID]: planned } })).toBeNull();
+    expect(loadMemory(path, isPulseReading).readings[RUN_ID]).toEqual(planned);
     writeFileSync(path, "{");
     expect(loadMemory(path, isPulseReading)).toEqual({ freeGiB: null, readings: {} });
     writeFileSync(path, JSON.stringify({ runs: { A: { seq: 1 } } }));

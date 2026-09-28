@@ -352,27 +352,27 @@ describe("how an issue ages across batteries", () => {
     denominator: 2,
   };
   const words = (issues: readonly AdviceIssue[]) => issues.map(issueStatusWord);
-  /** The battery's family rows. A family is only evidence about an issue once it produced a
-   *  truth-verified case; `verified: 0` is a family the provider never let run. */
-  const ran = (...names: string[]) =>
-    names.map((family) => ({
+  /** One family's row in the battery, every case of it truth-verified and passing unless `counts`
+   *  says otherwise. */
+  const familyRow = (
+    family: string,
+    counts?: { verified?: number; unaccepted?: number; nonResults?: number },
+  ) => {
+    const verified = counts?.verified ?? 1;
+    return {
       family,
-      verified: 1,
-      passed: 1,
+      verified,
+      passed: verified,
       unaccepted: 0,
       nonResults: 0,
+      ...counts,
       publicInputs: MEASURED_UNDER.publicInputs,
-    }));
-  const unverified = (family: string) => [
-    {
-      family,
-      verified: 0,
-      passed: 0,
-      unaccepted: 0,
-      nonResults: 5,
-      publicInputs: MEASURED_UNDER.publicInputs,
-    },
-  ];
+    };
+  };
+  /** The battery's family rows. A family is only evidence about an issue once it produced a
+   *  truth-verified case; `verified: 0` is a family the provider never let run. */
+  const ran = (...names: string[]) => names.map((family) => familyRow(family));
+  const unverified = (family: string) => [familyRow(family, { verified: 0, nonResults: 5 })];
 
   it("ages an absent issue to tentatively fixed, then confirmed fixed after the second battery", () => {
     const once = advance([priorIssue()], [], "r2", ran("beams"), "complete");
@@ -413,6 +413,21 @@ describe("how an issue ages across batteries", () => {
     // Two such batteries still say nothing; the first measured one ages it.
     expect(advance(held, [], "r3", unverified("beams"), "complete")).toEqual(held);
     expect(words(advance(held, [], "r4", ran("beams"), "complete"))).toEqual(["tentatively-fixed"]);
+  });
+
+  it("carries an issue unchanged through a partial recheck, and ages it once every case of its family is verified", () => {
+    // Task A failed and task B passed. A battery in which A came back a provider non-result and B
+    // passed again never re-verified the case that exposed the issue, so its absence says nothing
+    // about a fix; counted as one, two such batteries confirmed a fix no verdict had tested.
+    const onePassOneNonResult = [familyRow("beams", { nonResults: 1 })];
+    const held = advance([priorIssue()], [], "r2", onePassOneNonResult, "complete");
+    expect(held).toEqual([priorIssue()]);
+    expect(advance(held, [], "r3", onePassOneNonResult, "complete")).toEqual(held);
+    // An unaccepted case left no verdict either.
+    expect(advance(held, [], "r3", [familyRow("beams", { unaccepted: 1 })], "complete")).toEqual(held);
+    const verified = advance(held, [], "r3", [familyRow("beams", { verified: 2 })], "complete");
+    expect(verified).toEqual([expect.objectContaining({ absentBatteries: 1, lastSeenRunId: "r1" })]);
+    expect(words(verified)).toEqual(["tentatively-fixed"]);
   });
 
   it("keeps a Judge issue active while the battery's census is unvalidated", () => {
@@ -461,9 +476,29 @@ describe("how an issue ages across batteries", () => {
     expect(words(again)).toEqual(["active"]);
   });
 
-  it("keeps a diagnosis on an issue the next battery observes again", () => {
-    const next = advance([priorIssue({ diagnosis: READING })], [beamsFail], "r2", ran("beams"), "complete");
-    expect(next).toEqual([expect.objectContaining({ diagnosis: READING, lastSeenRunId: "r2" })]);
+  it("carries a diagnosis and a dispute to a re-observation only under the condition that recorded them", () => {
+    // Identity is kind, family and detail, not the failure's cause. A dispute an evaluator defect
+    // earned, kept across the evaluator's repair, would suspend the solver failure the repaired
+    // evaluator now reports in the same family, and a diagnosis would describe bytes it never read.
+    const dispute = "the evaluator pins a stale header";
+    const read = priorIssue({ diagnosis: READING, dispute });
+    const same = advance([read], [beamsFail], "r2", ran("beams"), "complete");
+    expect(same).toEqual([expect.objectContaining({ diagnosis: READING, dispute, lastSeenRunId: "r2" })]);
+    const repaired = advanceIssues(
+      [read],
+      [beamsFail],
+      "r2",
+      { ...MEASURED_UNDER, families: ran("beams"), scoringHash: "8".repeat(64) },
+      "complete",
+    );
+    expect(repaired).toEqual([
+      expect.objectContaining({ diagnosis: null, dispute: null, lastSeenRunId: "r2" }),
+    ]);
+    expect(repaired.filter(isStanding)).toHaveLength(1);
+    const otherTasks = [{ ...familyRow("beams"), publicInputs: "9".repeat(64) }];
+    expect(advance([read], [beamsFail], "r2", otherTasks, "complete")).toEqual([
+      expect.objectContaining({ diagnosis: null, dispute: null }),
+    ]);
   });
 
   it("gives different kinds and different non-result details different identities", () => {

@@ -10,12 +10,12 @@
  * alone.
  *
  * An issue is four recorded facts and no state machine. `absentBatteries` counts the batteries in
- * which its family ran without it on a comparable condition, `unmeasured` names what moved when the
- * latest such battery was not comparable, `returned` says the latest observation followed an
- * absence, and `retired` says the family left the task set; `issueStatusWord` derives from them the
- * word every reader used to store for itself, because two representations of one lifecycle can
- * disagree. Comparable means the family's public inputs, the scoring program, the tools its checks
- * ran and the Built condition all match the battery that last observed the issue
+ * which its whole family was verified without it on a comparable condition, `unmeasured` names what
+ * moved when the latest such battery was not comparable, `returned` says the latest observation
+ * followed an absence, and `retired` says the family left the task set; `issueStatusWord` derives
+ * from them the word every reader used to store for itself, because two representations of one
+ * lifecycle can disagree. Comparable means the family's public inputs, the scoring program, the
+ * tools its checks ran and the Built condition all match the battery that last observed the issue
  * (`issue-condition.ts`). Issue identity is `kind + family + detail` and deliberately excludes the
  * harness identity, which is what lets one issue be followed across a rebuild.
  *
@@ -126,8 +126,8 @@ export type AdviceIssue = {
   denominator: number;
   firstSeenRunId: string;
   lastSeenRunId: string;
-  /** Batteries since `lastSeenRunId` in which the family ran and the issue was absent; zero when
-   *  the latest battery observed it. A family that did not run cannot age its issues. */
+  /** Batteries since `lastSeenRunId` in which every case of the family was truth-verified and the
+   *  issue was absent; zero when the latest battery observed it. A partial recheck ages nothing. */
   absentBatteries: number;
   /** The latest observation followed an absence: the issue came back. */
   returned: boolean;
@@ -142,12 +142,12 @@ export type AdviceIssue = {
    *  empty otherwise. Non-empty, the absence is carried as unmeasured rather than aged: identical
    *  inputs under a weaker evaluator, or other inputs altogether, make an issue vanish unrepaired. */
   unmeasured: ConditionGap[];
-  /** The diagnosis reader's structured reading; null when none was read or the reading
-   *  failed. It is carried forward while the issue lives, so one reading serves later batteries. */
+  /** The diagnosis reader's structured reading; null when none was read or the reading failed. It
+   *  is carried while the issue is observed again under `observedUnder`, and dropped when not. */
   diagnosis: IssueDiagnosis | null;
   /** The epoch reviewer's argument that this failure belongs to the evaluation. The register keeps
    *  counting a disputed issue: a dispute is a reason not to rebuild the agent around it, never a
-   *  reason to stop observing it. */
+   *  reason to stop observing it. Like the diagnosis, it survives no change of condition. */
   dispute: string | null;
   /** A Judge issue this battery's epoch review settled in the check's favour, with a probe in which
    *  the Judge's reading moved the check. It stops the issue standing for this battery alone: the
@@ -370,9 +370,9 @@ function observedIssues(
 }
 
 /** Advance the register by one battery: an observed issue resets its absence and remembers whether
- *  it came back, and an unobserved one ages only when its family actually ran on a comparable
- *  condition. A Judge issue that no complete Judge review could observe is carried unchanged rather
- *  than aged towards a fix, because an absent review is not evidence of absence. */
+ *  it came back, and an unobserved one ages only when every case of its family was verified on a
+ *  comparable condition. A Judge issue that no complete Judge review could observe is carried
+ *  unchanged rather than aged towards a fix, because an absent review is not evidence of absence. */
 export function advanceIssues(
   previous: readonly AdviceIssue[],
   observed: readonly Observed[],
@@ -394,6 +394,10 @@ export function advanceIssues(
     const id = adviceIssueId(entry.kind, entry.family, entry.detail);
     seen.add(id);
     const prior = byId.get(id);
+    const now = conditionOf(entry.family);
+    // A reading describes the bytes it was read under, and identity names no cause: a dispute an
+    // evaluator defect earned would otherwise suspend the solver failure its repair now exposes.
+    const read = prior !== undefined && conditionGaps(prior.observedUnder, now).length === 0;
     next.push({
       id,
       kind: entry.kind,
@@ -406,20 +410,17 @@ export function advanceIssues(
       absentBatteries: 0,
       returned: prior !== undefined && (prior.absentBatteries > 0 || prior.returned),
       retired: false,
-      observedUnder: conditionOf(entry.family),
+      observedUnder: now,
       unmeasured: [],
-      diagnosis: prior?.diagnosis ?? null,
-      // A disputed issue observed again is still disputed: the dispute is about whose defect the
-      // failure is, and seeing it a second time is not an answer to that question.
-      dispute: prior?.dispute ?? null,
+      diagnosis: read ? prior.diagnosis : null,
+      // Seen again on the same bytes, a disputed issue is still disputed: the dispute is about whose
+      // defect the failure is, and seeing it a second time is not an answer to that question.
+      dispute: read ? prior.dispute : null,
     });
   }
   for (const issue of previous) {
     if (seen.has(issue.id)) continue;
-    const family = byFamily.get(issue.family);
-    const ran =
-      family === undefined ? undefined : { verified: family.verified, now: conditionOf(issue.family) };
-    next.push(agedIssue(issue, ran, judgeReview));
+    next.push(agedIssue(issue, byFamily.get(issue.family), conditionOf(issue.family), judgeReview));
   }
   return next.sort(
     (a, b) =>
@@ -429,32 +430,28 @@ export function advanceIssues(
   );
 }
 
-/** `ran` is the family's truth-verified case count and condition in this battery, or undefined when
- *  the family is not in it at all. Absence of the family retires the issue; a family the provider
- *  never let run observed nothing and moves it neither way, which is the same carry the Judge branch
- *  below makes for the same reason. A battery of provider non-results still counts every family in
- *  it as having run, so the zero-verified branch is what keeps those issues from ageing. A family
+/** `family` is the issue's family row in this battery, undefined when the family is not in it, and
+ *  `now` the condition it ran under. Absence of the family retires the issue. Absence of the issue
+ *  counts only when the family's recheck is complete, every case of it truth-verified with no
+ *  non-result and no unaccepted attempt, because the case that exposed the issue may be the one left
+ *  without a verdict, and two such batteries would confirm a fix nothing re-verified. Otherwise the
+ *  issue is carried unchanged, as the Judge branch below carries it for the same reason. A family
  *  that ran on another condition than the one that observed the issue leaves it unmeasured, with
  *  its absence count where it was. */
 function agedIssue(
   issue: AdviceIssue,
-  ran: { verified: number; now: IssueCondition } | undefined,
+  family: AdviceFamilyRow | undefined,
+  now: IssueCondition,
   judgeReview: "complete" | "incomplete",
 ): AdviceIssue {
-  if (ran === undefined) return { ...issue, retired: true, dispute: null };
-  if (ran.verified === 0) return issue;
+  if (family === undefined) return { ...issue, retired: true, dispute: null };
+  if (family.verified === 0 || family.unaccepted + family.nonResults > 0) return issue;
   if (issue.kind.startsWith("judge-") && judgeReview === "incomplete") return issue;
   // An issue the battery no longer shows carries no dispute: a dispute kept across batteries of
   // absence promises a withholding the controller is no longer applying.
-  const gaps = conditionGaps(issue.observedUnder, ran.now);
-  if (gaps.length > 0) return { ...issue, unmeasured: gaps, retired: false, dispute: null };
-  return {
-    ...issue,
-    absentBatteries: issue.absentBatteries + 1,
-    unmeasured: [],
-    retired: false,
-    dispute: null,
-  };
+  const unmeasured = conditionGaps(issue.observedUnder, now);
+  const absentBatteries = issue.absentBatteries + (unmeasured.length === 0 ? 1 : 0);
+  return { ...issue, absentBatteries, unmeasured, retired: false, dispute: null };
 }
 
 /** Attach what the two review readers said to the register this battery just advanced. They run

@@ -706,14 +706,18 @@ the battery was paid for.
     `rebuild-advice-latest.json` beside it), bound by digest to the iteration that consumes it, and
     rendered once per rebuild kickoff from recorded rows, Judge reviews and admitted aggregate findings,
     never per-case ones. It states each issue's owner, not what to rebuild. Each issue keeps a stable id
-    and one state: `active`, `tentatively-fixed`, `confirmed-fixed`, `regressed`, `retired`, `disputed` or
-    `unmeasured`. A family leaving the set makes its issue `retired`, which proves no fix at all. Absence
-    counts toward a fix only when the family ran under the condition that observed the issue: the same
-    public inputs, `scoringHash`, Built model and solver walls (`src/author/issue-condition.ts`).
-    Otherwise the issue is `unmeasured`, named so and aged neither way, because swapping out the failing
+    and one state: `active`, `tentatively-fixed`, `confirmed-fixed`, `regressed`, `retired`, `disputed`
+    or `unmeasured`. A family leaving the set makes its issue `retired`, which proves no fix at all.
+    Absence counts toward a fix only when every case of the family was truth-verified under the
+    condition that observed the issue: the same public inputs, `scoringHash`, Built model and solver
+    walls (`src/author/issue-condition.ts`). A recheck that lost a case to a non-result or an unaccepted
+    attempt carries the issue unchanged, because the lost case may be the one that failed. Under another
+    condition the issue is `unmeasured`, named so and aged neither way, because swapping out the failing
     tasks or blinding the evaluator makes an issue vanish without repairing anything. An evaluation
     correction therefore leaves its issues unmeasured even when it regrades: the scoring hash moved, and
-    nothing settles an issue as corrected.
+    nothing settles an issue as corrected. A dispute or a diagnosis carries onto a re-observation only
+    under the condition that recorded it, since an issue's id names where a failure showed and not what
+    caused it.
 
     `--product-policy fixed` permits measure or stop and refuses build and rebuild. A campaign runs
     uncapped unless the operator sets `--iteration-budget N`; there is no launch default (2026-08-19).

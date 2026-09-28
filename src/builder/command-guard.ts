@@ -96,11 +96,15 @@ const UNKNOWN_LAYOUT_BYTES = 1000;
 const WORKSPACE_ALLOWED_GIT = /^core\.git:(checkout-discard|restore-worktree)$/;
 const RM_RF = /^core\.filesystem:rm-rf-(?:general|root-home)$/;
 const HOME_CHILD = /^(["']?)(?:~|\$HOME|\$\{HOME\})\//;
-/** A quoted heredoc body is text the command writes rather than shell it runs, so it is dropped
- *  while its opening line stays. Read it and a wrapper script's own `CDPATH= cd --` line, written
- *  inside a heredoc, refuses the relative remove standing beside it. An unquoted body expands
- *  `$(...)`, so that one is still read. */
+/** A quoted heredoc body expands nothing, so it is text the command writes, and it is read as text
+ *  (its opening line kept) unless the command names a shell, `eval` or `source` outside every such
+ *  body (`SHELL_READER`). Then a body may be run, fed to that shell or written to a file it runs,
+ *  and every body is read as the command's own. Read as text, a wrapper script's `CDPATH= cd --`
+ *  line no longer refuses the relative remove beside it. An unquoted body expands `$(...)`, so it
+ *  is always read as the command's own. */
 const QUOTED_HEREDOC_BODY = /(<<-?[\t ]*(['"])(\w+)\2[^\n]*\n)(?:[\s\S]*?\n)?[\t ]*\3[\t ]*(?=\n|$)/g;
+const SHELL_READER =
+  /(?:^|[\s;&|(/'"])(?:(?:a|ba|da|k|mk|z|t?c)?sh|fish|eval|source|\.|\$\{?SHELL\}?)(?=[\s;&|)'"]|$)/;
 
 /**
  * A redirect into the shell's own `$HOME` or `$TMPDIR` is admitted (operator decision). Both
@@ -269,7 +273,7 @@ export function privateScratchRedirect(command: string): boolean {
 /** The command with every private scratch redirect target replaced by a literal `/tmp` path, or null
  *  when a dynamic target is not one of them. */
 function scratchRedirectResidual(command: string): string | null {
-  const shell = command.replace(QUOTED_HEREDOC_BODY, "$1");
+  const shell = shellText(command);
   if (SCRATCH_REASSIGNED.test(shell)) return null;
   const dynamic: string[] = [];
   // The rewriter records each dynamic target rather than judging it, so what makes a target
@@ -288,19 +292,35 @@ function scratchRedirectResidual(command: string): string | null {
   return dynamic.length === 0 || dynamic.some(foreign) ? null : residual;
 }
 
+/** The command with each quoted heredoc body cut back to its opening line, or the command itself
+ *  when it names a shell that may run a body. */
+function shellText(command: string): string {
+  const text = command.replace(QUOTED_HEREDOC_BODY, "$1");
+  return SHELL_READER.test(text) ? command : text;
+}
+
 /**
  * The command with each segment the refused rule admits replaced by `true`, or null when the rule
  * admits nothing. The guard names one rule per answer, so the caller asks again about this
  * residual: `rm -rf build; git reset --hard` must still meet the reset refusal behind the remove.
+ * An `rm` line in a quoted heredoc body read as text is not a remove, so it becomes `true` whatever
+ * its operands, and the rest of that body stays for the guard to read again.
  */
 export function workspaceResidual(command: string, ruleId: string | null): string | null {
   if (ruleId === null) return null;
   if (DYNAMIC_REDIRECT.test(ruleId)) return scratchRedirectResidual(command);
   const git = WORKSPACE_ALLOWED_GIT.test(ruleId);
   if (!git && !RM_RF.test(ruleId)) return null;
-  if (!git && !ownDirectories(command.replace(QUOTED_HEREDOC_BODY, "$1"))) return null;
+  const shell = shellText(command);
+  if (!git && !ownDirectories(shell)) return null;
+  const text =
+    git || shell === command
+      ? command
+      : command.replace(QUOTED_HEREDOC_BODY, (body: string) =>
+          body.replace(/^[\t ]*rm[\t ][^\n]*/gm, "true"),
+        );
   let admitted = 0;
-  const parts = command.split(SEGMENTS).map((part, index) => {
+  const parts = text.split(SEGMENTS).map((part, index) => {
     if (index % 2 === 1 || EXPANSION.test(part)) return part;
     // A loop or branch body starts with its keyword, which stays so the residual still parses.
     const lead = /^\s*(?:(?:do|then|else|\{)\s+)?/.exec(part)?.[0] ?? "";
@@ -318,7 +338,7 @@ export function workspaceResidual(command: string, ruleId: string | null): strin
     admitted += 1;
     return `${lead}true`;
   });
-  return admitted === 0 || parts.includes(null) ? null : parts.join("");
+  return (admitted === 0 && text === command) || parts.includes(null) ? null : parts.join("");
 }
 
 export function builderRefusal(reason: string, rules: readonly string[] = DCG_RULES): string {

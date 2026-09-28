@@ -45,7 +45,7 @@ import { validateBrief } from "../correctness-bundle/brief-validator.ts";
 import type { ControlCorpus } from "../correctness-bundle/controls.ts";
 import { type EvaluatorFn, loadCorrectnessModel } from "../correctness-bundle/contracts.ts";
 import { evaluateCheckProgram } from "../correctness-bundle/predicate.ts";
-import { runControls } from "../correctness-bundle/run-controls.ts";
+import { applicableCheckIds, runControls } from "../correctness-bundle/run-controls.ts";
 import type { BuildTask } from "../correctness-bundle/tasks.ts";
 import type { ControlReceipt, ControlReceiptOutcome } from "../correctness-bundle/battery-record.ts";
 import { resolveVerifier } from "../correctness-bundle/verification-registry.ts";
@@ -100,8 +100,11 @@ export type ReviewProbeRow = {
   change: ProbeChange;
   baseline: ProbeSide | null;
   mutated: ProbeSide | null;
-  /** Declared checks whose verdict the one changed field moved. Empty is the decisive negative: no
-   *  declared check applicable to this task reads that field. */
+  /** The declared checks the task's family selects. Each runs on every artifact that reaches a
+   *  verdict, so one a side does not name as blocking passed there; a check outside these ran on
+   *  neither side, and the probe says nothing about it. */
+  applicableCheckIds: string[];
+  /** Declared checks whose verdict the one changed field moved, where both sides reached one. */
   movedCheckIds: string[];
   /** Why nothing executed; null when the pair ran. */
   refused: string | null;
@@ -146,11 +149,26 @@ export function emptyProbeState(): ProbeState {
  *  indistinguishable from "no check moved" by the ids alone. The original must also pass, because a
  *  changed artifact says nothing against a control the checks already refuse. */
 function conclusive(row: ReviewProbeRow): boolean {
-  return (
-    row.refused === null &&
-    row.baseline?.outcome === "pass" &&
-    (row.mutated?.outcome === "pass" || row.mutated?.outcome === "fail")
-  );
+  return row.refused === null && probeShows(row, null) !== null;
+}
+
+/** One side's verdict on `checkId`, or on the whole artifact when a finding names no check; null
+ *  where that side reached no verdict or the check does not apply to the task. */
+function verdictOn(side: ProbeSide | null, checkId: string | null, applicable: readonly string[]) {
+  if (side === null || side.outcome === "non-result") return null;
+  if (checkId === null) return side.outcome;
+  if (!applicable.includes(checkId)) return null;
+  return side.blockingCheckIds.includes(checkId) ? "fail" : "pass";
+}
+
+/** The direction one probe establishes for a check: a false rejection where it passed the original
+ *  and failed the change, a false acceptance where it passed both. Null where the probe establishes
+ *  neither, so a check that never ran on this task cannot read as one that let an answer through. */
+export function probeShows(row: ReviewProbeRow, checkId: string | null): ProbeDirection | null {
+  const before = verdictOn(row.baseline, checkId, row.applicableCheckIds);
+  const after = verdictOn(row.mutated, checkId, row.applicableCheckIds);
+  if (before !== "pass" || after === null) return null;
+  return after === "fail" ? "rejects-valid" : "accepts-invalid";
 }
 
 /** The probe rows a finding cites that are executed evidence. A finding citing an id that never
@@ -160,16 +178,6 @@ function conclusive(row: ReviewProbeRow): boolean {
  *  It returns the rows rather than their numbers, because the recorder needs both — the numbers for
  *  the reviewer's own evidence prose, and the control, path and moved checks for the public
  *  projection, which the finding otherwise reaches with its check name alone. */
-/** The direction cited probes show for a check: a false rejection where they moved it, a false
- *  acceptance where they left it passing. A stated direction they contradict is not recorded, so a
- *  probe that moved nothing never reads as a check refusing a valid answer. */
-export function probeShows(rows: readonly ReviewProbeRow[], checkId: string | null): ProbeDirection {
-  const moved = rows.some((row) =>
-    checkId === null ? row.movedCheckIds.length > 0 : row.movedCheckIds.includes(checkId),
-  );
-  return PROBE_DIRECTIONS[moved ? 0 : 1];
-}
-
 export function probeBackedRows(state: ProbeState, cited: JsonValue | undefined): ReviewProbeRow[] {
   if (!Array.isArray(cited)) return [];
   const numbers = new Set(cited.filter(isNumber));
@@ -331,17 +339,14 @@ const sideOf = (receipt: ControlReceipt | undefined): ProbeSide | null =>
 
 /** Checks that decided one artifact and not the other. The comparison is symmetric because a
  *  replacement that makes a refusing check stop refusing is the same evidence as one that makes it
- *  start: either way the check read the field, which is the only thing a probe answers. */
-function movedChecks(baseline: ProbeSide | null, mutated: ProbeSide | null): string[] {
-  if (baseline === null || mutated === null) return [];
-  const before = new Set(baseline.blockingCheckIds);
-  const after = new Set(mutated.blockingCheckIds);
-  return [
-    ...new Set([
-      ...baseline.blockingCheckIds.filter((id) => !after.has(id)),
-      ...mutated.blockingCheckIds.filter((id) => !before.has(id)),
-    ]),
-  ].sort();
+ *  start: either way the check read the field, which is the only thing a probe answers. A side that
+ *  reached no verdict blocks on nothing, so it moves nothing either. */
+function movedChecks(row: Omit<ReviewProbeRow, "movedCheckIds">): string[] {
+  return row.applicableCheckIds.filter((id) => {
+    const before = verdictOn(row.baseline, id, row.applicableCheckIds);
+    const after = verdictOn(row.mutated, id, row.applicableCheckIds);
+    return before !== null && after !== null && before !== after;
+  });
 }
 
 /** Run the pair through the census path. The synthetic corpus declares both artifacts as accepts
@@ -482,7 +487,8 @@ export function probeTool(root: string, lifetimeRoot: string, state: ProbeState)
     state.refused += 1;
     return Promise.resolve(readerToolText(`refused: ${why}`));
   };
-  const record = (row: ReviewProbeRow): ReaderToolResult => {
+  const record = (settled: Omit<ReviewProbeRow, "movedCheckIds">): ReaderToolResult => {
+    const row = { ...settled, movedCheckIds: movedChecks(settled) };
     state.rows.push(row);
     return readerToolText(renderRow(row));
   };
@@ -498,7 +504,7 @@ export function probeTool(root: string, lifetimeRoot: string, state: ProbeState)
     const id = state.rows.length + 1;
     const base = { id, controlId: request.controlId, path: request.path, change: request.change };
     const failed = (taskId: string, reason: string) =>
-      record({ ...base, taskId, baseline: null, mutated: null, movedCheckIds: [], refused: reason });
+      record({ ...base, taskId, baseline: null, mutated: null, applicableCheckIds: [], refused: reason });
     let candidate: ProbeCandidate;
     try {
       candidate = await (opened ??= openCandidate(root, lifetimeRoot));
@@ -537,14 +543,13 @@ export function probeTool(root: string, lifetimeRoot: string, state: ProbeState)
         boundText(`the checks did not settle: ${errorMessage(cause)}`, 300).shown,
       );
     }
-    const baseline = sideOf(receipts.find((row) => row.controlId === baselineId(id)));
-    const changed = sideOf(receipts.find((row) => row.controlId === mutatedId(id)));
+    const task = candidate.tasks.find((row) => row.taskId === control.taskId);
     return record({
       ...base,
       taskId: control.taskId,
-      baseline,
-      mutated: changed,
-      movedCheckIds: movedChecks(baseline, changed),
+      baseline: sideOf(receipts.find((row) => row.controlId === baselineId(id))),
+      mutated: sideOf(receipts.find((row) => row.controlId === mutatedId(id))),
+      applicableCheckIds: task === undefined ? [] : applicableCheckIds(candidate.brief, task),
       refused: null,
     });
   };

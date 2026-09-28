@@ -539,7 +539,9 @@ function recordedFinding(
       probes: probes.map(({ controlId, path, movedCheckIds }) => ({ controlId, path, movedCheckIds })),
       ...keyIfNotNull(
         "probeDirection",
-        parsed.probeDirection === probeShows(probes, parsed.checkId) ? parsed.probeDirection : null,
+        probes.some((row) => probeShows(row, parsed.checkId) === parsed.probeDirection)
+          ? parsed.probeDirection
+          : null,
       ),
     })),
   };

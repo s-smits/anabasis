@@ -9,10 +9,12 @@
  * to change one line is a probe nobody runs.
  */
 import { afterAll, describe, expect, it } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { JsonValue } from "../src/meta/json-shape.ts";
+import { parseJsonAs } from "../src/meta/json-runtime.ts";
+import type { Brief } from "../src/correctness-bundle/brief.ts";
 import {
   PROBE_BUDGET,
   type ReviewProbeRow,
@@ -20,6 +22,7 @@ import {
   emptyProbeState,
   missingFieldRefusal,
   probeBackedRows,
+  probeShows,
   probeTool,
   withReplacedField,
 } from "../src/review/review-probe.ts";
@@ -46,11 +49,31 @@ const LONG_NOTE = `${"x".repeat(6_000)} looked it up`;
 
 /** The uppercase candidate, with accept controls whose artifacts carry one field the declared
  *  check reads and one it does not. That second field is the case a reading reviewer cannot
- *  settle: nothing in the source says out loud that no check observes it. */
+ *  settle: nothing in the source says out loud that no check observes it. A second check, `shout`,
+ *  reads the answer too but applies to the `second` family alone, so a probe of a `first` task
+ *  never runs it. */
 function candidateTree(): string {
   const dir = mkdtempSync(join(import.meta.dir, ".ana-scratch-review-probe-"));
   trees.push(dir);
   uppercaseFixture(dir);
+  const briefPath = join(dir, "correctness-model/brief.json");
+  const brief = parseJsonAs<Brief>(readFileSync(briefPath, "utf8"));
+  const [answer] = brief.truthChecks;
+  brief.truthChecks.push({
+    ...answer!,
+    id: "shout",
+    assertion: "The answer is in capitals.",
+    execution: { ...answer!.execution, families: ["second"] },
+  });
+  writeFileSync(briefPath, JSON.stringify(brief));
+  const evaluator = join(dir, "correctness-model/evaluator.ts");
+  writeFileSync(
+    evaluator,
+    readFileSync(evaluator, "utf8").replace(
+      "export const checks = {",
+      "export const checks = { shout: ({artifact}) => artifact.answer === String(artifact.answer).toUpperCase(),",
+    ),
+  );
   writeFileSync(
     join(dir, "correctness-model/controls.json"),
     JSON.stringify({
@@ -89,6 +112,7 @@ const heldRow = (id: number, refused: string | null): ReviewProbeRow => ({
   change: { value: "1" },
   baseline: null,
   mutated: null,
+  applicableCheckIds: [],
   movedCheckIds: [],
   refused,
 });
@@ -253,6 +277,32 @@ describe("probeBackedRows — a finding rests on results, not on requests", () =
   });
 });
 
+// A probe row keeps each side's verdict and blocking checks, and the checks the task's family
+// selects. "Did not move" alone would also cover a check that never ran on this task, or a side that
+// reached no verdict, and a direction read off that would send the author the opposite repair.
+describe("probeShows — the direction one probe establishes for one check", () => {
+  const side = (outcome: "pass" | "fail" | "non-result", blockingCheckIds: string[] = []) => ({
+    outcome,
+    blockingCheckIds,
+  });
+  const shown = (baseline: ReturnType<typeof side> | null, mutated: ReturnType<typeof side> | null) => {
+    const row = { ...heldRow(1, null), baseline, mutated, applicableCheckIds: ["answer"] };
+    return [probeShows(row, "answer"), probeShows(row, "shout"), probeShows(row, null)];
+  };
+
+  it("reads a pass that failed as a refusal, and a pass that stayed a pass as an acceptance", () => {
+    expect(shown(side("pass"), side("fail", ["answer"]))).toEqual(["rejects-valid", null, "rejects-valid"]);
+    expect(shown(side("pass"), side("pass"))).toEqual(["accepts-invalid", null, "accepts-invalid"]);
+  });
+
+  it("establishes nothing where a side reached no verdict or the original never passed", () => {
+    expect(shown(side("pass"), side("non-result"))).toEqual([null, null, null]);
+    expect(shown(side("non-result"), side("fail", ["answer"]))).toEqual([null, null, null]);
+    expect(shown(side("fail", ["answer"]), side("pass"))).toEqual([null, null, null]);
+    expect(shown(null, null)).toEqual([null, null, null]);
+  });
+});
+
 describe("probe_check — the candidate's own checks over one changed field", () => {
   it("names the checks a changed field moves, and reports the silence when none does", async () => {
     const dir = candidateTree();
@@ -288,6 +338,13 @@ describe("probe_check — the candidate's own checks over one changed field", ()
       ]);
       expect(state.rows[0]?.baseline).toEqual({ outcome: "pass", blockingCheckIds: [] });
       expect(state.rows[0]?.mutated).toEqual({ outcome: "fail", blockingCheckIds: ["answer"] });
+      // accept-a binds a `first` task, whose family does not select `shout`: the probe ran it on
+      // neither side, so it shows nothing about it in either direction.
+      expect(state.rows.map((row) => row.applicableCheckIds)).toEqual([["answer"], ["answer"]]);
+      expect(state.rows.map((row) => [probeShows(row, "answer"), probeShows(row, "shout")])).toEqual([
+        ["rejects-valid", null],
+        ["accepts-invalid", null],
+      ]);
     } finally {
       await probe.close(false);
     }

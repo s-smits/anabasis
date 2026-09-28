@@ -80,6 +80,7 @@ function fa03b7Rows(): ReviewProbeRow[] {
     change: { value },
     baseline: pass,
     mutated,
+    applicableCheckIds: ["catalogue-mass-budget"],
     movedCheckIds: mutated === mass ? ["catalogue-mass-budget"] : [],
     refused: null,
   }));
@@ -323,6 +324,7 @@ describe("the probes an authoring review rested its findings on, carried to the 
             change: { value: MARKER },
             baseline: { outcome: "pass", blockingCheckIds: [] },
             mutated: { outcome: "fail", blockingCheckIds: ["answer"] },
+            applicableCheckIds: ["answer"],
             movedCheckIds: ["answer"],
             refused: null,
             cited: true,

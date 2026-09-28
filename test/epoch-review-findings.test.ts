@@ -811,7 +811,11 @@ describe("what a finding's typed fields carry to authoring", () => {
     path: "$.layout.members[0].area",
     change: { value: "1" },
     baseline: { outcome: "pass" as const, blockingCheckIds: [] },
-    mutated: { outcome: "fail" as const, blockingCheckIds: movedCheckIds },
+    mutated: {
+      outcome: movedCheckIds.length === 0 ? ("pass" as const) : ("fail" as const),
+      blockingCheckIds: movedCheckIds,
+    },
+    applicableCheckIds: ["deflection"],
     movedCheckIds,
     refused: null,
   });
@@ -1150,6 +1154,32 @@ describe("what a finding's typed fields carry to authoring", () => {
       undefined,
       "accepts-invalid",
       undefined,
+    ]);
+  });
+
+  // A probe of a control whose task's family does not select the named check ran that check on
+  // neither side, so its not moving says nothing about what the check accepts. Where one cited
+  // probe does show the stated direction, the direction stands whatever the others show.
+  test("a stated direction the cited probes' receipts do not establish is dropped", async () => {
+    const state = reviewState();
+    state.probes.rows.push({ ...probeRow(1, []), applicableCheckIds: [] }, probeRow(2, ["deflection"]));
+    state.probes.rows.push(probeRow(3, []));
+    const tool = recordFindingTool([], [], evidence, state, { identities });
+    const base = {
+      defect: true,
+      claim: "c",
+      severity: "advisory",
+      owner: "correctness-model/evaluator.ts",
+      checkId: "deflection",
+      citations: CITATIONS,
+      probeDirection: "accepts-invalid",
+    };
+    // Three recorded findings, whatever each direction became.
+    for (const probeIds of [[1], [1, 2], [2, 3]]) await call(tool, { ...base, probeIds });
+    expect(state.findings.map((row) => row.probeDirection)).toEqual([
+      undefined,
+      undefined,
+      "accepts-invalid",
     ]);
   });
 });

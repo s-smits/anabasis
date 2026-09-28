@@ -177,6 +177,7 @@ describe("a condition is reviewed once", () => {
         refused: null,
         baseline: { outcome: "pass", blockingCheckIds: [] },
         mutated: { outcome: "fail", blockingCheckIds: ["shortcut-check"] },
+        applicableCheckIds: ["shortcut-check"],
         movedCheckIds: ["shortcut-check"],
       });
       return { state, tool: recordFindingTool([], [], "e", state, { identities }) };
@@ -250,6 +251,7 @@ describe("a condition is reviewed once", () => {
       change: { value: "1" },
       baseline: side("pass"),
       mutated: side("fail", ["shortcut-check"]),
+      applicableCheckIds: ["shortcut-check"],
       movedCheckIds: ["shortcut-check"],
       refused,
     });
@@ -326,6 +328,7 @@ describe("a condition is reviewed once", () => {
         refused: null,
         baseline: { outcome: "pass", blockingCheckIds: [] },
         mutated: { outcome: "fail", blockingCheckIds: ["wiring-behavior"] },
+        applicableCheckIds: ["wiring-behavior"],
         movedCheckIds: ["wiring-behavior"],
       });
       return call(recordFindingTool([], [], "e", state, { identities }), {
@@ -367,6 +370,7 @@ describe("a condition is reviewed once", () => {
       change: { value: "1" },
       baseline: side("pass"),
       mutated: side("fail", ["shortcut-check"]),
+      applicableCheckIds: ["shortcut-check"],
       movedCheckIds: ["shortcut-check"],
       refused,
     });

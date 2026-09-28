@@ -13,7 +13,15 @@
  *  `assertGeneratedSourceLoaders`). A module's name decides nothing: a test the evaluator imports
  *  is scoring. The walk errs towards movement — a type-only import is erased and skipped, while an
  *  unused, side-effect or re-export import keeps its file inside — so the reading can over-report a
- *  change but never hide an executed byte.
+ *  change but never hide a module the evaluator bundle runs.
+ *
+ *  A program a check executes as a tool is not such a module, however much of the verdict it
+ *  decides. An installed solver, or an analyser the Builder wrote under `.toolchain`, runs in its
+ *  own process, outside the package and outside this hash, so an analyser rewritten underneath an
+ *  unchanged evaluator leaves the hash where it was. Those bytes are named by the bundle snapshot's
+ *  portable tool tree digest (`BundleSnapshotFact.toolTreeDigest`) and by the claim's
+ *  `verifierEnvironmentHash`, and a reading that asks whether scoring moved has to read one of them
+ *  beside this hash.
  *
  *  Bun also compiles each module under the nearest tsconfig.json or jsconfig.json, following its
  *  `extends`, and the nearest package.json: `useDefineForClassFields`, `experimentalDecorators` or

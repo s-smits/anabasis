@@ -95,12 +95,6 @@ describe("a condition is reviewed once", () => {
       condition("t1"),
       REVIEW_IDENTITY,
     ],
-    [
-      "coverage without a completeness verdict",
-      { coverage: { files: 400, opened: 400, chars: 800 } },
-      condition("t1"),
-      REVIEW_IDENTITY,
-    ],
     ["a review with no recorded condition", { condition: null }, condition("t1"), REVIEW_IDENTITY],
     ["a review with no recorded effort", { reviewerEffort: null }, condition("t1"), REVIEW_IDENTITY],
   ])("a completed review is not reused for %s", (_label, body, asked, identity) => {

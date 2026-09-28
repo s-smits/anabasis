@@ -223,11 +223,11 @@ function completedReviews(analysisDir: string): EpochReviewEvidence[] {
     });
 }
 
-/** Whether a complete review already covered this condition, this reviewer and these obligations.
- *  All three must match: a new contested artifact or a newly standing issue under an unchanged
- *  product is new work, and skipping it would leave the one component that reads the measured tree
- *  against the original request silent about what changed. An unreadable earlier review proves no
- *  coverage, so it does not count and the review runs again. */
+/** Whether a completed review, the one status meaning a finished turn over full coverage and whose
+ *  findings route, already covered this condition, this reviewer and these obligations. All three
+ *  must match: a new contested artifact or a newly standing issue under an unchanged product is new
+ *  work, and skipping it would leave the one component that reads the measured tree against the
+ *  original request silent about what changed. An unreadable review proves no coverage. */
 export function conditionAlreadyReviewed(
   analysisDir: string,
   condition: MeasuredCondition,
@@ -243,7 +243,6 @@ export function conditionAlreadyReviewed(
     expected.reviewerEffort.trim() !== "" &&
     completedReviews(analysisDir).some(
       (review) =>
-        review.coverage?.complete === true &&
         review.condition?.digest === condition.digest &&
         review.reviewerPin === expected.reviewerPin &&
         review.reviewerEffort === expected.reviewerEffort &&

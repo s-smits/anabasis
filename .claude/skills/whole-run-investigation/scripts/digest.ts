@@ -30,7 +30,7 @@ import { type BatteryRecord, readRecordedBatteryRecord } from "#src/correctness-
 import { bundleSnapshotIdOf } from "#src/claim/bundle-snapshot.ts";
 import { verifyTree } from "#src/claim/bundle-snapshot-verify.ts";
 import { CASE_TRACE_SCHEMA } from "#src/backends/trace-capture.ts";
-import { asRecord, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
+import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { readJsonFileOrNull } from "#src/meta/completed-json.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { campaignEpochs } from "#src/author/campaign-epoch.ts";
@@ -80,7 +80,7 @@ interface ShippingEvidence {
 
 interface ClaimGroundings {
   groundingByCheck: Map<JsonValue | undefined, JsonObject>;
-  groundingSources: Set<string>;
+  groundingSources: Map<JsonValue | undefined, Set<string>>;
 }
 
 interface CheckMatrixInput extends ClaimGroundings {
@@ -226,26 +226,47 @@ function verdictJson(caseDir: string): JsonObject | null {
   }
 }
 
+/** What decided each declared check, per claim, from the host-attested launches its
+ *  `externalCheckCoverage` rows count: the installed tool it ran, a program it built in its own
+ *  cell, or neither, which is `in-process`. The claim-wide `verifierEnvironmentHash` exists
+ *  whenever any tool was declared, so it names no check. A check that declares a tool has a row
+ *  only where a verified case applied it; without one this claim grounds it in nothing. */
 function claimGroundings(claims: readonly JsonValue[]): ClaimGroundings {
   const groundingByCheck = new Map<JsonValue | undefined, JsonObject>();
-  // Which installed tools the claim's verifier ran, by the digest the claim records
-  // (`claim.statement.verifierEnvironmentHash`, null when nothing ran outside the process).
-  const groundingSources = new Set<string>();
+  const groundingSources = new Map<JsonValue | undefined, Set<string>>();
   for (const claim of claims) {
-    const statement = asRecord(asRecord(claim)?.claim)?.statement;
-    const groundings = asRecord(statement)?.groundings;
+    const statement = asRecord(asRecord(asRecord(claim)?.claim)?.statement);
+    const coverage = Array.isArray(statement?.externalCheckCoverage) ? statement.externalCheckCoverage : [];
+    const groundings = statement?.groundings;
     for (const grounding of Array.isArray(groundings) ? groundings : []) {
       const row = asRecord(grounding);
       if (row === null) throw new Error("claim.statement.groundings holds a row that is not an object");
       groundingByCheck.set(row.checkId, row);
+      const ran = coverage.flatMap((entry) => {
+        const coverageRow = asRecord(entry);
+        return coverageRow !== null && coverageRow.checkId === row.checkId ? [coverageRow] : [];
+      });
+      const declaresTool =
+        isString(row.adapterId) || (Array.isArray(row.requiredToolIds) && row.requiredToolIds.length > 0);
+      if (ran.length === 0 && declaresTool) continue;
+      const known = groundingSources.get(row.checkId) ?? new Set<string>();
+      for (const source of launchSources(ran)) known.add(source);
+      groundingSources.set(row.checkId, known);
     }
-    const environmentHash = asRecord(statement)?.verifierEnvironmentHash;
-    if (isString(environmentHash) && environmentHash.length > 0) {
-      groundingSources.add(`installed-tool:${environmentHash.slice(0, 9)}`);
-    } else if (environmentHash === null) groundingSources.add("in-process");
   }
 
   return { groundingByCheck, groundingSources };
+}
+
+/** One check's sources in one claim: each tool the host launched for it, a cell-built program when
+ *  one ran, and `in-process` when neither did. */
+function launchSources(ran: readonly JsonObject[]): string[] {
+  const launched = (count: JsonValue | undefined) => isNumber(count) && count > 0;
+  const sources = ran.flatMap((row) =>
+    launched(row.attestedLaunches) && isString(row.toolId) ? [`installed-tool:${row.toolId}`] : [],
+  );
+  if (ran.some((row) => launched(row.cellProgramLaunches))) sources.push("cell-program");
+  return sources.length > 0 ? sources : ["in-process"];
 }
 
 /** The recorded verdict of every verified case, read under the root its first digest-bound pointer
@@ -364,7 +385,7 @@ function checkMatrix({
       pad(check.id, 27) +
         pad(jsonText(grounding.kind ?? "?"), 19) +
         pad(jsonText(grounding.adapterId ?? "-"), 19) +
-        pad([...groundingSources].join(",") || "-", 27) +
+        pad([...(groundingSources.get(check.id) ?? [])].join(",") || "-", 27) +
         pad(isolating.length, 7) +
         pad(mutations.size, 7) +
         pad(shipping.rejections, 8) +

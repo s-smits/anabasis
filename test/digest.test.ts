@@ -8,7 +8,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
-import { isString } from "../src/meta/json-shape.ts";
+import { isString, type JsonValue } from "../src/meta/json-shape.ts";
 import { recordDigestBattery } from "./helpers/digest-battery.ts";
 import { caseRecordRow } from "./helpers/case-record-row.ts";
 import type { CaseRecordRow } from "../src/claim/case-record.ts";
@@ -61,6 +61,16 @@ function fixture(): DigestFixture {
             { checkId: "beta-check", kind: "external-verifier", adapterId: "beta-engine" },
           ],
           verifierEnvironmentHash: null,
+          externalCheckCoverage: [
+            {
+              checkId: "beta-check",
+              toolId: "beta-engine",
+              attestedLaunches: 0,
+              cellProgramLaunches: 0,
+              rejects: 1,
+              kind: "external",
+            },
+          ],
         },
       },
     }),
@@ -375,30 +385,46 @@ describe("digest", () => {
     );
   });
 
-  it("names an installed-tool claim by its verifier environment digest, and an in-process claim as such", () => {
+  it("grounds each check in the tool launches its claim attested for it, and a check with none in-process", () => {
     const paths = fixture();
     const claimPath = join(paths.campaign, "claims", "run-1.json");
     const groundings = [
       { checkId: "alpha-check", kind: "authored", adapterId: null },
       { checkId: "beta-check", kind: "external-verifier", adapterId: "beta-engine" },
     ];
-    // A claim from the installed-tools source: no registry provenance, an environment hash instead.
-    writeFileSync(
-      claimPath,
-      JSON.stringify({ claim: { statement: { groundings, verifierEnvironmentHash: "abcdef0123456789" } } }),
+    // The environment hash is claim-wide and exists because a tool was declared, so it says
+    // nothing about which check that tool decided.
+    const claimWith = (externalCheckCoverage: JsonValue[]) => {
+      const statement = { groundings, verifierEnvironmentHash: "abcdef0123456789", externalCheckCoverage };
+      writeFileSync(claimPath, JSON.stringify({ claim: { statement } }));
+      return digestOf(paths);
+    };
+    const betaRow = (attestedLaunches: number, cellProgramLaunches: number) => ({
+      checkId: "beta-check",
+      toolId: "beta-engine",
+      attestedLaunches,
+      cellProgramLaunches,
+      rejects: 1,
+      kind: "external",
+    });
+    const launched = claimWith([betaRow(3, 0)]);
+    expect(launched).toMatch(/^alpha-check\s+authored\s+-\s+in-process\s+/m);
+    expect(launched).toMatch(
+      /^beta-check\s+external-verifier\s+beta-engine\s+installed-tool:beta-engine\s+/m,
     );
-    expect(digestOf(paths)).toMatch(
-      /^beta-check\s+external-verifier\s+beta-engine\s+installed-tool:abcdef012\s+/m,
-    );
-    expect(digestOf(paths)).toContain(
+    expect(launched).toContain(
       "algorithm independence and the complete imported dependency chain remain unproved",
     );
-    // Nothing ran outside the process: the column must not read as a missing field.
-    writeFileSync(
-      claimPath,
-      JSON.stringify({ claim: { statement: { groundings, verifierEnvironmentHash: null } } }),
+    // A declared tool the host never launched decided nothing, so the process did; and a program
+    // the check built in its own cell is not an installed tool.
+    expect(claimWith([betaRow(0, 0)])).toMatch(
+      /^beta-check\s+external-verifier\s+beta-engine\s+in-process\s+/m,
     );
-    expect(digestOf(paths)).toMatch(/^beta-check\s+external-verifier\s+beta-engine\s+in-process\s+/m);
+    expect(claimWith([betaRow(0, 2)])).toMatch(
+      /^beta-check\s+external-verifier\s+beta-engine\s+cell-program\s+/m,
+    );
+    // No row means no verified case applied the check, so the claim grounds it in nothing.
+    expect(claimWith([])).toMatch(/^beta-check\s+external-verifier\s+beta-engine\s+-\s+/m);
   });
 
   it("reads the battery root matching the recorded digest when an earlier root has a changed copy", () => {

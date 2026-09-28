@@ -262,15 +262,10 @@ function generatedCloseFailure(
   submitted: boolean,
 ): SolverNonResult | null {
   const { termination } = generatedWorker;
-  const benignCloseTimeout =
-    submitted &&
-    termination.status === "non-result" &&
-    termination.kind === "runtime" &&
-    termination.deadline === true &&
-    termination.closeHandshakeTimeout === true;
-  return termination.status === "non-result" && !benignCloseTimeout
-    ? { kind: termination.kind, message: termination.message }
-    : null;
+  if (termination.status === "normal" || (submitted && termination.closeHandshakeTimeout === true)) {
+    return null;
+  }
+  return { kind: termination.kind, message: termination.message };
 }
 
 /** The wall ends the solver's time, not its answer. Whatever it has prepared goes through the same
@@ -290,14 +285,16 @@ async function submitAtWall(
     .catch(() => undefined);
 }
 
-/** The whole-solve wall stopped a solver that was still answering inside its silence wall. Running
- *  out of time is the attempt's own result rather than an environment failure: an accepted submit is
- *  graded, and anything else is an unaccepted case that stays in the difficulty denominator, with
- *  the tool calls its trace saw. Recording it as a runtime non-result instead would remove a real
- *  attempt from the denominator. The wall usually lands mid-call, so the generated worker's pending
- *  requests at close are its consequence and are suppressed here; every other close failure keeps
- *  its non-result. */
-function exhaustedOutcome(
+/** The model worker stopped where its ending is not the case's result: the whole-solve wall ended a
+ *  solver still answering inside its silence wall, or the worker failed after the solver's submit
+ *  was accepted, when the host already holds the bytes it grades. Either way the attempt is real:
+ *  an accepted submit is graded, and anything else is an unaccepted case that stays in the
+ *  difficulty denominator, with the tool calls its trace saw. Recording it as a runtime non-result
+ *  instead would remove a real attempt from the denominator, and the worker's failure stays on the
+ *  runtime boundary. The worker usually stops mid-call, so the generated worker's pending requests
+ *  at close are its consequence and are suppressed here; every other close failure keeps its
+ *  non-result. */
+function stoppedOutcome(
   error: PiBuiltWorkerNonResult,
   generatedWorker: GeneratedToolWorkerEvidence,
   evidence: BuiltCaseEvidence,
@@ -409,6 +406,7 @@ const harnessRuntime = (
 /** `maxTurns` overrides the harness's own `solver.max_turns` (tests and the export path). */
 export function piBuiltSolver(runtime: PiBuiltRuntime, options: BuiltSolverOptions = {}): Solver {
   const { maxTurns, observer, observationPhase, providerBudget, safeguardContext } = options;
+  const signal = providerBudget?.cancellationSignal;
   const solver: Solver = async (task, toolset, submitted) => {
     const starter: BuiltStarter = toolset;
     if (starter.preparationNonResult) return nonResultOutcome(starter.preparationNonResult);
@@ -455,7 +453,7 @@ export function piBuiltSolver(runtime: PiBuiltRuntime, options: BuiltSolverOptio
         tools,
         onMessage: events,
         reserveTurn: providerBudget === undefined ? undefined : () => providerBudget.reserve("built"),
-        signal: providerBudget?.cancellationSignal,
+        signal,
       });
       generatedWorker = await starter.close();
       return completedOutcome(result, generatedWorker, {
@@ -469,8 +467,12 @@ export function piBuiltSolver(runtime: PiBuiltRuntime, options: BuiltSolverOptio
         await submitAtWall(tools, task.taskId);
       }
       generatedWorker ??= await starter.close();
-      if (error instanceof PiBuiltWorkerNonResult && error.solveTimeExhausted) {
-        return exhaustedOutcome(error, generatedWorker, {
+      // A controller cancel after the submit still voids the case: it stopped the case before grading.
+      if (
+        error instanceof PiBuiltWorkerNonResult &&
+        (error.solveTimeExhausted || (submitted() && signal?.aborted !== true))
+      ) {
+        return stoppedOutcome(error, generatedWorker, {
           ...turns,
           trace: recorder.trace(),
           submitted: submitted(),

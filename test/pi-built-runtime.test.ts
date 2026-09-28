@@ -63,6 +63,8 @@ interface SolveOptions {
   budget?: ProviderResourceBudget;
   observer?: RunObserver;
   close?: (solver: ReturnType<typeof piBuiltSolver>) => never;
+  /** Cancels the budget's active turns once the solve's submit is accepted. */
+  cancelOnAccept?: boolean;
 }
 
 setDefaultTimeout(60_000);
@@ -104,6 +106,17 @@ export function createDomainHarness(task) {
         },
       }),
       defineDraftTool({
+        name: "stall",
+        label: "Stall",
+        description: "Read the public answer after half a minute.",
+        parameters: Type.Object({}),
+        executionMode: "sequential",
+        run: async () => {
+          await new Promise((resolve) => setTimeout(resolve, 30_000));
+          return { text: task.publicInput.answer };
+        },
+      }),
+      defineDraftTool({
         name: "utilisation",
         label: "Utilisation",
         description: "Divide the load by the capacity the task carries.",
@@ -124,6 +137,7 @@ writeFileSync(
     tools: [
       { name: "write_answer", kind: "artifact-writer", description: "Write and prepare the public answer." },
       { name: "slow_read", kind: "reader", description: "Read the public answer slowly." },
+      { name: "stall", kind: "reader", description: "Read the public answer after half a minute." },
       { name: "utilisation", kind: "reader", description: "Report the utilisation of the prepared answer." },
     ],
   }),
@@ -179,8 +193,18 @@ async function solve(rows: FauxRow[], options: SolveOptions = {}) {
   if (createStarter === undefined) throw new Error("the Pi solver carries no production starter factory");
   const toolset = await createStarter(options.slug ?? SLUG, TASK, submissionPortOf(authority), SCHEMA);
   const accepted = () => authority.finalSubmission()?.accepted === true;
-  const outcome = await solver(TASK, toolset, accepted);
-  return { outcome, accepted: accepted(), solver, toolset };
+  const watch =
+    options.cancelOnAccept === true
+      ? setInterval(() => {
+          if (accepted()) options.budget?.cancelActiveTurns(new Error("operator stop"));
+        }, 20)
+      : undefined;
+  try {
+    const outcome = await solver(TASK, toolset, accepted);
+    return { outcome, accepted: accepted(), solver, toolset };
+  } finally {
+    clearInterval(watch);
+  }
 }
 
 describe("the Built harness instructions", () => {
@@ -399,6 +423,37 @@ describe("the whole-solve wall", () => {
     });
     expect(outcome.completedTurns).toBe(1);
     expect(outcome.runtimeIdentities).toHaveLength(1);
+  });
+});
+
+describe("a worker failure after an accepted submit", () => {
+  // The host already holds the accepted bytes, so the worker going silent afterwards is cleanup
+  // evidence on the boundary and the case is graded. A controller cancel stops the case before
+  // grading, so it still voids the submit.
+  const submitThenStall = [
+    WRITE,
+    SUBMIT,
+    { toolCalls: [...(SUBMIT_AGAIN.toolCalls ?? []), { id: "stall", name: "stall", arguments: {} }] },
+  ];
+
+  it("keeps the accepted submit and records the silence wall as evidence", async () => {
+    const { outcome, accepted } = await solve(submitThenStall, { runtime: { turnWallMs: 2_000 } });
+    expect(accepted).toBe(true);
+    expect(outcome.nonResult).toBeUndefined();
+    expect(outcome.runtimeBoundary?.modelWorker.termination).toMatchObject({
+      status: "non-result",
+      kind: "runtime",
+      message: expect.stringContaining("silent past its bounded turn time"),
+    });
+  });
+
+  it("still voids the accepted submit when the controller cancels the worker", async () => {
+    const { outcome, accepted } = await solve(submitThenStall, {
+      budget: new ProviderResourceBudget(10),
+      cancelOnAccept: true,
+    });
+    expect(accepted).toBe(true);
+    expect(outcome.nonResult).toEqual({ kind: "runtime", message: "controller cancelled the Built worker" });
   });
 });
 

@@ -30,6 +30,19 @@ const DEMAND_GAP_SENTENCES: Record<DemandGap, string> = {
   "rule-outside-request": "A rule stands that no practitioner of the request would hold.",
 };
 
+/** A task-set finding's act where its demand gap asks for something other than a difference in what
+ *  the tasks demand of an input. Each follows its gap: a limit the first reasonable candidate clears
+ *  asks for that limit to bind, which adoption ties to the reference solve, and a sentence telling
+ *  the author the finding did not ask for that would negate the gap it was typed with. */
+const GAP_ACTS: Partial<Record<DemandGap, string>> = {
+  "limit-cleared-widely":
+    "make the published limit bind a first reasonable candidate in the fresh battery; adoption solves every task with the reference and refuses a candidate whose reference artifact fails a declared check, so a tighter limit needs a stronger reference search",
+  "solver-tool-reports-margins":
+    "make the fresh battery's tasks demand a decision that reading a reported margin and adjusting does not reach",
+  "rule-outside-request":
+    "hold the fresh battery's tasks to what the request itself demands, without the rule it does not hold",
+};
+
 /** Whether the finding's owner is the file that holds its check, which is what an obligation line
  *  and a repair order are about. A brief finding naming a check is about the rule the brief
  *  publishes, not the check's code, so it gets neither. */
@@ -47,15 +60,19 @@ const holdsCheck = (finding: AnalysisFinding) =>
  *  the fresh battery", read against a published limit, invites the author to move that limit from
  *  one battery to the next, which changes the published magnitudes over a task set that has not
  *  moved and leaves the battery exactly as easy as it was. The variation this finding is about is
- *  across the battery's own tasks, which authoring validation already requires of a shared public
- *  input. And "let this input differ" was met by permuting values inside one template, which
- *  satisfies that validation and leaves one condition measured many times, so the sentence asks for
- *  a difference in what the tasks demand rather than in what they publish. */
+ *  across the battery's own tasks, and "let this input differ" was met by permuting values inside
+ *  one template, which leaves one condition measured many times, so the sentence asks for a
+ *  difference in what the tasks demand rather than in what they publish. A gap in `GAP_ACTS` asks
+ *  for something else, and gets its own act. */
 function publicAct(finding: AnalysisFinding, deferred: boolean): string {
   if (deferred) return "this is advisory and asks for no change before submit";
   if (!finding.defect) return "this is an observation, not a demonstrated defect, and asks for no repair";
   if (finding.owner === TASKS_FILE) {
-    return "make the fresh battery's tasks differ in what they ask of this input — which parts it brings together and how they must work — not only in the values published in it; it does not ask for a published limit to move between batteries";
+    const gapAct = finding.demandGap === undefined ? undefined : GAP_ACTS[finding.demandGap];
+    return (
+      gapAct ??
+      "make the fresh battery's tasks differ in what they ask of this input — which parts it brings together and how they must work — not only in the values published in it"
+    );
   }
   if (finding.owner === BRIEF_FILE) {
     return "decide the public rule this concerns in the brief: publish the decision a solver needs to meet the requirement, or withhold one that hands it the construction";
@@ -120,9 +137,12 @@ function publicFindingClaim(finding: AnalysisFinding, deferred: boolean, brief: 
     return `${heading}: ${gap}${input}; add a check that observes what the delivered artifact does there.`;
   }
   if (named === "" && inputPath === null) {
+    // A gap the review typed is the mechanism, which a guessed "mismatch" would contradict.
     const defectAct = deferred
       ? "it is advisory and asks for no change before submit"
-      : "inspect that contract for a mismatch";
+      : finding.demandGap === undefined
+        ? "inspect that contract for a mismatch"
+        : publicAct(finding, deferred);
     return `${heading}: ${group === "unplaced" ? "no check, path or file named" : "no check or path named"}; ${finding.defect ? defectAct : "it is an observation and asks for no repair"}.`;
   }
   return `${heading}: ${named === "" ? (inputPath ?? "the contract") : `${named}${input}`}; ${publicAct(finding, deferred)}.`;

@@ -12,6 +12,7 @@ import { join } from "../src/meta/path.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import { double } from "./helpers/doubles.ts";
 import type { Brief } from "../src/correctness-bundle/brief.ts";
+import type { JsonValue } from "../src/meta/json-shape.ts";
 import {
   BEAMS,
   CITATIONS,
@@ -201,11 +202,10 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
     // A curriculum finding names a task input to vary, rather than a correctness check to repair.
     expect(projected).toContain("not only in the values published in it");
     expect(projected).not.toContain("inspect and repair that contract");
-    // Which way to vary. c1d2a7's third author read this sentence against `$.limits.massLimitKg`;
-    // moving a published limit between batteries is the move 846c029d-3 made six times on a
-    // byte-identical task set, and c1d2a7's round two made on five of six limits before repeating
-    // 6 of 6.
-    expect(projected).toContain("it does not ask for a published limit to move between batteries");
+    // Which way to vary is the act's own direction, a difference in demand rather than in published
+    // values. It no longer adds that the finding "does not ask for a published limit to move": the
+    // review never said so, and of a finding on a limit it is the negation of what the review found.
+    expect(projected).not.toContain("does not ask for a published limit");
     // The owner already names the contract; the subject named it a second time, so every curriculum
     // finding read "in the public contract: the contract (public input `...`)".
     expect(projected).toContain(
@@ -848,12 +848,79 @@ describe("what a finding's typed fields carry to authoring", () => {
     };
     const first = await project("the limit is cleared by half");
     expect(first.findings[0]?.claim).toBe(
-      "Epoch review (correctness-model/tasks.json): public inputs `$.loads` and `$.limits.deflection`; make the fresh battery's tasks differ in what they ask of this input — which parts it brings together and how they must work — not only in the values published in it; it does not ask for a published limit to move between batteries.\nThe first reasonable candidate clears a published limit widely.",
+      "Epoch review (correctness-model/tasks.json): public inputs `$.loads` and `$.limits.deflection`; make the published limit bind a first reasonable candidate in the fresh battery; adoption solves every task with the reference and refuses a candidate whose reference artifact fails a declared check, so a tighter limit needs a stronger reference search.\nThe first reasonable candidate clears a published limit widely.",
     );
     const reworded = await project("a wholly different private wording");
     expect(reworded.findings.map((finding) => finding.claim)).toEqual(
       first.findings.map((finding) => finding.claim),
     );
+  });
+
+  // Operator defect 4: a curriculum finding typed limit-cleared-widely reached the author followed
+  // by "it does not ask for a published limit to move between batteries", the negation of the gap
+  // it was typed with, and a harness finding typed with a gap read "inspect that contract for a
+  // mismatch", which the review had not said either.
+  test("each demand gap's act agrees with its sentence, and protected detail moves no projection", async () => {
+    const project = async (fields: Record<string, JsonValue>, claim: string, demonstration: string) => {
+      const state = reviewState();
+      state.reads.push("agent/tools.ts");
+      state.delivered.push({
+        path: "agent/tools.ts",
+        digest: "",
+        length: 0,
+        pages: [{ start: 0, text: "return { margins: checks.map(read) };" }],
+      });
+      const citations =
+        claim === "first"
+          ? CITATIONS
+          : [{ path: "agent/tools.ts", quote: "return { margins: checks.map(read) };" }];
+      const recorded = await call(recordFindingTool([], [], evidence, state, { identities }), {
+        ...advisory,
+        claim,
+        demonstration,
+        citations,
+        ...fields,
+      });
+      expect(recorded).toStartWith("recorded");
+      return publicEpochReview({ status: "completed", ...state }, { brief }).findings[0]?.claim ?? "";
+    };
+    const gapFindings: Array<[Record<string, JsonValue>, string]> = [
+      [
+        { owner: TASKS_FILE, demandGap: "limit-cleared-widely", publicInputPath: "$.limits.deflection" },
+        "Epoch review (correctness-model/tasks.json): public input `$.limits.deflection`; make the published limit bind a first reasonable candidate in the fresh battery; adoption solves every task with the reference and refuses a candidate whose reference artifact fails a declared check, so a tighter limit needs a stronger reference search.\nThe first reasonable candidate clears a published limit widely.",
+      ],
+      [
+        {
+          owner: TASKS_FILE,
+          demandGap: "solver-tool-reports-margins",
+          publicInputPath: "$.limits.deflection",
+        },
+        "Epoch review (correctness-model/tasks.json): public input `$.limits.deflection`; make the fresh battery's tasks demand a decision that reading a reported margin and adjusting does not reach.\nA solver tool reports every margin a declared check reads.",
+      ],
+      [
+        { owner: TASKS_FILE, demandGap: "rule-outside-request", publicInputPath: "$.loads" },
+        "Epoch review (correctness-model/tasks.json): public input `$.loads`; hold the fresh battery's tasks to what the request itself demands, without the rule it does not hold.\nA rule stands that no practitioner of the request would hold.",
+      ],
+      [
+        { owner: TASKS_FILE, demandGap: "sibling-values-only", publicInputPath: "$.loads" },
+        "Epoch review (correctness-model/tasks.json): public input `$.loads`; make the fresh battery's tasks differ in what they ask of this input — which parts it brings together and how they must work — not only in the values published in it.\nSibling tasks differ only in the values they publish.",
+      ],
+      [
+        { owner: "agent/tools.ts", demandGap: "solver-tool-reports-margins" },
+        "Epoch review (agent/tools.ts): no check or path named; inspect and repair that contract.\nA solver tool reports every margin a declared check reads.",
+      ],
+      [
+        { owner: "agent/config.yaml" },
+        "Epoch review (agent/config.yaml): no check or path named; inspect that contract for a mismatch.",
+      ],
+    ];
+    for (const [fields, expected] of gapFindings) {
+      const first = await project(fields, "first", DEMO);
+      expect(first).toBe(expected);
+      expect(first).not.toContain("does not ask for a published limit");
+      // Claim, demonstration and citations are the review's own protected detail.
+      expect(await project(fields, "a wholly different private wording", "another private case")).toBe(first);
+    }
   });
 
   test("a shape outside the closed set, and a second input naming a task, are refused", async () => {

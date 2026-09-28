@@ -976,7 +976,8 @@ tool run gets fresh private `TMPDIR` and `HOME` children, and the one thing rest
 the tool's user cache directory, from what an earlier gate run of the same tool bytes stored
 (`withToolCache`, `src/verify/engine-cell-env.ts`); a battery run restores it and never stores. Darwin Seatbelt and Linux Bubblewrap each
 need their own live proof, and an unavailable required wall yields a typed non-result — never an
-unconfined run.
+unconfined run. A controller removes the `ana-quick-run-*` temp root its launcher made when it
+exits, and only a SIGKILL leaves one behind.
 
 Builder access is stated once per backend, through the host-controlled file and command tools. Open
 to it: the workspace, the public inputs, prior traces, the host toolchain paths, compiler scratch

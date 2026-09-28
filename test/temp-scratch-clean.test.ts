@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -15,6 +16,8 @@ import {
   TEMP_SCRATCH_QUARANTINE_PREFIX,
   cleanStaleTempRootScratch,
 } from "../src/meta/temp-scratch-clean.ts";
+
+const MODULE = join(import.meta.dir, "../src/meta/temp-scratch-clean.ts");
 
 /** Set an entry's modification time beyond the cleanup age threshold. */
 function backdate(path: string): void {
@@ -95,6 +98,53 @@ describe("stale temp scratch cleanup", () => {
       expect(readdirSync(root)).toEqual([]);
     } finally {
       rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  // The launcher gives each run a private root under the disk-backed temp directory and nothing
+  // else removed it, so finished runs' roots accumulated beside every later one.
+  test.each([
+    ["removes a launcher-made run root", "ana-quick-run-abc123", false],
+    ["keeps an ordinary TMPDIR", "scratch-plain-tmp", true],
+  ])("the exit of a controller that %s", async (_label, name, kept) => {
+    const parent = mkdtempSync(`${tmpdir()}/run-root-parent-`);
+    try {
+      const root = join(parent, name);
+      mkdirSync(root);
+      const script = `import { removeRunTempRootAtExit } from ${JSON.stringify(MODULE)};
+removeRunTempRootAtExit();
+await Bun.write(${JSON.stringify(join(root, "cell", "artifact.json"))}, "{}");`;
+      const child = Bun.spawn([process.execPath, "-e", script], {
+        env: { ...Bun.env, ANA_TEST_TMPDIR: root, TMPDIR: root },
+        stdio: ["ignore", "ignore", "inherit"],
+      });
+      expect(await child.exited).toBe(0);
+      expect(existsSync(root)).toBe(kept);
+    } finally {
+      rmSync(parent, { recursive: true, force: true });
+    }
+  });
+
+  test("a run root the exit cannot remove whole keeps the controller's exit code", async () => {
+    const parent = mkdtempSync(`${tmpdir()}/run-root-parent-`);
+    const root = join(parent, "ana-quick-run-abc123");
+    const readOnly = join(root, "cache");
+    try {
+      mkdirSync(readOnly, { recursive: true });
+      writeFileSync(join(readOnly, "module"), "{}");
+      chmodSync(readOnly, 0o555);
+      const script = `import { removeRunTempRootAtExit } from ${JSON.stringify(MODULE)};
+removeRunTempRootAtExit();
+process.exit(3);`;
+      const child = Bun.spawn([process.execPath, "-e", script], {
+        env: { ...Bun.env, ANA_TEST_TMPDIR: root, TMPDIR: root },
+        stdio: ["ignore", "ignore", "inherit"],
+      });
+      expect(await child.exited).toBe(3);
+      expect(existsSync(join(readOnly, "module"))).toBe(true);
+    } finally {
+      chmodSync(readOnly, 0o755);
+      rmSync(parent, { recursive: true, force: true });
     }
   });
 });

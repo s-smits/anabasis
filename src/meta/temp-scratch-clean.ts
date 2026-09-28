@@ -16,9 +16,10 @@
  * deadline between entries, and each metadata read and rename is guarded on its own, so one
  * unreadable entry costs that entry and not the launch.
  */
-import { lstatSync, mkdtempSync, opendirSync, renameSync, rmdirSync } from "./filesystem.ts";
+import { lstatSync, mkdtempSync, opendirSync, renameSync, rmSync, rmdirSync } from "./filesystem.ts";
 import { tmpdir } from "./os.ts";
-import { join } from "./path.ts";
+import { basename, join } from "./path.ts";
+import { runtimeProcess } from "./process.ts";
 import { TEMP_SCRATCH_PREFIXES } from "./safeguard.ts";
 
 export const STALE_AGE_MS = 48 * 60 * 60 * 1000;
@@ -31,6 +32,12 @@ const CLEAN_DEADLINE_MS = 20_000;
  *  well past STALE_AGE_MS, since a campaign has no time cap. Another launch therefore cannot read
  *  their age as abandonment. A SIGKILL may still leave them behind, for separate cleanup. */
 const PROCESS_LIFETIME_PREFIXES = ["ana-pi-built-", "ana-generated-tools-"] as const;
+
+/** The name launch-run's launcher gives the private temp root it makes for one run and exports as
+ *  that controller's TMPDIR. Nothing but that controller writes there, and each launch makes a fresh
+ *  one, so nothing in it outlives the run: the root goes when the controller exits, as the
+ *  process-lifetime bundles inside it do, and a SIGKILL leaves it behind, as it leaves them. */
+const RUN_TEMP_ROOT_PREFIX = "ana-quick-run-";
 
 interface TempScratchCleanReport {
   /** Entries removed from the temp root into a private quarantine directory. */
@@ -108,4 +115,18 @@ export function cleanStaleTempRootScratch(
     reclaimerPid = startQuarantineReclaimer(quarantine);
   }
   return { removed, failed, deadlineHit, reclaimerPid };
+}
+
+/** Remove `root` at this process's exit when it is a launcher-made run root, and only then, so a
+ *  controller started under an ordinary TMPDIR never removes it. */
+export function removeRunTempRootAtExit(root: string = tmpdir()): void {
+  if (!basename(root).startsWith(RUN_TEMP_ROOT_PREFIX)) return;
+  runtimeProcess.once("exit", () => {
+    try {
+      rmSync(root, { recursive: true, force: true });
+    } catch {
+      // A throw here would replace the run's exit code. A tree that cannot go whole, such as a
+      // toolchain's read-only cache, stays behind as a SIGKILL would leave it.
+    }
+  });
 }

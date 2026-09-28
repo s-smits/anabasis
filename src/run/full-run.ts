@@ -56,7 +56,7 @@ import {
   safeguardTempRootPressure,
   type SafeguardContext,
 } from "../meta/safeguard.ts";
-import { cleanStaleTempRootScratch } from "../meta/temp-scratch-clean.ts";
+import { cleanStaleTempRootScratch, removeRunTempRootAtExit } from "../meta/temp-scratch-clean.ts";
 import { ProviderResourceBudget } from "./provider-resource-budget.ts";
 import { FullRunClosure } from "./full-run-deadline.ts";
 import { campaignVerifierLifetime } from "./verifier-lifetime.ts";
@@ -165,6 +165,7 @@ export async function runFullRun(
     );
   }
   safeguardTempRootPressure(safeguardContext);
+  removeRunTempRootAtExit();
   const state: ControllerRunState = { opening: null, iterations: [], absentSteps: [] };
   const builderConversation = new BuilderConversation();
   try {

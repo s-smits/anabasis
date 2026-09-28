@@ -22,6 +22,7 @@ bun .claude/skills/monitor-session-until-idle/scripts/thread-state.ts history sn
 bun .claude/skills/monitor-session-until-idle/scripts/thread-state.ts summary snapshot.json --last 20 --json
 bun .claude/skills/monitor-session-until-idle/scripts/thread-state.ts summary snapshot.json --last 20 --json | bun .claude/skills/monitor-session-until-idle/scripts/watch-contract.ts init -
 bun .claude/skills/monitor-session-until-idle/scripts/thread-state.ts summary snapshot.json --last 20 --json | bun .claude/skills/monitor-session-until-idle/scripts/watch-contract.ts check - watch-contract.json
+bun .claude/skills/monitor-session-until-idle/scripts/session-state.ts ~/.claude <session id> | bun .claude/skills/monitor-session-until-idle/scripts/watch-contract.ts check - watch-contract.json
 ```
 
 Persist the initial JSON with the normal edit tool, replace every placeholder, and add the exact user objective before checking it. The checker validates declared state; it does not infer domain truth from prose.
@@ -120,6 +121,12 @@ After answering a user question, reconcile any added commitment and resume this 
 If a steer changes source or experiment identity, end or interrupt the old run and use a fresh project and prediction set. After a real provider turn begins, never reuse the interrupted project or repair a stale lock by hand. Mark observations from an interrupted unrecorded attempt as unbound.
 
 Judge each owner prediction separately. A composite checkpoint moving farther does not prove every stacked change helped.
+
+A Claude Code target has no thread snapshot. For one, `session-state.ts` takes the Claude
+configuration directory and the session id, and prints the thread state the checker reads from the
+session registry and the transcript, through the shared `.claude/skills/main/session.ts`. The Super
+Loop's [meta-agent](../run-improvement-campaign/references/meta-agent.md) reference says why a
+message to a target held on a dialog is not read until the operator answers it.
 
 ## Stop rule
 

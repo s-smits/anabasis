@@ -98,6 +98,11 @@ export function isString(value: unknown): value is string {
   return typeof value === "string";
 }
 
+/** The value when it is a string, otherwise null. */
+export function textOrNull(value: unknown): string | null {
+  return isString(value) ? value : null;
+}
+
 /** Whether the value has JavaScript's number type. NaN and infinities pass; a caller needing
  *  a finite number must check that separately. */
 export function isNumber(value: unknown): value is number {

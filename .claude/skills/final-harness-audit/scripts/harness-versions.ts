@@ -37,7 +37,14 @@ import {
 } from "./harness-saved-versions.ts";
 import { type CheckpointFacts, checkpointFacts } from "./harness-version-shape.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
-import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
+import {
+  asRecord,
+  isNumber,
+  isString,
+  textOrNull,
+  type JsonObject,
+  type JsonValue,
+} from "#src/meta/json-shape.ts";
 import { readJsonFileOrNull } from "#src/meta/completed-json.ts";
 import type { CommandArgs } from "#skills/main/cli.ts";
 import type { BundleSnapshotFact } from "#src/correctness-bundle/battery-record.ts";
@@ -75,11 +82,6 @@ export const HARNESS_EVOLUTION_SCHEMA = "harness-evolution/v1";
 
 const SHORT = (sha: JsonValue | undefined): string =>
   isString(sha) && sha.length >= 12 ? sha.slice(0, 12) : "absent";
-
-/** The value when it is a string, otherwise null. */
-function textOrNull(value: JsonValue | undefined): string | null {
-  return isString(value) ? value : null;
-}
 
 /** The recorded session attempt counts, keeping the numeric entries. */
 function attemptCounts(value: JsonValue | undefined): Record<string, number> | null {

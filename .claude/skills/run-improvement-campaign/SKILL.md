@@ -1,6 +1,6 @@
 ---
 name: run-improvement-campaign
-description: "Run the improvement loop: choose one change, prove its path, freeze a prediction, launch, read recorded bytes, decide the next move. Owns experiment selection and evidence reading; the product controller owns build, measure, climb, rebuild, claim and promotion."
+description: "Run the improvement loop: choose one change, prove its path, freeze a prediction, launch, read recorded bytes, decide the next move. Owns experiment selection and evidence reading; the product controller owns build, measure, climb, rebuild, claim and promotion. Also the Super Loop's Meta Agent: a second session that audits and steers the session driving the loop so it keeps moving (references/meta-agent.md)."
 ---
 
 # Run improvement campaign
@@ -208,6 +208,14 @@ A watch is a process, so check for the process. On 2026-09-18 the last state fil
 08:31 and `pgrep -f` for the watcher was empty from then until 18:50: the i03 claim and the i04 climb
 decision both landed inside that window and neither was watched. A state file's mtime tells you when
 a watcher last ran, never that one is running now.
+
+The watchers above read runs. The session driving the loop needs a watcher of its own, because it
+can stall where no run shows it: on 2026-09-28 the main session held its launch question in a dialog
+for eight hours, and the two findings that made the question stale sat unread behind it.
+[meta-agent](references/meta-agent.md) is that watcher. It is a second session that audits the main
+one against a watch contract and steers it with bounded `CHECK` and `DIRECT` messages. It enforces
+this loop's launch, pin, prediction, order, stop and closure rules. It tells the operator at once
+when only the operator can unblock the main session.
 
 Run the watch, and every other reader here, from `origin/main`. They are operator tooling and belong
 to the current tree, not to the run's frozen source and not to an open stack that has not been

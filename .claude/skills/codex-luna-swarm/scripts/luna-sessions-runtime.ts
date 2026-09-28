@@ -36,7 +36,8 @@ import {
   type LunaSession,
 } from "./luna-sessions-manifest.ts";
 import { asError, errorCode } from "#src/meta/runtime-values.ts";
-import { asRecord, isNumber, isString, type JsonValue } from "#src/meta/json-shape.ts";
+import { asRecord, isString, type JsonValue } from "#src/meta/json-shape.ts";
+import { processExists } from "#skills/main/session.ts";
 import { hasText } from "#src/meta/text.ts";
 import { readJsonFile } from "#src/meta/completed-json.ts";
 import { capturedJsonParse } from "#src/meta/json-runtime.ts";
@@ -245,7 +246,7 @@ function registerParentLaunch(launch: Pick<LaunchRecord, "outputDir">): string |
   if (!hasText(path)) return null;
   if (regularFileExists(path)) {
     const previous = asRecord(readJsonFile(path));
-    if (processIsAlive(previous?.pid)) {
+    if (processExists(previous?.pid)) {
       throw new Error(
         `another Luna launcher is already active for this Codex task: ${shown(previous?.outputDir)}`,
       );
@@ -561,16 +562,6 @@ function readLaunch(outputDirectory: string): ReadLaunch {
   return { sessionNames, outputDir, names };
 }
 
-function processIsAlive(pid: JsonValue | undefined): boolean {
-  if (!isNumber(pid) || !Number.isSafeInteger(pid) || pid < 1) return false;
-  try {
-    runtimeProcess.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return errorCode(error) !== "ESRCH";
-  }
-}
-
 function stopHook(): HookDecision {
   if (Bun.env.CODEX_LUNA_SESSION === "1") return {};
   const block = (reason: string): HookDecision => ({ decision: "block", reason });
@@ -596,7 +587,7 @@ function stopHook(): HookDecision {
   const outputDir = record?.outputDir;
   if (record?.threadId !== input?.session_id || !isString(outputDir)) return {};
   const terminal = regularFileExists(join(outputDir, "summary.json"));
-  if (!terminal && processIsAlive(record?.pid)) {
+  if (!terminal && processExists(record?.pid)) {
     return block(
       `The Luna launcher is active at ${outputDir}. Poll it, follow luna_session.finished events, and drain reports before ending.`,
     );
@@ -639,7 +630,7 @@ function acquireDrainLock(outputDir: string): DrainLock {
     } catch {
       throw new Error(`another drain owns ${path}; its lock record is unreadable`);
     }
-    if (processIsAlive(asRecord(owner)?.pid)) {
+    if (processExists(asRecord(owner)?.pid)) {
       throw new Error(`another drain is active for ${outputDir}`, { cause: error });
     }
     try {

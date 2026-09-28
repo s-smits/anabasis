@@ -29,7 +29,8 @@ import {
 } from "#skills/main/cli.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
-import { type JsonObject, type JsonValue, asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
+import { type JsonObject, type JsonValue, asRecord, isString } from "#src/meta/json-shape.ts";
+import { processExists } from "#skills/main/session.ts";
 import { readJsonFile } from "#src/meta/completed-json.ts";
 import { hasText } from "#src/meta/text.ts";
 
@@ -305,16 +306,6 @@ async function runOne(specFile: string): Promise<number> {
   return exitCode === 0 && error === null ? 0 : 1;
 }
 
-function pidAlive(pid: JsonValue | undefined): boolean {
-  if (!isNumber(pid)) return false;
-  try {
-    runtimeProcess.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 /** A recorded field as the status and drain lines print it. */
 function shown(value: JsonValue | undefined): string {
   if (value === undefined) return "undefined";
@@ -338,7 +329,7 @@ export function sessionStates(outDir: string): SessionRow[] {
       const clean = error === undefined || error === null || error === false || error === 0 || error === "";
       return { ...session, state: exit.exitCode === 0 && clean ? "finished" : "failed", exit };
     }
-    return { ...session, state: pidAlive(session.pid) ? "running" : "missing", exit: null };
+    return { ...session, state: processExists(session.pid) ? "running" : "missing", exit: null };
   });
 }
 

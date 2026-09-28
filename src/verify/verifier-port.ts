@@ -191,9 +191,10 @@ export type VerifierExecutionEvidence = {
   };
   /** The tool cache this run's cell started from (`engine-cell-env.ts`), beside the tool digest it
    *  is keyed by, so a verdict that ran warm reads differently from one that ran clean. Absent when
-   *  the host has no tool tree to key a cache by, and on a reused answer, which restored nothing. */
+   *  the host has no tool tree it could read to key a cache by, and on a reused answer, which
+   *  restored nothing. */
   cache?: {
-    /** Derived from the tool tree, `toolDigest` and the interpreter's digest. */
+    /** Derived from the tool tree's content, the tool's bytes and the interpreter's digest. */
     key: string;
     /** The store tree the cache was restored from and stored back to. */
     path: string;

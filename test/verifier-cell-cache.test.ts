@@ -5,8 +5,8 @@
  * Every run gets a fresh cell, HOME and TMPDIR, and that is what keeps one run's files out of the
  * next verdict. It is also why a compiler rebuilt its whole platform core on every check, since
  * the core it cached under HOME went with the cell. So the cache directory under that fresh HOME is
- * restored from a store beside the cells and published back afterwards, keyed by the tool tree, the
- * tool's bytes and its interpreter's bytes, and written only by verifier runs outside the battery,
+ * restored from a store beside the cells and published back afterwards, keyed by the tool tree's
+ * content, the tool's bytes and its interpreter's bytes, and written only by verifier runs outside the battery,
  * because a battery run executes bytes the Built solver chose.
  *
  * The cases pin the three ways a cache could go wrong: a run that should start warm does not, a
@@ -175,9 +175,18 @@ describe("the verifier tool cache", () => {
     expect(warm?.cache).not.toHaveProperty("coldReason");
   });
 
-  it("shares one store across hosts over one tool tree, and never across trees or tool bytes", async () => {
-    const fx = hostFixture({ "cache-tool": CACHE_TOOL });
-    const first = await runCache(fx.host, "one", "discrimination");
+  it("shares one store across every copy of one tool tree, and never across trees or tools whose bytes moved", async () => {
+    // Each tree holds a file naming the tree itself, as a venv's activation script does, which a
+    // reseed rewrites to name the copy.
+    const seeded = () => {
+      const ws = workspace();
+      script(join(ws.toolTree, "bin"), "cache-tool", CACHE_TOOL);
+      const activate = join(ws.toolTree, "activate");
+      writeFileSync(activate, `VIRTUAL_ENV="${realpathSync.native(ws.toolTree)}/venv"\n`);
+      return { ...ws, activate };
+    };
+    const fx = seeded();
+    const first = await runCache(nextHost(fx, "first"), "one", "discrimination");
     const key = cacheOf(first).key;
 
     // The next gate pass of the same epoch opens a new host over the same tree and store.
@@ -187,17 +196,25 @@ describe("the verifier tool cache", () => {
     // The cache is not part of the question: the same request asks the same thing warm or cold.
     expect(again.evidence.requestDigest).toBe(first.evidence.requestDigest);
 
-    // The same tool bytes in another tool tree, over the same store, share nothing.
-    const other = workspace();
-    script(join(other.toolTree, "bin"), "cache-tool", CACHE_TOOL);
-    const otherTree = await runCache(nextHost({ ...other, cells: fx.cells }, "other"), "two", "battery");
-    expect(answer(otherTree)).toBe("cold");
-    expect(otherTree.evidence.toolDigest).toBe(first.evidence.toolDigest);
-    expect(cacheOf(otherTree).key).not.toBe(key);
+    // The same tree copied to another path, over the same store, is the same tree.
+    const copy = seeded();
+    const copied = await runCache(nextHost({ ...copy, cells: fx.cells }, "copy"), "two", "battery");
+    expect(answer(copied)).toBe("warm one");
+    expect(cacheOf(copied).key).toBe(key);
 
-    // Changed tool bytes in the same tree start cold under a key of their own.
+    // A file beside the tool rewritten under the same path starts cold under a key of its own.
+    writeFileSync(
+      fx.activate,
+      `VIRTUAL_ENV="${realpathSync.native(fx.toolTree)}/venv"\nexport VIRTUAL_ENV\n`,
+    );
+    const rewritten = await runCache(nextHost(fx, "rewritten"), "three", "battery");
+    expect(answer(rewritten)).toBe("cold");
+    expect(rewritten.evidence.toolDigest).toBe(first.evidence.toolDigest);
+    expect(cacheOf(rewritten).key).not.toBe(key);
+
+    // So do changed tool bytes in the same tree.
     script(join(fx.toolTree, "bin"), "cache-tool", [...CACHE_TOOL, "# another build of the tool"]);
-    const rebuilt = await runCache(nextHost(fx, "rebuilt"), "three", "battery");
+    const rebuilt = await runCache(nextHost(fx, "rebuilt"), "four", "battery");
     expect(answer(rebuilt)).toBe("cold");
     expect(cacheOf(rebuilt).key).not.toBe(key);
   });

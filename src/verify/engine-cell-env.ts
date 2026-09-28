@@ -9,8 +9,9 @@
  * cached under HOME went with the cell, and on a firmware toolchain that is most of a minute per
  * run. So the user cache directory under the fresh HOME is restored from a store beside the cells
  * before a cell's first run, and stored back after a run that wrote to it. The key is the tool
- * tree, the tool's bytes and its interpreter's bytes, so another campaign's tree, another build of
- * the tool or another interpreter starts empty. A battery run restores and never stores, because
+ * tree's content, the tool's bytes and its interpreter's bytes, never a path: a copy of the tree in
+ * the next workspace shares the cache, while a tree changed in place, another build of the tool or
+ * another interpreter starts empty. A battery run restores and never stores, because
  * its inputs are the Built solver's, and every wall closes the store by name, so a program reaches
  * it only through this restore and this store.
  *
@@ -72,20 +73,27 @@ export function engineCellEnv(input: {
 /**
  * Runs one tool in its cell with the cache the cell's first run restored, stores the cache back
  * when a gate run wrote to it, and records both beside the tool digest. The store sits beside the
- * cells, so it lives as long as the host's temporary directory does. Without a tool tree there is
- * nothing to key a cache by, and the run starts as clean as every cell did before the store. The
- * tree is the candidate workspace's own, and a linked tree resolves to one physical path across
- * versions, so candidates of one campaign share a cache while two campaigns never do.
+ * cells, so it lives as long as the host's temporary directory does. `tree` is the tool tree's
+ * `portableToolTreeDigest`; without one, because there is no tree or it could not be read, there is
+ * nothing to key a cache by, and the run starts as clean as every cell did before the store. A
+ * workspace tool's bytes are its `portableDigest`, the tool as its tree counts it without the tree's
+ * own path, so a script naming that path keys the same in every copy of the tree.
  */
 export async function withToolCache(
   cell: { path: string; cache?: CellToolCache },
   baseDir: string,
   phase: VerifierSubject["phase"],
-  tool: { tree: string | null; digest: string; interpreterDigest: string | undefined },
+  tool: {
+    tree: string | null;
+    digest: string;
+    portableDigest: string | undefined;
+    interpreterDigest: string | undefined;
+  },
   run: () => Promise<ToolRunResult>,
 ): Promise<ToolRunResult> {
   if (tool.tree === null) return run();
-  const key = hashJsonBytes(tool);
+  const { tree, interpreterDigest } = tool;
+  const key = hashJsonBytes({ tree, digest: tool.portableDigest ?? tool.digest, interpreterDigest });
   cell.cache ??= restore(join(baseDir, VERIFIER_CACHE_STORE, key), key, cellCacheDir(cell.path));
   const cache = cell.cache;
   const result = await run();

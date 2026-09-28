@@ -850,7 +850,14 @@ class VerifierHost implements VerifierHostHandle {
         },
       };
     } else {
-      const tool = { tree: this.toolTree, digest: liveDigest, interpreterDigest: entry.interpreterDigest };
+      // By content rather than by path: a copy of the tree reuses its cache, and a tree rewritten in
+      // place does not.
+      const tool = {
+        tree: this.liveTree(scope),
+        digest: liveDigest,
+        portableDigest: entry.portableDigest,
+        interpreterDigest: entry.interpreterDigest,
+      };
       const launch = {
         scope,
         cell,

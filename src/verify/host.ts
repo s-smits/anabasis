@@ -152,7 +152,8 @@ interface Scope {
   closed: boolean;
   /** Stops for this scope's live children and for its waits on another scope's identical run. */
   children: Set<() => Promise<VerifierProcessSettlement | null>>;
-  receipts: Set<string>;
+  /** Each process receipt this scope began, with the cell its process ran in. */
+  receipts: Map<string, string>;
 }
 
 type EvidenceBase = Omit<
@@ -549,7 +550,7 @@ class VerifierHost implements VerifierHostHandle {
       pendingAtClose: 0,
       closed: false,
       children: new Set(),
-      receipts: new Set(),
+      receipts: new Map(),
     };
     for (const check of scope.subject.checks ?? []) this.checkCell(scope, check.id);
     return {
@@ -571,8 +572,13 @@ class VerifierHost implements VerifierHostHandle {
         if (!scope.closed) this.forceClose(scope);
         while (scope.inFlight.size > 0) await Promise.allSettled(scope.inFlight);
         const receiptIds = (this.lifetime?.pendingReceipts() ?? []).filter((id) => scope.receipts.has(id));
-        if (receiptIds.length === 0) {
-          for (const cell of scope.cells.values()) rmSync(cell.path, { recursive: true, force: true });
+        // A cell whose process is unsettled stays for the lifetime's recovery, which removes that
+        // exact cell once its group is gone. Every other cell of the scope goes now: recovery only
+        // knows the cells its receipts name, so one kept here for a sibling's receipt is never
+        // removed by anything.
+        const held = new Set(receiptIds.map((id) => scope.receipts.get(id)));
+        for (const cell of scope.cells.values()) {
+          if (!held.has(cell.path)) rmSync(cell.path, { recursive: true, force: true });
         }
         return {
           pendingInvocations: scope.pendingAtClose,
@@ -949,7 +955,7 @@ class VerifierHost implements VerifierHostHandle {
     if (this.lifetime === null) throw new VerifierOperationalStop("no-lifetime", []);
     const startedAt = Date.now();
     const lease = this.lifetime.begin({ role: "tool", cell: cell.path, requestDigest: base.requestDigest });
-    scope.receipts.add(lease.id);
+    scope.receipts.set(lease.id, cell.path);
     let child: Bun.Subprocess<"ignore" | Uint8Array<ArrayBuffer>, "pipe", "pipe">;
     try {
       child = Bun.spawn({

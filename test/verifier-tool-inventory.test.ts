@@ -16,7 +16,12 @@ import { isString } from "../src/meta/json-shape.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { join } from "../src/meta/path.ts";
 import { createVerifierHost } from "../src/verify/host.ts";
-import { TOOL_ID_RE, resolveToolInventory } from "../src/verify/tool-inventory.ts";
+import {
+  TOOL_ID_RE,
+  portableFileCount,
+  portableToolTreeCounts,
+  resolveToolInventory,
+} from "../src/verify/tool-inventory.ts";
 import { commandSearchPath, toolTreeSearchDirs } from "../src/verify/solve-command-isolation.ts";
 import { prepareVerifierReads } from "../src/verify/darwin-seatbelt.ts";
 import { exactReadDrift } from "../src/verify/exact-read-attestation.ts";
@@ -410,6 +415,24 @@ describe("resolving the tool inventory", () => {
     for (const changed of moved) {
       expect(changed.tree).not.toBe(original.tree);
       expect(changed.environment).not.toBe(original.environment);
+    }
+  });
+
+  it("counts bytes already read as the tree counted the file they were read from, the root taken out across a read boundary too", () => {
+    // A reader holding a file to its recorded count compares the bytes it will return, not a
+    // second read of the path, so the count of bytes in hand has to be the tree's count of the file.
+    const root = fs.realpathSync.native(workspace().toolTree);
+    const named = new Uint8Array((1 << 20) + 4096).fill(7);
+    named.set(new TextEncoder().encode(root), (1 << 20) - 5);
+    writeFileSync(join(root, "bin/engine.bin"), named);
+    writeFileSync(join(root, "bin/wrapper"), `#!/bin/sh\nexec "${root}/bin/engine.bin" "$@"\n`);
+    writeFileSync(join(root, "bin/plain"), "#!/bin/sh\nexit 0\n");
+    const counts = portableToolTreeCounts(root);
+    for (const rel of ["bin/engine.bin", "bin/wrapper", "bin/plain"]) {
+      const path = join(root, rel);
+      const count = required(counts.get(rel), rel);
+      expect(portableFileCount(fs.readFileSync(path), root), rel).toBe(count);
+      expect(count === sha256OfFile(path), rel).toBe(rel === "bin/plain");
     }
   });
 

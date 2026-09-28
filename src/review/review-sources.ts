@@ -290,18 +290,14 @@ function toolchainRead(reach: ToolchainReach, path: string): string {
   const count = reach.counts.get(rel);
   if (count === undefined) return toolchainListing(reach, path, rel);
   if (!FILE_COUNT.test(count)) throw new Error(`${path} is a link or special file; read the file it names`);
-  const abs = join(reach.tree, rel);
-  // The count hashes a read of its own, so the text is the bytes it covered only when no write
-  // landed between the two; a rewrite that puts the same bytes back still moves the change time.
-  const written = statSync(abs, { bigint: true }).ctimeNs;
-  const text = toolchainText(abs);
-  if (text === null) throw new Error(`${path} is not text of at most 1 MiB`);
-  if (portableFileCount(abs, reach.tree) !== count || statSync(abs, { bigint: true }).ctimeNs !== written) {
+  const read = toolchainText(join(reach.tree, rel));
+  if (read === null) throw new Error(`${path} is not text of at most 1 MiB`);
+  if (portableFileCount(read.bytes, reach.tree) !== count) {
     throw new Error(
       `${path} changed since the review opened, so the recorded tree digest no longer covers it`,
     );
   }
-  return text;
+  return read.text;
 }
 
 /** A directory of the reach, one entry per line, a directory's name ending in a slash. */
@@ -319,13 +315,14 @@ function toolchainListing(reach: ToolchainReach, path: string, rel: string): str
   return `Directory ${path} (${String(entries.size)} ${noun}; a name ending in / is a directory):\n${[...entries].sort(compareCodeUnits).join("\n")}`;
 }
 
-/** One tool-tree file as text, or null for a file too large, binary by its NUL bytes, or not UTF-8. */
-function toolchainText(path: string): string | null {
+/** One tool-tree file read once, as its bytes and their text, or null for a file too large, binary
+ *  by its NUL bytes, or not UTF-8. */
+function toolchainText(path: string): { bytes: Buffer; text: string } | null {
   try {
     if (statSync(path).size > TOOLCHAIN_TEXT_BYTES) return null;
     const bytes = readFileSync(path);
-    if (bytes.includes(0)) return null;
-    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    if (bytes.length > TOOLCHAIN_TEXT_BYTES || bytes.includes(0)) return null;
+    return { bytes, text: new TextDecoder("utf-8", { fatal: true }).decode(bytes) };
   } catch {
     return null;
   }

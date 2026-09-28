@@ -1,5 +1,12 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdirSync, symlinkSync, unlinkSync, writeFileSync } from "../src/meta/filesystem.ts";
+import {
+  closeSync,
+  mkdirSync,
+  openSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from "../src/meta/filesystem.ts";
 import { join, dirname } from "../src/meta/path.ts";
 import { runReaderTurn } from "../src/review/review-reader.ts";
 import {
@@ -968,6 +975,27 @@ describe("the tool tree a recorded digest covers", () => {
     }
     // A path outside the tree's prefix is still held to the inventory.
     expect(await call(tool, { path: "evaluator.ts" })).toContain("is not in the inventory");
+  });
+
+  test("returns only bytes its count was taken over, even where two reads of one path differ", async () => {
+    const root = scratchDir("ana-review-toolchain-");
+    write(root, "libexec/solver.py", "");
+    const tool = reader(root, verified(root));
+    // Where opening /dev/fd/N shares that descriptor's offset, as on Darwin, a link to it gives its
+    // whole file to the first read and nothing to every later one, which counts as the empty file
+    // the review opened on. No change time moves between the two reads.
+    const unhashed = join(root, "unhashed.py");
+    writeFileSync(unhashed, "import os  # never counted\n");
+    const fd = openSync(unhashed, "r");
+    try {
+      unlinkSync(join(tree(root), "libexec/solver.py"));
+      symlinkSync(`/dev/fd/${String(fd)}`, join(tree(root), "libexec/solver.py"));
+      const read = await call(tool, { path: `${P}libexec/solver.py` });
+      expect(read).not.toContain("never counted");
+      expect(read).toContain("changed since the review opened");
+    } finally {
+      closeSync(fd);
+    }
   });
 
   test("keeps the automatic scan off the tree, so a file nobody named is never read", async () => {

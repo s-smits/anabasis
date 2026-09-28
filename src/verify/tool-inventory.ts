@@ -263,20 +263,28 @@ function fileCount(path: string, side: TreeSide, root: string): string {
   const seen = `${size}:${mtimeNs}:${ino}`;
   if (side === "local" && size > TREE_HASHED_BYTES) return seen;
   const key = `${root}\0${path}\0${seen}:${ctimeNs}`;
-  const digest = treeFileDigests.get(key) ?? rootlessDigest(path, root);
-  treeFileDigests.set(key, digest);
+  let digest = treeFileDigests.get(key);
+  if (digest === undefined) {
+    const fd = openSync(path, "r");
+    try {
+      digest = rootlessDigest((into, at, length) => readSync(fd, into, at, length, null), root);
+    } finally {
+      closeSync(fd);
+    }
+    treeFileDigests.set(key, digest);
+  }
   return digest;
 }
 
 /**
- * sha256 over a file read in 1 MiB chunks, so a toolchain archive of hundreds of megabytes is never
- * held whole, with every occurrence of `root` taken out. A file that never names the root counts by
- * its plain sha256. One that does counts by the bytes around each occurrence and the offset it was
- * taken from, which puts back exactly the file it came from, so a copy that moved, dropped or added
- * an occurrence, or changed any other byte, counts differently. A copy naming the tree it was copied
- * from names another root, and its bytes count as they stand.
+ * sha256 over one file's bytes, taken through `read` in 1 MiB chunks so a toolchain archive of
+ * hundreds of megabytes is never held whole, with every occurrence of `root` taken out. A file that
+ * never names the root counts by its plain sha256. One that does counts by the bytes around each
+ * occurrence and the offset it was taken from, which puts back exactly the file it came from, so a
+ * copy that moved, dropped or added an occurrence, or changed any other byte, counts differently. A
+ * copy naming the tree it was copied from names another root, and its bytes count as they stand.
  */
-function rootlessDigest(path: string, root: string): string {
+function rootlessDigest(read: (into: Buffer, at: number, length: number) => number, root: string): string {
   const needle = Buffer.from(root);
   const bytes = Buffer.alloc(TREE_HASHED_BYTES + needle.length);
   const kept = new Bun.CryptoHasher("sha256");
@@ -284,29 +292,24 @@ function rootlessDigest(path: string, root: string): string {
   let carried = 0;
   let hashed = 0;
   let found = 0;
-  const fd = openSync(path, "r");
-  try {
-    for (;;) {
-      const read = readSync(fd, bytes, carried, TREE_HASHED_BYTES, null);
-      const view = bytes.subarray(0, carried + read);
-      let start = 0;
-      for (let hit = view.indexOf(needle, start); hit !== -1; hit = view.indexOf(needle, start)) {
-        kept.update(view.subarray(start, hit));
-        hashed += hit - start;
-        offsets.update(`${hashed},`);
-        found += 1;
-        start = hit + needle.length;
-      }
-      // Hold back a tail too short to hold the root, since the next read may complete it.
-      const end = read === 0 ? view.length : Math.max(start, view.length - needle.length + 1);
-      kept.update(view.subarray(start, end));
-      hashed += end - start;
-      if (read === 0) break;
-      carried = view.length - end;
-      bytes.copyWithin(0, end, view.length);
+  for (;;) {
+    const got = read(bytes, carried, TREE_HASHED_BYTES);
+    const view = bytes.subarray(0, carried + got);
+    let start = 0;
+    for (let hit = view.indexOf(needle, start); hit !== -1; hit = view.indexOf(needle, start)) {
+      kept.update(view.subarray(start, hit));
+      hashed += hit - start;
+      offsets.update(`${hashed},`);
+      found += 1;
+      start = hit + needle.length;
     }
-  } finally {
-    closeSync(fd);
+    // Hold back a tail too short to hold the root, since the next read may complete it.
+    const end = got === 0 ? view.length : Math.max(start, view.length - needle.length + 1);
+    kept.update(view.subarray(start, end));
+    hashed += end - start;
+    if (got === 0) break;
+    carried = view.length - end;
+    bytes.copyWithin(0, end, view.length);
   }
   const digest = kept.digest("hex");
   return found === 0 ? digest : sha256(`rooted:${digest}:${offsets.digest("hex")}`);
@@ -342,9 +345,14 @@ export function portableToolTreeCounts(toolTree: string): Map<string, string> {
   return new Map(toolTreeCounts(toolTree, "portable"));
 }
 
-/** One file's portable count now, to compare with the count in `portableToolTreeCounts`. */
-export function portableFileCount(path: string, toolTree: string): string {
-  return fileCount(path, "portable", realpathSync.native(toolTree));
+/** The count `portableToolTreeCounts` takes of a file holding exactly `bytes`. */
+export function portableFileCount(bytes: Buffer, toolTree: string): string {
+  let taken = 0;
+  return rootlessDigest((into, at, length) => {
+    const copied = bytes.copy(into, at, taken, taken + length);
+    taken += copied;
+    return copied;
+  }, realpathSync.native(toolTree));
 }
 
 /** The tree digest this host's session keys its gate cache and no-op strikes on. */

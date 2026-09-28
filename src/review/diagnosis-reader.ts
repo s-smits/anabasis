@@ -20,8 +20,9 @@
  * can be seen for what it is.
  *
  * Its walls are rule 4's. The packet holds the measured harness's public operating guide and tool
- * descriptions, the recorded public domain and task cards, and the solver's own traces; the case
- * outcome is the only verdict it carries. It never opens `verifier.json`, the Judge's record, an
+ * descriptions, the recorded public domain and task cards, and the solver's own traces, of which a
+ * solve that did not pass shows its structure and not its payloads (`solve-steps.ts` says why); the
+ * case outcome is the only verdict it carries. It never opens `verifier.json`, the Judge's record, an
  * accepted artifact or anything under the correctness model, so a change to protected verifier
  * detail cannot move its prompt, and `promptDigest` records the prompt so that is checkable. That
  * is also why the boundary and the falsifier may reach the next authoring pass through the

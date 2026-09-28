@@ -7,7 +7,7 @@ import { BuildAgentTurnNonResult } from "../author/build-agent.ts";
 import { writeAuthoringAttemptEvidence } from "../author/build-attempt-evidence.ts";
 import { builderExecutionEvidenceWriter } from "../author/builder-execution-writer.ts";
 import { WORKSPACE_DIR } from "../author/builder-memory.ts";
-import { type RecordedPlan, capturePlan, familyAdvice } from "../author/experiment-plan.ts";
+import { type RecordedPlan, aimAdvice, capturePlan, familyAdvice } from "../author/experiment-plan.ts";
 import { iterationMemoryFindings } from "../author/iteration-memory.ts";
 import { advisory } from "../author/feedback-routing.ts";
 import {
@@ -89,7 +89,12 @@ import { decorateIterationEvidence, stampSubmissionCondition } from "./campaign-
 import { keyIfDefined, keyIfTruthy, keysIf } from "../meta/optional-key.ts";
 import type { ProviderResourceBudget } from "./provider-resource-budget.ts";
 import type { Solver } from "../correctness-bundle/solve.ts";
-import { changedFamilies, readableFingerprint, type ExperimentScope } from "./experiment-freeze.ts";
+import {
+  changedFamilies,
+  draftTaskRows,
+  readableFingerprint,
+  type ExperimentScope,
+} from "./experiment-freeze.ts";
 
 export interface BuilderCampaignInput {
   campaignDir: string;
@@ -313,13 +318,24 @@ class BuilderCampaignController {
       .then((review) => (review === null ? null : { text: review, reason: "review-unread" }));
   };
 
-  /** The plan read as advice: what did not read, and on a continuation the declared families
-   *  against the families whose public tasks changed. It refuses nothing. */
+  /** The plan read as advice: what did not read, the pass range against the aim at the draft's size,
+   *  and on a continuation the declared families against the families whose public tasks changed.
+   *  It refuses nothing. */
   planAdvice(): string[] {
     const { plan, advice } = capturePlan(this.workspace);
-    const { adoptedDir } = this.input;
-    if (plan === null || adoptedDir === undefined) return advice;
-    return [...advice, ...familyAdvice(plan, changedFamilies(adoptedDir, this.workspace))];
+    if (plan === null) return advice;
+    const { adoptedDir, expectedTasks, minTasks = expectedTasks, band = POLICY.climb.band } = this.input;
+    let aim: string[] = [];
+    try {
+      aim = aimAdvice(plan, draftTaskRows(this.workspace).length, [minTasks, expectedTasks], band);
+    } catch {
+      // A task file that does not read yet has no size to aim at, and the bundle stage names it.
+    }
+    return [
+      ...advice,
+      ...aim,
+      ...(adoptedDir === undefined ? [] : familyAdvice(plan, changedFamilies(adoptedDir, this.workspace))),
+    ];
   }
 
   async submit({ turn }: { turn: number }): Promise<BuilderSubmitOutcome> {

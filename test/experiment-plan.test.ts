@@ -9,6 +9,7 @@ import { hashJsonValue } from "../src/meta/stable-json.ts";
 import {
   NO_PLAN,
   type RecordedPlan,
+  aimAdvice,
   capturePlan,
   familyAdvice,
   planScoreLine,
@@ -142,5 +143,41 @@ describe("the plan's scores", () => {
     expect(statedRange({ atLeast: 3 })).toBe("at least 3");
     expect(statedRange({ atMost: 5 })).toBe("at most 5");
     expect(statedRange({ atLeast: 3, atMost: 5 })).toBe("3–5");
+  });
+});
+
+describe("the plan's range against the aim", () => {
+  const band = [0.2, 0.5] as const;
+  const sizes = [5, 10] as const;
+  const advise = (expectedPasses: { atLeast?: number; atMost?: number }, size: number) =>
+    aimAdvice({ expectedPasses }, size, sizes, band);
+
+  it("says where a range wholly off the aim sits, in the singular and the plural", () => {
+    expect(advise({ atLeast: 4, atMost: 6 }, 6)).toEqual([
+      "Advice: the plan expects 4–6 verified passes, wholly above the aim of 2 to 3 passing for a 6-task battery.",
+    ]);
+    expect(advise({ atLeast: 4 }, 6)).toEqual([
+      "Advice: the plan expects at least 4 verified passes, wholly above the aim of 2 to 3 passing for a 6-task battery.",
+    ]);
+    expect(advise({ atMost: 1 }, 6)).toEqual([
+      "Advice: the plan expects at most 1 verified pass, wholly below the aim of 2 to 3 passing for a 6-task battery.",
+    ]);
+    expect(advise({ atLeast: 0, atMost: 1 }, 10)).toEqual([
+      "Advice: the plan expects 0–1 verified passes, wholly below the aim of 2 to 5 passing for a 10-task battery.",
+    ]);
+  });
+
+  it("says nothing of a range that reaches the aim, of no range, or of a size the round does not take", () => {
+    // A range that shares one count with the aim is not off it, whichever side the rest lies on.
+    expect(advise({ atLeast: 2, atMost: 4 }, 6)).toEqual([]);
+    expect(advise({ atMost: 5 }, 6)).toEqual([]);
+    expect(advise({ atLeast: 3 }, 6)).toEqual([]);
+    expect(advise({ atMost: 2 }, 6)).toEqual([]);
+    expect(aimAdvice({ gap: "No limit found." }, 6, sizes, band)).toEqual([]);
+    // A draft of a size the round refuses has no aim to be read against, and neither has a band too
+    // narrow to hold a whole count at this size.
+    expect(advise({ atLeast: 4, atMost: 6 }, 4)).toEqual([]);
+    expect(advise({ atLeast: 4, atMost: 6 }, 11)).toEqual([]);
+    expect(aimAdvice({ expectedPasses: { atLeast: 4 } }, 6, sizes, [0.2, 0.25])).toEqual([]);
   });
 });

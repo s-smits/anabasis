@@ -12,7 +12,9 @@
  * whose public tasks changed from the adopted product, inputs or rules, as advice at each check and
  * as a recorded fact once the candidate is accepted, and the pass range against the measured
  * battery's verified count. The next round's climb readout, the Epoch Reviewer and the run end read
- * both.
+ * both. Before any battery, the range is also read against the aim the band gives the draft's size,
+ * and only a range that lies wholly on one side of it earns a line; that line says where it lies and
+ * nothing about what to do next.
  *
  * The reader is lenient on purpose. Every field is optional and an unknown field is ignored; a field
  * that does not read is named in one advice line and the rest of the plan still stands.
@@ -23,6 +25,7 @@ import { isRecord, isString, type JsonObject } from "../meta/json-shape.ts";
 import { existsSync, readFileSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
+import { aimCounts } from "../claim/battery-difficulty.ts";
 import { EXPERIMENT_FILE } from "./builder-memory.ts";
 
 const PLAN_MAX_BYTES = 16_384;
@@ -118,6 +121,33 @@ export function statedRange({ atLeast, atMost }: NonNullable<ExperimentPlan["exp
   return atMost === undefined ? `at least ${atLeast}` : `${atLeast}–${atMost}`;
 }
 
+/** "the plan expects at most 1 verified pass", with the noun in the plural unless every count the
+ *  range states is one. */
+function expects(range: NonNullable<ExperimentPlan["expectedPasses"]>): string {
+  const noun = (range.atLeast ?? 1) === 1 && (range.atMost ?? 1) === 1 ? "pass" : "passes";
+  return `the plan expects ${statedRange(range)} verified ${noun}`;
+}
+
+/** The pass range against the aim the band gives a draft of `size` tasks, as advice only when the
+ *  range cannot reach the aim; nothing for a size outside the round's `sizes`, where there is no
+ *  battery to aim, or a band too narrow to hold a whole count at that size. It refuses nothing. */
+export function aimAdvice(
+  plan: ExperimentPlan,
+  size: number,
+  sizes: readonly [number, number],
+  band: readonly [number, number],
+): string[] {
+  const range = plan.expectedPasses;
+  const [low, high] = aimCounts(size, band);
+  if (range === undefined || size < sizes[0] || size > sizes[1] || low > high) return [];
+  const side = (range.atLeast ?? 0) > high ? "above" : (range.atMost ?? size) < low ? "below" : null;
+  return side === null
+    ? []
+    : [
+        `Advice: ${expects(range)}, wholly ${side} the aim of ${low} to ${high} passing for a ${size}-task battery.`,
+      ];
+}
+
 const names = (list: readonly string[]) => (list.length === 0 ? "none" : list.join(", "));
 
 /** The declared families against the families whose public tasks changed, and on a miss each side
@@ -149,8 +179,7 @@ function passScore(plan: ExperimentPlan | null, passed: number | null): string |
   const below = range.atLeast !== undefined && passed < range.atLeast;
   const above = range.atMost !== undefined && passed > range.atMost;
   const side = below ? "missed, below" : above ? "missed, above" : "met";
-  const noun = (range.atLeast ?? 1) === 1 && (range.atMost ?? 1) === 1 ? "pass" : "passes";
-  return `the plan expects ${statedRange(range)} verified ${noun} and the battery holds ${passed}: ${side}`;
+  return `${expects(range)} and the battery holds ${passed}: ${side}`;
 }
 
 /** Both scores of a round's plan in one line, the pass range read against `passed` once a battery

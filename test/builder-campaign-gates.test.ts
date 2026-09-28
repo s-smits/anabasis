@@ -517,6 +517,19 @@ describe("the receipts a gate run records", () => {
       "not-run",
       "not-run",
     ]);
+
+    // A fresh build has no adopted product to read families against, and its plan is still read
+    // against the aim at the draft's own size: four tasks aim at one or two passing.
+    const offAim = await run((workspace) => {
+      bundleWithoutGuide(workspace);
+      writeFileSync(join(workspace, "EXPERIMENT.json"), JSON.stringify({ expectedPasses: { atLeast: 3 } }));
+    }, false);
+    for (const text of offAim.texts) {
+      expect(text).toContain(
+        "the plan expects at least 3 verified passes, wholly above the aim of 1 to 2 passing for a 4-task battery.",
+      );
+      expect(text).toContain("BUILT_AGENTS.md");
+    }
   });
 
   it("returns a remembered gate refusal under the commit and plan of the submit that asked", async () => {

@@ -26,7 +26,7 @@ import { errorMessage } from "#src/meta/runtime-values.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { parseSafeguardLog, safeguardLogFile } from "#src/meta/safeguard.ts";
 import { bareCustomToolName } from "#src/author/builder-custom-tool-call.ts";
-import { isCandidateSubmit } from "#src/author/builder-execution.ts";
+import { type BuilderExecutionEvidence, isCandidateSubmit } from "#src/author/builder-execution.ts";
 import { readEpochRecord } from "#src/author/campaign-epoch.ts";
 import { loadValidatedBundle } from "#src/author/candidate-check.ts";
 import {
@@ -48,6 +48,7 @@ import {
 } from "#src/correctness-bundle/harness-config.ts";
 import { readExecutionEvidenceDetails } from "#tools/outcome/builder-execution-facts.ts";
 import { findRun } from "#tools/runs/discover.ts";
+import { readInFlight } from "#tools/runs/pulse-read.ts";
 import {
   type DifficultyDecisions,
   lastRecordedWrite,
@@ -103,7 +104,8 @@ interface Session {
   refusedInARow: number;
   sameFindingsInARow: number;
   checksWithoutAccept: number;
-  minutes: number;
+  /** Builder minutes since a `submit` or `harness_trial` call last returned, whatever it returned. */
+  quietMinutes: number;
 }
 
 /** A Builder session working without getting closer to an accepted submit. Each limit sits one step
@@ -113,8 +115,11 @@ export const BUILDER_LIMITS: ReadonlyArray<[keyof Session, number, string]> = [
   ["refusedInARow", 5, "submits refused in a row"],
   ["sameFindingsInARow", 2, "refused submits in a row returned the same findings"],
   ["checksWithoutAccept", 12, "correctness_check calls without an accepted submit"],
-  ["minutes", 120, "Builder minutes without a submit"],
+  ["quietMinutes", 120, "Builder minutes since its last submit or harness_trial returned"],
 ];
+/** Calls that bring a session closer to acceptance whatever they return: a submit a review held
+ *  unread records no submit row, and a rehearsal is a whole Built solve. */
+const PROGRESS_TOOLS = new Set(["submit", "harness_trial"]);
 const ENVIRONMENT_LIMIT = 2;
 
 interface Case {
@@ -177,6 +182,8 @@ export interface RunStatus {
   caseRecordError: string | null;
   batteries: Battery[];
   open: { count: number; oldestMinutes: number | null; wallMinutes: number };
+  /** A `harness_trial` in this epoch has started its solve and not been graded, inside its wall. */
+  rehearsing: boolean;
   bundle: Bundle | null;
   authoring: Authoring | null;
   difficulty: DifficultyDecisions;
@@ -279,6 +286,27 @@ function readBatteries(campaign: string, runId: string): BatteryRead {
   return { batteries, error: null };
 }
 
+/** The solve wall a bundle or workspace sets itself, or `fallback` while its config is defective. */
+function solveWallMs(dir: string, fallback: number = DEFAULT_HARNESS_SETTINGS.solveMs): number {
+  try {
+    return harnessSettings(dir).solveMs;
+  } catch (error) {
+    if (!(error instanceof HarnessConfigError)) throw error;
+    return fallback;
+  }
+}
+
+/** A `harness_trial` holds its Builder call, and with it every checkpoint, until its solve is graded,
+ *  so one still solving or grading inside its solve wall is work. The wall is the workspace's, which
+ *  the rehearsal's snapshot was taken of, and it also retires a rehearsal the session abandoned. */
+function rehearsalOpen(campaign: string, epoch: string | null, now: number): boolean {
+  if (epoch === null) return false;
+  const running = readInFlight(join(campaign, epoch), null);
+  return (
+    running !== null && now - Date.parse(running.startedAt) < solveWallMs(join(campaign, epoch, "workspace"))
+  );
+}
+
 /** Cases the battery opened and has not settled, against the wall its harness set itself. A Built
  *  solve writes nothing between its start and its verdict, so an open case under that wall is work,
  *  not a stall. Settled ids are keyed per battery, because task ids repeat across batteries. */
@@ -287,11 +315,7 @@ function openCases(campaign: string, runId: string, batteries: Battery[], now: n
   let oldest: number | null = null;
   let wallMs = DEFAULT_HARNESS_SETTINGS.solveMs;
   for (const dir of batteryRunDirs(campaign, runId)) {
-    try {
-      wallMs = harnessSettings(join(dir, "..", "..")).solveMs;
-    } catch (error) {
-      if (!(error instanceof HarnessConfigError)) throw error;
-    }
+    wallMs = solveWallMs(join(dir, "..", ".."), wallMs);
     const cases = join(dir, "cases");
     const settled = new Set(
       batteries.find((b) => b.runId === dir.split("/").at(-1))?.cases.map((c) => c.taskId),
@@ -355,6 +379,19 @@ function readBundle(campaign: string, slug: string, runId: string, epoch: string
   };
 }
 
+/** Session time since the last progress call returned, carried across the epoch's sessions in
+ *  order; each receipt's clock starts with its own session. */
+function quietMs(records: readonly BuilderExecutionEvidence[]): number {
+  let quiet = 0;
+  for (const record of records) {
+    const ends = record.customCalls
+      .filter((call) => PROGRESS_TOOLS.has(call.tool) && call.dispatchOutcome === "returned")
+      .map((call) => (call.startedAtMs ?? 0) + (call.durationMs ?? 0));
+    quiet = ends.length === 0 ? quiet + record.durationMs : record.durationMs - Math.max(...ends);
+  }
+  return quiet;
+}
+
 /** The Builder's session in one epoch, from its own execution records. Counts restart at an
  *  accepted submit, and preview non-results restart at a preview that produced a result. */
 function readAuthoring(campaign: string, epoch: string): Authoring {
@@ -400,7 +437,7 @@ function readAuthoring(campaign: string, epoch: string): Authoring {
     refusedInARow,
     sameFindingsInARow,
     checksWithoutAccept: submits.some((submit) => submit.outcome === "accepted") ? 0 : rehearsals,
-    minutes: Math.round(records.reduce((sum, record) => sum + record.durationMs, 0) / 60000),
+    quietMinutes: Math.round(quietMs(records) / 60000),
   };
   return { epoch, commits, session, unreadable: null, environmentInARow, environmentKind };
 }
@@ -494,6 +531,7 @@ export function readStatus(
     caseRecordError: error,
     batteries,
     open: openCases(campaign, runId, batteries, now),
+    rehearsing: rehearsalOpen(campaign, epoch, now),
     bundle: readBundle(campaign, location.slug, runId, epoch),
     authoring: epoch === null ? null : readAuthoring(campaign, epoch),
     difficulty: readDifficultyDecisions(location),
@@ -688,9 +726,10 @@ const trailingNonResults = (cases: readonly Case[]): number => {
   return cases.length - 1 - last;
 };
 
-/** Silence under the harness's own solve wall is a battery working, not a stall. */
+/** Silence under the harness's own solve wall is a battery or a rehearsal working, not a stall. */
 const solving = (run: RunStatus): boolean =>
-  run.open.count > 0 && run.open.oldestMinutes !== null && run.open.oldestMinutes < run.open.wallMinutes;
+  run.rehearsing ||
+  (run.open.count > 0 && run.open.oldestMinutes !== null && run.open.oldestMinutes < run.open.wallMinutes);
 
 /** Stalled once campaign evidence and every sampled session store are both quiet past the
  *  threshold; a run with no store to sample counts as quiet. */
@@ -746,8 +785,7 @@ function builderRows(previous: RunStatus | null, current: RunStatus, add: Add): 
     );
   }
   for (const [key, limit, text] of BUILDER_LIMITS) {
-    const crossed = (a: Authoring | null): boolean =>
-      (a?.session?.[key] ?? 0) >= limit && (key !== "minutes" || a?.session?.submits === 0);
+    const crossed = (a: Authoring | null): boolean => (a?.session?.[key] ?? 0) >= limit;
     if (crossed(now) && !crossed(before)) {
       add("stop", `Builder blocked: ${now.session?.[key]} ${text} (${where}, limit ${limit})`, "surgical");
     }

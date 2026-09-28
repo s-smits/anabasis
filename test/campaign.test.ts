@@ -20,6 +20,10 @@ import {
   submitProjection,
   type BuilderSubmitAttempt,
 } from "../src/author/builder-execution.ts";
+import type {
+  BuilderCustomToolCall,
+  BuilderCustomToolSemantic,
+} from "../src/author/builder-custom-tool-call.ts";
 import { mkdirSync, mkdtempSync, unlinkSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
@@ -111,14 +115,40 @@ function submit(
   };
 }
 
-function execution(f: Fixture, schema: string, submits: BuilderSubmitAttempt[], checks = 0): void {
+/** One returned custom call, placed in minutes from its session's start. */
+function receipt(
+  sequence: number,
+  tool: string,
+  [startMinute, minutes]: [number, number],
+  semantic: BuilderCustomToolSemantic = { outcome: "completed" },
+): BuilderCustomToolCall {
+  return {
+    sequence,
+    turn: sequence,
+    tool,
+    action: tool,
+    target: {},
+    startedAtMs: startMinute * 60_000,
+    durationMs: minutes * 60_000,
+    dispatchOutcome: "returned",
+    semantic,
+  };
+}
+
+function execution(
+  f: Fixture,
+  schema: string,
+  submits: BuilderSubmitAttempt[],
+  checks = 0,
+  [customCalls, durationMs]: [BuilderCustomToolCall[], number] = [[], 60_000],
+): void {
   const byName = { correctness_check: checks };
   const record = {
     schema,
     backend: "codex",
     runtimeIdentity: null,
     turns: 1,
-    durationMs: 60_000,
+    durationMs,
     toolCalls: { total: checks, failed: 0, byName, custom: checks, native: 0 },
     usage: { inputTokens: null, outputTokens: null, costUsd: null, reportedTurns: 1, estimatedTurns: 0 },
     firstToolMs: null,
@@ -130,7 +160,7 @@ function execution(f: Fixture, schema: string, submits: BuilderSubmitAttempt[], 
     failedCalls: [],
     failedCallsOmitted: 0,
     failedByName: {},
-    customCalls: [],
+    customCalls,
     customCallsOmitted: 0,
     outcome: "recorded",
     writtenAt: "2026-09-23T10:00:00.000Z",
@@ -208,8 +238,23 @@ describe("status", () => {
       refusedInARow: 2,
       sameFindingsInARow: 2,
       checksWithoutAccept: 0,
-      minutes: 1,
+      quietMinutes: 1,
     });
+  });
+
+  it("counts quiet minutes from the last submit or rehearsal to return, a held submit included", () => {
+    const f = fixture("live");
+    const held = { outcome: "blocked" as const, reason: "review-unread" };
+    const progress = [receipt(1, "submit", [100, 1], held), receipt(2, "harness_trial", [101, 40])];
+    execution(f, BUILDER_EXECUTION_SCHEMA, [], 0, [progress, 150 * 60_000]);
+    const read = status(f);
+    expect(read.authoring?.session).toMatchObject({ submits: 0, quietMinutes: 9 });
+    expect(deviations(null, read).some((row) => row.detail.includes("Builder minutes"))).toBe(false);
+    const busy = [receipt(1, "bash", [0, 90]), receipt(2, "correctness_check", [90, 20])];
+    execution(f, BUILDER_EXECUTION_SCHEMA, [], 1, [busy, 150 * 60_000]);
+    expect(deviations(null, status(f)).map((row) => row.detail)).toContainEqual(
+      expect.stringContaining("150 Builder minutes since its last submit or harness_trial returned"),
+    );
   });
 
   it("partitions this run's batteries through the controller's classifier and names an unreadable record", () => {
@@ -273,7 +318,7 @@ describe("watch", () => {
     expect(deviations(after, after).filter((row) => row.level === "stop")).toEqual([]);
   });
 
-  it("names a Builder limit once as it is crossed, and the time limit only before any submit", () => {
+  it("names a Builder limit once as it is crossed", () => {
     const base = status(fixture("live"));
     const session = {
       rehearsals: 12,
@@ -281,7 +326,7 @@ describe("watch", () => {
       refusedInARow: 5,
       sameFindingsInARow: 0,
       checksWithoutAccept: 12,
-      minutes: 300,
+      quietMinutes: 300,
     };
     const authoring = {
       epoch: "e",
@@ -295,15 +340,8 @@ describe("watch", () => {
     const details = deviations(base, crossed).map((row) => row.detail);
     expect(details.some((d) => d.includes("5 submits refused in a row"))).toBe(true);
     expect(details.some((d) => d.includes("correctness_check calls"))).toBe(true);
-    expect(details.some((d) => d.includes("Builder minutes"))).toBe(false);
+    expect(details.some((d) => d.includes("300 Builder minutes since its last submit"))).toBe(true);
     expect(deviations(crossed, crossed).filter((row) => row.level === "stop")).toEqual([]);
-    const idle = {
-      ...base,
-      authoring: { ...authoring, session: { ...session, submits: 0, refusedInARow: 0 } },
-    };
-    expect(
-      deviations(base, idle).some((row) => row.detail.includes("300 Builder minutes without a submit")),
-    ).toBe(true);
   });
 
   it("reads silence under an open case's own wall as work, and past the threshold as a stall", () => {
@@ -314,6 +352,31 @@ describe("watch", () => {
     const stall = deviations(base, quiet).find((row) => row.level === "stop");
     expect(stall?.detail).toContain("no new evidence for 60 min");
     expect(deviations(quiet, quiet).filter((row) => row.level === "stop")).toEqual([]);
+  });
+
+  it("reads a rehearsal still solving as work, and silence once graded or past its wall as a stall", () => {
+    const f = fixture("live");
+    const rehearsal = join(f.epochDir, "rehearsals", "rehearsal-1");
+    mkdirSync(join(rehearsal, "cases", "t1"), { recursive: true });
+    writeFileSync(join(rehearsal, "cases", "t1", "public-task.json"), "{}");
+    const quiet = (read: RunStatus): RunStatus => ({
+      ...read,
+      evidenceAgeMinutes: 60,
+      sessionAgeMinutes: 60,
+    });
+    const base = { ...status(f), evidenceAgeMinutes: 0 };
+    const stops = (read: RunStatus) => deviations(base, quiet(read)).filter((row) => row.level === "stop");
+    expect(status(f).rehearsing).toBe(true);
+    expect(stops(status(f))).toEqual([]);
+    const late = readStatus(f.repo, RUN, Date.now() + 121 * 60_000, {
+      predictions: f.notes,
+      tmpParent: f.repo,
+    });
+    expect(late.rehearsing).toBe(false);
+    expect(stops(late)[0]?.detail).toContain("no new evidence for 60 min");
+    writeFileSync(join(rehearsal, "checks.json"), "{}");
+    expect(status(f).rehearsing).toBe(false);
+    expect(stops(status(f))[0]?.detail).toContain("no new evidence for 60 min");
   });
 
   it("holds info rows unattended until a stop carries them, and fires the disk row once until recovery", () => {

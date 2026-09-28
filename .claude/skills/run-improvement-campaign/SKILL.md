@@ -253,7 +253,11 @@ minutes on 2026-09-18 with `evidence 38 min ago, session wrote 38 min ago`, and 
 have called it stalled at 120. The watch reads the **cases the battery has open** — one directory
 per case under the retained version — against the harness's own `solve_minutes` from its accepted
 `agent/config.yaml`. Under that wall the silence is work and no row fires; past it the host stopped
-enforcing its own ceiling and the stall row is right.
+enforcing its own ceiling and the stall row is right. A `harness_trial` is the same silence one
+level up: the Builder's call holds every checkpoint until the rehearsal is graded, and truss-opus
+sat 57 minutes inside one on 2026-09-28 when the stall row fired on it. So the newest rehearsal, once it has
+written its public task and until it writes its `checks.json`, is work too, under the workspace's
+solve wall.
 
 The status prints the same count, and beside it what the bundle is made of: files, nonblank lines,
 tasks, families, checks, accept and reject controls, tools and presets, from the frozen version once

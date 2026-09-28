@@ -1,4 +1,4 @@
-/** Relocate known Python launchers; refuse executable dependencies the copy cannot relocate. */
+/** Relocate executables that name the tree they were copied from; report those the copy cannot move. */
 import {
   closeSync,
   existsSync,
@@ -14,11 +14,17 @@ import { hostTool } from "../meta/host-tool.ts";
 import { containsPath } from "../meta/path-containment.ts";
 import { runtimeProcess } from "../meta/process.ts";
 
-/** What the copy did to one file: a Python launcher header rewritten, with the single-quoted form
- *  uv writes reported apart from the ordinary one so a copy that aborts names which of the two it
- *  met; a Mach-O install name moved; nothing; or `retains-adopted-path` -- the copy still names the
- *  tree it came from and nothing here can move that name. The caller drops such a file; this
- *  function only reports it. */
+/** Characters that read the same bare, in single quotes and in double quotes, in `sh` and in the
+ *  string literals of the usual script languages. A script spells the adopted tree in whatever
+ *  quoting its author chose, and nothing here parses it, so only a destination made of these can
+ *  stand wherever that path stood. */
+const PLAIN_PATH = /^[\w/.+,:=@%-]+$/;
+
+/** What the copy did to one file: a launcher rewritten -- a Python header, with the single-quoted
+ *  form uv writes reported apart from the ordinary one so a copy that aborts names which of the two
+ *  it met, or a script's own paths; a Mach-O install name moved; nothing; or `retains-adopted-path`
+ *  -- the copy still names the tree it came from and nothing here can move that name. The caller
+ *  drops such a file; this function only reports it. */
 type LauncherRelocation =
   | "rewritten"
   | "rewritten-single-quoted"
@@ -53,9 +59,7 @@ function retainsRoot(path: string, root: string): boolean {
  *  keeps -- so the identity is moved rather than the whole tree refused over an address nothing
  *  reads. `install_name_tool` ships with the Command Line Tools and re-signs ad hoc, and `hostTool`
  *  skips its xcrun shim. On another platform, for a file that is not Mach-O, or with the tool
- *  absent, the bytes stay as they were and the caller still refuses. The platform guard is separate
- *  because inlining it reads `relocateToolLauncher` at 22 against the ceiling of 21 in
- *  `tools/loc/complexity-policy.ts`. */
+ *  absent, the bytes stay as they were and the caller still refuses. */
 function relocateInstallName(file: string, target: string): void {
   if (runtimeProcess.platform !== "darwin") return;
   Bun.spawnSync({
@@ -63,6 +67,28 @@ function relocateInstallName(file: string, target: string): void {
     stdout: "ignore",
     stderr: "ignore",
   });
+}
+
+/** Move what a file still names inside `source` once the known launcher headers have moved. A
+ *  script -- a Builder's `sh` wrapper running its own analyser by absolute path, say -- has every
+ *  `source/` become `destination/`, as a venv home does. That is the property the copy exists for,
+ *  nothing in it resolving into the adopted tree, kept with the tool rather than by dropping it.
+ *  Only text moves this way: a file with a NUL byte, or bytes that are not UTF-8, is a binary whose
+ *  strings carry lengths and offsets a replacement would break, so there only a Mach-O install name
+ *  can move. */
+function relocateRemaining(
+  file: string,
+  source: string,
+  destination: string,
+  name: string,
+): LauncherRelocation {
+  const text = lstatSync(file).size <= 1_048_576 ? readFileSync(file, "utf8") : null;
+  if (text !== null && !/[\0\uFFFD]/.test(text) && PLAIN_PATH.test(destination)) {
+    writeFileSync(file, text.replaceAll(`${source}/`, `${destination}/`));
+    return "rewritten";
+  }
+  relocateInstallName(file, join(destination, name));
+  return retainsRoot(file, source) ? "retains-adopted-path" : "install-name";
 }
 
 export function relocateToolLauncher(
@@ -77,7 +103,8 @@ export function relocateToolLauncher(
     ["activate", "activate.csh", "activate.fish", "Activate.ps1"].includes(basename(file));
   if (!stat.isFile() || ((stat.mode & 0o111) === 0 && !activation)) return null;
   let relocated: LauncherRelocation = null;
-  // Only known text launchers are rewritten. Arbitrary binaries and package data stay byte-identical.
+  // Known launcher headers first; whatever still names the tree after them moves below. Package
+  // data is not executable, and stays byte-identical.
   if (stat.size <= 1_048_576) {
     const text = readFileSync(file, "utf8");
     const direct = /^#!(\/[^\n]+\/python[\d.]*)\r?\n/.exec(text);
@@ -110,10 +137,5 @@ export function relocateToolLauncher(
       writeFileSync(file, text.replaceAll(original, venv));
     }
   }
-  if (retainsRoot(file, source)) {
-    relocateInstallName(file, join(destination, name));
-    if (retainsRoot(file, source)) return "retains-adopted-path";
-    relocated = "install-name";
-  }
-  return relocated;
+  return retainsRoot(file, source) ? relocateRemaining(file, source, destination, name) : relocated;
 }

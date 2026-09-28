@@ -14,6 +14,7 @@ import { join, resolve } from "../src/meta/path.ts";
 import type { JsonValue } from "../src/meta/json-shape.ts";
 import { type PublicVerdict, bundleSlug, resolveTask } from "../src/run/bundle-entry.ts";
 import { exportBundle } from "../src/run/bundle-export.ts";
+import { WORKSPACE_TOOL_TREE } from "../src/verify/wall-policy.ts";
 import { MATCHING_ACCEPTS, writeMatchingBuildFixture } from "./helpers/matching-fixture.ts";
 
 const REPO_ROOT = resolve(import.meta.dir, "..");
@@ -130,10 +131,10 @@ describe("an exported Built Harness bundle", () => {
     writeFileSync(join(tools, "tool"), "tool bytes");
     symlinkSync("tool", join(tools, "relative-tool"));
     symlinkSync(join(tools, "tool"), join(tools, "absolute-tool"));
-    symlinkSync(tools, join(bundle, ".toolchain"));
+    symlinkSync(tools, join(bundle, WORKSPACE_TOOL_TREE));
     expect(exportBundle(REPO_ROOT, bundle, target).toolTree).toBe("copied");
     for (const name of ["tool", "relative-tool", "absolute-tool"]) {
-      expect(readFileSync(join(target, ".toolchain", name), "utf8")).toBe("tool bytes");
+      expect(readFileSync(join(target, WORKSPACE_TOOL_TREE, name), "utf8")).toBe("tool bytes");
     }
     const outside = join(scratch, "adopted-tools-outside");
     mkdirSync(outside);
@@ -142,15 +143,15 @@ describe("an exported Built Harness bundle", () => {
     symlinkSync(join(scratch, "missing"), join(tools, "dangling"));
     const leaving = join(scratch, "leaving-export");
     expect(exportBundle(REPO_ROOT, bundle, leaving).leftOut.toSorted()).toEqual(["dangling", "unselected"]);
-    expect(existsSync(join(leaving, ".toolchain", "unselected"))).toBe(false);
-    expect(readFileSync(join(leaving, ".toolchain", "tool"), "utf8")).toBe("tool bytes");
+    expect(existsSync(join(leaving, WORKSPACE_TOOL_TREE, "unselected"))).toBe(false);
+    expect(readFileSync(join(leaving, WORKSPACE_TOOL_TREE, "tool"), "utf8")).toBe("tool bytes");
     const header = readFileSync(join(leaving, "README.md"), "utf8").split("\n")[2];
     expect(header).toMatch(
       /host PATH: (dangling|unselected), (dangling|unselected)\. Its checks run: tool\.$/,
     );
   });
 
-  it("moves a launcher naming the adopted tree into the export and leaves out a file that cannot move", () => {
+  it("moves a launcher and a script naming the adopted tree into the export and leaves out a file that cannot move", () => {
     const bundle = join(scratch, "launcher-tools");
     const tools = join(scratch, "launcher-adopted");
     const target = join(scratch, "launcher-export");
@@ -160,14 +161,19 @@ describe("an exported Built Harness bundle", () => {
     const adopted = realpathSync(tools);
     executable(join(tools, "venv", "bin", "python"), "#!/bin/sh\n");
     executable(join(tools, "venv", "bin", "field-cli"), `#!${adopted}/venv/bin/python\nprint(1)\n`);
-    executable(join(tools, "stuck"), `#!/bin/sh\nexec ${adopted}/venv/bin/python\n`);
-    symlinkSync(tools, join(bundle, ".toolchain"));
+    executable(join(tools, "run"), `#!/bin/sh\nexec ${adopted}/venv/bin/python\n`);
+    // A NUL byte makes it a binary, whose strings a text replacement would break.
+    executable(join(tools, "stuck"), `\0${adopted}/venv/bin/python\0`);
+    symlinkSync(tools, join(bundle, WORKSPACE_TOOL_TREE));
     const result = exportBundle(REPO_ROOT, bundle, target);
-    expect(readFileSync(join(target, ".toolchain", "venv", "bin", "field-cli"), "utf8")).toBe(
-      `#!/bin/sh\n'''exec' "${join(target, ".toolchain", "venv", "bin", "python")}" "$0" "$@"\n' '''\nprint(1)\n`,
+    expect(readFileSync(join(target, WORKSPACE_TOOL_TREE, "venv", "bin", "field-cli"), "utf8")).toBe(
+      `#!/bin/sh\n'''exec' "${join(target, WORKSPACE_TOOL_TREE, "venv", "bin", "python")}" "$0" "$@"\n' '''\nprint(1)\n`,
+    );
+    expect(readFileSync(join(target, WORKSPACE_TOOL_TREE, "run"), "utf8")).toBe(
+      `#!/bin/sh\nexec ${join(target, WORKSPACE_TOOL_TREE, "venv", "bin", "python")}\n`,
     );
     expect(result.leftOut).toEqual(["stuck"]);
-    expect(existsSync(join(target, ".toolchain", "stuck"))).toBe(false);
+    expect(existsSync(join(target, WORKSPACE_TOOL_TREE, "stuck"))).toBe(false);
   });
 
   it("names a retained version after the project its record names, not its run id", () => {

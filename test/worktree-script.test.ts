@@ -123,10 +123,12 @@ describe("the Bun-owned worktree launcher", () => {
       expect(existsSync(join(fixture, "ran"))).toBe(true);
       rmSync(join(fixture, "ran"));
 
-      // Nothing vouches for a clone once no tree carries the identity.
+      // Nothing vouches for a clone once no tree carries the identity, and a teardown that stopped
+      // partway leaves a marker beside a missing dependency, which vouches for nothing either.
       rmSync(join(sibling, NODE_MODULES), { recursive: true, force: true });
-      rmSync(join(target, NODE_MODULES), { recursive: true, force: true });
+      rmSync(join(target, NODE_MODULES, "local"), { recursive: true, force: true });
       expect(setup(sibling)).toContain("no worktree is prepared");
+      rmSync(join(target, NODE_MODULES), { recursive: true, force: true });
 
       // A link is replaced by a real tree rather than trusted, and the tree it pointed at is kept.
       symlinkSync(join(sibling, NODE_MODULES), join(target, NODE_MODULES));

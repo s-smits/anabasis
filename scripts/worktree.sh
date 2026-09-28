@@ -138,13 +138,24 @@ every_worktree() {
   done < <(git -C "$dir" worktree list --porcelain)
 }
 
+# A teardown that stopped partway keeps the marker while entries beside it are gone, so a marker
+# vouches for a clone only while every dependency the root manifest declares is still installed.
+declared_modules_present() {
+  (cd "$1" && bun --no-env-file -e '
+    const pkg = await Bun.file("package.json").json();
+    const names = Object.keys({ ...pkg.dependencies, ...pkg.devDependencies });
+    const present = await Promise.all(names.map((name) => Bun.file(`node_modules/${name}/package.json`).exists()));
+    process.exit(present.every(Boolean) ? 0 : 1);
+  ')
+}
+
 # Print the first prepared tree for the identity.
 clone_source() {
   local want=$1 dir=$2 candidate
   while IFS= read -r candidate; do
     [ -n "$candidate" ] || continue
     read_marker "$candidate"
-    [ "$installed" = "$want" ] || continue
+    [ "$installed" = "$want" ] && declared_modules_present "$candidate" || continue
     printf '%s\n' "$candidate"
     return
   done < <(every_worktree "$dir")
@@ -189,7 +200,7 @@ assert_ana_local() {
     }
     if (missing.length) console.error(`declared but not installed: ${missing.join(", ")}`);
     if (stray.length) console.error("@ana resolves outside this worktree:\n  " + stray.join("\n  "));
-    if (missing.length || stray.length) Bun.exit(1);
+    if (missing.length || stray.length) process.exit(1);
     console.error(`@ana: ${names.length} packages resolve inside the worktree`);
   ')
 }

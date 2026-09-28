@@ -12,15 +12,17 @@ Prepare one self-contained task with:
 - hypotheses and contrary evidence, clearly separate from recorded facts;
 - the required finding, owner, evidence, falsifier and limits. Let the reviewer reject the premise.
 
-For a GPT-5 Pro or GPT-5.5 Pro packet, use `gpt-5-pro-appender` when installed; it owns source
-assembly and packet validation. Otherwise assemble the bounded packet directly. Do not paste a
-second product manual or require an unavailable skill. Preserve verified, unaccepted and
-non-result denominators. An incomplete comparison stays incomplete; never launch a condition
-merely to fill its missing side.
+[Oracle handover](../../oracle-handover/SKILL.md) owns the packet: a task document that cites
+published commits by URL, and one zip of what GitHub cannot serve. Do not paste a second product
+manual. Preserve verified, unaccepted and non-result denominators. An incomplete comparison stays
+incomplete; never launch a condition merely to fill its missing side.
 
-Protected verifier detail, raw traces, hidden truth, reference artifacts and per-task failure
-locations stay out of the export. Keep the private Epoch Reviewer and the isolated WRI lanes 7
-and 23 on their own evidence paths. An external analyst does not gain their access by being called a verifier.
+By default, protected verifier detail, raw traces, hidden truth, reference artifacts and per-task
+failure locations stay out of the export. A handover the operator asks to carry traces carries
+them at zip-run's `--medium`, as the oracle handover describes. Whatever the export holds, the
+answer never flows back into a model-visible surface. Keep the private Epoch Reviewer and the
+isolated WRI lanes 7 and 23 on their own evidence paths. An external analyst does not gain their
+access by being called a verifier.
 
 Sending or uploading needs the user's action-specific authority; otherwise leave a local draft.
 Use the available interface and verify its actual model/settings. On retrieval, use read-only

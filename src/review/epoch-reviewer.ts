@@ -30,6 +30,7 @@ import { existsSync, readFileSync } from "../meta/filesystem.ts";
 import { campaignDir } from "../meta/campaign-root.ts";
 import { join, relative } from "../meta/path.ts";
 import type { IterationAnalysis } from "../analyse/iteration-analysis.ts";
+import { findingSeverity } from "../analyse/finding-owner.ts";
 import {
   isStanding,
   type AdviceIssue,
@@ -115,10 +116,9 @@ export interface EpochReviewInput {
   otherContested?: readonly ContestedCase[];
   /** The round's blind rehearsals, at an authoring checkpoint alone. */
   rehearsals?: readonly RehearsalCase[];
-  /** The probes the previous authoring review of this round rested its findings on, at an
-   *  authoring checkpoint alone. They hold counterexample values and name checks, so the next
-   *  reviewer is their one reader. */
-  demonstrations?: readonly ReviewProbeRow[];
+  /** What the previous authoring review of this round carried, at an authoring checkpoint alone.
+   *  Its probes hold counterexample values, so the next reviewer is their one reader. */
+  demonstrations?: Demonstrations;
   review: ReviewChoice;
   publicRequest: string | null;
   observer?: RunObserver;
@@ -128,6 +128,16 @@ export interface EpochReviewInput {
    *  model. */
   readerTurn?: typeof runReaderTurn;
 }
+
+/** What an authoring review hands the next one of its round: the probes its recorded findings
+ *  rested on, and the declared check each finding named with the severity it was admitted at. */
+export interface Demonstrations {
+  probes: readonly ReviewProbeRow[];
+  named: ReadonlyArray<{ checkId: string; severity: "blocking" | "advisory" }>;
+}
+
+/** What the first review of a round is handed. */
+export const NOTHING_CARRIED: Demonstrations = { probes: [], named: [] };
 
 /** One blind rehearsal under the measured projection: the bytes the Built solver submitted, or null
  *  when it accepted none, and the one verdict the declared checks gave them. `current` says whether
@@ -325,32 +335,55 @@ function rehearsalLines(rehearsals: readonly RehearsalCase[]): string[] {
 }
 
 /**
- * What an authoring review hands the next one of its round: the probes its recorded findings rested
- * on, or null when it recorded none, because a review that failed or never ran has weighed nothing
- * and the set the one before it carried still stands. A finished review that rested nothing on a
- * probe carries an empty set, which ends the chain.
+ * What an authoring review hands the next one of its round, or null when it recorded no findings,
+ * because a review that failed or never ran has weighed nothing and the set the one before it
+ * carried still stands. A finished review that rested nothing on a probe and named no check
+ * carries empty sets, which ends the chain.
  */
 export function carriedDemonstrations(
-  review: Pick<EpochReviewEvidence, "status" | "probes">,
-): ReviewProbeRow[] | null {
+  review: Pick<EpochReviewEvidence, "status" | "probes" | "findings">,
+): Demonstrations | null {
   if (review.status !== "completed" && review.status !== "incomplete") return null;
-  return (review.probes ?? []).filter((row) => row.cited === true);
+  return {
+    probes: (review.probes ?? []).filter((row) => row.cited === true),
+    named: review.findings.flatMap((finding) =>
+      finding.checkId === undefined ? [] : [{ checkId: finding.checkId, severity: findingSeverity(finding) }],
+    ),
+  };
 }
 
 /**
  * Each carried probe as the probe_check call that re-runs it and the checks it moved. Its number
  * stays behind, since it numbered a probe of another review and this review's own numbering starts
  * again at one: a finding here rests on the probe this review runs, and on nothing it was shown.
+ * Then each check a carried finding or probe named that the brief under review no longer declares,
+ * as a fact: a reviewer shown only the probe of a deleted check reads the deletion as a repair. A
+ * brief declaring no check, as an unreadable one reads, proves no removal.
  */
-function demonstrationLines(rows: readonly ReviewProbeRow[]): string[] {
-  if (rows.length === 0) return [];
+function demonstrationLines({ probes, named }: Demonstrations, declared: readonly string[]): string[] {
+  const namers = new Map<string, string>();
+  for (const { checkId, severity } of named) {
+    if (severity === "blocking" || !namers.has(checkId)) {
+      namers.set(checkId, `the previous review's ${severity} finding named`);
+    }
+  }
+  for (const checkId of probes.flatMap((row) => row.movedCheckIds)) {
+    if (!namers.has(checkId)) namers.set(checkId, "a carried probe moved");
+  }
+  const gone = [...namers].flatMap(([checkId, namer]) =>
+    declared.length === 0 || declared.includes(checkId)
+      ? []
+      : [`Check ${checkId}, which ${namer}, is no longer declared in this candidate's brief.`],
+  );
+  if (probes.length === 0) return gone;
   return [
     "Probes the previous review of this round rested its findings on, as it ran them against the bytes it read. Re-run any you rely on with probe_check, since the tree may have changed, and cite the new numbers: a line here is a lead, not a probe of this review, and backs no finding.",
-    ...rows.map(({ controlId, path, change, movedCheckIds }) => {
+    ...probes.map(({ controlId, path, change, movedCheckIds }) => {
       const moved =
         movedCheckIds.length === 0 ? "no declared check moved" : `moved ${movedCheckIds.join(", ")}`;
       return `- probe_check ${capturedJsonStringify({ controlId, path, ...change })}: ${moved}.`;
     }),
+    ...gone,
   ];
 }
 
@@ -512,7 +545,12 @@ function orientation(
   inventory: ReviewInventory,
   verifier: ReviewVerifierEvidence,
   issues: readonly AdviceIssue[],
-  measured: { aim: string; earlier: readonly string[]; clauses: readonly string[] },
+  measured: {
+    aim: string;
+    earlier: readonly string[];
+    clauses: readonly string[];
+    declared: readonly string[];
+  },
 ): string {
   const { analysis } = input;
   return [
@@ -536,7 +574,7 @@ function orientation(
     ...roundPlanLines(input.roundPlan ?? NO_PLAN, analysis),
     ...contestedLines(input),
     ...rehearsalLines(input.rehearsals ?? []),
-    ...demonstrationLines(input.demonstrations ?? []),
+    ...demonstrationLines(input.demonstrations ?? NOTHING_CARRIED, measured.declared),
     ...standingIssueLines(issues),
     `Read with read_source, then record findings. Files in the review (${inventory.files.length}, truncated: ${inventory.truncated}):`,
     inventory.files.join("\n"),
@@ -756,7 +794,11 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
       continuePrompt: (text) => unread() ?? duty(text),
       systemPrompt: EPOCH_REVIEW_PROMPT,
       prompt: [
-        orientation(input, inventory, verifier, issues, { ...measured, clauses: clauses.clauses }),
+        orientation(input, inventory, verifier, issues, {
+          ...measured,
+          clauses: clauses.clauses,
+          declared: identities.checkIds,
+        }),
         ...toolchainLines(toolchain),
       ].join("\n"),
       ...keyIfDefined("observer", input.observer),

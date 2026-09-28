@@ -14,7 +14,12 @@ import type { JsonValue } from "../src/meta/json-shape.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { type EpochReviewEvidence, recordFindingTool } from "../src/review/epoch-review-findings.ts";
 import { publicEpochReview } from "../src/review/epoch-review-public.ts";
-import { carriedDemonstrations, runEpochReview } from "../src/review/epoch-reviewer.ts";
+import {
+  type Demonstrations,
+  NOTHING_CARRIED,
+  carriedDemonstrations,
+  runEpochReview,
+} from "../src/review/epoch-reviewer.ts";
 import type { ReviewProbeRow } from "../src/review/review-probe.ts";
 import type { ReaderTool } from "../src/review/review-reader.ts";
 import { keyIfNotNull } from "../src/meta/optional-key.ts";
@@ -105,12 +110,7 @@ function candidateTree(): string {
 
 /** One authoring review over `root`, handed `demonstrations` when there are any, whose reader
  *  takes `step`. */
-async function reviewed(
-  root: string,
-  runId: string,
-  demonstrations: readonly ReviewProbeRow[] | null,
-  step: Step,
-) {
+async function reviewed(root: string, runId: string, demonstrations: Demonstrations | null, step: Step) {
   let prompt = "";
   const result = await runEpochReview({
     repoRoot: root,
@@ -160,10 +160,13 @@ describe("the probes an authoring review rested its findings on, carried to the 
   it("carries the probes a finding rested on, and no other, as the change that ran and the checks it moved", async () => {
     const state = await massReview();
     const carried = required(
-      carriedDemonstrations({ status: "completed", probes: state.probes.rows }),
+      carriedDemonstrations({ status: "completed", probes: state.probes.rows, findings: state.findings }),
       "a finished review's demonstrations",
     );
-    expect(carried.map(({ path, change, movedCheckIds }) => ({ path, change, movedCheckIds }))).toEqual([
+    expect(carried.named).toEqual([{ checkId: "catalogue-mass-budget", severity: "blocking" }]);
+    expect(
+      carried.probes.map(({ path, change, movedCheckIds }) => ({ path, change, movedCheckIds })),
+    ).toEqual([
       { path: "$.design.joints[8].zMm", change: { value: "3400.002" }, movedCheckIds: [] },
       {
         path: "$.design.joints[8].zMm",
@@ -176,18 +179,21 @@ describe("the probes an authoring review rested its findings on, carried to the 
   it("carries nothing from a review that recorded no findings, so the previous review's set stands", async () => {
     // A failed turn keeps its probes and drops its findings, so a probe one of them cited is no
     // longer anything a recorded finding rests on.
-    const { probes } = await massReview();
-    expect(carriedDemonstrations({ status: "failed", probes: probes.rows })).toBeNull();
-    expect(carriedDemonstrations({ status: "skipped", probes: probes.rows })).toBeNull();
-    // A review that finished and rested nothing on a probe ends the chain.
-    expect(carriedDemonstrations({ status: "completed", probes: fa03b7Rows() })).toEqual([]);
-    expect(carriedDemonstrations({ status: "incomplete" })).toEqual([]);
+    const { probes, findings } = await massReview();
+    expect(carriedDemonstrations({ status: "failed", probes: probes.rows, findings })).toBeNull();
+    expect(carriedDemonstrations({ status: "skipped", probes: probes.rows, findings })).toBeNull();
+    // A review that finished, rested nothing on a probe and named no check ends the chain.
+    expect(carriedDemonstrations({ status: "completed", probes: fa03b7Rows(), findings: [] })).toEqual(
+      NOTHING_CARRIED,
+    );
+    expect(carriedDemonstrations({ status: "incomplete", findings: [] })).toEqual(NOTHING_CARRIED);
   });
 
   it("shows the next review each carried probe as the call that re-runs it, and no probe number", async () => {
     const root = candidateTree();
+    const mass = await massReview();
     const carried = required(
-      carriedDemonstrations({ status: "completed", probes: (await massReview()).probes.rows }),
+      carriedDemonstrations({ status: "completed", probes: mass.probes.rows, findings: mass.findings }),
       "carried rows",
     );
     const edit: ReviewProbeRow = {
@@ -200,8 +206,8 @@ describe("the probes an authoring review rested its findings on, carried to the 
     const nothing = async () => {};
     const [bare, empty, shown] = [
       await reviewed(root, "authoring-1", null, nothing),
-      await reviewed(root, "authoring-1", [], nothing),
-      await reviewed(root, "authoring-1", [...carried, edit], nothing),
+      await reviewed(root, "authoring-1", NOTHING_CARRIED, nothing),
+      await reviewed(root, "authoring-1", { ...carried, probes: [...carried.probes, edit] }, nothing),
     ];
     expect(bare.prompt).toBe(empty.prompt);
     expect(bare.prompt).not.toContain("probe_check {");
@@ -224,7 +230,7 @@ describe("the probes an authoring review rested its findings on, carried to the 
 
   it("re-runs a carried call as a probe of the review that ran it, and carries it on only when a finding rests on it again", async () => {
     const root = candidateTree();
-    const first = await reviewed(root, "authoring-1", [], async (tools) => {
+    const first = await reviewed(root, "authoring-1", NOTHING_CARRIED, async (tools) => {
       const ran = await call(tool(tools, "probe_check"), {
         controlId: "accept-0",
         path: "$.answer",
@@ -235,7 +241,7 @@ describe("the probes an authoring review rested its findings on, carried to the 
     });
     const carried = required(carriedDemonstrations(first.result), "the first review's demonstrations");
     expect(
-      carried.map(({ controlId, change, movedCheckIds }) => ({ controlId, change, movedCheckIds })),
+      carried.probes.map(({ controlId, change, movedCheckIds }) => ({ controlId, change, movedCheckIds })),
     ).toEqual([{ controlId: "accept-0", change: { value: MARKER }, movedCheckIds: ["answer"] }]);
 
     // The line is the call: the next review sends it back verbatim and it runs.
@@ -249,7 +255,7 @@ describe("the probes an authoring review rested its findings on, carried to the 
     expect(second.result.probes?.map(({ change, movedCheckIds }) => ({ change, movedCheckIds }))).toEqual([
       { change: { value: MARKER }, movedCheckIds: ["answer"] },
     ]);
-    expect(carriedDemonstrations(second.result)).toHaveLength(1);
+    expect(carriedDemonstrations(second.result)?.probes).toHaveLength(1);
     for (const { result } of [first, second]) {
       expect(builderText(result)).not.toContain("lowercase-probe-marker");
     }
@@ -274,6 +280,7 @@ describe("the probes an authoring review rested its findings on, carried to the 
             cited: true,
           },
         ],
+        findings: [],
       }),
       "carried rows",
     );
@@ -284,7 +291,56 @@ describe("the probes an authoring review rested its findings on, carried to the 
     expect(result.probes).toBeUndefined();
     expect(result.findings[0]?.probes).toBeUndefined();
     expect(result.findings[0]?.claim ?? "").not.toContain("Executed probes");
-    expect(carriedDemonstrations(result)).toEqual([]);
+    expect(carriedDemonstrations(result)?.probes).toEqual([]);
     expect(builderText(result)).not.toContain("lowercase-probe-marker");
   }, 120_000);
+
+  // A Builder that deletes the check a blocking finding named leaves the carried probe pointing at a
+  // check that moved and a finding with nothing to re-run against, and a reviewer shown the probe
+  // alone reads the tree as repaired.
+  it("says which check a carried finding or probe named that the brief under review no longer declares", async () => {
+    const carried = carriedNaming("geometry", "response");
+    expect(carried.named).toEqual([{ checkId: "geometry", severity: "blocking" }]);
+    const { prompt } = await reviewed(candidateTree(), "authoring-4", carried, async () => {});
+    expect(prompt).toContain(
+      "Check geometry, which the previous review's blocking finding named, is no longer declared in this candidate's brief.",
+    );
+    expect(prompt).toContain(
+      "Check response, which a carried probe moved, is no longer declared in this candidate's brief.",
+    );
+  });
+
+  it("says nothing of a named check the brief under review still declares", async () => {
+    const { prompt } = await reviewed(
+      candidateTree(),
+      "authoring-5",
+      carriedNaming("answer", "answer"),
+      async () => {},
+    );
+    expect(prompt).toContain(": moved answer.");
+    expect(prompt).not.toContain("no longer declared");
+  });
 });
+
+/** What a finished review carries when its one blocking finding named `findingCheck` and rested on
+ *  a probe that moved `probeCheck`. */
+function carriedNaming(findingCheck: string, probeCheck: string) {
+  const probe: ReviewProbeRow = {
+    ...fa03b7Rows()[0]!,
+    controlId: "accept-0",
+    path: "$.answer",
+    movedCheckIds: [probeCheck],
+    cited: true,
+  };
+  const finding = {
+    owner: "correctness-model/evaluator.ts",
+    defect: true,
+    claim: "The check reads narrower than its published rule.",
+    evidence: "e",
+    checkId: findingCheck,
+  } as const;
+  return required(
+    carriedDemonstrations({ status: "completed", probes: [probe], findings: [finding] }),
+    "carried",
+  );
+}

@@ -11,8 +11,12 @@ import {
   latestRebuildAdvicePath,
   readLatestRebuildAdvice,
 } from "../author/rebuild-advice.ts";
-import { type EpochReviewInput, carriedDemonstrations, runEpochReview } from "../review/epoch-reviewer.ts";
-import type { ReviewProbeRow } from "../review/review-probe.ts";
+import {
+  type EpochReviewInput,
+  NOTHING_CARRIED,
+  carriedDemonstrations,
+  runEpochReview,
+} from "../review/epoch-reviewer.ts";
 import { publicEpochReview } from "../review/epoch-review-public.ts";
 import type {
   AdmissionLineage,
@@ -286,13 +290,13 @@ export function recordAuthoringDisputes(
  *  measured reviews with a null condition; only the public projection of its findings returns to
  *  the Builder.
  *
- *  One reviewer serves one round, and the probes each review rested its findings on are handed to
- *  the next review of that round. They are carried here rather than by `AuthoringReviews`, which
- *  is the Builder's side of the join: a probe row holds a counterexample value and the checks it
- *  moved, so it stays on the reviewer's side. */
+ *  One reviewer serves one round, and the probes each review rested its findings on, with the
+ *  checks its findings named, are handed to the next review of that round. They are carried here
+ *  rather than by `AuthoringReviews`, which is the Builder's side of the join: a probe row holds a
+ *  counterexample value and the checks it moved, so it stays on the reviewer's side. */
 function authoringReviewer(binding: AuthoringReviewBinding): ReviewAuthoring {
   const { repoRoot, slug, review, publicRequest, observer, providerBudget } = binding;
-  let demonstrations: readonly ReviewProbeRow[] = [];
+  let demonstrations = NOTHING_CARRIED;
   return async (root, trigger, roundPlan, rehearsals) => {
     const runId = `authoring-${Bun.randomUUIDv7()}`;
     const advice = readLatestRebuildAdvice(repoRoot, slug);

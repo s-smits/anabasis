@@ -202,7 +202,7 @@ Calibration:
 Review loop:
 
 12. **Epoch Reviewer standing duties.** Did each standing duty in the reviewer prompt fire, the
-    publication ceiling among them; reviews mislabelled incomplete.
+    publication boundary among them; reviews mislabelled incomplete.
 13. **Public-safe feedback sufficiency.** What the model-visible projection kept: the fixed
     `publicAct` wording against the concrete defect.
 14. **Finding routing and recurrence.** Finding → admission → owner; advisory findings recurring

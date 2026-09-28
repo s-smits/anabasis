@@ -54,7 +54,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
   test("its prompt states each duty once, keeps retired phrasings out and spells the host's bounds", async () => {
     for (const duty of [
       "held to advice",
-      "publication ceiling",
+      "publication boundary",
       "Read source is not executed source",
       "A finding reaches its owner through its identities",
       "Your closing message is recorded",
@@ -82,6 +82,30 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
       if ((await call(tool, hardness)).includes("records at most")) break;
     }
     expect(EPOCH_REVIEW_PROMPT).toContain(`one of your ${NUMBER_WORDS[state.findings.length]} slots`);
+  });
+
+  // The publication paragraph once required a decision a passing answer needs to stay private,
+  // which only a check-enforced private rule meets, and reviewers then recommended hiding enforced
+  // formulas. It now publishes every enforced rule and asks for a recipe before calling one trivial.
+  test("its publication paragraph asks for no check-enforced private decision", () => {
+    for (const retired of [
+      "at least one decision a passing answer needs stays out",
+      "withholds nothing",
+      "Say which decision you would have kept private",
+      "naming the decision you would withhold",
+    ]) {
+      expect(EPOCH_REVIEW_PROMPT).not.toContain(retired);
+    }
+    expect(EPOCH_REVIEW_PROMPT).toContain(
+      "It must state the whole acceptance relation — every rule, constant, precedence and tolerance a declared check enforces",
+    );
+    expect(EPOCH_REVIEW_PROMPT).toContain("Claim it leaves none only by writing the recipe out");
+    expect(EPOCH_REVIEW_PROMPT).toContain(
+      "A unique passing answer or an explicit formula is not that demonstration",
+    );
+    expect(EPOCH_REVIEW_PROMPT).toContain(
+      "Never recommend hiding an enforced mapping, tolerance or precedence rule",
+    );
   });
 
   test("a defect must name a bundle file as its owner, and the owner field lists every one", async () => {

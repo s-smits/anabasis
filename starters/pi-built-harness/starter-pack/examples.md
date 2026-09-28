@@ -100,6 +100,27 @@ demand the solver has to search for moves more than a smaller number.
 met by 3 of 6 blind solves is a task the battery can measure, not one to discard. A trial can take
 an hour and can come back `not-run`, so it is a sample you may buy, not a step you owe.
 
+## What makes a demand hard
+
+A demand is hard when meeting it takes a decision the solver has to search for, a check observes it
+by running the work rather than reading it, and a near miss fails it. Three fields, none of them a
+plan:
+
+- **Compiler optimisation.** The rewritten function agrees with the original on every input its
+  signature admits and costs less than a published bound. It is observed by running both over
+  generated inputs, and by an equivalence checker where the field has one. The near miss agrees on
+  every sample input and differs on overflow.
+- **Schema migration.** Every row survives the migration with its invariants, under the write load
+  the task publishes. It is observed by running the migration over generated datasets and checking
+  the invariants afterwards. The near miss is right on the sample data and drops the rows whose
+  join key is null.
+- **Analogue filter design.** The response stays inside a published mask at every
+  component-tolerance corner. It is observed by a circuit simulator run at each corner. The near
+  miss meets the mask at nominal values and leaves it at one corner.
+
+Each pairs a demand with an instrument that sees it and a reject beside a correct answer. A task no
+check can tell apart from an easier one is a longer description, not a harder demand.
+
 ## The worked domain
 
 One rostering domain runs through the brief, tasks, controls, evaluator and reference below.

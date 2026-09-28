@@ -293,9 +293,10 @@ with a rehearsal that `passedInOneTurn`.
 
 The question is whether the brief and the tools publish a sufficient construction algorithm, so
 that a careful reader transcribes the answer rather than searching for it. The shape is a
-publication ceiling breached: a brief publishing an exact formula for every function and a stated
-argmax for every choice, a tool payload naming the admissible values per role, an operating guide
-listing the calls the answer must make, the tasks differing only in the numbers carried through.
+construction recipe published: a stated argmax for every choice, a tool payload naming the
+admissible values per role, an operating guide listing the calls the answer must make, the tasks
+differing only in the numbers carried through. An exact formula for a rule a check enforces is not
+that shape, because the rule has to be public and satisfying it can still take real work.
 The public validity relation — requirements, constraints, precedence, closed value sets, constants,
 authorities and declared runtime facts — must stay public; what is withheld is the search order,
 allocation recipe, fallback chain, derivation and hidden tie-break, across everything the solver
@@ -369,9 +370,11 @@ over-published surface.
 
 The question is whether each standing duty in the reviewer prompt fired before a new duty is
 proposed. The prompt in `src/review/epoch-review-prompt.ts` asks the reviewer to read the
-publication ceiling every time and to record which decision it would have kept private, and to run
-at most eight `probe_check` executions, so a review that found the battery over the aim and named
-no over-published surface either declined that duty or found it met, and its `report` says which.
+publication boundary every time — the public projection states every rule a check enforces and
+carries no construction recipe, and a claim that it leaves the solver nothing to do is made only by
+writing that recipe out — and to run at most eight `probe_check` executions, so a review that found
+the battery over the aim and named no over-published surface either declined that duty or found it
+met, and its `report` says which.
 Then read the reviews the controller labelled: an authoring review taken before the first task
 write reads the seed's empty `tasks.json`, `publicTaskRows` throws through `capturedBattery`
 (`src/run/experiment-freeze.ts`), and `src/review/epoch-reviewer.ts` records the file under

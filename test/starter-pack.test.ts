@@ -181,13 +181,13 @@ describe("pi starter pack brief vocabulary", () => {
   });
 
   // A host double of the board headers failed equivalent sketches, relabelled answers passed loss
-  // ids a check never bound to geometry, and rejects differing at several leaves proved no check:
+  // ids a check never bound to geometry, and rejects differing in several facts proved no check:
   // each makes a placement measure the evaluator rather than the solver.
   it.concurrent("contract.md names what observes each obligation and calibrates checks both ways", () => {
     const text = STARTER_DOC.replace(/\s+/g, " ");
     expect(text).toContain('or "not established" where nothing does');
     expect(text).toContain("so an answer that relabels its members or cases cannot pass on the labels");
-    expect(text).toContain("A reject that differs from its accept at several leaves proves nothing");
+    expect(text).toContain("A reject that differs from its accept in several facts proves nothing");
     expect(text).toContain("Calibrate every check in both directions.");
     expect(text).toContain("fixed a display's width at 128, left out `constrain`");
   });
@@ -202,6 +202,29 @@ describe("pi starter pack brief vocabulary", () => {
     expect(text).toContain(
       "`harness_trial` estimates how reliably the solver meets a task; it does not veto one.",
     );
+  });
+
+  // Told to make a battery harder, a Builder lengthened lists and tightened numbers its checks
+  // already read; the examples pair each demand with what observes it and a reject beside it.
+  it.concurrent("examples.md shows a hard demand as a demand, an instrument and a near miss", () => {
+    const text = STARTER_DOC.replace(/\s+/g, " ");
+    expect(text).toContain("## What makes a demand hard");
+    expect(text).toContain(
+      "Each pairs a demand with an instrument that sees it and a reject beside a correct answer.",
+    );
+    for (const field of ["Compiler optimisation", "Schema migration", "Analogue filter design"]) {
+      expect(text).toContain(`**${field}.**`);
+    }
+  });
+
+  // Asking that a decision a passing answer needs stay private asks for an enforced private rule,
+  // which the sentence before it forbids; the recipe stays private and the rule never does.
+  it.concurrent("contract.md publishes every enforced rule and keeps only the construction private", () => {
+    const text = STARTER_DOC.replace(/\s+/g, " ");
+    expect(text).not.toContain("stays out of the public projection");
+    expect(text).not.toContain("withholds nothing");
+    expect(text).toContain("every rule, constant, precedence and tolerance a check enforces is public");
+    expect(text).toContain("never a rule a check enforces taken out of the projection");
   });
 
   it.concurrent("contract.md tells the guide to name programs the solver's shell can run", () => {

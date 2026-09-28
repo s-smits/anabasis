@@ -75,7 +75,7 @@ function publicAct(finding: AnalysisFinding, deferred: boolean): string {
     );
   }
   if (finding.owner === BRIEF_FILE) {
-    return "decide the public rule this concerns in the brief: publish the decision a solver needs to meet the requirement, or withhold one that hands it the construction";
+    return "decide the public rule this concerns in the brief: publish every rule a check enforces, or withhold a construction recipe that hands the solver the answer";
   }
   return "inspect and repair that contract";
 }

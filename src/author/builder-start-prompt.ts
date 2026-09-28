@@ -70,10 +70,12 @@ export const PUBLICATION_CLAUSE = [
  *  answers harnesses that graded a self-reported design record against their own arithmetic, and
  *  program behaviour through a call trace into a host stand-in the Builder wrote; the install duty
  *  answers one that repeated a rendered "not found" back as its reason for a stand-in, and one that
- *  then compiled against a header it had written itself; the last sentence answers one that pasted
- *  the agent's own analysis into the evaluator. */
+ *  then compiled against a header it had written itself; the omission sentence answers briefs that
+ *  left a family out for want of an instrument while a tool already installed recorded what that
+ *  family turns on; the last sentence answers one that pasted the agent's own analysis into the
+ *  evaluator. */
 export const VERIFICATION_CLAUSE = [
-  "Every advertised capability maps to a check that can fail on real tasks; declare a capability no route can check as an explicit omission in the brief. Decide what the delivered work does by building, running or recomputing it on the supplied inputs, and accept every implementation the brief permits: a check that reads the answer's own report, recognises how its source is written or replays its calls into a stand-in you wrote grades your model of the work, not the work. Agreement among check, reference solve and controls is circular when they share an omission.",
+  "Every advertised capability maps to a check that can fail on real tasks. Declare a capability an explicit omission in the brief only when no route you have, can install or can write observes it, and name what you tried: an installed tool that already records what the capability turns on is a route once you write the adapter or model that reads it. Decide what the delivered work does by building, running or recomputing it on the supplied inputs, and accept every implementation the brief permits: a check that reads the answer's own report, recognises how its source is written or replays its calls into a stand-in you wrote grades your model of the work, not the work. Agreement among check, reference solve and controls is circular when they share an omission.",
   "Acquire the tool before writing around it. The domain's practitioners already have established open-source tooling with a published interface: find it from public sources and install it; Bash has network access. A tool you have not searched for and tried to install is not an unavailable tool.",
   "A stand-in for the target is the last route and proves conformance to the stand-in alone: name it and what you tried in the brief, and do not describe its result as compiling, building or simulating for that target. Never replace a failing verifier tool with the agent's own analysis.",
 ] as const;

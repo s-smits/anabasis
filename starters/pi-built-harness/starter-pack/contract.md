@@ -38,13 +38,15 @@ it enforces as `citedDecisionIds` (an undeclared id, or only private ones, is re
 - `hidden: "required"` demands exactly one `{checkId, expectation}` row on every applicable task;
   `"none"` forbids one. Applicability never depends on that row, and a missing required row
   refuses evaluation.
-- Publish each rule in a public `ruleDecisions` row, optionally scoped by `families`. A private
-  row may describe search choices, never an unpublished validity rule. Private rows
-  are also a ceiling: at least one decision a passing answer needs stays out of the public
-  projection — the rule rows, the constants, the schema, the operating guide and your tool text
-  together. A private row no check reads, such as the order your own reference happened to search
-  in, withholds nothing, and a battery whose projection spells out how to build a passing answer
-  measures transcription.
+- Publish each rule in a public `ruleDecisions` row, optionally scoped by `families`: every rule,
+  constant, precedence and tolerance a check enforces is public. A private row may describe search
+  choices, never an unpublished validity rule. What stays private is how an answer is built: the
+  reference answers and a task-specific recipe, such as a search order, an allocation rule, a
+  fallback chain or a derivation. Then read the public projection whole — the rule rows, the
+  constants, the schema, the operating guide and your tool text together. Where it spells out how
+  to build a passing answer, the battery measures transcription, and the repair is a task that
+  leaves the solver something to compute, search or coordinate, never a rule a check enforces
+  taken out of the projection.
 - A check owning a join lists its `joinIds`.
 - Read every value your rule names from the task, at the moment the check runs. A constant written
   into checker source for a value the brief publishes as an input is a defect even when every
@@ -200,7 +202,7 @@ deliberately incorrect rows, each meaningfully different. Every row has `id`, `t
 expectations by check id. Accepts pass under their task's own hidden rows. Build each reject from
 the same task's accept with one fact changed so that its expected check fails, choosing the
 mutations a careless or dishonest solver would produce in this field. A reject that differs from
-its accept at several leaves proves nothing about the check it names, since any of them could be
+its accept in several facts proves nothing about the check it names, since any of them could be
 what failed. Give every check at least one such reject, so that each check is seen to say no, and
 every limit or clause a check enforces its own reject crossing it: a check holding a cap and a
 clearance, whose rejects all break only how the answer reports a value, has never been seen to

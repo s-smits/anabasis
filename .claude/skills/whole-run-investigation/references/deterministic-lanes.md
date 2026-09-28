@@ -160,8 +160,10 @@ ledger is not.
 ## Tiers
 
 `brief.ts` decides the tier from the run's shape and bounds the semantic lanes it may launch, by
-trigger first and by the default set only where no trigger picks: probe, which is a run not scored
-or under two hours, launches four lanes, by default 5, 8, 12 and 25; standard launches eight, the
-probe set plus 1, 9, 14 and 24; deep, which is twelve hours, three epochs or three batteries,
-launches fourteen, the standard set plus 2, 6, 10, 11, 13 and 22. Thirty is the ceiling. Lanes 7,
-23 and 30 sit outside every tier and are launched alone, only when their own trigger fired.
+trigger first and by the default set only where no trigger picks, with the tier's standing lanes
+(`STANDING_LANES`) joining every sweep: probe, which is a run not scored or under two hours,
+launches six lanes, by default 5, 8, 12 and 25 with 31 and 34 standing; standard launches twelve,
+the probe set plus 1, 9, 14 and 24 with 31, 33, 34 and 37 standing; deep, which is twelve hours,
+three epochs or three batteries, launches nineteen, the standard set plus 2, 6, 10, 11, 13 and 22
+with 31, 32, 33, 34 and 37 standing. Thirty-eight is the ceiling. Lanes 7, 23 and 30 sit outside
+every tier and are launched alone, only when their own trigger fired.

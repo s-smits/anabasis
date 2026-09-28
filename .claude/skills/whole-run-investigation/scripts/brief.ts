@@ -121,9 +121,6 @@ export const CAMPAIGN_LANES = [
   "target",
 ];
 
-/** How many semantic lanes each tier starts with, out of the 30 the catalogue declares. */
-export const SEMANTIC_LANES = { probe: 4, standard: 8, deep: 14 };
-
 /** The lanes a tier launches when no digest trigger picks any. Each tier keeps the set below it
  *  and adds to it, so a deeper read never drops a question a shallower one would have asked. */
 const PROBE_DEFAULT = [5, 8, 12, 25];
@@ -134,25 +131,43 @@ export const DEFAULT_LANES = {
   deep: [...STANDARD_DEFAULT, 2, 6, 10, 11, 13, 22],
 };
 
+/** The lanes every read of a tier opens, triggered or not, because the battery is the Builder's own
+ *  exam whatever the digest says: whether it asks what the request asks, and what the Builder's
+ *  reference and tools prove. No trigger can fire for a question every run leaves open. */
+export const STANDING_LANES = {
+  probe: [31, 34],
+  standard: [31, 33, 34, 37],
+  deep: [31, 32, 33, 34, 37],
+};
+
+/** How many semantic lanes each tier starts with, out of the lanes the catalogue declares: the
+ *  default set and the standing lanes together. */
+export const SEMANTIC_LANES = {
+  probe: DEFAULT_LANES.probe.length + STANDING_LANES.probe.length,
+  standard: DEFAULT_LANES.standard.length + STANDING_LANES.standard.length,
+  deep: DEFAULT_LANES.deep.length + STANDING_LANES.deep.length,
+};
+
 /**
  * The semantic lanes each digest trigger starts, by the trigger's exact text before the first
  * colon. A trigger row the digest prints with a qualifier after that text still matches, because
- * the match is on the leading text. A trigger absent here is a lead with no lane of its own. Every
- * suffixed trigger names its own lanes; the one unsuffixed trigger argues for two.
+ * the match is on the leading text. A trigger absent here is a lead with no lane of its own. A
+ * suffixed trigger starts the lane its suffix names first, and may start a lane the catalogue added
+ * after the suffix was written; an unsuffixed trigger names its lanes here alone.
  */
 export const LANE_FOR_TRIGGER = new Map([
   ["VERSION TOOLCHAIN IS A SYMLINK (lane 2)", [2]],
-  ["VERSION TOOLCHAIN DANGLING (lane 2)", [2]],
+  ["VERSION TOOLCHAIN DANGLING (lane 2)", [2, 35]],
   ["WRAPPER-ONLY TOOL DIGEST (lane 2)", [2]],
   ["UNTRIPPED IN SHIPPING", [5, 6]],
-  ["PERFECT BATTERY OVER AIM (lane 5)", [5]],
+  ["PERFECT BATTERY OVER AIM (lane 5)", [5, 35]],
   ["REACH-ONLY CHECKS (lane 6)", [6]],
   ["REHEARSAL NOT-RUN (lane 9)", [9]],
-  ["OFF-AIM STREAK (lane 10)", [10]],
+  ["OFF-AIM STREAK (lane 10)", [10, 36]],
   ["SUBMITTED BYTES NEVER REHEARSED (lane 11)", [11]],
   ["FINDINGS WITHOUT OWNER (lane 14)", [14]],
   ["ADVISORY FINDING RECURS UNROUTED (lane 14)", [14]],
-  ["CENSUS WITH DISAGREEMENT (lane 16)", [16]],
+  ["CENSUS WITH DISAGREEMENT (lane 16)", [16, 32]],
   ["REPEATED CONDITION (lane 20)", [20]],
   ["UNREACHED CHANGED SAFEGUARDS (lane 21)", [21]],
   ["MODEL-VISIBLE SURFACE CHANGED (lane 21)", [21]],
@@ -168,6 +183,7 @@ export const LANE_FOR_TRIGGER = new Map([
   ["REVIEW HOLD CHAIN (lane 27)", [27]],
   ["CEILING ENDED RUN (lane 27)", [27]],
   ["EVALUATION CORRECTION REPLAY CANDIDATE (lane 28)", [28]],
+  ["FAMILY UNMOVED all-fail", [38]],
   [HARDWARE_TRIGGER, [29, 30]],
 ]);
 
@@ -303,16 +319,19 @@ export function renderScope(scope: RunScope): string {
 }
 
 /** The semantic lanes the grouped triggers start, each with the triggers that argue for it, in
- *  lane order, and the `launch --sessions` spec that names them. When no trigger starts a lane the
- *  spec names the tier's default set instead, and `defaulted` says so. */
+ *  lane order, and the `launch --sessions` spec that names them. The tier's standing lanes join
+ *  every spec as `standing (<tier>)`. When no trigger starts a lane the spec also names the tier's
+ *  default set, and `defaulted` says so. */
 export function laneSuggestions(triggers: readonly DigestTrigger[], tier: Tier): LaneSuggestions {
   const byLane = new Map<number, string[]>();
   for (const row of triggers) {
     for (const lane of lanesForTrigger(row.name)) byLane.set(lane, [...(byLane.get(lane) ?? []), row.name]);
   }
+  const defaulted = byLane.size === 0;
+  const standing = `standing (${tier})`;
+  for (const lane of STANDING_LANES[tier]) byLane.set(lane, [...(byLane.get(lane) ?? []), standing]);
   const lanes = [...byLane.keys()].sort((a, b) => a - b);
-  const defaulted = lanes.length === 0;
-  const sessions = defaulted ? [...DEFAULT_LANES[tier]].sort((a, b) => a - b) : lanes;
+  const sessions = defaulted ? [...new Set([...DEFAULT_LANES[tier], ...lanes])].sort((a, b) => a - b) : lanes;
   return {
     // Every lane listed is a key of the map, so the fallback never applies.
     lanes: lanes.map((lane) => ({ lane, triggers: byLane.get(lane) ?? [] })),
@@ -357,7 +376,9 @@ function pressing(reviewDir: string, tier: Tier, steps: readonly BriefStep[]): s
       "== lanes the triggers start",
       ...suggested.lanes.map((row) => `  lane ${row.lane}: ${row.triggers.join("; ")}`),
       ...(suggested.defaulted
-        ? [`  no trigger starts a lane; the ${tier} default set is ${suggested.sessions}`]
+        ? [
+            `  no trigger starts a lane; the ${tier} default set with its standing lanes is ${suggested.sessions}`,
+          ]
         : []),
       `  launch --sessions ${suggested.sessions}`,
     ].join("\n"),

@@ -472,16 +472,18 @@ export function velocityOf(
  *  Both task-side rows come from the authored bytes under `versions/`, so the newest edge is
  *  readable the moment a candidate is adopted and before its first solve is paid for: a round
  *  that reads `widened` or `adjusted` here and then spends hours of solves to confirm a perfect
- *  battery had that verdict in the adopted bytes before the first solve started. */
+ *  battery had that verdict in the adopted bytes before the first solve started. The verdict reads
+ *  the check tiers alone, so the sentence says what moved and forecasts no outcome: new tasks and
+ *  scenarios can ask more at an unchanged tier, and a higher tier can ask nothing new. */
 function latestEdgeLine(report: ClimbReport): string {
   const edge = report.edges.at(-1);
   if (edge === undefined) return "  latest edge: none, because an edge needs two batteries";
   const reading =
     edge.verdict === "escalated"
-      ? "the checks reached a higher tier, so this battery can find a limit the last one missed"
+      ? "the checks reached a higher tier; the tier says what the checks read, not whether the tasks ask more"
       : edge.verdict === "eased"
-        ? "the checks fell down the tier order, so this battery asks for less than the last one"
-        : "the checks held their tier, so this battery asks the solver for nothing the last one did not";
+        ? "the checks fell down the tier order; new tasks or scenarios may still ask more"
+        : "the checks held their tier; new tasks or scenarios may still ask more, so read the task rows";
   return `  latest edge: ${edge.from} -> ${edge.to} ${edge.verdict} — ${reading}`;
 }
 

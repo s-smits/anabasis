@@ -222,9 +222,9 @@ Each edge between consecutive batteries gets one verdict:
 ### 5c. Calibration: did the Builder know how hard its exam was?
 
 - **The plan's score.** `EXPERIMENT.json` states, each field optional, the families a round
-  changes and the verified passes it expects, and the run end records one score line per battery
-  (`runEnd.climb.batteries[].plan`). Better is a range the battery met and named families that
-  match the families changed. A run whose source predates this plan declares neither, so a pair
+  changes, and the run end records one score line per battery (`runEnd.climb.batteries[].plan`).
+  Better is named families that match the families changed. A run whose source predates the cut of
+  the plan's pass range recorded one as well, and nothing scores it now. A run whose source predates this plan declares neither, so a pair
   spanning the change reads them as absent on that side, not as missed.
 - **Rehearsals.** Read the `harness_trial` calls in `epoch-*/builder-execution.json`: each carries
   its task, its verdict and the `candidateId` it solved. The question is whether a rehearsal pass

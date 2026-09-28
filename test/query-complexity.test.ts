@@ -391,13 +391,13 @@ describe("climb velocity", () => {
       });
 
     expect(render(report("escalated"))).toContain(
-      "latest edge: i03 -> i04 escalated — the checks reached a higher tier, so this battery can find a limit the last one missed",
+      "latest edge: i03 -> i04 escalated — the checks reached a higher tier; the tier says what the checks read, not whether the tasks ask more",
     );
     expect(render(report("widened"))).toContain(
-      "widened — the checks held their tier, so this battery asks the solver for nothing the last one did not",
+      "widened — the checks held their tier; new tasks or scenarios may still ask more, so read the task rows",
     );
     expect(render(report("eased"))).toContain(
-      "eased — the checks fell down the tier order, so this battery asks for less than the last one",
+      "eased — the checks fell down the tier order; new tasks or scenarios may still ask more",
     );
     expect(render({ ...report("escalated"), edges: [] })).toContain(
       "latest edge: none, because an edge needs two batteries",

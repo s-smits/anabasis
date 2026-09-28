@@ -422,8 +422,11 @@ four hours of solves to confirm a 6 of 6 that settled nothing. Novelty across th
 0.0000, 0.0038, 0.0884: the round that changed what the solver must reason about is an order of
 magnitude away from the two that did not, and it is legible before a single case runs.
 
-Every verdict but `escalated` says this battery asks the solver for nothing the last one did not.
-That is a reading, not a stop order: the product owns its own round, and a round already in flight
+The verdict reads check tiers, and a tier is not a forecast. On 2026-09-28 one firmware run's
+edge read `escalated` with every structural count unchanged and then passed 6 of 6, and its next
+edge read `widened` with novelty 0.27 and two new families and scored 2 of 6. So read the task rows
+beside the verdict: new tasks and scenarios can ask more at an unchanged tier. It is a reading, not
+a stop order: the product owns its own round, and a round already in flight
 finishes and records. It is the moment to write the next experiment rather than to wait four hours
 for a score that cannot surprise you.
 

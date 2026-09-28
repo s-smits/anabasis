@@ -121,8 +121,8 @@ const laneNames = (from: number, to: number): string[] =>
   Array.from({ length: to - from + 1 }, (_, index) => laneName(from + index));
 const allLanes = (): number[] => Array.from({ length: ANGLE_COUNT }, (_, index) => index + 1);
 /** The session names a full sweep produces when every isolated lane fired: each isolated lane
- *  alone, and the open lanes between them in contiguous groups. The ground-truth lane closes the
- *  catalogue, so nothing follows it. */
+ *  alone, and the open lanes between them in contiguous groups, the lanes after the ground-truth
+ *  lane in one group of their own. */
 const FULL_SWEEP = [
   `lanes_01_${pad(PUBLIC_ONLY_LANE - 1)}`,
   laneName(PUBLIC_ONLY_LANE),
@@ -130,6 +130,7 @@ const FULL_SWEEP = [
   laneName(TRACE_CHALLENGE_LANE),
   `lanes_${pad(TRACE_CHALLENGE_LANE + 1)}_${pad(GROUND_TRUTH_LANE - 1)}`,
   laneName(GROUND_TRUTH_LANE),
+  ...(ANGLE_COUNT > GROUND_TRUTH_LANE ? [`lanes_${pad(GROUND_TRUTH_LANE + 1)}_${pad(ANGLE_COUNT)}`] : []),
 ];
 
 afterEach(cleanupScratch);

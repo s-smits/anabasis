@@ -117,7 +117,7 @@ describe("how big is this run", () => {
       tierOf({ hours: 6, epochs: 1, batteries: 1, scored: true }),
       tierOf({ hours: 20, epochs: 4, batteries: 5, scored: true }),
     ].map((row) => row.semanticLanes);
-    expect(counts).toEqual([4, 8, 14]);
+    expect(counts).toEqual([6, 12, 19]);
   });
 
   it("counts a live run's elapsed hours to now and its batteries by their own run ids", () => {
@@ -243,7 +243,7 @@ describe("what the read said", () => {
     expect(brief).toContain(`${RUN}  [standard]`);
     expect(brief).toContain("1 verified, 0 unaccepted, 0 non-result");
     expect(brief).toContain("terminal: completed — completed");
-    expect(brief).toContain("about 8 semantic lanes");
+    expect(brief).toContain("about 12 semantic lanes");
   });
 
   it("says outright when the deterministic lanes flagged nothing, rather than leaving the section empty", () => {
@@ -273,9 +273,12 @@ describe("what the read said", () => {
     const brief = renderBrief(reviewDir);
     expect(brief).toContain("digest FAMILY UNMOVED all-pass x3: FAMILY UNMOVED all-pass: alpha 5/5");
     expect(brief).toContain("scan repeated-condition x2");
-    // A family row names no lane in the catalogue, so the standard tier's default set is named.
-    expect(brief).toContain("no trigger starts a lane; the standard default set is 1,5,8,9,12,14,24,25");
-    expect(brief).toContain("launch --sessions 1,5,8,9,12,14,24,25");
+    // An all-pass family row names no lane in the catalogue, so the standard tier's default set is
+    // named, with the standing lanes every standard read opens.
+    expect(brief).toContain(
+      "no trigger starts a lane; the standard default set with its standing lanes is 1,5,8,9,12,14,24,25,31,33,34,37",
+    );
+    expect(brief).toContain("launch --sessions 1,5,8,9,12,14,24,25,31,33,34,37");
   });
 
   it("carries an in-process lane's triggers into the brief and the lanes they start", () => {
@@ -296,7 +299,7 @@ describe("what the read said", () => {
     const brief = renderBrief(reviewDir);
     expect(brief).toContain("digest GATE STALL (lane 27) x1: tool-timeout at epoch-a session 1");
     expect(brief).toContain("lane 28: EVALUATION CORRECTION REPLAY CANDIDATE (lane 28)");
-    expect(brief).toContain("launch --sessions 27,28");
+    expect(brief).toContain("launch --sessions 27,28,31,33,34,37");
     // A triggers file beside a lane the read did not run contributes nothing.
     const unrun = reviewWith([], {});
     writeFileSync(
@@ -314,7 +317,9 @@ describe("what the read said", () => {
   });
 
   it("maps each digest trigger to the lanes the catalogue starts from it, and names the launch spec", () => {
-    expect(lanesForTrigger("OFF-AIM STREAK (lane 10)")).toEqual([10]);
+    // A suffixed trigger starts its own lane first, then the lane the catalogue added beside it.
+    expect(lanesForTrigger("OFF-AIM STREAK (lane 10)")).toEqual([10, 36]);
+    expect(lanesForTrigger("CENSUS WITH DISAGREEMENT (lane 16)")).toEqual([16, 32]);
     // The plan declares no target, so no target trigger maps anywhere.
     expect(lanesForTrigger("TARGET MISSED (lane 10)")).toEqual([]);
     expect(lanesForTrigger("REPEATED CONDITION (lane 20)")).toEqual([20]);
@@ -324,12 +329,13 @@ describe("what the read said", () => {
     // The hardware trigger starts the coverage lane and the isolated ground-truth lane together.
     expect(lanesForTrigger(HARDWARE_TRIGGER)).toEqual([29, 30]);
     expect(lanesForTrigger("FAMILY UNMOVED all-pass")).toEqual([]);
+    expect(lanesForTrigger("FAMILY UNMOVED all-fail")).toEqual([38]);
     // A trigger that merely begins with a known name is not that trigger.
     expect(lanesForTrigger("UNTRIPPED IN SHIPPINGS")).toEqual([]);
-    // Every suffixed key names the lane its own suffix says.
+    // Every suffixed key starts the lane its own suffix says first.
     for (const [trigger, lanes] of LANE_FOR_TRIGGER) {
       const suffix = /\(lane (\d+)\)$/.exec(trigger);
-      if (suffix !== null) expect(lanes).toEqual([Number(suffix[1])]);
+      if (suffix !== null) expect(lanes[0]).toBe(Number(suffix[1]));
     }
     const suggested = laneSuggestions(
       [
@@ -346,13 +352,24 @@ describe("what the read said", () => {
         { lane: 6, triggers: ["UNTRIPPED IN SHIPPING"] },
         { lane: 10, triggers: ["OFF-AIM STREAK (lane 10)"] },
         { lane: 24, triggers: ["EXPLICIT ALLOWANCE WAIT (lane 24)"] },
+        { lane: 31, triggers: ["standing (probe)"] },
+        { lane: 34, triggers: ["standing (probe)"] },
+        { lane: 36, triggers: ["OFF-AIM STREAK (lane 10)"] },
       ],
       defaulted: false,
-      sessions: "5,6,10,24",
+      sessions: "5,6,10,24,31,34,36",
     });
-    // With no trigger picking, each tier's default set is named, and each tier keeps the one below.
-    expect(laneSuggestions([], "probe")).toEqual({ lanes: [], defaulted: true, sessions: "5,8,12,25" });
-    expect(laneSuggestions([], "deep").sessions).toBe("1,2,5,6,8,9,10,11,12,13,14,22,24,25");
+    // With no trigger picking, each tier's default set is named beside its standing lanes, and each
+    // tier keeps the one below.
+    expect(laneSuggestions([], "probe")).toEqual({
+      lanes: [
+        { lane: 31, triggers: ["standing (probe)"] },
+        { lane: 34, triggers: ["standing (probe)"] },
+      ],
+      defaulted: true,
+      sessions: "5,8,12,25,31,34",
+    });
+    expect(laneSuggestions([], "deep").sessions).toBe("1,2,5,6,8,9,10,11,12,13,14,22,24,25,31,32,33,34,37");
     expect(DEFAULT_LANES.standard).toEqual(expect.arrayContaining(DEFAULT_LANES.probe));
     expect(DEFAULT_LANES.deep).toEqual(expect.arrayContaining(DEFAULT_LANES.standard));
     expect(DEFAULT_LANES.deep).toHaveLength(14);
@@ -373,7 +390,17 @@ describe("what the read said", () => {
     );
     const brief = renderBrief(reviewDir);
     expect(brief).toContain(
-      "== lanes the triggers start\n  lane 10: OFF-AIM STREAK (lane 10)\n  lane 24: EXPLICIT ALLOWANCE WAIT (lane 24)\n  launch --sessions 10,24",
+      [
+        "== lanes the triggers start",
+        "  lane 10: OFF-AIM STREAK (lane 10)",
+        "  lane 24: EXPLICIT ALLOWANCE WAIT (lane 24)",
+        "  lane 31: standing (standard)",
+        "  lane 33: standing (standard)",
+        "  lane 34: standing (standard)",
+        "  lane 36: OFF-AIM STREAK (lane 10)",
+        "  lane 37: standing (standard)",
+        "  launch --sessions 10,24,31,33,34,36,37",
+      ].join("\n"),
     );
   });
 });

@@ -25,7 +25,7 @@
 // their own, which print one lane's view, its JSON under `--json`, and record the JSON at `--out`.
 // `review` reads every lane, prints the brief and then launches the semantic lanes the run's tier
 // names; the ordinary path is `read`, then `launch --sessions` with the lanes the brief argues for,
-// each a number from the 30-lane catalogue. `brief` re-renders that digest from a finished review
+// each a number from the catalogue. `brief` re-renders that digest from a finished review
 // directory. Use `collect` and `launch` separately only to edit `shared-instructions.json` between
 // them. `finish` validates the lane reports, Luna and native alike, scaffolds the archive from
 // recorded bytes and `verdicts.json`, then runs the archive validator; the investigation itself ends

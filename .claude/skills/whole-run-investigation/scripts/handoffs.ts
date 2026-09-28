@@ -35,6 +35,8 @@ import {
   issueStatusWord,
 } from "#src/author/rebuild-advice.ts";
 import { ownerSide } from "#src/author/feedback-routing.ts";
+import { PATH_RECORD_FILE } from "#src/builder/path-record.ts";
+import { PUBLIC_TASK_FILE } from "#src/correctness-bundle/recorded-solve.ts";
 import { jsonText, readJsonAsOrNull } from "./run-overview.ts";
 
 export const HANDOFFS_SCHEMA = "wri-handoffs/v1";
@@ -596,7 +598,7 @@ function roundsOf(campaign: string, runId: string | null, batteries: readonly Cl
       dir,
       start,
       sessions,
-      paths: jsonl<PathRow>(join(dir, "builder-path-record.jsonl")).map((row) => ({
+      paths: jsonl<PathRow>(join(dir, PATH_RECORD_FILE)).map((row) => ({
         ...row,
         at: Date.parse(row.at ?? ""),
       })),
@@ -860,7 +862,7 @@ function tasksOf(campaign: string, battery: string): TaskInput[] | null {
     const cases = join(root, "runs", battery, "cases");
     if (!existsSync(cases)) continue;
     return readdirSync(cases)
-      .map((taskId) => readJsonFileOrNull(join(cases, taskId, "public-task.json")))
+      .map((taskId) => readJsonFileOrNull(join(cases, taskId, PUBLIC_TASK_FILE)))
       .flatMap((row) =>
         isRecord(row) && isRecord(row.publicTask)
           ? [

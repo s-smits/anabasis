@@ -85,7 +85,6 @@ export type ClimbFamilySummary = {
   family: string;
   attempts: number;
   passes: number;
-  wilson: [number, number];
 };
 
 /** The most any one of a battery's cases spent, over the cases that recorded a solver block:
@@ -118,8 +117,12 @@ type CaseRows = NonNullable<BatteryEvidence["cases"]>;
  *  `runs/<runId>/cases/<taskId>/public-task.json`; `publicTaskProjection` digest-reads them. */
 interface ClimbAuthoringRow {
   taskSetHash: string | null;
-  /** The measured agent bundle's hash, null when the record states none. */
-  agentHash: string | null;
+  /** The scoring program's hash, `brief.json` and `evaluator.ts` with every module it imports; null
+   *  when the record states none. */
+  scoringHash: string | null;
+  /** The earlier battery whose recorded solves this one graded again rather than solved, and how
+   *  many; null when every case was solved fresh. */
+  regrade: { of: string; reused: number } | null;
   /** Every recorded case's identifier, in evidence order, non-results included; null entries
    *  disclose rows without one. */
   caseIds: Array<string | null>;
@@ -208,26 +211,11 @@ export function countUnaccepted(
 }
 
 function familySummary(measured: MeasuredDifficulty): ClimbFamilySummary[] {
+  // The interval owns the question "is this a readable sample": a blank name, a zero denominator or
+  // a malformed count has none, and a row without one carries no count worth showing.
   return measured.items
-    .flatMap((item) => {
-      // The interval owns the question "is this a readable sample": a blank name, a zero
-      // denominator or a malformed count has none, and a row without an interval carries no
-      // reading worth showing.
-      const interval = item.item.trim() === "" ? null : wilsonInterval(item.passes, item.attempts);
-      return interval === null
-        ? []
-        : [
-            {
-              family: item.item,
-              attempts: item.attempts,
-              passes: item.passes,
-              wilson: [Number(interval.lower.toFixed(3)), Number(interval.upper.toFixed(3))] satisfies [
-                number,
-                number,
-              ],
-            },
-          ];
-    })
+    .filter((item) => item.item.trim() !== "" && wilsonInterval(item.passes, item.attempts) !== null)
+    .map((item) => ({ family: item.item, attempts: item.attempts, passes: item.passes }))
     .sort((a, b) => a.family.localeCompare(b.family));
 }
 
@@ -338,7 +326,13 @@ function admittedClimbRow(
     excludedReason: admitted.excluded?.reason ?? null,
     authoring: {
       taskSetHash,
-      agentHash: isString(evidence.bundleSnapshot?.agentHash) ? evidence.bundleSnapshot.agentHash : null,
+      scoringHash: isString(evidence.bundleSnapshot?.scoringHash)
+        ? evidence.bundleSnapshot.scoringHash
+        : null,
+      regrade:
+        isString(evidence.regrade?.of) && isNumber(evidence.regrade.reused) && evidence.regrade.reused > 0
+          ? { of: evidence.regrade.of, reused: evidence.regrade.reused }
+          : null,
       caseIds: (evidence.cases ?? []).map((row) => (isString(row.taskId) ? row.taskId : null)),
       familySummary: familySummary(measured),
       effort: solveEffort(evidence.cases ?? []),

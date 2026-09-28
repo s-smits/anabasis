@@ -178,12 +178,12 @@ describe("runs pulse", () => {
     ]);
   });
 
-  it("says a changed plan by its families and range, and raises no target or hold alert on passing rehearsals", () => {
-    const plan = { families: 2, expected: "2–3" };
+  it("says a changed plan by its families, and raises no target or hold alert on passing rehearsals", () => {
+    const plan = { families: 2 };
     const pass = (taskId: string) => ({ taskId, verdict: "pass", submitted: true });
     const before = reading(30);
     expect(texts(before, { ...before, round: round({ checkpointAt: at(30), plan }) })).toEqual([
-      "· r1 plan, 2 families changed, expects 2–3 passes",
+      "· r1 plan, 2 families changed",
     ]);
     const held = round({ checkpointAt: at(31), plan, rehearsals: [pass("t1"), pass("t2"), pass("t3")] });
     const passed = texts(
@@ -195,9 +195,7 @@ describe("runs pulse", () => {
       "· r1 rehearsal 2 t2: pass",
       "· r1 rehearsal 3 t3: pass",
     ]);
-    expect(statusLine(reading(31, { round: held }), 10)).toContain(
-      "plan, 2 families changed, expects 2–3 passes",
-    );
+    expect(statusLine(reading(31, { round: held }), 10)).toContain("plan, 2 families changed");
     expect(statusLine(reading(31, { round: held }), 10)).not.toMatch(/passed past|predictions expect|hold/);
   });
 
@@ -399,7 +397,7 @@ describe("pulse host reads", () => {
     expect(saveMemory(path, { freeGiB: 12, readings: { [RUN_ID]: reading(5) } })).toBeNull();
     expect(loadMemory(path, isPulseReading).readings[RUN_ID]).toEqual(reading(5));
     // A kept round holding a plan is kept too, so the next look reports what moved since.
-    const planned = reading(6, { round: round({ plan: { families: null, expected: "at least 3" } }) });
+    const planned = reading(6, { round: round({ plan: { families: null } }) });
     expect(saveMemory(path, { freeGiB: null, readings: { [RUN_ID]: planned } })).toBeNull();
     expect(loadMemory(path, isPulseReading).readings[RUN_ID]).toEqual(planned);
     writeFileSync(path, "{");

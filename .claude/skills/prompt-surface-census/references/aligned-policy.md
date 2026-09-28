@@ -11,8 +11,7 @@ thing to correct.
 
 | Number a surface may state | Owner in source | Today |
 | --- | --- | --- |
-| pass counts: first battery, aim, no-limit-found | `bandLandmarks` (`src/claim/battery-difficulty.ts`) over the band the controller passes, `climbThresholds(...).band` (`src/run/climb-history.ts`), which reads the manifest row `climb.band` and falls back to `POLICY.climb.band` (`src/critic/policy.ts`) | band [0.2, 0.5]; 25 tasks → about 3 first, 5 to 12 aim, 18 and up too easy |
-| which side of the band a battery landed | `placeOnBand` (`src/claim/battery-difficulty.ts`), Wilson at `REPORTING_Z` (`src/claim/estimation.ts`) | interval decides too easy or too hard; point count decides under, on, over |
+| which side of the band a battery landed, read by the controller and the reviewer only | `placeOnBand` (`src/claim/battery-difficulty.ts`), Wilson at `REPORTING_Z` (`src/claim/estimation.ts`), over `climbThresholds(...).band` (`src/run/climb-history.ts`), which reads the manifest row `climb.band` and falls back to `POLICY.climb.band` (`src/critic/policy.ts`) | band [0.2, 0.5]; interval decides too easy or too hard; point count decides under, on, over |
 | battery size | `POLICY.battery` (`src/critic/policy.ts`), re-exported as `BATTERY_SIZE` by `src/run/battery-sizing.ts`, which owns the decisions taken from it | floor 5, default 25, ceiling 60; probe 5 to 10 until one battery passes some but not all |
 | solver walls | `SETTINGS.solver` (`src/correctness-bundle/harness-config.ts`) | solve 120 min, 24 turns, shell 300 s, 900 s at most; `agent/config.yaml` may raise each up to ten times |
 | verifier and gate walls | `SETTINGS.gate`, read by `src/verify/host.ts`, `src/correctness-bundle/evaluator-process.ts`, `src/run/census-gate.ts` | reference solve 120 s, tool run 300 s, check with its runs 600 s, census 30 min |
@@ -25,19 +24,22 @@ thing to correct.
 | Epoch Reviewer probes | `PROBE_BUDGET`, `VALUE_MAX_CHARS` (`src/review/review-probe.ts`) | 8 probes per review, replacement values up to 4,000 characters |
 
 The model-visible difficulty surface is `renderBatteryContract` (`src/run/climb-readout.ts`). It
-derives the aim and the no-limit count for each size from the band it is passed, so a band change
-rewrites the sentences with it; it states no first-battery count. The readout beside it,
-`renderReadout`, states counts and placements alone, and no revision of its wording is recorded.
+states no count at any size: one sentence says that only a battery passing some but not all of its
+cases can locate a limit, and only where the checks that failed it are right. The readout beside
+it, `renderReadout`, states each battery's measured counts and, when the latest passed every
+verified case, that it found no limit; the placement stays with the controller and the reviewer.
 
 ## Retired spellings a census should flag as stale
 
 - `PASS_COURSE` and the staged "about 3, then 15, then 22 of 25". **No course is prescribed.** The
-  prompts state the count the band implies and leave the route to the Builder. Campaign
+  prompts state no count to author towards and leave the route to the Builder. Campaign
   `3fd52f9e-28` is why: told to relax one named requirement at a time towards a higher count, it
   ran four consecutive batteries at delta checks +0, limits +0, coupled +0, tooled +0, rules +0,
   roots +0, inputs +0, scenarios +0, novelty 0.0000, moving only published magnitudes — 194 numbers
   by 12.82 per cent, then 116 by 4.79, then 138 by 2.00.
 - "aim at 8 to 18 of 25", and `climb.band` of [0.2, 0.6].
+- Any aim or no-limit count in a Builder surface ("25 tasks: aim 5 to 12 passing, 18 or more finds
+  no limit"), `bandLandmarks`, and the plan advice reading a pass range against the aim.
 - "only its expected check" or "exactly [expectedCheckId]" — the retired exact-set reject rule.
   Blockers `[match, shadow]` with `expectedCheckId: "match"` pass.
 - One reject per check-by-family cell, which asked a 6-check, 5-family truss for 30 rejects.

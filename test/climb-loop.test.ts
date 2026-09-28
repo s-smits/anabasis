@@ -150,7 +150,6 @@ function climbScript(submits: Accepted[]): ScriptedTurn {
           gap: "the measured battery says nothing about inputs the solver has not been asked to uppercase",
           change: `lengthen ${past} of the ${TASKS} inputs past two characters`,
           families: ["uppercase"],
-          expectedPasses: { atMost: TASKS - past },
         }),
       );
     }

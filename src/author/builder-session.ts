@@ -258,7 +258,7 @@ function roundPrompt(input: BuilderSessionInput, previous: PreviousRound | null)
     // meaningless as a pace signal; left with one, a session authors for hours past its first clear
     // preview without submitting. So the pace is stated as an action instead. It names no rehearsal
     // condition: rehearsals pass far more often than a Builder predicts, so asking them to agree with
-    // an aim below the band held rounds back for hours without changing where the battery landed.
+    // a predicted count held rounds back for hours without changing where the battery landed.
     `${input.maxTurns === undefined ? "" : `Round limit: ${input.maxTurns} assistant turns. `}Build, check and rehearse the candidate, and submit` +
       ` once a clear preview says it works; the measured battery, not a rehearsal, decides where it lands, and further` +
       ` polish belongs to the next round.`,

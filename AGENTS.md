@@ -117,8 +117,8 @@ because moving it cost something.
     prerequisite; later batteries aim inside `climb.band` (below). An unbracketed boundary is reported
     unlocated, never met with manufactured failures. **No course is prescribed.** Campaign 3fd52f9e-28
     followed a prescribed three-stage course and moved only its published magnitudes for four consecutive
-    batteries, so the prompts now state the band's counts and the route is the Builder's. Useful adopted
-    work is retained.
+    batteries, so the Builder is told what was measured and never a count to author towards, and the
+    route is the Builder's. Useful adopted work is retained.
 
 ### Owners and handoffs
 
@@ -199,20 +199,22 @@ tasks rather than inflating pass rates on easy ones.
 The band is `climb.band`, `[0.20, 0.50]` on the 95% Wilson interval, whose one z is `REPORTING_Z`
 (`src/claim/estimation.ts`). `placeOnBand` (`src/claim/battery-difficulty.ts`) decides the zone in two
 steps: the interval decides `too-easy` or `too-hard`, meaning significantly so, and the point count
-decides `under-aim`, `on-aim` or `over-aim`. For 25 tasks, 5–12 verified is on the aim and 18 or more is
-significantly too easy (`aimCounts`, `bandLandmarks().tooEasyFrom`), so a 6/6 or 24/25 is a signal to
+decides `under-aim`, `on-aim` or `over-aim`. For 25 tasks, 5–12 verified is on the aim (`aimCounts`) and
+18 or more is significantly too easy on the interval, so a 6/6 or 24/25 is a signal to
 climb rather than a win. On-aim means on the calibration target, not a proved limit, and a battery too
 small to hold a whole count inside the band (`aimCounts` empty) is refused a placement. The ceiling has
 moved four times: 0.50 → 0.75 (2026-08-10) → 0.60 (2026-08-19) → 0.40 (2026-09-15, when 34 of 41 scored
 openings since 2026-09-01 passed ≥22 of 25) → 0.50 (2026-09-16). That history lives beside `climb.band` in
 `thresholds.frozen.yaml`.
 
-The prompts state counts, not a route (prior 10). `renderBatteryContract` (`src/run/climb-readout.ts`)
-states, for each size the round may measure, the on-aim counts and the count from which a battery finds no
-limit, beside the witness sentence and the publication boundary, and it states no first-battery count. The
-climb readout (`renderReadout`) likewise states counts and placements only: the newest rows, the latest
-reading via `readingSentence`, the round plan's score, the latest battery's families and where its passing
-artifacts are. Its wording is not a recorded condition, which is easy to misread given the history.
+The band, the aim and the placement stay with the controller and the Epoch Reviewer; the Builder is told
+no count to author towards (prior 10), because a count per size read as a target. `renderBatteryContract`
+(`src/run/climb-readout.ts`) states that only a battery passing some but not all of its cases can locate a
+limit, and only where the checks that failed it are right, beside the witness sentence and the publication
+boundary. The climb readout (`renderReadout`) states what was measured: the newest rows, whether the latest
+battery found a limit, the round plan's family score, the latest battery's families and where its passing
+artifacts are. The Epoch Reviewer alone reads the placement (`readingSentence`). The readout's wording is
+not a recorded condition, which is easy to misread given the history.
 `difficulty-decision/v9` dropped the frame revision v8 carried, and an epoch's `pass` hashes the readout's
 facts, so a reworded readout opens no new epoch. Each row's solve effort (median and most minutes against
 `solve_minutes`, median tool calls) is served through the context tool's history source and is never read
@@ -611,7 +613,7 @@ the battery was paid for.
    The orientation also carries the round's `EXPERIMENT.json`, because a reviewer asked whether a result
    was earned was never told what the round set out to earn, together with its two scores
    (`roundPlanLines`, `src/review/round-plan-lines.ts`): the named families against the families whose
-   public tasks the reviewed bytes changed, and the expected range against the verified count. A measured
+   public tasks the reviewed bytes changed. A measured
    battery reads the plan recorded with it, and a checkpoint reads the plan the workspace holds now, since
    a repair snapshot lacks one. The plan is intent and never evidence, and it enters no condition digest,
    so a new plan over identical bytes buys no second review. The closing message is recorded as its
@@ -762,15 +764,16 @@ the battery was paid for.
     rule asks a family's tasks to vary.
 
     `EXPERIMENT.json` (`src/author/experiment-plan.ts`) is written by the Builder before a round previews
-    or submits, and it is unenforced, since intent changes no score, gate or byte identity. It has four
-    optional fields: `gap`, `change`, `families` and `expectedPasses` (`atLeast`/`atMost`). `capturePlan`
+    or submits, and it is unenforced, since intent changes no score, gate or byte identity. It has three
+    optional fields: `gap`, `change` and `families`, and no pass range, since a range is a count to
+    author towards. `capturePlan`
     reads it leniently: unknown fields are ignored, an unreadable one is named in one advice line while
-    the rest stands, and the digest covers readable fields only. The plan is scored twice and never
-    against rehearsals. `familyAdvice` compares `families` with `changedFamilies`
+    the rest stands, and the digest covers readable fields only. The plan is scored once, and never
+    against rehearsals: `familyAdvice` compares `families` with `changedFamilies`
     (`src/run/experiment-freeze.ts`: the judged public tasks, inputs or rules that changed from the
-    adopted product), as refusal-free advice on every `correctness_check` and refused submit.
-    `planScoreLine` compares the range with the verified count for the climb readout, the Epoch Reviewer
-    and `terminal.json`, from the plan recorded with the accepted candidate. An unreadable side is
+    adopted product), as refusal-free advice on every `correctness_check` and refused submit, and
+    `planScoreLine` carries the same family score to the climb readout, the Epoch Reviewer and
+    `terminal.json`, from the plan recorded with the accepted candidate. An unreadable side is
     unscored. Changed bytes establish membership, not semantic difficulty, and with no observations the
     result stays unknown.
 

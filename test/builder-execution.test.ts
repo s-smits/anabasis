@@ -37,7 +37,7 @@ const ended = (toolName: string, toolCallId: string, isError = false) =>
 describe("the submission rows", () => {
   it("retains a captured plan on refusal, and the reader refuses one whose digest no longer matches", () => {
     const recorder = new BuilderExecutionRecorder(Date.now());
-    const plan = { gap: "Public gap", change: "Proposed repair", expectedPasses: { atLeast: 1, atMost: 3 } };
+    const plan = { gap: "Public gap", change: "Proposed repair" };
     recorder.recordSubmit({
       ...refusedSubmit,
       turn: 1,

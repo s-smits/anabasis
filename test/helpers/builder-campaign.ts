@@ -128,7 +128,7 @@ export function writePlan(
   workspace: string,
   gap = "The previous condition leaves a public capability unmeasured.",
 ) {
-  const plan = { gap, change: "Revise the public harness condition.", expectedPasses: { atMost: 3 } };
+  const plan = { gap, change: "Revise the public harness condition." };
   writeFileSync(join(workspace, "EXPERIMENT.json"), JSON.stringify(plan));
   return { ...plan, digest: hashJsonValue(plan) };
 }

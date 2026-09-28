@@ -160,6 +160,33 @@ type OpenSession =
       verifier: ReviewVerifierEvidence;
     };
 
+/**
+ * The question a placement opens. A battery on the aim opens the one a battery below it opens: its
+ * fails locate a limit only where the checks that failed it are right, and a false rejection placed
+ * on the aim reads exactly like a limit reached.
+ *
+ * The two sides do not open the same question. Above the aim the tasks demand too little of the
+ * request. Below the aim the count says the opposite, and two things produce it without the tasks
+ * being hard at all: a rule the checks apply that the brief does not publish, and a valid answer
+ * the writer tool cannot express. Each of those fails every task, which is what hardness looks like
+ * from the count, and neither can be told from hardness by the count alone.
+ *
+ * This review is where they become separable, because `probe_check` runs the declared checks here
+ * and the Builder never sees a verifier verdict at all. The probe runs in the opposite direction on
+ * the two sides: above the aim it looks for a check that does not move on a field the request
+ * constrains, below it for one that moves on a field the brief leaves free. Below the aim the
+ * first probe goes to the check the orientation lists first under verified failures, the one that
+ * blocked the most: a check reading narrower than its published rule fails valid work and reads
+ * exactly like difficulty from the counts. That instruction is the reviewer's own, which is why it
+ * is the reviewer's alone.
+ */
+const PLACEMENT_LEADS = {
+  above:
+    " A placement above the aim is a lead, not a finding on its own: the finding is the obligation of the request those tasks do not demand.",
+  below:
+    " A placement on or below the aim is a lead, not a finding on its own, and hardness is the last of its readings rather than the first. A rule the checks apply that the brief does not publish fails every task: probe an accept control at a field the public contract leaves free, and a check that moves on it is that rule, owned by `correctness-model/brief.json`. Where the verified failures are listed by declared check, start from the first one listed: probe at a path it reads, with a value a practitioner of the request would accept and the published rules allow, and say whether it reads narrower than its rule, wider, or as stated. An answer a correct solver cannot write through the tools it was given fails every task too, owned by `agent/tools-spec.json`; the accept controls are the shapes the writer is known to produce. Record an observation of hardness, owned by correctness-model/tasks.json, once you have read the brief and the writer schema against the artifact and neither holds.",
+};
+
 /** The settlement work a review owes beyond its source: each contested case with its direction, its
  *  checks and its artifact bytes, and each standing issue it may dispute. `conditionAlreadyReviewed`
  *  compares this digest, so what goes into it decides when a review is repeated. A readable artifact
@@ -413,11 +440,11 @@ function checkpointLines(input: EpochReviewInput): string[] {
  * The reviewer is the only component that reads the measured tree against the original request, so
  * it has to be told what a battery aims for. A raw "20 of 25 verified cases passed" does not say
  * that this is eight passing cases above the top of the aim, which is the shape design prior 10
- * exists to catch. The climb readout already owns that reading for the author, and `placeOnBand`
- * already placed each of its rows, so the review takes the readout's own row for the battery and
- * renders it through the same `readingSentence` the author reads. Placing or wording it here would be a
- * second standard: one battery could then reach the author as on the aim and the reviewer as
- * significantly too easy.
+ * exists to catch. `placeOnBand` already placed each row of the climb readout, so the review takes
+ * the readout's own row for the battery and words it through `readingSentence`, the one sentence
+ * that states a placement to a model; the author is shown no placement and no count to aim at.
+ * Placing it again here would be a second standard, and the sizing decision and this review could
+ * then read one battery two ways.
  *
  * The readout is read once, under the pin the battery was measured with, which the caller already
  * holds. It is public: every sentence it sends is stated to the Builder, so nothing protected
@@ -466,33 +493,7 @@ function aimLine(
     );
   }
   const reading = readingSentence({ deciding, wilson, aim, zone }, readout.band);
-  return { text: `${reading ?? ""}${lead(toAim)}`, toAim };
-}
-
-/**
- * The question a placement opens. A battery on the aim opens none: it measured the limit it was
- * climbing towards, so there is nothing about its position left to explain.
- *
- * The two sides do not open the same question. Above the aim the tasks demand too little of the
- * request. Below the aim the count says the opposite, and two things produce it without the tasks
- * being hard at all: a rule the checks apply that the brief does not publish, and a valid answer
- * the writer tool cannot express. Each of those fails every task, which is what hardness looks like
- * from the count, and neither can be told from hardness by the count alone.
- *
- * This review is where they become separable, because `probe_check` runs the declared checks here
- * and the Builder never sees a verifier verdict at all. The probe runs in the opposite direction on
- * the two sides: above the aim it looks for a check that does not move on a field the request
- * constrains, below it for one that moves on a field the brief leaves free. Below the aim the
- * first probe goes to the check the orientation lists first under verified failures, the one that
- * blocked the most: a check reading narrower than its published rule fails valid work and reads
- * exactly like difficulty from the counts. That instruction is the reviewer's own, which is why it
- * is the reviewer's alone.
- */
-function lead(toAim: number): string {
-  if (toAim === 0) return "";
-  return toAim < 0
-    ? " A placement above the aim is a lead, not a finding on its own: the finding is the obligation of the request those tasks do not demand."
-    : " A placement below the aim is a lead, not a finding on its own, and hardness is the last of its readings rather than the first. A rule the checks apply that the brief does not publish fails every task: probe an accept control at a field the public contract leaves free, and a check that moves on it is that rule, owned by `correctness-model/brief.json`. Where the verified failures are listed by declared check, start from the first one listed: probe at a path it reads, with a value a practitioner of the request would accept and the published rules allow, and say whether it reads narrower than its rule, wider, or as stated. An answer a correct solver cannot write through the tools it was given fails every task too, owned by `agent/tools-spec.json`; the accept controls are the shapes the writer is known to produce. Record an observation of hardness, owned by correctness-model/tasks.json, once you have read the brief and the writer schema against the artifact and neither holds.";
+  return { text: `${reading ?? ""}${toAim < 0 ? PLACEMENT_LEADS.above : PLACEMENT_LEADS.below}`, toAim };
 }
 
 /** The standing issues the review may dispute, each with the diagnosis reader's reading of it. The

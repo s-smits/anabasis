@@ -258,7 +258,7 @@ describe("promoteCandidate — one battery, one decision", () => {
         calls += 1;
         expect(selectedProductDir(root, SLUG)).toBe(candidate);
         expect(readFileSync(join(candidate, "correctness-model", "tasks.json"), "utf8")).toBe(failedTasks);
-        expect(options?.advisoryNote).toContain("passed 0 of 25");
+        expect(options?.advisoryNote).toContain("0 passed of 25 verified");
         return double({
           buildAdmissible: false,
           adopted: false,

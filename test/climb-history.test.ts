@@ -470,7 +470,9 @@ describe("the climb readout, read from recorded batteries", () => {
     );
     expect(seen).not.toHaveProperty("allowance");
     const rendered = renderReadout(seen, "choose the next experiment");
-    expect(rendered).toContain("too-easy");
+    // The placement stays the controller's; the author reads the counts it was taken over.
+    expect(seen.decision.placement?.zone).toBe("too-easy");
+    expect(rendered).not.toContain("too-easy");
     for (const gone of [
       "Off-aim streak",
       "posed its set of public task schemas",
@@ -489,5 +491,27 @@ describe("the climb readout, read from recorded batteries", () => {
     expect(seen.band).toEqual([0.6, 0.9]);
     // 4 of 5 is above the default aim of 1 to 2 and on the overridden aim of 3 to 4.
     expect(seen.rows[0]).toMatchObject({ zone: "on-aim", aim: [3, 4] });
+  });
+});
+
+describe("the identities a battery line names", () => {
+  // A remeasure records its regrade even when no recorded solve matched, because the remeasure
+  // chain reads that presence; for the author every case of such a battery was solved fresh.
+  it("reads the scoring hash, and a regrade only when it reused a recorded solve", () => {
+    const tree = tmp();
+    const snapshot = { agentHash: "agent-a", correctnessModelHash: "cm-a", scoringHash: "scoring-a" };
+    writeBattery(tree, "r1", passes(3), RECORDED_AT, { bundleSnapshot: snapshot });
+    writeBattery(tree, "r2", passes(3), NEXT_DAY, {
+      bundleSnapshot: snapshot,
+      regrade: { of: "r1", reused: 2, changedPasses: 0 },
+    });
+    writeBattery(tree, "r3", passes(3), "2026-01-09T00:00:00.000Z", {
+      regrade: { of: "r2", reused: 0, changedPasses: 0 },
+    });
+    expect(read(tree).history.map((row) => [row.authoring.scoringHash, row.authoring.regrade])).toEqual([
+      ["scoring-a", null],
+      ["scoring-a", { of: "r1", reused: 2 }],
+      [null, null],
+    ]);
   });
 });

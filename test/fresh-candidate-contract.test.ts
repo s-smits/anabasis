@@ -482,15 +482,12 @@ describe("acceptance", () => {
     const unplanned = checkCandidate(dir, ASK);
     writeFileSync(join(dir, "EXPERIMENT.json"), JSON.stringify({ gap: "g", families: ["single-part"] }));
     const planned = checkCandidate(dir, ASK);
-    writeFileSync(
-      join(dir, "EXPERIMENT.json"),
-      JSON.stringify({ gap: "reworded", expectedPasses: { atMost: 2 } }),
-    );
+    writeFileSync(join(dir, "EXPERIMENT.json"), JSON.stringify({ gap: "reworded" }));
     const reworded = checkCandidate(dir, ASK);
     if (!unplanned.ok || !planned.ok || !reworded.ok) throw new Error("fixture refused");
     expect(unplanned.experimentPlan).toBeUndefined();
     expect(planned.experimentPlan?.families).toEqual(["single-part"]);
-    expect(reworded.experimentPlan?.expectedPasses).toEqual({ atMost: 2 });
+    expect(reworded.experimentPlan?.gap).toBe("reworded");
     expect(new Set([unplanned, planned, reworded].map(conditionKey)).size).toBe(1);
   });
 });

@@ -262,7 +262,8 @@ function recordBatteryRecord(
 }
 
 /** How many cases this battery graded from recorded solves, and how many of those changed their
- *  pass. Undefined when it reused nothing. */
+ *  pass. Undefined only when no reuse was offered: a remeasure that matched no recorded solve still
+ *  records `reused: 0`, and `remeasureChain` reads that record as a remeasure. */
 function regradeFact(
   reuse: BatteryReuse | undefined,
   cases: readonly CaseRecord[],

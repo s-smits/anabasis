@@ -134,7 +134,8 @@ describe("the opening a round composes", () => {
     expect(contract).toContain("Task count: exactly 4 tasks.");
     expect(contract).toContain(renderBatteryContract(4));
     expect(delivered).toContain(contract);
-    expect(delivered).not.toContain(renderBatteryContract(25));
+    // The task count sentence carries the size; the battery contract states no count at any size.
+    expect(renderBatteryContract(4)).toBe(renderBatteryContract(25));
     expect(delivered.indexOf("Task count: exactly 4 tasks.")).toBeLessThan(delivered.indexOf(note));
     expect(roster).toEqual(expect.arrayContaining(["harness_inspect", "harness_trial", "submit"]));
     // No adoption gate is supplied, so correctness_check is not registered.
@@ -146,8 +147,9 @@ describe("the opening a round composes", () => {
     expect(prompt).toContain("Task count: between 5 and 10 tasks — choose the size in that range yourself.");
     expect(prompt).not.toContain("exactly 10 tasks");
     expect(prompt).toContain(renderBatteryContract(10, 5));
-    expect(prompt).toContain("5 tasks: aim 1 to 2 passing, 5 or more finds no limit");
-    expect(prompt).toContain("8 tasks: aim 2 to 4 passing, 7 or more finds no limit");
+    // A probe is sized to pass some but not all, so no size in the range states an aim.
+    expect(prompt).not.toMatch(/\d+ tasks: aim/);
+    expect(prompt).not.toContain("finds no limit");
     expect(prompt).not.toContain("for your chosen size");
     expect(prompt).not.toMatch(/\bof 10\b/);
   });

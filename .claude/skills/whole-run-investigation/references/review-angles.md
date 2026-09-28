@@ -337,13 +337,14 @@ passes it expects. The readout scores it twice: the named families against the f
 public tasks changed from the adopted product, and the expected range against the measured count.
 Each battery's `difficulty-decisions/<runId>-<digest>.json` (`difficulty-decision/v9`) records the
 `ClimbReadout`: `placement.zone`, `aim`, `toAim`, the Wilson interval and the plan recorded with
-the battery. So compare per round, in claim `createdAt` order, the counts the battery contract
-states (`renderBatteryContract`: the aim and the no-limit count per size), the passes the plan
-expected, the families it named and changed, and the count it measured. An unchanged public task set predicts a repeat, not a
+the battery. So compare per round, in claim `createdAt` order, the placement the controller
+recorded, the passes the plan expected, the families it named and changed, and the count it
+measured. The battery contract (`renderBatteryContract`) states no count: the Builder is told only
+that a partial battery can locate a limit where its failing checks are right. An unchanged public task set predicts a repeat, not a
 harder battery, and a digest streak counts consecutive placements on one side of the aim, so say
 which side. Do not prescribe the route, which is the Builder's. The decision it changes is the
-next round's move; it routes to the Builder prompt when the counts were not stated and to `tests`
-when the task set did not move.
+next round's move; it routes to the Builder prompt when the readout misstated what was measured
+and to `tests` when the task set did not move.
 
 **11. Submit decision against rehearsal evidence.**
 

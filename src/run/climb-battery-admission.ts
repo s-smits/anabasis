@@ -46,6 +46,7 @@ export interface BatteryEvidence {
   condition?: { variant?: unknown };
   bundleSnapshot?: { agentHash?: unknown; scoringHash?: unknown; taskSetHash?: unknown };
   execution?: JsonValue;
+  regrade?: { of?: unknown; reused?: unknown };
   cases?: Array<{
     taskId?: unknown;
     family?: unknown;

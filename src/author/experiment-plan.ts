@@ -2,19 +2,15 @@
  * The round plan: `EXPERIMENT.json`, which the Builder alone writes before it previews or submits.
  *
  * It pre-registers what the round is for, so the measured result is read against declared intent
- * rather than against a story told afterwards: the gap seen, the change made, the families whose
- * tasks the change moves, and how many verified passes the next blind battery should hold. Its
- * presence switches nothing. Attribution, the condition identity and every gate read the bytes, so
+ * rather than against a story told afterwards: the gap seen, the change made and the families whose
+ * tasks the change moves. It states no pass count, because a count the author sets reads as one to
+ * author towards, and the battery measures the count anyway. Its presence switches nothing. Attribution, the condition identity and every gate read the bytes, so
  * a missing or rewritten plan changes no score, refuses nothing and makes no identical bytes new.
  *
- * It is scored against the two things that can prove it wrong, never against rehearsals, which pass
- * almost regardless of what was predicted. The declared families are read against the families
- * whose public tasks changed from the adopted product, inputs or rules, as advice at each check and
- * as a recorded fact once the candidate is accepted, and the pass range against the measured
- * battery's verified count. The next round's climb readout, the Epoch Reviewer and the run end read
- * both. Before any battery, the range is also read against the aim the band gives the draft's size,
- * and only a range that lies wholly on one side of it earns a line; that line says where it lies and
- * nothing about what to do next.
+ * It is scored against the bytes, never against rehearsals: the declared families are read against
+ * the families whose public tasks changed from the adopted product, inputs or rules, as advice at
+ * each check and as a recorded fact once the candidate is accepted. The next round's climb readout,
+ * the Epoch Reviewer and the run end read that score.
  *
  * The reader is lenient on purpose. Every field is optional and an unknown field is ignored; a field
  * that does not read is named in one advice line and the rest of the plan still stands.
@@ -25,7 +21,6 @@ import { isRecord, isString, type JsonObject } from "../meta/json-shape.ts";
 import { existsSync, readFileSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
-import { aimCounts } from "../claim/battery-difficulty.ts";
 import { EXPERIMENT_FILE } from "./builder-memory.ts";
 
 const PLAN_MAX_BYTES = 16_384;
@@ -36,10 +31,6 @@ export const RecordedPlanSchema = Type.Object({
   change: Type.Optional(Type.String()),
   /** The families whose tasks this round changes; empty when it changes none. */
   families: Type.Optional(Type.Array(Type.String())),
-  /** Verified passes the next measured battery should hold, either bound optional. */
-  expectedPasses: Type.Optional(
-    Type.Object({ atLeast: Type.Optional(Type.Integer()), atMost: Type.Optional(Type.Integer()) }),
-  ),
   digest: Type.String(),
 });
 export type RecordedPlan = Static<typeof RecordedPlanSchema>;
@@ -56,10 +47,9 @@ export type RoundPlan = { plan: RecordedPlan | null; changedFamilies: readonly s
 
 export const NO_PLAN: RoundPlan = { plan: null, changedFamilies: null };
 
-const PLAN_TEMPLATE = `${EXPERIMENT_FILE} fields, each optional: {"gap":string,"change":string,"families":[the families whose tasks this round changes],"expectedPasses":{"atLeast":n,"atMost":n}} for the verified passes you expect the next battery to hold.`;
+const PLAN_TEMPLATE = `${EXPERIMENT_FILE} fields, each optional: {"gap":string,"change":string,"families":[the families whose tasks this round changes]}.`;
 
 const nonEmpty = (value: unknown) => (isString(value) && value.trim() !== "" ? value.trim() : undefined);
-const count = (value: unknown) => (Number.isInteger(value) && Number(value) >= 0 ? Number(value) : undefined);
 
 function readPlan(value: JsonObject): ReadPlan {
   const plan: ExperimentPlan = {};
@@ -69,18 +59,10 @@ function readPlan(value: JsonObject): ReadPlan {
     if (read !== undefined) plan[field] = read;
     else if (value[field] !== undefined) unread.push(`${field} (a non-empty string)`);
   }
-  const { families, expectedPasses } = value;
+  const { families } = value;
   const listed = Array.isArray(families) ? families.flatMap((row) => nonEmpty(row) ?? []) : [];
   if (Array.isArray(families) && listed.length === families.length) plan.families = [...new Set(listed)];
   else if (families !== undefined) unread.push("families (a list of family names)");
-  if (isRecord(expectedPasses)) {
-    const [atLeast, atMost] = [count(expectedPasses.atLeast), count(expectedPasses.atMost)];
-    if ((atLeast ?? 0) <= (atMost ?? Number.POSITIVE_INFINITY) && (atLeast ?? atMost) !== undefined) {
-      plan.expectedPasses = {};
-      if (atLeast !== undefined) plan.expectedPasses.atLeast = atLeast;
-      if (atMost !== undefined) plan.expectedPasses.atMost = atMost;
-    } else unread.push("expectedPasses (whole counts, atLeast no more than atMost)");
-  } else if (expectedPasses !== undefined) unread.push("expectedPasses (an object)");
   return { plan, unread };
 }
 
@@ -115,39 +97,6 @@ export function capturePlan(workspace: string): CapturedPlan {
   return { plan: { ...parsed.plan, digest: hashJsonValue(parsed.plan) }, advice };
 }
 
-/** A pass range in words: "at least 3", "at most 5" or "3–5". */
-export function statedRange({ atLeast, atMost }: NonNullable<ExperimentPlan["expectedPasses"]>): string {
-  if (atLeast === undefined) return `at most ${String(atMost)}`;
-  return atMost === undefined ? `at least ${atLeast}` : `${atLeast}–${atMost}`;
-}
-
-/** "the plan expects at most 1 verified pass", with the noun in the plural unless every count the
- *  range states is one. */
-function expects(range: NonNullable<ExperimentPlan["expectedPasses"]>): string {
-  const noun = (range.atLeast ?? 1) === 1 && (range.atMost ?? 1) === 1 ? "pass" : "passes";
-  return `the plan expects ${statedRange(range)} verified ${noun}`;
-}
-
-/** The pass range against the aim the band gives a draft of `size` tasks, as advice only when the
- *  range cannot reach the aim; nothing for a size outside the round's `sizes`, where there is no
- *  battery to aim, or a band too narrow to hold a whole count at that size. It refuses nothing. */
-export function aimAdvice(
-  plan: ExperimentPlan,
-  size: number,
-  sizes: readonly [number, number],
-  band: readonly [number, number],
-): string[] {
-  const range = plan.expectedPasses;
-  const [low, high] = aimCounts(size, band);
-  if (range === undefined || size < sizes[0] || size > sizes[1] || low > high) return [];
-  const side = (range.atLeast ?? 0) > high ? "above" : (range.atMost ?? size) < low ? "below" : null;
-  return side === null
-    ? []
-    : [
-        `Advice: ${expects(range)}, wholly ${side} the aim of ${low} to ${high} passing for a ${size}-task battery.`,
-      ];
-}
-
 const names = (list: readonly string[]) => (list.length === 0 ? "none" : list.join(", "));
 
 /** The declared families against the families whose public tasks changed, and on a miss each side
@@ -172,23 +121,7 @@ export function familyAdvice(plan: ExperimentPlan, changed: readonly string[] | 
   return score === null || score.met ? [] : [`Advice: ${score.text}.`];
 }
 
-/** The pass range against the measured battery's verified count. */
-function passScore(plan: ExperimentPlan | null, passed: number | null): string | null {
-  const range = plan?.expectedPasses;
-  if (range === undefined || passed === null) return null;
-  const below = range.atLeast !== undefined && passed < range.atLeast;
-  const above = range.atMost !== undefined && passed > range.atMost;
-  const side = below ? "missed, below" : above ? "missed, above" : "met";
-  return `${expects(range)} and the battery holds ${passed}: ${side}`;
-}
-
-/** Both scores of a round's plan in one line, the pass range read against `passed` once a battery
- *  has measured it; null when there is no plan or it states neither. */
-export function planScoreLine(round: RoundPlan, passed: number | null): string | null {
-  const scores = [
-    familyScore(round.plan, round.changedFamilies)?.text ?? null,
-    passScore(round.plan, passed),
-  ];
-  const stated = scores.filter((line) => line !== null);
-  return stated.length === 0 ? null : stated.join("; ");
+/** The plan's family score in one line; null when there is no plan or it names no families. */
+export function planScoreLine(round: RoundPlan): string | null {
+  return familyScore(round.plan, round.changedFamilies)?.text ?? null;
 }

@@ -202,14 +202,15 @@ describe("the epoch reviewer's orientation", () => {
     );
   });
 
-  it("says a battery on the aim reached the calibration target, and does not call it too easy", async () => {
+  it("says a battery on the aim reached the calibration target, and still asks what failed it", async () => {
     const prompt = await shown(battery(8, 25));
     expect(prompt).toContain("passed 8 of 25 (Wilson interval");
     expect(prompt).toContain("aim 5 to 12 of 25): on the calibration target.");
     expect(prompt).not.toContain("too easy");
-    // On the aim the battery reached what it was climbing towards, so no question opens.
-    expect(prompt).not.toContain("is a lead, not a finding on its own");
-    expect(prompt).not.toContain("start from the first one listed");
+    // Its fails locate a limit only where the checks that failed it are right, so it opens the
+    // question a battery below the aim opens.
+    expect(prompt).toContain("A placement on or below the aim is a lead, not a finding on its own");
+    expect(prompt).toContain("start from the first one listed");
   });
 
   /** The placement sentence is the author's own `readingSentence`, filled from the readout row, so the
@@ -228,7 +229,7 @@ describe("the epoch reviewer's orientation", () => {
       expect(prompt).toContain(`passed ${String(passed)} of 25 (Wilson interval`);
       expect(prompt).toContain(placement);
       expect(prompt).not.toContain("as a first battery should");
-      expect(prompt).toContain("A placement below the aim is a lead, not a finding on its own");
+      expect(prompt).toContain("A placement on or below the aim is a lead, not a finding on its own");
       expect(prompt).toContain("hardness is the last of its readings rather than the first");
       // Each reading names the routable owner that repairs it, and the instrument for the first.
       expect(prompt).toContain("rule the checks apply that the brief does not publish fails every task");
@@ -321,10 +322,9 @@ describe("the epoch reviewer's orientation", () => {
 
 /**
  * The round's own intent beside what it measured. The Builder may write `EXPERIMENT.json` before a
- * round is measured: the gap it saw, the change it made, the families it changed and the verified
- * passes it expects. The reviewer reads it with its two scores, the declared families against the
- * families whose public tasks changed and the pass range against the measured battery, so that a
- * battery which passed five of five is read beside what the round set out to change.
+ * round is measured: the gap it saw, the change it made and the families it changed. The reviewer
+ * reads it with its score, the declared families against the families whose public tasks changed,
+ * so that a battery which passed five of five is read beside what the round set out to change.
  */
 describe("the round plan and the diagnosed issues reach the reviewer", () => {
   const plan: RecordedPlan = (() => {
@@ -332,7 +332,6 @@ describe("the round plan and the diagnosed issues reach the reviewer", () => {
       gap: "The last battery found no limit: every family cleared its published limit.",
       change: "Tighten the deflection limit and couple it to the published load case.",
       families: ["core"],
-      expectedPasses: { atMost: 2 },
     };
     return { ...body, digest: hashJsonValue(body) };
   })();
@@ -371,25 +370,22 @@ describe("the round plan and the diagnosed issues reach the reviewer", () => {
     return prompt;
   }
 
-  it("sets a measured battery beside the plan it was authored under, with both scores", async () => {
+  it("sets a measured battery beside the plan it was authored under, with its score", async () => {
     const prompt = await oriented({ measured: true, roundPlan: { plan, changedFamilies: ["core"] } });
     expect(prompt).toContain("Round plan (EXPERIMENT.json), the Builder's stated intent for this round:");
     expect(prompt).toContain(`Gap: ${plan.gap}`);
     expect(prompt).toContain(`Change: ${plan.change}`);
     expect(prompt).toContain(
-      "Scored: the plan names core as changed and the public tasks changed from the adopted product in core: met; " +
-        "the plan expects at most 2 verified passes and the battery holds 5: missed, above.",
+      "Scored: the plan names core as changed and the public tasks changed from the adopted product in core: met.",
     );
     // Each stated field is shown once, inside the score that reads it.
-    expect(prompt).not.toMatch(/Families named as changed|Expected verified passes/);
+    expect(prompt).not.toMatch(/Families named as changed/);
   });
 
   it("lists the named families alone when there is no adopted product to score them against", async () => {
     const prompt = await oriented({ measured: true, roundPlan: { plan, changedFamilies: null } });
     expect(prompt).toContain("Families named as changed: core");
-    expect(prompt).toContain(
-      "Scored: the plan expects at most 2 verified passes and the battery holds 5: missed, above.",
-    );
+    expect(prompt).not.toContain("Scored:");
   });
 
   it("states a missing plan as missing rather than showing nothing", async () => {
@@ -398,12 +394,11 @@ describe("the round plan and the diagnosed issues reach the reviewer", () => {
     expect(prompt).not.toContain("Scored:");
   });
 
-  it("shows a checkpoint the range it is authoring towards and the families its draft has changed", async () => {
+  it("shows a checkpoint the families its draft has changed", async () => {
     const prompt = await oriented({
       measured: false,
       roundPlan: { plan, changedFamilies: ["core", "joints"] },
     });
-    expect(prompt).toContain("Expected verified passes: at most 2");
     expect(prompt).toContain(
       "Scored: the plan names core as changed and the public tasks changed from the adopted product in core, joints: " +
         "missed, joints changed but not named.",

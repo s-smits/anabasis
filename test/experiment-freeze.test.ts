@@ -80,7 +80,7 @@ function repairEvaluator(dir: string): void {
 
 /** A captured plan, bound by its digest. */
 function planOf(change: string) {
-  const plan = { gap: "Gap.", change, families: ["single-part"], expectedPasses: { atMost: 2 } };
+  const plan = { gap: "Gap.", change, families: ["single-part"] };
   return { ...plan, digest: hashJsonValue(plan) };
 }
 

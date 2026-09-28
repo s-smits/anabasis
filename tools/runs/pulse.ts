@@ -133,8 +133,7 @@ function planText(plan: PulsePlan): string {
     plan.families === null
       ? null
       : `${String(plan.families)} famil${plan.families === 1 ? "y" : "ies"} changed`;
-  const expected = plan.expected === null ? null : `expects ${plan.expected} passes`;
-  return ["plan", families, expected].filter((part) => part !== null).join(", ");
+  return families === null ? "plan" : `plan, ${families}`;
 }
 
 /** The row's evidence as paths inside its campaign, with the run id, which every one repeats, as `<run>`. */
@@ -471,9 +470,7 @@ function isKeptRound(round: unknown): boolean {
     Array.isArray(round.refusalCodes) &&
     Array.isArray(round.rehearsals) &&
     (round.plan === null ||
-      (isRecord(round.plan) &&
-        (round.plan.families === null || isNumber(round.plan.families)) &&
-        (round.plan.expected === null || isString(round.plan.expected))))
+      (isRecord(round.plan) && (round.plan.families === null || isNumber(round.plan.families))))
   );
 }
 

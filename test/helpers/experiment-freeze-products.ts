@@ -40,7 +40,6 @@ const FIXTURE_TOOL = ".toolchain/bin/uppercase-fixture";
 const PLAN = {
   gap: "The prior battery did not test the proposed condition.",
   change: "Change the proposed condition.",
-  expectedPasses: { atLeast: 4 },
 };
 
 export interface AdoptedProduct {

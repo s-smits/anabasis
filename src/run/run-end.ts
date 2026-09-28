@@ -105,7 +105,7 @@ function climbFromReadout(readFrom: string, readout: ClimbReadout): ClimbRunEnd 
     zone: row.zone,
     passed: row.passed,
     verified: row.verified,
-    ...keyIfDefined("plan", planScoreLine(row.experiment ?? NO_PLAN, row.passed) ?? undefined),
+    ...keyIfDefined("plan", planScoreLine(row.experiment ?? NO_PLAN) ?? undefined),
   }));
   return {
     readFrom,

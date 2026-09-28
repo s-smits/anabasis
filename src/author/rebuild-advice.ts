@@ -759,8 +759,8 @@ export function blockingLine(
 }
 
 /** The one model-visible projection of the issue register: kinds and counts, ordered by what the
- *  next experiment decides. Where the battery landed on the band and what its totals were belong to
- *  the climb readout, which renders above this packet, so neither is repeated here. */
+ *  next experiment decides. Each battery's measured counts belong to the climb readout, which
+ *  renders above this packet, so they are not repeated here. */
 export function renderRebuildAdvice(packet: RebuildAdvicePacket): string {
   const totals = adviceTotals(packet.families);
   const disputed = packet.issues.filter((issue) => issue.dispute !== null && !issue.retired);

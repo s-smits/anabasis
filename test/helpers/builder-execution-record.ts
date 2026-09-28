@@ -104,7 +104,6 @@ export function experimentPlan(): RecordedPlan {
     gap: "the last battery found no limit",
     change: "harder spans",
     families: ["fam"],
-    expectedPasses: { atMost: 2 },
   };
   return { ...plan, digest: hashJsonValue(plan) };
 }

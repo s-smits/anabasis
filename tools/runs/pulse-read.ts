@@ -5,7 +5,7 @@
 import { readExecutionEvidence } from "../outcome/builder-execution-facts.ts";
 import { readEpochRecord } from "../../src/author/campaign-epoch.ts";
 import type { BuilderCustomToolCall } from "../../src/author/builder-custom-tool-call.ts";
-import { capturePlan, statedRange } from "../../src/author/experiment-plan.ts";
+import { capturePlan } from "../../src/author/experiment-plan.ts";
 import { PUBLIC_TASK_FILE } from "../../src/correctness-bundle/recorded-solve.ts";
 import { placeOnBand, type BandZone } from "../../src/claim/battery-difficulty.ts";
 import { existsSync, lstatSync, readFileSync, readdirSync } from "../../src/meta/filesystem.ts";
@@ -31,8 +31,6 @@ export interface PulseRehearsal {
 export interface PulsePlan {
   /** Families the plan names as changed; null when it names none. */
   families: number | null;
-  /** The verified passes it expects, in `statedRange` words; null when it states no range. */
-  expected: string | null;
 }
 
 /** A `harness_trial` the Builder is inside now: one tool call that can hold the session for the
@@ -191,15 +189,8 @@ export function readInFlight(epochDir: string, checkpointAt: string | null): Pul
 
 function readPlan(workspace: string): Pick<PulseRound, "plan" | "planAdvice"> {
   const { plan, advice } = capturePlan(workspace);
-  const range = plan?.expectedPasses;
   return {
-    plan:
-      plan === null
-        ? null
-        : {
-            families: plan.families?.length ?? null,
-            expected: range === undefined ? null : statedRange(range),
-          },
+    plan: plan === null ? null : { families: plan.families?.length ?? null },
     planAdvice: advice[0] ?? null,
   };
 }

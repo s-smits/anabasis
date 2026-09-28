@@ -10,7 +10,7 @@ import {
   taskCountSentence,
 } from "../src/run/battery-sizing.ts";
 import { directManifest } from "../src/run/direct-input.ts";
-import { readClimbReadout, renderBatteryContract, renderProbeSizing } from "../src/run/climb-readout.ts";
+import { readClimbReadout, renderProbeSizing } from "../src/run/climb-readout.ts";
 import { EvidenceLog } from "../src/claim/evidence-log.ts";
 import { fingerprintSlug } from "../src/claim/fingerprint.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
@@ -183,14 +183,12 @@ describe("runBuildStep battery sizing", () => {
       expectedTasks: number;
       minTasks?: number;
       note?: string;
-      band?: [number, number];
     }> = [];
     const build: FullRunDeps["build"] = async (manifest, options) => {
       seen.push({
         expectedTasks: manifest.expectedTasks,
         ...keyIfDefined("minTasks", manifest.minTasks),
         ...keyIfDefined("note", options?.advisoryNote),
-        ...keyIfDefined("band", options?.band),
       });
       return double({
         buildAdmissible: false,
@@ -275,19 +273,13 @@ describe("runBuildStep battery sizing", () => {
   /** One number, three owners: a declared `climb.band` must move the placement, the prompt
    *  contract and the sizing gate together. [0.2, 0.95] makes each visible: at 25 cases no count is
    *  significantly too easy under it, and 22 of 25 no longer holds "too easy" below 25 tasks. */
-  it("moves the prompt counts and the sizing gate with a declared band, not only the placement", async () => {
+  it("moves the sizing gate with a declared band, not only the placement", async () => {
     const declared: [number, number] = [0.2, 0.95];
     // Same battery, same 22 of 25: under the code-owned ceiling it holds too-easy at eleven tasks.
     expect(await sizedRound(probeRoot(true, 25, 22), null)).toMatchObject({ expectedTasks: 11 });
     const round = await sizedRound(probeRoot(true, 25, 22, declared), null);
     // Under the declared ceiling no smaller size holds the reading, so the round keeps its size.
     expect(round.expectedTasks).toBe(25);
-    // And the band the controller read is the one the authoring session is handed.
-    expect(round.band).toEqual(declared);
-    // The Builder's sentences are written from that band, not from the policy row.
-    expect(renderBatteryContract(25, 25, declared)).toContain(
-      "25 tasks: aim 5 to 23 passing, no count finds no limit",
-    );
   });
 });
 

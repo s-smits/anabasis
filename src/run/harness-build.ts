@@ -67,10 +67,6 @@ export interface HarnessBuildOptions {
    *  kickoff's content hash keys the epoch, and an advisory note must not re-key a campaign. */
   advisoryNote?: string;
   measured?: BuilderCampaignInput["measured"];
-  /** The run's pass-rate band, read from `thresholds.frozen.yaml` by the controller. The Builder's
-   *  difficulty sentences quote the counts it implies, so it must be the band the placement is read
-   *  against. Absent, the prompt falls back to the code-owned policy row. */
-  band?: [number, number];
   /** Immutable public context available through the context tool. */
   userContext?: PreparedUserContext;
   /** Run-bound diagnostic channel supplied by the full-run controller. */
@@ -370,7 +366,6 @@ async function runEpochBuild(
       ...keyIfDefined("advisoryNote", options.advisoryNote),
       ...keyIfDefined("measured", options.measured),
       ...keyIfDefined("userContext", options.userContext),
-      ...keyIfDefined("band", options.band),
       ...keyIfDefined("resetKey", options.epochPass),
     },
     {

@@ -321,7 +321,6 @@ it("carries accepted intent and the host-derived changed subset out of the build
   const plan = {
     gap: "Coverage was narrow.",
     change: "Author new families.",
-    expectedPasses: { atMost: 12 },
   };
   const experimentPlan = { ...plan, digest: hashJsonValue(plan) };
   const result = await runBuildStep(

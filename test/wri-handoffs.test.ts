@@ -62,7 +62,7 @@ function campaign(options: { toolCalls?: boolean } = {}): string {
       "Task count: 3",
       "Recorded batteries (controller-derived data, oldest first):",
       "Standing issues, largest first.",
-      "Plan: the plan expects 2–3 verified passes and the battery holds 2: met.",
+      "Plan: the plan names alpha as changed and the public tasks changed from the adopted product in alpha: met.",
     ].join("\n"),
   ];
   writeText(
@@ -82,7 +82,7 @@ function campaign(options: { toolCalls?: boolean } = {}): string {
     const hour = 3_600_000;
     const submit: JsonObject = { outcome: "accepted", atMs: hour - 1_000 };
     if (round.planned) {
-      submit.experimentPlan = { families: ["alpha"], expectedPasses: { atLeast: 2, atMost: 3 }, digest: "d" };
+      submit.experimentPlan = { families: ["alpha"], digest: "d" };
     }
     const record: JsonObject = {
       schema: "builder-execution/v6",
@@ -191,7 +191,7 @@ describe("round hand-offs", () => {
     expect(cell("rebuild-advice")).toMatchObject({ present: true, served: true, read: null });
     expect(cell("experiment")).toMatchObject({ served: true, acted: true });
     expect(cell("memory")).toMatchObject({ present: true, served: false, read: 1, acted: true });
-    expect(cell("climb-readout")).toMatchObject({ served: true, read: 1, acted: true });
+    expect(cell("climb-readout")).toMatchObject({ served: true, read: 1, acted: null });
     expect(second.servedNotRead.map((u: { name: string }) => u.name)).toContain("rebuild-advice");
     // The first round's prompt carries no readout, and its memory note was written, not handed on.
     expect(census[0]?.channels.find((c: { name: string }) => c.name === "climb-readout")?.served).toBe(false);

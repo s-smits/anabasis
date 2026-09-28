@@ -97,7 +97,6 @@ describe("the changed subset the next difficulty decision reads", () => {
         gap: "The old tasks are too easy.",
         change: "Change five public inputs.",
         families: [first.family],
-        expectedPasses: { atMost: 20 },
       };
       await makeVerify({
         solver,

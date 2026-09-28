@@ -113,7 +113,7 @@ function authorable(workspace: string): void {
   installTool(workspace, "field-engine");
   writeFileSync(
     join(workspace, "EXPERIMENT.json"),
-    JSON.stringify({ gap: GAP, change: "Add pinned joints to the writer.", expectedPasses: { atLeast: 1 } }),
+    JSON.stringify({ gap: GAP, change: "Add pinned joints to the writer." }),
   );
 }
 
@@ -437,7 +437,7 @@ describe("the Epoch Reviewer beside an authoring session", () => {
     const { workspace, run } = campaign("ana-review-no-plan-hold-", held, deps, parent);
     const outcome = await run(async (tools) => {
       completeBundle(workspace);
-      const plan = { gap: GAP, change: "c", expectedPasses: { atMost: 0 } };
+      const plan = { gap: GAP, change: "c" };
       writeFileSync(join(workspace, "EXPERIMENT.json"), JSON.stringify(plan));
       const trial = JSON.stringify(
         await namedTool(tools, "harness_trial").execute("rehearse", { taskId: "t1" }),

@@ -11,13 +11,7 @@
  * null the decision turns into its one "no difficulty evidence" answer.
  */
 import { describe, expect, it } from "bun:test";
-import {
-  aimCounts,
-  type BandZone,
-  bandLandmarks,
-  measureDifficulty,
-  placeOnBand,
-} from "../src/claim/battery-difficulty.ts";
+import { aimCounts, type BandZone, measureDifficulty, placeOnBand } from "../src/claim/battery-difficulty.ts";
 import { wilsonInterval } from "../src/claim/estimation.ts";
 import { POLICY } from "../src/critic/policy.ts";
 import { type ClimbBattery, countUnaccepted } from "../src/run/climb-history.ts";
@@ -122,22 +116,17 @@ describe("placeOnBand — one count, one zone", () => {
     expect(place(0, 15).aim).toEqual(aimCounts(15, BAND));
   });
 
-  it("is the one numeric owner: every surface that names a count reads it from the battery size", () => {
+  it("is the one numeric owner, and no author surface restates its counts", () => {
     const [floor, ceiling] = POLICY.climb.band;
     const tooEasy = Array.from({ length: 26 }, (_, k) => k).find(
       (k) => place(k, 25, POLICY.climb.band).lo > ceiling,
     );
     const range = `${Math.ceil(floor * 25)} to ${Math.floor(ceiling * 25)}`;
     expect([tooEasy, range]).toEqual([18, "5 to 12"]);
-    expect(bandLandmarks(25, POLICY.climb.band)).toEqual({ aim: [5, 12], tooEasyFrom: 18 });
-    expect(renderBatteryContract(25)).toContain(
-      `25 tasks: aim ${range} passing, ${tooEasy} or more finds no limit`,
-    );
-    // A smaller battery restates every count from its own size.
-    expect(bandLandmarks(10, POLICY.climb.band)).toEqual({ aim: [2, 5], tooEasyFrom: 9 });
-    expect(renderBatteryContract(10)).toContain("10 tasks: aim 2 to 5 passing, 9 or more finds no limit");
-    // The system prompt states no count at all; the contract rendered for the round's size does.
+    expect(place(0, 25, POLICY.climb.band).aim).toEqual([5, 12]);
+    // Neither the system prompt nor the round's battery contract states a count at any size.
     expect(SCOPE_CLAUSE.join(" ")).not.toMatch(/of 25|verified pass|battery/);
+    for (const size of [10, 25]) expect(renderBatteryContract(size)).not.toMatch(/\d+ to \d+|\d+ or more/);
   });
 });
 

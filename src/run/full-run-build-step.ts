@@ -328,7 +328,6 @@ export async function runBuildStep(
         ...keyIfDefined("safeguardContext", input.safeguardContext),
         experiment: "build",
         productVersionId: input.runId,
-        band,
         ...keyIfDefined("measured", memory.measured),
         // Reopen on the exact evidence identity. The round starts from adopted bytes, and a
         // redesign is the Builder's harness_reset call. Reusing this epoch preserves in-flight

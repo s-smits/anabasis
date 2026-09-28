@@ -200,7 +200,7 @@ export function regradeForCorrection(
 export function identicalExamRefusal(input: ExamInput): string | null {
   const read = identicalExamOverAim(input);
   if (read.exam === null || read.exam.scoringChanged) return null;
-  return `battery ${read.exam.runId} already measured these agent bytes on these exact public tasks under this scoring program and placed at or above the aim, so a fresh blind battery would pose the identical exam. This submit is not counted as a strike; submitting the same bytes again is.`;
+  return `battery ${read.exam.runId} already measured these agent bytes on these exact public tasks under this scoring program, so a fresh blind battery would pose the identical exam. This submit is not counted as a strike; submitting the same bytes again is.`;
 }
 
 /** How many remeasures in a row led to `battery`, itself included. A chain the environment keeps

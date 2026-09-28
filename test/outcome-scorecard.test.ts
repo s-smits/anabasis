@@ -598,10 +598,10 @@ describe("the run-end numbers", () => {
     expect(provenanceRunEnd(dir, "b2")).toBeNull();
   });
 
-  it("scores each battery's plan against its changed families and its verified count", () => {
+  it("scores each battery's plan against its changed families", () => {
     const dir = scratchDir("run-end-");
     mkdirSync(join(dir, "difficulty-decisions"), { recursive: true });
-    const plan = { families: ["spans"], expectedPasses: { atLeast: 5, atMost: 8 }, digest: "p" };
+    const plan = { families: ["spans"], digest: "p" };
     writeFileSync(
       join(dir, "difficulty-decisions", "a.json"),
       decision(DIFFICULTY_DECISION_SCHEMA, [
@@ -613,7 +613,7 @@ describe("the run-end numbers", () => {
     expect(climbRunEnd(dir)?.batteries.map((battery) => battery.plan)).toEqual([
       undefined,
       "the plan names spans as changed and the public tasks changed from the adopted product in spans, joints: " +
-        "missed, joints changed but not named; the plan expects 5–8 verified passes and the battery holds 4: missed, below",
+        "missed, joints changed but not named",
       undefined,
     ]);
   });

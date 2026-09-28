@@ -154,7 +154,6 @@ interface ClaimedBattery {
 /** The round plan an accepted submit recorded, as this reader meets it. */
 interface PlanRow {
   families?: JsonValue;
-  expectedPasses?: JsonValue;
 }
 
 /** One battery's difficulty row, as this reader meets it. */
@@ -655,8 +654,7 @@ function presentOf(campaign: string, round: Round, name: string): boolean {
 
 function actedOf(round: Round, name: string): boolean | null {
   const plan = recordOf(round.plan);
-  // The readout places each battery on the band, so a plan stating a pass range is the readout acted on.
-  if (name === "climb-readout") return isRecord(plan?.expectedPasses);
+  // The plan states no pass count, so nothing it records shows the readout acted on.
   if (name === "experiment") return pathHits(round, "write", READ_PATHS.experiment) > 0 && plan !== null;
   if (name === "memory") return pathHits(round, "write", READ_PATHS.memory) > 0;
   if (name === "traces") return calls(round, TRIAL).length > 0;

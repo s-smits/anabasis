@@ -253,7 +253,6 @@ describe("measureHarness", () => {
     const body = {
       gap: "Every family passes.",
       change: "Couple two published limits.",
-      expectedPasses: { atMost: 1 },
     };
     const plan = { ...body, digest: hashJsonValue(body) };
     const base = {

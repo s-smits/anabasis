@@ -477,10 +477,10 @@ function countRehearsal(tally: RoundRehearsals, verdict: string, turns: number |
  * verdict. Nothing here is new information: it is the sum of bits this tool has already returned,
  * so it crosses the rule-4 boundary on exactly the terms the single aggregate verdict does.
  *
- * It is here because a per-call sentence is the wrong unit for the decision it feeds. The band a
- * battery is aimed at is stated as a rate -- 5 to 12 verified of 25 -- and a Builder holding six
- * separate sentences has to add them up itself, from a conversation pi compacts as it goes, whose
- * oldest turns are the first to be cut. Three recorded campaigns rehearsed and shipped anyway: of
+ * It is here because a per-call sentence is the wrong unit for the decision it feeds. A battery's
+ * result is a count over the whole battery, and a Builder holding six separate sentences has to
+ * add them up itself, from a conversation pi compacts as it goes, whose oldest turns are the first
+ * to be cut. Three recorded campaigns rehearsed and shipped anyway: of
  * 16 rehearsals carrying a verdict, 12 passed and 3 failed, and every single pass came back at one
  * turn. Each of those twelve results said, correctly, that a battery of tasks like this one scores
  * near its size. None of them said it twelve times.
@@ -506,8 +506,9 @@ function trialNextAction(status: string, verdict: string, stage: string, tally: 
   if (verdict === "pass") {
     return `Your solver passed this task on its first unaided attempt, so a battery of tasks like it scores near its size.${roundClause(tally)}`;
   }
-  // Stated as the mirror of the pass sentence, and with no next task: a miss is the aim of a first
-  // battery, so a sentence steering towards an easier task would choose the course for the Builder.
+  // Stated as the mirror of the pass sentence, and with no next task: a battery locates a limit only
+  // through its misses, so a sentence steering towards an easier task would choose the course for
+  // the Builder.
   return `Your solver missed this task on its first unaided attempt, so a battery of tasks like it scores near zero.${roundClause(tally)}`;
 }
 

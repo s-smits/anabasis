@@ -421,7 +421,7 @@ function limitMarginTable(campaignDir: string, runId: string): OutcomeMetrics["l
       return {
         ...row,
         shareWithin5pct: share,
-        reading: `${row.family}: ${row.within5pct} of ${row.paired} paired ${row.limits} limits within 5% of the reference (${percent}), ${row.within1pct} within 1%, ${row.unpaired} unpaired, over ${row.tasks} task(s); ${row.limits === "hidden" ? "heuristic" : "declared"} pairing`,
+        reading: `${row.family}: ${row.within5pct} of ${row.paired} paired ${row.limits} limits within 5% of the reference (${percent}), ${row.within1pct} within 1%, ${row.derived} derived, ${row.unpaired} unpaired, over ${row.tasks} task(s); ${row.limits === "hidden" ? "heuristic" : "declared"} pairing`,
       };
     }),
   };

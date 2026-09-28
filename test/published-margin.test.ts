@@ -96,6 +96,21 @@ describe("published margins", () => {
     expect(table).not.toContain("not yet sendable");
   });
 
+  // A limit on a value computed from the answer, mass from members and sections, is declared against
+  // the structure it is computed from. That path is present and holds no number, which is a
+  // different fact from an answer that states nothing there, and the host-only limit margin counts
+  // the two apart.
+  it("marks a path that reaches a structure rather than a number as derived, and an absent or null one as not", () => {
+    const at = (artifactPath: string) => [{ ...MARGINS[0]!, artifactPath }];
+    const answer = { report: { massKg: 2100, design: { members: [{ area: 0.002 }] }, note: null } };
+    const derived = (artifactPath: string) =>
+      readMargins(at(artifactPath), "wide", TASK, answer).map((reading) => reading.derived);
+    expect(derived("$.report.design")).toEqual([true]);
+    expect(derived("$.report.massKg")).toEqual([false]);
+    expect(derived("$.report.absent")).toEqual([false]);
+    expect(derived("$.report.note")).toEqual([false]);
+  });
+
   it("states the host binding without a count, so one registration serves every family", () => {
     // Conformance requires one stable registration across a battery whose families publish
     // different numbers of limits; the confined-worker case below proves the sentence is delivered.

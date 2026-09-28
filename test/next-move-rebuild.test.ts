@@ -177,6 +177,7 @@ const selectAs = (
     runId,
     domainDir,
     builder: { kind: "claude", model: "test-model", reasoningEffort: "medium" },
+    built: { reasoningEffort: "medium" },
   });
 
 describe("the next move on disk", () => {

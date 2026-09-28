@@ -111,6 +111,7 @@ function analysis(
         toolTreeDigest: null,
       },
       backendPin: "codex:test",
+      builtEffort: "high",
       buildInputsHash: "d".repeat(64),
       isolationStrength: "physical",
     },
@@ -1231,20 +1232,30 @@ describe("whether an absence is comparable evidence", () => {
 
 describe("measuredConditionDigest", () => {
   const facts = {
+    runId: "r1",
     builtPin: "codex:built-model:high",
+    builtEffort: "high",
     isolationStrength: "physical",
     runCondition: { variant: "shipping", advisorsRemoved: [] },
   };
 
-  it("moves with the Built model, the isolation and the run condition", () => {
+  it("moves with the Built model, its effort, the isolation and the run condition", () => {
     const base = measuredConditionDigest(facts);
     for (const moved of [
       { ...facts, builtPin: "codex:built-model:low" },
+      { ...facts, builtEffort: "low" },
       { ...facts, isolationStrength: "UNPROVEN" },
       { ...facts, runCondition: { variant: "shipping", advisorsRemoved: ["hint"] } },
     ]) {
       expect(measuredConditionDigest(moved)).not.toBe(base);
     }
+    // Another battery under the same recorded effort is the same condition; an unrecorded effort is
+    // unknown, so it matches no other battery.
+    expect(measuredConditionDigest({ ...facts, runId: "r2" })).toBe(base);
+    const unrecorded = { ...facts, builtEffort: null };
+    expect(measuredConditionDigest({ ...unrecorded, runId: "r2" })).not.toBe(
+      measuredConditionDigest(unrecorded),
+    );
   });
 
   // agent/config.yaml is harness bytes the Builder owns: raising solve_minutes for a family that kept

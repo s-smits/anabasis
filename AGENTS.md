@@ -704,13 +704,16 @@ the battery was paid for.
     (`selectInitialProduct`, `src/run/product-versions.ts`), and measured whatever it verifies.
 
     Recorded solves are reused where the exam did not move (`src/run/battery-reuse.ts`). An evaluation
-    correction after a battery at or above the aim, with identical agentHash, backend pin, task count and
-    public task digests, *regrades* the recorded submissions (`readRecordedSolves` → `gradeCase`) instead
-    of solving them, and records `regrade: {of, reused, changedPasses}`; below the aim it measures fresh.
-    A battery the environment cut short, meaning every non-result solver-side and environment-owned, the
-    hashes unchanged and fewer than `environmentBlockedRounds` prior remeasures, is remeasured before any
-    rebuild: `censoredRemeasure` re-solves the censored cases and regrades the rest. A *repeat* posing the
-    exam an at-or-above-aim battery already sat is refused at submit (`identical-exam-over-aim`).
+    correction after a battery at or above the aim, with identical agentHash, task count and public task
+    digests under the same solving condition (the backend pin, the Built effort every case recorded, the
+    run condition and the tool tree: `solverConditionMoved`), *regrades* the recorded submissions
+    (`readRecordedSolves` → `gradeCase`) instead of solving them, and records `regrade: {of, reused,
+    changedPasses}`; below the aim it measures fresh. A battery the environment cut short, meaning every
+    non-result solver-side and environment-owned, the hashes and the solving condition unchanged and
+    fewer than `environmentBlockedRounds` prior remeasures, is remeasured before any rebuild:
+    `censoredRemeasure` re-solves the censored cases and regrades the rest, and a moved condition sends
+    the round to rebuild. A *repeat* posing the exam an at-or-above-aim battery already sat is refused
+    at submit (`identical-exam-over-aim`).
 
     The rebuild advice packet is deterministic (`analysis/<runId>-rebuild-advice.json` with
     `rebuild-advice-latest.json` beside it), bound by digest to the iteration that consumes it, and
@@ -719,8 +722,10 @@ the battery was paid for.
     and one state: `active`, `tentatively-fixed`, `confirmed-fixed`, `regressed`, `retired`, `disputed`,
     `settled` or `unmeasured`. A family leaving the set makes its issue `retired`, which proves no fix
     at all. Absence counts toward a fix only when every case of the family was truth-verified under the
-    condition that observed the issue: the same public inputs, `scoringHash`, Built model and solver
-    walls (`src/author/issue-condition.ts`). A recheck that lost a case to a non-result or an unaccepted
+    condition that observed the issue: the same public inputs, `scoringHash`, check tools, Built pin,
+    recorded reasoning effort, isolation and run condition (`src/author/issue-condition.ts`). An effort
+    the cases never recorded compares with nothing, and the solver walls in `agent/config.yaml` are left
+    out, because raising them is a fix. A recheck that lost a case to a non-result or an unaccepted
     attempt carries the issue unchanged, because the lost case may be the one that failed. Under another
     condition the issue is `unmeasured`, named so and aged neither way, because swapping out the failing
     tasks or blinding the evaluator makes an issue vanish without repairing anything. An evaluation

@@ -213,7 +213,13 @@ describe("the battery driver", () => {
     expect(on.advisorsRemoved).toEqual(["instrument:own-check"]);
     expect(on.toolInterfaceHash).toBe(off.toolInterfaceHash);
     const digest = (runCondition: typeof off) =>
-      measuredConditionDigest({ builtPin: "claude/m", isolationStrength: "os", runCondition });
+      measuredConditionDigest({
+        runId: "r",
+        builtPin: "claude/m",
+        builtEffort: "high",
+        isolationStrength: "os",
+        runCondition,
+      });
     expect(digest(on)).not.toBe(digest(off));
   });
 

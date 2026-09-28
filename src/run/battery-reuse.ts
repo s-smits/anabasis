@@ -1,5 +1,6 @@
 /** When a round's battery grades recorded solves instead of solving. Both cases keep every byte the
- *  solver read, so the Built solver would be paid to write artifacts that already exist:
+ *  solver read and the condition it solved under (`solverConditionMoved`), so the Built solver would
+ *  be paid to write artifacts that already exist:
  *
  *  - An evaluation correction after a battery at or above the aim, over the same agent bytes and
  *    the same public tasks, regrades that battery under the corrected evaluator. Below the aim a
@@ -27,6 +28,7 @@ import {
   toolTreeDigestOf,
 } from "../correctness-bundle/battery-record.ts";
 import { readPublicResources } from "../correctness-bundle/public-resources.ts";
+import { recordedBuiltEffort } from "../analyse/iteration-analysis.ts";
 import {
   type BatteryReuse,
   readRecordedSolves,
@@ -44,9 +46,6 @@ import { batteryCondition, loadRecordedTasks } from "./run-driver.ts";
 /** A candidate that poses the exam a recorded battery already sat, with the same agent. */
 interface IdenticalExam {
   runId: string;
-  /** Distance of that battery's passes to the aim; at most zero here, since only a battery at or
-   *  above the aim is offered. */
-  toAim: number;
   /** Whether the candidate's scoring program differs from the one that battery ran. */
   scoringChanged: boolean;
   reuse: BatteryReuse;
@@ -83,7 +82,7 @@ function latestBatteryAtOrAboveAim(
   repoRoot: string,
   slug: string,
   runPin: string,
-): { runId: string; toAim: number; runDir: string } | string {
+): { runId: string; runDir: string } | string {
   const adoptedDir = selectedProductDir(repoRoot, slug);
   if (!existsSync(adoptedDir)) return "no adopted product";
   const readout = readClimbReadout(
@@ -100,22 +99,25 @@ function latestBatteryAtOrAboveAim(
   if (latest.toAim > 0) return `battery ${latest.runId} sat below the aim`;
   const runDir = retainedRunDir(adoptedDir, latest.runId);
   if (runDir === null) return `battery ${latest.runId} has no unique retained run directory`;
-  return { runId: latest.runId, toAim: latest.toAim, runDir };
+  return { runId: latest.runId, runDir };
 }
 
-/** Which part of the solver's own condition moved since battery `runId` solved, or null when none
- *  did. The backend pin names no reasoning effort, the agent bytes hold neither the instruments an
- *  operator withheld nor the tool tree the solver's shell runs first on PATH, and a recorded solve
- *  answers only the condition it ran under. */
+/** Which part of the solving condition moved since battery `runId` solved, or null when none did:
+ *  the Built pin, the reasoning effort the battery's case rows recorded, the run condition, and the
+ *  tool tree the solver's shell runs first on PATH. The pin names no effort, the agent bytes hold
+ *  neither the instruments an operator withheld nor that tool tree, and a recorded solve answers only
+ *  the condition it ran under, so an effort the battery never recorded matches nothing. */
 function solverConditionMoved(
   input: ExamInput,
   runId: string,
-  battery: Pick<BatteryRecord, "bundleSnapshot" | "condition">,
+  battery: Pick<BatteryRecord, "backendPin" | "bundleSnapshot" | "condition">,
 ): string | null {
+  if (battery.backendPin !== input.runPin) return "the backend pin moved";
   const recordPath = join(campaignDir(input.repoRoot, input.slug), CASE_RECORD_FILE);
-  const session = readCaseRecord(recordPath).find((entry) => entry.row.runId === runId)?.row.isolation
-    ?.session;
-  if (session?.reasoningEffort !== input.built.reasoningEffort) return "the Built reasoning effort moved";
+  const rows = readCaseRecord(recordPath).flatMap((entry) => (entry.row.runId === runId ? [entry.row] : []));
+  if (recordedBuiltEffort(rows) !== input.built.reasoningEffort) {
+    return "the Built reasoning effort moved, or the recorded solves name none";
+  }
   const condition = batteryCondition(input.candidateDir, input.built.withholdInstruments === true);
   if (canonicalJson(condition) !== canonicalJson(battery.condition)) {
     return "the solver's run condition moved";
@@ -142,7 +144,6 @@ function identicalExamOverAim(input: ExamInput): ExamRead {
   }
   const fingerprint = fingerprintSlug(input.candidateDir);
   if (!fingerprint.ok) return { exam: null, reason: "the candidate does not fingerprint" };
-  if (battery.backendPin !== input.runPin) return { exam: null, reason: "the backend pin moved" };
   if (battery.bundleSnapshot.agentHash !== fingerprint.agentHash) {
     return { exam: null, reason: "the agent bytes moved" };
   }
@@ -165,14 +166,7 @@ function identicalExamOverAim(input: ExamInput): ExamRead {
   if (scoringChanged && rules(dirname(dirname(source.runDir))) !== rules(input.candidateDir)) {
     return { exam: null, reason: "the brief's public rules moved" };
   }
-  return {
-    exam: {
-      runId: source.runId,
-      toAim: source.toAim,
-      scoringChanged,
-      reuse: read.value,
-    },
-  };
+  return { exam: { runId: source.runId, scoringChanged, reuse: read.value } };
 }
 
 /** The recorded solves an evaluation correction regrades instead of solving, or null when the
@@ -253,21 +247,22 @@ function notRemeasurable(domainDir: string, battery: RecordedBattery): string | 
   return null;
 }
 
-/** The latest battery's environment-censored cases to solve again on unchanged product bytes, or
- *  the reason it has none. */
-export function censoredRemeasure(domainDir: string, readout: ClimbReadout | null): Remeasure | string {
+/** The latest battery's environment-censored cases to solve again on the unchanged selected product
+ *  (`candidateDir`) under the condition that battery solved under, or the reason it has none. */
+export function censoredRemeasure(input: ExamInput, readout: ClimbReadout | null): Remeasure | string {
+  const domainDir = input.candidateDir;
   const latest = readout?.rows[0];
   if (latest === undefined) return "no measured battery";
   if (latest.nonResults === 0) return "no case ended in a non-result";
   const runDir = retainedRunDir(domainDir, latest.runId);
   if (runDir === null) return `battery ${latest.runId} has no unique retained run directory`;
-  let battery: RecordedBattery;
+  let battery: BatteryRecord;
   try {
     battery = readRecordedBatteryRecord(runDir, latest.runId);
   } catch (error) {
     return errorMessage(error);
   }
-  const refused = notRemeasurable(domainDir, battery);
+  const refused = notRemeasurable(domainDir, battery) ?? solverConditionMoved(input, latest.runId, battery);
   if (refused !== null) return refused;
   const remeasure = {
     of: latest.runId,

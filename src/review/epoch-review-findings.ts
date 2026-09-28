@@ -57,6 +57,8 @@ export type MeasuredCondition = {
   agentHash: string;
   correctnessModelHash: string;
   builtPin: string;
+  /** The pin names no reasoning effort; null when the cases did not all record one. */
+  builtEffort: string | null;
   verifierIdentity: string | null;
 };
 
@@ -190,9 +192,10 @@ export function measuredConditionOf({
   correctnessModelHash,
   taskSetHash,
   builtPin,
+  builtEffort,
   verifierIdentity,
 }: Omit<MeasuredCondition, "digest">): MeasuredCondition {
-  const fields = { agentHash, correctnessModelHash, taskSetHash, builtPin, verifierIdentity };
+  const fields = { agentHash, correctnessModelHash, taskSetHash, builtPin, builtEffort, verifierIdentity };
   return {
     ...fields,
     digest: Object.values(fields).every((value) => isString(value) && value.trim() !== "")

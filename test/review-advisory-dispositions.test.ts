@@ -106,6 +106,7 @@ function recordEarlier(root: string, runId: string, findings: AnalysisFinding[])
         correctnessModelHash: "c",
         taskSetHash: "t",
         builtPin: "built-pin",
+        builtEffort: "medium",
         verifierIdentity: "v",
       }),
       coverage: { files: 1, opened: 1, chars: 1, complete: true },

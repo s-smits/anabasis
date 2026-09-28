@@ -37,7 +37,8 @@ describe("a condition is reviewed once", () => {
       agentHash: "a",
       correctnessModelHash: "c",
       taskSetHash,
-      builtPin: "claude/claude-opus-5/medium",
+      builtPin: "claude/claude-opus-5",
+      builtEffort: "medium",
       verifierIdentity: "verifier-a",
     });
 
@@ -87,6 +88,19 @@ describe("a condition is reviewed once", () => {
       REVIEW_IDENTITY,
     ],
     ["an unknown verifier", {}, unknownVerifier, REVIEW_IDENTITY],
+    // The pin names no effort, so a battery solved at another effort under one pin is another condition.
+    [
+      "another Built effort",
+      {},
+      measuredConditionOf({ ...condition("t1"), builtEffort: "high" }),
+      REVIEW_IDENTITY,
+    ],
+    [
+      "an unrecorded Built effort",
+      {},
+      measuredConditionOf({ ...condition("t1"), builtEffort: null }),
+      REVIEW_IDENTITY,
+    ],
     ["a review under the previous schema", { schema: "epoch-review/v3" }, condition("t1"), REVIEW_IDENTITY],
     ["a failed review", { status: "failed" }, condition("t1"), REVIEW_IDENTITY],
     [

@@ -14,6 +14,7 @@ import { claimsDirFor } from "./claim-write.ts";
 import { type ClimbReadout, readClimbReadout } from "./climb-readout.ts";
 import { type Remeasure, censoredRemeasure } from "./battery-reuse.ts";
 import { isString } from "../meta/json-shape.ts";
+import type { SlotChoice } from "../backends/resolve.ts";
 
 export interface NextMove {
   /** `rebuild` is the retained round name for adopted-product authoring, not an order to redesign. */
@@ -111,8 +112,10 @@ export function selectNextMoveFromDisk(input: {
   runId: string;
   domainDir: string;
   builder: NonNullable<CampaignBindingInput["builder"]>;
+  /** This run's Built slot, which a remeasure's re-solved cases would run under. */
+  built: Pick<SlotChoice, "reasoningEffort" | "withholdInstruments">;
 }): SelectedNextMove {
-  const { repoRoot, manifest, baseKickoff, runPin, domainDir, builder } = input;
+  const { repoRoot, manifest, baseKickoff, runPin, domainDir, builder, built } = input;
   const { priorEvidence: measured, lineage } = readAdmission(repoRoot, manifest.slug);
   const readout = readClimbReadout(
     domainDir,
@@ -130,7 +133,9 @@ export function selectNextMoveFromDisk(input: {
     rows?.some((row) => row.severity === "blocking") === true;
   const fromPreAdoption = !blocks(measured?.feedback ?? null) && blocks(preAdoption);
   const adopted = existsSync(domainDir);
-  const remeasure = adopted ? censoredRemeasure(domainDir, readout) : "no adopted product";
+  const remeasure = adopted
+    ? censoredRemeasure({ repoRoot, slug: manifest.slug, runPin, built, candidateDir: domainDir }, readout)
+    : "no adopted product";
   const decided = decideNextMove(
     adopted ? "adopted" : "none",
     fromPreAdoption ? preAdoption : (measured?.feedback ?? null),

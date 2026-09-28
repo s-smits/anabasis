@@ -143,6 +143,7 @@ it.each(["all", "unmeasured", "exhausted"] as const)(
       runId: "next-round",
       domainDir: join(root, "domains", SLUG),
       builder: { kind: "codex", model: "test-model", reasoningEffort: "low" },
+      built: { reasoningEffort: "low" },
     });
     expect(selected.decision).toMatchObject({ move: "rebuild", seed: "adopted" });
     expect(selected.readout?.decision).toMatchObject({ placement: { zone: "too-easy" } });
@@ -235,6 +236,7 @@ it("keeps another pin's and another threshold's public tasks readable, outside t
       runId: "next-round",
       domainDir: join(root, "domains", SLUG),
       builder: { kind: "codex", model: "test-model", reasoningEffort: "low" },
+      built: { reasoningEffort: "low" },
     });
   const alone = select();
   // Two more passing batteries, newer than the run's own: either one entering the readout would

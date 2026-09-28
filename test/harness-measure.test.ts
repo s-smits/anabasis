@@ -137,6 +137,7 @@ describe("measureHarness", () => {
             condition: measuredConditionOf({
               ...input.analysis.identities.bundleSnapshot,
               builtPin: input.analysis.identities.backendPin,
+              builtEffort: input.analysis.identities.builtEffort,
               verifierIdentity: null,
             }),
             reviewerPin: "pin",
@@ -400,6 +401,7 @@ describe("measureHarness", () => {
     const analysis = deriveIterationAnalysis(repo, "bridge-truss", "m4-e2e");
     expect(analysis.schema).toBe("iteration-analysis/v5");
     expect(analysis.identities.isolationStrength).toBe("physical");
+    expect(analysis.identities.builtEffort).toBe(builtSession().reasoningEffort);
     expect(analysis.identities.bundleSnapshot.agentHash).toMatch(/^[0-9a-f]{64}$/);
     expect(isString(analysis.identities.bundleSnapshot.taskSetHash)).toBe(true);
     expect(analysis.battery.runId).toBe("m4-e2e");

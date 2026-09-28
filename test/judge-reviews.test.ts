@@ -206,6 +206,7 @@ function repoWith(
           toolTreeDigest: null,
         },
         backendPin: BUILT_PIN,
+        builtEffort: "high",
         buildInputsHash: "d".repeat(64),
         isolationStrength: "physical",
       },

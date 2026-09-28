@@ -8,9 +8,9 @@
  * because identical inputs graded by a weaker evaluator also make a failure disappear. The tools
  * the checks ran are the same, because the scoring hash stops at evaluator.ts and its imports while
  * a check can hand the verdict to an installed analyser, and an analyser replaced underneath an
- * unchanged evaluator is a weaker evaluator all the same. And the Built model and the host-imposed
- * condition are the same, because a different model or different isolation answers a different
- * question about the same harness. When any of the four moved, the issue is unmeasured: the
+ * unchanged evaluator is a weaker evaluator all the same. And the Built model, its effort and the
+ * host-imposed condition are the same, because a different model, effort or isolation answers a
+ * different question about the same harness. When any of the four moved, the issue is unmeasured: the
  * register keeps it, the author is told it was not measured, and nothing ages it towards fixed.
  *
  * The check tools are compared by what the battery's verifier launched: each tool's own bytes, where
@@ -68,18 +68,23 @@ export type BatteryCondition = {
   familyInputs: ReadonlyMap<string, string | null>;
 };
 
-/** The host-imposed condition a battery solved under, as one digest. The Built pin names the
- *  model, its provider and its effort; isolation and the run condition name the walls and the tools
- *  removed. Every byte of the harness is left out, because that is what a fix is allowed to change,
- *  and that includes the solver walls agent/config.yaml declares: more turns for a family that kept
- *  timing out is a fix, not a different question. */
+/** The host-imposed condition a battery solved under, as one digest. The Built pin names the backend
+ *  kind and the model, and on OpenRouter the providers, but no effort, so the reasoning effort the
+ *  battery's case rows recorded goes in beside it; an effort they never recorded is unknown and is
+ *  keyed to the battery itself, which matches no other. Isolation and the run condition name the
+ *  walls and the tools removed. Every byte of the harness is left out, because that is what a fix is
+ *  allowed to change, and that includes the solver walls agent/config.yaml declares: more turns for
+ *  a family that kept timing out is a fix, not a different question. */
 export function measuredConditionDigest(facts: {
+  runId: string;
   builtPin: string;
+  builtEffort: string | null;
   isolationStrength: string;
   runCondition: IterationAnalysis["battery"]["condition"];
 }): string {
   return hashJsonValue({
     builtPin: facts.builtPin,
+    builtEffort: facts.builtEffort ?? { unrecorded: facts.runId },
     isolationStrength: facts.isolationStrength,
     runCondition: {
       variant: facts.runCondition.variant,
@@ -163,7 +168,9 @@ export function batteryCondition(analysis: IterationAnalysis, measuredDir: strin
     scoringHash: identities.bundleSnapshot.scoringHash,
     checkTools: checkToolsDigest(runDir, runId, violations),
     measuredCondition: measuredConditionDigest({
+      runId,
       builtPin: identities.backendPin,
+      builtEffort: identities.builtEffort,
       isolationStrength: identities.isolationStrength,
       runCondition: battery.condition,
     }),

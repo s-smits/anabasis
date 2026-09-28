@@ -27,6 +27,7 @@ import {
   CASE_RECORD_FILE,
   type CaseVerdict,
   caseVerdict,
+  type CaseRecordRow,
   classifyCaseOutcome,
   readCaseRecord,
   type TracePointer,
@@ -85,6 +86,8 @@ export type IterationAnalysis = {
   identities: {
     bundleSnapshot: BundleSnapshotFact;
     backendPin: string;
+    /** `recordedBuiltEffort` of the battery's case rows. */
+    builtEffort: string | null;
     buildInputsHash: string;
     isolationStrength: string;
   };
@@ -328,6 +331,14 @@ function disclosedIsolationStrength(
   ][0] as string;
 }
 
+/** The one Built reasoning effort a battery's case rows recorded from their session check, or null
+ *  when a row records none or two disagree. The backend pin names no effort, so these rows are the
+ *  only record of it, and null is unknown: it matches no effort, itself included. */
+export function recordedBuiltEffort(rows: ReadonlyArray<Pick<CaseRecordRow, "isolation">>): string | null {
+  const [effort, ...others] = new Set(rows.map((row) => row.isolation?.session?.reasoningEffort ?? null));
+  return others.length === 0 ? (effort ?? null) : null;
+}
+
 /** Derive the packet from recorded evidence only, and refuse missing battery, record or claim data
  *  rather than deriving a partial packet from what is there. The next iteration must respond to the
  *  measured product's evidence, and an incomplete or mismatched record could direct its changes at
@@ -362,6 +373,7 @@ export function deriveIterationAnalysis(
     identities: {
       bundleSnapshot,
       backendPin: battery.backendPin,
+      builtEffort: recordedBuiltEffort(mine),
       buildInputsHash: battery.buildInputsHash,
       isolationStrength,
     },

@@ -146,6 +146,7 @@ function selectorContext(
     runId: input.runId,
     domainDir,
     builder: input.builderCondition,
+    built: input.slots.built,
   };
 }
 

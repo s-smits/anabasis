@@ -497,6 +497,7 @@ describe("review coverage tied to recorded execution", () => {
           identities: {
             bundleSnapshot: { agentHash: "a", correctnessModelHash: "c", taskSetHash: "t" },
             backendPin: "built-pin",
+            builtEffort: "medium",
           },
           battery: {
             summary: { passed: 1, verified: 1, unaccepted: 0, nonResults: 0 },

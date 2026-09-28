@@ -407,6 +407,14 @@ describe("a battery the environment cut short is remeasured before any rebuild",
     });
   }, 180_000);
 
+  it("rebuilds when the censored battery solved under another Built effort", async () => {
+    // Regrading four solves made at one effort beside two made at another would score one battery
+    // under two conditions, so the round goes to the Builder instead.
+    const { outcome, batteries } = await twoRounds(censored, {}, { effort: "minimal" });
+    expect(outcome.rounds.map((row) => row.move)).toEqual(["build", "rebuild"]);
+    expect(batteries.map((row) => row.regrade)).toEqual(batteries.map(() => null));
+  }, 180_000);
+
   it("rebuilds when the two cases were unaccepted attempts rather than non-results", async () => {
     const silent = (runId: string, taskId: string): Answer =>
       runId === "rg" && (taskId === "t4" || taskId === "t5") ? "silent" : "right";

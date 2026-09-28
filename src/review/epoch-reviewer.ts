@@ -233,6 +233,7 @@ function openSession(input: EpochReviewInput): OpenSession {
       : measuredConditionOf({
           ...analysis.identities.bundleSnapshot,
           builtPin: analysis.identities.backendPin,
+          builtEffort: analysis.identities.builtEffort,
           verifierIdentity: null,
         });
   // Every field a skipped or failed review still owes its campaign, filled in before anything can

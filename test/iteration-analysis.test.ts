@@ -19,6 +19,7 @@ import {
   admitFindings,
   checkCounts,
   hostFindings,
+  recordedBuiltEffort,
 } from "../src/analyse/iteration-analysis.ts";
 import { authorSessionOwner } from "../src/analyse/finding-owner.ts";
 import type { NonResultKind } from "../src/claim/record-events.ts";
@@ -76,6 +77,7 @@ function packet(overrides?: {
         toolTreeDigest: null,
       },
       backendPin: "codex:test",
+      builtEffort: "high",
       buildInputsHash: "d".repeat(64),
       isolationStrength: "physical",
     },
@@ -538,5 +540,20 @@ describe("checkCounts — a recorded firing ledger as a count map", () => {
     expect(checkCounts(null)).toBeNull();
     expect(checkCounts({ "tc-a": -1 })).toBeNull();
     expect(checkCounts({ "tc-a": 1.5 })).toBeNull();
+  });
+});
+
+describe("recordedBuiltEffort — the Built effort a battery's case rows recorded", () => {
+  it("names the effort only when every row's session check recorded the same one", () => {
+    const row = (reasoningEffort?: string) =>
+      double<Parameters<typeof recordedBuiltEffort>[0][number]>({
+        isolation:
+          reasoningEffort === undefined ? null : { strength: "physical", session: { reasoningEffort } },
+      });
+    expect(recordedBuiltEffort([row("xhigh"), row("xhigh")])).toBe("xhigh");
+    // A row with no session check, rows that disagree, and no rows at all are unknown, never "".
+    expect(recordedBuiltEffort([row("xhigh"), row()])).toBeNull();
+    expect(recordedBuiltEffort([row("xhigh"), row("low")])).toBeNull();
+    expect(recordedBuiltEffort([])).toBeNull();
   });
 });

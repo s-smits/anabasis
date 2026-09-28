@@ -249,6 +249,7 @@ describe("promoteCandidate — one battery, one decision", () => {
         runId: "intermediate",
         domainDir: selectedProductDir(root, SLUG),
         builder: { kind: "codex", model: "fixture", reasoningEffort: "low" },
+        built: { reasoningEffort: "low" },
       });
       expect(selected.readout?.decision).toMatchObject({ placement: { zone: "too-hard" } });
       expect(selected.decision).toMatchObject({ move: "rebuild", seed: "adopted" });

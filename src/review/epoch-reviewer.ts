@@ -14,8 +14,8 @@
  *                                 never reads an absent review as a clean one.
  *   What is the reviewer shown?   `orientation` and the three tools: read_source over a closed
  *                                 path set, one bounded probe, one finding recorder.
- *   What came back?               `recordedReview` — coverage, probes and, only from a turn that
- *                                 finished, the findings.
+ *   What came back?               `recordedReview` — coverage, probes, every finding the host
+ *                                 admitted, and, only from a turn that finished, the report.
  *
  * `epoch-review-findings.ts` owns what a review is worth afterwards and what the reviewer may
  * record. Its authority is deliberately small: one finding tool, one bounded experiment, no claim
@@ -591,10 +591,10 @@ function unreadSourcePrompt(state: ReviewState, sourcePaths: ReadonlySet<string>
   };
 }
 
-/** What the session recorded. A failed turn keeps its reads, its coverage and its probes, because
- *  those happened and the campaign should be able to see them, but it drops its findings: a review
- *  that did not finish has not weighed what it read, and a half-formed finding would reopen an
- *  authoring area on its own. */
+/** What the session recorded. A failed turn keeps everything that happened: its reads, coverage and
+ *  probes, and every finding and dispute the host admitted, since each passed the admission a
+ *  completed review's does. What an unfinished review may route is its readers' decision, and they
+ *  route a failed turn's findings as an incomplete one's. Only a finished turn has a report. */
 function recordedReview(
   evidence: EpochReviewEvidence,
   turn: ReaderTurn,
@@ -608,6 +608,8 @@ function recordedReview(
     reads: state.reads,
     coverage,
     admission: state.admission,
+    findings: state.findings,
+    disputes: state.disputes,
     ...keysIf(state.probes.rows.length > 0, () => ({ probes: state.probes.rows })),
   };
   if (turn.error !== null) return { ...settled, status: "failed", reason: turn.error };
@@ -618,8 +620,6 @@ function recordedReview(
       ? null
       : (verifier.unavailable ??
         `Source coverage incomplete: truncated=${coverage.truncated}, ${coverage.missing.length} missing or incompletely read entries`),
-    findings: state.findings,
-    disputes: state.disputes,
     report: turn.text,
   };
 }

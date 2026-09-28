@@ -104,8 +104,14 @@ function candidateTree(): string {
 }
 
 /** One authoring review over `root`, handed `demonstrations` when there are any, whose reader
- *  takes `step`. */
-async function reviewed(root: string, runId: string, demonstrations: Demonstrations | null, step: Step) {
+ *  takes `step` and then ends with `error`. */
+async function reviewed(
+  root: string,
+  runId: string,
+  demonstrations: Demonstrations | null,
+  step: Step,
+  error: string | null = null,
+) {
   let prompt = "";
   const result = await runEpochReview({
     repoRoot: root,
@@ -120,13 +126,16 @@ async function reviewed(root: string, runId: string, demonstrations: Demonstrati
     readerTurn: async (input) => {
       prompt = input.prompt;
       await step(new Map(input.tools.map((tool) => [tool.name, tool])), input.prompt);
-      return { pin: null, text: "", error: null };
+      return { pin: null, text: "", error };
     },
   });
   return { prompt, result };
 }
 
 const tool = (tools: ReadonlyMap<string, ReaderTool>, name: string) => required(tools.get(name), name);
+
+/** One authoring review over a fresh candidate whose turn ends in a provider error after `step`. */
+const failedReview = (step: Step) => reviewed(candidateTree(), "authoring-f", null, step, "provider stopped");
 
 /** A finding on the uppercase check, citing the evaluator the reader has just read. */
 async function answerFinding(tools: ReadonlyMap<string, ReaderTool>, probeIds: JsonValue[]) {
@@ -177,15 +186,12 @@ describe("the probes an authoring review rested its findings on, carried to the 
   });
 
   it("carries nothing from a review that recorded no findings, so the previous review's set stands", async () => {
-    // A failed turn keeps its probes and drops its findings, so a probe one of them cited is no
-    // longer anything a recorded finding rests on.
-    const { probes, findings } = await massReview();
-    expect(
-      carriedDemonstrations({ runId: "authoring-0", status: "failed", probes: probes.rows, findings }),
-    ).toBeNull();
-    expect(
-      carriedDemonstrations({ runId: "authoring-0", status: "skipped", probes: probes.rows, findings }),
-    ).toBeNull();
+    const { probes } = await massReview();
+    for (const status of ["failed", "skipped"]) {
+      expect(
+        carriedDemonstrations({ runId: "authoring-0", status, probes: probes.rows, findings: [] }),
+      ).toBeNull();
+    }
     // A review that finished, rested nothing on a probe and named no check ends the chain.
     expect(
       carriedDemonstrations({
@@ -198,6 +204,31 @@ describe("the probes an authoring review rested its findings on, carried to the 
     expect(carriedDemonstrations({ runId: "authoring-0", status: "incomplete", findings: [] })).toEqual(
       NOTHING_CARRIED,
     );
+  });
+
+  it("keeps a failed turn's admitted finding and routes it as an incomplete review's", async () => {
+    const { result } = await failedReview(async (tools) => {
+      expect(await answerFinding(tools, [])).toBe("recorded defect as advisory");
+    });
+    expect(result.status).toBe("failed");
+    expect(result.findings.map((finding) => finding.checkId)).toEqual(["answer"]);
+    const incomplete = { ...result, status: "incomplete" as const };
+    expect(carriedDemonstrations(result)?.named).toEqual([{ checkId: "answer", severity: "advisory" }]);
+    expect(carriedDemonstrations(result)).toEqual(carriedDemonstrations(incomplete));
+    const contract = { brief: null, deferAdvisory: true };
+    expect(publicEpochReview(result, contract)).toEqual(publicEpochReview(incomplete, contract));
+  });
+
+  it("records no finding from a failed turn whose one finding the host refused, so the previous set stands", async () => {
+    const { result } = await failedReview(async (tools) => {
+      const unowned = { defect: true, claim: "The answer check is wrong.", severity: "advisory" };
+      expect(await call(tool(tools, "record_finding"), unowned)).toBe(
+        "refused: a defect must name the bundle file at fault as its owner",
+      );
+    });
+    expect(result.status).toBe("failed");
+    expect(result.findings).toEqual([]);
+    expect(carriedDemonstrations(result)).toBeNull();
   });
 
   it("shows the next review each carried probe as the call that re-runs it, and no probe number", async () => {

@@ -74,13 +74,14 @@ export function advisoryDefects(review: CarriedReview): AdvisoryDefect[] {
 }
 
 /**
- * What an authoring review hands the next one of its round, or null when it recorded no findings,
- * because a review that failed or never ran has weighed nothing and the set the one before it
- * carried still stands. A finished review that rested nothing on a probe and named no check
- * carries empty sets, which ends the chain.
+ * What an authoring review hands the next one of its round, or null when it neither finished nor
+ * admitted a finding: it weighed nothing, so the set the one before it carried still stands. A
+ * failed turn's admitted findings carry as an incomplete review's do, and a finished review that
+ * rested nothing on a probe and named no check carries empty sets, which ends the chain.
  */
 export function carriedDemonstrations(review: CarriedReview): Demonstrations | null {
-  if (review.status !== "completed" && review.status !== "incomplete") return null;
+  const finished = review.status === "completed" || review.status === "incomplete";
+  if (!finished && review.findings.length === 0) return null;
   return {
     probes: (review.probes ?? []).filter((row) => row.cited === true),
     named: review.findings.flatMap((finding) =>

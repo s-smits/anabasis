@@ -209,8 +209,10 @@ describe("review coverage tied to recorded execution", () => {
       );
       expect(result.coverage.complete).toBe(mode === "complete");
       expect(result.report).toBe(mode === "failed" ? null : LONG_SYNTHESIS);
+      // Both findings the host admitted before the turn ended stay recorded however it ended, and
+      // only a completed review's reach the public projection.
+      expect(result.findings).toHaveLength(2);
       expect(publicEpochReview(result).findings).toHaveLength(mode === "complete" ? 2 : 0);
-      if (mode === "failed") expect(result.findings).toEqual([]);
       expect(result.admission).toEqual({
         continuations: 1,
         citationRefusals: 1,
@@ -714,7 +716,7 @@ describe("review coverage tied to recorded execution", () => {
       });
       expect(result.status).toBe(mode === "complete" ? "completed" : mode);
       expect(result.reviewerEffort).toBe("low");
-      expect(result.findings).toHaveLength(mode === "failed" ? 0 : 1);
+      expect(result.findings).toHaveLength(1);
       expect(publicEpochReview(result).findings).toHaveLength(mode === "complete" ? 1 : 0);
       expect(JSON.stringify(publicEpochReview(result))).not.toContain(quote);
     }

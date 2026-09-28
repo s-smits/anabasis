@@ -14,13 +14,16 @@
  * register keeps it, the author is told it was not measured, and nothing ages it towards fixed.
  *
  * The check tools are compared by what the battery's verifier launched: each tool's own bytes, where
- * it was found and its interpreter's bytes. A workspace tool's bytes are its portable digest, the
- * file with the tree's own path taken out, because a reseed copies the tree into a new workspace and
- * rewrites every wrapper that names it without changing what the wrapper runs. The `.toolchain` tree
- * around them stays out, although the verifier environment hash covers it, because the solver's
- * tools live in that same tree and a round that installed or repaired only a solver tool asked the
- * checks nothing new. The price is that a script rewritten behind an unchanged wrapper reads as the
- * same tool.
+ * it was found, its interpreter's bytes and, for a workspace tool, the portable digest of the
+ * `.toolchain` tree it was installed in. A workspace tool's own bytes are its portable digest too,
+ * the file with the tree's own path taken out, because a reseed copies the tree into a new workspace
+ * and rewrites every wrapper that names it without changing what the wrapper runs; the same tree in
+ * another place therefore compares equal. The tree has to be in, because a wrapper commonly execs a
+ * script beside it, and a script rewritten behind an unchanged wrapper is a changed checker that the
+ * wrapper's own bytes cannot show. The record names no finer dependency than the whole tree, so the
+ * price is paid the other way: a round that installed or repaired only a solver tool in that tree
+ * leaves the issue unmeasured, which loses a measurement but never counts a changed checker's
+ * silence towards a fix.
  *
  * Every value here is read from what the battery already recorded: the scoring hash from the
  * bundle snapshot the analysis names, each family's inputs from the battery's own digest-bound
@@ -49,9 +52,9 @@ export type IssueCondition = {
    *  nothing. */
   publicInputs: string | null;
   scoringHash: string;
-  /** sha256 over the tools the battery's checks launched, each by its own digest, source and
-   *  interpreter digest; null when the battery record could not be vouched for, which compares
-   *  with nothing. */
+  /** sha256 over the tools the battery's checks launched, each by its own digest, source,
+   *  interpreter digest and tree digest; null when the battery record could not be vouched for,
+   *  which compares with nothing. */
   checkTools: string | null;
   /** `measuredConditionDigest` of the battery. */
   measuredCondition: string;
@@ -123,9 +126,9 @@ function familyInputDigests(
 /** The tools the battery's verifier launched, from the `execution` summary its record carries. The
  *  summary is trusted only when the run's manifest vouches for the bytes, the record names this run
  *  and its tool map recomputes the environment hash beside it, which also means a workspace tool
- *  carries its portable digest and a host tool does not. Each tool then counts by that portable
- *  digest or else its plain one, its source and its interpreter digest, and its tree digest is left
- *  out (see the module comment). A battery that launched no tool gets the digest of an empty list,
+ *  carries its tree and portable digests and a host tool carries neither. Each tool then counts by
+ *  that portable digest or else its plain one, its source, its interpreter digest and its tree
+ *  digest (see the module comment). A battery that launched no tool gets the digest of an empty list,
  *  which matches another such battery and nothing else. */
 function checkToolsDigest(runDir: string, runId: string, violations: EvidenceLogViolation[]): string | null {
   const recorded = recordedEvidence(runDir, BATTERY_FILE, violations);
@@ -144,6 +147,7 @@ function checkToolsDigest(runDir: string, runId: string, violations: EvidenceLog
           entry?.portableDigest ?? entry?.digest ?? null,
           entry?.source ?? null,
           entry?.interpreterDigest ?? null,
+          entry?.treeDigest ?? null,
         ];
       }),
   );

@@ -1296,44 +1296,63 @@ describe("the tools a battery's checks ran", () => {
       "complete",
     );
 
-  it("leaves an issue tentatively fixed when only the tree around the check tools moved", () => {
-    // A round that installed or repaired a solver tool rewrote the one .toolchain tree the check
-    // tools sit in. The verifier environment hash covers that whole tree, so it moved; the checks
-    // were asked nothing new.
+  /** A `truss-analyze` wrapper installed in `workspace`'s tool tree, naming the tree by its absolute
+   *  path and exec'ing the script beside it, whose body is `cli`; resolved the way a battery's
+   *  verifier resolves it and recorded as that battery's one check tool. */
+  function installedIn(workspace: string, cli: string) {
+    const tree = join(workspace, ".toolchain");
+    const wrapper = join(tree, "bin", "truss-analyze");
+    mkdirSync(join(tree, "bin"), { recursive: true });
+    mkdirSync(join(tree, "lib"), { recursive: true });
+    writeFileSync(wrapper, `#!/bin/sh\nexec "${realpathSync.native(tree)}/lib/truss_cli.sh" "$@"\n`);
+    writeFileSync(join(tree, "lib", "truss_cli.sh"), cli);
+    chmodSync(wrapper, 0o755);
+    const found = resolveToolInventory({ toolIds: ["truss-analyze"], toolTree: tree, pathDirs: [] });
+    const entry = required(found.inventory["truss-analyze"], "installed wrapper");
+    const recorded = {
+      digest: entry.digest,
+      source: entry.source,
+      kind: entry.kind,
+      interpreter: entry.interpreter,
+      ...keyIfDefined("interpreterDigest", entry.interpreterDigest),
+      ...keyIfDefined("portableDigest", entry.portableDigest),
+    };
+    return { entry, battery: recordBattery(recorded, required(entry.treeDigest, "tree digest")) };
+  }
+
+  it("reads an issue as unmeasured when the tree behind an unchanged check tool moved", () => {
+    // The wrapper's own bytes and its interpreter are fixed while the tree it was installed in
+    // moved. The record cannot say whether the change was the script the wrapper execs or a solver
+    // tool beside it, so the absence is not counted towards a fix.
     const was = recordBattery(analyser, "5".repeat(64));
-    const solverOnly = recordBattery(analyser, "6".repeat(64));
-    expect(solverOnly.environment).not.toBe(was.environment);
-    expect(solverOnly.checkTools).toMatch(/^[0-9a-f]{64}$/);
-    expect(solverOnly.checkTools).toBe(was.checkTools);
-    expect(absentUnder(was.checkTools, solverOnly.checkTools).map(issueStatusWord)).toEqual([
-      "tentatively-fixed",
+    const treeMoved = recordBattery(analyser, "6".repeat(64));
+    expect(treeMoved.checkTools).toMatch(/^[0-9a-f]{64}$/);
+    expect(treeMoved.checkTools).not.toBe(was.checkTools);
+    const after = absentUnder(was.checkTools, treeMoved.checkTools);
+    expect(after[0]?.unmeasured).toEqual(["check-tools"]);
+    expect(after.map(issueStatusWord)).toEqual(["unmeasured"]);
+  });
+
+  it("reads an issue as unmeasured when a script was rewritten behind a byte-identical wrapper", () => {
+    const was = installedIn(scratchDir("ana-workspace-"), "#!/bin/sh\necho pass\n");
+    const rewritten = installedIn(scratchDir("ana-rewritten-workspace-"), "#!/bin/sh\necho fail\n");
+    expect(rewritten.entry.portableDigest).toBe(required(was.entry.portableDigest, "portable digest"));
+    expect(rewritten.entry.interpreterDigest).toBe(was.entry.interpreterDigest);
+    expect(rewritten.battery.checkTools).toMatch(/^[0-9a-f]{64}$/);
+    expect(rewritten.battery.checkTools).not.toBe(was.battery.checkTools);
+    expect(absentUnder(was.battery.checkTools, rewritten.battery.checkTools).map(issueStatusWord)).toEqual([
+      "unmeasured",
     ]);
   });
 
-  it("leaves an issue tentatively fixed when a reseed only rewrote the tree path a wrapper names", () => {
+  it("leaves an issue tentatively fixed when a reseed only moved the tree a wrapper names", () => {
     // A wrapper that names its tree by absolute path has other raw bytes in every workspace the
-    // tree is copied into, while the file with that path taken out is the same file.
-    const installedIn = (workspace: string) => {
-      const tree = join(workspace, ".toolchain");
-      const wrapper = join(tree, "bin", "truss-analyze");
-      mkdirSync(join(tree, "bin"), { recursive: true });
-      writeFileSync(wrapper, `#!/bin/sh\nexec "${realpathSync.native(tree)}/lib/truss_cli.sh" "$@"\n`);
-      chmodSync(wrapper, 0o755);
-      const found = resolveToolInventory({ toolIds: ["truss-analyze"], toolTree: tree, pathDirs: [] });
-      const entry = required(found.inventory["truss-analyze"], "installed wrapper");
-      const recorded = {
-        digest: entry.digest,
-        source: entry.source,
-        kind: entry.kind,
-        interpreter: entry.interpreter,
-        ...keyIfDefined("interpreterDigest", entry.interpreterDigest),
-        ...keyIfDefined("portableDigest", entry.portableDigest),
-      };
-      return { entry, battery: recordBattery(recorded, required(entry.treeDigest, "tree digest")) };
-    };
-    const was = installedIn(scratchDir("ana-workspace-"));
-    const reseeded = installedIn(scratchDir("ana-reseeded-workspace-"));
+    // tree is copied into, while the file and the tree with that path taken out are the same.
+    const cli = "#!/bin/sh\necho pass\n";
+    const was = installedIn(scratchDir("ana-workspace-"), cli);
+    const reseeded = installedIn(scratchDir("ana-reseeded-workspace-"), cli);
     expect(reseeded.entry.digest).not.toBe(was.entry.digest);
+    expect(reseeded.entry.treeDigest).toBe(required(was.entry.treeDigest, "tree digest"));
     expect(reseeded.battery.checkTools).toMatch(/^[0-9a-f]{64}$/);
     expect(reseeded.battery.checkTools).toBe(was.battery.checkTools);
     expect(absentUnder(was.battery.checkTools, reseeded.battery.checkTools).map(issueStatusWord)).toEqual([

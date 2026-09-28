@@ -146,7 +146,7 @@ type FindingArgs = ReturnType<typeof findingArgs>;
  *  demonstrated violation before blocking, and without a floor nothing in the host checks that one
  *  was supplied: a finding that says in so many words it could not construct a concrete case still
  *  decides the next move. The floor proves only that text was supplied, never that the argument in
- *  it holds; the citations rule and the one-reopen cap carry the rest. */
+ *  it holds; the citations rule and, on the agent side, a probe carry the rest. */
 const DEMONSTRATION_MIN_CHARS = 40;
 
 const CITATIONS_UNBOUND =
@@ -647,9 +647,9 @@ function findingParameters(disputable: readonly string[]) {
   };
 }
 
-/** The `record_finding` tool. It is exported for its own test, like the diagnosis tool: the
- *  refusals and the one-blocking-defect cap are the contract worth proving, and driving them
- *  through a live review session would prove the transport instead and cost a model call to do it. */
+/** The `record_finding` tool. Its own test drives it directly, like the diagnosis tool's: the
+ *  refusals and the admitted severity are the contract worth proving, and driving them through a
+ *  live review session would prove the transport instead and cost a model call to do it. */
 export function recordFindingTool(
   offered: readonly AdviceIssue[],
   taskIds: readonly string[],

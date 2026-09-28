@@ -600,16 +600,18 @@ the battery was paid for.
    Reviewer. The named owner routes nothing. Treat a timeout as diagnosable unless the evidence gives it
    to the environment.
 
-   The Epoch Reviewer runs once per measured-condition digest. Its finding is either a *defect*, which
-   names the file at fault and is advisory or blocking, or an *observation*, which names a file or none
-   and is always advisory. Blocking needs a demonstrated violation of the request or of a declared
-   requirement; one review may record several blocking findings, and how many owners a round reopens is
-   the continuation's decision (`src/run/next-move.ts`). Its orientation states the band
-   placement through `placeOnBand`, as the climb readout does, so that the one component reading the
-   measured tree against the request knows what the round aimed for. Until 2026-09-18 it saw the counts
-   alone and was asked about "a perfect or near-perfect battery", which left the whole `over-aim` zone,
-   whose name says no limit was measured, with no stated reason to inspect anything. The placement opens a
-   question; the finding is owed to what the request demands and the tasks leave undemanded.
+   The Epoch Reviewer runs once per measured-condition digest that it has read to completion; a review
+   that failed or was cut short runs again at the next measurement of that condition, though the
+   findings it had admitted are kept. Its finding is either a *defect*, which names the file at fault
+   and is advisory or blocking, or an *observation*, which names a file or none and is always advisory.
+   Blocking needs a demonstrated violation of the request or of a declared requirement; one review may
+   record several blocking findings, and how many owners a round reopens is the continuation's decision
+   (`src/run/next-move.ts`). Its orientation states the band placement through `placeOnBand`, as the
+   climb readout does, so that the one component reading the measured tree against the request knows
+   what the round aimed for. Until 2026-09-18 it saw the counts alone and was asked about "a perfect or
+   near-perfect battery", which left the whole `over-aim` zone, whose name says no limit was measured,
+   with no stated reason to inspect anything. The placement opens a question; the finding is owed to
+   what the request demands and the tasks leave undemanded.
 
    The orientation also carries the round's `EXPERIMENT.json`, because a reviewer asked whether a result
    was earned was never told what the round set out to earn, together with its two scores
@@ -664,10 +666,10 @@ the battery was paid for.
    long as the file still counts as the recorded tree digest took it, and a directory reads as its
    listing.
 
-   An authoring review also reads the bytes of the round's failing blind rehearsals beside their verdict;
-   the Builder saw only the verdict, and passing bytes reach it through `context`. It reads the previous
-   review's probes too, as re-runnable calls (`carriedDemonstrations`, `src/review/epoch-reviewer.ts`),
-   and each is a lead until it is re-run over the current bytes.
+   An authoring review also reads the bytes of the round's failing blind rehearsals beside their
+   verdict; the Builder saw only the verdict, and passing bytes reach it through `context`. It reads the
+   previous review's probes too, as re-runnable calls (`carriedDemonstrations`,
+   `src/review/review-carry.ts`), and each is a lead until it is re-run over the current bytes.
 
    Reviewer spend is not an axis for savings. The reviewer is the one component reading the measured tree
    against the request, so make it smarter and let the build iterate. Cut its text only when the recorded

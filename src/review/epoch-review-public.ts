@@ -317,9 +317,9 @@ export function publicEpochReview(
   // An unfinished review has not weighed the complete contract, so its observations stay private:
   // neither an owner reopen nor a suspended diagnosis may come from a partial reading. One reading
   // is complete on its own, and that is a vetoed case the reviewer settled against the check after
-  // opening the vetoed artifact — a review cut short by a vanished `.toolchain` can still have done
-  // that much. The settlement crosses as advice rather than as a reopen, since whatever the review
-  // could not read may be what owns the check.
+  // opening the vetoed artifact — a review cut short by a failed turn or a vanished `.toolchain`
+  // can still have done that much. The settlement crosses as advice rather than as a reopen, since
+  // whatever the review could not read may be what owns the check.
   const settled =
     review.status === "completed"
       ? review.findings

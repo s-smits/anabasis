@@ -65,7 +65,8 @@ Read the evidence before the report. On 2026-09-15 the reviewer read the vetoed 
 through `read_source`, recorded `harness-defect` on `init-hardware-state` with owner
 `correctness-model` at blocking severity, cited the artifact's own register write rather than the
 Judge's prose, and wrote "the Judge read the shown public rules correctly" in its synthesis. Its
-second blocking request was admitted advisory, which is the one-reopen cap, not a fault.
+second blocking request was admitted advisory, under a one-reopen cap that has since been removed:
+severity now reads each finding's own evidence, so both would be admitted as recorded.
 
 ## Limits
 

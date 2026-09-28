@@ -13,17 +13,17 @@
  *                                 Every no is recorded as `skipped` with its reason, so a campaign
  *                                 never reads an absent review as a clean one.
  *   What is the reviewer shown?   `orientation` and the three tools: read_source over a closed
- *                                 path set, one bounded probe, one finding recorder.
+ *                                 path set, probe_check within its budget, one finding recorder.
  *   What came back?               `recordedReview` — coverage, probes, every finding the host
  *                                 admitted, and, only from a turn that finished, the report.
  *
  * `epoch-review-findings.ts` owns what a review is worth afterwards and what the reviewer may
- * record. Its authority is deliberately small: one finding tool, one bounded experiment, no claim
- * naming an individual task, at most one routable blocking harness defect per review, and no power
- * over a pass, an acceptance, a claim or a promotion. Its second effect is the issue dispute: a
- * finding may argue that a standing issue belongs to the evaluation rather than the harness, which
- * withholds that issue's agent advice so the next authoring pass does not rebuild the agent around
- * a defect it does not have.
+ * record. Its authority is deliberately small: one finding tool, one budgeted experiment tool, at
+ * most six findings, none naming an individual task and each admitted at the severity its own
+ * evidence supports, and no power over a pass, an acceptance, a claim or a promotion. Several may
+ * block; how many owners a round reopens is the continuation's decision (`src/run/next-move.ts`). A
+ * completed review may also dispute a standing issue as the evaluation's, which withholds its agent
+ * advice so the next authoring pass does not rebuild the agent around a defect it lacks.
  */
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { existsSync, readFileSync } from "../meta/filesystem.ts";

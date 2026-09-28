@@ -41,7 +41,9 @@ export interface ToolEntry {
    *  A Builder can write its own script into `.toolchain/bin` and grade a whole battery with it,
    *  and `source` alone would call that the same kind of thing as a downloaded cross compiler. */
   kind: "binary" | "script";
-  /** The shebang command's basename for a script (`python3`, `sh`); null for a binary. */
+  /** The basename of the program a script runs as: its shebang command (`python3`, `sh`), or for a
+   *  shell wrapper whose `exec` names a literal program, that program (the `python` a `sh` wrapper
+   *  execs); null for a binary. */
   interpreter: string | null;
   /** sha256 of that interpreter's bytes as the cell's search path resolved it at snapshot time;
    *  absent for a binary or an interpreter that could not be found. */

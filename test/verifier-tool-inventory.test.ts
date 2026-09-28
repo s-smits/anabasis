@@ -107,6 +107,85 @@ describe("resolving the tool inventory", () => {
     expect(resolved.inventory.cat).not.toHaveProperty("packages");
   });
 
+  it("records the program a shell wrapper execs as its interpreter, and keeps the shell when the exec names no literal path", () => {
+    // A truss Builder's `bin/truss-analyze` was `#!/bin/sh` over `exec "<tree>/struct-venv/bin/python"
+    // … truss_cli.py`, so the entry named `sh`, bound /bin/sh's bytes and listed no packages, while
+    // the python that decided every verdict went unrecorded.
+    const ws = workspace();
+    // Interpreters without a shebang, as a real python is, so a hand-over ends at them.
+    const interpreter = (dir: string, name: string) => {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, name), `\u007fELF ${name}`);
+      chmodSync(join(dir, name), 0o755);
+      return join(dir, name);
+    };
+    const python = interpreter(join(ws.toolTree, "venv", "bin"), "python3");
+    const sitePackages = join(ws.toolTree, "venv", "lib", "python3.12", "site-packages");
+    mkdirSync(join(sitePackages, "numpy-2.1.0.dist-info"), { recursive: true });
+    const host = scratchDir("ana-host-python-");
+    const hostPython = interpreter(join(host, "bin"), "python3.14");
+    mkdirSync(join(host, "lib", "python3.14", "site-packages", "scipy-1.14.1.dist-info"), {
+      recursive: true,
+    });
+    const bin = join(ws.toolTree, "bin");
+    script(bin, "truss-analyze", [
+      "# authored corotational truss analysis",
+      `exec "${python}" "${join(ws.toolTree, "truss_cli.py")}" "$@"`,
+    ]);
+    // pip's own header for a long interpreter path, which the reseed also writes.
+    script(bin, "truss", [`'''exec' "${python}" "$0" "$@"`, "' '''", "import sys"]);
+    script(bin, "truss-chain", [`exec "${join(bin, "truss")}" "$@"`]);
+    script(bin, "host-analyze", [
+      'root="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"',
+      `PYTHONPATH="$root/ops-arm" exec ${hostPython} "$root/truss_analysis.py" "$@"`,
+    ]);
+    script(bin, "cat-wrapper", ['exec /bin/cat "$@"']);
+    // What only running the shell decides stays the shell's: a variable, a choice, a block, a
+    // search, `env`, and no exec at all.
+    const shellDecides = {
+      rooted: ['ROOT="$(cd "$(dirname "$0")/.." && pwd)"', 'exec "$ROOT/venv/bin/python3" "$@"'],
+      chooser: [`[ -n "$A" ] && exec "${python}" "$@"`, `exec ${hostPython} "$@"`],
+      guarded: [`if [ -n "$A" ]; then`, `  exec "${python}" "$@"`, "fi", `exec ${hostPython} "$@"`],
+      searched: ['exec python3 "$@"'],
+      env: ['exec /usr/bin/env python3 "$@"'],
+      plain: [`"${python}" "$@"`],
+    };
+    for (const [id, lines] of Object.entries(shellDecides)) script(bin, id, lines);
+    const resolved = resolveToolInventory({
+      toolIds: [
+        "truss-analyze",
+        "truss",
+        "truss-chain",
+        "host-analyze",
+        "cat-wrapper",
+        ...Object.keys(shellDecides),
+      ],
+      toolTree: ws.toolTree,
+      pathDirs: ["/bin"],
+    });
+    const venvPython = { kind: "script", interpreter: "python3", interpreterDigest: sha256OfFile(python) };
+    for (const id of ["truss-analyze", "truss", "truss-chain"]) {
+      expect(resolved.inventory[id]).toMatchObject({ ...venvPython, packages: ["numpy==2.1.0"] });
+    }
+    expect(resolved.inventory["host-analyze"]).toMatchObject({
+      kind: "script",
+      interpreter: "python3.14",
+      interpreterDigest: sha256OfFile(hostPython),
+      packages: ["scipy==1.14.1"],
+    });
+    expect(resolved.inventory["cat-wrapper"]).toMatchObject({
+      interpreter: "cat",
+      interpreterDigest: sha256OfFile("/bin/cat"),
+    });
+    for (const id of Object.keys(shellDecides)) {
+      expect(resolved.inventory[id]).toMatchObject({
+        interpreter: "sh",
+        interpreterDigest: sha256OfFile("/bin/sh"),
+      });
+      expect(resolved.inventory[id]).not.toHaveProperty("packages");
+    }
+  });
+
   // One program search for the inventory, the check cell and the Built shell (2026-09-16): a program
   // installed under .toolchain/home/.local/bin is on every one of them, after .toolchain/bin.
   it("searches the same nested program directories for checks and the solver shell", () => {

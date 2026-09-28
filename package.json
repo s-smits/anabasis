@@ -39,6 +39,7 @@
     "secrets": "bun tools/secrets/scan.ts",
     "hooks:install": "git config core.hooksPath .githooks",
     "gate": "bash tools/gate.sh",
+    "land": "bun tools/runtime/land.ts",
     "fullrun": "bun src/run/full-run.ts"
   },
   "dependencies": {

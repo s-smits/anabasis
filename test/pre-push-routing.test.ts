@@ -238,16 +238,19 @@ describe("pre-push proof routing", () => {
   const stack = `#20 parent ${oldDocs} main ${base}\n#21 child ${child} parent ${oldDocs}`;
   const short = (sha: string): string => git("rev-parse", "--short=9", sha);
 
-  it("refuses rewriting a base while the pull request on it still carries the old copy", () => {
+  // The pull request being worked on may go up alone; the ones above it are replayed before landing.
+  it("warns that a rewritten base leaves the pull request on it carrying the old copy", () => {
     const result = runHookWithRefs(
       [`refs/heads/parent ${docs} refs/heads/parent ${oldDocs}`],
       "edge-stale-marker",
       { ANA_FAKE_STACK_EDGES: stack },
     );
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain("#21 (child) would list old copies of parent's commits as its own");
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain(
+      "pre-push: warning: this push leaves open pull requests listing old copies",
+    );
+    expect(result.stderr).toContain("#21 (child) will list old copies of parent's commits as its own");
     expect(result.stderr).toContain(`git rebase --onto ${short(docs)} ${short(oldDocs)} ${short(child)}`);
-    expect(existsSync(result.marker)).toBe(false);
   });
 
   it("passes a restack that replays the pull request on the rewritten base in the same push", () => {
@@ -466,33 +469,69 @@ describe("pre-push proof routing", () => {
     }, 20_000);
   }
 
-  // A stacked push moves a pull request's head beneath the tip, and that head is where the pull
-  // request ends, so it gets the whole gate rather than the per-commit pass, even though the tests
-  // above already recorded that commit passing the per-commit pass.
-  it("gives the head of every pushed branch the whole gate", () => {
-    const tip = git("rev-parse", "HEAD");
-    const parent = git("rev-parse", "HEAD^1");
-    const result = runHookWithRefs(
-      [
-        `refs/heads/parent ${parent} refs/heads/parent ${docs}`,
-        `refs/heads/topic ${tip} refs/heads/topic ${docs}`,
-      ],
-      "branch-head-marker",
-    );
-    expect(result.status).toBe(0);
-    const calls = readFileSync(result.marker, "utf8")
+  // A rebase that only carries commits to a new base leaves each one's patch as it was. The old copies
+  // here sat on a trunk that has since changed: the same three patches over a tree holding `gone.txt`.
+  const blob = (text: string): string =>
+    execTextSync("git", ["hash-object", "-w", "--stdin"], { cwd: fixture, stdin: text }).trim();
+  const withFile = (commit: string, name: string): string =>
+    execTextSync("git", ["mktree"], {
+      cwd: fixture,
+      stdin: `${git("ls-tree", commit)}\n100644 blob ${blob(name)}\t${name}\n`,
+    }).trim();
+  const gated = (marker: string): string[][] =>
+    readFileSync(marker, "utf8")
       .trim()
       .split("\n")
-      .map((line) => line.split("\t"));
-    expect(
-      calls.map(([, args, commit]) => [
-        args?.startsWith("run gate --at /") === true ? "whole" : args,
-        commit,
-      ]),
-    ).toEqual([
-      ["whole", parent],
-      ["run gate", tip],
-    ]);
+      .map((line) => {
+        const [, args, commit] = line.split("\t");
+        return [args?.replace(/^run gate --(at|static) \/.*/, "$1") ?? "", commit ?? ""];
+      });
+  function oldCopies(second: string) {
+    const oldTrunk = git("commit-tree", withFile(base, "gone.txt"), "-p", base, "-m", "old trunk");
+    const oldDocsCopy = git("commit-tree", withFile(docs, "gone.txt"), "-p", oldTrunk, "-m", "docs");
+    const oldSource = git("commit-tree", withFile(source, "gone.txt"), "-p", oldDocsCopy, "-m", "source");
+    const oldSecond = git("commit-tree", withFile(second, "gone.txt"), "-p", oldSource, "-m", "second");
+    return { oldSource, oldSecond };
+  }
+
+  it("runs no gate for a push that only replays what the remote held", () => {
+    const second = git("rev-parse", "HEAD");
+    forgetPasses();
+    const result = runHookWithRefs(
+      [`refs/heads/topic ${second} refs/heads/topic ${oldCopies(second).oldSecond}`],
+      "replay-only-marker",
+    );
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain("2 commits replay ones the remote already held");
+    expect(result.stderr).toContain("no commit this push publishes is new to the remote, so no gate runs");
+    expect(existsSync(result.marker)).toBe(false);
+  });
+
+  // An edit to the lower pull request changes its commit's patch and replays the one above it: the
+  // edited commit is the pull request's head, so it gets the whole gate, and the replay above waits.
+  it("gives the whole gate to the pushed head holding the newest edit, and none to the replays above", () => {
+    const second = git("rev-parse", "HEAD");
+    const branch = git("symbolic-ref", "--short", "HEAD");
+    const { oldSource, oldSecond } = oldCopies(second);
+    const edited = git("commit-tree", withFile(source, "extra.ts"), "-p", docs, "-m", "source");
+    const replayed = git("commit-tree", withFile(second, "extra.ts"), "-p", edited, "-m", "second");
+    forgetPasses();
+    git("checkout", "-q", "--detach", replayed);
+    try {
+      const result = runHookWithRefs(
+        [
+          `refs/heads/parent ${edited} refs/heads/parent ${oldSource}`,
+          `refs/heads/topic ${replayed} refs/heads/topic ${oldSecond}`,
+        ],
+        "replay-edited-marker",
+      );
+      expect(result.status).toBe(0);
+      expect(result.stderr).toContain("1 commits replay ones the remote already held");
+      expect(gated(result.marker)).toEqual([["at", edited]]);
+    } finally {
+      git("checkout", "-q", branch);
+      forgetPasses();
+    }
   });
 
   // Last, because it moves HEAD again.

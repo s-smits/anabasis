@@ -76,32 +76,33 @@ review closes the smaller batch through the normal gate.
 
 A repair low in an existing twenty-PR chain still propagates to the top before coordinated
 publication. Replaying fifteen unchanged descendants is one replay rather than fifteen new fixes,
-but it gives every one of their commits a new identity, and the push gates each of them: the
-static steps and nearby tests on every replayed commit, and the whole gate on every moved head. That
-is the price of a repair low in the chain, and the reason to batch owner fixes before replaying.
+but it gives every one of their commits a new identity. The push gates only the fix: the static
+steps and nearby tests on each commit new to the remote, and the whole gate on the lowest head
+holding the newest of them. A replayed commit, whose patch the remote already held, is proved later
+by `bun run land`, where it then sits, so batch owner fixes before replaying all the same: every
+replay moves the bytes that landing has to prove again.
 Publish the whole affected suffix together so every declared edge is coherent. The batch-size
 default bounds new changes awaiting feedback.
 
 At the checkpoint, run the union of affected focused checks and the smallest real composed path
-required by `intelligent-rebase`. Then one normal multi-ref push gates every commit it publishes
-and every head it moves. Do not run a manual full gate immediately before the same push. With no publication, the manual gate
+required by `intelligent-rebase`. Then one normal multi-ref push gates what it changed. Do not run a manual full gate immediately before the same push. With no publication, the manual gate
 supplies the checkpoint instead. Save full output and the actual command exit, without a trailing
 `tail` masking it.
 
 The current `.githooks/pre-push` refuses any pushed ref the checkout does not contain, runs
-`bun run gate --static` over each earlier source-changing commit it publishes and `bun run gate
---at` over the head of every other branch it moves, each in a scratch checkout of that commit, and
-then the whole gate on the checkout itself. Therefore push from the clean, prepared batch-top
+`bun run gate --static` over each source-changing commit new to the remote, in a scratch checkout
+of that commit, and the whole gate on the lowest pushed head holding the newest of them: over a
+scratch checkout, or over the checkout itself when that head is the tip. Therefore push from the clean, prepared batch-top
 checkout and assert `HEAD == <batch-top-sha>`; every pushed source head must be that head or its
 ancestor. Never include an unrelated branch in
 that push. Inspect the hook if its version changed: a skill cannot override a different hook's
 behaviour. Keep the hook and required CI checks enabled.
 
-Before any gate runs, the hook also reads the open pull requests from GitHub and refuses a push
-that would leave one listing commits that are not its own: a rewritten base whose pull requests
-still sit on its old copy, or a head that contains another open pull request's head beyond its
-base. So a restack of a named range carries every open descendant above it in the same push,
-because the first pull request above the range is based on the range's last branch.
+Before any gate runs, the hook also reads the open pull requests from GitHub. It refuses a push
+that would leave a head containing another open pull request's head beyond its base, and warns
+when a rewritten base leaves pull requests on its old copy. So a restack of a named range still
+carries every open descendant above it in the same push, because the first pull request above the
+range is based on the range's last branch and would otherwise list the old copies as its own.
 
 ## Publish without invalidating PR metadata
 
@@ -166,7 +167,13 @@ Record partial or rejected publication honestly. A local gate pass is not proof 
    proved fixes before that delivery attempt. Follow each newly exposed failure rather than
    repeatedly running the whole suite to hunt for a different result.
 
-Report: `H1–H5: every commit gated alone, full gate on each moved head`, with the logs. A red
+Before a stack lands, `bun run land -- <top> --sanitize` proves every commit where it sits and the
+top's head whole, and posts each verdict as `ana/commit`; `--merge` does the same and then merges.
+Run it with neither flag first while fixing: it gates each pull request's `land/<ref>` branch in this
+clone and writes nothing to GitHub, and its fix recipe moves only those branches, so fixes collect there
+until the leased push it prints publishes them all at once.
+
+Report: `H1–H5: every commit gated alone, full gate on the top's head`, with the logs. A red
 ancestor under a green descendant is exactly what the policy rules out, so a failing commit is
 fixed inside itself and its descendants replayed, never repaired above. GitHub Actions is off
 here, so the pre-push hook is the only gate a published head gets.

@@ -1126,11 +1126,14 @@ reads the bytes in the working tree, so a partially staged file is judged on wha
 on what was staged.
 
 The pre-push hook answers a push whose diff touches only `AGENTS.md`, `README.md`, `docs/**` or
-`.claude/**/*.md` with `git diff --check` alone. For any other push, every earlier source-changing commit
-is checked out and run through `gate --static` over its own checkout, and the tip and every other branch
-head the push moves get the whole gate. The same hook refuses a source push to main that lacks `Hotfix:`
-trailers, a new branch that is not on top of the open stack, and a push that leaves an open PR listing
-commits that are not its own (see "Where changes go"). **There is no hook bypass by any spelling**,
+`.claude/**/*.md` with `git diff --check` alone. For any other push it gates what the push changed: each
+source-changing commit new to the remote runs `gate --static` over its own checkout, and the lowest pushed
+head holding the newest of them gets the whole gate. A commit whose patch (`git patch-id --stable`) the
+remote already held under the refs the push replaces is a replay that a rebase carried to a new base, and
+it waits for `bun run land` (see "Where changes go"). The same hook refuses a source push to main that
+lacks `Hotfix:` trailers, a new branch that is not on top of the open stack, and a push that leaves an
+open PR listing another open PR's commits; one left listing old copies of its base's commits gets a
+warning naming the `git rebase --onto` that repairs it. **There is no hook bypass by any spelling**,
 neither `--no-verify` nor `-c core.hooksPath=…`.
 
 CI does much less than its name suggests. `.github/workflows/gate.yml` runs the gate daily at 03:17 UTC,
@@ -1767,7 +1770,10 @@ is why the size ceilings are 800 and 115, and `tools/oxlint` came in on 2026-09-
 errors, mostly `curly` finding statements the formatter had just made multi-line. Also available are
 `bun run outcome` for read-only reports over recorded evidence, `bun run replay -- <campaign>/<runId>` to
 re-grade a recorded battery through this tree's verifier, `bun run triage` and `bun run secrets`. Run one
-gate at a time, because two overlapping gates each took twice as long as one alone. When typecheck, lint,
+gate at a time, because two overlapping gates each took twice as long as one alone. `bun run land --jobs N`
+is the exception, because its `--static` gates are small enough that overlapping them still pays: over
+#32–#46 on 2026-09-28, four at once finished a commit every 19 seconds against 36 for one, on a 12-core
+host held at a load near 50, and the top's whole gate still ran alone. When typecheck, lint,
 source-policy or complexity fails, pre-push lists each finding as `<rule> <location> <message>` and names
 the commit it failed on.
 
@@ -1776,7 +1782,7 @@ the commit it failed on.
 | Documentation only | `--scope minimal`, then `git diff --check` and read the diff | Commit on local main and hold it; the operator approves the push, which repeats the diff check and skips the gate |
 | Test or source | `scripts/worktree.sh run <dir> bun run test -- <owning-paths...>` | One normal push runs the composed gate |
 | Intentional dependency change | One unfrozen install at the root, review manifest plus lock | A frozen install, then source delivery |
-| Stack checkpoint with publication | The union of affected owning checks | One multi-ref push from the clean top runs the gate |
+| Stack checkpoint with publication | The union of affected owning checks | One multi-ref push from the clean top gates what it changed; `bun run land -- <top> --sanitize` proves the replays |
 | Composition without publication, or a paid run without current exact-tree proof | Owning focused checks | One manual `bun run gate` immediately before the boundary |
 
 "Normal push runs the gate" holds only where the hooks are installed. A clone gets them once, with `bun
@@ -1792,11 +1798,15 @@ small fixes under one owner.
 introduced it** (operator decisions 2026-09-24, replacing the fix-forward rule of 2026-09-21 and the
 compose merges of 2026-09-05). History is read as well as run. An agent looking through it for how work is
 done here copies what it finds, and a red commit followed by its repair teaches it that pushing red is the
-way. So pre-push checks out every earlier source-changing commit the push publishes and runs `bun run gate
---static` over it, which is runtime, format, ui-deps, typecheck, lint, source-policy, complexity, and the
-test files near what that commit changed. It then runs the whole gate on the tip and on the head of every
-other branch the push moves, since that is where a stacked PR ends. CI runs only daily on `main` (§1), so
-that local run is the only full gate a PR head gets. "Near" is `tools/runtime/affected-tests.ts`: a test
+way. Two runs of the same gate hold that line. Pre-push checks out every source-changing commit new to the
+remote and runs `bun run gate --static` over it, which is runtime, format, ui-deps, typecheck, lint,
+source-policy, complexity, and the test files near what that commit changed, and then the whole gate once,
+on the lowest pushed head holding the newest of them, since that is where the edited PR ends. The commits
+a restack only replayed above it are not run at push, because `bun run land` runs the same `--static` pass
+on every commit a merge would publish, where it then sits, and the whole gate on the top's head, before it
+merges anything (2026-09-28). A restack of fifteen PRs used to pay for every replayed commit and every
+moved head at each push, and three agents editing one stack paid it three times over. CI runs only daily
+on `main` (§1), so those local runs are the only gate a PR head gets. "Near" is `tools/runtime/affected-tests.ts`: a test
 that imports a changed file directly (2026-09-24). It was three imports on the day the rule landed, and
 the first push to pay for that showed why not. The slow end-to-end files sit two or three imports from
 anything near the root of the graph, so three commits of 11–17 files each selected 62–70% of the suite's
@@ -1806,8 +1816,8 @@ the cost. It has not been measured against the bugs it catches, and the tip's fu
 A failure names the commit, and its fix goes into that commit rather than on top of it: `git commit
 --fixup=<sha>` then `GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash <sha>~1`, or `--amend` at the
 tip. Nothing was pushed, so the rewrite costs no one anything, and it costs the next push little. The
-rebase keeps the id of every commit beneath the fix, the hook records each id that passed in
-`ana-gate-passed` under the common Git directory, and a commit already recorded there at the same pass, or
+rebase keeps the id of every commit beneath the fix, the hook and `bun run land` record each id that
+passed in `ana-gate-passed` under the common Git directory, and a commit already recorded there at the same pass, or
 at the whole gate, is not run again. That includes a tip that passed the whole gate on a checkout holding
 nothing but its own bytes, so a push whose lease was refused goes out again without paying twice.
 
@@ -1952,10 +1962,25 @@ carried five of them between eight commits of its own. Replay on a detached HEAD
 out elsewhere are undisturbed, compare each replayed range with its saved one through `git range-diff`,
 and then push every moved head in one atomic push with a lease per ref, from a checkout of the top;
 `stack-hop`'s [publication procedure](.claude/skills/stack-hop/references/stack-publication.md) owns
-delivery. That push gates every commit and every moved head, so each PR head is proved as it lands. Land a
-stack through GitHub, merging each PR into its own base bottom-up, so that each ends Merged rather than
-closed, because a local `--no-ff` merge pushed to `main` leaves the PR open (2026-09-21, 98 PRs). Those
-merges into main are the only merge commits the policy makes. Keep the hooks enabled.
+delivery. That push gates what it changed, and the replays above it wait for the landing.
+
+**A stack lands through `bun run land -- <top> --merge`** (`tools/runtime/land.ts`, 2026-09-28). It
+reads the stack from GitHub and requires the bottom to contain main's head and each head the one beneath
+it, which makes the merge commit's tree exactly the top's. It then runs `gate --static` on every commit
+the merge would publish, over its own checkout, and the whole gate on the top's head, skipping any pass
+already recorded in `ana-gate-passed`, and stops at the first failure with the `--fixup` that repairs it.
+What it gates is this clone's `land/<ref>` branch for each pull request, made from GitHub's head the first
+time, because every other local copy of a stack branch is stale or checked out in some other worktree. The
+fix recipe it prints rebases with `--update-refs` behind a sequence editor that keeps only `land/` branches,
+so the commits below the fix keep their ids and their recorded passes, every `land/` branch above it moves
+with it, and a branch someone else made at a pull request's head stays where it was. Fixes wait there,
+gated, until the one leased push it prints publishes them; `--sanitize` and `--merge` refuse a `land/`
+branch GitHub does not have yet. Only then does it post `ana/stack-gate` on each head and ask GitHub's stack merge for one merge commit at
+exactly the gated top, taking the statuses back when GitHub does not merge. `--sanitize` runs the same
+proof and posts each commit's `ana/commit` verdict without merging, which is how a stack shows it is ready;
+with neither flag the script writes nothing to GitHub. A local `--no-ff` merge pushed to `main` leaves
+the PRs open (2026-09-21, 98 PRs), and the landing's merge commit is the only one the policy makes. Keep
+the hooks enabled.
 
 "At PR48 state" or "at stacked PR45" means the newest level including later fixes, while "the diff of PR
 #48" selects that PR alone. When two branches carry the named work, ask which head is meant.

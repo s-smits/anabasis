@@ -1,10 +1,11 @@
 #!/bin/sh
-# A source push is the integration boundary: run the repository's single full gate instead of
-# reimplementing its runtime admission, typecheck, lint, or test steps here. A push whose
-# published tree differs only on the named documentation surfaces gets a diff check and stops.
-# Every earlier commit the push publishes gets the gate's static steps and its nearby tests, because
-# the history is read as well as run: an agent that finds a red commit followed by its repair
-# learns that pushing red is the way work goes (operator decision 2026-09-24).
+# A source push runs the repository's own gate over what it changed, instead of reimplementing its
+# runtime admission, typecheck, lint, or test steps here. A push whose published tree differs only
+# on the named documentation surfaces gets a diff check and stops. Every fresh commit the push
+# publishes gets the gate's static steps and its nearby tests, because the history is read as well
+# as run: an agent that finds a red commit followed by its repair learns that pushing red is the way
+# work goes (operator decision 2026-09-24). A commit a rebase only carried to a new base waits for
+# `bun run land`, which proves every commit where it sits before anything merges.
 set -eu
 
 root=$(git rev-parse --show-toplevel)
@@ -77,7 +78,8 @@ while read -r local_ref local_sha remote_ref remote_sha; do
       new_branches="$new_branches $local_sha"
       ;;
     *)
-      already_remote="$already_remote $remote_sha"
+      # A branch someone else moved is not in this clone, and its old commits are then not known here.
+      ! git cat-file -e "$remote_sha^{commit}" 2>/dev/null || already_remote="$already_remote $remote_sha"
       git --no-pager diff --check "$remote_sha" "$local_sha" || documentation_diff_ok=0
       if changes_source "$remote_sha" "$local_sha"; then
         documentation_only=0
@@ -141,7 +143,9 @@ fi
 # base's commits beside its own, and a head that contains another open pull request's head beyond its
 # base lists that one's commits too. So every pull request whose head or base this push moves is read
 # as the push would leave it. A rebase keeps a commit's author time and subject, which is how an old
-# copy is told from the commit that replaced it.
+# copy is told from the commit that replaced it. The old copies are a warning: a push may carry the
+# pull request being worked on alone, and `bun run land` refuses the stack until the ones above it
+# are replayed. A head listing another pull request's commits is refused, because no replay fixes it.
 if edges=$(gh pr list --state open --limit 200 --json number,headRefName,headRefOid,baseRefName,baseRefOid \
   --jq '.[] | "#\(.number) \(.headRefName) \(.headRefOid) \(.baseRefName) \(.baseRefOid)"' 2>/dev/null); then
   strays=$(printf '%s\n' "$edges" | while read -r pr head head_sha base base_sha; do
@@ -164,14 +168,14 @@ if edges=$(gh pr list --state open --limit 200 --json number,headRefName,headRef
     copy=$({ git log --format='%at %s' "$b..$h"; git log --format='%at %s' "$h..$b"; } | sort | uniq -d |
       head -1 | cut -d' ' -f2-)
     if [ -n "$copy" ]; then
-      echo "$pr ($head) would list old copies of $base's commits as its own, among them \"$copy\"."
+      echo "warn $pr ($head) will list old copies of $base's commits as its own, among them \"$copy\"."
       if git merge-base --is-ancestor "$base_sha" "$h" 2>/dev/null; then
         from=$(git rev-parse --short=9 "$base_sha")
       else
         from="<the old $base it was built on>"
       fi
-      echo "Replay it on its base in this same push, and each pull request above it in turn:"
-      echo "  git rebase --onto $(git rev-parse --short=9 "$b") $from $(git rev-parse --short=9 "$h")"
+      echo "warn Replay it on its base before the stack lands, and each pull request above it in turn:"
+      echo "warn   git rebase --onto $(git rev-parse --short=9 "$b") $from $(git rev-parse --short=9 "$h")"
     fi
     printf '%s\n' "$edges" | while read -r other other_head other_sha _ _; do
       o=$(moved_to "$other_head")
@@ -179,13 +183,17 @@ if edges=$(gh pr list --state open --limit 200 --json number,headRefName,headRef
       [ "$other" != "$pr" ] && [ "$o" != "$b" ] || continue
       git merge-base --is-ancestor "$o" "$h" 2>/dev/null && ! git merge-base --is-ancestor "$o" "$b" 2>/dev/null ||
         continue
-      echo "$pr ($head) would list $other's commits as its own: its head contains $other_head and its base"
-      echo "$base does not. Base it there with gh pr edit ${pr#?} --base $other_head, or rebase it onto $base."
+      echo "stop $pr ($head) would list $other's commits as its own: its head contains $other_head and its base"
+      echo "stop $base does not. Base it there with gh pr edit ${pr#?} --base $other_head, or rebase it onto $base."
     done
   done)
-  if [ -n "$strays" ]; then
+  if printf '%s\n' "$strays" | grep -q '^warn '; then
+    echo "pre-push: warning: this push leaves open pull requests listing old copies of their bases' commits." >&2
+    printf '%s\n' "$strays" | sed -n 's/^warn /pre-push:   /p' >&2
+  fi
+  if printf '%s\n' "$strays" | grep -q '^stop '; then
     echo "pre-push: this push would leave open pull requests listing commits that are not theirs. Nothing was pushed." >&2
-    printf '%s\n' "$strays" | sed 's/^/pre-push:   /' >&2
+    printf '%s\n' "$strays" | sed -n 's/^stop /pre-push:   /p' >&2
     exit 1
   fi
 else
@@ -274,33 +282,73 @@ stop_pulse() {
   wait "$1" 2>/dev/null || true
 }
 
-# Every commit a push publishes has to pass on its own: an earlier one gets the static steps and the
-# tests near what it changed over a checkout of its own bytes, and the tip gets the whole gate below.
-# The head of any other branch the push moves is where a pull request ends, so it gets the whole
-# gate too, even when it changes documentation alone. A commit already on a remote was held to
-# whatever applied when it went up, and an earlier one that changes documentation alone has nothing
-# for the static steps to read. Nor is a commit run again that already passed the same pass, or the
-# whole gate, in an earlier push from any worktree: a fix rewrites only its own commit and those
-# after it, so after a failed push the commits beneath the fix keep their ids and their passes.
+# A push gates what it changed. A commit whose patch a branch it moves already held on the remote
+# is a replay: a rebase carried it to a new base without changing what it does, so it waits for
+# `bun run land`, which gates every commit where it sits before anything merges. That is what lets
+# the pull request being worked on go up alone, or with the stack above it replayed, without paying
+# for every commit above it. Every fresh commit gets the static steps and the tests near what it
+# changed over a checkout of its own bytes, and the lowest pushed head holding the newest of them
+# gets the whole gate, since that is the pull request the work is in. A push of replays alone runs
+# no gate. A commit changing documentation alone has nothing for the static steps to read, and a
+# commit that already passed the same pass, or the whole gate, in an earlier push or land from any
+# worktree is not run again: a fix rewrites only its own commit and those after it, so after a
+# failed push the commits beneath the fix keep their ids and their passes.
 pass_record=$(git rev-parse --path-format=absolute --git-common-dir)/ana-gate-passed
 earlier=$(git rev-list --reverse --topo-order $published --not $already_remote --remotes)
+# `git patch-id` reads each commit's patch after the full object name `diff-tree --stdin` prints.
+replaced=""
+[ -z "$already_remote" ] || replaced=$(git rev-list $already_remote --not $published |
+  git diff-tree --stdin -p --root | git patch-id --stable | cut -d' ' -f1)
+patches=$(printf '%s\n' $earlier | git diff-tree --stdin -p --root | git patch-id --stable)
+fresh=""
+replays=0
+for commit in $earlier; do
+  if parent=$(git rev-parse -q --verify "$commit^1"); then
+    changes_source "$parent" "$commit" || continue
+  fi
+  patch=$(printf '%s\n' "$patches" | awk -v commit="$commit" '$2 == commit { print $1 }')
+  if [ -n "$patch" ] && printf '%s\n' "$replaced" | grep -qxF "$patch"; then
+    replays=$((replays + 1))
+    continue
+  fi
+  fresh="$fresh $commit"
+done
+[ "$replays" -eq 0 ] ||
+  echo "pre-push: $replays commits replay ones the remote already held; bun run land gates them where they now sit." >&2
+
+# The whole gate goes to the lowest pushed head holding the newest fresh commit; the checked-out tree
+# holds every published commit, so it is that head when no pushed branch ends lower.
+newest=""
+for commit in $fresh; do newest=$commit; done
+whole=""
+if [ -n "$newest" ]; then
+  for head in $heads $tested_commit; do
+    git merge-base --is-ancestor "$newest" "$head" || continue
+    [ -z "$whole" ] || git merge-base --is-ancestor "$head" "$whole" || continue
+    whole=$head
+  done
+fi
+if [ -z "$whole" ]; then
+  echo "pre-push: no commit this push publishes is new to the remote, so no gate runs." >&2
+  exit 0
+fi
 checked=""
 skipped=0
-for commit in $earlier; do
-  [ "$commit" != "$tested_commit" ] || continue
-  case " $heads " in *" $commit "*) mode=--at ;; *)
-    mode=--static
-    if parent=$(git rev-parse -q --verify "$commit^1"); then
-      changes_source "$parent" "$commit" || continue
-    fi
-    ;;
-  esac
-  if grep -qxF -e "$commit --at" -e "$commit $mode" "$pass_record" 2>/dev/null; then
+for commit in $fresh; do
+  [ "$commit" != "$whole" ] || continue
+  if grep -qxF -e "$commit --at" -e "$commit --static" "$pass_record" 2>/dev/null; then
     skipped=$((skipped + 1))
     continue
   fi
   checked="$checked $commit"
 done
+if [ "$whole" != "$tested_commit" ]; then
+  if grep -qxF "$whole --at" "$pass_record" 2>/dev/null; then
+    skipped=$((skipped + 1))
+  else
+    checked="$checked $whole"
+  fi
+fi
 [ "$skipped" -eq 0 ] || echo "pre-push: $skipped earlier commits already passed on these exact bytes; not run again." >&2
 if [ -n "$checked" ]; then
   tree=$(mktemp -d "${TMPDIR:-/tmp}/ana-commit-gate.XXXXXX")
@@ -311,10 +359,11 @@ if [ -n "$checked" ]; then
   for commit in $checked; do
     index=$((index + 1))
     short=$(git rev-parse --short=9 "$commit")
-    case " $heads " in
-    *" $commit "*) mode=--at what="the whole gate, as the head of a pushed branch" ;;
-    *) mode=--static what="the static steps and its nearby tests" ;;
-    esac
+    if [ "$commit" = "$whole" ]; then
+      mode=--at what="the whole gate, as the head of the pull request this push changes"
+    else
+      mode=--static what="the static steps and its nearby tests"
+    fi
     commit_log="$gate_dir/pre-push-$(date -u +%Y%m%dT%H%M%SZ)-$$-$short.log"
     echo "pre-push: commit $index of $count, $short: $what. Log: $commit_log" >&2
     git -C "$tree" checkout -q --detach "$commit"
@@ -343,6 +392,7 @@ if [ -n "$checked" ]; then
     exit 1
   done
 fi
+[ "$whole" = "$tested_commit" ] || exit 0
 
 # The tip's pass is remembered like a pushed head's, so a push its lease refused, or a branch sent
 # again on its own, is not gated twice. The tip's gate runs over this working tree rather than a

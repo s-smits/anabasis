@@ -1,7 +1,9 @@
 #!/usr/bin/env bun
-// Join a completed Luna summary back to the WRI task manifest. This validates collection identity,
-// assigned lane headings and the report sections each lane owes; it does not adjudicate findings or
-// turn session prose into evidence.
+// Join the WRI task manifest to its lane reports: the sessions a completed Luna summary records, and
+// the reports the primary saved from native Claude subagents under `native-output/` beside
+// tasks.json. A review may run some lanes on each. This validates collection identity, assigned lane
+// headings and the report sections each lane owes; it does not adjudicate findings or turn session
+// prose into evidence.
 
 import { sha256, sha256OfFile } from "#src/meta/digest.ts";
 import { existsSync, mkdirSync, readFileSync, realpathSync, statSync } from "#src/meta/filesystem.ts";
@@ -17,6 +19,8 @@ import {
   ISOLATED_ANGLES,
   angleNumbers,
   leafPrompt,
+  NATIVE_OUTPUT,
+  nativePrompt,
   SHA256,
 } from "./catalogue-shape.ts";
 import { FINDING_OWNERS, REPORT_SECTIONS } from "./manifest-reporting.ts";
@@ -28,7 +32,7 @@ import { jsonText } from "./run-overview.ts";
 const SUMMARY_TYPE = "luna_sessions.completed";
 const LAUNCH_TYPE = "luna_sessions.launch";
 const ADMISSION_SCHEMA = "wri-progressive-admission/v2";
-const RECEIPT_SCHEMA = "wri-report-validation/v2";
+const RECEIPT_SCHEMA = "wri-report-validation/v3";
 
 /** A task's admission row, returned whole so its digest covers every recorded field. */
 type AdmissionRow = JsonObject & { mode: string; identityKey: string; lanes: number[] };
@@ -72,6 +76,8 @@ export interface LaunchBinding {
 
 export interface ReportRow {
   name: string;
+  /** The transport whose report was read, or null when none, or both, named the task. */
+  transport: "luna" | "native" | null;
   assignedLanes: string[];
   reportedLanes: string[];
   status: "accepted-for-adjudication" | "rejected";
@@ -86,18 +92,45 @@ export interface ReportValidation {
   schema: typeof RECEIPT_SCHEMA;
   tasksPath: string;
   tasksSha256: string;
-  summaryPath: string;
-  summarySha256: string;
-  outputDir: string;
-  launchBinding: LaunchBinding;
+  /** The Luna summary and its output directory, all null for a review with no Luna lane. */
+  summaryPath: string | null;
+  summarySha256: string | null;
+  outputDir: string | null;
+  launchBinding: LaunchBinding | null;
+  /** Where the native reports were read, or null when no native lane reported. */
+  nativeOutput: string | null;
   complete: boolean;
   rows: ReportRow[];
 }
 
 export interface ReportPaths {
   tasksPath: string;
-  summaryPath: string;
+  summaryPath: string | null;
   outPath: string;
+}
+
+/** A completed Luna summary, the launch record bound beside it, and the session it recorded for
+ *  each task it ran. */
+interface LunaCollection {
+  summaryBytes: Uint8Array;
+  outputDir: string;
+  sessions: Map<string, JsonObject>;
+  launch: LaunchBinding;
+}
+
+/** A native review's manifest side: the instructions every prompt was composed from, the prompts
+ *  the primary handed out, and the directory it saved each subagent's report in. */
+interface NativeReports {
+  dir: string;
+  promptsDir: string;
+  instructions: string;
+}
+
+/** Where one task's report came from, and what its transport already owes. */
+interface ReportSource {
+  transport: ReportRow["transport"];
+  reportPath: string | null;
+  issues: string[];
 }
 
 /** The text `String(value)` gives a recorded field, which may be absent. */
@@ -579,10 +612,16 @@ function containedReport(outputDir: string, path: JsonValue | undefined): string
   return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel)) ? actual : null;
 }
 
-function validate(paths: ReportPaths): ReportValidation {
-  const taskBytes = readFileSync(paths.tasksPath);
-  const summaryBytes = readFileSync(paths.summaryPath);
-  const tasks = taskRows(capturedJsonParse(taskBytes.toString("utf8")));
+/** Read a completed Luna summary. It may have run only some of the manifest's tasks, the rest
+ *  reporting natively or not at all, but every session it records names a task, once, in manifest
+ *  order, and its launch record is bound against exactly the tasks it ran. */
+function lunaCollection(
+  summaryPath: string,
+  tasks: readonly TaskRow[],
+  taskBytes: Uint8Array,
+  tasksPath: string,
+): LunaCollection {
+  const summaryBytes = readFileSync(summaryPath);
   const summary = asRecord(capturedJsonParse(summaryBytes.toString("utf8")));
   if (summary === null || summary.type !== SUMMARY_TYPE || !Array.isArray(summary.sessions)) {
     throw new Error("summary.json is not a completed Luna summary");
@@ -591,71 +630,154 @@ function validate(paths: ReportPaths): ReportValidation {
     throw new Error("summary.outputDir must be an absolute directory");
   }
   const outputDir = realpathSync(summary.outputDir);
-  if (realpathSync(dirname(paths.summaryPath)) !== outputDir) {
+  if (realpathSync(dirname(summaryPath)) !== outputDir) {
     throw new Error("summary.json is not inside its recorded outputDir");
   }
-  const rows: ReportRow[] = [];
-  const launch = launchBinding(outputDir, tasks, taskBytes, summary, paths.tasksPath);
-  if (!sameNames(summary.sessions, tasks)) {
+  const recorded = summary.sessions.flatMap((session) => {
+    const record = asRecord(session);
+    return record === null ? [] : [record];
+  });
+  const named = new Set(recorded.map((session) => session.name));
+  const ran = tasks.filter((task) => named.has(task.name));
+  if (recorded.length !== summary.sessions.length || !sameNames(recorded, ran)) {
     const names = summary.sessions.map((session) => asRecord(session)?.name);
     throw new Error(
-      `summary session order/identity differs from tasks: expected ${tasks.map((task) => task.name).join(", ")}; received ${names.map((name) => (name === undefined || name === null ? "" : jsonText(name))).join(", ")}`,
+      `summary session order/identity differs from tasks: expected sessions among ${tasks.map((task) => task.name).join(", ")}, once each and in that order; received ${names.map((name) => (name === undefined || name === null ? "" : jsonText(name))).join(", ")}`,
     );
   }
-  for (const [index, task] of tasks.entries()) {
-    const session = asRecord(summary.sessions[index]);
-    if (session === null) throw new Error(`summary session ${index} is not an object`);
-    const issues: string[] = [];
-    if (session.status !== "completed" || session.exitCode !== 0) {
-      issues.push(
-        `terminal status is ${jsonText(session.status ?? "missing")} with exitCode ${textOf(session.exitCode)}`,
-      );
-    }
-    const reportPath = containedReport(outputDir, session.reportPath);
-    if (!hasText(reportPath)) issues.push("reportPath is missing, not a regular file, or outside outputDir");
-    let reportBytes: Uint8Array = new Uint8Array();
-    let headings: string[] = [];
-    if (hasText(reportPath)) {
-      const read = readFileSync(reportPath);
-      reportBytes = read;
-      if (reportBytes.byteLength === 0) issues.push("report is empty");
-      const checked = reportContract(task, read.toString("utf8"), index);
-      headings = checked.headings;
-      issues.push(...checked.issues);
-    }
-    rows.push({
-      name: task.name,
-      assignedLanes: task.lanes,
-      reportedLanes: headings,
-      status: issues.length === 0 ? "accepted-for-adjudication" : "rejected",
-      issues,
-      reportPath,
-      reportBytes: reportBytes.byteLength,
-      reportSha256: hasText(reportPath) ? sha256(reportBytes) : null,
-      expectedHeading: task.lanes.length > 0 ? null : expectedHeading(task.task, index),
-    });
+  return {
+    summaryBytes,
+    outputDir,
+    sessions: new Map(
+      recorded.flatMap((session) => (isString(session.name) ? [[session.name, session] as const] : [])),
+    ),
+    launch: launchBinding(outputDir, ran, taskBytes, summary, tasksPath),
+  };
+}
+
+/** The native side of a review, present once the primary has saved a report under `native-output/`
+ *  beside tasks.json. The manifest wrote `instructions.md` and `prompts/` there for every task. */
+function nativeReports(tasksPath: string): NativeReports | null {
+  const lanesDir = dirname(tasksPath);
+  const dir = join(lanesDir, NATIVE_OUTPUT);
+  if (!existsSync(dir)) return null;
+  return {
+    dir: realpathSync(dir),
+    promptsDir: join(lanesDir, "prompts"),
+    instructions: readFileSync(join(lanesDir, "instructions.md")).toString("utf8"),
+  };
+}
+
+/** A native lane has no launcher record, so what binds is that the prompt the primary handed out is
+ *  still exactly the one the manifest composed. That proves the file, not its delivery. */
+function promptIssues(task: TaskRow, native: NativeReports): string[] {
+  const path = join(native.promptsDir, `${task.name}.md`);
+  if (!existsSync(path)) return [`prompts/${task.name}.md is absent, so no native prompt was composed`];
+  return readFileSync(path).toString("utf8") === nativePrompt(native.instructions, task.task)
+    ? []
+    : [`prompts/${task.name}.md differs from the prompt the manifest composes`];
+}
+
+/** Which transport reported one task. A Luna session must have completed with its report inside the
+ *  launcher's output; a native report must sit inside `native-output/` behind an unchanged prompt.
+ *  A task both name is ambiguous and one neither names is missing work. */
+function reportSource(
+  task: TaskRow,
+  luna: LunaCollection | null,
+  native: NativeReports | null,
+): ReportSource {
+  const session = luna?.sessions.get(task.name);
+  const saved = native === null ? null : join(native.dir, `${task.name}.md`);
+  const nativePath = saved !== null && existsSync(saved) ? saved : null;
+  if (session !== undefined && nativePath !== null) {
+    return {
+      transport: null,
+      reportPath: null,
+      issues: ["reported both by a Luna session and by a native report"],
+    };
   }
+  if (luna !== null && session !== undefined) {
+    const issues =
+      session.status === "completed" && session.exitCode === 0
+        ? []
+        : [
+            `terminal status is ${jsonText(session.status ?? "missing")} with exitCode ${textOf(session.exitCode)}`,
+          ];
+    const reportPath = containedReport(luna.outputDir, session.reportPath);
+    if (!hasText(reportPath)) issues.push("reportPath is missing, not a regular file, or outside outputDir");
+    return { transport: "luna", reportPath, issues };
+  }
+  if (native !== null && nativePath !== null) {
+    const issues = promptIssues(task, native);
+    const reportPath = containedReport(native.dir, nativePath);
+    if (!hasText(reportPath)) issues.push(`${NATIVE_OUTPUT}/${task.name}.md is not a regular file inside it`);
+    return { transport: "native", reportPath, issues };
+  }
+  return {
+    transport: null,
+    reportPath: null,
+    issues: ["no Luna session and no native report names this task"],
+  };
+}
+
+function reportRow(task: TaskRow, index: number, source: ReportSource): ReportRow {
+  const { transport, reportPath, issues } = source;
+  let reportBytes: Uint8Array = new Uint8Array();
+  let headings: string[] = [];
+  if (hasText(reportPath)) {
+    const read = readFileSync(reportPath);
+    reportBytes = read;
+    if (reportBytes.byteLength === 0) issues.push("report is empty");
+    const checked = reportContract(task, read.toString("utf8"), index);
+    headings = checked.headings;
+    issues.push(...checked.issues);
+  }
+  return {
+    name: task.name,
+    transport,
+    assignedLanes: task.lanes,
+    reportedLanes: headings,
+    status: issues.length === 0 ? "accepted-for-adjudication" : "rejected",
+    issues,
+    reportPath,
+    reportBytes: reportBytes.byteLength,
+    reportSha256: hasText(reportPath) ? sha256(reportBytes) : null,
+    expectedHeading: task.lanes.length > 0 ? null : expectedHeading(task.task, index),
+  };
+}
+
+function validate(paths: ReportPaths): ReportValidation {
+  const taskBytes = readFileSync(paths.tasksPath);
+  const tasks = taskRows(capturedJsonParse(taskBytes.toString("utf8")));
+  const luna =
+    paths.summaryPath === null ? null : lunaCollection(paths.summaryPath, tasks, taskBytes, paths.tasksPath);
+  const native = nativeReports(paths.tasksPath);
+  const rows = tasks.map((task, index) => reportRow(task, index, reportSource(task, luna, native)));
+  const launch = luna?.launch ?? null;
   return {
     schema: RECEIPT_SCHEMA,
     tasksPath: paths.tasksPath,
     tasksSha256: sha256(taskBytes),
     summaryPath: paths.summaryPath,
-    summarySha256: sha256(summaryBytes),
-    outputDir,
+    summarySha256: luna === null ? null : sha256(luna.summaryBytes),
+    outputDir: luna?.outputDir ?? null,
     launchBinding: launch,
-    complete: launch.state !== "invalid" && rows.every((row) => row.status === "accepted-for-adjudication"),
+    nativeOutput: native?.dir ?? null,
+    complete: launch?.state !== "invalid" && rows.every((row) => row.status === "accepted-for-adjudication"),
     rows,
   };
 }
 
-/** The receipt always lands at `--out` (beside the summary by default), even for a collection that
- *  could not be validated (exit 2), and the console names it; an incomplete one exits 1. */
+/** The receipt always lands at `--out` (beside the summary, else beside tasks.json, by default),
+ *  even for a collection that could not be validated (exit 2), and the console names it; an
+ *  incomplete one exits 1. */
 function validateCommand(args: CommandArgs): number {
-  const summaryPath = args.required("summary");
+  const tasksPath = args.required("tasks");
+  const summaryPath = args.value("summary");
   const paths = {
-    tasksPath: args.required("tasks"),
+    tasksPath,
     summaryPath,
-    outPath: args.value("out") ?? join(dirname(summaryPath), "wri-report-validation.json"),
+    outPath: args.value("out") ?? join(dirname(summaryPath ?? tasksPath), "wri-report-validation.json"),
   };
   mkdirSync(dirname(paths.outPath), { recursive: true });
   let result: ReportValidation;
@@ -682,7 +804,8 @@ await runCommand(
   {
     name: "validate-reports",
     usage:
-      "usage: bun validate-reports.ts --tasks <abs tasks.json> --summary <abs summary.json> [--out <abs file>]",
+      "usage: bun validate-reports.ts --tasks <abs tasks.json> [--summary <abs Luna summary.json>] [--out <abs file>]\n" +
+      "  native reports are read from native-output/<name>.md beside tasks.json",
     options: { tasks: "abs", summary: "abs", out: "abs" },
   },
   validateCommand,

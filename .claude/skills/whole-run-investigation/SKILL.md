@@ -160,9 +160,12 @@ supported model, effort and grouping override through the matching transport.
 When the operator asks for Luna, run one session per lane and never group lanes. A Luna or Codex
 lane is read-only, except that a session holding lane 29 or 30 runs inside, and may write, one
 scratch directory of its own, `<review>/lanes/hw-scratch/<session>/`, which its prompt names: it
-builds adapters and compiler output there and freezes its verdict file there. A native lane, a Claude subagent run from `prompts/`, may also repair a finding
-it proved, one commit per finding in a worktree of its own and never a push; the primary folds
-those commits in the way it folds any lane's.
+builds adapters and compiler output there and freezes its verdict file there. A native lane, a
+Claude subagent handed `<review>/lanes/prompts/<name>.md` verbatim, may also repair a finding it
+proved, one commit per finding in a worktree of its own and never a push; the primary folds those
+commits in the way it folds any lane's. No launcher collects what a subagent returns, so the
+primary saves each native report as `<review>/lanes/native-output/<name>.md`, where `finish`
+reads it.
 
 Product validity:
 
@@ -302,8 +305,11 @@ exact lane body inline — never the whole catalogue, never a scope expansion, n
 change controller output. Watch `<review>/lanes/luna-output/summary.json`; each lane's report
 lands beside it as `<name>.md` as it finishes.
 
-`finish` runs `validate-reports.ts` over `tasks.json` and that summary, requiring one terminal
-result per task and matching prompt, report and heading identities. Under each owed `## lane_NN`
+`finish` runs `validate-reports.ts` over `tasks.json`, joining each task by name to its Luna
+session in that summary or to its saved native report, so one review may run some lanes on each
+and leave none unreported. A Luna session needs a terminal result and matching launch, prompt and
+report identities; a native report needs its `prompts/<name>.md` to be still the prompt the
+manifest composed; a lane reported by both, or by neither, is refused. Under each owed `## lane_NN`
 heading the report carries `### Started from`, `### Evidence read`, `### Findings` and
 `### Not established`, each once, in that order and non-empty, and every finding names an
 `owner:` from the `FeedbackOwner` values — the bundle file at fault, such as

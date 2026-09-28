@@ -73,6 +73,10 @@ export const FIX_AUTHORITY = [
   "`### Findings`, a repaired one names its branch and commit.",
 ].join(" ");
 
+/** The directory beside `tasks.json` where the primary saves each native lane's report as
+ *  `<name>.md`, since no launcher collects what a Claude subagent returns. */
+export const NATIVE_OUTPUT = "native-output";
+
 export function angleNumbers(): number[] {
   return Array.from({ length: ANGLE_COUNT }, (_, index) => index + 1);
 }
@@ -97,4 +101,10 @@ export function scratchAuthority(scratch: string): string {
 export function leafPrompt(instructions: string, task: string, scratch: string | null = null): string {
   const authority = scratch === null ? READ_ONLY_AUTHORITY : scratchAuthority(scratch);
   return `${instructions.trim()}\n\n${task.trim()}\n\n${authority}`;
+}
+
+/** The exact prompt a native Claude lane is handed from `prompts/<name>.md`: the manifest writes it,
+ *  and the report validator composes it again to prove the file is still what the manifest wrote. */
+export function nativePrompt(instructions: string, task: string): string {
+  return `${instructions.trimEnd()}\n\n---\n\n# Your assignment\n\n${task}\n\n${FIX_AUTHORITY}\n`;
 }

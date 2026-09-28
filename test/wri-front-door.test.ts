@@ -390,6 +390,45 @@ describe("archive scaffold", () => {
     expect(built.terminalAccounting).toMatchObject({ completedRounds: 3, counts: { controller: 3 } });
   });
 
+  it("scaffolds a lane a native Claude subagent reported beside the Luna lanes", () => {
+    const review = reviewFixture();
+    const lanes = join(review, "lanes");
+    const tasks = parseJsonAs<JsonValue[]>(readFileSync(join(lanes, "tasks.json"), "utf8"));
+    tasks.push({
+      name: "lane_06",
+      task: "assignedSession: lane_06\nassignedLanes: 06\nexpectedHeading: ## lane_06\n",
+      admission: { schema: "wri-progressive-admission/v2", mode: "targeted" },
+    });
+    writeFileSync(join(lanes, "tasks.json"), json(tasks));
+    mkdirSync(join(lanes, "prompts"), { recursive: true });
+    writeFileSync(join(lanes, "prompts", "lane_06.md"), "the composed native prompt\n");
+    mkdirSync(join(lanes, "native-output"), { recursive: true });
+    writeFileSync(join(lanes, "native-output", "lane_06.md"), "## lane_06\n\n### Findings\n\nnone\n");
+
+    const first = scaffoldArchive(review);
+    const luna = readFileSync(join(first.archiveDir, "luna_syntheses.md"), "utf8");
+    expect(luna).toContain("| lane_06 | 06 | completed | - | - |");
+    expect(luna).toContain("## lane_06\n\n### Findings\n\nnone");
+    expect(luna).toContain(`Native reports: \`${join(lanes, "native-output")}\` (lane_06).`);
+    type Session = {
+      id: string;
+      state: string;
+      transport: string;
+      model: string | null;
+      promptSha256: string;
+    };
+    const sessions = parseJsonAs<{ sessionStates: Session[] }>(
+      readFileSync(join(first.archiveDir, "review.json"), "utf8"),
+    ).sessionStates;
+    expect(sessions.map((row) => [row.id, row.state, row.transport, row.model])).toEqual([
+      ["lane_05", "complete", "luna-sessions", "gpt-6-luna"],
+      ["lane_06", "complete", "native", null],
+    ]);
+    expect(sessions[1]?.promptSha256).toBe(
+      new Bun.CryptoHasher("sha256").update("the composed native prompt\n").digest("hex"),
+    );
+  });
+
   // controller-denominator.ts records a case record it could not read as `invalid`. The scaffold
   // once folded that into `absent`, which reads as "no battery ran" -- the opposite of the fact.
   it("carries an invalid controller denominator through as invalid with its reason", () => {

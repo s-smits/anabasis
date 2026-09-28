@@ -16,10 +16,11 @@ import { CommandFailure } from "#skills/main/cli.ts";
 import {
   DIGEST_VERDICTS,
   ISOLATED_ANGLES,
-  FIX_AUTHORITY,
   HARDWARE_LANES,
   hardwareScratch,
   leafPrompt,
+  NATIVE_OUTPUT,
+  nativePrompt,
   PUBLIC_ONLY_LANE,
   SHA256 as SHA_256,
   TRACE_CHALLENGE_LANE,
@@ -648,12 +649,12 @@ function writeNativePrompts(outPath: string, instructions: string, tasks: readon
   const promptsDir = join(outPath, "prompts");
   mkdirSync(promptsDir, { recursive: true });
   for (const task of tasks) {
-    writeFileSync(
-      join(promptsDir, `${task.name}.md`),
-      `${instructions.trimEnd()}\n\n---\n\n# Your assignment\n\n${task.task}\n\n${FIX_AUTHORITY}\n`,
-    );
+    writeFileSync(join(promptsDir, `${task.name}.md`), nativePrompt(instructions, task.task));
   }
   console.log(`\nnative transport: ${promptsDir} (${tasks.length} self-contained prompts)`);
+  console.log(
+    `  save each lane's report as ${join(outPath, NATIVE_OUTPUT)}/<name>.md for finish to validate`,
+  );
 }
 
 function lunaArgs({

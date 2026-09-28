@@ -27,9 +27,9 @@
 // names; the ordinary path is `read`, then `launch --sessions` with the lanes the brief argues for,
 // each a number from the 30-lane catalogue. `brief` re-renders that digest from a finished review
 // directory. Use `collect` and `launch` separately only to edit `shared-instructions.json` between
-// them. `finish` validates the lane reports, scaffolds the archive from recorded bytes and
-// `verdicts.json`, then runs the archive validator; the investigation itself ends in one adjudicated
-// note the primary writes by hand.
+// them. `finish` validates the lane reports, Luna and native alike, scaffolds the archive from
+// recorded bytes and `verdicts.json`, then runs the archive validator; the investigation itself ends
+// in one adjudicated note the primary writes by hand.
 //
 // A target is one folder — a campaign, its `controller` directory or one `controller/<runId>`
 // folder — or a bare run id, looked up in the main checkout's campaign tree, which every run
@@ -41,7 +41,7 @@ import { dirname, isAbsolute, join, resolve } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { scaffoldArchive } from "./archive-scaffold.ts";
 import { renderBrief, renderScope, runScope, SEMANTIC_LANES } from "./brief.ts";
-import { ANGLE_COUNT } from "./catalogue-shape.ts";
+import { ANGLE_COUNT, NATIVE_OUTPUT } from "./catalogue-shape.ts";
 import { buildOverview, readJsonAs } from "./run-overview.ts";
 import { openRecordedRun, resolveSourceCheckout } from "#skills/main/run.ts";
 import { buildSharedInstructions } from "./shared-instructions.ts";
@@ -656,15 +656,29 @@ function launch(args: WriArgs, state: WriReviewState = loadState(absolute(args, 
   );
 }
 
+/** The Luna summary `finish` validates, or null for a review whose lanes all ran natively. A Luna
+ *  launch without its summary is still running, and a review neither transport has reported to
+ *  has nothing to validate. */
+function lunaSummary(lanesDir: string): string | null {
+  const summary = join(lanesDir, "luna-output", "summary.json");
+  if (existsSync(summary)) return summary;
+  if (existsSync(join(lanesDir, "luna-output", "launch.json"))) {
+    throw new Error(
+      `${summary} is absent: the Luna lanes have not finished (see ${join(lanesDir, "launcher.log")})`,
+    );
+  }
+  if (!existsSync(join(lanesDir, NATIVE_OUTPUT))) {
+    throw new Error(
+      `no lane has reported: neither ${summary} nor a native report under ${join(lanesDir, NATIVE_OUTPUT)} exists`,
+    );
+  }
+  return null;
+}
+
 function finish(args: WriArgs): void {
   const state = loadState(absolute(args, "out"));
   const lanesDir = join(state.reviewDir, "lanes");
-  const summary = join(lanesDir, "luna-output", "summary.json");
-  if (!existsSync(summary)) {
-    throw new Error(
-      `${summary} is absent: the lanes have not finished (see ${join(lanesDir, "launcher.log")})`,
-    );
-  }
+  const summary = lunaSummary(lanesDir);
   step(
     state,
     "validate-reports",
@@ -674,8 +688,7 @@ function finish(args: WriArgs): void {
       script("validate-reports.ts"),
       "--tasks",
       join(lanesDir, "tasks.json"),
-      "--summary",
-      summary,
+      ...(summary === null ? [] : ["--summary", summary]),
       "--out",
       join(state.reviewDir, "wri-report-validation.json"),
     ],

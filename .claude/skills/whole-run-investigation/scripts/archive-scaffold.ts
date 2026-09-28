@@ -5,7 +5,8 @@
 // the primary writes only states, reasons and prose. `main_synthesis.md` is written once as a
 // skeleton and never overwritten. Re-running is idempotent for the generated files. `wri.ts`
 // calls `scaffoldArchive` with the review dir it laid out: wri-review.json, snapshot/,
-// lanes/tasks.json, lanes/luna-output/{launch.json,summary.json,<name>.md}, verdicts.json, archive/.
+// lanes/tasks.json, lanes/luna-output/{launch.json,summary.json,<name>.md}, and for a lane a native
+// Claude subagent ran, lanes/{prompts,native-output}/<name>.md; then verdicts.json and archive/.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
 import type { JsonObject, JsonValue, OpenRecord } from "#src/meta/json-shape.ts";
@@ -36,6 +37,7 @@ import {
   DETERMINISTIC_ROW_TITLES,
   DETERMINISTIC_ROWS,
   DIGEST_VERDICTS,
+  NATIVE_OUTPUT,
 } from "./catalogue-shape.ts";
 
 /** A runtime safeguard's retirement record, which an independent review may settle. */
@@ -289,6 +291,7 @@ function loadInputs(reviewDir: string) {
     controllerDir,
     lanesDir,
     outputDir,
+    nativeDir: join(lanesDir, NATIVE_OUTPUT),
     campaign: review.campaign,
     runId: review.runId,
     repo: review.repo,
@@ -310,7 +313,8 @@ function laneRows(inputs: Inputs) {
   const prompts = new Map((inputs.launch?.sessions ?? []).map((row) => [row.name, row.promptSha256]));
   return inputs.tasks.map((task) => {
     const result = results.get(task.name) ?? null;
-    const reportPath = join(inputs.outputDir, `${task.name}.md`);
+    const summary = result === null ? "unrecorded" : "recorded";
+    const source = laneSource(inputs, task.name, summary, prompts.get(task.name) ?? null);
     const angles = (/^assignedLanes:\s*(.+)$/m.exec(task.task)?.[1] ?? "").split(",").flatMap((value) => {
       const trimmed = value.trim();
       return trimmed === "" ? [] : [trimmed];
@@ -319,15 +323,30 @@ function laneRows(inputs: Inputs) {
       name: task.name,
       angles,
       mode: task.admission?.mode ?? "targeted",
-      status: result?.status ?? "not-launched",
+      ...source,
+      status: source.native ? "completed" : (result?.status ?? "not-launched"),
       failureKind: result?.failureKind ?? null,
       threadId: result?.threadId ?? null,
       durationMs: result?.durationMs ?? null,
-      promptSha256: prompts.get(task.name) ?? null,
-      reportSha256: existsSync(reportPath) ? sha256OfFile(reportPath) : null,
-      reportPath,
+      reportSha256: existsSync(source.reportPath) ? sha256OfFile(source.reportPath) : null,
     };
   });
+}
+
+/** Where one lane's report and prompt were recorded. A lane the Luna summary does not record ran
+ *  natively when the primary saved its report under `native-output/`, from `prompts/<name>.md`. */
+function laneSource(
+  inputs: Inputs,
+  name: string,
+  summary: "recorded" | "unrecorded",
+  lunaPrompt: string | null,
+) {
+  const saved = join(inputs.nativeDir, `${name}.md`);
+  if (summary === "recorded" || !existsSync(saved)) {
+    return { native: false, reportPath: join(inputs.outputDir, `${name}.md`), promptSha256: lunaPrompt };
+  }
+  const prompt = join(inputs.lanesDir, "prompts", `${name}.md`);
+  return { native: true, reportPath: saved, promptSha256: existsSync(prompt) ? sha256OfFile(prompt) : null };
 }
 
 function collectionTable(lanes: readonly LaneRow[], inputs: Inputs): string[] {
@@ -344,6 +363,8 @@ function collectionTable(lanes: readonly LaneRow[], inputs: Inputs): string[] {
       `| ${lane.name} | ${lane.angles.join(", ") || "-"} | ${lane.status}${lane.failureKind !== null && lane.failureKind !== "" ? ` (${lane.failureKind})` : ""} | ${lane.threadId ?? "-"} | ${lane.durationMs === null ? "-" : Math.round(lane.durationMs / 1000)} | ${lane.reportSha256 ?? "-"} |`,
     );
   }
+  const native = lanes.flatMap((lane) => (lane.native ? [lane.name] : []));
+  if (native.length > 0) lines.push("", `Native reports: \`${inputs.nativeDir}\` (${native.join(", ")}).`);
   return lines;
 }
 
@@ -543,9 +564,10 @@ function sessionRows(lanes: readonly LaneRow[], inputs: Inputs, verdicts: Verdic
     id: lane.name,
     state: LANE_STATES.get(lane.status) ?? "partial",
     evidencePointers: [ptr("#collection", LUNA), ptr(`#${lane.name}`, LUNA)],
-    model: inputs.launch?.model ?? null,
-    effort: inputs.launch?.reasoningEffort ?? null,
-    transport: "luna-sessions",
+    // The Luna launch records its model; a native subagent's is known only to the primary.
+    model: lane.native ? null : (inputs.launch?.model ?? null),
+    effort: lane.native ? null : (inputs.launch?.reasoningEffort ?? null),
+    transport: lane.native ? "native" : "luna-sessions",
     threadId: lane.threadId,
     reportSha256: lane.reportSha256,
     promptSha256: lane.promptSha256,

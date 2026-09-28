@@ -180,12 +180,13 @@ describe("each earlier advisory defect, as the next completed review left it", (
     const root = measuredTree();
     recordEarlier(root, "r0", EARLIER);
     const result = await measured(root, "r0", async (tools) => {
-      // Named at a second measured condition, the advisory defect is admitted blocking.
-      expect(await boundsDefect(tools)).toBe("recorded defect as blocking");
+      // Named again at a second measured condition, the source-read tool defect stands, and stays
+      // advisory: a naming count never moves severity.
+      expect(await boundsDefect(tools)).toBe("recorded defect as advisory");
     });
     expect(result.status).toBe("completed");
     expect(result.earlierAdvisory).toEqual([
-      { runId: "r0", owner: TOOLS, subject: "bounds", disposition: "standing", severity: "blocking" },
+      { runId: "r0", owner: TOOLS, subject: "bounds", disposition: "standing", severity: "advisory" },
       { runId: "r0", owner: "agent/BUILT_AGENTS.md", subject: null, disposition: "absent" },
       { runId: "r0", owner: "correctness-model/tasks.json", subject: "$.limit", disposition: "absent" },
     ]);

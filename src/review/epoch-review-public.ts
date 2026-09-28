@@ -184,17 +184,6 @@ function familiesOf(rows: readonly ContestedCase[]): string {
   return [...new Set(rows.map((row) => row.family))].sort().join(", ");
 }
 
-/** The typed lines that follow a finding's heading: the demand gap it takes, as fixed text, and a
- *  count of earlier namings, so a finding the author has already been given reads as such rather
- *  than as news. The count rides with advice too, since advice repeated is the case it exists for. */
-function leadLines(finding: AnalysisFinding): string[] {
-  const earlier = finding.namedBefore ?? 0;
-  return [
-    ...(finding.demandGap === undefined ? [] : [DEMAND_GAP_SENTENCES[finding.demandGap]]),
-    ...(earlier === 0 ? [] : [`Named in ${String(earlier)} earlier review${earlier === 1 ? "" : "s"}.`]),
-  ];
-}
-
 /** A settled Judge disagreement crosses as its outcome alone: the check stands, and in which
  *  families. The Judge's reason and the probe's values stay private. */
 function settlementLines(finding: AnalysisFinding, rows: readonly ContestedCase[]): string[] {
@@ -305,7 +294,7 @@ function publicFinding(
     ...finding,
     claim: [
       publicFindingClaim(finding, deferred, contract.brief),
-      ...leadLines(finding),
+      ...(finding.demandGap === undefined ? [] : [DEMAND_GAP_SENTENCES[finding.demandGap]]),
       ...settlementLines(finding, [...vetoed, ...disputed]),
       ...context,
       ...probed,

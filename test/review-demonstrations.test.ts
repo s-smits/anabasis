@@ -91,7 +91,6 @@ async function massReview() {
   state.probes.rows.push(...fa03b7Rows());
   const tool = recordFindingTool([], [], "e", state, {
     identities: { schemaRoots: ["design"], checkIds: ["catalogue-mass-budget"] },
-    recurring: new Map(),
   });
   expect(await call(tool, MASS_FINDING)).toStartWith("recorded defect");
   return state;

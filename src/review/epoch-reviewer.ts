@@ -82,8 +82,6 @@ import {
   earlierTaskFindings,
   measuredAdvisory,
   recordFindingTool,
-  recurringDemandOwners,
-  recurringDefects,
 } from "./epoch-review-findings.ts";
 import { TASKS_FILE } from "../meta/bundle-layout.ts";
 import { aboveAimAsk, aboveAimDuty, askOnce, clauseLines, requestDuty } from "./review-duties.ts";
@@ -633,18 +631,6 @@ function earlierAdvisory(input: EpochReviewInput, analysisDir: string): readonly
   return measuredAdvisory(analysisDir, input.priorAdvice?.runId);
 }
 
-/** The owners whose demand defect recurs across this battery and the one before it, both passing in
- *  full. The previous battery is the one the prior advice packet was derived from, and its counts
- *  are read from that packet; an authoring checkpoint has no battery of its own and escalates
- *  nothing. */
-function demandOwners(input: EpochReviewInput, analysisDir: string) {
-  const { analysis, priorAdvice } = input;
-  if (analysis === null) return new Set<never>();
-  const previous =
-    priorAdvice === null ? null : { runId: priorAdvice.runId, counts: adviceTotals(priorAdvice.families) };
-  return recurringDemandOwners(analysisDir, previous, analysis.battery.summary);
-}
-
 /** What a measured battery adds to the session: its placement against the aim, the task-set
  *  findings earlier reviews of the same task set recorded, and — above the aim — the duty the
  *  placement opens, with the reading of how it was met. */
@@ -675,18 +661,13 @@ function measuredContext(
 }
 
 /** What `record_finding` weighs a finding against beyond its own arguments: the declared
- *  identities, the defects earlier reviews of this condition recorded, the owners whose demand
- *  finding recurs across full passes, and the checks a listed Judge disagreement names. */
+ *  identities and the checks a listed Judge disagreement names. */
 function findingPriors(
   input: EpochReviewInput,
-  evidence: EpochReviewEvidence,
-  analysisDir: string,
   identities: ReturnType<typeof briefIdentities>,
 ): Parameters<typeof recordFindingTool>[4] {
   return {
     identities,
-    recurring: evidence.condition === null ? new Map() : recurringDefects(analysisDir, evidence.condition),
-    demandRecurs: demandOwners(input, analysisDir),
     contested: new Set([...(input.vetoed ?? []), ...(input.disputed ?? [])].flatMap((row) => row.checkIds)),
   };
 }
@@ -773,7 +754,7 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
           taskIds,
           join("campaigns", input.slug, "analysis", `${input.runId}-epoch-review.json`),
           state,
-          findingPriors(input, evidence, analysisDir, identities),
+          findingPriors(input, identities),
         ),
       ],
       continuePrompt: (text) => unread() ?? duty(text),

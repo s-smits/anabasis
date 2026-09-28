@@ -352,35 +352,6 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
     expect(rendered).toContain("rather than the harness: beams (verified-fail)");
   });
 
-  test("only the first blocking defect reopens an authoring area", async () => {
-    const state = reviewState();
-    // correctness-model, not an agent-side owner: this case is about the one-blocking cap, and an
-    // agent-side owner would be advisory on its first reading for a different reason.
-    const tool = recordFindingTool([issue()], [], evidence, state);
-    expect(
-      await call(tool, {
-        defect: true,
-        claim: "first defect",
-        owner: "correctness-model/evaluator.ts",
-        severity: "blocking",
-        citations: CITATIONS,
-        demonstration: DEMO,
-      }),
-    ).toContain("as blocking");
-    expect(
-      await call(tool, {
-        defect: true,
-        claim: "second defect",
-        owner: "correctness-model/evaluator.ts",
-        severity: "blocking",
-        citations: CITATIONS,
-        demonstration: DEMO,
-      }),
-    ).toContain("as advisory");
-    expect(state.findings[0]?.severity).toBeUndefined();
-    expect(state.findings[1]?.severity).toBe("advisory");
-  });
-
   test("a claim naming a task in the battery is refused", async () => {
     const state = reviewState();
     const text = await call(recordFindingTool([issue()], ["truss-09"], evidence, state), {

@@ -10,11 +10,9 @@
  * a claim must name public identities the measured brief declares, cite passages `read_source`
  * actually returned, and carry a demonstration before it may block.
  *
- * Reuse asks whether this exact condition and procedure were already read to completion;
- * recurrence asks how many distinct conditions named one defect before, which a reviewer seeing
- * one condition cannot observe and `admitSeverity` decides on. Both key on `namedSubject` from the
- * iteration analysis, the one rule the advice packet also uses, so no reader here may form a
- * defect identity by some other rule.
+ * Reuse asks whether this exact condition and procedure were already read to completion. A
+ * finding's severity reads that finding alone (`admitSeverity`); what an earlier review said reaches
+ * this one only as the previous review's advisory defects and probes, carried as leads.
  */
 import { existsSync, readdirSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
@@ -23,9 +21,7 @@ import {
   DEMAND_GAPS,
   type FindingPlacement,
   PROBE_DIRECTIONS,
-  namedSubject,
 } from "../analyse/iteration-analysis.ts";
-import { contractDefect } from "../analyse/finding-owner.ts";
 import type { AdviceIssue } from "../author/rebuild-advice.ts";
 import { readCompleted } from "../author/campaign-epoch.ts";
 import { BUNDLE_FILES, type BundleFile, ownerSide } from "../author/feedback-routing.ts";
@@ -145,7 +141,6 @@ export type ReviewState = SourceReadState & {
 type BriefIdentities = { schemaRoots: readonly string[]; checkIds: readonly string[] };
 
 type FindingArgs = ReturnType<typeof findingArgs>;
-type PassCounts = { passed: number; verified: number; unaccepted: number };
 
 /** Minimum demonstration length for a blocking finding. The review instructions ask for a
  *  demonstrated violation before blocking, and without a floor nothing in the host checks that one
@@ -183,12 +178,9 @@ type FindingRule = (subject: FindingCase) => string | null;
 type FindingSeverity = "advisory" | "blocking";
 type FindingVerdict = { why: string } | { severity: FindingSeverity; placement: FindingPlacement };
 
-/** The public identities a finding may name, and how often each defect identity recurred. */
+/** The public identities a finding may name. */
 type FindingPriors = {
   readonly identities?: BriefIdentities | undefined;
-  readonly recurring?: ReadonlyMap<string, number> | undefined;
-  /** Owners whose demand defect the previous full-pass review named too (`recurringDemandOwners`). */
-  readonly demandRecurs?: ReadonlySet<BundleFile> | undefined;
   /** The declared checks the listed, confirmed Judge disagreements name (`judgeSettlement`). */
   readonly contested?: ReadonlySet<string> | undefined;
 };
@@ -261,51 +253,6 @@ export function conditionAlreadyReviewed(
   );
 }
 
-/** How many distinct earlier conditions, each fully reviewed, named each defect identity. A
- *  reviewer sees one condition and cannot observe that history; the host can, and `admitSeverity`
- *  is the consumer that needs it, which is why the count lives here rather than in the prompt.
- *  Rereviews of the current condition, duplicate findings within one review and replay files all
- *  add no vote, because the question is how many separate measured conditions named the defect.
- *
- *  Any finding placed in a file counts as a naming, not only a defect: a check reported as a defect
- *  in one review and as an observation of hardness in the next is still that check being named a
- *  second time. An unplaced finding is the one excluded, because it is the reviewer saying it could
- *  not attribute what it saw, and counting it would let an unattributed observation force the next
- *  finding on that check to blocking. An observation the reviewer could not attribute is not a
- *  first naming; the next placed claim about that check is. A task-set finding also counts under
- *  its public input (`taskInputNaming`), a key no check id can equal. */
-export function recurringDefects(analysisDir: string, current: MeasuredCondition): Map<string, number> {
-  const seen = new Map<string, Set<string>>();
-  const currentKey = current.digest;
-  if (currentKey === null) return new Map();
-  for (const review of completedReviews(analysisDir)) {
-    const priorKey = review.condition == null ? null : measuredConditionOf(review.condition).digest;
-    if (review.coverage?.complete !== true || priorKey === null || priorKey === currentKey) continue;
-    for (const finding of review.findings) {
-      if (finding.owner === null) continue;
-      for (const identity of [namedSubject(finding), taskInputNaming(finding)]) {
-        if (identity === null) continue;
-        const conditions = seen.get(identity) ?? new Set<string>();
-        conditions.add(priorKey);
-        seen.set(identity, conditions);
-      }
-    }
-  }
-  return new Map([...seen].map(([identity, conditions]) => [identity, conditions.size]));
-}
-
-/** The task-set naming of a finding: the public input it asks the battery to vary, keyed within its
- *  own owner. It is counted beside `namedSubject` rather than in place of it, so a check named by a
- *  task-set observation of hardness still counts towards that check, and the owner prefix keeps the
- *  new key from ever matching a check id: `admitSeverity`, which reads contract defects alone, sees
- *  exactly the counts it saw before. What the task-set key buys is the rendered count of how often
- *  an earlier review asked the battery to move the same input. */
-function taskInputNaming(finding: { owner: string | null; publicInputPath?: string | null }): string | null {
-  return finding.owner === TASKS_FILE && finding.publicInputPath != null
-    ? `${TASKS_FILE} ${finding.publicInputPath}`
-    : null;
-}
-
 /** The task-set findings earlier complete reviews recorded over the task set now under review. A
  *  task-set finding asks the next battery to demand more of the request; when the battery that came
  *  back has the same `taskSetHash`, nothing it said was acted on, and a reviewer who is not shown it
@@ -334,75 +281,24 @@ export function measuredAdvisory(analysisDir: string, runId: string | undefined)
   return review === undefined ? [] : advisoryDefects(review);
 }
 
-/** Whether a battery passed every case it verified, with at least one verified and none left
- *  unaccepted. Runtime non-results neither pass nor fail, so they do not break a full pass. */
-export function allPassed(counts: PassCounts): boolean {
-  return counts.verified > 0 && counts.passed === counts.verified && counts.unaccepted === 0;
-}
-
-/** The task set, when its demand finding recurs across two consecutive full passes. The finding is
- *  advice on its first reading, and a round that acted on advice is free to have weighed it and
- *  moved on. When the next battery again passes everything and the next review names the task set
- *  again, the advice was read and the tasks did not move, so the host admits that second naming as
- *  blocking. Only the task set escalates: a blocking finding owned by the evaluator or the brief
- *  reopens the evaluation over the same frozen, fully passed tasks, which is one more correction of
- *  an exam that stays easy. Empty unless both batteries passed in full and the previous battery's
- *  review completed and named a task-set defect. */
-export function recurringDemandOwners(
-  analysisDir: string,
-  previous: { runId: string; counts: PassCounts } | null,
-  current: PassCounts,
-): ReadonlySet<BundleFile> {
-  if (previous === null || !allPassed(previous.counts) || !allPassed(current)) return new Set();
-  const review = completedReviews(analysisDir).find((row) => row.runId === previous.runId);
-  return new Set(
-    (review?.findings ?? []).flatMap((finding) =>
-      finding.defect && finding.owner === TASKS_FILE ? [TASKS_FILE] : [],
-    ),
-  );
-}
-
-/** Admit the reviewer's chosen severity under the limits only the host can apply. Nothing here
- *  narrows the repair the Builder may then make: the continuation decides scope, and this function
- *  decides the admitted severity alone.
+/** Admit the reviewer's chosen severity under the limits only the host can apply. Severity says how
+ *  strong one finding's evidence is, so nothing outside that finding moves it: not how often its
+ *  check was named before, since a naming count cannot tell two defects on one check apart, and not
+ *  the findings recorded before it in the same review. How many blocking owners one round reopens
+ *  is the continuation's decision.
  *
- *  An observation is always advice. A defect is limited, and one review may reopen at most one
- *  authoring area, because a second blocking defect in a single reading is a reason to inspect the
- *  review rather than to reopen twice. A first defect owned under `agent/` stays advisory, because
- *  a reviewer reading source can only suspect, and one suspicion is enough to discard an entire
- *  working product. A first finding still reaches authoring, as advice carrying its recorded owner.
- *
- *  Escalation is therefore once per defect identity and not more. A defect named in three
- *  consecutive reviews forces two rebuilds and survives both, because the public projection
- *  supplies only its check name and repeating the forced repair does not resolve it. So after two
- *  prior occurrences the finding is kept as advice: it keeps its owner and stays an issue the next
- *  experiment may act on, which bounds the escalation without declaring the defect fixed.
- *
- *  A probe-backed defect is exempt from the first-occurrence agent-tier floor, because a finding
- *  citing a probe is not a suspicion: the candidate's own declared checks ran over its own accept
- *  control and over one changed field, and the row records what they decided. The reviewer still
- *  owes the demonstration, the citations and the one-reopen cap.
- *
- *  A demand defect recurring across two full passes (`recurringDemandOwners`) is admitted blocking
- *  ahead of the two-occurrence ceiling, because that ceiling bounds repeated repairs of one check
- *  and a full pass is the measurement saying the evaluation has not yet found a limit at all. */
+ *  An observation is always advice, and so is a defect without a demonstration and citations. A
+ *  defect owned under `agent/` without a probe stays advice, because a reviewer reading an
+ *  agent's source can only suspect, and one suspicion is enough to discard a working product. A
+ *  probe-backed defect keeps the reviewer's severity: the candidate's own declared checks ran over
+ *  its own accept control and one changed field, and the row records what they decided. */
 function admitSeverity(
   { owner, defect }: FindingPlacement,
   chosen: FindingSeverity,
-  host: {
-    blockingAlready: boolean;
-    recurrences: number;
-    demonstrated: boolean;
-    probeBacked: boolean;
-    demandRecurs: boolean;
-  },
+  host: { demonstrated: boolean; probeBacked: boolean },
 ): FindingSeverity {
-  if (!defect || host.blockingAlready || !host.demonstrated) return "advisory";
-  if (host.demandRecurs) return "blocking";
-  if (host.recurrences >= 2) return "advisory";
-  if (host.recurrences === 1) return "blocking";
-  if (host.probeBacked) return chosen;
-  return ownerSide(owner) === "agent" ? "advisory" : chosen;
+  if (!defect || !host.demonstrated) return "advisory";
+  return host.probeBacked || ownerSide(owner) !== "agent" ? chosen : "advisory";
 }
 
 export function briefIdentities(root: string): BriefIdentities {
@@ -672,7 +568,7 @@ function findingParameters(disputable: readonly string[]) {
         type: "string",
         enum: ["advisory", "blocking"],
         description:
-          "Choose blocking for a demonstrated violation of the request or a declared requirement with a repairable owner, supported by demonstration and citations; advisory for uncertainty, scope observations or hardness. A partial repair does not close a remaining required-property gap. Record the strongest defect first: the host may reopen at most one owner and returns the admitted severity after applying recurrence and owner constraints.",
+          "Choose blocking for a demonstrated violation of the request or a declared requirement with a repairable owner, supported by demonstration and citations; advisory for uncertainty, scope observations or hardness. A partial repair does not close a remaining required-property gap. The host returns the admitted severity after applying its evidence rules; neither how often a check was named before nor the order you record findings in changes it.",
       },
       demonstration: {
         type: "string",
@@ -723,7 +619,7 @@ function findingParameters(disputable: readonly string[]) {
         type: "array",
         items: { type: "number" },
         description:
-          "The probe_check numbers whose executed result this finding rests on. Cite only probes that ran: a probe-backed defect may be admitted blocking on its first occurrence.",
+          "The probe_check numbers whose executed result this finding rests on. Cite only probes that ran: a probe-backed defect keeps the severity you choose.",
       },
       probeDirection: PROBE_DIRECTION_PARAMETER,
       publicInputPath: {
@@ -762,8 +658,6 @@ export function recordFindingTool(
   priors: FindingPriors = {},
 ): ReaderTool {
   const identities = priors.identities ?? { schemaRoots: [], checkIds: [] };
-  const recurring = priors.recurring ?? new Map<string, number>();
-  const demand = priors.demandRecurs ?? new Set<BundleFile>();
   const byPrefix = new Map(offered.map((issue) => [issue.id.slice(0, 12), issue.id] as const));
   return {
     name: "record_finding",
@@ -789,29 +683,13 @@ export function recordFindingTool(
         state.refused += 1;
         return Promise.resolve(readerToolText(`refused: ${verdict.why}`));
       }
-      // One review reopens at most one authoring area, so a finding recorded after a blocking
-      // defect is admitted advisory however strong its own case is: a second blocking defect in
-      // one reading is a reason to inspect the review, not to reopen twice.
-      const blockingAlready = state.findings.some((row) => row.defect && row.severity === undefined);
-      const count = (key: string | null) => (key === null ? 0 : (recurring.get(key) ?? 0));
-      const recurrences = contractDefect(verdict.placement) ? count(namedSubject(parsed)) : 0;
-      const namedBefore =
-        subject.owner === TASKS_FILE
-          ? count(taskInputNaming({ ...parsed, owner: subject.owner }))
-          : count(namedSubject(parsed));
       const probes = probeBackedRows(state.probes, args.probeIds);
       for (const row of probes) row.cited = true;
       const admitted = admitSeverity(verdict.placement, verdict.severity, {
-        blockingAlready,
-        recurrences,
         demonstrated: demonstrated(parsed.demonstration) && subject.citations !== null,
         probeBacked: probes.length > 0,
-        demandRecurs: verdict.placement.defect && subject.owner !== null && demand.has(subject.owner),
       });
-      state.findings.push({
-        ...recordedFinding(subject, verdict.placement, admitted, probes, evidencePath),
-        ...keysIf(namedBefore > 0, () => ({ namedBefore })),
-      });
+      state.findings.push(recordedFinding(subject, verdict.placement, admitted, probes, evidencePath));
       if (admitted !== verdict.severity) {
         state.admission.severityAdjusted.push({
           owner: subject.owner,

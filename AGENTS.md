@@ -603,7 +603,8 @@ the battery was paid for.
    The Epoch Reviewer runs once per measured-condition digest. Its finding is either a *defect*, which
    names the file at fault and is advisory or blocking, or an *observation*, which names a file or none
    and is always advisory. Blocking needs a demonstrated violation of the request or of a declared
-   requirement, and one review reopens at most one authoring area. Its orientation states the band
+   requirement; one review may record several blocking findings, and how many owners a round reopens is
+   the continuation's decision (`src/run/next-move.ts`). Its orientation states the band
    placement through `placeOnBand`, as the climb readout does, so that the one component reading the
    measured tree against the request knows what the round aimed for. Until 2026-09-18 it saw the counts
    alone and was asked about "a perfect or near-perfect battery", which left the whole `over-aim` zone,
@@ -630,10 +631,7 @@ the battery was paid for.
    capability-unexercised, sibling-values-only, limit-cleared-widely, solver-tool-reports-margins or
    rule-outside-request, or says family by family what each demands and why none is left. An undischarged
    duty is asked once more (`askOnce`). Earlier `tasks.json` findings over the same task set are shown
-   again, each finding renders "Named in N earlier reviews" (`namedBefore`), and when two consecutive
-   batteries both pass every verified case with none unaccepted and both reviews name a `tasks.json`
-   defect, the second is admitted **blocking** (`recurringDemandOwners`). Evaluator and brief findings
-   never escalate so.
+   again (`earlierTaskFindings`), so an unchanged task set is not read as settled.
 
    The reviewer may also execute. `probe_check` takes one accept control, one rooted path already in its
    artifact (`$.layout.members[0].area`, read through `jsonPathTokens`) and one change: either a
@@ -643,12 +641,16 @@ the battery was paid for.
    original and the changed artifact and reports which checks moved, at most 8 per review (`PROBE_BUDGET`,
    `src/review/review-probe.ts`). A probe whose original did not pass, or whose change reached no verdict,
    is not evidence. Every defect not owned by the task set cites its `probeIds`, or `[]` for a source-only
-   reading, and a probe-backed defect may block on first occurrence. Otherwise a first `agent/` defect
-   stays advisory, recurrence is keyed by the declared check it names or else by an artifact path *below*
-   a schema root, and after two prior occurrences a defect stays advice. A bare root is no identity,
-   because `schemaPath` requires only the first segment and a one-root domain therefore has one word for
-   everything: every campaign that fell back to one collapsed to a constant. Run 17f9de demoted a new
-   finding on two recurrences of other defects, and the same collapse reset a 25/25 harness.
+   reading, and a `probeDirection` (false rejection or false acceptance) is recorded only where the cited
+   probes show it (`probeShows`), so a probe that moved nothing never reads as a check refusing a valid
+   answer. Severity reads that one finding's evidence and nothing else (`admitSeverity`): an observation,
+   or a defect without a demonstration and citations, is advice; a demonstrated defect keeps the severity
+   the reviewer chose; and an `agent/` defect read from source with no probe stays advice, because a probe
+   runs the evaluation's checks and never exercises the Builder's tools. Neither how often a check was
+   named before nor the order a review records its findings moves it. Until 2026-09-28 a first recurrence
+   of a check's name raised a finding and two held it at advice, so a firmware review whose two probes
+   showed a check refusing the published default pins was admitted as advice: that check had been named
+   in four earlier reviews, and a naming count cannot tell two defects on one check apart.
 
    An observation with `settlesJudge` — a check that a vetoed or disputed row names, plus a conclusive
    probe that moved it — settles that Judge issue. Only a `correctness-model/` defect may dispute an

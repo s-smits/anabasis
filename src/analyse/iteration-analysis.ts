@@ -112,7 +112,7 @@ interface ClaimFileSlice {
  * one still outranks the climb at promotion — exactly the misroute a severity change is made to
  * end.
  */
-export const FEEDBACK_POLICY = "severity-route/12-recurring-demand";
+export const FEEDBACK_POLICY = "severity-route/13-evidence-only";
 
 /** A finding states two facts: where it sits and whether it is a defect. Only a bundle file can
  *  hold a defect, so a defect with no owner, or one owned by the environment, has no spelling. An
@@ -162,11 +162,6 @@ type FindingBody = {
    *  boundary, and the same check name arrives round after round with nothing behind it, each time
    *  ordering a rebuild the author cannot aim. */
   probes?: Array<{ controlId: string; path: string; movedCheckIds: string[] }>;
-  /** How many distinct earlier reviewed conditions named what this finding names — its check or
-   *  deeper path, or for a task-set finding the public input it asks to vary. Absent when none did.
-   *  A count of namings, public in the same way the identities it counts are, and rendered so the
-   *  author can tell a first reading from advice it has already been given. */
-  namedBefore?: number;
   /** Which of the recognised demand shapes the reviewer read the finding as, from a closed set. A
    *  typed classification, public like the owner, and rendered as its own sentence. */
   demandGap?: DemandGap;
@@ -219,17 +214,15 @@ export interface AdmittedEvidence {
  *
  *  This is a naming, not a defect identity, and the difference is the whole of what it may be used
  *  for. Two reviews naming one check is evidence that they concern one defect; it is not proof,
- *  because two defects can name the same check. `recurringDefects` and the advice packet both draw
- *  that inference, and both own it — this function establishes only that the same subject was
- *  named twice, under the conditions its callers bind it to.
+ *  because two defects can name the same check, which is why no severity reads it. The advice
+ *  packet and the carried advisory defects join on it, and each owns that inference — this
+ *  function establishes only that the same subject was named twice.
  *
  *  A bare root is not a naming. The reviewer's `schemaPath` rule requires only that the first
  *  segment be a declared `artifactSchema` root, so a domain whose schema has one root offers one
- *  bare word for any place in its artifact, and every defect then shares one identity: a
- *  floating-point rule, a header contract and a pin binding recur as each other. A new finding
- *  arrives already carrying recurrences it had nothing to do with and is demoted by them, or is
- *  forced blocking at a single recurrence and resets a working harness. A word that names the
- *  whole artifact identifies no defect in it.
+ *  bare word for any place in its artifact, and every defect would then share one identity: a
+ *  floating-point rule, a header contract and a pin binding would join as each other. A word that
+ *  names the whole artifact identifies no defect in it.
  *
  *  The check is preferred over the path because one defect's artifact location may differ between
  *  reviews of it, and a key built from check-and-path then reads one check named twice as two

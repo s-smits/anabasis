@@ -259,7 +259,10 @@ function roundPrompt(input: BuilderSessionInput, previous: PreviousRound | null)
     // preview without submitting. So the pace is stated as an action instead. It names no rehearsal
     // condition: rehearsals pass far more often than a Builder predicts, so asking them to agree with
     // a predicted count held rounds back for hours without changing where the battery landed.
-    `${input.maxTurns === undefined ? "" : `Round limit: ${input.maxTurns} assistant turns. `}Build, check and rehearse the candidate, and submit` +
+    // The cap counts replies, not tool calls, and says so: read as a count of steps, fifteen turns
+    // looked nearly spent a dozen calls into the first, and a Builder dropped a change it had
+    // judged right for want of turns it still had.
+    `${input.maxTurns === undefined ? "" : `Round limit: ${input.maxTurns} assistant turns, each ending when you reply without a tool call; tool calls inside a turn do not count. `}Build, check and rehearse the candidate, and submit` +
       ` once a clear preview says it works; the measured battery, not a rehearsal, decides where it lands, and further` +
       ` polish belongs to the next round.`,
     HANDOVER,

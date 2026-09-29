@@ -123,7 +123,10 @@ describe("turn-budget steering", () => {
   it("states the session limit in the opening prompt", async () => {
     const { open, opened } = scripted([undefined, undefined]);
     await runBuilderSession(INPUT(tempRoot(), 8), { open, tools: [], submit: NO_SUBMIT_THROWER });
-    expect(opened.prompts[0]).toContain("Round limit: 8 assistant turns");
+    // The unit is stated, because a model counting its tool calls as turns reads the cap as nearly spent.
+    expect(opened.prompts[0]).toContain(
+      "Round limit: 8 assistant turns, each ending when you reply without a tool call; tool calls inside a turn do not count.",
+    );
     // Scope-neutral: the opening text never names a file a task-fixed repair may not edit.
     expect(opened.prompts[0]).not.toContain("tasks.json");
   });

@@ -315,7 +315,6 @@ describe("review-yield: diagnosis reader", () => {
     cause: "public interface mismatch",
     falsifier: "the interface agrees",
     support: { cases: 2, shown: 3, matching: 3, contrasts: 0 },
-    confidence: "medium",
   };
   const cited = { boundary: "c01.s2", supporting: ["c01", "c02"], contrast: [] };
   /** A complete current diagnosis reading, with the fields a test varies. */

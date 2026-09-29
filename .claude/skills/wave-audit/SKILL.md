@@ -305,8 +305,8 @@ finding.
 The `yield` lane gives Epoch Reviewer findings per review, blocking and advisory, and what each one
 routed to. The rebuild advice packets (`analysis/<runId>-rebuild-advice.json`) give issue states.
 
-- **Better is** findings that name a real owner and change a later round; more issues reaching
-  `confirmed-fixed`; fewer `regressed`.
+- **Better is** findings that name a real owner and change a later round; more issues not observed
+  in complete rechecks (`absentBatteries`); fewer `returned`.
 - **Trap:** `retired` and `unmeasured` prove no fix.
 
 ### 5i. Context only: solver effort and margin

@@ -28,7 +28,6 @@ import {
   adviceIssueId,
   attachIssueReadings,
   isStanding,
-  issueStatusWord,
   latestRebuildAdvicePath,
   readLatestRebuildAdvice,
   renderRebuildAdvice,
@@ -349,7 +348,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
     recordAuthoringDisputes(root, "truss", [{ issueId: BEAMS, reason: "the limit is the reference mass" }]);
     const disputed = carried();
     expect(disputed?.dispute).toContain("reference mass");
-    expect(disputed === null ? null : issueStatusWord(disputed)).toBe("disputed");
+    expect(disputed === null ? null : isStanding(disputed)).toBe(false);
     const rendered = renderRebuildAdvice(advicePacket(disputed === null ? [] : [disputed]));
     expect(rendered).toContain("rather than the harness: beams (verified-fail)");
   });
@@ -1019,7 +1018,7 @@ describe("what a finding's typed fields carry to authoring", () => {
     const settled = attachIssueReadings(advicePacket([vetoedIssue, issue()]), {
       settled: projected.settledJudge,
     });
-    expect(settled.issues.map(issueStatusWord)).toEqual(["settled", "active"]);
+    expect(settled.issues.map((row) => row.judgeSettled === true)).toEqual([true, false]);
     expect(settled.issues.map(isStanding)).toEqual([false, true]);
     const rendered = renderRebuildAdvice(settled);
     expect(rendered).toContain("Settled Judge disagreements");
@@ -1033,9 +1032,9 @@ describe("what a finding's typed fields carry to authoring", () => {
     expect(unsettled.settledJudge).toEqual([]);
     expect(
       attachIssueReadings(advicePacket([vetoedIssue]), { settled: unsettled.settledJudge }).issues.map(
-        issueStatusWord,
+        isStanding,
       ),
-    ).toEqual(["active"]);
+    ).toEqual([true]);
   });
 
   // The probe ran on an accept control, so it shows how the check reads its rule; the case it
@@ -1071,10 +1070,10 @@ describe("what a finding's typed fields carry to authoring", () => {
         family,
         count,
       });
-    const statuses = (contestedReads: string[]) =>
+    const standing = (contestedReads: string[]) =>
       attachIssueReadings(advicePacket([judgeIssue("roof", 2), judgeIssue("walls", 1)]), {
         settled: project(contestedReads).settledJudge,
-      }).issues.map(issueStatusWord);
+      }).issues.map(isStanding);
 
     const claim = project([at("t1")]).findings[0]?.claim ?? "";
     expect(claim).toContain(
@@ -1083,9 +1082,9 @@ describe("what a finding's typed fields carry to authoring", () => {
     for (const word of ["t1", "t2", "walls", "PRIVATE", "misread"]) expect(claim).not.toContain(word);
     expect(project([]).findings[0]?.claim).not.toContain("settled the Judge");
     // One opened case of roof's two leaves roof standing, and walls, never opened, stands too.
-    expect(statuses([at("t1")])).toEqual(["active", "active"]);
-    expect(statuses([at("t1"), at("t3")])).toEqual(["settled", "active"]);
-    expect(statuses([at("t1"), at("t2"), at("t3")])).toEqual(["settled", "settled"]);
+    expect(standing([at("t1")])).toEqual([true, true]);
+    expect(standing([at("t1"), at("t3")])).toEqual([false, true]);
+    expect(standing([at("t1"), at("t2"), at("t3")])).toEqual([false, false]);
   });
 
   // A probe that wrote a valid variant the check refused, and one that wrote an invalid variant the

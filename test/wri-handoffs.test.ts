@@ -218,7 +218,7 @@ describe("round hand-offs", () => {
     expect(triage.families).toEqual([
       expect.objectContaining({
         family: "alpha",
-        status: "disputed",
+        status: `first seen ${RUN}, last seen ${RUN}, disputed`,
         adviceWithheld: true,
         triagedSide: "evaluation",
         successorOperation: "evaluation-correction",
@@ -241,7 +241,12 @@ describe("round hand-offs", () => {
     ]);
     expect(pair.renamedTasks).toBe(2);
     expect(pair.transitions).toEqual([
-      expect.objectContaining({ family: "alpha", from: "disputed", to: "retired", onNamesAlone: true }),
+      expect.objectContaining({
+        family: "alpha",
+        from: `first seen ${RUN}, last seen ${RUN}, disputed`,
+        to: `first seen ${RUN}, last seen ${RUN}, family left the task set`,
+        onNamesAlone: true,
+      }),
     ]);
     expect(sameTask.producer).toEqual({ issues: 2, familyKeyed: 2 });
     expect(renderHandoffs(report)).toContain("2 tasks reappear under another family name");

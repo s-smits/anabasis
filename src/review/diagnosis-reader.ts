@@ -27,8 +27,7 @@
  * detail cannot move its prompt, and `promptDigest` records the prompt so that is checkable. That
  * is also why the boundary and the falsifier may reach the next authoring pass through the
  * rebuild advice: nothing protected went in, so nothing protected can come out. It selects no
- * owner, and its confidence is computed from how many sampled cases it said the reading holds for,
- * never stated by the model.
+ * owner, and its support is counted from the sampled cases it named and the contrasts it cited.
  */
 import { campaignDir } from "../meta/campaign-root.ts";
 import { readJsonFileOrNull } from "../meta/completed-json.ts";
@@ -42,7 +41,7 @@ import {
   type RebuildAdvicePacket,
   environmentOwned,
   isStanding,
-  issueStatusWord,
+  issueFacts,
 } from "../author/rebuild-advice.ts";
 import { type VerifiedTraceRead, campaignTraceRoots, readVerifiedTraceUnder } from "../claim/trace-read.ts";
 import { classifyCaseOutcome } from "../claim/case-record.ts";
@@ -70,7 +69,7 @@ import { type CompiledSolve, type SolveWalls, batteryCensus, compileSolve } from
 import { DIAGNOSIS_SYSTEM_PROMPT, recordDiagnosisTool } from "./diagnosis-tool.ts";
 import { boundText } from "../meta/bounded-text.ts";
 
-export const DIAGNOSIS_READING_SCHEMA = "diagnosis-reading/v3";
+export const DIAGNOSIS_READING_SCHEMA = "diagnosis-reading/v4";
 
 /** Issues offered per reading, worst share first. */
 const MAX_ISSUES = 6;
@@ -291,7 +290,7 @@ function issueOffer(issue: AdviceIssue, compiled: readonly Compiled[], read: Rec
   const key = issue.id.slice(0, 12);
   const detail = issue.detail === null ? "" : ` (${issue.detail})`;
   const block = [
-    `ISSUE ${key} — family ${issue.family}, kind ${issue.kind}${detail}: ${issue.count} of ${issue.denominator}, ${issueStatusWord(issue)}, first seen ${issue.firstSeenRunId}.`,
+    `ISSUE ${key} — family ${issue.family}, kind ${issue.kind}${detail}: ${issue.count} of ${issue.denominator}, ${issueFacts(issue)}.`,
     `Showing ${shown.length} of ${matching.length} failing solves; ${contrasts.length === 0 ? "no passing solve of this family to contrast" : `${contrasts.length} passing solve(s) of this family to contrast`}.`,
     ...(firstShown === undefined
       ? []

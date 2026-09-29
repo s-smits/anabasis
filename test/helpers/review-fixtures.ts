@@ -25,9 +25,9 @@ export const BEAMS = adviceIssueId("verified-fail", "beams", null);
 export const JOINTS = adviceIssueId("unaccepted", "joints", null);
 
 /** The condition every fixture battery measured under: one family's public inputs, the scoring
- *  program, the tools its checks ran and the Built model and resource condition. An issue ages
- *  towards fixed only across batteries that share all four, so a test that means a different
- *  condition says which part moved. */
+ *  program, the tools its checks ran and the Built model and resource condition. An absence counts
+ *  as a complete recheck only across batteries that share all four, so a test that means a
+ *  different condition says which part moved. */
 export const MEASURED_UNDER = {
   publicInputs: "1".repeat(64),
   scoringHash: "2".repeat(64),
@@ -62,7 +62,6 @@ export const READING: IssueDiagnosis = {
   cause: "the writer tool cannot express a pinned joint",
   falsifier: "a beams solve writes a pinned joint through write_layout and still fails",
   support: { cases: 2, shown: 3, matching: 3, contrasts: 1 },
-  confidence: "medium",
 };
 
 export function issue(overrides: Partial<AdviceIssue> = {}): AdviceIssue {

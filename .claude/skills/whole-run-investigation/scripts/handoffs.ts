@@ -32,7 +32,7 @@ import {
   type AdviceIssue,
   adviceIssueId,
   type IssueDiagnosis,
-  issueStatusWord,
+  issueFacts,
 } from "#src/author/rebuild-advice.ts";
 import { ownerSide } from "#src/author/feedback-routing.ts";
 import { PATH_RECORD_FILE } from "#src/builder/path-record.ts";
@@ -331,7 +331,7 @@ export type TriagedSide = "evaluation" | "harness" | "environment" | "none";
 export interface DiagnosisReading {
   side: "evaluation" | "harness";
   owner: string;
-  confidence: JsonValue;
+  support: JsonValue;
 }
 
 export interface ReviewReading {
@@ -751,6 +751,12 @@ function calibration(rounds: readonly Round[], rows: ReadonlyMap<string, Decisio
   };
 }
 
+/** The register's facts about a recorded issue. A packet recorded before a field existed leaves it
+ *  out, and each absent one reads as the empty value the register writes. */
+function recordedFacts(issue: AdviceIssue): string {
+  return issueFacts({ ...issue, dispute: issue.dispute ?? null, unmeasured: issue.unmeasured ?? [] });
+}
+
 /** A diagnosis names a bundle file or `solver` (`DIAGNOSIS_OWNERS`), and a file's own prefix is the
  *  side its repair reopens, so `correctness-model/brief.json` is the evaluation's. */
 function diagnosisOf(value: IssueDiagnosis | null | undefined): DiagnosisReading | null {
@@ -760,7 +766,7 @@ function diagnosisOf(value: IssueDiagnosis | null | undefined): DiagnosisReading
   return {
     side: evaluation ? "evaluation" : "harness",
     owner: diagnosis.owner,
-    confidence: diagnosis.confidence ?? null,
+    support: diagnosis.support ?? null,
   };
 }
 
@@ -814,7 +820,7 @@ function triage(
         detail: issue.detail ?? null,
         count: issue.count,
         denominator: issue.denominator ?? null,
-        status: issueStatusWord({ ...issue, dispute: issue.dispute ?? null }),
+        status: recordedFacts(issue),
         diagnosis,
         review,
         adviceWithheld: disputeRecorded,
@@ -922,8 +928,7 @@ function sameTask(campaign: string, batteries: readonly ClaimedBattery[]): SameT
       .flatMap((issue) => {
         const earlier = prior.get(issue.id);
         if (earlier === undefined) return [];
-        const from = issueStatusWord({ ...earlier, dispute: earlier.dispute ?? null });
-        const to = issueStatusWord({ ...issue, dispute: issue.dispute ?? null });
+        const [from, to] = [recordedFacts(earlier), recordedFacts(issue)];
         const familyJoin = families.find((f) => f.family === issue.family)?.join ?? null;
         return [
           {
@@ -1024,7 +1029,7 @@ function renderTriage({ triage: t }: ReadHandoffs): string[] {
     const d =
       f.diagnosis === null
         ? "no diagnosis"
-        : `diagnosis ${f.diagnosis.owner} (${jsonText(f.diagnosis.confidence)})`;
+        : `diagnosis ${f.diagnosis.owner} (support ${jsonText(f.diagnosis.support)})`;
     const r =
       f.review === null
         ? "no review"

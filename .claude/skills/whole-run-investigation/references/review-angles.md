@@ -589,20 +589,20 @@ received a packet and lane 26 owns memory.
 Starts from the same-task table the `handoff` lane prints, on two consecutive batteries with an
 advice packet between them.
 
-The question is whether an issue's `tentatively-fixed`, `confirmed-fixed` or `retired` rests on a
+The question is whether an issue's complete rechecks (`absentBatteries`) or its `retired` rest on a
 comparison of task identity or of family names alone. Read each battery's
 `cases/*/public-task.json` digested over the public input, the consecutive
 `analysis/<runId>-rebuild-advice.json` packets, and `deriveRebuildAdvice` in
 `src/author/rebuild-advice.ts`, whose `advanceIssues` keys every issue with `adviceIssueId`. Join
 per family before and after each repair and classify it `identical-tasks`, `partially-shared` or
 `name-only`, or absent on one side, counting inputs that reappear under another family name. Report
-every issue-state transition and flag those resting on a name-only or absent join: renaming every
-family retires every issue without a fixed task being measured again, and `retired` proves no fix.
-Say whether the producer keys on task identity or family name by recomputing the recorded issue
-ids. Do not read what the task change means for difficulty, which lane 20 owns. The decision it
-changes is whether an issue state may be cited as a fix; it routes to `controller-source`
-(`src/author/rebuild-advice.ts`) for the key and to `correctness-model/tasks.json` when the fixed
-task was never measured again.
+every change in an issue's recorded facts and flag those resting on a name-only or absent join:
+renaming every family retires every issue without a failing task being measured again, and
+`retired` proves no fix. Say whether the producer keys on task identity or family name by
+recomputing the recorded issue ids. Do not read what the task change means for difficulty, which
+lane 20 owns. The decision it changes is whether an issue's recorded absence speaks about the task
+that exposed it; it routes to `controller-source` (`src/author/rebuild-advice.ts`) for the key and
+to `correctness-model/tasks.json` when the failing task was never measured again.
 
 **19. Semantic repair closure.**
 

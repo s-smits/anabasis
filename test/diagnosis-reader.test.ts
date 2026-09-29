@@ -7,8 +7,8 @@
  * checked here. The reader is shown every failing solve as addressable steps, with the harness
  * surface the solver ran under and a passing solve of the same family beside it. A reading it records
  * is structured, carries a boundary the controller resolved to a shown step and a falsifier, and has
- * its confidence computed rather than stated. And a change to protected detail alone leaves its
- * prompt byte-identical.
+ * its support counted rather than graded. And a change to protected detail alone leaves its prompt
+ * byte-identical.
  */
 import { afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, writeFileSync } from "../src/meta/filesystem.ts";
@@ -33,7 +33,7 @@ import {
   diagnosisPacket,
   readDiagnoses,
 } from "../src/review/diagnosis-reader.ts";
-import { diagnosisConfidence, recordDiagnosisTool } from "../src/review/diagnosis-tool.ts";
+import { recordDiagnosisTool } from "../src/review/diagnosis-tool.ts";
 import { batteryCensus, compileSolve } from "../src/review/solve-steps.ts";
 
 const REVIEW = {
@@ -251,6 +251,10 @@ describe("what the diagnosis reader is shown", () => {
     expect(prompt).toContain("  s2 write_layout ok turn 2 1.5s → layout written with a fixed support");
     expect(prompt).toContain("accepted submission: yes; final text: Done.");
     expect(prompt).toContain("Showing 3 of 3 failing solves; 1 passing solve(s) of this family to contrast.");
+    // Each issue states where it was seen, and no lifecycle word the record cannot settle.
+    expect(prompt).toContain(
+      `ISSUE ${BEAMS.slice(0, 12)} — family beams, kind verified-fail: 3 of 4, first seen r1, last seen r2.`,
+    );
     expect(prompt).toContain("c04 (pass)");
     expect(prompt).toContain("- write_layout [artifact-writer]: Writes supports as fixed or roller.");
     expect(prompt).toContain("Write the layout with write_layout, then submit.");
@@ -352,10 +356,10 @@ describe("what the diagnosis reader is shown", () => {
 });
 
 describe("what a reading records", () => {
-  test("a structured diagnosis whose boundary resolves to the shown step and whose confidence is computed", async () => {
+  test("a structured diagnosis whose boundary resolves to the shown step and whose support is counted", async () => {
     const fixture = battery();
     const { evidence, replies } = await read(fixture, [WRITER_READING]);
-    expect(replies[0]).toBe("recorded for 1 issue(s): high confidence (3 of 3 shown, 1 contrast(s))");
+    expect(replies[0]).toBe("recorded for 1 issue(s): holds for 3 of 3 shown, 1 contrast(s)");
     expect(evidence.diagnoses).toEqual([
       {
         issueIds: [BEAMS],
@@ -367,7 +371,6 @@ describe("what a reading records", () => {
           cause: WRITER_READING.cause,
           falsifier: WRITER_READING.falsifier,
           support: { cases: 3, shown: 3, matching: 3, contrasts: 1 },
-          confidence: "high",
         },
       },
     ]);
@@ -396,7 +399,6 @@ describe("what a reading records", () => {
       matching: 4,
       contrasts: 0,
     });
-    expect(evidence.diagnoses[0]?.diagnosis.confidence).toBe("medium");
   });
 
   test.each([
@@ -484,18 +486,6 @@ describe("what a reading records", () => {
     expect(evidence.error).toBe("diagnosis-reader turn aborted");
     expect(evidence.diagnoses).toEqual([]);
     expect(evidence.readerText).toBeNull();
-  });
-});
-
-describe("confidence is how far the reading was sampled", () => {
-  test.each([
-    [{ cases: 3, shown: 4, matching: 9, contrasts: 1 }, "high"],
-    [{ cases: 3, shown: 4, matching: 9, contrasts: 0 }, "medium"],
-    [{ cases: 2, shown: 4, matching: 4, contrasts: 0 }, "medium"],
-    [{ cases: 2, shown: 6, matching: 6, contrasts: 0 }, "low"],
-    [{ cases: 1, shown: 1, matching: 1, contrasts: 1 }, "low"],
-  ] as const)("%o reads %s", (support, expected) => {
-    expect(diagnosisConfidence(support)).toBe(expected);
   });
 });
 
@@ -623,7 +613,7 @@ describe("the tool alone", () => {
       [issue({ count: 3, denominator: 4 })],
     );
     const sink: DiagnosisReaderEvidence = {
-      schema: "diagnosis-reading/v3",
+      schema: "diagnosis-reading/v4",
       slug: "truss",
       runId: "r2",
       readerPin: null,

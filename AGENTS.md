@@ -586,20 +586,21 @@ the battery was paid for.
    The diagnosis reader (`src/review/diagnosis-reader.ts`) reads the solver's own traces across the
    battery. It is offered at most 6 standing solve issues — verified fails, unaccepted submissions and
    non-results the environment does not own, worst share first (`diagnosableIssues`) — and never a Judge
-   disagreement, because that is about the evaluation and the Epoch Reviewer settles it. For each issue it
-   sees at most 4 failing solves, distinct failure sequences first, and at most 2 passing ones of the same
-   family, compiled by `compileSolve` (`src/review/solve-steps.ts`) into numbered steps such as `c04.s7`
-   and `c04.end`, beside the harness's walls, its tool descriptions, its guide and a census of tool use.
-   Its tool `record_diagnosis` takes an owner from `DIAGNOSIS_OWNERS` (a harness file the solver reads, or
-   `solver` for no change), a first failure boundary, a cause and a falsifier. It refuses an owner the
-   solver does not read, a boundary that is not a shown step of a named solve, a contrast that is not a
-   step of a shown passing solve, and any text naming a task. One reading may cover several issues.
-   Confidence is computed from the solves the reading holds for and whether it cites a contrast, never
-   stated by the model. The reader opens no `verifier.json`, Judge record or accepted artifact, so
-   protected detail cannot move its `promptDigest`, which is why its boundary and falsifier may reach the
-   author. The advice renders them with support counts, and the cause stays in the record for the Epoch
-   Reviewer. The named owner routes nothing. Treat a timeout as diagnosable unless the evidence gives it
-   to the environment.
+   disagreement, because that is about the evaluation and the Epoch Reviewer settles it. For each issue
+   it sees at most 4 failing solves, distinct failure sequences first, and at most 2 passing ones of the
+   same family, compiled by `compileSolve` (`src/review/solve-steps.ts`) into numbered steps such as
+   `c04.s7` and `c04.end`, beside the harness's walls, its tool descriptions, its guide and a census of
+   tool use. Its tool `record_diagnosis` takes an owner from `DIAGNOSIS_OWNERS` (a harness file the
+   solver reads, or `solver` for no change), a first failure boundary, a cause and a falsifier. It
+   refuses an owner the solver does not read, a boundary that is not a shown step of a named solve, a
+   contrast that is not a step of a shown passing solve, and any text naming a task. One reading may
+   cover several issues. The host records how many sampled solves the reading holds for and whether it
+   cites a contrast, and grades nothing from them: until 2026-09-29 it turned those counts into a
+   confidence label. The reader opens no `verifier.json`, Judge record or accepted artifact, so
+   protected detail cannot move its `promptDigest`, which is why its boundary and falsifier may reach
+   the author. The advice renders them with support counts, and the cause stays in the record for the
+   Epoch Reviewer. The named owner routes nothing. Treat a timeout as diagnosable unless the evidence
+   gives it to the environment.
 
    The Epoch Reviewer runs once per measured-condition digest that it has read to completion; a review
    that failed or was cut short runs again at the next measurement of that condition, though the
@@ -723,20 +724,26 @@ the battery was paid for.
     `rebuild-advice-latest.json` beside it), bound by digest to the iteration that consumes it, and
     rendered once per rebuild kickoff from recorded rows, Judge reviews and admitted aggregate findings,
     never per-case ones. It states each issue's owner, not what to rebuild. Each issue keeps a stable id
-    and one state: `active`, `tentatively-fixed`, `confirmed-fixed`, `regressed`, `retired`, `disputed`,
-    `settled` or `unmeasured`. A family leaving the set makes its issue `retired`, which proves no fix
-    at all. Absence counts toward a fix only when every case of the family was truth-verified under the
-    condition that observed the issue: the same public inputs, `scoringHash`, check tools, Built pin,
+    and states its recorded facts rather than a verdict on them (`issueFacts`, `rebuild-advice/v10`):
+    where it was first and last seen, how many complete rechecks have not observed it since, whether it
+    was seen again after an absence, which condition moved when a recheck was not comparable, and
+    whether its family left the set, a review disputed it or a review settled it. Until 2026-09-29 the
+    register read those absences as `tentatively-fixed` and then `confirmed-fixed`, which is a
+    conclusion an absence cannot carry, since an absence says the failure did not show and not that
+    anything repaired it. A family leaving the set proves no fix at all. An absence counts as a complete
+    recheck only when every case of the family was truth-verified under the condition that observed the
+    issue: the same public inputs, `scoringHash`, check tools, Built pin,
     recorded reasoning effort, isolation and run condition (`src/author/issue-condition.ts`). An effort
     the cases never recorded compares with nothing, and the solver walls in `agent/config.yaml` are left
     out, because raising them is a fix. A recheck that lost a case to a non-result or an unaccepted
     attempt carries the issue unchanged, because the lost case may be the one that failed. Under another
-    condition the issue is `unmeasured`, named so and aged neither way, because swapping out the failing
+    condition the recheck is named not comparable and counts neither way, because swapping out the failing
     tasks or blinding the evaluator makes an issue vanish without repairing anything. An evaluation
-    correction therefore leaves its issues unmeasured even when it regrades: the scoring hash moved, and
-    nothing settles an issue as corrected. A dispute or a diagnosis carries onto a re-observation only
-    under the condition that recorded it, since an issue's id names where a failure showed and not what
-    caused it.
+    correction therefore leaves its rechecks not comparable even when it regrades: the scoring hash moved, and
+    nothing settles an issue as corrected. A dispute carries onto a re-observation only under the
+    condition that recorded it, since an issue's id names where a failure showed and not what caused it,
+    and a diagnosis never carries onto a re-observation at all: it reads one battery's traces, so the
+    battery an issue line names and the one its diagnosis read are always the same.
 
     `--product-policy fixed` permits measure or stop and refuses build and rebuild. A campaign runs
     uncapped unless the operator sets `--iteration-budget N`; there is no launch default (2026-08-19).

@@ -309,9 +309,6 @@ function authoringReviewer(binding: AuthoringReviewBinding): ReviewAuthoring {
       ...keyIfDefined("providerBudget", providerBudget),
     });
     demonstrations = carriedDemonstrations(result) ?? demonstrations;
-    const dir = join(campaignDir(repoRoot, slug), "analysis");
-    mkdirSync(dir, { recursive: true });
-    writeCompleted(join(dir, `${runId}-epoch-review.json`), result);
     const { findings, disputes } = publicEpochReview(result, {
       brief: result.status === "completed" ? readValidatedBrief(root) : null,
     });

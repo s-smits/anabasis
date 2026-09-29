@@ -9,6 +9,7 @@ import { loadRepoEnv } from "../src/backends/env.ts";
 import { resolveSlots } from "../src/backends/resolve.ts";
 import { readCaseRecord } from "../src/claim/case-record.ts";
 import { EPOCH_REVIEW_SCHEMA, measuredConditionOf } from "../src/review/epoch-review-findings.ts";
+import { recordEpochReview } from "../src/review/epoch-reviewer.ts";
 import { analyseStep } from "../src/run/analyse-step.ts";
 import { measurementDriverId } from "../src/run/harness-measure.ts";
 import { LIMIT_MARGIN_SCHEMA, limitMarginFile, readLimitMargin } from "../src/run/limit-margin.ts";
@@ -194,7 +195,8 @@ describe("measureHarness", () => {
           if (input.analysis === null) throw new Error("measured review lost its analysis");
           calls += 1;
           const { status, reason } = calls === 1 ? first : { status: "completed" as const, reason: "second" };
-          return {
+          // The review records itself, so a stand-in for it does too.
+          return recordEpochReview(repo, {
             schema: EPOCH_REVIEW_SCHEMA,
             slug: "bridge-truss",
             runId: "m4-reset",
@@ -211,7 +213,7 @@ describe("measureHarness", () => {
             findings: [],
             disputes: [],
             report: null,
-          };
+          });
         },
       });
       const recorded = JSON.parse(

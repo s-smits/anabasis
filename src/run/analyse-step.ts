@@ -169,7 +169,6 @@ export async function analyseStep(
       ...keyIfDefined("providerBudget", providerBudget),
     });
   const epochReview = await retryAfterNamedReset("epoch-reviewer", reviewEpoch, failedReason, reset);
-  writeCompleted(join(dir, `${runId}-epoch-review.json`), epochReview);
   const brief = epochReview.status === "completed" ? readValidatedBrief(measuredDir) : null;
   const publicReview = publicEpochReview(epochReview, { brief, ...contested });
   providerBudget?.throwIfDenied();

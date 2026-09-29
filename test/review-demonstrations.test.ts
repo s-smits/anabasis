@@ -9,6 +9,7 @@
  * carries no probe number that review could cite, and a finding backed by it has to run it again.
  * Nothing of it reaches the Builder, because the next review is the only reader.
  */
+import { join, relative } from "../src/meta/path.ts";
 import { afterAll, describe, expect, it } from "bun:test";
 import type { JsonValue } from "../src/meta/json-shape.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
@@ -99,7 +100,9 @@ async function massReview() {
 
 /** The uppercase candidate: one declared check, `answer`, over accept controls it passes. */
 function candidateTree(): string {
-  const dir = scratchDir(".ana-scratch-review-demonstrations-", import.meta.dir);
+  // The tree sits one level inside its scratch directory, so the repository its review records
+  // under (`${root}-repo`, beside it) is removed with it rather than left in `test/`.
+  const dir = join(scratchDir(".ana-scratch-review-demonstrations-", import.meta.dir), "tree");
   uppercaseFixture(dir);
   return dir;
 }
@@ -115,10 +118,12 @@ async function reviewed(
 ) {
   let prompt = "";
   const result = await runEpochReview({
-    repoRoot: root,
+    // The review records itself under its campaign, which sits beside the tree it reads, as a
+    // workspace snapshot does in production, so no review finds the last one in its inventory.
+    repoRoot: `${root}-repo`,
     slug: SLUG,
     runId,
-    treeRoot: ".",
+    treeRoot: relative(`${root}-repo`, root),
     analysis: null,
     priorAdvice: null,
     ...keyIfNotNull("demonstrations", demonstrations),

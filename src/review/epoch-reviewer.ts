@@ -26,7 +26,7 @@
  * advice so the next authoring pass does not rebuild the agent around a defect it lacks.
  */
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
-import { existsSync, readFileSync } from "../meta/filesystem.ts";
+import { existsSync, mkdirSync, readFileSync } from "../meta/filesystem.ts";
 import { campaignDir } from "../meta/campaign-root.ts";
 import { join, relative } from "../meta/path.ts";
 import type { IterationAnalysis } from "../analyse/iteration-analysis.ts";
@@ -42,6 +42,8 @@ import type { RehearsalRow } from "../builder/harness-trial.ts";
 import { familyTally } from "../claim/case-record.ts";
 import { FROZEN_MANIFEST_PATH } from "../critic/manifest.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
+import { boundText } from "../meta/bounded-text.ts";
+import { writeCompleted } from "../author/campaign-epoch.ts";
 import { claimsDirFor } from "../run/claim-write.ts";
 import { type ClimbReadout, readClimbReadout, readingSentence } from "../run/climb-readout.ts";
 import { selectedProductDir } from "../run/product-versions.ts";
@@ -576,10 +578,12 @@ function unreadSourcePrompt(state: ReviewState, sourcePaths: ReadonlySet<string>
 /** What the session recorded. A failed turn keeps everything that happened: its reads, coverage and
  *  probes, and every finding and dispute the host admitted, since each passed the admission a
  *  completed review's does. What an unfinished review may route is its readers' decision, and they
- *  route a failed turn's findings as an incomplete one's. Only a finished turn has a report. */
+ *  route a failed turn's findings as an incomplete one's. `failure` is an exception the turn or the
+ *  probe cleanup raised, which fails the review as a failed turn does; a turn that finished before
+ *  its cleanup failed keeps its report. */
 function recordedReview(
   evidence: EpochReviewEvidence,
-  turn: ReaderTurn,
+  turn: ReaderTurn & { failure: string | null },
   state: ReviewState,
   coverage: ReviewCoverage,
   verifier: ReviewVerifierEvidence,
@@ -595,6 +599,9 @@ function recordedReview(
     ...keysIf(state.probes.rows.length > 0, () => ({ probes: state.probes.rows })),
   };
   if (turn.error !== null) return { ...settled, status: "failed", reason: turn.error };
+  if (turn.failure !== null) {
+    return { ...settled, status: "failed", reason: turn.failure, report: turn.text || null };
+  }
   return {
     ...settled,
     status: coverage.complete ? "completed" : "incomplete",
@@ -642,12 +649,23 @@ function findingPriors(
   };
 }
 
+/** The review's one writer, which `runEpochReview` calls on every way out: a refused session, a
+ *  finished or failed turn, and an exception the turn or the probe cleanup raised. */
+export function recordEpochReview(repoRoot: string, evidence: EpochReviewEvidence): EpochReviewEvidence {
+  const dir = join(campaignDir(repoRoot, evidence.slug), "analysis");
+  mkdirSync(dir, { recursive: true });
+  writeCompleted(join(dir, `${evidence.runId}-epoch-review.json`), evidence);
+  return evidence;
+}
+
 /** Read one condition once, and record what came back whether or not the reader finished. A
- *  refused session returns its evidence unread rather than nothing, so every campaign round leaves
- *  a review record that says what happened to it. */
+ *  refused session records its evidence unread rather than nothing, so every campaign round leaves
+ *  a review record that says what happened to it, and a review an exception ends is recorded before
+ *  the exception propagates: its findings, coverage and probes were admitted before it, and a
+ *  caller that never receives a return value has nothing else to write them from. */
 export async function runEpochReview(input: EpochReviewInput): Promise<EpochReviewEvidence> {
   const opened = openSession(input);
-  if (!opened.admitted) return opened.evidence;
+  if (!opened.admitted) return recordEpochReview(input.repoRoot, opened.evidence);
   const { evidence, root, analysisDir, verifier } = opened;
   const inventory = reviewInventory(root);
   const issues = disputableIssues(input);
@@ -703,13 +721,11 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
       inventory.missing.push(TASKS_FILE);
     }
   }
-  // The reader rethrows a provider-budget stop, so the probe lifetime has to settle in `finally`
-  // rather than after the turn. `failed` carries that fact into `closeVerifierLifetime`, which
-  // swallows an unsettled-children error when a primary failure is already propagating and throws
-  // it when there is none, so a cleanup failure is suppressed only behind a failure already on its
-  // way up.
-  let failed = false;
-  let turn: ReaderTurn;
+  // The reader rethrows a provider-budget stop, and the probe cleanup throws when a verifier child is
+  // left unsettled after a clean turn; either is held until the review is recorded. A cleanup failure
+  // behind a failure already on its way up is swallowed by `closeVerifierLifetime`.
+  let turn: ReaderTurn = { pin: reviewSlotPin(input.review), text: "", error: null };
+  let thrown: { cause: unknown } | null = null;
   try {
     turn = await (input.readerTurn ?? runReaderTurn)({
       review: input.review,
@@ -736,20 +752,29 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
       ...keyIfDefined("providerBudget", input.providerBudget),
     });
   } catch (cause) {
-    failed = true;
-    throw cause;
-  } finally {
-    await probe.close(failed);
+    thrown = { cause };
+  }
+  try {
+    await probe.close(thrown !== null);
+  } catch (cause) {
+    thrown ??= { cause };
   }
   const contestedReads = [...contested].flatMap(([path, artifact]) =>
     state.reads.includes(path) ? [artifact] : [],
   );
+  const failure =
+    thrown === null ? null : boundText(`epoch-reviewer: ${errorMessage(thrown.cause)}`, 300).shown;
   const recorded = recordedReview(
     { ...evidence, contestedReads },
-    turn,
+    { ...turn, failure },
     state,
     reviewCoverage(inventory, verifier, state),
     verifier,
   );
-  return { ...recorded, ...advisoryRecord(recorded, earlierAdvisory(input, analysisDir)) };
+  const written = recordEpochReview(input.repoRoot, {
+    ...recorded,
+    ...advisoryRecord(recorded, earlierAdvisory(input, analysisDir)),
+  });
+  if (thrown !== null) throw thrown.cause;
+  return written;
 }

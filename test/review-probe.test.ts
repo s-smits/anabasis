@@ -10,7 +10,7 @@
  */
 import { afterAll, describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
-import { join } from "../src/meta/path.ts";
+import { join, relative } from "../src/meta/path.ts";
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { JsonValue } from "../src/meta/json-shape.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
@@ -564,6 +564,87 @@ describe("probe_check — the candidate's own checks over one changed field", ()
     // and the lifetime it opened are still running.
     await expect(outcome).rejects.toThrow("provider budget denied");
     expect(settled).toBe(true);
+  }, 120_000);
+
+  // A review an exception ends has already admitted its findings, and its caller never receives a
+  // return value to write them from. So the review is recorded before the exception propagates,
+  // whether the reader threw or the probe cleanup found a child it could not settle.
+  it("records a review before a reader or cleanup exception propagates", async () => {
+    const review = {
+      enabled: true,
+      kind: "codex",
+      model: "gpt-6-astra",
+      reasoningEffort: "low",
+      source: "operator",
+    } as const;
+    const observation = {
+      defect: false,
+      claim: "the family asks more than the harness reaches",
+      severity: "advisory",
+    };
+    const reviewed = async (runId: string, reader: (tools: readonly ReaderTool[]) => Promise<void>) => {
+      const dir = candidateTree();
+      const repoRoot = `${dir}-repo`;
+      trees.push(repoRoot);
+      const analysis = join(repoRoot, "campaigns", "probe", "analysis");
+      // A receipt the lifetime cannot read counts as an unsettled child, so a clean turn's cleanup
+      // throws: the shape a copied lifetime directory gave a live replay.
+      if (runId === "r-cleanup") {
+        mkdirSync(join(analysis, `${runId}-probe-lifetime`, "stale"), { recursive: true });
+      }
+      const outcome = runEpochReview({
+        repoRoot,
+        slug: "probe",
+        runId,
+        treeRoot: relative(repoRoot, dir),
+        analysis: null,
+        priorAdvice: null,
+        publicRequest: null,
+        review,
+        readerTurn: async ({ tools }) => {
+          await reader(tools);
+          return { pin: "codex/gpt-6-astra", text: "Finished.", error: null };
+        },
+      });
+      const settled = await outcome.then(
+        () => null,
+        (cause: unknown) => cause,
+      );
+      return {
+        settled,
+        recorded: parseJsonAs<JsonValue>(readFileSync(join(analysis, `${runId}-epoch-review.json`), "utf8")),
+      };
+    };
+    const finding = (tools: readonly ReaderTool[]) =>
+      run(tools.find((tool) => tool.name === "record_finding")!, "f", observation);
+
+    const thrown = await reviewed("r-reader", async (tools) => {
+      await finding(tools);
+      throw new Error("provider budget denied");
+    });
+    expect(String(thrown.settled)).toContain("provider budget denied");
+    expect(thrown.recorded).toMatchObject({
+      status: "failed",
+      reason: "epoch-reviewer: provider budget denied",
+      findings: [{ defect: false, claim: observation.claim }],
+      report: null,
+    });
+
+    const cleanup = await reviewed("r-cleanup", async (tools) => {
+      await run(tools.find((tool) => tool.name === "probe_check")!, "1", {
+        controlId: "accept-a",
+        path: ANSWER,
+        value: '"a"',
+      });
+      await finding(tools);
+    });
+    expect(cleanup.settled).toBeInstanceOf(VerifierOperationalStop);
+    expect(cleanup.recorded).toMatchObject({
+      status: "failed",
+      findings: [{ defect: false, claim: observation.claim }],
+      report: "Finished.",
+    });
+    expect(JSON.stringify(cleanup.recorded)).toContain("verifier process cleanup is incomplete");
   }, 120_000);
 
   // A measured review's recorded verifier tools name the tool tree its battery ran. A probe over a

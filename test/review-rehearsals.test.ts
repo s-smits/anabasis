@@ -9,6 +9,7 @@
  * where the artifact failed stay behind, so a change to any of those alone leaves the review's
  * prompt, and every page it reads of a rehearsal, byte for byte the same.
  */
+import { relative } from "../src/meta/path.ts";
 import { afterAll, describe, expect, it } from "bun:test";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { hashJsonValue } from "../src/meta/stable-json.ts";
@@ -153,10 +154,12 @@ async function shown(root: string, rehearsals: readonly unknown[]) {
   let prompt = "";
   const reads = new Map<string, string>();
   const result = await runEpochReview({
-    repoRoot: root,
+    // The review records itself under its campaign, which sits beside the tree it reads, as a
+    // workspace snapshot does in production, so no review finds the last one in its inventory.
+    repoRoot: `${root}-repo`,
     slug: SLUG,
     runId: "authoring-checkpoint",
-    treeRoot: ".",
+    treeRoot: relative(`${root}-repo`, root),
     analysis: null,
     priorAdvice: null,
     review,

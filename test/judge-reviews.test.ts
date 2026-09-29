@@ -14,8 +14,8 @@
  * What the cases establish is mostly restraint. Every complete disagreement is named, in both
  * directions, with no materiality threshold deciding which are worth mentioning, because the Judge
  * is advice and a filtered disagreement is advice that quietly edited itself. A review that is
- * incomplete, absent or self-contradictory makes the projection provisional instead of dropping it
- * or trusting it. The Judge exit stays advisory at any disagreement count and routes no owner —
+ * incomplete, absent or self-contradictory is an absent outcome, with its reason, instead of being
+ * dropped or trusted, and a battery whose Judge was switched off is a skip rather than missing work. The Judge exit stays advisory at any disagreement count and routes no owner —
  * including over a historical validated control census, which is the case that would most plausibly
  * have been treated as authority. And the projection writes no byte: no case row, no evidence file,
  * no claim, no analysis. That last one is the safety property the rest depends on, since a reader
@@ -26,6 +26,7 @@ import { join } from "../src/meta/path.ts";
 import { afterEach, describe, expect, it } from "bun:test";
 import type { CaseEvidence, IterationAnalysis } from "../src/analyse/iteration-analysis.ts";
 import { runJudgeReviews } from "../src/analyse/judge-reviews.ts";
+import { absentLines } from "../src/review/review-reader.ts";
 import { contestedCases, mustSettle, reviewerContested } from "../src/analyse/judge-contested.ts";
 import { tracePointer } from "../src/claim/case-record.ts";
 import { type JudgeEvidence, judgeDecision } from "../src/claim/judge.ts";
@@ -254,30 +255,37 @@ function walk(root: string): string[] {
 }
 
 describe("the main-Judge census projection reads recorded evidence, never a model", () => {
-  it("states the census absent when the battery recorded none", () => {
+  it("reads a battery that recorded no census as absent, and the terminal lists it", () => {
     const { root, analysis } = repoWith({ cases: [{ taskId: "t1", truthOk: true }], census: "none" });
     const result = runJudgeReviews(analysis, { repoRoot: root, judgePin: null });
-    expect(result.absent).toEqual([expect.stringMatching(/^main-judge census: no census to read/)]);
+    expect(result.outcome).toEqual({ kind: "absent", why: expect.stringMatching(/^no census to read \(/) });
+    expect(absentLines({ "main-judge census": result.outcome })).toEqual([
+      expect.stringMatching(/^main-judge census: no census to read \(domains\/bridge-truss\/runs\/base/),
+    ]);
     expect(result.census).toBeNull();
-    expect(result.provisional).toMatch(/^the battery has no census/);
     expect(result.contested).toEqual([]);
     expect(result.coverage).toEqual({ reviewable: 0, reviewed: 0 });
   });
 
-  it('reads a judge:"off" battery as an honest disclosure, not a defect', () => {
+  // The review slot was off, so no Judge ran: an operator condition, like an epoch review whose slot
+  // is off, and not missing work. The exit still says why the Judge reviewed nothing.
+  it('reads a judge:"off" battery as a skip, never as an absent review', () => {
     const { root, analysis } = repoWith({ cases: [{ taskId: "t1", truthOk: true }], census: "off" });
     const result = runJudgeReviews(analysis, { repoRoot: root, judgePin: null });
-    expect(result.absent[0]).toMatch(/evidence says judge:"off", so this battery had no judge/);
-    expect(result.provisional).toMatch(/the battery has no census/);
+    expect(result.outcome).toEqual({ kind: "skipped", reason: "review-slot-off" });
+    expect(absentLines({ "main-judge census": result.outcome })).toEqual([]);
     expect(result.exit.kind).toBe("none");
   });
 
-  it("refuses a census whose stored aggregate contradicts its own fields", () => {
+  it("refuses a census whose stored aggregate contradicts its own fields, as an absent reading", () => {
     const { root, analysis } = repoWith({ cases: [{ taskId: "t1", truthOk: true }], census: "tampered" });
     const result = runJudgeReviews(analysis, { repoRoot: root, judgePin: null });
     // Refused evidence carries its validation error: no census is returned, the violation is
-    // quoted as the reason it holds, and nothing gets projected from the contradictory aggregate.
-    expect(result.provisional).toMatch(/vetoed must be a non-negative integer within verdicts/);
+    // quoted as the reason, and nothing gets projected from the contradictory aggregate.
+    expect(result.outcome).toEqual({
+      kind: "absent",
+      why: expect.stringMatching(/vetoed must be a non-negative integer within verdicts/),
+    });
     expect(result.census).toBeNull();
   });
 
@@ -292,7 +300,7 @@ describe("the main-Judge census projection reads recorded evidence, never a mode
     const result = runJudgeReviews(analysis, { repoRoot: root, judgePin: JUDGE_PIN });
     expect(walk(root).map((path) => `${path}:${String(statSync(path).size)}`)).toEqual(before);
     expect(result.analysisDigest).toHaveLength(64);
-    expect(result.schema).toBe("judge-reviews/v13");
+    expect(result.schema).toBe("judge-reviews/v14");
     expect(result.judgePin).toBe(JUDGE_PIN);
   });
 });
@@ -404,7 +412,7 @@ describe("real-case disagreements stay threshold-free", () => {
     const result = runJudgeReviews(analysis, { repoRoot: root, judgePin: null });
     expect(result.census?.evidence.judge).toBe("unvalidated");
     expect(judgeOf(result)).toBe("advisory-comparison");
-    expect(result.provisional).toBeNull();
+    expect(result.outcome).toEqual({ kind: "read" });
     expect(result.contested.map(({ taskId, kind }) => [taskId, kind])).toEqual([
       ["t1", "disputed-pass"],
       ["t2", "unconfirmed-fail"],
@@ -465,7 +473,9 @@ describe("real-case disagreements stay threshold-free", () => {
 });
 
 describe("coverage and historical records", () => {
-  it("goes provisional on an incomplete review and still names the complete disagreement", () => {
+  // An incomplete census used to set a provisional note and nothing else, so the design-11 and
+  // design-3 runs recorded 7/10, 8/15 and 0/4 verdicts returned with no absent step on the terminal.
+  it("reads an incomplete census as absent, names the complete disagreement, and reaches the terminal", () => {
     const { root, analysis } = repoWith({
       cases: [
         { taskId: "t1", truthOk: true, judge: false },
@@ -474,9 +484,9 @@ describe("coverage and historical records", () => {
     });
     const result = runJudgeReviews(analysis, { repoRoot: root, judgePin: null });
     expect(judgeOf(result)).toBe("incomplete-census");
-    expect(result.provisional).toBe(
-      "the judge review is incomplete (incomplete-census): 1/2 battery verdicts returned",
-    );
+    const why = "the judge review is incomplete (incomplete-census): 1/2 battery verdicts returned";
+    expect(result.outcome).toEqual({ kind: "absent", why });
+    expect(absentLines({ "main-judge census": result.outcome })).toEqual([`main-judge census: ${why}`]);
     expect(result.coverage).toEqual({ reviewable: 2, reviewed: 1 });
     expect(result.contested.map((row) => row.taskId)).toEqual(["t1"]);
     expect(result.exit.kind).toBe("advisory");
@@ -489,7 +499,7 @@ describe("coverage and historical records", () => {
     expect(result.exit.reason).not.toContain("citing shown rules");
   });
 
-  it("goes provisional when a Judge fail of a verifier pass returned no resample verdict", () => {
+  it("reads a Judge fail of a verifier pass with no resample verdict as absent", () => {
     const { root, analysis } = repoWith({
       cases: [
         { taskId: "t1", truthOk: true, judge: false, resample: null },
@@ -500,16 +510,17 @@ describe("coverage and historical records", () => {
     });
     const result = runJudgeReviews(analysis, { repoRoot: root, judgePin: null });
     expect(judgeOf(result)).not.toBe("incomplete-census");
-    expect(result.provisional).toBe(
-      "the judge review is incomplete: 1 Judge fails of a verifier pass returned no resample verdict",
-    );
+    expect(result.outcome).toEqual({
+      kind: "absent",
+      why: "the judge review is incomplete: 1 Judge fails of a verifier pass returned no resample verdict",
+    });
     expect(result.contested.map((row) => [row.taskId, row.kind])).toEqual([
       ["t1", "unconfirmed-fail"],
       ["t3", "disputed-pass"],
     ]);
   });
 
-  it("counts an undecided as an answer, so a mostly undecided battery is complete", () => {
+  it("counts an undecided as an answer, so a mostly undecided battery was read", () => {
     const { root, analysis } = repoWith({
       cases: [
         { taskId: "t1", truthOk: true, judge: "abstain" },
@@ -518,7 +529,7 @@ describe("coverage and historical records", () => {
       ],
     });
     const result = runJudgeReviews(analysis, { repoRoot: root, judgePin: null });
-    expect(result.provisional).toBeNull();
+    expect(result.outcome).toEqual({ kind: "read" });
     expect(result.coverage).toEqual({ reviewable: 3, reviewed: 3 });
     // Only the undecided verifier fail is contested; the undecided verifier pass is no contradiction.
     expect(result.contested.map((row) => [row.taskId, row.kind])).toEqual([["t2", "disputed-undecided"]]);
@@ -539,7 +550,7 @@ describe("the Judge exit is advice only", () => {
   it("advises on verifier-fail/Judge-pass cases and records no finding for an owner", () => {
     const { root, analysis } = repoWith(exitBattery(10, 3));
     const result = runJudgeReviews(analysis, { repoRoot: root, judgePin: JUDGE_PIN });
-    expect(result.provisional).toBeNull();
+    expect(result.outcome).toEqual({ kind: "read" });
     expect(result.exit).toMatchObject({
       kind: "advisory",
       cases: { veto: 0, "unconfirmed-fail": 0, "disputed-pass": 3, "disputed-undecided": 0 },

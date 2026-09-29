@@ -46,13 +46,8 @@ function exit(verifierFailJudgePass: number, verifierPassJudgeFail: number, veri
 }
 
 /** Only the fields the sensors read; the rest of the record is irrelevant to them. */
-function review(parts: { exit: Exit; census?: boolean; provisional?: string | null }): JudgeReviewFacts {
-  return {
-    runId: "run-1",
-    exit: parts.exit,
-    census: parts.census === false ? null : { runId: "run-1" },
-    provisional: parts.provisional ?? null,
-  };
+function review(parts: { exit: Exit; outcome?: JudgeReviewFacts["outcome"] }): JudgeReviewFacts {
+  return { runId: "run-1", exit: parts.exit, outcome: parts.outcome ?? { kind: "read" } };
 }
 
 function packet(exitKind: "none" | "advisory" | null): JudgeAdviceFacts {
@@ -90,10 +85,12 @@ describe("49: a Judge that passes everything", () => {
     expect(judgePassedEveryReviewedCase(review({ exit: exit(3, 0, 25) }), 4)).toBe(false);
     expect(judgePassedEveryReviewedCase(review({ exit: exit(4, 1, 25) }), 4)).toBe(false);
     expect(judgePassedEveryReviewedCase(review({ exit: exit(0, 0, 25) }), 0)).toBe(false);
-    expect(judgePassedEveryReviewedCase(review({ exit: exit(4, 0, 25), provisional: "incomplete" }), 4)).toBe(
+    const incomplete = { kind: "absent", why: "the judge review is incomplete" } as const;
+    expect(judgePassedEveryReviewedCase(review({ exit: exit(4, 0, 25), outcome: incomplete }), 4)).toBe(
       false,
     );
-    expect(judgePassedEveryReviewedCase(review({ exit: exit(4, 0, 25), census: false }), 4)).toBe(false);
+    const off = { kind: "skipped", reason: "review-slot-off" } as const;
+    expect(judgePassedEveryReviewedCase(review({ exit: exit(4, 0, 25), outcome: off }), 4)).toBe(false);
   });
 
   it("writes its line beside 48 when both hold", () => {

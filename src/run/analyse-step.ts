@@ -48,12 +48,13 @@ import { keyIfDefined } from "../meta/optional-key.ts";
 import { loadRepoEnv } from "../backends/env.ts";
 import { type ResolvedSlots, resolveSlots } from "../backends/resolve.ts";
 import type { RunObserver } from "../observe/run-observer.ts";
-import { readDiagnoses } from "../review/diagnosis-reader.ts";
+import { type DiagnosisReaderEvidence, readDiagnoses } from "../review/diagnosis-reader.ts";
 import { runEpochReview } from "../review/epoch-reviewer.ts";
-import type { EpochReviewEvidence } from "../review/epoch-review-findings.ts";
+import { type EpochReviewEvidence, epochReviewOutcome } from "../review/epoch-review-findings.ts";
 import { publicEpochReview } from "../review/epoch-review-public.ts";
 import { readValidatedBrief } from "../correctness-bundle/public-resources.ts";
 import { reviewSlotPin } from "../review/review-session.ts";
+import { type ReviewOutcome, absentLines } from "../review/review-reader.ts";
 import type { ProviderResourceBudget } from "./provider-resource-budget.ts";
 import type { SafeguardContext } from "../meta/safeguard.ts";
 import { type ReviewResetWait, retryAfterNamedReset } from "../correctness-bundle/provider-reset.ts";
@@ -66,16 +67,13 @@ export interface AnalyseStepResult {
    *  two readers attached to it. Their own records stay on disk beside the analysis: nothing in the
    *  round reads them back, so returning them here would be a field with no consumer. */
   advice: RebuildAdvicePacket;
-  /** Reader turns that did not complete, one line each, for the controller terminal's absent
-   *  steps. A skipped or locally refused reading (slot off, no standing issue, already reviewed)
-   *  is not absent work; a provider or protocol failure inside the turn is. Without these lines a
-   *  round that lost both readers to the transport reads as one where the review had nothing to
-   *  say. */
+  /** The Judge census and the two readings whose outcome was absent, one line each, and the
+   *  contested cases the epoch review left unsettled, for the controller terminal's absent steps.
+   *  A skip (slot off, no standing issue, an earlier review standing in) is not absent work. Without
+   *  these lines a round that lost its readers to the transport, or read half a census, reads as one
+   *  where the review had nothing to say. */
   absent: string[];
 }
-
-/** Reader results decided locally, before or without a model turn. */
-const LOCAL_READER_REASONS = new Set(["no-standing-issue", "review-slot-off"]);
 
 interface AnalyseStepOptions {
   safeguardContext?: SafeguardContext;
@@ -91,9 +89,10 @@ interface AnalyseStepOptions {
   resetWait?: Omit<ReviewResetWait, "providerBudget">;
 }
 
-/** A review's failure text, which `retryAfterNamedReset` reads for a reset the provider named. */
-const failedReason = (review: EpochReviewEvidence): string | null =>
-  review.status === "failed" ? review.reason : null;
+/** Why a reading was absent, which `retryAfterNamedReset` reads for a reset the provider named. */
+const absentWhy = (outcome: ReviewOutcome): string | null => (outcome.kind === "absent" ? outcome.why : null);
+const epochReviewWhy = (review: EpochReviewEvidence) => absentWhy(epochReviewOutcome(review));
+const readingWhy = (reading: DiagnosisReaderEvidence) => absentWhy(reading.outcome);
 
 export async function analyseStep(
   repoRoot: string,
@@ -168,7 +167,7 @@ export async function analyseStep(
       ...keyIfDefined("observer", observer),
       ...keyIfDefined("providerBudget", providerBudget),
     });
-  const epochReview = await retryAfterNamedReset("epoch-reviewer", reviewEpoch, failedReason, reset);
+  const epochReview = await retryAfterNamedReset("epoch-reviewer", reviewEpoch, epochReviewWhy, reset);
   const brief = epochReview.status === "completed" ? readValidatedBrief(measuredDir) : null;
   const publicReview = publicEpochReview(epochReview, { brief });
   providerBudget?.throwIfDenied();
@@ -187,7 +186,7 @@ export async function analyseStep(
       ...keyIfDefined("observer", observer),
       ...keyIfDefined("providerBudget", providerBudget),
     });
-  const reading = await retryAfterNamedReset("diagnosis-reader", diagnose, (read) => read.error, reset);
+  const reading = await retryAfterNamedReset("diagnosis-reader", diagnose, readingWhy, reset);
   writeCompleted(join(dir, `${runId}-diagnoses.json`), reading);
   const advice = attachIssueReadings(derived, { diagnoses: reading.diagnoses });
   if (advice !== derived) {
@@ -195,15 +194,14 @@ export async function analyseStep(
     writeCompleted(latestRebuildAdvicePath(repoRoot, slug), advice);
   }
   const absent = [
-    ...(epochReview.status === "failed" || epochReview.status === "incomplete"
-      ? [`epoch review: ${epochReview.status} — ${epochReview.reason}`]
-      : []),
+    ...absentLines({
+      "main-judge census": judges.outcome,
+      "epoch review": epochReviewOutcome(epochReview),
+      "diagnosis reader": reading.outcome,
+    }),
     ...(epochReview.unsettled.length === 0
       ? []
       : [`epoch review: ${String(epochReview.unsettled.length)} contested case(s) left unsettled`]),
-    ...(reading.error !== null && !LOCAL_READER_REASONS.has(reading.error)
-      ? [`diagnosis reader: failed — ${reading.error}`]
-      : []),
   ];
   return { judges, admission, advice, absent };
 }

@@ -58,10 +58,11 @@ Every disagreement is recorded without a materiality threshold, and none of them
 (veto, unconfirmed fail, disputed pass, disputed undecided), and every reader counts by it.
 `judgeExit` in `src/analyse/judge-reviews.ts` has two kinds: `none` when the Judge contradicted the
 verifier on no reviewed verified case, and `advisory` otherwise, with a count per kind.
-It records no finding and routes to no owner (`judge-reviews/v13`). Disagreements in both
+It records no finding and routes to no owner (`judge-reviews/v14`). Disagreements in both
 directions enter the rebuild advice packet as advisory rows named by family, and the exit reason
 is its judge line; only families and counts cross to authoring. A review recorded under another
-schema is refused rather than read.
+schema is refused rather than read, except that the whole-run digest still reads `v13`, whose
+census, contested rows and exit are the current ones.
 
 A recorded claim also names the case ids that disagreed on that battery. Those ids sit beside the
 claim; they change no score, readiness, adoption or statement.

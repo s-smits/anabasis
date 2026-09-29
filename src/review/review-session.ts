@@ -30,7 +30,7 @@ import type { ProviderResourceBudget } from "../run/provider-resource-budget.ts"
 import { ACTIVE_JUDGE_PROMPT_DIGESTS } from "./judge-prompt-policy.ts";
 import { type JudgeSession, sessionJudge } from "./judge.ts";
 
-type EnabledReview = Extract<ReviewChoice, { enabled: true }>;
+export type EnabledReview = Extract<ReviewChoice, { enabled: true }>;
 
 /** The Judge census turn wall. A substantive review turn can take close to 24 minutes and still
  *  succeed, so the wall has to leave that valid path room; the reason it exists at all is that a

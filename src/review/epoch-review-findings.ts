@@ -31,7 +31,7 @@ import { plainRecord } from "../meta/json-evidence.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { type JsonValue, isBoolean, isString } from "../meta/json-shape.ts";
 import { keyIfNotNull, keysIf } from "../meta/optional-key.ts";
-import { type ReaderTool, readerParameters, readerToolText } from "./review-reader.ts";
+import { type ReaderTool, type ReviewOutcome, readerParameters, readerToolText } from "./review-reader.ts";
 import {
   PROBE_DIRECTION_PARAMETER,
   type ProbeState,
@@ -248,33 +248,36 @@ function completedReviews(analysisDir: string): EpochReviewEvidence[] {
     });
 }
 
-/** Whether a completed review, the one status meaning a finished turn over full coverage and whose
- *  findings route, already covered this condition, this reviewer and these obligations. All three
- *  must match: a new contested artifact or a newly standing issue under an unchanged product is new
- *  work, and skipping it would leave the one component that reads the measured tree against the
- *  original request silent about what changed. An unreadable review proves no coverage. */
-export function conditionAlreadyReviewed(
+/** The completed review, the one status meaning a finished turn over full coverage and whose
+ *  findings route, that already covered this condition, this reviewer and these obligations. All
+ *  three must match: a new contested artifact or a newly standing issue under an unchanged product
+ *  is new work, and reusing a review for it would leave the one component that reads the measured
+ *  tree against the original request silent about what changed. An unreadable review covers none. */
+export function reviewOfCondition(
   analysisDir: string,
   condition: MeasuredCondition,
   expected: Pick<
     EpochReviewEvidence,
     "reviewerPin" | "reviewerEffort" | "requestDigest" | "obligationsDigest"
   >,
-): boolean {
-  return (
-    condition.digest !== null &&
-    expected.reviewerPin !== null &&
-    isString(expected.reviewerEffort) &&
-    expected.reviewerEffort.trim() !== "" &&
-    completedReviews(analysisDir).some(
-      (review) =>
-        review.condition?.digest === condition.digest &&
-        review.reviewerPin === expected.reviewerPin &&
-        review.reviewerEffort === expected.reviewerEffort &&
-        review.requestDigest === expected.requestDigest &&
-        review.obligationsDigest === expected.obligationsDigest,
-    )
+): EpochReviewEvidence | undefined {
+  if (condition.digest === null || expected.reviewerPin === null) return undefined;
+  if (!isString(expected.reviewerEffort) || expected.reviewerEffort.trim() === "") return undefined;
+  return completedReviews(analysisDir).find(
+    (review) =>
+      review.condition?.digest === condition.digest &&
+      review.reviewerPin === expected.reviewerPin &&
+      review.reviewerEffort === expected.reviewerEffort &&
+      review.requestDigest === expected.requestDigest &&
+      review.obligationsDigest === expected.obligationsDigest,
   );
+}
+
+/** A recorded review as the outcome its readers switch on: a failed or incomplete one is absent. */
+export function epochReviewOutcome({ status, reason }: EpochReviewEvidence): ReviewOutcome {
+  if (status === "completed") return { kind: "read" };
+  if (status === "skipped") return { kind: "skipped", reason: reason ?? "" };
+  return { kind: "absent", why: `${status} — ${reason}` };
 }
 
 /** The task-set findings earlier complete reviews recorded over the task set now under review. A

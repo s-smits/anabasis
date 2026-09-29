@@ -538,7 +538,7 @@ export function deriveRebuildAdvice(
 ): RebuildAdvicePacket {
   const families = familyRows(analysis, condition);
   const observed = observedIssues(analysis, judges, families);
-  const judgeReview = judges.provisional === null && judges.census !== null ? "complete" : "incomplete";
+  const judgeReview = judges.outcome.kind === "read" ? "complete" : "incomplete";
   return {
     schema: REBUILD_ADVICE_SCHEMA,
     slug: analysis.slug,

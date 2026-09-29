@@ -474,7 +474,8 @@ export function checkInformativenessLines({
  * The run's recorded Judge reviews, one per `analysis/<runId>-judges.json`, in name order. The
  * writer (`runJudgeReviews`) records `JUDGE_REVIEWS_SCHEMA` and nothing else, so a record under any
  * other schema is refused by name rather than read field by field: it predates the census and
- * `contested` shapes both readers of this function take as written.
+ * `contested` shapes both readers of this function take as written. v13 is the exception, whose
+ * census, `contested` and exit are the current ones; only how a review states its outcome moved.
  */
 export function readJudgeReviews(campaign: string): JudgeReviews {
   const rows: JudgeReviewRow[] = [];
@@ -486,7 +487,7 @@ export function readJudgeReviews(campaign: string): JudgeReviews {
     .sort()) {
     const record = readJsonAsOrNull<JudgeReviewFile | null>(join(dir, name));
     if (
-      record?.schema !== JUDGE_REVIEWS_SCHEMA ||
+      (record?.schema !== JUDGE_REVIEWS_SCHEMA && record?.schema !== "judge-reviews/v13") ||
       !isString(record.runId) ||
       !Array.isArray(record.contested)
     ) {

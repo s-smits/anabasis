@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { deriveIterationAnalysis } from "../src/analyse/iteration-analysis.ts";
-import { runJudgeReviews } from "../src/analyse/judge-reviews.ts";
+import { JUDGE_REVIEWS_SCHEMA, runJudgeReviews } from "../src/analyse/judge-reviews.ts";
 import { type JudgeEvidence, judgeDecision, validateJudgeEvidence } from "../src/claim/judge.ts";
 import type { JudgeAttempt, JudgeSession } from "../src/review/judge.ts";
 import { briefPublicResources } from "../src/correctness-bundle/public-resources.ts";
@@ -159,8 +159,8 @@ describe("the census Judge on a measured round", () => {
     const analysis = deriveIterationAnalysis(repo, "bridge-truss", "m6-census");
     expect(analysis.battery.claimCreated).toBe(true);
     const reviews = runJudgeReviews(analysis, { repoRoot: repo, judgePin: null });
-    expect(reviews.schema).toBe("judge-reviews/v13");
-    expect(reviews.provisional).toBeNull();
+    expect(reviews.schema).toBe(JUDGE_REVIEWS_SCHEMA);
+    expect(reviews.outcome).toEqual({ kind: "read" });
     expect(reviews.census?.runId).toBe("m6-census");
     expect(reviews.coverage).toMatchObject({ reviewable: 4, reviewed: 4 });
     expect(reviews.contested.map((entry) => entry.taskId)).toEqual(["t2"]);
@@ -169,7 +169,6 @@ describe("the census Judge on a measured round", () => {
     expect(reviews.contested.map((entry) => entry.kind)).toEqual([
       expect.stringMatching(/^(veto|unconfirmed-fail)$/),
     ]);
-    expect(reviews.absent).toEqual([]);
   }, 240_000);
 
   it.concurrent("sends no control subject to the Judge after four disagreements, and blocks nothing", async () => {
@@ -238,7 +237,7 @@ describe("the census Judge on a measured round", () => {
     // All four verifier-pass/Judge-fail rows are complete advice; the exit cannot block.
     const analysis = deriveIterationAnalysis(repo, "bridge-truss", "m6-census-skip");
     const reviews = runJudgeReviews(analysis, { repoRoot: repo, judgePin: null });
-    expect(reviews.provisional).toBeNull();
+    expect(reviews.outcome).toEqual({ kind: "read" });
     expect(reviews.contested).toHaveLength(4);
     expect(reviews.exit).toMatchObject({
       kind: "advisory",

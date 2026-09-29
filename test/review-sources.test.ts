@@ -34,6 +34,9 @@ import { reviewSlotPin } from "../src/review/review-session.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import { call } from "./helpers/review-fixtures.ts";
 import { REBUILD_ADVICE_SCHEMA } from "../src/author/rebuild-advice.ts";
+import { TASKS_FILE } from "../src/meta/bundle-layout.ts";
+import type { RunObserver } from "../src/observe/run-observer.ts";
+import { readJsonFile } from "../src/meta/completed-json.ts";
 const EVALUATOR_TS = "evaluator.ts";
 /** A battery that verified nothing, as the runner records one. */
 const NO_FIRING = {
@@ -113,13 +116,14 @@ describe("review coverage tied to recorded execution", () => {
     for (const mode of ["complete", "stalled", "failed"] as const) {
       const root = coreTree();
       writeFileSync(
-        join(root, "correctness-model/tasks.json"),
+        join(root, TASKS_FILE),
         JSON.stringify([{ taskId: "case-1", publicInput: { count: 1 } }]),
       );
       writeFileSync(join(root, "correctness-model/controls.json"), "x".repeat(40_000));
       let opens = 0,
         turns = 0,
         disposals = 0;
+      const phases: Array<[string, string]> = [];
       const result = await runEpochReview({
         repoRoot: root,
         slug: "bounds",
@@ -129,6 +133,12 @@ describe("review coverage tied to recorded execution", () => {
         priorAdvice: null,
         publicRequest: null,
         review: REVIEW,
+        observer: double<RunObserver>({
+          phase: ({ state, summary }: { state: string; summary: string }) => {
+            phases.push([state, summary]);
+            return "phase";
+          },
+        }),
         readerTurn: (input) =>
           runReaderTurn({
             ...input,
@@ -153,7 +163,7 @@ describe("review coverage tied to recorded execution", () => {
                     expect(
                       await call(recorder, {
                         defect: true,
-                        owner: "correctness-model/tasks.json",
+                        owner: TASKS_FILE,
                         severity: "advisory",
                         claim: "Only one count is sampled.",
                         publicInputPath: "$.count",
@@ -206,6 +216,13 @@ describe("review coverage tied to recorded execution", () => {
         mode === "complete" ? "completed" : mode === "stalled" ? "incomplete" : "failed",
       );
       expect(result.coverage.complete).toBe(mode === "complete");
+      // The phase row closes on what the review recorded, not on whether the turn raised: a
+      // stalled reader finished its turn and still left the source unread.
+      expect(phases[0]).toEqual(["started", "epoch-reviewer started"]);
+      expect(phases.slice(1).map(([state]) => state)).toEqual([mode === "complete" ? "completed" : "failed"]);
+      expect(phases[1]?.[1]).toStartWith(
+        mode === "complete" ? "epoch-reviewer completed" : `epoch-reviewer ${result.status} — `,
+      );
       expect(result.report).toBe(mode === "failed" ? null : LONG_SYNTHESIS);
       // Both findings the host admitted before the turn ended stay recorded however it ended, and
       // reach the public projection either way: a completed review's at their admitted severity,
@@ -232,14 +249,14 @@ describe("review coverage tied to recorded execution", () => {
   test("authoring uses the same reader without inventing a measured condition or bypassing missing coverage", async () => {
     const root = coreTree();
     writeFileSync(
-      join(root, "correctness-model/tasks.json"),
+      join(root, TASKS_FILE),
       JSON.stringify([{ taskId: "private-task", publicInput: { count: 1 } }]),
     );
     // The starter seeds the task file as `[]`: a draft that has written no task yet is complete
     // coverage, where an unreadable one is not.
     for (const phase of ["authoring", "measured", "partial-draft", "seed"] as const) {
-      if (phase === "partial-draft") writeFileSync(join(root, "correctness-model/tasks.json"), "{");
-      if (phase === "seed") writeFileSync(join(root, "correctness-model/tasks.json"), "[]");
+      if (phase === "partial-draft") writeFileSync(join(root, TASKS_FILE), "{");
+      if (phase === "seed") writeFileSync(join(root, TASKS_FILE), "[]");
       const result = await runEpochReview({
         repoRoot: root,
         slug: "bounds",
@@ -286,7 +303,7 @@ describe("review coverage tied to recorded execution", () => {
   test("an authoring checkpoint reads the previous battery's counts, and invents none without a packet", async () => {
     const root = coreTree();
     writeFileSync(
-      join(root, "correctness-model/tasks.json"),
+      join(root, TASKS_FILE),
       JSON.stringify([{ taskId: "private-task", publicInput: { count: 1 } }]),
     );
     // Three consecutive reviews of campaign 3fd52f9e-10 inferred solver reach from the accept
@@ -345,10 +362,7 @@ describe("review coverage tied to recorded execution", () => {
 
   test("a vetoed case reaches the reviewer with its citation, its check and a readable artifact", async () => {
     const root = coreTree();
-    writeFileSync(
-      join(root, "correctness-model/tasks.json"),
-      JSON.stringify([{ taskId: "roof-3", publicInput: { span: 12 } }]),
-    );
+    writeFileSync(join(root, TASKS_FILE), JSON.stringify([{ taskId: "roof-3", publicInput: { span: 12 } }]));
     mkdirSync(join(root, "runs/r1/cases/roof-3"), { recursive: true });
     writeFileSync(
       join(root, "runs/r1/cases/roof-3/artifact.json"),
@@ -453,22 +467,14 @@ describe("review coverage tied to recorded execution", () => {
     expect(result.unsettled).toEqual(["roof-3", "roof-5", "roof-4", "roof-6"]);
   });
 
-  test("a completed review stands in only for the same contested artifacts and standing issues", async () => {
+  // A reused review used to come back as a skip with no findings, so the round that reused it
+  // projected nothing: the earlier review's findings, disputes and settlements were read as an empty
+  // review. It now comes back as the earlier review itself, while this run's own record says why it
+  // opened no turn.
+  test("a completed review stands in, findings and all, only for the same contested artifacts and standing issues", async () => {
     const root = coreTree();
-    writeFileSync(
-      join(root, "correctness-model/tasks.json"),
-      JSON.stringify([{ taskId: "roof-3", publicInput: { span: 12 } }]),
-    );
-    const log = new EvidenceLog(join(root, "runs/r1"));
-    log.write("battery.json", {
-      runId: "r1",
-      cases: [],
-      execution: { executed: [], tools: {}, verifierEnvironmentHash: null },
-      executionEvidence: [],
-      truthCheckFiring: NO_FIRING,
-    });
-    log.record();
-    // Outside the recorded run directory, whose ownership check refuses foreign files.
+    writeFileSync(join(root, TASKS_FILE), JSON.stringify([{ taskId: "roof-3", publicInput: { span: 12 } }]));
+    // Outside the recorded run directories, whose ownership check refuses foreign files.
     mkdirSync(join(root, "contested/roof-3"), { recursive: true });
     const artifact = "contested/roof-3/artifact.json";
     writeFileSync(join(root, artifact), JSON.stringify({ members: [{ id: "m1", utilisation: 1.4 }] }));
@@ -484,14 +490,21 @@ describe("review coverage tied to recorded execution", () => {
         artifact,
       },
     ];
-    const reviewDir = join(root, "campaigns/bounds/analysis");
-    mkdirSync(reviewDir, { recursive: true });
     let turns = 0;
-    const reviewOnce = async (index: number, contested: typeof vetoed) => {
-      const result = await runEpochReview({
+    const reviewOnce = async (runId: string, contested: typeof vetoed) => {
+      const log = new EvidenceLog(join(root, "runs", runId));
+      log.write("battery.json", {
+        runId,
+        cases: [],
+        execution: { executed: [], tools: {}, verifierEnvironmentHash: null },
+        executionEvidence: [],
+        truthCheckFiring: NO_FIRING,
+      });
+      log.record();
+      return runEpochReview({
         repoRoot: root,
         slug: "bounds",
-        runId: "r1",
+        runId,
         treeRoot: ".",
         priorAdvice: null,
         publicRequest: "Design a roof.",
@@ -499,7 +512,7 @@ describe("review coverage tied to recorded execution", () => {
         settle: contested,
         analysis: double<EpochReviewInput["analysis"]>({
           slug: "bounds",
-          runId: "r1",
+          runId,
           treeRoot: ".",
           cases: [],
           identities: {
@@ -517,22 +530,56 @@ describe("review coverage tied to recorded execution", () => {
           turns += 1;
           const reader = tools.find((tool) => tool.name === "read_source")!;
           for (const file of reviewInventory(root).files) await call(reader, { path: file });
+          const recorder = tools.find((tool) => tool.name === "record_finding")!;
+          await call(recorder, {
+            defect: true,
+            owner: TASKS_FILE,
+            severity: "advisory",
+            claim: "Only one span is sampled.",
+            publicInputPath: "$.span",
+          });
           return { pin: reviewSlotPin(REVIEW), text: "Read.", error: null };
         },
       });
-      writeFileSync(join(reviewDir, `r${index}-epoch-review.json`), JSON.stringify(result));
-      return result;
     };
-    const first = await reviewOnce(0, []);
-    expect([first.status, first.reason]).toEqual(["completed", null]);
-    expect((await reviewOnce(1, [])).reason).toBe("condition-already-reviewed");
+    const recorded = (runId: string) =>
+      readJsonFile(join(root, "campaigns/bounds/analysis", `${runId}-epoch-review.json`));
+    const first = await reviewOnce("r0", []);
+    expect([first.status, first.reason, first.findings.length]).toEqual(["completed", null, 1]);
+    const reused = await reviewOnce("r1", []);
     expect(turns).toBe(1);
+    expect(reused).toEqual(first);
+    expect(publicEpochReview(reused).findings).toEqual(publicEpochReview(first).findings);
+    expect(recorded("r1")).toMatchObject({
+      status: "skipped",
+      reason: "condition-already-reviewed",
+      findings: [],
+    });
     // A new contested artifact under the same condition is new settlement work.
-    expect((await reviewOnce(2, vetoed)).status).toBe("completed");
-    expect((await reviewOnce(3, vetoed)).reason).toBe("condition-already-reviewed");
+    expect((await reviewOnce("r2", vetoed)).runId).toBe("r2");
+    expect((await reviewOnce("r3", vetoed)).runId).toBe("r2");
     writeFileSync(join(root, artifact), JSON.stringify({ members: [{ id: "m1", utilisation: 1.5 }] }));
-    expect((await reviewOnce(4, vetoed)).status).toBe("completed");
+    expect((await reviewOnce("r4", vetoed)).runId).toBe("r4");
     expect(turns).toBe(3);
+  });
+
+  // A review that could not open the tree it was sent to read did not happen, and the round must say
+  // so rather than read it as a skip the operator chose.
+  test("a source tree that is not on disk fails the review", async () => {
+    const result = await runEpochReview({
+      repoRoot: coreTree(),
+      slug: "bounds",
+      runId: "r1",
+      treeRoot: "gone",
+      analysis: null,
+      priorAdvice: null,
+      publicRequest: null,
+      review: REVIEW,
+      readerTurn: () => {
+        throw new Error("a missing tree opens no turn");
+      },
+    });
+    expect([result.status, result.reason]).toEqual(["failed", "source tree gone is not on disk"]);
   });
 
   test("lists required files before applying the inventory cap and marks truncated coverage incomplete", async () => {
@@ -741,7 +788,7 @@ describe("what the reviewer may open", () => {
     // it again, and every refusal reset its cursor and citation evidence.
     const root = coreTree(),
       state = reviewState();
-    const first = "correctness-model/tasks.json",
+    const first = TASKS_FILE,
       second = "correctness-model/controls.json";
     writeFileSync(join(root, first), "x".repeat(20_000));
     const reader = readSourceTool(root, new Set([first, second]), state, {}, new Map());

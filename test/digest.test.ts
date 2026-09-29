@@ -952,7 +952,7 @@ describe("digest", () => {
     mkdirSync(join(paths.campaign, "analysis"), { recursive: true });
     const judges = (disagreements: number) =>
       JSON.stringify({
-        schema: "judge-reviews/v13",
+        schema: "judge-reviews/v14",
         runId: "run-1",
         contested: Array.from({ length: disagreements }, (_, index) => ({ taskId: `t${index}` })),
         census: { evidence: { judge: "on", offered: 2, verdicts: 1, abstentions: 1 } },
@@ -977,7 +977,7 @@ describe("digest", () => {
       JSON.stringify({ census: { judge: "on", disagreements: 1 }, exit: { kind: "completed" } }),
     );
     const refused = digestOf(paths);
-    expect(refused).toContain("refused, not judge-reviews/v13 — run-1-judges.json");
+    expect(refused).toContain("refused, not judge-reviews/v14 — run-1-judges.json");
     expect(refused).not.toContain("CENSUS WITH DISAGREEMENT");
   });
 

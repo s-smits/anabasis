@@ -163,11 +163,11 @@ function analysisSection(a: AnalysisEvidence): string[] {
     "",
     "## Judge review",
     "",
-    ...head("evidence", "decision", "abstained", "reviewed", "contested", "incomplete because"),
+    ...head("evidence", "decision", "abstained", "reviewed", "contested", "absent because"),
   );
   for (const j of a.judges) {
     out.push(
-      `| ${j.name} | ${j.decision} | ${j.abstained ?? "—"} | ${j.reviewed} | ${j.contested ?? "—"} | ${j.provisional ?? "—"} |`,
+      `| ${j.name} | ${j.decision} | ${j.abstained ?? "—"} | ${j.reviewed} | ${j.contested ?? "—"} | ${j.absent ?? "—"} |`,
     );
   }
   out.push("");

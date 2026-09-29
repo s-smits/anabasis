@@ -16,7 +16,7 @@ import type { ContestedKind } from "../../src/analyse/judge-contested.ts";
 import { parseJsonAs } from "../../src/meta/json-runtime.ts";
 import { errorMessage } from "../../src/meta/runtime-values.ts";
 
-export const OUTCOME_JUDGE_SCHEMA = "outcome-judge/v2";
+export const OUTCOME_JUDGE_SCHEMA = "outcome-judge/v3";
 
 /** The checked census, or why it cannot be shown. */
 type OutcomeJudgeCensus =
@@ -61,9 +61,8 @@ export type OutcomeJudgeReport =
       /** Review disagreements that lack enough information to show as complete disputes. */
       contestedUnavailable: string[];
       coverage: JudgeReviewsResult["coverage"];
-      provisional: string | null;
+      outcome: JudgeReviewsResult["outcome"];
       exit: JudgeExit;
-      absent: string[];
     };
 
 function censusView(entry: BatteryCensus | null): OutcomeJudgeCensus | null {
@@ -162,8 +161,7 @@ export function judgeReport(campaignDir: string, selector: string): OutcomeJudge
     contested: disputes.contested,
     contestedUnavailable: disputes.unavailable,
     coverage: review.coverage,
-    provisional: review.provisional,
+    outcome: review.outcome,
     exit: review.exit,
-    absent: review.absent,
   };
 }

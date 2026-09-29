@@ -138,7 +138,7 @@ async function runAnalysePhase(
       ...keyIfDefined("providerBudget", input.providerBudget),
     });
     observeAnalysisResult(observer, manifest.slug, runId, analysed);
-    absentSteps.push(...analysed.judges.absent, ...analysed.absent);
+    absentSteps.push(...analysed.absent);
     return analysed;
   } catch (error) {
     const reason = errorMessage(error);

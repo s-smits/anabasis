@@ -49,14 +49,14 @@ import { type ClimbReadout, readClimbReadout, readingSentence } from "../run/cli
 import { selectedProductDir } from "../run/product-versions.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { keyIfDefined, keysIf } from "../meta/optional-key.ts";
-import type { ReviewChoice } from "../backends/resolve.ts";
+import { type ReviewChoice, backendConditionPin } from "../backends/resolve.ts";
 import type { RunObserver } from "../observe/run-observer.ts";
 import type { ProviderResourceBudget } from "../run/provider-resource-budget.ts";
-import { runReaderTurn } from "./review-reader.ts";
+import { readerPhase, runReaderTurn } from "./review-reader.ts";
 import { emptyProbeState, probeTool } from "./review-probe.ts";
 import { type AdvisoryDefect, type Demonstrations, NOTHING_CARRIED, advisoryRecord } from "./review-carry.ts";
 import { EPOCH_REVIEW_PROMPT } from "./epoch-review-prompt.ts";
-import { reviewSlotPin } from "./review-session.ts";
+import type { EnabledReview } from "./review-session.ts";
 import type { ContestedCase, ContestedKind } from "../analyse/judge-contested.ts";
 import {
   type ReviewInventory,
@@ -78,11 +78,12 @@ import {
   type ReviewState,
   type SettlementCase,
   briefIdentities,
-  conditionAlreadyReviewed,
+  epochReviewOutcome,
   measuredConditionOf,
   earlierTaskFindings,
   measuredAdvisory,
   recordFindingTool,
+  reviewOfCondition,
 } from "./epoch-review-findings.ts";
 import { TASKS_FILE } from "../meta/bundle-layout.ts";
 import { earlierTaskFindingLines } from "./epoch-review-public.ts";
@@ -143,11 +144,12 @@ type ReviewCoverage = ReturnType<typeof reviewCoverage>;
 
 /** A session that may read, carrying everything the read depends on, or one that may not and
  *  already knows what it owes its campaign. Both arms hold evidence, because a refused review still
- *  writes a record. */
+ *  writes a record; a refusal an earlier review stands in for carries that review too. */
 type OpenSession =
-  | { admitted: false; evidence: EpochReviewEvidence }
+  | { admitted: false; evidence: EpochReviewEvidence; earlier?: EpochReviewEvidence }
   | {
       admitted: true;
+      review: EnabledReview;
       evidence: EpochReviewEvidence;
       root: string;
       analysisDir: string;
@@ -192,7 +194,7 @@ const CONTESTED_WORDS: Record<ContestedKind, { verifier: string; judge: string }
 };
 
 /** The settlement work a review owes beyond its source: each contested case with its direction, its
- *  checks and its artifact bytes, and each standing issue it may dispute. `conditionAlreadyReviewed`
+ *  checks and its artifact bytes, and each standing issue it may dispute. `reviewOfCondition`
  *  compares this digest, so what goes into it decides when a review is repeated. A readable artifact
  *  is identified by its bytes rather than its run-bound path, so remeasuring a case that produced
  *  identical bytes buys no second reading; an unreadable artifact contributes its path instead. */
@@ -264,10 +266,12 @@ function openSession(input: EpochReviewInput): OpenSession {
     disputes: [],
     report: null,
   };
-  if (!input.review.enabled) return { admitted: false, evidence: { ...blank, reason: "review-slot-off" } };
+  const { review } = input;
+  if (!review.enabled) return { admitted: false, evidence: { ...blank, reason: "review-slot-off" } };
   const root = join(repoRoot, treeRoot);
   if (!existsSync(root)) {
-    return { admitted: false, evidence: { ...blank, reason: `source tree ${treeRoot} is not on disk` } };
+    const reason = `source tree ${treeRoot} is not on disk`;
+    return { admitted: false, evidence: { ...blank, status: "failed", reason } };
   }
   // An authoring checkpoint has no recorded battery, so there is no verifier execution to cover.
   const verifier =
@@ -277,16 +281,14 @@ function openSession(input: EpochReviewInput): OpenSession {
   const condition =
     measured === null ? null : measuredConditionOf({ ...measured, verifierIdentity: verifier.identity });
   const evidence = { ...blank, condition, verifier };
-  if (
-    condition !== null &&
-    conditionAlreadyReviewed(analysisDir, condition, {
-      ...evidence,
-      reviewerPin: reviewSlotPin(input.review),
-    })
-  ) {
-    return { admitted: false, evidence: { ...evidence, reason: "condition-already-reviewed" } };
+  const earlier =
+    condition === null
+      ? undefined
+      : reviewOfCondition(analysisDir, condition, { ...evidence, reviewerPin: backendConditionPin(review) });
+  if (earlier !== undefined) {
+    return { admitted: false, evidence: { ...evidence, reason: "condition-already-reviewed" }, earlier };
   }
-  return { admitted: true, evidence, root, analysisDir, verifier };
+  return { admitted: true, review, evidence, root, analysisDir, verifier };
 }
 
 /** Per-family passed/verified counts for the review to read. A family that never fails is worth
@@ -684,11 +686,15 @@ export function recordEpochReview(repoRoot: string, evidence: EpochReviewEvidenc
  *  refused session records its evidence unread rather than nothing, so every campaign round leaves
  *  a review record that says what happened to it, and a review an exception ends is recorded before
  *  the exception propagates: its findings, coverage and probes were admitted before it, and a
- *  caller that never receives a return value has nothing else to write them from. */
+ *  caller that never receives a return value has nothing else to write them from. A condition read
+ *  before returns the review that read it, whose findings then reach this round too. */
 export async function runEpochReview(input: EpochReviewInput): Promise<EpochReviewEvidence> {
   const opened = openSession(input);
-  if (!opened.admitted) return recordEpochReview(input.repoRoot, opened.evidence);
-  const { evidence, root, analysisDir, verifier } = opened;
+  if (!opened.admitted) {
+    recordEpochReview(input.repoRoot, opened.evidence);
+    return opened.earlier ?? opened.evidence;
+  }
+  const { review, evidence, root, analysisDir, verifier } = opened;
   const inventory = reviewInventory(root);
   const issues = disputableIssues(input);
   const state: ReviewState = {
@@ -744,11 +750,12 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
   // The reader rethrows a provider-budget stop, and the probe cleanup throws when a verifier child is
   // left unsettled after a clean turn; either is held until the review is recorded. A cleanup failure
   // behind a failure already on its way up is swallowed by `closeVerifierLifetime`.
-  let turn: ReaderTurn = { pin: reviewSlotPin(input.review), text: "", error: null };
+  let turn: ReaderTurn = { pin: backendConditionPin(review), text: "", error: null };
   let thrown: { cause: unknown } | null = null;
+  const closePhase = readerPhase("epoch-reviewer", input.observer);
   try {
     turn = await (input.readerTurn ?? runReaderTurn)({
-      review: input.review,
+      review,
       repoRoot: input.repoRoot,
       role: "epoch-reviewer",
       tools: [
@@ -768,7 +775,6 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
         orientation(input, inventory, verifier, issues, { ...measured, declared: identities.checkIds }),
         ...toolchainLines(toolchain),
       ].join("\n"),
-      ...keyIfDefined("observer", input.observer),
       ...keyIfDefined("providerBudget", input.providerBudget),
     });
   } catch (cause) {
@@ -792,6 +798,7 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
     ...recorded,
     ...advisoryRecord(recorded, earlierAdvisory(input, analysisDir)),
   });
+  closePhase(epochReviewOutcome(written));
   if (thrown !== null) throw thrown.cause;
   return written;
 }

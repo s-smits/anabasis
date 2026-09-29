@@ -8,7 +8,7 @@ import { latestRebuildAdvicePath } from "../src/author/rebuild-advice.ts";
 import { loadRepoEnv } from "../src/backends/env.ts";
 import { resolveSlots } from "../src/backends/resolve.ts";
 import { readCaseRecord } from "../src/claim/case-record.ts";
-import { EPOCH_REVIEW_SCHEMA, measuredConditionOf } from "../src/review/epoch-review-findings.ts";
+import { EPOCH_REVIEW_SCHEMA } from "../src/review/epoch-review-findings.ts";
 import { recordEpochReview } from "../src/review/epoch-reviewer.ts";
 import { analyseStep } from "../src/run/analyse-step.ts";
 import { measurementDriverId } from "../src/run/harness-measure.ts";
@@ -118,40 +118,33 @@ describe("measureHarness", () => {
     const complete = await analyseStep(repo, "bridge-truss", "m4-ledger", measured, { resolvedSlots });
     expect(JSON.parse(readFileSync(ledger, "utf8"))).toEqual(complete.advice);
     expect(complete.advice.runId).toBe("m4-ledger");
-    // A review slot that is off is an operator condition, not absent work.
+    // A review slot that is off is an operator condition, not absent work: the Judge census it
+    // switched off and both readers are skips, and the terminal lists none of them.
+    expect(complete.judges.outcome).toEqual({ kind: "skipped", reason: "review-slot-off" });
     expect(complete.absent).toEqual([]);
-    // Reader turns lost to the transport leave the controller terminal listing no absent step; a
-    // reader turn that failed after it opened is named there.
+    // A review turn that opened and did not finish is named there, whichever way it stopped.
     for (const status of ["failed", "incomplete"] as const) {
       const failed = await analyseStep(repo, "bridge-truss", "m4-ledger", measured, {
         resolvedSlots,
-        epochReview: async (input) => {
-          if (input.analysis === null) throw new Error("measured review lost its analysis");
-          return {
-            schema: EPOCH_REVIEW_SCHEMA,
-            slug: "bridge-truss",
-            runId: "m4-ledger",
-            status,
-            reason: "review did not finish",
-            condition: measuredConditionOf({
-              ...input.analysis.identities.bundleSnapshot,
-              builtPin: input.analysis.identities.backendPin,
-              builtEffort: input.analysis.identities.builtEffort,
-              verifierIdentity: null,
-            }),
-            reviewerPin: "pin",
-            reviewerEffort: null,
-            requestDigest: "request",
-            obligationsDigest: "obligations",
-            reads: [],
-            dispositions: [],
-            unsettled: [],
-            coverage: { files: 0, opened: 0, chars: 0 },
-            findings: [],
-            disputes: [],
-            report: null,
-          };
-        },
+        epochReview: async () => ({
+          schema: EPOCH_REVIEW_SCHEMA,
+          slug: "bridge-truss",
+          runId: "m4-ledger",
+          status,
+          reason: "review did not finish",
+          condition: null,
+          reviewerPin: "pin",
+          reviewerEffort: null,
+          requestDigest: "request",
+          obligationsDigest: "obligations",
+          reads: [],
+          dispositions: [],
+          unsettled: [],
+          coverage: { files: 0, opened: 0, chars: 0 },
+          findings: [],
+          disputes: [],
+          report: null,
+        }),
       });
       expect(failed.absent).toEqual([`epoch review: ${status} — review did not finish`]);
     }

@@ -37,7 +37,7 @@ import {
   type AnalysisFinding,
   type IterationAnalysis,
 } from "../src/analyse/iteration-analysis.ts";
-import type { JudgeReviewsResult } from "../src/analyse/judge-reviews.ts";
+import { JUDGE_REVIEWS_SCHEMA, type JudgeReviewsResult } from "../src/analyse/judge-reviews.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import { double, required } from "./helpers/doubles.ts";
 import { EvidenceLog } from "../src/claim/evidence-log.ts";
@@ -144,9 +144,12 @@ function analysis(
   };
 }
 
-function judges(overrides?: Partial<JudgeReviewsResult>): JudgeReviewsResult {
+/** A census is read when the fixture supplies one, and absent otherwise, as `runJudgeReviews` reads it. */
+function judges(overrides: Partial<JudgeReviewsResult> = {}): JudgeReviewsResult {
   return {
-    schema: "judge-reviews/v13",
+    outcome:
+      (overrides.census ?? null) === null ? { kind: "absent", why: "no census to read" } : { kind: "read" },
+    schema: JUDGE_REVIEWS_SCHEMA,
     slug: SLUG,
     runId: RUN,
     judgePin: null,
@@ -155,14 +158,12 @@ function judges(overrides?: Partial<JudgeReviewsResult>): JudgeReviewsResult {
     census: null,
     contested: [],
     coverage: { reviewable: 0, reviewed: 0 },
-    provisional: null,
     exit: {
       kind: "none",
       cases: { veto: 0, "unconfirmed-fail": 0, "disputed-pass": 0, "disputed-undecided": 0 },
       verified: 0,
       reason: "no disagreement",
     },
-    absent: [],
     ...overrides,
   };
 }

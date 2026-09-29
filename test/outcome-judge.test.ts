@@ -74,7 +74,7 @@ function review(
   },
 ): JudgeReviewsResult {
   return {
-    schema: "judge-reviews/v13",
+    schema: "judge-reviews/v14",
     slug: "fixture",
     runId: RUN,
     judgePin: "claude/claude-opus-5",
@@ -83,9 +83,8 @@ function review(
     census: { runId: RUN, evidence },
     contested,
     coverage: { reviewable: 2, reviewed: 2 },
-    provisional: null,
+    outcome: { kind: "read" },
     exit,
-    absent: [],
   };
 }
 
@@ -118,7 +117,7 @@ describe("the evidence-bound judge projection", () => {
     expect(report.exit).toEqual(exit);
     expect(report.contested).toEqual([]);
     expect(report.contestedUnavailable).toEqual([]);
-    expect(report.absent).toEqual([]);
+    expect(report.outcome).toEqual({ kind: "read" });
   });
 
   it("projects a complete dispute in each direction with the validated census identities", () => {
@@ -232,7 +231,7 @@ describe("the evidence-bound judge projection", () => {
     const report = judgeReport(dir, RUN);
     expect(report).toMatchObject({ available: false });
     if (report.available) throw new Error("unreachable");
-    expect(report.reason).toContain("judge-reviews/v10 is not judge-reviews/v13");
+    expect(report.reason).toContain("judge-reviews/v10 is not judge-reviews/v14");
   });
 
   it("is reachable from the CLI as --judge", () => {

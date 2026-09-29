@@ -57,6 +57,25 @@ describe("review-settle", () => {
     expect(new TextDecoder().decode(link.stdout).trim()).toBe("/nonexistent/toolchain");
   });
 
+  it("stages the campaign's analysis without the probe lifetimes an earlier review left in it", () => {
+    // A lifetime receipt names the directory it was written in, so a copied one reads as unsettled
+    // at its new path, and the replayed review's probes share the `<runId>-probe-lifetime` root.
+    const campaign = join(scratch, "campaigns", "s");
+    mkdirSync(join(campaign, "versions", "r"), { recursive: true });
+    mkdirSync(join(campaign, "claims"), { recursive: true });
+    mkdirSync(join(campaign, "analysis", "r-probe-lifetime", "receipt"), { recursive: true });
+    writeFileSync(join(campaign, "case-record.jsonl"), "");
+    writeFileSync(join(campaign, "claims", "r.json"), "{}");
+    writeFileSync(join(campaign, "isolation-probe-r.json"), "{}");
+    writeFileSync(join(campaign, "analysis", "r-epoch-review.json"), "{}");
+    writeFileSync(join(campaign, "analysis", "r-probe-lifetime", "receipt", "intent.json"), "{}");
+    const sim = join(scratch, "sim");
+    runTypeScript("review-settle.mts", ["--repo", scratch, "--slug", "s", "--run", "r", "--scratch", sim]);
+    const staged = join(sim, "campaigns", "s", "analysis");
+    expect(existsSync(join(staged, "r-epoch-review.json"))).toBe(true);
+    expect(existsSync(join(staged, "r-probe-lifetime"))).toBe(false);
+  });
+
   it("stages a campaign that ended before its analyse step", () => {
     // A run cut short holds a claim and no `analysis/`; that absence is the ordinary replay
     // condition, not a refusal, and the standing ledger then reads as empty.

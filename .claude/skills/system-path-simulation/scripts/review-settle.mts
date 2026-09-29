@@ -21,13 +21,16 @@
  * under the scratch root. `--repo` also supplies the review slot through its `.env` chain; the
  * reviewer's orientation, tools and admission run from this script's own tree.
  *
- * The staged copy carries the campaign's `analysis/` directory, because two of the reviewer's
- * rules read it and neither can fire without it: recurrence, which is what lifts a second
- * occurrence of one defect above the first-occurrence advisory floor, and reuse, which refuses a
- * condition an earlier review already read to completion under the same prompt. The standing issue
- * ledger comes from the same directory, so the replayed review can dispute an issue the way
- * production offers it one. A campaign that ended before its analyse step has no such directory;
- * that replay runs with an empty ledger rather than being refused.
+ * The staged copy carries the campaign's `analysis/` directory, because the reviewer reads it:
+ * reuse refuses a condition an earlier review already read to completion under the same prompt,
+ * and the previous battery's review supplies the advisory defects this one disposes of. The
+ * standing issue ledger comes from the same directory, so the replayed review can dispute an issue
+ * the way production offers it one. A campaign that ended before its analyse step has no such
+ * directory; that replay runs with an empty ledger rather than being refused. The probe lifetimes
+ * in it stay behind: each receipt names the absolute directory it was written in, so a copied one
+ * reads as unsettled at its new path, and since the replayed review's probes open the same
+ * `<runId>-probe-lifetime` root, every probe would be refused and the close would throw the review
+ * away.
  *
  * Output: `<scratch>/<runId>-epoch-review.json`, the EpochReviewEvidence as production would
  * record it; `<scratch>/<runId>-public-review.json`, what `publicEpochReview` lets cross from it to
@@ -113,7 +116,11 @@ for (const [rel, directory, required] of staged) {
   }
   if (existsSync(join(target, rel))) continue;
   mkdirSync(join(target, rel, ".."), { recursive: true });
-  cpSync(join(source, rel), join(target, rel), { recursive: directory, verbatimSymlinks: true });
+  cpSync(join(source, rel), join(target, rel), {
+    recursive: directory,
+    verbatimSymlinks: true,
+    filter: (path) => !path.endsWith("-probe-lifetime"),
+  });
 }
 const measuredDir = join(target, "versions", runId);
 // The packet this battery's own analyse step offered, read through its owner so a foreign schema

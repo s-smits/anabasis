@@ -78,7 +78,7 @@ tool that reports the installed toolchain; an adviser that returns a complete va
 
 A reference that replays a stored answer is already the usual shape, and on its own it is not
 enough: the blind solver reaches the author's own answer on most tasks, well inside its wall,
-because the search that found that answer is one the solver can run too. Three constructions may
+because the search that found that answer is one the solver can run too. Four constructions may
 help; none is required, and another method is as welcome.
 
 - **A search past the solver's wall.** Run an offline search far longer than one solve may take,
@@ -95,10 +95,17 @@ help; none is required, and another method is as welcome.
   matched or beat the stored answer, your search was one the solver runs too, so start the next
   search from the best solve and keep the better incumbent. It fails when every solve lands on the
   stored answer, which says the task has one obvious answer rather than a hard one.
+- **A demand the battery does not yet make.** Change what a task asks the solver to reason about,
+  not only where its numbers sit: requirements that pull against each other so no single choice
+  meets them all, published scenarios under which a different answer works, outputs or states that
+  must agree after the same step, or a trade-off no direct formula settles, so candidates have to be
+  searched. Take each from what the request's field already holds, and note in `MEMORY.md` which
+  public requirement changed and the reasoning it adds. It fails when the answer that met the old
+  task still meets the new one, or when the requirement is one the field would not hold.
 
-`harness_trial` estimates how reliably the solver meets a task; it does not veto one. A mass limit
-met by 3 of 6 blind solves is a task the battery can measure, not one to discard. A trial can take
-an hour and can come back `not-run`, so it is a sample you may buy, not a step you owe.
+`harness_trial` estimates how reliably the solver meets a task; it does not veto one. A limit some
+blind solves meet and others miss is a task the battery can measure, not one to discard. A trial can
+take an hour and can come back `not-run`, so it is a sample you may buy, not a step you owe.
 
 ## The worked domain
 

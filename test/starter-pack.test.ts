@@ -205,6 +205,12 @@ describe("pi starter pack brief vocabulary", () => {
     expect(text).toContain("**The solver's own answers.**");
     expect(text).toContain("so the limit belongs nearer the stored answer");
     expect(text).toContain("start the next search from the best solve and keep the better incumbent");
+    // Every route above sets where a limit or a stored answer sits. The streaks of 2026-09-29 moved
+    // only that, so a route changes what the task asks, from the field, with the change noted.
+    expect(text).toContain("**A demand the battery does not yet make.**");
+    expect(text).toContain("It fails when the answer that met the old task still meets the new one");
+    // A count of solves reads as a share to author towards (prior 10).
+    expect(text).not.toContain("3 of 6 blind solves");
     expect(text).toContain(
       "`harness_trial` estimates how reliably the solver meets a task; it does not veto one.",
     );

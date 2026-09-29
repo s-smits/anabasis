@@ -204,7 +204,8 @@ export async function loadBuiltStarterFactory(slugDir: string): Promise<BuiltSta
  *
  * Typechecking runs first, since it covers the syntax errors and the incorrect API use that type
  * erasure hides, and only a type-correct module is then loaded, in a fresh
- * confined process. The bundle cache uses the content bytes as its key, so an edited evaluator or
+ * confined process, under the same check wall an evaluation gets: a fixed 30 s load wall on a loaded
+ * host turned an evaluator that imports a heavy toolchain wrapper into an authored load failure. The bundle cache uses the content bytes as its key, so an edited evaluator or
  * helper cannot accidentally reuse a bundle from an earlier attempt.
  */
 export async function probeGeneratedCorrectnessModelModule(
@@ -233,7 +234,7 @@ export async function probeGeneratedCorrectnessModelModule(
     const missing = await probeEvaluatorProcess(
       slugDir,
       brief.truthChecks.map((check) => check.id),
-      importTimeoutMs,
+      importTimeoutMs ?? harnessSettings(slugDir).checkWallMs,
       verifierLifetime,
     );
     if (missing.length > 0) {

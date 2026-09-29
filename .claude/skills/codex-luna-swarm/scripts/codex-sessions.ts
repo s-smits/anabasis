@@ -376,7 +376,10 @@ function drainOnce(outDir: string, write: (text: string) => void): DrainCounts {
     const marker = join(outDir, `${name}.drained`);
     if (existsSync(marker)) continue;
     const logPath = join(outDir, `${name}.log`);
-    const body = existsSync(logPath) ? readFileSync(logPath, "utf8") : "";
+    // The report is what follows the last completed turn, recorded or inferred; a session that never
+    // completed keeps its whole log, which is where its failure shows.
+    const log = existsSync(logPath) ? readFileSync(logPath, "utf8") : "";
+    const body = log.split(/^\[codex\] Turn complet(?:ed|ion inferred)\b.*$/m).at(-1) ?? log;
     write(
       `===== ${name} (${shown(row.model)}/${shown(row.effort)}, ${row.state}, exit ${exitOutcome(row.exit)}, ${shown(row.exit.durationMs)} ms)\n${body.trimEnd()}\n`,
     );

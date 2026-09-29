@@ -45,7 +45,8 @@ afterEach(() => {
   for (const dir of scratchRoots.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-/** A stand-in companion: records its argv and prompt, exits with the code the prompt names. */
+/** A stand-in companion: records its argv and prompt, ends a prompt naming "report" with a completed
+ *  turn and a report, and exits with the code the prompt names. */
 function fakeCompanion(dir: string) {
   const path = join(dir, "fake-companion.mjs");
   writeFileSync(
@@ -56,6 +57,7 @@ function fakeCompanion(dir: string) {
       'const promptFile = args[args.indexOf("--prompt-file") + 1];',
       'const prompt = readFileSync(promptFile, "utf8");',
       "console.log(JSON.stringify({ args, prompt }));",
+      String.raw`if (prompt.includes("report")) console.log("[codex] Turn completed.\nlater\n[codex] Turn completion inferred after the main thread finished.\n## Answer\nplain");`,
       String.raw`const wanted = /exit=(\d+)/.exec(prompt);`,
       "process.exit(wanted ? Number(wanted[1]) : 0);",
     ].join("\n"),
@@ -311,7 +313,7 @@ test("a launch's watcher drains every report once into drained.md, then exits", 
   const dir = scratch();
   const outDir = join(dir, "out");
   const tasks = join(dir, "tasks.json");
-  writeFileSync(tasks, JSON.stringify([{ name: "one", task: "answer plainly" }]));
+  writeFileSync(tasks, JSON.stringify([{ name: "one", task: "report plainly" }]));
   const launched = run(
     [
       "launch",
@@ -340,5 +342,8 @@ test("a launch's watcher drains every report once into drained.md, then exits", 
   assert.deepEqual([last.finished, last.running], [1, 0]);
   const drained = readFileSync(join(outDir, "drained.md"), "utf8");
   assert.equal(drained.match(/===== one \(/g)?.length, 1);
+  // The report alone: the progress before the last completed turn stays in one.log.
+  assert.match(drained, /## Answer\nplain/);
+  assert.doesNotMatch(drained, /"args"|later/);
   assert.doesNotMatch(run(["drain", "--out-dir", outDir], dir).stdout, /=====/);
 });

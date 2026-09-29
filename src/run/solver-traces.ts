@@ -25,14 +25,18 @@ import { scoringClosureHash } from "../claim/scoring-closure.ts";
 import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "../meta/json-runtime.ts";
 import { isRecord, isString } from "../meta/json-shape.ts";
 import { dirname, join } from "../meta/path.ts";
-import { readMargins, renderMargins } from "../solve/published-margin.ts";
+import { marginLine, readMargins, renderMargins } from "../solve/published-margin.ts";
 import { CASE_ARTIFACT_FILE, readRecordedBatteryRecord } from "../correctness-bundle/battery-record.ts";
-import { publishedMargins } from "../correctness-bundle/numeric-boundary.ts";
+import { publishedMargins, unreadBoundaryNames } from "../correctness-bundle/numeric-boundary.ts";
+import type { Brief } from "../correctness-bundle/brief.ts";
 import { readValidatedBrief } from "../correctness-bundle/public-resources.ts";
 import { DEFAULT_HARNESS_SETTINGS } from "../correctness-bundle/harness-config.ts";
 import { type AdmittedClimbRow, recordedPublicTasks, retainedRunDir } from "./climb-history.ts";
 
 const DEFAULT_WALL_MINUTES = DEFAULT_HARNESS_SETTINGS.solveMs / 60_000;
+
+/** How many readings the kickoff lists before it counts the rest. */
+const RECORD_LINES = 30;
 
 export function measuredSolverTraces(
   domainDir: string,
@@ -44,7 +48,8 @@ export function measuredSolverTraces(
     const runDir = retainedRunDir(domainDir, runId);
     if (runDir === null) return [];
     const violations = verifyRunDir(runDir);
-    const margins = measuredMargins(runDir, runId);
+    const brief = scoredBrief(runDir, runId);
+    const margins = brief === null ? [] : publishedMargins(brief);
     return row.authoring.passedTaskIds.flatMap((taskId): ContextDocument[] => {
       const passing = passingCase(runDir, taskId, violations);
       const solve: ContextDocument = {
@@ -103,20 +108,69 @@ function passingCase(
   return { publicTask: task.tasks[0], submittedArtifact: capturedJsonParse(artifact.bytes) };
 }
 
-/** The limits the brief this battery was scored under publishes; none when that brief cannot be read
- *  back or no longer matches the scoring program the battery recorded. */
-function measuredMargins(runDir: string, runId: string) {
+/** The brief this battery was scored under; null when it cannot be read back or no longer matches the
+ *  scoring program the battery recorded, so no line speaks about other rules. */
+function scoredBrief(runDir: string, runId: string): Brief | null {
   const productDir = dirname(dirname(runDir));
   let scoringHash: unknown;
   try {
     const snapshot: unknown = readRecordedBatteryRecord(runDir, runId).bundleSnapshot;
     scoringHash = isRecord(snapshot) ? snapshot.scoringHash : null;
   } catch {
-    return [];
+    return null;
   }
   if (!isString(scoringHash) || scoringClosureHash(join(productDir, "correctness-model")) !== scoringHash) {
-    return [];
+    return null;
   }
-  const brief = readValidatedBrief(productDir);
-  return brief === null ? [] : publishedMargins(brief);
+  return readValidatedBrief(productDir);
+}
+
+/**
+ * Where the latest admitted battery's passing solves landed against every limit its brief publishes,
+ * for the kickoff; null when nothing passed or nothing could be read.
+ *
+ * A passing artifact is a witness the verifier accepted, as good as the Builder's own reference for
+ * proving a limit feasible and often better: on the recorded truss runs the solver shipped lighter
+ * than the Builder's best accept witness in 102 of 166 passing cases, and at a median 3.1% inside
+ * the limit it was set. The context tool served these same lines beside each artifact, and a Builder
+ * setting its next limits did not open them, so the kickoff now states them. A limit whose
+ * boundary names no artifact path cannot be read against any solve, and the line says which, since
+ * declaring the path is what lets both this reading and the solver's own writer see it. The readings
+ * are of public artifacts against public limits, so nothing protected crosses.
+ */
+export function solverRecord(domainDir: string, history: readonly AdmittedClimbRow[]): string | null {
+  const latest = history.findLast((row) => row.excludedReason === null);
+  if (latest === undefined || latest.authoring.passedTaskIds.length === 0) return null;
+  const { runId } = latest.battery;
+  const runDir = retainedRunDir(domainDir, runId);
+  if (runDir === null) return null;
+  const brief = scoredBrief(runDir, runId);
+  if (brief === null) return null;
+  const margins = publishedMargins(brief);
+  const violations = verifyRunDir(runDir);
+  const readings = latest.authoring.passedTaskIds.flatMap((taskId) => {
+    const passing = passingCase(runDir, taskId, violations);
+    if (passing === null || !isRecord(passing.publicTask)) return [];
+    const { family, publicInput } = passing.publicTask;
+    return readMargins(margins, isString(family) ? family : "", publicInput, passing.submittedArtifact)
+      .filter((reading) => reading.slack !== null)
+      .map((reading) => `- ${taskId}: ${marginLine(reading)}`);
+  });
+  const unread = unreadBoundaryNames(brief);
+  const unreadLine =
+    unread.length === 0
+      ? null
+      : `No solve is read against ${unread.join(", ")}: ${unread.length === 1 ? "the boundary names" : "their boundaries name"} no artifact path, so neither this reading nor the solver's writer can compare an answer with it.`;
+  if (readings.length === 0) return unreadLine;
+  const rest = readings.length - RECORD_LINES;
+  return [
+    `Where the passing solves of battery ${runId} landed against the limits its brief publishes. Each is a submitted artifact the verifier accepted, so it proves its task feasible at the value it reached, as your reference does:`,
+    readings.slice(0, RECORD_LINES).join("\n"),
+    rest > 0
+      ? `${String(rest)} further reading${rest === 1 ? " is" : "s are"} at traces/${runId}/<taskId>/artifact.`
+      : null,
+    unreadLine,
+  ]
+    .filter((part) => part !== null)
+    .join("\n");
 }

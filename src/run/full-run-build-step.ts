@@ -14,7 +14,7 @@ import {
   readClimbBatteries,
 } from "./climb-history.ts";
 import { readoutHistoryDocuments, renderReadout } from "./climb-readout.ts";
-import { measuredSolverTraces } from "./solver-traces.ts";
+import { measuredSolverTraces, solverRecord } from "./solver-traces.ts";
 import { fingerprintSlug } from "../claim/fingerprint.ts";
 import { recordedVerifierEnvironmentHash } from "../claim/conformance-evidence.ts";
 import { harnessBundleIdentity } from "./climb-battery-admission.ts";
@@ -193,7 +193,9 @@ function settleBuildOutcome(
  *  author reads what was recorded — whenever one exists, and a rebuild also reads the issue
  *  register's advice. A first build with nothing measured behind it reads neither: its reason
  *  states no measurement. The advice packet is families, kinds and counts by construction
- *  (rebuild-advice.ts), so nothing protected crosses. The same read supplies the sizing landing. The
+ *  (rebuild-advice.ts), so nothing protected crosses. Beside the readout sits where the latest
+ *  battery's passing solves landed against each published limit (`solverRecord`), which reads public
+ *  artifacts against public limits. The same read supplies the sizing landing. The
  *  history pages read every recorded model pin and threshold manifest with its condition labels:
  *  another condition enters no placement, and its public tasks stay readable. */
 function composeAuthoringMemory(
@@ -211,6 +213,7 @@ function composeAuthoringMemory(
   const advice = rebuild ? readLatestRebuildAdvice(repoRoot, manifest.slug) : null;
   const advisoryNote = [
     rebuild || readout !== null ? renderReadout(readout, decision.reason) : null,
+    readout === null ? null : solverRecord(domainDir, read.history),
     advice === null ? null : renderRebuildAdvice(advice),
   ]
     .filter((part) => part !== null)

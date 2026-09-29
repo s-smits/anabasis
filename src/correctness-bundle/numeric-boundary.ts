@@ -46,6 +46,18 @@ export function publishedMargins(brief: Brief): PublishedMargin[] {
   );
 }
 
+/** The limits a brief names without the artifact path that would let an answer be read against them,
+ *  each once. */
+export function unreadBoundaryNames(brief: Brief): string[] {
+  const complete = new Set(publishedMargins(brief).map((margin) => margin.label));
+  const unread = brief.truthChecks.flatMap((check) =>
+    (check.numericBoundaries ?? [])
+      .filter((boundary) => !completeBoundary(boundary))
+      .map((b) => b.constantName),
+  );
+  return [...new Set(unread)].filter((name) => !complete.has(name));
+}
+
 /** `artifactPath` and `direction` complete the comparison, so one without the other is a
  *  half-stated rule rather than a narrower one. */
 function declaresBoundary(boundary: unknown): boolean {

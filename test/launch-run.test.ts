@@ -530,7 +530,7 @@ describe("one-command run launcher", () => {
     expect(JSON.stringify(environment)).not.toMatch(
       /fixture-current|fixture-other|fixture-api|CUSTOM_ADDRESS/,
     );
-    expect(environment.CLAUDE_BUILT_MODEL).toBe("claude-opus-5");
+    expect(environment.CLAUDE_BUILT_MODEL).toBe("claude-opus-5-5");
     expect(
       envPath(environment, "PATH")
         .split(":")

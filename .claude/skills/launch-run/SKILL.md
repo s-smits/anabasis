@@ -59,7 +59,7 @@ open. The launcher records where that commit came from — the pull request carr
 default remains `origin/main` and does not resolve the stack. Let the launcher fork that commit
 into a fresh isolated run worktree. Keep the source checkout and existing runs untouched.
 
-Model and budget defaults are Opus 5 medium/medium/medium, 25 tasks and 1,320 provider
+Model and budget defaults are Opus 5.5 medium/medium/medium, 25 tasks and 1,320 provider
 turns per run. Sol uses high/high/medium; Astra uses medium/low/low; Fable 5.1 uses medium/medium/medium.
 Each preset occurrence runs once per condition. Repeat a preset only for explicitly authorised
 replicas; their run ids gain separate `r1`, `r2` markers. The four-run example above means two

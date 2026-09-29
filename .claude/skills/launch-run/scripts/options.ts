@@ -24,7 +24,7 @@ export const CONDITIONS = {
   sol: { kind: "codex", model: "gpt-6-sol", efforts: ["high", "high", "medium"] },
   luna: { kind: "codex", model: "gpt-5.6-luna", efforts: ["max", "max", "max"] },
   astra: { kind: "codex", model: "gpt-6-astra", efforts: ["medium", "low", "low"] },
-  opus: { kind: "claude", model: "claude-opus-5", efforts: ["medium", "medium", "medium"] },
+  opus: { kind: "claude", model: "claude-opus-5-5", efforts: ["medium", "medium", "medium"] },
   fable: { kind: "claude", model: "claude-fable-5-1", efforts: ["medium", "medium", "medium"] },
 } as const;
 export const DEFAULT_DISK_MIN_GIB = 20;

@@ -21,6 +21,7 @@ import { keyIfDefined } from "../src/meta/optional-key.ts";
 import {
   CaseRecord as CaseRecordStore,
   type CaseRecordRow,
+  type RunCondition,
   readCaseRecord,
   verifyTracePointers,
 } from "../src/claim/case-record.ts";
@@ -30,7 +31,7 @@ import {
   type Solver,
   nonResultOutcome,
 } from "../src/correctness-bundle/solve.ts";
-import type { GeneratedToolBoundaryProbe } from "../src/solve/built-starter.ts";
+import { builtProcedureDigest, type GeneratedToolBoundaryProbe } from "../src/solve/built-starter.ts";
 import { measuredConditionDigest } from "../src/author/issue-condition.ts";
 import {
   MATCHING_BRIEF,
@@ -221,6 +222,27 @@ describe("the battery driver", () => {
         runCondition,
       });
     expect(digest(on)).not.toBe(digest(off));
+  });
+
+  // A recorded solve answers the prompt it opened with, and the host writes part of that prompt, so
+  // a host that rewords its part poses another question to the same harness.
+  it("records the host's share of the Built prompt, and another or none is another measured condition", () => {
+    const { slugDir } = slug("procedure-condition");
+    const now = batteryCondition(slugDir);
+    expect(now.builtProcedure).toBe(builtProcedureDigest());
+    const digest = (runId: string, runCondition: RunCondition) =>
+      measuredConditionDigest({
+        runId,
+        builtPin: "claude/m",
+        builtEffort: "high",
+        isolationStrength: "os",
+        runCondition,
+      });
+    expect(digest("r1", now)).toBe(digest("r2", now));
+    expect(digest("r1", { ...now, builtProcedure: "another" })).not.toBe(digest("r1", now));
+    const { builtProcedure: _recorded, ...older } = now;
+    expect(digest("r1", older)).not.toBe(digest("r1", now));
+    expect(digest("r1", older)).not.toBe(digest("r2", older));
   });
 
   it("records one case row per task with checked pointers, and reads rows only from their own bytes", async () => {

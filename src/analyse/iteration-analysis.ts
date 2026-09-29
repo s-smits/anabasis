@@ -51,8 +51,9 @@ export type CaseEvidence = CaseVerdict & {
 
 export type BatteryEvidence = {
   runId: string;
-  /** The run condition the claim file restates from its battery. */
-  condition: { variant: string; advisorsRemoved: string[] };
+  /** The run condition the claim file restates from its battery; `builtProcedure` is absent from a
+   *  battery recorded before the host's share of the Built prompt was. */
+  condition: { variant: string; advisorsRemoved: string[]; builtProcedure?: string };
   claimCreated: boolean;
   /** Blocking clause names when no claim was created; empty when it was. */
   claimClauses: string[];
@@ -98,7 +99,7 @@ export type IterationAnalysis = {
 };
 
 interface ClaimFileSlice {
-  condition: { variant: string; advisorsRemoved: string[] };
+  condition: BatteryEvidence["condition"];
   claim: { ok: boolean; clauses?: Array<{ clause?: string }> };
   readiness: { clauses: Array<{ clause?: string }> } | null;
 }

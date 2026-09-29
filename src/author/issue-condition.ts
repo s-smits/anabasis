@@ -72,9 +72,10 @@ export type BatteryCondition = {
  *  kind and the model, and on OpenRouter the providers, but no effort, so the reasoning effort the
  *  battery's case rows recorded goes in beside it; an effort they never recorded is unknown and is
  *  keyed to the battery itself, which matches no other. Isolation and the run condition name the
- *  walls and the tools removed. Every byte of the harness is left out, because that is what a fix is
- *  allowed to change, and that includes the solver walls agent/config.yaml declares: more turns for
- *  a family that kept timing out is a fix, not a different question. */
+ *  walls, the tools removed and the host's share of the solver's prompt, which is unknown in the
+ *  same way when a battery predates it. Every byte of the harness is left out, because that is what
+ *  a fix is allowed to change, and that includes the solver walls agent/config.yaml declares: more
+ *  turns for a family that kept timing out is a fix, not a different question. */
 export function measuredConditionDigest(facts: {
   runId: string;
   builtPin: string;
@@ -89,6 +90,7 @@ export function measuredConditionDigest(facts: {
     runCondition: {
       variant: facts.runCondition.variant,
       advisorsRemoved: facts.runCondition.advisorsRemoved,
+      builtProcedure: facts.runCondition.builtProcedure ?? { unrecorded: facts.runId },
     },
   });
 }

@@ -45,6 +45,7 @@ import type { BuildTask } from "../correctness-bundle/tasks.ts";
 import { isRecord, isString } from "../meta/json-shape.ts";
 import { TASKS_FILE, TOOLS_SPEC_FILE } from "../meta/bundle-layout.ts";
 import { checkInstrumentIds } from "../correctness-bundle/check-instruments.ts";
+import { builtProcedureDigest } from "../solve/built-starter.ts";
 import { readJsonFile } from "../meta/completed-json.ts";
 
 interface DriveBatteryOptions {
@@ -302,8 +303,11 @@ export function batteryCondition(slugDir: string, withholdInstruments = false): 
   const advisorsRemoved = withholdInstruments
     ? checkInstrumentIds(slugDir).map((id) => `instrument:${id}`)
     : [];
+  const builtProcedure = builtProcedureDigest();
   const file = join(slugDir, TOOLS_SPEC_FILE);
-  if (!existsSync(file)) return { variant: SHIPPING_VARIANT, advisorsRemoved, toolInterfaceHash: null };
+  if (!existsSync(file)) {
+    return { variant: SHIPPING_VARIANT, advisorsRemoved, toolInterfaceHash: null, builtProcedure };
+  }
   const parsed = parseJsonAs<{
     presets?: unknown;
     tools?: Array<{ name?: unknown }>;
@@ -317,5 +321,10 @@ export function batteryCondition(slugDir: string, withholdInstruments = false): 
     ),
     ...presetToolNames(selected),
   ].sort();
-  return { variant: SHIPPING_VARIANT, advisorsRemoved, toolInterfaceHash: hashJsonBytes(offered) };
+  return {
+    variant: SHIPPING_VARIANT,
+    advisorsRemoved,
+    toolInterfaceHash: hashJsonBytes(offered),
+    builtProcedure,
+  };
 }

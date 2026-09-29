@@ -1235,7 +1235,7 @@ describe("measuredConditionDigest", () => {
     builtPin: "codex:built-model:high",
     builtEffort: "high",
     isolationStrength: "physical",
-    runCondition: { variant: "shipping", advisorsRemoved: [] },
+    runCondition: { variant: "shipping", advisorsRemoved: [], builtProcedure: "p" },
   };
 
   it("moves with the Built model, its effort, the isolation and the run condition", () => {
@@ -1244,7 +1244,8 @@ describe("measuredConditionDigest", () => {
       { ...facts, builtPin: "codex:built-model:low" },
       { ...facts, builtEffort: "low" },
       { ...facts, isolationStrength: "UNPROVEN" },
-      { ...facts, runCondition: { variant: "shipping", advisorsRemoved: ["hint"] } },
+      { ...facts, runCondition: { ...facts.runCondition, advisorsRemoved: ["hint"] } },
+      { ...facts, runCondition: { ...facts.runCondition, builtProcedure: "q" } },
     ]) {
       expect(measuredConditionDigest(moved)).not.toBe(base);
     }
@@ -1254,6 +1255,12 @@ describe("measuredConditionDigest", () => {
     const unrecorded = { ...facts, builtEffort: null };
     expect(measuredConditionDigest({ ...unrecorded, runId: "r2" })).not.toBe(
       measuredConditionDigest(unrecorded),
+    );
+    // A condition recorded before the host's share of the prompt was is unknown in the same way.
+    const { builtProcedure: _recorded, ...older } = facts.runCondition;
+    const olderFacts = { ...facts, runCondition: older };
+    expect(measuredConditionDigest({ ...olderFacts, runId: "r2" })).not.toBe(
+      measuredConditionDigest(olderFacts),
     );
   });
 

@@ -100,21 +100,20 @@ function latestBattery(
 }
 
 /** Which part of the solving condition moved since battery `runId` solved, or null when none did:
- *  the Built pin, the reasoning effort the battery's case rows recorded, the run condition, and the
- *  tool tree the solver's shell runs first on PATH. The pin names no effort, the agent bytes hold
- *  neither the instruments an operator withheld nor that tool tree, and a recorded solve answers only
- *  the condition it ran under, so an effort the battery never recorded matches nothing. */
-function solverConditionMoved(
+ *  the Built pin, the run condition (the walls, the tools removed and the host's share of the
+ *  solver's prompt), the tool tree the solver's shell runs first on PATH, and the reasoning effort
+ *  the battery's case rows recorded. The pin names no effort, the agent bytes hold neither the
+ *  instruments an operator withheld, that tool tree nor the host's prompt, and a recorded solve
+ *  answers only the condition it ran under, so an effort or a procedure the battery never recorded
+ *  matches nothing. Both a correction's regrade and a remeasure read it. */
+export function solverConditionMoved(
   input: ExamInput,
   runId: string,
-  battery: Pick<BatteryRecord, "backendPin" | "bundleSnapshot" | "condition">,
+  battery: Pick<BatteryRecord, "backendPin" | "condition"> & {
+    bundleSnapshot: Pick<BatteryRecord["bundleSnapshot"], "toolTreeDigest">;
+  },
 ): string | null {
   if (battery.backendPin !== input.runPin) return "the backend pin moved";
-  const recordPath = join(campaignDir(input.repoRoot, input.slug), CASE_RECORD_FILE);
-  const rows = readCaseRecord(recordPath).flatMap((entry) => (entry.row.runId === runId ? [entry.row] : []));
-  if (recordedBuiltEffort(rows) !== input.built.reasoningEffort) {
-    return "the Built reasoning effort moved, or the recorded solves name none";
-  }
   const condition = batteryCondition(input.candidateDir, input.built.withholdInstruments === true);
   if (canonicalJson(condition) !== canonicalJson(battery.condition)) {
     return "the solver's run condition moved";
@@ -123,6 +122,11 @@ function solverConditionMoved(
     battery.bundleSnapshot.toolTreeDigest !== toolTreeDigestOf(bundleSnapshotToolTree(input.candidateDir))
   ) {
     return "the solver's tool tree moved";
+  }
+  const recordPath = join(campaignDir(input.repoRoot, input.slug), CASE_RECORD_FILE);
+  const rows = readCaseRecord(recordPath).flatMap((entry) => (entry.row.runId === runId ? [entry.row] : []));
+  if (recordedBuiltEffort(rows) !== input.built.reasoningEffort) {
+    return "the Built reasoning effort moved, or the recorded solves name none";
   }
   return null;
 }

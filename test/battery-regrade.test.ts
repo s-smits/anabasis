@@ -28,7 +28,11 @@ import { claimsDirFor } from "../src/run/claim-write.ts";
 import { readClimbReadout } from "../src/run/climb-readout.ts";
 import { FROZEN_MANIFEST_PATH } from "../src/critic/manifest.ts";
 import { type Solver, nonResultOutcome } from "../src/correctness-bundle/solve.ts";
-import { readRecordedBatteryRecord } from "../src/correctness-bundle/battery-record.ts";
+import { readRecordedBatteryRecord, toolTreeDigestOf } from "../src/correctness-bundle/battery-record.ts";
+import { bundleSnapshotToolTree } from "../src/claim/bundle-snapshot.ts";
+import type { RunCondition } from "../src/claim/case-record.ts";
+import { solverConditionMoved } from "../src/run/battery-reuse.ts";
+import { batteryCondition } from "../src/run/run-driver.ts";
 import { builtSession, fullFakeHost, probeEvidence } from "./helpers/measure-doubles.ts";
 import { scriptedBuilderRuntime } from "./helpers/scripted-builder-runtime.ts";
 import { writeFixtureThresholds } from "./helpers/thresholds.ts";
@@ -473,4 +477,35 @@ describe("a repeat after a battery at or above the aim", () => {
     expect(held.decision).toBe("held");
     expect(held.clauses.map((clause: string) => clause.split(":")[0])).toContain("candidate-zero-verified");
   }, 180_000);
+});
+
+describe("the solving condition a regrade and a remeasure both read", () => {
+  it("moves with the host's share of the Built prompt, and a battery recorded without it matches nothing", () => {
+    const repoRoot = mkdtempSync(join(import.meta.dir, "..", ".scratch", "ana-solving-"));
+    scratch.push(repoRoot);
+    const candidateDir = join(repoRoot, "candidate");
+    mkdirSync(candidateDir, { recursive: true });
+    const input = {
+      repoRoot,
+      slug: SLUG,
+      runPin: "claude/m",
+      built: { reasoningEffort: "medium" },
+      candidateDir,
+    };
+    const recorded = (condition: RunCondition) => ({
+      backendPin: "claude/m",
+      condition,
+      bundleSnapshot: { toolTreeDigest: toolTreeDigestOf(bundleSnapshotToolTree(candidateDir)) },
+    });
+    const now = batteryCondition(candidateDir);
+    // The same procedure clears the condition and reaches the effort, which no row here records.
+    expect(solverConditionMoved(input, "r1", recorded(now))).toBe(
+      "the Built reasoning effort moved, or the recorded solves name none",
+    );
+    expect(solverConditionMoved(input, "r1", recorded({ ...now, builtProcedure: "another" }))).toBe(
+      "the solver's run condition moved",
+    );
+    const { builtProcedure: _recorded, ...older } = now;
+    expect(solverConditionMoved(input, "r1", recorded(older))).toBe("the solver's run condition moved");
+  });
 });

@@ -302,6 +302,38 @@ export function builtAgentInterface(
   };
 }
 
+/** The host's share of the Built contract as one digest: the universal prompt, the roster sentence
+ *  with its public-rules clause, the guide preamble, the role prefix on each tool row, the nudge and
+ *  the first-turn template, composed over fixed stand-ins for what the harness authors. The
+ *  harness's share — its tools, its guide and its solve wall — is in its agent bytes, so the two
+ *  together name the prompt a case opens with, and this one moves exactly when the host rewords its
+ *  part. A recorded solve answers only the procedure it ran under. */
+export function builtProcedureDigest(): string {
+  const stand = (name: string) =>
+    defineTool({
+      name,
+      label: name,
+      description: name,
+      parameters: Type.Object({}),
+      run: () => ({ text: "" }),
+    });
+  const names = [BUILT_PUBLIC_RULES_TOOL, "stand_in"];
+  const probe = builtAgentInterface(
+    names.map(stand),
+    starterRegistration(names.map((name) => ({ name, owner: "starter", authority: "submission" }))),
+    "stand-in guide",
+    60_000,
+  );
+  return sha256(
+    trustedJson({
+      prompt: probe.promptDigest,
+      tools: probe.toolSchemaDigest,
+      nudge: BUILT_NUDGE,
+      firstTurn: BUILT_FIRST_TURN_TEMPLATE,
+    }).bytes,
+  );
+}
+
 export function starterRegistration(tools: BuiltStarterRegistration["tools"]): BuiltStarterRegistration {
   const names = new Set<string>();
   for (const { name } of tools) {

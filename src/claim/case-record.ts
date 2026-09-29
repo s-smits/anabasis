@@ -101,15 +101,18 @@ export type CaseIsolationEvidence = {
   session?: SessionProfileEvidence;
 };
 
-/** The recorded run condition: its `variant` value, the adviser tools removed before solving, and
- *  a sha256 of the offered tool names, which is the tools-spec names minus those removed advisers.
- *  The hash is null when no tools-spec was recorded. The evaluation runner writes this condition
- *  to battery.json and then repeats it unchanged on every case row, so a reader comparing two
- *  conditions can establish which capabilities differed without opening a second file. */
+/** The recorded run condition: its `variant` value, the adviser tools removed before solving, a
+ *  sha256 of the offered tool names, which is the tools-spec names minus those removed advisers, and
+ *  `builtProcedureDigest`, the host's share of the prompt the solver opened with. The hash is null
+ *  when no tools-spec was recorded. The evaluation runner writes this condition to battery.json and
+ *  then repeats it unchanged on every case row, so a reader comparing two conditions can establish
+ *  which capabilities differed without opening a second file. A row recorded before the procedure
+ *  was lacks it, and a reader comparing conditions treats that as unknown, which matches nothing. */
 export type RunCondition = {
   variant: string;
   advisorsRemoved: string[];
   toolInterfaceHash: string | null;
+  builtProcedure?: string;
 };
 
 export type CaseRecordRow = CaseVerdict & {
@@ -185,7 +188,8 @@ function conditionDefect(c: JsonValue): string | null {
     !isString(c.variant) ||
     !Array.isArray(c.advisorsRemoved) ||
     !c.advisorsRemoved.every((name) => isString(name)) ||
-    (c.toolInterfaceHash !== null && !isString(c.toolInterfaceHash))
+    (c.toolInterfaceHash !== null && !isString(c.toolInterfaceHash)) ||
+    ("builtProcedure" in c && !isString(c.builtProcedure))
   ) {
     return "stored condition must be {variant, advisorsRemoved: string[], toolInterfaceHash: string|null} or null; variant identifies the comparison variant";
   }

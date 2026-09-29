@@ -211,20 +211,23 @@ describe("the Built harness instructions", () => {
   // The prompt is a condition identity: two runs are comparable only when it is byte-identical.
   // These assertions name the duties it owes rather than repeating it, so a reworded sentence that
   // keeps every duty is one deliberate digest change here instead of a diff of the whole text.
-  it("states the checking duty and the solve wall, and leaves the rest to tools", () => {
+  it("states the solve wall and what it submits, and leaves the method to the solver", () => {
     const prompt = builtSystemPrompt(DEFAULT_HARNESS_SETTINGS.solveMs);
-    expect(prompt).toContain("a breach it reports is a failed requirement");
-    expect(prompt).toContain("widening the worst margin");
-    // The wall submits the answer last prepared, so a solver that experimented past its best
-    // candidate shipped the worse one. save_candidate and restore_candidate are how it returns.
-    expect(prompt).toContain("Save it before you change it");
     expect(prompt).toContain("120 minutes");
-    expect(prompt).toContain("Where a requirement is a numeric limit");
-    // Asking the solver to compare each reported value with each published requirement, and to
-    // hold margin where its own model only approximated one, did not stop answers breaching a
-    // published limit by their own numbers; readMargins measures that on the prepared answer
-    // instead, so the clauses are gone.
-    for (const asked of ["keep margin on every limit", "compare each result", "Do not submit an answer"]) {
+    // The wall sends the answer last prepared, not the best one, which the solver cannot observe;
+    // save_candidate and restore_candidate describe themselves in the roster.
+    expect(prompt).toContain("the last answer an artifact-writer prepared is submitted for you");
+    // The Built Harness owns its solving method. Clauses asking the solver to grade each candidate,
+    // adjust for each breach, search, save or widen a margin made every task the same loop.
+    for (const asked of [
+      "keep margin on every limit",
+      "compare each result",
+      "Do not submit an answer",
+      "a breach it reports",
+      "bounded search",
+      "Save it before you change it",
+      "widening the worst margin",
+    ]) {
       expect(prompt).not.toContain(asked);
     }
     // The shell rules belong to the shell's own description, where a guard refusal quotes them.

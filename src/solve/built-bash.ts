@@ -107,9 +107,7 @@ const WALLS =
   "what is missing into your home directory.";
 const SCRATCH_FOLDER =
   " The command runs in a fresh private folder that is removed when it ends; nothing there becomes " +
-  "your answer, which you still record with the harness's own tools. A driver you keep in your home " +
-  "directory and re-run, reading its inputs from a file you edit between commands, buys more " +
-  "candidates than retyping the work each time.";
+  "your answer, which you still record with the harness's own tools.";
 
 interface ReadTree {
   files: Record<string, string>;

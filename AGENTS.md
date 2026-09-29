@@ -220,9 +220,10 @@ facts, so a reworded readout opens no new epoch. Each row's solve effort (median
 `solve_minutes`, median tool calls) is served through the context tool's history source and is never read
 as difficulty, since within a battery it does not separate passes from fails.
 
-Harder means a changed demand, not changed numbers (rule 11). New ids, longer lists of load cases,
-invented rules and solver tools that report every margin a check reads all look harder while measuring
-nothing.
+Harder means a changed demand, not changed numbers (rule 11). New ids, longer lists of load cases and
+invented rules all look harder while measuring nothing. A solver tool that grades a candidate, however
+fully, is not a defect in itself, since knowing whether a candidate meets the rules is not knowing how to
+build one; whether it left a battery too easy is what blind measurement says.
 
 Read the climb before paying for it. This is an operator reading rather than a controller gate: run
 `bun .claude/skills/whole-run-investigation/scripts/wri.ts climb <campaign dir>` whenever a new
@@ -757,11 +758,11 @@ the battery was paid for.
     and report rules, so a failing battery measured the solver's reading of the author's wording. The
     truss Builders lengthened a listed set of load cases and called it a tier. And both shipped solver
     tools reporting every margin a check reads, so the solver could propose, read the failing state and
-    adjust, which evaluates a candidate and synthesises none. None of these, nor tightening a feasible
-    limit toward a stronger witness (a legitimate route), proves a task harder or easier by itself; blind
-    measurement decides. Each prompt says it once: `STARTER.md` owns the tier entry, the Builder system
-    prompt the clauses, and `roundPrompt` and `renderBatteryContract` when to submit and what a witness
-    proves. The round prompt asks for a submit once a clear preview says the candidate works, because the
+    adjust. None of these, nor tightening a feasible limit toward a stronger witness (a legitimate route),
+    proves a task harder or easier by itself; blind measurement decides, which is why since 2026-09-29 no
+    prompt argues the third in advance. Each prompt says it once: the Builder system prompt owns the
+    clauses, `examples.md` the optional routes to a target the solver does not reliably meet, and
+    `roundPrompt` and `renderBatteryContract` when to submit and what a witness proves. The round prompt asks for a submit once a clear preview says the candidate works, because the
     measured battery, not a rehearsal, decides where it lands, and nothing holds a submit on rehearsals
     (the 96-of-99 history is under "What has cost whole rounds").
 
@@ -898,10 +899,11 @@ the battery was paid for.
     The solve wall is part of the measured condition. Below a tenth of the default the solver never sees a
     command return, so the battery would grade the wall's submit of a first draft. The floor
     (`harnessConfigIssue`) refuses admitting a candidate or starting a solve, but never reading a recorded
-    bundle, so a replay still grades one that declared less. The Built prompt names its closed roster and
-    asks for margin-widening only on numeric limits. A requirement that is simply met or not is done once
-    a run has shown it met, because the unconditional sentence sent solvers on searches that changed no
-    outcome.
+    bundle, so a replay still grades one that declared less. The Built prompt (`builtSystemPrompt`,
+    `src/solve/built-starter.ts`) names its closed roster, the solve wall and what the wall submits, and
+    leaves the method to the solver. Until 2026-09-29 it also asked the solver to grade every candidate,
+    reach a tight limit by a bounded search and widen the worst margin, which turned every task into
+    propose, grade and adjust, so a battery measured that loop rather than the solver's own way of solving.
 
     Every fresh `tools-spec.json` gives the solver a shell through `presets`: `"files"` for a file-shaped
     answer, whose draft files become the answer and which already carries the shell, or `"shell"` beside

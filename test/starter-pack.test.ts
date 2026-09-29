@@ -193,7 +193,8 @@ describe("pi starter pack brief vocabulary", () => {
   });
 
   // A replayed witness is already normal and the solver reaches it, so the worked routes are to a
-  // target it does not reliably meet, and a rehearsal is a sample rather than a veto.
+  // target it does not reliably meet, and a rehearsal is a sample rather than a veto. A claim that
+  // one kind of edit buys less than it looks is a theory blind measurement decides, so none is made.
   it.concurrent("examples.md offers routes to a target the solver does not reliably meet", () => {
     const text = STARTER_DOC.replace(/\s+/g, " ");
     expect(text).toContain("## A target the solver does not reliably meet");
@@ -202,19 +203,7 @@ describe("pi starter pack brief vocabulary", () => {
     expect(text).toContain(
       "`harness_trial` estimates how reliably the solver meets a task; it does not veto one.",
     );
-  });
-
-  // Told to make a battery harder, a Builder lengthened lists and tightened numbers its checks
-  // already read; the examples pair each demand with what observes it and a reject beside it.
-  it.concurrent("examples.md shows a hard demand as a demand, an instrument and a near miss", () => {
-    const text = STARTER_DOC.replace(/\s+/g, " ");
-    expect(text).toContain("## What makes a demand hard");
-    expect(text).toContain(
-      "Each pairs a demand with an instrument that sees it and a reject beside a correct answer.",
-    );
-    for (const field of ["Compiler optimisation", "Schema migration", "Analogue filter design"]) {
-      expect(text).toContain(`**${field}.**`);
-    }
+    expect(text).not.toContain("Tightening one limit everywhere buys less than it looks");
   });
 
   // Asking that a decision a passing answer needs stay private asks for an enforced private rule,

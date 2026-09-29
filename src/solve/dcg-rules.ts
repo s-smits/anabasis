@@ -51,9 +51,8 @@ export const DCG_RULES: readonly string[] = [
  *  `privateScratchRedirect`), which is why the write line names `$HOME` beside `~`.
  *  It leaves out `$TMPDIR`, which the Built shell makes fresh for each command and never reads back,
  *  so a rule naming it would offer the solver a place its next command cannot revisit. The time
- *  line gives a search its timeout too: the Built system prompt calls a bounded search over
- *  candidates a sound way to meet a tight limit, and one cut off at the default wall finds nothing;
- *  the filesystem scan a timeout should not be spent on is the line before it. */
+ *  line names the parameter because a long build or search cut off at the default wall finds
+ *  nothing; the filesystem scan a timeout should not be spent on is the line before it. */
 export const BUILT_SHELL_RULES: readonly string[] = [
   "Refused: rm -r outside the command's own folder, find -delete, git clean, git reset --hard.",
   "Delete a tree with rm -rf <relative path> or ~/<path>, also after cd ~; /tmp is shared with other solves, so keep your trees in $HOME.",

@@ -268,10 +268,9 @@ function startWorkerClient(
  *
  * Both are already in the model's context — the task in its first turn, the resources through their
  * own reader — so this carries nothing new across the wall. What it removes is the step between
- * having them and computing over them: the shell's own text already advises "a driver you keep in
- * your home directory and re-run, reading its inputs from a file you edit between commands", and
- * before this the solver had to retype those inputs into a heredoc to create that file. Returns how
- * many resource files were written, which is all the shell description needs to name them.
+ * having them and computing over them: without the files, a program the solver runs over those
+ * inputs needs them retyped into a heredoc first. Returns how many resource files were written,
+ * which is all the shell description needs to name them.
  */
 export function seedSessionHome(
   home: string,

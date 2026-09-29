@@ -54,28 +54,28 @@ export const SCOPE_CLAUSE = [
  *  reference recipe private and then write that same recipe into BUILT_AGENTS.md as guidance, in its
  *  own words, where no literal comparison of the two texts would see it.
  *
- *  The tools sentence replaced one asking for "an analysis showing each requirement's value, limit
- *  and margin". Builders read it as a duty to port the verifier into the agent, and a verifier-exact
- *  adviser over every listed state turns any feasible task into iterate-until-clear, so batteries
- *  passed whole however long their state lists grew. The analysis stays, because a solver without one fails
- *  on arithmetic, which measures nothing. The program sentence answers harnesses that published an exact call sequence and graded a
- *  call trace, which turned writing the program into transcribing it. */
+ *  The tools sentence sets no ceiling on what an analysis may report. Knowing whether a candidate
+ *  meets the rules is not knowing how to build one, a solver without an analysis fails on
+ *  arithmetic, which measures nothing, and whether a rich tool left a battery too easy is for blind
+ *  measurement to say rather than for a rule written in advance. The program sentence answers
+ *  harnesses that published an exact call sequence and graded a call trace, which turned writing
+ *  the program into transcribing it. */
 export const PUBLICATION_CLAUSE = [
   "Publish everything the verifier requires of an answer wherever the solver reads it: constants with their authority, units, precision and rounding, comparison direction and tolerance, canonical form, required paths and entry points, and the assumptions an installed tool applies. A solver that follows every published rule must never fail on a rule it could not read; where a practitioner could read a rule two ways, the brief states the verified reading.",
   "Withhold hidden expectations, private controls and decisions, reference answers and protected verifier information from everything the solver reads, in any wording, tool results included. For a program, publish the behaviour it must show, not the calls or steps that produce it: a published sequence turns writing the program into transcribing it.",
-  "Give the solver a practitioner's tools — the real toolchain, an analysis of a candidate computed by the rule its check applies, a bounded search — and leave it the decision the task asks for. An adviser that reports every margin across every state the task lists turns the task into trial and error; a tool that grades a candidate still leaves it that decision.",
+  "Give the solver a practitioner's tools — the real toolchain, an analysis of a candidate computed by the rule its check applies, a bounded search — and leave it the decision the task asks for; a tool that grades a candidate, however fully, still leaves it that decision.",
 ] as const;
 
 /** Verification that means something, and the real installed tools it rests on. The first sentence
  *  answers harnesses that graded a self-reported design record against their own arithmetic, and
  *  program behaviour through a call trace into a host stand-in the Builder wrote; the install duty
  *  answers one that repeated a rendered "not found" back as its reason for a stand-in, and one that
- *  then compiled against a header it had written itself; the omission sentence answers briefs that
- *  left a family out for want of an instrument while a tool already installed recorded what that
- *  family turns on; the last sentence answers one that pasted the agent's own analysis into the
- *  evaluator. */
+ *  then compiled against a header it had written itself; the three states replace a rule that a
+ *  capability could be left out only once nothing could observe it, which gave unfinished work no
+ *  honest name besides finished or out of scope; the last sentence answers one that pasted the
+ *  agent's own analysis into the evaluator. */
 export const VERIFICATION_CLAUSE = [
-  "Every advertised capability maps to a check that can fail on real tasks. Declare a capability an explicit omission in the brief only when no route you have, can install or can write observes it, and name what you tried: an installed tool that already records what the capability turns on is a route once you write the adapter or model that reads it. Decide what the delivered work does by building, running or recomputing it on the supplied inputs, and accept every implementation the brief permits: a check that reads the answer's own report, recognises how its source is written or replays its calls into a stand-in you wrote grades your model of the work, not the work. Agreement among check, reference solve and controls is circular when they share an omission.",
+  "Every advertised capability maps to a check that can fail on real tasks. The brief records each capability the request names in one of three states: implemented and checked; required but not yet implemented or verified, with what is missing; or outside the request. Never present unfinished work as finished or narrow the request quietly; you may sequence the work. Decide what the delivered work does by building, running or recomputing it on the supplied inputs, and accept every implementation the brief permits: a check that reads the answer's own report, recognises how its source is written or replays its calls into a stand-in you wrote grades your model of the work, not the work. Agreement among check, reference solve and controls is circular when they share an omission.",
   "Acquire the tool before writing around it. The domain's practitioners already have established open-source tooling with a published interface: find it from public sources and install it; Bash has network access. A tool you have not searched for and tried to install is not an unavailable tool.",
   "A stand-in for the target is the last route and proves conformance to the stand-in alone: name it and what you tried in the brief, and do not describe its result as compiling, building or simulating for that target. Never replace a failing verifier tool with the agent's own analysis.",
 ] as const;

@@ -43,16 +43,15 @@ it enforces as `citedDecisionIds` (an undeclared id, or only private ones, is re
   choices, never an unpublished validity rule. What stays private is how an answer is built: the
   reference answers and a task-specific recipe, such as a search order, an allocation rule, a
   fallback chain or a derivation. Then read the public projection whole — the rule rows, the
-  constants, the schema, the operating guide and your tool text together. Where it spells out how
-  to build a passing answer, the battery measures transcription, and the repair is a task that
-  leaves the solver something to compute, search or coordinate, never a rule a check enforces
-  taken out of the projection.
+  constants, the schema, the operating guide and your tool text together — for that recipe in
+  other words. The repair is the recipe removed, never a rule a check enforces taken out of the
+  projection.
 - A check owning a join lists its `joinIds`.
 - Read every value your rule names from the task, at the moment the check runs. A constant written
   into checker source for a value the brief publishes as an input is a defect even when every
   present task publishes the same number: it grades today's battery correctly and silently forbids
-  the next one from varying that input, so the demand can then only move by magnitude. Declaring
-  the path in `publicInputPaths` does not do it; the code that decides has to read it.
+  the next one from varying that input. Declaring the path in `publicInputPaths` does not do it;
+  the code that decides has to read it.
 - A check certifying behaviour on a named resource, such as a pin, a member or a channel, decides
   from the values the answer produces for that resource: a simulated trace of that pin, the
   register writes the build emits for it, the force computed in that member. A library symbol or a
@@ -250,12 +249,11 @@ placeholder is missing evidence.
 - Every public requirement the agent must act on stays reachable through the public task, a
   reader, a public method or a draft-derived adviser, and the system prompt's rules on what a
   tool may claim, add and withhold bind every tool here.
-- An adviser returns the quantities the published limits apply to, never a pass or fail, computed
-  by the rule its check applies with every constant, iteration count and procedure the public task
-  determines. Approximating a rule you could compute is a defect no disclaimer cures: the solver
-  optimises against the number returned, so an adviser answering a second-order limit to first order
-  sends every solver over it. Where the public input leaves an effect open, name it and its
-  direction in the returned text. A fast screening adviser
+- An adviser computes what it returns by the rule its check applies, with every constant, iteration
+  count and procedure the public task determines. Approximating a rule you could compute is a
+  defect no disclaimer cures: the solver optimises against the number returned, so an adviser
+  answering a second-order limit to first order sends every solver over it. Where the public input
+  leaves an effect open, name it and its direction in the returned text. A fast screening adviser
   beside a slow exact one is fine; generated tools cannot start processes.
 
 ```json

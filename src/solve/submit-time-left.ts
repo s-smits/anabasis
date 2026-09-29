@@ -3,9 +3,9 @@
  * time left instead of sending, once. Solvers routinely submit by their own call barely a third of
  * the way into the wall and fail on a requirement they had the time to check. The system prompt
  * states the wall once, at the start of a long turn; this states it where the decision to stop is
- * actually made. The reply names only the clock and the published requirements, so it carries
- * nothing the verifier knows. The second call sends, and so does the call the wall makes, since by
- * then less than the share remains.
+ * actually made. The reply names only the clock and what a breach costs, so it carries nothing the
+ * verifier knows and leaves what to do with the time to the solver. The second call sends, and so
+ * does the call the wall makes, since by then less than the share remains.
  */
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 
@@ -15,8 +15,7 @@ export function submitTimeLeftNote(leftMs: number, solveMs: number): string {
   const left = Math.floor(leftMs / 60_000);
   return (
     `Not sent: ${String(left)} of the case's ${String(Math.round(solveMs / 60_000))} minutes remain, and this reply comes once. ` +
-    "Check the prepared answer against every published requirement with the tools you have: a requirement it breaks fails the case, however small the breach. " +
-    "If one fails, use the time on it and save the current candidate first; when time runs out, the last answer an artifact-writer prepared is submitted for you. " +
+    "A published requirement the prepared answer breaks fails the case, however small the breach; when time runs out, the last answer an artifact-writer prepared is submitted for you. " +
     "Call submit again to send the prepared answer now."
   );
 }

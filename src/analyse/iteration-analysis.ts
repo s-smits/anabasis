@@ -179,14 +179,18 @@ type FindingBody = {
 };
 
 /** The shapes a demand finding takes: a capability no task exercises, sibling tasks differing only
- *  in published values, a limit the first reasonable candidate clears widely, and a rule no
- *  practitioner of the request would hold. A solver tool that reports every margin a check reads is
+ *  in published values, a limit the first reasonable candidate clears widely, a rule no practitioner
+ *  of the request would hold, and checks that observe only the published inputs, so an answer that
+ *  replays the published outputs without reading its inputs passes. That last shape is one leaf of
+ *  a source-file artifact, where no path the review may name locates it, so without its own
+ *  sentence it crosses as one of the others and the author repairs the wrong thing. A solver tool that reports every margin a check reads is
  *  not one: it still leaves the solver the decision, and whether it made a battery easy is measured. */
 export const DEMAND_GAPS = [
   "capability-unexercised",
   "sibling-values-only",
   "limit-cleared-widely",
   "rule-outside-request",
+  "published-scenario-only",
 ] as const;
 export type DemandGap = (typeof DEMAND_GAPS)[number];
 

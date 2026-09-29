@@ -22,6 +22,8 @@ const DEMAND_GAP_SENTENCES: Record<DemandGap, string> = {
   "sibling-values-only": "Sibling tasks differ only in the values they publish.",
   "limit-cleared-widely": "The first reasonable candidate clears a published limit widely.",
   "rule-outside-request": "A rule stands that no practitioner of the request would hold.",
+  "published-scenario-only":
+    "The checks observe only the inputs the task publishes, so an answer that reproduces the published outputs without reading its inputs passes.",
 };
 
 /** Which way a probe-backed check is wrong, as the author reads it, or that the cited probes do not

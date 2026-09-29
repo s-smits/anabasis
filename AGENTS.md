@@ -650,8 +650,12 @@ the battery was paid for.
 
    A finding about easy tasks names the obligation of the request they leave undemanded, owned by
    `correctness-model/tasks.json`, and may carry a `demandGap` of capability-unexercised,
-   sibling-values-only, limit-cleared-widely or rule-outside-request; the reviewer records one when it
-   has shown the gap, not because the score was high. Until 2026-09-29 the host enforced more. It split
+   sibling-values-only, limit-cleared-widely, rule-outside-request or published-scenario-only; the
+   reviewer records one when it has shown the gap, not because the score was high. The fifth came on
+   2026-09-29, after two Opus firmware rounds each met three held submits over one finding, and one
+   of them spent about two hours on the wrong repairs: the checks ran only the published scenario, so a sketch replaying the published timeline without
+   reading its sensors passed, and the finding crossed as "a capability no task exercises", which
+   sent the Builder to widen scenarios instead. Until 2026-09-29 the host enforced more. It split
    the request at commas, semicolons and "and", asked for a `Clause N:` line per piece, and above the
    aim demanded either a `tasks.json` defect or a family-by-family account, which it checked by whether
    each family's name appeared in the report, re-asking once when either was missing. That graded

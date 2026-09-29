@@ -38,7 +38,7 @@ import { publicEpochReview } from "../src/review/epoch-review-public.ts";
 import { briefIdentities, recordFindingTool } from "../src/review/epoch-review-findings.ts";
 import { PROBE_BUDGET } from "../src/review/review-probe.ts";
 import { BUNDLE_FILES } from "../src/author/feedback-routing.ts";
-import { TASKS_FILE } from "../src/meta/bundle-layout.ts";
+import { EVALUATOR_FILE, TASKS_FILE } from "../src/meta/bundle-layout.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 
 const NUMBER_WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
@@ -831,6 +831,10 @@ describe("what a finding's typed fields carry to authoring", () => {
       [
         { owner: TASKS_FILE, demandGap: "capability-unexercised" },
         "Epoch review (correctness-model/tasks.json): no check or path named; a defect.\nThe request names a capability no task in the battery exercises.",
+      ],
+      [
+        { owner: EVALUATOR_FILE, demandGap: "published-scenario-only" },
+        `Epoch review (${EVALUATOR_FILE}): no check or path named; a defect.\nThe checks observe only the inputs the task publishes, so an answer that reproduces the published outputs without reading its inputs passes.`,
       ],
       [
         { owner: "agent/tools.ts", demandGap: "rule-outside-request" },

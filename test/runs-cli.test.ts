@@ -163,6 +163,8 @@ const launchdRunning = (dir: string, runId: string) =>
 const answer = (out: string, code = 0): QueryResult => ({ code, out });
 /** What the service manager answers about a run it holds no record of. */
 const noService = (): QueryResult => answer("Could not find service", 1);
+/** The listing options of a machine where no run has a loaded service. */
+const OFFLINE = { closedLimit: 8, manager, query: noService };
 
 describe("runs list", () => {
   it("separates a closed run, an orphaned one and a live one, and counts each run's own cases", () => {
@@ -296,7 +298,7 @@ describe("runs list", () => {
     // signal while `runs resume --yes` spends provider turns reproducing the run it chose.
     writeOpening(root, "truss", "truss-opus-20260919T192747000Z-d18bef", OPENED_AT);
     writeOpening(root, "truss", "truss-opus-20260920T081500000Z-4ac221", "2026-09-20T00:00:00.000Z");
-    const options = { closedLimit: 8, manager, query: noService };
+    const options = OFFLINE;
 
     const ambiguous = collectDetail(root, "truss-opus", options);
     expect(ambiguous.detail).toBeUndefined();
@@ -336,7 +338,7 @@ describe("runs list", () => {
       project: "truss-bbbbbbbb-2",
       tag: "-second",
     });
-    const options = { closedLimit: 8, manager, query: noService };
+    const options = OFFLINE;
 
     const worktrees = new Map(collectRows(root, options).map((row) => [row.slug, row.worktree ?? ""]));
     expect(worktrees.get("truss-aaaaaaaa-1")).toContain("-first");
@@ -353,7 +355,7 @@ describe("runs list", () => {
 describe("the receipt a stop may act on", () => {
   const runId = "truss-opus-20260920T081500000Z-4ac221";
   const prompt = "designs steel roof trusses to Eurocode 3";
-  const options = { closedLimit: 8, manager, query: noService };
+  const options = OFFLINE;
 
   it("never lends one campaign's receipt to another, even when it is the only one left", () => {
     // Campaigns A and B share a run id and A's launch worktree was pruned. The single receipt used
@@ -756,16 +758,37 @@ describe("the climb decisions recorded for a run", () => {
     writeCases(campaignDir, [caseLine(1, "run-1-i02", "pass"), caseLine(2, "run-1-i03", "pass")]);
     writeDecision(campaignDir, "run-1-i02", RETIRED_SCHEMA);
     writeDecision(campaignDir, "run-1-i03", CURRENT_SCHEMA);
-    const show = () =>
-      renderShow(
-        required(collectDetail(root, "run-1", { closedLimit: 8, manager, query: noService }).detail, "run-1"),
-        [],
-      );
+    const show = () => renderShow(required(collectDetail(root, "run-1", OFFLINE).detail, "run-1"), []);
     const shown = show();
     expect(shown).toContain(`Climb records refused: 1 (${RETIRED_SCHEMA})`);
     expect(shown).toContain(`not ${CURRENT_SCHEMA}`);
     writeDecision(campaignDir, "run-1-i02", CURRENT_SCHEMA);
     expect(show()).not.toContain("Climb records refused");
+  });
+
+  it("shows each battery's placement on its own row, not on the round whose opening decided it", () => {
+    const root = checkout();
+    const campaignDir = writeOpening(root, "slug-aaaaaaaa-1", "run-1", OPENED_AT);
+    writeCases(campaignDir, [caseLine(1, "run-1", "pass"), caseLine(2, "run-1-i02", "unaccepted")]);
+    writeJson(join(campaignDir, "difficulty-decisions", "run-1-i02.json"), {
+      schema: CURRENT_SCHEMA,
+      runId: "run-1-i02",
+      slug: "slug",
+      digest: "run-1-i02-digest",
+      difficulty: {
+        admitted: 1,
+        decision: {
+          rationale: "the first battery placed",
+          evidence: [{ runId: "run-1", batterySha256: "c".repeat(64) }],
+          placement: { passes: 1, n: 1, zone: "too-easy" },
+        },
+      },
+    });
+    const shown = renderShow(required(collectDetail(root, "run-1", OFFLINE).detail, "run-1"), []);
+    const table = shown.slice(shown.indexOf("Batteries (ordered")).split("\n");
+    const row = (runId: string) => table.find((line) => line.trimStart().startsWith(`${runId} `));
+    expect(row("run-1")).toContain("too-easy");
+    expect(row("run-1-i02")).not.toContain("too-easy");
   });
 });
 

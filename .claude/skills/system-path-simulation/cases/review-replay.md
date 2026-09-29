@@ -26,9 +26,11 @@ bun .claude/skills/system-path-simulation/scripts/judge-replay.mts \
 
 `verdicts.json` holds one row per task and sample: recorded verdict, replayed verdict, cited
 rules, the check ids they join to, the rationale and `digestMatch` (the request bytes are the
-recording's when the brief and artifact still read the same). `vetoed.json` holds the
-ContestedCase rows for every confirmed veto: a verifier pass the replay failed with a citation
-and failed again in the confirming sample production takes (`confirmation` in the row). A run
+recording's when the brief and artifact still read the same). `contested.json` holds every
+ContestedCase row the replay produced, in both directions, over the subject the controller's own
+Judge review reads: a veto (a verifier pass failed with a citation, and failed again in the
+confirming sample production takes) and a disputed fail (a verifier fail passed twice, naming the
+checks the verifier failed) are the two the reviewer settles. The summary line counts each. A run
 whose brief no longer validates under the current reader refuses; move to a run that does.
 
 At Opus medium the same artifact went 2 fail / 1 pass across three samples on 2026-09-15; that
@@ -39,7 +41,7 @@ split is why a cited fail is sampled twice before it counts. `--repeat` adds who
 ```sh
 bun .claude/skills/system-path-simulation/scripts/review-settle.mts \
   --repo /abs/checkout --slug <slug> --run <runId> --scratch /abs/new-dir \
-  [--vetoed /abs/report-dir/vetoed.json] [--request "<the operator's one-liner>"]
+  [--contested /abs/report-dir/contested.json] [--request "<the operator's one-liner>"]
 ```
 
 The script copies the version tree (symlinks verbatim), `case-record.jsonl`, the claim, the
@@ -49,7 +51,12 @@ scratch root, derives the iteration analysis there and runs `runEpochReview` aga
 decides them. The standing issue ledger comes from `analysis/rebuild-advice-latest.json`, so the
 replayed review is offered the same issues to dispute.
 
-`--vetoed` is optional. Step 1 is the position when a Judge disagreement is the question; when the
+The reviewer is offered the Judge disagreements the way the analyse step offers them, split by
+`reviewerContested` into vetoes, disputed fails and the rest. `--contested` is optional: without
+it they are the recorded Judge's, derived by the controller's own `runJudgeReviews`. Until
+2026-09-29 the script took `--vetoed` alone and passed no disputed fail, so a battery whose Judge
+passed the verifier's fails (firmware f0fb83-i05, four of six) replayed with nothing to settle.
+Step 1 is the position when a Judge disagreement is the question; when the
 question is the reviewer's own reading of a battery, skip it and fork the run directly. That is the
 common case: across 314 recorded epoch reviews the Judge contested nothing in most batteries, and a
 run the provider cut short never got its review at all — forking it is how that review gets run.
@@ -58,8 +65,10 @@ run the provider cut short never got its review at all — forking it is how tha
 lives in the Judge's public context. Without it the reviewer is told the request is unavailable and
 its first obligation, request coverage, goes unasked.
 
-The evidence lands at `<scratch>/<runId>-epoch-review.json`; the summary names status, reads,
-findings, disputes and the report.
+The evidence lands at `<scratch>/<runId>-epoch-review.json`, and beside it
+`<runId>-public-review.json`, which is what `publicEpochReview` lets cross to the next Builder
+round, so a rule-4 question is read off the replay's own projection; the summary names status,
+reads, findings, disputes and the report.
 
 Read the evidence before the report. On 2026-09-15 the reviewer read the vetoed artifact
 through `read_source`, recorded `harness-defect` on `init-hardware-state` with owner

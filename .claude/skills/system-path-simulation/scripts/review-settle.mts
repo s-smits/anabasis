@@ -1,5 +1,5 @@
 /**
- * Run the live Epoch Reviewer over a recorded battery with vetoed rows to settle, from a scratch
+ * Run the live Epoch Reviewer over a recorded battery and its Judge disagreements, from a scratch
  * copy of the campaign so no review evidence lands under the real campaigns/ and no earlier review
  * of that condition short-circuits the run.
  *
@@ -11,14 +11,15 @@
  *
  *   bun .claude/skills/system-path-simulation/scripts/review-settle.mts \
  *     --repo /abs/checkout-with-campaigns --slug <slug> --run <runId> \
- *     --scratch /abs/empty-or-new-dir [--vetoed /abs/vetoed.json]
+ *     --scratch /abs/empty-or-new-dir [--contested /abs/contested.json] [--request "<one-liner>"]
  *
- * `--vetoed` is the ContestedCase array `judge-replay.mts` writes, or one built by hand from a
- * recorded judge.json; its evidence and artifact paths are repo-root-relative and resolve under the
- * scratch root. It is optional: the run this position most wants to replay is often one with no
- * contested row at all, and requiring a veto excluded those. `--repo` also supplies the review slot
- * through its `.env` chain; the reviewer's orientation, tools and admission run from this script's
- * own tree.
+ * The reviewer is offered the battery's Judge disagreements the way the controller's analyse step
+ * offers them, split by `reviewerContested` into the vetoes and disputed fails it settles and the
+ * rest it may read. Without `--contested` those are the recorded Judge's, derived by the same
+ * `runJudgeReviews` the controller ran over this battery; with it, they are the ContestedCase array
+ * `judge-replay.mts` writes, whose evidence and artifact paths are repo-root-relative and resolve
+ * under the scratch root. `--repo` also supplies the review slot through its `.env` chain; the
+ * reviewer's orientation, tools and admission run from this script's own tree.
  *
  * The staged copy carries the campaign's `analysis/` directory, because two of the reviewer's
  * rules read it and neither can fire without it: recurrence, which is what lifts a second
@@ -29,8 +30,9 @@
  * that replay runs with an empty ledger rather than being refused.
  *
  * Output: `<scratch>/<runId>-epoch-review.json`, the EpochReviewEvidence as production would
- * record it, and a summary line with status, reads, findings and disputes. Exit 2 is a script or
- * staging fault; the review's own status is in the evidence, never an exit code.
+ * record it; `<scratch>/<runId>-public-review.json`, what `publicEpochReview` lets cross from it to
+ * the next Builder round; and a summary line with status, reads, findings and disputes. Exit 2 is a
+ * script or staging fault; the review's own status is in the evidence, never an exit code.
  */
 import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { join } from "#src/meta/path.ts";
@@ -38,28 +40,33 @@ import { loadRepoEnv } from "#src/backends/env.ts";
 import { resolveSlots } from "#src/backends/resolve.ts";
 import { deriveIterationAnalysis } from "#src/analyse/iteration-analysis.ts";
 import { runEpochReview } from "#src/review/epoch-reviewer.ts";
+import { publicEpochReview } from "#src/review/epoch-review-public.ts";
 import { readLatestRebuildAdvice } from "#src/author/rebuild-advice.ts";
 import { campaignDir } from "#src/meta/campaign-root.ts";
 import { isString } from "#src/meta/json-shape.ts";
-import type { ContestedCase } from "#src/analyse/judge-contested.ts";
+import { type ContestedCase, reviewerContested } from "#src/analyse/judge-contested.ts";
+import { runJudgeReviews } from "#src/analyse/judge-reviews.ts";
+import { readValidatedBrief } from "#src/correctness-bundle/public-resources.ts";
 import { absoluteOption, type ExitWith, exitWith, parseOrDie, requiredOption } from "#skills/main/cli.ts";
 import { CASE_RECORD_FILE } from "#src/claim/case-record.ts";
 import { JUDGE_PUBLIC_CONTEXT_FILE } from "#src/correctness-bundle/declared-projection.ts";
 
 const fail: ExitWith = exitWith("review-settle");
 
-const args = parseOrDie(fail, { values: ["repo", "slug", "run", "vetoed", "scratch", "request"] });
+const args = parseOrDie(fail, { values: ["repo", "slug", "run", "contested", "scratch", "request"] });
 const requiredValue = requiredOption(fail, args.single);
 const absolute = absoluteOption(fail);
 const repo = absolute("repo", requiredValue("repo"));
 const slug = requiredValue("slug");
 const runId = requiredValue("run");
 const scratch = absolute("scratch", requiredValue("scratch"));
-const vetoedOption = args.single.get("vetoed");
-const vetoedPath = vetoedOption === undefined ? "" : absolute("vetoed", vetoedOption);
-if (vetoedPath !== "" && !existsSync(vetoedPath)) fail(`${vetoedPath}: missing`);
-const vetoed: ContestedCase[] = vetoedPath === "" ? [] : JSON.parse(readFileSync(vetoedPath, "utf8"));
-if (!Array.isArray(vetoed)) fail(`${vetoedPath}: expected a ContestedCase array`);
+const contestedOption = args.single.get("contested");
+const contestedPath = contestedOption === undefined ? null : absolute("contested", contestedOption);
+if (contestedPath !== null && !existsSync(contestedPath)) fail(`${contestedPath}: missing`);
+const replayed: unknown = contestedPath === null ? null : JSON.parse(readFileSync(contestedPath, "utf8"));
+if (contestedPath !== null && !Array.isArray(replayed)) {
+  fail(`${contestedPath}: expected a ContestedCase array`);
+}
 
 // Stage: the version tree, the append-ordered case record, the claim and the isolation probe,
 // and `analysis/` when the campaign reached its analyse step. That directory is optional because
@@ -101,11 +108,21 @@ const priorAdvice = readLatestRebuildAdvice(scratch, slug);
 const review = resolveSlots(repo, slug, loadRepoEnv(repo, Bun.env)).review;
 console.log(JSON.stringify({ review, staged: target }));
 const analysis = deriveIterationAnalysis(scratch, slug, runId, measuredDir);
+const contested = reviewerContested(
+  Array.isArray(replayed)
+    ? // SAFETY: the array judge-replay.mts wrote with contestedCases, the same projection the controller records.
+      (replayed as ContestedCase[])
+    : runJudgeReviews(analysis, { repoRoot: scratch, judgePin: null }).contested,
+);
+const ids = (rows: readonly ContestedCase[]) => rows.map((row) => row.taskId);
 console.log(
   JSON.stringify({
     cases: analysis.cases.length,
     treeRoot: analysis.treeRoot,
-    vetoed: vetoed.map((row) => row.taskId),
+    contested: contestedPath ?? "recorded Judge",
+    vetoed: ids(contested.vetoed),
+    disputed: ids(contested.disputed),
+    otherContested: ids(contested.otherContested),
     issues: priorAdvice?.issues.length ?? 0,
     request: isString(publicRequest),
   }),
@@ -118,12 +135,18 @@ const evidence = await runEpochReview({
   treeRoot: analysis.treeRoot,
   analysis,
   priorAdvice,
-  vetoed,
+  ...contested,
   review,
   publicRequest: isString(publicRequest) ? publicRequest : null,
 });
 const out = join(scratch, `${runId}-epoch-review.json`);
 writeFileSync(out, JSON.stringify(evidence, null, 2));
+// The analyse step's own projection: the brief only for a completed review, as the controller reads it.
+const brief = evidence.status === "completed" ? readValidatedBrief(measuredDir) : null;
+writeFileSync(
+  join(scratch, `${runId}-public-review.json`),
+  JSON.stringify(publicEpochReview(evidence, { brief, ...contested }), null, 2),
+);
 console.log(
   JSON.stringify(
     {

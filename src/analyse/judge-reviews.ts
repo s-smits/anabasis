@@ -114,8 +114,9 @@ function recordedCaseJson(
 }
 
 /** Evidence reachable from the packet's rows: the per-case judge verdict and artifact pointer the
- *  eval runner recorded under domains/<slug>/runs/<runId>/cases/<taskId>/. */
-function caseSubjects(analysis: IterationAnalysis, repoRoot: string): ContestedSubject[] {
+ *  eval runner recorded under domains/<slug>/runs/<runId>/cases/<taskId>/, and the checks the
+ *  verifier failed. A Judge replay reads its subjects here and swaps in the replayed verdict. */
+export function caseSubjects(analysis: IterationAnalysis, repoRoot: string): ContestedSubject[] {
   const verifiedOnce = runDirVerifier();
   const runDir = join(repoRoot, analysis.treeRoot, "runs", analysis.runId);
   const violations = verifiedOnce(runDir);

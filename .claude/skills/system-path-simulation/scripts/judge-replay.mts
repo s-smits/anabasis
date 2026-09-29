@@ -15,16 +15,21 @@
  * review slot; the Judge itself runs from this script's own tree, so the prompt under test is the
  * one being changed. Each sample is a fresh Judge session, as in production.
  *
+ * Each case's subject is the one the controller's own Judge review reads (`caseSubjects`): the
+ * verifier verdict, the recorded artifact and the checks the verifier failed, through the recorded
+ * evidence reader, with the replayed verdict in place of the recorded one. The failed checks are
+ * what make a Judge pass of a verifier fail a disputed fail the reviewer settles; a replay that
+ * left them out could only ever produce vetoes.
+ *
  * Output: `verdicts.json` (schema `judge-replay/v1`), one row per task and sample with the
- * recorded verdict, the replayed verdict, the confirming sample's verdict when a cited fail took one, cited rules, the check ids those rules join to, the
- * rationale and whether the request digest still matches the recording; and `vetoed.json`, the
- * ContestedCase rows for every verifier pass the replay failed with a citation, in the form
- * `review-settle.mts` takes. Exit 2 is an argument or position fault, exit 1 a recorded file the
- * strict readers refuse; a verdict is never an exit code.
+ * recorded verdict, the replayed verdict, the confirming sample's verdict when a contradiction took
+ * one, cited rules, the check ids those rules join to, the rationale and whether the request digest
+ * still matches the recording; and `contested.json`, every ContestedCase row the replay produced in
+ * either direction, in the form `review-settle.mts --contested` takes. Exit 2 is an argument or
+ * position fault, exit 1 a recorded file the strict readers refuse; a verdict is never an exit code.
  */
 import { mkdirSync, writeFileSync } from "#src/meta/filesystem.ts";
-import { join, relative } from "#src/meta/path.ts";
-import { CASE_ARTIFACT_FILE, CASE_JUDGE_FILE } from "#src/correctness-bundle/battery-record.ts";
+import { join } from "#src/meta/path.ts";
 import { loadRepoEnv } from "#src/backends/env.ts";
 import { resolveSlots } from "#src/backends/resolve.ts";
 import { judgeSessionFor } from "#src/review/review-session.ts";
@@ -38,7 +43,9 @@ import {
   JUDGE_PUBLIC_CONTEXT_SCHEMA,
 } from "#src/correctness-bundle/declared-projection.ts";
 import type { JudgePublicDomain } from "#src/review/judge-contract.ts";
-import { type ContestedCase, contestedCases, isVetoed } from "#src/analyse/judge-contested.ts";
+import { type ContestedCase, contestedCases, reviewerContested } from "#src/analyse/judge-contested.ts";
+import { caseSubjects } from "#src/analyse/judge-reviews.ts";
+import { deriveIterationAnalysis } from "#src/analyse/iteration-analysis.ts";
 import { type CommandArgs, type ExitWith, runCommand } from "#skills/main/cli.ts";
 import { readJsonFile } from "#src/meta/completed-json.ts";
 import { loadRecordedTasks } from "#src/run/run-driver.ts";
@@ -79,7 +86,7 @@ async function replay(args: CommandArgs): Promise<void> {
   const repeat = args.int("repeat") ?? 1;
   if (repeat < 1) die("--repeat must be a positive integer");
   const rows: ReplayRow[] = [];
-  const vetoed: ContestedCase[] = [];
+  const contested: ContestedCase[] = [];
 
   const versionDir = join(campaignDir(repo, slug), "versions", runId);
   const runDir = join(versionDir, "runs", runId);
@@ -93,6 +100,7 @@ async function replay(args: CommandArgs): Promise<void> {
   // SAFETY: the run's own judge context under the schema the Judge phase writes, whose publicDomain field is this type.
   const judgeDomain = judgeContext.publicDomain as unknown as JudgePublicDomain;
   const checkByAssertion = new Map(brief.truthChecks.map((check) => [check.assertion, check.id] as const));
+  const subjects = caseSubjects(deriveIterationAnalysis(repo, slug, runId, versionDir), repo);
 
   const review = resolveSlots(repo, slug, loadRepoEnv(repo, Bun.env)).review;
   const session = judgeSessionFor(review, REPO_ROOT);
@@ -102,16 +110,20 @@ async function replay(args: CommandArgs): Promise<void> {
   for (const taskId of taskIds) {
     const task = tasks.find((row) => row.taskId === taskId);
     if (task === undefined) die(`task ${taskId} is not in tasks.json`);
-    const caseDir = join(runDir, "cases", taskId);
-    const recorded = readRecord(join(caseDir, CASE_JUDGE_FILE));
-    const verifierPass = readRecord(join(caseDir, "case-result.json")).pass;
+    const recordedSubject = subjects.find((row) => row.taskId === taskId);
+    const verifierPass = recordedSubject?.truthOk;
     if (!isBoolean(verifierPass)) die(`${taskId}: no boolean verifier verdict; production never judges it`);
-    const judgeTask = judgePublicTaskOf(brief, task);
+    const artifactPath = recordedSubject?.artifactPath ?? null;
+    const judgePath = recordedSubject?.judgePath ?? null;
+    if (recordedSubject === undefined || artifactPath === null || judgePath === null) {
+      die(`${taskId}: no recorded artifact and Judge verdict the evidence reader accepts`);
+    }
+    const recorded = readRecord(join(repo, judgePath));
     const subject = judgeBatterySubject({
       taskId,
       judgeDomain,
-      judgeTask,
-      submittedArtifact: readJsonFile(join(caseDir, CASE_ARTIFACT_FILE)),
+      judgeTask: judgePublicTaskOf(brief, task),
+      submittedArtifact: readJsonFile(join(repo, artifactPath)),
       truthOk: verifierPass,
     });
     if (subject === null) die(`${taskId}: no accepted artifact; production never judges it`);
@@ -142,23 +154,9 @@ async function replay(args: CommandArgs): Promise<void> {
       };
       rows.push(row);
       console.log(JSON.stringify(row));
-      // The controller's own projection and veto test, so a replayed fail counts as a veto exactly
-      // when the Epoch Reviewer would be asked to settle it: confirmed, and citing a shown rule.
-      const contested = contestedCases(
-        [
-          {
-            taskId,
-            family: task.family,
-            truthOk: verifierPass,
-            judgePath: relative(repo, join(caseDir, CASE_JUDGE_FILE)),
-            judgeEvidence: evidence,
-            artifactPath: relative(repo, join(caseDir, CASE_ARTIFACT_FILE)),
-            failedCheckIds: [],
-          },
-        ],
-        checkByAssertion,
-      );
-      vetoed.push(...contested.filter(isVetoed));
+      // The controller's own projection over the recorded subject, so a replayed contradiction
+      // reaches the Epoch Reviewer exactly as the controller would hand it over.
+      contested.push(...contestedCases([{ ...recordedSubject, judgeEvidence: evidence }], checkByAssertion));
     }
   }
   mkdirSync(out, { recursive: true });
@@ -177,8 +175,11 @@ async function replay(args: CommandArgs): Promise<void> {
       2,
     ),
   );
-  writeFileSync(join(out, "vetoed.json"), JSON.stringify(vetoed, null, 2));
-  console.log(`${rows.length} verdict(s), ${vetoed.length} vetoed row(s) written to ${out}`);
+  writeFileSync(join(out, "contested.json"), JSON.stringify(contested, null, 2));
+  const { vetoed, disputed, otherContested } = reviewerContested(contested);
+  console.log(
+    `${rows.length} verdict(s) and ${contested.length} contested row(s) written to ${out}: ${vetoed.length} vetoed, ${disputed.length} disputed, ${otherContested.length} other`,
+  );
 }
 
 if (import.meta.main) {

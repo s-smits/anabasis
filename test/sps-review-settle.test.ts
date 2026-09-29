@@ -25,8 +25,8 @@ describe("review-settle", () => {
     writeFileSync(join(campaign, "versions", "r", "marker.txt"), "bytes");
     symlinkSync("/nonexistent/toolchain", join(campaign, "versions", "r", ".toolchain"));
     writeFileSync(join(campaign, "case-record.jsonl"), "");
-    const vetoed = join(scratch, "vetoed.json");
-    writeFileSync(vetoed, "[]");
+    const contested = join(scratch, "contested.json");
+    writeFileSync(contested, "[]");
     const sim = join(scratch, "sim");
     const result = runTypeScript("review-settle.mts", [
       "--repo",
@@ -35,8 +35,8 @@ describe("review-settle", () => {
       "s",
       "--run",
       "r",
-      "--vetoed",
-      vetoed,
+      "--contested",
+      contested,
       "--scratch",
       sim,
     ]);

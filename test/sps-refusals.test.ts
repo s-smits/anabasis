@@ -22,7 +22,7 @@ beforeAll(() => {
   scratch = scratchDir("sps-refusals-", join(REPO_ROOT, ".scratch"));
   prompt = join(scratch, "prompt.txt");
   writeFileSync(prompt, "Build a harness.\n");
-  writeFileSync(join(scratch, "vetoed.json"), "[]");
+  writeFileSync(join(scratch, "contested-object.json"), "{}");
   const brief = join(scratch, "campaigns", "s", "versions", "r", "correctness-model");
   mkdirSync(brief, { recursive: true });
   writeFileSync(join(brief, "brief.json"), "{}");
@@ -67,9 +67,19 @@ const ROWS: [string, () => string[], string][] = [
   ],
   ["predictions", () => ["--file", "predictions.md", "--hash"], "--file must be an absolute path"],
   ["review-settle", () => [...replay(), "--scratch", "relative"], "--scratch must be an absolute path"],
-  ["review-settle", () => [...settle(), "--vetoed", "vetoed.json"], "--vetoed must be an absolute path"],
-  ["review-settle", () => [...settle(), "--vetoed", join(scratch, "none.json")], "none.json: missing"],
-  // An absent --vetoed is the ordinary replay: it reaches staging instead of being refused as missing.
+  [
+    "review-settle",
+    () => [...settle(), "--contested", "contested.json"],
+    "--contested must be an absolute path",
+  ],
+  ["review-settle", () => [...settle(), "--contested", join(scratch, "none.json")], "none.json: missing"],
+  [
+    "review-settle",
+    () => [...settle(), "--contested", join(scratch, "contested-object.json")],
+    "contested-object.json: expected a ContestedCase array",
+  ],
+  // An absent --contested is the ordinary replay, over the recorded Judge's disagreements: it reaches
+  // staging instead of being refused as missing.
   ["review-settle", () => settle(), "versions/r: missing"],
   [
     "run-condition",

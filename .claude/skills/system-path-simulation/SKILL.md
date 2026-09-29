@@ -42,7 +42,7 @@ These change classes warrant a simulation; each earned its place in a recorded s
 | A removed default, backstop or widened guard | One steward asking "what fires now that this doesn't?" Removing the six-hour session cap uncovered a hidden one-hour `DEFAULT_TURN_SETTLE_MS` that fired two hours before the new wall could start. |
 | A fix that claims to repair a specific past run, before the next paid run | One past-run-replay over that run's actual recorded bytes (claims, packets, terminals), plus the nearest hostile mutation in a scratch copy. Minutes of replay against run36/run39/run40 bytes beat another dead run discovering the miss live. |
 | A recorded position whose next controller round is the question | One `seeded-condition`: seed with `seed-campaign.mts`, capture the first prompt, run one round through `run-condition.mts` with the slot under test live, probe with `host-panel.mts`. The 10 September Astra condition answered handover, admission and scope binding in one 354-second native turn; its helper is now the runner. |
-| A changed Judge or Epoch Reviewer prompt, schema or orientation | One `review-replay`: the live Judge over recorded cases with `judge-replay.mts`, then the live reviewer over the resulting vetoed rows with `review-settle.mts`. On 2026-09-15 the first replay refuted the chosen position in six minutes (both recorded disputes were the Judge's arithmetic) and the second settled a genuine veto against the harness. |
+| A changed Judge or Epoch Reviewer prompt, schema or orientation | One `review-replay`: the live Judge over recorded cases with `judge-replay.mts`, then the live reviewer over the resulting contested rows with `review-settle.mts`. On 2026-09-15 the first replay refuted the chosen position in six minutes (both recorded disputes were the Judge's arithmetic) and the second settled a genuine veto against the harness. |
 | An unlanded stack before a paid run | One triage, no model: list every decision change in the stack with no live exercise, give each one condition, and order them so the cheap condition can cancel the dear one — one fact, then layer walk, then deterministic replay, then the eight-task one-iteration rehearsal, then a live segment. On 2026-09-01 two of four listed conditions settled without a model: a writer/reader join (below) and a revert proved byte-identical to the tree that had created claims. |
 
 The opening rule still wins: a change fully bound by a focused test on the real code path, and a
@@ -280,8 +280,8 @@ a relative path or an unknown option.
 | `run-segment.mts`, `seed-kickoff.mts` | a seeded live segment over the production backend |
 | `seed-campaign.mts` | clone a recorded campaign into a fresh tree, or republish its selected product under a new slug here, with the symlink and absolute-path audit and `seed.json` |
 | `run-condition.mts` | one real controller round over a seeded slug with each slot `live`, a scripted module or `capture`; wall, sampled process census, preregistration digest, `report.json` |
-| `judge-replay.mts` | the live Main Judge over recorded battery cases under the current prompt; verdicts and the vetoed rows |
-| `review-settle.mts` | the live Epoch Reviewer over a scratch copy of a recorded battery with vetoed rows to settle |
+| `judge-replay.mts` | the live Main Judge over recorded battery cases under the current prompt; verdicts and every contested row |
+| `review-settle.mts` | the live Epoch Reviewer over a scratch copy of a recorded battery and its Judge disagreements; the evidence and its public projection |
 | `host-panel.mts` | valid, equivalent and hostile artifacts for one task through the real verifier host; fingerprint before and after |
 | `show-prompt-surfaces.mts` | the exact model-visible surfaces and their digests |
 

@@ -26,7 +26,12 @@ import { join } from "../src/meta/path.ts";
 import { afterEach, describe, expect, it } from "bun:test";
 import type { CaseEvidence, IterationAnalysis } from "../src/analyse/iteration-analysis.ts";
 import { runJudgeReviews } from "../src/analyse/judge-reviews.ts";
-import { contestedCases, isDisputedFail, isVetoed } from "../src/analyse/judge-contested.ts";
+import {
+  contestedCases,
+  isDisputedFail,
+  isVetoed,
+  reviewerContested,
+} from "../src/analyse/judge-contested.ts";
 import { tracePointer } from "../src/claim/case-record.ts";
 import { type JudgeEvidence, judgeDecision } from "../src/claim/judge.ts";
 import { EvidenceLog } from "../src/claim/evidence-log.ts";
@@ -368,6 +373,26 @@ describe("a cited fail joins the check it contradicts", () => {
       ["t3", [], true, false, false],
       ["t4", ["member-capacity"], false, false, false],
     ]);
+  });
+
+  it("hands the Epoch Reviewer every contradiction, the vetoes and disputed fails to settle and the rest to read", () => {
+    const rows = contestedCases(
+      [
+        subject("veto", true, false, ["every member stays under its capacity"], { confirmation: false }),
+        subject("disputed", false, true, [], { confirmation: true, failedCheckIds: ["member-capacity"] }),
+        // The nearest miss of a disputed fail: the second sample withdrew the Judge's pass.
+        subject("withdrawn", false, true, [], { confirmation: false, failedCheckIds: ["member-capacity"] }),
+        subject("uncited", true, false, [], { confirmation: false }),
+      ],
+      new Map([["every member stays under its capacity", "member-capacity"]]),
+    );
+    const split = reviewerContested(rows);
+    expect(Object.values(split).map((list) => list.map((row) => row.taskId))).toEqual([
+      ["veto"],
+      ["disputed"],
+      ["withdrawn", "uncited"],
+    ]);
+    expect(Object.keys(split)).toEqual(["vetoed", "disputed", "otherContested"]);
   });
 });
 

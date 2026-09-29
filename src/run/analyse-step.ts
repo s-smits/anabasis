@@ -33,7 +33,7 @@ import {
   hostFindings,
 } from "../analyse/iteration-analysis.ts";
 import { type JudgeReviewsResult, runJudgeReviews } from "../analyse/judge-reviews.ts";
-import { isDisputedFail, isVetoed } from "../analyse/judge-contested.ts";
+import { reviewerContested } from "../analyse/judge-contested.ts";
 import { writeCompleted } from "../author/campaign-epoch.ts";
 import {
   type RebuildAdvicePacket,
@@ -149,10 +149,7 @@ export async function analyseStep(
     return { admission, derived };
   };
   publish([], []);
-  const contested = {
-    vetoed: judges.contested.filter(isVetoed),
-    disputed: judges.contested.filter(isDisputedFail),
-  };
+  const contested = reviewerContested(judges.contested);
   // A measured battery is reviewed once, so a reader a session limit refused runs again after the
   // reset the provider named, here, before the next Builder round reads what the step publishes.
   const reset = { ...options.resetWait, ...keyIfDefined("providerBudget", providerBudget) };
@@ -165,7 +162,6 @@ export async function analyseStep(
       analysis,
       priorAdvice: standing ?? null,
       ...contested,
-      otherContested: judges.contested.filter((row) => !isVetoed(row) && !isDisputedFail(row)),
       review,
       publicRequest: options.publicRequest ?? null,
       ...keyIfDefined("safeguardContext", options.safeguardContext),

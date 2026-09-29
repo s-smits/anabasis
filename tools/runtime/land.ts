@@ -154,14 +154,22 @@ function readLanding(root: string, target: number): Landing {
 }
 
 /** Points each pull request at its `land/<ref>` branch, making it from GitHub's head the first time. A
- *  branch that never held GitHub's head was made before someone else pushed, and its fixes would
- *  overwrite what they pushed. */
+ *  branch GitHub's head has grown past holds nothing GitHub lacks, so it moves up to that head, unless
+ *  a checkout holds it. Any other branch that never held GitHub's head was made before someone else
+ *  pushed, and its fixes would overwrite what they pushed. */
 function useWorkbench(root: string, landing: Landing): Landing {
   const pulls = landing.pulls.map((pull) => {
     const branch = `${WORKBENCH}${pull.ref}`;
     const local = run(root, ["git", "rev-parse", "-q", "--verify", `refs/heads/${branch}`]);
     if (!local.ok) {
       must(root, ["git", "branch", branch, pull.pushed]);
+      return pull;
+    }
+    if (
+      local.out !== pull.pushed &&
+      run(root, ["git", "merge-base", "--is-ancestor", local.out, pull.pushed]).ok &&
+      run(root, ["git", "branch", "-f", branch, pull.pushed]).ok
+    ) {
       return pull;
     }
     const held = lines(must(root, ["git", "reflog", "show", "--format=%H", `refs/heads/${branch}`]));

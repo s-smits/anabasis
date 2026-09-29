@@ -253,6 +253,31 @@ describe("bun run land", () => {
     expect(logged(gateLog)).toEqual([]);
   });
 
+  it("moves a land/ branch up to a head GitHub grew past it, since it holds nothing GitHub lacks", () => {
+    git("branch", "land/a", lowerDocs);
+    git("branch", "land/b", lowerDocs);
+    const result = runLand(["12"]);
+    expect(result.status).toBe(0);
+    expect(git("rev-parse", "land/b")).toBe(upper);
+    expect(result.stdout).not.toContain("Publish the fixes");
+  });
+
+  it("leaves a checked-out land/ branch where it is, and refuses", () => {
+    git("branch", "land/a", lowerDocs);
+    git("branch", "land/b", lowerDocs);
+    git("checkout", "-q", "land/b");
+    try {
+      const result = runLand(["12"]);
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(
+        `#12's head moved on GitHub to ${upper.slice(0, 9)} after land/b was made.`,
+      );
+      expect(git("rev-parse", "land/b")).toBe(lowerDocs);
+    } finally {
+      git("checkout", "-q", "b");
+    }
+  });
+
   it("refuses a head that does not contain the pull request beneath it", () => {
     const result = runLand(["12"], {
       ANA_FAKE_STACK: stack(beside),

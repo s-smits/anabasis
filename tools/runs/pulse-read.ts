@@ -73,8 +73,6 @@ interface PulseReview {
   status: string;
   findings: number;
   blocking: number;
-  /** How the above-aim duty was met, or null when the review was not asked it. */
-  duty: string | null;
   /** The record, inside the campaign. */
   file: string;
 }
@@ -273,7 +271,6 @@ function readReview(campaignDir: string, runId: string): PulseReview | null {
     findings: record.findings.length,
     blocking: record.findings.filter((finding) => isRecord(finding) && finding.severity === "blocking")
       .length,
-    duty: isString(record.aboveAimDuty) ? record.aboveAimDuty : null,
     file,
   };
 }

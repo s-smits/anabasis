@@ -610,8 +610,9 @@ the battery was paid for.
    climb readout does, so that the one component reading the measured tree against the request knows
    what the round aimed for. Until 2026-09-18 it saw the counts alone and was asked about "a perfect or
    near-perfect battery", which left the whole `over-aim` zone, whose name says no limit was measured,
-   with no stated reason to inspect anything. The placement opens a question; the finding is owed to
-   what the request demands and the tasks leave undemanded.
+   with no stated reason to inspect anything. The placement is a reason to look and never an obligation
+   to find something: a review at any placement may end with nothing demonstrated, and say plainly
+   that the tasks were easy.
 
    The orientation also carries the round's `EXPERIMENT.json`, because a reviewer asked whether a result
    was earned was never told what the round set out to earn, together with its two scores
@@ -623,17 +624,17 @@ the battery was paid for.
    `report`; its tools refuse only what a decision or rule 4 reads, so a long claim or a fifth citation is
    recorded rather than bounced.
 
-   The reviewer also carries duties. Whenever a request is present, the orientation lists its clauses,
-   split at commas, semicolons and "and", and the closing message disposes of each as
-   `Clause N: <declared check id or unchecked>; decides: yes|no|unknown` (`src/review/review-duties.ts`,
-   recorded as `requestClauses`); a `no` is owed as an advisory `correctness-model/tasks.json` defect.
-   **At or above the aim, "nothing demonstrated" is not an answer.** That has held since 2026-09-24, after
-   a review of a full pass recorded nothing and the round moved on. The reviewer either records one
-   advisory `tasks.json` defect naming the undemanded obligation, with a `demandGap` of
-   capability-unexercised, sibling-values-only, limit-cleared-widely, solver-tool-reports-margins or
-   rule-outside-request, or says family by family what each demands and why none is left. An undischarged
-   duty is asked once more (`askOnce`). Earlier `tasks.json` findings over the same task set are shown
-   again (`earlierTaskFindings`), so an unchanged task set is not read as settled.
+   A finding about easy tasks names the obligation of the request they leave undemanded, owned by
+   `correctness-model/tasks.json`, and may carry a `demandGap` of capability-unexercised,
+   sibling-values-only, limit-cleared-widely, solver-tool-reports-margins or rule-outside-request; the
+   reviewer records one when it has shown the gap, not because the score was high. Until 2026-09-29
+   the host enforced more. It split the request at commas, semicolons and "and", asked for a
+   `Clause N:` line per piece, and above the aim demanded either a `tasks.json` defect or a
+   family-by-family account, which it checked by whether each family's name appeared in the report,
+   re-asking once when either was missing. That graded wording rather than examination, and a
+   task-set finding forced out of a full pass presses the author to add rules the request never held,
+   so it went with `review-duties.ts`. Earlier `tasks.json` findings over the same task set are still
+   shown again (`earlierTaskFindings`), so an unchanged task set is not read as settled.
 
    The reviewer may also execute. `probe_check` takes one accept control, one rooted path already in its
    artifact (`$.layout.members[0].area`, read through `jsonPathTokens`) and one change: either a

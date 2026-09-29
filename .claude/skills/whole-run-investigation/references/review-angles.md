@@ -457,10 +457,11 @@ and is recorded as `analysis/<runId>-epoch-review.json`. So never describe the r
 only after measurement: count both, and read the authoring reviews for what the reviewer said about
 the tasks before any battery was paid for. The prompt in `src/review/epoch-review-prompt.ts` asks
 the reviewer to read the publication boundary every time and to run at most eight `probe_check`
-executions, and at or above the aim to record one advisory defect owned by
-`correctness-model/tasks.json` or say family by family why none is left; a review that did neither
-declined a duty, and its `report` says which. Then read the labels: an authoring review taken before
-the first task write reads the seed's empty `tasks.json`, `publicTaskRows` throws through
+executions. It owes no finding for a placement: above the aim the orientation states the placement
+as a lead, and a review may end with nothing demonstrated and the tasks simply easy, so read its
+`report` for what it examined rather than counting whether it recorded a task-set defect. Then read
+the labels: an authoring review taken before the first task write reads the seed's empty
+`tasks.json`, `publicTaskRows` throws through
 `capturedBattery` (`src/run/experiment-freeze.ts`), and `src/review/epoch-reviewer.ts` records the
 file under `coverage.missing`, so an early review carries `incomplete` for a file nothing had
 authored. What the Builder did with the findings is lanes 14 and 36. Do not read the reviewer's

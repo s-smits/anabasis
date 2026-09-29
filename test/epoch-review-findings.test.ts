@@ -67,6 +67,8 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
       "A disputed fail is the reverse",
       "Never name an individual task in a claim",
       "close with a short synthesis",
+      '"nothing demonstrated" does not answer it',
+      "family by family",
     ]) {
       expect(EPOCH_REVIEW_PROMPT).not.toContain(retired);
     }

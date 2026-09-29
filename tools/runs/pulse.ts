@@ -297,22 +297,18 @@ function heldEvents(before: PulseReading, after: PulseReading): PulseEvent[] {
   return events;
 }
 
-/** Each Epoch Review recorded since the last look, and a review of a battery above the aim that was
- *  never asked the above-aim duty, which is the one reading of such a battery that says why. */
+/** Each Epoch Review recorded since the last look. */
 function reviewEvents(before: PulseReading, after: PulseReading): PulseEvent[] {
   return after.batteries.flatMap((battery, index) => {
     const review = battery.review;
     const was = before.batteries[index];
     if (review === undefined || review === null || (was !== undefined && was.review !== null)) return [];
     const blocking = review.blocking === 0 ? "" : `, ${String(review.blocking)} blocking`;
-    const above = sideOf(battery.zone) === "above";
-    const unasked = above ? "; the above-aim duty was not asked" : "";
-    const duty = review.duty === null ? unasked : `; above-aim duty: ${review.duty}`;
     return [
       {
-        mark: above && (review.duty === null || review.duty === "undischarged") ? "⚠" : "◆",
+        mark: "◆",
         label: after.label,
-        text: `review of battery ${String(index + 1)} ${review.status}: ${String(review.findings)} finding(s)${blocking}${duty}`,
+        text: `review of battery ${String(index + 1)} ${review.status}: ${String(review.findings)} finding(s)${blocking}`,
         look: [review.file.replaceAll(after.runId, "<run>")],
       },
     ];

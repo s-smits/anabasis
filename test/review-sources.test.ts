@@ -127,8 +127,6 @@ describe("review coverage tied to recorded execution", () => {
         treeRoot: ".",
         analysis: null,
         priorAdvice: null,
-        // No request, so no clause duty resumes the session: the turns counted are the unread
-        // source's alone.
         publicRequest: null,
         review: REVIEW,
         readerTurn: (input) =>

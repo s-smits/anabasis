@@ -84,7 +84,6 @@ import {
   recordFindingTool,
 } from "./epoch-review-findings.ts";
 import { TASKS_FILE } from "../meta/bundle-layout.ts";
-import { aboveAimAsk, aboveAimDuty, askOnce, clauseLines, requestDuty } from "./review-duties.ts";
 import { earlierTaskFindingLines } from "./epoch-review-public.ts";
 
 export interface EpochReviewInput {
@@ -144,8 +143,6 @@ export interface RehearsalCase {
 }
 
 type ReaderTurn = Awaited<ReturnType<typeof runReaderTurn>>;
-/** A battery's placement sentence, and its signed distance to the aim when it was placed. */
-type AimReading = { text: string; toAim: number | null };
 type ReviewCoverage = ReturnType<typeof reviewCoverage>;
 
 /** A session that may read, carrying everything the read depends on, or one that may not and
@@ -166,11 +163,13 @@ type OpenSession =
  * fails locate a limit only where the checks that failed it are right, and a false rejection placed
  * on the aim reads exactly like a limit reached.
  *
- * The two sides do not open the same question. Above the aim the tasks demand too little of the
- * request. Below the aim the count says the opposite, and two things produce it without the tasks
- * being hard at all: a rule the checks apply that the brief does not publish, and a valid answer
- * the writer tool cannot express. Each of those fails every task, which is what hardness looks like
- * from the count, and neither can be told from hardness by the count alone.
+ * The two sides do not open the same question. Above the aim the question is whether the tasks
+ * demand too little of the request, and "they were easy, and I found no obligation they leave
+ * undemanded" is an answer to it: a finding required by the score alone presses the author to add
+ * rules the request never held. Below the aim the count says the opposite, and two things produce
+ * it without the tasks being hard at all: a rule the checks apply that the brief does not publish,
+ * and a valid answer the writer tool cannot express. Each of those fails every task, which is what
+ * hardness looks like from the count, and neither can be told from hardness by the count alone.
  *
  * This review is where they become separable, because `probe_check` runs the declared checks here
  * and the Builder never sees a verifier verdict at all. The probe runs in the opposite direction on
@@ -183,7 +182,7 @@ type OpenSession =
  */
 const PLACEMENT_LEADS = {
   above:
-    " A placement above the aim is a lead, not a finding on its own: the finding is the obligation of the request those tasks do not demand.",
+    " A placement above the aim is a lead, not a finding on its own: it asks which obligation of the request those tasks do not demand, and tasks that were easy while leaving none undemanded are a result to report, not a defect to record.",
   below:
     " A placement on or below the aim is a lead, not a finding on its own, and hardness is the last of its readings rather than the first. A rule the checks apply that the brief does not publish fails every task: probe an accept control at a field the public contract leaves free, and a check that moves on it is that rule, owned by `correctness-model/brief.json`. Where the verified failures are listed by declared check, start from the first one listed: probe at a path it reads, with a value a practitioner of the request would accept and the published rules allow, and say whether it reads narrower than its rule, wider, or as stated. An answer a correct solver cannot write through the tools it was given fails every task too, owned by `agent/tools-spec.json`; the accept controls are the shapes the writer is known to produce. Record an observation of hardness, owned by correctness-model/tasks.json, once you have read the brief and the writer schema against the artifact and neither holds.",
 };
@@ -250,7 +249,7 @@ function openSession(input: EpochReviewInput): OpenSession {
     reviewerEffort: input.review.enabled ? (input.review.reasoningEffort ?? null) : null,
     requestDigest: hashJsonValue({
       publicRequest: input.publicRequest,
-      policy: "review-probing-findings/v10",
+      policy: "review-probing-findings/v11",
       prompt: EPOCH_REVIEW_PROMPT,
     }),
     obligationsDigest: obligationsDigest(input, disputableIssues(input)),
@@ -431,7 +430,7 @@ function checkpointLines(input: EpochReviewInput): string[] {
     aimLine(input, () => selectedProductDir(input.repoRoot, input.slug), {
       runId: advice.runId,
       pin: advice.backendPin,
-    }).text,
+    }),
     "Read it wherever you would otherwise infer what a solver reaches: how wide the feasible set is, whether a published limit is attainable, whether a battery is about to fail. An accept control sits where its author put it and is no sample of solver behaviour.",
   ];
 }
@@ -457,8 +456,7 @@ function aimLine(
   input: EpochReviewInput,
   domainDir: () => string,
   battery: { runId: string; pin: string },
-): AimReading {
-  const unplaced = (text: string) => ({ text, toAim: null });
+): string {
   let readout: ClimbReadout | null;
   try {
     readout = readClimbReadout(
@@ -468,34 +466,26 @@ function aimLine(
       join(input.repoRoot, FROZEN_MANIFEST_PATH),
     );
   } catch (cause) {
-    return unplaced(
-      `Aim: the climb readout could not be read (${errorMessage(cause)}); read the counts alone.`,
-    );
+    return `Aim: the climb readout could not be read (${errorMessage(cause)}); read the counts alone.`;
   }
   const { runId } = battery;
   const row = readout?.rows.find((entry) => entry.runId === runId);
   if (readout === null || row === undefined) {
     const excluded = readout?.excluded.find((entry) => entry.runId === runId)?.reason;
-    return unplaced(
-      `Aim: the climb readout holds no row for this battery (${excluded ?? "not recorded"}), so it has no placement; read the counts alone.`,
-    );
+    return `Aim: the climb readout holds no row for this battery (${excluded ?? "not recorded"}), so it has no placement; read the counts alone.`;
   }
   if (row.claimRefusal !== null) {
-    return unplaced(
-      `Aim: this battery's claim was refused (${row.claimRefusal}), so the climb readout places it nowhere; read the counts alone.`,
-    );
+    return `Aim: this battery's claim was refused (${row.claimRefusal}), so the climb readout places it nowhere; read the counts alone.`;
   }
   const { zone, aim, toAim, deciding, wilson } = row;
   if (zone === null || aim === null || toAim === null || deciding === null || wilson === null) {
     const decided = readout.decision.evidence.at(-1)?.runId === runId;
-    return unplaced(
-      decided
-        ? `Reading: ${readout.decision.rationale}.`
-        : "Aim: the climb readout placed no zone for this battery; read the counts alone.",
-    );
+    return decided
+      ? `Reading: ${readout.decision.rationale}.`
+      : "Aim: the climb readout placed no zone for this battery; read the counts alone.";
   }
   const reading = readingSentence({ deciding, wilson, aim, zone }, readout.band);
-  return { text: `${reading ?? ""}${toAim < 0 ? PLACEMENT_LEADS.above : PLACEMENT_LEADS.below}`, toAim };
+  return `${reading ?? ""}${toAim < 0 ? PLACEMENT_LEADS.above : PLACEMENT_LEADS.below}`;
 }
 
 /** The standing issues the review may dispute, each with the diagnosis reader's reading of it. The
@@ -524,7 +514,6 @@ function orientation(
   measured: {
     aim: string;
     earlier: readonly string[];
-    clauses: readonly string[];
     declared: readonly string[];
   },
 ): string {
@@ -532,7 +521,6 @@ function orientation(
   return [
     `Campaign ${input.slug}, review ${input.runId}, source tree ${input.treeRoot}.`,
     `Original request (verbatim): ${input.publicRequest ?? "(not available to this review)"}`,
-    ...clauseLines(measured.clauses),
     ...(analysis === null
       ? checkpointLines(input)
       : [
@@ -632,32 +620,20 @@ function earlierAdvisory(input: EpochReviewInput, analysisDir: string): readonly
   return measuredAdvisory(analysisDir, input.priorAdvice?.runId);
 }
 
-/** What a measured battery adds to the session: its placement against the aim, the task-set
- *  findings earlier reviews of the same task set recorded, and — above the aim — the duty the
- *  placement opens, with the reading of how it was met. */
-function measuredContext(
-  input: EpochReviewInput,
-  evidence: EpochReviewEvidence,
-  analysisDir: string,
-  findings: ReviewState["findings"],
-) {
+/** What a measured battery adds to the session: its placement against the aim, and the task-set
+ *  findings earlier reviews of the same task set recorded. */
+function measuredContext(input: EpochReviewInput, evidence: EpochReviewEvidence, analysisDir: string) {
   const { analysis } = input;
-  if (analysis === null) return { aim: "", earlier: [], ask: null, settle: () => ({}) };
-  const aim = aimLine(input, () => join(input.repoRoot, input.treeRoot), {
-    runId: input.runId,
-    pin: analysis.identities.backendPin,
-  });
-  const families = [...familyTally(analysis.cases).keys()].sort();
-  const above = aim.toAim !== null && aim.toAim < 0;
+  if (analysis === null) return { aim: "", earlier: [] };
   return {
-    aim: aim.text,
+    aim: aimLine(input, () => join(input.repoRoot, input.treeRoot), {
+      runId: input.runId,
+      pin: analysis.identities.backendPin,
+    }),
     earlier:
       evidence.condition === null
         ? []
         : earlierTaskFindingLines(earlierTaskFindings(analysisDir, evidence.condition, input.runId)),
-    ask: above ? aboveAimAsk(findings, families) : null,
-    settle: (turn: ReaderTurn) =>
-      above && turn.error === null ? { aboveAimDuty: aboveAimDuty(findings, families, turn.text) } : {},
   };
 }
 
@@ -694,10 +670,8 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
   };
   const lifetime = join(analysisDir, `${input.runId}-probe-lifetime`);
   const probe = probeTool(root, lifetime, state.probes, verifier.tools);
-  const measured = measuredContext(input, evidence, analysisDir, state.findings);
+  const measured = measuredContext(input, evidence, analysisDir);
   const identities = briefIdentities(root);
-  const clauses = requestDuty(input.publicRequest, identities.checkIds, state.findings);
-  const duty = askOnce([measured.ask, clauses.ask]);
   const contested = new Map(
     [...(input.vetoed ?? []), ...(input.disputed ?? []), ...(input.otherContested ?? [])].flatMap((row) => {
       const path = contestedArtifact(input.treeRoot, row);
@@ -759,14 +733,10 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
           findingPriors(input, identities),
         ),
       ],
-      continuePrompt: (text) => unread() ?? duty(text),
+      continuePrompt: unread,
       systemPrompt: EPOCH_REVIEW_PROMPT,
       prompt: [
-        orientation(input, inventory, verifier, issues, {
-          ...measured,
-          clauses: clauses.clauses,
-          declared: identities.checkIds,
-        }),
+        orientation(input, inventory, verifier, issues, { ...measured, declared: identities.checkIds }),
         ...toolchainLines(toolchain),
       ].join("\n"),
       ...keyIfDefined("observer", input.observer),
@@ -788,6 +758,5 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
     reviewCoverage(inventory, verifier, state),
     verifier,
   );
-  const settled = { ...recorded, ...measured.settle(turn), ...clauses.settle(turn) };
-  return { ...settled, ...advisoryRecord(recorded, earlierAdvisory(input, analysisDir)) };
+  return { ...recorded, ...advisoryRecord(recorded, earlierAdvisory(input, analysisDir)) };
 }

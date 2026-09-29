@@ -16,6 +16,7 @@ import { BEAMS, JOINTS, READING, issue } from "./helpers/review-fixtures.ts";
 import { EvidenceLog } from "../src/claim/evidence-log.ts";
 import { campaignDir, defaultProductDir } from "../src/meta/campaign-root.ts";
 import { runEpochReview } from "../src/review/epoch-reviewer.ts";
+import { EPOCH_REVIEW_SCHEMA } from "../src/review/epoch-review-findings.ts";
 import { uppercaseFixture } from "./helpers/uppercase-fixture.ts";
 import { double } from "./helpers/doubles.ts";
 import { fixtureThresholdDigest, writeFixtureThresholds } from "./helpers/thresholds.ts";
@@ -242,7 +243,7 @@ describe("the epoch reviewer's orientation", () => {
       );
       expect(prompt).toContain("Verified failures by declared check (");
       // The question for the other side is the wrong one here.
-      expect(prompt).not.toContain("the obligation of the request those tasks do not demand");
+      expect(prompt).not.toContain("which obligation of the request those tasks do not demand");
     });
   }
 
@@ -424,20 +425,16 @@ describe("the round plan and the diagnosed issues reach the reviewer", () => {
 });
 
 /** An earlier review's task-set findings reach the next review while the task set is unchanged, and
- *  a battery above the aim owes its review one of two endings, which the host asks for once. */
+ *  a battery above the aim owes its review nothing beyond the placement the orientation states. */
 describe("what an unchanged task set and an above-aim placement ask of the review", () => {
   type Turn = Parameters<NonNullable<Parameters<typeof runEpochReview>[0]["readerTurn"]>>[0];
-  // The one clause of "solves the domain", disposed of, so that a test about another duty is not
-  // also answering the request-clause duty.
-  const DISPOSED = "\nClause 1: answer; decides: yes, every task.";
+  const REQUEST = "designs roof trusses, checks geometric nonlinearity and reversing wind";
 
   async function reviewed(input: {
     counts: Counts;
     taskSetHash?: string;
     earlier?: { taskSetHash: string };
     turn?: (turn: Turn) => Promise<string>;
-    publicRequest?: string;
-    disposal?: string;
   }) {
     const root = tree();
     recordBattery(root, root, "r1", input.counts);
@@ -447,7 +444,7 @@ describe("what an unchanged task set and an above-aim placement ask of the revie
       writeFileSync(
         join(dir, "r0-epoch-review.json"),
         JSON.stringify({
-          schema: "epoch-review/v5",
+          schema: EPOCH_REVIEW_SCHEMA,
           runId: "r0",
           status: "completed",
           condition: { taskSetHash: input.earlier.taskSetHash },
@@ -478,17 +475,14 @@ describe("what an unchanged task set and an above-aim placement ask of the revie
       treeRoot: ".",
       analysis: { ...analysis, identities: { ...analysis.identities, bundleSnapshot: double(snapshot) } },
       priorAdvice: null,
-      publicRequest: input.publicRequest ?? "solves the domain",
+      publicRequest: REQUEST,
       review,
       readerTurn: async (turn) => {
         prompt = turn.prompt;
-        const first = (await (input.turn?.(turn) ?? Promise.resolve(""))) + (input.disposal ?? DISPOSED);
-        const next = turn.continuePrompt?.(first) ?? null;
-        if (next === null) return { pin: null, text: first, error: null };
-        continued.push(next);
-        const last = `core demands the load coupling, and nothing is left undemanded.${input.disposal ?? DISPOSED}`;
-        expect(turn.continuePrompt?.(last) ?? null).toBeNull();
-        return { pin: null, text: last, error: null };
+        const text = await (input.turn?.(turn) ?? Promise.resolve(""));
+        const next = turn.continuePrompt?.() ?? null;
+        if (next !== null) continued.push(next);
+        return { pin: null, text, error: null };
       },
     });
     return { prompt, continued, record };
@@ -515,159 +509,19 @@ describe("what an unchanged task set and an above-aim placement ask of the revie
     expect(prompt).not.toContain("$.loads");
   });
 
-  it("asks an above-aim review once for its account and records the account the restatement drew", async () => {
-    const { continued, record } = await reviewed({
+  /** A finding required by a high score, or an account the host checks by whether each family's name
+   *  appears, rewards naming the right things rather than examining them. So a review that found
+   *  nothing is recorded as it ended, and the request reaches it verbatim, never split at its commas
+   *  and "and" into clauses owed back in a grammar. */
+  it("lets an above-aim review end with nothing demonstrated, and asks it nothing more", async () => {
+    const closing = "I found nothing demonstrated; the tasks were easy.";
+    const { prompt, continued, record } = await reviewed({
       counts: { passed: 20, verified: 25 },
-      turn: () => Promise.resolve("I found nothing demonstrated."),
+      turn: () => Promise.resolve(closing),
     });
-    expect(continued).toHaveLength(1);
-    expect(continued[0]).toContain("for each family (core)");
-    // The fake answered the restatement by naming the family, which is the account.
-    expect(record.aboveAimDuty).toBe("accounted");
-    expect(record.report).toContain("core demands the load coupling");
-  });
-
-  it("records an account given in the first closing message without asking again", async () => {
-    const { continued, record } = await reviewed({
-      counts: { passed: 20, verified: 25 },
-      turn: () => Promise.resolve("Family core demands the published load coupling."),
-    });
-    expect(continued).toHaveLength(0);
-    expect(record.aboveAimDuty).toBe("accounted");
-  });
-
-  it("records a task-set defect as the finding that discharges the duty", async () => {
-    const { continued, record } = await reviewed({
-      counts: { passed: 20, verified: 25 },
-      turn: async (turn) => {
-        const tool = turn.tools.find((row) => row.name === "record_finding");
-        await tool?.execute(
-          "c1",
-          double({
-            defect: true,
-            owner: "correctness-model/tasks.json",
-            severity: "advisory",
-            claim: "the siblings differ only in their published values",
-            publicInputPath: "$.loads",
-          }),
-        );
-        return "Recorded one task-set defect.";
-      },
-    });
-    expect(continued).toHaveLength(0);
-    expect(record.aboveAimDuty).toBe("finding");
-  });
-
-  it("owes nothing on the aim, and records no duty there", async () => {
-    const { continued, record } = await reviewed({ counts: { passed: 8, verified: 25 } });
-    expect(continued).toHaveLength(0);
-    expect(record.aboveAimDuty).toBeUndefined();
-  });
-
-  it("records the duty undischarged when the restatement is answered without an account", async () => {
-    const root = tree();
-    recordBattery(root, root, "r1", { passed: 20, verified: 25 });
-    const record = await runEpochReview({
-      repoRoot: root,
-      slug: SLUG,
-      runId: "r1",
-      treeRoot: ".",
-      analysis: analysisOf({ passed: 20, verified: 25 }),
-      priorAdvice: null,
-      publicRequest: "solves the domain",
-      review,
-      readerTurn: async (turn) => {
-        expect(turn.continuePrompt?.("Nothing found.")).toContain("above the aim");
-        expect(turn.continuePrompt?.("Still nothing.") ?? null).toBeNull();
-        return { pin: null, text: "Still nothing.", error: null };
-      },
-    });
-    expect(record.aboveAimDuty).toBe("undischarged");
-  });
-});
-
-describe("what the request's clauses ask of every review", () => {
-  const REQUEST = "designs roof trusses, checks geometric nonlinearity and reversing wind";
-
-  async function closing(texts: readonly string[], finding?: Record<string, string | boolean>) {
-    const root = tree();
-    recordBattery(root, root, "r1", { passed: 8, verified: 25 });
-    let prompt = "";
-    const continued: string[] = [];
-    const record = await runEpochReview({
-      repoRoot: root,
-      slug: SLUG,
-      runId: "r1",
-      treeRoot: ".",
-      analysis: analysisOf({ passed: 8, verified: 25 }),
-      priorAdvice: null,
-      publicRequest: REQUEST,
-      review,
-      readerTurn: async (turn) => {
-        prompt = turn.prompt;
-        if (finding !== undefined) {
-          await turn.tools.find((row) => row.name === "record_finding")?.execute("c1", double(finding));
-        }
-        let text = "";
-        for (const next of texts) {
-          text = next;
-          const ask = turn.continuePrompt?.(text) ?? null;
-          if (ask === null) break;
-          continued.push(ask);
-        }
-        return { pin: null, text, error: null };
-      },
-    });
-    return { prompt, continued, record };
-  }
-
-  const ALL_DISPOSED = [
-    "Clause 1: answer; decides: yes, task t1.",
-    "Clause 2: unchecked; decides: unknown.",
-    "Clause 3: answer; decides: yes, task t2.",
-  ].join("\n");
-
-  it("lists every clause on the aim, and owes nothing once each is disposed of", async () => {
-    const { prompt, continued, record } = await closing([ALL_DISPOSED]);
-    expect(prompt).toContain("1. designs roof trusses");
-    expect(prompt).toContain("2. checks geometric nonlinearity");
-    expect(prompt).toContain("3. reversing wind");
-    expect(continued).toHaveLength(0);
-    expect(record.requestClauses?.map((row) => [row.check, row.decides])).toEqual([
-      ["answer", "yes"],
-      ["unchecked", "unknown"],
-      ["answer", "yes"],
-    ]);
-  });
-
-  it("asks once for a clause left undisposed or named against an undeclared check, and records it so", async () => {
-    const partial = "Clause 1: answer; decides: yes.\nClause 3: nonlinear-service; decides: yes.";
-    const { continued, record } = await closing([partial, partial, partial]);
-    expect(continued).toHaveLength(1);
-    expect(continued[0]).toContain("Request clauses 2, 3 are not yet disposed of");
-    expect(record.requestClauses?.map((row) => row.check)).toEqual(["answer", null, null]);
-  });
-
-  it("asks again for a clause no task decides until a task-set defect carries it", async () => {
-    const noTask = ALL_DISPOSED.replace(
-      "Clause 2: unchecked; decides: unknown",
-      "Clause 2: answer; decides: no",
-    );
-    const bare = await closing([noTask, noTask]);
-    expect(bare.continued).toHaveLength(1);
-    expect(bare.continued[0]).toContain("Request clause 2 is not yet disposed of");
-    const carried = await closing([noTask], {
-      defect: true,
-      owner: "correctness-model/tasks.json",
-      severity: "advisory",
-      claim: "no task drives the check into the nonlinear regime",
-      publicInputPath: "$.loads",
-    });
-    expect(carried.continued).toHaveLength(0);
-    expect(carried.record.requestClauses?.[1]).toEqual({
-      clause: "checks geometric nonlinearity",
-      check: "answer",
-      decides: "no",
-    });
+    expect(continued).toEqual([]);
+    expect(record.report).toBe(closing);
+    expect(prompt).toContain(`Original request (verbatim): ${REQUEST}`);
+    expect(prompt).not.toMatch(/clause/i);
   });
 });

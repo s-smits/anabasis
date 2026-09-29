@@ -48,9 +48,8 @@ interface ReaderTurnInput {
   tools: ReaderTool[];
   systemPrompt: string;
   prompt: string;
-  /** After a settled successful turn, the reader may expose unfinished work, reading that turn's
-   *  final text. Null ends reading. */
-  continuePrompt?: (text: string) => string | null;
+  /** After a settled successful turn, the next prompt back to unfinished work. Null ends reading. */
+  continuePrompt?: () => string | null;
   /** Same lifecycle with a deterministic session in tests; production resolves the review slot. */
   openSession?: () => Promise<HostSession>;
   observer?: RunObserver;
@@ -135,7 +134,7 @@ async function readInSession(
       error = `${role} turn ${result.status}: ${result.errorMessages?.join("; ") ?? "no error recorded"}`;
       break;
     }
-    prompt = input.continuePrompt?.(text) ?? null;
+    prompt = input.continuePrompt?.() ?? null;
   }
   return { text, error };
 }

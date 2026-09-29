@@ -199,31 +199,20 @@ describe("runs pulse", () => {
     expect(statusLine(reading(31, { round: held }), 10)).not.toMatch(/passed past|predictions expect|hold/);
   });
 
-  it("reads each battery's Epoch Review once, and flags an above-aim battery never asked its duty", () => {
-    const review = (duty: string | null) => ({
+  it("reads each battery's Epoch Review once", () => {
+    const review = {
       status: "completed",
       findings: 2,
       blocking: 1,
-      duty,
       file: `analysis/${RUN_ID}-i02-epoch-review.json`,
-    });
+    };
     const before = reading(60, { batteries: [{ ...battery(6, 6, "too-easy"), review: null }] });
-    const unasked = { ...before, batteries: [{ ...battery(6, 6, "too-easy"), review: review(null) }] };
-    expect(pulseEvents(before, unasked, SLUG)[0]?.look).toEqual(["analysis/<run>-i02-epoch-review.json"]);
-    expect(texts(before, unasked)).toEqual([
-      "⚠ review of battery 1 completed: 2 finding(s), 1 blocking; the above-aim duty was not asked",
-    ]);
-    const answered = { ...before, batteries: [{ ...battery(6, 6, "too-easy"), review: review("finding") }] };
-    expect(texts(before, answered)).toEqual([
-      "◆ review of battery 1 completed: 2 finding(s), 1 blocking; above-aim duty: finding",
-    ]);
-    const onAim = reading(60, { batteries: [{ ...battery(3, 6, "on-aim"), review: null }] });
-    expect(
-      texts(onAim, { ...onAim, batteries: [{ ...battery(3, 6, "on-aim"), review: review(null) }] }),
-    ).toEqual(["◆ review of battery 1 completed: 2 finding(s), 1 blocking"]);
-    expect(texts(answered, answered)).toEqual([]);
+    const reviewed = { ...before, batteries: [{ ...battery(6, 6, "too-easy"), review }] };
+    expect(pulseEvents(before, reviewed, SLUG)[0]?.look).toEqual(["analysis/<run>-i02-epoch-review.json"]);
+    expect(texts(before, reviewed)).toEqual(["◆ review of battery 1 completed: 2 finding(s), 1 blocking"]);
+    expect(texts(reviewed, reviewed)).toEqual([]);
     const kept = reading(60, { batteries: [battery(6, 6, "too-easy")] });
-    expect(texts(kept, answered)).toEqual([]);
+    expect(texts(kept, reviewed)).toEqual([]);
   });
 
   it("says a quiet Builder once when the silence starts and once when it ends", () => {

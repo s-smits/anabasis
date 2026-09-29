@@ -44,10 +44,9 @@ import { type ReviewVerifierEvidence, type SourceReadState, deliveredSource } fr
 import { BRIEF_FILE, TASKS_FILE } from "../meta/bundle-layout.ts";
 import { readJsonFile } from "../meta/completed-json.ts";
 import { boundText } from "../meta/bounded-text.ts";
-import type { AboveAimDuty, ClauseDisposal } from "./review-duties.ts";
 import { type AdvisoryDefect, type AdvisoryDisposition, advisoryDefects } from "./review-carry.ts";
 
-export const EPOCH_REVIEW_SCHEMA = "epoch-review/v5";
+export const EPOCH_REVIEW_SCHEMA = "epoch-review/v6";
 /** Product identity; review procedure belongs to the review request. */
 export type MeasuredCondition = {
   /** Null when the recorded fields cannot establish a measured condition. */
@@ -106,13 +105,6 @@ export type EpochReviewEvidence = {
   /** What the review executed, absent when it executed nothing. Private: which check reacts to
    *  which changed field is verifier detail an author must not read. */
   probes?: ReviewProbeRow[];
-  /** How a finished review of a battery above the aim met the duty that placement puts on it: a
-   *  task-set defect recorded, every family accounted for in the report, or neither after one
-   *  continuation restating it (`review-duties.ts`). Absent for any other review. */
-  aboveAimDuty?: AboveAimDuty;
-  /** Each clause of the one-line request as the finished review's closing message disposed of it.
-   *  Absent where the review had no request to split or ended in an error. */
-  requestClauses?: ClauseDisposal[];
   /** Each advisory defect the previous completed review recorded, as this completed review left it
    *  (`advisoryRecord`): the previous battery's review for a measured one, the round's previous
    *  review for an authoring one. Absent where there was none, or this review did not complete. */

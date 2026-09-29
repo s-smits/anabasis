@@ -383,7 +383,7 @@ describe("rendering", () => {
   it("says the latest battery found no limit only when it passed every case it scored", () => {
     // A full pass also names the measurement that says why: the passing solves beside the reference.
     expect(render(readoutOf(row("r1", 0, { passed: 6, n: 6 })))).toContain(
-      "Battery r1 passed all 6 of its verified cases, so it found no limit: the next battery has to demand more of the field's own work than this one did, deeper in what its tasks already exercise or across what the request names and no task does yet. Before you set the next battery, measure what its passing solves submitted beside your own reference answer for the same task: where a limit sits well above your reference, answers worse than it passed, and where a solve matched or beat your reference, the search behind it is one the solver runs too.",
+      "Battery r1 passed all 6 of its verified cases, so it found no limit: the next battery has to demand more of the field's own work than this one did, deeper in what its tasks already exercise or across what the request names and no task does yet. Record in your notes which public requirement it changes and the reasoning that change adds. Before you set the next battery, measure what its passing solves submitted beside your own reference answer for the same task: where a limit sits well above your reference, answers worse than it passed, and where a solve matched or beat your reference, the search behind it is one the solver runs too.",
     );
     expect(render(readoutOf(row("r1", 0, { passed: 1, n: 1 })))).toContain(
       "Battery r1 passed its one verified case, so it found no limit",

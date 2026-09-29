@@ -835,7 +835,8 @@ the battery was paid for.
     proves a task harder or easier by itself; blind measurement decides, which is why since 2026-09-29 no
     prompt argues the third in advance. Each prompt says it once: the Builder system prompt owns the
     clauses, `examples.md` the optional routes to a target the solver does not reliably meet, and
-    `roundPrompt` and `renderBatteryContract` when to submit and what a witness proves. The round prompt asks for a submit once a clear preview says the candidate works, because the
+    `roundPrompt` and `renderBatteryContract` when to submit and what a witness proves, and the climb
+    readout's no-limit line asks for the changed requirement and its reasoning in the notes. The round prompt asks for a submit once a clear preview says the candidate works, because the
     measured battery, not a rehearsal, decides where it lands, and nothing holds a submit on rehearsals
     (the 96-of-99 history is under "What has cost whole rounds").
 

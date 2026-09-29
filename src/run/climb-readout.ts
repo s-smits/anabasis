@@ -371,7 +371,10 @@ function familyLine(readout: ClimbReadout): string | null {
  *  measurement that says why: a Builder otherwise sets its next limits from its own reference alone,
  *  blind to where the passing solves landed, so a limit well above a strong reference and a limit
  *  just above a reference the solver beats both read as the same full pass. The solves it measures
- *  are already public, in the context tool's traces source. */
+ *  are already public, in the context tool's traces source. It asks the Builder to write down the
+ *  requirement the next battery changes (AGENTS.md rule 11), and argues for no route: an all-pass
+ *  streak's only standing push used to be "demand more", which named nothing, while a plan written
+ *  into the notes was carried and built (Luna lanes, 2026-09-29). */
 function noLimitLine(row: ReadoutRow): string | null {
   const { runId, passed, verified, unaccepted, nonResults } = row;
   if (verified === 0 || unaccepted > 0 || passed !== verified) return null;
@@ -380,7 +383,7 @@ function noLimitLine(row: ReadoutRow): string | null {
     const lost = nonResults === 1 ? "one case" : `${String(nonResults)} cases`;
     return `Battery ${runId} passed ${all} and ${lost} ended as non-results that scored nothing, so it found no limit among the cases it scored and did not measure the rest.`;
   }
-  return `Battery ${runId} passed ${all}, so it found no limit: the next battery has to demand more of the field's own work than this one did, deeper in what its tasks already exercise or across what the request names and no task does yet. ${MEASURE_SOLVES}`;
+  return `Battery ${runId} passed ${all}, so it found no limit: the next battery has to demand more of the field's own work than this one did, deeper in what its tasks already exercise or across what the request names and no task does yet. Record in your notes which public requirement it changes and the reasoning that change adds. ${MEASURE_SOLVES}`;
 }
 
 /**

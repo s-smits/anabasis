@@ -103,9 +103,9 @@ describe("judge review reader", () => {
         evidence: {
           judge: "unvalidated",
           offered: 6,
-          verdicts: 5,
+          verdicts: 4,
           abstentions: 1,
-          disagreementDenominator: 5,
+          disagreementDenominator: 4,
         },
       },
       contested: [{ taskId: "t1" }, { taskId: "t2" }],

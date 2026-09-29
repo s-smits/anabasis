@@ -28,19 +28,20 @@ import { type ReviewResetWait, retryAfterNamedReset } from "../correctness-bundl
 export const RATIONALE_MAX = 400;
 const RULE_MAX = 600;
 
-/** The two citations a fail may make beside a verbatim public validity assertion. */
+/** The two citations a fail or an undecided may make beside a verbatim public validity assertion. */
 const SCHEMA_RULE = "artifactSchema";
 const INPUT_RULE = "publicInput";
 
-const VERDICT_WORDS = ["pass", "fail", "abstain"] as const;
+const VERDICT_WORDS = ["pass", "fail", "undecided"] as const;
 type VerdictWord = (typeof VERDICT_WORDS)[number];
 
 /** Read as a set of plain strings so a word arriving from the model can be tested before it is
  *  named, while the tuple above stays the one declaration the tool schema also enumerates. */
 const VERDICT_WORD_SET: ReadonlySet<string> = new Set<string>(VERDICT_WORDS);
 
-/** The one verdict representation, the schema tool's parameters. The three outcomes are mutually exclusive by construction: abstention is a first-class verdict word, so
- * no field combination can state both a decision and an abstention. */
+/** The one verdict representation, the schema tool's parameters. The three outcomes are mutually
+ *  exclusive by construction: undecided is a first-class verdict word, so no field combination can
+ *  state both a decision and an undecided reading. */
 const JUDGE_VERDICT_SCHEMA = {
   type: "object",
   properties: {
@@ -50,7 +51,7 @@ const JUDGE_VERDICT_SCHEMA = {
       type: "array",
       minItems: 1,
       items: { type: "string", minLength: 1, maxLength: RULE_MAX },
-      description: `Required for fail: every shown rule the output does not meet, each quoted verbatim from publicValidityRules or a public-rule-decisions statement, or "${SCHEMA_RULE}" when the output violates the shown artifact schema, or "${INPUT_RULE}" when it contradicts the shown public task input. Omit for pass and abstain.`,
+      description: `Required for fail and undecided. For fail: every shown rule the output breaks. For undecided: every shown requirement that only a run, or a quantity the material does not state, could decide. Each is quoted verbatim from publicValidityRules or a public-rule-decisions statement, or is "${SCHEMA_RULE}" when the output violates or cannot be read against the shown artifact schema, or "${INPUT_RULE}" when it contradicts the shown public task input. Omit for pass.`,
     },
   },
   required: ["verdict", "rationale"],
@@ -58,7 +59,7 @@ const JUDGE_VERDICT_SCHEMA = {
 };
 
 const VERDICT_SCHEMA_HINT =
-  'judge verdict must match {verdict:"pass"|"fail"|"abstain",rationale:string(1..400),rules?:string[]}; a fail must cite only shown rules, verbatim, at least one';
+  'judge verdict must match {verdict:"pass"|"fail"|"undecided",rationale:string(1..400),rules?:string[]}; a fail or undecided must cite only shown rules, verbatim, at least one';
 
 type Captured = { verdict: VerdictWord; rationale: string; rules: string[] };
 
@@ -70,9 +71,9 @@ function isVerdictWord(value: string): value is VerdictWord {
   return VERDICT_WORD_SET.has(value);
 }
 
-/** The rules a fail may cite for this subject: each shown validity assertion, each shown public
- *  rule-decision statement, and the two fixed citations. A fail that names anything else, or
- *  nothing, is a protocol non-result rather than a verdict. The set is checked here rather than
+/** The rules a fail or an undecided may cite for this subject: each shown validity assertion, each
+ *  shown public rule-decision statement, and the two fixed citations. One that names anything else,
+ *  or nothing, is a protocol non-result rather than a verdict. The set is checked here rather than
  *  asked for in the prompt, which does not stop a Judge holding an artifact against agent tool text
  *  that no rule states.
  *
@@ -105,7 +106,7 @@ function parseVerdict(raw: JsonValue, citable: ReadonlySet<string>): Captured | 
   ) {
     return null;
   }
-  if (verdict !== "fail") return { verdict, rationale, rules: [] };
+  if (verdict === "pass") return { verdict, rationale, rules: [] };
   const rules = Array.isArray(value?.rules)
     ? value.rules.map((rule) => (isString(rule) ? rule.trim() : ""))
     : [];
@@ -113,15 +114,15 @@ function parseVerdict(raw: JsonValue, citable: ReadonlySet<string>): Captured | 
   return { verdict, rationale, rules };
 }
 
-/** Map one captured verdict word to the tri-state attempt: pass/fail decide, abstain is the
- *  designed null with its reason. */
+/** Map one captured verdict word to the tri-state attempt: pass/fail decide, undecided is the
+ *  designed null with its reason and the requirements it could not decide. */
 function attemptOf(captured: Captured, turns: number): JudgeAttempt {
-  return captured.verdict === "abstain"
+  return captured.verdict === "undecided"
     ? {
         verdict: null,
         abstained: true,
         rationale: captured.rationale,
-        rules: [],
+        rules: captured.rules,
         error: null,
         errorKind: null,
         turns,
@@ -223,7 +224,7 @@ export function sessionJudge(options: {
       name: "record_judge_verdict",
       label: "Record judge verdict",
       description:
-        "Record pass or fail with a short reason. Use abstain only when the public input does not support a decision.",
+        "Record fail, pass or undecided with a short reason. Pass only when every stated requirement was decided from the shown material and met.",
       parameters: JUDGE_VERDICT_SCHEMA,
       async execute(_id: string, raw: JsonValue) {
         output.calls += 1;

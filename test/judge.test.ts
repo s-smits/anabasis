@@ -120,22 +120,6 @@ describe("Judge verdict schema", () => {
     expect(opened).toBe(1);
   });
 
-  it("records abstention with its reason and no error", async () => {
-    const judge = toolJudge(async (tool) => {
-      await tool.execute(
-        "call-1",
-        double({
-          verdict: "abstain",
-          rationale: "public context lacks the binding table",
-        }),
-      );
-      return { status: "completed" };
-    });
-    await expect(judge(REQUEST)).resolves.toEqual(
-      attempt({ abstained: true, rationale: "public context lacks the binding table" }),
-    );
-  });
-
   it("a judge error is null, never a fail verdict", async () => {
     let inputKeys: string[] = [];
     const evidence = await subjectOf(async (input) => {
@@ -402,7 +386,7 @@ describe("the schema-tool verdict: budget, task disclosure, hint and cited rules
     const judge = toolJudge(async (tool) => {
       await expect(tool.execute("call-1", double({ verdict: "maybe", rationale: "" }))).rejects.toThrow(
         // The hint states the rationale bound the schema enforces, so the retry can meet it.
-        `judge verdict must match {verdict:"pass"|"fail"|"abstain",rationale:string(1..${String(RATIONALE_MAX)}),rules?:string[]}; a fail must cite only shown rules, verbatim, at least one`,
+        `judge verdict must match {verdict:"pass"|"fail"|"undecided",rationale:string(1..${String(RATIONALE_MAX)}),rules?:string[]}; a fail or undecided must cite only shown rules, verbatim, at least one`,
       );
       return { status: "completed" };
     });
@@ -459,6 +443,31 @@ describe("the schema-tool verdict: budget, task disclosure, hint and cited rules
       verdict: null,
       errorKind: "protocol",
     });
+    // An undecided names what only a run could decide, from the same shown set, and is no error.
+    await expect(
+      judgeWith({
+        verdict: "undecided",
+        rationale: "the visit order needs the route run",
+        rules: [EVERY_STOP_IS_VISITED_ONCE],
+      })(shown),
+    ).resolves.toEqual(
+      attempt({
+        abstained: true,
+        rationale: "the visit order needs the route run",
+        rules: [EVERY_STOP_IS_VISITED_ONCE],
+      }),
+    );
+    // Without a citation, or citing a rule the material does not show, it is a protocol non-result.
+    for (const verdict of [
+      { verdict: "undecided", rationale: "cannot tell" },
+      { verdict: "undecided", rationale: "cannot tell", rules: ["stops are sorted"] },
+    ]) {
+      await expect(judgeWith(verdict)(shown)).resolves.toMatchObject({
+        verdict: null,
+        abstained: false,
+        errorKind: "protocol",
+      });
+    }
     // A pass never carries a rule, whatever the model sent.
     await expect(
       judgeWith({ verdict: "pass", rationale: "complete", rules: [EVERY_STOP_IS_VISITED_ONCE] })(shown),
@@ -506,7 +515,7 @@ describe("the judge battery review", () => {
       verdict: null,
       abstained: true,
       rationale: "public facts are insufficient",
-      rules: [],
+      rules: [EVERY_STOP_IS_VISITED_ONCE],
       error: null,
       errorKind: null,
       turns: 1,
@@ -674,11 +683,11 @@ describe("the judge battery review", () => {
   });
 
   it("settles each paid wave and stops after five consecutive failed attempts", async () => {
-    // Four failures, one pass, four failures, one abstention, then five failures: the streak
+    // Four failures, one pass, four failures, one undecided, then five failures: the streak
     // resets on each answered subject and only the last run of five stops the census.
     const answered = new Map([
       [5, "pass"],
-      [10, "abstain"],
+      [10, "undecided"],
     ]);
     const written = new Map<string, unknown>();
     const census = new JudgeCensus(
@@ -687,7 +696,13 @@ describe("the judge battery review", () => {
         invoke: async (_input, context) => {
           const outcome = answered.get(Number(context?.subjectId.slice(1)));
           if (outcome === "pass") return attempt({ verdict: true, rationale: "valid" });
-          if (outcome === "abstain") return attempt({ abstained: true, rationale: "insufficient" });
+          if (outcome === "undecided") {
+            return attempt({
+              abstained: true,
+              rationale: "insufficient",
+              rules: [EVERY_STOP_IS_VISITED_ONCE],
+            });
+          }
           return attempt({ error: "provider degraded turn", errorKind: "provider" });
         },
       },

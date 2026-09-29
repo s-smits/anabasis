@@ -511,6 +511,21 @@ describe("coverage and historical records", () => {
     expect(result.contested.map((row) => [row.taskId, row.confirmed])).toEqual([["t1", false]]);
   });
 
+  it("counts an undecided as an answer, so a mostly undecided battery is complete", () => {
+    const { root, analysis } = repoWith({
+      cases: [
+        { taskId: "t1", truthOk: true, judge: "abstain" },
+        { taskId: "t2", truthOk: false, judge: "abstain" },
+        { taskId: "t3", truthOk: true },
+      ],
+    });
+    const result = runJudgeReviews(analysis, { repoRoot: root, judgePin: null });
+    expect(judgeOf(result)).toBe("advisory-comparison");
+    expect(result.provisional).toBeNull();
+    expect(result.coverage).toEqual({ reviewable: 3, reviewed: 3 });
+    expect(result.contested).toEqual([]);
+  });
+
   it("contests no case whose Judge fail cites no rule", () => {
     const { root, analysis } = repoWith(
       { cases: [{ taskId: "t1", truthOk: true, judge: false }] },
@@ -550,7 +565,7 @@ describe("the Judge exit is advice only", () => {
     const { root, analysis } = repoWith(exitBattery(10, 0));
     const result = runJudgeReviews(analysis, { repoRoot: root, judgePin: JUDGE_PIN });
     expect(result.exit).toMatchObject({ kind: "none", verifierFailJudgePass: 0, verified: 10 });
-    expect(result.exit.reason).toBe("the Judge and the verifier agreed on every reviewed verified case");
+    expect(result.exit.reason).toBe("the Judge contradicted the verifier on no reviewed verified case");
   });
 
   // Agreement is claimed over the cases the Judge returned a verdict on. A census where every
@@ -575,16 +590,19 @@ describe("Judge prompt policy", () => {
   it("states each duty once, spells no number that could go stale and keeps the per-requirement listing out", () => {
     const { census } = ACTIVE_JUDGE_PROMPTS;
     for (const duty of [
-      "Check every stated requirement before deciding.",
-      "Do not list every requirement in the rationale.",
-      "a requirement you cannot see cannot ground a failure",
-      "recompute it from the shown inputs",
-      "states no tolerance for that comparison",
-      "is not decided by predicting that run from its text",
+      "Your verdict is one of three.",
+      "you decided every stated requirement from the shown material",
+      "Do not predict its outcome from the text in either direction",
+      "Do not return undecided because a requirement is long, technical or tedious to check",
+      "cannot ground one",
+      "is not evidence against the output",
+      "where no tolerance is stated, a small difference is not a failure",
     ]) {
       expect(census.split(duty).length - 1).toBe(1);
     }
     expect(census).not.toMatch(/\d/);
-    expect(census).not.toContain("List each stated requirement and check it separately.");
+    // The two retired clauses that forced a pass and invited hand sums stay out.
+    expect(census).not.toContain("carrying full precision through sums");
+    expect(census).not.toMatch(/\babstain\b/);
   });
 });

@@ -181,8 +181,9 @@ function censusHold(attempt: CensusAttempt, subjects: readonly ContestedSubject[
   if (subjects.length === 0) return null;
   if (attempt.census === null) return `the battery has no census: ${attempt.reason}`;
   const { evidence } = attempt.census;
-  if (evidence.verdicts !== evidence.offered) {
-    return `the judge review is incomplete (${judgeDecision(evidence)}): ${evidence.verdicts}/${evidence.offered} battery verdicts returned`;
+  const answered = answeredCount(attempt);
+  if (answered !== evidence.offered) {
+    return `the judge review is incomplete (${judgeDecision(evidence)}): ${answered}/${evidence.offered} battery verdicts returned`;
   }
   // A contradicting verdict whose resample returned none is neither confirmed nor withdrawn, so the
   // census counting its first verdict would let a standing Judge issue age towards a fix on it.
@@ -193,6 +194,14 @@ function censusHold(attempt: CensusAttempt, subjects: readonly ContestedSubject[
   ).length;
   if (unresampled === 0) return null;
   return `the judge review is incomplete: ${unresampled} contradicting verdicts returned no resample verdict`;
+}
+
+/** The subjects the Judge answered, pass, fail or undecided. An undecided is an answer: counting
+ *  booleans alone would hold nearly every battery once most subjects read undecided, and no Judge
+ *  issue would age. */
+function answeredCount(attempt: CensusAttempt): number {
+  const evidence = attempt.census?.evidence;
+  return evidence === undefined ? 0 : evidence.verdicts + evidence.abstentions;
 }
 
 /** Why the Judge returned no verdict on any case: the census it could not read, or the count of
@@ -213,16 +222,16 @@ function judgeExit(contested: readonly ContestedCase[], verified: number, attemp
   const vetoed = contested.filter(isVetoed).length;
   const base = { verifierFailJudgePass, verifierPassJudgeFail, verified };
   if (contested.length === 0) {
-    // Agreement is claimed over the cases the Judge returned a verdict on, so with none there is
-    // nothing it agreed on, and the reason says why nothing was reviewed instead.
-    const reviewed = attempt.census?.evidence.verdicts ?? 0;
+    // No contradiction is claimed over the cases the Judge answered, undecided included, so with none
+    // there is nothing it was compared on, and the reason says why nothing was reviewed instead.
+    const reviewed = answeredCount(attempt);
     return {
       ...base,
       kind: "none",
       reason:
         reviewed === 0
           ? `the Judge reviewed no verified case: ${unreviewedReason(attempt)}`
-          : "the Judge and the verifier agreed on every reviewed verified case",
+          : "the Judge contradicted the verifier on no reviewed verified case",
     };
   }
   return {
@@ -261,7 +270,7 @@ export function runJudgeReviews(analysis: IterationAnalysis, deps: JudgeReviewDe
     contested,
     coverage: {
       reviewable: attempt.census?.evidence.offered ?? 0,
-      reviewed: attempt.census?.evidence.verdicts ?? 0,
+      reviewed: answeredCount(attempt),
     },
     provisional,
     exit,

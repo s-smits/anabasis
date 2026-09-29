@@ -56,12 +56,13 @@ function boundedRationale(rationale: string | null): boolean {
   return isString(rationale) && rationale.trim().length > 0 && rationale.length <= RATIONALE_MAX;
 }
 
-/** A fail carries the rules it cites; a pass and an abstention carry none. */
+/** A fail cites the rules it breaks and an undecided the requirements it could not decide; a pass
+ *  cites none. */
 function rulesFitVerdict(attempt: JudgeAttempt): boolean {
   const { rules } = attempt;
-  return attempt.verdict === false
-    ? rules.length > 0 && rules.every((rule) => rule.length > 0)
-    : rules.length === 0;
+  return attempt.verdict === true
+    ? rules.length === 0
+    : rules.length > 0 && rules.every((rule) => rule.length > 0);
 }
 
 /** An operational failure must state both its cause and kind: a non-abstention null with

@@ -66,12 +66,14 @@ function nonNegativeInteger(value: number): boolean {
 }
 
 /** What a review as a whole says, derived rather than stored, in the order the counts rule each
- *  other out: nothing came back, then verdicts missing from the offered battery, then no
- *  comparable pair to read, and only then an advisory comparison. Null when no Judge ran. */
+ *  other out: nothing came back, then answers missing from the offered battery, then no
+ *  comparable pair to read, and only then an advisory comparison. An undecided is an answer. Null
+ *  when no Judge ran. */
 export function judgeDecision(evidence: JudgeEvidence): JudgeDecision | null {
   if (evidence.judge === "off") return null;
-  if (evidence.verdicts === 0) return "non-result";
-  if (evidence.verdicts < evidence.offered) return "incomplete-census";
+  const answered = evidence.verdicts + evidence.abstentions;
+  if (answered === 0) return "non-result";
+  if (answered < evidence.offered) return "incomplete-census";
   if (evidence.disagreementDenominator === 0) return "no-battery-verdicts";
   return "advisory-comparison";
 }

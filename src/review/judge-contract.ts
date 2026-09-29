@@ -56,11 +56,12 @@ export interface JudgeRequest extends JudgeInput {
 
 export type JudgeAttempt = {
   verdict: boolean | null;
-  /** Designed abstention is distinct from a null verdict caused by evaluator failure. */
+  /** An undecided verdict, distinct from a null verdict caused by evaluator failure. */
   abstained: boolean;
   rationale: string | null;
-  /** The shown rules a fail cites verbatim, as many as it rests on: public validity assertions,
-   *  `artifactSchema` or `publicInput`. Empty for a pass, an abstention and an error. */
+  /** The shown rules cited verbatim — public validity assertions, `artifactSchema` or
+   *  `publicInput`: for a fail every rule it breaks, for an undecided every requirement only a run
+   *  could decide. Empty for a pass and an error. */
   rules: string[];
   error: string | null;
   /** Structural classification of `error`, typed at the site that knows what failed: a turn the

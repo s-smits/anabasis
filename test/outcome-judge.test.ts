@@ -77,7 +77,7 @@ function review(
     verifierPassJudgeFail: 0,
 
     verified: 1,
-    reason: "the Judge and the verifier agreed on every reviewed verified case",
+    reason: "the Judge contradicted the verifier on no reviewed verified case",
   },
 ): JudgeReviewsResult {
   return {

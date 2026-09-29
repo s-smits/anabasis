@@ -607,8 +607,9 @@ the battery was paid for.
 
    A Judge fail must cite at least 1 verbatim line of the public rules, the schema or the input, and an
    uncited fail is a protocol non-result. A cited fail of a verifier pass is a **veto**, recorded on the
-   claim as `vetoed` and bounded by `verifierPassJudgeFail`, and a contradicting first verdict is
-   re-sampled once. Vetoes and disputed fails go to the Epoch Reviewer, and a settled veto projects only
+   claim as `vetoed` and bounded by its verdicts, and a Judge fail of a verifier pass is re-sampled once;
+   `judgeCaseKind` names how each answered case stands against the verifier, and every reader counts
+   by it. Vetoes and disputed fails go to the Epoch Reviewer, and a settled veto projects only
    its count and family. The Judge sets no score, acceptance or adoption; disagreement with the verifier
    is a reason to inspect it.
 
@@ -696,8 +697,9 @@ the battery was paid for.
 
    A finding settles a Judge disagreement only by naming it: `record_finding` takes `settlesCases`, the task
    ids of listed vetoes and disputed fails the finding decides, and the host records one disposition per case,
-   `against-check` for a `correctness-model/` defect on the deciding check whose cited probe moved it the way
-   the case says, and `check-stands` for an observation backed by a probe that moved the check. It refuses a
+   `against-check` for a `correctness-model/` defect on the deciding check whose cited probe shows it the way
+   the case says (until 2026-09-29 the host took the reviewer's word for that direction and asked for no
+   probe), and `check-stands` for an observation backed by a probe that moved the check. It refuses a
    case that is not listed, not decided by the named check, not opened with `read_source`, already settled, or
    of the wrong kind for the probe's direction, since a false rejection cannot settle a veto, and the record
    keeps the ids still `unsettled`. Until 2026-09-29 opening a contested artifact was enough, so one settling

@@ -437,10 +437,11 @@ const caseSettlement: FindingRule = ({ parsed, args, owner, state, cases }) => {
   if (checkId === null || (parsed.defect === true && !against)) {
     return "settlesCases is for a finding naming the deciding checkId: a defect owned under correctness-model/ other than tasks.json, or an observation";
   }
-  if (
-    !against &&
-    !probeBackedRows(state.probes, args.probeIds).some((row) => row.movedCheckIds.includes(checkId))
-  ) {
+  // Either way a settlement rests on an executed probe of the deciding check, never on reading alone.
+  // Until 2026-09-29 a defect settled against the check with no probe, and the direction it claimed
+  // was the reviewer's word rather than the probe's.
+  const cited = probeBackedRows(state.probes, args.probeIds);
+  if (!against && !cited.some((row) => row.movedCheckIds.includes(checkId))) {
     return "settling a case in the check's favour requires a cited probe in which writing the Judge's reading into an accept control moved that check";
   }
   for (const taskId of settlesCases) {
@@ -450,8 +451,8 @@ const caseSettlement: FindingRule = ({ parsed, args, owner, state, cases }) => {
     if (row.path === null || !state.reads.includes(row.path)) {
       return `settlesCases: read ${taskId}'s artifact with read_source before settling it`;
     }
-    if (against && parsed.probeDirection !== null && parsed.probeDirection !== AGAINST_CHECK[row.kind]) {
-      return `settlesCases: ${taskId} is a ${row.kind} case, which a ${parsed.probeDirection} finding does not settle`;
+    if (against && !cited.some((probe) => probeShows(probe, checkId) === AGAINST_CHECK[row.kind])) {
+      return `settlesCases: ${taskId} is a ${row.kind} case, which only a cited probe showing ${AGAINST_CHECK[row.kind]} on ${checkId} settles against the check`;
     }
     if (state.dispositions.some((settled) => settled.taskId === taskId)) {
       return `settlesCases: ${taskId} is already settled by an earlier finding`;
@@ -654,7 +655,7 @@ function findingParameters(disputable: readonly string[]) {
         type: "array",
         items: { type: "string" },
         description:
-          "The task ids of the listed vetoes and disputed fails this finding settles, each decided by its checkId and read with read_source first; a case you name nowhere stays unsettled. A defect owned under correctness-model/ settles them against the check. An observation settles them in the check's favour, as the Judge's error, citing in probeIds the probe that wrote the Judge's reading into an accept control and moved that check; the Judge issue stops standing once every case it counts is settled. Private: the Builder reads only how many cases in which families.",
+          "The task ids of the listed vetoes and disputed fails this finding settles, each decided by its checkId and read with read_source first; a case you name nowhere stays unsettled. A defect owned under correctness-model/ settles them against the check, citing in probeIds a probe of that check showing the way the case says: accepts-invalid for a veto, rejects-valid for a disputed fail. An observation settles them in the check's favour, as the Judge's error, citing in probeIds the probe that wrote the Judge's reading into an accept control and moved that check; the Judge issue stops standing once every case it counts is settled. Private: the Builder reads only how many cases in which families.",
       },
     },
   };

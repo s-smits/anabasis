@@ -575,8 +575,28 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
       listed("t4", "uno", "veto"),
       listed("d1", "uno", "disputed-pass"),
     ];
+    // Probe 1 wrote an invalid variant the check still passed; probe 2 a valid one it refused.
+    const probe = (id: number, direction: "accepts-invalid" | "rejects-valid") => {
+      const moved = direction === "rejects-valid" ? ["gpio-exit-code"] : [];
+      return {
+        id,
+        controlId: "accept-1",
+        taskId: "t1",
+        path: "$.pins",
+        change: { value: "1" },
+        baseline: { outcome: "pass" as const, blockingCheckIds: [] },
+        mutated: {
+          outcome: moved.length === 0 ? ("pass" as const) : ("fail" as const),
+          blockingCheckIds: moved,
+        },
+        applicableCheckIds: ["gpio-exit-code", "other-check"],
+        movedCheckIds: moved,
+        refused: null,
+      };
+    };
     const settling = () => {
       const state = reviewState();
+      state.probes.rows.push(probe(1, "accepts-invalid"), probe(2, "rejects-valid"));
       state.reads.push(at("t1"), at("t2"), at("t3"), at("d1"));
       const tool = recordFindingTool([], ["t1", "t2", "t3", "t4", "d1"], evidence, state, {
         identities: { ...identities, checkIds: ["gpio-exit-code", "other-check"] },
@@ -584,7 +604,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
       });
       return { state, tool };
     };
-    const named = { ...defect, claim: "private prose", checkId: "gpio-exit-code" };
+    const named = { ...defect, claim: "private prose", checkId: "gpio-exit-code", probeIds: [1] };
 
     test("a defect settles exactly the listed cases it names, against the check, as counts and families", async () => {
       const { state, tool } = settling();
@@ -615,6 +635,11 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
         [{ settlesCases: ["t4"] }, "read t4's artifact with read_source before settling it"],
         [{ settlesCases: ["t9"] }, "t9 is not a listed veto or disputed fail"],
         [{ settlesCases: ["t1"] }, "t1 is already settled by an earlier finding"],
+        // A defect with no probe of the check behind it settles nothing, whatever it says.
+        [
+          { settlesCases: ["t2"], probeIds: [] },
+          "t2 is a veto case, which only a cited probe showing accepts-invalid on gpio-exit-code settles",
+        ],
         [
           { settlesCases: ["t2"], owner: "agent/tools.ts" },
           "settlesCases is for a finding naming the deciding checkId",
@@ -632,9 +657,13 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
 
     test("a false rejection settles disputed fails and cannot touch a veto", async () => {
       const { state, tool } = settling();
-      const rejects = { ...named, probeDirection: "rejects-valid" };
+      const rejects = { ...named, probeIds: [2], probeDirection: "rejects-valid" };
       expect(await call(tool, { ...rejects, settlesCases: ["t1"] })).toContain(
-        "t1 is a veto case, which a rejects-valid finding does not settle",
+        "t1 is a veto case, which only a cited probe showing accepts-invalid on gpio-exit-code settles against the check",
+      );
+      // The direction is the probe's, not the finding's: claiming rejects-valid over probe 1 settles no dispute.
+      expect(await call(tool, { ...named, probeDirection: "rejects-valid", settlesCases: ["d1"] })).toContain(
+        "d1 is a disputed-pass case, which only a cited probe showing rejects-valid",
       );
       expect(await call(tool, { ...rejects, settlesCases: ["d1"] })).toBe("recorded defect as blocking");
       const projected = publicEpochReview({ status: "completed", ...state }).findings[0]?.claim ?? "";

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { placeOnBand } from "../src/claim/battery-difficulty.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import type { Observation } from "../tools/runs/evidence.ts";
@@ -63,7 +64,15 @@ function round(extra: Partial<PulseRound> = {}): PulseRound {
 }
 
 function battery(passed: number, verified: number, zone: PulseBattery["zone"]): PulseBattery {
-  return { passed, verified, unaccepted: 0, nonResults: 0, zone, recorded: true };
+  const placedOn = zone === null ? null : { passes: passed, n: verified };
+  return { passed, verified, unaccepted: 0, nonResults: 0, zone, placedOn, recorded: true };
+}
+
+/** A battery placed on the climb band by the controller's own rule, on `placed` counts when a review
+ *  settled some of its cases against their check. */
+function placed(passes: number, n: number, settled = 0): PulseBattery {
+  const placement = placeOnBand(passes, n - settled, [0.2, 0.5]);
+  return { ...battery(passes, n, placement?.zone ?? null), placedOn: { passes, n: n - settled } };
 }
 
 const OPENING = [
@@ -122,44 +131,62 @@ describe("runs pulse", () => {
   });
 
   it("counts a streak on one side only, and an on-aim battery ends it", () => {
-    expect(
-      offAimStreak([battery(1, 5, "too-hard"), battery(6, 6, "too-easy"), battery(7, 7, "over-aim")]),
-    ).toEqual({
+    expect(offAimStreak([placed(1, 7), placed(6, 6), placed(3, 3)])).toMatchObject({
       side: "above",
       rounds: 2,
-      tooEasy: 0,
+      flat: 1,
     });
-    expect(offAimStreak([battery(6, 6, "too-easy"), battery(3, 7, "on-aim")])).toBeNull();
+    expect(offAimStreak([placed(6, 6), placed(3, 7)])).toBeNull();
     expect(offAimStreak([battery(0, 0, null)])).toBeNull();
   });
 
-  it("names a stall at three too-easy batteries in a row, and not while an over-aim one ends the run", () => {
-    const easy = [battery(5, 5, "too-easy"), battery(7, 7, "too-easy"), battery(7, 7, "too-easy")];
-    expect(offAimStreak([battery(5, 7, "over-aim"), ...easy])).toEqual({
-      side: "above",
-      rounds: 4,
-      tooEasy: 3,
-    });
-    const stalled = statusLine(reading(0, { batteries: easy }), 10);
-    expect(stalled).toContain("above the aim 3 in a row; 3 too-easy in a row, a stall");
-    const bracketing = statusLine(reading(0, { batteries: [...easy, battery(6, 7, "over-aim")] }), 10);
-    expect(bracketing).toContain("above the aim 4 in a row");
-    expect(bracketing).not.toContain("stall");
+  it("names a stall at three batteries in a row that came no closer to the aim, whatever their zone", () => {
+    const flat = [placed(5, 5), placed(5, 5), placed(3, 3), placed(5, 5)];
+    expect(flat[2]?.zone).toBe("over-aim");
+    expect(statusLine(reading(0, { batteries: flat }), 10)).toContain(
+      "above the aim 4 in a row; the 3 since 5/5 came no closer, a stall",
+    );
+    expect(statusLine(reading(0, { batteries: flat.slice(1) }), 10)).not.toContain("stall");
   });
 
-  it("names a stall at six batteries in a row above the aim, however over-aim ones interrupt too-easy", () => {
-    const easy = battery(5, 5, "too-easy");
-    const over = battery(6, 7, "over-aim");
-    const alternating = [easy, easy, over, easy, over, easy];
-    expect(statusLine(reading(0, { batteries: alternating }), 10)).toContain(
-      "above the aim 6 in a row; a stall",
+  it("reads a battery that came closer as movement, though it stays too easy, and one that did not as flat", () => {
+    // truss-sol-198d70's line since its closest battery, 6/7, with each outcome its thirteenth could have.
+    const line = [placed(5, 5), placed(6, 7), placed(25, 25), placed(10, 11)];
+    const next = (passes: number) => statusLine(reading(0, { batteries: [...line, placed(passes, 11)] }), 10);
+    expect(placed(9, 11).zone).toBe("too-easy");
+    expect(next(8)).not.toContain("stall");
+    expect(next(9)).not.toContain("stall");
+    expect(next(10)).toContain("the 3 since 6/7 came no closer, a stall");
+    expect(next(11)).toContain("the 3 since 6/7 came no closer, a stall");
+  });
+
+  it("does not count a fail its review settled against the check as coming closer", () => {
+    const settled = placed(3, 6, 3);
+    expect(settled.passed).toBe(3);
+    expect(settled.verified).toBe(6);
+    const line = [placed(6, 6), placed(6, 6), settled, placed(6, 6)];
+    expect(statusLine(reading(0, { batteries: line }), 10)).toContain(
+      "the 3 since 6/6 came no closer, a stall",
     );
-    expect(statusLine(reading(0, { batteries: alternating.slice(1) }), 10)).not.toContain("stall");
-    const belowSix = [
-      battery(1, 7, "under-aim"),
-      ...Array.from({ length: 5 }, () => battery(1, 7, "under-aim")),
-    ];
-    expect(statusLine(reading(0, { batteries: belowSix }), 10)).not.toContain("stall");
+  });
+
+  it("reads a flat line below the aim as a stall too, and a rise as movement", () => {
+    const low = [placed(1, 25), placed(1, 25), placed(1, 25), placed(1, 25)];
+    expect(statusLine(reading(0, { batteries: low }), 10)).toContain(
+      "below the aim 4 in a row; the 3 since 1/25 came no closer, a stall",
+    );
+    const rising = [...low.slice(0, 3), placed(3, 25)];
+    expect(statusLine(reading(0, { batteries: rising }), 10)).not.toContain("stall");
+  });
+
+  it("never reads the launch film's twelve rounds as a stall", () => {
+    // master/launch.json in anabasis-launch-video: raise a requirement and the line drops, repair and
+    // it rises, and the swings narrow into the band.
+    const film = [25, 6, 5, 24, 17, 21, 12, 19, 21, 9, 12, 11];
+    for (let rounds = 1; rounds <= film.length; rounds++) {
+      const batteries = film.slice(0, rounds).map((passes) => placed(passes, 25));
+      expect(statusLine(reading(0, { batteries }), 10)).not.toContain("stall");
+    }
   });
 
   it("numbers a new round and carries the last battery into its line", () => {

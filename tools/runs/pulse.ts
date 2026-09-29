@@ -50,16 +50,12 @@ import { collectRows, type RunRow } from "./rows.ts";
 const QUIET_MS = 20 * 60_000;
 /** Failed Builder calls between two looks that make a burst rather than ordinary friction. */
 const FAILED_BURST = 3;
-/** AGENTS.md "Goals and the climb": this many `too-easy` placements in a row mean no battery found
- *  the limit. The controller deliberately never stops on a reading of the tasks (`LoopState`), so
- *  the stall is the operator's to call, and the pulse names it rather than leaving it inside a
- *  streak that also counts `over-aim` batteries. */
+/** AGENTS.md "Goals and the climb": a climb moves, so a stall is a flat line, this many batteries
+ *  in a row on one side of the aim that came no closer to it than the closest before them. Counted
+ *  on the zone's own side, not by zone: truss-sol-198d70's over-aim batteries were 3/3, 2/2 and 2/2,
+ *  which pass everything, and its 6/7 the one that came closer. The controller deliberately never
+ *  stops on a reading of the tasks (`LoopState`), so the stall is the operator's to call. */
 const STALL_BATTERIES = 3;
-/** The same stall read across `over-aim` placements, which reset a `too-easy` count without
- *  locating anything: truss-sol-198d70 read stalled at its fourth too-easy battery, stopped reading
- *  so at one over-aim placement, and went seven more above the aim. No recorded run first placed on
- *  the aim after its fifth battery (51 runs, 2026-09-29). */
-const STALL_ABOVE_AIM = 6;
 const MEASURING = new Set(["adopt", "controls", "solve", "measure-on", "grade"]);
 const REVIEWING = new Set(["judge", "claim", "analyse", "admission", "next"]);
 /** Top-level transitions that are the loop's ordinary machinery and would bury the rest. */
@@ -111,33 +107,33 @@ function sideOf(zone: BandZone | null): "above" | "below" | "on" | null {
 }
 
 /** Consecutive batteries on one side of the aim, counted back from the latest placed one, and how
- *  many of the latest of them were `too-easy`. */
-export function offAimStreak(
-  batteries: readonly PulseBattery[],
-): { side: "above" | "below"; rounds: number; tooEasy: number } | null {
-  const zones = batteries.flatMap((battery) => battery.zone ?? []);
-  const last = sideOf(zones.at(-1) ?? null);
-  if (last === null || last === "on") return null;
-  const trailing = (holds: (zone: BandZone) => boolean) => {
-    const from = zones.findLastIndex((zone) => !holds(zone));
-    return zones.length - 1 - from;
-  };
-  return {
-    side: last,
-    rounds: trailing((zone) => sideOf(zone) === last),
-    tooEasy: trailing((zone) => zone === "too-easy"),
-  };
+ *  many of them came after the one closest to the aim, which a tie does not replace. Above the aim a
+ *  lower pass rate is closer, below it a higher one. */
+export function offAimStreak(batteries: readonly PulseBattery[]): {
+  side: "above" | "below";
+  rounds: number;
+  flat: number;
+  closest: { passes: number; n: number };
+} | null {
+  const placed = batteries.flatMap(({ zone, placedOn }) =>
+    zone === null || placedOn === null ? [] : [{ side: sideOf(zone), ...placedOn }],
+  );
+  const side = placed.at(-1)?.side;
+  if (side !== "above" && side !== "below") return null;
+  const streak = placed.slice(placed.findLastIndex((battery) => battery.side !== side) + 1);
+  const closeness = ({ passes, n }: { passes: number; n: number }) =>
+    (side === "above" ? -1 : 1) * (passes / n);
+  const closest = streak.reduce((best, battery) => (closeness(battery) > closeness(best) ? battery : best));
+  return { side, rounds: streak.length, flat: streak.length - 1 - streak.lastIndexOf(closest), closest };
 }
 
 function streakText(batteries: readonly PulseBattery[]): string {
   const streak = offAimStreak(batteries);
   if (streak === null) return "";
   const text = `, ${streak.side} the aim ${String(streak.rounds)} in a row`;
-  const stall = "a stall: no battery found the limit";
-  if (streak.tooEasy >= STALL_BATTERIES) {
-    return `${text}; ${String(streak.tooEasy)} too-easy in a row, ${stall}`;
-  }
-  return streak.side === "above" && streak.rounds >= STALL_ABOVE_AIM ? `${text}; ${stall}` : text;
+  if (streak.flat < STALL_BATTERIES) return text;
+  const { passes, n } = streak.closest;
+  return `${text}; the ${String(streak.flat)} since ${String(passes)}/${String(n)} came no closer, a stall`;
 }
 
 function batteryText(battery: PulseBattery): string {

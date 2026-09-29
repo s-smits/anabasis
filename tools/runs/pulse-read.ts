@@ -73,6 +73,9 @@ export interface PulseBattery {
   unaccepted: number;
   nonResults: number;
   zone: BandZone | null;
+  /** The counts that zone was placed on: the recorded decision's, which leave out a case its review
+   *  settled against the check, or this battery's own tally. */
+  placedOn: { passes: number; n: number } | null;
   /** The zone came from a recorded difficulty decision; otherwise it is placed here, provisionally. */
   recorded: boolean;
   /** Its Epoch Review once recorded; undefined in a reading kept before pulse read reviews. */
@@ -261,13 +264,14 @@ function readBatteries(row: RunRow, band: readonly [number, number]): PulseBatte
     const decided = decisions.find((decision) => decision.evidenceRunIds.at(-1) === runId)?.placement ?? null;
     // The difficulty denominator keeps unaccepted attempts as fails once any case is verified.
     const scored = tally.verified === 0 ? 0 : tally.verified + tally.unaccepted;
-    const placed = decided?.zone ?? placeOnBand(tally.passed, scored, band)?.zone ?? null;
+    const placed = decided ?? placeOnBand(tally.passed, scored, band);
     return {
       passed: tally.passed,
       verified: tally.verified,
       unaccepted: tally.unaccepted,
       nonResults: tally.nonResults,
-      zone: placed,
+      zone: placed?.zone ?? null,
+      placedOn: placed === null ? null : { passes: placed.passes, n: placed.n },
       recorded: decided !== null,
       review: readReview(row.location.campaignDir, runId),
     };

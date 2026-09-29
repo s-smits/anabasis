@@ -218,6 +218,16 @@ The climb has three named parts, all read on verified cases:
 - **The band** is the target inside that region: `climb.band`, 5–12 verified of 25, where the limit
   is located rather than only bracketed.
 
+**Its shape is a line that moves** (operator, 2026-09-29, from the launch film). A raised requirement
+drops the pass rate, a repair or rebuild lifts it, the next requirement drops it again, and over the 8
+or 12 rounds of a run the swings narrow into the band; the film draws 25, 6, 5, 24, 17, 21, 12, 19, 21,
+9, 12 and 11 of 25 as an illustration. Each swing is a battery answering what the Builder changed, so
+the fluctuation is the signal, and 8 of 11 after 10 of 11 is progress though both sit above the aim. A
+flat line is the failure at any level: of the 42 local runs with two or more placed batteries on
+2026-09-29, 28 passed every case of every battery, 186 of their 213 batteries were full passes, and none
+of the eight that reached eight batteries placed on the aim on earned fails. truss-sol-cb274b alone has
+the shape, at 3/8, 10/25, 15/25 and 11/25.
+
 **Ambitious** means the climb keeps moving toward the solver's limit.
 
 - A full pass is a question, not a win: it found no limit, and the next battery answers it with a
@@ -275,14 +285,15 @@ not a forecast: all three `escalated` edges in a census of 170 on 2026-09-29 wer
 that passed every case, and so were 16 of the 17 edges that widened on a new input or rule alone, among
 them 2d7812's new load sites and forbidden volume. So name the changed public requirement from the task rows beside the label, and read each
 battery's `fails` line (held, settled against the check, unsettled, and the checks they fell on) before
-counting a partial battery as a limit found. Three `too-easy` placements in a row mean no battery found
-the limit, and so do six batteries in a row above the aim, because an `over-aim` placement resets
-the first count without locating anything: truss-sol-198d70 stalled at four too-easy batteries, then
-went seven more above the aim with no three too-easy in a row, and no recorded run first placed on
-the aim after its fifth battery (51 runs, 2026-09-29). The answer is to
-rebuild what the tasks demand, not their numbers. The controller never stops on a reading of the tasks
-(`LoopState`) and the Builder is told no zone, so stopping a stalled run is the operator's call, which
-`bun run runs pulse` names when it arrives.
+counting a partial battery as a limit found. A stall is a flat line: three batteries in a row on one
+side of the aim that come no closer to it than the closest before them, read on the counts the
+decision placed, so a fail settled against its check does not count as closer. A zone cannot say it:
+truss-sol-198d70's `over-aim` batteries were 3/3, 2/2 and 2/2, which pass every case, and after its
+6/7, 25/25 and 10/11 a 9/11 would read `too-easy` and still be its closest battery to the aim. No
+recorded run first placed on the aim after its fifth battery (51 runs, 2026-09-29). The answer is to
+rebuild what the tasks demand, not their numbers. The controller never stops on a reading of the
+tasks (`LoopState`) and the Builder is told no zone, so stopping a stalled run is the operator's
+call, which `bun run runs pulse` names when it arrives.
 
 ## Evidence and implementation status
 

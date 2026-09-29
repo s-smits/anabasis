@@ -138,7 +138,8 @@ frozen timestamp precedes the actual opening; if that window was missed, say so 
 backdating. Include the likely failure boundary; do not invent an expected failure to fill a row.
 
 Write the claim so a recorded count settles it: "at least four iterations before any typed
-terminal", "the next battery's verified count falls by at least three of 25". "Improves" is not a
+terminal", "the next battery's verified count falls by at least three of 25", "the next battery
+comes closer to the aim than 6/7, the run's closest so far". "Improves" is not a
 prediction. Several changed mechanisms make a composed-system test: it can prove operation, while
 a causal claim needs a controlled replay or a matched comparison.
 
@@ -159,9 +160,10 @@ Two launch arguments decide whether the run can answer a climb question at all:
 
 - **`--project`**: omit it for a fresh project unless the operator asked to continue a named one.
 - **`--stop-after-ms`**: the boundary is elapsed wall time, so a multi-hour provider reset wait
-  counts against it in full. When the question needs several rounds, give a generous boundary or
-  omit it. The last two runs reached three and two iterations; a repeat refusal cannot fire before
-  round three.
+  counts against it in full. A climb is read over 8 or 12 rounds (AGENTS.md "Goals and the climb"),
+  so a climb question needs a boundary that holds that many, or none: truss-sol-198d70 took 17 hours
+  to measure twelve batteries. A boundary that ends a run at round three measures a bracket, never a
+  line.
 
 Credentials stay where they are. Point at the main checkout's `.env` with `--env-file`; never copy
 an env, campaign, domain or config file between checkouts to make a command start. Report a missing
@@ -296,11 +298,14 @@ prints one row as each lands: `battery run-i02: 24/25 too-easy`. This is the hal
 cannot show. A high score says the battery was easy; only the decision says whether the next one
 asks for more, and only a run of them says whether asking worked.
 
-- **three batteries in a row placed `too-easy`** is one `overhaul` row: the level moved and no
-  battery found the limit. The streak reads the zone the band recorded, counted in batteries, since a
-  `--run` continuation can decide one battery twice. Campaign `3fd52f9e-28` recorded seven such
-  placements while its Builder moved only published magnitudes. Rebuild what the tasks demand, not
-  their numbers.
+- **read the line, not the zone.** The climb's shape is a line that moves: a raised requirement
+  drops the pass rate, a repair or rebuild lifts it, and over 8 or 12 rounds the swings narrow into
+  the band. So read each placement against the run's closest battery so far: 8 of 11 after 10 of 11
+  would come closer though both read above the aim, and 3/3 reads `over-aim` while passing everything. A
+  stall is the line gone flat, three batteries in a row no closer than the closest before them.
+  `bun run runs pulse` names it and this watcher does not; stopping it is the operator's (§7).
+  Campaign `3fd52f9e-28` placed seven too-easy batteries while its Builder moved only published
+  magnitudes. Rebuild what the tasks demand, not their numbers.
 - a decision stating **repeated failures** or a **family conflict** is `surgical`, and one placed
   nowhere is `overhaul`. Otherwise it moves by its zone: `too-hard` is `reserved`, and the other
   four zones are the band reading its own score, printed as `info`.
@@ -571,10 +576,10 @@ In short, every round: read the gate's episodes against its priors, and regrade 
 under the evaluator that replaced it. The first says which checks cost rounds without catching
 anything; the second says whether a correction moved any verdict at all.
 
-### When two batteries miss the band the same way, stop editing prose
+### When the line goes flat, stop editing prose
 
-Two consecutive batteries of one product outside the band on the same side is a settled result, not
-an ambiguous signal needing more diagnosis. It says the authoring loop cannot yet author above this
+Two consecutive batteries of one product on the same side of the band, the second no closer to the
+aim than the first, are a settled result, not an ambiguous signal needing more diagnosis. It says the authoring loop cannot yet author above this
 solver, and it says the binding constraint is not the wording of any instruction, because the
 instruction channel is exactly what the two batteries held fixed.
 
@@ -618,7 +623,10 @@ owns (operator, 2026-09-29). Of two candidate moves, prefer the one that brings 
 closer to the solver's limit on a changed public requirement, provided every fail it could produce is
 earned on a published rule. A move that buys a placement with an invented rule, a check the public
 projection does not support or a count told to the Builder has failed the goal however the zone reads,
-and so has one that raises a score, adds tasks or renames levels without moving a placement.
+and so has one that raises a score, adds tasks or renames levels without moving a placement. Weigh
+the choice against the run's line over 8 or 12 rounds, not its last zone: a move whose next battery
+would swing, a raised requirement that drops the rate or a repair that lifts a battery a defect sank,
+serves the goal, and one after which the line would sit where it sat does not.
 [The climb reference](../whole-run-investigation/references/climb.md) holds the two recorded numbers
 that say whether it moved.
 

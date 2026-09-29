@@ -76,6 +76,7 @@ import {
   EPOCH_REVIEW_SCHEMA,
   type EpochReviewEvidence,
   type ReviewState,
+  type SettlementCase,
   briefIdentities,
   conditionAlreadyReviewed,
   measuredConditionOf,
@@ -245,12 +246,13 @@ function openSession(input: EpochReviewInput): OpenSession {
     reviewerEffort: input.review.enabled ? (input.review.reasoningEffort ?? null) : null,
     requestDigest: hashJsonValue({
       publicRequest: input.publicRequest,
-      policy: "review-probing-findings/v12",
+      policy: "review-probing-findings/v13",
       prompt: EPOCH_REVIEW_PROMPT,
     }),
     obligationsDigest: obligationsDigest(input, disputableIssues(input)),
     reads: [],
-    contestedReads: [],
+    dispositions: [],
+    unsettled: settlementCases(input).map((row) => row.taskId),
     coverage: { files: 0, opened: 0, chars: 0 },
     findings: [],
     disputes: [],
@@ -592,6 +594,10 @@ function recordedReview(
     ...evidence,
     reviewerPin: turn.pin,
     reads: state.reads,
+    dispositions: state.dispositions,
+    unsettled: evidence.unsettled.filter(
+      (taskId) => !state.dispositions.some((row) => row.taskId === taskId),
+    ),
     coverage,
     admission: state.admission,
     findings: state.findings,
@@ -637,16 +643,17 @@ function measuredContext(input: EpochReviewInput, evidence: EpochReviewEvidence,
   };
 }
 
-/** What `record_finding` weighs a finding against beyond its own arguments: the declared
- *  identities and the checks a listed Judge disagreement names. */
-function findingPriors(
-  input: EpochReviewInput,
-  identities: ReturnType<typeof briefIdentities>,
-): Parameters<typeof recordFindingTool>[4] {
-  return {
-    identities,
-    contested: new Set([...(input.vetoed ?? []), ...(input.disputed ?? [])].flatMap((row) => row.checkIds)),
-  };
+/** The listed vetoes and disputed fails, as `record_finding` may settle them. */
+function settlementCases(input: EpochReviewInput): SettlementCase[] {
+  const listed = (kind: SettlementCase["kind"], rows: readonly ContestedCase[] | undefined) =>
+    (rows ?? []).map((row) => ({
+      taskId: row.taskId,
+      family: row.family,
+      kind,
+      checkIds: row.checkIds,
+      path: contestedArtifact(input.treeRoot, row),
+    }));
+  return [...listed("vetoed", input.vetoed), ...listed("disputed", input.disputed)];
 }
 
 /** The review's one writer, which `runEpochReview` calls on every way out: a refused session, a
@@ -675,6 +682,7 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
     refused: 0,
     delivered: [],
     probes: emptyProbeState(),
+    dispositions: [],
     findings: [],
     disputes: [],
     admission: { continuations: 0, citationRefusals: 0, severityAdjusted: [] },
@@ -683,12 +691,11 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
   const probe = probeTool(root, lifetime, state.probes, verifier.tools);
   const measured = measuredContext(input, evidence, analysisDir);
   const identities = briefIdentities(root);
-  const contested = new Map(
-    [...(input.vetoed ?? []), ...(input.disputed ?? []), ...(input.otherContested ?? [])].flatMap((row) => {
-      const path = contestedArtifact(input.treeRoot, row);
-      return path === null || row.artifact === null ? [] : [[path, row.artifact] as const];
-    }),
-  );
+  const contested = [
+    ...(input.vetoed ?? []),
+    ...(input.disputed ?? []),
+    ...(input.otherContested ?? []),
+  ].flatMap((row) => contestedArtifact(input.treeRoot, row) ?? []);
   // A rehearsal's bytes are read under its name and, like a contested artifact, lie outside the
   // coverage the review is held to, which counts the tree and the verifier alone.
   const rehearsed = new Map(
@@ -699,7 +706,7 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
   const sourcePaths = new Set([
     ...inventory.files,
     ...Object.keys(verifier.tools),
-    ...contested.keys(),
+    ...contested,
     ...rehearsed.keys(),
   ]);
   const unread = unreadSourcePrompt(state, sourcePaths);
@@ -739,7 +746,7 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
           taskIds,
           join("campaigns", input.slug, "analysis", `${input.runId}-epoch-review.json`),
           state,
-          findingPriors(input, identities),
+          { identities, cases: settlementCases(input) },
         ),
       ],
       continuePrompt: unread,
@@ -759,13 +766,10 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
   } catch (cause) {
     thrown ??= { cause };
   }
-  const contestedReads = [...contested].flatMap(([path, artifact]) =>
-    state.reads.includes(path) ? [artifact] : [],
-  );
   const failure =
     thrown === null ? null : boundText(`epoch-reviewer: ${errorMessage(thrown.cause)}`, 300).shown;
   const recorded = recordedReview(
-    { ...evidence, contestedReads },
+    evidence,
     { ...turn, failure },
     state,
     reviewCoverage(inventory, verifier, state),

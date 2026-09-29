@@ -41,12 +41,13 @@ import {
   probeCitationRefusal,
 } from "./review-probe.ts";
 import { type ReviewVerifierEvidence, type SourceReadState, deliveredSource } from "./review-sources.ts";
+import { contractDefect } from "../analyse/finding-owner.ts";
 import { BRIEF_FILE, TASKS_FILE } from "../meta/bundle-layout.ts";
 import { readJsonFile } from "../meta/completed-json.ts";
 import { boundText } from "../meta/bounded-text.ts";
 import { type AdvisoryDefect, type AdvisoryDisposition, advisoryDefects } from "./review-carry.ts";
 
-export const EPOCH_REVIEW_SCHEMA = "epoch-review/v6";
+export const EPOCH_REVIEW_SCHEMA = "epoch-review/v7";
 /** Product identity; review procedure belongs to the review request. */
 export type MeasuredCondition = {
   /** Null when the recorded fields cannot establish a measured condition. */
@@ -80,10 +81,13 @@ export type EpochReviewEvidence = {
   obligationsDigest: string;
   /** Repo-relative paths the reviewer opened, in order; a paged file appears once per call. */
   reads: string[];
-  /** Repository-relative artifacts of the contested cases whose pages the reviewer opened. Private
-   *  settlement evidence: only counts and families cross to authoring, because handing back the
-   *  bytes the verifier decided on is evaluator coaching. Empty when it opened none or never ran. */
-  contestedReads: string[];
+  /** Each listed veto or disputed fail a finding settled, one per case, as the finding named it in
+   *  `settlesCases`. Private: only counts and families cross to authoring. Nothing is settled by
+   *  having been read, or by sharing a check with a finding that named another case. */
+  dispositions: CaseDisposition[];
+  /** The listed vetoes and disputed fails no finding settled. `status` says how far the reading
+   *  got; this says what of the settlement work it left open, which a completed review can too. */
+  unsettled: string[];
   /** What the host returned against the inventory, in files and characters. This counts the host
    *  side alone, so a complete coverage row establishes that the source was offered, not that the
    *  review saw it. */
@@ -124,9 +128,29 @@ type ReviewAdmission = {
     admitted: "advisory" | "blocking";
   }>;
 };
+/** A listed contested case as `record_finding` may settle it: which way the verifier and the Judge
+ *  disagreed, the checks that decided it, and the name `read_source` delivers its artifact under. */
+export type SettlementCase = {
+  taskId: string;
+  family: string;
+  kind: "vetoed" | "disputed";
+  checkIds: readonly string[];
+  path: string | null;
+};
+/** One case a finding settled: against the check, by a defect in the evaluation contract, or in the
+ *  check's favour, by an observation whose cited probe moved that check. `finding` indexes the
+ *  review's `findings`, whose citations and probes are the evidence. */
+export type CaseDisposition = Omit<SettlementCase, "checkIds" | "path"> & {
+  checkId: string;
+  disposition: "against-check" | "check-stands";
+  finding: number;
+};
+/** The direction a defect settling each kind of case against its check must show, when it names one. */
+const AGAINST_CHECK = { vetoed: "accepts-invalid", disputed: "rejects-valid" } as const;
 const MAX_FINDINGS = 6;
 export type ReviewState = SourceReadState & {
   probes: ProbeState;
+  dispositions: CaseDisposition[];
   findings: AnalysisFinding[];
   disputes: Array<{ issueId: string; reason: string }>;
   admission: ReviewAdmission;
@@ -164,8 +188,8 @@ interface FindingCase {
   state: ReviewState;
   identities: BriefIdentities;
   taskIds: readonly string[];
-  /** The declared checks a listed, confirmed Judge disagreement names. */
-  contested: ReadonlySet<string>;
+  /** The listed vetoes and disputed fails a finding may settle. */
+  cases: readonly SettlementCase[];
 }
 
 type FindingRule = (subject: FindingCase) => string | null;
@@ -176,8 +200,8 @@ type FindingVerdict = { why: string } | { severity: FindingSeverity; placement: 
 /** The public identities a finding may name. */
 type FindingPriors = {
   readonly identities?: BriefIdentities | undefined;
-  /** The declared checks the listed, confirmed Judge disagreements name (`judgeSettlement`). */
-  readonly contested?: ReadonlySet<string> | undefined;
+  /** The listed vetoes and disputed fails a finding may settle (`caseSettlement`). */
+  readonly cases?: readonly SettlementCase[] | undefined;
 };
 
 export function measuredConditionOf({
@@ -316,7 +340,7 @@ function findingArgs(args: Record<string, JsonValue>) {
     secondPublicInputPath: optional("secondPublicInputPath"),
     demandGap: DEMAND_GAPS.find((gap) => gap === args.demandGap) ?? null,
     probeDirection: PROBE_DIRECTIONS.find((direction) => direction === args.probeDirection) ?? null,
-    settlesJudge: args.settlesJudge === true,
+    settlesCases: [...new Set(Array.isArray(args.settlesCases) ? args.settlesCases.filter(isString) : [])],
     unobserved: args.unobserved === true,
   };
 }
@@ -394,20 +418,41 @@ const knownDemandGap: FindingRule = ({ parsed, args }) =>
     ? `demandGap must be one of ${DEMAND_GAPS.join(", ")}`
     : null;
 
-/** Settling a Judge disagreement as the Judge's error takes an executed case, not a reading: an
- *  observation on a check a confirmed disagreement names, citing a probe that wrote the Judge's
- *  reading into an accept control and moved that check. Without the probe the settlement is one
- *  model's reading against another's, and it stays in the closing message. With it, what it settles
- *  is still only the cases whose artifact the review opened, which the public projection decides. */
-const judgeSettlement: FindingRule = ({ parsed, args, state, contested }) => {
-  if (!parsed.settlesJudge) return null;
-  const { checkId } = parsed;
-  if (parsed.defect !== false || checkId === null || !contested.has(checkId)) {
-    return "settlesJudge is for an observation whose checkId is a check a listed Judge disagreement names";
+/** A finding settles exactly the listed cases it names, and only in the way its evidence can. A
+ *  defect in the evaluation contract settles a case against its check, and must not show the
+ *  opposite direction; an observation settles one in the check's favour only with a cited probe
+ *  that wrote the Judge's reading into an accept control and moved that check, since without it the
+ *  settlement is one model's reading against another's. An agent file or the task set settles
+ *  nothing, because neither decided the case. Each named case must be decided by the finding's
+ *  check, read with `read_source`, and not already settled by an earlier finding. */
+const caseSettlement: FindingRule = ({ parsed, args, owner, state, cases }) => {
+  const { checkId, settlesCases } = parsed;
+  if (settlesCases.length === 0) return null;
+  const against = contractDefect({ defect: parsed.defect, owner });
+  if (checkId === null || (parsed.defect === true && !against)) {
+    return "settlesCases is for a finding naming the deciding checkId: a defect owned under correctness-model/ other than tasks.json, or an observation";
   }
-  return probeBackedRows(state.probes, args.probeIds).some((row) => row.movedCheckIds.includes(checkId))
-    ? null
-    : "settlesJudge requires a cited probe in which writing the Judge's reading into an accept control moved that check";
+  if (
+    !against &&
+    !probeBackedRows(state.probes, args.probeIds).some((row) => row.movedCheckIds.includes(checkId))
+  ) {
+    return "settling a case in the check's favour requires a cited probe in which writing the Judge's reading into an accept control moved that check";
+  }
+  for (const taskId of settlesCases) {
+    const row = cases.find((listed) => listed.taskId === taskId);
+    if (row === undefined) return `settlesCases: ${taskId} is not a listed veto or disputed fail`;
+    if (!row.checkIds.includes(checkId)) return `settlesCases: ${checkId} did not decide ${taskId}`;
+    if (row.path === null || !state.reads.includes(row.path)) {
+      return `settlesCases: read ${taskId}'s artifact with read_source before settling it`;
+    }
+    if (against && parsed.probeDirection !== null && parsed.probeDirection !== AGAINST_CHECK[row.kind]) {
+      return `settlesCases: ${taskId} is a ${row.kind} case, which a ${parsed.probeDirection} finding does not settle`;
+    }
+    if (state.dispositions.some((settled) => settled.taskId === taskId)) {
+      return `settlesCases: ${taskId} is already settled by an earlier finding`;
+    }
+  }
+  return null;
 };
 
 /** Every rule `record_finding` applies, in the order it applies them. Holding them as a list is
@@ -446,7 +491,7 @@ const FINDING_RULES: readonly FindingRule[] = [
   schemaPath,
   publicInput,
   knownDemandGap,
-  judgeSettlement,
+  caseSettlement,
 ];
 
 /** The first rule that has a reason, or the severity the reviewer chose. */
@@ -494,7 +539,6 @@ function recordedFinding(
     ...keyIfNotNull("publicInputPath", parsed.publicInputPath),
     ...keyIfNotNull("secondPublicInputPath", parsed.secondPublicInputPath),
     ...keyIfNotNull("demandGap", parsed.demandGap),
-    ...keysIf(parsed.settlesJudge, () => ({ settlesJudge: true as const })),
     ...keysIf(parsed.unobserved, () => ({ unobserved: true as const })),
     ...keysIf(probes.length > 0, () => ({
       probes: probes.map(({ controlId, path, movedCheckIds }) => ({ controlId, path, movedCheckIds })),
@@ -601,10 +645,11 @@ function findingParameters(disputable: readonly string[]) {
         description:
           "For a finding about what the tasks fail to demand, which shape it takes: capability-unexercised (the request names a capability no task exercises), sibling-values-only (sibling tasks differ only in published values), limit-cleared-widely (the first reasonable candidate clears a published limit widely), rule-outside-request (a rule no practitioner of the request would hold). It crosses to authoring; the claim does not.",
       },
-      settlesJudge: {
-        type: "boolean",
+      settlesCases: {
+        type: "array",
+        items: { type: "string" },
         description:
-          "True on an observation (defect false) that settles a listed Judge disagreement as the Judge's error: name the deciding check in checkId and cite in probeIds the probe that wrote the Judge's reading into an accept control and moved that check. It settles each listed case on that check whose artifact you read with read_source, and the Judge issue stops standing once every case it counts is settled.",
+          "The task ids of the listed vetoes and disputed fails this finding settles, each decided by its checkId and read with read_source first; a case you name nowhere stays unsettled. A defect owned under correctness-model/ settles them against the check. An observation settles them in the check's favour, as the Judge's error, citing in probeIds the probe that wrote the Judge's reading into an accept control and moved that check; the Judge issue stops standing once every case it counts is settled. Private: the Builder reads only how many cases in which families.",
       },
     },
   };
@@ -638,7 +683,7 @@ export function recordFindingTool(
         state,
         identities,
         taskIds,
-        contested: priors.contested ?? new Set(),
+        cases: priors.cases ?? [],
       };
       const verdict = findingVerdict(subject);
       if ("why" in verdict) {
@@ -655,6 +700,18 @@ export function recordFindingTool(
       // and so can bear on an agent file's defect only by coincidence. An observation is advice.
       const admitted = verdict.placement.defect ? verdict.severity : "advisory";
       state.findings.push(recordedFinding(subject, verdict.placement, admitted, probes, evidencePath));
+      const disposition = subject.parsed.defect === true ? "against-check" : "check-stands";
+      for (const row of subject.cases.filter((listed) => parsed.settlesCases.includes(listed.taskId))) {
+        const { taskId, family, kind } = row;
+        state.dispositions.push({
+          taskId,
+          family,
+          kind,
+          checkId: parsed.checkId ?? "",
+          disposition,
+          finding: state.findings.length - 1,
+        });
+      }
       if (admitted !== verdict.severity) {
         state.admission.severityAdjusted.push({
           owner: subject.owner,

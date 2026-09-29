@@ -548,154 +548,118 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
       );
     });
 
-    test("a defect on a vetoed check carries the veto's count and families, never the Judge's reason", async () => {
+    // A case settles only where a finding names it. Reading an artifact, or sharing a check with a
+    // case that was named, settles nothing: both once counted as settlement, and a review that
+    // settled one case in a family could send the author several it never adjudicated.
+    const at = (task: string) => `runs/r/cases/${task}/artifact.json`;
+    const listed = (
+      taskId: string,
+      family: string,
+      kind: "vetoed" | "disputed",
+      checkId = "gpio-exit-code",
+    ) => ({
+      taskId,
+      family,
+      kind,
+      checkIds: [checkId],
+      path: at(taskId),
+    });
+    const cases = [
+      listed("t1", "uno", "vetoed"),
+      listed("t2", "roof", "vetoed"),
+      listed("t3", "uno", "vetoed", "other-check"),
+      listed("t4", "uno", "vetoed"),
+      listed("d1", "uno", "disputed"),
+    ];
+    const settling = () => {
       const state = reviewState();
-      await call(recordFindingTool([], [], evidence, state, { identities }), {
-        ...defect,
-        claim: "private prose",
-        checkId: "gpio-exit-code",
+      state.reads.push(at("t1"), at("t2"), at("t3"), at("d1"));
+      const tool = recordFindingTool([], ["t1", "t2", "t3", "t4", "d1"], evidence, state, {
+        identities: { ...identities, checkIds: ["gpio-exit-code", "other-check"] },
+        cases,
       });
-      const at = (task: string) => `campaigns/s/versions/r/runs/r/cases/${task}/artifact.json`;
-      const row = {
-        taskId: "t1",
-        family: "uno",
-        judge: false,
-        verifier: true,
-        rules: ["the exit code is 0"],
-        rationale: "PRIVATE reason",
-        confirmed: true,
-        checkIds: ["gpio-exit-code"],
-        evidence: "e",
-        artifact: at("t1"),
-      };
-      const vetoed = [
-        row,
-        { ...row, taskId: "t2", family: "roof", artifact: at("t2") },
-        { ...row, taskId: "t3", checkIds: ["other-check"], artifact: at("t3") },
-        { ...row, taskId: "t4", artifact: null },
-      ];
-      const reviewed = {
-        status: "completed" as const,
-        ...state,
-        contestedReads: [at("t1"), at("t2"), at("t3")],
-      };
-      const projected = publicEpochReview(reviewed, { brief: null, vetoed }).findings[0]?.claim ?? "";
+      return { state, tool };
+    };
+    const named = { ...defect, claim: "private prose", checkId: "gpio-exit-code" };
+
+    test("a defect settles exactly the listed cases it names, against the check, as counts and families", async () => {
+      const { state, tool } = settling();
+      expect(await call(tool, { ...named, settlesCases: ["t1", "t2"] })).toBe("recorded defect as blocking");
+      expect(state.dispositions.map((row) => [row.taskId, row.disposition])).toEqual([
+        ["t1", "against-check"],
+        ["t2", "against-check"],
+      ]);
+      const projected = publicEpochReview({ status: "completed", ...state }).findings[0]?.claim ?? "";
       expect(projected).toContain(
         "The Judge failed 2 verified pass(es) in roof, uno citing this obligation, and the review settled them against the check",
       );
-      for (const word of ["PRIVATE", "private prose", "t1", "exit code is 0"]) {
-        expect(projected).not.toContain(word);
-      }
-      const other =
-        publicEpochReview(reviewed, { brief: null, vetoed: [{ ...row, checkIds: ["other-check"] }] })
-          .findings[0]?.claim ?? "";
-      expect(other).not.toContain("The Judge failed");
-      // A completed review that never opened a vetoed artifact has not settled that case.
-      expect(
-        publicEpochReview({ ...reviewed, contestedReads: [] }, { brief: null, vetoed }).findings[0]?.claim,
-      ).not.toContain("The Judge failed");
+      for (const word of ["PRIVATE", "private prose", "t1", "t2"]) expect(projected).not.toContain(word);
+      // A second finding on the same check, naming no case, settles none, and says nothing about them.
+      await call(tool, { ...named, settlesCases: [] });
+      expect(publicEpochReview({ status: "completed", ...state }).findings[1]?.claim).not.toContain(
+        "The Judge",
+      );
     });
 
-    test("a defect on a disputed check carries the Judge-pass count and families, never the Judge's reason", async () => {
-      const state = reviewState();
-      await call(recordFindingTool([], [], evidence, state, { identities }), {
-        ...defect,
-        claim: "private prose",
-        checkId: "gpio-exit-code",
-      });
-      const row = {
-        taskId: "t1",
-        family: "uno",
-        judge: true,
-        verifier: false,
-        rules: [],
-        rationale: "PRIVATE reason",
-        confirmed: true,
-        checkIds: ["gpio-exit-code"],
-        evidence: "e",
-        artifact: "runs/r/cases/t1/artifact.json",
-      };
-      const reviewed = {
-        status: "completed" as const,
-        ...state,
-        contestedReads: ["runs/r/cases/t1/artifact.json", "runs/r/cases/t2/artifact.json"],
-      };
-      const projected =
-        publicEpochReview(reviewed, {
-          brief: null,
-          disputed: [
-            row,
-            { ...row, taskId: "t2", family: "roof", artifact: "runs/r/cases/t2/artifact.json" },
-          ],
-        }).findings[0]?.claim ?? "";
+    test("an opened case no finding names stays standing, and every unfit settlement is refused", async () => {
+      const { state, tool } = settling();
+      // Both t1 and t2 were opened; only t1 is adjudicated.
+      await call(tool, { ...named, settlesCases: ["t1"] });
+      expect(state.dispositions.map((row) => row.taskId)).toEqual(["t1"]);
+      for (const [args, why] of [
+        [{ settlesCases: ["t3"] }, "gpio-exit-code did not decide t3"],
+        [{ settlesCases: ["t4"] }, "read t4's artifact with read_source before settling it"],
+        [{ settlesCases: ["t9"] }, "t9 is not a listed veto or disputed fail"],
+        [{ settlesCases: ["t1"] }, "t1 is already settled by an earlier finding"],
+        [
+          { settlesCases: ["t2"], owner: "agent/tools.ts" },
+          "settlesCases is for a finding naming the deciding checkId",
+        ],
+        [
+          { settlesCases: ["t2"], owner: TASKS_FILE },
+          "settlesCases is for a finding naming the deciding checkId",
+        ],
+        [{ settlesCases: ["t2"], checkId: "" }, "settlesCases is for a finding naming the deciding checkId"],
+      ] as const) {
+        expect(await call(tool, { ...named, ...args })).toContain(why);
+      }
+      expect(state.dispositions.map((row) => row.taskId)).toEqual(["t1"]);
+    });
+
+    test("a false rejection settles disputed fails and cannot touch a veto", async () => {
+      const { state, tool } = settling();
+      const rejects = { ...named, probeDirection: "rejects-valid" };
+      expect(await call(tool, { ...rejects, settlesCases: ["t1"] })).toContain(
+        "t1 is a vetoed case, which a rejects-valid finding does not settle",
+      );
+      expect(await call(tool, { ...rejects, settlesCases: ["d1"] })).toBe("recorded defect as blocking");
+      const projected = publicEpochReview({ status: "completed", ...state }).findings[0]?.claim ?? "";
       expect(projected).toContain(
-        "The Judge passed 2 verified fail(s) in roof, uno holding this obligation satisfied, and the review settled them against the check: it refuses an artifact the obligation admits.",
+        "The Judge passed 1 verified fail(s) in uno holding this obligation satisfied, and the review settled them against the check: it refuses an artifact the obligation admits.",
       );
       expect(projected).not.toContain("The Judge failed");
-      for (const word of ["PRIVATE", "private prose", "t1"]) expect(projected).not.toContain(word);
     });
 
-    test("an incomplete review projects only the veto it settled after reading the artifact, as advice", async () => {
-      const state = reviewState();
-      await call(recordFindingTool([], [], evidence, state, { identities }), {
-        ...defect,
-        claim: "private prose",
-        checkId: "gpio-exit-code",
-      });
-      await call(recordFindingTool([], [], evidence, state, { identities }), {
-        ...defect,
-        claim: "private prose",
-        checkId: "unrelated-check",
-      });
-      const row = {
-        taskId: "t1",
-        family: "uno",
-        judge: false,
-        verifier: true,
-        rules: ["the exit code is 0"],
-        rationale: "PRIVATE reason",
-        confirmed: true,
-        checkIds: ["gpio-exit-code"],
-        evidence: "e",
-        artifact: "campaigns/s/versions/r/runs/r/cases/t1/artifact.json",
-      };
-      const read = {
-        status: "incomplete" as const,
-        ...state,
-        contestedReads: ["campaigns/s/versions/r/runs/r/cases/t1/artifact.json"],
-      };
-      const projected = publicEpochReview(read, { brief: null, vetoed: [row] });
-      expect(projected.findings.map((finding) => [finding.checkId, finding.severity])).toEqual([
-        ["gpio-exit-code", "advisory"],
-      ]);
-      expect(projected.findings[0]?.claim).toContain("The Judge failed 1 verified pass(es) in uno");
-      expect(projected.disputes).toEqual([]);
-      // Reading case t1 settles t1 alone, although t2 names the same check.
-      const both = [
-        row,
-        {
-          ...row,
-          taskId: "t2",
-          family: "roof",
-          artifact: "campaigns/s/versions/r/runs/r/cases/t2/artifact.json",
-        },
-      ];
-      expect(publicEpochReview(read, { brief: null, vetoed: both }).findings[0]?.claim).toContain(
-        "The Judge failed 1 verified pass(es) in uno citing",
-      );
-      // Settlement binds to the exact opened artifact, not to a path that merely ends like it.
-      expect(
-        publicEpochReview(
-          { ...read, contestedReads: ["runs/r/cases/t1/artifact.json"] },
-          { brief: null, vetoed: [row] },
-        ).findings,
-      ).toEqual([]);
-      expect(
-        publicEpochReview({ ...read, contestedReads: [] }, { brief: null, vetoed: [row] }).findings,
-      ).toEqual([]);
-      expect(
-        publicEpochReview({ ...read, status: "completed" }, { brief: null, vetoed: [row] }).findings,
-      ).toHaveLength(state.findings.length);
+    test("an unfinished review hands every admitted finding across as advice and settles nothing", async () => {
+      const { state, tool } = settling();
+      await call(tool, { ...named, settlesCases: ["t1"] });
+      await call(tool, { ...named, checkId: "other-check" });
+      for (const status of ["incomplete", "failed"] as const) {
+        const projected = publicEpochReview({ status, ...state, disputes: [{ issueId: "i", reason: "r" }] });
+        expect(projected.findings.map((finding) => [finding.checkId, finding.severity])).toEqual([
+          ["gpio-exit-code", "advisory"],
+          ["other-check", "advisory"],
+        ]);
+        for (const finding of projected.findings) {
+          expect(finding.claim).toContain("did not finish reading the source, so it is advice");
+          expect(finding.claim).not.toContain("The Judge failed");
+        }
+        expect(projected.disputes).toEqual([]);
+        expect(projected.settledJudge).toEqual([]);
+      }
+      const completed = publicEpochReview({ status: "completed", ...state });
+      expect(completed.findings.map((finding) => finding.severity)).toEqual([undefined, undefined]);
+      expect(completed.findings[0]?.claim).toContain("The Judge failed 1 verified pass(es) in uno");
     });
 
     test("an observation names the check and says it demonstrated nothing", async () => {
@@ -800,18 +764,6 @@ describe("what a finding's typed fields carry to authoring", () => {
     movedCheckIds,
     refused: null,
   });
-  const contestedRow = {
-    taskId: "t1",
-    family: "roof",
-    judge: false,
-    verifier: true,
-    rules: ["deflection within span/250"],
-    rationale: "PRIVATE reason",
-    confirmed: true,
-    checkIds: ["deflection"],
-    evidence: "e",
-    artifact: null,
-  };
 
   test("a shape and a second public input cross; the claim alone moves no projection", async () => {
     const project = async (claim: string) => {
@@ -939,47 +891,59 @@ describe("what a finding's typed fields carry to authoring", () => {
     );
   });
 
-  test("settlesJudge needs a cited probe that moved the contested check, and then settles the issue", async () => {
+  const opened = "runs/r/cases/t1/artifact.json";
+  const vetoedCase = (taskId: string, family: string) => ({
+    taskId,
+    family,
+    kind: "vetoed" as const,
+    checkIds: ["deflection"],
+    path: `runs/r/cases/${taskId}/artifact.json`,
+  });
+
+  test("an observation settles a named case in the check's favour only with a probe that moved it, and then settles the issue", async () => {
     const observation = {
       defect: false,
       claim: "the Judge misread span/250",
       severity: "advisory",
       checkId: "deflection",
-      settlesJudge: true,
+      settlesCases: ["t1"],
       citations: CITATIONS,
     };
-    const priors = { identities, contested: new Set(["deflection"]) };
-    const refusedState = reviewState();
-    refusedState.probes.rows.push(probeRow(1, []));
-    const refusedTool = recordFindingTool([], [], evidence, refusedState, priors);
-    expect(await call(refusedTool, { ...observation, probeIds: [1] })).toContain(
-      "settlesJudge requires a cited probe",
+    const reviewed = (moved: string[], cases = [vetoedCase("t1", "roof")]) => {
+      const state = reviewState();
+      state.reads.push(opened);
+      state.probes.rows.push(probeRow(1, moved));
+      return { state, tool: recordFindingTool([], [], evidence, state, { identities, cases }) };
+    };
+    const refused = reviewed([]);
+    expect(await call(refused.tool, { ...observation, probeIds: [1] })).toContain(
+      "settling a case in the check's favour requires a cited probe",
     );
-    expect(await call(refusedTool, observation)).toContain("settlesJudge requires a cited probe");
-    const uncontested = reviewState();
-    uncontested.probes.rows.push(probeRow(1, ["deflection"]));
-    expect(
-      await call(recordFindingTool([], [], evidence, uncontested, { identities }), {
-        ...observation,
-        probeIds: [1],
-      }),
-    ).toContain("settlesJudge is for an observation whose checkId");
+    expect(await call(refused.tool, observation)).toContain("requires a cited probe");
+    const unlisted = reviewed(["deflection"], []);
+    expect(await call(unlisted.tool, { ...observation, probeIds: [1] })).toContain(
+      "t1 is not a listed veto or disputed fail",
+    );
 
-    const state = reviewState();
-    state.probes.rows.push(probeRow(1, ["deflection"]));
-    expect(
-      await call(recordFindingTool([], [], evidence, state, priors), { ...observation, probeIds: [1] }),
-    ).toContain("recorded observation");
-    expect(state.findings[0]).toMatchObject({ settlesJudge: true, checkId: "deflection" });
+    const { state, tool } = reviewed(["deflection"]);
+    expect(await call(tool, { ...observation, probeIds: [1] })).toContain("recorded observation");
+    expect(state.dispositions).toEqual([
+      {
+        taskId: "t1",
+        family: "roof",
+        kind: "vetoed",
+        checkId: "deflection",
+        disposition: "check-stands",
+        finding: 0,
+      },
+    ]);
     const vetoedIssue = issue({
       id: adviceIssueId("judge-failed-verifier-passed", "roof", null),
       kind: "judge-failed-verifier-passed",
       family: "roof",
       count: 1,
     });
-    const opened = { ...contestedRow, artifact: "runs/r/cases/t1/artifact.json" };
-    const read = { status: "completed" as const, ...state, contestedReads: [opened.artifact] };
-    const projected = publicEpochReview(read, { brief, vetoed: [opened] });
+    const projected = publicEpochReview({ status: "completed", ...state }, { brief });
     expect(projected.settledJudge).toEqual([vetoedIssue.id]);
     expect(projected.findings[0]?.claim).toContain(
       "The review settled the Judge's disagreement on 1 case(s) in roof in the check's favour",
@@ -994,11 +958,10 @@ describe("what a finding's typed fields carry to authoring", () => {
     expect(rendered).toContain("Settled Judge disagreements");
     expect(rendered).toContain("roof (judge-failed-verifier-passed)");
 
-    // The same observation without the flag settles nothing, and the issue stays standing.
-    const unsettled = publicEpochReview(
-      { ...read, findings: state.findings.map(({ settlesJudge: _, ...rest }) => rest) },
-      { brief, vetoed: [opened] },
-    );
+    // The same observation naming no case settles nothing, and the issue stays standing.
+    const silent = reviewed(["deflection"]);
+    await call(silent.tool, { ...observation, settlesCases: [], probeIds: [1] });
+    const unsettled = publicEpochReview({ status: "completed", ...silent.state }, { brief });
     expect(unsettled.settledJudge).toEqual([]);
     expect(
       attachIssueReadings(advicePacket([vetoedIssue]), { settled: unsettled.settledJudge }).issues.map(
@@ -1007,32 +970,25 @@ describe("what a finding's typed fields carry to authoring", () => {
     ).toEqual([true]);
   });
 
-  // The probe ran on an accept control, so it shows how the check reads its rule; the case it
-  // settles is the one whose artifact the review read against that rule, and no sibling that merely
-  // names the same check, in the same family or another.
-  test("a settlesJudge observation settles only the cases whose artifact the review opened", async () => {
-    const state = reviewState();
-    state.probes.rows.push(probeRow(1, ["deflection"]));
-    await call(
-      recordFindingTool([], [], evidence, state, { identities, contested: new Set(["deflection"]) }),
-      {
+  // The probe ran on an accept control, so it shows how the check reads its rule; the cases it
+  // settles are the ones the review read and named, and no sibling that merely names the same check.
+  test("an observation settles only the cases it names, and an issue only once every case it counts is", async () => {
+    const cases = [vetoedCase("t1", "roof"), vetoedCase("t2", "walls"), vetoedCase("t3", "roof")];
+    const project = async (named: string[]) => {
+      const state = reviewState();
+      state.reads.push(...cases.map((row) => row.path));
+      state.probes.rows.push(probeRow(1, ["deflection"]));
+      await call(recordFindingTool([], [], evidence, state, { identities, cases }), {
         defect: false,
         claim: "the Judge misread span/250",
         severity: "advisory",
         checkId: "deflection",
-        settlesJudge: true,
+        settlesCases: named,
         citations: CITATIONS,
         probeIds: [1],
-      },
-    );
-    const at = (task: string) => `runs/r/cases/${task}/artifact.json`;
-    const vetoed = [
-      { ...contestedRow, artifact: at("t1") },
-      { ...contestedRow, taskId: "t2", family: "walls", artifact: at("t2") },
-      { ...contestedRow, taskId: "t3", artifact: at("t3") },
-    ];
-    const project = (contestedReads: string[]) =>
-      publicEpochReview({ status: "completed", ...state, contestedReads }, { brief, vetoed });
+      });
+      return publicEpochReview({ status: "completed", ...state }, { brief });
+    };
     const judgeIssue = (family: string, count: number) =>
       issue({
         id: adviceIssueId("judge-failed-verifier-passed", family, null),
@@ -1040,21 +996,21 @@ describe("what a finding's typed fields carry to authoring", () => {
         family,
         count,
       });
-    const standing = (contestedReads: string[]) =>
+    const standing = async (named: string[]) =>
       attachIssueReadings(advicePacket([judgeIssue("roof", 2), judgeIssue("walls", 1)]), {
-        settled: project(contestedReads).settledJudge,
+        settled: (await project(named)).settledJudge,
       }).issues.map(isStanding);
 
-    const claim = project([at("t1")]).findings[0]?.claim ?? "";
+    const claim = (await project(["t1"])).findings[0]?.claim ?? "";
     expect(claim).toContain(
       "The review settled the Judge's disagreement on 1 case(s) in roof in the check's favour",
     );
     for (const word of ["t1", "t2", "walls", "PRIVATE", "misread"]) expect(claim).not.toContain(word);
-    expect(project([]).findings[0]?.claim).not.toContain("settled the Judge");
-    // One opened case of roof's two leaves roof standing, and walls, never opened, stands too.
-    expect(standing([at("t1")])).toEqual([true, true]);
-    expect(standing([at("t1"), at("t3")])).toEqual([false, true]);
-    expect(standing([at("t1"), at("t2"), at("t3")])).toEqual([false, false]);
+    expect((await project([])).findings[0]?.claim).not.toContain("settled the Judge");
+    // One named case of roof's two leaves roof standing, and walls, read but never named, stands too.
+    expect(await standing(["t1"])).toEqual([true, true]);
+    expect(await standing(["t1", "t3"])).toEqual([false, true]);
+    expect(await standing(["t1", "t2", "t3"])).toEqual([false, false]);
   });
 
   // A probe that wrote a valid variant the check refused, and one that wrote an invalid variant the

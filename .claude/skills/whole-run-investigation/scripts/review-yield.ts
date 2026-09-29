@@ -56,7 +56,7 @@ interface DiagnosisEvidence {
 }
 
 interface EpochReviewFile
-  extends Partial<Pick<EpochReviewEvidence, "status" | "findings" | "disputes" | "contestedReads">> {
+  extends Partial<Pick<EpochReviewEvidence, "status" | "findings" | "disputes" | "dispositions">> {
   schema?: JsonValue;
   condition?: { digest?: JsonValue } | null;
   coverage?: { opened?: JsonValue } | null;

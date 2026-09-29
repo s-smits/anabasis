@@ -120,6 +120,7 @@ export function reviewState(): ReviewState {
     readChars: 12,
     refused: 0,
     probes: emptyProbeState(),
+    dispositions: [],
     delivered: [
       { path: "evaluator.ts", digest: "", length: 0, pages: [{ start: 0, text: CITATIONS[0]!.quote }] },
     ],

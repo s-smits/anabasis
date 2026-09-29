@@ -116,7 +116,7 @@ interface ClaimFileSlice {
  * one still outranks the climb at promotion — exactly the misroute a severity change is made to
  * end.
  */
-export const FEEDBACK_POLICY = "severity-route/13-evidence-only";
+export const FEEDBACK_POLICY = "severity-route/14-unfinished-review-advises";
 
 /** A finding states two facts: where it sits and whether it is a defect. Only a bundle file can
  *  hold a defect, so a defect with no owner, or one owned by the environment, has no spelling. An
@@ -176,9 +176,6 @@ type FindingBody = {
    *  establish which. The moved checks alone read the same both ways, and the two repairs are
    *  opposite, so an author left to guess tightens a check that was already refusing a valid answer. */
   probeDirection?: ProbeDirection;
-  /** An observation that settles a listed Judge disagreement on its `checkId` as the Judge's error,
-   *  backed by a cited probe that moved that check. The Judge issue it settles stops standing. */
-  settlesJudge?: true;
 };
 
 /** The shapes a demand finding takes: a capability no task exercises, sibling tasks differing only

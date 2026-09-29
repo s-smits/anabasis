@@ -167,7 +167,7 @@ writeFileSync(out, JSON.stringify(evidence, null, 2));
 const brief = evidence.status === "completed" ? readValidatedBrief(measuredDir) : null;
 writeFileSync(
   join(scratch, `${runId}-public-review.json`),
-  JSON.stringify(publicEpochReview(evidence, { brief, ...contested }), null, 2),
+  JSON.stringify(publicEpochReview(evidence, { brief }), null, 2),
 );
 console.log(
   JSON.stringify(

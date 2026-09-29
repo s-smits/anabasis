@@ -211,7 +211,7 @@ describe("each earlier advisory defect, as the next completed review left it", (
       { runId: "r0", owner: "agent/BUILT_AGENTS.md", subject: null },
       { runId: "r0", owner: "correctness-model/tasks.json", subject: "$.limit" },
     ]);
-    // An unfinished review's findings never reached the Builder.
+    // An unfinished review's findings reach the Builder as advice, but none is carried for a disposition.
     expect(advisoryDefects({ ...recorded, status: "incomplete" })).toEqual([]);
     expect(carriedDemonstrations({ ...recorded, status: "incomplete" })?.advisory).toEqual([]);
     expect(carriedDemonstrations(recorded)?.advisory).toEqual(advisoryDefects(recorded));

@@ -319,6 +319,7 @@ describe("controller admission", () => {
       readChars: 12,
       refused: 0,
       probes: emptyProbeState(),
+      dispositions: [],
       delivered: [
         { path: "evaluator.ts", digest: "", length: 0, pages: [{ start: 0, text: "return true;" }] },
       ],
@@ -397,6 +398,7 @@ describe("controller admission", () => {
       readChars: 12,
       refused: 0,
       probes: emptyProbeState(),
+      dispositions: [],
       delivered: [
         { path: "evaluator.ts", digest: "", length: 0, pages: [{ start: 0, text: "return true;" }] },
       ],

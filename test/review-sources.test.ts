@@ -208,9 +208,16 @@ describe("review coverage tied to recorded execution", () => {
       expect(result.coverage.complete).toBe(mode === "complete");
       expect(result.report).toBe(mode === "failed" ? null : LONG_SYNTHESIS);
       // Both findings the host admitted before the turn ended stay recorded however it ended, and
-      // only a completed review's reach the public projection.
+      // reach the public projection either way: a completed review's at their admitted severity,
+      // an unfinished one's as advice that says the review did not finish.
       expect(result.findings).toHaveLength(2);
-      expect(publicEpochReview(result).findings).toHaveLength(mode === "complete" ? 2 : 0);
+      const projected = publicEpochReview(result, { brief: null }).findings;
+      expect(projected.map((finding) => finding.severity ?? "blocking")).toEqual(
+        mode === "complete" ? ["advisory", "blocking"] : ["advisory", "advisory"],
+      );
+      expect(projected.every((finding) => finding.claim.includes("did not finish"))).toBe(
+        mode !== "complete",
+      );
       expect(result.admission).toEqual({
         continuations: 1,
         citationRefusals: 1,
@@ -434,11 +441,10 @@ describe("review coverage tied to recorded execution", () => {
     // The artifacts are required reads for settling the veto and the dispute, not covered source files.
     expect(result.reads).toContain("runs/r1/cases/roof-3/artifact.json");
     expect(result.reads).toContain("runs/r1/cases/roof-4/artifact.json");
-    // roof-5 names the same check but was never opened, so it is not among the settled cases.
-    expect(result.contestedReads).toEqual([
-      "runs/r1/cases/roof-3/artifact.json",
-      "runs/r1/cases/roof-4/artifact.json",
-    ]);
+    // Reading settles nothing: no finding named a case, so all three stay unsettled, the two read
+    // and roof-5, which names the same check and was never opened.
+    expect(result.dispositions).toEqual([]);
+    expect(result.unsettled).toEqual(["roof-3", "roof-5", "roof-4"]);
   });
 
   test("a completed review stands in only for the same contested artifacts and standing issues", async () => {
@@ -716,8 +722,11 @@ describe("review coverage tied to recorded execution", () => {
       expect(result.status).toBe(mode === "complete" ? "completed" : mode);
       expect(result.reviewerEffort).toBe("low");
       expect(result.findings).toHaveLength(1);
-      expect(publicEpochReview(result).findings).toHaveLength(mode === "complete" ? 1 : 0);
-      expect(JSON.stringify(publicEpochReview(result))).not.toContain(quote);
+      const projected = publicEpochReview(result, { brief: null });
+      expect(projected.findings.map((row) => row.severity ?? "blocking")).toEqual([
+        mode === "complete" ? "blocking" : "advisory",
+      ]);
+      expect(JSON.stringify(projected)).not.toContain(quote);
     }
   });
 });

@@ -60,8 +60,9 @@ export const NOTHING_CARRIED: Demonstrations = { probes: [], named: [], advisory
 
 const subjectOf = (finding: AnalysisFinding) => namedSubject(finding) ?? finding.publicInputPath ?? null;
 
-/** A completed review's advisory defects, one per file and subject. An unfinished review's findings
- *  never reached the Builder, so it leaves none. */
+/** A completed review's advisory defects, one per file and subject, which the next review's record
+ *  disposes of. An unfinished review's findings reach the Builder as advice too, but it read less
+ *  than it was held to, so none of them is carried for a disposition. */
 export function advisoryDefects(review: CarriedReview): AdvisoryDefect[] {
   if (review.status !== "completed") return [];
   const keyed = new Map<string, AdvisoryDefect>();

@@ -170,7 +170,7 @@ export async function analyseStep(
     });
   const epochReview = await retryAfterNamedReset("epoch-reviewer", reviewEpoch, failedReason, reset);
   const brief = epochReview.status === "completed" ? readValidatedBrief(measuredDir) : null;
-  const publicReview = publicEpochReview(epochReview, { brief, ...contested });
+  const publicReview = publicEpochReview(epochReview, { brief });
   providerBudget?.throwIfDenied();
   const { admission, derived } = publish(
     publicReview.findings,
@@ -198,6 +198,9 @@ export async function analyseStep(
     ...(epochReview.status === "failed" || epochReview.status === "incomplete"
       ? [`epoch review: ${epochReview.status} — ${epochReview.reason}`]
       : []),
+    ...(epochReview.unsettled.length === 0
+      ? []
+      : [`epoch review: ${String(epochReview.unsettled.length)} contested case(s) left unsettled`]),
     ...(reading.error !== null && !LOCAL_READER_REASONS.has(reading.error)
       ? [`diagnosis reader: failed — ${reading.error}`]
       : []),

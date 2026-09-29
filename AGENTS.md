@@ -660,17 +660,24 @@ the battery was paid for.
    the projection attached one from a fixed table (`GAP_ACTS`, `publicAct`), and a task-set defect was refused
    without a public input to vary.
 
-   An observation with `settlesJudge` — a check that a vetoed or disputed row names, plus a conclusive
-   probe that moved it — settles the cases naming that check whose artifact the review opened, because
-   the probe ran on an accept control and shows how the check reads its rule, not what a case's artifact
-   holds. A family's Judge issue stops standing only once every case it counts is settled. Only a
-   `correctness-model/` defect may dispute an issue, and a dispute keeps the issue counted while
-   withholding the agent advice. Public candidate analysis and checks of published limits are legitimate
-   solving support; a tool is an answer shortcut only when it makes the solver's remaining decision.
-   While the measured `.toolchain` digest still matches a recorded tool, the reviewer may read any text
-   file of that tree by name (`toolchain:<path>`, installed packages included, each at most 1 MiB) as
-   long as the file still counts as the recorded tree digest took it, and a directory reads as its
-   listing.
+   A finding settles a Judge disagreement only by naming it: `record_finding` takes `settlesCases`, the task
+   ids of listed vetoes and disputed fails the finding decides, and the host records one disposition per case,
+   `against-check` for a `correctness-model/` defect on the deciding check whose cited probe moved it the way
+   the case says, and `check-stands` for an observation backed by a probe that moved the check. It refuses a
+   case that is not listed, not decided by the named check, not opened with `read_source`, already settled, or
+   of the wrong kind for the probe's direction, since a false rejection cannot settle a veto, and the record
+   keeps the ids still `unsettled`. Until 2026-09-29 opening a contested artifact was enough, so one settling
+   finding attached its sentence to every defect naming that check, including ones that adjudicated none of
+   those cases. A family's Judge issue stops standing only once every case it counts is settled. A review that
+   ended incomplete or failed hands its findings on at advisory severity, with one sentence saying it did not
+   finish, and it settles no case and disputes no issue; until 2026-09-29 it handed the Builder nothing,
+   however much it had demonstrated before its provider dropped. Only a `correctness-model/` defect may
+   dispute an issue, and a dispute keeps the issue counted while withholding the agent advice. Public
+   candidate analysis and checks of published limits are legitimate solving support; a tool is an answer
+   shortcut only when it makes the solver's remaining decision. While the measured `.toolchain` digest still
+   matches a recorded tool, the reviewer may read any text file of that tree by name (`toolchain:<path>`,
+   installed packages included, each at most 1 MiB) as long as the file still counts as the recorded tree
+   digest took it, and a directory reads as its listing.
 
    An authoring review also reads the bytes of the round's failing blind rehearsals beside their
    verdict; the Builder saw only the verdict, and passing bytes reach it through `context`. It reads the

@@ -1,4 +1,5 @@
 import {
+  chmodSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -17,7 +18,10 @@ import { EvidenceLog } from "../src/claim/evidence-log.ts";
 import { FEEDBACK_POLICY } from "../src/analyse/iteration-analysis.ts";
 import { claimsDirFor } from "../src/run/claim-write.ts";
 import { readClimbBatteries } from "../src/run/climb-history.ts";
-import { ControllerLedger } from "../src/run/controller-ledger.ts";
+import { ControllerLedger, controllerLedgerPath } from "../src/run/controller-ledger.ts";
+import { Database } from "bun:sqlite";
+import { hashJsonValue } from "../src/meta/stable-json.ts";
+import type { JsonObject } from "../src/meta/json-shape.ts";
 import { SHIPPING_VARIANT } from "../src/run/run-driver.ts";
 import {
   publishProductVersion,
@@ -150,6 +154,21 @@ function recordedCampaign(
   }
   writeFileSync(join(campaignDir(root, SLUG), ".controller.lock"), "12345\n");
   return workspace;
+}
+
+/** Rewrite the selected version the way an earlier source recorded it: a `product-version/v1`
+ *  manifest, registered in the ledger under its own digest unless `registered` is false. */
+function recordedByEarlierSource(root: string, { registered = true } = {}): void {
+  const path = join(campaignDir(root, SLUG), "versions", "v1", "version.json");
+  const earlier = {
+    ...parseJsonAs<JsonObject>(readFileSync(path, "utf8")),
+    schema: "product-version/v1",
+  };
+  chmodSync(path, 0o644);
+  writeFileSync(path, JSON.stringify(earlier));
+  if (!registered) return;
+  using db = new Database(controllerLedgerPath(campaignDir(root, SLUG)));
+  db.run("UPDATE product_versions SET manifest_digest=? WHERE id=?", [hashJsonValue(earlier), "v1"]);
 }
 
 beforeEach(() => {
@@ -396,6 +415,52 @@ describe("seed-campaign republish", () => {
     expect(history.history).toHaveLength(1);
     expect(readAdmission(into, "sim-uppercase")).toBe(ADMISSION);
     expect(readAdmission(source, SLUG)).toBe(ADMISSION);
+  });
+
+  it("republishes a product an earlier source recorded, which this head refuses to continue, and clones it for the condition to meet", () => {
+    recordedCampaign(source);
+    recordedByEarlierSource(source);
+    expect(() => selectedProductDir(source, SLUG)).toThrow(
+      'recorded as "product-version/v1" by another source',
+    );
+    const into = join(scratch, "tree");
+    const result = run(
+      "--from-root",
+      source,
+      "--slug",
+      SLUG,
+      "--as-slug",
+      "sim-uppercase",
+      "--into-root",
+      into,
+    );
+    expect(result.exitCode).toBe(0);
+    expect(manifestOf(into, "sim-uppercase").carried).toMatchObject({ historyRuns: 1, sourceHistoryRuns: 1 });
+    const version = readProductVersion(into, "sim-uppercase", "seed-v1");
+    expect(readClimbBatteries(version, null, claimsDirFor(into, "sim-uppercase")).history).toHaveLength(1);
+
+    const cloned = join(scratch, "condition");
+    expect(run("--from-root", source, "--slug", SLUG, "--into-root", cloned).exitCode).toBe(0);
+    expect(manifestOf(cloned, SLUG).carried).toMatchObject({ historyRuns: 1, sourceHistoryRuns: 1 });
+    expect(() => selectedProductDir(cloned, SLUG)).toThrow("by another source");
+  });
+
+  it("refuses a source version whose manifest no longer matches its ledger registration", () => {
+    recordedCampaign(source);
+    recordedByEarlierSource(source, { registered: false });
+    const into = join(scratch, "tree");
+    const result = run(
+      "--from-root",
+      source,
+      "--slug",
+      SLUG,
+      "--as-slug",
+      "sim-uppercase",
+      "--into-root",
+      into,
+    );
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("version manifest does not match its ledger registration");
   });
 
   it("relocates a reference inside the product before publication and records both fingerprints", () => {

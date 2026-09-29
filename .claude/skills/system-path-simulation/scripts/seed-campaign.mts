@@ -10,7 +10,7 @@
  *   clone      --from-root /abs/run-root --slug <slug> --into-root /abs/fresh-tree-root
  *              The fresh-tree mode: `campaigns/<slug>` and `domains/<slug>` copied under the same
  *              slug into another tree, the live `.controller.lock` removed, the selected product
- *              re-read through `readProductVersion`.
+ *              found through the ledger and checked against its registered digest.
  *   republish  --from-root /abs/run-root --slug <slug> --as-slug <new-slug> [--into-root /abs/tree]
  *              The seeded-step mode: the selected product's bytes and tool tree copied into an
  *              owned seed under the new campaign, published as a fresh retained product through
@@ -61,16 +61,17 @@ import { campaignDir, defaultProductDir } from "#src/meta/campaign-root.ts";
 import { fingerprintSlug, type FingerprintEvidence } from "#src/claim/fingerprint.ts";
 import { bundleSnapshotToolTree } from "#src/claim/bundle-snapshot.ts";
 import { claimsDirFor } from "#src/run/claim-write.ts";
-import { readClimbBatteries } from "#src/run/climb-history.ts";
 import { ControllerLedger, controllerLedgerExists } from "#src/run/controller-ledger.ts";
 import { CONTROLLER_LOCK_FILE } from "#src/run/campaign-lock.ts";
 import {
-  productHistoryDirs,
+  productVersionDir,
   publishProductVersion,
   readProductVersion,
   selectInitialProduct,
-  selectedProductDir,
 } from "#src/run/product-versions.ts";
+import { hashJsonValue } from "#src/meta/stable-json.ts";
+import { parseJsonAs } from "#src/meta/json-runtime.ts";
+import type { JsonValue } from "#src/meta/json-shape.ts";
 import { absoluteOption, type ExitWith, exitWith, parseOrDie } from "#skills/main/cli.ts";
 import { CONFORMANCE_FILE } from "#src/claim/conformance-evidence.ts";
 
@@ -330,11 +331,39 @@ function selectedProductId(campaign: string): string | null {
   return ledger.selectedProduct();
 }
 
-function historyRows(repoRoot: string, slug: string): number {
-  const product = selectedProductDir(repoRoot, slug);
-  return existsSync(product)
-    ? readClimbBatteries(product, null, claimsDirFor(repoRoot, slug)).history.length
-    : 0;
+/** The selected product and every product directory the campaign's history reads, found through
+ *  the ledger and checked against each version's registered digest rather than read through
+ *  `readProductVersion`. A seed's source may be a campaign an earlier source recorded, whose
+ *  manifests this head refuses to continue; carrying its bytes into a condition, or republishing
+ *  them as a fresh product, is what that refusal asks for, so the seed must reach them. */
+function recordedProducts(root: string, slug: string) {
+  const campaign = campaignDir(root, slug);
+  const fallback = defaultProductDir(root, slug);
+  if (!controllerLedgerExists(campaign)) return { selected: fallback, history: [fallback] };
+  using ledger = ControllerLedger.open(campaign);
+  const registered = (id: string): string => {
+    const dir = productVersionDir(root, slug, id);
+    const manifest = parseJsonAs<JsonValue>(readFileSync(join(dir, "version.json"), "utf8"));
+    if (ledger.productDigest(id) !== hashJsonValue(manifest)) {
+      throw new SeedRefusal(`${dir}: version manifest does not match its ledger registration`);
+    }
+    return dir;
+  };
+  const selected = ledger.selectedProduct();
+  const ids = new Set([...ledger.recordedProducts(), ...(selected === null ? [] : [selected])]);
+  return {
+    selected: selected === null ? fallback : registered(selected),
+    history: [fallback, ...[...ids].map(registered)],
+  };
+}
+
+/** Distinct recorded runs across the campaign's product history. */
+function historyRows(root: string, slug: string): number {
+  const runs = new Set<string>();
+  for (const dir of recordedProducts(root, slug).history) {
+    if (existsSync(join(dir, "runs"))) for (const runId of readdirSync(join(dir, "runs"))) runs.add(runId);
+  }
+  return runs.size;
 }
 
 function countFiles(dir: string): number {
@@ -410,7 +439,7 @@ export function seedCampaignInto(
     ]);
   }
   refuseOnAudit(audit, options);
-  const product = selectedProductDir(intoRoot, slug);
+  const product = recordedProducts(intoRoot, slug).selected;
   const manifest: SeedManifest = {
     schema: "simulation-seed/v1",
     mode: "clone",
@@ -420,7 +449,7 @@ export function seedCampaignInto(
     intoRoot,
     campaign,
     selectedProductId: productId,
-    fingerprintBefore: fingerprintOf(selectedProductDir(fromRoot, slug), slug),
+    fingerprintBefore: fingerprintOf(recordedProducts(fromRoot, slug).selected, slug),
     fingerprintAfter: fingerprintOf(product, slug),
     ...digestTree(campaign),
     lockRemoved,
@@ -465,8 +494,7 @@ function carryHistory(
   asSlug: string,
   version: string,
 ): SeedManifest["carried"] {
-  const sourceProduct = selectedProductDir(fromRoot, slug);
-  for (const dir of productHistoryDirs(sourceProduct)) {
+  for (const dir of recordedProducts(fromRoot, slug).history) {
     const runs = join(dir, "runs");
     if (!existsSync(runs)) continue;
     for (const runId of readdirSync(runs).sort()) {
@@ -500,7 +528,7 @@ export function republishAsSlug(
   intoRoot: string,
   options: SeedOptions = {},
 ): SeedManifest {
-  const sourceProduct = selectedProductDir(fromRoot, slug);
+  const sourceProduct = recordedProducts(fromRoot, slug).selected;
   if (!existsSync(sourceProduct)) throw new SeedRefusal(`${sourceProduct} does not exist`);
   const campaign = campaignDir(intoRoot, asSlug);
   requireAbsent(campaign);

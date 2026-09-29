@@ -256,7 +256,7 @@ export async function runBuildStep(
     () => adoptedProbeLanding(memory.read, domainDir),
     band,
   );
-  const advisory = [memory.advisoryNote, renderProbeSizing(tasks, manifest.expectedTasks, band) ?? ""]
+  const advisory = [memory.advisoryNote, renderProbeSizing(tasks, manifest.expectedTasks) ?? ""]
     .filter((part) => part !== "")
     .join("\n\n");
   const buildPhase = observer.phase({

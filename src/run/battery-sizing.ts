@@ -31,8 +31,8 @@
  * the author through `taskCountSentence` alone and nothing here tells a Builder what its next
  * battery is expected to score. The gate returns a count and nothing else — a note beside it
  * restating the landing would repeat what the measurement note in the same prompt already says. The
- * one sentence a probe-sized round adds is `renderProbeSizing`, which lives here so that the rule
- * and its wording read the same band.
+ * one sentence a probe-sized round adds is `renderProbeSizing`, which lives here beside the rule it
+ * states.
  */
 import { existsSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
@@ -135,16 +135,12 @@ export function batterySizingGate(
     : { ...BATTERY_SIZE.probe };
 }
 
-/** The probe sentence, when the round's size is a probe range below the requested count. Its share
- *  is the band's upper edge, the same edge graduation reads through `placeOnBand`. */
-export function renderProbeSizing(
-  tasks: TaskCount,
-  requested: number,
-  band: readonly [number, number] = POLICY.climb.band,
-): string | null {
+/** The probe sentence, when the round's size is a probe range below the requested count. It names
+ *  neither the aim nor its share: both are the controller's, and a share stated here was a count to
+ *  author towards (AGENTS.md prior 10). */
+export function renderProbeSizing(tasks: TaskCount, requested: number): string | null {
   if (tasks.min === tasks.max) return null;
-  const share = `${String(Math.round(band[1] * 100))}%`;
-  return `Battery sizing: this product's batteries have ${tasks.min} to ${tasks.max} tasks until one passes at least one and at most ${share} of its scored cases, then ${requested}.`;
+  return `Battery sizing: this product's batteries have ${tasks.min} to ${tasks.max} tasks until one passes some of its scored cases and the controller reads it as hard enough, then ${requested}.`;
 }
 
 /** The adopted battery's task count, or null before a product is adopted. Measurement validates the

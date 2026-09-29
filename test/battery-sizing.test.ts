@@ -139,11 +139,10 @@ describe("a product past the probe keeps the smallest size that still holds its 
 });
 
 describe("the probe sentence", () => {
-  it("states the rule a probe graduates on, its share from the band", () => {
+  it("states the rule a probe graduates on without a share to author towards", () => {
     expect(renderProbeSizing(PROBE, 25)).toBe(
-      "Battery sizing: this product's batteries have 5 to 10 tasks until one passes at least one and at most 50% of its scored cases, then 25.",
+      "Battery sizing: this product's batteries have 5 to 10 tasks until one passes some of its scored cases and the controller reads it as hard enough, then 25.",
     );
-    expect(renderProbeSizing(PROBE, 25, [0.2, 0.95])).toContain("at most 95% of its scored cases");
   });
 
   it("is absent at an exact size, so nothing past the probe anchors a score", () => {
@@ -276,7 +275,8 @@ describe("runBuildStep battery sizing", () => {
   it("keeps a probe above the aim on probes and says what it must pass", async () => {
     const round = await sizedRound(probeRoot(true, 8, 7), null);
     expect(round).toMatchObject({ expectedTasks: 10, minTasks: 5 });
-    expect(round.note).toContain("at most 50% of its scored cases");
+    expect(round.note).toContain("the controller reads it as hard enough");
+    expect(round.note).not.toMatch(/\d+%/);
   });
 
   it("keeps probing when the fails that put a probe on the aim were settled against their check", async () => {
@@ -331,12 +331,12 @@ describe("runBuildStep battery sizing", () => {
     for (const count of ["verified pass", "aim", "finds no limit"]) expect(note).not.toContain(count);
   });
 
-  it("moves the gate and its sentence with a declared band", async () => {
+  it("moves the gate with a declared band, and states no share of it", async () => {
     const declared: [number, number] = [0.2, 0.95];
     // 22 of 25 holds too-easy at eleven tasks under the code-owned ceiling and at no size under 0.95.
     expect(await sizedRound(probeRoot(true, 25, 22), null)).toMatchObject({ expectedTasks: 11 });
     expect(await sizedRound(probeRoot(true, 25, 22, declared), null)).toMatchObject({ expectedTasks: 25 });
     const fresh = await sizedRound(probeRoot(false, 8, 4, declared), null, "build");
-    expect(fresh.note).toContain("at most 95% of its scored cases");
+    expect(fresh.note).toBe(required(renderProbeSizing(PROBE, 25), "a probe sentence"));
   });
 });

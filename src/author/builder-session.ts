@@ -258,13 +258,17 @@ function roundPrompt(input: BuilderSessionInput, previous: PreviousRound | null)
     // meaningless as a pace signal; left with one, a session authors for hours past its first clear
     // preview without submitting. So the pace is stated as an action instead. It names no rehearsal
     // condition: rehearsals pass far more often than a Builder predicts, so asking them to agree with
-    // a predicted count held rounds back for hours without changing where the battery landed.
+    // a predicted count held rounds back for hours without changing where the battery landed. It
+    // does say what a passing rehearsal is, a blind solve the solver finished, because a round whose
+    // rehearsals all pass has been submitted as though a pass said nothing about the battery, and a
+    // battery measured after such a round passes every case it scores far more often than not.
     // The cap counts replies, not tool calls, and says so: read as a count of steps, fifteen turns
     // looked nearly spent a dozen calls into the first, and a Builder dropped a change it had
     // judged right for want of turns it still had.
     `${input.maxTurns === undefined ? "" : `Round limit: ${input.maxTurns} assistant turns, each ending when you reply without a tool call; tool calls inside a turn do not count. `}Build, check and rehearse the candidate, and submit` +
-      ` once a clear preview says it works; the measured battery, not a rehearsal, decides where it lands, and further` +
-      ` polish belongs to the next round.`,
+      ` once a clear preview says it works. The measured battery, not a rehearsal, decides where it lands, but a passing` +
+      ` rehearsal is a blind solve of its task, so it shows that task is within the solver's reach; further polish` +
+      ` belongs to the next round.`,
     HANDOVER,
   ];
   const context = [input.advisory ?? "", previous === null ? (input.freshContext ?? "") : ""]

@@ -108,6 +108,19 @@ async function refusalTexts(
 const refused = (commit: string, findings: Array<{ code: string; path: string; detail: string }>) =>
   ({ ...REFUSED, commit, findings: controllerValidatedFindings(findings) }) satisfies CandidateCheckOutcome;
 
+describe("what the round prompt says a rehearsal is", () => {
+  // A pass is a blind solve the solver finished, so it is stated as such; nothing waits on it, and
+  // the battery stays the one measurement of where the round lands.
+  it("calls a passing rehearsal a blind solve within reach, and holds the submit on nothing", async () => {
+    const text = (await freshPrompt({ workspace: workspace("rehearsal") })).replace(/\s+/g, " ");
+    expect(text).toContain(
+      "The measured battery, not a rehearsal, decides where it lands, but a passing rehearsal is a blind solve of its task, so it shows that task is within the solver's reach; further polish belongs to the next round.",
+    );
+    expect(text).toContain("submit once a clear preview says it works.");
+    expect(text).not.toContain("agree with");
+  });
+});
+
 describe("where the round prompt says the workspace is", () => {
   it("names the workspace by its physical path when the controller reaches it through a symlink", async () => {
     // A run worktree reaches its workspace through a symlink while the isolation grants the

@@ -145,6 +145,9 @@ const HISTORY =
 const LIMIT =
   "Only a battery that passes some but not all of its cases can locate a limit, an unaccepted attempt counting as a fail and a non-result as neither, and only where the checks that failed it are right; one that passes every case found none.";
 
+const MEASURE_SOLVES =
+  "Before you set the next battery, measure what its passing solves submitted beside your own reference answer for the same task: where a limit sits well above your reference, answers worse than it passed, and where a solve matched or beat your reference, the search behind it is one the solver runs too.";
+
 const BOUNDARY =
   "Publish every rule the verifier applies, including rounding and enforced fallback or tie-break rules. Keep solved task-specific fixtures, hidden expectations, reference answers and protected verifier information out of the public surface.";
 
@@ -356,7 +359,11 @@ function familyLine(readout: ClimbReadout): string | null {
  *  non-result scored nothing, so a battery holding one says what it left unmeasured and asks for no
  *  harder demand, since the cases it lost may have held the limit. Nothing is said of any other
  *  count, because the band and the aim are the controller's and a count to author towards read as a
- *  course; this one fact is what the next round must answer. */
+ *  course; this one fact is what the next round must answer. A full pass also names the one
+ *  measurement that says why: a Builder otherwise sets its next limits from its own reference alone,
+ *  blind to where the passing solves landed, so a limit well above a strong reference and a limit
+ *  just above a reference the solver beats both read as the same full pass. The solves it measures
+ *  are already public, in the context tool's traces source. */
 function noLimitLine(row: ReadoutRow): string | null {
   const { runId, passed, verified, unaccepted, nonResults } = row;
   if (verified === 0 || unaccepted > 0 || passed !== verified) return null;
@@ -365,7 +372,7 @@ function noLimitLine(row: ReadoutRow): string | null {
     const lost = nonResults === 1 ? "one case" : `${String(nonResults)} cases`;
     return `Battery ${runId} passed ${all} and ${lost} ended as non-results that scored nothing, so it found no limit among the cases it scored and did not measure the rest.`;
   }
-  return `Battery ${runId} passed ${all}, so it found no limit: the next battery has to demand more of the field's own work than this one did.`;
+  return `Battery ${runId} passed ${all}, so it found no limit: the next battery has to demand more of the field's own work than this one did. ${MEASURE_SOLVES}`;
 }
 
 /**

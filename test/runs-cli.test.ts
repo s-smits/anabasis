@@ -40,7 +40,7 @@ interface LaunchOptions {
 }
 
 const scratch: string[] = [];
-const OPUS = { kind: "claude", model: "claude-opus-5", reasoningEffort: "medium" };
+const OPUS = { kind: "claude", model: "claude-opus-5-5", reasoningEffort: "medium" };
 
 type Outcome = "pass" | "unaccepted" | "non-result";
 
@@ -93,7 +93,7 @@ function caseLine(seq: number, runId: string, outcome: Outcome): string {
     builderId: "builder-1",
     slug: "slug",
     buildInputsHash: "h",
-    backendPin: "claude/claude-opus-5",
+    backendPin: "claude/claude-opus-5-5",
     taskId: `task-${seq}`,
     family: "family-a",
     acceptedSubmit: outcome === "pass",

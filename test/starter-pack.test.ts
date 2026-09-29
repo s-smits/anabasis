@@ -200,6 +200,11 @@ describe("pi starter pack brief vocabulary", () => {
     expect(text).toContain("## A target the solver does not reliably meet");
     expect(text).toContain("**A search past the solver's wall.**");
     expect(text).toContain("**A planted design.**");
+    // A reference the solver beats, or a limit well above a reference it does not, reads as the same
+    // full pass, so the solver's own passing answers are named as the measurement that tells them apart.
+    expect(text).toContain("**The solver's own answers.**");
+    expect(text).toContain("so the limit belongs nearer the stored answer");
+    expect(text).toContain("start the next search from the best solve and keep the better incumbent");
     expect(text).toContain(
       "`harness_trial` estimates how reliably the solver meets a task; it does not veto one.",
     );

@@ -204,6 +204,10 @@ The climb has three named parts, all read on verified cases:
   requested size once its bracket also lands at or under the aim (`batterySizingGate`,
   `src/run/battery-sizing.ts`), because every
   recorded graduation from a near-full bracket (5/6, 7/8) went straight back to a near-full battery.
+  So did all three that graduated at or under the aim and measured a full pass next: f0fb83's 2/6,
+  2d7812's 3/6 and 3e4693's 3/6 (2026-09-28 and 29). Every fail in those probes fell on one check
+  the Epoch Reviewer then settled against. A settled case now leaves the sample (`admittedClimbRow`),
+  so each of those probes reads 2/2 or 3/3 and stays a probe.
 - **Curriculum filtering** is the climb after it, at full size, between 1/25 and 24/25. As in RL
   curriculum filtering, which drops prompts every sample solves or none does because they carry no
   signal, a battery at 0/n or n/n says nothing about where the solver stops. Here the unit is the

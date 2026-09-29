@@ -99,6 +99,9 @@ above the probe ceiling at which the last pass rate, floored, would still read `
 requested size when nothing smaller holds or the landing cannot be read, so a missing identity
 leaves the requested size in place. Otherwise the product graduates only when its last battery
 passed at least one scored case and landed at or under the aim, and until then it stays on probes.
+The landing is `admittedClimbRow`'s count, so a case the Epoch Reviewer settled against its check
+counts neither way. That is the probe's graduation guard too: 2d7812's and 3e4693's 3/6 probes
+graduated on source without it, every fail on one settled check, and measured 25/25 and 24/24 next.
 
 Two consequences are easy to miss. A scored case includes an unaccepted one, so a probe whose
 solver submitted nothing on half its tasks and passed the rest has graduated, although it measured

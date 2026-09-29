@@ -334,11 +334,12 @@ is unavailable, never zero, and a count proves a firing rather than that its own
 ## The lanes that read one thing each
 
 Eight lanes run in-process and are subcommands of their own, printing the view, its JSON under
-`--json`, and recording the JSON at `--out`; `posture` and `archive` run inside `read`.
+`--json`, and recording the JSON at `--out`; `posture` and `archive` run inside `read`. Each is
+also a verb of `bun run runs`, which starts `wri.ts <lane>` with the options untouched
+(`RUN_VERBS`, `.claude/skills/main/verbs.ts`), so that is the spelling to use.
 
 ```text
-bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.ts \
-  delta | climb | yield | timeline | walls | handoff | gates | target  <target> \
+bun run runs delta | climb | yield | timeline | walls | handoff | gates | target  <target> \
   [--run <runId>] [--json] [--out <abs file>]
 ```
 

@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
+import { runtimeProcess } from "../src/meta/process.ts";
 import { CASE_RECORD_SCHEMA } from "../src/claim/case-record.ts";
 import { DIFFICULTY_DECISION_SCHEMA } from "../src/run/difficulty-decision.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
@@ -25,7 +26,9 @@ import { runLiveness, type QueryResult } from "../tools/runs/state.ts";
 import { collectDetail, collectRows, splitSlug } from "../tools/runs/rows.ts";
 import { recordedCondition, resumePlan } from "../tools/runs/resume.ts";
 import { duration, renderList, renderShow } from "../tools/runs/format.ts";
-import { stopPlanOf } from "../tools/runs/cli.ts";
+import { NATIVE_VERBS, stopPlanOf } from "../tools/runs/cli.ts";
+import { RUN_VERBS } from "../.claude/skills/main/verbs.ts";
+import { LANES } from "../.claude/skills/whole-run-investigation/scripts/wri.ts";
 import { required } from "./helpers/doubles.ts";
 
 /** The one opening time every closed fixture records. */
@@ -763,5 +766,32 @@ describe("the climb decisions recorded for a run", () => {
     expect(shown).toContain(`not ${CURRENT_SCHEMA}`);
     writeDecision(campaignDir, "run-1-i02", CURRENT_SCHEMA);
     expect(show()).not.toContain("Climb records refused");
+  });
+});
+
+describe("the verbs the skills own", () => {
+  it("start scripts that exist, under names no native verb holds", () => {
+    for (const [verb, row] of RUN_VERBS) {
+      expect(NATIVE_VERBS).not.toContain(verb);
+      expect(existsSync(join(import.meta.dir, "..", ".claude", "skills", row.script))).toBe(true);
+    }
+  });
+
+  it("are exactly the WRI lanes that read in-process, each selected by its own name", () => {
+    const rows = [...RUN_VERBS].filter(([, row]) => row.script.endsWith("/wri.ts"));
+    expect(Object.fromEntries(rows.map(([verb, row]) => [verb, row.lead]))).toEqual(
+      Object.fromEntries(
+        LANES.flatMap((lane) => (lane.read === undefined ? [] : [[lane.name, [lane.name]]])),
+      ),
+    );
+  });
+
+  it("reach the script before runs parses, so its own options and exit code pass through", () => {
+    const campaignDir = writeOpening(checkout(), "slug", "run-1", OPENED_AT);
+    mkdirSync(join(campaignDir, "versions"));
+    const cli = join(import.meta.dir, "..", "tools", "runs", "cli.ts");
+    const run = Bun.spawnSync([runtimeProcess.execPath, cli, "climb", campaignDir, "--json"]);
+    expect(run.exitCode).toBe(0);
+    expect(run.stdout.toString()).toContain('"schema": "climb-velocity/v1"');
   });
 });

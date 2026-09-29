@@ -1868,12 +1868,14 @@ and lint, because `setup` prepares only the root's, and an unprepared `@types/re
 findings no diff introduced. `bun run format` fixes the format step. Biome's ownership of line breaks (§2)
 is why the size ceilings are 800 and 115, and `tools/oxlint` came in on 2026-09-20 and cost 25 lint
 errors, mostly `curly` finding statements the formatter had just made multi-line. Also available are
-`bun run outcome` for read-only reports over recorded evidence, `bun run replay -- <campaign>/<runId>` to
-re-grade a recorded battery through this tree's verifier, `bun run triage` and `bun run secrets`. Run one
-gate at a time, because two overlapping gates each took twice as long as one alone. `bun run land --jobs N`
-is the exception, because its `--static` gates are small enough that overlapping them still pays: over
-#32–#46 on 2026-09-28, four at once finished a commit every 19 seconds against 36 for one, on a 12-core
-host held at a load near 50, and the top's whole gate still ran alone. When typecheck, lint,
+`bun run runs <verb> <run>`, the door to the run readers the skills own (`bun run runs --help` lists
+them), `bun run outcome` for read-only reports over recorded evidence, `bun run replay --
+<campaign>/<runId>` to re-grade a recorded battery through this tree's verifier, `bun run triage` and
+`bun run secrets`. Run one gate at a time, because two overlapping gates each took twice as long as one
+alone. `bun run land --jobs N` is the exception, because its `--static` gates are small enough that
+overlapping them still pays: over #32–#46 on 2026-09-28, four at once finished a commit every 19
+seconds against 36 for one, on a 12-core host held at a load near 50, and the top's whole gate still
+ran alone. When typecheck, lint,
 source-policy or complexity fails, pre-push lists each finding as `<rule> <location> <message>` and names
 the commit it failed on.
 

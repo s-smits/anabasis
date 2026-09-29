@@ -7,8 +7,9 @@ description: Review the changed code for reuse, simplification, efficiency and a
 
 This directory is the whole skill. A user-level `/simplify` may exist in the
 operator's own skill pack; this repository does not depend on it, and where the
-two disagree, this file governs here. `harness-builder-v4` and `anabasis` each
-carry this directory, byte-identical: change both in the same sitting.
+two disagree, this file governs here. `harness-builder-v4` carries an older,
+shorter supplement under the same name that defers to the user-level skill; it
+is not a copy of this file, so a change here does not need to follow it there.
 
 ## First, before anything else
 
@@ -104,7 +105,12 @@ Climb it for each mechanism and stop at the first rung that holds:
    even when the line count is equal).
 6. **Only then** the minimum that works, inside the owner.
 
-At each rung, ask: did we fix the root cause, or patch the result?
+At each rung, ask: did we fix the root cause, or patch the result? And ask how
+much of the old behaviour the minimum must keep. Rule 8 of `AGENTS.md` answers
+that once for the repository: take the form with about half the complexity that
+keeps 90 to 95 percent of the result, never trade a guarantee from the list
+below, and measure both sides — `measure.py` or `reduce-complexity` for the
+mechanism, a replay or the decision the code feeds for what it still does.
 
 ## Budgets this repository enforces
 
@@ -230,6 +236,8 @@ not in each tool.
   name explains. A helper the caller could be is the caller.
 - When you keep something, say why. "Already the smallest honest form" is a
   valid result; name the one place that came closest to changing.
+- Working code that already sits near the super-Pareto form. A pass does not
+  rewrite it only to move a ratio.
 
 ## Finish
 
@@ -242,8 +250,9 @@ not in each tool.
   lint rows, then a function at 24).
 - Report, leading with the outcome in one sentence: what got simpler, the
   commit and the PR it landed on. Follow with the budget line (production net,
-  new functions, new files, new imports), what stayed and why, and the test
-  counts, in plain sentences a colleague can read without the diff. When a push
+  new functions, new files, new imports), what the simpler form gave up and how
+  that was measured (or that it gave up nothing), what stayed and why, and the
+  test counts, in plain sentences a colleague can read without the diff. When a push
   is still running, say so and report its result when it lands.
 
 When the operator corrects a pass, replace the rule that misled you in this

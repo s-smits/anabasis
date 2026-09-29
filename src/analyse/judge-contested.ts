@@ -13,21 +13,23 @@ import { confirmedDisagreement, type JudgeSubjectEvidence } from "../review/judg
 import { isBoolean, type JsonValue } from "../meta/json-shape.ts";
 import { readJsonFile } from "../meta/completed-json.ts";
 
-/** One judge/verifier contradiction with the per-case evidence it was read from. */
+/** One judge/verifier contradiction with the per-case evidence it was read from: a Judge fail of a
+ *  verifier pass, or a verifier fail the Judge did not fail. */
 export type ContestedCase = {
   taskId: string;
   family: string;
-  judge: boolean;
+  /** The Judge's verdict; null when it returned undecided. */
+  judge: boolean | null;
   verifier: boolean;
-  /** The shown rules a Judge fail cited; empty for a Judge pass. */
+  /** The shown rules a Judge fail cited, or the requirements an undecided named; empty for a pass. */
   rules: string[];
   /** The Judge's recorded reason, private review evidence for the epoch reviewer to weigh. */
   rationale: string | null;
-  /** The contradicting verdict repeated by a second fresh sample. */
+  /** A Judge fail of a verifier pass that a second fresh sample repeated; no other row is resampled. */
   confirmed: boolean;
   /** For a Judge fail: the declared checks whose assertions the citations quote, joined
    *  controller-side; a citation of the schema, the public input, or an assertion no check declares
-   *  joins nothing. For a Judge pass: the checks the verifier recorded as failing the artifact. */
+   *  joins nothing. Otherwise: the checks the verifier recorded as failing the artifact. */
   checkIds: string[];
   /** The per-case judge evidence path: a reviewer opens evidence instead of trusting a row. */
   evidence: string;
@@ -59,15 +61,15 @@ export function readJson(repoRoot: string, rel: string): JsonValue {
 
 /** A verifier pass the Judge failed while citing shown rules: the case the reviewer must settle. */
 export function isVetoed(row: Pick<ContestedCase, "judge" | "verifier" | "rules" | "confirmed">): boolean {
-  return row.verifier && !row.judge && row.rules.length > 0 && row.confirmed;
+  return row.verifier && row.judge === false && row.rules.length > 0 && row.confirmed;
 }
 
-/** A verifier fail the Judge passed twice, with the failing checks on record: the reviewer settles
- *  it the other way round, against a check that may refuse a correct artifact. */
-export function isDisputedFail(
-  row: Pick<ContestedCase, "judge" | "verifier" | "checkIds" | "confirmed">,
-): boolean {
-  return !row.verifier && row.judge && row.confirmed && row.checkIds.length > 0;
+/** A verifier fail the Judge did not fail, with the failing checks on record: the reviewer settles
+ *  it the other way round, against a check that may refuse a correct artifact. An undecided counts,
+ *  because a Judge that reads firmware as undecided on its compile is the reading that found host
+ *  stand-ins refusing valid source in 5 of 8 settled disputes. */
+export function isDisputedFail(row: Pick<ContestedCase, "judge" | "verifier" | "checkIds">): boolean {
+  return !row.verifier && row.judge !== false && row.checkIds.length > 0;
 }
 
 /** The contested rows as the Epoch Reviewer takes them: the vetoes and the disputed fails it
@@ -80,8 +82,9 @@ export function reviewerContested(rows: readonly ContestedCase[]) {
   };
 }
 
-/** Every case whose judge verdict contradicts verifier truth. Subjects without a judge evidence or
- *  a verifier truth are skipped. `checkByAssertion` joins a cited assertion to its declared check. */
+/** Every Judge fail of a verifier pass and every verifier fail the Judge did not fail. Subjects
+ *  without a judge evidence, a verifier truth or an answer are skipped. `checkByAssertion` joins a
+ *  cited assertion to its declared check. */
 export function contestedCases(
   subjects: readonly ContestedSubject[],
   checkByAssertion: ReadonlyMap<string, string>,
@@ -90,19 +93,21 @@ export function contestedCases(
   for (const subject of subjects) {
     if (subject.judgePath === null || subject.judgeEvidence === null || subject.truthOk === null) continue;
     const evidence = subject.judgeEvidence;
-    if (!isBoolean(evidence.verdict) || evidence.verdict === subject.truthOk) continue;
+    const judge = isBoolean(evidence.verdict) ? evidence.verdict : evidence.abstained ? null : undefined;
+    if (judge === undefined || judge === subject.truthOk || (judge === null && subject.truthOk)) continue;
     const { rules } = evidence;
     rows.push({
       taskId: subject.taskId,
       family: subject.family,
-      judge: evidence.verdict,
+      judge,
       verifier: subject.truthOk,
       rules,
       rationale: evidence.rationale,
       confirmed: confirmedDisagreement(evidence),
-      checkIds: evidence.verdict
-        ? subject.failedCheckIds
-        : [...new Set(rules.flatMap((rule) => checkByAssertion.get(rule) ?? []))],
+      checkIds:
+        judge === false
+          ? [...new Set(rules.flatMap((rule) => checkByAssertion.get(rule) ?? []))]
+          : subject.failedCheckIds,
       evidence: subject.judgePath,
       artifact: subject.artifactPath,
     });

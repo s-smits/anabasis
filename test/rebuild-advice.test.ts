@@ -244,7 +244,7 @@ describe("what one battery observes", () => {
     expect(result.issues.every(isStanding)).toBe(true);
   });
 
-  it("reads confirmed Judge disagreements in both directions as advisory rows, and drops unconfirmed ones", () => {
+  it("reads Judge disagreements in both directions as advisory rows, dropping an unrepeated fail and an undecided", () => {
     const contested = [
       {
         taskId: "t2",
@@ -254,7 +254,8 @@ describe("what one battery observes", () => {
         evidence: "e.json",
         rules: [],
         rationale: null,
-        confirmed: true,
+        // A pass of a verifier fail draws one sample and counts on it.
+        confirmed: false,
         checkIds: [],
         artifact: "a.json",
       },
@@ -282,6 +283,18 @@ describe("what one battery observes", () => {
         checkIds: [],
         artifact: "a.json",
       },
+      {
+        taskId: "t4",
+        family: "frames",
+        judge: null,
+        verifier: false,
+        evidence: "e.json",
+        rules: ["the analysis converges"],
+        rationale: null,
+        confirmed: false,
+        checkIds: [],
+        artifact: "a.json",
+      },
     ];
     const reason =
       "the Judge disagreed with the verifier on 2 of 2 verified cases; advice only, the verifier decides";
@@ -301,12 +314,12 @@ describe("what one battery observes", () => {
         ["judge-failed-verifier-passed", "joints"],
       ]),
     );
-    // An unconfirmed disagreement stays in the Judge census line but raises no issue.
-    expect(reviewed.issues.some((row) => row.family === "trusses")).toBe(false);
+    // An unrepeated fail and an undecided stay in the Judge census line but raise no issue.
+    expect(reviewed.issues.some((row) => row.family === "trusses" || row.family === "frames")).toBe(false);
     expect(reviewed.judge).toEqual({
       exit: "advisory",
       reason,
-      contestedFamilies: ["beams", "joints", "trusses"],
+      contestedFamilies: ["beams", "frames", "joints", "trusses"],
     });
     // A battery with no Judge review contributes no Judge row.
     const unreviewed = derive(

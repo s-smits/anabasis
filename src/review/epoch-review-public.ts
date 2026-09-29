@@ -111,7 +111,7 @@ function settlementLines(settled: readonly CaseDisposition[]): string[] {
     ...(disputes.length === 0
       ? []
       : [
-          `The Judge passed ${String(disputes.length)} verified fail(s) in ${familiesOf(disputes)} holding this obligation satisfied, and the review settled them against the check: it refuses an artifact the obligation admits.`,
+          `The Judge did not fail ${String(disputes.length)} verified fail(s) in ${familiesOf(disputes)} on this obligation, and the review settled them against the check: it refuses an artifact the obligation admits.`,
         ]),
   ];
 }

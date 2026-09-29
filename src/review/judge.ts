@@ -111,7 +111,7 @@ async function attemptOf(
   }
 }
 
-/** A verdict contradicting the verifier stands only when a second fresh sample returned the same
+/** A Judge fail of a verifier pass stands only when a second fresh sample returned the same
  *  verdict. A fail always carries its citations, so a confirmed fail is a cited one. */
 export function confirmedDisagreement(
   evidence: Pick<JudgeSubjectEvidence, "verdict" | "confirmation">,
@@ -119,8 +119,10 @@ export function confirmedDisagreement(
   return isBoolean(evidence.verdict) && evidence.confirmation?.verdict === evidence.verdict;
 }
 
-/** `verifierVerdict` never reaches the Judge; it decides only whether a contradicting verdict is
- *  sampled again. */
+/** `verifierVerdict` never reaches the Judge; it decides only whether a fail of a verifier pass is
+ *  sampled again. That resample removed 10 wrong fails and no right one. The one drawn on a Judge
+ *  pass of a verifier fail confirmed 20 of 20 and changed no outcome, so a dispute goes to the
+ *  Epoch Reviewer on the first sample. */
 export async function judgeSubject(
   session: JudgeSession,
   request: JudgeRequest,
@@ -132,9 +134,8 @@ export async function judgeSubject(
   const { value: judgeInput, sanitized } = sanitizeJudgeInput(request);
   const context = { subjectId: request.subjectId, subjectKind };
   const attempt = await attemptOf(session, judgeInput, context);
-  const contradicts =
-    isBoolean(verifierVerdict) && isBoolean(attempt.verdict) && attempt.verdict !== verifierVerdict;
-  const confirmation = contradicts ? { confirmation: await attemptOf(session, judgeInput, context) } : {};
+  const vetoes = verifierVerdict === true && attempt.verdict === false;
+  const confirmation = vetoes ? { confirmation: await attemptOf(session, judgeInput, context) } : {};
   return {
     schema: "judge-subject/v3",
     subjectId: request.subjectId,

@@ -107,7 +107,8 @@ export interface EpochReviewInput {
   /** Verifier passes the Main Judge failed with a citation; each must be settled. Empty at an
    *  authoring checkpoint and for batteries reviewed without a Judge. */
   vetoed?: readonly ContestedCase[];
-  /** Verifier fails the Main Judge passed, with the failing checks on record; settled the other way. */
+  /** Verifier fails the Main Judge passed or left undecided, with the failing checks on record;
+   *  settled the other way. */
   disputed?: readonly ContestedCase[];
   /** Every other case the Judge and the verifier decided differently — unconfirmed, or a failing
    *  case with no deciding check on record. Offered to read beside the settlement work, never owed. */
@@ -318,13 +319,17 @@ function contestedLines(input: EpochReviewInput): string[] {
       ),
     ),
     ...(input.disputed ?? []).map((row) =>
-      line("Disputed fail", row, `failed ${row.checkIds.join(", ")}; the Judge passed it`),
+      line(
+        "Disputed fail",
+        row,
+        `failed ${row.checkIds.join(", ")}; the Judge ${row.judge === null ? `left it undecided on ${row.rules.map((rule) => capturedJsonStringify(rule)).join(", ")}` : "passed it"}`,
+      ),
     ),
     ...(input.otherContested ?? []).map((row) =>
       line(
         "Also contested, not required to settle",
         row,
-        `the verifier ${row.verifier ? "passed" : "failed"} it${row.checkIds.length > 0 ? ` on ${row.checkIds.join(", ")}` : ""} and the Judge ${row.judge ? "passed" : "failed"} it`,
+        `the verifier ${row.verifier ? "passed" : "failed"} it${row.checkIds.length > 0 ? ` on ${row.checkIds.join(", ")}` : ""} and the Judge ${row.judge === null ? "left it undecided" : row.judge ? "passed it" : "failed it"}`,
       ),
     ),
   ];

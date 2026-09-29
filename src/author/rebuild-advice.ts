@@ -340,15 +340,18 @@ function observedIssues(
       out.push({ kind: "non-result", family: family.family, detail, count, denominator: total });
     }
   }
-  // A Judge disagreement a second sample repeated is advice by family; one the resample did not
-  // repeat is the Judge's noise, not the battery's. The verifier still decides every pass.
+  // A Judge fail of a verifier pass a second sample repeated is advice by family, and one the
+  // resample did not repeat is the Judge's noise, not the battery's. A Judge pass of a verifier fail
+  // is advice on its one sample, which is all it draws; an undecided claims nothing. The verifier
+  // still decides every pass.
   if (judges.census !== null) {
     const byFamily = new Map<string, { passedFailed: number; failedPassed: number }>();
     for (const row of judges.contested) {
-      if (!row.confirmed) continue;
+      // Only a Judge fail of a verifier pass is resampled, so only it can read confirmed.
+      const side = row.judge === true ? "passedFailed" : row.confirmed ? "failedPassed" : null;
+      if (side === null) continue;
       const entry = byFamily.get(row.family) ?? { passedFailed: 0, failedPassed: 0 };
-      if (row.judge && !row.verifier) entry.passedFailed += 1;
-      else entry.failedPassed += 1;
+      entry[side] += 1;
       byFamily.set(row.family, entry);
     }
     for (const [family, counts] of [...byFamily.entries()].sort(([a], [b]) => a.localeCompare(b))) {

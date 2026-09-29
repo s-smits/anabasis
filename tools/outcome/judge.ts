@@ -29,9 +29,10 @@ interface OutcomeContestedCase {
   runId: string;
   taskId: string;
   family: string;
-  judge: boolean;
+  /** Null when the Judge left a verifier fail undecided. */
+  judge: boolean | null;
   verifier: boolean;
-  direction: "verifier-pass-judge-fail" | "verifier-fail-judge-pass";
+  direction: "verifier-pass-judge-fail" | "verifier-fail-judge-pass" | "verifier-fail-judge-undecided";
   /** Saved review path for this case. */
   judgeEvidence: string;
   /** Saved answer path checked by the source reader. */
@@ -117,7 +118,11 @@ function contestedRows(
       family: row.family,
       judge: row.judge,
       verifier: row.verifier,
-      direction: row.verifier ? "verifier-pass-judge-fail" : "verifier-fail-judge-pass",
+      direction: row.verifier
+        ? "verifier-pass-judge-fail"
+        : row.judge === null
+          ? "verifier-fail-judge-undecided"
+          : "verifier-fail-judge-pass",
       judgeEvidence: currentEvidencePath(campaignDir, row.evidence),
       artifact: currentEvidencePath(campaignDir, row.artifact),
       correctnessModelId: view.evidence.correctnessModelId,

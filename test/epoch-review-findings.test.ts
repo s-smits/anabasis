@@ -635,7 +635,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
       expect(await call(tool, { ...rejects, settlesCases: ["d1"] })).toBe("recorded defect as blocking");
       const projected = publicEpochReview({ status: "completed", ...state }).findings[0]?.claim ?? "";
       expect(projected).toContain(
-        "The Judge passed 1 verified fail(s) in uno holding this obligation satisfied, and the review settled them against the check: it refuses an artifact the obligation admits.",
+        "The Judge did not fail 1 verified fail(s) in uno on this obligation, and the review settled them against the check: it refuses an artifact the obligation admits.",
       );
       expect(projected).not.toContain("The Judge failed");
     });

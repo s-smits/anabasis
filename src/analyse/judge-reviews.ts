@@ -48,7 +48,7 @@ export type BatteryCensus = {
  */
 export type JudgeExit = {
   kind: "none" | "advisory";
-  /** Verified cases the verifier failed and the Judge passed. */
+  /** Verified cases the verifier failed and the Judge passed; one it left undecided is not counted. */
   verifierFailJudgePass: number;
   /** Verified cases the verifier passed and the Judge failed. */
   verifierPassJudgeFail: number;
@@ -185,15 +185,15 @@ function censusHold(attempt: CensusAttempt, subjects: readonly ContestedSubject[
   if (answered !== evidence.offered) {
     return `the judge review is incomplete (${judgeDecision(evidence)}): ${answered}/${evidence.offered} battery verdicts returned`;
   }
-  // A contradicting verdict whose resample returned none is neither confirmed nor withdrawn, so the
-  // census counting its first verdict would let a standing Judge issue age towards a fix on it.
-  const unresampled = subjects.filter(({ judgeEvidence, truthOk }) =>
-    isBoolean(judgeEvidence?.verdict) && isBoolean(truthOk) && judgeEvidence.verdict !== truthOk
-      ? !isBoolean(judgeEvidence.confirmation?.verdict)
-      : false,
+  // A Judge fail of a verifier pass whose resample returned none is neither confirmed nor withdrawn,
+  // so the census counting its first verdict would let a standing Judge issue age towards a fix on
+  // it. No other verdict is resampled.
+  const unresampled = subjects.filter(
+    ({ judgeEvidence, truthOk }) =>
+      judgeEvidence?.verdict === false && truthOk === true && !isBoolean(judgeEvidence.confirmation?.verdict),
   ).length;
   if (unresampled === 0) return null;
-  return `the judge review is incomplete: ${unresampled} contradicting verdicts returned no resample verdict`;
+  return `the judge review is incomplete: ${unresampled} Judge fails of a verifier pass returned no resample verdict`;
 }
 
 /** The subjects the Judge answered, pass, fail or undecided. An undecided is an answer: counting
@@ -215,10 +215,9 @@ function unreviewedReason(attempt: CensusAttempt): string {
 }
 
 function judgeExit(contested: readonly ContestedCase[], verified: number, attempt: CensusAttempt): JudgeExit {
-  const verifierFailJudgePass = contested.filter(
-    (row) => row.verifier === false && row.judge === true,
-  ).length;
-  const verifierPassJudgeFail = contested.length - verifierFailJudgePass;
+  const verifierFailJudgePass = contested.filter((row) => !row.verifier && row.judge === true).length;
+  const verifierPassJudgeFail = contested.filter((row) => row.verifier).length;
+  const undecided = contested.length - verifierFailJudgePass - verifierPassJudgeFail;
   const vetoed = contested.filter(isVetoed).length;
   const base = { verifierFailJudgePass, verifierPassJudgeFail, verified };
   if (contested.length === 0) {
@@ -241,7 +240,7 @@ function judgeExit(contested: readonly ContestedCase[], verified: number, attemp
     // "N citing shown rules", which counts a different thing and reads as zero for a fail that did
     // cite a rule and simply was not repeated on the re-sample. The author reads this sentence to
     // decide whether the disagreement deserves their attention, so it names both halves.
-    reason: `the Judge disagreed with the verifier on ${contested.length} of ${verified} verified cases (${verifierFailJudgePass} verifier-fail/Judge-pass, ${verifierPassJudgeFail} verifier-pass/Judge-fail); ${vetoed} were vetoes, a cited fail of a verifier pass that a second sample repeated, which is what the epoch reviewer settles; the verifier decides every pass`,
+    reason: `the Judge disagreed with the verifier on ${contested.length} of ${verified} verified cases (${verifierFailJudgePass} verifier-fail/Judge-pass, ${undecided} verifier-fail/Judge-undecided, ${verifierPassJudgeFail} verifier-pass/Judge-fail); ${vetoed} were vetoes, a cited fail of a verifier pass that a second sample repeated, which is what the epoch reviewer settles; the verifier decides every pass`,
   };
 }
 

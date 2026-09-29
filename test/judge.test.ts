@@ -588,8 +588,9 @@ describe("the judge battery review", () => {
     expect(written).toEqual(["cases/t1/judge.json", "cases/t2/judge.json"]);
   });
 
-  it("samples a verdict that contradicts the verifier once more and records the second verdict beside the first", async () => {
-    // Task 12-low-side-lamp split 2 fail / 1 pass over three replays on 2026-09-15.
+  it("samples a fail of a verifier pass once more and records the second verdict beside the first", async () => {
+    // Task 12-low-side-lamp split 2 fail / 1 pass over three replays on 2026-09-15. A pass of a
+    // verifier fail is not resampled: that second sample confirmed 20 of 20 and changed nothing.
     const calls: string[] = [];
     const verdicts = new Map<string, Array<boolean | null>>([
       ["c1", [false, false]],
@@ -616,7 +617,7 @@ describe("the judge battery review", () => {
       () => {},
     );
     const result = await census.run([...subjects(3), ...subjects(5, false).slice(3)]);
-    expect(calls.sort()).toEqual(["c1", "c1", "c2", "c2", "c3", "c4", "c5", "c5"]);
+    expect(calls.sort()).toEqual(["c1", "c1", "c2", "c2", "c3", "c4", "c5"]);
     const byId = new Map(result.observations.map((row) => [row.evidence.subjectId, row.evidence]));
     expect(byId.get("c1")).toMatchObject({
       verdict: false,
@@ -625,12 +626,12 @@ describe("the judge battery review", () => {
     expect(byId.get("c2")).toMatchObject({ verdict: false, confirmation: { verdict: true } });
     expect("confirmation" in (byId.get("c3") ?? {})).toBe(false);
     expect("confirmation" in (byId.get("c4") ?? {})).toBe(false);
-    expect(byId.get("c5")).toMatchObject({ verdict: true, confirmation: { verdict: true, rules: [] } });
+    expect("confirmation" in (byId.get("c5") ?? {})).toBe(false);
     expect(
       result.observations
         .filter((row) => confirmedDisagreement(row.evidence))
         .map((row) => row.evidence.subjectId),
-    ).toEqual(["c1", "c5"]);
+    ).toEqual(["c1"]);
   });
 
   it("without a declared width the census keeps the shared batch stop, so the sixth subject is never spent", async () => {

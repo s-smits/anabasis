@@ -52,6 +52,7 @@ const JUDGE_PIN = "codex/gpt-5.1-codex-judge";
 const BUILT_PIN = "codex/gpt-5.1-codex";
 /** A judge verdict as the census recorded it: decided, deliberate abstention, or a failed call. */
 type Verdict = boolean | null | "abstain";
+const MEMBER_CAPACITY_RULE = "every member stays under its capacity";
 
 interface CaseSpec {
   taskId: string;
@@ -61,8 +62,8 @@ interface CaseSpec {
   family?: string;
   /** The judge's recorded verdict; omitted means it AGREED with the verifier. */
   judge?: Verdict;
-  /** A contradicting verdict's resample; omitted means it agreed with the verifier, as the producer
-   *  resamples every contradiction. */
+  /** A Judge fail of a verifier pass's resample; omitted means it agreed with the verifier. The
+   *  producer resamples no other verdict. */
   resample?: Verdict;
 }
 
@@ -170,7 +171,7 @@ function repoWith(
     if (spec.census !== "none" && spec.census !== "off") {
       const verdict = judgeVerdictOf(row);
       const judged = subjectEvidence(row.taskId, "battery-case", verdict);
-      if (isBoolean(verdict) && isBoolean(row.truthOk) && verdict !== row.truthOk) {
+      if (verdict === false && row.truthOk === true) {
         const resample = row.resample === undefined ? row.truthOk : row.resample;
         Object.assign(judged, { confirmation: subjectEvidence(row.taskId, "battery-case", resample) });
       }
@@ -305,7 +306,7 @@ describe("a cited fail joins the check it contradicts", () => {
   const subject = (
     taskId: string,
     truthOk: boolean,
-    verdict: boolean,
+    verdict: Verdict,
     rules: string[],
     settled: { confirmation?: boolean | undefined; failedCheckIds?: string[] | undefined } = {},
   ) => {
@@ -333,64 +334,67 @@ describe("a cited fail joins the check it contradicts", () => {
   it("names the declared check whose assertion the fail quotes, and vetoes only a confirmed cited fail of a verifier pass", () => {
     const rows = contestedCases(
       [
-        subject("t1", true, false, ["every member stays under its capacity", "artifactSchema"], {
+        subject("t1", true, false, [MEMBER_CAPACITY_RULE, "artifactSchema"], {
           confirmation: false,
         }),
         subject("t2", true, false, ["artifactSchema"], { confirmation: false }),
         subject("t3", true, false, []),
         subject("t4", false, true, []),
-        subject("t5", true, false, ["every member stays under its capacity"], { confirmation: true }),
-        subject("t6", true, false, ["every member stays under its capacity"]),
+        subject("t5", true, false, [MEMBER_CAPACITY_RULE], { confirmation: true }),
+        subject("t6", true, false, [MEMBER_CAPACITY_RULE]),
       ],
-      new Map([["every member stays under its capacity", "member-capacity"]]),
+      new Map([[MEMBER_CAPACITY_RULE, "member-capacity"]]),
     );
     expect(rows.every((row) => row.rationale === "scripted census fixture")).toBe(true);
     expect(rows.map((row) => [row.taskId, row.rules, row.checkIds, row.confirmed, isVetoed(row)])).toEqual([
-      ["t1", ["every member stays under its capacity", "artifactSchema"], ["member-capacity"], true, true],
+      ["t1", [MEMBER_CAPACITY_RULE, "artifactSchema"], ["member-capacity"], true, true],
       ["t2", ["artifactSchema"], [], true, true],
       ["t3", [], [], false, false],
       ["t4", [], [], false, false],
-      ["t5", ["every member stays under its capacity"], ["member-capacity"], false, false],
-      ["t6", ["every member stays under its capacity"], ["member-capacity"], false, false],
+      ["t5", [MEMBER_CAPACITY_RULE], ["member-capacity"], false, false],
+      ["t6", [MEMBER_CAPACITY_RULE], ["member-capacity"], false, false],
     ]);
   });
 
-  it("a Judge pass of a verifier fail names the failing checks and is disputed only when confirmed and named", () => {
+  it("a verifier fail the Judge did not fail names the failing checks and is disputed on its one sample", () => {
     const rows = contestedCases(
       [
-        subject("t1", false, true, [], { confirmation: true, failedCheckIds: ["member-capacity"] }),
-        subject("t2", false, true, [], { confirmation: false, failedCheckIds: ["member-capacity"] }),
-        subject("t3", false, true, [], { confirmation: true, failedCheckIds: [] }),
-        subject("t4", false, true, [], { confirmation: undefined, failedCheckIds: ["member-capacity"] }),
+        subject("pass", false, true, [], { failedCheckIds: ["member-capacity"] }),
+        subject("undecided", false, "abstain", [MEMBER_CAPACITY_RULE], {
+          failedCheckIds: ["member-capacity"],
+        }),
+        subject("unnamed", false, true, [], { failedCheckIds: [] }),
+        // An undecided verifier pass is no contradiction, and an unanswered subject is no verdict.
+        subject("agreed", true, "abstain", [MEMBER_CAPACITY_RULE]),
+        subject("errored", false, null, [], { failedCheckIds: ["member-capacity"] }),
       ],
-      new Map(),
+      new Map([[MEMBER_CAPACITY_RULE, "member-capacity"]]),
     );
     expect(
-      rows.map((row) => [row.taskId, row.checkIds, row.confirmed, isDisputedFail(row), isVetoed(row)]),
+      rows.map((row) => [row.taskId, row.judge, row.rules, row.checkIds, isDisputedFail(row), isVetoed(row)]),
     ).toEqual([
-      ["t1", ["member-capacity"], true, true, false],
-      ["t2", ["member-capacity"], false, false, false],
-      ["t3", [], true, false, false],
-      ["t4", ["member-capacity"], false, false, false],
+      ["pass", true, [], ["member-capacity"], true, false],
+      ["undecided", null, [MEMBER_CAPACITY_RULE], ["member-capacity"], true, false],
+      ["unnamed", true, [], [], false, false],
     ]);
   });
 
   it("hands the Epoch Reviewer every contradiction, the vetoes and disputed fails to settle and the rest to read", () => {
     const rows = contestedCases(
       [
-        subject("veto", true, false, ["every member stays under its capacity"], { confirmation: false }),
-        subject("disputed", false, true, [], { confirmation: true, failedCheckIds: ["member-capacity"] }),
-        // The nearest miss of a disputed fail: the second sample withdrew the Judge's pass.
-        subject("withdrawn", false, true, [], { confirmation: false, failedCheckIds: ["member-capacity"] }),
+        subject("veto", true, false, [MEMBER_CAPACITY_RULE], { confirmation: false }),
+        subject("disputed", false, true, [], { failedCheckIds: ["member-capacity"] }),
+        // The nearest miss of a disputed fail: no failing check is on record to settle it against.
+        subject("unnamed", false, true, [], { failedCheckIds: [] }),
         subject("uncited", true, false, [], { confirmation: false }),
       ],
-      new Map([["every member stays under its capacity", "member-capacity"]]),
+      new Map([[MEMBER_CAPACITY_RULE, "member-capacity"]]),
     );
     const split = reviewerContested(rows);
     expect(Object.values(split).map((list) => list.map((row) => row.taskId))).toEqual([
       ["veto"],
       ["disputed"],
-      ["withdrawn", "uncited"],
+      ["unnamed", "uncited"],
     ]);
     expect(Object.keys(split)).toEqual(["vetoed", "disputed", "otherContested"]);
   });
@@ -496,19 +500,24 @@ describe("coverage and historical records", () => {
     expect(result.exit.reason).not.toContain("citing shown rules");
   });
 
-  it("goes provisional when a contradicting verdict's resample returned no verdict", () => {
+  it("goes provisional when a Judge fail of a verifier pass returned no resample verdict", () => {
     const { root, analysis } = repoWith({
       cases: [
         { taskId: "t1", truthOk: true, judge: false, resample: null },
         { taskId: "t2", truthOk: true },
+        // A Judge pass of a verifier fail draws no resample, so its absence holds nothing.
+        { taskId: "t3", truthOk: false, judge: true },
       ],
     });
     const result = runJudgeReviews(analysis, { repoRoot: root, judgePin: null });
     expect(judgeOf(result)).not.toBe("incomplete-census");
     expect(result.provisional).toBe(
-      "the judge review is incomplete: 1 contradicting verdicts returned no resample verdict",
+      "the judge review is incomplete: 1 Judge fails of a verifier pass returned no resample verdict",
     );
-    expect(result.contested.map((row) => [row.taskId, row.confirmed])).toEqual([["t1", false]]);
+    expect(result.contested.map((row) => [row.taskId, row.confirmed])).toEqual([
+      ["t1", false],
+      ["t3", false],
+    ]);
   });
 
   it("counts an undecided as an answer, so a mostly undecided battery is complete", () => {
@@ -520,10 +529,10 @@ describe("coverage and historical records", () => {
       ],
     });
     const result = runJudgeReviews(analysis, { repoRoot: root, judgePin: null });
-    expect(judgeOf(result)).toBe("advisory-comparison");
     expect(result.provisional).toBeNull();
     expect(result.coverage).toEqual({ reviewable: 3, reviewed: 3 });
-    expect(result.contested).toEqual([]);
+    // Only the undecided verifier fail is contested; the undecided verifier pass is no contradiction.
+    expect(result.contested.map((row) => [row.taskId, row.judge])).toEqual([["t2", null]]);
   });
 
   it("contests no case whose Judge fail cites no rule", () => {

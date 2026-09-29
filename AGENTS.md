@@ -227,7 +227,10 @@ build one; whether it left a battery too easy is what blind measurement says.
 A partial battery counts toward the climb only where its fails are earned: the check that decided each
 one holds the artifact to a rule the public projection states. The Epoch Reviewer settles that per case
 (rule 9). A fail settled against its check measured the check, not the solver, and a fail no review
-settled is known neither way. custom-sol-2d7812's first firmware battery read 4/6, over the aim, on two
+settled is known neither way. The controller reads it so (2026-09-29, `difficulty-decision/v10`): a case
+the battery's completed review settled against the one check that decided it leaves `n` and `passed`
+(`admittedClimbRow`), a veto dropped rather than turned into a fail, and the Builder's readout counts it
+apart. custom-sol-2d7812's first firmware battery read 4/6, over the aim, on two
 fails of one bench check that held meter output to HIGH/LOW where the published rule allowed HIGH/LOW or
 ALARM/OK; on the public rules it was an all-pass. The review held both, on a sentence the projection does
 not contain, which is why the reviewer now quotes the public sentence before it calls the Judge wrong.

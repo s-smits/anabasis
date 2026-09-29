@@ -9,7 +9,7 @@
  */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
-import { join } from "../src/meta/path.ts";
+import { dirname, join } from "../src/meta/path.ts";
 import { describe, expect, it } from "bun:test";
 import {
   BATTERY_SIZE,
@@ -27,6 +27,7 @@ import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { EMPTY_USER_CONTEXT } from "../src/builder/user-context.ts";
 import { createRunObserver } from "../src/observe/run-observer.ts";
 import { claimsDirFor } from "../src/run/claim-write.ts";
+import { EPOCH_REVIEW_SCHEMA } from "../src/review/epoch-review-findings.ts";
 import type { RecordedDifficultyDecision } from "../src/run/difficulty-decision.ts";
 import { runBuildStep } from "../src/run/full-run-build-step.ts";
 import type { FullRunDeps } from "../src/run/full-run.ts";
@@ -276,6 +277,35 @@ describe("runBuildStep battery sizing", () => {
     const round = await sizedRound(probeRoot(true, 8, 7), null);
     expect(round).toMatchObject({ expectedTasks: 10, minTasks: 5 });
     expect(round.note).toContain("at most 50% of its scored cases");
+  });
+
+  it("keeps probing when the fails that put a probe on the aim were settled against their check", async () => {
+    // 2 of 6 is on the aim and graduates; with its four fails settled against the one check that
+    // decided each, it reads 2 of 2, above the aim.
+    const root = probeRoot(true, 6, 2);
+    expect(await sizedRound(root, null)).toMatchObject({ expectedTasks: 25 });
+    const analysis = join(dirname(claimsDirFor(root, SLUG)), "analysis");
+    mkdirSync(analysis, { recursive: true });
+    const settled = ["probe-2", "probe-3", "probe-4", "probe-5"].map((taskId) => ({
+      taskId,
+      family: "matching",
+      kind: "disputed-pass",
+      checkIds: ["bench"],
+      checkId: "bench",
+      disposition: "against-check",
+      finding: 0,
+    }));
+    writeFileSync(
+      join(analysis, "probe-epoch-review.json"),
+      JSON.stringify({
+        schema: EPOCH_REVIEW_SCHEMA,
+        runId: "probe",
+        status: "completed",
+        findings: [],
+        dispositions: settled,
+      }),
+    );
+    expect(await sizedRound(root, null)).toMatchObject({ expectedTasks: 10, minTasks: 5 });
   });
 
   it("sizes a round past the probe by the whole battery, and adds no note", async () => {

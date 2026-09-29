@@ -48,7 +48,7 @@ nothing; block 3c, the repeated-condition census, prints `REPEATED CONDITION (la
 public condition recurs on a fixed product.
 
 Block 4, workshop and spend, reads the tool installs and the ledger. Block 4b, band placement,
-reads `difficulty-decisions/<runId>-<digest>.json` (`difficulty-decision/v9`) for the
+reads `difficulty-decisions/<runId>-<digest>.json` (`difficulty-decision/v10`) for the
 `placement.zone`: `OFF-AIM STREAK (lane 10)` where two or more consecutive placements sit on one
 side of the aim; an over-aim zone with no trigger of its own is
 read by lanes 5 and 12. Block 4c, role spend and censoring, reads `providerResourceBudget.byRole`

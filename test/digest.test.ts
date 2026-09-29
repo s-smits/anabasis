@@ -228,7 +228,7 @@ describe("digest", () => {
     writeFileSync(
       join(dir, "0.json"),
       JSON.stringify({
-        schema: "difficulty-decision/v9",
+        schema: "difficulty-decision/v10",
         runId: "placed-0",
         difficulty: {
           band: [0.2, 0.5],
@@ -245,7 +245,7 @@ describe("digest", () => {
     writeFileSync(
       join(dir, "1.json"),
       JSON.stringify({
-        schema: "difficulty-decision/v9",
+        schema: "difficulty-decision/v10",
         runId: "unplaced-1",
         difficulty: {
           decision: { placement: null, rationale: "no batteries recorded" },
@@ -274,12 +274,13 @@ describe("digest", () => {
     ["a v5 record", { schema: "difficulty-decision/v5", runId: "old-5" }, "difficulty-decision/v5"],
     ["a v6 record", { schema: "difficulty-decision/v6", runId: "old-6" }, "difficulty-decision/v6"],
     ["a v8 record", { schema: "difficulty-decision/v8", runId: "old-8" }, "difficulty-decision/v8"],
+    ["a v9 record", { schema: "difficulty-decision/v9", runId: "old-9" }, "difficulty-decision/v9"],
   ])("refuses %s by name rather than reading it or calling it never recorded", (_title, record, reason) => {
     const paths = fixture();
     mkdirSync(join(paths.campaign, "difficulty-decisions"));
     writeFileSync(join(paths.campaign, "difficulty-decisions", "0.json"), JSON.stringify(record));
     const digest = digestOf(paths);
-    expect(digest).toContain(`refused, not difficulty-decision/v9 — 0.json: ${reason}`);
+    expect(digest).toContain(`refused, not difficulty-decision/v10 — 0.json: ${reason}`);
     expect(digest).not.toContain(record.runId);
     expect(digest).not.toContain("no recorded difficulty decisions");
     expect(digest).not.toMatch(/satClimbs|satLevelled|satRange|satBroadens|THRESHOLD DRIFT/);
@@ -293,7 +294,7 @@ describe("digest", () => {
       writeFileSync(
         join(dir, "0.json"),
         JSON.stringify({
-          schema: "difficulty-decision/v9",
+          schema: "difficulty-decision/v10",
           // run-4 graded 1 and passed 1, so a decision that read it above the aim and got a
           // perfect battery back is lane 5's question.
           runId: "run-4",
@@ -669,7 +670,7 @@ describe("digest", () => {
     writeFileSync(
       join(paths.campaign, "difficulty-decisions", "run-3.json"),
       JSON.stringify({
-        schema: "difficulty-decision/v9",
+        schema: "difficulty-decision/v10",
         runId: "run-3",
         difficulty: {
           decision: { placement: { zone: "on-aim" }, evidence: [{ runId: "run-2" }] },
@@ -879,7 +880,7 @@ describe("digest", () => {
       writeFileSync(
         join(dir, `${name}.json`),
         JSON.stringify({
-          schema: "difficulty-decision/v9",
+          schema: "difficulty-decision/v10",
           runId,
           difficulty: {
             decision: { placement: { passes: 5, n: 6, zone: "over-aim", aim: [2, 3], toAim } },

@@ -39,11 +39,12 @@ WRI digest computes it from the recorded placements (`offAimStreaks` in
 
 `recordDifficultyDecision` (`src/run/difficulty-decision.ts`) writes one file per round at
 `difficulty-decisions/<runId>-<digest>.json`, holding `schema`, `runId`, `slug`, `digest` and
-`difficulty`, the `ClimbReadout` itself. The schema is `difficulty-decision/v9`, and a reader takes
+`difficulty`, the `ClimbReadout` itself. The schema is `difficulty-decision/v10`, and a reader takes
 that and refuses any other, because an earlier version could carry a field of the same name that
 meant something else: v6 set a battery with a repeated failing core aside with no placement, where
 v7 on places it and states the core beside it. The record carries no wording revision, since v9
-dropped the frame revision v8 carried.
+dropped the frame revision v8 carried. From v10 a row's `verified` and `passed` leave out the cases the
+battery's completed review settled against the one check that decided them, and `settled` counts them.
 
 Inside the readout, read these fields and nothing looser:
 

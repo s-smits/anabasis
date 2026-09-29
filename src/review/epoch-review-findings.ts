@@ -142,6 +142,8 @@ export type SettlementCase = {
  *  check's favour, by an observation whose cited probe moved that check. `finding` indexes the
  *  review's `findings`, whose citations and probes are the evidence. */
 export type CaseDisposition = Omit<SettlementCase, "checkIds" | "path"> & {
+  /** Every check that decided the case; absent on a record written before 2026-09-29. */
+  checkIds?: readonly string[];
   checkId: string;
   disposition: "against-check" | "check-stands";
   finding: number;
@@ -226,26 +228,41 @@ export function measuredConditionOf({
   };
 }
 
-/** The completed reviews recorded for this campaign. An unreadable review proves nothing either
+/** One recorded review when it completed, else null. An unreadable review proves nothing either
  *  way, so it is left out here and each caller decides without it: that means a corrupt file never
- *  suppresses a fresh review and never contributes an earlier finding or advisory defect. */
+ *  suppresses a fresh review and never contributes an earlier finding, advisory defect or settled case. */
+function completedReview(file: string): EpochReviewEvidence | null {
+  try {
+    const review = readCompleted<EpochReviewEvidence>(
+      file,
+      EPOCH_REVIEW_SCHEMA,
+      "findings",
+      "delete nothing; an unreadable review is inspected, not skipped over",
+    );
+    return review?.status === "completed" ? review : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The completed reviews recorded for this campaign. */
 function completedReviews(analysisDir: string): EpochReviewEvidence[] {
   if (!existsSync(analysisDir)) return [];
   return readdirSync(analysisDir)
     .filter((name) => name.endsWith("-epoch-review.json"))
-    .flatMap((name) => {
-      try {
-        const review = readCompleted<EpochReviewEvidence>(
-          join(analysisDir, name),
-          EPOCH_REVIEW_SCHEMA,
-          "findings",
-          "delete nothing; an unreadable review is inspected, not skipped over",
-        );
-        return review?.status === "completed" ? [review] : [];
-      } catch {
-        return [];
-      }
-    });
+    .flatMap((name) => completedReview(join(analysisDir, name)) ?? []);
+}
+
+/** The cases the completed review of battery `runId` settled against the one check that decided
+ *  each. A case another check also decided stays, since the settlement cleared one check and not
+ *  the verdict, and so does a disposition recorded before it named its case's checks. */
+export function settledAgainstCheck(analysisDir: string, runId: string): ReadonlySet<string> {
+  const review = completedReview(join(analysisDir, `${runId}-epoch-review.json`));
+  const settled = (review?.runId === runId ? review.dispositions : []).filter(
+    (row) =>
+      row.disposition === "against-check" && row.checkIds?.length === 1 && row.checkIds[0] === row.checkId,
+  );
+  return new Set(settled.map((row) => row.taskId));
 }
 
 /** The completed review, the one status meaning a finished turn over full coverage and whose
@@ -711,11 +728,12 @@ export function recordFindingTool(
       state.findings.push(recordedFinding(subject, verdict.placement, admitted, probes, evidencePath));
       const disposition = subject.parsed.defect === true ? "against-check" : "check-stands";
       for (const row of subject.cases.filter((listed) => parsed.settlesCases.includes(listed.taskId))) {
-        const { taskId, family, kind } = row;
+        const { taskId, family, kind, checkIds } = row;
         state.dispositions.push({
           taskId,
           family,
           kind,
+          checkIds,
           checkId: parsed.checkId ?? "",
           disposition,
           finding: state.findings.length - 1,

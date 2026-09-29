@@ -57,6 +57,8 @@ type Spec = {
   familyEffort?: FamilyEffort[];
   wall?: number;
   wallBound?: number;
+  /** Verified cases a completed review settled against their check, among `slots` but not `n`. */
+  settled?: number;
 };
 
 /** The exclusion reason `admitBattery` records for a refused claim. It opens with its own "claim
@@ -90,6 +92,7 @@ function row(runId: string, index: number, spec: Spec): AdmittedClimbRow {
     measured,
     taskSetHash: "tasks",
     ...keyIfDefined("failedTaskIds", spec.failed),
+    ...keyIfDefined("settledAgainst", spec.settled),
   };
   const recorded: AdmittedClimbRow["authoring"] = {
     taskSetHash: "tasks",
@@ -256,6 +259,17 @@ describe("the measured facts the author reads", () => {
       "- r1 (P1, T1, S1): 0 passed of 0 verified, 6 unaccepted, 0 non-results.",
       "- r1 (P1, T1, S1): 0 passed of 0 verified, 6 unaccepted (4 ran to the 120-minute solve wall), 0 non-results.",
       "- r1 (P1, T1, S1): 0 passed of 0 verified, 0 unaccepted, 6 non-results.",
+    ]);
+  });
+
+  it("counts the cases settled against their check apart, neither verified nor a non-result", () => {
+    const lines = [
+      { passed: 2, n: 2, slots: 6, settled: 4 },
+      { passed: 1, n: 5, slots: 7, settled: 1 },
+    ].map((spec) => lineOf(render(readoutOf(row("r1", 0, spec))), "r1"));
+    expect(lines).toEqual([
+      "- r1 (P1, T1, S1): 2 passed of 2 verified, 0 unaccepted, 0 non-results; 4 verified cases settled against their check, counted neither way.",
+      "- r1 (P1, T1, S1): 1 passed of 5 verified, 0 unaccepted, 1 non-result; 1 verified case settled against its check, counted neither way.",
     ]);
   });
 

@@ -31,6 +31,7 @@ import { POLICY } from "../critic/policy.ts";
 import type { ContextDocument } from "../builder/context-tool.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { isString } from "../meta/json-shape.ts";
+import { keyIfDefined } from "../meta/optional-key.ts";
 import {
   type AdmittedClimbRow,
   type ClimbBattery,
@@ -80,6 +81,9 @@ type ReadoutRow = {
   verified: number;
   unaccepted: number;
   nonResults: number;
+  /** Verified cases a completed review settled against their check, in none of the counts above;
+   *  absent when there are none. */
+  settled?: number;
   /** The earlier battery whose recorded solves this one graded again, and how many; null when no
    *  case was regraded. */
   regrade: { of: string; reused: number } | null;
@@ -271,7 +275,8 @@ function readoutRow(
     operation: row.authoring.experimentAuthoring?.operation.operation ?? null,
     verified: row.battery.n - row.battery.unaccepted,
     unaccepted: row.battery.unaccepted,
-    nonResults: row.authoring.caseIds.length - row.battery.n,
+    nonResults: row.authoring.caseIds.length - row.battery.n - (row.battery.settledAgainst ?? 0),
+    ...keyIfDefined("settled", row.battery.settledAgainst),
     regrade: row.authoring.regrade,
     ...admitted,
     ...placed,
@@ -327,6 +332,9 @@ function batteryLine(row: ReadoutRow): string {
     row.claimRefusal === null
       ? `${String(row.passed)} passed of ${counts}`
       : `${row.claimRefusal}; ${counts}`,
+    row.settled === undefined
+      ? null
+      : `${row.settled} verified case${row.settled === 1 ? "" : "s"} settled against ${row.settled === 1 ? "its" : "their"} check, counted neither way`,
     row.deciding?.population === "changed-subset"
       ? `the changed tasks passed ${row.deciding.passes} of ${row.deciding.n} attempts`
       : null,

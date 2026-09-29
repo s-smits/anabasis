@@ -969,6 +969,7 @@ describe("what a finding's typed fields carry to authoring", () => {
         taskId: "t1",
         family: "roof",
         kind: "veto",
+        checkIds: ["deflection"],
         checkId: "deflection",
         disposition: "check-stands",
         finding: 0,

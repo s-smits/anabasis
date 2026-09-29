@@ -714,8 +714,10 @@ the battery was paid for.
     non-result solver-side and environment-owned, the hashes and the solving condition unchanged and
     fewer than `environmentBlockedRounds` prior remeasures, is remeasured before any rebuild:
     `censoredRemeasure` re-solves the censored cases and regrades the rest, and a moved condition sends
-    the round to rebuild. A *repeat* posing the exam an at-or-above-aim battery already sat is refused
-    at submit (`identical-exam-over-aim`).
+    the round to rebuild. A *repeat* posing the exam an at-or-above-aim battery already sat is measured
+    afresh and recorded as `repeat`, because a second solve can show whether a full pass was reliable
+    where a regrade only reads the same attempts again; the submit refusal it met until 2026-09-29
+    (`identical-exam-over-aim`) never fired in the recorded corpus.
 
     The rebuild advice packet is deterministic (`analysis/<runId>-rebuild-advice.json` with
     `rebuild-advice-latest.json` beside it), bound by digest to the iteration that consumes it, and

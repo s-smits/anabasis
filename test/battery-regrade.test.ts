@@ -24,7 +24,10 @@ import { analyseStep } from "../src/run/analyse-step.ts";
 import { type FullRunDeps, parseFullRunArgs, runFullRun, slugForDirectInput } from "../src/run/full-run.ts";
 import { buildHarness } from "../src/run/harness-build.ts";
 import { type HarnessMeasureOptions, measureHarness } from "../src/run/harness-measure.ts";
-import { measuredProductDir } from "../src/run/product-versions.ts";
+import { measuredProductDir, selectedProductDir } from "../src/run/product-versions.ts";
+import { claimsDirFor } from "../src/run/claim-write.ts";
+import { readClimbReadout } from "../src/run/climb-readout.ts";
+import { FROZEN_MANIFEST_PATH } from "../src/critic/manifest.ts";
 import { type Solver, nonResultOutcome } from "../src/correctness-bundle/solve.ts";
 import { readRecordedBatteryRecord } from "../src/correctness-bundle/battery-record.ts";
 import { builtSession, fullFakeHost, probeEvidence } from "./helpers/measure-doubles.ts";
@@ -240,26 +243,25 @@ async function twoRounds(
     drive,
     analyse: analyseStep,
   });
-  const batteries = outcome.rounds.flatMap((row) => {
+  const records = outcome.rounds.flatMap((row) => {
     const dir = measuredProductDir(root, SLUG, row.runId);
-    if (dir === null) return [];
-    const battery = readRecordedBatteryRecord(join(dir, "runs", row.runId), row.runId);
-    return [
-      {
-        runId: row.runId,
-        solves: calls.get(row.runId) ?? 0,
-        passes: battery.cases.map((c) => c.pass),
-        regrade: battery.regrade ?? null,
-      },
-    ];
+    return dir === null ? [] : [readRecordedBatteryRecord(join(dir, "runs", row.runId), row.runId)];
   });
-  const withheld = outcome.rounds.flatMap((row) => {
-    const dir = measuredProductDir(root, SLUG, row.runId);
-    return dir === null
-      ? []
-      : readRecordedBatteryRecord(join(dir, "runs", row.runId), row.runId).condition.advisorsRemoved;
-  });
-  return { outcome, batteries, calls, submits, withheld };
+  const batteries = records.map((battery) => ({
+    runId: battery.runId,
+    solves: calls.get(battery.runId) ?? 0,
+    passes: battery.cases.map((c) => c.pass),
+    regrade: battery.regrade ?? null,
+  }));
+  const withheld = records.flatMap((battery) => battery.condition.advisorsRemoved);
+  // What the next round's author reads of each battery: the readout row, newest first.
+  const readout = readClimbReadout(
+    selectedProductDir(root, SLUG),
+    records[0]?.backendPin ?? "",
+    claimsDirFor(root, SLUG),
+    join(root, FROZEN_MANIFEST_PATH),
+  );
+  return { outcome, batteries, calls, submits, withheld, readout };
 }
 
 describe("an evaluation correction regrades instead of re-solving", () => {
@@ -423,24 +425,29 @@ describe("a battery the environment cut short is remeasured before any rebuild",
   }, 180_000);
 });
 
-describe("an identical exam after a battery at or above the aim", () => {
-  it("is returned to the Builder with its typed clause and buys no second battery", async () => {
-    const { outcome, batteries, calls, submits } = await twoRounds(flubbing(new Set()));
-    expect(batteries.map((row) => row.runId)).toEqual(["rg"]);
-    expect(submits.at(-1)).toContain("identical-exam-over-aim");
-    expect(submits.at(-1)).toContain("not counted as a strike");
-    expect(calls.get("rg-i02")).toBeUndefined();
-    expect(outcome.rounds.at(-1)?.build).toBe("build-failed");
-  }, 180_000);
-
-  it("measures a fresh battery when one public task input moved", async () => {
-    const inputs = [...UPPERCASE_TASK_INPUTS.slice(0, 5), "gh"];
-    const { batteries } = await twoRounds(flubbing(new Set()), { inputs });
-    expect(batteries.map((row) => row.solves)).toEqual([TASKS, TASKS]);
-  }, 180_000);
-
-  it("measures a fresh battery when the identical exam follows a battery below the aim", async () => {
-    const { batteries } = await twoRounds(flubbing(new Set(["t1", "t2", "t3", "t4", "t5"])));
-    expect(batteries.map((row) => row.solves)).toEqual([TASKS, TASKS]);
+describe("a repeat after a battery at or above the aim", () => {
+  it("is admitted, solved afresh and recorded as a repeat of the same product, tasks and scoring", async () => {
+    const { outcome, batteries, submits, readout } = await twoRounds(flubbing(new Set()));
+    expect(outcome.rounds.map((row) => [row.move, row.build])).toEqual([
+      ["build", "adopted"],
+      ["rebuild", "candidate"],
+    ]);
+    expect(submits.at(-1)).toContain("Accepted.");
+    expect(batteries.map((row) => [row.runId, row.solves, row.regrade])).toEqual([
+      ["rg", TASKS, null],
+      ["rg-i02", TASKS, null],
+    ]);
+    const [repeat, first] = readout?.rows ?? [];
+    expect([repeat?.runId, repeat?.operation, repeat?.passed, repeat?.claimRefusal]).toEqual([
+      "rg-i02",
+      "repeat",
+      TASKS,
+      null,
+    ]);
+    expect([repeat?.product, repeat?.taskSet, repeat?.scoring]).toEqual([
+      first?.product,
+      first?.taskSet,
+      first?.scoring,
+    ]);
   }, 180_000);
 });

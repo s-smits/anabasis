@@ -17,7 +17,6 @@ import {
 } from "./climb-history.ts";
 import { readoutHistoryDocuments, renderProbeSizing, renderReadout } from "./climb-readout.ts";
 import { measuredSolverTraces } from "./solver-traces.ts";
-import { identicalExamRefusal } from "./battery-reuse.ts";
 import { fingerprintSlug } from "../claim/fingerprint.ts";
 import { recordedVerifierEnvironmentHash } from "../claim/conformance-evidence.ts";
 import { harnessBundleIdentity } from "./climb-battery-admission.ts";
@@ -250,14 +249,6 @@ function composeAuthoringMemory(
       : {
           history: () => readoutHistoryDocuments(domainDir, readout, rows()),
           traces: () => measuredSolverTraces(domainDir, rows()),
-          identicalExam: (candidateDir: string) =>
-            identicalExamRefusal({
-              repoRoot,
-              slug: manifest.slug,
-              runPin: input.runPin,
-              built: input.slots.built,
-              candidateDir,
-            }),
         };
   return {
     read,

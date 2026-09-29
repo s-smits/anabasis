@@ -9,7 +9,10 @@
  *  - A battery whose every non-result the environment owns, on the product still selected,
  *    re-solves exactly those cases and regrades the rest, which is what the analysis finding
  *    "rerun without changing the harness" promises. A rebuild in its place would author against a
- *    measurement the environment cut short. */
+ *    measurement the environment cut short.
+ *
+ *  A repeat, which moves nothing the verifier reads, is solved afresh: the solver is stochastic, so
+ *  a second blind solve answers whether the first result holds, which regrading it cannot. */
 import { existsSync } from "../meta/filesystem.ts";
 import { isString } from "../meta/json-shape.ts";
 import { dirname, join } from "../meta/path.ts";
@@ -46,8 +49,6 @@ import { batteryCondition, loadRecordedTasks } from "./run-driver.ts";
 /** A candidate that poses the exam a recorded battery already sat, with the same agent. */
 interface IdenticalExam {
   runId: string;
-  /** Whether the candidate's scoring program differs from the one that battery ran. */
-  scoringChanged: boolean;
   reuse: BatteryReuse;
 }
 
@@ -166,7 +167,7 @@ function identicalExamOverAim(input: ExamInput): ExamRead {
   if (scoringChanged && rules(dirname(dirname(source.runDir))) !== rules(input.candidateDir)) {
     return { exam: null, reason: "the brief's public rules moved" };
   }
-  return { exam: { runId: source.runId, scoringChanged, reuse: read.value } };
+  return { exam: { runId: source.runId, reuse: read.value } };
 }
 
 /** The recorded solves an evaluation correction regrades instead of solving, or null when the
@@ -183,18 +184,6 @@ export function regradeForCorrection(
     reuse: read.exam.reuse,
     reason: `evaluation correction over the exam battery ${read.exam.runId} sat at or above the aim; its ${read.exam.reuse.solves.size} recorded solves are regraded under the corrected evaluator`,
   };
-}
-
-/** Why a submitted candidate that moved nothing the verifier reads must not buy a fresh blind
- *  battery, or null when it may. A battery at or above the aim already answered the exam these
- *  agent bytes and these public tasks pose; solving it again measures the same condition twice and
- *  finds the same limit it did not find the first time. A candidate whose scoring moved is an
- *  evaluation correction, which `regradeForCorrection` settles, so the caller asks this only of a
- *  repeat. */
-export function identicalExamRefusal(input: ExamInput): string | null {
-  const read = identicalExamOverAim(input);
-  if (read.exam === null || read.exam.scoringChanged) return null;
-  return `battery ${read.exam.runId} already measured these agent bytes on these exact public tasks under this scoring program, so a fresh blind battery would pose the identical exam. This submit is not counted as a strike; submitting the same bytes again is.`;
 }
 
 /** How many remeasures in a row led to `battery`, itself included. A chain the environment keeps

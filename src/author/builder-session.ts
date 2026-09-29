@@ -235,6 +235,13 @@ function workspaceSentence(input: BuilderSessionInput, previous: PreviousRound |
   return `${at}: ${SEEDED[input.seed ?? "resumed"]}. Paths into the previous workspace no longer apply; relative paths start at this root.`;
 }
 
+/** The operator's turn cap as the opening states it, with the noun agreeing at a cap of one. */
+function roundLimit(maxTurns: number | undefined): string {
+  if (maxTurns === undefined) return "";
+  const turns = maxTurns === 1 ? "1 assistant turn" : `${String(maxTurns)} assistant turns`;
+  return `Round limit: ${turns}, each ending when you reply without a tool call; tool calls inside a turn do not count. `;
+}
+
 function roundPrompt(input: BuilderSessionInput, previous: PreviousRound | null): string {
   // The Builder's own notes, read back whenever the round opens in a workspace the conversation has
   // not worked in. A fresh session has never seen them. A continued one saw its last workspace's
@@ -265,7 +272,7 @@ function roundPrompt(input: BuilderSessionInput, previous: PreviousRound | null)
     // The cap counts replies, not tool calls, and says so: read as a count of steps, fifteen turns
     // looked nearly spent a dozen calls into the first, and a Builder dropped a change it had
     // judged right for want of turns it still had.
-    `${input.maxTurns === undefined ? "" : `Round limit: ${input.maxTurns} assistant turns, each ending when you reply without a tool call; tool calls inside a turn do not count. `}Build, check and rehearse the candidate, and submit` +
+    `${roundLimit(input.maxTurns)}Build, check and rehearse the candidate, and submit` +
       ` once a clear preview says it works. The measured battery, not a rehearsal, decides where it lands, but a passing` +
       ` rehearsal is a blind solve of its task, so it shows that task is within the solver's reach; further polish` +
       ` belongs to the next round.`,

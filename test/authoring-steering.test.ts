@@ -131,6 +131,12 @@ describe("turn-budget steering", () => {
     expect(opened.prompts[0]).not.toContain("tasks.json");
   });
 
+  it("states a cap of one turn in the singular", async () => {
+    const { open, opened } = scripted([undefined]);
+    await runBuilderSession(INPUT(tempRoot(), 1), { open, tools: [], submit: NO_SUBMIT_THROWER });
+    expect(opened.prompts[0]).toContain("Round limit: 1 assistant turn, each ending");
+  });
+
   const goal = (extra: Partial<Parameters<typeof continuePrompt>[0]>) =>
     continuePrompt({
       kickoff: "Build the thing.",

@@ -1789,15 +1789,17 @@ are not the cores this suite gets. The idle wall, 180 s without output, widens b
 (`wallSeconds`).
 
 The part worth knowing before you believe a red run is what happens next. `attribute` reads the first
-process's result and decides, across nine reasons, whether the branch failed or the machine did. Two of
-them say the machine did: every failure ended by a clock rather than an assertion (`clock-only`), or the
-one-minute load passed twice the core count while they ran (`crowded-host`). Either way up to eight failed
-files run again alone, in one fresh process, and **that second verdict is the suite's**; files the idle
-wall cut off get the same second run. Some failures never get one. A failure the first process actually
-printed stands, and so does an error Bun raised outside any test, because nothing in the failed list
-speaks for it and a rerun cannot unsay it. A file that reported nothing stands, and so do more than eight
-failures, which is more than a busy host explains. So a red run on a loaded laptop is not yet a verdict on
-your branch; read which of those sentences the wrapper printed.
+process's result and decides, across nine reasons, whether the branch failed or the machine did. Two of them
+say the machine did: every failure ended by a clock rather than an assertion (`clock-only`), or the one-minute
+load passed twice the core count while they ran (`crowded-host`). Either way the failed files run again alone,
+in one fresh process, beside every file whose worker crashed or that Bun aborted or never started, up to eight
+in all, and **that second verdict is the suite's**. Files the idle wall cut off get the same second run,
+however many there are. Some failures never get one. A failure the first process printed on a quiet host
+stands, and so does an error Bun raised outside any test, because nothing in the failed list speaks for it and
+a rerun cannot unsay it. A run that bailed stands, because it never ran the files after the failure that
+stopped it, and so do more than eight failed or unfinished files, which is more than a busy host explains. So
+a red run on a loaded laptop is not yet a verdict on your branch; read which of those sentences the wrapper
+printed.
 
 The gate's nine steps (§1) mean that the two policy gates, the UI gate and the formatter can each fail a
 push the contract used to leave unnamed. `ui-deps` prepares `packages/ui`'s own modules before typecheck

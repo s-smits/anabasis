@@ -44,7 +44,10 @@ mkdirSync(fakeBin);
 writeFileSync(
   join(fakeBin, "gh"),
   '#!/bin/sh\nprintf \'%s\\n\' "$*" >> "$ANA_GH_LOG"\ncase "$*" in\n' +
-    "*merge-async/*) printf '%s' \"$ANA_FAKE_MERGE_POLL\" ;;\n" +
+    // With ANA_FAKE_POLL_DOWN naming a file not yet there, the first poll fails as a 502 would.
+    '*merge-async/*) if [ -n "${ANA_FAKE_POLL_DOWN:-}" ] && [ ! -e "$ANA_FAKE_POLL_DOWN" ]; then\n' +
+    '  touch "$ANA_FAKE_POLL_DOWN"; echo "gh: Bad Gateway (HTTP 502)" >&2; exit 1\n' +
+    "fi\nprintf '%s' \"$ANA_FAKE_MERGE_POLL\" ;;\n" +
     "*merge-async*) printf '%s' \"$ANA_FAKE_MERGE\" ;;\n" +
     "*statuses/*) ;;\n" +
     "*pulls/*) printf '%s\\n' \"$ANA_FAKE_PULL\" ;;\n" +
@@ -291,6 +294,20 @@ describe("bun run land", () => {
     expect(calls[request]).toContain(`-f sha=${upper}`);
     expect(calls.findLastIndex((line) => line.includes("context=ana/stack-gate"))).toBeLessThan(request);
     expect(calls.at(-1)).toContain("pulls/12/merge-async/u1");
+  }, 20_000);
+
+  it("keeps polling through a poll it could not read, and takes no status back while the merge runs", () => {
+    const down = join(fixture, "poll-down");
+    rmSync(down, { force: true });
+    const result = runLand(["12", "--merge"], {
+      ANA_FAKE_MERGE: '{"status":"pending","details":{"uuid":"u2","message":"Merge request enqueued."}}',
+      ANA_FAKE_MERGE_POLL: '{"status":"merged","details":{"message":"Pull request was merged.","sha":"m2"}}',
+      ANA_FAKE_POLL_DOWN: down,
+    });
+    expect(existsSync(down)).toBe(true);
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("#11, #12 merged into main");
+    expect(statuses("ana/stack-gate")).toEqual([`success ${lowerDocs}`, `success ${upper}`]);
   }, 20_000);
 
   it("takes the required status back when GitHub does not merge", () => {

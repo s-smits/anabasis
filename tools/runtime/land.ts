@@ -407,7 +407,10 @@ function merge(root: string, target: number, landing: Landing): boolean {
   while (answer.status === "pending" && Date.now() < deadline) {
     Bun.sleepSync(POLL_MS);
     const polled = run(root, ["gh", "api", poll]);
-    answer = mergeAnswer(polled.out, polled.err);
+    // A poll that could not be read says nothing about the merge, which GitHub is still running:
+    // taking the statuses back on it would refuse a merge that was about to go through.
+    if (polled.ok) answer = mergeAnswer(polled.out, polled.err);
+    else answer = { ...answer, message: `its last poll could not be read: ${polled.err}` };
   }
   const numbers = landing.pulls.map((pull) => `#${pull.number}`).join(", ");
   if (answer.status === "merged" || answer.status === "enqueued") {

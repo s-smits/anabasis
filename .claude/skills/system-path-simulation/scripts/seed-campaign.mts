@@ -27,7 +27,9 @@
  * its campaign under the link's real path, so that real directory is audited as an alias of the
  * copied campaign. An escape always refuses (exit 1); an absolute reference refuses unless
  * `--allow-absolute-refs` is passed. `--relocate` rewrites the text references to the destination
- * root, and an alias to the copied directory: only in mutable
+ * root, and an alias to the copied directory, and relinks an escaping link whose target lies inside
+ * the copied campaign or domain (a venv's absolute interpreter link, a uv cache entry) to the same
+ * place in the copy, relative, so the copy stays self-contained: text only in mutable
  * files for a clone, because a retained product version is immutable and its ledger digest binds
  * its bytes; in the owned seed before publication for a republish, so the new version's fingerprint
  * is taken over the relocated bytes and the manifest records both. The one link a clone must keep
@@ -98,8 +100,10 @@ export interface SeedAudit {
   sourceRoot: string;
   /** Real directories the source records name for the copied ones, when `campaigns/` or `domains/` is a symlink. */
   aliases: SeedAlias[];
-  /** Links resolving into the source root; a refusal unless allowed. */
+  /** Links resolving into the source root; always a refusal. */
   escapes: SymlinkRow[];
+  /** Escapes into a copied tree that `--relocate` pointed at the copy instead; `resolved` is the new target. */
+  relinked: SymlinkRow[];
   /** The retained product's pinned tool tree, kept because the immutable manifest names it. */
   toolTreeLinks: SymlinkRow[];
   /** Links resolving outside both trees (runtime paths); reported, never a refusal. */
@@ -194,6 +198,7 @@ export function auditSeed(
     sourceRoot: source,
     aliases: [...aliases],
     escapes: [],
+    relinked: [],
     toolTreeLinks: [],
     external: [],
     absoluteRefs: [],
@@ -249,6 +254,23 @@ function relocateRefs(audit: SeedAudit, sourceRoot: string, destinationRoot: str
     row.sha256After = sha256(readFileSync(row.path));
   }
   audit.relocated = true;
+}
+
+/** Point each escape whose target lies inside a tree this seed copied at the same place in the copy. */
+function relinkIntoCopies(audit: SeedAudit, copies: readonly SeedAlias[]): void {
+  const escapes: SymlinkRow[] = [];
+  for (const row of audit.escapes) {
+    const copy = copies.find((pair) => inside(pair.from, row.resolved));
+    if (copy === undefined) {
+      escapes.push(row);
+      continue;
+    }
+    const resolved = join(copy.to, relative(copy.from, row.resolved));
+    rmSync(row.path);
+    symlinkSync(relative(dirname(row.path), resolved) || ".", row.path);
+    audit.relinked.push({ path: row.path, target: row.target, resolved });
+  }
+  audit.escapes = escapes;
 }
 
 function refuseOnAudit(audit: SeedAudit, options: SeedOptions): void {
@@ -380,7 +402,13 @@ export function seedCampaignInto(
     audit.external.push(...domainAudit.external);
     audit.absoluteRefs.push(...domainAudit.absoluteRefs);
   }
-  if (options.relocate === true) relocateRefs(audit, fromRoot, intoRoot);
+  if (options.relocate === true) {
+    relocateRefs(audit, fromRoot, intoRoot);
+    relinkIntoCopies(audit, [
+      { from: realpathSync(sourceCampaign), to: realpathSync(campaign) },
+      ...(existsSync(domain) ? [{ from: realpathSync(sourceDomain), to: realpathSync(domain) }] : []),
+    ]);
+  }
   refuseOnAudit(audit, options);
   const product = selectedProductDir(intoRoot, slug);
   const manifest: SeedManifest = {
@@ -575,7 +603,7 @@ function main(argv: readonly string[]): void {
     console.log(
       `seeded ${manifest.mode} ${manifest.slug}${manifest.asSlug === null ? "" : ` as ${manifest.asSlug}`} into ${manifest.campaign}: ` +
         `${manifest.files} files, product ${manifest.selectedProductId ?? "none"}, history ${manifest.carried.historyRuns}/${manifest.carried.sourceHistoryRuns}, ` +
-        `escapes ${manifest.audit.escapes.length}, absolute refs ${manifest.audit.absoluteRefs.length}${manifest.audit.relocated ? " (relocated)" : ""}`,
+        `escapes ${manifest.audit.escapes.length}, relinked ${manifest.audit.relinked.length}, absolute refs ${manifest.audit.absoluteRefs.length}${manifest.audit.relocated ? " (relocated)" : ""}`,
     );
   }
 }

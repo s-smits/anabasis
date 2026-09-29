@@ -64,6 +64,7 @@ interface SeedManifest {
   droppedScratch: string[];
   audit: {
     escapes: unknown[];
+    relinked: { path: string; target: string; resolved: string }[];
     absoluteRefs: AbsoluteRef[];
     toolTreeLinks: { resolved: string }[];
     aliases: unknown[];
@@ -246,7 +247,7 @@ describe("seed-campaign clone", () => {
     );
   });
 
-  it("lists a symlink that escapes into the source tree and refuses", () => {
+  it("lists a symlink that escapes into the source tree and refuses, with or without --relocate", () => {
     recordedCampaign(source, { escape: true });
     const into = join(scratch, "condition");
     const result = run("--from-root", source, "--slug", SLUG, "--into-root", into);
@@ -254,6 +255,41 @@ describe("seed-campaign clone", () => {
     expect(result.stderr).toContain("symlink escape");
     expect(result.stderr).toContain(join(campaignDir(into, SLUG), "epoch-1", "workspace", "escape"));
     expect(result.stderr).toContain(join(source, "elsewhere"));
+    const relocated = run(
+      "--from-root",
+      source,
+      "--slug",
+      SLUG,
+      "--into-root",
+      join(scratch, "r"),
+      "--relocate",
+    );
+    expect(relocated.exitCode).toBe(1);
+    expect(relocated.stderr).toContain(join(source, "elsewhere"));
+  });
+
+  it("relinks an absolute link into the copied campaign under --relocate, and refuses it as an escape without", () => {
+    const workspace = recordedCampaign(source);
+    writeFileSync(join(workspace, "python3.12"), "interpreter\n");
+    symlinkSync(join(workspace, "python3.12"), join(workspace, "python"));
+    const refused = run("--from-root", source, "--slug", SLUG, "--into-root", join(scratch, "refused"));
+    expect(refused.exitCode).toBe(1);
+    expect(refused.stderr).toContain("symlink escape");
+    const into = join(scratch, "relocated");
+    const result = run("--from-root", source, "--slug", SLUG, "--into-root", into, "--relocate");
+    expect(result.exitCode).toBe(0);
+    const copied = join(campaignDir(into, SLUG), "epoch-1", "workspace");
+    const manifest = manifestOf(into, SLUG);
+    expect(manifest.audit.escapes).toEqual([]);
+    expect(manifest.audit.relinked).toEqual([
+      {
+        path: join(copied, "python"),
+        target: join(workspace, "python3.12"),
+        resolved: join(copied, "python3.12"),
+      },
+    ]);
+    expect(realpathSync(join(copied, "python"))).toBe(join(copied, "python3.12"));
+    expect(realpathSync(join(workspace, "python"))).toBe(join(workspace, "python3.12"));
   });
 
   it("refuses a text reference to the source root unless allowed, and relocates a mutable one on request", () => {

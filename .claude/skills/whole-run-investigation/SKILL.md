@@ -348,7 +348,8 @@ matters here is what each can and cannot say. `delta` prints paths and counts be
 source and its predecessor, never source text, so it says a surface moved and not that the move
 reached anything. `climb` labels every edge between adopted versions from the task bytes alone. A
 label is structural and not a forecast: `escalated` says the checks reached a higher tier, a new
-requirement at unchanged counts reads `adjusted`, which states no direction, and `replaced` says the
+input, rule or limit reads `widened`, which says the battery holds more and not that it asks more,
+`adjusted` moves numbers at unchanged counts and states no direction, and `replaced` says the
 edge could not be read. `walls` classes each case against the walls the Builder
 wrote in `agent/config.yaml`, which is the one file nothing inspects again after the gate, and its
 usual decision-changing reading is the negative one: no case reached a wall, so room explains

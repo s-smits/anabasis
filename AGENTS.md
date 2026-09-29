@@ -268,8 +268,8 @@ climb <campaign dir>`) whenever a new `versions/<battery>/` appears, hours befor
 Each edge gets a structural label, `restated`, `replaced`, `adjusted`, `narrowed`, `widened`, `eased`
 or `escalated`, from check tiers and counts (`verdictOf`, `climb-velocity.ts`). A label is a reading,
 not a forecast: all three `escalated` edges in a census of 170 on 2026-09-29 were followed by batteries
-that passed every case, and 2d7812's new load sites and forbidden volume read `adjusted` because no
-count moved. So name the changed public requirement from the task rows beside the label, and read each
+that passed every case, and so were 16 of the 17 edges that widened on a new input or rule alone, among
+them 2d7812's new load sites and forbidden volume. So name the changed public requirement from the task rows beside the label, and read each
 battery's `fails` line (held, settled against the check, unsettled, and the checks they fell on) before
 counting a partial battery as a limit found. Three `too-easy` placements in a row mean no battery found
 the limit, and the answer is to rebuild what the tasks demand, not their numbers.

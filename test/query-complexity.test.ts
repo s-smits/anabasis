@@ -462,6 +462,21 @@ describe("climb velocity", () => {
     expect(verdictOf(tiers(2, 0), tiers(2, 0), null, flat, still)).toBe("restated");
   });
 
+  // truss-sol-2d7812 added load sites and a forbidden volume, two inputs at the same checks, and read
+  // `adjusted`, the label for the same counts with numbers moved. Any structural count names a
+  // direction; checks, couplings and scenarios decide first, and only they survive replaced tasks.
+  it.concurrent("names growth in any structural count, and keeps a replaced edge replaced", () => {
+    const flat = { checks: 0, limits: 0, coupled: 0, tooled: 0, rules: 0, roots: 0, inputs: 0, scenarios: 0 };
+    const still = { median: 0, moved: 0, joined: 1, tasks: 1 };
+    const swapped = { median: 0, moved: 0, joined: 0, tasks: 2 };
+    const tiers = { checkTiers: { easy: 0, medium: 2, hard: 0, frontier: 0 } };
+    expect(verdictOf(tiers, tiers, null, { ...flat, inputs: 2 }, still)).toBe("widened");
+    expect(verdictOf(tiers, tiers, null, { ...flat, rules: -1 }, still)).toBe("narrowed");
+    expect(verdictOf(tiers, tiers, null, { ...flat, checks: -1, inputs: 3 }, still)).toBe("narrowed");
+    expect(verdictOf(tiers, tiers, null, { ...flat, inputs: 2 }, swapped)).toBe("replaced");
+    expect(verdictOf(tiers, tiers, null, { ...flat, scenarios: 1 }, swapped)).toBe("widened");
+  });
+
   // Five more checks at a tier a battery already occupies is a wider battery, not a harder one. A
   // rank-weighted total rose with the count; the mean that replaced it moved with the count too,
   // downwards when a check was added below it and upwards when one was dropped, so a wider battery

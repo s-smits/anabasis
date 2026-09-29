@@ -315,7 +315,8 @@ bun .claude/skills/whole-run-investigation/scripts/wri.ts climb <campaign dir> [
 Per battery it prints the check-tier histogram and a median structural row; per edge, one of
 `restated`, `adjusted`, `narrowed`, `widened`, `eased`, `escalated` or `replaced`. The label is
 structural, so name the changed public requirement from the task rows beside it: truss-sol-2d7812's
-new load sites and forbidden volume read `adjusted` because no count moved. `replaced` is no reading
+new load sites and forbidden volume read `widened`, two inputs more, and 16 of the 17 edges that
+widened on an input or rule alone were followed by full passes. `replaced` is no reading
 at all: fewer than half the task ids carried over, so the published numbers could not be joined, and
 the task bytes need reading by hand. Run it whenever a new `versions/<battery>/` directory appears, and
 at every read step on a campaign that has landed off its aim twice. It is read-only, it costs
@@ -327,7 +328,7 @@ Run `c1d2a7`, read this way on 18 September while its fourth battery was still m
 | edge | verdict | what moved | outcome |
 | --- | --- | --- | --- |
 | i01 → i02 | `widened` | +3 inputs, +3 scenarios, 305 numbers moved by 8.33% median, novelty 0.0000 | 6/6 |
-| i02 → i03 | `adjusted` | +1 input, 12 numbers moved, novelty 0.0038 | 6/6 |
+| i02 → i03 | `widened` (read `adjusted` before 2026-09-29) | +1 input, 12 numbers moved, novelty 0.0038 | 6/6 |
 | i03 → i04 | `escalated` | +2 checks, +1 limit, +1 tooled check, +2 rules, +36 inputs; frontier 0 → 2 | unobservable |
 
 The tier histogram held at `easy 0  medium 9  hard 6  frontier 0` for three batteries and moved only
@@ -417,8 +418,8 @@ candidate is adopted, hours before the battery it describes has been measured, a
 so: on 18 September it read the still-unmeasured i04 as `undated, unclaimed, no verified case` and
 printed its complete row beside the settled three.
 
-Run it when the version directory appears, not when the claim lands. Campaign 3fd52f9e-10's second
-and third rounds were `widened` and `adjusted` in their adopted bytes, and each then spent about
+Run it when the version directory appears, not when the claim lands. Run `c1d2a7`'s second
+and third rounds were both `widened` in their adopted bytes, and each then spent about
 four hours of solves to confirm a 6 of 6 that settled nothing. Novelty across those edges ran
 0.0000, 0.0038, 0.0884: the round that changed what the solver must reason about is an order of
 magnitude away from the two that did not, and it is legible before a single case runs.

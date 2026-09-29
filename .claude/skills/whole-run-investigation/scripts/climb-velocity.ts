@@ -17,9 +17,9 @@
 //
 //   restated      the prose did not move and neither did the structure
 //   replaced      fewer than half the task ids carried over, so the published numbers could not be compared
-//   adjusted      the same checks at the same tier, with the published numbers moved
-//   narrowed      fewer checks, fewer coupled inputs or fewer scenarios, at the same tier
-//   widened       more checks, more coupled inputs or more scenarios, at the same tier
+//   adjusted      the same structural counts at the same tier, with the published numbers moved
+//   narrowed      fewer of a structural count at the same tier; checks, coupled inputs and scenarios decide first
+//   widened       more of a structural count at the same tier; checks, coupled inputs and scenarios decide first
 //   eased         the checks moved down the tier order
 //   escalated     the checks moved up the tier order
 //
@@ -27,11 +27,14 @@
 // distance and not direction, because a boundary states which way is tighter and most declare none.
 // Moving a limit is a real climb when it moves inward, and this reader cannot tell you that it did.
 // A battery that dropped checks or fell down the tier order once read as `adjusted`, which
-// named a retreat with the one word that says nothing. Only `escalated` changes what the
-// solver has to reason about, and it reads the highest tier a battery's checks reach, so adding two
-// more checks at a tier it already occupies is `widened`. That top tier is the one reading immune to
-// the count: a rank-weighted total rises whenever a battery simply holds more checks, and the mean
-// that replaced it falls when a check is added below it and rises when one is removed, so a wider
+// named a retreat with the one word that says nothing. So did growth in the other structural counts
+// until 2026-09-29: truss-sol-2d7812 added load sites and a forbidden volume, two inputs more at the
+// same checks, and its edge read `adjusted`. A new input, rule or limit is a structural move and is
+// named as one; whether it is a new demand is read from the task rows beside it.
+// `escalated` reads the highest tier a battery's checks reach, so adding two more checks at a tier
+// it already occupies is `widened`. That top tier is the one reading immune to the count: a
+// rank-weighted total rises whenever a battery simply holds more checks, and the mean that replaced
+// it falls when a check is added below it and rises when one is removed, so a wider
 // battery read `eased` and a shorter one `escalated`. The cost of reading the top alone is a battery
 // that moved ten checks from easy to hard under an existing frontier check: that escalation is real
 // and this reader calls it `widened`.
@@ -367,6 +370,11 @@ export function topTierOf(checkTiers: Readonly<Record<string, number>>): number 
   return top;
 }
 
+/** The counts that name a widening or narrowing even across replaced tasks. The other structural
+ *  counts are medians over whichever tasks a battery holds, so they name a direction only once
+ *  most task ids carried over; before that the edge is `replaced` and read by hand. */
+const LEADING_KEYS = ["checks", "coupled", "scenarios"] as const;
+
 /** Which of the six ways the battery moved, named from the tier order first and the structural
  *  counts second. Exported so the directions can be read off literal readings. */
 export function verdictOf(
@@ -379,10 +387,17 @@ export function verdictOf(
   const was = topTierOf(before.checkTiers);
   const now = topTierOf(after.checkTiers);
   if (was !== null && now !== null && now !== was) return now > was ? "escalated" : "eased";
-  const { checks = Number.NaN, coupled = Number.NaN, scenarios = Number.NaN } = delta;
-  if (checks > 0 || coupled > 0 || scenarios > 0) return "widened";
-  if (checks < 0 || coupled < 0 || scenarios < 0) return "narrowed";
+  const directionOf = (keys: readonly string[]) =>
+    keys.some((key) => (delta[key] ?? 0) > 0)
+      ? "widened"
+      : keys.some((key) => (delta[key] ?? 0) < 0)
+        ? "narrowed"
+        : null;
+  const led = directionOf(LEADING_KEYS);
+  if (led !== null) return led;
   if (drift.joined * 2 < drift.tasks) return "replaced";
+  const other = directionOf(STRUCTURE_KEYS);
+  if (other !== null) return other;
   const restatedProse = novelty === null || novelty.mean <= 1 - RESTATED_COSINE;
   const carried = drift.moved === 0 && drift.joined === drift.tasks;
   if (restatedProse && carried && STRUCTURE_KEYS.every((key) => delta[key] === 0)) {

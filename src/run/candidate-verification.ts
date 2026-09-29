@@ -42,7 +42,7 @@ import type { VerifierLifetime } from "../verify/verifier-lifetime.ts";
 import { bindProductMeasurement, selectedProductDir } from "./product-versions.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import type { BatteryReuse } from "../correctness-bundle/recorded-solve.ts";
-import { regradeForCorrection, remeasureReuse } from "./battery-reuse.ts";
+import { recordedRegrade } from "./battery-reuse.ts";
 
 interface PostBuildInput {
   args: FullRunArgs;
@@ -309,13 +309,9 @@ function refuseBrokenFreeze(input: PostBuildInput): CandidateEvaluation | null {
 /** The recorded solves this round's battery grades instead of solving, or undefined when it solves
  *  every task. Whichever way it goes, the reason is recorded beside the round. */
 function batteryReuse(input: PostBuildInput): BatteryReuse | undefined {
-  const { remeasure } = input.decision;
-  if (input.build === "reused" && remeasure !== undefined) {
-    fullrunLine(`${input.manifest.slug}: remeasure — ${input.decision.reason}`);
-    return remeasureReuse(input.measureDir, remeasure);
-  }
-  if (input.build !== "candidate") return undefined;
-  const { reuse, reason } = regradeForCorrection({
+  const remeasure = input.build === "reused" && input.decision.remeasure !== undefined;
+  if (!remeasure && input.build !== "candidate") return undefined;
+  const { reuse, reason } = recordedRegrade({
     repoRoot: input.repoRoot,
     slug: input.manifest.slug,
     runPin: input.runPin,
@@ -324,8 +320,8 @@ function batteryReuse(input: PostBuildInput): BatteryReuse | undefined {
     experimentAuthoring: input.experimentAuthoring,
   });
   if (reuse === null) return undefined;
-  fullrunLine(`${input.manifest.slug}: regrade — ${reason}`);
-  input.absentSteps.push(`blind solve: skipped — ${reason}`);
+  fullrunLine(`${input.manifest.slug}: ${remeasure ? "remeasure" : "regrade"} — ${reason}`);
+  input.absentSteps.push(`blind solve of ${reuse.solves.size} recorded task(s): skipped — ${reason}`);
   return reuse;
 }
 

@@ -81,7 +81,9 @@ export interface OutcomeCounts {
 
 /** How a battery's completed epoch review settled its contested cases. A fail whose check stands is
  *  earned; a fail settled against its check measured the check, not the solver; a verifier pass
- *  settled against its check (a veto) was never earned. The 2d7812 firmware battery read 4/6, over
+ *  settled against its check (a veto) was never earned. Both leave the earned sample, and a veto is
+ *  not turned into a fail: a flip is the one move that lowers passes, so it could make a limit out
+ *  of model readings alone, which the controller's placement refuses too. The 2d7812 firmware battery read 4/6, over
  *  the aim, on two fails of one check holding the sketch to a status label no public rule stated,
  *  and nothing in this reader said the placement rested on them. */
 export interface Settlement {
@@ -430,7 +432,7 @@ export async function readCampaign(campaign: string, options: Parameters<typeof 
           : placementOf({
               ...counts,
               passed: counts.passed - settlement.passesAgainst,
-              verified: counts.verified - settlement.failsAgainst,
+              verified: counts.verified - settlement.failsAgainst - settlement.passesAgainst,
             }),
       recorded: recorded.byRun.get(battery.runId) ?? null,
     });
@@ -551,7 +553,7 @@ function settledLine({ counts, settlement, earned }: ClimbBatteryRow): string | 
   const line = `fails ${fails}: ${settlement.failsHeld} held by the review, ${settlement.failsAgainst} settled against the check, ${unread} unsettled${vetoes}${checks}`;
   return earned === null
     ? line
-    : `${line}\n      earned ${earned.zone} at ${earned.passes}/${earned.n} over the whole battery, with the settled cases on the side the review put them`;
+    : `${line}\n      earned ${earned.zone} at ${earned.passes}/${earned.n} over the whole battery, with the cases settled against their check counted neither way`;
 }
 
 export function render(report: ClimbReport, band?: readonly [number, number]): string {

@@ -232,9 +232,9 @@ fails of one bench check that held meter output to HIGH/LOW where the published 
 ALARM/OK; on the public rules it was an all-pass. The review held both, on a sentence the projection does
 not contain, which is why the reviewer now quotes the public sentence before it calls the Judge wrong.
 `wri.ts climb` prints each battery's fails as held, settled against the check or unsettled, with the
-checks they fell on, and where the battery lands with the settled cases on the side the review put them.
-Read an over-aim or on-aim battery there before counting it as a limit found. Fails concentrated on one
-check across families are the first thing to read.
+checks they fell on, and where the battery lands with the cases settled against their check counted
+neither way. Read an over-aim or on-aim battery there before counting it as a limit found. Fails
+concentrated on one check across families are the first thing to read.
 
 Read the climb before paying for it. This is an operator reading rather than a controller gate: run
 `bun .claude/skills/whole-run-investigation/scripts/wri.ts climb <campaign dir>` whenever a new

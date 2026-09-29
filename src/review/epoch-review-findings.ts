@@ -622,7 +622,7 @@ function findingParameters(disputable: readonly string[]) {
         type: "string",
         enum: [...DEMAND_GAPS],
         description:
-          "For a finding about what the tasks fail to demand, which shape it takes: capability-unexercised (the request names a capability no task exercises), sibling-values-only (sibling tasks differ only in published values), limit-cleared-widely (the first reasonable candidate clears a published limit widely), solver-tool-reports-margins (a solver tool reports every margin a declared check reads), rule-outside-request (a rule no practitioner of the request would hold). It crosses to authoring; the claim does not.",
+          "For a finding about what the tasks fail to demand, which shape it takes: capability-unexercised (the request names a capability no task exercises), sibling-values-only (sibling tasks differ only in published values), limit-cleared-widely (the first reasonable candidate clears a published limit widely), rule-outside-request (a rule no practitioner of the request would hold). It crosses to authoring; the claim does not.",
       },
       settlesJudge: {
         type: "boolean",

@@ -180,15 +180,14 @@ type FindingBody = {
   settlesJudge?: true;
 };
 
-/** The shapes a demand finding takes, as the reviewer's standing prompt lists them: a capability no
- *  task exercises, sibling tasks differing only in published values, a limit the first reasonable
- *  candidate clears widely, a solver tool reporting every margin a check reads, and a rule no
- *  practitioner of the request would hold. */
+/** The shapes a demand finding takes: a capability no task exercises, sibling tasks differing only
+ *  in published values, a limit the first reasonable candidate clears widely, and a rule no
+ *  practitioner of the request would hold. A solver tool that reports every margin a check reads is
+ *  not one: it still leaves the solver the decision, and whether it made a battery easy is measured. */
 export const DEMAND_GAPS = [
   "capability-unexercised",
   "sibling-values-only",
   "limit-cleared-widely",
-  "solver-tool-reports-margins",
   "rule-outside-request",
 ] as const;
 export type DemandGap = (typeof DEMAND_GAPS)[number];

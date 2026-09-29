@@ -869,14 +869,6 @@ describe("what a finding's typed fields carry to authoring", () => {
         "Epoch review (correctness-model/tasks.json): public input `$.limits.deflection`; a defect.\nThe first reasonable candidate clears a published limit widely.",
       ],
       [
-        {
-          owner: TASKS_FILE,
-          demandGap: "solver-tool-reports-margins",
-          publicInputPath: "$.limits.deflection",
-        },
-        "Epoch review (correctness-model/tasks.json): public input `$.limits.deflection`; a defect.\nA solver tool reports every margin a declared check reads.",
-      ],
-      [
         { owner: TASKS_FILE, demandGap: "rule-outside-request", publicInputPath: "$.loads" },
         "Epoch review (correctness-model/tasks.json): public input `$.loads`; a defect.\nA rule stands that no practitioner of the request would hold.",
       ],
@@ -889,8 +881,8 @@ describe("what a finding's typed fields carry to authoring", () => {
         "Epoch review (correctness-model/tasks.json): no check or path named; a defect.\nThe request names a capability no task in the battery exercises.",
       ],
       [
-        { owner: "agent/tools.ts", demandGap: "solver-tool-reports-margins" },
-        "Epoch review (agent/tools.ts): no check or path named; a defect.\nA solver tool reports every margin a declared check reads.",
+        { owner: "agent/tools.ts", demandGap: "rule-outside-request" },
+        "Epoch review (agent/tools.ts): no check or path named; a defect.\nA rule stands that no practitioner of the request would hold.",
       ],
       [{ owner: "agent/config.yaml" }, "Epoch review (agent/config.yaml): no check or path named; a defect."],
     ];

@@ -23,7 +23,6 @@ const DEMAND_GAP_SENTENCES: Record<DemandGap, string> = {
   "capability-unexercised": "The request names a capability no task in the battery exercises.",
   "sibling-values-only": "Sibling tasks differ only in the values they publish.",
   "limit-cleared-widely": "The first reasonable candidate clears a published limit widely.",
-  "solver-tool-reports-margins": "A solver tool reports every margin a declared check reads.",
   "rule-outside-request": "A rule stands that no practitioner of the request would hold.",
 };
 

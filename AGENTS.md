@@ -628,15 +628,15 @@ the battery was paid for.
 
    A finding about easy tasks names the obligation of the request they leave undemanded, owned by
    `correctness-model/tasks.json`, and may carry a `demandGap` of capability-unexercised,
-   sibling-values-only, limit-cleared-widely, solver-tool-reports-margins or rule-outside-request; the
-   reviewer records one when it has shown the gap, not because the score was high. Until 2026-09-29
-   the host enforced more. It split the request at commas, semicolons and "and", asked for a
-   `Clause N:` line per piece, and above the aim demanded either a `tasks.json` defect or a
-   family-by-family account, which it checked by whether each family's name appeared in the report,
-   re-asking once when either was missing. That graded wording rather than examination, and a
-   task-set finding forced out of a full pass presses the author to add rules the request never held,
-   so it went with `review-duties.ts`. Earlier `tasks.json` findings over the same task set are still
-   shown again (`earlierTaskFindings`), so an unchanged task set is not read as settled.
+   sibling-values-only, limit-cleared-widely or rule-outside-request; the reviewer records one when it
+   has shown the gap, not because the score was high. Until 2026-09-29 the host enforced more. It split
+   the request at commas, semicolons and "and", asked for a `Clause N:` line per piece, and above the
+   aim demanded either a `tasks.json` defect or a family-by-family account, which it checked by whether
+   each family's name appeared in the report, re-asking once when either was missing. That graded
+   wording rather than examination, and a task-set finding forced out of a full pass presses the author
+   to add rules the request never held, so it went with `review-duties.ts`. Earlier `tasks.json`
+   findings over the same task set are still shown again (`earlierTaskFindings`), so an unchanged task
+   set is not read as settled.
 
    The reviewer may also execute. `probe_check` takes one accept control, one rooted path already in its
    artifact (`$.layout.members[0].area`, read through `jsonPathTokens`) and one change: either a

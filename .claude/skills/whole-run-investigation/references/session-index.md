@@ -84,7 +84,7 @@ incomplete on the seed, read authoring and battery reviews alike and say whether
 fired before a new one is proposed.
 
 **13. Public-safe feedback sufficiency.** From a finding whose gap the next round did not touch,
-say whether `publicAct` kept the permitted information the Builder needed to act.
+say whether `publicFinding` kept the permitted information the Builder needed to act.
 
 **14. Finding routing and recurrence.** From `FINDINGS WITHOUT OWNER` and `ADVISORY
 FINDING RECURS UNROUTED`, say what each finding became and whether its recurrence key could fire.

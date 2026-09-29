@@ -14,9 +14,8 @@ export function findingSeverity(finding: AnalysisFinding): CampaignFeedback["sev
   return finding.defect ? (finding.severity ?? "blocking") : "advisory";
 }
 
-/** A defect repaired where it sits: every defect but one in the task set, which asks for a fresh
- *  battery rather than a repair. Only this one settles vetoed rows against its check, carries a
- *  repair order, escalates when it recurs and owes the probes it rests on. */
+/** A defect owned by any file but the task set. Only this one settles vetoed rows against its
+ *  check and owes the probes it rests on. */
 export function contractDefect(finding: { defect: boolean | null; owner: string | null }): boolean {
   return finding.defect === true && finding.owner !== TASKS_FILE;
 }

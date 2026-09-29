@@ -660,7 +660,11 @@ the battery was paid for.
    findings moves it. Until 2026-09-28 a first recurrence of a check's name raised a finding and two
    held it at advice, so a firmware review whose two probes showed a check refusing the published
    default pins was admitted as advice: that check had been named in four earlier reviews, and a naming
-   count cannot tell two defects on one check apart.
+   count cannot tell two defects on one check apart. What crosses to the Builder is what a finding found
+   and where: its owner, check, schema path and public inputs, its `demandGap`, the probes it cites with
+   the checks they moved, and the direction they show (`epoch-review-public.ts`). It carries no repair
+   method; the Builder chooses the repair. Until 2026-09-29 the projection attached one from a fixed
+   table (`GAP_ACTS`, `publicAct`), and a task-set defect was refused without a public input to vary.
 
    An observation with `settlesJudge` — a check that a vetoed or disputed row names, plus a conclusive
    probe that moved it — settles the cases naming that check whose artifact the review opened, because
@@ -948,7 +952,7 @@ the battery was paid for.
     **Only submit waits** for a running review, for at most `READER_DEADLINE_MS`, 1 h
     (`src/review/review-reader.ts`). An unread *blocking* finding comes back in place of the verdict and
     the call counts as no submit (`review-unread`), so the same bytes sent next are a first submission.
-    Advisory-only reviews hold nothing, because an advisory finding asks for no change before submit; up
+    Advisory-only reviews hold nothing, because an advisory finding is advice and rides the next result; up
     to 2026-09-27, 34 holds in 19 chains cost ~79 min, two campaigns held for all-advisory reviews. No
     probe budget or no-submit strike bounds reconnaissance before the first authoring change.
 

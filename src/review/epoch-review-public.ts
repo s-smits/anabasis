@@ -7,9 +7,7 @@ import type { ContestedCase } from "../analyse/judge-contested.ts";
 import type { Brief } from "../correctness-bundle/brief.ts";
 import { publicRuleDecisions } from "../correctness-bundle/public-resources.ts";
 import type { EpochReviewEvidence } from "./epoch-review-findings.ts";
-import { isBundleFile } from "../author/feedback-routing.ts";
 import { adviceIssueId } from "../author/rebuild-advice.ts";
-import { BRIEF_FILE, CONTROLS_FILE, EVALUATOR_FILE, TASKS_FILE } from "../meta/bundle-layout.ts";
 
 /** What the reviewed candidate supplies: the public contract, and the contested rows the review
  *  settled against it. */
@@ -17,7 +15,6 @@ type ReviewContract = {
   brief: Brief | null;
   vetoed?: readonly ContestedCase[];
   disputed?: readonly ContestedCase[];
-  deferAdvisory?: boolean;
 };
 
 /** Each recognised shape as the sentence the author reads. The shape is a typed choice from a closed
@@ -30,89 +27,27 @@ const DEMAND_GAP_SENTENCES: Record<DemandGap, string> = {
   "rule-outside-request": "A rule stands that no practitioner of the request would hold.",
 };
 
-/** Which way a probe-backed check is wrong, as the author reads it. The moved checks read the same
- *  either way and the two repairs are opposite, so the direction crosses as fixed text keyed by the
- *  typed field; the probe's value, its edit and the reviewer's reading of it stay private. */
-const PROBE_DIRECTION_SENTENCES: Record<ProbeDirection, string> = {
+/** Which way a probe-backed check is wrong, as the author reads it, or that the cited probes do not
+ *  say. The moved checks read the same either way, so the direction crosses as fixed text keyed by
+ *  the typed field; the probe's value, its edit and the reviewer's reading of it stay private. The
+ *  repair each direction calls for is the author's to choose. */
+const PROBE_DIRECTION_SENTENCES: Record<ProbeDirection | "unresolved", string> = {
   "rejects-valid":
-    "The review's probe wrote an answer the published rule allows, and the check refused it: a false rejection, so the repair loosens the check to what the published rule and the original request allow, and does not tighten it or publish the restriction as a new rule.",
+    "The review's probe wrote an answer the published rule allows, and the check refused it: a false rejection.",
   "accepts-invalid":
-    "The review's probe wrote an answer the published rule forbids, and the check let it through: a false acceptance, so the repair makes the check refuse what the published rule forbids.",
+    "The review's probe wrote an answer the published rule forbids, and the check let it through: a false acceptance.",
+  unresolved:
+    "The cited probes do not establish whether a check refused a valid answer or let an invalid one through.",
 };
 
-/** A task-set finding's act where its demand gap asks for something other than a difference in what
- *  the tasks demand of an input. Each follows its gap: a limit the first reasonable candidate clears
- *  asks for that limit to bind, which adoption ties to the reference solve, and a sentence telling
- *  the author the finding did not ask for that would negate the gap it was typed with. */
-const GAP_ACTS: Partial<Record<DemandGap, string>> = {
-  "limit-cleared-widely":
-    "make the published limit bind a first reasonable candidate in the fresh battery; adoption solves every task with the reference and refuses a candidate whose reference artifact fails a declared check, so a tighter limit needs a stronger reference search",
-  "solver-tool-reports-margins":
-    "make the fresh battery's tasks demand a decision that reading a reported margin and adjusting does not reach",
-  "rule-outside-request":
-    "hold the fresh battery's tasks to what the request itself demands, without the rule it does not hold",
-};
-
-/** Whether the finding's owner is the file that holds its check, which is what an obligation line
- *  and a repair order are about. A brief finding naming a check is about the rule the brief
- *  publishes, not the check's code, so it gets neither. */
-const holdsCheck = (finding: AnalysisFinding) =>
-  finding.owner === EVALUATOR_FILE || finding.owner === CONTROLS_FILE;
-
-/** What the finding asks of its owner. A demonstrated defect is repaired; a defect in the task set
- *  names the public input to move in the fresh battery, not an enforcement the tasks do not own; an
- *  observation asks for nothing. Measured hardness and an undecided reading are both observations,
- *  and neither may read as an order to edit the product: under the ordinary sentence an undecided
- *  reading would reach the Builder as "inspect and repair that contract" followed by the blanket
- *  repair instruction, which is an order built out of an admitted uncertainty.
- *
- *  The task-set sentence says which way to vary, because the vague form does harm. "Vary this in
- *  the fresh battery", read against a published limit, invites the author to move that limit from
- *  one battery to the next, which changes the published magnitudes over a task set that has not
- *  moved and leaves the battery exactly as easy as it was. The variation this finding is about is
- *  across the battery's own tasks, and "let this input differ" was met by permuting values inside
- *  one template, which leaves one condition measured many times, so the sentence asks for a
- *  difference in what the tasks demand rather than in what they publish. A gap in `GAP_ACTS` asks
- *  for something else, and gets its own act. */
-function publicAct(finding: AnalysisFinding, deferred: boolean): string {
-  if (deferred) return "this is advisory and asks for no change before submit";
-  if (!finding.defect) return "this is an observation, not a demonstrated defect, and asks for no repair";
-  if (finding.owner === TASKS_FILE) {
-    const gapAct = finding.demandGap === undefined ? undefined : GAP_ACTS[finding.demandGap];
-    return (
-      gapAct ??
-      "make the fresh battery's tasks differ in what they ask of this input — which parts it brings together and how they must work — not only in the values published in it"
-    );
-  }
-  if (finding.owner === BRIEF_FILE) {
-    return "decide the public rule this concerns in the brief: publish every rule a check enforces, or withhold a construction recipe that hands the solver the answer";
-  }
-  return "inspect and repair that contract";
-}
-
-/** The file where the Builder acts. A finding owned by the task set stays with the tasks, and one
- *  owned by any bundle file but the two that hold a check — the brief above all — stays with its
- *  owner. The rest are placed by the identity they name before their owner: a check lives in the
- *  evaluator and a bare public input in the tasks, because a check finding can move between the
- *  evaluator and its controls from round to round while its identity stays. Moving a brief finding
- *  to its check's file sent the author to repair code whose rule was the thing at fault. */
-function publicGroup(finding: AnalysisFinding): string {
-  const { owner } = finding;
-  if (owner === TASKS_FILE) return TASKS_FILE;
-  if (isBundleFile(owner) && !holdsCheck(finding)) return owner;
-  if (finding.checkId !== undefined || finding.unobserved === true) return EVALUATOR_FILE;
-  if (finding.publicInputPath !== undefined && finding.artifactSchemaPath === undefined) return TASKS_FILE;
-  return isBundleFile(owner) ? owner : "unplaced";
-}
-
-/** The public sentence for one finding, composed from typed identities alone. A template sentence
- *  that names none of them tells the Builder nothing, and an author with nothing to act on
- *  resubmits unchanged bytes as a probe. The check id, schema path and public input path are public
+/** The public sentence for one finding, composed from typed identities alone: the file the review
+ *  named, what in it the finding is about, and whether it is a defect. It names no repair, because
+ *  the author chooses the repair. The check id, schema path and public input paths are public
  *  authoring identities, so they cross; the reviewer's claim is not one and never enters this
  *  sentence. */
-function publicFindingClaim(finding: AnalysisFinding, deferred: boolean, brief: Brief | null): string {
-  const group = publicGroup(finding);
-  const heading = `Epoch review (${group})`;
+function publicFindingClaim(finding: AnalysisFinding, brief: Brief | null): string {
+  const heading = `Epoch review (${finding.owner ?? "no file named"})`;
+  const kind = finding.defect ? "a defect" : "an observation, not a demonstrated defect";
   const named = [
     ...(finding.checkId === undefined ? [] : [`check \`${finding.checkId}\``]),
     ...(finding.artifactSchemaPath === undefined ? [] : [`artifact path \`${finding.artifactSchemaPath}\``]),
@@ -124,7 +59,7 @@ function publicFindingClaim(finding: AnalysisFinding, deferred: boolean, brief: 
         ? `public input \`${finding.publicInputPath}\``
         : `public inputs \`${finding.publicInputPath}\` and \`${finding.secondPublicInputPath}\``;
   const input = inputPath === null ? "" : ` (${inputPath})`;
-  if (finding.unobserved === true && !deferred) {
+  if (finding.unobserved === true) {
     // The obligation is unobserved, not the path. "No declared check observes artifact path `x`"
     // is plainly false to an author whose checks all read `x`, and a finding that reads as nonsense
     // is a finding acted on by nobody. So the readers are counted here, which contradicts the bare
@@ -144,18 +79,9 @@ function publicFindingClaim(finding: AnalysisFinding, deferred: boolean, brief: 
       readers === 0
         ? `no declared check observes the obligation the review traced${where}`
         : `none of the ${String(readers)} declared checks reading artifact path \`${path ?? ""}\` observes the obligation the review traced there`;
-    return `${heading}: ${gap}${input}; add a check that observes what the delivered artifact does there.`;
+    return `${heading}: ${gap}${input}; ${kind}.`;
   }
-  if (named === "" && inputPath === null) {
-    // A gap the review typed is the mechanism, which a guessed "mismatch" would contradict.
-    const defectAct = deferred
-      ? "it is advisory and asks for no change before submit"
-      : finding.demandGap === undefined
-        ? "inspect that contract for a mismatch"
-        : publicAct(finding, deferred);
-    return `${heading}: ${group === "unplaced" ? "no check, path or file named" : "no check or path named"}; ${finding.defect ? defectAct : "it is an observation and asks for no repair"}.`;
-  }
-  return `${heading}: ${named === "" ? (inputPath ?? "the contract") : `${named}${input}`}; ${publicAct(finding, deferred)}.`;
+  return `${heading}: ${named === "" ? (inputPath ?? "no check or path named") : `${named}${input}`}; ${kind}.`;
 }
 
 /** The contested rows naming the finding's check whose artifact the reviewer opened, the only cases
@@ -201,8 +127,6 @@ function publicFinding(
   disputed: readonly ContestedCase[],
   opened: readonly string[],
 ) {
-  const deferred = contract.deferAdvisory === true && finding.severity === "advisory";
-  const repairable = !deferred && contractDefect(finding);
   const check = contract.brief?.truthChecks.find((candidate) => candidate.id === finding.checkId);
   const rules =
     contract.brief === null || check === undefined
@@ -211,15 +135,14 @@ function publicFinding(
           (rule) => check.citedDecisionIds?.includes(rule.id) === true,
         );
   // Only the reviewed public contract supplies these bytes. Private review prose cannot supply an
-  // obligation, a counterexample or a repair instruction.
+  // obligation or a counterexample.
   //
-  // The obligation rides with the repair it was added to bind. A finding that asks for no repair
-  // has nothing to bind it to, and quoting the check back at the author who wrote it fills the
-  // packet instead: a long assertion beside "asks for no repair" can be most of what the rebuild
-  // author reads, and it points at the evaluator in rounds where the tasks were the thing to move.
-  // The check id already names the file the author owns.
+  // A defect naming a declared check carries that check's public obligation, which is the scope
+  // of what the review found. An observation carries none: quoting the check back at the author
+  // who wrote it, beside a reading that demonstrated nothing, repeats on every round and crowds
+  // out everything else the rebuild author reads.
   const obligation =
-    check === undefined || !repairable || !holdsCheck(finding)
+    check === undefined || !finding.defect
       ? []
       : [
           `Declared public obligation: ${capturedJsonStringify({
@@ -245,17 +168,11 @@ function publicFinding(
       : [
           `The Judge passed ${String(disputes.length)} verified fail(s) in ${familiesOf(disputes)} holding this obligation satisfied, and the review settled them against the check: it refuses an artifact the obligation admits.`,
         ];
-  // What the probes executed, for a defect the author is being asked to look at. A defect survives
-  // the two-occurrence ceiling on forced blocking when the public projection supplies only its
-  // check name: the review has run the checks over its own changed field and the author reads a
-  // check id. The three identities here are the class the check id already crosses by — an accept
-  // control the Builder wrote, a dotted path under its own artifactSchema root, and its own
-  // declared check ids.
-  //
-  // It rides with an advisory finding too, deferred or not, and that is the case it is for: a
-  // probe-backed finding held at advice because the same check has been named twice already.
-  // Without this line the round projects that check name a third time, which is the repetition the
-  // ceiling exists to stop.
+  // What the probes executed, and which way they show the check wrong, or that they do not say. The
+  // three identities here are the class the check id already crosses by — an accept control the
+  // Builder wrote, a dotted path under its own artifactSchema root, and its own declared check ids.
+  // It rides with an advisory defect too: a probe is the review's strongest evidence, and without
+  // this line the author reads a check name with nothing behind it.
   const probed =
     !finding.defect || (finding.probes ?? []).length === 0
       ? []
@@ -270,40 +187,29 @@ function publicFinding(
                 }`,
             )
             .join("; ")}.`,
-          ...(finding.probeDirection === undefined
-            ? []
-            : [PROBE_DIRECTION_SENTENCES[finding.probeDirection]]),
+          PROBE_DIRECTION_SENTENCES[finding.probeDirection ?? "unresolved"],
         ];
   // The request is not repeated here. Every prompt that renders these rows states it once under its
   // own heading, and a copy per finding puts it several times into one authoring prompt, in front
   // of each sentence the author has to act on. One duty, one owner (rule 14).
-  const context = [...obligation, ...veto, ...dispute];
-  // The repair instruction rides only with a demonstrated defect — which, until the request left
-  // this list, was every repairable finding, since `context` could not then be empty.
-  const repair =
-    !repairable || !holdsCheck(finding) || (context.length === 0 && contract.deferAdvisory !== true)
-      ? []
-      : [
-          "Repair the complete public obligation. Retain a valid alternative and a plausible counterexample that distinguish the repair; a neighbouring correction does not establish closure.",
-        ];
   return {
     ...finding,
     claim: [
-      publicFindingClaim(finding, deferred, contract.brief),
+      publicFindingClaim(finding, contract.brief),
       ...(finding.demandGap === undefined ? [] : [DEMAND_GAP_SENTENCES[finding.demandGap]]),
       ...settlementLines(judgeRows(finding, [...vetoed, ...disputed], opened)),
-      ...context,
+      ...obligation,
+      ...veto,
+      ...dispute,
       ...probed,
-      ...repair,
     ].join("\n"),
   };
 }
 
-/** Private review prose stays in its recorded evidence; only typed routing reaches authoring.
- *  `deferAdvisory` is the authoring review's reading: an advisory finding asks for no change before
- *  submit and carries no repair order, because a Builder that meets one mid-session repairs it at
- *  once and pays a fresh full check for it, spending gate time on advice that was never asked to be
- *  acted on before submit. */
+/** Private review prose stays in its recorded evidence; only typed findings reach authoring. Each
+ *  crosses as what the review supported and where — the file, the identity, the public obligation,
+ *  the probes' direction, the settled families and counts — and never as a repair to make: the
+ *  author reads the evidence and chooses what to change. */
 export function publicEpochReview(
   review: Pick<EpochReviewEvidence, "status" | "findings" | "disputes"> & {
     contestedReads?: readonly string[];

@@ -478,14 +478,14 @@ touch, from an ambiguous repeated repair, and from a source delta touching
 
 The question is whether the model-visible projection kept the permitted information needed to act.
 Derive the allowed public facts from the measured contract before reading what the projection
-drops, then follow one consequential finding from the recorded review through `publicAct`
+drops, then follow one consequential finding from the recorded review through `publicFinding`
 (`src/review/epoch-review-public.ts`) into the text the Builder was served — the first tool result
 after an authoring review, or the kickoff prompt (`prompt-ingested`, role `builder`, in
-`observability/<runId>.jsonl`) after a battery review. For a defect owned by
-`correctness-model/tasks.json` the projection is one fixed sentence asking that the fresh battery's
-tasks differ in what they demand of the named `publicInputPath`, so a concrete gap reaches the
-Builder as a template; read whether the Builder's own notes recorded the gap independently, because
-that is the evidence the projection bought nothing. Compare two legitimately different public
+`observability/<runId>.jsonl`) after a battery review. The projection names the file, the identity,
+whether it is a defect, the `demandGap` sentence, the check's public obligation and the probes'
+direction, and never a repair, so a concrete gap reaches the Builder as a typed observation; read
+whether the Builder's own notes recorded the gap independently, because that is the evidence the
+projection bought nothing. Compare two legitimately different public
 situations and ask whether the recipient would see their deciding difference, distinguishing lost
 public meaning, a wrong public label, deliberate protected withholding and an inherently
 unobservable distinction. Keep verifier explanations, counterexamples, reference values and failure

@@ -385,16 +385,6 @@ const disputeEligibility: FindingRule = ({ parsed, owner }) => {
     : "this finding cannot dispute an issue: only a defect owned under correctness-model/ may suspend diagnosis; omit disputesIssue and retry";
 };
 
-/** What a task-set defect owes: the public input path the fresh battery should move. The claim
- *  itself never crosses to authoring, so a task-set defect naming no identity projects as "no check
- *  or path named; inspect that contract for a mismatch", which names nothing the task author can act
- *  on — the same empty sentence however many rounds report it. A public input path is a public
- *  authoring identity, so unlike the claim it crosses whole. */
-const curriculumInput: FindingRule = ({ parsed, owner }) =>
-  parsed.defect === true && owner === TASKS_FILE && parsed.publicInputPath === null
-    ? `a defect owned by ${TASKS_FILE} must name, in \`publicInputPath\`, the public task input the fresh battery should vary; without it the finding reaches the task author as an empty sentence`
-    : null;
-
 const schemaPath: FindingRule = ({ parsed, identities }) => {
   if (parsed.artifactSchemaPath === null) return null;
   const segments = parsed.artifactSchemaPath.split(".");
@@ -468,7 +458,6 @@ const FINDING_RULES: readonly FindingRule[] = [
   disputeEligibility,
   ({ parsed, owner, state, args }) =>
     probeCitationRefusal({ defect: parsed.defect, owner }, state.probes, args.probeIds),
-  curriculumInput,
   ({ parsed }) =>
     parsed.unobserved && parsed.checkId !== null
       ? "an unobserved obligation has no check; name its artifactSchemaPath instead of the nearest checkId"
@@ -622,7 +611,7 @@ function findingParameters(disputable: readonly string[]) {
       publicInputPath: {
         type: "string",
         description:
-          "A `$.`-prefixed JSON path into the public task input the finding is about. Required for a defect owned by correctness-model/tasks.json: name the input the fresh battery should vary, because the claim itself does not reach the task author and this path is the whole of what it will read.",
+          "A `$.`-prefixed JSON path into the public task input the finding is about. The claim does not reach the author, so this path is part of what it reads of the finding.",
       },
       secondPublicInputPath: {
         type: "string",

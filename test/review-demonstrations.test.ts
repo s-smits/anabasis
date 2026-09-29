@@ -154,12 +154,8 @@ async function answerFinding(tools: ReadonlyMap<string, ReaderTool>, probeIds: J
 
 /** What the Builder is handed of a review, which the carried demonstrations must never reach. */
 const builderText = (result: EpochReviewEvidence) =>
-  authoringReviewText(
-    "repair",
-    result.status,
-    REQUEST,
-    publicEpochReview(result, { brief: null, deferAdvisory: true }).findings,
-  ).text;
+  authoringReviewText("repair", result.status, REQUEST, publicEpochReview(result, { brief: null }).findings)
+    .text;
 
 describe("the probes an authoring review rested its findings on, carried to the next one", () => {
   it("carries the probes a finding rested on, and no other, as the change that ran and the checks it moved", async () => {
@@ -216,7 +212,7 @@ describe("the probes an authoring review rested its findings on, carried to the 
     const incomplete = { ...result, status: "incomplete" as const };
     expect(carriedDemonstrations(result)?.named).toEqual([{ checkId: "answer", severity: "advisory" }]);
     expect(carriedDemonstrations(result)).toEqual(carriedDemonstrations(incomplete));
-    const contract = { brief: null, deferAdvisory: true };
+    const contract = { brief: null };
     expect(publicEpochReview(result, contract)).toEqual(publicEpochReview(incomplete, contract));
   });
 

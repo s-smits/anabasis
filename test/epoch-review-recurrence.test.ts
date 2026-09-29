@@ -209,20 +209,16 @@ describe("a condition is reviewed once", () => {
       line,
     );
 
-    // Held at advice by the reviewer's own choice, and deferred on top of that: the same line
-    // still crosses.
+    // Held at advice by the reviewer's own choice: the same line still crosses.
     const worn = probed();
     expect(await call(worn.tool, { ...named, severity: "advisory", probeIds: [1] })).toBe(ADVISORY);
-    const deferred = publicEpochReview(
-      { status: "completed", ...worn.state },
-      { brief: null, deferAdvisory: true },
-    );
-    expect(deferred.findings[0]?.claim ?? "").toContain(line);
+    const advised = publicEpochReview({ status: "completed", ...worn.state });
+    expect(advised.findings[0]?.claim ?? "").toContain(line);
 
     // The replacement value is a counterexample the reviewer generated and `blockingCheckIds` is
     // verifier detail. Neither crosses; the control, the path and the moved checks are the class
     // the finding's own `checkId` already crosses by.
-    for (const projection of [publicEpochReview({ status: "completed", ...first.state }), deferred]) {
+    for (const projection of [publicEpochReview({ status: "completed", ...first.state }), advised]) {
       expect(projection.findings[0]?.claim ?? "").not.toContain("widened");
     }
 

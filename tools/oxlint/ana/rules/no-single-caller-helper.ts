@@ -132,10 +132,10 @@ const CHAIN_PEERS = 3;
  * this, and it was found by reading the twenty-six sites the dial produced.
  *
  * And a name read as a value keeps it, because there is no call site to put the lines at. A member
- * of a rule table, a default parameter value, a predicate handed to `.filter` — `curriculumInput`
- * sits in a `FindingRule` array in `epoch-review-findings.ts` beside eleven siblings that read as
- * words, and the only spelling that removes the name puts an anonymous arrow in the table. The
- * message would be asking for something the site does not have.
+ * of a rule table, a default parameter value, a predicate handed to `.filter` — `knownDemandGap`
+ * sits in the `FindingRule` array in `epoch-review-findings.ts`, and the only spelling that
+ * removes the name puts an anonymous arrow in the table. The message would be asking for
+ * something the site does not have.
  *
  * There is no fix, and one was written and thrown away. Substituting the arguments into a
  * one-`return` body is mechanical enough — the parameter ranges come from the scope analysis, so

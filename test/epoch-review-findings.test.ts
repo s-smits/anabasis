@@ -39,8 +39,14 @@ import { briefIdentities, recordFindingTool } from "../src/review/epoch-review-f
 import { PROBE_BUDGET } from "../src/review/review-probe.ts";
 import { BUNDLE_FILES } from "../src/author/feedback-routing.ts";
 import { TASKS_FILE } from "../src/meta/bundle-layout.ts";
+import { keyIfDefined } from "../src/meta/optional-key.ts";
 
 const NUMBER_WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
+
+/** The method sentences the projection once attached to a finding. The author chooses the repair, so
+ *  none of them may reach a projected finding again. */
+const PRESCRIPTION =
+  /repair|fresh battery|inspect|make the|loosen|tighten|vary|differ in what|bind a first|hold the|decide the public rule|add a check/i;
 
 afterAll(cleanupScratch);
 
@@ -68,6 +74,9 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
       "close with a short synthesis",
       '"nothing demonstrated" does not answer it',
       "family by family",
+      "do not ask for a limit set independently",
+      "names something it can repair",
+      "inspect that contract for a mismatch",
     ]) {
       expect(EPOCH_REVIEW_PROMPT).not.toContain(retired);
     }
@@ -202,10 +211,10 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
     expect(state.findings).toHaveLength(2);
   });
 
-  test("a defect owned by the task set must name the public input the fresh battery should vary", async () => {
-    // Run truss-opus-20260907T210000000Z-6bf0e9 recorded three curriculum defects naming no
-    // identity. Each reached the task author as "inspect that contract for a mismatch", and the
-    // batteries stayed at 24/24, 24/24 and 25/25.
+  test("a task-set defect needs no public input and crosses as what it named, never as a repair", async () => {
+    // A task-set defect was refused unless it named the public input "the fresh battery should
+    // vary", and then crossed as an order to vary it. What to change is the author's decision; the
+    // projection carries what the review found and where.
     const state = reviewState();
     const tool = recordFindingTool([], [], evidence, state);
     const args = {
@@ -214,31 +223,17 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
       claim: "one template closes every family",
       severity: "advisory",
     };
-    expect(await call(tool, args)).toContain("`publicInputPath`");
     // Blocking on the task set asks for the same stated case as blocking on any other file.
-    const blocking = { ...args, severity: "blocking", publicInputPath: "$.limits.span" };
-    expect(await call(tool, blocking)).toContain("`demonstration`");
-    expect(state.findings).toHaveLength(0);
-
+    expect(await call(tool, { ...args, severity: "blocking" })).toContain("`demonstration`");
+    expect(await call(tool, args)).toBe("recorded defect as advisory");
     await call(tool, { ...args, publicInputPath: "$.limits.maxMemberLengthMm" });
-    expect(state.findings).toHaveLength(1);
-    const projected = publicEpochReview({ status: "completed", ...state }).findings[0]?.claim ?? "";
-    expect(projected).toContain("$.limits.maxMemberLengthMm");
-    // A curriculum finding names a task input to vary, rather than a correctness check to repair.
-    expect(projected).toContain("not only in the values published in it");
-    expect(projected).not.toContain("inspect and repair that contract");
-    // Which way to vary is the act's own direction, a difference in demand rather than in published
-    // values. It no longer adds that the finding "does not ask for a published limit to move": the
-    // review never said so, and of a finding on a limit it is the negation of what the review found.
-    expect(projected).not.toContain("does not ask for a published limit");
-    // The owner already names the contract; the subject named it a second time, so every curriculum
-    // finding read "in the public contract: the contract (public input `...`)".
-    expect(projected).toContain(
-      "Epoch review (correctness-model/tasks.json): public input `$.limits.maxMemberLengthMm`",
+    const [bare, named] = publicEpochReview({ status: "completed", ...state }).findings.map(
+      (finding) => finding.claim,
     );
-    expect(projected).not.toContain("the contract (public input");
-    // The private claim never crosses.
-    expect(projected).not.toContain("one template");
+    expect(bare).toBe("Epoch review (correctness-model/tasks.json): no check or path named; a defect.");
+    expect(named).toBe(
+      "Epoch review (correctness-model/tasks.json): public input `$.limits.maxMemberLengthMm`; a defect.",
+    );
   });
 
   test("an omitted or invalid severity cannot silently create a blocking finding", async () => {
@@ -267,9 +262,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
     expect(publicEpochReview({ status: "completed", ...state }).findings[0]?.severity).toBe("advisory");
   });
 
-  test("an authoring review defers advisory defects and states the request once", () => {
-    // Eight recorded Builders (2026-09-14 to 16) repaired advisory review findings before submit
-    // and paid a fresh full check for each.
+  test("an authoring review states the request once, and no row it shows names a repair", () => {
     const defect = {
       defect: true,
       claim: "private remedy text",
@@ -285,12 +278,12 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
         { ...defect, checkId: "deflection" },
       ],
     };
-    const { findings } = publicEpochReview(review, { brief: null, deferAdvisory: true });
-    const [advisory, blocking] = findings.map((finding) => finding.claim);
-    expect(advisory).toContain("asks for no change before submit");
-    expect(advisory).not.toMatch(/repair that contract|Repair the complete/);
-    expect(blocking).toContain("inspect and repair that contract");
-    expect(blocking).toContain("Repair the complete public obligation");
+    const { findings } = publicEpochReview(review, { brief: null });
+    // Advisory or blocking, a row says what the review found and where; the severity is its own field.
+    expect(findings.map((finding) => [finding.severity, finding.claim])).toEqual([
+      ["advisory", "Epoch review (correctness-model/evaluator.ts): check `mass-within-limit`; a defect."],
+      [undefined, "Epoch review (correctness-model/evaluator.ts): check `deflection`; a defect."],
+    ]);
     const { text, blocking: held } = authoringReviewText("repair", "completed", "design trusses", findings);
     // The blocking count is what holds a submit that arrives before the Builder has read the review.
     expect(held).toBe(1);
@@ -318,10 +311,6 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
       text: expect.stringContaining("- [advisory] "),
       blocking: 0,
     });
-    // Without the authoring reading, the measured-battery projection keeps its repair order.
-    expect(publicEpochReview(review, { brief: null }).findings[0]?.claim).toContain(
-      "inspect and repair that contract",
-    );
   });
 
   test("an authoring dispute reaches the ledger the next build reads", () => {
@@ -507,14 +496,14 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
       });
       const projected = publicEpochReview({ status: "completed", ...state }).findings[0]?.claim ?? "";
       expect(projected).toBe(
-        "Epoch review (correctness-model/evaluator.ts): check `gpio-exit-code` at artifact path `pins.gpio` (public input `$.board.pins`); inspect and repair that contract.",
+        "Epoch review (correctness-model/evaluator.ts): check `gpio-exit-code` at artifact path `pins.gpio` (public input `$.board.pins`); a defect.",
       );
       for (const word of ["mock", "header", "returns", "predicate"]) expect(projected).not.toContain(word);
     });
 
     // Run 0dba8e: three reviews named the compile check for a sketch no check ran, and the
     // Builder repaired the compile check each time.
-    test("an unobserved obligation names its path, asks for a check and refuses a nearest check id", async () => {
+    test("an unobserved obligation names its path, counts its readers and refuses a nearest check id", async () => {
       const state = reviewState();
       const tool = recordFindingTool([], [], evidence, state, { identities });
       expect(
@@ -536,7 +525,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
       ).toBe("recorded defect as blocking");
       expect(state.findings[0]).toMatchObject({ unobserved: true, artifactSchemaPath: "pins" });
       expect(publicEpochReview({ status: "completed", ...state }).findings[0]?.claim).toBe(
-        "Epoch review (correctness-model/evaluator.ts): no declared check observes the obligation the review traced at artifact path `pins`; add a check that observes what the delivered artifact does there.",
+        "Epoch review (correctness-model/evaluator.ts): no declared check observes the obligation the review traced at artifact path `pins`; a defect.",
       );
       // Run 08c0f2: every one of nine checks read `$.firmware`, and two different gaps both
       // reached the Builder as "no declared check observes artifact path `firmware`".
@@ -555,7 +544,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
         publicEpochReview({ status: "completed", ...state, findings: [traced] }, { brief }).findings[0]
           ?.claim,
       ).toBe(
-        "Epoch review (correctness-model/evaluator.ts): none of the 3 declared checks reading artifact path `pins` observes the obligation the review traced there (public input `$.board.pins`); add a check that observes what the delivered artifact does there.",
+        "Epoch review (correctness-model/evaluator.ts): none of the 3 declared checks reading artifact path `pins` observes the obligation the review traced there (public input `$.board.pins`); a defect.",
       );
     });
 
@@ -709,9 +698,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
       ).toHaveLength(state.findings.length);
     });
 
-    test("an observation names the check, never a repair order", async () => {
-      // An uncertain reading that reaches the Builder as "inspect and repair that contract" followed
-      // by "Repair the complete public obligation" is a repair order it never earned.
+    test("an observation names the check and says it demonstrated nothing", async () => {
       for (const placement of [{ owner: TASKS_FILE }, {}]) {
         const state = reviewState();
         expect(
@@ -725,16 +712,9 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
         ).toBe("recorded observation as advisory");
         const projected =
           publicEpochReview({ status: "completed", ...state }, { brief: null }).findings[0]?.claim ?? "";
-        expect(projected).toContain("check `gpio-exit-code`");
-        expect(projected).toContain("asks for no repair");
+        expect(projected).toEndWith("check `gpio-exit-code`; an observation, not a demonstrated defect.");
         expect(projected).not.toContain("Original request");
-        for (const order of [
-          "inspect and repair",
-          "Repair the complete public obligation",
-          "private prose",
-        ]) {
-          expect(projected).not.toContain(order);
-        }
+        expect(projected).not.toContain("private prose");
         const bare = reviewState();
         await call(recordFindingTool([], [], evidence, bare, { identities }), {
           defect: false,
@@ -742,20 +722,20 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
           claim: "private prose",
         });
         expect(publicEpochReview({ status: "completed", ...bare }).findings[0]?.claim).toBe(
-          "Epoch review (unplaced): no check, path or file named; it is an observation and asks for no repair.",
+          "Epoch review (no file named): no check or path named; an observation, not a demonstrated defect.",
         );
       }
     });
 
     // The owner's file is the one concrete name such a finding has; the claim stays private.
-    test("a finding without identities names its owner's file under its group", async () => {
+    test("a finding without identities names its owner's file and nothing to do there", async () => {
       const state = reviewState();
       await call(recordFindingTool([], [], evidence, state, { identities }), {
         ...defect,
         claim: "the writer omits a required root",
       });
       expect(publicEpochReview({ status: "completed", ...state }).findings[0]?.claim).toBe(
-        "Epoch review (correctness-model/evaluator.ts): no check or path named; inspect that contract for a mismatch.",
+        "Epoch review (correctness-model/evaluator.ts): no check or path named; a defect.",
       );
       expect(state.findings[0]).not.toHaveProperty("checkId");
     });
@@ -848,7 +828,7 @@ describe("what a finding's typed fields carry to authoring", () => {
     };
     const first = await project("the limit is cleared by half");
     expect(first.findings[0]?.claim).toBe(
-      "Epoch review (correctness-model/tasks.json): public inputs `$.loads` and `$.limits.deflection`; make the published limit bind a first reasonable candidate in the fresh battery; adoption solves every task with the reference and refuses a candidate whose reference artifact fails a declared check, so a tighter limit needs a stronger reference search.\nThe first reasonable candidate clears a published limit widely.",
+      "Epoch review (correctness-model/tasks.json): public inputs `$.loads` and `$.limits.deflection`; a defect.\nThe first reasonable candidate clears a published limit widely.",
     );
     const reworded = await project("a wholly different private wording");
     expect(reworded.findings.map((finding) => finding.claim)).toEqual(
@@ -856,11 +836,10 @@ describe("what a finding's typed fields carry to authoring", () => {
     );
   });
 
-  // Operator defect 4: a curriculum finding typed limit-cleared-widely reached the author followed
-  // by "it does not ask for a published limit to move between batteries", the negation of the gap
-  // it was typed with, and a harness finding typed with a gap read "inspect that contract for a
-  // mismatch", which the review had not said either.
-  test("each demand gap's act agrees with its sentence, and protected detail moves no projection", async () => {
+  // Each gap once crossed with a method attached — make the limit bind, demand a decision beyond
+  // reading margins, vary what an input brings together — which is a second planner choosing the
+  // Builder's next experiment. The gap is what the review observed; the method is the author's.
+  test("each demand gap crosses as its observation alone, and protected detail moves no projection", async () => {
     const project = async (fields: Record<string, JsonValue>, claim: string, demonstration: string) => {
       const state = reviewState();
       state.reads.push("agent/tools.ts");
@@ -887,7 +866,7 @@ describe("what a finding's typed fields carry to authoring", () => {
     const gapFindings: Array<[Record<string, JsonValue>, string]> = [
       [
         { owner: TASKS_FILE, demandGap: "limit-cleared-widely", publicInputPath: "$.limits.deflection" },
-        "Epoch review (correctness-model/tasks.json): public input `$.limits.deflection`; make the published limit bind a first reasonable candidate in the fresh battery; adoption solves every task with the reference and refuses a candidate whose reference artifact fails a declared check, so a tighter limit needs a stronger reference search.\nThe first reasonable candidate clears a published limit widely.",
+        "Epoch review (correctness-model/tasks.json): public input `$.limits.deflection`; a defect.\nThe first reasonable candidate clears a published limit widely.",
       ],
       [
         {
@@ -895,29 +874,30 @@ describe("what a finding's typed fields carry to authoring", () => {
           demandGap: "solver-tool-reports-margins",
           publicInputPath: "$.limits.deflection",
         },
-        "Epoch review (correctness-model/tasks.json): public input `$.limits.deflection`; make the fresh battery's tasks demand a decision that reading a reported margin and adjusting does not reach.\nA solver tool reports every margin a declared check reads.",
+        "Epoch review (correctness-model/tasks.json): public input `$.limits.deflection`; a defect.\nA solver tool reports every margin a declared check reads.",
       ],
       [
         { owner: TASKS_FILE, demandGap: "rule-outside-request", publicInputPath: "$.loads" },
-        "Epoch review (correctness-model/tasks.json): public input `$.loads`; hold the fresh battery's tasks to what the request itself demands, without the rule it does not hold.\nA rule stands that no practitioner of the request would hold.",
+        "Epoch review (correctness-model/tasks.json): public input `$.loads`; a defect.\nA rule stands that no practitioner of the request would hold.",
       ],
       [
         { owner: TASKS_FILE, demandGap: "sibling-values-only", publicInputPath: "$.loads" },
-        "Epoch review (correctness-model/tasks.json): public input `$.loads`; make the fresh battery's tasks differ in what they ask of this input — which parts it brings together and how they must work — not only in the values published in it.\nSibling tasks differ only in the values they publish.",
+        "Epoch review (correctness-model/tasks.json): public input `$.loads`; a defect.\nSibling tasks differ only in the values they publish.",
+      ],
+      [
+        { owner: TASKS_FILE, demandGap: "capability-unexercised" },
+        "Epoch review (correctness-model/tasks.json): no check or path named; a defect.\nThe request names a capability no task in the battery exercises.",
       ],
       [
         { owner: "agent/tools.ts", demandGap: "solver-tool-reports-margins" },
-        "Epoch review (agent/tools.ts): no check or path named; inspect and repair that contract.\nA solver tool reports every margin a declared check reads.",
+        "Epoch review (agent/tools.ts): no check or path named; a defect.\nA solver tool reports every margin a declared check reads.",
       ],
-      [
-        { owner: "agent/config.yaml" },
-        "Epoch review (agent/config.yaml): no check or path named; inspect that contract for a mismatch.",
-      ],
+      [{ owner: "agent/config.yaml" }, "Epoch review (agent/config.yaml): no check or path named; a defect."],
     ];
     for (const [fields, expected] of gapFindings) {
       const first = await project(fields, "first", DEMO);
       expect(first).toBe(expected);
-      expect(first).not.toContain("does not ask for a published limit");
+      expect(first).not.toMatch(PRESCRIPTION);
       // Claim, demonstration and citations are the review's own protected detail.
       expect(await project(fields, "a wholly different private wording", "another private case")).toBe(first);
     }
@@ -942,31 +922,29 @@ describe("what a finding's typed fields carry to authoring", () => {
     );
   });
 
-  test("a brief finding on a check keeps its own heading and gets no obligation or repair line", async () => {
-    const project = async (owner: string) => {
+  test("a defect naming a declared check carries its public obligation whichever file it names", async () => {
+    const project = async (owner: string, defect = true) => {
       const state = reviewState();
       await call(recordFindingTool([], [], evidence, state, { identities }), {
         ...advisory,
+        defect,
         owner,
         claim: "c",
         checkId: "deflection",
       });
-      return publicEpochReview({ status: "completed", ...state }, { brief, deferAdvisory: false }).findings[0]
-        ?.claim;
+      return publicEpochReview({ status: "completed", ...state }, { brief }).findings[0]?.claim ?? "";
     };
-    const briefClaim = (await project("correctness-model/brief.json")) ?? "";
-    expect(briefClaim.startsWith("Epoch review (correctness-model/brief.json): check `deflection`;")).toBe(
-      true,
+    const obligation = 'Declared public obligation: {"assertion":"span/250","rules":[]}';
+    expect(await project("correctness-model/brief.json")).toBe(
+      `Epoch review (correctness-model/brief.json): check \`deflection\`; a defect.\n${obligation}`,
     );
-    expect(briefClaim).toContain("decide the public rule this concerns in the brief");
-    expect(briefClaim).not.toContain("Declared public obligation");
-    expect(briefClaim).not.toContain("Repair the complete public obligation");
-    const evaluatorClaim = (await project("correctness-model/evaluator.ts")) ?? "";
-    expect(
-      evaluatorClaim.startsWith("Epoch review (correctness-model/evaluator.ts): check `deflection`;"),
-    ).toBe(true);
-    expect(evaluatorClaim).toContain("Declared public obligation");
-    expect(evaluatorClaim).toContain("Repair the complete public obligation");
+    expect(await project("correctness-model/evaluator.ts")).toBe(
+      `Epoch review (correctness-model/evaluator.ts): check \`deflection\`; a defect.\n${obligation}`,
+    );
+    // An observation demonstrated nothing, so quoting the check back at its author adds only bulk.
+    expect(await project("correctness-model/evaluator.ts", false)).toBe(
+      "Epoch review (correctness-model/evaluator.ts): check `deflection`; an observation, not a demonstrated defect.",
+    );
   });
 
   test("settlesJudge needs a cited probe that moved the contested check, and then settles the issue", async () => {
@@ -1088,8 +1066,9 @@ describe("what a finding's typed fields carry to authoring", () => {
   });
 
   // A probe that wrote a valid variant the check refused, and one that wrote an invalid variant the
-  // check passed, both reach the author as "a check moved"; the two repairs are opposite.
-  test("a probe-backed defect's direction crosses as fixed text, and the probe's value does not", async () => {
+  // check passed, both reach the author as "a check moved", so the direction crosses as its own
+  // fact, and a probe that established neither says so. Which repair follows is the author's.
+  test("a probe-backed defect's direction, or its absence, crosses as fixed text, and the probe's value does not", async () => {
     const defect = {
       defect: true,
       claim: "an ignorable line before the report is refused",
@@ -1099,25 +1078,30 @@ describe("what a finding's typed fields carry to authoring", () => {
       citations: CITATIONS,
       probeIds: [1],
     };
-    const project = async (probeDirection: string, value: string) => {
+    const project = async (probeDirection: string | undefined, value: string) => {
       const state = reviewState();
-      const moved = probeDirection === "rejects-valid" ? ["deflection"] : [];
+      const moved = probeDirection === "accepts-invalid" ? [] : ["deflection"];
       state.probes.rows.push({ ...probeRow(1, moved), change: { value } });
       const recorded = await call(recordFindingTool([], [], evidence, state, { identities }), {
         ...defect,
-        probeDirection,
+        ...keyIfDefined("probeDirection", probeDirection),
       });
       expect(recorded).toStartWith("recorded defect");
       return publicEpochReview({ status: "completed", ...state }, { brief }).findings[0]?.claim ?? "";
     };
     const rejects = await project("rejects-valid", '"diag: boot, then report"');
-    expect(rejects).toContain(
-      "The review's probe wrote an answer the published rule allows, and the check refused it: a false rejection, so the repair loosens the check to what the published rule and the original request allow, and does not tighten it or publish the restriction as a new rule.",
+    expect(rejects).toEndWith(
+      "The review's probe wrote an answer the published rule allows, and the check refused it: a false rejection.",
     );
     expect(rejects).not.toContain("diag");
     const accepts = await project("accepts-invalid", '"diag: boot, then report"');
-    expect(accepts).toContain("the check let it through: a false acceptance");
-    expect(accepts).not.toBe(rejects);
+    expect(accepts).toEndWith(
+      "The review's probe wrote an answer the published rule forbids, and the check let it through: a false acceptance.",
+    );
+    expect(await project(undefined, '"diag: boot, then report"')).toEndWith(
+      "The cited probes do not establish whether a check refused a valid answer or let an invalid one through.",
+    );
+    for (const claim of [rejects, accepts]) expect(claim).not.toMatch(PRESCRIPTION);
     // Rule 4: the probe's replacement value is protected, so changing it alone moves nothing.
     expect(await project("rejects-valid", '"another private counterexample"')).toBe(rejects);
   });

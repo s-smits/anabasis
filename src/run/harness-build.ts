@@ -315,7 +315,6 @@ function authoringReviewer(binding: AuthoringReviewBinding): ReviewAuthoring {
     writeCompleted(join(dir, `${runId}-epoch-review.json`), result);
     const { findings, disputes } = publicEpochReview(result, {
       brief: result.status === "completed" ? readValidatedBrief(root) : null,
-      deferAdvisory: true,
     });
     recordAuthoringDisputes(repoRoot, slug, disputes);
     return authoringReviewText(trigger, result.status, publicRequest, findings);

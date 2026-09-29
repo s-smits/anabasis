@@ -29,8 +29,8 @@ type CarriedReview = {
 };
 
 /** An advisory defect a completed review recorded: the review, the file it named, and what it
- *  named in that file — its check, a path below a declared root, or the public input it asked the
- *  tasks to vary — or null when it named none of them. */
+ *  named in that file — its check, a path below a declared root, or the public input it named — or
+ *  null when it named none of them. */
 export type AdvisoryDefect = { runId: string; owner: string; subject: string | null };
 
 /** One earlier advisory defect as the next completed review left it. `standing`: the review named

@@ -44,10 +44,10 @@ import { everyStatementList } from "../shared/statements.ts";
  * longer walk.
  *
  * What follows the chain then has to say the set is closed: nothing, a `throw`, or the
- * exhaustiveness assert, which is the one fallthrough that reads the subject. A plain
- * `return "inspect and repair that contract"` says the opposite — `publicAct` names three of
- * seven finding kinds and lets the rest through — and a table for a subset is a
- * `Partial<Record<…>>`, which checks no more than the chain it replaced. One site.
+ * exhaustiveness assert, which is the one fallthrough that reads the subject. A plain default
+ * `return` says the opposite — the chain names some of the kinds and lets the rest through — and
+ * a table for a subset is a `Partial<Record<…>>`, which checks no more than the chain it
+ * replaced.
  *
  * There is no fix. Whether the table is a `Record`, a `Map`, or a `satisfies`
  * against the union depends on the key type, and a missing-key answer has to be chosen.

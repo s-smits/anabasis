@@ -110,8 +110,9 @@ export type ReviewProbeRow = {
   /** Why nothing executed; null when the pair ran. */
   refused: string | null;
   /** Set when a finding this review recorded rests on the row, which makes it one of the
-   *  demonstrations the next authoring review of the round is shown (`carriedDemonstrations`). A
-   *  failed turn keeps the mark and drops the finding, so it carries nothing. */
+   *  demonstrations the next authoring review of the round is shown (`carriedDemonstrations`). The
+   *  mark is set only beside an admitted finding, and a failed turn keeps both, so its cited rows
+   *  carry as an incomplete review's do. */
   cited?: true;
 };
 
@@ -186,7 +187,7 @@ export function probeBackedRows(state: ProbeState, cited: JsonValue | undefined)
 }
 
 /** A review that executed probes and then records a defect without saying whether it rests
- *  on them loses the one route to a first-occurrence blocking finding, and its evidence record
+ *  on them loses the one route by which an agent-side defect may block, and its evidence record
  *  cannot link the finding to the rows that support it — which is exactly what a reviewer does when
  *  it narrates what its probes returned inside the claim prose and leaves `probeIds` unset. Asking
  *  costs one argument, and `probeIds: []` is the answer when the reading came from source alone. */

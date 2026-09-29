@@ -51,7 +51,8 @@ export const EPOCH_REVIEW_SCHEMA = "epoch-review/v6";
 export type MeasuredCondition = {
   /** Null when the recorded fields cannot establish a measured condition. */
   digest: string | null;
-  /** Null for a bundle with no task set; an incomplete condition cannot establish recurrence. */
+  /** Null for a bundle with no task set, which leaves the condition without a digest, so no review
+   *  of it is ever reused and no earlier task-set finding is shown against it. */
   taskSetHash: string | null;
   agentHash: string;
   correctnessModelHash: string;
@@ -198,7 +199,7 @@ export function measuredConditionOf({
 
 /** The completed reviews recorded for this campaign. An unreadable review proves nothing either
  *  way, so it is left out here and each caller decides without it: that means a corrupt file never
- *  suppresses a fresh review and never contributes a recurrence count. */
+ *  suppresses a fresh review and never contributes an earlier finding or advisory defect. */
 function completedReviews(analysisDir: string): EpochReviewEvidence[] {
   if (!existsSync(analysisDir)) return [];
   return readdirSync(analysisDir)

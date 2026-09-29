@@ -52,21 +52,20 @@ it enforces as `citedDecisionIds` (an undeclared id, or only private ones, is re
   present task publishes the same number: it grades today's battery correctly and silently forbids
   the next one from varying that input. Declaring the path in `publicInputPaths` does not do it;
   the code that decides has to read it.
-- A check certifying behaviour on a named resource, such as a pin, a member or a channel, decides
-  from the values the answer produces for that resource: a simulated trace of that pin, the
-  register writes the build emits for it, the force computed in that member. A library symbol or a
-  constant found anywhere in the build proves the answer mentions the resource, not that it
-  behaves, and an answer driving the wrong pin carries the same symbols.
-- An identifier a check reads, such as a load case, a member or a pin, is bound to what it names
-  in the public input: the check finds that geometry or scenario in the task and matches the
-  answer's rows to it, so an answer that relabels its members or cases cannot pass on the labels.
+- A check certifying behaviour on a named resource decides from the values the answer produces for
+  that resource, observed or computed where it acts. A symbol or a constant found anywhere in the
+  answer proves the answer mentions the resource, not that it behaves, and an answer acting on the
+  wrong resource carries the same symbols.
+- An identifier a check reads is bound to what it names in the public input: the check finds that
+  entity or scenario in the task and matches the answer's rows to it, so an answer that relabels
+  its entities or cases cannot pass on the labels.
 - Where the request names several targets, observe that behaviour on each one an established public
   simulator runs, not only the first. A named target nothing can run is an omission: say so in a
   `decisions` row, because a build that merely compiles for it proves no behaviour there.
 - Each behavioural obligation names, in a `decisions` row, what observes it: the real compiler for
-  building, a simulator or model validated against the target for behaviour (for a microcontroller,
-  one the field already uses, such as avr8js or rp2040js, built and smoke-tested through
-  `verifier_workshop`), or "not established" where nothing does. An obligation a stand-in of your
+  building, a simulator or model the field already uses and validates against the target for
+  behaviour, built and smoke-tested through `verifier_workshop`, or "not established" where
+  nothing does. An obligation a stand-in of your
   own decides is observed by that stand-in, and the row says so.
 - A check comparing what the answer reports about itself with what it is, such as reported sizes
   against measured ones, enforces no rule of the field: an honest answer and a wrong one pass it
@@ -168,10 +167,7 @@ there; one under TMPDIR is rebuilt on every run.
   answer with one identifier it declares renamed, and one value it writes out replaced by the name
   the target predefines for it: the real toolchain gives both the same verdict, so the stand-in
   must too. An answer the real toolchain builds and runs correctly that the stand-in cannot build
-  is the stand-in's defect. The recorded shape is a host double of the Arduino headers that fixed a
-  display's width at 128, left out `constrain`, declared `min` for one argument type only and
-  compiled the sketch's globals into its own driver's translation unit: each defect failed a sketch
-  the board's own toolchain builds and runs.
+  is the stand-in's defect.
 - Declare `hidden: "required"` to receive private cases; the host binds that row to this check
   and records its digest with the tool inputs. Private cases test the published rule within its
   public domain; a published finite answer table cannot establish an unrestricted behaviour rule.

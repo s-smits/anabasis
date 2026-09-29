@@ -723,7 +723,7 @@ the battery was paid for.
    set is not read as settled.
 
    The reviewer may also execute. `probe_check` takes one accept control, one rooted path already in its
-   artifact (`$.layout.members[0].area`, read through `jsonPathTokens`) and one change: either a replacement
+   artifact (`$.items[0].value`, read through `jsonPathTokens`) and one change: either a replacement
    value, or a `find` that occurs exactly once in a text leaf together with the `replace` that takes its
    place. A call sending both or neither is refused. The edit exists because a field holding a whole source
    file can exceed the `VALUE_MAX_CHARS` of 4,000. It runs the declared checks over the original and the

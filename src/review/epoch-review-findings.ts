@@ -641,7 +641,7 @@ function findingParameters(disputable: readonly string[]) {
       },
       artifactSchemaPath: {
         type: "string",
-        description: "A dotted path under one declared artifactSchema root, e.g. `pins.gpio`.",
+        description: "A dotted path under one declared artifactSchema root, e.g. `items.value`.",
       },
       unobserved: {
         type: "boolean",
@@ -663,7 +663,7 @@ function findingParameters(disputable: readonly string[]) {
       secondPublicInputPath: {
         type: "string",
         description:
-          "A second `$.`-prefixed public input path, when the obligation relates two inputs — for instance a load and the limit it must be held to. It crosses to authoring beside the first.",
+          "A second `$.`-prefixed public input path, when the obligation relates two inputs — for instance a quantity and the limit it must be held to. It crosses to authoring beside the first.",
       },
       demandGap: {
         type: "string",

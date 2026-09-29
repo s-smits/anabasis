@@ -157,7 +157,7 @@ describe("pi starter pack brief vocabulary", () => {
     const text = STARTER_DOC.replace(/\s+/g, " ");
     expect(text).toContain("decides from the values the answer produces for that resource");
     expect(text).toContain(
-      "A library symbol or a constant found anywhere in the build proves the answer mentions the resource, not that it behaves",
+      "A symbol or a constant found anywhere in the answer proves the answer mentions the resource, not that it behaves",
     );
     const mebibytes = STDOUT_MAX_BYTES / 2 ** 20;
     expect(Number.isInteger(mebibytes)).toBe(true);
@@ -186,10 +186,21 @@ describe("pi starter pack brief vocabulary", () => {
   it.concurrent("contract.md names what observes each obligation and calibrates checks both ways", () => {
     const text = STARTER_DOC.replace(/\s+/g, " ");
     expect(text).toContain('or "not established" where nothing does');
-    expect(text).toContain("so an answer that relabels its members or cases cannot pass on the labels");
+    expect(text).toContain("so an answer that relabels its entities or cases cannot pass on the labels");
     expect(text).toContain("A reject that differs from its accept in several facts proves nothing");
     expect(text).toContain("Calibrate every check in both directions.");
-    expect(text).toContain("fixed a display's width at 128, left out `constrain`");
+    expect(text).toContain(
+      "An answer the real toolchain builds and runs correctly that the stand-in cannot build is the stand-in's defect.",
+    );
+  });
+
+  // The Builder reads this whole, whatever the request, so an example drawn from a domain the
+  // product was measured on (a truss member, a firmware pin, a board simulator) anchors a new
+  // domain's plan to the old one (operator, 2026-09-29, before the chemistry and biology runs).
+  it.concurrent("the starter pack draws no example from a domain the product was measured on", () => {
+    expect(STARTER_DOC).not.toMatch(
+      /\b(?:truss\w*|firmware|gpio|arduino|esp32|rp2040\w*|avr8js|load case|microcontroller)\b/i,
+    );
   });
 
   // A replayed witness is already normal and the solver reaches it, so the worked routes are to a

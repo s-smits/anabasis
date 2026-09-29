@@ -243,7 +243,7 @@ function stepInto(value: JsonValue | undefined, token: string): JsonValue | unde
  * everything else. Null when the path does not resolve: a probe that added a field would answer
  * "no declared check reads it" about a field the artifact never carried, which is true and useless.
  *
- * The path is the rooted spelling the candidate's own checks declare — `$.layout.members[0].area`,
+ * The path is the rooted spelling the candidate's own checks declare — `$.items[0].value`,
  * read through `jsonPathTokens`, the one grammar a reviewer copying a path out of those
  * declarations can use.
  */
@@ -307,7 +307,7 @@ function quotedSpelling(at: JsonValue, prefix: string, rest: readonly string[]):
 export function missingFieldRefusal(artifact: JsonValue, path: string, controlId: string): string {
   const tokens = jsonPathTokens(path);
   if (tokens === null || tokens.length === 0) {
-    return `${path} is not a rooted path; spell it as the declared checks do, \`$.layout.members[0].area\`, with a key holding a dot or a slash quoted: \`$.files['src/main.cpp']\``;
+    return `${path} is not a rooted path; spell it as the declared checks do, \`$.items[0].value\`, with a key holding a dot or a slash quoted: \`$.files['src/main.cpp']\``;
   }
   let at = artifact;
   let depth = 0;
@@ -446,12 +446,12 @@ const PROBE_CHECK_CONTRACT = {
       path: {
         type: "string",
         description:
-          "A rooted path to an existing leaf of that control's artifact, spelled as the declared checks spell theirs: `$.layout.members[0].area`. Array positions are bracketed; a key holding a dot or a slash is quoted: `$.firmware['main.cpp']`.",
+          "A rooted path to an existing leaf of that control's artifact, spelled as the declared checks spell theirs: `$.items[0].value`. Array positions are bracketed; a key holding a dot or a slash is quoted: `$.files['src/main.cpp']`.",
       },
       value: {
         type: "string",
         description:
-          'The replacement value as JSON text, e.g. `0.0001`, `"bolted"` or `null`. One field only. Omit it when you send `find` and `replace`.',
+          'The replacement value as JSON text, e.g. `0.0001`, `"high"` or `null`. One field only. Omit it when you send `find` and `replace`.',
       },
       find: {
         type: "string",

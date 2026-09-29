@@ -78,8 +78,8 @@ tool that reports the installed toolchain; an adviser that returns a complete va
 
 A reference that replays a stored answer is already the usual shape, and on its own it is not
 enough: the blind solver reaches the author's own answer on most tasks, well inside its wall,
-because the search that found that answer is one the solver can run too. Two constructions may
-help; neither is required, and another method is as welcome.
+because the search that found that answer is one the solver can run too. Three constructions may
+help; none is required, and another method is as welcome.
 
 - **A search past the solver's wall.** Run an offline search far longer than one solve may take,
   keep its best incumbents, and store the best as the answer `reference/` replays, which F2 admits
@@ -88,6 +88,13 @@ help; neither is required, and another method is as welcome.
 - **A planted design.** Choose a design first, derive the requirements from it and publish only the
   requirements. It fails when the derived requirements point straight back at the planted design,
   when many simpler answers meet them too, or when they are requirements the field would not hold.
+- **The solver's own answers.** Every passing solve of a measured battery or a rehearsal is a
+  witness you can read through `context`, in its traces source. Measure each beside your stored
+  answer for the same task. Where the stored answer is clearly better, the room between it and the
+  limit is what let the solve pass, so the limit belongs nearer the stored answer. Where a solve
+  matched or beat the stored answer, your search was one the solver runs too, so start the next
+  search from the best solve and keep the better incumbent. It fails when every solve lands on the
+  stored answer, which says the task has one obvious answer rather than a hard one.
 
 `harness_trial` estimates how reliably the solver meets a task; it does not veto one. A mass limit
 met by 3 of 6 blind solves is a task the battery can measure, not one to discard. A trial can take

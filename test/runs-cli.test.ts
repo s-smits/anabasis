@@ -7,6 +7,7 @@ import { DIFFICULTY_DECISION_SCHEMA } from "../src/run/difficulty-decision.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { serviceManager } from "../.claude/skills/launch-run/scripts/service.ts";
 import {
+  chooseRun,
   latestRun,
   parseWorktreeList,
   readLaunchRecord,
@@ -590,6 +591,20 @@ describe("run selection", () => {
     expect(() => resolveRunSelector(join(campaignDir, "controller", "run-9"), "run-10")).toThrow(
       "folder names run run-9 but --run says run-10",
     );
+  });
+
+  it("names a run by its hex tail for every reader, and refuses a tail two runs share", () => {
+    // `runs show` took a hex tail that the whole-run-investigation CLI refused, because wri kept
+    // its own exact-id lookup; both now read a selector through this one rule.
+    const root = checkout();
+    writeOpening(root, "truss-aaaaaaaa-1", "truss-opus-20260920T081500000Z-2d7812", OPENED_AT);
+    writeOpening(root, "truss-bbbbbbbb-2", "truss-opus-20260921T081500000Z-9d7812", OPENED_AT);
+    const runs = recordedRuns(root);
+    expect(chooseRun(runs, "2d7812").location).toMatchObject({
+      runId: "truss-opus-20260920T081500000Z-2d7812",
+      slug: "truss-aaaaaaaa-1",
+    });
+    expect(chooseRun(runs, "d7812").refusal).toContain("names 2 recorded runs");
   });
 
   it("leaves an undated opening out of the order rather than guessing where it goes", () => {

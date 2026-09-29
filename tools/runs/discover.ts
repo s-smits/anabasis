@@ -164,6 +164,35 @@ export function findRun(repoRoot: string, runId: string): RunLocation[] {
   return recordedRuns(repoRoot).filter((run) => run.runId === runId);
 }
 
+/** The candidates a selector reaches, exact first, and never two answers to one question. */
+export function chooseRun(
+  locations: readonly RunLocation[],
+  selector: string,
+): { location: RunLocation; refusal?: undefined } | { refusal: string; location?: undefined } {
+  // An exact run id first, then an exact project name, then the ids the selector is the head or the
+  // tail of. The tail is the launcher's hex suffix, which is how a run is named everywhere else.
+  // The project before a partial id: otherwise a slug that is also the head of its own runs' ids
+  // — which is how the launcher names them — could never select the project. An exact id used to
+  // take the first location holding it, and a run id is unique inside one campaign rather than
+  // across them, so two campaigns recording one id sent `stop --yes` to whichever was walked
+  // first. Each group refuses the same way when it holds more than one.
+  const exact = locations.filter((location) => location.runId === selector);
+  const named = locations.filter((location) => location.slug === selector);
+  const partial = locations.filter(
+    (location) => location.runId.startsWith(selector) || location.runId.endsWith(selector),
+  );
+  const candidates = [exact, named, partial].find((group) => group.length > 0) ?? [];
+  const [only] = candidates;
+  if (only === undefined) {
+    return { refusal: `no recorded run matches ${selector}; "bun run runs list" shows the run ids` };
+  }
+  if (candidates.length === 1) return { location: only };
+  const ids = candidates.map((location) => `${location.runId} in ${location.slug}`).sort();
+  return {
+    refusal: `${selector} names ${String(ids.length)} recorded runs, and this cannot tell which one you meant:\n  ${ids.join("\n  ")}`,
+  };
+}
+
 /**
  * Campaign and run from one folder: `<campaign>`, `<campaign>/controller` or
  * `<campaign>/controller/<runId>`. An explicit run must agree with a folder that already names one,

@@ -50,7 +50,13 @@ import { exitWith, parseCommandOrDie } from "#skills/main/cli.ts";
 import { writeJsonFile } from "#src/meta/completed-json.ts";
 import { isRecord } from "#src/meta/json-shape.ts";
 import { emitReport } from "#skills/main/output.ts";
-import { findRun, mainCheckout, resolveRunSelector, type RunSelection } from "#tools/runs/discover.ts";
+import {
+  chooseRun,
+  mainCheckout,
+  recordedRuns,
+  resolveRunSelector,
+  type RunSelection,
+} from "#tools/runs/discover.ts";
 import { campaignRoot } from "#src/meta/campaign-root.ts";
 
 const SCRIPT_DIR = dirname(new URL(import.meta.url).pathname);
@@ -334,29 +340,16 @@ function script(name: string): string {
   return join(SCRIPT_DIR, name);
 }
 
-/** The campaign holding `controller/<runId>/opening.json`, so a bare run id names its own folder.
- *  The main checkout owns the one campaign tree every run worktree links to. A run id is unique
- *  inside one campaign only, so two campaigns holding it is a question for the operator, not a
- *  directory-order guess. */
-function findCampaign(runId: string): string {
-  const root = mainCheckout(CHECKOUT);
-  const runs = findRun(root, runId);
-  const [only] = runs;
-  if (only === undefined) throw new Error(`no campaign under ${root} recorded an opening for ${runId}`);
-  if (runs.length > 1) {
-    throw new Error(`${runId} names a run in ${runs.length} campaigns; pass the campaign folder instead`);
-  }
-  return only.campaignDir;
-}
-
-/** Campaign and run from one folder, one run id, or the explicit options. */
+/** Campaign and run from one folder, the explicit options, or a run selector read the way `bun run
+ *  runs show` reads it (id, project, or the head or hex tail of an id) over the main checkout's
+ *  campaign tree, which every run worktree links to. */
 function resolveTarget(args: WriArgs, positional: string | null): RunSelection {
   const folder = positional ?? args.value("campaign");
   if (folder === null) throw new Error("name a campaign folder, a controller/<runId> folder or a run id");
-  const known = existsSync(folder) || existsSync(resolve(folder));
-  return known
-    ? resolveRunSelector(folder, args.value("run"))
-    : { ...resolveRunSelector(findCampaign(folder), folder), chosen: "run id" };
+  if (existsSync(folder) || existsSync(resolve(folder))) return resolveRunSelector(folder, args.value("run"));
+  const { location, refusal } = chooseRun(recordedRuns(mainCheckout(CHECKOUT)), folder);
+  if (location === undefined) throw new Error(refusal);
+  return { ...resolveRunSelector(location.campaignDir, location.runId), chosen: "run id" };
 }
 
 /** The archive `finish` already wrote for this run, or null while none carries its `review.json`. */

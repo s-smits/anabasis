@@ -96,8 +96,9 @@ bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.ts read <ru
   --out <absolute review dir> [--all | --lanes 5,yield] [--run <runId>] [--repo <abs>]
 ```
 
-A target is a campaign folder, its `controller/<runId>` folder or a bare run id, which `wri.ts`
-looks up in the main checkout's campaign tree. `scope` sizes the run from its own recorded bytes,
+A target is a campaign folder, its `controller/<runId>` folder or any selector `bun run runs show`
+takes (a run id, a project, or the head or hex tail of an id), which `wri.ts` looks up in the main
+checkout's campaign tree and refuses when it names more than one run. `scope` sizes the run from its own recorded bytes,
 and `read` with no `--lanes` reads what that size earns. Every lane's output is captured to
 `<review>/<lane>.txt`, the read is recorded in `<review>/wri-review.json`, and the command prints
 one bounded brief instead of the captures: the run's size and terminal, each lane quoted whole or

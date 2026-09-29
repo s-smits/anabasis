@@ -16,8 +16,9 @@
  * says the family left the task set. Nothing turns them into "fixed" or "regressed": identity is
  * `kind + family + detail`, which names where a failure showed and not what caused it, so an
  * absence is a failure not seen again and never a repair. `issueFacts` states them as one phrase.
- * Comparable means the family's public inputs, the scoring program, the tools its checks ran and
- * the Built condition all match the battery that last observed the issue (`issue-condition.ts`).
+ * Comparable means the family's tasks, hidden expectations included, the scoring program, the tools
+ * its checks ran and the Built condition all match the battery that last observed the issue
+ * (`issue-condition.ts`).
  * Identity deliberately excludes the harness, which is what lets one issue be followed across a
  * rebuild.
  *
@@ -60,7 +61,7 @@ import {
   conditionGaps,
 } from "./issue-condition.ts";
 
-export const REBUILD_ADVICE_SCHEMA = "rebuild-advice/v10";
+export const REBUILD_ADVICE_SCHEMA = "rebuild-advice/v11";
 const REBUILD_ADVICE_LATEST = "rebuild-advice-latest.json";
 
 /** What a battery can say about a family without naming a task. */
@@ -163,9 +164,9 @@ type AdviceFamilyRow = {
   passed: number;
   unaccepted: number;
   nonResults: number;
-  /** The digest of the family's public inputs in this battery, or null when they could not be
-   *  vouched for. */
-  publicInputs: string | null;
+  /** The digest of the family's whole tasks in this battery, hidden expectations included, or
+   *  null when they could not be vouched for. */
+  taskInputs: string | null;
 };
 
 /** A finding no bundle file holds, which is therefore an observation and always advice: the
@@ -193,7 +194,7 @@ export type RebuildAdvicePacket = {
    *  under when a later reader has only this packet. */
   backendPin: string;
   /** The scoring program, the tools its checks ran and the measured condition the battery ran
-   *  under; with each family's `publicInputs`, the condition its issues were observed under. */
+   *  under; with each family's `taskInputs`, the condition its issues were observed under. */
   scoringHash: string;
   checkTools: string | null;
   measuredCondition: string;
@@ -237,7 +238,7 @@ const FINDING_CLAIM_BYTES = 600;
 
 /** How the unmeasured line names each part of the condition that moved. */
 const GAP_WORDS: Record<ConditionGap, string> = {
-  "public-inputs": "public inputs",
+  "task-inputs": "task inputs",
   scoring: "scoring program",
   "check-tools": "check tools",
   "built-condition": "Built model or resources",
@@ -296,7 +297,7 @@ function familyRows(analysis: IterationAnalysis, condition: BatteryCondition): A
       passed,
       unaccepted,
       nonResults,
-      publicInputs: condition.familyInputs.get(family) ?? null,
+      taskInputs: condition.familyInputs.get(family) ?? null,
     }))
     .sort((a, b) => a.family.localeCompare(b.family));
 }
@@ -388,7 +389,7 @@ export function advanceIssues(
 ): AdviceIssue[] {
   const byFamily = new Map(battery.families.map((row) => [row.family, row] as const));
   const conditionOf = (family: string): IssueCondition => ({
-    publicInputs: byFamily.get(family)?.publicInputs ?? null,
+    taskInputs: byFamily.get(family)?.taskInputs ?? null,
     scoringHash: battery.scoringHash,
     checkTools: battery.checkTools,
     measuredCondition: battery.measuredCondition,

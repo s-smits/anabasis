@@ -43,6 +43,7 @@ import { double, required } from "./helpers/doubles.ts";
 import { EvidenceLog } from "../src/claim/evidence-log.ts";
 import { verifierEnvironmentHashOfTools } from "../src/correctness-bundle/verifier-environment.ts";
 import { resolveToolInventory } from "../src/verify/tool-inventory.ts";
+import { taskSetDigest } from "../src/claim/fingerprint.ts";
 import {
   type BatteryCondition,
   batteryCondition,
@@ -188,7 +189,7 @@ function conditionOf(data: IterationAnalysis, overrides?: Partial<BatteryConditi
     scoringHash: MEASURED_UNDER.scoringHash,
     checkTools: MEASURED_UNDER.checkTools,
     measuredCondition: MEASURED_UNDER.measuredCondition,
-    familyInputs: new Map(data.cases.map((row) => [row.family, MEASURED_UNDER.publicInputs] as const)),
+    familyInputs: new Map(data.cases.map((row) => [row.family, MEASURED_UNDER.taskInputs] as const)),
     ...overrides,
   };
 }
@@ -368,7 +369,7 @@ describe("how an issue ages across batteries", () => {
       unaccepted: 0,
       nonResults: 0,
       ...counts,
-      publicInputs: MEASURED_UNDER.publicInputs,
+      taskInputs: MEASURED_UNDER.taskInputs,
     };
   };
   /** The battery's family rows. A family is only evidence about an issue once it produced a
@@ -497,7 +498,7 @@ describe("how an issue ages across batteries", () => {
       expect.objectContaining({ diagnosis: null, dispute: null, lastSeenRunId: "r2" }),
     ]);
     expect(repaired.filter(isStanding)).toHaveLength(1);
-    const otherTasks = [{ ...familyRow("beams"), publicInputs: "9".repeat(64) }];
+    const otherTasks = [{ ...familyRow("beams"), taskInputs: "9".repeat(64) }];
     expect(advance([read], [beamsFail], "r2", otherTasks, "complete")).toEqual([
       expect.objectContaining({ diagnosis: null, dispute: null }),
     ]);
@@ -1108,8 +1109,8 @@ describe("what the author reads", () => {
 });
 
 describe("whether an absence is comparable evidence", () => {
-  const ran = (publicInputs: string | null = MEASURED_UNDER.publicInputs) => [
-    { family: "beams", verified: 2, passed: 2, unaccepted: 0, nonResults: 0, publicInputs },
+  const ran = (taskInputs: string | null = MEASURED_UNDER.taskInputs) => [
+    { family: "beams", verified: 2, passed: 2, unaccepted: 0, nonResults: 0, taskInputs },
   ];
   const beamsFail = {
     kind: "verified-fail" as const,
@@ -1120,19 +1121,19 @@ describe("whether an absence is comparable evidence", () => {
   };
   const other = (digit: string) => digit.repeat(64);
 
-  it("reads an absence on other public inputs as unmeasured, never as a fix", () => {
+  it("reads an absence on other task inputs as unmeasured, never as a fix", () => {
     // The family ran and every verified case passed, but on tasks it never failed: nothing about
     // the issue was asked again, so the absence proves nothing about whether it was repaired.
     const moved = advance([issue()], [], "r2", ran(other("9")), "complete");
     expect(moved).toEqual([
-      expect.objectContaining({ absentBatteries: 0, unmeasured: ["public-inputs"], lastSeenRunId: "r1" }),
+      expect.objectContaining({ absentBatteries: 0, unmeasured: ["task-inputs"], lastSeenRunId: "r1" }),
     ]);
     expect(moved.map(issueFacts)).toEqual([
-      "first seen r1, last seen r1, latest recheck not comparable (public inputs changed)",
+      "first seen r1, last seen r1, latest recheck not comparable (task inputs changed)",
     ]);
     expect(moved.filter(isStanding)).toEqual([]);
-    // A family whose public tasks could not be vouched for compares with nothing.
-    expect(advance([issue()], [], "r2", ran(null), "complete")[0]?.unmeasured).toEqual(["public-inputs"]);
+    // A family whose tasks could not be vouched for compares with nothing.
+    expect(advance([issue()], [], "r2", ran(null), "complete")[0]?.unmeasured).toEqual(["task-inputs"]);
   });
 
   it("reads an absence under a changed scoring program as unmeasured, even on identical inputs", () => {
@@ -1181,7 +1182,7 @@ describe("whether an absence is comparable evidence", () => {
       { ...MEASURED_UNDER, families: ran(other("9")), measuredCondition: other("7") },
       "complete",
     );
-    expect(otherModel[0]?.unmeasured).toEqual(["public-inputs", "built-condition"]);
+    expect(otherModel[0]?.unmeasured).toEqual(["task-inputs", "built-condition"]);
   });
 
   it("an unmeasured issue counts a recheck once a comparable battery runs, and seeing it again after none is no return", () => {
@@ -1195,7 +1196,7 @@ describe("whether an absence is comparable evidence", () => {
       expect.objectContaining({
         returned: false,
         unmeasured: [],
-        observedUnder: { ...MEASURED_UNDER, publicInputs: other("9") },
+        observedUnder: { ...MEASURED_UNDER, taskInputs: other("9") },
       }),
     ]);
   });
@@ -1209,19 +1210,19 @@ describe("whether an absence is comparable evidence", () => {
     expect(result.scoringHash).toBe(MEASURED_UNDER.scoringHash);
     expect(result.checkTools).toBe(MEASURED_UNDER.checkTools);
     expect(result.measuredCondition).toBe(MEASURED_UNDER.measuredCondition);
-    expect(result.families.map((row) => row.publicInputs)).toEqual([other("5")]);
-    expect(result.issues[0]?.observedUnder).toEqual({ ...MEASURED_UNDER, publicInputs: other("5") });
+    expect(result.families.map((row) => row.taskInputs)).toEqual([other("5")]);
+    expect(result.issues[0]?.observedUnder).toEqual({ ...MEASURED_UNDER, taskInputs: other("5") });
   });
 
   it("tells the author an unmeasured issue is unmeasured, not fixed and not standing", () => {
     const rendered = renderRebuildAdvice(
       advicePacket([
-        issue({ unmeasured: ["public-inputs", "scoring"] }),
+        issue({ unmeasured: ["task-inputs", "scoring"] }),
         issue({ id: JOINTS, family: "joints" }),
       ]),
     );
     expect(rendered).toContain(
-      "Unmeasured issues — absent from this battery, but their family did not rerun under the condition that observed them, so the absence is not a fix: beams (verified-fail: public inputs, scoring program changed).",
+      "Unmeasured issues — absent from this battery, but their family did not rerun under the condition that observed them, so the absence is not a fix: beams (verified-fail: task inputs, scoring program changed).",
     );
     expect(rendered).toContain("- joints: 2/5");
     expect(rendered).not.toContain("- beams:");
@@ -1286,6 +1287,50 @@ describe("measuredConditionDigest", () => {
   });
 });
 
+describe("the tasks a family ran", () => {
+  // A probe that moves only a hidden limit asks the verifier another question while the solver reads
+  // the same bytes, so the family's digest has to move with it, and only that family's.
+  it("a probe that moves only a hidden operand is another question, and an unvouched tree is unknown", () => {
+    const tree = scratchDir("ana-family-tasks-");
+    mkdirSync(join(tree, "correctness-model"), { recursive: true });
+    const write = (limit: number) =>
+      writeFileSync(
+        join(tree, "correctness-model", "tasks.json"),
+        JSON.stringify([
+          { taskId: "t1", family: "beams", publicInput: { span: 4 }, hidden: [{ limit }] },
+          { taskId: "t2", family: "joints", publicInput: { span: 5 }, hidden: [{ limit: 2 }] },
+        ]),
+      );
+    const read = (taskSetHash: string | null) =>
+      batteryCondition(
+        double<Parameters<typeof batteryCondition>[0]>({
+          runId: "run-tasks",
+          cases: [
+            { taskId: "t1", family: "beams" },
+            { taskId: "t2", family: "joints" },
+          ],
+          identities: {
+            backendPin: "codex:built-model:high",
+            isolationStrength: "physical",
+            bundleSnapshot: { scoringHash: "s", taskSetHash },
+          },
+          battery: { condition: { variant: "shipping", advisorsRemoved: [] } },
+        }),
+        tree,
+      ).familyInputs;
+    write(1);
+    const recorded = taskSetDigest(tree);
+    const before = read(recorded);
+    write(3);
+    const after = read(taskSetDigest(tree));
+    expect(before.get("beams")).toMatch(/^[0-9a-f]{64}$/);
+    expect(after.get("beams")).not.toBe(before.get("beams"));
+    expect(after.get("joints")).toBe(before.get("joints"));
+    // The tree no longer hashes to the task set the battery recorded, so nothing is vouched for.
+    expect([...read(recorded).values()]).toEqual([null, null]);
+  });
+});
+
 describe("the tools a battery's checks ran", () => {
   const script = {
     digest: "a".repeat(64),
@@ -1302,7 +1347,7 @@ describe("the tools a battery's checks ran", () => {
       passed: 2,
       unaccepted: 0,
       nonResults: 0,
-      publicInputs: MEASURED_UNDER.publicInputs,
+      taskInputs: MEASURED_UNDER.taskInputs,
     },
   ];
 

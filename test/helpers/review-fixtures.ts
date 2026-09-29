@@ -29,7 +29,7 @@ export const JOINTS = adviceIssueId("unaccepted", "joints", null);
  *  as a complete recheck only across batteries that share all four, so a test that means a
  *  different condition says which part moved. */
 export const MEASURED_UNDER = {
-  publicInputs: "1".repeat(64),
+  taskInputs: "1".repeat(64),
   scoringHash: "2".repeat(64),
   checkTools: "4".repeat(64),
   measuredCondition: "3".repeat(64),
@@ -102,7 +102,7 @@ export function advicePacket(issues: AdviceIssue[]): RebuildAdvicePacket {
         passed: 3,
         unaccepted: 0,
         nonResults: 0,
-        publicInputs: MEASURED_UNDER.publicInputs,
+        taskInputs: MEASURED_UNDER.taskInputs,
       },
     ],
     blockingByCheck: {},

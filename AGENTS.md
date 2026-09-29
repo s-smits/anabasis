@@ -726,7 +726,7 @@ the battery was paid for.
     `rebuild-advice-latest.json` beside it), bound by digest to the iteration that consumes it, and
     rendered once per rebuild kickoff from recorded rows, Judge reviews and admitted aggregate findings,
     never per-case ones. It states each issue's owner, not what to rebuild. Each issue keeps a stable id
-    and states its recorded facts rather than a verdict on them (`issueFacts`, `rebuild-advice/v10`):
+    and states its recorded facts rather than a verdict on them (`issueFacts`, `rebuild-advice/v11`):
     where it was first and last seen, how many complete rechecks have not observed it since, whether it
     was seen again after an absence, which condition moved when a recheck was not comparable, and
     whether its family left the set, a review disputed it or a review settled it. Until 2026-09-29 the
@@ -734,11 +734,14 @@ the battery was paid for.
     conclusion an absence cannot carry, since an absence says the failure did not show and not that
     anything repaired it. A family leaving the set proves no fix at all. An absence counts as a complete
     recheck only when every case of the family was truth-verified under the condition that observed the
-    issue: the same public inputs, `scoringHash`, check tools, Built pin,
-    recorded reasoning effort, isolation and run condition (`src/author/issue-condition.ts`). An effort
-    the cases never recorded compares with nothing, and the solver walls in `agent/config.yaml` are left
-    out, because raising them is a fix. A recheck that lost a case to a non-result or an unaccepted
-    attempt carries the issue unchanged, because the lost case may be the one that failed. Under another
+    issue: the same tasks, hidden expectations included, `scoringHash`, check tools, Built pin,
+    recorded reasoning effort, isolation and run condition, which carries the host's share of the Built
+    prompt (`src/author/issue-condition.ts`). An effort or a procedure the cases never recorded
+    compares with nothing, and the solver walls in `agent/config.yaml` are left out, because raising
+    them is a fix. A probe that moves only a hidden limit asks the verifier another question while the
+    solver reads the same bytes, which is why the hidden fields are in. A recheck that lost a case to
+    a non-result or an unaccepted attempt carries the issue unchanged, because the lost case may be the
+    one that failed. Under another
     condition the recheck is named not comparable and counts neither way, because swapping out the failing
     tasks or blinding the evaluator makes an issue vanish without repairing anything. An evaluation
     correction therefore leaves its rechecks not comparable even when it regrades: the scoring hash moved, and

@@ -3,8 +3,10 @@
  * absence from a later battery says anything about the issue.
  *
  * Absence is evidence of a fix only when the family was asked the same question again. Four things
- * have to hold for that. The family ran on the same public inputs, because a task probe that swaps
- * them removes the failing tasks rather than repairing anything. The scoring program is the same,
+ * have to hold for that. The family ran on the same tasks, public inputs and hidden expectations
+ * alike: a task probe that swaps the inputs removes the failing tasks rather than repairing anything,
+ * and one that moves only a hidden limit or operand asks the verifier another question while the
+ * solver reads the same bytes. The scoring program is the same,
  * because identical inputs graded by a weaker evaluator also make a failure disappear. The tools
  * the checks ran are the same, because the scoring hash stops at evaluator.ts and its imports while
  * a check can hand the verdict to an installed analyser, and an analyser replaced underneath an
@@ -26,31 +28,33 @@
  * silence towards a fix.
  *
  * Every value here is read from what the battery already recorded: the scoring hash from the
- * bundle snapshot the analysis names, each family's inputs from the battery's own digest-bound
- * `cases/<taskId>/public-task.json` projections, the check tools from its digest-bound
- * `battery.json`, and the measured condition from the analysis's identities.
+ * bundle snapshot the analysis names, each family's tasks from the measured tree's tasks.json while
+ * that tree still hashes to the task-set hash the same snapshot recorded, the check tools from its
+ * digest-bound `battery.json`, and the measured condition from the analysis's identities.
  */
+import { existsSync, readFileSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
 import { compareCodeUnits, hashJsonValue } from "../meta/stable-json.ts";
 import { capturedJsonParse } from "../meta/json-runtime.ts";
-import { asRecord } from "../meta/json-shape.ts";
+import { asRecord, isString } from "../meta/json-shape.ts";
+import { TASKS_FILE } from "../meta/bundle-layout.ts";
+import { taskSetDigest } from "../claim/fingerprint.ts";
 import type { IterationAnalysis } from "../analyse/iteration-analysis.ts";
 import { type EvidenceLogViolation, recordedEvidence, verifyRunDir } from "../claim/evidence-log.ts";
 import { BATTERY_FILE } from "../correctness-bundle/battery-record.ts";
 import { recordedVerifierHash } from "../correctness-bundle/verifier-environment.ts";
-import { publicBatteryFingerprint, recordedPublicTasks } from "../run/climb-history.ts";
 
 /** Which part of the condition moved between the battery that observed an issue and a later one
  *  in which it was absent. */
-const CONDITION_GAPS = ["public-inputs", "scoring", "check-tools", "built-condition"] as const;
+const CONDITION_GAPS = ["task-inputs", "scoring", "check-tools", "built-condition"] as const;
 export type ConditionGap = (typeof CONDITION_GAPS)[number];
 
 /** The condition one battery measured one family under. */
 export type IssueCondition = {
-  /** sha256 over the family's sorted canonical public inputs in that battery; null when any of
-   *  the family's recorded task projections could not be vouched for, which compares with
-   *  nothing. */
-  publicInputs: string | null;
+  /** sha256 over the family's whole task records in that battery, public input and hidden
+   *  expectations alike; null when the measured tree could not be vouched for, which compares
+   *  with nothing. */
+  taskInputs: string | null;
   scoringHash: string;
   /** sha256 over the tools the battery's checks launched, each by its own digest, source,
    *  interpreter digest and tree digest; null when the battery record could not be vouched for,
@@ -98,7 +102,7 @@ export function measuredConditionDigest(facts: {
 /** What moved between two conditions, in `CONDITION_GAPS` order; empty when they are comparable. */
 export function conditionGaps(was: IssueCondition, now: IssueCondition): ConditionGap[] {
   const moved: Record<ConditionGap, boolean> = {
-    "public-inputs": was.publicInputs === null || was.publicInputs !== now.publicInputs,
+    "task-inputs": was.taskInputs === null || was.taskInputs !== now.taskInputs,
     scoring: was.scoringHash !== now.scoringHash,
     "check-tools": was.checkTools === null || was.checkTools !== now.checkTools,
     "built-condition": was.measuredCondition !== now.measuredCondition,
@@ -106,26 +110,31 @@ export function conditionGaps(was: IssueCondition, now: IssueCondition): Conditi
   return CONDITION_GAPS.filter((gap) => moved[gap]);
 }
 
-/** Each family's public-input digest, from the tasks of its case rows. A family any of whose
- *  projections is missing — a case the provider stopped before it started, or bytes that moved
- *  after recording — gets null rather than a digest over the tasks that happened to survive. */
-function familyInputDigests(
-  runDir: string,
+/** Each family's task digest: sha256 over its whole task records, sorted by task id, from the
+ *  measured tree's tasks.json. The hidden expectations are in because they are half the question a
+ *  check asks. The tree is vouched for by the task-set hash the battery's snapshot recorded; a tree
+ *  that no longer hashes to it, or that lacks one of the family's tasks, gives null rather than a
+ *  digest over whatever is there now. */
+function familyTaskDigests(
+  measuredDir: string,
+  taskSetHash: string | null,
   cases: IterationAnalysis["cases"],
-  violations: EvidenceLogViolation[],
 ): Map<string, string | null> {
   const byFamily = new Map<string, string[]>();
   for (const row of cases) byFamily.set(row.family, [...(byFamily.get(row.family) ?? []), row.taskId]);
+  const file = join(measuredDir, TASKS_FILE);
+  const vouched = taskSetHash !== null && existsSync(file) && taskSetDigest(measuredDir) === taskSetHash;
+  const parsed = vouched ? capturedJsonParse(readFileSync(file, "utf8")) : null;
+  const records = new Map(
+    (Array.isArray(parsed) ? parsed : []).flatMap((task) => {
+      const id = asRecord(task)?.taskId;
+      return isString(id) ? [[id, task] as const] : [];
+    }),
+  );
   const digests = new Map<string, string | null>();
   for (const [family, ids] of byFamily) {
-    const projection = recordedPublicTasks(runDir, ids, violations);
-    const tasks =
-      "tasks" in projection
-        ? projection.tasks.filter(
-            (task): task is { publicInput: unknown } => task instanceof Object && "publicInput" in task,
-          )
-        : [];
-    digests.set(family, tasks.length === ids.length ? publicBatteryFingerprint(tasks) : null);
+    const tasks = ids.toSorted(compareCodeUnits).map((id) => records.get(id));
+    digests.set(family, tasks.every((task) => task !== undefined) ? hashJsonValue(tasks) : null);
   }
   return digests;
 }
@@ -176,6 +185,6 @@ export function batteryCondition(analysis: IterationAnalysis, measuredDir: strin
       isolationStrength: identities.isolationStrength,
       runCondition: battery.condition,
     }),
-    familyInputs: familyInputDigests(runDir, analysis.cases, violations),
+    familyInputs: familyTaskDigests(measuredDir, identities.bundleSnapshot.taskSetHash, analysis.cases),
   };
 }

@@ -297,7 +297,7 @@ export function bindProductMeasurement(repoRoot: string, slug: string, runId: st
  *  `selectedProductId`, for a caller that must say whether some battery measured the tree it is
  *  looking at. Null where the answer is unknown rather than "no": a campaign the controller never
  *  opened has no ledger, and a battery the ledger never bound has no row. */
-function measuredProductId(repoRoot: string, slug: string, runId: string): string | null {
+export function measuredProductId(repoRoot: string, slug: string, runId: string): string | null {
   const campaign = campaignDir(repoRoot, slug);
   if (!controllerLedgerExists(campaign)) return null;
   using ledger = ControllerLedger.open(campaign);

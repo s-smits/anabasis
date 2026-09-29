@@ -23,7 +23,7 @@
 import { existsSync } from "#src/meta/filesystem.ts";
 import { basename, dirname, join } from "#src/meta/path.ts";
 import { campaignTraceRoots } from "#src/claim/trace-read.ts";
-import { measuredProductDir } from "#src/run/product-versions.ts";
+import { measuredProductId, productVersionDir } from "#src/run/product-versions.ts";
 import { classifyCaseOutcome, readCaseRecord, type CaseRecordRow } from "#src/claim/case-record.ts";
 import {
   DEFAULT_HARNESS_SETTINGS,
@@ -133,12 +133,17 @@ function solverOf(roots: readonly string[], runId: string, taskId: string): Solv
 }
 
 /** The walls the product this battery measured declared, and how each compares with the seeded
- *  default. Which product that was is the controller ledger's binding (`measuredProductDir`), not
+ *  default. Which product that was is the controller ledger's binding (`measuredProductId`), not
  *  a directory named after the battery: a task probe measures the retained version an earlier
  *  round published under its own id. A battery the ledger binds to no product reads the defaults
- *  and says so, and a bound product without a config reads them too, because the host applies them. */
+ *  and says so, and a bound product without a config reads them too, because the host applies them.
+ *  The product is read where it lies, not through `readProductVersion`, which refuses a version
+ *  another source recorded so that no project continues on it: a reader of old evidence must still
+ *  read it, and 27 of 37 campaigns since 2026-09-26 carry the earlier schema. */
 function wallsOf(campaign: string, runId: string): WallsSource {
-  const product = measuredProductDir(dirname(dirname(campaign)), basename(campaign), runId);
+  const [root, slug] = [dirname(dirname(campaign)), basename(campaign)];
+  const id = measuredProductId(root, slug, runId);
+  const product = id === null ? null : productVersionDir(root, slug, id);
   const settings = product === null ? DEFAULT_HARNESS_SETTINGS : harnessSettings(product);
   const defaults = new Map<string, number>(Object.entries(DEFAULT_HARNESS_SETTINGS));
   const moved = Object.entries(settings)

@@ -79,7 +79,7 @@ export const CHANNELS: readonly Channel[] = [
     name: "climb-readout",
     marker: "Recorded batteries (controller-derived data",
     read: "history",
-    alternative: "harness_inspect history exists; name it where the target is chosen",
+    alternative: "the context tool's history source exists; name it where the target is chosen",
   },
   // src/author/rebuild-advice.ts
   {
@@ -123,7 +123,7 @@ export const CHANNELS: readonly Channel[] = [
     name: "traces",
     marker: "history source holds every row",
     read: "traces",
-    alternative: "an inspect mode summarising the last battery's traces",
+    alternative: "name the context tool's traces source where the next limit is set",
   },
 ];
 
@@ -167,6 +167,7 @@ interface SemanticReading {
 interface CustomCallRow {
   tool?: string;
   action?: string;
+  target?: { contextId?: string } | null;
   startedAtMs?: number;
   semantic?: SemanticReading | null;
 }
@@ -603,18 +604,24 @@ const pathHits = (round: Round, capability: string, pattern: RegExp, before = In
     (row) => row.capability === capability && pattern.test(row.resolved ?? "") && row.at < before,
   ).length;
 
-/** Whether a call happened before the mark, the comparison an untyped `c.at < before` made. */
-function callBefore(call: Call, before: number): boolean {
-  return (call.at ?? 0) < before;
-}
+/** Context calls that opened one source's document (`traces/<run>/<task>/artifact`, `history/...`).
+ *  A question asked across every source names no document, so it counts toward the user's files,
+ *  the one source no other channel reads. */
+const contextReads = (round: Round, source: string, before: number): number =>
+  calls(round, "context").filter((c) => {
+    const id = c.target?.contextId;
+    return (c.at ?? 0) < before && (isString(id) ? id.startsWith(`${source}/`) : source === "user");
+  }).length;
+
+/** A battery's traces are read as files or, far more often, as context-tool documents. */
+const traceReads = (round: Round, before: number): number =>
+  pathHits(round, "read", READ_PATHS.traces, before) + contextReads(round, "traces", before);
 
 function readCount(round: Round, read: ReadKind | null, before = Infinity): number | null {
   if (read === null) return null;
-  if (read === "history") {
-    return calls(round, "harness_inspect", "history").filter((c) => callBefore(c, before)).length;
-  }
-  if (read === "context") return calls(round, "context").filter((c) => callBefore(c, before)).length;
-  return pathHits(round, "read", READ_PATHS[read], before);
+  if (read === "memory") return pathHits(round, "read", READ_PATHS.memory, before);
+  if (read === "traces") return traceReads(round, before);
+  return contextReads(round, read === "context" ? "user" : read, before);
 }
 
 function presentOf(campaign: string, round: Round, name: string): boolean {
@@ -712,7 +719,7 @@ function calibration(rounds: readonly Round[], rows: ReadonlyMap<string, Decisio
       beforeAuthoring: {
         history: readCount(round, "history", mark),
         rehearsals: trials.filter((c) => c.at !== null && c.at < mark).length,
-        traceReads: pathHits(round, "read", READ_PATHS.traces, mark),
+        traceReads: traceReads(round, mark),
       },
     };
   });

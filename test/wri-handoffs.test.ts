@@ -91,7 +91,29 @@ function campaign(options: { toolCalls?: boolean } = {}): string {
           startedAtMs: 60_000 * (n + 1),
           semantic: { truthVerdict: verdict },
         })),
-        ...(index === 1 ? [{ tool: "harness_inspect", action: "history", startedAtMs: 1_000 }] : []),
+        // The second round opens the history and one trace before its first preview, another after.
+        ...(index === 1
+          ? [
+              {
+                tool: "context",
+                action: "page",
+                target: { contextId: "history/batteries" },
+                startedAtMs: 1_000,
+              },
+              {
+                tool: "context",
+                action: "page",
+                target: { contextId: `traces/${RUN}/t1/artifact` },
+                startedAtMs: 2_000,
+              },
+              {
+                tool: "context",
+                action: "page",
+                target: { contextId: `traces/${RUN}/t2/artifact` },
+                startedAtMs: 40 * 60_000,
+              },
+            ]
+          : []),
         { tool: "correctness_check", action: "run", startedAtMs: 30 * 60_000 },
         { tool: "submit", action: "submit", startedAtMs: hour - 1_000 },
       ],
@@ -184,6 +206,9 @@ describe("round hand-offs", () => {
     expect(cell("rebuild-advice")).toMatchObject({ present: true, served: true, read: null });
     expect(cell("memory")).toMatchObject({ present: true, served: false, read: 1, acted: true });
     expect(cell("climb-readout")).toMatchObject({ served: true, read: 1, acted: null });
+    // Both traces were opened through the context tool, and neither counts as reading the user's files.
+    expect(cell("traces")).toMatchObject({ read: 2 });
+    expect(cell("context")).toMatchObject({ read: 0 });
     expect(second.servedNotRead.map((u: { name: string }) => u.name)).toContain("rebuild-advice");
     // The first round's prompt carries no readout, and its memory note was written, not handed on.
     expect(census[0]?.channels.find((c: { name: string }) => c.name === "climb-readout")?.served).toBe(false);
@@ -197,8 +222,8 @@ describe("round hand-offs", () => {
     expect(calibration.rounds[1]).toMatchObject({
       battery: SECOND,
       rehearsalVerdicts: ["pass", "pass"],
-      // The history call and both trials precede the first preview thirty minutes into the round.
-      beforeAuthoring: { history: 1, rehearsals: 2, traceReads: 0 },
+      // The history page, one trace and both trials precede the first preview thirty minutes in.
+      beforeAuthoring: { history: 1, rehearsals: 2, traceReads: 1 },
     });
     expect(calibration.rounds[1]).not.toHaveProperty("predictions");
     expect(calibration).toMatchObject({ onAim: 1, placed: 2 });

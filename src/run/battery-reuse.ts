@@ -2,10 +2,10 @@
  *  solver read and the condition it solved under (`solverConditionMoved`), so the Built solver would
  *  be paid to write artifacts that already exist:
  *
- *  - An evaluation correction after a battery at or above the aim, over the same agent bytes and
- *    the same public tasks, regrades that battery under the corrected evaluator. Below the aim a
- *    correction still measures a fresh battery, because there the question is whether the solver
- *    can reach the tasks at all, which regrading its old attempts cannot answer.
+ *  - An evaluation correction over the same agent bytes and the same public tasks regrades the
+ *    latest battery under the corrected evaluator, wherever that battery sat on the band. The
+ *    correction moved the evaluator alone, so regrading the same attempts is the comparison that
+ *    moves one variable; a fresh solve would add the solver's own variance to it.
  *  - A battery whose every non-result the environment owns, on the product still selected,
  *    re-solves exactly those cases and regrades the rest, which is what the analysis finding
  *    "rerun without changing the harness" promises. A rebuild in its place would author against a
@@ -79,7 +79,7 @@ interface CorrectionRegrade {
   reason: string;
 }
 
-function latestBatteryAtOrAboveAim(
+function latestBattery(
   repoRoot: string,
   slug: string,
   runPin: string,
@@ -94,10 +94,6 @@ function latestBatteryAtOrAboveAim(
   );
   const latest = readout?.rows[0];
   if (latest === undefined) return "no measured battery";
-  if (latest.claimRefusal !== null || latest.toAim === null) {
-    return `battery ${latest.runId} has no placement`;
-  }
-  if (latest.toAim > 0) return `battery ${latest.runId} sat below the aim`;
   const runDir = retainedRunDir(adoptedDir, latest.runId);
   if (runDir === null) return `battery ${latest.runId} has no unique retained run directory`;
   return { runId: latest.runId, runDir };
@@ -132,10 +128,10 @@ function solverConditionMoved(
 }
 
 /** Whether `candidateDir` poses exactly the exam the latest battery sat — the same agent bytes, the
- *  same backend pin and the same public task bytes over the same task ids — when that battery sat
- *  at or above the aim. The reason says which condition failed. */
-function identicalExamOverAim(input: ExamInput): ExamRead {
-  const source = latestBatteryAtOrAboveAim(input.repoRoot, input.slug, input.runPin);
+ *  same backend pin and the same public task bytes over the same task ids. The reason says which
+ *  condition failed. */
+function identicalExam(input: ExamInput): ExamRead {
+  const source = latestBattery(input.repoRoot, input.slug, input.runPin);
   if (isString(source)) return { exam: null, reason: source };
   let battery: Pick<BatteryRecord, "backendPin" | "bundleSnapshot" | "cases" | "condition">;
   try {
@@ -178,11 +174,11 @@ export function regradeForCorrection(
   if (input.experimentAuthoring?.operation.operation !== "evaluation-correction") {
     return { reuse: null, reason: "not an evaluation correction" };
   }
-  const read = identicalExamOverAim(input);
+  const read = identicalExam(input);
   if (read.exam === null) return { reuse: null, reason: read.reason };
   return {
     reuse: read.exam.reuse,
-    reason: `evaluation correction over the exam battery ${read.exam.runId} sat at or above the aim; its ${read.exam.reuse.solves.size} recorded solves are regraded under the corrected evaluator`,
+    reason: `evaluation correction over the exam battery ${read.exam.runId} sat; its ${read.exam.reuse.solves.size} recorded solves are regraded under the corrected evaluator`,
   };
 }
 

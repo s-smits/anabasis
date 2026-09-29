@@ -703,23 +703,24 @@ the battery was paid for.
     (`selectInitialProduct`, `src/run/product-versions.ts`), and measured whatever it verifies.
 
     Recorded solves are reused where the exam did not move (`src/run/battery-reuse.ts`). An evaluation
-    correction after a battery at or above the aim, with identical agentHash, task count and public task
-    digests under the same solving condition (the backend pin, the Built effort every case recorded, the
-    run condition and the tool tree: `solverConditionMoved`), *regrades* the recorded submissions
-    (`readRecordedSolves` → `gradeCase`) instead of solving them, and records `regrade: {of, reused,
-    changedPasses}`; below the aim it measures fresh. A battery the environment cut short, meaning every
-    non-result solver-side and environment-owned, the hashes and the solving condition unchanged and
-    fewer than `environmentBlockedRounds` prior remeasures, is remeasured before any rebuild:
-    `censoredRemeasure` re-solves the censored cases and regrades the rest, and a moved condition sends
-    the round to rebuild. A *repeat* posing the exam an at-or-above-aim battery already sat is measured
-    afresh and recorded as `repeat`, because a second solve can show whether a full pass was reliable
-    where a regrade only reads the same attempts again; the submit refusal it met until 2026-09-29
-    (`identical-exam-over-aim`) never fired in the recorded corpus. A repeat is the adopted product
-    measured again, so promotion selects it like any measured candidate with a verified case and its
-    packet becomes the next round's evidence, whether the Builder moved a note or nothing at all.
-    Until 2026-09-29 it was held as `stale-task-identity`, its packet stayed unpublished and three of
-    them ended a run `candidate-held`, while an unedited resubmit was told "Accepted" and then refused
-    as `candidate-unchanged`; a repeat that verified nothing is still held on its own battery.
+    correction, wherever the battery it corrects sat on the band, with identical agentHash, task count and
+    public task digests under the same solving condition (the backend pin, the Built effort every case
+    recorded, the run condition and the tool tree: `solverConditionMoved`), *regrades* the recorded
+    submissions (`readRecordedSolves` → `gradeCase`) instead of solving them, and records `regrade: {of,
+    reused, changedPasses}`, because a correction moves the evaluator alone and a fresh solve would add the
+    solver's own variance to that one variable. A battery the environment cut short, meaning every non-result
+    solver-side and environment-owned, the hashes and the solving condition unchanged and fewer than
+    `environmentBlockedRounds` prior remeasures, is remeasured before any rebuild: `censoredRemeasure`
+    re-solves the censored cases and regrades the rest, and a moved condition sends the round to rebuild. A
+    *repeat* posing the exam an at-or-above-aim battery already sat is measured afresh and recorded as
+    `repeat`, because a second solve can show whether a full pass was reliable where a regrade only reads the
+    same attempts again; the submit refusal it met until 2026-09-29 (`identical-exam-over-aim`) never fired in
+    the recorded corpus. A repeat is the adopted product measured again, so promotion selects it like any
+    measured candidate with a verified case and its packet becomes the next round's evidence, whether the
+    Builder moved a note or nothing at all. Until 2026-09-29 it was held as `stale-task-identity`, its packet
+    stayed unpublished and three of them ended a run `candidate-held`, while an unedited resubmit was told
+    "Accepted" and then refused as `candidate-unchanged`; a repeat that verified nothing is still held on its
+    own battery.
 
     The rebuild advice packet is deterministic (`analysis/<runId>-rebuild-advice.json` with
     `rebuild-advice-latest.json` beside it), bound by digest to the iteration that consumes it, and

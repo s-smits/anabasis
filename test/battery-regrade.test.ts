@@ -1,7 +1,6 @@
 /**
  * A battery that grades recorded solves instead of paying the Built solver to write the same
- * artifacts again: an evaluation correction after a battery at or above the aim regrades all of
- * them, and a battery the environment cut short re-solves only its censored cases. Two rounds, no
+ * artifacts again: an evaluation correction regrades all of them, wherever the battery sat, and a battery the environment cut short re-solves only its censored cases. Two rounds, no
  * provider: round one builds and measures, round two submits one change or remeasures. The solver
  * counts its calls per battery, so "no solve" is a count of zero rather than an inference from
  * timing.
@@ -288,13 +287,13 @@ describe("an evaluation correction regrades instead of re-solving", () => {
     });
   }, 180_000);
 
-  it("after a battery below the aim, still measures a fresh battery", async () => {
+  it("after a battery below the aim, regrades too: the correction moved the evaluator alone", async () => {
     const { batteries } = await twoRounds(flubbing(new Set(["t1", "t2", "t3", "t4", "t5"])), {
       evaluator: CASE_BLIND_EVALUATOR,
     });
     expect(batteries.map((row) => [row.solves, row.regrade])).toEqual([
       [TASKS, null],
-      [TASKS, null],
+      [0, { of: "rg", reused: TASKS, changedPasses: 5 }],
     ]);
   }, 180_000);
 

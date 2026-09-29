@@ -25,11 +25,15 @@ what they show and delete the settled entries.
   Builder in the same minute; a fresh token on the same account died the same way at 13:49. The
   launcher now runs one minimal Builder-slot turn before the gate and refuses with the provider's
   reset clause (main 69ed55b5b).
-  Stewards are gone; the launching session runs its own conditions. Seeded rounds default the
+  Stewards went; the launching session ran its own conditions. Seeded rounds default the
   Built slot to scripted, so the Builder → Built Harness handover stays unexercised until a real
   battery; when the question is the measure stage, run `--built live`. Still open: one runner for
   a seeded round (`run-condition.mts`) with gate questions no longer routed through
   `run-segment.mts`, and a SKILL.md near one page.
+- 2026-09-29, stewards return on an account of their own. The 2026-09-15 death was one account
+  carrying the steward's condition, the run's Builder and the parent at once. The operator's
+  numbered accounts in `.accounts/` separate them: a steward's condition spends an account no live
+  run and no parent is spending, so its 429 ends only itself. The rule is below.
 
 ## Standing triggers
 
@@ -54,11 +58,42 @@ bind the join the condition proved, or the next change reopens the question. The
 two tests that each hand-roll the same record — the watchdog readiness file on 2026-09-01 — so
 neither runs the real writer against the real reader. `cases/layer-walk.md` names the method.
 
-**The launching session runs its conditions.** No steward subagent (operator decision
-2026-09-15): a subagent shares the account's session limit, and its death loses the condition's
-trail. The actor under test keeps the run's own condition — for the standard Opus 5 run that is
-`claude-opus-5` at medium through the production backend — and the session never stands in for it
-(operator decision 2026-09-01).
+**A steward runs its condition on an account of its own.** A steward subagent may own one
+condition again (operator decision 2026-09-29), but only when that condition's model calls go
+through a numbered account that no live run and not the launching session is spending. Without
+such an account, the launching session runs its own conditions, as it did from 2026-09-15.
+
+- **Choose from `.accounts/usage`.** Run it from the main checkout. It prints each numbered
+  account's 5-hour and weekly windows and prints no token. It marks the account behind the plain
+  `CLAUDE_CODE_OAUTH_TOKEN`, which is the one `launch-run` hands to live Claude runs by default.
+  Pick an account that is:
+  - not the plain one, and not the one a live run was launched on with `.accounts/launch claudeN`;
+  - not the one the launching session runs on;
+  - showing neither `rejected` nor a window near full.
+
+  The reading on 2026-09-29: claude1 at 3 % (5-hour) and 6 % (week), claude2 as the plain token
+  at 88 % of its week, claude4 `rejected`.
+- **Pass the account as an env file.** Run every model-calling script as
+  `bun --env-file=.accounts/claudeN.env .claude/skills/system-path-simulation/scripts/<script>.mts …`.
+  Every slot resolves its credential through `loadRepoEnv(repoRoot, Bun.env)`, and there the
+  process environment wins over the checkout's `.env`. So this one flag moves the Builder, Built,
+  Judge and review slots together. A shell that already exports `CLAUDE_CODE_OAUTH_TOKEN` beats
+  the file, so check that it is unset.
+- **Treat the files as secrets.** `.accounts/` is local and untracked (`.git/info/exclude`). Each
+  `claudeN.env` holds that account's token under `CLAUDE_CODE_OAUTH_TOKEN`, the one name the
+  launcher reads, and is written by `.accounts/launch claudeN`.
+  - Never print, copy or `cat` these files, and never put a token on a command line.
+  - If a file is missing, report it. Do not rebuild it from `.env` by hand or look for another.
+- **The steward's own session still spends the parent's account.** Only the condition moves, so
+  keep the steward's reasoning short and let the condition's calls carry the spend.
+- **The steward's shape.** One steward per condition, at most four in parallel, and none spawns
+  further agents. Each writes its trail to the report path it was given, so a dead steward loses
+  nothing the parent cannot read. The steward briefs the parent with the account it used and that
+  account's `.accounts/usage` line before and after.
+
+The actor under test keeps the run's own condition — for the standard Opus 5 run that is
+`claude-opus-5` at medium through the production backend — and neither the session nor a steward
+ever stands in for it (operator decision 2026-09-01).
 
 ## Rules that hold for every case
 

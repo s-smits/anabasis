@@ -372,7 +372,7 @@ function noLimitLine(row: ReadoutRow): string | null {
     const lost = nonResults === 1 ? "one case" : `${String(nonResults)} cases`;
     return `Battery ${runId} passed ${all} and ${lost} ended as non-results that scored nothing, so it found no limit among the cases it scored and did not measure the rest.`;
   }
-  return `Battery ${runId} passed ${all}, so it found no limit: the next battery has to demand more of the field's own work than this one did. ${MEASURE_SOLVES}`;
+  return `Battery ${runId} passed ${all}, so it found no limit: the next battery has to demand more of the field's own work than this one did, deeper in what its tasks already exercise or across what the request names and no task does yet. ${MEASURE_SOLVES}`;
 }
 
 /**

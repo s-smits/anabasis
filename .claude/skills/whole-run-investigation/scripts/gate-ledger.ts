@@ -385,10 +385,11 @@ export const GATE_LEDGER: readonly LedgerEntry[] = [
     "the same refused bytes cannot change",
   ),
   row(
-    ["LP-4", "unchanged-candidate-strike", "ceiling"],
+    ["LP-4", "unchanged-candidate-strike", "deleted"],
     [0.97, 0.02],
+    [],
+    "an unchanged candidate is a repeat, and a nondeterministic solver makes a repeat worth measuring",
     ["candidate-unchanged"],
-    "a rebuild with nothing new",
   ),
   row(
     ["LP-9", "repeated-findings-stall", "deleted"],

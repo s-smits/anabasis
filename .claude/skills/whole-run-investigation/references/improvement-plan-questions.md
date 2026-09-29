@@ -46,11 +46,12 @@ launch it. Where a question below names a lane, it means the lane's frozen repor
    fall, has changed the measurement without proving better solving. That is evidence against the
    route rather than for it. Lane 20 owns the attribution of what moved.
 
-6. **Did anything change between rounds?** A tree that records `candidate-unchanged` round after
-   round, or a final session that accepts a tree with `changedPaths: []`, has spent rounds on
-   nothing. Before proposing more freedom or more rounds, say what stops a round that changed
-   nothing; `REPEATED CONDITION` at lane 20 and the `handoff` lane's census table, which lane 17
-   reads first, say whether this run had one.
+6. **Did anything change between rounds?** A round that accepts a tree with `changedPaths: []`
+   measures a repeat of the adopted product, which is a real experiment on a nondeterministic
+   solver and is promoted like any measured candidate. Round after round of them, with no stated
+   question a repeat answers, has spent rounds on nothing. Before proposing more freedom or more
+   rounds, say what the repeats established; `REPEATED CONDITION` at lane 20 and the `handoff`
+   lane's census table, which lane 17 reads first, say whether this run had them.
 
 ## What is the cheapest way to close it
 

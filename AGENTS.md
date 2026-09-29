@@ -714,7 +714,12 @@ the battery was paid for.
     the round to rebuild. A *repeat* posing the exam an at-or-above-aim battery already sat is measured
     afresh and recorded as `repeat`, because a second solve can show whether a full pass was reliable
     where a regrade only reads the same attempts again; the submit refusal it met until 2026-09-29
-    (`identical-exam-over-aim`) never fired in the recorded corpus.
+    (`identical-exam-over-aim`) never fired in the recorded corpus. A repeat is the adopted product
+    measured again, so promotion selects it like any measured candidate with a verified case and its
+    packet becomes the next round's evidence, whether the Builder moved a note or nothing at all.
+    Until 2026-09-29 it was held as `stale-task-identity`, its packet stayed unpublished and three of
+    them ended a run `candidate-held`, while an unedited resubmit was told "Accepted" and then refused
+    as `candidate-unchanged`; a repeat that verified nothing is still held on its own battery.
 
     The rebuild advice packet is deterministic (`analysis/<runId>-rebuild-advice.json` with
     `rebuild-advice-latest.json` beside it), bound by digest to the iteration that consumes it, and
@@ -747,8 +752,7 @@ the battery was paid for.
     together before a model call. A started call stays charged across interruption, cap changes and
     epochs, and only an unstarted reservation may be cancelled. `budget.json` binds the database identity,
     and missing or corrupt state refuses rather than resetting the spend. The loop ceilings live in
-    `src/critic/policy.ts`: `environmentBlockedRounds 3`, `buildFailedRounds 3`, `noopSubmitStrikes 3` and
-    `unchangedCandidateStrikes 3`. The off-aim streak is gone. It stopped nothing while 5/5, 6/6 and 6/6
+    `src/critic/policy.ts`: `environmentBlockedRounds 3`, `buildFailedRounds 3` and `noopSubmitStrikes 3`. The off-aim streak is gone. It stopped nothing while 5/5, 6/6 and 6/6
     batteries kept arriving, since the route is the Builder's; `runs pulse` and the whole-run digest still
     count one for humans.
 

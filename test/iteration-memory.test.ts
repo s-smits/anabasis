@@ -6,8 +6,6 @@ import type { JsonObject } from "../src/meta/json-shape.ts";
 import { type CampaignFeedback, type IterationEvidence } from "../src/author/campaign-types.ts";
 import { controllerValidatedFindings } from "../src/correctness-bundle/brief.ts";
 import { iterationMemoryFindings, ITERATION_MEMORY_CODE } from "../src/author/iteration-memory.ts";
-import { resumeCampaignMemory, unchangedCandidateSubmissions } from "../src/author/campaign-memory.ts";
-import { POLICY } from "../src/critic/policy.ts";
 const roots: string[] = [];
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
@@ -268,66 +266,5 @@ describe("cross-iteration Builder memory", () => {
     const detail = detailOf(dir);
     expect(detail).not.toContain("01 fingerprinted");
     expect(detail).toContain("05 fingerprinted");
-  });
-
-  // truss-run1-sol-0830 recorded `candidate-unchanged` 21 times on workspace commit 52e0d68c across
-  // 14 controller invocations. Every invocation replayed the same directory and saw one sighting,
-  // because nothing on disk was keyed by the commit. These two cases check counting by commit.
-  it("counts unchanged candidate records per workspace commit across invocations", () => {
-    const dir = tmp();
-    resumeCampaignMemory(dir, "slug", "k");
-    const a = "52e0d68c".padEnd(40, "0");
-    for (const ordinal of [1, 2, 3]) {
-      settle(dir, {
-        ordinal,
-        outcome: "fingerprinted",
-        workspaceChange: { baseCommit: a, commit: a, changedPaths: [], deletedPaths: [] },
-      });
-    }
-    const memory = resumeCampaignMemory(dir, "slug", "k");
-    expect(memory.unchangedCandidateCommits[a]).toBe(3);
-    expect(unchangedCandidateSubmissions(memory, [])).toBeGreaterThanOrEqual(
-      POLICY.loop.unchangedCandidateStrikes,
-    );
-  });
-
-  it("starts a fresh count when the Builder moves the tree, and keeps the old commit's total", () => {
-    const dir = tmp();
-    resumeCampaignMemory(dir, "slug", "k");
-    const a = "a".repeat(40);
-    const b = "b".repeat(40);
-    for (const ordinal of [1, 2]) {
-      settle(dir, {
-        ordinal,
-        outcome: "fingerprinted",
-        workspaceChange: { baseCommit: a, commit: a, changedPaths: [], deletedPaths: [] },
-      });
-    }
-    settle(dir, {
-      ordinal: 3,
-      outcome: "fingerprinted",
-      workspaceChange: { baseCommit: b, commit: b, changedPaths: [], deletedPaths: [] },
-    });
-    const memory = resumeCampaignMemory(dir, "slug", "k");
-    expect(memory.unchangedCandidateCommits).toEqual({ [a]: 2, [b]: 1 });
-    // The campaign continues: the commit it would resubmit is B, sighted once.
-    expect(unchangedCandidateSubmissions(memory, [])).toBe(1);
-  });
-
-  it("does not count an iteration whose child tree moved, nor a blocked one", () => {
-    const dir = tmp();
-    resumeCampaignMemory(dir, "slug", "k");
-    const a = "a".repeat(40);
-    settle(dir, {
-      ordinal: 1,
-      outcome: "fingerprinted",
-      workspaceChange: { baseCommit: a, commit: "c".repeat(40), changedPaths: ["x"], deletedPaths: [] },
-    });
-    settle(dir, {
-      ordinal: 2,
-      outcome: "gates-blocked",
-      workspaceChange: { baseCommit: a, commit: a, changedPaths: [], deletedPaths: [] },
-    });
-    expect(resumeCampaignMemory(dir, "slug", "k").unchangedCandidateCommits).toEqual({});
   });
 });

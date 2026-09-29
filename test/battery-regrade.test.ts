@@ -24,7 +24,7 @@ import { analyseStep } from "../src/run/analyse-step.ts";
 import { type FullRunDeps, parseFullRunArgs, runFullRun, slugForDirectInput } from "../src/run/full-run.ts";
 import { buildHarness } from "../src/run/harness-build.ts";
 import { type HarnessMeasureOptions, measureHarness } from "../src/run/harness-measure.ts";
-import { measuredProductDir, selectedProductDir } from "../src/run/product-versions.ts";
+import { measuredProductDir, productVersionDir, selectedProductDir } from "../src/run/product-versions.ts";
 import { claimsDirFor } from "../src/run/claim-write.ts";
 import { readClimbReadout } from "../src/run/climb-readout.ts";
 import { FROZEN_MANIFEST_PATH } from "../src/critic/manifest.ts";
@@ -49,6 +49,8 @@ interface SecondRound {
   toolchainProgram?: string;
   /** The Judge round two's battery is handed. */
   judge?: JudgeSession;
+  /** Round two submits its entry tree as it found it, without even a note. */
+  bare?: true;
 }
 
 /** Where the first battery's solving condition differs from the run's Built slot: the effort its
@@ -201,12 +203,13 @@ async function twoRounds(
         brief.truthChecks[0].assertion = second.assertion;
         writeFileSync(file, JSON.stringify(brief));
       }
-      // A note moves the workspace commit and nothing the battery measures, so a round that changes
-      // no other byte still resubmits the identical exam rather than an unchanged candidate.
-      writeFileSync(
-        join(ctx.workspace, "MEMORY.md"),
-        "# Memory\nThe evaluator compared the answer by case.\n",
-      );
+      // A note moves the workspace commit and nothing the battery measures.
+      if (second.bare !== true) {
+        writeFileSync(
+          join(ctx.workspace, "MEMORY.md"),
+          "# Memory\nThe evaluator compared the answer by case.\n",
+        );
+      }
     }
     const result = await ctx.call("submit", {});
     submits.push(result.content.map((part) => (part.type === "text" ? part.text : "")).join(""));
@@ -259,7 +262,10 @@ async function twoRounds(
     claimsDirFor(root, SLUG),
     join(root, FROZEN_MANIFEST_PATH),
   );
-  return { outcome, batteries, calls, submits, withheld, readout };
+  const promotion = (runId: string) =>
+    JSON.parse(readFileSync(join(root, "campaigns", SLUG, "promotions", `${runId}.json`), "utf8"));
+  const selected = selectedProductDir(root, SLUG);
+  return { root, outcome, batteries, calls, submits, withheld, readout, promotion, selected };
 }
 
 describe("an evaluation correction regrades instead of re-solving", () => {
@@ -424,28 +430,48 @@ describe("a battery the environment cut short is remeasured before any rebuild",
 });
 
 describe("a repeat after a battery at or above the aim", () => {
-  it("is admitted, solved afresh and recorded as a repeat of the same product, tasks and scoring", async () => {
-    const { outcome, batteries, submits, readout } = await twoRounds(flubbing(new Set()));
-    expect(outcome.rounds.map((row) => [row.move, row.build])).toEqual([
-      ["build", "adopted"],
-      ["rebuild", "candidate"],
-    ]);
-    expect(submits.at(-1)).toContain("Accepted.");
-    expect(batteries.map((row) => [row.runId, row.solves, row.regrade])).toEqual([
-      ["rg", TASKS, null],
-      ["rg-i02", TASKS, null],
-    ]);
-    const [repeat, first] = readout?.rows ?? [];
-    expect([repeat?.runId, repeat?.operation, repeat?.passed, repeat?.claimRefusal]).toEqual([
-      "rg-i02",
-      "repeat",
-      TASKS,
-      null,
-    ]);
-    expect([repeat?.product, repeat?.taskSet, repeat?.scoring]).toEqual([
-      first?.product,
-      first?.taskSet,
-      first?.scoring,
-    ]);
+  it.each([
+    ["with a note", {}],
+    ["with no edit at all", { bare: true }],
+  ] as const)(
+    "%s is solved afresh, recorded as a repeat and selected as the product's new measurement",
+    async (_name, second) => {
+      const { root, outcome, batteries, submits, readout, promotion, selected } = await twoRounds(
+        flubbing(new Set()),
+        second,
+      );
+      expect(outcome.rounds.map((row) => [row.move, row.build])).toEqual([
+        ["build", "adopted"],
+        ["rebuild", "candidate"],
+      ]);
+      expect([promotion("rg-i02").decision, promotion("rg-i02").clauses]).toEqual(["promoted", []]);
+      expect(selected).toBe(productVersionDir(root, SLUG, "rg-i02"));
+      expect(submits.at(-1)).toContain("Accepted.");
+      expect(batteries.map((row) => [row.runId, row.solves, row.regrade])).toEqual([
+        ["rg", TASKS, null],
+        ["rg-i02", TASKS, null],
+      ]);
+      const [repeat, first] = readout?.rows ?? [];
+      expect([repeat?.runId, repeat?.operation, repeat?.passed, repeat?.claimRefusal]).toEqual([
+        "rg-i02",
+        "repeat",
+        TASKS,
+        null,
+      ]);
+      expect([repeat?.product, repeat?.taskSet, repeat?.scoring]).toEqual([
+        first?.product,
+        first?.taskSet,
+        first?.scoring,
+      ]);
+    },
+    180_000,
+  );
+
+  it("that verified nothing is held on its own battery, so a repeat loop still spends the allowance", async () => {
+    const { outcome, promotion } = await twoRounds((runId) => (runId === "rg-i02" ? "silent" : "right"));
+    expect(outcome.rounds.map((row) => row.build)).toEqual(["adopted", "candidate"]);
+    const held = promotion("rg-i02");
+    expect(held.decision).toBe("held");
+    expect(held.clauses.map((clause: string) => clause.split(":")[0])).toContain("candidate-zero-verified");
   }, 180_000);
 });

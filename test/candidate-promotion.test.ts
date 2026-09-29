@@ -133,7 +133,9 @@ const persistedRow = (root: string, runId: string): PromotionEvidence =>
   );
 
 describe("promoteCandidate — one battery, one decision", () => {
-  it.each(["agent-repair", "verifier-repair", "unchanged", "zero-verified"] as const)(
+  // A repeat is the adopted package measured again, so it is selected like a repair; what holds
+  // a candidate is its own battery, which is why a repeat that verified nothing is still held.
+  it.each(["agent-repair", "verifier-repair", "repeat", "zero-verified", "repeat-zero-verified"] as const)(
     "checks the whole measured package for %s",
     (kind) => {
       const root = scratchRoot("promote-package");
@@ -158,26 +160,24 @@ describe("promoteCandidate — one battery, one decision", () => {
           }),
         );
       }
-      const repaired = kind === "agent-repair" || kind === "verifier-repair";
       const expectedShippingBundle = sealedBundleOf(candidate);
       const evidence = promoteCandidate(root, SLUG, candidate, "repair", {
         experiment: "build",
         transaction: { expectedShippingBundle },
-        battery: { verified: kind === "zero-verified" ? 0 : 4 },
+        battery: { verified: kind.endsWith("zero-verified") ? 0 : 4 },
       });
-      expect(evidence.decision).toBe(repaired ? "promoted" : "held");
+      const selected = !kind.endsWith("zero-verified");
+      expect(evidence.decision).toBe(selected ? "promoted" : "held");
       expect(evidence.shippingIdentity.observed).toMatchObject({
         agentHash: expectedShippingBundle.agentHash,
         correctnessModelHash: original.correctnessModelHash,
         taskSetHash: original.taskSetHash,
       });
       expect(sealedBundleOf(previous)).toEqual(original);
-      expect(selectedProductDir(root, SLUG)).toBe(repaired ? candidate : previous);
-      if (!repaired) {
-        expect(evidence.clauses.join(" ")).toContain(
-          kind === "unchanged" ? "stale-task-identity" : "candidate-zero-verified",
-        );
-      }
+      expect(selectedProductDir(root, SLUG)).toBe(selected ? candidate : previous);
+      expect(evidence.clauses.map((clause) => clause.split(":")[0])).toEqual(
+        selected ? [] : ["candidate-zero-verified"],
+      );
     },
   );
 

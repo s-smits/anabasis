@@ -8,7 +8,6 @@ import type { BundleSnapshotFact } from "../correctness-bundle/battery-record.ts
 import { CLAIM_STAGES, type ClaimStage, claimStage } from "./claim-stages.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { validateExperiment } from "./experiment-freeze.ts";
-import { recordedVerifierEnvironmentHash } from "../claim/conformance-evidence.ts";
 import { ControllerLedger } from "./controller-ledger.ts";
 import {
   productVersionDir,
@@ -68,8 +67,6 @@ interface CandidateState {
   claimStage: ClaimStage | null;
   taskSetDigest: string | null;
   correctnessModelDigest: string | null;
-  agentDigest: string | null;
-  verifierEnvironmentHash: string | null | undefined;
 }
 
 type PromotionState = {
@@ -112,12 +109,11 @@ function claimStageOrDamage(
   }
 }
 
-/** Checks that concern the candidate evidence itself, before experiment-specific evidence. */
-function candidateStateClauses(
-  current: CandidateState,
-  candidate: CandidateState,
-  battery: PromotionBattery | null,
-): string[] {
+/** Checks that concern the candidate evidence itself, before experiment-specific evidence. None
+ *  compares the candidate with current: a candidate byte-identical to current is a repeat, whose
+ *  battery is a new measurement of the product it repeats, so it is selected like any other
+ *  measured candidate and its packet becomes the next round's evidence (rule 10). */
+function candidateStateClauses(candidate: CandidateState, battery: PromotionBattery | null): string[] {
   const clauses: string[] = [];
   // Claim maturity is the candidate's own floor, never a contest with current: a candidate held
   // at `claim-created` by a readiness clause still replaces a `ready` product (rule 10).
@@ -147,25 +143,12 @@ function candidateStateClauses(
   }
   if (candidate.taskSetDigest === null) {
     clauses.push(
-      "candidate-task-set-unbound: the candidate's correctness-model/tasks.json cannot be read, so task freshness cannot be checked",
+      "candidate-task-set-unbound: the candidate's correctness-model/tasks.json cannot be read, so the task set its battery measured is unproved",
     );
   }
   if (candidate.correctnessModelDigest === null) {
     clauses.push(
       "candidate-evaluator-unbound: the candidate's correctness model cannot be fingerprinted, so the rule the installed tree would verify by is unproved",
-    );
-  }
-  if (
-    current.taskSetDigest !== null &&
-    current.taskSetDigest === candidate.taskSetDigest &&
-    current.agentDigest !== null &&
-    current.agentDigest === candidate.agentDigest &&
-    current.verifierEnvironmentHash === candidate.verifierEnvironmentHash &&
-    (current.correctnessModelDigest === null ||
-      current.correctnessModelDigest === candidate.correctnessModelDigest)
-  ) {
-    clauses.push(
-      "stale-task-identity: the candidate's agent, correctness model, installed verifier, tasks and controls are byte-identical to current's, so the whole measured package is unchanged",
     );
   }
   return clauses;
@@ -241,21 +224,17 @@ function preparePromotionState(input: {
     claimStage: claimStageOrDamage(currentDir, "current", clauses),
     taskSetDigest: taskSetDigest(currentDir),
     correctnessModelDigest: currentFingerprint.ok ? currentFingerprint.correctnessModelHash : null,
-    agentDigest: currentFingerprint.ok ? currentFingerprint.agentHash : null,
-    verifierEnvironmentHash: recordedVerifierEnvironmentHash(currentDir),
   };
   const candidate = {
     claimStage: claimStageOrDamage(input.candidateDir, "candidate", clauses),
     taskSetDigest: taskSetDigest(input.candidateDir),
     correctnessModelDigest: candidateFingerprint.ok ? candidateFingerprint.correctnessModelHash : null,
-    agentDigest: candidateFingerprint.ok ? candidateFingerprint.agentHash : null,
-    verifierEnvironmentHash: recordedVerifierEnvironmentHash(input.candidateDir),
   };
   const expectedShippingBundle = input.transaction.expectedShippingBundle ?? null;
   if (input.transaction.shippingBundleError !== undefined && input.transaction.shippingBundleError !== null) {
     clauses.push(`shipping-bundle-unreadable: ${input.transaction.shippingBundleError}`);
   }
-  clauses.push(...candidateStateClauses(current, candidate, input.battery));
+  clauses.push(...candidateStateClauses(candidate, input.battery));
   if (existsSync(currentDir)) {
     clauses.push(
       ...validateExperiment({

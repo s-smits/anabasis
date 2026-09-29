@@ -19,7 +19,7 @@ thing to correct.
 | Builder bash | `ISOLATED_TIMEOUT_MS` (`src/builder/candidate-isolation-runtime.ts`), `BASH_TIMEOUT_MAX_MS` (`src/builder/bash-install-env.ts`) | 10 min default, 2 h at most, for builds |
 | trial bounds | the provider budget (`src/run/builder-campaign.ts`, `createHarnessTrialTool` in `src/builder/harness-trial.ts`) | no count of its own; each rehearsal is one measured case, graded under the battery's own `check_seconds` and `tool_run_seconds` |
 | control calibration | manifest row `evaluatorCalibration` (`thresholds.frozen.yaml`), read by `EVALUATOR_CALIBRATION_POLICY` (`src/claim/calibration.ts`) | at least 5 accepts and 5 rejects, told as an authoring requirement and measured by no gate |
-| session and round strikes | `POLICY.loop` (`src/critic/policy.ts`) | `unchangedCandidateStrikes` 3, `noopSubmitStrikes` 3 |
+| session and round strikes | `POLICY.loop` (`src/critic/policy.ts`) | `noopSubmitStrikes` 3 |
 | review clock and hold | `REVIEW_INTERVAL_MS` (`src/gate/review-clock.ts`), `READER_DEADLINE_MS` (`src/review/review-reader.ts`) | a review after 40 min without one; a held submit waits at most 1 h |
 | Epoch Reviewer probes | `PROBE_BUDGET`, `VALUE_MAX_CHARS` (`src/review/review-probe.ts`) | 8 probes per review, replacement values up to 4,000 characters |
 

@@ -79,7 +79,7 @@ export type CampaignClause =
   | "campaign-binding-mismatch"
   | "improvement-memory-missing"
   | "environment-blocked"
-  | "authoring-stalled" // a no-op identity resubmitted to POLICY.loop.noopSubmitStrikes, or one commit recorded unchanged to unchangedCandidateStrikes
+  | "authoring-stalled" // a no-op identity resubmitted to POLICY.loop.noopSubmitStrikes
   | "iterations-exhausted"
   | "no-progress" // a Builder round went POLICY.loop.stalledTurns turns without a successful tool call; the run may retry the build on the same conversation
   | "budget-limited";
@@ -94,11 +94,5 @@ export type CampaignOutcome =
       experimentScope?: ExperimentScope;
       harness: BuiltHarness;
       iterations: IterationEvidence[];
-      /** Strikes already spent on the commit this candidate carries, counting this round: the
-       *  durable per-commit unchanged tally the campaign replayed from disk, extended by this
-       *  invocation's own iterations. The round reads it when the candidate turns out to equal its
-       *  own round entry, so the ceiling is reached at the same total whether the strikes fell
-       *  inside one invocation or across fourteen. */
-      unchangedCandidateSubmissions: number;
     }
   | { buildAdmissible: false; clause: CampaignClause; iterations: IterationEvidence[] };

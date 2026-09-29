@@ -2,9 +2,7 @@
  *  one Builder session and settle what it produced. */
 import { join } from "../meta/path.ts";
 import { FROZEN_MANIFEST_PATH } from "../critic/manifest.ts";
-import { unchangedCandidateCommit } from "../author/campaign-memory.ts";
 import type { AdmissionLineage, DiagnosisInput, PriorEvidence } from "../author/campaign-types.ts";
-import { POLICY } from "../critic/policy.ts";
 import type { HarnessExperiment } from "../critic/types.ts";
 import { type RunObserver, campaignProgressOptions } from "../observe/run-observer.ts";
 import { candidateExperimentAuthoring, type ExperimentAuthoring } from "./experiment-freeze.ts";
@@ -148,28 +146,11 @@ function remeasuredAuthoring(input: IterationInput): Pick<BuildStepResult, "expe
   return keyIfDefined("experimentAuthoring", declarations.values().next().value);
 }
 
-/** The refusal alone leaves the campaign free to open another session on the same tree, so the
- *  same clause repeats against one commit invocation after invocation with nothing counting them.
- *  `unchangedCandidateSubmissions` is the durable per-commit tally counting this record, so
- *  reaching the ceiling turns the retryable `candidate-unchanged` into `authoring-stalled`, with a
- *  sentence naming the commit and the count. */
-function unchangedCandidateClause(
-  outcome: BuildOutcome,
-  unchangedCommit: string,
-): Pick<BuildStepResult, "buildClause" | "buildDetail"> {
-  const records = outcome.buildAdmissible ? outcome.unchangedCandidateSubmissions : 0;
-  if (records < POLICY.loop.unchangedCandidateStrikes) {
-    return { buildClause: "candidate-unchanged", buildDetail: null };
-  }
-  return {
-    buildClause: "authoring-stalled",
-    buildDetail: `candidate-unchanged: workspace commit ${unchangedCommit.slice(0, 9)} was recorded unchanged ${records} time(s), at the declared ceiling of ${POLICY.loop.unchangedCandidateStrikes}`,
-  };
-}
-
-/** Settle what one Builder session produced: an unchanged candidate is refused with its tally, a
- *  failed build reaches the progress stream with its typed clause, and an admissible one is
- *  adopted or becomes the round's candidate. */
+/** Settle what one Builder session produced: a failed build reaches the progress stream with its
+ *  typed clause, and an admissible one is adopted or becomes the round's candidate. A candidate
+ *  unchanged from its round's entry tree is a candidate like any other: on a rebuild that tree is
+ *  the adopted product, so its battery is a repeat, which the accepted bytes attribute and the
+ *  promotion selects. */
 function settleBuildOutcome(
   move: NextMove["move"],
   outcome: BuildOutcome,
@@ -182,17 +163,6 @@ function settleBuildOutcome(
       : requestedExperiment;
   const buildAdmissible = outcome.buildAdmissible && outcome.adopted;
   const outcomeClause = outcome.buildAdmissible ? null : outcome.clause;
-  const iteration = outcome.iterations.at(-1);
-  // The commit of a candidate unchanged from the start of its round, through the same predicate
-  // as the campaign's recorded count, so the refusal and the count cannot disagree about what
-  // "unchanged" means. A fresh build has no round entry to be unchanged against.
-  const unchangedCommit =
-    move !== "rebuild" || iteration === undefined ? null : unchangedCandidateCommit(iteration);
-  if (buildAdmissible && unchangedCommit !== null) {
-    const unchanged = unchangedCandidateClause(outcome, unchangedCommit);
-    observeBuildFailed(observer, move, unchanged);
-    return { build: "build-failed", ...unchanged, experiment };
-  }
   if (buildAdmissible) {
     // A span only a failure closes reads backwards: a run whose builds all succeed opens a build
     // span every round and closes none, so the stream shows a closed build step exactly when the

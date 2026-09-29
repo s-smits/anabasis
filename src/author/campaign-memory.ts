@@ -15,21 +15,11 @@ import { errorMessage } from "../meta/runtime-values.ts";
 
 export interface CampaignMemory {
   clause: CampaignClause | null;
-  /** Latest completed child tree. Null means no evidence can prove a repair baseline. */
-  workspaceCommit: string | null;
   /** The last candidate and tool condition that reached the gates and stayed blocked, with its
    *  spent strikes. Only a gate-settled refusal leaves iteration evidence, so a bundle-stage
    *  refusal stays session-local by design. */
   lastBlockedCandidateId: string | null;
   lastBlockedCandidateStrikes: number;
-  /** How often each workspace commit has been recorded as an unchanged candidate: a settled
-   *  iteration whose child tree equals its own round entry. The round then refuses it as
-   *  `candidate-unchanged` without measuring it, so the strike costs one whole authoring session
-   *  and leaves no trace inside the next one. Keyed by commit and never reset, because the evidence
-   *  is per tree: one commit can collect the clause twenty times over as many controller
-   *  invocations, where a per-session or trailing-run counter sees one sighting each time. A commit
-   *  the Builder actually moves takes its own key. */
-  unchangedCandidateCommits: Record<string, number>;
   carried: CampaignFeedback[];
 }
 
@@ -37,39 +27,6 @@ export interface CampaignMemory {
  *  else. */
 export function nextOrdinal(campaignDir: string): number {
   return Math.max(0, ...listIterationDirs(campaignDir).map((name) => iterationOrdinal(name) ?? 0)) + 1;
-}
-
-/** The one reading of "this settled iteration changed nothing": a completed gate settlement whose
- *  fingerprinted child tree is its own round entry, with no path added and none deleted. The
- *  round's `candidate-unchanged` refusal reads the same three fields on the same evidence. */
-export function unchangedCandidateCommit(evidence: IterationEvidence): string | null {
-  const change = evidence.workspaceChange;
-  if (evidence.outcome !== "fingerprinted") return null;
-  if (change === undefined || change.baseCommit !== change.commit) return null;
-  return change.changedPaths.length === 0 && change.deletedPaths.length === 0 ? change.commit : null;
-}
-
-/** Add one completed iteration to the per-commit unchanged count, for the replay and the running
- *  invocation alike. */
-function countUnchanged(
-  counts: Readonly<Record<string, number>>,
-  evidence: IterationEvidence,
-): Record<string, number> {
-  const commit = unchangedCandidateCommit(evidence);
-  return commit === null ? { ...counts } : { ...counts, [commit]: (counts[commit] ?? 0) + 1 };
-}
-
-/** Strikes already spent on the commit this campaign would resubmit: the replayed tally extended
- *  by the iterations of the running invocation, read at that invocation's newest recorded commit.
- *  Zero when the newest iteration moved the tree, which is the whole point of the per-commit
- *  key. */
-export function unchangedCandidateSubmissions(
-  memory: CampaignMemory,
-  iterations: readonly IterationEvidence[],
-): number {
-  const counts = iterations.reduce(countUnchanged, memory.unchangedCandidateCommits);
-  const commit = iterations.at(-1)?.workspaceChange?.commit ?? memory.workspaceCommit;
-  return commit === null ? 0 : (counts[commit] ?? 0);
 }
 
 /** Settled iteration DIRECTORIES, oldest first. The directory rather than the record file,
@@ -112,10 +69,8 @@ export function settleUnresolved(evidence: IterationEvidence): CampaignFeedback[
 function emptyMemory(clause: CampaignClause | null): CampaignMemory {
   return {
     clause,
-    workspaceCommit: null,
     lastBlockedCandidateId: null,
     lastBlockedCandidateStrikes: 0,
-    unchangedCandidateCommits: {},
     carried: [],
   };
 }
@@ -125,8 +80,6 @@ function replay(dirs: string[]): CampaignMemory {
   for (const dir of dirs) {
     const evidence = readIteration(join(dir, ITERATION_FILE));
     memory.carried = settleUnresolved(evidence);
-    memory.workspaceCommit = evidence.workspaceChange?.commit ?? null;
-    memory.unchangedCandidateCommits = countUnchanged(memory.unchangedCandidateCommits, evidence);
     // Only a blocked pass moves the blocked-candidate streak; a fingerprinted one leaves it be.
     if (evidence.outcome !== "gates-blocked") continue;
     const candidateId = evidence.submissionConditionId ?? null;

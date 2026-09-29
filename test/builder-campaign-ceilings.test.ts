@@ -70,21 +70,11 @@ function recordIterations(campaignDir: string, rows: readonly Partial<IterationE
 }
 
 describe("a relaunch reads the durable counters before it opens a session", () => {
-  const commit = "52e0d68c".padEnd(40, "0");
-  const unchanged: Partial<IterationEvidence> = {
-    outcome: "fingerprinted",
-    workspaceChange: { baseCommit: commit, commit, changedPaths: [], deletedPaths: [] },
-  };
   const blockedBy = (owner: FeedbackOwner): Partial<IterationEvidence> => ({
     outcome: "gates-blocked",
     feedback: [blockingRow(owner, "carried from the last build", "iteration.json")],
   });
   it.concurrent.each([
-    [
-      "the unchanged-candidate ceiling on the replayed commit",
-      Array(POLICY.loop.unchangedCandidateStrikes).fill(unchanged),
-      "authoring-stalled",
-    ],
     ["a carried blocking environment row", [blockedBy("environment")], "environment-blocked"],
     ["carried author-owned feedback with no admitted packet", [blockedBy("agent/BUILT_AGENTS.md")], null],
   ] as const)("%s", async (_name, rows, clause) => {
@@ -273,7 +263,7 @@ describe("the no-op strike on a candidate the session keeps resubmitting", () =>
       {
         campaignDir,
         ...FRESH_BUILD,
-        maxTurns: POLICY.loop.unchangedCandidateStrikes + 1,
+        maxTurns: POLICY.loop.noopSubmitStrikes + 1,
         experiment: "build",
         adoptedDir,
       },
@@ -285,7 +275,7 @@ describe("the no-op strike on a candidate the session keeps resubmitting", () =>
         open: async (tools) => {
           opens += 1;
           return scriptedSession(async () => {
-            for (let index = 0; index <= POLICY.loop.unchangedCandidateStrikes; index += 1) {
+            for (let index = 0; index <= POLICY.loop.noopSubmitStrikes; index += 1) {
               writeFileSync(join(workspace, "MEMORY.md"), `# notes\nPublic gap hypothesis ${index}.\n`);
               const reply = await submitTool(tools).execute(`note-${index}`, {});
               replies.push(reply.content[0]?.text ?? "");
@@ -302,7 +292,7 @@ describe("the no-op strike on a candidate the session keeps resubmitting", () =>
       iterations: [],
     });
     const submits = required(readExecutionEvidence(campaignDir)[0], "one execution record").submits;
-    expect(submits).toHaveLength(POLICY.loop.unchangedCandidateStrikes + 1);
+    expect(submits).toHaveLength(POLICY.loop.noopSubmitStrikes + 1);
     expect(submits.at(-1)?.terminal).toBe(true);
     expect(replies[1]).toContain("unchanged candidate and verifier condition");
     expect(replies[1]).toContain("Memory edits do not change that condition");

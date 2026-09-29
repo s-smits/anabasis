@@ -16,14 +16,8 @@ import {
   runBuilderSession,
 } from "../author/builder-session.ts";
 import { writeCompleted } from "../author/campaign-epoch.ts";
-import {
-  type CampaignMemory,
-  nextOrdinal,
-  resumeCampaignMemory,
-  unchangedCandidateSubmissions,
-} from "../author/campaign-memory.ts";
+import { type CampaignMemory, nextOrdinal, resumeCampaignMemory } from "../author/campaign-memory.ts";
 import { safeguardRepeatedRefusalCode } from "../correctness-bundle/run-safeguards.ts";
-import { POLICY } from "../critic/policy.ts";
 import { renderBatteryContract } from "./climb-readout.ts";
 import { taskCountSentence } from "./battery-sizing.ts";
 import { ITERATION_FILE } from "../builder/campaign-iterations.ts";
@@ -174,14 +168,6 @@ function preSessionClause(
   budget: BudgetStatus | undefined,
 ): CampaignClause | null {
   if (memory.clause !== null) return memory.clause;
-  // The durable half of the unchanged-candidate ceiling. The round that reached it recorded an
-  // authoring-stalled terminal, but the terminal binds one invocation: truss-run1-sol-0830 opened
-  // fourteen of them on the same campaign and each started its counters at zero, so the same
-  // commit was submitted unchanged 21 times. Reading the replayed per-commit tally here makes a
-  // relaunch continue the count rather than restart it, and costs no model turn.
-  if (unchangedCandidateSubmissions(memory, []) >= POLICY.loop.unchangedCandidateStrikes) {
-    return "authoring-stalled";
-  }
   const feedback = [...memory.carried, ...(input.priorEvidence?.feedback ?? [])];
   if (feedback.some((row) => row.severity === "blocking" && row.owner === "environment")) {
     return "environment-blocked";
@@ -681,7 +667,6 @@ export async function runBuilderCampaign(
       ...keyIfDefined("experimentScope", admitted.experimentScope),
       harness: admitted.harness,
       iterations: controller.iterations,
-      unchangedCandidateSubmissions: unchangedCandidateSubmissions(memory, controller.iterations),
     };
   }
   const exhausted = deps.budget?.status() === "budget_limited";

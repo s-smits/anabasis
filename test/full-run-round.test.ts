@@ -100,13 +100,11 @@ describe("loopTerminal", () => {
     ["an adopted fresh build, whether or not its evidence changed", result("adopted"), quiet],
     ["a reused measurement", result("reused", { measured: true }), quiet],
     ["a reused round that measured nothing", result("reused"), quiet],
-    ...(["no-progress", "candidate-unchanged"] as const).map(
-      (clause): [string, IterationResult, LoopState] => [
-        `a ${clause} retry inside the strike ceiling`,
-        result("build-failed", { move: "rebuild", nextMove: "rebuild", clause }),
-        quiet,
-      ],
-    ),
+    [
+      "a no-progress retry inside the strike ceiling",
+      result("build-failed", { move: "rebuild", nextMove: "rebuild", clause: "no-progress" }),
+      quiet,
+    ],
     ["two blocked batteries, one short of the allowance", result("reused"), { ...quiet, blockedRounds: 2 }],
   ])("continues %s", (_name, round, loop) => {
     expect(loopTerminal(round, loop)).toBeNull();

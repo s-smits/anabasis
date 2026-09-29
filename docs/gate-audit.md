@@ -237,11 +237,6 @@ resolved tool entry and the tool tree's content, so a repair behind an unchanged
 not a strike, and a tool run that only wrote bytecode, user caches or Arduino's compile counter is
 (`toolTreeDigest`, `src/verify/tool-inventory.ts`).
 
-### unchanged-candidate-strike
-
-Counts a round that settles on its own entry tree, up to `unchangedCandidateStrikes`
-(`src/run/full-run-build-step.ts`). Such a round has nothing new to measure.
-
 ### no-progress
 
 Ends a round as the retryable `no-progress` clause after `stalledTurns` turns in a row without a
@@ -419,6 +414,18 @@ refusal of the plan refused a candidate over text that decides no outcome. `capt
 checked, its declared families against the families whose public inputs changed. On 2026-09-29 the
 file itself went, because a score of a declaration decides nothing either: a round's intent is the
 Builder's own note in `MEMORY.md` or `SCRATCHPAD.md`, which no code grades.
+
+## Deleted, 2026-09-29
+
+`unchanged-candidate-strike` counted a rebuild that settled on its own entry tree as
+`candidate-unchanged`, up to `unchangedCandidateStrikes`, on the reasoning that such a round has
+nothing new to measure. Once a repeat became a measured experiment that reasoning fell away: on a
+rebuild the entry tree is the adopted product, so an unedited submit is exactly a repeat, and the
+round told the Builder "Accepted" before refusing it, while the same repeat with a note moved was
+measured. The promotion clause `stale-task-identity` went the same day for the same reason: it held
+every measured repeat, kept its packet unpublished and counted it towards `candidate-held`. A repeat
+that verified nothing is still held on its own battery (`candidate-zero-verified`), and spend is
+bounded by the provider and campaign budgets.
 
 ## Correctness-check triage, 2026-09-27
 

@@ -48,13 +48,6 @@ export const POLICY = {
      *  repeats on a changed tree is ordinary repair and counts nothing. Read by
      *  src/gate/candidate-memory.ts. */
     noopSubmitStrikes: 3,
-    /** How often one workspace commit may be recorded as an unchanged candidate, across the whole
-     *  campaign and across invocations, before the round closes as authoring-stalled.
-     *  `noopSubmitStrikes` does not cover this: it counts refused resubmits inside one session,
-     *  while every strike here is a completed session whose candidate equals its own round entry,
-     *  so the in-session counter starts at zero again. Keyed by commit, so a Builder that writes
-     *  anything starts a new key. Read by src/run/full-run-build-step.ts. */
-    unchangedCandidateStrikes: 3,
     /** Consecutive turns without one successful tool call that end the round as `no-progress`. Codex
      *  blocks a goal after three automatic turns without a tool call, or three whose commands all
      *  failed (codex-rs/ext/goal/src/accounting.rs); one count covers both cases here. Read by

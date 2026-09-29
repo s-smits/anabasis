@@ -90,12 +90,12 @@ disagree are the finding. `--scan` reports and never gates, so a warning there i
 **B. claim and promotion state.** Read `claims/<runId>-*.json` and `promotions/<runId>.json`
 (`product-promotion/v1`). A promotion row carries `decision: "promoted" | "held"` and no
 comparison, because there is no contest between a candidate and the current harness; a held row
-names its clauses — `candidate-unmeasured`, `candidate-zero-verified`, `candidate-task-set-unbound`,
-`candidate-evaluator-unbound`, `stale-task-identity`, `candidate-fingerprint-drift`
+names its clauses — `candidate-unmeasured`, `candidate-claim-refused`, `candidate-zero-verified`,
+`candidate-task-set-unbound`, `candidate-evaluator-unbound`, `candidate-fingerprint-drift`
 (`src/run/candidate-promotion.ts`). The first admitted build has nothing to replace, so
 `selectInitialProduct` (`src/run/product-versions.ts`) selects it at adoption, before its battery,
 under a ledger decision `initial-<id>` with `initial-product/v1` evidence, and the version sits at
-`versions/<id>/` with a `product-version/v1` manifest. A missing or refused claim is not success,
+`versions/<id>/` with a `product-version/v2` manifest. A missing or refused claim is not success,
 and a clause contradicted by its own cited rows is a defect in the clause. Read `statement.n` and
 `statement.passed` rather than `claim.ok`: an `ok: true` claim with `passed: 0` is evidentially
 valid and is no capability result. What a claim discloses — a `modelIdentity` limit, a

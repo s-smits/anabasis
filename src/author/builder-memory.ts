@@ -81,6 +81,9 @@ const CUT_MARKER_RESERVE_BYTES = 96;
 /** The share of a cut file's budget kept from its head; the rest comes from its tail. */
 const HEAD_SHARE = 2 / 3;
 
+/** Where each end of a cut may stop: after a line break, or after any whitespace. */
+const WHOLE_UNITS = { head: [/^([\s\S]*\n)/, /^([\s\S]*\s)/], tail: [/\n([\s\S]*)$/, /\s([\s\S]*)$/] };
+
 /** The controller lines at the head of a notes file: the markers `carryMemoryForward` writes to
  *  say where an inherited file came from and which helper files crossed beside it, and the
  *  `controller:` line `noteAtMemoryHead` writes about how this workspace was seeded. A cut that
@@ -158,6 +161,15 @@ function withoutRepeatedSections(text: string): string {
   return [head, ...kept].join("\n## ").slice(1);
 }
 
+/** One end of a cut, back to whole lines unless that keeps under half the slice, and then to whole
+ *  words; either way a character the byte slice split goes with the partial unit. A line cut alone
+ *  emptied a note written as one paragraph: run custom-sol-20260929T132256243Z-2d7812 carried none
+ *  of a 2,052-byte next-experiment plan over a 72-byte overflow. */
+function wholeUnits(slice: string, end: keyof typeof WHOLE_UNITS): string {
+  const [line = "", word = ""] = WHOLE_UNITS[end].map((unit) => unit.exec(slice)?.[1] ?? "");
+  return line.length * 2 >= slice.length ? line : word;
+}
+
 /**
  * Limit one memory file to its declared size, keeping both ends and cutting the middle at line
  * boundaries. Which text survives is the whole decision, and Builders do not agree on where the
@@ -184,15 +196,12 @@ function cappedToEnds(text: string, bytes: number): string {
   const body = encoder.encode(unmarked);
   const budget = Math.max(0, bytes - encoder.encode(pinned).byteLength - CUT_MARKER_RESERVE_BYTES);
   const decoder = new TextDecoder();
-  const headSlice = decoder.decode(body.subarray(0, Math.floor(budget * HEAD_SHARE)));
-  // Each end is cut back to a whole line, which also drops a character the byte slice split.
-  const head = headSlice.slice(0, headSlice.lastIndexOf("\n") + 1);
+  const head = wholeUnits(decoder.decode(body.subarray(0, Math.floor(budget * HEAD_SHARE))), "head");
   const headBytes = encoder.encode(head).byteLength;
   const tailSlice = decoder.decode(
     body.subarray(Math.max(headBytes, body.byteLength - (budget - headBytes))),
   );
-  const newline = tailSlice.indexOf("\n");
-  const tail = newline < 0 ? "" : tailSlice.slice(newline + 1);
+  const tail = wholeUnits(tailSlice, "tail");
   const dropped = earlier + body.byteLength - headBytes - encoder.encode(tail).byteLength;
   return `${pinned}${head}<!-- memory cut to ${bytes} bytes: ${dropped} bytes dropped here -->\n${tail}`;
 }

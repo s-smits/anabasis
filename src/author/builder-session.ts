@@ -382,7 +382,7 @@ function sessionOutcome(state: SessionState, turns: number): BuilderSessionOutco
 
 /** The round's hosted tools: the toolkit and the submit tool, every call receipted, and the round
  *  clock riding the open results. */
-function roundRoster(context: RoundContext, feedback: BuilderAuthorFeedback): PiTool[] {
+function roundRoster(context: RoundContext, feedback: BuilderAuthorFeedback, workspace: string): PiTool[] {
   const { deps, state, recorder, checkpoint, maxTurns } = context;
   // A settled round gets no review: acceptance froze its bytes and the round ends with this turn,
   // so advice from the reviewer would reach nobody who could still act on it.
@@ -392,6 +392,7 @@ function roundRoster(context: RoundContext, feedback: BuilderAuthorFeedback): Pi
     ...keyIfDefined("hold", deps.beforeSubmit),
     state,
     recorder,
+    workspace,
     feedback,
     ...keyIfDefined("maxTurns", maxTurns),
   });
@@ -474,7 +475,7 @@ export async function runBuilderSession(
   const recorder = new BuilderExecutionRecorder();
   const checkpoint = (): void => deps.onCheckpoint?.(recorder.finish("in-flight"));
   const context = { deps, state, recorder, checkpoint, maxTurns: input.maxTurns };
-  const roster = roundRoster(context, deps.feedback ?? new BuilderAuthorFeedback());
+  const roster = roundRoster(context, deps.feedback ?? new BuilderAuthorFeedback(), input.workspace);
   const systemPrompt = builderSystemPrompt(input.webSearch === true);
   deps.recordSession?.(roster, systemPrompt);
   const conversation = deps.conversation ?? new BuilderConversation();

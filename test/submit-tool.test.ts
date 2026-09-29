@@ -3,14 +3,20 @@
  * nothing reaches the gate, no attempt joins the record and no strike is counted, so a held
  * Builder cannot end its round as stalled by resubmitting.
  */
-import { describe, expect, it } from "bun:test";
+import { afterAll, describe, expect, it } from "bun:test";
 import { BuilderExecutionRecorder } from "../src/author/builder-execution.ts";
+import { SCRATCHPAD_FILE } from "../src/author/builder-memory.ts";
 import { BuilderAuthorFeedback } from "../src/builder/author-feedback.ts";
 import { type BuilderSubmitOutcome, makeSubmitTool } from "../src/gate/submit-tool.ts";
+import { writeFileSync } from "../src/meta/filesystem.ts";
+import { join } from "../src/meta/path.ts";
+import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 
 const REFUSED: BuilderSubmitOutcome = { ok: false, stage: "gates", findings: [], commit: "c0ffee" };
 
-function submitWith(holds: (string | null)[]) {
+afterAll(cleanupScratch);
+
+function submitWith(holds: (string | null)[], workspace = scratchDir("ana-submit-hold-")) {
   const state = {
     accepted: null,
     attempts: 0,
@@ -29,6 +35,7 @@ function submitWith(holds: (string | null)[]) {
     hold: async () => holds.shift() ?? null,
     state,
     recorder,
+    workspace,
     feedback: new BuilderAuthorFeedback(),
   });
   return { tool, state, recorder, gateCalls: () => gateCalls };
@@ -62,5 +69,22 @@ describe("submit's hold", () => {
       [1, "submit", hold.length],
       [1, "submit", hold.length],
     ]);
+  });
+
+  // A one-turn round ends at its accepted submit, so a next-turn notice about notes over their limit
+  // was never read by a Builder that wrote its plan and then submitted, as the round prompt asks.
+  it("answers a submit made while the notes are over their limit with that notice, and judges the next", async () => {
+    const workspace = scratchDir("ana-submit-notes-");
+    writeFileSync(join(workspace, SCRATCHPAD_FILE), `# Next experiment\n\n${"x".repeat(2_060)}\n`);
+    const { tool, state, gateCalls } = submitWith([], workspace);
+    const held = await run(tool);
+    expect(held.text).toBe(
+      `Nothing was submitted. ${SCRATCHPAD_FILE} is 2080 bytes, over its 2000-byte limit: the next round reads its head and tail and drops the middle, so shorten it now. Then submit again.`,
+    );
+    expect(held.details).toEqual({ receipt: { outcome: "blocked", reason: "notes-over-cap" } });
+    expect([state.attempts, gateCalls()]).toEqual([0, 0]);
+    writeFileSync(join(workspace, SCRATCHPAD_FILE), "# Next experiment\n\nshorter\n");
+    expect((await run(tool)).text).toStartWith("Submit 1 was refused at gates");
+    expect([state.attempts, gateCalls()]).toEqual([1, 1]);
   });
 });

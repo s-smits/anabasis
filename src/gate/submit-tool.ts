@@ -18,6 +18,7 @@ import {
   FEEDBACK_NAVIGATION,
   authorFindingOverview,
 } from "../builder/author-feedback.ts";
+import { memoryOverCapNotice } from "../author/builder-memory.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { type ContractFinding, controllerValidatedFinding } from "../correctness-bundle/brief.ts";
 
@@ -80,6 +81,8 @@ interface SubmitToolBinding {
   hold?: () => Promise<string | null>;
   state: SubmitSessionState;
   recorder: BuilderExecutionRecorder;
+  /** Where the Builder's notes sit; a submit counts only once they fit their limits. */
+  workspace: string;
   /** The operator's turn cap, which also bounds refused submits; absent, the round has none. */
   maxTurns?: number;
   feedback: BuilderAuthorFeedback;
@@ -254,6 +257,15 @@ export function makeSubmitTool(binding: SubmitToolBinding): AgentTool<typeof Sub
             reason: "submit-in-flight",
           },
         );
+      }
+      // Acceptance ends the round at this turn, so the next-turn notice never reaches a Builder that
+      // writes its notes and then submits, as the round prompt asks; the submit has to carry it.
+      const notes = memoryOverCapNotice(binding.workspace);
+      if (notes !== null) {
+        return text(`Nothing was submitted. ${notes} Then submit again.`, {
+          outcome: "blocked",
+          reason: "notes-over-cap",
+        });
       }
       inFlight = true;
       try {

@@ -43,7 +43,7 @@ import { runEpochReview } from "#src/review/epoch-reviewer.ts";
 import { publicEpochReview } from "#src/review/epoch-review-public.ts";
 import { readLatestRebuildAdvice } from "#src/author/rebuild-advice.ts";
 import { campaignDir } from "#src/meta/campaign-root.ts";
-import { isString } from "#src/meta/json-shape.ts";
+import { isRecord, isString } from "#src/meta/json-shape.ts";
 import { type ContestedCase, reviewerContested } from "#src/analyse/judge-contested.ts";
 import { runJudgeReviews } from "#src/analyse/judge-reviews.ts";
 import { readValidatedBrief } from "#src/correctness-bundle/public-resources.ts";
@@ -67,6 +67,30 @@ const replayed: unknown = contestedPath === null ? null : JSON.parse(readFileSyn
 if (contestedPath !== null && !Array.isArray(replayed)) {
   fail(`${contestedPath}: expected a ContestedCase array`);
 }
+
+// The Judge's public context is where the operator's verbatim one-liner survives, as its public
+// domain's `publicRequest`, and it exists only when a Judge ran. `--request` supplies it for a
+// battery reviewed without one; without either the reviewer is told the request is unavailable, and
+// its request-coverage obligation goes unasked. Which one the reviewer gets is said before staging,
+// so a replay that would review without the request says so before it spends anything.
+const contextPath = join(
+  campaignDir(repo, slug),
+  "versions",
+  runId,
+  "runs",
+  runId,
+  JUDGE_PUBLIC_CONTEXT_FILE,
+);
+const recordedDomain: unknown = existsSync(contextPath)
+  ? JSON.parse(readFileSync(contextPath, "utf8")).publicDomain
+  : undefined;
+const recordedRequest = isRecord(recordedDomain) ? recordedDomain.publicRequest : undefined;
+const publicRequest = args.single.get("request") ?? (isString(recordedRequest) ? recordedRequest : null);
+console.log(
+  JSON.stringify({
+    request: args.single.has("request") ? "--request" : publicRequest === null ? "unavailable" : "recorded",
+  }),
+);
 
 // Stage: the version tree, the append-ordered case record, the claim and the isolation probe,
 // and `analysis/` when the campaign reached its analyse step. That directory is optional because
@@ -92,14 +116,6 @@ for (const [rel, directory, required] of staged) {
   cpSync(join(source, rel), join(target, rel), { recursive: directory, verbatimSymlinks: true });
 }
 const measuredDir = join(target, "versions", runId);
-// The Judge's public context is where the operator's verbatim one-liner survives, and it exists
-// only when a Judge ran. `--request` supplies it for a battery reviewed without one; without either
-// the reviewer is told the request is unavailable, and its request-coverage obligation goes unasked.
-const contextPath = join(measuredDir, "runs", runId, JUDGE_PUBLIC_CONTEXT_FILE);
-const recordedRequest: unknown = existsSync(contextPath)
-  ? JSON.parse(readFileSync(contextPath, "utf8")).publicRequest
-  : undefined;
-const publicRequest: unknown = args.single.get("request") ?? recordedRequest;
 // The packet this battery's own analyse step offered, read through its owner so a foreign schema
 // reads as null here exactly as it does in production. A packet with no standing issue is a review
 // that cannot dispute anything, which is the wrong condition to replay a dispute rule under.
@@ -124,7 +140,6 @@ console.log(
     disputed: ids(contested.disputed),
     otherContested: ids(contested.otherContested),
     issues: priorAdvice?.issues.length ?? 0,
-    request: isString(publicRequest),
   }),
 );
 const started = Date.now();
@@ -137,7 +152,7 @@ const evidence = await runEpochReview({
   priorAdvice,
   ...contested,
   review,
-  publicRequest: isString(publicRequest) ? publicRequest : null,
+  publicRequest,
 });
 const out = join(scratch, `${runId}-epoch-review.json`);
 writeFileSync(out, JSON.stringify(evidence, null, 2));

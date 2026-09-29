@@ -25,6 +25,14 @@ describe("review-settle", () => {
     writeFileSync(join(campaign, "versions", "r", "marker.txt"), "bytes");
     symlinkSync("/nonexistent/toolchain", join(campaign, "versions", "r", ".toolchain"));
     writeFileSync(join(campaign, "case-record.jsonl"), "");
+    // Where the Judge phase records the operator's one-liner: under the context's public domain.
+    writeFileSync(
+      join(campaign, "versions", "r", "runs", "r", "judge", "public-context.json"),
+      JSON.stringify({
+        schema: "judge-public-context/v1",
+        publicDomain: { publicRequest: "Build a harness." },
+      }),
+    );
     const contested = join(scratch, "contested.json");
     writeFileSync(contested, "[]");
     const sim = join(scratch, "sim");
@@ -41,6 +49,7 @@ describe("review-settle", () => {
       sim,
     ]);
     expect(result.exitCode).toBe(2);
+    expect(result.stdout).toContain('{"request":"recorded"}');
     expect(result.stderr).toContain("claims/r.json: missing; the analysis reader needs it");
     expect(readFileSync(join(sim, "campaigns", "s", "versions", "r", "marker.txt"), "utf8")).toBe("bytes");
     expect(existsSync(join(sim, "campaigns", "s", "case-record.jsonl"))).toBe(true);
@@ -57,6 +66,16 @@ describe("review-settle", () => {
     writeFileSync(join(campaign, "case-record.jsonl"), "");
     writeFileSync(join(campaign, "claims", "r.json"), "{}");
     writeFileSync(join(campaign, "isolation-probe-r.json"), "{}");
+    // A request at the context's top level is not where any Judge phase wrote it, so it is not read.
+    mkdirSync(join(campaign, "versions", "r", "runs", "r", "judge"), { recursive: true });
+    writeFileSync(
+      join(campaign, "versions", "r", "runs", "r", "judge", "public-context.json"),
+      JSON.stringify({
+        schema: "judge-public-context/v1",
+        publicRequest: "Build a harness.",
+        publicDomain: {},
+      }),
+    );
     const sim = join(scratch, "sim");
     const result = runTypeScript("review-settle.mts", [
       "--repo",
@@ -68,6 +87,7 @@ describe("review-settle", () => {
       "--scratch",
       sim,
     ]);
+    expect(result.stdout).toContain('{"request":"unavailable"}');
     expect(result.stderr).not.toContain("analysis: missing");
     expect(existsSync(join(sim, "campaigns", "s", "claims", "r.json"))).toBe(true);
     expect(existsSync(join(sim, "campaigns", "s", "analysis"))).toBe(false);

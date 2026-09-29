@@ -355,17 +355,34 @@ function vectorStore() {
       }
     }
   }
-  mkdirSync(dir, { recursive: true });
+  // A read-only sandbox, such as a Codex research session, cannot write here; the read still completes
+  // and embeds again next time what it could not keep.
+  let writable = true;
+  const keep = (write: () => void) => {
+    if (!writable) return;
+    try {
+      write();
+    } catch {
+      writable = false;
+    }
+  };
+  keep(() => mkdirSync(dir, { recursive: true }));
   return {
     known,
-    add: (key: string, vector: number[]) => appendFileSync(file, `${JSON.stringify([key, vector])}\n`),
+    add: (key: string, vector: number[]) =>
+      keep(() => appendFileSync(file, `${JSON.stringify([key, vector])}\n`)),
   };
 }
 
 /** The pinned model as an embed function: texts in, unit vectors out, shortest texts batched first. */
 export async function modelEmbed(batchSize: number): Promise<Embed> {
   env.cacheDir = CACHE_DIR;
-  const extract = await pipeline("feature-extraction", MODEL, { dtype: "fp32", revision: MODEL_REVISION });
+  // transformers.js 4.2.0 discovers a hub model's files at its main revision whatever revision is
+  // asked for, so offline it found no tokenizer in a fully cached model and built a pipeline with a
+  // null one. The cached pinned revision is a whole model directory, so it loads from there.
+  const cached = join(CACHE_DIR, MODEL, MODEL_REVISION);
+  const source = existsSync(cached) ? cached : MODEL;
+  const extract = await pipeline("feature-extraction", source, { dtype: "fp32", revision: MODEL_REVISION });
   const store = vectorStore();
   return async (texts) => {
     const keys = texts.map((text) => sha256(text));

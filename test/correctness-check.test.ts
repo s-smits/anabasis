@@ -310,6 +310,9 @@ it("reads a repair behind an unchanged wrapper, and a package installed under ho
   // The first bytes again are the first condition again, so what it earned still answers for it.
   write("libexec/field.py", "LIMIT = 0.5\n");
   expect(key()).toBe(before);
+  // Only Arduino's own inventory is run-written; a file of that name holding anything else is the tool's.
+  write("etc/inventory.yaml", "all:\n    hosts: [field]\n");
+  expect(key()).not.toBe(before);
   write("home/venv/lib/python3.12/site-packages/fieldlib-1.0.dist-info/METADATA", "Name: fieldlib\n");
   expect(key()).not.toBe(before);
 });
@@ -320,7 +323,10 @@ it("keeps the condition when running the tool only wrote its own caches into the
   write("libexec/__pycache__/field.cpython-312.pyc", "bytecode");
   write("home/Library/Caches/pip/http/entry", "cached");
   write("home/.cache/matplotlib/fontlist.json", "{}");
-  write("arduino/inventory.yaml", "build_cache:\n    compilation_count_since_last_purge: 7\n");
+  write(
+    "arduino/inventory.yaml",
+    "installation:\n    id: a\n    secret: b\nbuild_cache:\n    compilation_count_since_last_purge: 7\n",
+  );
   expect(key()).toBe(before);
 });
 

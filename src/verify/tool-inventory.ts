@@ -13,6 +13,7 @@
 import { keyIfDefined } from "../meta/optional-key.ts";
 import {
   openSync,
+  readFileSync,
   readSync,
   readdirSync,
   readlinkSync,
@@ -58,9 +59,13 @@ const CLOSED_QUOTES = /^(?:[^'"\\]|\\.|'[^']*'|"(?:[^"\\]|\\.)*")*$/;
 /** Tool-tree files larger than this count by size, time and inode in the session key, and are
  *  read in chunks of this size when their bytes are hashed. */
 const TREE_HASHED_BYTES = 1 << 20;
-/** What a run of an installed tool rewrites by itself: bytecode, the user caches under the Builder's
- *  `home/`, and the compile counter Arduino keeps in `inventory.yaml`. */
-const RUN_WRITTEN = /^home\/(\.cache|Library\/Caches)(\/|$)|(^|\/)(__pycache__|inventory\.yaml)(\/|$)/;
+/** What a run of an installed tool rewrites by itself: bytecode and the user caches under the
+ *  Builder's `home/`. */
+const RUN_WRITTEN = /^home\/(\.cache|Library\/Caches)(\/|$)|(^|\/)__pycache__(\/|$)/;
+/** Arduino's `inventory.yaml`, which a run rewrites: an installation id and a compile counter and
+ *  nothing else. It is known by what it holds, because its data directory can sit anywhere in the
+ *  tree, and a file of that name holding anything else is the tool's own bytes. */
+const ARDUINO_INVENTORY = /^(?:(?:installation|build_cache):\n(?: +\S.*\n)*)+$/;
 /** File digests by tree root, path, size, mtime, inode and ctime, so a later walk rereads only what
  *  moved. The ctime is there because a process can put a file's mtime back after rewriting it, and
  *  nothing but the kernel can set a ctime; the root is there because it is taken out of the bytes. */
@@ -229,7 +234,7 @@ function interpreterPackages(path: string, toolTree: string | null): string[] {
  * The tool tree's own content, which a tool entry's own digest leaves out: a wrapper `exec python3
  * "$ROOT/libexec/check.py"` keeps its digest while `check.py`, a config it passes, or a package in a
  * venv under `home/` is repaired underneath it. Every file counts by its path and its bytes, and a
- * link by where it points. `RUN_WRITTEN` stays out, so running a tool in the
+ * link by where it points. `RUN_WRITTEN` and Arduino's inventory stay out, so running a tool in the
  * Builder shell is not an edit; a gate run writes nothing here, since the verifier cell only reads
  * the tree.
  *
@@ -253,7 +258,9 @@ function toolTreeCounts(toolTree: string, side: TreeSide): Array<[string, string
       const rel = relative(toolTree, path);
       if (entry.isDirectory() || RUN_WRITTEN.test(rel)) return [];
       if (entry.isSymbolicLink()) return [[rel, linkCount(path, toolTree, root)]];
-      return [[rel, entry.isFile() ? fileCount(path, side, root) : "special"]];
+      if (!entry.isFile()) return [[rel, "special"]];
+      if (entry.name === "inventory.yaml" && ARDUINO_INVENTORY.test(readFileSync(path, "utf8"))) return [];
+      return [[rel, fileCount(path, side, root)]];
     },
   );
 }

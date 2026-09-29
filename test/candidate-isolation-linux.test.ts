@@ -4,8 +4,10 @@
  * There a blocked read is an ABSENT path, so the proof is that the protected bytes never appear.
  */
 import { afterAll, describe, expect, it } from "bun:test";
-import { mkdirSync, realpathSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { mkdirSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { dirname, join } from "../src/meta/path.ts";
+import { posixContainsPath } from "../src/meta/path-containment.ts";
+import { bashCallTmpdir } from "../src/builder/bash-install-env.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import {
   CandidateIsolationRefusal,
@@ -123,6 +125,21 @@ describe("linux bubblewrap plan construction", () => {
     // Mode and the spawned command both move the digest, as they move the emitted bytes.
     expect(linuxCandidatePlan(policy, "read", support, ["/bin/sh"]).profileDigest).not.toBe(base);
     expect(linuxCandidatePlan(policy, "exec", support, ["/bin/cat"]).profileDigest).not.toBe(base);
+  });
+
+  // The cell lays an empty tmpfs over each host scratch root, so a TMPDIR the controller made on the
+  // host beneath one names nothing inside the cell, and every mktemp and compile in the shell fails.
+  it("gives the Builder's shell a TMPDIR the cell presents as its own fresh mount", () => {
+    const temp = bashCallTmpdir("linux");
+    try {
+      const { argv } = linuxCandidatePlan(policy, "exec", support, ["/bin/sh"], { TMPDIR: temp.path });
+      const mounts = argv.flatMap((token, index) => (argv[index - 1] === "--tmpfs" ? [token] : []));
+      expect(argvHasSequence(argv, "--setenv", "TMPDIR", temp.path)).toBe(true);
+      expect(mounts.filter((root) => root !== temp.path && posixContainsPath(temp.path, root))).toEqual([]);
+      expect(mounts).toContain(temp.path);
+    } finally {
+      if (temp.made) rmSync(temp.path, { recursive: true, force: true });
+    }
   });
 });
 

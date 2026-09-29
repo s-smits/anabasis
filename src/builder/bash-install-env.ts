@@ -11,13 +11,13 @@
  * home that HOME still points at. A tool that reads as broken rather than as denied is the failure
  * `hostToolchainEnv` already exists to name, so the redirect holds under every policy.
  */
-import { mkdirSync } from "../meta/filesystem.ts";
+import { mkdirSync, mkdtempSync } from "../meta/filesystem.ts";
 import {
   HARNESS_CONFIG_FILE,
   type HarnessSettings,
   harnessSettings,
 } from "../correctness-bundle/harness-config.ts";
-import { availableParallelism, loadavg } from "../meta/os.ts";
+import { availableParallelism, loadavg, tmpdir } from "../meta/os.ts";
 import { dirname, join } from "../meta/path.ts";
 import { runtimeProcess } from "../meta/process.ts";
 import { type OptionalEnvValues, scrubSecretEnv } from "../backends/scrub-env.ts";
@@ -127,6 +127,21 @@ export function bashDescription(policy: CandidateAccessPolicy, pathCard: string)
   return policy.network === "allow"
     ? `Run a shell command. Work in the workspace: HOME is .toolchain/home inside it and its .local/bin and .cargo/bin directories are on PATH, so pip, uv, cargo, bun install and similar installers work without extra flags, and installs land where both the candidate's checks and the solver's shell find them: each searches .toolchain/bin first, then every bin, shims or sbin directory below .toolchain. The candidate runs under Bun, the measured interpreter; write checkers and tests for bun. Network access is available. ${deadline} ${closed}${pathCard}`
     : `Run a shell command. Work in the workspace: HOME is .toolchain/home inside it, so a tool that keeps a cache, data or config directory writes there instead of being refused. Network access is unavailable, so dependency installs cannot work; the repository's node_modules toolchain is already readable, and this cell is for building and testing what it was handed. ${deadline} ${closed}${pathCard}`;
+}
+
+/** One bash call's TMPDIR, and whether the call made it on the host and so removes it once it
+ *  settles. The inherited TMPDIR is the controller's own temp root, where Seatbelt lets a
+ *  Builder-authored build tool leave every scratch tree it made for the rest of the run, so on
+ *  Darwin each call gets a fresh directory there. The Linux cell lays a fresh tmpfs over /tmp for
+ *  every call, which is already a directory for that call alone, while one made on the host under a
+ *  scratch root is hidden by that tmpfs and would leave $TMPDIR naming nothing inside the cell. */
+export function bashCallTmpdir(platform: typeof runtimeProcess.platform = runtimeProcess.platform): {
+  path: string;
+  made: boolean;
+} {
+  return platform === "linux"
+    ? { path: "/tmp", made: false }
+    : { path: mkdtempSync(join(tmpdir(), "ana-builder-bash-")), made: true };
 }
 
 /** The child environment for one bash call: the scrubbed base plus the workspace HOME redirect.

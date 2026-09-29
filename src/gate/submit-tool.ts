@@ -76,18 +76,12 @@ const SubmitParams = Type.Object({}, { additionalProperties: false });
 export const SUBMIT_DESCRIPTION =
   "Run the authoritative gates over the current candidate package and freeze its bytes if accepted. A refusal returns a bounded repair overview; read exact findings through harness_inspect feedback, repair them, then retry. A refused candidate resubmitted with its files and installed tools unchanged returns the same refusal and counts toward ending the round; one refused by a runtime non-result may be retried as it is.";
 
-/** A submit the controller holds before counting it, and why: an Epoch review with a blocking
- *  finding the Builder has not read. */
-export interface SubmitHold {
-  text: string;
-  reason: "review-unread";
-}
-
 interface SubmitToolBinding {
   submit(input: { turn: number }): BuilderSubmitOutcome | Promise<BuilderSubmitOutcome>;
-  /** Asked before any attempt is counted. A hold's text is this call's whole result: nothing was
-   *  submitted, no attempt is recorded, and no strike is counted. */
-  hold?: () => SubmitHold | null | Promise<SubmitHold | null>;
+  /** Asked before any attempt is counted: an Epoch review showing a blocking finding the Builder has
+   *  not read. Its text is this call's whole result: nothing was submitted, no attempt is recorded,
+   *  and no strike is counted. */
+  hold?: () => Promise<string | null>;
   state: SubmitSessionState;
   recorder: BuilderExecutionRecorder;
   /** The operator's turn cap, which also bounds refused submits; absent, the round has none. */
@@ -269,16 +263,15 @@ export function makeSubmitTool(binding: SubmitToolBinding): AgentTool<typeof Sub
       }
       inFlight = true;
       try {
-        // A hold with nothing to wait for answers at once, and is not awaited, so the gate run this
-        // call starts is still published before its first await and a preview started meanwhile
-        // joins it.
+        // A session with no review beside it binds no hold and awaits nothing here, so the gate run
+        // this call starts is still published before its first await and a preview started
+        // meanwhile joins it.
         const started = Date.now();
-        const holding = binding.hold?.() ?? null;
-        const held = holding instanceof Promise ? await holding : holding;
+        const held = binding.hold === undefined ? null : await binding.hold();
         if (held !== null) {
           // The review's findings ride this call's result, as they ride any other tool's.
-          recorder.authoringReviewed(state.activeTurn, "submit", held.text.length, Date.now() - started);
-          return text(held.text, { outcome: "blocked", reason: held.reason });
+          recorder.authoringReviewed(state.activeTurn, "submit", held.length, Date.now() - started);
+          return text(held, { outcome: "blocked", reason: "review-unread" });
         }
         state.attempts += 1;
         return await settleSubmit(binding);

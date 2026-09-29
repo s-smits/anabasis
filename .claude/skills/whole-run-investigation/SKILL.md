@@ -50,9 +50,9 @@ last two. Carry an earlier note's conclusion into a lane as the hypothesis it is
 premise.
 
 One fact about the review loop is easy to get backwards, so it is stated here. The authoring Epoch
-Review runs during the round, before the battery: `holdSubmit` in `src/run/builder-campaign.ts`
-holds each submit on `this.reviews.join()`, so a finding about the tasks or the brief was in front
-of the Builder before anything was measured. A battery review runs again afterwards. Read both.
+Review runs during the round, before the battery: each submit waits on `AuthoringReviews.join` in
+`src/run/authoring-review.ts`, so a blocking finding about the tasks or the brief was in front of
+the Builder before anything was measured. A battery review runs again afterwards. Read both.
 
 ## Distrust the reader before the run
 

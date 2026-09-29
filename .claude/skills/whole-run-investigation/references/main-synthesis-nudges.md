@@ -172,9 +172,9 @@ independent builds is stronger evidence than one failed command followed by prod
 Trace finding, delivered feedback, recipient action and next eligible measurement. An attached
 diagnosis is evidence of delivery, not of a useful repair, and a reviewer can add value by
 preserving uncertainty without controlling routing. The Epoch Reviewer reviews twice: the
-authoring review runs during the round and `holdSubmit` holds submit on its `join()`, so its
-findings reached the Builder before the battery, and the battery review reads the measured tree
-afterwards. Credit or fault each separately.
+authoring review runs during the round and submit waits on `AuthoringReviews.join`, so its
+blocking findings reached the Builder before the battery, and the battery review reads the
+measured tree afterwards. Credit or fault each separately.
 
 Judge agreement is not independence. The Main Judge reads the Builder's public rules and the
 artifact, so when it agrees with a verifier pass, it has read the same rules a second time, and a

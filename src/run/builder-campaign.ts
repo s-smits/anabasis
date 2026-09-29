@@ -17,7 +17,6 @@ import {
   runBuilderSession,
 } from "../author/builder-session.ts";
 import { writeCompleted } from "../author/campaign-epoch.ts";
-import type { SubmitHold } from "../gate/submit-tool.ts";
 import {
   type CampaignMemory,
   nextOrdinal,
@@ -298,15 +297,6 @@ class BuilderCampaignController {
   private budgetSpent(): boolean {
     return this.deps.budget?.status() === "budget_limited";
   }
-
-  /** Submit's hold: an unread blocking review. With no review beside the session it answers
-   *  without awaiting anything. */
-  readonly holdSubmit = (): SubmitHold | null | Promise<SubmitHold | null> => {
-    if (this.reviews === null) return null;
-    return this.reviews
-      .join()
-      .then((review) => (review === null ? null : { text: review, reason: "review-unread" }));
-  };
 
   /** The plan read as advice: what did not read, and on a continuation the declared families against
    *  the families whose public tasks changed. It refuses nothing. */
@@ -714,7 +704,7 @@ export async function runBuilderCampaign(
         // settled round runs neither, because the session stops calling both once submit has
         // accepted or finally refused. An adopted product is reviewed after measurement instead.
         ...keyIfDefined("afterTool", controller.reviews?.afterTool),
-        beforeSubmit: controller.holdSubmit,
+        ...keyIfDefined("beforeSubmit", controller.reviews?.join),
         tools: [...deps.tools, ...authoringTools],
         ...keyIfDefined("turnTimeoutMs", deps.turnTimeoutMs),
         ...keyIfDefined("observer", deps.observer),

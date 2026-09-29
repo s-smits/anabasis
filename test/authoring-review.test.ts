@@ -159,18 +159,20 @@ function bindingSolver(slot: string): Solver {
 }
 
 /** A campaign whose round runs `body`. `parent` puts the scratch inside the checkout, where a
- *  rehearsal's compiled correctness model resolves its `@ana/*` imports. */
+ *  rehearsal's compiled correctness model resolves its `@ana/*` imports; at one turn, a refused
+ *  submit is final. */
 function campaign(
   prefix: string,
   held: HeldReviews,
   deps: Partial<BuilderCampaignDeps> = {},
   parent?: string,
+  maxTurns = 1,
 ) {
   const campaignDir = scratchDir(prefix, parent);
   const workspace = join(campaignDir, "workspace");
   const run = (body: (tools: readonly unknown[]) => Promise<void>) =>
     runBuilderCampaign(
-      { ...FRESH_BUILD, campaignDir, maxTurns: 1 },
+      { ...FRESH_BUILD, campaignDir, maxTurns },
       {
         tools: [noop],
         toolsProbes: () => ({ load: async () => [] }),
@@ -327,19 +329,27 @@ describe("the Epoch Reviewer beside an authoring session", () => {
     expect(outcome.buildAdmissible).toBe(true);
   });
 
-  it("lets a submit through when the review it waited for shows advisory findings alone", async () => {
+  it("judges a submit whose review shows advisory findings alone, and hands that review over beside the verdict", async () => {
     // An advisory finding asks for no change before submit, so holding the submit for one only
-    // spends the round's time: the same bytes come back accepted once it has been read.
+    // spends the round's time: the call that waited is judged, and the review rides its result.
     const held = new HeldReviews();
-    const { workspace, run } = campaign("ana-review-join-advisory-", held);
+    const { workspace, run } = campaign("ana-review-join-advisory-", held, {}, undefined, 2);
     const outcome = await run(async (tools) => {
       authorable(workspace);
       await promptly(namedTool(tools, "correctness_check").execute("check", {}));
-      const submitting = submitTool(tools).execute("submit", {});
+      const spec = join(workspace, "agent/tools-spec.json");
+      const checked = readFileSync(spec, "utf8");
+      writeFileSync(spec, "{");
+      const submitting = submitTool(tools).execute("refused", {});
       await held.finish(0, advice(0));
-      const result = await promptly(submitting);
-      expect(result).toContain("Accepted.");
-      expect(result).not.toContain("Nothing was submitted.");
+      const refused = await promptly(submitting);
+      expect(refused).toContain("Submit 1 was refused");
+      expect(refused).toContain(ADVICE);
+      expect(refused).not.toContain("Nothing was submitted.");
+      writeFileSync(spec, checked);
+      const accepted = await promptly(submitTool(tools).execute("accepted", {}));
+      expect(accepted).toContain("Accepted.");
+      expect(accepted).not.toContain(ADVICE);
     });
     expect(outcome.buildAdmissible).toBe(true);
   });

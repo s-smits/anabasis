@@ -6,11 +6,11 @@
 import { describe, expect, it } from "bun:test";
 import { BuilderExecutionRecorder } from "../src/author/builder-execution.ts";
 import { BuilderAuthorFeedback } from "../src/builder/author-feedback.ts";
-import { type BuilderSubmitOutcome, type SubmitHold, makeSubmitTool } from "../src/gate/submit-tool.ts";
+import { type BuilderSubmitOutcome, makeSubmitTool } from "../src/gate/submit-tool.ts";
 
 const REFUSED: BuilderSubmitOutcome = { ok: false, stage: "gates", findings: [], commit: "c0ffee" };
 
-function submitWith(holds: (SubmitHold | null)[]) {
+function submitWith(holds: (string | null)[]) {
   const state = {
     accepted: null,
     attempts: 0,
@@ -41,15 +41,12 @@ const run = async (tool: ReturnType<typeof submitWith>["tool"]) => {
 };
 
 describe("submit's hold", () => {
-  it("answers each held call with its reason and counts no attempt, then judges the call it releases", async () => {
-    const hold: SubmitHold = {
-      text: "Nothing was submitted. A review finished with findings you have not read.",
-      reason: "review-unread",
-    };
+  it("answers each held call with the unread review and counts no attempt, then judges the call it releases", async () => {
+    const hold = "Nothing was submitted. A review finished with a blocking finding you have not read.";
     const { tool, state, recorder, gateCalls } = submitWith([hold, hold]);
     for (const _ of [1, 2]) {
       const held = await run(tool);
-      expect(held.text).toBe(hold.text);
+      expect(held.text).toBe(hold);
       expect(held.details).toEqual({ receipt: { outcome: "blocked", reason: "review-unread" } });
     }
     expect(state.attempts).toBe(0);
@@ -62,8 +59,8 @@ describe("submit's hold", () => {
     // call returned none.
     const reviews = recorder.finish("turn-bound").authoringReviews;
     expect(reviews.map(({ turn, tool: name, adviceChars }) => [turn, name, adviceChars])).toEqual([
-      [1, "submit", hold.text.length],
-      [1, "submit", hold.text.length],
+      [1, "submit", hold.length],
+      [1, "submit", hold.length],
     ]);
   });
 });

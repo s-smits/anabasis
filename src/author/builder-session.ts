@@ -44,7 +44,7 @@ import type { CandidateSnapshot } from "./candidate-check.ts";
 import { BUILDER_TURN_SETTLE_MS, runBuilderTurn, turnEventRecorder } from "./builder-turn-loop.ts";
 import { realpathSync } from "../meta/filesystem.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
-import { type BuilderSubmitOutcome, type SubmitHold, makeSubmitTool } from "../gate/submit-tool.ts";
+import { type BuilderSubmitOutcome, makeSubmitTool } from "../gate/submit-tool.ts";
 export type { BuilderSubmitOutcome } from "../gate/submit-tool.ts";
 export {
   BUILDER_WORKSPACE_CARD,
@@ -118,9 +118,9 @@ export interface BuilderSessionDeps {
    *  the session is still authoring; the public advice it returns rides that tool's result, so the
    *  review reaches the Builder without a turn of its own. */
   afterTool?: () => Promise<string | null>;
-  /** Submit's hold: the join with that review. A hold returned here replaces the submit's verdict,
-   *  and the call counts as no submit. */
-  beforeSubmit?: () => SubmitHold | null | Promise<SubmitHold | null>;
+  /** Submit's hold: the join with that review. A review returned here replaces the submit's
+   *  verdict, and the call counts as no submit. */
+  beforeSubmit?: () => Promise<string | null>;
   /** Opens the Builder slot's host session; a continued conversation reconfigures its own instead. */
   open: OpenSession;
   /** Record what this round's session exposes, every round and before it begins, whether the round

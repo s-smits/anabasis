@@ -49,8 +49,8 @@ Walk the first authoring cycle and the consequential later repair or experiment 
 `request → design → authoring → admission → measurement → diagnosis → next action → next result`
 
 Authoring and admission overlap in one place that is easy to miss: the authoring Epoch Review runs
-during the round, and `holdSubmit` in `src/run/builder-campaign.ts` holds submit on its `join()`,
-so its findings were in front of the Builder before the battery. If an edge never happened, record
+during the round, and submit waits on `AuthoringReviews.join` in `src/run/authoring-review.ts`, so
+a blocking finding was in front of the Builder before the battery. If an edge never happened, record
 why and what it leaves unknown. Inspect a pre-battery candidate when it can settle a product or
 authoring defect; zero verified cases removes the capability rate, not every useful question. For
 a live run bind T0 and T1 separately and defer unfinished outcomes.

@@ -449,9 +449,11 @@ over-published surface.
 
 The question is whether each standing duty in the reviewer prompt fired before a new duty is
 proposed. There are two kinds of review, and they sit at different points. An authoring review runs
-during the Builder's round, before the battery: `holdSubmit` in `src/run/builder-campaign.ts` waits
-on `this.reviews.join()`, so a submit made while one runs is held until it finishes, and one whose
-findings the Builder has not read returns `reason: "review-unread"` in place of a verdict. It is
+during the Builder's round, before the battery: submit waits on `AuthoringReviews.join` in
+`src/run/authoring-review.ts`, so a submit made while one runs is held until it finishes, and one
+showing a blocking finding the Builder has not read returns `reason: "review-unread"` in place of a
+verdict. An advisory-only review lets the submit through and rides its result, unless that submit is
+accepted and ends the round. It is
 recorded as `analysis/authoring-<uuid>-epoch-review.json`. A battery review runs after measurement
 and is recorded as `analysis/<runId>-epoch-review.json`. So never describe the reviewer as acting
 only after measurement: count both, and read the authoring reviews for what the reviewer said about
@@ -931,9 +933,9 @@ dropped. An inexpressible demand is one the interface makes impossible to get wr
 or a wrapper owns the decision the request names and the artifact schema has no field for the
 choice. Keep "the request's demand is not published" apart from "it is published and no check
 observes it", which is lane 1's and lane 35's. Then read the authoring Epoch Reviews for the same
-gaps. They run during the round, before the battery, and `holdSubmit` in
-`src/run/builder-campaign.ts` holds submit on `this.reviews.join()`, so a reviewer finding about the
-tasks or the brief was in front of the Builder before anything was measured; report which gaps the
+gaps. They run during the round, before the battery, and submit waits on `AuthoringReviews.join`
+in `src/run/authoring-review.ts`, so a blocking reviewer finding about the tasks or the brief was
+in front of the Builder before anything was measured; report which gaps the
 reviewer named, at what severity, and what the next workspace change did with each, and treat why
 advisory findings moved nothing as an open question rather than a settled cause. This lane is a
 reading after the run; it proposes no reviewer or gate that runs before the battery, and no

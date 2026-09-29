@@ -407,18 +407,12 @@ export function renderReadout(readout: ClimbReadout | null, reason: string): str
 
 /** The battery contract a round opens with: what a battery's result says, the witness sentence and
  *  the publication boundary. A probe range leaves the result sentence to `renderProbeSizing`, which
- *  already says a probe runs until one passes some but not all of its scored cases. No count is
+ *  already says what a probe must pass before the requested size. No count is
  *  stated at any size: a count per size read as a target to author towards, and how to reach a
  *  limit is the Builder's. */
 export function renderBatteryContract(n: number, min: number = n): string {
   const limit = min < n ? "" : `${LIMIT} `;
   return `${limit}Every task must be valid and solved by your reference. ${WITNESS} ${BOUNDARY}`;
-}
-
-/** The probe sentence, when the round's size is a probe range below the requested count. */
-export function renderProbeSizing(tasks: { min: number; max: number }, requested: number): string | null {
-  if (tasks.min === tasks.max) return null;
-  return `Battery sizing: this product's batteries have ${tasks.min} to ${tasks.max} tasks until one passes some but not all of its scored cases, then ${requested}.`;
 }
 
 /**

@@ -1077,11 +1077,11 @@ is decided by rules the digest does not print.
 
 The question is how each battery's task count was chosen, and whether the rule counted what it
 meant to. `batterySizingGate` (`src/run/battery-sizing.ts`) keeps a fresh product on probes of five
-to ten tasks until a probe passes some but not all of its scored cases, and then moves to the
+to ten tasks until a probe passes at least one scored case and lands at or under the aim, and then moves to the
 requested size — unless the last landing read high enough that a smaller battery would still read
 too easy, when `smallestSizeHoldingTooEasy` sizes it down. Three things follow that no recorded
 field states. The graduation rule counts scored cases, and an unaccepted case is scored, so a probe
-of all passes plus one unaccepted timeout graduates exactly as a probe with a verified fail does.
+whose unaccepted timeouts bring it down to the aim graduates exactly as one with verified fails does.
 The Builder sets `solve_minutes` in `agent/config.yaml`, anywhere down to a tenth of its default,
 and a short wall produces exactly those unaccepted timeouts. And the landing is read only when the
 adopted product fingerprints and its harness identity can be computed, which

@@ -12,7 +12,7 @@ thing to correct.
 | Number a surface may state | Owner in source | Today |
 | --- | --- | --- |
 | which side of the band a battery landed, read by the controller and the reviewer only | `placeOnBand` (`src/claim/battery-difficulty.ts`), Wilson at `REPORTING_Z` (`src/claim/estimation.ts`), over `climbThresholds(...).band` (`src/run/climb-history.ts`), which reads the manifest row `climb.band` and falls back to `POLICY.climb.band` (`src/critic/policy.ts`) | band [0.2, 0.5]; interval decides too easy or too hard; point count decides under, on, over |
-| battery size | `POLICY.battery` (`src/critic/policy.ts`), re-exported as `BATTERY_SIZE` by `src/run/battery-sizing.ts`, which owns the decisions taken from it | floor 5, default 25, ceiling 60; probe 5 to 10 until one battery passes some but not all |
+| battery size | `POLICY.battery` (`src/critic/policy.ts`), re-exported as `BATTERY_SIZE` by `src/run/battery-sizing.ts`, which owns the decisions taken from it | floor 5, default 25, ceiling 60; probe 5 to 10 until one battery passes at least one scored case and lands at or under the aim |
 | solver walls | `SETTINGS.solver` (`src/correctness-bundle/harness-config.ts`) | solve 120 min, 24 turns, shell 300 s, 900 s at most; `agent/config.yaml` may raise each up to ten times |
 | verifier and gate walls | `SETTINGS.gate`, read by `src/verify/host.ts`, `src/correctness-bundle/evaluator-process.ts`, `src/run/census-gate.ts` | reference solve 120 s, tool run 300 s, check with its runs 600 s, census 30 min |
 | battery solve concurrency | `SETTINGS.battery` (`src/correctness-bundle/harness-config.ts`), read by `src/correctness-bundle/verification-runner.ts` | 3 solves at once |

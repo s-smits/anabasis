@@ -821,7 +821,7 @@ the battery was paid for.
     Battery size has one owner, `POLICY.battery` in `src/critic/policy.ts` (`floor 5`, `default 25`,
     `ceiling 60`, `probe {min 5, max 10}`), which `src/run/battery-sizing.ts` re-exports and which owns
     the decisions. A fresh product measures Builder-sized probe batteries of 5–10 tasks until one passes
-    some but not all of its scored cases, and only then the requested size, or a smaller one only where
+    at least one scored case and lands at or under the aim, and only then the requested size, or a smaller one only where
     that probe's own landing already reads too easy (`placeOnBand`), since a smaller battery that would
     hold the reading is the one worth paying for. An out-of-range size fails rather than being clamped,
     since a silently changed size is a changed condition.

@@ -62,8 +62,8 @@ export const POLICY = {
     ceiling: 60,
     /** The size an operator who names none gets. */
     default: 25,
-    /** The task counts a fresh product's batteries stay between until one passes some but not all of
-     *  its scored cases; the Builder picks the size inside that range. */
+    /** The task counts a fresh product's batteries stay between until one passes at least one of its
+     *  scored cases and lands at or under the aim; the Builder picks the size inside that range. */
     probe: { min: 5, max: 10 },
   },
 };

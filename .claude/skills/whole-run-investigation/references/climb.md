@@ -96,7 +96,7 @@ probe-ceiling tasks gets `smallestSizeHoldingTooEasy` over its last landing: the
 above the probe ceiling at which the last pass rate, floored, would still read `too-easy`, or the
 requested size when nothing smaller holds or the landing cannot be read, so a missing identity
 leaves the requested size in place. Otherwise the product graduates only when its last battery
-passed some but not all of its scored cases, and until then it stays on probes.
+passed at least one scored case and landed at or under the aim, and until then it stays on probes.
 
 Two consequences are easy to miss. A scored case includes an unaccepted one, so a probe whose
 solver submitted nothing on half its tasks and passed the rest has graduated, although it measured

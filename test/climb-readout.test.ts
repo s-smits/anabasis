@@ -349,7 +349,7 @@ describe("rendering", () => {
     );
     // A partial count is necessary and not sufficient, so nothing says a partial battery located one.
     expect(one).not.toContain("locates a limit");
-    // A probe range leaves that sentence to the sizing sentence, which already says "some but not all".
+    // A probe range leaves that sentence to the sizing sentence, which says what a probe must pass.
     expect(probe).not.toContain("locate a limit");
     for (const text of [probe, one]) {
       expect(text).not.toMatch(/\baim\b|\d+ tasks|\d+ to \d+|Calibration|band/);

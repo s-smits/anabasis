@@ -13,7 +13,7 @@ import {
   climbThresholds,
   readClimbBatteries,
 } from "./climb-history.ts";
-import { readoutHistoryDocuments, renderProbeSizing, renderReadout } from "./climb-readout.ts";
+import { readoutHistoryDocuments, renderReadout } from "./climb-readout.ts";
 import { measuredSolverTraces } from "./solver-traces.ts";
 import { fingerprintSlug } from "../claim/fingerprint.ts";
 import { recordedVerifierEnvironmentHash } from "../claim/conformance-evidence.ts";
@@ -21,7 +21,12 @@ import { harnessBundleIdentity } from "./climb-battery-admission.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { hashJsonBytes } from "../meta/json-runtime.ts";
 import { selectedProductDir } from "./product-versions.ts";
-import { type ProbeLanding, adoptedTaskCount, batterySizingGate } from "./battery-sizing.ts";
+import {
+  type ProbeLanding,
+  adoptedTaskCount,
+  batterySizingGate,
+  renderProbeSizing,
+} from "./battery-sizing.ts";
 import { claimsDirFor } from "./claim-write.ts";
 import { fixedProductBoundary } from "./fixed-product-policy.ts";
 import type { BuildClause } from "./loop-terminal.ts";
@@ -248,7 +253,7 @@ export async function runBuildStep(
     () => adoptedProbeLanding(memory.read, domainDir),
     band,
   );
-  const advisory = [memory.advisoryNote, renderProbeSizing(tasks, manifest.expectedTasks) ?? ""]
+  const advisory = [memory.advisoryNote, renderProbeSizing(tasks, manifest.expectedTasks, band) ?? ""]
     .filter((part) => part !== "")
     .join("\n\n");
   const buildPhase = observer.phase({

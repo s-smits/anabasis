@@ -59,6 +59,11 @@ type Spec = {
   wallBound?: number;
 };
 
+/** The exclusion reason `admitBattery` records for a refused claim. It opens with its own "claim
+ *  refused", so the battery line must not say it twice. */
+const REFUSED =
+  "claim refused: verifier environment unbound — a battery that created no claim is not climb evidence";
+
 function authoring(): ExperimentAuthoring {
   return {
     schema: EXPERIMENT_AUTHORING_SCHEMA,
@@ -195,7 +200,7 @@ describe("one reading per battery", () => {
       row("r2", 1, {
         passed: 9,
         n: 10,
-        refused: "verifier environment unbound",
+        refused: REFUSED,
         probe: true,
         effort: { cases: 10, turns: 4, minutes: 9, toolCalls: 40 },
       }),
@@ -212,7 +217,7 @@ describe("one reading per battery", () => {
       zone: null,
       families: null,
       effort: null,
-      claimRefusal: "verifier environment unbound",
+      claimRefusal: REFUSED,
     });
     const text = render(readout);
     expect(text).toContain("Families of the latest admitted battery (passes of attempts): beams 11/11.");
@@ -220,15 +225,16 @@ describe("one reading per battery", () => {
       "- r3 (P1, T1, S1): 11 passed of 11 verified, 0 unaccepted, 0 non-results.",
     );
     expect(lineOf(text, "r2")).toBe(
-      "- r2 (P1, T1, S1, task-probe): claim refused: verifier environment unbound; 10 verified, 0 unaccepted, 0 non-results.",
+      `- r2 (P1, T1, S1, task-probe): ${REFUSED}; 10 verified, 0 unaccepted, 0 non-results.`,
     );
+    expect(text).not.toContain("claim refused: claim refused");
     // A refused claim's passes are not evidence, so changing only them changes nothing sent.
     const other = [...rows];
     other[1] = row("r2", 1, {
       passed: 2,
       n: 10,
       changed: { attempts: 5, passes: 1 },
-      refused: "verifier environment unbound",
+      refused: REFUSED,
       probe: true,
     });
     const otherReadout = readoutOf(...other);

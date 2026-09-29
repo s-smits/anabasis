@@ -92,6 +92,7 @@ type ReadoutRow = {
   aim: [number, number] | null;
   toAim: number | null;
   wilson: [number, number] | null;
+  /** The whole exclusion reason of a refused claim, which opens with "claim refused" itself. */
   claimRefusal: string | null;
   /** Null when the claim was refused. */
   families: ClimbFamilySummary[] | null;
@@ -322,7 +323,7 @@ function batteryLine(row: ReadoutRow): string {
   const facts = [
     row.claimRefusal === null
       ? `${String(row.passed)} passed of ${counts}`
-      : `claim refused: ${row.claimRefusal}; ${counts}`,
+      : `${row.claimRefusal}; ${counts}`,
     row.deciding?.population === "changed-subset"
       ? `the changed tasks passed ${row.deciding.passes} of ${row.deciding.n} attempts`
       : null,

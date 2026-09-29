@@ -60,7 +60,8 @@ import {
 import { isNumber } from "#src/meta/json-shape.ts";
 import { compareCodeUnits } from "#src/meta/stable-json.ts";
 import { readDifficultyDecisions } from "./digest-ledgers.ts";
-import { readJsonAs } from "./run-overview.ts";
+import { readJsonAs, readJsonAsOrNull } from "./run-overview.ts";
+import type { CaseDisposition, EpochReviewEvidence } from "#src/review/epoch-review-findings.ts";
 
 export const VELOCITY_SCHEMA = "climb-velocity/v1";
 /** Cosine at or above this between a family's prose and its nearest predecessor reads as the same
@@ -76,6 +77,19 @@ export interface OutcomeCounts {
   verified: number;
   unaccepted: number;
   nonResult: number;
+}
+
+/** How a battery's completed epoch review settled its contested cases. A fail whose check stands is
+ *  earned; a fail settled against its check measured the check, not the solver; a verifier pass
+ *  settled against its check (a veto) was never earned. The 2d7812 firmware battery read 4/6, over
+ *  the aim, on two fails of one check holding the sketch to a status label no public rule stated,
+ *  and nothing in this reader said the placement rested on them. */
+export interface Settlement {
+  failsHeld: number;
+  failsAgainst: number;
+  passesAgainst: number;
+  /** The checks the settlements name, each once, in record order. */
+  checks: string[];
 }
 
 /** The computed placement of one battery, with its point rate and the sample it was drawn from. */
@@ -204,6 +218,23 @@ export function outcomesOf(campaign: string): Map<string, OutcomeCounts> {
     });
   }
   return byRun;
+}
+
+/** Null when no completed review of this battery is recorded, which is unread, never "nothing settled". */
+export function settlementOf(campaign: string, runId: string): Settlement | null {
+  const review = readJsonAsOrNull<Pick<EpochReviewEvidence, "status"> & { dispositions?: CaseDisposition[] }>(
+    join(campaign, "analysis", `${runId}-epoch-review.json`),
+  );
+  if (review?.status !== "completed") return null;
+  const rows = review.dispositions ?? [];
+  const count = (veto: boolean, disposition: CaseDisposition["disposition"]) =>
+    rows.filter((row) => (row.kind === "veto") === veto && row.disposition === disposition).length;
+  return {
+    failsHeld: count(false, "check-stands"),
+    failsAgainst: count(false, "against-check"),
+    passesAgainst: count(true, "against-check"),
+    checks: [...new Set(rows.map((row) => row.checkId))],
+  };
 }
 
 /** Batteries in the order they were measured. A claim's `createdAt` owns chronology; a version with
@@ -385,11 +416,22 @@ export async function readCampaign(campaign: string, options: Parameters<typeof 
   for (const battery of batteriesOf(campaign)) {
     const reading = await readVersionDir(battery.dir, options);
     const counts = outcomes.get(battery.runId) ?? { passed: 0, verified: 0, unaccepted: 0, nonResult: 0 };
+    const settlement = settlementOf(campaign, battery.runId);
     batteries.push({
       ...battery,
       reading,
       counts,
+      settlement,
       placement: placementOf(counts, measuredOf(battery)),
+      // Over the whole battery: a changed subset records no per-case membership to settle against.
+      earned:
+        settlement === null || settlement.failsAgainst + settlement.passesAgainst === 0
+          ? null
+          : placementOf({
+              ...counts,
+              passed: counts.passed - settlement.passesAgainst,
+              verified: counts.verified - settlement.failsAgainst,
+            }),
       recorded: recorded.byRun.get(battery.runId) ?? null,
     });
   }
@@ -496,6 +538,22 @@ function recordedLine(battery: ClimbBatteryRow): string {
   return `${computed}; recorded ${battery.recorded.zone ?? "?"}${toAim} (decision ${battery.recorded.decidedBy})`;
 }
 
+/** Whether the battery's fails were earned, so an over-aim or on-aim placement is read against the
+ *  review that settled its contested cases rather than taken as the solver's limit. */
+function settledLine({ counts, settlement, earned }: ClimbBatteryRow): string | null {
+  const fails = counts.verified - counts.passed;
+  if (fails === 0 && (settlement?.passesAgainst ?? 0) === 0) return null;
+  if (settlement === null) return `fails ${fails}: no completed review settled any, so none is known earned`;
+  const unread = fails - settlement.failsHeld - settlement.failsAgainst;
+  const vetoes =
+    settlement.passesAgainst === 0 ? "" : `, ${settlement.passesAgainst} passes settled against the check`;
+  const checks = settlement.checks.length === 0 ? "" : `; checks ${settlement.checks.join(", ")}`;
+  const line = `fails ${fails}: ${settlement.failsHeld} held by the review, ${settlement.failsAgainst} settled against the check, ${unread} unsettled${vetoes}${checks}`;
+  return earned === null
+    ? line
+    : `${line}\n      earned ${earned.zone} at ${earned.passes}/${earned.n} over the whole battery, with the settled cases on the side the review put them`;
+}
+
 export function render(report: ClimbReport, band?: readonly [number, number]): string {
   const lines = [`${report.batteries.length} batteries in ${report.campaign}`];
   for (const refusal of report.refusedDecisions ?? []) {
@@ -511,6 +569,8 @@ export function render(report: ClimbReport, band?: readonly [number, number]): s
       `      ${outcome}, ${battery.counts.unaccepted} unaccepted, ${battery.counts.nonResult} non-result${battery.claimed ? "" : ", unclaimed"}`,
     );
     lines.push(`      ${recordedLine(battery)}`);
+    const fails = settledLine(battery);
+    if (fails !== null) lines.push(`      ${fails}`);
     // The whole battery reading, rendered by the module that produced it: this block carried its own
     // copy of the check and median lines and dropped the family histogram, which was the only thing
     // a second lane over the same campaign still added.

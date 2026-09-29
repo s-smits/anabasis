@@ -224,6 +224,18 @@ invented rules all look harder while measuring nothing. A solver tool that grade
 fully, is not a defect in itself, since knowing whether a candidate meets the rules is not knowing how to
 build one; whether it left a battery too easy is what blind measurement says.
 
+A partial battery counts toward the climb only where its fails are earned: the check that decided each
+one holds the artifact to a rule the public projection states. The Epoch Reviewer settles that per case
+(rule 9). A fail settled against its check measured the check, not the solver, and a fail no review
+settled is known neither way. custom-sol-2d7812's first firmware battery read 4/6, over the aim, on two
+fails of one bench check that held meter output to HIGH/LOW where the published rule allowed HIGH/LOW or
+ALARM/OK; on the public rules it was an all-pass. The review held both, on a sentence the projection does
+not contain, which is why the reviewer now quotes the public sentence before it calls the Judge wrong.
+`wri.ts climb` prints each battery's fails as held, settled against the check or unsettled, with the
+checks they fell on, and where the battery lands with the settled cases on the side the review put them.
+Read an over-aim or on-aim battery there before counting it as a limit found. Fails concentrated on one
+check across families are the first thing to read.
+
 Read the climb before paying for it. This is an operator reading rather than a controller gate: run
 `bun .claude/skills/whole-run-investigation/scripts/wri.ts climb <campaign dir>` whenever a new
 `versions/<battery>/` appears. It classifies each battery edge as `restated`, `replaced`, `adjusted`,

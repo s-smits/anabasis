@@ -105,12 +105,13 @@ a door rather than a limit. And the solver's time is the Builder's own setting: 
 times it (`HOST_LIMIT_FACTOR` in `src/correctness-bundle/harness-config.ts`), so a battery that
 reads too hard at a twelve-minute wall has measured the wall the Builder chose.
 
-## Four situations, and what to read first
+## Five situations, and what to read first
 
 | situation | first read | what it usually is |
 |---|---|---|
 | score stays high, task ids and hashes keep changing | `wri.ts climb` edges | `adjusted` or `widened`: numbers moved, demand did not |
 | score high but an edge already reads `escalated` | that edge's changed checks, limits and tier histogram | a real move whose cases have not landed; wait for them |
+| some cases failed, placement over or on the aim | the battery's `fails` line in `wri.ts climb` | fails held by the review are a limit; fails settled against their check, or all on one check across families, are a check the public rules do not support |
 | every case failed | accepted artifacts beside their public tasks, then lane 38 | an unpublished rule, an unusable submission path, or checks refusing right answers |
 | the Builder ignored a page you wrote | `git show <opening source.commit>:<path>` | the page was not in the measured tree |
 

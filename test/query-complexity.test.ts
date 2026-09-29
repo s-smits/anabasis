@@ -3,6 +3,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { afterEach, describe, expect, it } from "bun:test";
 import type { CaseRecordRow } from "../src/claim/case-record.ts";
+import type { CaseDisposition } from "../src/review/epoch-review-findings.ts";
 import { caseRecordRow } from "./helpers/case-record-row.ts";
 import { double } from "./helpers/doubles.ts";
 import {
@@ -540,6 +541,50 @@ describe("climb velocity", () => {
     });
     expect(render(report, [0.2, 0.5])).toContain(
       "correctness-model source, digests only, unread by the two rows above: rules.ts moved, 2 of 3 unchanged",
+    );
+  });
+
+  // The 2d7812 firmware battery read 4/6 over the aim on two fails of one check that held the sketch
+  // to a status label no public rule stated. A placement resting on fails the review settled against
+  // their check measured the check, so the reader says which fails were earned and where the battery
+  // lands once they leave; with no completed review it says none is known earned.
+  it.concurrent("reads a partial battery against the review that settled its fails", async () => {
+    const dir = twoVersions("ana-climb-earned-", [brief, brief]);
+    const tasks = ["a", "b", "c", "d", "e", "f"];
+    writeCaseRecord(
+      dir,
+      tasks.map((task, index) =>
+        caseRecordRow(task, "f", { runId: "run-b", ...(index < 2 && { truthOk: false, pass: false }) }),
+      ),
+    );
+    const unread = render(await readCampaign(dir, { embed: fakeEmbed }), [0.2, 0.5]);
+    expect(unread).toContain("fails 2: no completed review settled any, so none is known earned");
+    const settled = (task: string, disposition: CaseDisposition["disposition"]): CaseDisposition => ({
+      taskId: task,
+      family: "f",
+      kind: "disputed-undecided",
+      checkId: "bench-wiring",
+      disposition,
+      finding: 0,
+    });
+    mkdirSync(join(dir, "analysis"), { recursive: true });
+    const review = (dispositions: CaseDisposition[]) =>
+      writeFileSync(
+        join(dir, "analysis", "run-b-epoch-review.json"),
+        JSON.stringify({ status: "completed", dispositions }),
+        "utf8",
+      );
+    review([settled("a", "check-stands"), settled("b", "check-stands")]);
+    const held = await readCampaign(dir, { embed: fakeEmbed });
+    expect(held.batteries[1]?.earned).toBeNull();
+    expect(render(held)).toContain(
+      "fails 2: 2 held by the review, 0 settled against the check, 0 unsettled; checks bench-wiring",
+    );
+    review([settled("a", "against-check"), settled("b", "against-check")]);
+    const against = await readCampaign(dir, { embed: fakeEmbed });
+    expect(against.batteries[1]?.earned).toMatchObject({ passes: 4, n: 4 });
+    expect(render(against)).toContain(
+      `earned ${String(against.batteries[1]?.earned?.zone)} at 4/4 over the whole battery`,
     );
   });
 

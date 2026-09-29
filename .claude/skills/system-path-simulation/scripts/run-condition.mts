@@ -35,13 +35,18 @@ import { runtimeProcess } from "#src/meta/process.ts";
 import type { RunObserver } from "#src/observe/run-observer.ts";
 import type { HostSession } from "#src/backends/pi-session.ts";
 import type { SessionProfileEvidence } from "#src/backends/session-isolation.ts";
-import type { Solver } from "#src/correctness-bundle/solve.ts";
+import { type Solver, withSolverBuiltStarterFactory } from "#src/correctness-bundle/solve.ts";
+import { loadBuiltStarterFactory } from "#src/correctness-bundle/contracts.ts";
 import {
   HOST_SOLVE_ISOLATION_FIXTURE,
   HOST_SOLVE_ISOLATION_PROFILE_ID,
   type HostSolveIsolationEvidence,
 } from "#src/verify/solve-sandbox.ts";
-import { type BuilderRuntimeFactory, composeBuilderRuntime } from "#src/run/builder-runtime.ts";
+import {
+  type BuilderRuntimeFactory,
+  composeBuilderRuntime,
+  productionBuilderRuntime,
+} from "#src/run/builder-runtime.ts";
 import type { FullRunDeps, FullRunOutcome } from "#src/run/full-run.ts";
 import {
   type ScriptedTurn,
@@ -353,14 +358,29 @@ mkdirSync(out, { recursive: true });
 const recordPrompt = promptRecorder((record) => {
   seen.firstPrompt = record;
 });
-const builderRuntime: BuilderRuntimeFactory | null =
+const sessionRuntime: BuilderRuntimeFactory =
   builder.kind === "scripted"
     ? scriptedBuilderRuntime(builder.turn)
     : builder.kind === "capture"
       ? captureRuntime(out, (record) => {
           seen.capture = record;
         })
-      : null;
+      : productionBuilderRuntime;
+/** A scripted Built slot is also the solver `harness_trial` rehearses with. Production binds the
+ *  live Built solver to the Builder's session, so otherwise a live Builder over a scripted Built
+ *  slot rehearses on a live Built model the battery never runs, spending on whatever that slot
+ *  resolves to unpinned, and a scripted Builder finds no solver bound at all. A rehearsal asks the
+ *  solver for its own starter where a battery falls back to the bundle's, so the scripted solver
+ *  carries the bundle's starter, which is the one its battery cases get. */
+const builderRuntime: BuilderRuntimeFactory =
+  built.kind === "scripted"
+    ? async (...round) => {
+        const solver = withSolverBuiltStarterFactory(built.solver, async (slugDir, ...starter) =>
+          (await loadBuiltStarterFactory(slugDir))(...starter),
+        );
+        return { ...(await sessionRuntime(...round)), builtSolver: () => solver };
+      }
+    : sessionRuntime;
 /** A scripted Built slot replaces the solver, and unless `--real-isolation` the host isolation
  *  with it. A live slot replaces neither, so the measure step runs production's own. */
 const scriptedSolve =
@@ -373,7 +393,7 @@ const deps: FullRunDeps = {
     return harnessBuild.buildHarness(manifest, {
       ...options,
       ...keyIfDefined("observer", observer === undefined ? undefined : recordPrompt(observer)),
-      ...keyIfNotNull("builderRuntime", builderRuntime),
+      builderRuntime,
     });
   },
   drive: (manifest, options) => harnessMeasure.measureHarness(manifest, { ...options, ...scriptedSolve }),

@@ -185,6 +185,30 @@ describe("run-condition through the real controller", () => {
     expect(parseJsonAs<ConditionReport>(result.stdout).result).toBe("completed");
   });
 
+  it("rehearses harness_trial with the scripted Built solver the battery measures with", () => {
+    const rehearsing = join(scratch, "rehearsing.mts");
+    const trial = join(scratch, "trial.json");
+    writeFileSync(
+      rehearsing,
+      readFileSync(turnModule, "utf8").replace(
+        'await ctx.call("submit", {});',
+        `writeFileSync(${JSON.stringify(trial)}, JSON.stringify(await ctx.call("harness_trial", { taskId: "t0" })));
+  await ctx.call("submit", {});`,
+      ),
+    );
+    const result = run(base({ "--builder": rehearsing }));
+    expect(result.exitCode).toBe(3);
+    const trialResult = parseJsonAs<{
+      details: { receipt: { outcome: string; submitted: boolean; truthVerdict: string } };
+    }>(readFileSync(trial, "utf8"));
+    // The scripted uppercase solver answers every task, so its rehearsal passes as its battery does.
+    expect(trialResult.details.receipt).toMatchObject({
+      outcome: "completed",
+      submitted: true,
+      truthVerdict: "pass",
+    });
+  });
+
   it("captures the production first prompt and stops before any provider turn", () => {
     // Production composition derives the Builder's read contract from the source tree's vendor
     // barrels, so the scratch root carries the tree's own source beside its campaigns.

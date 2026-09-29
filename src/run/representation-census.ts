@@ -26,12 +26,12 @@ export interface Witness {
  * inputs — so the finding may describe their relationship. It carries no task id, check id,
  * verifier output or hidden expectation.
  *
- * The archived census's empty-proves-nothing rule (`bulky` above) inverts here on purpose. For copying, empty
- * matching empty is no evidence; for responsiveness, a derived root that stays empty while every
- * input differs is exactly the signal, and an empty plan is the usual shape of the defect. A root
- * that is legitimately constant still yields a true observation with its denominators stated, and
- * the model judges whether that constancy was intended. These findings carry no severity of their
- * own: they accompany an already blocking census result as diagnosis.
+ * The archived census's rule that empty matching empty proves nothing inverts here on purpose. For copying,
+ * empty matching empty is no evidence; for responsiveness, a derived root that stays empty while every input
+ * differs is exactly the signal, and an empty plan is the usual shape of the defect. A root that is
+ * legitimately constant still yields a true observation with its denominators stated, and the model judges
+ * whether that constancy was intended. These findings carry no severity of their own: they accompany an
+ * already blocking census result as diagnosis.
  */
 export function inputInsensitivity(witnesses: readonly Witness[]): ContractFinding[] {
   if (witnesses.length < 2) return [];

@@ -159,7 +159,7 @@ test("each command parses its own options and refuses what it does not take with
     [["launch", "--out-dri", "/x"], /unknown option "--out-dri"/],
     [["status", "--plan-only"], /unknown option "--plan-only"/],
     [["launch", "--out-dir"], /needs a value/],
-    [["lunch"], /expected one of launch, run-one, status, drain, got "lunch"/],
+    [["lunch"], /expected one of launch, run-one, status, drain, watch, got "lunch"/],
     [["status"], /--out-dir is required/],
   ] satisfies [string[], RegExp][];
   for (const [args, message] of refusals) {
@@ -239,11 +239,16 @@ test("launch detaches one companion per task, then drain prints each report exac
       dir,
       "--companion",
       fakeCompanion(dir),
+      "--drain-every",
+      "0",
     ],
     dir,
   );
   assert.equal(launched.code, 0, launched.stderr);
-  const event = parseJsonAs<{ event: string; count: number; policy: string }>(launched.stdout.trim());
+  const event = parseJsonAs<{ event: string; count: number; policy: string; watcher: number | null }>(
+    launched.stdout.trim(),
+  );
+  assert.equal(event.watcher, null);
   assert.equal(event.event, "codex_sessions.launched");
   assert.equal(event.count, 2);
   assert.equal(event.policy, "1-5 sessions: gpt-5.6-sol medium");
@@ -297,4 +302,43 @@ test("launch detaches one companion per task, then drain prints each report exac
   );
   assert.equal(again.code, 1);
   assert.match(again.stderr, /already holds a launch/);
+});
+
+// Sixty lanes of one batch finished and were never read, because nothing drained them. A launch now
+// detaches a watcher that drains every --drain-every seconds into drained.md, once per report, and
+// exits when no session is left running.
+test("a launch's watcher drains every report once into drained.md, then exits", async () => {
+  const dir = scratch();
+  const outDir = join(dir, "out");
+  const tasks = join(dir, "tasks.json");
+  writeFileSync(tasks, JSON.stringify([{ name: "one", task: "answer plainly" }]));
+  const launched = run(
+    [
+      "launch",
+      "--tasks-file",
+      tasks,
+      "--out-dir",
+      outDir,
+      "--companion",
+      fakeCompanion(dir),
+      "--drain-every",
+      "1",
+    ],
+    dir,
+  );
+  assert.equal(launched.code, 0, launched.stderr);
+  assert.notEqual(parseJsonAs<{ watcher: number | null }>(launched.stdout.trim()).watcher, null);
+  const deadline = Date.now() + 15_000;
+  const summaries = () =>
+    existsSync(join(outDir, "watch.log"))
+      ? readFileSync(join(outDir, "watch.log"), "utf8").trim().split("\n").filter(Boolean)
+      : [];
+  while (summaries().every((line) => parseJsonAs<DrainSummary>(line).running > 0) && Date.now() < deadline) {
+    await Bun.sleep(200);
+  }
+  const last = parseJsonAs<DrainSummary>(required(summaries().at(-1), "watch summary"));
+  assert.deepEqual([last.finished, last.running], [1, 0]);
+  const drained = readFileSync(join(outDir, "drained.md"), "utf8");
+  assert.equal(drained.match(/===== one \(/g)?.length, 1);
+  assert.doesNotMatch(run(["drain", "--out-dir", outDir], dir).stdout, /=====/);
 });

@@ -6,11 +6,17 @@
 //        [--model gpt-5.6-sol] [--effort medium] [--write] [--companion /abs/codex-companion.mjs] [--plan-only]
 //   bun codex-sessions.ts status --out-dir /private/tmp/...
 //   bun codex-sessions.ts drain  --out-dir /private/tmp/...
+//   bun codex-sessions.ts watch  --out-dir /private/tmp/... [--every 300]
+//
+// A launch also detaches `watch`, which drains every `--drain-every` seconds (300 by default, 0 for
+// none) into <out-dir>/drained.md and writes one summary line per pass to <out-dir>/watch.log, then
+// exits once no session is running. A batch nobody drained left sixty reports unread (2026-09-29).
 //
 // tasks.json is an array of { name, task, model?, effort?, write? }. Without an explicit model and
 // effort the operator's batch policy of 2026-09-04 applies: up to five sessions run gpt-5.6-sol at
 // medium, six or more run gpt-6-luna at xhigh, all started together.
 import {
+  appendFileSync,
   closeSync,
   existsSync,
   mkdirSync,
@@ -44,12 +50,13 @@ const SCRIPT = Bun.fileURLToPath(import.meta.url);
 
 const COMMANDS = {
   launch: {
-    values: ["tasks-file", "out-dir", "workdir", "model", "effort", "companion"],
+    values: ["tasks-file", "out-dir", "workdir", "model", "effort", "companion", "drain-every"],
     flags: ["write", "plan-only", "help"],
   },
   "run-one": { values: ["spec"], flags: ["help"] },
   status: { values: ["out-dir"], flags: ["help"] },
   drain: { values: ["out-dir"], flags: ["help"] },
+  watch: { values: ["out-dir", "every"], flags: ["help"] },
 };
 
 /** The model and effort a batch runs when neither is given explicitly, and the rule that chose them. */
@@ -77,6 +84,7 @@ type LaunchOptions = {
   effort: string | undefined;
   write: boolean;
   planOnly: boolean;
+  drainEvery: number;
 };
 /** What `run-one` reads back from the spec file `launch` wrote for its session. */
 type Spec = {
@@ -99,9 +107,10 @@ export function usage(): string {
     "codex-sessions.ts launch --tasks-file <abs json> --out-dir <abs dir> [--workdir <abs dir>]",
     "    [--model <model>] [--effort <" +
       EFFORTS.join("|") +
-      ">] [--write] [--companion <abs path>] [--plan-only]",
+      ">] [--write] [--companion <abs path>] [--plan-only] [--drain-every <s, 0 for none; 300>]",
     "codex-sessions.ts status --out-dir <abs dir>",
     "codex-sessions.ts drain --out-dir <abs dir>",
+    "codex-sessions.ts watch --out-dir <abs dir> [--every <s; 300>]",
     "Batch policy when model and effort are not given: 1-5 sessions gpt-5.6-sol/medium, 6+ gpt-6-luna/xhigh.",
   ].join("\n");
 }
@@ -208,6 +217,15 @@ function launch(options: LaunchOptions): number {
     );
     return { ...describe(session), pid, promptFile };
   });
+  const every = String(options.drainEvery);
+  const watcher =
+    options.drainEvery > 0
+      ? spawnDetached(
+          [runtimeProcess.execPath, SCRIPT, "watch", "--out-dir", outDir, "--every", every],
+          join(outDir, "watch.log"),
+          outDir,
+        )
+      : null;
   writeFileSync(
     join(outDir, "launch.json"),
     JSON.stringify({ startedAt, policy: plan.policy, companion, workdir, sessions: launched }, null, 2),
@@ -218,6 +236,7 @@ function launch(options: LaunchOptions): number {
       outDir,
       policy: plan.policy,
       count: launched.length,
+      watcher,
       sessions: launched,
     }),
   );
@@ -347,7 +366,8 @@ function status(outDir: string): number {
   return 0;
 }
 
-function drain(outDir: string): number {
+/** Writes each finished report not yet drained, once, and counts the batch's states. */
+function drainOnce(outDir: string, write: (text: string) => void): DrainCounts {
   const counts: DrainCounts = { finished: 0, failed: 0, running: 0, missing: 0, printed: 0 };
   for (const row of sessionStates(outDir)) {
     counts[row.state] += 1;
@@ -357,15 +377,26 @@ function drain(outDir: string): number {
     if (existsSync(marker)) continue;
     const logPath = join(outDir, `${name}.log`);
     const body = existsSync(logPath) ? readFileSync(logPath, "utf8") : "";
-    console.log(
-      `===== ${name} (${shown(row.model)}/${shown(row.effort)}, ${row.state}, exit ${exitOutcome(row.exit)}, ${shown(row.exit.durationMs)} ms)`,
+    write(
+      `===== ${name} (${shown(row.model)}/${shown(row.effort)}, ${row.state}, exit ${exitOutcome(row.exit)}, ${shown(row.exit.durationMs)} ms)\n${body.trimEnd()}\n`,
     );
-    console.log(body.trimEnd());
     writeFileSync(marker, shown(row.exit.finishedAt));
     counts.printed += 1;
   }
-  console.log(JSON.stringify({ event: "codex_sessions.drained", outDir, ...counts }));
-  return counts.missing > 0 ? 2 : 0;
+  return counts;
+}
+
+/** Drains into drained.md every `every` seconds until no session is running. */
+async function watch(outDir: string, every: number): Promise<number> {
+  const drained = join(outDir, "drained.md");
+  for (;;) {
+    await Bun.sleep(every * 1000);
+    const counts = drainOnce(outDir, (text) => appendFileSync(drained, text));
+    console.log(
+      JSON.stringify({ event: "codex_sessions.drained", at: new Date().toISOString(), drained, ...counts }),
+    );
+    if (counts.running === 0) return counts.missing > 0 ? 2 : 0;
+  }
 }
 
 async function main(): Promise<number> {
@@ -379,6 +410,10 @@ async function main(): Promise<number> {
   const required = requiredOption(die, single);
   const path = (name: string): string => absolute(name, required(name));
   const optionalPath = (name: string): string | undefined => (single.has(name) ? path(name) : undefined);
+  const seconds = (name: string): number => {
+    const value = Number(single.get(name) ?? "300");
+    return Number.isInteger(value) && value >= 0 ? value : die(`--${name} must be a whole number of seconds`);
+  };
   switch (command) {
     case "launch":
       return launch({
@@ -390,13 +425,20 @@ async function main(): Promise<number> {
         effort: single.get("effort"),
         write: flags.has("write"),
         planOnly: flags.has("plan-only"),
+        drainEvery: seconds("drain-every"),
       });
     case "run-one":
       return runOne(path("spec"));
     case "status":
       return status(path("out-dir"));
-    default:
-      return drain(path("out-dir"));
+    case "watch":
+      return watch(path("out-dir"), Math.max(1, seconds("every")));
+    default: {
+      const outDir = path("out-dir");
+      const counts = drainOnce(outDir, (text) => runtimeProcess.stdout.write(text));
+      console.log(JSON.stringify({ event: "codex_sessions.drained", outDir, ...counts }));
+      return counts.missing > 0 ? 2 : 0;
+    }
   }
 }
 

@@ -142,6 +142,13 @@ bun .claude/skills/codex-luna-swarm/scripts/codex-sessions.ts status --out-dir /
 bun .claude/skills/codex-luna-swarm/scripts/codex-sessions.ts drain  --out-dir /private/tmp/<session>/codex
 ```
 
+`launch` also detaches a watcher that drains every `--drain-every` seconds (300 by default; `0`
+turns it off) into `<out-dir>/drained.md`, each report once, and writes one
+`codex_sessions.drained` line per pass to `<out-dir>/watch.log`, exiting once nothing is running.
+Tail `watch.log` with the Monitor tool; `watch --out-dir <dir> [--every S]` starts one by hand for a
+batch launched without it. Sixty lanes of one 2026-09-29 batch sat unread because nothing drained
+them.
+
 `tasks.json` is an array of `{ "name", "task", "model"?, "effort"?, "write"? }`; names match
 `^[a-z][a-z0-9_]*$` and are unique, paths are absolute, and a used `--out-dir` is refused. Write
 both files with the Write tool, never a heredoc. Wait on `<name>.exit.json` with the Monitor tool

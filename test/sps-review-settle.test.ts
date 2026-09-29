@@ -111,4 +111,34 @@ describe("review-settle", () => {
     expect(existsSync(join(sim, "campaigns", "s", "claims", "r.json"))).toBe(true);
     expect(existsSync(join(sim, "campaigns", "s", "analysis"))).toBe(false);
   });
+  it("resolves the reviewer's credential from --repo's env chain, not from the scratch root", () => {
+    // The reviewer opens at the scratch copy, which holds no `.env`; a replay from a worktree then
+    // ended every session on a missing token. The token here is a fixture, never a credential, and
+    // the empty battery stops the script before any session opens.
+    const campaign = join(scratch, "campaigns", "s");
+    mkdirSync(join(campaign, "versions", "r"), { recursive: true });
+    mkdirSync(join(campaign, "claims"), { recursive: true });
+    mkdirSync(join(scratch, ".harness", "backends"), { recursive: true });
+    writeFileSync(join(campaign, "case-record.jsonl"), "");
+    writeFileSync(join(campaign, "claims", "r.json"), "{}");
+    writeFileSync(join(campaign, "isolation-probe-r.json"), "{}");
+    writeFileSync(
+      join(scratch, ".harness", "backends", "default.json"),
+      JSON.stringify({ review: { kind: "claude" } }),
+    );
+    const env = Object.fromEntries(
+      Object.entries(Bun.env).filter(
+        ([key]) => !["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"].includes(key),
+      ),
+    );
+    const settle = (sim: string) =>
+      runTypeScript("review-settle.mts", ["--repo", scratch, "--slug", "s", "--run", "r", "--scratch", sim], {
+        env,
+      });
+    const refused = settle(join(scratch, "sim-no-token"));
+    expect(refused.exitCode).toBe(2);
+    expect(refused.stderr).toContain(`no claude credential resolves from ${scratch}'s env chain`);
+    writeFileSync(join(scratch, ".env"), "CLAUDE_CODE_OAUTH_TOKEN=fixture-not-a-token\n");
+    expect(settle(join(scratch, "sim")).stdout).toContain('"credential":"process"');
+  });
 });

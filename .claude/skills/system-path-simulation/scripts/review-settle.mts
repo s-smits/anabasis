@@ -41,6 +41,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "#src
 import { join } from "#src/meta/path.ts";
 import { loadRepoEnv } from "#src/backends/env.ts";
 import { resolveSlots } from "#src/backends/resolve.ts";
+import { credentialProvenance } from "#src/backends/login-state.ts";
 import { deriveIterationAnalysis } from "#src/analyse/iteration-analysis.ts";
 import { runEpochReview } from "#src/review/epoch-reviewer.ts";
 import { publicEpochReview } from "#src/review/epoch-review-public.ts";
@@ -128,8 +129,20 @@ const measuredDir = join(target, "versions", runId);
 // that cannot dispute anything, which is the wrong condition to replay a dispute rule under.
 const priorAdvice = readLatestRebuildAdvice(scratch, slug);
 
-const review = resolveSlots(repo, slug, loadRepoEnv(repo, Bun.env)).review;
-console.log(JSON.stringify({ review, staged: target }));
+const repoEnv = loadRepoEnv(repo, Bun.env);
+const review = resolveSlots(repo, slug, repoEnv).review;
+// The reviewer opens its session at the scratch root, which holds no `.env`, so its credential would
+// resolve from nothing: until 2026-09-29 a replay from a worktree ended on a missing token. `--repo`'s
+// resolved values stand in this process's environment, where the loader reads first; a value the
+// process already had is kept, as the loader keeps it. Nothing is written to disk.
+for (const [key, value] of Object.entries(repoEnv.env)) Bun.env[key] ??= value;
+const credential = review.enabled
+  ? credentialProvenance(review.kind, loadRepoEnv(scratch, Bun.env)).source
+  : null;
+if (review.enabled && credential === null) {
+  fail(`no ${review.kind} credential resolves from ${repo}'s env chain`);
+}
+console.log(JSON.stringify({ review, credential, staged: target }));
 const analysis = deriveIterationAnalysis(scratch, slug, runId, measuredDir);
 const contested = reviewerContested(
   Array.isArray(replayed)

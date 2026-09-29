@@ -16,10 +16,12 @@ import { fingerprintSlug } from "../src/claim/fingerprint.ts";
 import { campaignDir } from "../src/meta/campaign-root.ts";
 import { hashJsonValue } from "../src/meta/stable-json.ts";
 import { advanceClaimStage, readClaimStages } from "../src/run/claim-stages.ts";
-import { ControllerLedger } from "../src/run/controller-ledger.ts";
+import { Database } from "bun:sqlite";
+import { ControllerLedger, controllerLedgerPath } from "../src/run/controller-ledger.ts";
 import { promoteCandidate, recordExperimentIntegrityHold } from "../src/run/candidate-promotion.ts";
 import { MEMORY_FILE, SCRATCHPAD_FILE } from "../src/author/builder-memory.ts";
 import {
+  ProductVersionFromAnotherSource,
   bindProductMeasurement,
   measuredProductDir,
   productHistoryDirs,
@@ -156,6 +158,24 @@ test("source edits leave captured bytes unchanged; altered or missing selected b
   expect(() => selectedProductDir(root, slug)).toThrow("retained product version agent bundle hashes");
   rmSync(join(version, "agent", "index.ts"));
   expect(() => selectedProductDir(root, slug)).toThrow("retained product version agent bundle hashes");
+});
+
+test("a manifest in another schema is another source's only where the ledger registered its bytes", () => {
+  const { root, source } = fixture();
+  const version = publishProductVersion(source("first"));
+  selectInitialProduct(root, slug, "first");
+  const file = join(version, "version.json");
+  const foreign = { ...JSON.parse(readFileSync(file, "utf8")), schema: "product-version/v1" };
+  writeFileSync(file, JSON.stringify(foreign));
+  // Edited in place, the ledger still names the bytes this source published: damage.
+  expect(() => selectedProductDir(root, slug)).toThrow(
+    "product version is missing, altered, or unregistered",
+  );
+  // Registered as those bytes, the way an older source's own publication left them.
+  const db = new Database(controllerLedgerPath(campaignDir(root, slug)));
+  db.run("UPDATE product_versions SET manifest_digest=? WHERE id=?", [hashJsonValue(foreign), "first"]);
+  db.close();
+  expect(() => selectedProductDir(root, slug)).toThrow(ProductVersionFromAnotherSource);
 });
 
 test("an unregistered publication or lost database cannot become a fresh selected product", () => {

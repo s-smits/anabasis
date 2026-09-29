@@ -13,7 +13,7 @@ import {
 import { campaignDir, defaultProductDir } from "../meta/campaign-root.ts";
 import { basename, dirname, join, normalize, relative } from "../meta/path.ts";
 import { isSafePathSegment } from "../meta/path-segment.ts";
-import { isRecord } from "../meta/json-shape.ts";
+import { isRecord, type JsonValue } from "../meta/json-shape.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { parseJsonAs, capturedJsonStringify } from "../meta/json-runtime.ts";
 import { bundleSnapshotToolTree, linkWorkspaceToolTree } from "../claim/bundle-snapshot.ts";
@@ -24,8 +24,10 @@ import { ControllerLedger, controllerLedgerExists, fsyncPath } from "./controlle
 import { CONFORMANCE_FILE } from "../claim/conformance-evidence.ts";
 import { portableToolTreeDigest } from "../verify/tool-inventory.ts";
 
+const PRODUCT_VERSION_SCHEMA = "product-version/v2";
+
 type ProductManifest = {
-  schema: "product-version/v2";
+  schema: typeof PRODUCT_VERSION_SCHEMA;
   id: string;
   fingerprint: FingerprintEvidence;
   /** Where the version's `.toolchain` link resolved at publication, or null. */
@@ -87,16 +89,31 @@ function manifestAt(dir: string): ProductManifest {
   return parseJsonAs<ProductManifest>(readFileSync(file, "utf8"));
 }
 
+/** A retained version another source recorded, intact and registered but in a manifest shape this
+ *  source keeps no reader for. It is typed so the controller can stop the run with its own clause
+ *  before any round, instead of the version reading as missing or altered. */
+export class ProductVersionFromAnotherSource extends Error {
+  readonly kind = "product-version-from-another-source" as const;
+
+  constructor(dir: string, recorded: JsonValue) {
+    super(
+      `${dir}: recorded as ${capturedJsonStringify(recorded)} by another source; this source reads ${PRODUCT_VERSION_SCHEMA} only, so this project cannot continue here: start a fresh project`,
+    );
+    this.name = "ProductVersionFromAnotherSource";
+  }
+}
+
 export function readProductVersion(repoRoot: string, slug: string, id: string): string {
   const dir = productVersionDir(repoRoot, slug, id);
   using ledger = ControllerLedger.open(campaignDir(repoRoot, slug));
   const manifest = manifestAt(dir);
-  if (
-    ledger.productDigest(id) !== hashJsonValue(manifest) ||
-    manifest.schema !== "product-version/v2" ||
-    manifest.id !== id ||
-    manifest.fingerprint.slug !== slug
-  ) {
+  // Only bytes the ledger registered were recorded by some source. A manifest in another schema
+  // that the ledger does not name is damage like any other edit, and is refused as damage.
+  const registered = ledger.productDigest(id) === hashJsonValue(manifest);
+  if (registered && manifest.schema !== PRODUCT_VERSION_SCHEMA) {
+    throw new ProductVersionFromAnotherSource(dir, manifest.schema);
+  }
+  if (!registered || manifest.id !== id || manifest.fingerprint.slug !== slug) {
     throw new Error(`${dir}: product version is missing, altered, or unregistered`);
   }
   for (const part of ["agent", "correctness-model"]) {
@@ -164,7 +181,7 @@ export function publishProductVersion(input: {
     slug,
   );
   const manifest: ProductManifest = {
-    schema: "product-version/v2",
+    schema: PRODUCT_VERSION_SCHEMA,
     id,
     fingerprint,
     toolTree: bundleSnapshotToolTree(staging),

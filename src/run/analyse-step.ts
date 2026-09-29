@@ -36,9 +36,11 @@ import { type JudgeReviewsResult, runJudgeReviews } from "../analyse/judge-revie
 import { reviewerContested } from "../analyse/judge-contested.ts";
 import { writeCompleted } from "../author/campaign-epoch.ts";
 import {
+  type AdviceIssue,
   type RebuildAdvicePacket,
   attachIssueReadings,
   deriveRebuildAdvice,
+  isStanding,
   latestRebuildAdvicePath,
   readLatestRebuildAdvice,
   rebuildAdvicePath,
@@ -94,6 +96,15 @@ const absentWhy = (outcome: ReviewOutcome): string | null => (outcome.kind === "
 const epochReviewWhy = (review: EpochReviewEvidence) => absentWhy(epochReviewOutcome(review));
 const readingWhy = (reading: DiagnosisReaderEvidence) => absentWhy(reading.outcome);
 
+/** The advanced register's standing issues, each shown with the last reading recorded for it: a
+ *  re-seen issue carries no diagnosis until this battery's reader runs. */
+function disputableIn(advanced: RebuildAdvicePacket, prior: RebuildAdvicePacket | null): AdviceIssue[] {
+  const lastReading = new Map((prior?.issues ?? []).map((issue) => [issue.id, issue.diagnosis] as const));
+  return advanced.issues
+    .filter(isStanding)
+    .map((issue) => ({ ...issue, diagnosis: issue.diagnosis ?? lastReading.get(issue.id) ?? null }));
+}
+
 export async function analyseStep(
   repoRoot: string,
   slug: string,
@@ -116,8 +127,7 @@ export async function analyseStep(
   // evidence to exist on disk.
   writeCompleted(join(dir, `${runId}-judges.json`), judges);
   providerBudget?.throwIfDenied();
-  // The register as it stands before this battery: the epoch reviewer is offered the issues that
-  // are still standing so it can dispute one, and the derived packet below re-reads the same file.
+  // The register as it stood before this battery, which every publish below advances again.
   const standing = readLatestRebuildAdvice(repoRoot, slug);
   const condition = batteryCondition(analysis, measuredDir);
   // Per-run admission records the analysis. The latest admission for the next build is
@@ -147,7 +157,9 @@ export async function analyseStep(
     writeCompleted(latestRebuildAdvicePath(repoRoot, slug), derived);
     return { admission, derived };
   };
-  publish([], []);
+  // The reviewer disputes against the register this battery advanced, so an issue the battery raised
+  // for the first time is disputable now, not a battery later after a build rebuilt around it.
+  const disputable = disputableIn(publish([], []).derived, standing);
   const contested = reviewerContested(judges.contested);
   // A measured battery is reviewed once, so a reader a session limit refused runs again after the
   // reset the provider named, here, before the next Builder round reads what the step publishes.
@@ -160,6 +172,7 @@ export async function analyseStep(
       treeRoot: analysis.treeRoot,
       analysis,
       priorAdvice: standing ?? null,
+      disputable,
       ...contested,
       review,
       publicRequest: options.publicRequest ?? null,

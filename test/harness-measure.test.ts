@@ -4,16 +4,17 @@ import { join } from "../src/meta/path.ts";
 import { isString } from "../src/meta/json-shape.ts";
 import { hashJsonBytes, parseJsonAs } from "../src/meta/json-runtime.ts";
 import { admitFindings, deriveIterationAnalysis, hostFindings } from "../src/analyse/iteration-analysis.ts";
-import { latestRebuildAdvicePath } from "../src/author/rebuild-advice.ts";
+import { type AdviceIssue, latestRebuildAdvicePath } from "../src/author/rebuild-advice.ts";
 import { loadRepoEnv } from "../src/backends/env.ts";
 import { resolveSlots } from "../src/backends/resolve.ts";
 import { readCaseRecord } from "../src/claim/case-record.ts";
-import { EPOCH_REVIEW_SCHEMA } from "../src/review/epoch-review-findings.ts";
+import { EPOCH_REVIEW_SCHEMA, type EpochReviewEvidence } from "../src/review/epoch-review-findings.ts";
 import { recordEpochReview } from "../src/review/epoch-reviewer.ts";
 import { analyseStep } from "../src/run/analyse-step.ts";
 import { measurementDriverId } from "../src/run/harness-measure.ts";
 import { LIMIT_MARGIN_SCHEMA, limitMarginFile, readLimitMargin } from "../src/run/limit-margin.ts";
 import { MATCHING_TASKS, scriptedMatchingSolver } from "./helpers/matching-fixture.ts";
+import { READING } from "./helpers/review-fixtures.ts";
 import { builtSession, fullFakeHost, probeEvidence } from "./helpers/measure-doubles.ts";
 import { DRIVER_ID, measure, measureScratch, scaffoldRepo } from "./helpers/measure-repo.ts";
 import { cleanupScratch } from "./helpers/scratch.ts";
@@ -35,6 +36,29 @@ afterAll(cleanupScratch);
 const SCRATCH_ROOT = measureScratch();
 
 const ALL_MATCHING_IDS = new Set(MATCHING_TASKS.map((t) => t.taskId));
+
+/** An Epoch Review record for a stand-in reviewer, which records itself as the real one does. */
+function reviewDouble(runId: string): EpochReviewEvidence {
+  return {
+    schema: EPOCH_REVIEW_SCHEMA,
+    slug: "bridge-truss",
+    runId,
+    status: "completed",
+    reason: null,
+    condition: null,
+    reviewerPin: "pin",
+    reviewerEffort: null,
+    requestDigest: "request",
+    obligationsDigest: "obligations",
+    reads: [],
+    dispositions: [],
+    unsettled: [],
+    coverage: { files: 0, opened: 0, chars: 0 },
+    findings: [],
+    disputes: [],
+    report: null,
+  };
+}
 
 describe("measureHarness", () => {
   it.concurrent("refuses to run without an adopted harness — adoption is the build campaign's act, never the driver's", async () => {
@@ -126,28 +150,61 @@ describe("measureHarness", () => {
     for (const status of ["failed", "incomplete"] as const) {
       const failed = await analyseStep(repo, "bridge-truss", "m4-ledger", measured, {
         resolvedSlots,
-        epochReview: async () => ({
-          schema: EPOCH_REVIEW_SCHEMA,
-          slug: "bridge-truss",
-          runId: "m4-ledger",
-          status,
-          reason: "review did not finish",
-          condition: null,
-          reviewerPin: "pin",
-          reviewerEffort: null,
-          requestDigest: "request",
-          obligationsDigest: "obligations",
-          reads: [],
-          dispositions: [],
-          unsettled: [],
-          coverage: { files: 0, opened: 0, chars: 0 },
-          findings: [],
-          disputes: [],
-          report: null,
-        }),
+        epochReview: async () => ({ ...reviewDouble("m4-ledger"), status, reason: "review did not finish" }),
       });
       expect(failed.absent).toEqual([`epoch review: ${status} — review did not finish`]);
     }
+  });
+
+  // The reviewer used to be offered the register as it stood before the battery, so an issue the
+  // battery raised for the first time could be disputed only a battery later, after the next build
+  // had been told to rebuild around it. It is offered the register this battery advanced, and a
+  // dispute on a new issue reaches the register the next build reads. A re-seen issue is shown with
+  // the reading the last battery's diagnosis reader recorded, which the advanced register clears.
+  it.concurrent("lets the review dispute an issue its own battery raised for the first time", async () => {
+    const repo = scaffoldRepo(join(SCRATCH_ROOT, "analyse-dispute"), { toolsSpec: true, conformance: true });
+    const processEnv = { HARNESS_BUILT_BACKEND: "codex", CODEX_BUILT_MODEL: "gpt-5.5" };
+    const resolvedSlots = {
+      ...resolveSlots(repo, "bridge-truss", loadRepoEnv(repo, processEnv)),
+      review: { enabled: false, source: "operator" } as const,
+    };
+    const ledger = latestRebuildAdvicePath(repo, "bridge-truss");
+    const battery = async (runId: string, dispute: boolean) => {
+      await measure({
+        runId,
+        repoRoot: repo,
+        processEnv,
+        solver: scriptedMatchingSolver(new Set([MATCHING_TASKS[0]?.taskId ?? ""]), () => {}),
+        createVerifier: () => fullFakeHost(),
+        isolationProbe: () => probeEvidence(true),
+        sessionProbe: async () => builtSession(),
+      });
+      let offered: AdviceIssue[] = [];
+      const step = await analyseStep(repo, "bridge-truss", runId, join(repo, "domains", "bridge-truss"), {
+        resolvedSlots,
+        epochReview: async (input) => {
+          offered = [...(input.disputable ?? [])];
+          const disputes = dispute
+            ? offered.map(({ id }) => ({ issueId: id, reason: "the check refuses" }))
+            : [];
+          return recordEpochReview(repo, { ...reviewDouble(runId), disputes });
+        },
+      });
+      return { offered, advice: step.advice };
+    };
+    const first = await battery("m4-first", false);
+    expect(first.offered.map((issue) => issue.firstSeenRunId)).toEqual(["m4-first"]);
+    const read = first.advice.issues.map((issue) => ({
+      ...issue,
+      diagnosis: { ...READING, runId: "m4-first" },
+    }));
+    writeFileSync(ledger, JSON.stringify({ ...first.advice, issues: read }));
+    const second = await battery("m4-second", true);
+    expect(second.offered.map((issue) => issue.diagnosis)).toEqual([{ ...READING, runId: "m4-first" }]);
+    const [disputed] = second.advice.issues;
+    expect(disputed?.id).toBe(second.offered[0]?.id);
+    expect(disputed?.dispute).toEqual(expect.any(String));
+    expect(JSON.parse(readFileSync(ledger, "utf8"))).toEqual(second.advice);
   });
 
   // A measured battery is reviewed once, so a review a session limit refused would be lost for good.
@@ -190,25 +247,7 @@ describe("measureHarness", () => {
           calls += 1;
           const { status, reason } = calls === 1 ? first : { status: "completed" as const, reason: "second" };
           // The review records itself, so a stand-in for it does too.
-          return recordEpochReview(repo, {
-            schema: EPOCH_REVIEW_SCHEMA,
-            slug: "bridge-truss",
-            runId: "m4-reset",
-            status,
-            reason,
-            condition: null,
-            reviewerPin: "pin",
-            reviewerEffort: null,
-            requestDigest: "request",
-            obligationsDigest: "obligations",
-            reads: [],
-            dispositions: [],
-            unsettled: [],
-            coverage: { files: 0, opened: 0, chars: 0 },
-            findings: [],
-            disputes: [],
-            report: null,
-          });
+          return recordEpochReview(repo, { ...reviewDouble("m4-reset"), status, reason });
         },
       });
       const recorded = JSON.parse(

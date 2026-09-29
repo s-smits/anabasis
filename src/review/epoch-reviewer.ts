@@ -95,11 +95,17 @@ export interface EpochReviewInput {
   treeRoot: string;
   /** Null before measurement; the same reader then reviews source without a capability claim. */
   analysis: IterationAnalysis | null;
-  /** The latest recorded advice packet, or null when none exists. Exactly two parts of it reach
-   *  the review: the standing issues it may dispute, and — at an authoring checkpoint alone — the
-   *  counts of the battery the packet was derived from. The packet this review's own battery
-   *  produces is derived after the review runs, so nothing circular crosses. */
+  /** The latest recorded advice packet, or null when none exists. Two parts of it reach the review:
+   *  the standing issues it may dispute unless `disputable` names them, and — at an authoring
+   *  checkpoint alone — the counts of the battery the packet was derived from. Its run id also finds
+   *  the previous battery's review, whose advisory defects this one is shown. Nothing a reader of
+   *  this review's own battery attaches is in either, so nothing circular crosses. */
   priorAdvice: RebuildAdvicePacket | null;
+  /** The standing issues this review may dispute, when the caller holds a newer register than
+   *  `priorAdvice`: a measured battery's own, advanced by its host and Judge evidence, so an issue
+   *  the battery raised for the first time is disputable in that battery rather than the next one.
+   *  Absent, the standing issues of `priorAdvice`. */
+  disputable?: readonly AdviceIssue[];
   /** Whether the prior packet's battery measured the version the tree under review was seeded from,
    *  read off the controller ledger. False means the packet measured a candidate this tree is not,
    *  and null leaves the comparison unmade rather than guessing; `whoseBattery` words all three, so
@@ -223,7 +229,8 @@ function obligationsDigest(input: EpochReviewInput, issues: readonly AdviceIssue
 /** The standing issues a review may dispute, which is the only set worth offering: an issue
  *  already disputed, retired, or absent from the last battery is not directing an authoring pass,
  *  so arguing against it would change nothing. */
-const disputableIssues = (input: EpochReviewInput) => (input.priorAdvice?.issues ?? []).filter(isStanding);
+const disputableIssues = (input: EpochReviewInput) =>
+  input.disputable ?? (input.priorAdvice?.issues ?? []).filter(isStanding);
 
 /** Decide whether this review reads anything, and settle the condition it would read under. The
  *  verifier identity is part of that condition and so is resolved before the reuse question: the

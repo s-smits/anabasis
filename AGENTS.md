@@ -744,7 +744,11 @@ the battery was paid for.
    ended incomplete or failed hands its findings on at advisory severity, with one sentence saying it did not
    finish, and it settles no case and disputes no issue; until 2026-09-29 it handed the Builder nothing,
    however much it had demonstrated before its provider dropped. Only a `correctness-model/` defect may
-   dispute an issue, and a dispute keeps the issue counted while withholding the agent advice. Public
+   dispute an issue, and a dispute keeps the issue counted while withholding the agent advice. A measured
+   review is offered the standing issues of the register its own battery advanced on host and Judge
+   evidence, each with the last diagnosis recorded for it, so an issue that battery raised first is
+   disputable in it; until 2026-09-29 it was offered the register before the battery, and a dispute on a
+   new issue landed a battery late, after a build had rebuilt around it. Public
    candidate analysis and checks of published limits are legitimate solving support; a tool is an answer
    shortcut only when it makes the solver's remaining decision. While the measured `.toolchain` digest still
    matches a recorded tool, the reviewer may read any text file of that tree by name (`toolchain:<path>`,

@@ -810,7 +810,11 @@ the battery was paid for.
     The rebuild advice packet is deterministic (`analysis/<runId>-rebuild-advice.json` with
     `rebuild-advice-latest.json` beside it), bound by digest to the iteration that consumes it, and
     rendered once per rebuild kickoff from recorded rows, Judge reviews and admitted aggregate findings,
-    never per-case ones. It states each issue's owner, not what to rebuild. Each issue keeps a stable id
+    never per-case ones. A finding a bundle file holds reaches the kickoff as feedback to that file
+    instead, and one on the owner and subject (`namedSubject`) of a finding the previous battery admitted
+    says how many consecutive batteries have admitted it and since which. Until 2026-09-29 each
+    recurrence read as a fresh finding: 48 of the 171 routed findings then recorded repeated the battery
+    before, and one on `correctness-model/brief.json`'s `wiring-behavior` check ran twelve. It states each issue's owner, not what to rebuild. Each issue keeps a stable id
     and states its recorded facts rather than a verdict on them (`issueFacts`, `rebuild-advice/v11`):
     where it was first and last seen, how many complete rechecks have not observed it since, whether it
     was seen again after an absence, which condition moved when a recheck was not comparable, and

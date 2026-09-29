@@ -440,6 +440,23 @@ export function hostFindings(repoRoot: string, analysis: IterationAnalysis): Ana
   return findings;
 }
 
+/** A routed finding's subject, and how many consecutive batteries have admitted one on the same
+ *  owner and subject, read off the previous battery's own feedback the way `recurrence` in
+ *  `rebuild-advice.ts` reads unplaced findings. A gap leaves the chain, so it restarts at one. */
+function recurrenceOf(
+  previous: { runId: string; feedback: readonly CampaignFeedback[] } | null,
+  owner: FeedbackOwner,
+  subject: string | null,
+): Pick<CampaignFeedback, "subject" | "repeated"> {
+  if (subject === null) return {};
+  const prior = previous?.feedback.find((row) => row.owner === owner && row.subject === subject);
+  if (previous === null || prior === undefined) return { subject };
+  return {
+    subject,
+    repeated: { count: (prior.repeated?.count ?? 1) + 1, since: prior.repeated?.since ?? previous.runId },
+  };
+}
+
 /** Controller admission: the shape is typed, the citations must exist on disk, and only findings
  *  that route to an author session become campaign feedback. Everything else stays disclosed in the
  *  recorded packet with a null route rather than disappearing at the partition, and an
@@ -448,6 +465,7 @@ export function admitFindings(
   repoRoot: string,
   analysis: IterationAnalysis,
   findings: AnalysisFinding[],
+  previous: { runId: string; feedback: readonly CampaignFeedback[] } | null = null,
 ): AdmittedEvidence {
   const admitted: AnalysisFinding[] = [];
   const refused: AdmittedEvidence["refused"] = [];
@@ -472,6 +490,7 @@ export function admitFindings(
     severity: findingSeverity(finding),
     claim: finding.claim,
     evidence: `${finding.evidence} (analysis ${digest.slice(0, 12)})`,
+    ...recurrenceOf(previous, owner, namedSubject(finding)),
     // This array is what the author input renders into the reopened prompt, so it is
     // controller-marked for the author isolation to admit it; an unmarked packet is refused there.
     findings: controllerValidatedFindings([

@@ -24,6 +24,9 @@
 import { mkdirSync } from "../meta/filesystem.ts";
 import { campaignDir } from "../meta/campaign-root.ts";
 import { join } from "../meta/path.ts";
+import { readJsonFileOrNull } from "../meta/completed-json.ts";
+import { isRecord } from "../meta/json-shape.ts";
+import type { CampaignFeedback } from "../author/campaign-types.ts";
 import {
   type AdmittedEvidence,
   type AnalysisFinding,
@@ -96,6 +99,18 @@ const absentWhy = (outcome: ReviewOutcome): string | null => (outcome.kind === "
 const epochReviewWhy = (review: EpochReviewEvidence) => absentWhy(epochReviewOutcome(review));
 const readingWhy = (reading: DiagnosisReaderEvidence) => absentWhy(reading.outcome);
 
+/** The feedback the battery before this one admitted, which a recurring finding counts back through.
+ *  Absent or unreadable reads as none, so the count restarts at one: it says less, never more. */
+function admittedBefore(dir: string, runId: string | undefined) {
+  if (runId === undefined) return null;
+  const recorded = readJsonFileOrNull(join(dir, `${runId}-admission.json`));
+  // SAFETY: this file is written only by `publish` below, from `admitFindings`, whose `feedback` is
+  // `CampaignFeedback[]`; a row it cannot match on owner and subject counts nothing.
+  return isRecord(recorded) && Array.isArray(recorded.feedback)
+    ? { runId, feedback: recorded.feedback as CampaignFeedback[] }
+    : null;
+}
+
 /** The advanced register's standing issues, each shown with the last reading recorded for it: a
  *  re-seen issue carries no diagnosis until this battery's reader runs. */
 function disputableIn(advanced: RebuildAdvicePacket, prior: RebuildAdvicePacket | null): AdviceIssue[] {
@@ -144,10 +159,8 @@ export async function analyseStep(
     disputes: ReadonlyArray<{ issueId: string; reason: string }>,
     settled: readonly string[] = [],
   ) => {
-    const admission = admitFindings(repoRoot, analysis, [
-      ...hostFindings(repoRoot, analysis),
-      ...reviewFindings,
-    ]);
+    const findings = [...hostFindings(repoRoot, analysis), ...reviewFindings];
+    const admission = admitFindings(repoRoot, analysis, findings, admittedBefore(dir, standing?.runId));
     writeCompleted(join(dir, `${runId}-admission.json`), { runId, policy: FEEDBACK_POLICY, ...admission });
     const derived = attachIssueReadings(
       deriveRebuildAdvice(analysis, judges, admission, standing, condition),

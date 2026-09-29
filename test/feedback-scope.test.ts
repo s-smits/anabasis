@@ -90,6 +90,22 @@ describe("the complete repair agenda", () => {
     expect(advisory(feedback.map((entry) => ({ ...entry, severity: "advisory" })))).not.toBe(text);
   });
 
+  it("tells the Builder a finding recurs, and since which battery", () => {
+    const recurring: CampaignFeedback = {
+      ...row("correctness-model/brief.json"),
+      findings: [
+        controllerValidatedFinding({ code: "defect", path: "recorded", detail: "Publish the wiring rule." }),
+      ],
+      repeated: { count: 12, since: "custom-sol-i03" },
+    };
+    expect(advisory([recurring])).toBe(
+      "- correctness-model/brief.json: [blocking] defect: Publish the wiring rule. (recurring: 12 consecutive batteries since custom-sol-i03)",
+    );
+    expect(advisory([{ ...recurring, findings: [] }])).toBe(
+      "- correctness-model/brief.json: [blocking] a previous finding remains; inspect the public contract (recurring: 12 consecutive batteries since custom-sol-i03)",
+    );
+  });
+
   it("names the file the owner writes, not the recorded evidence the Builder cannot open", () => {
     // Of the 416 findings in the admission records under campaigns/, 411 cite a file under
     // campaigns/ and 5 under domains/. Both trees are closed to the Builder, so the citation spent

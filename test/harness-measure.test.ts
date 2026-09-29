@@ -161,7 +161,7 @@ describe("measureHarness", () => {
   // had been told to rebuild around it. It is offered the register this battery advanced, and a
   // dispute on a new issue reaches the register the next build reads. A re-seen issue is shown with
   // the reading the last battery's diagnosis reader recorded, which the advanced register clears.
-  it.concurrent("lets the review dispute an issue its own battery raised for the first time", async () => {
+  it.concurrent("lets the review dispute an issue its own battery raised, and counts a recurring finding", async () => {
     const repo = scaffoldRepo(join(SCRATCH_ROOT, "analyse-dispute"), { toolsSpec: true, conformance: true });
     const processEnv = { HARNESS_BUILT_BACKEND: "codex", CODEX_BUILT_MODEL: "gpt-5.5" };
     const resolvedSlots = {
@@ -187,19 +187,29 @@ describe("measureHarness", () => {
           const disputes = dispute
             ? offered.map(({ id }) => ({ issueId: id, reason: "the check refuses" }))
             : [];
-          return recordEpochReview(repo, { ...reviewDouble(runId), disputes });
+          const wiring = {
+            owner: "correctness-model/brief.json" as const,
+            defect: true,
+            claim: `the wiring rule is unpublished (${runId})`,
+            evidence: `campaigns/bridge-truss/analysis/${runId}-judges.json`,
+            checkId: "wiring-behavior",
+          };
+          return recordEpochReview(repo, { ...reviewDouble(runId), findings: [wiring], disputes });
         },
       });
-      return { offered, advice: step.advice };
+      return { offered, advice: step.advice, feedback: step.admission.feedback };
     };
     const first = await battery("m4-first", false);
     expect(first.offered.map((issue) => issue.firstSeenRunId)).toEqual(["m4-first"]);
+    expect(first.feedback.map((row) => row.repeated)).toEqual([undefined]);
     const read = first.advice.issues.map((issue) => ({
       ...issue,
       diagnosis: { ...READING, runId: "m4-first" },
     }));
     writeFileSync(ledger, JSON.stringify({ ...first.advice, issues: read }));
     const second = await battery("m4-second", true);
+    // The same owner and check in the next battery, reworded, is one finding recurring.
+    expect(second.feedback.map((row) => row.repeated)).toEqual([{ count: 2, since: "m4-first" }]);
     expect(second.offered.map((issue) => issue.diagnosis)).toEqual([{ ...READING, runId: "m4-first" }]);
     const [disputed] = second.advice.issues;
     expect(disputed?.id).toBe(second.offered[0]?.id);

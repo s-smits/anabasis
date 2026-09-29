@@ -607,7 +607,9 @@ description matched a diff, and the accepted bytes already say what moved.
 
 Choose one: retain and measure; fix the demonstrated owner; delete a mechanism with no consumer or
 no decision effect; investigate a consequential ambiguity; or stop because the authorised programme
-or the allowance ended. The product owns its own within-run climb and rebuild decisions. Whether a
+or the allowance ended, or because a run's climb stalled. The product owns its own within-run climb
+and rebuild decisions, but never stops on one: a stall, as AGENTS.md "Goals and the climb" defines it
+and `bun run runs pulse` names it, is the operator's to stop. Whether a
 new wave of runs improved on the one it replaced is a [wave-audit](../wave-audit/SKILL.md), read
 at the first battery, the third round and the terminal.
 

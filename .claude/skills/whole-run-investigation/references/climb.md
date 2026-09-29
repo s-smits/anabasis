@@ -16,7 +16,9 @@ earn (AGENTS.md "Goals and the climb": a healthy, ambitious climb). Two counts f
 say whether a change moved towards that: how many batteries came before the first in-band
 placement, and what share of placements were `on-aim` rather than `too-easy` or `over-aim`. Neither
 moves by touching a threshold, because the band, the Wilson owner and the battery sizes are frozen
-policy.
+policy. On 2026-09-29, 4 of the 51 local runs with a placement had ever placed on the aim, the latest
+first doing so at its fifth battery, and three of the four did it on a probe whose fails the Epoch
+Reviewer settled against the check. Only truss cb274b's 3/8 then 10/25 held.
 
 ## Who can move difficulty
 

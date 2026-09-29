@@ -276,7 +276,13 @@ that passed every case, and so were 16 of the 17 edges that widened on a new inp
 them 2d7812's new load sites and forbidden volume. So name the changed public requirement from the task rows beside the label, and read each
 battery's `fails` line (held, settled against the check, unsettled, and the checks they fell on) before
 counting a partial battery as a limit found. Three `too-easy` placements in a row mean no battery found
-the limit, and the answer is to rebuild what the tasks demand, not their numbers.
+the limit, and so do six batteries in a row above the aim, because an `over-aim` placement resets
+the first count without locating anything: truss-sol-198d70 stalled at four too-easy batteries, then
+went seven more above the aim with no three too-easy in a row, and no recorded run first placed on
+the aim after its fifth battery (51 runs, 2026-09-29). The answer is to
+rebuild what the tasks demand, not their numbers. The controller never stops on a reading of the tasks
+(`LoopState`) and the Builder is told no zone, so stopping a stalled run is the operator's call, which
+`bun run runs pulse` names when it arrives.
 
 ## Evidence and implementation status
 

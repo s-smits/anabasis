@@ -147,6 +147,21 @@ describe("runs pulse", () => {
     expect(bracketing).not.toContain("stall");
   });
 
+  it("names a stall at six batteries in a row above the aim, however over-aim ones interrupt too-easy", () => {
+    const easy = battery(5, 5, "too-easy");
+    const over = battery(6, 7, "over-aim");
+    const alternating = [easy, easy, over, easy, over, easy];
+    expect(statusLine(reading(0, { batteries: alternating }), 10)).toContain(
+      "above the aim 6 in a row; a stall",
+    );
+    expect(statusLine(reading(0, { batteries: alternating.slice(1) }), 10)).not.toContain("stall");
+    const belowSix = [
+      battery(1, 7, "under-aim"),
+      ...Array.from({ length: 5 }, () => battery(1, 7, "under-aim")),
+    ];
+    expect(statusLine(reading(0, { batteries: belowSix }), 10)).not.toContain("stall");
+  });
+
   it("numbers a new round and carries the last battery into its line", () => {
     const before = reading(90, { batteries: [battery(7, 7, "too-easy")] });
     const rebuild = transition(91, "build", "started", { summary: "Build step started (rebuild)" });

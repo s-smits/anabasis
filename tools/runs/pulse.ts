@@ -55,6 +55,11 @@ const FAILED_BURST = 3;
  *  the stall is the operator's to call, and the pulse names it rather than leaving it inside a
  *  streak that also counts `over-aim` batteries. */
 const STALL_BATTERIES = 3;
+/** The same stall read across `over-aim` placements, which reset a `too-easy` count without
+ *  locating anything: truss-sol-198d70 read stalled at its fourth too-easy battery, stopped reading
+ *  so at one over-aim placement, and went seven more above the aim. No recorded run first placed on
+ *  the aim after its fifth battery (51 runs, 2026-09-29). */
+const STALL_ABOVE_AIM = 6;
 const MEASURING = new Set(["adopt", "controls", "solve", "measure-on", "grade"]);
 const REVIEWING = new Set(["judge", "claim", "analyse", "admission", "next"]);
 /** Top-level transitions that are the loop's ordinary machinery and would bury the rest. */
@@ -127,11 +132,12 @@ export function offAimStreak(
 function streakText(batteries: readonly PulseBattery[]): string {
   const streak = offAimStreak(batteries);
   if (streak === null) return "";
-  const stall =
-    streak.tooEasy >= STALL_BATTERIES
-      ? `; ${String(streak.tooEasy)} too-easy in a row, a stall: no battery found the limit`
-      : "";
-  return `, ${streak.side} the aim ${String(streak.rounds)} in a row${stall}`;
+  const text = `, ${streak.side} the aim ${String(streak.rounds)} in a row`;
+  const stall = "a stall: no battery found the limit";
+  if (streak.tooEasy >= STALL_BATTERIES) {
+    return `${text}; ${String(streak.tooEasy)} too-easy in a row, ${stall}`;
+  }
+  return streak.side === "above" && streak.rounds >= STALL_ABOVE_AIM ? `${text}; ${stall}` : text;
 }
 
 function batteryText(battery: PulseBattery): string {

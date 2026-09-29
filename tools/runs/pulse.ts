@@ -3,8 +3,8 @@
  *
  * `list` and `show` answer where a run stands; a run that is being watched raises a different
  * question every few minutes, which is what moved. Answering it by hand meant re-reading the
- * observability journal, the Builder's execution checkpoint with its rehearsals, the plan and the
- * case record for every run and remembering what each said last time. This keeps one reading
+ * observability journal, the Builder's execution checkpoint with its rehearsals and the case
+ * record for every run and remembering what each said last time. This keeps one reading
  * per run between looks and prints the difference as events: `◆` a stage worth reading (a round
  * opened, a battery recorded, the run ended), `⚠` something that may be wrong (an error row, a
  * quiet Builder, a non-result, a not-run rehearsal), `·` a smaller fact. The readings are kept in
@@ -41,7 +41,6 @@ import {
   roundsOpened,
   topLevel,
   type PulseBattery,
-  type PulsePlan,
   type PulseReading,
   type PulseRehearsal,
 } from "./pulse-read.ts";
@@ -126,14 +125,6 @@ function batteryText(battery: PulseBattery): string {
   ].filter((part) => part !== null);
   const tail = extra.length === 0 ? "" : ` (${extra.join(", ")})`;
   return `${String(battery.passed)}/${String(battery.verified)}${tail}`;
-}
-
-function planText(plan: PulsePlan): string {
-  const families =
-    plan.families === null
-      ? null
-      : `${String(plan.families)} famil${plan.families === 1 ? "y" : "ies"} changed`;
-  return families === null ? "plan" : `plan, ${families}`;
 }
 
 /** The row's evidence as paths inside its campaign, with the run id, which every one repeats, as `<run>`. */
@@ -238,9 +229,6 @@ function roundEvents(before: PulseReading, after: PulseReading): PulseEvent[] {
   events.push(
     ...now.rehearsals.slice(heard).map((row, index) => rehearsalEvent(label, now.number, heard + index, row)),
   );
-  if (now.plan !== null && JSON.stringify(was.plan) !== JSON.stringify(now.plan)) {
-    say("·", planText(now.plan));
-  }
   const burst = (now.failedCalls ?? 0) - (was.failedCalls ?? 0);
   if (burst >= FAILED_BURST) {
     say("⚠", `${String(burst)} failed Builder calls since the last look`, [
@@ -381,8 +369,6 @@ function buildStatus(reading: PulseReading): string {
     round.accepted + round.refused === 0
       ? null
       : `submits ${String(round.accepted)} accepted, ${String(round.refused)} refused`,
-    round.plan === null ? null : planText(round.plan),
-    round.planAdvice,
     round.toolCalls === null
       ? null
       : `${String(round.toolCalls)} tool calls (${String(round.failedCalls ?? 0)} failed)`,
@@ -464,9 +450,7 @@ function isKeptRound(round: unknown): boolean {
     isNumber(round.accepted) &&
     isNumber(round.refused) &&
     Array.isArray(round.refusalCodes) &&
-    Array.isArray(round.rehearsals) &&
-    (round.plan === null ||
-      (isRecord(round.plan) && (round.plan.families === null || isNumber(round.plan.families))))
+    Array.isArray(round.rehearsals)
   );
 }
 

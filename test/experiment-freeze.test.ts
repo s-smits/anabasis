@@ -1,7 +1,6 @@
 /**
  * Experiment attribution read off two frozen trees (src/run/experiment-freeze.ts) and the operation
- * admission derives from them (src/gate/experiment-admission.ts): accepted bytes, not the plan,
- * decide whether a continuation is a build, an evaluation correction or a task-only climb, and an
+ * admission derives from them (src/gate/experiment-admission.ts): accepted bytes decide whether a continuation is a build, an evaluation correction or a task-only climb, and an
  * unverified claim of unchanged conditions is recorded as unproven. Each case compares a candidate
  * with a base built from the matching fixture. Their composition through a real submit, census and
  * F2 belongs to experiment-intent.e2e.test.ts.
@@ -14,12 +13,11 @@ import { readBoundConformance } from "../src/claim/conformance-evidence.ts";
 import {
   candidateExperimentAuthoring,
   candidateExperimentScope,
-  changedFamilies,
   draftTaskRows,
+  EXPERIMENT_AUTHORING_SCHEMA,
   experimentFreeze,
   publicTaskRows,
 } from "../src/run/experiment-freeze.ts";
-import { hashJsonValue } from "../src/meta/stable-json.ts";
 import { fingerprintSlug } from "../src/claim/fingerprint.ts";
 import type { CandidateSnapshot } from "../src/author/candidate-check.ts";
 import { experimentOperation } from "../src/gate/experiment-admission.ts";
@@ -78,12 +76,6 @@ function repairEvaluator(dir: string): void {
   writeFileSync(evaluator, `import "./check-helper.ts";\n${readFileSync(evaluator, "utf8")}`);
 }
 
-/** A captured plan, bound by its digest. */
-function planOf(change: string) {
-  const plan = { gap: "Gap.", change, families: ["single-part"] };
-  return { ...plan, digest: hashJsonValue(plan) };
-}
-
 function snapshotOf(candidate: string): CandidateSnapshot {
   const fingerprint = fingerprintSlug(candidate);
   if (!fingerprint.ok) throw new Error("fixture fingerprint refused");
@@ -101,98 +93,55 @@ function snapshotOf(candidate: string): CandidateSnapshot {
 it("records only changed public inputs and refuses drifted attribution", () => {
   const { base, candidate } = pair();
   const probe = { operation: "task-probe" as const, moved: ["tasks" as const] };
-  const changedIds = (plan: ReturnType<typeof planOf> | null) =>
-    candidateExperimentAuthoring(plan, probe, "climb", base, candidate).changedTaskIds;
+  const changedIds = () => candidateExperimentAuthoring(probe, "climb", base, candidate).changedTaskIds;
   // A private operand is no public condition, so moving one alone attributes no task.
   const hiddenOnly = structuredClone(MATCHING_TASKS);
   required(required(hiddenOnly[0], "first task").hidden[0], "hidden row").expectation = { parts: ["moved"] };
   writeTasks(candidate, hiddenOnly);
-  expect(changedIds(null)).toEqual([]);
+  expect(changedIds()).toEqual([]);
   const tasks = structuredClone(MATCHING_TASKS);
   const first = required(tasks[0], "first task");
   first.taskId = "renamed";
   first.family = "renamed-family";
   required(tasks[1], "second task").publicInput = { changed: true };
   writeTasks(candidate, tasks);
-  const captured = planOf("Change public input.");
-  expect(changedIds(captured)).toEqual([required(tasks[1], "second task").taskId]);
-  // The plan decides none of it: without one, the same bytes attribute the same tasks and families.
-  const { plan: _plan, ...planned } = candidateExperimentAuthoring(captured, probe, "climb", base, candidate);
-  const { plan: absent, ...unplanned } = candidateExperimentAuthoring(null, probe, "climb", base, candidate);
-  expect(absent).toBeNull();
-  expect(unplanned).toEqual(planned);
-  expect(candidateExperimentAuthoring(captured, probe, "build", base, candidate).changedTaskIds).toBeNull();
+  expect(changedIds()).toEqual([required(tasks[1], "second task").taskId]);
+  expect(candidateExperimentAuthoring(probe, "build", base, candidate).changedTaskIds).toBeNull();
   writeFileSync(join(candidate, "agent/tools.ts"), "export const changed = true;");
-  expect(() => candidateExperimentAuthoring(captured, probe, "climb", base, candidate)).toThrow(
-    "drifted bytes",
-  );
+  expect(() => candidateExperimentAuthoring(probe, "climb", base, candidate)).toThrow("drifted bytes");
 });
 
-it("binds a fresh build's plan with no baseline, and still refuses a missing one for a climb", () => {
-  // A fresh build has no adopted product, so its first battery's plan is recorded to be scored
-  // with a null baseline rather than aborting the run.
+it("binds a fresh build with no baseline, and still refuses a missing one for a climb", () => {
+  // A fresh build has no adopted product, so its first battery records a null baseline rather than
+  // aborting the run.
   const { candidate } = pair();
   const absent = join(scratchDir("ana-no-adopted-"), "domain");
-  const captured = planOf("Author the first battery.");
   const fresh = { operation: "new-baseline" as const, moved: [], unproven: "no adopted baseline" };
-  expect(candidateExperimentAuthoring(captured, fresh, "build", absent, candidate)).toMatchObject({
-    plan: captured,
-    changedFamilies: null,
+  expect(candidateExperimentAuthoring(fresh, "build", absent, candidate)).toEqual({
+    schema: EXPERIMENT_AUTHORING_SCHEMA,
+    operation: fresh,
     actual: "build",
     baseline: null,
     changedTaskIds: null,
   });
-  expect(() => candidateExperimentAuthoring(captured, fresh, "climb", absent, candidate)).toThrow(
+  expect(() => candidateExperimentAuthoring(fresh, "climb", absent, candidate)).toThrow(
     "positively fingerprinted",
   );
 });
 
-// The plan's families are read against each task's public condition as the solver meets it: its
-// input and the rules its family's checks assert. A rule-only round moves a family with every input
-// unchanged, and a relabelled id moves nothing.
-it("reads the changed families from each task's public condition, and a brief-wide rule as every family", () => {
-  const { base, candidate } = pair();
-  const briefPath = "correctness-model/brief.json";
-  const writeBrief = (dir: string, brief: typeof MATCHING_BRIEF) =>
-    writeFileSync(join(dir, briefPath), JSON.stringify(brief));
-  const scoped = structuredClone(MATCHING_BRIEF);
-  required(scoped.truthChecks[0], "first check").execution.families = ["single-part"];
-  for (const dir of [base, candidate]) writeBrief(dir, scoped);
-  expect(changedFamilies(base, candidate)).toEqual([]);
-  writeTasks(
-    candidate,
-    MATCHING_TASKS.map((task) => ({ ...task, taskId: `${task.taskId}-renamed` })),
-  );
-  expect(changedFamilies(base, candidate)).toEqual([]);
-  writeTasks(candidate, movedBattery());
-  expect(changedFamilies(base, candidate)).toEqual(["single-part"]);
-  writeTasks(candidate, MATCHING_TASKS);
-  const reworded = structuredClone(scoped);
-  required(reworded.truthChecks[0], "first check").assertion = "each declared part binds one slot";
-  writeBrief(candidate, reworded);
-  expect(changedFamilies(base, candidate)).toEqual(["single-part"]);
-  const decided = structuredClone(scoped);
-  required(decided.ruleDecisions?.[0], "first rule decision").statement = "parts may remain unassigned";
-  writeBrief(candidate, decided);
-  expect(changedFamilies(base, candidate)).toEqual(["single-part", "two-part"]);
-  writeFileSync(join(candidate, briefPath), "{");
-  expect(changedFamilies(base, candidate)).toBeNull();
-});
-
-// The starter seeds tasks.json as a bare `[]`. The readers that meet a draft in that state, the plan
-// advice, the authoring review and the Epoch Reviewer's task list, read it as holding no task. The
+// The starter seeds tasks.json as a bare `[]`. The reader that meets a draft in that state, the Epoch
+// Reviewer's task list, reads it as holding no task. The
 // strict reader still refuses it, and every caller of that reader runs behind the bundle stage,
 // which refuses the seed as empty, and a wrapped empty list by its shape, before any attribution
 // reads either.
-it("reads a draft with no task yet as changing no family, and leaves the empty battery to the gate", () => {
-  const { base, candidate } = pair();
+it("reads a draft with no task yet as holding none, and leaves the empty battery to the gate", () => {
+  const { candidate } = pair();
   for (const [seeded, refusal] of [
     ["[]", "tasks-empty"],
     [JSON.stringify({ tasks: [] }), "tasks-shape"],
   ] as const) {
     writeFileSync(join(candidate, TASKS_JSON), seeded);
     expect(draftTaskRows(candidate)).toEqual([]);
-    expect(changedFamilies(base, candidate)).toEqual([]);
     expect(() => publicTaskRows(candidate)).toThrow("nonempty captured task battery");
     const codes = loadValidatedBundle(candidate, { slug: "matching" }).findings.map((row) => row.code);
     expect(codes).toContain(refusal);

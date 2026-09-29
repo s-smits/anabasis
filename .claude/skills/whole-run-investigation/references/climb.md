@@ -58,7 +58,7 @@ Inside the readout, read these fields and nothing looser:
 | a row's `zone`, `aim`, `toAim`, `wilson` | `too-hard`, `under-aim`, `on-aim`, `over-aim` or `too-easy`; the outer two are Wilson-significant at `REPORTING_Z` (`src/claim/estimation.ts`), the inner three the point count against the aim; `toAim` is the signed distance in verified passes, negative above the aim |
 | a row's `passed`, `verified`, `unaccepted`, `nonResults` | passes out of verified cases, with the other two kinds beside them; `passed` is null when the claim was refused |
 | a row's `effort`, `familyEffort`, `solveWallMinutes`, `wallBound` | solve effort against the Builder's own `solve_minutes`, and how many unaccepted cases ran to that wall |
-| a row's `regrade`, `experiment` | the earlier battery whose recorded solves this one graded again, and the round's `EXPERIMENT.json` as authored |
+| a row's `regrade` | the earlier battery whose recorded solves this one graded again |
 
 There is no climb, hold or ease verb, no level label and no ladder to read, and a note naming one
 describes a mechanism the source no longer has. `readClimbReadout` rebuilds the readout over the
@@ -79,14 +79,12 @@ reference, proves a task feasible and never difficult, and that only a blind mea
 where it lands. Read these as the words that were served, from the measured tree, before deciding
 what the Builder ignored.
 
-The round's own plan is `EXPERIMENT.json`, which the Builder alone writes: `gap`, `change` and
-`families`, every field optional (`src/author/experiment-plan.ts`). It states no pass count, so
-the battery's count is read against nothing the author set; a run whose source predates this
-recorded an `expectedPasses` range that no reader scores any more. It switches nothing.
-`planScoreLine` scores the named families against the families whose tasks changed, and the plan
-enters no condition digest, so the same bytes under a
-different plan are the same condition. An older note describing `experiment-plan/v2` with per-task
-probabilities and ladder levels describes a schema this source does not read.
+The round states no plan. What it set out to do is in the Builder's prose and notes, and what it
+did is in the accepted bytes, which alone decide the operation it is attributed as. A run whose
+source predates the removal of `EXPERIMENT.json` recorded one beside each accepted submit, and a
+readout row there carries it as `experiment`; nothing reads either, and an older note describing
+`experiment-plan/v2`, a family score or a pass range describes a mechanism this source does not
+have.
 
 ## Battery size and graduation
 

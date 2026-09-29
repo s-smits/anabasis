@@ -477,17 +477,13 @@ describe("acceptance", () => {
     expect(again.commit).toBe(outcome.commit);
   });
 
-  it("records the round plan beside the candidate, and a reworded plan keeps its condition", () => {
+  it("keeps the candidate's condition when only the Builder's notes change", () => {
     const dir = workspace();
-    const unplanned = checkCandidate(dir, ASK);
-    writeFileSync(join(dir, "EXPERIMENT.json"), JSON.stringify({ gap: "g", families: ["single-part"] }));
-    const planned = checkCandidate(dir, ASK);
-    writeFileSync(join(dir, "EXPERIMENT.json"), JSON.stringify({ gap: "reworded" }));
-    const reworded = checkCandidate(dir, ASK);
-    if (!unplanned.ok || !planned.ok || !reworded.ok) throw new Error("fixture refused");
-    expect(unplanned.experimentPlan).toBeUndefined();
-    expect(planned.experimentPlan?.families).toEqual(["single-part"]);
-    expect(reworded.experimentPlan?.gap).toBe("reworded");
-    expect(new Set([unplanned, planned, reworded].map(conditionKey)).size).toBe(1);
+    const before = checkCandidate(dir, ASK);
+    writeFileSync(join(dir, "MEMORY.md"), "# notes\nThe first battery found no limit.\n");
+    const noted = checkCandidate(dir, ASK);
+    if (!before.ok || !noted.ok) throw new Error("fixture refused");
+    expect(noted.commit).not.toBe(before.commit);
+    expect(conditionKey(noted)).toBe(conditionKey(before));
   });
 });

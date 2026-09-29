@@ -50,7 +50,7 @@ const PREVIEW = "correctness_check";
 const REPAIR_OPERATION = { harness: "harness-intervention", evaluation: "evaluation-correction" };
 
 /** The tool evidence that counts as opening a channel. */
-export type ReadKind = "history" | "experiment" | "memory" | "context" | "traces";
+export type ReadKind = "history" | "memory" | "context" | "traces";
 
 /** One channel a round can hand the next. */
 export interface Channel {
@@ -102,13 +102,6 @@ export const CHANNELS: readonly Channel[] = [
     read: null,
     alternative: "return the latest public projection from harness_inspect feedback",
   },
-  // src/run/climb-readout.ts planLine, scoring the last round's plan
-  {
-    name: "experiment",
-    marker: "Plan: the plan ",
-    read: "experiment",
-    alternative: "none: every correctness_check already returns the plan's advice",
-  },
   // src/author/builder-memory.ts, rendered by roundPrompt in src/author/builder-session.ts for any
   // round opening in a workspace the conversation has not worked in, resumed sessions included
   {
@@ -135,7 +128,6 @@ export const CHANNELS: readonly Channel[] = [
 ];
 
 const READ_PATHS = {
-  experiment: /\/EXPERIMENT\.json$/,
   memory: /\/MEMORY\.md$/,
   traces: /\/(rehearsals|trials|cases)\/|trace/,
 };
@@ -151,11 +143,6 @@ interface ClaimedBattery {
   runId: string;
   createdAt: string;
   at: number;
-}
-
-/** The round plan an accepted submit recorded, as this reader meets it. */
-interface PlanRow {
-  families?: JsonValue;
 }
 
 /** One battery's difficulty row, as this reader meets it. */
@@ -187,7 +174,6 @@ interface CustomCallRow {
 interface SubmitRow {
   outcome?: string;
   atMs?: number;
-  experimentPlan?: PlanRow | null;
 }
 
 interface ToolCallCounts {
@@ -250,7 +236,6 @@ interface Round {
   sessions: Session[];
   paths: PathHit[];
   prompts: string[];
-  plan: PlanRow | null;
   battery: string | null;
   prior: ClaimedBattery[];
 }
@@ -603,7 +588,6 @@ function roundsOf(campaign: string, runId: string | null, batteries: readonly Cl
         at: Date.parse(row.at ?? ""),
       })),
       prompts: prompts.get(epoch.key) ?? [],
-      plan: accepted.at(-1)?.experimentPlan ?? null,
       battery: battery?.runId ?? null,
       prior: batteries.filter((b) => b.at < start),
     };
@@ -655,9 +639,6 @@ function presentOf(campaign: string, round: Round, name: string): boolean {
 }
 
 function actedOf(round: Round, name: string): boolean | null {
-  const plan = recordOf(round.plan);
-  // The plan states no pass count, so nothing it records shows the readout acted on.
-  if (name === "experiment") return pathHits(round, "write", READ_PATHS.experiment) > 0 && plan !== null;
   if (name === "memory") return pathHits(round, "write", READ_PATHS.memory) > 0;
   if (name === "traces") return calls(round, TRIAL).length > 0;
   return null;
@@ -703,18 +684,6 @@ function census(campaign: string, rounds: readonly Round[]): CensusRow[] {
   });
 }
 
-/** When the round started committing to a battery: its first plan write, preview or submit. */
-function authoringMark(round: Round): number {
-  const writes = round.paths.filter(
-    (row) => row.capability === "write" && READ_PATHS.experiment.test(row.resolved ?? ""),
-  );
-  const gates = [...calls(round, PREVIEW), ...calls(round, "submit")].flatMap((c) =>
-    c.at === null ? [] : [c.at],
-  );
-  const times = [...writes.map((row) => row.at), ...gates];
-  return times.length === 0 ? Infinity : Math.min(...times);
-}
-
 /** Lane 10: per round, the rehearsals, the verified count and the recorded zone, and the
  *  evidence the round opened before it committed to a battery. */
 function calibration(rounds: readonly Round[], rows: ReadonlyMap<string, DecisionRow>): Calibration {
@@ -724,7 +693,11 @@ function calibration(rounds: readonly Round[], rows: ReadonlyMap<string, Decisio
     const recordedPassed = row?.passed;
     const recordedVerified = row?.verified;
     const passed = isNumber(recordedPassed) ? recordedPassed : null;
-    const mark = authoringMark(round);
+    // The round committed to a battery at its first preview or submit.
+    const gates = [...calls(round, PREVIEW), ...calls(round, "submit")].flatMap((c) =>
+      c.at === null ? [] : [c.at],
+    );
+    const mark = gates.length === 0 ? Infinity : Math.min(...gates);
     return {
       round: round.index,
       battery: round.battery,

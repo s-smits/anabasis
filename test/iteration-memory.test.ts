@@ -8,7 +8,6 @@ import { controllerValidatedFindings } from "../src/correctness-bundle/brief.ts"
 import { iterationMemoryFindings, ITERATION_MEMORY_CODE } from "../src/author/iteration-memory.ts";
 import { resumeCampaignMemory, unchangedCandidateSubmissions } from "../src/author/campaign-memory.ts";
 import { POLICY } from "../src/critic/policy.ts";
-import { hashJsonValue } from "../src/meta/stable-json.ts";
 const roots: string[] = [];
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
@@ -50,30 +49,13 @@ const briefRefusal = (code: string): CampaignFeedback => ({
 const detailOf = (dir: string): string => iterationMemoryFindings(dir)[0]?.detail ?? "";
 
 describe("cross-iteration Builder memory", () => {
-  it("restores the recorded plan beside its outcome, and what the bytes were admitted as with or without one", () => {
+  it("restores each pass's outcome beside what its bytes were admitted as", () => {
     const dir = tmp();
-    const plan = { gap: "Untested coupling.", change: "Change task coupling.", families: ["uppercase"] };
     const climb = { actual: "climb" as const, freeze: { state: "held" as const, clauses: [] } };
-    settle(dir, {
-      ordinal: 1,
-      outcome: "gates-blocked",
-      experimentPlan: { ...plan, digest: hashJsonValue(plan) },
-      experimentScope: climb,
-    });
-    settle(dir, { ordinal: 2, outcome: "fingerprinted", experimentScope: climb });
-    settle(dir, { ordinal: 3, outcome: "fingerprinted", experimentPlan: { digest: hashJsonValue({}) } });
+    settle(dir, { ordinal: 1, outcome: "gates-blocked", experimentScope: climb });
+    settle(dir, { ordinal: 2, outcome: "fingerprinted" });
     expect(detailOf(dir)).toBe(
-      "Earlier build attempts: " +
-        '01 gates-blocked; planned gap "Untested coupling.", change "Change task coupling."; admitted as climb; ' +
-        "02 fingerprinted; admitted as climb; 03 fingerprinted; planned.",
-    );
-  });
-  it("bounds a long recorded gap and marks what it left out", () => {
-    const dir = tmp();
-    const plan = { gap: "x".repeat(300), change: "Change task coupling." };
-    settle(dir, { ordinal: 1, experimentPlan: { ...plan, digest: hashJsonValue(plan) } });
-    expect(detailOf(dir)).toContain(
-      `gap "${"x".repeat(240)} […60 bytes omitted]", change "Change task coupling."`,
+      "Earlier build attempts: 01 gates-blocked; admitted as climb; 02 fingerprinted.",
     );
   });
   it("skips a recorded pass it cannot summarise and keeps the rest of the memory", () => {

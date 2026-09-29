@@ -2,7 +2,6 @@ import { afterAll, describe, expect, it } from "bun:test";
 import { mkdirSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 import { DIFFICULTY_DECISION_SCHEMA } from "../src/run/difficulty-decision.ts";
-import type { RoundPlan } from "../src/author/experiment-plan.ts";
 import { type RunEnd, climbRunEnd, provenanceRunEnd, runEndAtClose } from "../src/run/run-end.ts";
 import type { ClimbReadout } from "../src/run/climb-readout.ts";
 import type { ToolCheckCoverage } from "../src/correctness-bundle/grounding-coverage.ts";
@@ -96,7 +95,7 @@ function executionEvidence(): BuilderToolsReport["epochs"][number]["execution"][
     ),
   );
   return {
-    schema: "builder-execution/v6",
+    schema: "builder-execution/v7",
     backend: "claude",
     runtimeIdentity: null,
     turns: 4,
@@ -476,18 +475,12 @@ function coverage(
 describe("the run-end numbers", () => {
   afterAll(cleanupScratch);
 
-  const row = (
-    runId: string,
-    createdAt: string,
-    zone: string | null,
-    experiment: RoundPlan | null = null,
-  ) => ({
+  const row = (runId: string, createdAt: string, zone: string | null) => ({
     runId,
     createdAt,
     zone,
     passed: zone === null ? null : 4,
     verified: 20,
-    experiment,
   });
   const decision = (schema: string, rows: Array<ReturnType<typeof row>>) =>
     JSON.stringify({
@@ -521,8 +514,8 @@ describe("the run-end numbers", () => {
     expect(climb?.readFrom).toBe(join("difficulty-decisions", "a.json"));
     expect(climb?.batteries.map((battery) => battery.runId)).toEqual(["b1", "b2"]);
     expect([climb?.onAim, climb?.placed]).toEqual([1, 2]);
-    // A battery with no plan recorded states its placement alone.
-    expect(climb?.batteries[1]).not.toHaveProperty("plan");
+    // Each battery states its placement and counts alone.
+    expect(climb?.batteries[1]).toEqual({ runId: "b2", zone: "on-aim", passed: 4, verified: 20 });
   });
 
   it("counts a check as beside packages only when a tool it names ran with packages", () => {
@@ -596,26 +589,6 @@ describe("the run-end numbers", () => {
       JSON.stringify({ claim: { ok: true, statement: { ...statement, externalCheckCoverage: undefined } } }),
     );
     expect(provenanceRunEnd(dir, "b2")).toBeNull();
-  });
-
-  it("scores each battery's plan against its changed families", () => {
-    const dir = scratchDir("run-end-");
-    mkdirSync(join(dir, "difficulty-decisions"), { recursive: true });
-    const plan = { families: ["spans"], digest: "p" };
-    writeFileSync(
-      join(dir, "difficulty-decisions", "a.json"),
-      decision(DIFFICULTY_DECISION_SCHEMA, [
-        row("b3", "2026-09-03", "on-aim", { plan: { digest: "q" }, changedFamilies: ["spans"] }),
-        row("b2", "2026-09-02", "on-aim", { plan, changedFamilies: ["spans", "joints"] }),
-        row("b1", "2026-09-01", "too-easy", { plan: null, changedFamilies: null }),
-      ]),
-    );
-    expect(climbRunEnd(dir)?.batteries.map((battery) => battery.plan)).toEqual([
-      undefined,
-      "the plan names spans as changed and the public tasks changed from the adopted product in spans, joints: " +
-        "missed, joints changed but not named",
-      undefined,
-    ]);
   });
 
   it("reads a fresh readout at the terminal and counts provenance for this run's batteries alone", () => {

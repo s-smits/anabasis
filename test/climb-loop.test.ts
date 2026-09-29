@@ -133,8 +133,8 @@ function writeBattery(workspace: string, inputs: readonly string[]): void {
   });
 }
 
-/** Round one authors the product; every later round changes only its battery and declares the
- *  experiment. Each round counts its turns from one, so `turn === 1` marks the round boundary. */
+/** Round one authors the product; every later round changes only its battery. Each round counts its
+ *  turns from one, so `turn === 1` marks the round boundary. */
 function climbScript(submits: Accepted[]): ScriptedTurn {
   let round = -1;
   return async (ctx) => {
@@ -142,17 +142,6 @@ function climbScript(submits: Accepted[]): ScriptedTurn {
     const inputs = required(BATTERIES[round], `battery for round ${round + 1}`);
     if (round === 0) uppercaseFixture(ctx.workspace, false, false, TASKS);
     writeBattery(ctx.workspace, inputs);
-    if (round > 0) {
-      const past = inputs.filter((input) => input.length > CEILING).length;
-      writeFileSync(
-        join(ctx.workspace, "EXPERIMENT.json"),
-        JSON.stringify({
-          gap: "the measured battery says nothing about inputs the solver has not been asked to uppercase",
-          change: `lengthen ${past} of the ${TASKS} inputs past two characters`,
-          families: ["uppercase"],
-        }),
-      );
-    }
     const result = await ctx.call("submit", {});
     /* SAFETY: the host's submit tool returns this receipt shape on every outcome. */
     submits.push((result as { details: { receipt: Accepted } }).details.receipt);

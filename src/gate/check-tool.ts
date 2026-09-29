@@ -47,9 +47,6 @@ interface CorrectnessCheckBinding {
   /** The same store submit records its refusal into, so `harness_inspect feedback` pages a check's
    *  rows exactly as it pages a refusal's and the Builder has one place to read findings. */
   feedback: BuilderAuthorFeedback;
-  /** What the plan reader says of EXPERIMENT.json: a field it did not read, a missing plan, or
-   *  declared families the changed public inputs do not match. Advice that refuses nothing. */
-  planAdvice: () => string[];
 }
 
 /** What this tool did not do. It rides every result, including the clear ones, because a validation
@@ -277,7 +274,6 @@ export function createCorrectnessCheckTool(binding: CorrectnessCheckBinding): Ag
     run: async () => {
       const report = await binding.preview();
       const body = resultOf(binding, report);
-      const advice = binding.planAdvice();
       // Kept off `body`, which is the model-visible text: the codes already reach the model there,
       // grouped, and restating them would change what every check returns.
       const codes = [
@@ -296,7 +292,7 @@ export function createCorrectnessCheckTool(binding: CorrectnessCheckBinding): Ag
         ...body.findings.delta,
       };
       return {
-        text: capturedJsonStringify(advice.length === 0 ? body : { ...body, planAdvice: advice }),
+        text: capturedJsonStringify(body),
         details: { status: body.status, stage: body.stage, receipt },
       };
     },

@@ -18,10 +18,8 @@ You may change the harness's runtime settings in `agent/config.yaml`.
    `correctness_check` runs every gate below without adopting, and reviews changed product bytes
    for some minutes.
 4. `submit` freezes and gates the candidate; a refusal names the code and file to fix.
-5. Keep findings in `MEMORY.md` and open questions in `SCRATCHPAD.md`, and what a round sets out to
-   do in `EXPERIMENT.json`: the gap, the change, the families it changes and the verified passes you
-   expect. The plan decides nothing; the public tasks you change and the measured battery are read
-   against it. The `context` tool searches all of them, measured batteries and passing solve traces.
+5. Keep findings in `MEMORY.md` and open questions in `SCRATCHPAD.md`. The `context` tool searches
+   both, the measured batteries and passing solve traces.
 
 ## Gates
 

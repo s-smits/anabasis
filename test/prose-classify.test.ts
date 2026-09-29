@@ -195,7 +195,7 @@ describe("prose posture classifier", () => {
     const epoch = selectCampaignEpoch(epochDir, { kickoff: "one line" }).dir;
     writeFileSync(
       join(epoch, "builder-execution.json"),
-      JSON.stringify({ schema: "builder-execution/v6", proseOmitted: 0, submits: [] }),
+      JSON.stringify({ schema: "builder-execution/v7", proseOmitted: 0, submits: [] }),
     );
     const result = await classifyTarget(epochDir, { embed: fakeEmbed(new Map()) });
     expect(result.state).toBe("no-prose");

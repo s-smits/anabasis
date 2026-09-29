@@ -27,7 +27,6 @@ import {
   completeBundle,
   namedTool,
   openingPrompt,
-  writePlan,
   replyText,
   submitOnce,
   submitTool,
@@ -327,30 +326,23 @@ describe("the admission a repair earns", () => {
     });
   });
 
-  it.concurrent("admits a model-proposed controls repair and records the plan captured at submit", async () => {
+  it.concurrent("admits a model-proposed controls repair", async () => {
     const { campaignDir, workspace, adoptedDir } = adoptedRound("ana-primary-controls-repair-");
-    let captured: ReturnType<typeof writePlan> | undefined;
     const outcome = await runBuilderCampaign(
       { campaignDir, ...FRESH_BUILD, maxTurns: 1, experiment: "build", adoptedDir },
       {
         ...BARE,
-        gates: async () => {
-          writePlan(workspace, "A later background edit is not the submitted plan.");
-          return [];
-        },
+        gates: async () => [],
         open: async (tools) =>
           scriptedSession(async () => {
             touch(workspace, "correctness-model/controls.json");
-            captured = writePlan(workspace);
             await replyText(submitTool(tools), "controls-repair");
             return { status: "completed", assistantText: "submitted" };
           }),
       },
     );
     expect(outcome.buildAdmissible).toBe(true);
-    expect(outcome.experimentPlan).toEqual(captured);
-    expect(outcome.iterations[0]?.experimentPlan).toEqual(captured);
-    expect(readExecutionEvidence(campaignDir)[0]?.submits[0]?.experimentPlan).toEqual(captured);
+    expect(readExecutionEvidence(campaignDir)[0]?.submits[0]?.outcome).toBe("accepted");
   });
 
   it.concurrent("admits a rebuild that moves the task battery, and leaves the route to the Builder", async () => {
@@ -372,7 +364,6 @@ describe("the admission a repair earns", () => {
           scriptedSession(async (turn) => {
             prompt = turn.prompt;
             touch(workspace, "correctness-model/tasks.json");
-            writePlan(workspace);
             await submitTool(tools).execute("rebuild-moved", {});
             return { status: "completed", assistantText: "submitted" };
           }),
@@ -445,7 +436,6 @@ describe("the admission a repair earns", () => {
       const tasks = structuredClone(MATCHING_TASKS);
       tasks[0]!.publicInput = { variant: 7, parts: ["alpha"], bindings: [{ part: "alpha", slot: "s3" }] };
       writeFileSync(join(workspace, "correctness-model/tasks.json"), JSON.stringify(tasks));
-      writePlan(workspace);
     });
     const outcome = await runBuilderCampaign(
       {
@@ -495,20 +485,12 @@ describe("the admission a repair earns", () => {
       ]),
     };
     const helper = join(workspace, "correctness-model/repair-helper.ts");
-    let draft: ReturnType<typeof writePlan> | undefined;
     for (const first of [true, false]) {
       let opened = false;
       await runBuilderCampaign(input, {
         ...BARE,
         open: async () => {
           opened = true;
-          if (first) {
-            draft = writePlan(workspace);
-          } else {
-            expect(JSON.parse(readFileSync(join(workspace, "EXPERIMENT.json"), "utf8"))).toMatchObject({
-              gap: draft?.gap,
-            });
-          }
           for (const [path, original] of initial) {
             expect(readFileSync(join(workspace, path), "utf8")).toBe(first ? original : `${original}\n`);
             writeFileSync(join(workspace, path), `${original}\n`);

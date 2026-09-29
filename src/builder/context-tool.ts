@@ -26,6 +26,7 @@ import { truncateLine } from "../meta/truncate.ts";
 import { characterLimit, characterWindow, LIST_WINDOW_ROWS, readWindow, windowNote } from "./read-window.ts";
 import type { PreparedUserContext, UserContextFile } from "./user-context.ts";
 import { capturedJsonParse } from "../meta/json-runtime.ts";
+import { MEMORY_FILE, SCRATCHPAD_FILE } from "../author/builder-memory.ts";
 import { type PublishedMargin, readMargins, renderMargins } from "../solve/published-margin.ts";
 
 type ContextSource = "round" | "workspace" | "history" | "traces" | "user";
@@ -53,7 +54,7 @@ export interface ContextBinding {
 
 type Cited = { id: string; line: number; score: number; text: string };
 
-const WORKSPACE_FILES = ["EXPERIMENT.json", "MEMORY.md", "SCRATCHPAD.md", "STARTER.md"];
+const WORKSPACE_FILES = [MEMORY_FILE, SCRATCHPAD_FILE, "STARTER.md"];
 const STARTER_PACK = "starter-pack";
 const CITED_DEFAULT = 30;
 const MIN_TERM = 3;
@@ -95,7 +96,7 @@ const Params = Type.Object({
 });
 
 const DESCRIPTION =
-  "Ask one question of everything this round may consult; the answer is the lines that bear on it, each cited as id:Lnn. Sources: round (this round's contract, climb readout and advice), workspace (EXPERIMENT.json, MEMORY.md, SCRATCHPAD.md, STARTER.md and starter-pack/*.md, read live), history (every measured battery of this product, newest first, and each one's public tasks), traces (the solver's own record of each passing measured case and passing rehearsal: its turns, tool calls and effort against the solve wall, and the artifact it submitted) and user (files supplied with --context, when any were). State the question and the decision it settles. depth cited is the default; overview lists document ids; page reads one id exactly. Workspace files are also readable with read or bash; history, traces and user files only here. All of it is public data or your own notes, never verifier output.";
+  "Ask one question of everything this round may consult; the answer is the lines that bear on it, each cited as id:Lnn. Sources: round (this round's contract, climb readout and advice), workspace (MEMORY.md, SCRATCHPAD.md, STARTER.md and starter-pack/*.md, read live), history (every measured battery of this product, newest first, and each one's public tasks), traces (the solver's own record of each passing measured case and passing rehearsal: its turns, tool calls and effort against the solve wall, and the artifact it submitted) and user (files supplied with --context, when any were). State the question and the decision it settles. depth cited is the default; overview lists document ids; page reads one id exactly. Workspace files are also readable with read or bash; history, traces and user files only here. All of it is public data or your own notes, never verifier output.";
 
 /** What a passing rehearsal submitted, with the public facts its margin lines are read from. */
 interface PassingSubmission {

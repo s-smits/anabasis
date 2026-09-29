@@ -3,10 +3,8 @@ import type {
   BuilderExecutionEvidence,
   BuilderSubmitAttempt,
 } from "../../src/author/builder-execution.ts";
-import type { RecordedPlan } from "../../src/author/experiment-plan.ts";
-import { hashJsonValue } from "../../src/meta/stable-json.ts";
 
-/** A complete `builder-execution/v6` record, since the readers open it through the strict reader.
+/** A complete `builder-execution/v7` record, since the readers open it through the strict reader.
  *  The submit rows take the writer's defaults, and the record stores the rows alone, as the writer
  *  does; `extra` overrides any top-level field, such as `customCalls` or `turnRetries`. */
 export function executionRecord(
@@ -34,7 +32,7 @@ export function executionRecord(
     }),
   );
   return JSON.stringify({
-    schema: "builder-execution/v6",
+    schema: "builder-execution/v7",
     backend: "claude",
     runtimeIdentity: null,
     turns: 0,
@@ -96,14 +94,4 @@ export function submitCall(sequence: number, candidateId: string): BuilderCustom
     dispatchOutcome: "returned",
     semantic: { outcome: "accepted", candidateId },
   };
-}
-
-/** A captured experiment plan, digested the way the capture digests one. */
-export function experimentPlan(): RecordedPlan {
-  const plan = {
-    gap: "the last battery found no limit",
-    change: "harder spans",
-    families: ["fam"],
-  };
-  return { ...plan, digest: hashJsonValue(plan) };
 }

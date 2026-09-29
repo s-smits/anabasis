@@ -12,7 +12,8 @@ import { join } from "../meta/path.ts";
 import { sha256 } from "../meta/digest.ts";
 import { canonicalJson } from "../meta/stable-json.ts";
 import { isRecord, isString, type JsonValue } from "../meta/json-shape.ts";
-import { parseJsonAs } from "../meta/json-runtime.ts";
+import { capturedJsonStringify, parseJsonAs } from "../meta/json-runtime.ts";
+import { Check as validateSchema } from "typebox/value";
 import {
   readBoundConformance,
   recordedVerifierEnvironmentHash,
@@ -22,20 +23,15 @@ import {
 import { fingerprintSlug, type FingerprintEvidence } from "../claim/fingerprint.ts";
 import type { HarnessExperiment } from "../critic/types.ts";
 import type { Brief } from "../correctness-bundle/brief.ts";
-import {
-  briefPublicResources,
-  judgePublicTaskOf,
-  readValidatedBrief,
-} from "../correctness-bundle/public-resources.ts";
+import { briefPublicResources, judgePublicTaskOf } from "../correctness-bundle/public-resources.ts";
 import { validateBrief } from "../correctness-bundle/brief-validator.ts";
 import type { BuildTask } from "../correctness-bundle/tasks.ts";
-import { RecordedPlanSchema, type RecordedPlan } from "../author/experiment-plan.ts";
 import { BRIEF_FILE, CONTROLS_FILE, TASKS_FILE } from "../meta/bundle-layout.ts";
 
 export type ExperimentFreeze = { state: "held" | "unproven" | "broken"; clauses: string[] };
 
 const DimensionSchema = Type.Union([Type.Literal("harness"), Type.Literal("tasks"), Type.Literal("scoring")]);
-/** Host-derived from accepted bytes; the plan decides none of it. */
+/** Host-derived from accepted bytes. */
 const ExperimentOperationSchema = Type.Object(
   {
     operation: Type.Union([
@@ -54,14 +50,15 @@ const ExperimentOperationSchema = Type.Object(
 export type ExperimentDimension = Static<typeof DimensionSchema>;
 export type ExperimentOperation = Static<typeof ExperimentOperationSchema>;
 
+/** The version a battery's `experimentAuthoring` is recorded under. The first shape carried no
+ *  version and held the round plan beside the attribution; this source keeps no reader for it. */
+export const EXPERIMENT_AUTHORING_SCHEMA = "experiment-authoring/v2";
+
 const experimentAuthoringFields = {
-  /** The round plan beside the families whose public tasks the accepted bytes changed, which is
-   *  what its declared families are scored against; neither decides anything. */
-  plan: Type.Union([RecordedPlanSchema, Type.Null()]),
-  changedFamilies: Type.Union([Type.Array(Type.String()), Type.Null()]),
+  schema: Type.Literal(EXPERIMENT_AUTHORING_SCHEMA),
   operation: ExperimentOperationSchema,
-  /** Null only for a build with no adopted product: a fresh build's plan is scored, and a build
-   *  attributes no task, so nothing reads a baseline it does not have. */
+  /** Null only for a build with no adopted product: a build attributes no task, so nothing reads a
+   *  baseline it does not have. */
   baseline: Type.Union([
     Type.Object(
       { agentHash: Type.String(), correctnessModelHash: Type.String(), taskSetHash: Type.String() },
@@ -71,7 +68,7 @@ const experimentAuthoringFields = {
   ]),
 };
 /** A changed product/evaluation condition carries no task-only difficulty attribution. */
-export const ExperimentAuthoringSchema = Type.Union([
+const ExperimentAuthoringSchema = Type.Union([
   Type.Object(
     {
       ...experimentAuthoringFields,
@@ -106,6 +103,20 @@ type FreezeFingerprint = {
   scoringHash: string;
   taskSetHash: string | null;
 };
+
+/** Why a battery's recorded experiment authoring cannot be read here, or null when it can. A record
+ *  in another version is refused as that version, since calling it malformed would read an intact
+ *  older record as corrupt current evidence; only a record claiming this version that fails its
+ *  shape is malformed. */
+export function experimentAuthoringRefusal(recorded: unknown): string | null {
+  if (isRecord(recorded) && recorded.schema !== EXPERIMENT_AUTHORING_SCHEMA) {
+    const version = recorded.schema === undefined ? "unversioned" : capturedJsonStringify(recorded.schema);
+    return `recorded experiment authoring is ${version}, from another source; this source reads ${EXPERIMENT_AUTHORING_SCHEMA} only`;
+  }
+  return validateSchema(ExperimentAuthoringSchema, recorded)
+    ? null
+    : "recorded experiment authoring is malformed";
+}
 
 /** The task file's rows, bare or under `tasks`, or null when it holds no task array at all. */
 function batteryRows(dir: string) {
@@ -152,7 +163,6 @@ export function publicTaskRows(
 /** Only new public inputs count as changed tasks; relabelling ids, families or levels cannot
  * manufacture a harder subset. Both inputs are controller-owned frozen bundles. */
 export function candidateExperimentAuthoring(
-  plan: RecordedPlan | null,
   operation: ExperimentOperation,
   actual: HarnessExperiment,
   baseDir: string,
@@ -161,7 +171,7 @@ export function candidateExperimentAuthoring(
   const base = fingerprintSlug(baseDir);
   const candidate = fingerprintSlug(candidateDir);
   if (!base.ok && actual === "build" && operation.operation === "new-baseline") {
-    return { plan, changedFamilies: null, operation, actual, baseline: null, changedTaskIds: null };
+    return { schema: EXPERIMENT_AUTHORING_SCHEMA, operation, actual, baseline: null, changedTaskIds: null };
   }
   if (!base.ok || !candidate.ok || base.taskSetHash === null || candidate.taskSetHash === null) {
     throw new Error(
@@ -179,46 +189,13 @@ export function candidateExperimentAuthoring(
     correctnessModelHash: base.correctnessModelHash,
     taskSetHash: base.taskSetHash,
   };
-  const declared = { plan, changedFamilies: changedFamilies(baseDir, candidateDir), operation, baseline };
-  if (actual !== "climb") return { ...declared, actual, changedTaskIds: null };
+  const schema = EXPERIMENT_AUTHORING_SCHEMA;
+  if (actual !== "climb") return { schema, operation, baseline, actual, changedTaskIds: null };
   const previous = new Set(publicTaskRows(baseDir).map((task) => canonicalJson(task.publicInput)));
   const changed = publicTaskRows(candidateDir).filter(
     (task) => !previous.has(canonicalJson(task.publicInput)),
   );
-  return { ...declared, actual, changedTaskIds: changed.map((task) => task.taskId) };
-}
-
-/** Each task's public condition as the solver meets it, its input and the public rules its
- *  family's checks assert, without the id or family name a relabelling would change; and the
- *  brief-wide public resources beside the rules, which every family reads. Null when the brief does
- *  not validate, as a draft's may not mid-edit. */
-function publicConditions(dir: string) {
-  const brief = readValidatedBrief(dir);
-  if (brief === null) return null;
-  const tasks = draftTaskRows(dir).map((task) => {
-    const judged = judgePublicTaskOf(brief, { ...task, family: task.family ?? "", hidden: [] });
-    const condition = { publicInput: judged.publicInput, rules: judged.publicValidityRules ?? [] };
-    return { family: task.family ?? "(no family)", condition: canonicalJson(condition) };
-  });
-  const shared = briefPublicResources(brief).filter((resource) => resource.name !== "public-validity-rules");
-  return { tasks, shared: canonicalJson(shared) };
-}
-
-/** The families of a draft whose public tasks the adopted product does not hold, which the round
- *  plan's declared families are read against. A changed brief-wide resource, a rule decision, a
- *  constant, a rule set or the artifact schema, counts for every family. Null when either side does
- *  not read. */
-export function changedFamilies(baseDir: string, draftDir: string): string[] | null {
-  try {
-    const [base, draft] = [publicConditions(baseDir), publicConditions(draftDir)];
-    if (base === null || draft === null) return null;
-    const held = new Set(base.tasks.map((task) => task.condition));
-    const changed =
-      base.shared === draft.shared ? draft.tasks.filter((task) => !held.has(task.condition)) : draft.tasks;
-    return [...new Set(changed.map((task) => task.family))];
-  } catch {
-    return null;
-  }
+  return { schema, operation, baseline, actual, changedTaskIds: changed.map((task) => task.taskId) };
 }
 
 /** What the accepted bytes are allowed to be attributed as: an evaluation correction when the

@@ -9,11 +9,9 @@
  */
 import { ensureBundleSnapshot } from "../claim/bundle-snapshot.ts";
 import { type FingerprintEvidence, fingerprintSlug } from "../claim/fingerprint.ts";
-import { type RoundPlan, capturePlan } from "../author/experiment-plan.ts";
 import type { RehearsalRow, SubmittedRehearsal } from "../builder/harness-trial.ts";
 import type { AuthoringReviewClock } from "../gate/review-clock.ts";
 import type { RehearsalCase } from "../review/epoch-reviewer.ts";
-import { changedFamilies } from "./experiment-freeze.ts";
 
 /** `repair` follows a clear `correctness_check` over a changed product; `backstop` is the clock. */
 type ReviewTrigger = "repair" | "backstop";
@@ -29,7 +27,6 @@ export interface AuthoringAdvice {
 export type ReviewAuthoring = (
   root: string,
   trigger: ReviewTrigger,
-  round: RoundPlan,
   rehearsals: readonly RehearsalCase[],
 ) => Promise<AuthoringAdvice>;
 
@@ -57,8 +54,6 @@ export class AuthoringReviews {
   constructor(
     private readonly workspace: string,
     private readonly slug: string,
-    /** The adopted product the plan's declared families are scored against; absent before one. */
-    private readonly adoptedDir: string | undefined,
     private readonly clock: AuthoringReviewClock,
     private readonly review: ReviewAuthoring,
   ) {}
@@ -120,13 +115,7 @@ export class AuthoringReviews {
         ...rest,
         current: candidateId === snapshot.id,
       }));
-      // The plan sits outside the bundle, so it is read from the workspace beside the frozen bytes.
-      const round: RoundPlan = {
-        plan: capturePlan(this.workspace).plan,
-        changedFamilies:
-          this.adoptedDir === undefined ? null : changedFamilies(this.adoptedDir, snapshot.dir),
-      };
-      this.settled = { advice: await this.review(snapshot.dir, trigger, round, rehearsals) };
+      this.settled = { advice: await this.review(snapshot.dir, trigger, rehearsals) };
       this.clock.read(fingerprint);
     } catch (error) {
       this.settled = { error };

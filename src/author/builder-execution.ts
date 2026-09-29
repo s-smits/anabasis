@@ -17,12 +17,11 @@ import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { sha256OfFile } from "../meta/digest.ts";
 import { existsSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
-import { EXPERIMENT_FILE, MEMORY_FILE, SCRATCHPAD_FILE } from "./builder-memory.ts";
+import { MEMORY_FILE, SCRATCHPAD_FILE } from "./builder-memory.ts";
 import type { AgentTurnEvent, AgentTurnResult, TurnUsage } from "../backends/backend-types.ts";
 import type { BackendKind } from "../backends/resolve.ts";
 import type { RuntimeModelIdentity } from "../claim/runtime-model-identity.ts";
 import type { BuilderExecutionInvocation } from "../run/builder-execution-closure.ts";
-import type { RecordedPlan } from "./experiment-plan.ts";
 import type { JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { compareCodeUnits, hashJsonValue } from "../meta/stable-json.ts";
@@ -46,16 +45,15 @@ export type { BuilderFailedCall } from "./builder-turn-observation.ts";
 import { BuilderProseLog, type BuilderProseCapture, type BuilderProseRow } from "./builder-prose.ts";
 
 export const BUILDER_EXECUTION_EVIDENCE_FILE = "builder-execution.json";
-export const BUILDER_EXECUTION_SCHEMA = "builder-execution/v6";
+export const BUILDER_EXECUTION_SCHEMA = "builder-execution/v7";
 
 /** The workspace files one round leaves for the next. An accepted submit ends the turn, so the
  *  Builder writes no closing message; these files are its handover. */
-export const HANDOVER_FILES = [EXPERIMENT_FILE, MEMORY_FILE, SCRATCHPAD_FILE] as const;
+export const HANDOVER_FILES = [MEMORY_FILE, SCRATCHPAD_FILE] as const;
 
 const MAX_CUSTOM_CALL_RECEIPTS = 512;
 
 export interface BuilderSubmitAttempt {
-  experimentPlan?: RecordedPlan;
   /** A real candidate tree, or only a controller stop. The outcome reader refuses a row that does
    *  not say, rather than leaving a reader to infer a stop from a commit that looks like one. */
   kind: "candidate" | "controller-terminal";
@@ -217,7 +215,7 @@ export interface BuilderExecutionEvidence {
   /** sha256 of each file the Builder hands to its next round, read from the workspace when this
    *  record was written, and null where the file was absent. Absent on a record whose recorder was
    *  given no workspace. The files are the Builder's own and nothing is served from here: the
-   *  digests say whether a round changed its plan and notes, and which bytes the next one opened on. */
+   *  digests say whether a round changed its notes, and which bytes the next one opened on. */
   handovers?: Record<(typeof HANDOVER_FILES)[number], string | null>;
   /** Present only when cleanup prevented a trustworthy final record. */
   lifecycle?: { kind: "evidence-unavailable"; phase: "session-dispose" };
@@ -339,7 +337,6 @@ function handoverDigests(workspace: string): NonNullable<BuilderExecutionEvidenc
     return existsSync(path) ? sha256OfFile(path) : null;
   };
   return {
-    [EXPERIMENT_FILE]: digest(EXPERIMENT_FILE),
     [MEMORY_FILE]: digest(MEMORY_FILE),
     [SCRATCHPAD_FILE]: digest(SCRATCHPAD_FILE),
   };
@@ -528,7 +525,6 @@ export class BuilderExecutionRecorder {
 
   /** Records a submission and compares it here, where the earlier submissions are already known. */
   recordSubmit(input: {
-    experimentPlan?: RecordedPlan;
     kind?: BuilderSubmitAttempt["kind"];
     turn: number;
     outcome: "accepted" | "refused";
@@ -553,7 +549,6 @@ export class BuilderExecutionRecorder {
     const codes = input.findings.map((f) => f.code);
     const prior = candidate ? this.submits.findLast(isCandidateSubmit) : undefined;
     const attempt: BuilderSubmitAttempt = {
-      ...keyIfDefined("experimentPlan", input.experimentPlan),
       kind,
       ordinal: this.submits.length + 1,
       turn: input.turn,

@@ -19,7 +19,6 @@
  * finding detail does not either: an identifier and its path are enough to say "you already
  * produced this".
  */
-import { boundText } from "../meta/bounded-text.ts";
 import { readFileSync } from "../meta/filesystem.ts";
 import { basename, dirname, join } from "../meta/path.ts";
 import { ITERATION_FILE, listIterationDirs } from "../builder/campaign-iterations.ts";
@@ -39,9 +38,6 @@ const LOOKBACK = 4;
 
 /** Bound historical reminders; current blocking feedback has its own complete delivery. */
 const MAX_REFUSALS = 12;
-
-/** Bytes kept of a recorded plan's gap and of its change, each. */
-const PLAN_FIELD_BYTES = 240;
 
 /** A completed pass with its memory label: `NN` in this epoch, `epoch-<key>/NN` in an earlier one,
  *  since ordinals restart at 01 in every epoch. */
@@ -109,10 +105,8 @@ function readCompleted(campaignDir: string): CompletedPass[] {
     .slice(-LOOKBACK);
 }
 
-/** One line per completed pass: what it ended as, which owner it named, how hard it worked, what
- *  its plan said, and what the accepted bytes were admitted as, which the bytes decide whether or
- *  not a plan was written. The plan keeps the parts that answer a repeat, the gap and the change,
- *  each bounded. */
+/** One line per completed pass: what it ended as, which owner it named, how hard it worked, and
+ *  what the accepted bytes were admitted as, which the bytes alone decide. */
 function summarise({ evidence, label }: CompletedPass): string {
   const focus = evidence.focusOwner ? `, part ${evidence.focusOwner}` : "";
   const retried = Object.entries(evidence.attempts)
@@ -120,14 +114,6 @@ function summarise({ evidence, label }: CompletedPass): string {
     .map(([session, count]) => `${session} x${count}`);
   const retries = retried.length === 0 ? "" : ` (retried ${retried.join(", ")})`;
   const parts = [`${label} ${evidence.outcome}${focus}${retries}`];
-  const plan = evidence.experimentPlan;
-  if (plan !== undefined) {
-    const said = (["gap", "change"] as const).flatMap((field) => {
-      const value = plan[field];
-      return value === undefined ? [] : [`${field} "${boundText(value, PLAN_FIELD_BYTES).shown}"`];
-    });
-    parts.push(said.length === 0 ? "planned" : `planned ${said.join(", ")}`);
-  }
   if (evidence.experimentScope !== undefined) parts.push(`admitted as ${evidence.experimentScope.actual}`);
   return parts.join("; ");
 }

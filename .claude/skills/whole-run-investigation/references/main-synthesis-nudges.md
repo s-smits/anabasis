@@ -146,8 +146,8 @@ one scalar.
 For an exact repeat, pair cases by recorded identity and report both directions of change; one
 pair shows variability without establishing a noise threshold. Never pool harness generations into
 one capability denominator, and when a run stopped before measurement, compare coverage and source
-rather than scores that do not exist. For a climb, keep the Builder's `EXPERIMENT.json`, the
-controller's difficulty decision and the realised task bytes apart; [the climb reference](climb.md)
+rather than scores that do not exist. For a climb, keep the Builder's stated intent (its prose and
+notes), the controller's difficulty decision and the realised task bytes apart; [the climb reference](climb.md)
 says which record holds what. Unchanged outcomes do not mean unchanged difficulty, since the old
 solutions may still suffice, and a changed public field proves no harder work when the deciding
 check ignores it.

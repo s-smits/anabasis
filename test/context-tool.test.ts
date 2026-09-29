@@ -71,7 +71,6 @@ function binding(overrides: Partial<ContextBinding> = {}): ContextBinding {
     join(workspace, "MEMORY.md"),
     "# Memory\nRisk: the frontier family passed every rehearsal.\n",
   );
-  writeFileSync(join(workspace, "EXPERIMENT.json"), '{"scope":"tasks","gap":"the limit is unmeasured"}\n');
   mkdirSync(join(workspace, "starter-pack"));
   writeFileSync(join(workspace, "starter-pack", "contract.md"), "- frontier — the rehearsal fails\n");
   return {
@@ -101,7 +100,7 @@ describe("the context tool", () => {
     ]);
     const { text, details } = await ask(bound, { question: "frontier rehearsal passed" });
     expect(text.split("\n")).toEqual([
-      "Citations 1-4 of 4 over 5 document(s), best match first. Page an id for the surrounding lines.",
+      "Citations 1-4 of 4 over 4 document(s), best match first. Page an id for the surrounding lines.",
       "[workspace/MEMORY.md:L2] Risk: the frontier family passed every rehearsal.",
       "[round/opening:L2] The last battery: every frontier task passed.",
       "[workspace/starter-pack/contract.md:L1] - frontier — the rehearsal fails",
@@ -111,7 +110,7 @@ describe("the context tool", () => {
       question: "frontier rehearsal passed",
       decides: "the next battery",
       depth: "cited",
-      documents: 5,
+      documents: 4,
       cited: 4,
       receipt: { outcome: "completed", resultDigest: sha256(text) },
     });
@@ -122,8 +121,7 @@ describe("the context tool", () => {
     const overview = (await ask(bound, { depth: "overview", source: "workspace" })).text;
     expect(overview).toBe(
       [
-        "documents 1-3 of 3:",
-        "- workspace/EXPERIMENT.json (workspace): EXPERIMENT.json",
+        "documents 1-2 of 2:",
         "- workspace/MEMORY.md (workspace): MEMORY.md",
         "- workspace/starter-pack/contract.md (workspace): starter-pack/contract.md",
       ].join("\n"),

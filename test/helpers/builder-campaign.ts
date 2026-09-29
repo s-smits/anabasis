@@ -16,7 +16,6 @@ import type { AgentToolsProbes } from "../../src/author/agent-tools-session.ts";
 import type { CampaignFeedback, FeedbackOwner } from "../../src/author/campaign-types.ts";
 import type { PiTool } from "../../src/backends/pi-session.ts";
 import { commitAll, initWorkspace } from "../../src/author/domain-repo.ts";
-import { hashJsonValue } from "../../src/meta/stable-json.ts";
 import { type BuilderCampaignInput, runBuilderCampaign } from "../../src/run/builder-campaign.ts";
 import type { VerifierExecutionEvidence, VerifierHostHandle } from "../../src/verify/verifier-port.ts";
 import { createVerifierHost } from "../../src/verify/host.ts";
@@ -122,15 +121,6 @@ export function bundleWithoutGuide(workspace: string): void {
 export function completeBundle(workspace: string): void {
   bundleWithoutGuide(workspace);
   writeFileSync(join(workspace, "agent/BUILT_AGENTS.md"), MATCHING_OPERATING_GUIDE);
-}
-
-export function writePlan(
-  workspace: string,
-  gap = "The previous condition leaves a public capability unmeasured.",
-) {
-  const plan = { gap, change: "Revise the public harness condition." };
-  writeFileSync(join(workspace, "EXPERIMENT.json"), JSON.stringify(plan));
-  return { ...plan, digest: hashJsonValue(plan) };
 }
 
 /** A host over one installed tool the fixture writes itself, so a census test settles on a row the

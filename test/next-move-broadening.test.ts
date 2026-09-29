@@ -4,7 +4,6 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { EvidenceLog } from "../src/claim/evidence-log.ts";
 import { fingerprintSlug } from "../src/claim/fingerprint.ts";
-import { hashJsonValue } from "../src/meta/stable-json.ts";
 import { capturedJsonParse } from "../src/meta/json-runtime.ts";
 import { isRecord } from "../src/meta/json-shape.ts";
 import { claimsDirFor } from "../src/run/claim-write.ts";
@@ -314,17 +313,12 @@ it("keeps another pin's and another threshold's public tasks readable, outside t
   ]);
 });
 
-it("carries accepted intent and the host-derived changed subset out of the build step", async () => {
+it("carries the host-derived operation and changed subset out of the build step", async () => {
   const root = saturatedRoot(MATCHING_BRIEF, tasks("measured"));
   const baseline = join(root, "domains", SLUG);
   const acceptedSnapshot = join(root, "accepted");
   for (const dir of [baseline, acceptedSnapshot]) writeMatchingBuildFixture(dir);
   writeFileSync(join(acceptedSnapshot, "correctness-model/tasks.json"), JSON.stringify(tasks("new")));
-  const plan = {
-    gap: "Coverage was narrow.",
-    change: "Author new families.",
-  };
-  const experimentPlan = { ...plan, digest: hashJsonValue(plan) };
   const result = await runBuildStep(
     double({
       args: {},
@@ -339,7 +333,6 @@ it("carries accepted intent and the host-derived changed subset out of the build
           buildAdmissible: true,
           adopted: true,
           acceptedSnapshot,
-          experimentPlan,
           experimentScope: { actual: "climb", operation: { operation: "task-probe", moved: ["tasks"] } },
           iterations: [],
         }),
@@ -351,7 +344,7 @@ it("carries accepted intent and the host-derived changed subset out of the build
   );
   expect(result.build).toBe("candidate");
   expect(result.experiment).toBe("climb");
-  expect(result.experimentAuthoring?.plan).toEqual(experimentPlan);
+  expect(result.experimentAuthoring?.operation.operation).toBe("task-probe");
   expect(result.experimentAuthoring?.changedTaskIds).toEqual(tasks("new").map((task) => task.taskId));
   const fingerprint = fingerprintSlug(baseline);
   if (!fingerprint.ok || fingerprint.taskSetHash === null) throw new Error("fixture baseline refused");

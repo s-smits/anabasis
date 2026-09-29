@@ -33,7 +33,6 @@ import { type Solver, withSolverBuiltStarterFactory } from "../src/correctness-b
 import { createVerifierLifetime } from "../src/verify/verifier-lifetime.ts";
 
 const ADVICE = "Public review advice.";
-const GAP = "The writer cannot express a pinned joint.";
 
 /** A tool call that must come back without waiting for a review does so well inside this. */
 const PROMPT_MS = 2_000;
@@ -68,7 +67,6 @@ class HeldReviews {
   readonly calls: Array<{
     root: string;
     trigger: string;
-    gap: string | null;
     rehearsals: readonly unknown[];
     settle: PromiseWithResolvers<AuthoringAdvice>;
   }> = [];
@@ -76,11 +74,10 @@ class HeldReviews {
   readonly review: NonNullable<BuilderCampaignDeps["reviewAuthoring"]> = async (
     root,
     trigger,
-    plan,
     rehearsals: readonly unknown[],
   ) => {
     const settle = Promise.withResolvers<AuthoringAdvice>();
-    this.calls.push({ root, trigger, gap: plan.plan?.gap ?? null, rehearsals, settle });
+    this.calls.push({ root, trigger, rehearsals, settle });
     return settle.promise;
   };
 
@@ -106,15 +103,11 @@ class HeldReviews {
   }
 }
 
-/** A bundle the gate clears, with the round plan beside it in the workspace. */
+/** A bundle the gate clears. */
 function authorable(workspace: string): void {
   completeBundle(workspace);
   requireExternalVerifier(workspace);
   installTool(workspace, "field-engine");
-  writeFileSync(
-    join(workspace, "EXPERIMENT.json"),
-    JSON.stringify({ gap: GAP, change: "Add pinned joints to the writer." }),
-  );
 }
 
 function reviseGuide(workspace: string, line: string): void {
@@ -194,7 +187,7 @@ describe("the Epoch Reviewer beside an authoring session", () => {
       const [check, call] = [namedTool(tools, "correctness_check"), namedTool(tools, "noop")];
       // The check returns without the review it made due, which is still running.
       expect(await promptly(check.execute("check", {}))).not.toContain(ADVICE);
-      expect(held.calls.map(({ trigger, gap }) => [trigger, gap])).toEqual([["repair", GAP]]);
+      expect(held.calls.map(({ trigger }) => trigger)).toEqual(["repair"]);
       expect(held.calls[0]?.root).toContain(".bundle-snapshots");
       expect(await promptly(call.execute("while-running", {}))).not.toContain(ADVICE);
       await held.finish(0, advice(0));
@@ -434,10 +427,9 @@ describe("the Epoch Reviewer beside an authoring session", () => {
     });
   }, 60_000);
 
-  // Submit used to be held while the round's rehearsals passed above the aim or past the plan's
-  // pass-count target. Both are gone: a rehearsal pass is evidence the Builder reads, and submit
-  // judges the bytes as they stand.
-  it("accepts a submit after a rehearsal passed, holding nothing on the plan", async () => {
+  // Submit waits on an unread review alone: a rehearsal pass is evidence the Builder reads, and
+  // submit judges the bytes as they stand.
+  it("accepts a submit after a rehearsal passed, holding nothing on it", async () => {
     const held = new HeldReviews();
     const parent = scratchDir(".ana-scratch-review-no-plan-hold-", import.meta.dir);
     const deps = {
@@ -447,8 +439,6 @@ describe("the Epoch Reviewer beside an authoring session", () => {
     const { workspace, run } = campaign("ana-review-no-plan-hold-", held, deps, parent);
     const outcome = await run(async (tools) => {
       completeBundle(workspace);
-      const plan = { gap: GAP, change: "c" };
-      writeFileSync(join(workspace, "EXPERIMENT.json"), JSON.stringify(plan));
       const trial = JSON.stringify(
         await namedTool(tools, "harness_trial").execute("rehearse", { taskId: "t1" }),
       );

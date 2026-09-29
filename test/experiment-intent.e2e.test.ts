@@ -1,7 +1,7 @@
 /**
  * Experiment intent composed through immutable submit, census and full-task F2 over an adopted
- * product: the accepted bytes, not the plan, decide whether a continuation is a task-only
- * climb, an evaluation correction or a build. One row per composition the static attribution cases
+ * product: the accepted bytes decide whether a continuation is a task-only climb, an evaluation
+ * correction or a build. One row per composition the static attribution cases
  * cannot reach; the byte rules themselves belong to the static cases. These rows continue the
  * product with authored checks alone; experiment-intent-tool.e2e.test.ts holds the rows over an
  * installed tool. Rows run one at a time so each reports before the suite's idle wall.

@@ -497,7 +497,7 @@ describe("what the reader derives", () => {
   const withoutKind = Object.fromEntries(Object.entries(submitRow(1)).filter(([field]) => field !== "kind"));
   it.each([
     [
-      "an unknown schema, keeping the sessions after it",
+      "an older version as that version, keeping the sessions after it",
       {
         [FIRST]: executionRecord({ turns: 1 }),
         "builder-execution-02.json": { schema: "builder-execution/v2" },
@@ -506,14 +506,20 @@ describe("what the reader derives", () => {
       [1, 3],
       [
         "builder-execution-02.json",
-        ': malformed execution record with unknown schema "builder-execution/v2"',
+        ": recorded as builder-execution/v2 by another source; this source reads builder-execution/v7 only",
       ],
+    ],
+    [
+      "a schema that names no execution record as malformed",
+      { [FIRST]: { schema: "session-notes/v1" } },
+      [],
+      [FIRST, ': malformed execution record with unknown schema "session-notes/v1"'],
     ],
     [
       "a submit row that does not say which kind it is",
       { [FIRST]: { ...executionRecord(), submits: [withoutKind] } },
       [],
-      [FIRST, ": builder-execution/v6 record has an incomplete or invalid shape"],
+      [FIRST, ": builder-execution/v7 record has an incomplete or invalid shape"],
     ],
     [
       "a missing middle session, still reading the sessions past it",

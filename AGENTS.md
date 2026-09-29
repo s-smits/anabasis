@@ -77,9 +77,8 @@ NEXT MOVE  boundary (code)  ── build | measure | rebuild | stop
    an acceptance or a claim.
 6. **Next move.** Code admits construction, measurement, an adopted-product continuation or a typed stop
    (`src/run/next-move.ts`). The existing Builder chooses the next experiment from the recorded evidence,
-   because there is no separate planner to hand it to. It pre-registers the round in `EXPERIMENT.json`,
-   which switches nothing and is scored against the changed public tasks and the battery's verified count,
-   never against rehearsals (rule 11).
+   because there is no separate planner to hand it to. What a round sets out to test is the Builder's own
+   note in `MEMORY.md` or `SCRATCHPAD.md`, which the controller carries and grades nowhere (rule 11).
 
 ### Design priors
 
@@ -124,7 +123,7 @@ because moving it cost something.
 
 Four owners divide the work, and what each one never owns matters as much as what it does. The Harness
 Builder, a model, owns the reading of the request, the research, the representation, the task families,
-the controls, the tools, the verifier content and the round's `EXPERIMENT.json`; it never owns the
+the controls, the tools, the verifier content and its own notes; it never owns the
 verifier pin, case truth or adoption. The Built Harness, also a model, owns solving the public tasks with
 its closed roster, through one draft and one submit path, and never sees the hidden tasks, the controls,
 the verifier source or the claim state. The measurement kernel is code, and it owns identity, verifier
@@ -212,7 +211,7 @@ no count to author towards (prior 10), because a count per size read as a target
 (`src/run/climb-readout.ts`) states that only a battery passing some but not all of its cases can locate a
 limit, and only where the checks that failed it are right, beside the witness sentence and the publication
 boundary. The climb readout (`renderReadout`) states what was measured: the newest rows, whether the latest
-battery found a limit, the round plan's family score, the latest battery's families and where its passing
+battery found a limit, the latest battery's families and where its passing
 artifacts are. The Epoch Reviewer alone reads the placement (`readingSentence`). The readout's wording is
 not a recorded condition, which is easy to misread given the history.
 `difficulty-decision/v9` dropped the frame revision v8 carried, and an epoch's `pass` hashes the readout's
@@ -616,15 +615,8 @@ the battery was paid for.
    to find something: a review at any placement may end with nothing demonstrated, and say plainly
    that the tasks were easy.
 
-   The orientation also carries the round's `EXPERIMENT.json`, because a reviewer asked whether a result
-   was earned was never told what the round set out to earn, together with its two scores
-   (`roundPlanLines`, `src/review/round-plan-lines.ts`): the named families against the families whose
-   public tasks the reviewed bytes changed. A measured
-   battery reads the plan recorded with it, and a checkpoint reads the plan the workspace holds now, since
-   a repair snapshot lacks one. The plan is intent and never evidence, and it enters no condition digest,
-   so a new plan over identical bytes buys no second review. The closing message is recorded as its
-   `report`; its tools refuse only what a decision or rule 4 reads, so a long claim or a fifth citation is
-   recorded rather than bounced.
+   The closing message is recorded as its `report`; its tools refuse only what a decision or rule 4 reads,
+   so a long claim or a fifth citation is recorded rather than bounced.
 
    A finding about easy tasks names the obligation of the request they leave undemanded, owned by
    `correctness-model/tasks.json`, and may carry a `demandGap` of capability-unexercised,
@@ -802,18 +794,16 @@ the battery was paid for.
     declared path while every one of them published the one display the request had named, which is why no
     rule asks a family's tasks to vary.
 
-    `EXPERIMENT.json` (`src/author/experiment-plan.ts`) is written by the Builder before a round previews
-    or submits, and it is unenforced, since intent changes no score, gate or byte identity. It has three
-    optional fields: `gap`, `change` and `families`, and no pass range, since a range is a count to
-    author towards. `capturePlan`
-    reads it leniently: unknown fields are ignored, an unreadable one is named in one advice line while
-    the rest stands, and the digest covers readable fields only. The plan is scored once, and never
-    against rehearsals: `familyAdvice` compares `families` with `changedFamilies`
-    (`src/run/experiment-freeze.ts`: the judged public tasks, inputs or rules that changed from the
-    adopted product), as refusal-free advice on every `correctness_check` and refused submit, and
-    `planScoreLine` carries the same family score to the climb readout, the Epoch Reviewer and
-    `terminal.json`, from the plan recorded with the accepted candidate. An unreadable side is
-    unscored. Changed bytes establish membership, not semantic difficulty, and with no observations the
+    A round no longer pre-registers itself. Until 2026-09-29 the Builder wrote `EXPERIMENT.json` before a
+    preview or submit, and by then it changed no score, gate or byte identity: its schema refusal had
+    become advice on 2026-09-28, and what was left was a comparison of the families it named against the
+    families whose public tasks changed, served back to the Builder, the Epoch Reviewer and the run end.
+    That graded a declaration rather than a result, so the file went, with `src/author/experiment-plan.ts`
+    and `src/review/round-plan-lines.ts`. What a round sets out to test is the Builder's note in
+    `MEMORY.md` or `SCRATCHPAD.md`, and an edit to those alone moves the commit without moving the
+    candidate's condition. Attribution stays with the bytes: `candidateExperimentAuthoring`
+    (`src/run/experiment-freeze.ts`) records the operation and the changed task ids of the accepted
+    candidate. Changed bytes establish membership, not semantic difficulty, and with no observations the
     result stays unknown.
 
 12. **Evaluate the requested artifact, not decoration.** Every artifact-schema root must be reached by a
@@ -867,7 +857,7 @@ the battery was paid for.
     and findings past the first page are paged through `feedback` once `correctness_check` has recorded
     them. `context` (`src/builder/context-tool.ts`) takes a question and the decision the answer settles,
     and returns lines cited by document and line from five sources: the round's opening, the workspace
-    notes and plan, every measured battery, **passing** solver traces with their artifacts, and the
+    notes, every measured battery, **passing** solver traces with their artifacts, and the
     `--context` files. A trace's artifact (`traces/<runId>/<taskId>/artifact`) is listed only when its
     bytes check against the evidence log, and ends in `readMargins` lines per published limit while the
     brief's `scoringHash` still matches. Failing traces stay out, because the failure sits there. Until

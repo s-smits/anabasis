@@ -212,21 +212,6 @@ describe("groupAuthorFindings", () => {
       '\n    · ×2 receipt for control "r0" expected fail on check-0 Also for: "r34".\n    · ×2',
     );
     expect(text).toContain("\n    · (2 more variants; page this group's detail)\n- group 2 S");
-    // The round plan's advice closes the refusal and changes nothing above it.
-    expect(text).not.toContain("Advice:");
-    const advised = renderRefusal(
-      {
-        ok: false,
-        stage: "gates",
-        commit: "d".repeat(40),
-        findings: controllerValidatedFindings(findings),
-        advice: ["Advice: a stand-in line."],
-      },
-      GATES_ATTEMPT,
-      10,
-      null,
-    );
-    expect(advised).toBe(`${text}\nAdvice: a stand-in line.`);
   });
 
   it("previews twenty readiness groups, counts the rest and sends exact paging to feedback", () => {

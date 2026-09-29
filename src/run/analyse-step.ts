@@ -56,10 +56,6 @@ import { readValidatedBrief } from "../correctness-bundle/public-resources.ts";
 import { reviewSlotPin } from "../review/review-session.ts";
 import type { ProviderResourceBudget } from "./provider-resource-budget.ts";
 import type { SafeguardContext } from "../meta/safeguard.ts";
-import { Check as validateSchema } from "typebox/value";
-import { NO_PLAN, type RoundPlan } from "../author/experiment-plan.ts";
-import { ExperimentAuthoringSchema } from "./experiment-freeze.ts";
-import { readRecordedBatteryRecord } from "../correctness-bundle/battery-record.ts";
 import { type ReviewResetWait, retryAfterNamedReset } from "../correctness-bundle/provider-reset.ts";
 
 export interface AnalyseStepResult {
@@ -98,22 +94,6 @@ interface AnalyseStepOptions {
 /** A review's failure text, which `retryAfterNamedReset` reads for a reset the provider named. */
 const failedReason = (review: EpochReviewEvidence): string | null =>
   review.status === "failed" ? review.reason : null;
-
-/** The plan recorded with the battery under review and the families its bytes changed, or no plan
- *  when the battery recorded none. The analysis above has already read this battery through the
- *  same attested reader, so a record it cannot read again here has changed underneath the round;
- *  the reviewer is advisory, and is then told there is no plan rather than stopping the analysis. */
-export function recordedRoundPlan(measuredDir: string, runId: string): RoundPlan {
-  try {
-    const authoring = readRecordedBatteryRecord(join(measuredDir, "runs", runId), runId).experimentAuthoring;
-    if (authoring !== undefined && validateSchema(ExperimentAuthoringSchema, authoring)) {
-      return { plan: authoring.plan, changedFamilies: authoring.changedFamilies };
-    }
-  } catch {
-    // Unreadable reads as unrecorded, below.
-  }
-  return NO_PLAN;
-}
 
 export async function analyseStep(
   repoRoot: string,
@@ -184,7 +164,6 @@ export async function analyseStep(
       treeRoot: analysis.treeRoot,
       analysis,
       priorAdvice: standing ?? null,
-      roundPlan: recordedRoundPlan(measuredDir, runId),
       ...contested,
       otherContested: judges.contested.filter((row) => !isVetoed(row) && !isDisputedFail(row)),
       review,

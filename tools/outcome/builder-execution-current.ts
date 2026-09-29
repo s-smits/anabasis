@@ -11,15 +11,12 @@ import {
   HANDOVER_FILES,
   type BuilderSubmitAttempt,
 } from "../../src/author/builder-execution.ts";
-import { Check as validateSchema } from "typebox/value";
-import { RecordedPlanSchema } from "../../src/author/experiment-plan.ts";
 import {
   CUSTOM_TOOL_NAMES,
   bareCustomToolName,
   declaredSemanticOutcome,
 } from "../../src/author/builder-custom-tool-call.ts";
 import { plainRecord } from "../../src/meta/json-evidence.ts";
-import { hashJsonValue } from "../../src/meta/stable-json.ts";
 import { isBoolean, isNumber, isString } from "../../src/meta/json-shape.ts";
 import {
   isNonNegativeInteger,
@@ -47,14 +44,6 @@ const CURRENT_EXECUTION_OUTCOMES = new Set([
   "in-flight",
   "recorded-at-terminal",
 ]);
-
-/** Absent, or a plan whose digest is the digest of its other fields, so an edited plan reads stale. */
-function currentExperimentPlan(value: unknown): boolean {
-  if (value === undefined) return true;
-  if (!validateSchema(RecordedPlanSchema, value)) return false;
-  const { digest, ...plan } = value;
-  return digest === hashJsonValue(plan);
-}
 
 function validBackend(value: unknown): boolean {
   return value === null || (isString(value) && BACKEND_IDS.has(value));
@@ -258,8 +247,7 @@ function currentSubmitIdentity(row: EvidenceRecord): boolean {
     (row.stage === null || row.stage === "bundle" || row.stage === "conformance" || row.stage === "gates") &&
     isString(row.commit) &&
     row.commit.length > 0 &&
-    isBoolean(row.terminal) &&
-    currentExperimentPlan(row.experimentPlan)
+    isBoolean(row.terminal)
   );
 }
 

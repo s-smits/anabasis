@@ -358,7 +358,7 @@ again, since the page was never delivered.
 | whether the next battery will be asked for more | `difficulty-decisions/`, the placement the watch prints | the score |
 | whether the tasks actually got harder | `wri.ts climb` edge verdicts and the tier histogram | the level label, new task ids, or a longer description |
 | whether a page could have steered the Builder at all | `git show <opening source.commit>:<path>` | the working tree or the stack head |
-| whether the Builder read a starter file | the authored `EXPERIMENT.json` and the bundle bytes | read counts in `builder-path-record.jsonl`; the Builder reads through bash, so zero proves nothing |
+| whether the Builder read a starter file | the bundle bytes and the Builder's notes | read counts in `builder-path-record.jsonl`; the Builder reads through bash, so zero proves nothing |
 | whether a battery is hard or merely unsolvable | `artifact.json` beside `public-task.json` in the settled cases | a reviewer finding, a published limit, or a zero score |
 | whether a slow solve is the wall | `solver.toolCalls` in `case-result.json` | `max_turns` or the solve wall, which no recorded truss case approached |
 
@@ -594,11 +594,12 @@ its governing limit, what the Builder changed between them as `wri.ts climb` rea
 named next experiment. Then wait. Work on an authoring surface after that point is work for the next
 launch, and it should be scheduled as such rather than presented as a response to this one.
 
-Read the Builder's own `EXPERIMENT.json` before judging the round. It states the gap the Builder saw
-and the target it set itself, and a score cannot. The fourth round of 3fd52f9e-10 opens "every rule
-the harness enforced was a rule about members", adds two public checks from a published joint
-standard, and pre-registers about 1 of 5 passing with a stated fallback if 4 or more do. That is the
-mechanism working, and no reading of the three flat rounds in front of it would have predicted it.
+Read what the Builder said it set out to do, in its prose and notes, before judging the round. It
+states the gap the Builder saw, and a score cannot. The fourth round of 3fd52f9e-10 opens "every rule
+the harness enforced was a rule about members" and adds two public checks from a published joint
+standard, which no reading of the three flat rounds in front of it would have predicted. The round
+no longer writes that intent to a controller-read `EXPERIMENT.json`: the file graded whether a
+description matched a diff, and the accepted bytes already say what moved.
 
 ## 7. Decide the next move
 

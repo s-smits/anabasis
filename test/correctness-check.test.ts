@@ -1,7 +1,6 @@
 import { required, text } from "./helpers/doubles.ts";
 import { MATCHING_BRIEF, MATCHING_TASKS, writeMatchingBuildFixture } from "./helpers/matching-fixture.ts";
 import { loadSolvabilityPublicSchema } from "../src/correctness-bundle/solvability-artifact-schema.ts";
-import { EXPERIMENT_FILE } from "../src/author/builder-memory.ts";
 import {
   existsSync,
   readFileSync,
@@ -64,7 +63,6 @@ interface Session {
   gate: Gate;
   feedback?: BuilderAuthorFeedback;
   trialsDir?: string;
-  planAdvice?: () => string[];
   /** Extra validation sequence input, e.g. an adopted baseline. */
   validation?: Partial<Pick<PipelineInput, "adoptedDir" | "toolsProbes">>;
 }
@@ -147,7 +145,6 @@ function session(dir: string, options: Session) {
       ),
     expectedTasks: 4,
     feedback: options.feedback ?? new BuilderAuthorFeedback(),
-    planAdvice: options.planAdvice ?? (() => []),
   });
   let receipt: BuilderCustomToolSemantic | undefined;
   const check = async () => {
@@ -337,7 +334,6 @@ describe("correctness_check", () => {
       },
       expectedTasks: 4,
       feedback: new BuilderAuthorFeedback(),
-      planAdvice: () => [],
     });
     for (const gate of ["installed tools", "conformance", "control census", "F2"]) {
       expect(description).toContain(gate);
@@ -449,24 +445,6 @@ describe("correctness_check", () => {
     expect(existsSync(trialsDir)).toBe(false);
     expect(nested(body, "findings").totalFindings).toBeGreaterThan(0);
     expect(nested(body, "truth").verdict).toBe("not-run");
-    expect(body.planAdvice).toBeUndefined();
-  });
-
-  // The plan's disagreement with the round's rehearsals rides beside the result and refuses nothing.
-  it("carries the round plan's advice beside the result without changing it", async () => {
-    let advice: string[] = [];
-    const { check } = session(workspace("advised", false), {
-      gate: async () => [],
-      planAdvice: () => advice,
-    });
-    expect((await check()).planAdvice).toBeUndefined();
-    advice = [
-      "Advice: rehearsals already passed 2 distinct task(s) (t1, t2) against a target of at most 1 verified passes.",
-    ];
-    const body = await check();
-    expect(body.planAdvice).toEqual(advice);
-    expect(body.status).toBe("findings");
-    expect(body.stage).toBe("bundle");
   });
 
   it("reaches the gate on a valid tree, records the trial under trials/<snapshotId> and reports coverage", async () => {
@@ -895,16 +873,6 @@ describe("correctness_check", () => {
     expect(clearPreview(memory, key)).toBeUndefined();
     expect((await check()).status).toBe("clear");
     expect(clearPreview(memory, key)).toBeDefined();
-  });
-
-  // A plan is read beside the gate and never by it: one that does not parse leaves the verdict the
-  // bytes earn.
-  it("gives a candidate whose plan does not parse the verdict its bytes earn", async () => {
-    const dir = workspace("unparsed-plan");
-    writeBoundRepresentation(dir, undefined, readFileSync(join(dir, "agent/tools-spec.json"), "utf8"));
-    const { check } = session(dir, { gate: async () => [], validation: { adoptedDir: dir } });
-    writeFileSync(join(dir, EXPERIMENT_FILE), "not a plan");
-    expect((await check()).status).toBe("clear");
   });
 });
 

@@ -29,7 +29,7 @@ import {
   renderBatteryContract,
   renderReadout,
 } from "../src/run/climb-readout.ts";
-import type { ExperimentAuthoring } from "../src/run/experiment-freeze.ts";
+import { EXPERIMENT_AUTHORING_SCHEMA, type ExperimentAuthoring } from "../src/run/experiment-freeze.ts";
 import { capturedJsonParse } from "../src/meta/json-runtime.ts";
 import { isRecord } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
@@ -51,22 +51,17 @@ type Spec = {
   regrade?: { of: string; reused: number };
   refused?: string;
   failed?: string[];
-  gap?: string;
+  /** Recorded as a task probe. */
+  probe?: true;
   effort?: ClimbEffort;
   familyEffort?: FamilyEffort[];
   wall?: number;
   wallBound?: number;
 };
 
-function authoring(gap: string): ExperimentAuthoring {
+function authoring(): ExperimentAuthoring {
   return {
-    plan: {
-      gap,
-      change: "harder spans",
-      families: ["uppercase"],
-      digest: "d",
-    },
-    changedFamilies: ["uppercase"],
+    schema: EXPERIMENT_AUTHORING_SCHEMA,
     operation: { operation: "task-probe", moved: ["tasks"] },
     baseline: { agentHash: "agent", correctnessModelHash: "model", taskSetHash: "tasks" },
     actual: "climb",
@@ -107,7 +102,7 @@ function row(runId: string, index: number, spec: Spec): AdmittedClimbRow {
     solveWallMinutes: spec.wall ?? 120,
     wallBound: spec.wallBound ?? 0,
   };
-  if (spec.gap !== undefined) recorded.experimentAuthoring = authoring(spec.gap);
+  if (spec.probe === true) recorded.experimentAuthoring = authoring();
   return {
     createdAt: `2026-09-21T${String(10 + index)}:00:00Z`,
     condition: { backendPin: "pin", thresholdManifestDigest: "digest-a", variant: "shipping" },
@@ -201,7 +196,7 @@ describe("one reading per battery", () => {
         passed: 9,
         n: 10,
         refused: "verifier environment unbound",
-        gap: "the limit is unmeasured",
+        probe: true,
         effort: { cases: 10, turns: 4, minutes: 9, toolCalls: 40 },
       }),
       row("r3", 2, { passed: 11, n: 11, families: [{ item: "beams", attempts: 11, passes: 11 }] }),
@@ -234,7 +229,7 @@ describe("one reading per battery", () => {
       n: 10,
       changed: { attempts: 5, passes: 1 },
       refused: "verifier environment unbound",
-      gap: "the limit is unmeasured",
+      probe: true,
     });
     const otherReadout = readoutOf(...other);
     expect(render(otherReadout)).toBe(text);
@@ -324,10 +319,10 @@ describe("rendering", () => {
 
   it("states no course: no streak, target, prediction, ladder or move", () => {
     for (const passed of [0, 2, 5]) {
-      const text = [render(readoutOf(row("r1", 0, { passed, n: 5, gap: "g" }))), renderBatteryContract(5)]
+      const text = [render(readoutOf(row("r1", 0, { passed, n: 5, probe: true }))), renderBatteryContract(5)]
         .join("\n")
         .replace(/\s+/g, " ");
-      expect(text).not.toMatch(/streak|EXPERIMENT\.json|predict|ladder|new move|comparator/i);
+      expect(text).not.toMatch(/streak|predict|ladder|new move|comparator/i);
     }
   });
 

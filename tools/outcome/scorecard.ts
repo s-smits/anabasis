@@ -98,7 +98,7 @@ interface CampaignScorecard {
      *  iteration of one epoch and the first of the next are not the same question. */
     iterations: { compared: number; moved: number };
   };
-  /** Where each battery landed on the band and its plan's score, truth-check provenance, the limit
+  /** Where each battery landed on the band, truth-check provenance, the limit
    *  margin per family and the shared-pack score. */
   runEnd: RunEndSection;
   evidence: { authoring: string[]; cases?: string };

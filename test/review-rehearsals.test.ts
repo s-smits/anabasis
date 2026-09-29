@@ -133,9 +133,8 @@ async function handed(rehearsals: readonly Rehearsal[]) {
   const reviews = new AuthoringReviews(
     workspace,
     SLUG,
-    undefined,
     new AuthoringReviewClock(null, 0),
-    async (root, _trigger, _plan, cases?: readonly unknown[]) => {
+    async (root, _trigger, cases?: readonly unknown[]) => {
       seen = { root, rehearsals: cases ?? [] };
       return { text: "", blocking: 0 };
     },

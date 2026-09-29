@@ -403,13 +403,12 @@ Starts from block 4b's `OFF-AIM STREAK (lane 10)`, from the calibration table th
 prints, and from the `climb` lane's edge labels.
 
 The question is whether the batteries move towards the aim round over round, read as counts.
-Each accepted submit records the round's plan, and `EXPERIMENT.json`
-(`src/author/experiment-plan.ts`) states, each field optional, the gap, the change, the families
-the round changes and the verified passes it expects; its presence switches nothing in the
-controller. Each battery's `difficulty-decisions/<runId>-<digest>.json` records the `ClimbReadout`:
-`placement.zone`, `aim`, `toAim`, the Wilson interval and the plan recorded with the battery. So
-compare per round, in claim `createdAt` order, the placement the controller recorded, the passes
-the plan expected, the families it named and changed, and the count it measured. The battery
+Each battery's `difficulty-decisions/<runId>-<digest>.json` records the `ClimbReadout`:
+`placement.zone`, `aim`, `toAim` and the Wilson interval. So compare per round, in claim
+`createdAt` order, the placement the controller recorded, the operation the accepted bytes were
+attributed as, and the count it measured. The round states no plan of its own any more: a run whose
+source predates the removal of `EXPERIMENT.json` recorded one beside each accepted submit, and
+nothing reads it. The battery
 contract (`renderBatteryContract`, `src/run/climb-readout.ts`) states no count at any size: the
 Builder is told only that a partial battery can locate a limit where its failing checks are right,
 so no battery can be scored against a target the controller stated. An unchanged public task set
@@ -568,7 +567,7 @@ rounds.
 The question is which of the channels one round hands the next were present, served, read back and
 acted on. The channels are the round facts, the climb readout and battery contract, the rebuild
 advice packet, the Epoch Reviewer's public projection from both authoring and battery reviews,
-diagnosis issues, `EXPERIMENT.json`, memory notes, the `context` tool, and the solver traces and
+diagnosis issues, memory notes, the `context` tool, and the solver traces and
 rehearsals it offers. Read the full Builder kickoff in `observability/<runId>.jsonl`
 (`prompt-ingested`, role `builder`), each epoch's `builder-path-record.jsonl` and
 `builder-execution*.json` custom calls, and `analysis/<runId>-{rebuild-advice,diagnoses,epoch-review}.json`.
@@ -619,7 +618,7 @@ changed file, a consumed packet or a better score cannot establish defect contin
 distinct defects share a public location that is the counterexample to an identity-only join. A
 deleted control may be a correction or a loss of challenge; decide from the public obligation and
 the realised verifier. A better score after a repair is also consistent with easier tasks, so say
-whether the tasks the defect failed on were measured again under the repair. Read `EXPERIMENT.json`,
+whether the tasks the defect failed on were measured again under the repair. Read the Builder's prose,
 the successor's `workspaceChange`, the advice issue's state and `lastSeenRunId`, and the successor
 battery's `checkReceipts`. Keep protected repair evidence private. The decision it changes is
 whether a repair may be reported as closed; it routes to the owner the original finding named, and
@@ -630,14 +629,13 @@ to `correctness-model/tasks.json` when the next measurement opportunity was miss
 Starts from block 3c's `REPEATED CONDITION (lane 20)` and from the `climb` lane's edge labels
 (`restated`, `adjusted`, `narrowed`, `widened`, `eased`, `escalated`, `replaced`).
 
-The question is what changed between rounds, whether the accepted bytes match the declared
-`EXPERIMENT.json` scope, and whether the numbers moved without changing what a solver must reason
-about. Read consecutive `versions/<id>/` bundles, each battery's `public-task.json` digests, the
+The question is what changed between rounds, whether the accepted bytes match what the Builder said
+it changed, and whether the numbers moved without changing what a solver must reason about. Read consecutive `versions/<id>/` bundles, each battery's `public-task.json` digests, the
 decision rows' `operation` from `src/gate/experiment-admission.ts` — `task-probe`,
 `harness-intervention`, `evaluation-correction`, `repeat`, `new-baseline`, decided by which of
-`agentHash`, `correctnessModelHash`, `scoringHash` and `taskSetHash` moved — and the plan's declared
-`scope`. Attribution follows accepted bytes and never the plan's name: a plan declaring `tasks`
-whose bytes moved the evaluator receives build attribution, and a change to the installed tools
+`agentHash`, `correctnessModelHash`, `scoringHash` and `taskSetHash` moved. Attribution follows
+accepted bytes and never the Builder's description: a round described as a task change whose bytes
+moved the evaluator receives build attribution, and a change to the installed tools
 alone leaves `scoringHash` where it was while the harness identity moves, so name both. `adjusted`
 deliberately states no direction, because a moved limit is a climb only when it moves inward, and a
 round that re-posed the same public schemas under new values is the `adjusted` edge read round over
@@ -847,7 +845,7 @@ read the flips. A recorded fail that now passes is a false rejection the correct
 recorded pass that now fails is a false acceptance the old evaluator let through, which changes what
 that battery measured; a set of failed checks that changed with the same verdict is a correction
 whose reach the counts hide. Say whether the flips match what the correction claimed to fix in
-`EXPERIMENT.json` and the Builder's prose, and whether the next battery's movement is explained by
+the Builder's prose, and whether the next battery's movement is explained by
 the correction or by the fresh solve. Keep every per-task verdict private, as rule 4 requires: the
 lane reports counts and check ids. The decision it changes is whether the earlier battery's
 placement stands; it routes to `correctness-model/evaluator.ts` or `correctness-model/tasks.json`
@@ -1054,8 +1052,7 @@ Starts from block 4b's `OFF-AIM STREAK (lane 10)`, beside lane 10.
 
 The question is what, in this run, pressed the Builder to make the tasks harder, and whether
 anything did. Only the Builder raises difficulty, and only through the tasks it writes: the
-controller writes no task, `EXPERIMENT.json` is a plan whose presence switches nothing
-(`src/author/experiment-plan.ts`), and the off-aim streak is a readout fact that stops nothing, so
+controller writes no task, and the off-aim streak is a readout fact that stops nothing, so
 a product can land above the aim round after round with no controller action. Read the channels
 that could have carried pressure and say what each carried: the climb readout and battery contract
 the round opened with, the authoring and battery reviews' findings owned by

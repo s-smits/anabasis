@@ -347,7 +347,6 @@ export async function runBuildStep(
     result.experiment !== null
   ) {
     result.experimentAuthoring = candidateExperimentAuthoring(
-      outcome.experimentPlan ?? null,
       outcome.experimentScope.operation,
       result.experiment,
       domainDir,

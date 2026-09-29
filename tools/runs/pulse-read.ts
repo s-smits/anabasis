@@ -5,7 +5,6 @@
 import { readExecutionEvidence } from "../outcome/builder-execution-facts.ts";
 import { readEpochRecord } from "../../src/author/campaign-epoch.ts";
 import type { BuilderCustomToolCall } from "../../src/author/builder-custom-tool-call.ts";
-import { capturePlan } from "../../src/author/experiment-plan.ts";
 import { PUBLIC_TASK_FILE } from "../../src/correctness-bundle/recorded-solve.ts";
 import { placeOnBand, type BandZone } from "../../src/claim/battery-difficulty.ts";
 import { existsSync, lstatSync, readFileSync, readdirSync } from "../../src/meta/filesystem.ts";
@@ -26,11 +25,6 @@ export interface PulseRehearsal {
   verdict: string;
   /** False for a solve that accepted no submission, which a measured battery counts as a fail. */
   submitted: boolean | null;
-}
-
-export interface PulsePlan {
-  /** Families the plan names as changed; null when it names none. */
-  families: number | null;
 }
 
 /** A `harness_trial` the Builder is inside now: one tool call that can hold the session for the
@@ -59,10 +53,6 @@ export interface PulseRound {
   refusalCodes: string[];
   rehearsals: PulseRehearsal[];
   inFlight: PulseInFlight | null;
-  plan: PulsePlan | null;
-  /** The first line of the product's own plan advice on EXPERIMENT.json: none written yet, a field
-   *  it did not read, or a file it could not, such as one caught mid-write. Nothing refuses a plan. */
-  planAdvice: string | null;
   /** The last heading of the Builder's latest message or reasoning row: a hint of what it is doing,
    *  never evidence of what it did. */
   headline: string | null;
@@ -136,8 +126,6 @@ export function emptyRound(number: number, epoch: string | null): PulseRound {
     refusalCodes: [],
     rehearsals: [],
     inFlight: null,
-    plan: null,
-    planAdvice: null,
     headline: null,
   };
 }
@@ -185,14 +173,6 @@ export function readInFlight(epochDir: string, checkpointAt: string | null): Pul
   }
 }
 
-function readPlan(workspace: string): Pick<PulseRound, "plan" | "planAdvice"> {
-  const { plan, advice } = capturePlan(workspace);
-  return {
-    plan: plan === null ? null : { families: plan.families?.length ?? null },
-    planAdvice: advice[0] ?? null,
-  };
-}
-
 function readHeadline(path: string): string | null {
   let lines: string[];
   try {
@@ -238,7 +218,6 @@ function readRound(campaignDir: string, number: number): PulseRound {
     ...empty,
     rehearsals: readRehearsals(record?.customCalls ?? []),
     inFlight: readInFlight(epochDir, null),
-    ...readPlan(join(epochDir, "workspace")),
   };
   if (record === null) return round;
   const previews = record.customCalls.filter((call) => call.tool === "correctness_check");

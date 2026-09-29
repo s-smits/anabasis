@@ -415,11 +415,10 @@ refuse went with them: `tasks-difficulty-unrequested` and `tools-data-reader-sta
 (`experiment-plan-schema`, `experiment-proposal-shape`, `experiment-proposal-read`). Its presence
 switches nothing any more: attribution, the submission condition and every gate read the bytes, so a
 refusal of the plan refused a candidate over text that decides no outcome. `capturePlan`
-(`src/author/experiment-plan.ts`) now reads each field on its own, ignores fields it does not know,
-and names a field that does not read in one advice line while the rest of the plan stands. The plan
-is scored instead of checked: its declared families against the families whose public inputs
-changed, at `correctness_check` and a refused `submit`, and its pass range against the measured
-battery, in the next round's climb readout, the Epoch Reviewer's orientation and the run end.
+(`src/author/experiment-plan.ts`) then read each field on its own and the plan was scored instead of
+checked, its declared families against the families whose public inputs changed. On 2026-09-29 the
+file itself went, because a score of a declaration decides nothing either: a round's intent is the
+Builder's own note in `MEMORY.md` or `SCRATCHPAD.md`, which no code grades.
 
 ## Correctness-check triage, 2026-09-27
 

@@ -151,7 +151,7 @@ export const GATE_LEDGER: readonly LedgerEntry[] = [
     ["SH-7", "experiment-plan-schema", "readout"],
     [null, 0],
     [],
-    "the plan decides nothing, so an unread field is advice and the rest of the plan stands; retired 2026-09-28",
+    "retired 2026-09-28, when the plan came to decide nothing; EXPERIMENT.json itself was removed 2026-09-29",
     ["experiment-plan-schema", "experiment-proposal-read", "experiment-proposal-shape"],
   ),
   // ID: identity and condition

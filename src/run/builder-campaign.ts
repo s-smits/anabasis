@@ -7,7 +7,6 @@ import { BuildAgentTurnNonResult } from "../author/build-agent.ts";
 import { writeAuthoringAttemptEvidence } from "../author/build-attempt-evidence.ts";
 import { builderExecutionEvidenceWriter } from "../author/builder-execution-writer.ts";
 import { WORKSPACE_DIR } from "../author/builder-memory.ts";
-import { type RecordedPlan, capturePlan, familyAdvice } from "../author/experiment-plan.ts";
 import { iterationMemoryFindings } from "../author/iteration-memory.ts";
 import { advisory } from "../author/feedback-routing.ts";
 import {
@@ -82,10 +81,10 @@ import { hashJsonValue } from "../meta/stable-json.ts";
 import type { RunObserver } from "../observe/run-observer.ts";
 import { SOURCE_IDENTITY } from "./source-identity.ts";
 import { decorateIterationEvidence, stampSubmissionCondition } from "./campaign-evidence.ts";
-import { keyIfDefined, keyIfTruthy, keysIf } from "../meta/optional-key.ts";
+import { keyIfDefined, keyIfTruthy } from "../meta/optional-key.ts";
 import type { ProviderResourceBudget } from "./provider-resource-budget.ts";
 import type { Solver } from "../correctness-bundle/solve.ts";
-import { changedFamilies, readableFingerprint, type ExperimentScope } from "./experiment-freeze.ts";
+import { readableFingerprint, type ExperimentScope } from "./experiment-freeze.ts";
 
 export interface BuilderCampaignInput {
   campaignDir: string;
@@ -122,7 +121,7 @@ export interface BuilderCampaignInput {
 
 export interface BuilderCampaignDeps {
   /** The Epoch Reviewer over a frozen snapshot: `repair` a validated product's, `backstop` the one
-   *  the clock froze. The plan comes from the workspace for both. It runs beside the session. */
+   *  the clock froze. It runs beside the session. */
   reviewAuthoring?: ReviewAuthoring;
   /**
    * Test-only shortened backstop clock; production uses `REVIEW_INTERVAL_MS`, forty minutes.
@@ -158,7 +157,6 @@ export interface BuilderCampaignDeps {
 
 type Refused = Extract<BuilderSubmitOutcome, { ok: false }>;
 type Accepted = {
-  experimentPlan?: RecordedPlan;
   experimentScope?: ExperimentScope;
   harness: BuiltHarness;
   iterationDir: string;
@@ -212,7 +210,6 @@ class BuilderCampaignController {
   readonly workspace: string;
   readonly iterations: IterationEvidence[] = [];
   accepted: Accepted | null = null;
-  experimentPlan: RecordedPlan | undefined;
   /** The contract-root identity this call submitted; undefined until a candidate was captured, so
    *  a controller stop that inspected no tree reports none rather than an empty one. */
   private submittedTree: string | undefined;
@@ -242,13 +239,7 @@ class BuilderCampaignController {
     this.reviews =
       deps.reviewAuthoring === undefined
         ? null
-        : new AuthoringReviews(
-            this.workspace,
-            input.slug,
-            input.adoptedDir,
-            this.reviewClock,
-            deps.reviewAuthoring,
-          );
+        : new AuthoringReviews(this.workspace, input.slug, this.reviewClock, deps.reviewAuthoring);
   }
 
   /** What every opening turn carries, in the order the author reads it: what the round asks for,
@@ -291,26 +282,10 @@ class BuilderCampaignController {
     return this.deps.budget?.status() === "budget_limited";
   }
 
-  /** The plan read as advice: what did not read, and on a continuation the declared families against
-   *  the families whose public tasks changed. It refuses nothing. */
-  planAdvice(): string[] {
-    const { plan, advice } = capturePlan(this.workspace);
-    const { adoptedDir } = this.input;
-    if (plan === null || adoptedDir === undefined) return advice;
-    return [...advice, ...familyAdvice(plan, changedFamilies(adoptedDir, this.workspace))];
-  }
-
   async submit({ turn }: { turn: number }): Promise<BuilderSubmitOutcome> {
-    this.experimentPlan = undefined;
     this.submittedTree = undefined;
     const outcome = await this.checkSubmission(turn);
-    const advice = this.planAdvice();
-    return {
-      ...outcome,
-      ...keysIf(!outcome.ok && advice.length > 0, () => ({ advice })),
-      ...keyIfDefined("experimentPlan", this.experimentPlan),
-      ...keyIfDefined("treeId", this.submittedTree),
-    };
+    return { ...outcome, ...keyIfDefined("treeId", this.submittedTree) };
   }
 
   private async checkSubmission(turn: number): Promise<BuilderSubmitOutcome> {
@@ -333,7 +308,6 @@ class BuilderCampaignController {
       };
     }
     const candidate = checkCandidate(this.workspace, this.candidateCheckContext());
-    this.experimentPlan = candidate.experimentPlan;
     // A repaired executable is a new submission condition even when the candidate files did not
     // change, so a valid candidate is keyed by its submission condition and a malformed one by its
     // committed contract-root tree. The candidate memory keys its remembered refusals and its no-op
@@ -514,7 +488,6 @@ class BuilderCampaignController {
     this.iterations.push(evidence);
     if (step.kind === "build-admissible") {
       this.accepted = {
-        ...keyIfDefined("experimentPlan", candidate.experimentPlan),
         harness,
         iterationDir,
         ordinal,
@@ -604,7 +577,6 @@ class BuilderCampaignController {
       expectedTasks: input.expectedTasks,
       ...keyIfDefined("minTasks", input.minTasks),
       feedback,
-      planAdvice: () => this.planAdvice(),
     });
     return [context, inspect, trial, reset, correctnessCheck];
   }
@@ -707,7 +679,6 @@ export async function runBuilderCampaign(
       iterationDir: admitted.iterationDir,
       acceptedSnapshot: admitted.snapshotDir,
       ...keyIfDefined("experimentScope", admitted.experimentScope),
-      ...keyIfDefined("experimentPlan", admitted.experimentPlan),
       harness: admitted.harness,
       iterations: controller.iterations,
       unchangedCandidateSubmissions: unchangedCandidateSubmissions(memory, controller.iterations),
@@ -716,7 +687,6 @@ export async function runBuilderCampaign(
   const exhausted = deps.budget?.status() === "budget_limited";
   return {
     buildAdmissible: false,
-    ...keyIfDefined("experimentPlan", controller.experimentPlan),
     clause:
       outcome.terminalClause ??
       controller.terminalClause ??

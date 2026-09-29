@@ -54,9 +54,8 @@ export function decorateIterationEvidence(
 
 /** The submission condition an iteration was measured under, stamped onto its evidence.
  *
- * The candidate's bytes alone identify the condition. The round plan is recorded beside it and never
- * joins it, so rewording the plan over identical bytes is still the same submission. What the bytes
- * moved against the adopted product is derived from them on every continuation, plan or none.
+ * The candidate's bytes alone identify the condition, and what the bytes moved against the adopted
+ * product is derived from them on every continuation.
  *
  * Held here beside `decorateIterationEvidence` because both answer one question — what this
  * iteration's record says about itself — and the build and climb controllers must not each carry
@@ -69,7 +68,6 @@ export function stampSubmissionCondition(
   round: { experiment?: HarnessAuthoring; adoptedDir?: string },
 ): void {
   evidence.submissionConditionId = conditionKey(candidate);
-  if (candidate.experimentPlan !== undefined) evidence.experimentPlan = candidate.experimentPlan;
   if (round.experiment === undefined) return;
   evidence.experimentScope = {
     ...candidateExperimentScope(round.adoptedDir, candidate.snapshotDir, harness.conformance),

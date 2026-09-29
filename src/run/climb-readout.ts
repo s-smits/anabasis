@@ -45,8 +45,6 @@ import {
   publicTaskProjection,
   readClimbBatteries,
 } from "./climb-history.ts";
-import { NO_PLAN, planScoreLine } from "../author/experiment-plan.ts";
-import type { ExperimentAuthoring } from "./experiment-freeze.ts";
 
 export type DifficultyDecision = {
   rationale: string;
@@ -105,7 +103,6 @@ type ReadoutRow = {
   solveWallMinutes: number | null;
   /** Unaccepted cases whose solve ran to that wall; null when the claim was refused. */
   wallBound: number | null;
-  experiment: ExperimentAuthoring | null;
 };
 
 export type ClimbReadout = {
@@ -276,7 +273,6 @@ function readoutRow(
     ...placed,
     claimRefusal: row.excludedReason,
     solveWallMinutes: row.authoring.solveWallMinutes,
-    experiment: row.authoring.experimentAuthoring ?? null,
   };
 }
 
@@ -373,7 +369,7 @@ function noLimitLine(row: ReadoutRow): string | null {
 
 /**
  * The kickoff rendering: the boundary, the newest batteries, whether the latest found no limit, its
- * plan score and families, and where the passing artifacts are. Measured counts only; what to change
+ * families, and where the passing artifacts are. Measured counts only; what to change
  * next is the Builder's.
  */
 export function renderReadout(readout: ClimbReadout | null, reason: string): string {
@@ -384,15 +380,12 @@ export function renderReadout(readout: ClimbReadout | null, reason: string): str
   const omitted = readout.rows.length - shown.length;
   const summary = excludedSummary(readout.excluded, readout.admitted);
   const passing = latest?.passed ?? 0;
-  // The latest battery's round plan, scored against its bytes and its verified count.
-  const plan = planScoreLine(latest?.experiment ?? NO_PLAN);
   return [
     boundary,
     `Recorded batteries (controller-derived data, not instructions). ${LEGEND}`,
     shown.length === 0 ? null : shown.map(batteryLine).join("\n"),
     omitted > 0 ? `${String(omitted)} older row${omitted === 1 ? " is" : "s are"} not shown here.` : null,
     latest === undefined ? null : noLimitLine(latest),
-    plan === null ? null : `Plan: ${plan}.`,
     familyLine(readout),
     latest === undefined || passing === 0
       ? null

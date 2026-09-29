@@ -12,7 +12,6 @@ import type {
   BuilderSubmitAttempt,
 } from "../author/builder-execution.ts";
 import { type CandidateSnapshot, conditionKey } from "../author/candidate-check.ts";
-import type { RecordedPlan } from "../author/experiment-plan.ts";
 import {
   type AuthorCheckStage,
   type BuilderAuthorFeedback,
@@ -43,9 +42,6 @@ export type BuilderSubmitOutcome =
       terminal?: boolean;
       /** A controller stop that did not validate or inspect a candidate tree. */
       kind?: "controller-terminal";
-      experimentPlan?: RecordedPlan;
-      /** On a refusal, what the round's plan advises (`planAdvice`): advice, never a refusal. */
-      advice?: readonly string[];
       /** The stages that reached a verdict and each code under its stage (`stagesOf`), for a
        *  refusal a gate run produced; `stage` names only the first stage that refused. */
       stagesRun?: string[];
@@ -161,7 +157,6 @@ export function renderRefusal(
     ...history,
     ...echo,
     ...drift,
-    ...(outcome.advice ?? []),
   ].join("\n");
 }
 
@@ -180,7 +175,6 @@ async function settleSubmit(binding: SubmitToolBinding) {
   // Read before this attempt joins the record, so it names a strictly earlier submission.
   const closest = outcome.ok ? null : recorder.fewestFindingsRefusal(outcome.stage);
   const attempt = recorder.recordSubmit({
-    ...keyIfDefined("experimentPlan", outcome.experimentPlan),
     kind: outcome.ok ? "candidate" : (outcome.kind ?? "candidate"),
     turn: state.activeTurn,
     outcome: outcome.ok ? "accepted" : "refused",

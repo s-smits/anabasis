@@ -14,12 +14,7 @@ import { caseRecordRow } from "./helpers/case-record-row.ts";
 import type { CaseRecordRow } from "../src/claim/case-record.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { recordedController } from "./helpers/recorded-controller.ts";
-import {
-  executionRecord,
-  experimentPlan,
-  submitCall,
-  trialCall,
-} from "./helpers/builder-execution-record.ts";
+import { executionRecord, submitCall, trialCall } from "./helpers/builder-execution-record.ts";
 import { EPOCH_REVIEW_SCHEMA } from "../src/review/epoch-review-findings.ts";
 import type { TurnRetryRow } from "../src/author/builder-execution.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
@@ -793,7 +788,7 @@ describe("digest", () => {
     const write = (submitted: string) =>
       writeFileSync(
         join(paths.campaign, "epoch-aa", "builder-execution.json"),
-        executionRecord([{ experimentPlan: experimentPlan() }], 0, {
+        executionRecord([{}], 0, {
           customCalls: [
             trialCall(1, "t1", candidate, "pass"),
             trialCall(2, "t2", candidate, "not-run"),

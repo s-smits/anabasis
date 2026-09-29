@@ -57,8 +57,6 @@ function round(extra: Partial<PulseRound> = {}): PulseRound {
     refusalCodes: [],
     rehearsals: [],
     inFlight: null,
-    plan: null,
-    planAdvice: null,
     headline: null,
     ...extra,
   };
@@ -178,16 +176,11 @@ describe("runs pulse", () => {
     ]);
   });
 
-  it("says a changed plan by its families, and raises no target or hold alert on passing rehearsals", () => {
-    const plan = { families: 2 };
+  it("raises no target or hold alert on passing rehearsals", () => {
     const pass = (taskId: string) => ({ taskId, verdict: "pass", submitted: true });
-    const before = reading(30);
-    expect(texts(before, { ...before, round: round({ checkpointAt: at(30), plan }) })).toEqual([
-      "· r1 plan, 2 families changed",
-    ]);
-    const held = round({ checkpointAt: at(31), plan, rehearsals: [pass("t1"), pass("t2"), pass("t3")] });
+    const held = round({ checkpointAt: at(31), rehearsals: [pass("t1"), pass("t2"), pass("t3")] });
     const passed = texts(
-      reading(30, { round: round({ checkpointAt: at(30), plan }) }),
+      reading(30, { round: round({ checkpointAt: at(30) }) }),
       reading(31, { round: held }),
     );
     expect(passed).toEqual([
@@ -195,7 +188,6 @@ describe("runs pulse", () => {
       "· r1 rehearsal 2 t2: pass",
       "· r1 rehearsal 3 t3: pass",
     ]);
-    expect(statusLine(reading(31, { round: held }), 10)).toContain("plan, 2 families changed");
     expect(statusLine(reading(31, { round: held }), 10)).not.toMatch(/passed past|predictions expect|hold/);
   });
 
@@ -320,7 +312,7 @@ describe("runs pulse", () => {
     expect(statusLine(reading(5, { observations: unopened }), 10)).toContain("gating: controls 3m 0s");
   });
 
-  it("states a build round by its counts and the plan's own advice", () => {
+  it("states a build round by its counts", () => {
     const line = statusLine(
       reading(45, {
         round: round({
@@ -329,14 +321,12 @@ describe("runs pulse", () => {
           clearPreviews: 1,
           rehearsals: [{ taskId: "t1", verdict: "pass", submitted: true }],
           headline: "Running design 5 rehearsal",
-          planAdvice: "Advice: no EXPERIMENT.json yet.",
         }),
       }),
       18,
     );
     expect(line).toContain("r1 build 44m 0s · previews 2 (1 clear) · rehearsals 1/1 pass");
     expect(line).toContain('"Running design 5 rehearsal"');
-    expect(line).toContain("Advice: no EXPERIMENT.json yet.");
   });
 });
 
@@ -385,10 +375,6 @@ describe("pulse host reads", () => {
     expect(loadMemory(path, isPulseReading)).toEqual({ freeGiB: null, readings: {} });
     expect(saveMemory(path, { freeGiB: 12, readings: { [RUN_ID]: reading(5) } })).toBeNull();
     expect(loadMemory(path, isPulseReading).readings[RUN_ID]).toEqual(reading(5));
-    // A kept round holding a plan is kept too, so the next look reports what moved since.
-    const planned = reading(6, { round: round({ plan: { families: null } }) });
-    expect(saveMemory(path, { freeGiB: null, readings: { [RUN_ID]: planned } })).toBeNull();
-    expect(loadMemory(path, isPulseReading).readings[RUN_ID]).toEqual(planned);
     writeFileSync(path, "{");
     expect(loadMemory(path, isPulseReading)).toEqual({ freeGiB: null, readings: {} });
     writeFileSync(path, JSON.stringify({ runs: { A: { seq: 1 } } }));

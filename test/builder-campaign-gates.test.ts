@@ -26,7 +26,6 @@ import {
   completeBundle,
   installTool,
   namedTool,
-  writePlan,
   replyText,
   requireExternalVerifier,
   runOneTool,
@@ -443,8 +442,7 @@ describe("the receipts a gate run records", () => {
 
   it.concurrent("returns the refusal submit gives, with receipts for the work that ran, before either spends the census", async () => {
     // Two shapes of one parity: an unknown check identity, which the bundle stage settles alone,
-    // and an unreadable plan beside a broken bundle, whose advice rides beside the bundle's refusal
-    // and never in its place.
+    // and a bundle missing its operating guide on a continuation of an adopted product.
     const run = async (author: (workspace: string) => void, adopted: boolean) => {
       const campaignDir = scratchDir("ana-check-parity-");
       const workspace = join(campaignDir, "workspace");
@@ -499,14 +497,8 @@ describe("the receipts a gate run records", () => {
       notReached: ["conformance", "gates"],
     });
 
-    const malformed = await run((workspace) => {
-      bundleWithoutGuide(workspace);
-      writeFileSync(join(workspace, "EXPERIMENT.json"), "{");
-    }, true);
-    for (const text of malformed.texts) {
-      expect(text).toContain("is not a JSON object");
-      expect(text).toContain("BUILT_AGENTS.md");
-    }
+    const malformed = await run((workspace) => bundleWithoutGuide(workspace), true);
+    for (const text of malformed.texts) expect(text).toContain("BUILT_AGENTS.md");
     expect(malformed.preview).toMatchObject({
       status: "findings",
       stage: "bundle",
@@ -517,27 +509,15 @@ describe("the receipts a gate run records", () => {
       "not-run",
       "not-run",
     ]);
-
-    // A fresh build has no adopted product to read families against, and no aim is stated to the
-    // author at any size, so a pass range that four tasks could never land on the band earns nothing.
-    const ranged = await run((workspace) => {
-      bundleWithoutGuide(workspace);
-      writeFileSync(join(workspace, "EXPERIMENT.json"), JSON.stringify({ expectedPasses: { atLeast: 3 } }));
-    }, false);
-    for (const text of ranged.texts) {
-      expect(text).not.toMatch(/the plan expects|\baim\b/);
-      expect(text).toContain("BUILT_AGENTS.md");
-    }
   });
 
-  it("returns a remembered gate refusal under the commit and plan of the submit that asked", async () => {
+  it("returns a remembered gate refusal under the commit of the submit that asked", async () => {
     const campaignDir = scratchDir("ana-remembered-commit-");
     const workspace = join(campaignDir, "workspace");
     commitRoundEntry(workspace);
     const adoptedDir = join(campaignDir, "adopted");
     cpSync(join(workspace, "agent"), join(adoptedDir, "agent"), { recursive: true });
     cpSync(join(workspace, "correctness-model"), join(adoptedDir, "correctness-model"), { recursive: true });
-    const plans: ReturnType<typeof writePlan>[] = [];
     let gateCalls = 0;
     await runBuilderCampaign(
       { campaignDir, ...FRESH_BUILD, maxTurns: 2, experiment: "build", adoptedDir },
@@ -561,9 +541,11 @@ describe("the receipts a gate run records", () => {
           scriptedSession(async () => {
             const file = join(workspace, "correctness-model/controls.json");
             writeFileSync(file, `${readFileSync(file, "utf8")}\n`);
-            for (const gap of ["First public gap.", "Second public gap."]) {
-              plans.push(writePlan(workspace, gap));
-              await submitTool(tools).execute(gap, {});
+            // A note edit commits new bytes outside the contract roots, so the second submit carries
+            // a new commit over the same candidate.
+            for (const note of ["First public gap.", "Second public gap."]) {
+              writeFileSync(join(workspace, "MEMORY.md"), `# notes\n${note}\n`);
+              await submitTool(tools).execute(note, {});
             }
             return { status: "completed", assistantText: "submitted" };
           }),
@@ -571,7 +553,6 @@ describe("the receipts a gate run records", () => {
     );
     expect(gateCalls).toBe(1);
     const submits = readExecutionEvidence(campaignDir)[0]?.submits ?? [];
-    expect(submits.map((row) => row.experimentPlan)).toEqual(plans);
     expect(submits[1]?.commit).not.toBe(submits[0]?.commit);
     expect(submits[1]?.commit).toBe(
       Bun.spawnSync(["git", "-C", workspace, "rev-parse", "HEAD"]).stdout.toString().trim(),
@@ -664,11 +645,10 @@ describe("a check that names an installed tool", () => {
     expect(outcome).toMatchObject({ buildAdmissible: true });
   });
 
-  it.concurrent("accepts a candidate whose named tool is installed, freezes it once, and records a fresh build's plan", async () => {
+  it.concurrent("accepts a candidate whose named tool is installed and freezes it once", async () => {
     const campaignDir = scratchDir("ana-primary-provenance-declaration-");
     const workspace = join(campaignDir, "workspace");
     const replies: string[] = [];
-    let plan: ReturnType<typeof writePlan> | undefined;
     const outcome = await runBuilderCampaign(
       { campaignDir, ...FRESH_BUILD, maxTurns: 1 },
       {
@@ -676,8 +656,6 @@ describe("a check that names an installed tool", () => {
         open: async (tools) =>
           scriptedSession(async () => {
             completeBundle(workspace);
-            // A fresh build's plan is recorded to be scored against its first battery.
-            plan = writePlan(workspace);
             requireExternalVerifier(workspace);
             installTool(workspace, "field-engine");
             replies.push(
@@ -690,7 +668,6 @@ describe("a check that names an installed tool", () => {
     );
     expect(replies[0]).toContain("Accepted");
     expect(replies[1]).toContain("Nothing was submitted a second time");
-    expect(outcome.experimentPlan).toEqual(required(plan, "written plan"));
     expect(outcome).not.toHaveProperty("experimentScope");
   });
 

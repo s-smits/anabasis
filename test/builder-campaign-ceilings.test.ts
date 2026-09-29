@@ -16,7 +16,6 @@ import {
   bundleWithoutGuide,
   commitRoundEntry,
   completeBundle,
-  writePlan,
   requireExternalVerifier,
   submitTool,
   submittingSession,
@@ -261,14 +260,13 @@ describe("the no-op strike on a candidate the session keeps resubmitting", () =>
     expect(outcome.buildAdmissible).toBe(true);
   });
 
-  it.concurrent("keeps each refused plan as evidence without treating its wording as progress", async () => {
+  it.concurrent("does not treat a note edit over a refused candidate as progress", async () => {
     const campaignDir = scratchDir("ana-strike-plan-");
     const workspace = join(campaignDir, "workspace");
     commitRoundEntry(workspace);
     const adoptedDir = join(campaignDir, "adopted");
     completeBundle(adoptedDir);
     bundleWithoutGuide(workspace);
-    const plans: ReturnType<typeof writePlan>[] = [];
     const replies: string[] = [];
     let opens = 0;
     const outcome = await runBuilderCampaign(
@@ -288,8 +286,8 @@ describe("the no-op strike on a candidate the session keeps resubmitting", () =>
           opens += 1;
           return scriptedSession(async () => {
             for (let index = 0; index <= POLICY.loop.unchangedCandidateStrikes; index += 1) {
-              plans.push(writePlan(workspace, `Public gap hypothesis ${index}.`));
-              const reply = await submitTool(tools).execute(`plan-${index}`, {});
+              writeFileSync(join(workspace, "MEMORY.md"), `# notes\nPublic gap hypothesis ${index}.\n`);
+              const reply = await submitTool(tools).execute(`note-${index}`, {});
               replies.push(reply.content[0]?.text ?? "");
             }
             return { status: "completed" };
@@ -301,15 +299,14 @@ describe("the no-op strike on a candidate the session keeps resubmitting", () =>
     expect(outcome).toMatchObject({
       buildAdmissible: false,
       clause: "authoring-stalled",
-      experimentPlan: plans.at(-1),
       iterations: [],
     });
     const submits = required(readExecutionEvidence(campaignDir)[0], "one execution record").submits;
-    expect(submits.map((row) => row.experimentPlan)).toEqual(plans);
+    expect(submits).toHaveLength(POLICY.loop.unchangedCandidateStrikes + 1);
     expect(submits.at(-1)?.terminal).toBe(true);
     expect(replies[1]).toContain("unchanged candidate and verifier condition");
-    expect(replies[1]).toContain("EXPERIMENT.json and memory edits do not change that condition");
-    expect(replies.at(-1)).toContain("plan or memory edits do not change that condition");
+    expect(replies[1]).toContain("Memory edits do not change that condition");
+    expect(replies.at(-1)).toContain("memory edits do not change that condition");
     expect(replies.join("\n")).not.toContain("byte-identical tree");
   });
 });

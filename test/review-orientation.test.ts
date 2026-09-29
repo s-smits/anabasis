@@ -10,8 +10,6 @@ import { mkdirSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 import type { IterationAnalysis } from "../src/analyse/iteration-analysis.ts";
 import type { AdviceIssue, RebuildAdvicePacket } from "../src/author/rebuild-advice.ts";
-import { NO_PLAN, type RecordedPlan, type RoundPlan } from "../src/author/experiment-plan.ts";
-import { hashJsonValue } from "../src/meta/stable-json.ts";
 import { BEAMS, JOINTS, READING, issue } from "./helpers/review-fixtures.ts";
 import { EvidenceLog } from "../src/claim/evidence-log.ts";
 import { campaignDir, defaultProductDir } from "../src/meta/campaign-root.ts";
@@ -321,27 +319,8 @@ describe("the epoch reviewer's orientation", () => {
   });
 });
 
-/**
- * The round's own intent beside what it measured. The Builder may write `EXPERIMENT.json` before a
- * round is measured: the gap it saw, the change it made and the families it changed. The reviewer
- * reads it with its score, the declared families against the families whose public tasks changed,
- * so that a battery which passed five of five is read beside what the round set out to change.
- */
-describe("the round plan and the diagnosed issues reach the reviewer", () => {
-  const plan: RecordedPlan = (() => {
-    const body = {
-      gap: "The last battery found no limit: every family cleared its published limit.",
-      change: "Tighten the deflection limit and couple it to the published load case.",
-      families: ["core"],
-    };
-    return { ...body, digest: hashJsonValue(body) };
-  })();
-
-  async function oriented(input: {
-    measured: boolean;
-    roundPlan: RoundPlan;
-    issues?: AdviceIssue[];
-  }): Promise<string> {
+describe("the diagnosed issues reach the reviewer", () => {
+  async function oriented(input: { measured: boolean; issues?: AdviceIssue[] }): Promise<string> {
     const root = tree();
     const counts = { passed: 5, verified: 5 };
     recordBattery(
@@ -360,7 +339,6 @@ describe("the round plan and the diagnosed issues reach the reviewer", () => {
       treeRoot: ".",
       analysis: input.measured ? analysisOf(counts) : null,
       priorAdvice: input.issues === undefined ? packet : { ...adviceOf(counts), issues: input.issues },
-      roundPlan: input.roundPlan,
       publicRequest: "solves the domain",
       review,
       readerTurn: async (turn) => {
@@ -371,51 +349,10 @@ describe("the round plan and the diagnosed issues reach the reviewer", () => {
     return prompt;
   }
 
-  it("sets a measured battery beside the plan it was authored under, with its score", async () => {
-    const prompt = await oriented({ measured: true, roundPlan: { plan, changedFamilies: ["core"] } });
-    expect(prompt).toContain("Round plan (EXPERIMENT.json), the Builder's stated intent for this round:");
-    expect(prompt).toContain(`Gap: ${plan.gap}`);
-    expect(prompt).toContain(`Change: ${plan.change}`);
-    expect(prompt).toContain(
-      "Scored: the plan names core as changed and the public tasks changed from the adopted product in core: met.",
-    );
-    // Each stated field is shown once, inside the score that reads it.
-    expect(prompt).not.toMatch(/Families named as changed/);
-  });
-
-  it("lists the named families alone when there is no adopted product to score them against", async () => {
-    const prompt = await oriented({ measured: true, roundPlan: { plan, changedFamilies: null } });
-    expect(prompt).toContain("Families named as changed: core");
-    expect(prompt).not.toContain("Scored:");
-  });
-
-  it("states a missing plan as missing rather than showing nothing", async () => {
-    const prompt = await oriented({ measured: true, roundPlan: NO_PLAN });
-    expect(prompt).toContain("Round plan: no EXPERIMENT.json was recorded with this battery");
-    expect(prompt).not.toContain("Scored:");
-  });
-
-  it("shows a checkpoint the families its draft has changed", async () => {
-    const prompt = await oriented({
-      measured: false,
-      roundPlan: { plan, changedFamilies: ["core", "joints"] },
-    });
-    expect(prompt).toContain(
-      "Scored: the plan names core as changed and the public tasks changed from the adopted product in core, joints: " +
-        "missed, joints changed but not named.",
-    );
-    const unwritten = await oriented({ measured: false, roundPlan: NO_PLAN });
-    expect(unwritten).toContain("Round plan: the Builder has not yet written an EXPERIMENT.json");
-  });
-
   it("carries each standing issue's diagnosis, cause included, and says when there is none", async () => {
     const diagnosed = issue({ diagnosis: READING });
     const bare = issue({ id: JOINTS, kind: "unaccepted", family: "joints" });
-    const prompt = await oriented({
-      measured: true,
-      roundPlan: { plan, changedFamilies: ["core"] },
-      issues: [diagnosed, bare],
-    });
+    const prompt = await oriented({ measured: true, issues: [diagnosed, bare] });
     expect(prompt).toContain(`${BEAMS.slice(0, 12)} (beams, verified-fail, 2/5)`);
     expect(prompt).toContain("agent/tools-spec.json. First failure boundary");
     expect(prompt).toContain(`Falsifier: ${READING.falsifier}`);

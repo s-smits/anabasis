@@ -117,7 +117,7 @@ describe("the record a round settles", () => {
     expect(sink.settled).toHaveLength(1);
     const evidence = required(sink.settled[0], "the settled record");
     expect(evidence).toMatchObject({
-      schema: "builder-execution/v6",
+      schema: "builder-execution/v7",
       backend: "claude",
       turns: 3,
       outcome: "turn-bound",

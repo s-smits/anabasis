@@ -8,7 +8,6 @@ import type { Brief, ContractFinding } from "../correctness-bundle/brief.ts";
 import type { ControlCorpus } from "../correctness-bundle/controls.ts";
 import type { TaskBattery } from "../correctness-bundle/tasks.ts";
 import type { ToolsSpec } from "../correctness-bundle/tools-spec.ts";
-import type { RecordedPlan } from "./experiment-plan.ts";
 import type { BundleFile } from "./feedback-routing.ts";
 import type { WorkspaceChange } from "./domain-repo.ts";
 
@@ -54,7 +53,6 @@ export type AdmissionLineage = { digest: string };
 type IterationOutcome = "fingerprinted" | "gates-blocked";
 
 export type IterationEvidence = {
-  experimentPlan?: RecordedPlan;
   experimentScope?: ExperimentScope;
   ordinal: number;
   dir: string;
@@ -86,7 +84,7 @@ export type CampaignClause =
   | "no-progress" // a Builder round went POLICY.loop.stalledTurns turns without a successful tool call; the run may retry the build on the same conversation
   | "budget-limited";
 
-export type CampaignOutcome = (
+export type CampaignOutcome =
   | {
       buildAdmissible: true;
       ordinal: number;
@@ -103,5 +101,4 @@ export type CampaignOutcome = (
        *  inside one invocation or across fourteen. */
       unchangedCandidateSubmissions: number;
     }
-  | { buildAdmissible: false; clause: CampaignClause; iterations: IterationEvidence[] }
-) & { experimentPlan?: RecordedPlan };
+  | { buildAdmissible: false; clause: CampaignClause; iterations: IterationEvidence[] };

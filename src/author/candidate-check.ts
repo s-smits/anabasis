@@ -51,7 +51,6 @@ import { resolveToolInventory, toolTreeDigest } from "../verify/tool-inventory.t
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { commitAll } from "./domain-repo.ts";
 import { isString, type JsonValue } from "../meta/json-shape.ts";
-import { type RecordedPlan, capturePlan } from "./experiment-plan.ts";
 import { freshCandidateFindings, freshTaskValidationContext } from "./fresh-candidate-contract.ts";
 import { BRIEF_FILE, CONTROLS_FILE, TASKS_FILE, TOOLS_SPEC_FILE } from "../meta/bundle-layout.ts";
 
@@ -76,7 +75,7 @@ export interface CandidateCheckContext {
   minTasks?: number;
 }
 
-export type CandidateCheckOutcome = (
+export type CandidateCheckOutcome =
   | {
       ok: true;
       fingerprint: FingerprintEvidence;
@@ -107,10 +106,7 @@ export type CandidateCheckOutcome = (
       stage: "bundle";
       findings: ContractFinding[];
       commit: string;
-    }
-) & {
-  experimentPlan?: RecordedPlan;
-};
+    };
 
 /** A captured candidate that passed the bundle contract: the one snapshot every later stage reads. */
 export type CandidateSnapshot = Extract<CandidateCheckOutcome, { ok: true }>;
@@ -508,8 +504,6 @@ export function checkCandidate(
   commitMessage = `submit: candidate for validation (${context.slug})`,
 ): CandidateCheckOutcome {
   const change = commitAll(workspace, commitMessage);
-  // The round plan is recorded with the candidate it was written for and decides nothing here.
-  const planKeys = keyIfDefined("experimentPlan", capturePlan(workspace).plan ?? undefined);
   const fingerprint = fingerprintSlug(workspace, { slug: context.slug });
   if (!fingerprint.ok) {
     return {
@@ -517,7 +511,6 @@ export function checkCandidate(
       stage: "bundle",
       findings: fingerprintRefusal(fingerprint.findings),
       commit: change.commit,
-      ...planKeys,
     };
   }
   const snapshot = createBundleSnapshot(workspace, fingerprint);
@@ -529,7 +522,7 @@ export function checkCandidate(
   const toolCondition = candidateToolVerdict(snapshot.dir, requiredToolIds, toolFindings);
   const findings = [...loaded.findings, ...toolFindings];
   if (findings.length > 0) {
-    return { ok: false, stage: "bundle", findings, commit: change.commit, ...planKeys };
+    return { ok: false, stage: "bundle", findings, commit: change.commit };
   }
   return {
     ok: true,
@@ -543,6 +536,5 @@ export function checkCandidate(
     bundle: validatedBundle(snapshot.dir, loaded),
     ...toolCondition,
     advisories: loaded.advisories,
-    ...planKeys,
   };
 }

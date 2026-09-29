@@ -201,13 +201,11 @@ async function twoRounds(
         brief.truthChecks[0].assertion = second.assertion;
         writeFileSync(file, JSON.stringify(brief));
       }
+      // A note moves the workspace commit and nothing the battery measures, so a round that changes
+      // no other byte still resubmits the identical exam rather than an unchanged candidate.
       writeFileSync(
-        join(ctx.workspace, "EXPERIMENT.json"),
-        JSON.stringify({
-          gap: "the evaluator failed an answer the request accepts",
-          change: "compare the answer without regard to case",
-          families: [],
-        }),
+        join(ctx.workspace, "MEMORY.md"),
+        "# Memory\nThe evaluator compared the answer by case.\n",
       );
     }
     const result = await ctx.call("submit", {});

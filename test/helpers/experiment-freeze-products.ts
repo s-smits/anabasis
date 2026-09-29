@@ -26,7 +26,6 @@ import {
 } from "../../src/verify/verifier-lifetime.ts";
 import type { BuiltHarness, FeedbackOwner } from "../../src/author/campaign-types.ts";
 import type { HarnessExperiment } from "../../src/critic/types.ts";
-import { EXPERIMENT_FILE } from "../../src/author/builder-memory.ts";
 
 const FRESH = {
   slug: "matching",
@@ -36,19 +35,12 @@ const FRESH = {
 } as const;
 const FIXTURE_TOOL = ".toolchain/bin/uppercase-fixture";
 
-/** The same plan for every row, so that only the bytes differ between them. */
-const PLAN = {
-  gap: "The prior battery did not test the proposed condition.",
-  change: "Change the proposed condition.",
-};
-
 export interface AdoptedProduct {
   adoptedDir: string;
   harness: BuiltHarness;
 }
 
-/** One continuation: the fixture battery (redesigned or the adopted one) plus an edit, with one plan
- *  beside it for every row. `admitted` is the attribution the accepted bytes must carry; `refused`
+/** One continuation: the fixture battery (redesigned or the adopted one) plus an edit. `admitted` is the attribution the accepted bytes must carry; `refused`
  *  is the code the submission must name instead. */
 export interface IntentRow {
   tool: boolean;
@@ -168,7 +160,6 @@ export async function checkIntent(shared: AdoptedProduct, row: IntentRow): Promi
     const session = scriptedBuilderTurn(() => {
       uppercaseFixture(workspace, row.redesign, row.tool);
       row.edit?.(workspace);
-      writeFileSync(join(workspace, EXPERIMENT_FILE), JSON.stringify(PLAN));
     });
     const outcome = await runBuilderCampaign(
       {

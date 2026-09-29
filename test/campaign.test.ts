@@ -197,7 +197,7 @@ describe("status", () => {
     execution(f, "builder-execution/v4", [submit(1, "refused")], 3);
     const read = status(f);
     expect(read.authoring?.session).toBeNull();
-    expect(read.authoring?.unreadable).toContain('unknown schema "builder-execution/v4"');
+    expect(read.authoring?.unreadable).toContain("recorded as builder-execution/v4 by another source");
     expect(renderStatus(read, "summary")).toContain("rehearsals and submits unknown:");
     expect(
       deviations(null, read)
@@ -221,7 +221,7 @@ describe("status", () => {
     // SAFETY: `--json` prints the status array, and only the authoring fields below are read.
     const [json] = JSON.parse(out) as Array<{ authoring: { session: null; unreadable: string } }>;
     expect(json?.authoring.session).toBeNull();
-    expect(json?.authoring.unreadable).toContain("unknown schema");
+    expect(json?.authoring.unreadable).toContain("by another source");
   });
 
   it("counts a current record's submits and rehearsals, restarting the refused streak at acceptance", () => {

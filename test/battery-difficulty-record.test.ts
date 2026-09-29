@@ -15,7 +15,6 @@ import { afterAll, describe, expect, it } from "bun:test";
 import type { MeasuredDifficulty } from "../src/claim/battery-difficulty.ts";
 import { recordedEvidence } from "../src/claim/evidence-log.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
-import { hashJsonValue } from "../src/meta/stable-json.ts";
 import { decideDifficulty } from "../src/run/climb-readout.ts";
 import { type Solver, nonResultOutcome } from "../src/correctness-bundle/solve.ts";
 import type { BuildTask } from "../src/correctness-bundle/tasks.ts";
@@ -34,6 +33,7 @@ import {
   SCRIPTED_CONDITION,
   SCRIPTED_THRESHOLD_DIGEST,
 } from "./helpers/verification-runner-fixtures.ts";
+import { EXPERIMENT_AUTHORING_SCHEMA } from "../src/run/experiment-freeze.ts";
 
 interface RecordedBatteryView {
   cases: Array<{ pass: unknown; truthOk: unknown }>;
@@ -93,11 +93,6 @@ describe("the changed subset the next difficulty decision reads", () => {
         condition === "non-result" && task.family === first.family
           ? nonResultOutcome({ kind: "runtime", message: "fixture worker could not start" })
           : substantive(task, ...rest);
-      const plan = {
-        gap: "The old tasks are too easy.",
-        change: "Change five public inputs.",
-        families: [first.family],
-      };
       await makeVerify({
         solver,
         backendPin: "scripted/none",
@@ -106,8 +101,7 @@ describe("the changed subset the next difficulty decision reads", () => {
         capabilities: ["web-search:off"],
         runId,
         experimentAuthoring: {
-          plan: { ...plan, digest: hashJsonValue(plan) },
-          changedFamilies: [first.family],
+          schema: EXPERIMENT_AUTHORING_SCHEMA,
           operation: { operation: "task-probe" as const, moved: ["tasks" as const] },
           actual: "climb" as const,
           baseline: { agentHash: "a", correctnessModelHash: "c", taskSetHash: "t" },

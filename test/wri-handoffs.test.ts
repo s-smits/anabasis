@@ -62,7 +62,6 @@ function campaign(options: { toolCalls?: boolean } = {}): string {
       "Task count: 3",
       "Recorded batteries (controller-derived data, oldest first):",
       "Standing issues, largest first.",
-      "Plan: the plan names alpha as changed and the public tasks changed from the adopted product in alpha: met.",
     ].join("\n"),
   ];
   writeText(
@@ -74,18 +73,15 @@ function campaign(options: { toolCalls?: boolean } = {}): string {
   // Round 1 runs 00:00-01:00 and its accepted submit feeds battery 1, claimed at 01:30.
   // Round 2 runs 02:00-03:00 and feeds battery 2, claimed at 03:30.
   const rounds = [
-    { start: Date.parse("2026-09-19T00:00:00.000Z"), trials: ["fail"], planned: false },
-    { start: Date.parse("2026-09-19T02:00:00.000Z"), trials: ["pass", "pass"], planned: true },
+    { start: Date.parse("2026-09-19T00:00:00.000Z"), trials: ["fail"] },
+    { start: Date.parse("2026-09-19T02:00:00.000Z"), trials: ["pass", "pass"] },
   ];
   rounds.forEach((round, index) => {
     const epoch = join(dir, required(epochs[index], "epoch").key);
     const hour = 3_600_000;
     const submit: JsonObject = { outcome: "accepted", atMs: hour - 1_000 };
-    if (round.planned) {
-      submit.experimentPlan = { families: ["alpha"], digest: "d" };
-    }
     const record: JsonObject = {
-      schema: "builder-execution/v6",
+      schema: "builder-execution/v7",
       writtenAt: new Date(round.start + hour).toISOString(),
       durationMs: hour,
       customCalls: [
@@ -110,9 +106,6 @@ function campaign(options: { toolCalls?: boolean } = {}): string {
       jsonl([
         { capability: "read", at: at(1), resolved: `${epoch}/workspace/MEMORY.md` },
         { capability: "write", at: at(50), resolved: `${epoch}/workspace/MEMORY.md` },
-        ...(index === 1
-          ? [{ capability: "write", at: at(20), resolved: `${epoch}/workspace/EXPERIMENT.json` }]
-          : []),
       ]),
     );
   });
@@ -189,7 +182,6 @@ describe("round hand-offs", () => {
     const second = required(census[1], "second round");
     const cell = (name: string) => second.channels.find((c: { name: string }) => c.name === name);
     expect(cell("rebuild-advice")).toMatchObject({ present: true, served: true, read: null });
-    expect(cell("experiment")).toMatchObject({ served: true, acted: true });
     expect(cell("memory")).toMatchObject({ present: true, served: false, read: 1, acted: true });
     expect(cell("climb-readout")).toMatchObject({ served: true, read: 1, acted: null });
     expect(second.servedNotRead.map((u: { name: string }) => u.name)).toContain("rebuild-advice");
@@ -205,7 +197,7 @@ describe("round hand-offs", () => {
     expect(calibration.rounds[1]).toMatchObject({
       battery: SECOND,
       rehearsalVerdicts: ["pass", "pass"],
-      // The history call and both trials precede the plan write twenty minutes into the round.
+      // The history call and both trials precede the first preview thirty minutes into the round.
       beforeAuthoring: { history: 1, rehearsals: 2, traceReads: 0 },
     });
     expect(calibration.rounds[1]).not.toHaveProperty("predictions");
@@ -263,7 +255,7 @@ describe("round hand-offs", () => {
     const record = join(stale, "epoch-aaaaaaaaaaaa", "builder-execution.json");
     write(record, { ...JSON.parse(readFileSync(record, "utf8")), schema: "builder-execution/v5" });
     expect(() => buildHandoffs({ campaign: stale, runId: RUN })).toThrow(
-      "epoch-aaaaaaaaaaaa/builder-execution.json is not builder-execution/v6",
+      "epoch-aaaaaaaaaaaa/builder-execution.json is not builder-execution/v7",
     );
     const unversioned = campaign();
     write(join(unversioned, "difficulty-decisions", `${SECOND}-x.json`), { difficulty: { rows: [] } });

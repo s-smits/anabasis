@@ -15,7 +15,6 @@ export const WORKSPACE_DIR = "workspace";
 
 export const MEMORY_FILE = "MEMORY.md";
 export const SCRATCHPAD_FILE = "SCRATCHPAD.md";
-export const EXPERIMENT_FILE = "EXPERIMENT.json";
 
 /**
  * Paths permitted in a candidate: directories end with "/", files match exactly. One list supplies
@@ -29,7 +28,6 @@ export const CANDIDATE_INTERFACE: readonly string[] = [
   CORRECTNESS_MODEL_DIR,
   MEMORY_FILE,
   SCRATCHPAD_FILE,
-  EXPERIMENT_FILE,
 ];
 
 /** File-size limits that keep memory short enough to reread: 8 KB is roughly two thousand tokens,

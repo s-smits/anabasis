@@ -1,6 +1,6 @@
 /**
- * The run-end numbers: where each battery landed on the band, how it read against its round's
- * plan, and how many truth checks ran through a tool that had public packages installed beside it.
+ * The run-end numbers: where each battery landed on the band, and how many truth checks ran through
+ * a tool that had public packages installed beside it.
  *
  * The controller records them once, in `terminal.json`, from a readout it takes at the close; the
  * outcome report reads that record, and reads the same numbers live from the newest difficulty
@@ -12,10 +12,8 @@ import { existsSync, readdirSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
 import { readJsonFileOrNull } from "../meta/completed-json.ts";
 import { isNumber, isRecord, isString } from "../meta/json-shape.ts";
-import { keyIfDefined } from "../meta/optional-key.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
-import { NO_PLAN, planScoreLine } from "../author/experiment-plan.ts";
 import type { ClaimStatement } from "../claim/claim-evidence.ts";
 import type { ClimbReadout } from "./climb-readout.ts";
 import { DIFFICULTY_DECISION_SCHEMA, type DifficultyDecisionEvidence } from "./difficulty-decision.ts";
@@ -37,9 +35,6 @@ type ClimbRunEnd = {
     zone: ReadoutRow["zone"];
     passed: number | null;
     verified: number;
-    /** The round plan scored against its bytes and the verified count; absent when the battery
-     *  bound no plan or the plan stated neither families nor a range. */
-    plan?: string;
   }>;
 };
 
@@ -105,7 +100,6 @@ function climbFromReadout(readFrom: string, readout: ClimbReadout): ClimbRunEnd 
     zone: row.zone,
     passed: row.passed,
     verified: row.verified,
-    ...keyIfDefined("plan", planScoreLine(row.experiment ?? NO_PLAN) ?? undefined),
   }));
   return {
     readFrom,

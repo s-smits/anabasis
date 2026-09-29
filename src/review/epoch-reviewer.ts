@@ -38,7 +38,6 @@ import {
   blockingLine,
   diagnosisLine,
 } from "../author/rebuild-advice.ts";
-import { NO_PLAN, type RoundPlan } from "../author/experiment-plan.ts";
 import type { RehearsalRow } from "../builder/harness-trial.ts";
 import { familyTally } from "../claim/case-record.ts";
 import { FROZEN_MANIFEST_PATH } from "../critic/manifest.ts";
@@ -55,7 +54,6 @@ import { runReaderTurn } from "./review-reader.ts";
 import { emptyProbeState, probeTool } from "./review-probe.ts";
 import { type AdvisoryDefect, type Demonstrations, NOTHING_CARRIED, advisoryRecord } from "./review-carry.ts";
 import { EPOCH_REVIEW_PROMPT } from "./epoch-review-prompt.ts";
-import { roundPlanLines } from "./round-plan-lines.ts";
 import { reviewSlotPin } from "./review-session.ts";
 import type { ContestedCase } from "../analyse/judge-contested.ts";
 import {
@@ -103,10 +101,6 @@ export interface EpochReviewInput {
    *  and null leaves the comparison unmade rather than guessing; `whoseBattery` words all three, so
    *  that a null cannot fall through to the confident sentence and assert what it withholds. */
   priorAdviceOnSeededTree?: boolean | null;
-  /** The round's `EXPERIMENT.json` and the families its bytes changed: at a checkpoint the plan the
-   *  workspace holds now, beside a measured battery the plan recorded with it. Left out, the
-   *  orientation says there is none, because a caller with no plan to hand has none to show. */
-  roundPlan?: RoundPlan;
   /** Verifier passes the Main Judge failed with a citation; each must be settled. Empty at an
    *  authoring checkpoint and for batteries reviewed without a Judge. */
   vetoed?: readonly ContestedCase[];
@@ -535,7 +529,6 @@ function orientation(
           measured.aim,
           ...measured.earlier,
         ]),
-    ...roundPlanLines(input.roundPlan ?? NO_PLAN, analysis),
     ...contestedLines(input),
     ...rehearsalLines(input.rehearsals ?? []),
     ...demonstrationLines(input.demonstrations ?? NOTHING_CARRIED, measured.declared),

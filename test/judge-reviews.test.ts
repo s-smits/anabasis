@@ -26,12 +26,7 @@ import { join } from "../src/meta/path.ts";
 import { afterEach, describe, expect, it } from "bun:test";
 import type { CaseEvidence, IterationAnalysis } from "../src/analyse/iteration-analysis.ts";
 import { runJudgeReviews } from "../src/analyse/judge-reviews.ts";
-import {
-  contestedCases,
-  isDisputedFail,
-  isVetoed,
-  reviewerContested,
-} from "../src/analyse/judge-contested.ts";
+import { contestedCases, mustSettle, reviewerContested } from "../src/analyse/judge-contested.ts";
 import { tracePointer } from "../src/claim/case-record.ts";
 import { type JudgeEvidence, judgeDecision } from "../src/claim/judge.ts";
 import { EvidenceLog } from "../src/claim/evidence-log.ts";
@@ -131,7 +126,7 @@ function judgeEvidenceFor(spec: BatterySpec): JudgeEvidence {
   if (evidence.judge === "off") return evidence;
   // Evidence whose stored aggregate contradicts its own fields: the projection must refuse it
   // rather than read it, so this tampering is the thing under test, not the count.
-  if (spec.census === "tampered") return { ...evidence, disagreements: evidence.disagreements + 5 };
+  if (spec.census === "tampered") return { ...evidence, vetoed: evidence.verdicts + 5 };
   return evidence;
 }
 
@@ -282,7 +277,7 @@ describe("the main-Judge census projection reads recorded evidence, never a mode
     const result = runJudgeReviews(analysis, { repoRoot: root, judgePin: null });
     // Refused evidence carries its validation error: no census is returned, the violation is
     // quoted as the reason it holds, and nothing gets projected from the contradictory aggregate.
-    expect(result.provisional).toMatch(/disagreements cannot exceed disagreementDenominator/);
+    expect(result.provisional).toMatch(/vetoed must be a non-negative integer within verdicts/);
     expect(result.census).toBeNull();
   });
 
@@ -297,7 +292,7 @@ describe("the main-Judge census projection reads recorded evidence, never a mode
     const result = runJudgeReviews(analysis, { repoRoot: root, judgePin: JUDGE_PIN });
     expect(walk(root).map((path) => `${path}:${String(statSync(path).size)}`)).toEqual(before);
     expect(result.analysisDigest).toHaveLength(64);
-    expect(result.schema).toBe("judge-reviews/v12");
+    expect(result.schema).toBe("judge-reviews/v13");
     expect(result.judgePin).toBe(JUDGE_PIN);
   });
 });
@@ -346,13 +341,13 @@ describe("a cited fail joins the check it contradicts", () => {
       new Map([[MEMBER_CAPACITY_RULE, "member-capacity"]]),
     );
     expect(rows.every((row) => row.rationale === "scripted census fixture")).toBe(true);
-    expect(rows.map((row) => [row.taskId, row.rules, row.checkIds, row.confirmed, isVetoed(row)])).toEqual([
-      ["t1", [MEMBER_CAPACITY_RULE, "artifactSchema"], ["member-capacity"], true, true],
-      ["t2", ["artifactSchema"], [], true, true],
-      ["t3", [], [], false, false],
-      ["t4", [], [], false, false],
-      ["t5", [MEMBER_CAPACITY_RULE], ["member-capacity"], false, false],
-      ["t6", [MEMBER_CAPACITY_RULE], ["member-capacity"], false, false],
+    expect(rows.map((row) => [row.taskId, row.rules, row.checkIds, row.kind, mustSettle(row)])).toEqual([
+      ["t1", [MEMBER_CAPACITY_RULE, "artifactSchema"], ["member-capacity"], "veto", true],
+      ["t2", ["artifactSchema"], [], "veto", true],
+      ["t3", [], [], "unconfirmed-fail", false],
+      ["t4", [], [], "disputed-pass", false],
+      ["t5", [MEMBER_CAPACITY_RULE], ["member-capacity"], "unconfirmed-fail", false],
+      ["t6", [MEMBER_CAPACITY_RULE], ["member-capacity"], "unconfirmed-fail", false],
     ]);
   });
 
@@ -370,12 +365,10 @@ describe("a cited fail joins the check it contradicts", () => {
       ],
       new Map([[MEMBER_CAPACITY_RULE, "member-capacity"]]),
     );
-    expect(
-      rows.map((row) => [row.taskId, row.judge, row.rules, row.checkIds, isDisputedFail(row), isVetoed(row)]),
-    ).toEqual([
-      ["pass", true, [], ["member-capacity"], true, false],
-      ["undecided", null, [MEMBER_CAPACITY_RULE], ["member-capacity"], true, false],
-      ["unnamed", true, [], [], false, false],
+    expect(rows.map((row) => [row.taskId, row.kind, row.rules, row.checkIds, mustSettle(row)])).toEqual([
+      ["pass", "disputed-pass", [], ["member-capacity"], true],
+      ["undecided", "disputed-undecided", [MEMBER_CAPACITY_RULE], ["member-capacity"], true],
+      ["unnamed", "disputed-pass", [], [], false],
     ]);
   });
 
@@ -386,17 +379,17 @@ describe("a cited fail joins the check it contradicts", () => {
         subject("disputed", false, true, [], { failedCheckIds: ["member-capacity"] }),
         // The nearest miss of a disputed fail: no failing check is on record to settle it against.
         subject("unnamed", false, true, [], { failedCheckIds: [] }),
-        subject("uncited", true, false, [], { confirmation: false }),
+        // A cited fail a second sample withdrew is read, never settled.
+        subject("withdrawn", true, false, [MEMBER_CAPACITY_RULE], { confirmation: true }),
       ],
       new Map([[MEMBER_CAPACITY_RULE, "member-capacity"]]),
     );
     const split = reviewerContested(rows);
     expect(Object.values(split).map((list) => list.map((row) => row.taskId))).toEqual([
-      ["veto"],
-      ["disputed"],
-      ["unnamed", "uncited"],
+      ["veto", "disputed"],
+      ["unnamed", "withdrawn"],
     ]);
-    expect(Object.keys(split)).toEqual(["vetoed", "disputed", "otherContested"]);
+    expect(Object.keys(split)).toEqual(["settle", "otherContested"]);
   });
 });
 
@@ -411,11 +404,10 @@ describe("real-case disagreements stay threshold-free", () => {
     const result = runJudgeReviews(analysis, { repoRoot: root, judgePin: null });
     expect(result.census?.evidence.judge).toBe("unvalidated");
     expect(judgeOf(result)).toBe("advisory-comparison");
-    expect(result.census?.evidence).toMatchObject({ disagreements: 2, verifierPassJudgeFail: 1 });
     expect(result.provisional).toBeNull();
-    expect(result.contested.map(({ taskId, judge, verifier }) => ({ taskId, judge, verifier }))).toEqual([
-      { taskId: "t1", judge: true, verifier: false },
-      { taskId: "t2", judge: false, verifier: true },
+    expect(result.contested.map(({ taskId, kind }) => [taskId, kind])).toEqual([
+      ["t1", "disputed-pass"],
+      ["t2", "unconfirmed-fail"],
     ]);
     // An advisory disclosure is the exit alone; it records no finding for any author session.
     expect(result.exit.kind).toBe("advisory");
@@ -436,18 +428,16 @@ describe("real-case disagreements stay threshold-free", () => {
       ],
     });
     const result = runJudgeReviews(analysis, { repoRoot: root, judgePin: null });
-    expect(result.census?.evidence).toMatchObject({ disagreements: 1, disagreementDenominator: 4 });
+    expect(result.census?.evidence).toMatchObject({ verdicts: 4 });
     expect(result.coverage).toEqual({ reviewable: 4, reviewed: 4 });
     // The raw contradiction is named without filtering at 0.25.
     expect(result.contested).toEqual([
       {
         taskId: "t1",
         family: "truss",
-        judge: false,
-        verifier: true,
+        kind: "unconfirmed-fail",
         rules: [],
         rationale: "scripted census fixture",
-        confirmed: false,
         checkIds: [],
         evidence: `domains/${SLUG}/runs/${RUN}/cases/t1/judge.json`,
         // The recorded pointer to the artifact under dispute: t1 PASSED the verifier, so the row
@@ -457,8 +447,7 @@ describe("real-case disagreements stay threshold-free", () => {
     ]);
     expect(result.exit).toMatchObject({
       kind: "advisory",
-      verifierFailJudgePass: 0,
-      verifierPassJudgeFail: 1,
+      cases: { veto: 0, "unconfirmed-fail": 1, "disputed-pass": 0, "disputed-undecided": 0 },
     });
   });
 
@@ -514,9 +503,9 @@ describe("coverage and historical records", () => {
     expect(result.provisional).toBe(
       "the judge review is incomplete: 1 Judge fails of a verifier pass returned no resample verdict",
     );
-    expect(result.contested.map((row) => [row.taskId, row.confirmed])).toEqual([
-      ["t1", false],
-      ["t3", false],
+    expect(result.contested.map((row) => [row.taskId, row.kind])).toEqual([
+      ["t1", "unconfirmed-fail"],
+      ["t3", "disputed-pass"],
     ]);
   });
 
@@ -532,7 +521,7 @@ describe("coverage and historical records", () => {
     expect(result.provisional).toBeNull();
     expect(result.coverage).toEqual({ reviewable: 3, reviewed: 3 });
     // Only the undecided verifier fail is contested; the undecided verifier pass is no contradiction.
-    expect(result.contested.map((row) => [row.taskId, row.judge])).toEqual([["t2", null]]);
+    expect(result.contested.map((row) => [row.taskId, row.kind])).toEqual([["t2", "disputed-undecided"]]);
   });
 
   it("contests no case whose Judge fail cites no rule", () => {
@@ -541,7 +530,7 @@ describe("coverage and historical records", () => {
       { judgeWithoutRules: true },
     );
     const result = runJudgeReviews(analysis, { repoRoot: root, judgePin: null });
-    expect(result.census?.evidence.verifierPassJudgeFail).toBe(1);
+    expect(result.census?.evidence.verdicts).toBe(1);
     expect(result.contested).toEqual([]);
   });
 });
@@ -553,8 +542,7 @@ describe("the Judge exit is advice only", () => {
     expect(result.provisional).toBeNull();
     expect(result.exit).toMatchObject({
       kind: "advisory",
-      verifierFailJudgePass: 3,
-      verifierPassJudgeFail: 0,
+      cases: { veto: 0, "unconfirmed-fail": 0, "disputed-pass": 3, "disputed-undecided": 0 },
       verified: 10,
     });
     // Families are authoring identities; task ids are failure locations and never leave the record.
@@ -567,13 +555,13 @@ describe("the Judge exit is advice only", () => {
     const result = runJudgeReviews(analysis, { repoRoot: root, judgePin: JUDGE_PIN });
     expect(result.census?.evidence.judge).toBe("unvalidated");
     expect(judgeOf(result)).toBe("advisory-comparison");
-    expect(result.exit).toMatchObject({ kind: "advisory", verifierFailJudgePass: 10 });
+    expect(result.exit).toMatchObject({ kind: "advisory", cases: { "disputed-pass": 10 } });
   });
 
   it("is `none`, with no finding at all, when the Judge and the verifier agreed everywhere", () => {
     const { root, analysis } = repoWith(exitBattery(10, 0));
     const result = runJudgeReviews(analysis, { repoRoot: root, judgePin: JUDGE_PIN });
-    expect(result.exit).toMatchObject({ kind: "none", verifierFailJudgePass: 0, verified: 10 });
+    expect(result.exit).toMatchObject({ kind: "none", cases: { "disputed-pass": 0 }, verified: 10 });
     expect(result.exit.reason).toBe("the Judge contradicted the verifier on no reviewed verified case");
   });
 

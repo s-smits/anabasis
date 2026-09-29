@@ -99,7 +99,7 @@ under a ledger decision `initial-<id>` with `initial-product/v1` evidence, and t
 and a clause contradicted by its own cited rows is a defect in the clause. Read `statement.n` and
 `statement.passed` rather than `claim.ok`: an `ok: true` claim with `passed: 0` is evidentially
 valid and is no capability result. What a claim discloses — a `modelIdentity` limit, a
-`judgeDecision` of `non-result` or `no-battery-verdicts` — is the contract working. Join across an
+`judgeDecision` of `non-result` or, before 2026-09-29, `no-battery-verdicts` — is the contract working. Join across an
 epoch boundary on the recorded bundle or `taskSetHash`, never on the epoch name.
 
 **C. workspace and Git.** Check that a fresh workspace committed the starter package and that each

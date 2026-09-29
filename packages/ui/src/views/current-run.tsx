@@ -2,7 +2,7 @@ import type { OutcomeJudgeReport } from "../../../../tools/outcome/judge.ts";
 import { RecordView } from "../components/record.js";
 import { useLayoutEffect, useRef, useState } from "react";
 import { ArrowLeft, Check, FileJson, X } from "lucide-react";
-import { type JudgeEvidence, judgeDecision } from "../../../../src/claim/judge.ts";
+import { judgeDecision } from "../../../../src/claim/judge.ts";
 import type { OutcomeMetrics, OutcomeReport } from "../../../../tools/outcome/metrics.ts";
 import { MetricCard, MetricGrid, Section } from "../components/layout.js";
 import { Badge, Button, Card, DataTable, Disclosure, HashValue, NoSignal } from "../components/primitives.js";
@@ -239,17 +239,23 @@ function ReviewStatus({ review }: { review: OutcomeJudgeReport }) {
   );
 }
 
-export function ReviewCounts({
-  evidence,
-}: {
-  evidence:
-    | Pick<Exclude<JudgeEvidence, { judge: "off" }>, "judge" | "disagreements" | "disagreementDenominator">
-    | { judge: "off" }
-    | null;
-}) {
-  const counts = evidence === null || evidence.judge === "off" ? null : evidence;
-  const agreements = counts === null ? null : counts.disagreementDenominator - counts.disagreements;
-  const disagreements = counts?.disagreements ?? null;
+/** Agreements are the pass or fail answers no contested row contradicts; disagreements are every
+ *  contested row, an undecided verifier fail included. Null when the review read no census. */
+export function reviewCounts(
+  review: Pick<Extract<OutcomeJudgeReport, { available: true }>, "census" | "exit">,
+): { agreed: number; contested: number } | null {
+  if (review.census === null || !("evidence" in review.census)) return null;
+  const { cases } = review.exit;
+  const decided = cases.veto + cases["unconfirmed-fail"] + cases["disputed-pass"];
+  return {
+    agreed: review.census.evidence.verdicts - decided,
+    contested: decided + cases["disputed-undecided"],
+  };
+}
+
+export function ReviewCounts({ counts }: { counts: { agreed: number; contested: number } | null }) {
+  const agreements = counts?.agreed ?? null;
+  const disagreements = counts?.contested ?? null;
   return (
     <div className="ana-review-counts">
       <span title="Agreements" aria-label={`Agreements: ${agreements ?? "unavailable"}`}>
@@ -278,9 +284,7 @@ function Reviews({ run, runId }: { run: RunView; runId?: string }) {
             </div>
             {review.available ? (
               <>
-                <ReviewCounts
-                  evidence={review.census && "evidence" in review.census ? review.census.evidence : null}
-                />
+                <ReviewCounts counts={reviewCounts(review)} />
                 <Disclosure title="Evidence and coverage">
                   <RecordView value={review} />
                 </Disclosure>

@@ -176,9 +176,9 @@ async function replay(args: CommandArgs): Promise<void> {
     ),
   );
   writeFileSync(join(out, "contested.json"), JSON.stringify(contested, null, 2));
-  const { vetoed, disputed, otherContested } = reviewerContested(contested);
+  const { settle, otherContested } = reviewerContested(contested);
   console.log(
-    `${rows.length} verdict(s) and ${contested.length} contested row(s) written to ${out}: ${vetoed.length} vetoed, ${disputed.length} disputed, ${otherContested.length} other`,
+    `${rows.length} verdict(s) and ${contested.length} contested row(s) written to ${out}: ${settle.length} to settle, ${otherContested.length} other`,
   );
 }
 

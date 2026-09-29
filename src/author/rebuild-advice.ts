@@ -347,8 +347,8 @@ function observedIssues(
   if (judges.census !== null) {
     const byFamily = new Map<string, { passedFailed: number; failedPassed: number }>();
     for (const row of judges.contested) {
-      // Only a Judge fail of a verifier pass is resampled, so only it can read confirmed.
-      const side = row.judge === true ? "passedFailed" : row.confirmed ? "failedPassed" : null;
+      const side =
+        row.kind === "disputed-pass" ? "passedFailed" : row.kind === "veto" ? "failedPassed" : null;
       if (side === null) continue;
       const entry = byFamily.get(row.family) ?? { passedFailed: 0, failedPassed: 0 };
       entry[side] += 1;

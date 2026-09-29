@@ -137,13 +137,13 @@ export interface ContestedRow {
 interface JudgeCensusEvidence {
   judge?: string | null;
   offered?: JsonValue;
-  disagreements?: JsonValue;
-  disagreementDenominator?: JsonValue;
+  verdicts?: JsonValue;
+  abstentions?: JsonValue;
 }
 
 interface JudgeExit {
   kind?: string | null;
-  vetoed?: JsonValue;
+  cases?: { veto?: JsonValue } | null;
 }
 
 /** `analysis/<runId>-judges.json` as its writer records it. */
@@ -501,8 +501,8 @@ export function readJudgeReviews(campaign: string): JudgeReviews {
   return { rows, refused };
 }
 
-/** Judge/verifier disagreement per battery, from the census each review records, with the vetoes
- *  the review's exit counted. The census holds no controls by construction — `src/review/judge.ts`
+/** Judge/verifier disagreement per battery: the review's contested rows over the census's answers,
+ *  undecided included, with the vetoes the review's exit counted. The census holds no controls by construction — `src/review/judge.ts`
  *  records no control count — so this block reads the battery subjects offered alone. */
 export function judgeCensusLines({ judgeReviews }: JudgeCensusInput): string[] {
   const lines = ["", "## 2b judge census (analysis/*-judges.json)"];
@@ -516,18 +516,21 @@ export function judgeCensusLines({ judgeReviews }: JudgeCensusInput): string[] {
     // `census` is null when the battery recorded none; the review still records its exit.
     const evidence = judges.census?.evidence ?? null;
     const exit: JudgeExit = judges.exit ?? {};
-    const vetoes = isNumber(exit.vetoed) ? ` · vetoes ${exit.vetoed}` : "";
+    const vetoes = isNumber(exit.cases?.veto) ? ` · vetoes ${exit.cases.veto}` : "";
     if (evidence === null) {
       lines.push(`${judges.runId}: no census recorded · exit ${exit.kind ?? "?"}${vetoes}`);
       continue;
     }
     const battery = isNumber(evidence.offered) ? evidence.offered : null;
-    const disagreements = isNumber(evidence.disagreements) ? evidence.disagreements : null;
-    const denominator = isNumber(evidence.disagreementDenominator) ? evidence.disagreementDenominator : null;
-    if ((disagreements ?? 0) > 0) withDisagreement += 1;
+    const disagreements = judges.contested.length;
+    const denominator =
+      isNumber(evidence.verdicts) && isNumber(evidence.abstentions)
+        ? evidence.verdicts + evidence.abstentions
+        : null;
+    if (disagreements > 0) withDisagreement += 1;
     lines.push(
       `${judges.runId}: judge ${evidence.judge ?? "?"} · census battery ${battery ?? "?"}` +
-        ` · disagreements ${disagreements ?? "?"}/${denominator ?? "?"} · exit ${exit.kind ?? "?"}${vetoes}`,
+        ` · disagreements ${disagreements}/${denominator ?? "?"} · exit ${exit.kind ?? "?"}${vetoes}`,
     );
   }
   for (const line of refused) lines.push(`refused, not ${JUDGE_REVIEWS_SCHEMA} — ${line}`);

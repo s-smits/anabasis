@@ -14,12 +14,17 @@ import {
   CASE_ARTIFACT_FILE,
   CASE_JUDGE_FILE,
 } from "../correctness-bundle/battery-record.ts";
-import { type JudgeEvidence, judgeDecision, validateJudgeEvidence } from "../claim/judge.ts";
+import { type JudgeEvidence, judgeAnswered, judgeDecision, validateJudgeEvidence } from "../claim/judge.ts";
 import { type EvidenceLogViolation, recordedEvidence, verifyRunDir } from "../claim/evidence-log.ts";
 import { ACTIVE_JUDGE_PROMPT_DIGESTS } from "../review/judge-prompt-policy.ts";
 import type { JudgeSubjectEvidence } from "../review/judge.ts";
 import type { IterationAnalysis } from "./iteration-analysis.ts";
-import { type ContestedCase, type ContestedSubject, contestedCases, isVetoed } from "./judge-contested.ts";
+import {
+  type ContestedCase,
+  type ContestedKind,
+  type ContestedSubject,
+  contestedCases,
+} from "./judge-contested.ts";
 import { readValidatedBrief } from "../correctness-bundle/public-resources.ts";
 import { parseJsonAs, capturedJsonParse, hashJsonBytes } from "../meta/json-runtime.ts";
 import { isBoolean, isRecord, isString } from "../meta/json-shape.ts";
@@ -48,16 +53,14 @@ export type BatteryCensus = {
  */
 export type JudgeExit = {
   kind: "none" | "advisory";
-  /** Verified cases the verifier failed and the Judge passed; one it left undecided is not counted. */
-  verifierFailJudgePass: number;
-  /** Verified cases the verifier passed and the Judge failed. */
-  verifierPassJudgeFail: number;
+  /** The contested rows counted by `ContestedKind`, every kind present. */
+  cases: Record<ContestedKind, number>;
   /** Verified cases in the battery. */
   verified: number;
   reason: string;
 };
 
-export const JUDGE_REVIEWS_SCHEMA = "judge-reviews/v12";
+export const JUDGE_REVIEWS_SCHEMA = "judge-reviews/v13";
 
 export type JudgeReviewsResult = {
   schema: typeof JUDGE_REVIEWS_SCHEMA;
@@ -181,27 +184,20 @@ function censusHold(attempt: CensusAttempt, subjects: readonly ContestedSubject[
   if (subjects.length === 0) return null;
   if (attempt.census === null) return `the battery has no census: ${attempt.reason}`;
   const { evidence } = attempt.census;
-  const answered = answeredCount(attempt);
+  const answered = judgeAnswered(evidence);
   if (answered !== evidence.offered) {
     return `the judge review is incomplete (${judgeDecision(evidence)}): ${answered}/${evidence.offered} battery verdicts returned`;
   }
   // A Judge fail of a verifier pass whose resample returned none is neither confirmed nor withdrawn,
   // so the census counting its first verdict would let a standing Judge issue age towards a fix on
-  // it. No other verdict is resampled.
+  // it. No other verdict is resampled. `judgeCaseKind` reads this case and a withdrawn fail alike as
+  // "unconfirmed-fail", which is right for every other reader and why this one reads the resample.
   const unresampled = subjects.filter(
     ({ judgeEvidence, truthOk }) =>
       judgeEvidence?.verdict === false && truthOk === true && !isBoolean(judgeEvidence.confirmation?.verdict),
   ).length;
   if (unresampled === 0) return null;
   return `the judge review is incomplete: ${unresampled} Judge fails of a verifier pass returned no resample verdict`;
-}
-
-/** The subjects the Judge answered, pass, fail or undecided. An undecided is an answer: counting
- *  booleans alone would hold nearly every battery once most subjects read undecided, and no Judge
- *  issue would age. */
-function answeredCount(attempt: CensusAttempt): number {
-  const evidence = attempt.census?.evidence;
-  return evidence === undefined ? 0 : evidence.verdicts + evidence.abstentions;
 }
 
 /** Why the Judge returned no verdict on any case: the census it could not read, or the count of
@@ -215,15 +211,13 @@ function unreviewedReason(attempt: CensusAttempt): string {
 }
 
 function judgeExit(contested: readonly ContestedCase[], verified: number, attempt: CensusAttempt): JudgeExit {
-  const verifierFailJudgePass = contested.filter((row) => !row.verifier && row.judge === true).length;
-  const verifierPassJudgeFail = contested.filter((row) => row.verifier).length;
-  const undecided = contested.length - verifierFailJudgePass - verifierPassJudgeFail;
-  const vetoed = contested.filter(isVetoed).length;
-  const base = { verifierFailJudgePass, verifierPassJudgeFail, verified };
+  const cases = { veto: 0, "unconfirmed-fail": 0, "disputed-pass": 0, "disputed-undecided": 0 };
+  for (const row of contested) cases[row.kind] += 1;
+  const base = { cases, verified };
   if (contested.length === 0) {
     // No contradiction is claimed over the cases the Judge answered, undecided included, so with none
     // there is nothing it was compared on, and the reason says why nothing was reviewed instead.
-    const reviewed = answeredCount(attempt);
+    const reviewed = attempt.census === null ? 0 : judgeAnswered(attempt.census.evidence);
     return {
       ...base,
       kind: "none",
@@ -240,7 +234,7 @@ function judgeExit(contested: readonly ContestedCase[], verified: number, attemp
     // "N citing shown rules", which counts a different thing and reads as zero for a fail that did
     // cite a rule and simply was not repeated on the re-sample. The author reads this sentence to
     // decide whether the disagreement deserves their attention, so it names both halves.
-    reason: `the Judge disagreed with the verifier on ${contested.length} of ${verified} verified cases (${verifierFailJudgePass} verifier-fail/Judge-pass, ${undecided} verifier-fail/Judge-undecided, ${verifierPassJudgeFail} verifier-pass/Judge-fail); ${vetoed} were vetoes, a cited fail of a verifier pass that a second sample repeated, which is what the epoch reviewer settles; the verifier decides every pass`,
+    reason: `the Judge disagreed with the verifier on ${contested.length} of ${verified} verified cases (${cases["disputed-pass"]} verifier-fail/Judge-pass, ${cases["disputed-undecided"]} verifier-fail/Judge-undecided, ${cases.veto + cases["unconfirmed-fail"]} verifier-pass/Judge-fail); ${cases.veto} were vetoes, a cited fail of a verifier pass that a second sample repeated, which is what the epoch reviewer settles; the verifier decides every pass`,
   };
 }
 
@@ -269,7 +263,7 @@ export function runJudgeReviews(analysis: IterationAnalysis, deps: JudgeReviewDe
     contested,
     coverage: {
       reviewable: attempt.census?.evidence.offered ?? 0,
-      reviewed: answeredCount(attempt),
+      reviewed: attempt.census === null ? 0 : judgeAnswered(attempt.census.evidence),
     },
     provisional,
     exit,

@@ -367,7 +367,7 @@ describe("digest", () => {
     writeFileSync(
       join(paths.campaign, "analysis", "run-1-judges.json"),
       JSON.stringify({
-        schema: "judge-reviews/v12",
+        schema: "judge-reviews/v13",
         runId: "run-1",
         census: null,
         // t9 was never a verified case of run-1, so its row is not attributed.
@@ -952,17 +952,10 @@ describe("digest", () => {
     mkdirSync(join(paths.campaign, "analysis"), { recursive: true });
     const judges = (disagreements: number) =>
       JSON.stringify({
-        schema: "judge-reviews/v12",
+        schema: "judge-reviews/v13",
         runId: "run-1",
-        contested: [],
-        census: {
-          evidence: {
-            judge: "on",
-            offered: 2,
-            disagreements,
-            disagreementDenominator: 2,
-          },
-        },
+        contested: Array.from({ length: disagreements }, (_, index) => ({ taskId: `t${index}` })),
+        census: { evidence: { judge: "on", offered: 2, verdicts: 1, abstentions: 1 } },
         exit: { kind: "completed" },
       });
     writeFileSync(join(paths.campaign, "analysis", "run-1-judges.json"), judges(0));
@@ -984,7 +977,7 @@ describe("digest", () => {
       JSON.stringify({ census: { judge: "on", disagreements: 1 }, exit: { kind: "completed" } }),
     );
     const refused = digestOf(paths);
-    expect(refused).toContain("refused, not judge-reviews/v12 — run-1-judges.json");
+    expect(refused).toContain("refused, not judge-reviews/v13 — run-1-judges.json");
     expect(refused).not.toContain("CENSUS WITH DISAGREEMENT");
   });
 

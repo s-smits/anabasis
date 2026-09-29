@@ -105,7 +105,6 @@ describe("judge review reader", () => {
           offered: 6,
           verdicts: 4,
           abstentions: 1,
-          disagreementDenominator: 4,
         },
       },
       contested: [{ taskId: "t1" }, { taskId: "t2" }],

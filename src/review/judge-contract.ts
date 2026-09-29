@@ -93,10 +93,10 @@ type JudgeSubjectEvidenceCore = JudgeAttempt & {
   judgePin: string;
   verifierBlind: true;
   sanitizer: { version: string; modified: boolean; actions: string[] };
-  /** A second fresh sample, taken only when the first verdict contradicts the verifier's, so a
-   *  contradiction reaches the reviewer only when both samples agree. One sample does not settle
-   *  it: replaying the same subject can split two fail to one pass, so a single draw would decide
-   *  whether the reviewer had a case to settle at all. */
+  /** A second fresh sample, taken only when the Judge fails a verifier pass, so a veto reaches the
+   *  reviewer only when both samples fail. One sample does not settle it: replaying the same
+   *  subject can split two fail to one pass, so a single draw would decide whether the reviewer had
+   *  a case to settle at all. */
   confirmation?: JudgeAttempt;
 };
 
@@ -106,6 +106,15 @@ export type JudgeSubjectEvidence = JudgeSubjectEvidenceCore & {
   publicContextDigest: string;
   judgeInputDigest: string;
 };
+
+/** How one answered subject stands against the verifier's verdict (`judgeCaseKind`). */
+export type JudgeCaseKind =
+  | "agree"
+  | "undecided-pass"
+  | "veto"
+  | "unconfirmed-fail"
+  | "disputed-pass"
+  | "disputed-undecided";
 
 export interface JudgeObservation {
   evidence: JudgeSubjectEvidence;

@@ -346,9 +346,9 @@ describe("review evidence the claim carries but never obeys", () => {
       /abstention is a designed null/,
     ],
     [
-      "more verifier-pass fails than disagreements",
-      { ...green, verifierPassJudgeFail: 3 },
-      /within disagreements/,
+      "more vetoes than verdicts",
+      { ...green, vetoed: 5 },
+      /vetoed must be a non-negative integer within verdicts/,
     ],
     [
       "a review of another pin",

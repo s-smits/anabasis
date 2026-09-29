@@ -128,7 +128,7 @@ describe("makeVerify paid judge review", () => {
       { observer },
     );
     expect(mostAtOnce).toBe(5);
-    expect(battery.judge).toMatchObject({ judge: "unvalidated", offered: 7, disagreements: 0 });
+    expect(battery.judge).toMatchObject({ judge: "unvalidated", offered: 7, verdicts: 7, vetoed: 0 });
     const judged = Array.from({ length: 7 }, (_, index) =>
       existsSync(join(runDir, `cases/judge-${index + 1}/judge.json`)),
     );
@@ -180,7 +180,7 @@ describe("makeVerify paid judge review", () => {
       },
     );
     expect([...subjectKinds]).toEqual(["battery-case"]);
-    expect(battery.judge).toMatchObject({ judge: "unvalidated", offered: 3, disagreements: 3 });
+    expect(battery.judge).toMatchObject({ judge: "unvalidated", offered: 3, verdicts: 3, vetoed: 3 });
     expect(battery.judge).not.toHaveProperty("controlValidity");
     for (const retired of ["control-census-sample.json", "bait-corpus.json", "review-standing.json"]) {
       expect(existsSync(join(runDir, "judge", retired))).toBe(false);

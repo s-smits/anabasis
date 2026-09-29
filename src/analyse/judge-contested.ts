@@ -9,24 +9,26 @@
  * of these rows is what the Judge exit in judge-reviews.ts reads.
  */
 import { join } from "../meta/path.ts";
-import { confirmedDisagreement, type JudgeSubjectEvidence } from "../review/judge.ts";
-import { isBoolean, type JsonValue } from "../meta/json-shape.ts";
+import { type JudgeCaseKind, type JudgeSubjectEvidence, judgeCaseKind } from "../review/judge.ts";
+import type { JsonValue } from "../meta/json-shape.ts";
 import { readJsonFile } from "../meta/completed-json.ts";
+
+/** The ways a Judge answer can contradict the verifier: every `JudgeCaseKind` but agreement and an
+ *  undecided verifier pass. */
+export type ContestedKind = Exclude<JudgeCaseKind, "agree" | "undecided-pass">;
 
 /** One judge/verifier contradiction with the per-case evidence it was read from: a Judge fail of a
  *  verifier pass, or a verifier fail the Judge did not fail. */
 export type ContestedCase = {
   taskId: string;
   family: string;
-  /** The Judge's verdict; null when it returned undecided. */
-  judge: boolean | null;
-  verifier: boolean;
+  /** Which way the Judge contradicted the verifier, from `judgeCaseKind`: the one field every reader
+   *  of this row switches on. */
+  kind: ContestedKind;
   /** The shown rules a Judge fail cited, or the requirements an undecided named; empty for a pass. */
   rules: string[];
   /** The Judge's recorded reason, private review evidence for the epoch reviewer to weigh. */
   rationale: string | null;
-  /** A Judge fail of a verifier pass that a second fresh sample repeated; no other row is resampled. */
-  confirmed: boolean;
   /** For a Judge fail: the declared checks whose assertions the citations quote, joined
    *  controller-side; a citation of the schema, the public input, or an assertion no check declares
    *  joins nothing. Otherwise: the checks the verifier recorded as failing the artifact. */
@@ -59,27 +61,20 @@ export function readJson(repoRoot: string, rel: string): JsonValue {
   return readJsonFile(join(repoRoot, rel));
 }
 
-/** A verifier pass the Judge failed while citing shown rules: the case the reviewer must settle. */
-export function isVetoed(row: Pick<ContestedCase, "judge" | "verifier" | "rules" | "confirmed">): boolean {
-  return row.verifier && row.judge === false && row.rules.length > 0 && row.confirmed;
+/** Whether the Epoch Reviewer must settle a row. A veto is settled against the rule the Judge cited.
+ *  A verifier fail the Judge passed or left undecided is settled the other way round, against a
+ *  check that may refuse a correct artifact, so it needs a failing check on record. An undecided
+ *  counts, because a Judge that reads firmware as undecided on its compile is the reading that found
+ *  host stand-ins refusing valid source in 5 of 8 settled disputes. */
+export function mustSettle(row: Pick<ContestedCase, "kind" | "checkIds">): boolean {
+  if (row.kind === "veto") return true;
+  return row.kind !== "unconfirmed-fail" && row.checkIds.length > 0;
 }
 
-/** A verifier fail the Judge did not fail, with the failing checks on record: the reviewer settles
- *  it the other way round, against a check that may refuse a correct artifact. An undecided counts,
- *  because a Judge that reads firmware as undecided on its compile is the reading that found host
- *  stand-ins refusing valid source in 5 of 8 settled disputes. */
-export function isDisputedFail(row: Pick<ContestedCase, "judge" | "verifier" | "checkIds">): boolean {
-  return !row.verifier && row.judge !== false && row.checkIds.length > 0;
-}
-
-/** The contested rows as the Epoch Reviewer takes them: the vetoes and the disputed fails it
- *  settles, and every other disagreement, which it may read and settles nothing on. */
+/** The contested rows as the Epoch Reviewer takes them: the ones it settles, and every other
+ *  disagreement, which it may read and settles nothing on. */
 export function reviewerContested(rows: readonly ContestedCase[]) {
-  return {
-    vetoed: rows.filter(isVetoed),
-    disputed: rows.filter(isDisputedFail),
-    otherContested: rows.filter((row) => !isVetoed(row) && !isDisputedFail(row)),
-  };
+  return { settle: rows.filter(mustSettle), otherContested: rows.filter((row) => !mustSettle(row)) };
 }
 
 /** Every Judge fail of a verifier pass and every verifier fail the Judge did not fail. Subjects
@@ -93,21 +88,18 @@ export function contestedCases(
   for (const subject of subjects) {
     if (subject.judgePath === null || subject.judgeEvidence === null || subject.truthOk === null) continue;
     const evidence = subject.judgeEvidence;
-    const judge = isBoolean(evidence.verdict) ? evidence.verdict : evidence.abstained ? null : undefined;
-    if (judge === undefined || judge === subject.truthOk || (judge === null && subject.truthOk)) continue;
+    const kind = judgeCaseKind(evidence, subject.truthOk ? "pass" : "fail");
+    if (kind === null || kind === "agree" || kind === "undecided-pass") continue;
     const { rules } = evidence;
     rows.push({
       taskId: subject.taskId,
       family: subject.family,
-      judge,
-      verifier: subject.truthOk,
+      kind,
       rules,
       rationale: evidence.rationale,
-      confirmed: confirmedDisagreement(evidence),
-      checkIds:
-        judge === false
-          ? [...new Set(rules.flatMap((rule) => checkByAssertion.get(rule) ?? []))]
-          : subject.failedCheckIds,
+      checkIds: subject.truthOk
+        ? [...new Set(rules.flatMap((rule) => checkByAssertion.get(rule) ?? []))]
+        : subject.failedCheckIds,
       evidence: subject.judgePath,
       artifact: subject.artifactPath,
     });

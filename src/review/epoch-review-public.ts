@@ -90,12 +90,14 @@ function familiesOf(rows: readonly CaseDisposition[]): string {
 /** What one finding settled, as the author reads it: how many cases in which families, and which
  *  way. The Judge's reason, the case identities and the probe's values stay private. */
 function settlementLines(settled: readonly CaseDisposition[]): string[] {
-  const of = (disposition: CaseDisposition["disposition"], kind?: CaseDisposition["kind"]) =>
-    settled.filter((row) => row.disposition === disposition && (kind === undefined || row.kind === kind));
+  const of = (disposition: CaseDisposition["disposition"], veto?: boolean) =>
+    settled.filter(
+      (row) => row.disposition === disposition && (veto === undefined || (row.kind === "veto") === veto),
+    );
   const [stands, vetoes, disputes] = [
     of("check-stands"),
-    of("against-check", "vetoed"),
-    of("against-check", "disputed"),
+    of("against-check", true),
+    of("against-check", false),
   ];
   return [
     ...(stands.length === 0
@@ -220,23 +222,26 @@ export function publicEpochReview(
   };
 }
 
+/** The Judge issue each settled kind counts towards. An undecided dispute counts towards none: the
+ *  advice raises no issue on an undecided, so settling one must not settle a Judge pass beside it. */
+const JUDGE_ISSUE = {
+  veto: "judge-failed-verifier-passed",
+  "disputed-pass": "judge-passed-verifier-failed",
+  "disputed-undecided": null,
+} as const;
+
 /** The Judge issue ids a completed review settled in the check's favour, one per settled case, in
  *  the id form the rebuild advice keys its Judge issues by: one per family and the side the Judge
  *  took. A case is settled at most once (`caseSettlement`), so the advice settles an issue once
  *  every case it counts appears here. */
 function settledJudgeIssues(settled: readonly CaseDisposition[]) {
   return settled
-    .flatMap((row) =>
-      row.disposition === "check-stands"
-        ? [
-            adviceIssueId(
-              row.kind === "disputed" ? "judge-passed-verifier-failed" : "judge-failed-verifier-passed",
-              row.family,
-              null,
-            ),
-          ]
-        : [],
-    )
+    .flatMap((row) => {
+      const kind = JUDGE_ISSUE[row.kind];
+      return row.disposition === "check-stands" && kind !== null
+        ? [adviceIssueId(kind, row.family, null)]
+        : [];
+    })
     .sort();
 }
 

@@ -35,7 +35,11 @@ import {
 import type { AdviceIssue } from "../src/author/rebuild-advice.ts";
 import { EPOCH_REVIEW_PROMPT } from "../src/review/epoch-review-prompt.ts";
 import { publicEpochReview } from "../src/review/epoch-review-public.ts";
-import { briefIdentities, recordFindingTool } from "../src/review/epoch-review-findings.ts";
+import {
+  type SettlementCase,
+  briefIdentities,
+  recordFindingTool,
+} from "../src/review/epoch-review-findings.ts";
 import { PROBE_BUDGET } from "../src/review/review-probe.ts";
 import { BUNDLE_FILES } from "../src/author/feedback-routing.ts";
 import { EVALUATOR_FILE, TASKS_FILE } from "../src/meta/bundle-layout.ts";
@@ -555,7 +559,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
     const listed = (
       taskId: string,
       family: string,
-      kind: "vetoed" | "disputed",
+      kind: SettlementCase["kind"],
       checkId = "gpio-exit-code",
     ) => ({
       taskId,
@@ -565,11 +569,11 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
       path: at(taskId),
     });
     const cases = [
-      listed("t1", "uno", "vetoed"),
-      listed("t2", "roof", "vetoed"),
-      listed("t3", "uno", "vetoed", "other-check"),
-      listed("t4", "uno", "vetoed"),
-      listed("d1", "uno", "disputed"),
+      listed("t1", "uno", "veto"),
+      listed("t2", "roof", "veto"),
+      listed("t3", "uno", "veto", "other-check"),
+      listed("t4", "uno", "veto"),
+      listed("d1", "uno", "disputed-pass"),
     ];
     const settling = () => {
       const state = reviewState();
@@ -630,7 +634,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
       const { state, tool } = settling();
       const rejects = { ...named, probeDirection: "rejects-valid" };
       expect(await call(tool, { ...rejects, settlesCases: ["t1"] })).toContain(
-        "t1 is a vetoed case, which a rejects-valid finding does not settle",
+        "t1 is a veto case, which a rejects-valid finding does not settle",
       );
       expect(await call(tool, { ...rejects, settlesCases: ["d1"] })).toBe("recorded defect as blocking");
       const projected = publicEpochReview({ status: "completed", ...state }).findings[0]?.claim ?? "";
@@ -899,7 +903,7 @@ describe("what a finding's typed fields carry to authoring", () => {
   const vetoedCase = (taskId: string, family: string) => ({
     taskId,
     family,
-    kind: "vetoed" as const,
+    kind: "veto" as const,
     checkIds: ["deflection"],
     path: `runs/r/cases/${taskId}/artifact.json`,
   });
@@ -935,7 +939,7 @@ describe("what a finding's typed fields carry to authoring", () => {
       {
         taskId: "t1",
         family: "roof",
-        kind: "vetoed",
+        kind: "veto",
         checkId: "deflection",
         disposition: "check-stands",
         finding: 0,
@@ -1015,6 +1019,43 @@ describe("what a finding's typed fields carry to authoring", () => {
     expect(await standing(["t1"])).toEqual([true, true]);
     expect(await standing(["t1", "t3"])).toEqual([false, true]);
     expect(await standing(["t1", "t2", "t3"])).toEqual([false, false]);
+  });
+
+  // Settlement counts cases against an issue's count, so a case the issue does not count must not
+  // reach it. The advice raises no issue on an undecided, and before each case carried its kind an
+  // undecided dispute settled in the check's favour counted towards the Judge-pass issue beside it:
+  // settling one undecided and one pass here marked two passes settled when only one was read.
+  test("settling an undecided dispute settles no Judge pass issue", async () => {
+    const disputed = (taskId: string, kind: SettlementCase["kind"]) => ({
+      ...vetoedCase(taskId, "roof"),
+      kind,
+    });
+    const cases = [
+      disputed("p1", "disputed-pass"),
+      disputed("p2", "disputed-pass"),
+      disputed("u1", "disputed-undecided"),
+    ];
+    const state = reviewState();
+    state.reads.push(...cases.map((row) => row.path));
+    state.probes.rows.push(probeRow(1, ["deflection"]));
+    await call(recordFindingTool([], [], evidence, state, { identities, cases }), {
+      defect: false,
+      claim: "the Judge misread span/250",
+      severity: "advisory",
+      checkId: "deflection",
+      settlesCases: ["p1", "u1"],
+      citations: CITATIONS,
+      probeIds: [1],
+    });
+    const projected = publicEpochReview({ status: "completed", ...state }, { brief });
+    const passIssue = adviceIssueId("judge-passed-verifier-failed", "roof", null);
+    expect(projected.settledJudge).toEqual([passIssue]);
+    const packet = advicePacket([
+      issue({ id: passIssue, kind: "judge-passed-verifier-failed", family: "roof", count: 2 }),
+    ]);
+    expect(attachIssueReadings(packet, { settled: projected.settledJudge }).issues.map(isStanding)).toEqual([
+      true,
+    ]);
   });
 
   // A probe that wrote a valid variant the check refused, and one that wrote an invalid variant the

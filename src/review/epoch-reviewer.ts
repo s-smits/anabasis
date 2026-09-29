@@ -57,7 +57,7 @@ import { emptyProbeState, probeTool } from "./review-probe.ts";
 import { type AdvisoryDefect, type Demonstrations, NOTHING_CARRIED, advisoryRecord } from "./review-carry.ts";
 import { EPOCH_REVIEW_PROMPT } from "./epoch-review-prompt.ts";
 import { reviewSlotPin } from "./review-session.ts";
-import type { ContestedCase } from "../analyse/judge-contested.ts";
+import type { ContestedCase, ContestedKind } from "../analyse/judge-contested.ts";
 import {
   type ReviewInventory,
   type ReviewVerifierEvidence,
@@ -104,12 +104,10 @@ export interface EpochReviewInput {
    *  and null leaves the comparison unmade rather than guessing; `whoseBattery` words all three, so
    *  that a null cannot fall through to the confident sentence and assert what it withholds. */
   priorAdviceOnSeededTree?: boolean | null;
-  /** Verifier passes the Main Judge failed with a citation; each must be settled. Empty at an
-   *  authoring checkpoint and for batteries reviewed without a Judge. */
-  vetoed?: readonly ContestedCase[];
-  /** Verifier fails the Main Judge passed or left undecided, with the failing checks on record;
-   *  settled the other way. */
-  disputed?: readonly ContestedCase[];
+  /** The contested cases the review must settle (`mustSettle`): vetoes, and verifier fails the Main
+   *  Judge passed or left undecided with the failing checks on record. Empty at an authoring
+   *  checkpoint and for batteries reviewed without a Judge. */
+  settle?: readonly ContestedCase[];
   /** Every other case the Judge and the verifier decided differently — unconfirmed, or a failing
    *  case with no deciding check on record. Offered to read beside the settlement work, never owed. */
   otherContested?: readonly ContestedCase[];
@@ -185,6 +183,14 @@ const PLACEMENT_LEADS = {
     " A placement on or below the aim is a lead, not a finding on its own, and hardness is the last of its readings rather than the first. A rule the checks apply that the brief does not publish fails every task: probe an accept control at a field the public contract leaves free, and a check that moves on it is that rule, owned by `correctness-model/brief.json`. Where the verified failures are listed by declared check, start from the first one listed: probe at a path it reads, with a value a practitioner of the request would accept and the published rules allow, and say whether it reads narrower than its rule, wider, or as stated. An answer a correct solver cannot write through the tools it was given fails every task too, owned by `agent/tools-spec.json`; the accept controls are the shapes the writer is known to produce. Record an observation of hardness, owned by correctness-model/tasks.json, once you have read the brief and the writer schema against the artifact and neither holds.",
 };
 
+/** What each side did with a contested case, in the words the reviewer reads it in. */
+const CONTESTED_WORDS: Record<ContestedKind, { verifier: string; judge: string }> = {
+  veto: { verifier: "passed", judge: "failed it" },
+  "unconfirmed-fail": { verifier: "passed", judge: "failed it" },
+  "disputed-pass": { verifier: "failed", judge: "passed it" },
+  "disputed-undecided": { verifier: "failed", judge: "left it undecided" },
+};
+
 /** The settlement work a review owes beyond its source: each contested case with its direction, its
  *  checks and its artifact bytes, and each standing issue it may dispute. `conditionAlreadyReviewed`
  *  compares this digest, so what goes into it decides when a review is repeated. A readable artifact
@@ -207,8 +213,7 @@ function obligationsDigest(input: EpochReviewInput, issues: readonly AdviceIssue
       artifact: bytes(row.artifact) ?? row.artifact,
     }));
   return hashJsonValue({
-    vetoed: cases(input.vetoed),
-    disputed: cases(input.disputed),
+    settle: cases(input.settle),
     issues: issues.map((issue) => issue.id).sort(),
   });
 }
@@ -310,26 +315,26 @@ function contestedArtifact(treeRoot: string, row: ContestedCase): string | null 
 function contestedLines(input: EpochReviewInput): string[] {
   const line = (label: string, row: ContestedCase, middle: string) =>
     `${label}: ${row.taskId} (${row.family}) ${middle}: ${row.rationale ?? "(no reason recorded)"}. Artifact: ${contestedArtifact(input.treeRoot, row) ?? "not recorded"}.`;
+  const cited = (row: ContestedCase) => row.rules.map((rule) => capturedJsonStringify(rule)).join(", ");
   return [
-    ...(input.vetoed ?? []).map((row) =>
-      line(
-        "Vetoed",
-        row,
-        `passed ${row.checkIds.join(", ") || "the verifier"}; the Judge cited ${row.rules.map((rule) => capturedJsonStringify(rule)).join(", ")}`,
-      ),
-    ),
-    ...(input.disputed ?? []).map((row) =>
-      line(
-        "Disputed fail",
-        row,
-        `failed ${row.checkIds.join(", ")}; the Judge ${row.judge === null ? `left it undecided on ${row.rules.map((rule) => capturedJsonStringify(rule)).join(", ")}` : "passed it"}`,
-      ),
+    ...(input.settle ?? []).map((row) =>
+      row.kind === "veto"
+        ? line(
+            "Vetoed",
+            row,
+            `passed ${row.checkIds.join(", ") || "the verifier"}; the Judge cited ${cited(row)}`,
+          )
+        : line(
+            "Disputed fail",
+            row,
+            `failed ${row.checkIds.join(", ")}; the Judge ${CONTESTED_WORDS[row.kind].judge}${row.kind === "disputed-undecided" ? ` on ${cited(row)}` : ""}`,
+          ),
     ),
     ...(input.otherContested ?? []).map((row) =>
       line(
         "Also contested, not required to settle",
         row,
-        `the verifier ${row.verifier ? "passed" : "failed"} it${row.checkIds.length > 0 ? ` on ${row.checkIds.join(", ")}` : ""} and the Judge ${row.judge === null ? "left it undecided" : row.judge ? "passed it" : "failed it"}`,
+        `the verifier ${CONTESTED_WORDS[row.kind].verifier} it${row.checkIds.length > 0 ? ` on ${row.checkIds.join(", ")}` : ""} and the Judge ${CONTESTED_WORDS[row.kind].judge}`,
       ),
     ),
   ];
@@ -648,17 +653,22 @@ function measuredContext(input: EpochReviewInput, evidence: EpochReviewEvidence,
   };
 }
 
-/** The listed vetoes and disputed fails, as `record_finding` may settle them. */
+/** The listed vetoes and disputed fails, as `record_finding` may settle them. `mustSettle` never
+ *  lists an unconfirmed fail, so every kind here is a settlement kind. */
 function settlementCases(input: EpochReviewInput): SettlementCase[] {
-  const listed = (kind: SettlementCase["kind"], rows: readonly ContestedCase[] | undefined) =>
-    (rows ?? []).map((row) => ({
-      taskId: row.taskId,
-      family: row.family,
-      kind,
-      checkIds: row.checkIds,
-      path: contestedArtifact(input.treeRoot, row),
-    }));
-  return [...listed("vetoed", input.vetoed), ...listed("disputed", input.disputed)];
+  return (input.settle ?? []).flatMap((row) =>
+    row.kind === "unconfirmed-fail"
+      ? []
+      : [
+          {
+            taskId: row.taskId,
+            family: row.family,
+            kind: row.kind,
+            checkIds: row.checkIds,
+            path: contestedArtifact(input.treeRoot, row),
+          },
+        ],
+  );
 }
 
 /** The review's one writer, which `runEpochReview` calls on every way out: a refused session, a
@@ -696,11 +706,9 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
   const probe = probeTool(root, lifetime, state.probes, verifier.tools);
   const measured = measuredContext(input, evidence, analysisDir);
   const identities = briefIdentities(root);
-  const contested = [
-    ...(input.vetoed ?? []),
-    ...(input.disputed ?? []),
-    ...(input.otherContested ?? []),
-  ].flatMap((row) => contestedArtifact(input.treeRoot, row) ?? []);
+  const contested = [...(input.settle ?? []), ...(input.otherContested ?? [])].flatMap(
+    (row) => contestedArtifact(input.treeRoot, row) ?? [],
+  );
   // A rehearsal's bytes are read under its name and, like a contested artifact, lie outside the
   // coverage the review is held to, which counts the tree and the verifier alone.
   const rehearsed = new Map(

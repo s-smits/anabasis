@@ -34,8 +34,12 @@ function exit(verifierFailJudgePass: number, verifierPassJudgeFail: number, veri
   const contested = verifierFailJudgePass + verifierPassJudgeFail;
   return {
     kind: contested === 0 ? "none" : "advisory",
-    verifierFailJudgePass,
-    verifierPassJudgeFail,
+    cases: {
+      veto: verifierPassJudgeFail,
+      "unconfirmed-fail": 0,
+      "disputed-pass": verifierFailJudgePass,
+      "disputed-undecided": 0,
+    },
     verified,
     reason: "fixture",
   };
@@ -72,7 +76,10 @@ describe("48: the former blocking floor", () => {
     safeguardJudgeReview(review({ exit: exit(5, 1, 25) }), 8, createSafeguardContext(dir));
     const log = readLog(dir);
     expect(log).toContain("48-judge-disagreement-at-former-block-threshold");
-    expect(log).toContain("passed 5 of 25 verified cases the verifier failed");
+    // The denominator is the verified battery, not the verifier fails, and the line says so.
+    expect(log).toContain(
+      "passed 5 verified cases the verifier failed, at or above max(3, 20%) of the 25 verified cases",
+    );
     expect(log).not.toContain("49-judge-passed-every-reviewed-case");
   });
 });

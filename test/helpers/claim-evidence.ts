@@ -223,7 +223,7 @@ export function identityRowAt(
   return row;
 }
 
-/** A battery review with two disagreements in four, in the shape the current producer records. */
+/** A complete battery review of four with one veto, in the shape the current producer records. */
 export function judgeWithDisagreements(): Exclude<JudgeEvidence, { judge: "off" }> {
   return {
     judge: "unvalidated",
@@ -233,9 +233,6 @@ export function judgeWithDisagreements(): Exclude<JudgeEvidence, { judge: "off" 
     offered: 4,
     verdicts: 4,
     abstentions: 0,
-    disagreements: 2,
-    disagreementDenominator: 4,
-    verifierPassJudgeFail: 1,
-    vetoed: 0,
+    vetoed: 1,
   };
 }

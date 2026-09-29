@@ -42,6 +42,7 @@ import {
 } from "./review-probe.ts";
 import { type ReviewVerifierEvidence, type SourceReadState, deliveredSource } from "./review-sources.ts";
 import { contractDefect } from "../analyse/finding-owner.ts";
+import type { ContestedKind } from "../analyse/judge-contested.ts";
 import { BRIEF_FILE, TASKS_FILE } from "../meta/bundle-layout.ts";
 import { readJsonFile } from "../meta/completed-json.ts";
 import { boundText } from "../meta/bounded-text.ts";
@@ -133,7 +134,7 @@ type ReviewAdmission = {
 export type SettlementCase = {
   taskId: string;
   family: string;
-  kind: "vetoed" | "disputed";
+  kind: Exclude<ContestedKind, "unconfirmed-fail">;
   checkIds: readonly string[];
   path: string | null;
 };
@@ -146,7 +147,11 @@ export type CaseDisposition = Omit<SettlementCase, "checkIds" | "path"> & {
   finding: number;
 };
 /** The direction a defect settling each kind of case against its check must show, when it names one. */
-const AGAINST_CHECK = { vetoed: "accepts-invalid", disputed: "rejects-valid" } as const;
+const AGAINST_CHECK = {
+  veto: "accepts-invalid",
+  "disputed-pass": "rejects-valid",
+  "disputed-undecided": "rejects-valid",
+} as const;
 const MAX_FINDINGS = 6;
 export type ReviewState = SourceReadState & {
   probes: ProbeState;

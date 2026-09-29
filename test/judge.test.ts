@@ -10,7 +10,7 @@ import {
   type JudgeSession,
   type JudgeObservation,
   type JudgeRequest,
-  confirmedDisagreement,
+  judgeCaseKind,
   judgeSubject,
   sessionJudge,
   summarizeJudge,
@@ -629,7 +629,7 @@ describe("the judge battery review", () => {
     expect("confirmation" in (byId.get("c5") ?? {})).toBe(false);
     expect(
       result.observations
-        .filter((row) => confirmedDisagreement(row.evidence))
+        .filter((row) => judgeCaseKind(row.evidence, "pass") === "veto")
         .map((row) => row.evidence.subjectId),
     ).toEqual(["c1"]);
   });
@@ -781,12 +781,7 @@ describe("judge battery aggregation", () => {
 
   it("records no control census: the evidence is unvalidated and still an advisory comparison", () => {
     const evidence = summarize([observation("t1", false, { verifier: true })]);
-    expect(evidence).toMatchObject({
-      judge: "unvalidated",
-      offered: 1,
-      disagreements: 1,
-      disagreementDenominator: 1,
-    });
+    expect(evidence).toMatchObject({ judge: "unvalidated", offered: 1, verdicts: 1 });
     expect(judgeDecision(evidence)).toBe("advisory-comparison");
     expect("controlValidity" in evidence).toBe(false);
     expect("calibration" in evidence).toBe(false);
@@ -806,14 +801,10 @@ describe("judge battery aggregation", () => {
       observation("t5", false, { verifier: true, rules: [EVERY_STOP_IS_VISITED_ONCE], confirmation: true }),
       observation("t6", false, { verifier: true, rules: [EVERY_STOP_IS_VISITED_ONCE] }),
     ]);
-    expect(evidence).toMatchObject({
-      disagreements: 5,
-      verifierPassJudgeFail: 4,
-      vetoed: 1,
-    });
+    expect(evidence).toMatchObject({ verdicts: 6, vetoed: 1 });
     expect(() => validateJudgeEvidence(evidence)).not.toThrow();
     if (evidence.judge === "off") throw new Error("the census ran");
-    expect(() => validateJudgeEvidence({ ...evidence, vetoed: 5 })).toThrow(/vetoed/);
+    expect(() => validateJudgeEvidence({ ...evidence, vetoed: 7 })).toThrow(/vetoed/);
   });
 
   it("a review in which every attempt failed reads as a non-result, not a comparison", () => {
@@ -835,27 +826,47 @@ describe("judge battery aggregation", () => {
       observation("null-1", null, { verifier: true }),
       observation("verifier-null", false, { verifier: null }),
     ]);
-    expect(evidence).toMatchObject({
-      disagreementDenominator: 1,
-      disagreements: 1,
-      offered: 3,
-      verdicts: 2,
-    });
+    expect(evidence).toMatchObject({ offered: 3, verdicts: 2 });
     expect(judgeDecision(evidence)).toBe("incomplete-census");
     expect(() => validateJudgeEvidence(evidence)).not.toThrow();
   });
 
-  it("complete reviews retain raw disagreement counts without a materiality threshold", () => {
+  it("names every answered case's kind once: only a repeated fail vetoes, and an undecided pass contradicts nothing", () => {
+    const kind = (
+      verdict: boolean | null,
+      verifier: "pass" | "fail",
+      extra: { abstained?: boolean; confirmation?: boolean } = {},
+    ) => {
+      const evidence: Parameters<typeof judgeCaseKind>[0] = { verdict, abstained: extra.abstained ?? false };
+      if (extra.confirmation !== undefined) {
+        evidence.confirmation = {
+          verdict: extra.confirmation,
+          abstained: false,
+          rationale: null,
+          rules: [],
+          error: null,
+          errorKind: null,
+          turns: 1,
+        };
+      }
+      return judgeCaseKind(evidence, verifier);
+    };
+    expect(kind(true, "pass")).toBe("agree");
+    expect(kind(false, "fail")).toBe("agree");
+    expect(kind(true, "fail")).toBe("disputed-pass");
+    expect(kind(null, "fail", { abstained: true })).toBe("disputed-undecided");
+    expect(kind(null, "pass", { abstained: true })).toBe("undecided-pass");
+    expect(kind(false, "pass", { confirmation: false })).toBe("veto");
+    expect(kind(false, "pass", { confirmation: true })).toBe("unconfirmed-fail");
+    expect(kind(false, "pass")).toBe("unconfirmed-fail");
+    // A transport error is no answer, so it is no case at all.
+    expect(kind(null, "pass")).toBeNull();
+    // A complete census over a pass, a fail and an undecided reads as a comparison.
     const evidence = summarize([
       observation("strict-verifier", false, { verifier: true }),
       observation("lax-verifier", true, { verifier: false }),
       observation("agree", true, { verifier: true }),
     ]);
-    expect(evidence).toMatchObject({
-      disagreements: 2,
-      disagreementDenominator: 3,
-      verifierPassJudgeFail: 1,
-    });
     expect(judgeDecision(evidence)).toBe("advisory-comparison");
     expect(() => validateJudgeEvidence(evidence)).not.toThrow();
   });

@@ -12,6 +12,7 @@ import {
   type JudgeReviewsResult,
 } from "../../src/analyse/judge-reviews.ts";
 import { validateJudgeEvidence } from "../../src/claim/judge.ts";
+import type { ContestedKind } from "../../src/analyse/judge-contested.ts";
 import { parseJsonAs } from "../../src/meta/json-runtime.ts";
 import { errorMessage } from "../../src/meta/runtime-values.ts";
 
@@ -29,10 +30,8 @@ interface OutcomeContestedCase {
   runId: string;
   taskId: string;
   family: string;
-  /** Null when the Judge left a verifier fail undecided. */
-  judge: boolean | null;
-  verifier: boolean;
-  direction: "verifier-pass-judge-fail" | "verifier-fail-judge-pass" | "verifier-fail-judge-undecided";
+  /** Which way the Judge contradicted the verifier (`judgeCaseKind`). */
+  kind: ContestedKind;
   /** Saved review path for this case. */
   judgeEvidence: string;
   /** Saved answer path checked by the source reader. */
@@ -116,13 +115,7 @@ function contestedRows(
       runId: view.runId,
       taskId: row.taskId,
       family: row.family,
-      judge: row.judge,
-      verifier: row.verifier,
-      direction: row.verifier
-        ? "verifier-pass-judge-fail"
-        : row.judge === null
-          ? "verifier-fail-judge-undecided"
-          : "verifier-fail-judge-pass",
+      kind: row.kind,
       judgeEvidence: currentEvidencePath(campaignDir, row.evidence),
       artifact: currentEvidencePath(campaignDir, row.artifact),
       correctnessModelId: view.evidence.correctnessModelId,

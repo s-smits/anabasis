@@ -8,11 +8,7 @@
 
 export type JudgeState = "off" | "unvalidated";
 
-export type JudgeDecision =
-  | "non-result"
-  | "no-battery-verdicts"
-  | "incomplete-census"
-  | "advisory-comparison";
+export type JudgeDecision = "non-result" | "incomplete-census" | "advisory-comparison";
 
 export type JudgeEvidence =
   | { judge: "off" }
@@ -31,18 +27,15 @@ export type JudgeEvidence =
       /** Every battery subject offered to the Judge, including the ones an abort left unattempted,
        *  so truncated coverage never reads as complete coverage. */
       offered: number;
-      /** Offered subjects that came back with a boolean verdict. */
+      /** Offered subjects that came back pass or fail. */
       verdicts: number;
-      /** Designed abstentions (the evaluator said "cannot decide", with a reason) — a subset of
-       *  offered - verdicts, never a wrong answer and never a proof of anything. */
+      /** Offered subjects that came back undecided, citing what only a run could decide — a subset
+       *  of offered - verdicts, never a wrong answer and never a proof of anything. */
       abstentions: number;
-      disagreements: number;
-      disagreementDenominator: number;
-      /** Of `disagreements`, the Judge fails of a verifier pass; the rest are Judge passes of a
-       *  verifier fail. */
-      verifierPassJudgeFail: number;
-      /** Of `verifierPassJudgeFail`, the fails that cite a shown rule: the cases the epoch reviewer
-       *  settles and the claim reports beside its verifier rate. */
+      /** Judge fails of a verifier pass a second sample repeated (`judgeCaseKind` "veto"): the
+       *  cases the epoch reviewer settles and the claim reports beside its verifier rate. Every
+       *  other disagreement count is read from the per-case rows, which is where undecided
+       *  disputes are visible. */
       vetoed: number;
     };
 
@@ -65,17 +58,20 @@ function nonNegativeInteger(value: number): boolean {
   return Number.isInteger(value) && value >= 0;
 }
 
-/** What a review as a whole says, derived rather than stored, in the order the counts rule each
- *  other out: nothing came back, then answers missing from the offered battery, then no
- *  comparable pair to read, and only then an advisory comparison. An undecided is an answer. Null
- *  when no Judge ran. */
+/** The subjects the Judge answered: pass, fail or undecided. The one count of answers every
+ *  completeness reading takes, so an undecided cannot count as an answer in one place and as a
+ *  missing verdict in another. */
+export function judgeAnswered(evidence: Extract<JudgeEvidence, { judge: "unvalidated" }>): number {
+  return evidence.verdicts + evidence.abstentions;
+}
+
+/** What a review as a whole says, derived rather than stored: nothing came back, then answers
+ *  missing from the offered battery, and only then an advisory comparison. Null when no Judge ran. */
 export function judgeDecision(evidence: JudgeEvidence): JudgeDecision | null {
   if (evidence.judge === "off") return null;
-  const answered = evidence.verdicts + evidence.abstentions;
+  const answered = judgeAnswered(evidence);
   if (answered === 0) return "non-result";
-  if (answered < evidence.offered) return "incomplete-census";
-  if (evidence.disagreementDenominator === 0) return "no-battery-verdicts";
-  return "advisory-comparison";
+  return answered < evidence.offered ? "incomplete-census" : "advisory-comparison";
 }
 
 /** Recalculate the aggregate relationships used by claim creation. Saved evidence may be older,
@@ -104,26 +100,8 @@ export function validateJudgeEvidence(evidence: JudgeEvidence): void {
     "abstentions exceeds the unanswered census — an abstention is a designed null",
   );
 
-  judgeIntegrity(nonNegativeInteger(evidence.disagreements), "disagreements must be a non-negative integer");
   judgeIntegrity(
-    nonNegativeInteger(evidence.disagreementDenominator),
-    "disagreementDenominator must be a non-negative integer",
-  );
-  judgeIntegrity(
-    evidence.disagreementDenominator <= evidence.verdicts,
-    "disagreementDenominator cannot exceed completed battery verdicts",
-  );
-  judgeIntegrity(
-    evidence.disagreements <= evidence.disagreementDenominator,
-    "disagreements cannot exceed disagreementDenominator",
-  );
-  judgeIntegrity(
-    nonNegativeInteger(evidence.verifierPassJudgeFail) &&
-      evidence.verifierPassJudgeFail <= evidence.disagreements,
-    "verifierPassJudgeFail must be a non-negative integer within disagreements",
-  );
-  judgeIntegrity(
-    nonNegativeInteger(evidence.vetoed) && evidence.vetoed <= evidence.verifierPassJudgeFail,
-    "vetoed must be a non-negative integer within verifierPassJudgeFail",
+    nonNegativeInteger(evidence.vetoed) && evidence.vetoed <= evidence.verdicts,
+    "vetoed must be a non-negative integer within verdicts",
   );
 }

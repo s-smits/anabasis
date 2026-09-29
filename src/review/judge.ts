@@ -3,6 +3,7 @@ import { hashJsonValue } from "../meta/stable-json.ts";
 import type {
   JudgeAttempt,
   JudgeCallContext,
+  JudgeCaseKind,
   JudgeInput,
   JudgeObservation,
   JudgeRequest,
@@ -14,6 +15,7 @@ export type {
   Judge,
   JudgeAttempt,
   JudgeCallContext,
+  JudgeCaseKind,
   JudgeInput,
   JudgeObservation,
   JudgePublicContext,
@@ -111,12 +113,31 @@ async function attemptOf(
   }
 }
 
-/** A Judge fail of a verifier pass stands only when a second fresh sample returned the same
- *  verdict. A fail always carries its citations, so a confirmed fail is a cited one. */
-export function confirmedDisagreement(
-  evidence: Pick<JudgeSubjectEvidence, "verdict" | "confirmation">,
-): boolean {
-  return isBoolean(evidence.verdict) && evidence.confirmation?.verdict === evidence.verdict;
+/**
+ * How one answered subject stands against the verifier's verdict. This is the one definition
+ * every reader of a Judge disagreement takes: the exit counts, the advice, the Epoch Reviewer's
+ * lists and settlement, and the outcome tool. Four readers each deriving the direction, the veto
+ * and "answered" for themselves disagreed as soon as the undecided verdict arrived.
+ *
+ * - A Judge fail of a verifier pass is a veto only when a second fresh sample failed it again,
+ *   since only that direction is resampled. A fail always cites its rules, so a veto is a cited
+ *   one.
+ * - A verifier fail the Judge passed or left undecided is disputed on its one sample.
+ * - An undecided verifier pass contradicts nothing.
+ *
+ * Null for a subject the Judge did not answer.
+ */
+export function judgeCaseKind(
+  evidence: Pick<JudgeSubjectEvidence, "verdict" | "abstained" | "confirmation">,
+  verifier: "pass" | "fail",
+): JudgeCaseKind | null {
+  if (evidence.verdict === null) {
+    if (!evidence.abstained) return null;
+    return verifier === "pass" ? "undecided-pass" : "disputed-undecided";
+  }
+  if (evidence.verdict === (verifier === "pass")) return "agree";
+  if (evidence.verdict) return "disputed-pass";
+  return evidence.confirmation?.verdict === false ? "veto" : "unconfirmed-fail";
 }
 
 /** `verifierVerdict` never reaches the Judge; it decides only whether a fail of a verifier pass is
@@ -189,16 +210,9 @@ export function summarizeJudge(
       `subject "${row.evidence.subjectId}" passed sanitizer "${row.evidence.sanitizer.version}" but this controller runs "${SANITIZER_VERSION}"`,
     );
   }
-  const batteryVerdicts = battery.filter((row) => isBoolean(row.evidence.verdict)).length;
-  const batteryAbstentions = battery.filter((row) => row.evidence.abstained).length;
-  const comparable = battery.filter(
-    (row) => isBoolean(row.evidence.verdict) && isBoolean(row.verifierVerdict),
-  );
-  const disagreements = comparable.filter((row) => row.evidence.verdict !== row.verifierVerdict);
-  const passFailed = disagreements.filter(
-    (row) => row.verifierVerdict === true && row.evidence.verdict === false,
-  );
-  const vetoed = passFailed.filter((row) => confirmedDisagreement(row.evidence)).length;
+  const vetoed = battery.filter(
+    (row) => row.verifierVerdict === true && judgeCaseKind(row.evidence, "pass") === "veto",
+  ).length;
   return {
     judge: "unvalidated",
     judgePin: session.pin,
@@ -206,11 +220,8 @@ export function summarizeJudge(
     evaluatedPin,
     correctnessModelId,
     offered: offeredBattery,
-    verdicts: batteryVerdicts,
-    abstentions: batteryAbstentions,
-    disagreements: disagreements.length,
-    disagreementDenominator: comparable.length,
-    verifierPassJudgeFail: passFailed.length,
+    verdicts: battery.filter((row) => isBoolean(row.evidence.verdict)).length,
+    abstentions: battery.filter((row) => row.evidence.abstained).length,
     vetoed,
   };
 }

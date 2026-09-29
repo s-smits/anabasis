@@ -154,23 +154,21 @@ describe("the census Judge on a measured round", () => {
     expect(firstCaseJudge).toMatchObject({ schema: "judge-subject/v3" });
     expect(firstCaseJudge.publicContextDigest).toMatch(/^[0-9a-f]{64}$/);
     expect(firstCaseJudge.judgeInputDigest).toMatch(/^[0-9a-f]{64}$/);
-    expect(battery.judge).toMatchObject({ disagreements: 1, verifierPassJudgeFail: 1 });
+    expect(battery.judge).toMatchObject({ verdicts: 4 });
     // Analysis projects this recorded main-Judge census with no extra model call.
     const analysis = deriveIterationAnalysis(repo, "bridge-truss", "m6-census");
     expect(analysis.battery.claimCreated).toBe(true);
     const reviews = runJudgeReviews(analysis, { repoRoot: repo, judgePin: null });
-    expect(reviews.schema).toBe("judge-reviews/v12");
+    expect(reviews.schema).toBe("judge-reviews/v13");
     expect(reviews.provisional).toBeNull();
     expect(reviews.census?.runId).toBe("m6-census");
     expect(reviews.coverage).toMatchObject({ reviewable: 4, reviewed: 4 });
     expect(reviews.contested.map((entry) => entry.taskId)).toEqual(["t2"]);
     // One contested row is disclosed as an advisory disagreement; the Judge exit never blocks.
-    expect(reviews.exit).toMatchObject({
-      kind: "advisory",
-      verifierFailJudgePass: 0,
-      verifierPassJudgeFail: 1,
-      verified: 4,
-    });
+    expect(reviews.exit).toMatchObject({ kind: "advisory", verified: 4 });
+    expect(reviews.contested.map((entry) => entry.kind)).toEqual([
+      expect.stringMatching(/^(veto|unconfirmed-fail)$/),
+    ]);
     expect(reviews.absent).toEqual([]);
   }, 240_000);
 
@@ -221,7 +219,7 @@ describe("the census Judge on a measured round", () => {
     expect(battery.judge).toMatchObject({
       judge: "unvalidated",
       offered: battery.cases.length,
-      verifierPassJudgeFail: battery.cases.length,
+      verdicts: battery.cases.length,
     });
     // Every cited fail of a verifier pass bought exactly one confirming sample and no census file.
     expect(reviewedCases.toSorted()).toEqual(
@@ -244,8 +242,7 @@ describe("the census Judge on a measured round", () => {
     expect(reviews.contested).toHaveLength(4);
     expect(reviews.exit).toMatchObject({
       kind: "advisory",
-      verifierFailJudgePass: 0,
-      verifierPassJudgeFail: 4,
+      cases: { veto: 4, "unconfirmed-fail": 0, "disputed-pass": 0, "disputed-undecided": 0 },
     });
   }, 240_000);
 });

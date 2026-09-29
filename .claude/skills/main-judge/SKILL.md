@@ -30,8 +30,10 @@ Evidence records `judge: "unvalidated"` over zero controls, and a record with a 
 behind it is refused (operator decision 2026-09-22). Do not reintroduce a validity rule or a bait
 corpus.
 
-`JudgeDecision` is closed in source: `non-result`, `incomplete-census`, `no-battery-verdicts` and
-`advisory-comparison`, which a complete review records. A disagreement means audit the verifier.
+`JudgeDecision` is closed in source: `non-result`, `incomplete-census` and `advisory-comparison`,
+which a complete review records; an undecided counts as an answer in each. Claims recorded before
+2026-09-29 may also carry `no-battery-verdicts`, which the undecided verdict retired. A
+disagreement means audit the verifier.
 Never rescore.
 
 ## Fresh sessions
@@ -51,10 +53,12 @@ is allowed when public facts cannot decide. Do not say what would make an artifa
 
 ## Disagreements are advice
 
-Every complete boolean disagreement is recorded without a materiality threshold, and none of them
-changes a score. `judgeExit` in `src/analyse/judge-reviews.ts` has two kinds: `none` when the Judge
-agreed on every reviewed verified case, and `advisory` otherwise, with counts in both directions.
-It records no finding and routes to no owner (`judge-reviews/v12`). Disagreements in both
+Every disagreement is recorded without a materiality threshold, and none of them changes a score.
+`judgeCaseKind` in `src/review/judge.ts` names how each answered case stands against the verifier
+(veto, unconfirmed fail, disputed pass, disputed undecided), and every reader counts by it.
+`judgeExit` in `src/analyse/judge-reviews.ts` has two kinds: `none` when the Judge contradicted the
+verifier on no reviewed verified case, and `advisory` otherwise, with a count per kind.
+It records no finding and routes to no owner (`judge-reviews/v13`). Disagreements in both
 directions enter the rebuild advice packet as advisory rows named by family, and the exit reason
 is its judge line; only families and counts cross to authoring. A review recorded under another
 schema is refused rather than read.

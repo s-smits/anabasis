@@ -314,6 +314,33 @@ describe("runs pulse", () => {
     expect(readInFlight(epoch, at(12))).toBeNull();
   });
 
+  it("reads a candidate check that has not written its census, and not one that has or predates the checkpoint", () => {
+    const epoch = mkdtempSync(join(tmpdir(), "pulse-check-"));
+    const opened = (condition: string, run: string, minutes: number) => {
+      mkdirSync(join(epoch, "trials", condition, run), { recursive: true });
+      utimesSync(join(epoch, "trials", condition), new Date(at(minutes)), new Date(at(minutes)));
+      return join(epoch, "trials", condition, run);
+    };
+    expect(readInFlight(epoch, null)).toBeNull();
+    writeFileSync(join(opened("a", "full-1", 10), "census.json"), "{}");
+    expect(readInFlight(epoch, null)).toBeNull();
+    // Left without a census by an earlier call the Builder has already checkpointed after.
+    opened("b", "full-1", 11);
+    expect(readInFlight(epoch, at(12))).toBeNull();
+    const run = opened("c", "full-1", 20);
+    writeFileSync(join(run, "solvability.json"), "{}");
+    expect(readInFlight(epoch, at(12))).toEqual({ taskId: null, stage: "checking", startedAt: at(20) });
+    writeFileSync(join(run, "census.json"), "{}");
+    expect(readInFlight(epoch, at(12))).toBeNull();
+    const checking = reading(40, {
+      round: round({
+        checkpointAt: at(15),
+        inFlight: { taskId: null, stage: "checking", startedAt: at(16) },
+      }),
+    });
+    expect(statusLine(checking, 18)).toContain("checkpoint 25m 0s ago · checking a candidate for 24m 0s");
+  });
+
   it("is not a quiet Builder while the run is measuring", () => {
     const measuring = [...OPENING, transition(5, "solve", "started")];
     const before = reading(30, { observations: measuring, round: round({ checkpointAt: at(4) }) });

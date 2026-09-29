@@ -6,6 +6,7 @@ import { readExecutionEvidence } from "../outcome/builder-execution-facts.ts";
 import { readEpochRecord } from "../../src/author/campaign-epoch.ts";
 import type { BuilderCustomToolCall } from "../../src/author/builder-custom-tool-call.ts";
 import { PUBLIC_TASK_FILE } from "../../src/correctness-bundle/recorded-solve.ts";
+import { CENSUS_FILE } from "../../src/run/census-gate.ts";
 import { placeOnBand, type BandZone } from "../../src/claim/battery-difficulty.ts";
 import { existsSync, lstatSync, readFileSync, readdirSync } from "../../src/meta/filesystem.ts";
 import { parseJsonAs } from "../../src/meta/json-runtime.ts";
@@ -30,9 +31,11 @@ export interface PulseRehearsal {
 /** A `harness_trial` the Builder is inside now: one tool call that can hold the session for the
  *  whole solve wall while no checkpoint lands. */
 interface PulseInFlight {
-  taskId: string;
-  /** `solving` until the Built solver's trace is written, then `grading` until its checks are. */
-  stage: "solving" | "grading";
+  /** The rehearsed task; null for a candidate check, which runs every task. */
+  taskId: string | null;
+  /** `solving` until the Built solver's trace is written, then `grading` until its checks are;
+   *  `checking` while a candidate check has not written its census. */
+  stage: "solving" | "grading" | "checking";
   startedAt: string;
 }
 
@@ -155,6 +158,32 @@ function readRehearsals(calls: readonly BuilderCustomToolCall[]): PulseRehearsal
  *  rehearsal never writes its checks, so only the newest directory counts, and only when it started
  *  after the round's last checkpoint, which every live tool call does. */
 export function readInFlight(epochDir: string, checkpointAt: string | null): PulseInFlight | null {
+  return readRehearsal(epochDir, checkpointAt) ?? readCheck(epochDir, checkpointAt);
+}
+
+/** A `correctness_check` (or a submit's gate) runs in `trials/<condition>/<label>-<n>`, which it
+ *  opens as it starts and seals with its census last; a Builder call is only recorded once it
+ *  returns, so custom-sol-3e4693's 23-minute check read as a long model turn. The condition
+ *  directory changes only as a run opens inside it, so its time is the newest run's start. */
+function readCheck(epochDir: string, checkpointAt: string | null): PulseInFlight | null {
+  const dir = join(epochDir, "trials");
+  try {
+    const newest = readdirSync(dir)
+      .map((name) => ({ name, at: lstatSync(join(dir, name)).mtimeMs }))
+      .toSorted((left, right) => left.at - right.at)
+      .at(-1);
+    if (newest === undefined) return null;
+    const startedAt = new Date(newest.at).toISOString();
+    if (checkpointAt !== null && startedAt < checkpointAt) return null;
+    const runs = readdirSync(join(dir, newest.name));
+    if (runs.every((run) => existsSync(join(dir, newest.name, run, CENSUS_FILE)))) return null;
+    return { taskId: null, stage: "checking", startedAt };
+  } catch {
+    return null;
+  }
+}
+
+function readRehearsal(epochDir: string, checkpointAt: string | null): PulseInFlight | null {
   const dir = join(epochDir, "rehearsals");
   const ordinal = (name: string) => Number(name.slice("rehearsal-".length));
   try {

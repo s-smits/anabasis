@@ -363,7 +363,11 @@ export function pulseEvents(
 function inFlightText(reading: PulseReading): string | null {
   const running = reading.round.inFlight;
   if (running === null) return null;
-  return `${running.stage === "solving" ? "rehearsing" : "grading"} ${running.taskId} for ${duration(reading.now - Date.parse(running.startedAt))}`;
+  const what =
+    running.taskId === null
+      ? "checking a candidate"
+      : `${running.stage === "solving" ? "rehearsing" : "grading"} ${running.taskId}`;
+  return `${what} for ${duration(reading.now - Date.parse(running.startedAt))}`;
 }
 
 function busyText(busy: Busy | null): string | null {

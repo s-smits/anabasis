@@ -47,32 +47,34 @@ function closedResult(reason: "accepted" | "terminal-refusal"): AgentToolResult<
  *  to authoring" is simply false, and a Builder with a clear preview and no submit is the case that
  *  ran longest: rounds kept reshaping a candidate for hours after the gate had already cleared it.
  *  So the clock remembers the last clear `correctness_check` and states how long ago it was, while
- *  no submit has followed, in place of the authoring ask. */
+ *  no submit has followed, in place of the authoring ask. `submits` is the round's submit count
+ *  rather than whether it has submitted at all, so a refused submit made before that clear preview
+ *  does not silence it. */
 export function sessionClock(
-  submitted: () => boolean = () => true,
+  submits: () => number = () => 0,
   now: () => number = () => performance.now(),
   load: () => string = hostLoad,
 ): (clearPreview: boolean) => string | null {
   const opened = now();
   let marks = 0;
   let asked = false;
-  let clearAt: number | null = null;
+  let clear: { at: number; submits: number } | null = null;
   return (clearPreview) => {
     const at = now();
-    if (clearPreview) clearAt = at;
+    if (clearPreview) clear = { at, submits: submits() };
     const elapsed = at - opened;
     const minutes = Math.floor(elapsed / 60_000);
     const since =
-      clearAt === null || submitted()
+      clear === null || submits() > clear.submits
         ? null
-        : `The last clear correctness_check was ${String(Math.floor((at - clearAt) / 60_000))} min ago, and no candidate has been submitted since.`;
+        : `The last clear correctness_check was ${String(Math.floor((at - clear.at) / 60_000))} min ago, and no candidate has been submitted since.`;
     const lines: string[] = [];
     if (Math.floor(minutes / 30) > marks) {
       marks = Math.floor(minutes / 30);
       lines.push(`Round clock: ${String(minutes)} min since this round opened; ${load()}.`);
       if (since !== null) lines.push(since);
     }
-    if (!asked && elapsed >= NO_SUBMIT_REMINDER_MS && !submitted()) {
+    if (!asked && elapsed >= NO_SUBMIT_REMINDER_MS && submits() === 0) {
       asked = true;
       if (since === null) lines.push(`No candidate has been submitted yet. ${MOVE_TO_AUTHORING}`);
       else if (!lines.includes(since)) lines.push(since);

@@ -386,7 +386,7 @@ function roundRoster(context: RoundContext, feedback: BuilderAuthorFeedback): Pi
     activeTurn: () => state.activeTurn,
     checkpoint,
     closed: () => settledClosure(state),
-    clock: sessionClock(() => state.attempts > 0),
+    clock: sessionClock(() => state.attempts),
     afterTool:
       afterTool === undefined
         ? undefined

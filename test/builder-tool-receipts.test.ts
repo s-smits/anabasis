@@ -182,7 +182,7 @@ it("states the session clock once per half hour and not after the build closed",
   const { text, recorder } = wrap(async () => ({ content: [] }), undefined, {
     closed: () => closed,
     clock: sessionClock(
-      () => true,
+      () => 1,
       () => now,
       () => "host load average 57.6 on 12 cores",
     ),
@@ -206,7 +206,7 @@ it("states the session clock once per half hour and not after the build closed",
 it("reads the host's own load when no reading is injected", () => {
   let now = 0;
   const clock = sessionClock(
-    () => true,
+    () => 1,
     () => now,
   );
   now = 30 * 60_000;
@@ -217,11 +217,11 @@ it("reads the host's own load when no reading is injected", () => {
 
 it("asks once inside a running turn for authoring when two hours pass without a submit", async () => {
   let now = 0;
-  let submitted = false;
+  let submits = 0;
   const session = () =>
     wrap(async () => ({ content: [] }), undefined, {
       clock: sessionClock(
-        () => submitted,
+        () => submits,
         () => now,
       ),
     });
@@ -233,7 +233,7 @@ it("asks once inside a running turn for authoring when two hours pass without a 
   now = 125 * 60_000;
   expect(await text()).not.toContain("No candidate");
   // A session that has submitted is past this question, so the notice never fires for it.
-  submitted = true;
+  submits = 1;
   const later = session();
   now = 500 * 60_000;
   expect(await later.text()).not.toContain("No candidate");
@@ -241,7 +241,7 @@ it("asks once inside a running turn for authoring when two hours pass without a 
 
 it("states the last clear preview in place of the authoring ask, and only for a clear correctness_check", async () => {
   let now = 0;
-  let submitted = false;
+  let submits = 0;
   let status = "clear";
   const result = async () => ({ content: [], details: { status, stage: "census" } });
   const tools = withCustomToolReceipts(
@@ -255,7 +255,7 @@ it("states the last clear preview in place of the authoring ask, and only for a 
       checkpoint: () => {},
       closed: () => null,
       clock: sessionClock(
-        () => submitted,
+        () => submits,
         () => now,
         () => "host load average 3.0 on 12 cores",
       ),
@@ -280,11 +280,35 @@ it("states the last clear preview in place of the authoring ask, and only for a 
   const late = await call(1);
   expect(late).toContain("The last clear correctness_check was 76 min ago");
   expect(late).not.toContain("move to authoring");
-  submitted = true;
+  submits = 1;
   now = 151 * 60_000;
   const after = await call(1);
   expect(after).toContain("Round clock: 151 min");
   expect(after).not.toContain("clear correctness_check");
+});
+
+// A round usually submits, is refused, reworks and previews clear again; the clear preview that
+// follows a refusal is the one a round then sits on, so an earlier submit must not silence it.
+it("states a clear preview that came after a refused submit, until the next submit", () => {
+  let now = 0;
+  let submits = 1;
+  const clock = sessionClock(
+    () => submits,
+    () => now,
+    () => "host load average 3.0 on 12 cores",
+  );
+  now = 20 * 60_000;
+  expect(clock(true)).toBeNull();
+  now = 31 * 60_000;
+  expect(clock(false)).toContain(
+    "The last clear correctness_check was 11 min ago, and no candidate has been submitted since.",
+  );
+  submits = 2;
+  now = 61 * 60_000;
+  const after = clock(false);
+  expect(after).toContain("Round clock: 61 min");
+  expect(after).not.toContain("clear correctness_check");
+  expect(after).not.toContain("No candidate");
 });
 
 it("keeps the authoring ask for a round whose previews never came back clear", async () => {
@@ -302,7 +326,7 @@ it("keeps the authoring ask for a round whose previews never came back clear", a
       checkpoint: () => {},
       closed: () => null,
       clock: sessionClock(
-        () => false,
+        () => 0,
         () => now,
         () => "host load average 3.0 on 12 cores",
       ),

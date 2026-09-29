@@ -313,10 +313,11 @@ bun .claude/skills/whole-run-investigation/scripts/wri.ts climb <campaign dir> [
 ```
 
 Per battery it prints the check-tier histogram and a median structural row; per edge, one of
-`restated`, `adjusted`, `narrowed`, `widened`, `eased`, `escalated` or `replaced`. Only `escalated`
-changes what the solver has to reason about, and `replaced` is no reading at all: fewer than half
-the task ids carried over, so the published numbers could not be joined, and the task bytes need
-reading by hand. Run it whenever a new `versions/<battery>/` directory appears, and
+`restated`, `adjusted`, `narrowed`, `widened`, `eased`, `escalated` or `replaced`. The label is
+structural, so name the changed public requirement from the task rows beside it: truss-sol-2d7812's
+new load sites and forbidden volume read `adjusted` because no count moved. `replaced` is no reading
+at all: fewer than half the task ids carried over, so the published numbers could not be joined, and
+the task bytes need reading by hand. Run it whenever a new `versions/<battery>/` directory appears, and
 at every read step on a campaign that has landed off its aim twice. It is read-only, it costs
 nothing, and it is the only reader that answers "did anything get harder" before the battery it
 describes is paid for.
@@ -332,10 +333,10 @@ Run `c1d2a7`, read this way on 18 September while its fourth battery was still m
 The tier histogram held at `easy 0  medium 9  hard 6  frontier 0` for three batteries and moved only
 at the fourth. Those three — eighteen solver cases at roughly fifty minutes each — bought no
 difficulty evidence, and the score could not say so: all three read 6/6, which reads identically
-whether the tasks moved or not. A campaign whose last two edges are `restated`, `adjusted` or
-`widened` is not climbing, whatever its zone says. Read the edge before writing the round
-up, and do not describe a battery as adding a constraint class until this reader shows the checks
-that carry it.
+whether the tasks moved or not. A campaign whose last two edges changed no public requirement you
+can name is not climbing, whatever its zone says or its labels read. Read the edge before writing
+the round up, and do not describe a battery as adding a constraint class until this reader shows the
+checks that carry it.
 
 ### The surface you steer with may not be in the measured tree
 
@@ -609,11 +610,14 @@ or the allowance ended. The product owns its own within-run climb and rebuild de
 new wave of runs improved on the one it replaced is a [wave-audit](../wave-audit/SKILL.md), read
 at the first battery, the third round and the terminal.
 
-The standing goal for that choice, set by the operator on 2026-09-18, is to **optimise the climb
-towards really hard tasks**: prefer the change that shortens the run of `too-easy` placements before
-a battery lands inside the band. A change that raises a score, adds tasks or renames levels without
-moving a placement off `too-easy` has not served it. [the climb reference](../whole-run-investigation/references/climb.md)
-holds the two recorded numbers that say whether it moved.
+The goal that choice serves is a **healthy, ambitious climb**, which AGENTS.md "Goals and the climb"
+owns (operator, 2026-09-29). Of two candidate moves, prefer the one that brings the next battery
+closer to the solver's limit on a changed public requirement, provided every fail it could produce is
+earned on a published rule. A move that buys a placement with an invented rule, a check the public
+projection does not support or a count told to the Builder has failed the goal however the zone reads,
+and so has one that raises a score, adds tasks or renames levels without moving a placement.
+[The climb reference](../whole-run-investigation/references/climb.md) holds the two recorded numbers
+that say whether it moved.
 
 Track the four evidence levels separately — present in source, deterministically proved,
 live-exercised, outcome-proved — and never let one stand in for the next. Keep negative results and

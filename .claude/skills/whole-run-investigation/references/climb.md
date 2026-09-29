@@ -11,7 +11,8 @@ and behind the authorship lanes 33 to 38 wherever a climb depends on what the Bu
 
 A campaign has reached the operator's goal when one battery lands inside `climb.band` — `[0.2,
 0.50]` in `thresholds.frozen.yaml`, read through `climbThresholds`, which is 5 to 12 verified of 25
-— on tasks whose changed public requirement can be named. Two counts from `difficulty-decisions/`
+— on tasks whose changed public requirement can be named, and whose fails the published rules
+earn (AGENTS.md "Goals and the climb": a healthy, ambitious climb). Two counts from `difficulty-decisions/`
 say whether a change moved towards that: how many batteries came before the first in-band
 placement, and what share of placements were `on-aim` rather than `too-easy` or `over-aim`. Neither
 moves by touching a threshold, because the band, the Wilson owner and the battery sizes are frozen

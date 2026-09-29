@@ -186,72 +186,93 @@ secret keys you know about, because the key you did not know about goes out with
 
 ## Goals and the climb
 
-**The standing goal is to optimise the climb toward really hard tasks** (operator, 2026-09-18). The
-product is worth something only where a fixed solver fails for reasons the evaluation can prove. Prefer
-the change that shortens the run of `too-easy` placements before a battery lands in the band; one that
-raises a score, adds tasks or renames levels without moving a placement has not served the goal. The
-public reference in the README is the yardstick. On the same 25 held-out hard tasks at cycles 1, 3, 5 and
-7, Anabasis verified 6, 8, 11 and 12 and Prime-agent 8, 9, 8 and 8, both on Claude Opus 5 at medium
-thinking with the same verifier, Anabasis at 120 minutes per task against 45. Widen that gap on harder
-tasks rather than inflating pass rates on easy ones.
+**The goal is a healthy, ambitious climb** (operator, 2026-09-29, replacing "optimise the climb toward
+really hard tasks" of 2026-09-18). The product is worth something only where a fixed solver fails for
+reasons the evaluation can prove, so each battery should ask more of the field than the one before it,
+for a reason the Builder can name, until one locates where the solver stops; and every fail that
+locates it has to be earned. Ambition without health manufactures a limit, and health without ambition
+measures a solved exam. The public yardstick is the README's: on the same 25 held-out hard tasks at
+cycles 1, 3, 5 and 7, Anabasis verified 6, 8, 11 and 12 and Prime-agent 8, 9, 8 and 8, both on Claude
+Opus 5 at medium thinking with the same verifier, Anabasis at 120 minutes per task against 45. Widen
+that gap on harder tasks, never by inflating pass rates on easy ones.
+
+The climb has three named parts, all read on verified cases:
+
+- **The initial rung** brackets the solver: a probe battery of 5–10 tasks that passes some cases and
+  fails some, 1/n to n−1/n, so the limit lies inside what the battery asks. A probe at n/n found no
+  limit and one at 0/n usually found a defect, so neither is a rung. The probe graduates to the
+  requested size once its bracket also lands at or under the aim (`batterySizingGate`,
+  `src/run/battery-sizing.ts`), because every
+  recorded graduation from a near-full bracket (5/6, 7/8) went straight back to a near-full battery.
+- **Curriculum filtering** is the climb after it, at full size, between 1/25 and 24/25. As in RL
+  curriculum filtering, which drops prompts every sample solves or none does because they carry no
+  signal, a battery at 0/n or n/n says nothing about where the solver stops. Here the unit is the
+  battery rather than the task, since each task is solved once. A full pass is answered by asking
+  more and an empty battery by reading what blocked every case (truss-27's 0/6 was a real demand, then
+  1/7 and 3/10). The readout names a full pass (`noLimitLine`) and shows an empty battery by its counts
+  alone, and never states the region's bounds.
+- **The band** is the target inside that region: `climb.band`, 5–12 verified of 25, where the limit
+  is located rather than only bracketed.
+
+**Ambitious** means the climb keeps moving toward the solver's limit.
+
+- A full pass is a question, not a win: it found no limit, and the next battery answers it with a
+  changed public requirement from the request's own field, deeper in what the tasks already exercise
+  or across what the request names and no task does yet. The Builder records that requirement and the
+  reasoning it adds in its notes (rule 11); a plan written there is carried and built, and the
+  all-pass line of the readout asks for it.
+- Tightening a feasible limit is a legitimate route, and blind measurement, not a prompt, says whether
+  it made a battery harder. It is also the recorded way to stall: campaign 3fd52f9e-28 moved only
+  published magnitudes for four batteries, and truss-sol-2d7812 passed 5/5 five batteries in a row, one
+  of them after a mass-only tightening, because the solver ships lighter than the Builder's reference.
+- Progress has two numbers, both from `difficulty-decisions/` (the climb reference owns them): how
+  many batteries came before the first in-band placement, and the share of placements `on-aim` rather
+  than `too-easy` or `over-aim`. A change that raises a score, adds tasks or renames levels without
+  moving either has not served the goal.
+
+**Healthy** means every step of it is true.
+
+- The demand comes from the field, never from a rule the Builder adds (rule 11): an invented duty,
+  deadline or report format measures the solver's reading of the author's wording.
+- A fail counts only where it is earned: the check that decided it holds the artifact to a rule the
+  public projection states. The Epoch Reviewer settles that per case (rule 9), quoting the public
+  sentence before it calls the Judge wrong. The controller counts a case its completed review settled
+  against the one check that decided it neither way, and drops a veto so settled rather than turning
+  it into a fail (`admittedClimbRow`, `difficulty-decision/v10`). custom-sol-2d7812's first firmware
+  battery read 4/6 on two fails of one bench check that held meter output to HIGH/LOW where the
+  published rule also allowed ALARM/OK; on the public rules it was an all-pass.
+- An unbracketed boundary is reported unlocated, never met with manufactured failures (prior 10). The
+  three outcomes stay apart, and only verified cases place a battery.
+- The Builder is told what was measured and never a count, share or zone to author towards (prior 10).
+  The band, the aim and the placement stay with the controller and the Epoch Reviewer.
+- Useful adopted work is retained, and a check repaired is a new condition, not a difficulty advance.
 
 The band is `climb.band`, `[0.20, 0.50]` on the 95% Wilson interval, whose one z is `REPORTING_Z`
 (`src/claim/estimation.ts`). `placeOnBand` (`src/claim/battery-difficulty.ts`) decides the zone in two
 steps: the interval decides `too-easy` or `too-hard`, meaning significantly so, and the point count
 decides `under-aim`, `on-aim` or `over-aim`. For 25 tasks, 5–12 verified is on the aim (`aimCounts`) and
-18 or more is significantly too easy on the interval, so a 6/6 or 24/25 is a signal to
-climb rather than a win. On-aim means on the calibration target, not a proved limit, and a battery too
-small to hold a whole count inside the band (`aimCounts` empty) is refused a placement. The ceiling has
-moved four times: 0.50 → 0.75 (2026-08-10) → 0.60 (2026-08-19) → 0.40 (2026-09-15, when 34 of 41 scored
-openings since 2026-09-01 passed ≥22 of 25) → 0.50 (2026-09-16). That history lives beside `climb.band` in
-`thresholds.frozen.yaml`.
+18 or more is significantly too easy. On-aim is the calibration target, not a proved limit, and a battery
+too small to hold a whole count inside the band (`aimCounts` empty) is refused a placement. The ceiling's
+history lives beside `climb.band` in `thresholds.frozen.yaml`.
 
-The band, the aim and the placement stay with the controller and the Epoch Reviewer; the Builder is told
-no count to author towards (prior 10), because a count per size read as a target. `renderBatteryContract`
-(`src/run/climb-readout.ts`) states that only a battery passing some but not all of its cases can locate a
-limit, and only where the checks that failed it are right, beside the witness sentence and the publication
-boundary. The climb readout (`renderReadout`) states what was measured: the newest rows, whether the latest
-battery found a limit, the latest battery's families and where its passing
-artifacts are. The Epoch Reviewer alone reads the placement (`readingSentence`). The readout's wording is
-not a recorded condition, which is easy to misread given the history.
-`difficulty-decision/v9` dropped the frame revision v8 carried, and an epoch's `pass` hashes the readout's
-facts, so a reworded readout opens no new epoch. Each row's solve effort (median and most minutes against
-`solve_minutes`, median tool calls) is served through the context tool's history source and is never read
-as difficulty, since within a battery it does not separate passes from fails.
+What the Builder reads is the climb readout (`renderReadout`, `src/run/climb-readout.ts`): the newest
+rows, whether the latest battery found a limit, its families, where its passing artifacts landed, and
+how many cases were settled against their check. `renderBatteryContract` says that only a battery passing
+some but not all of its cases can locate a limit, and only where the checks that failed it are right.
+The Epoch Reviewer alone reads the placement (`readingSentence`). An epoch's `pass` hashes the readout's
+facts, not its wording, so a reworded readout opens no new epoch. Solve effort per row is served through
+the context tool's history source and never read as difficulty.
 
-Harder means a changed demand, not changed numbers (rule 11). New ids, longer lists of load cases and
-invented rules all look harder while measuring nothing. A solver tool that grades a candidate, however
-fully, is not a defect in itself, since knowing whether a candidate meets the rules is not knowing how to
-build one; whether it left a battery too easy is what blind measurement says.
-
-A partial battery counts toward the climb only where its fails are earned: the check that decided each
-one holds the artifact to a rule the public projection states. The Epoch Reviewer settles that per case
-(rule 9). A fail settled against its check measured the check, not the solver, and a fail no review
-settled is known neither way. The controller reads it so (2026-09-29, `difficulty-decision/v10`): a case
-the battery's completed review settled against the one check that decided it leaves `n` and `passed`
-(`admittedClimbRow`), a veto dropped rather than turned into a fail, and the Builder's readout counts it
-apart. custom-sol-2d7812's first firmware battery read 4/6, over the aim, on two
-fails of one bench check that held meter output to HIGH/LOW where the published rule allowed HIGH/LOW or
-ALARM/OK; on the public rules it was an all-pass. The review held both, on a sentence the projection does
-not contain, which is why the reviewer now quotes the public sentence before it calls the Judge wrong.
-`wri.ts climb` prints each battery's fails as held, settled against the check or unsettled, with the
-checks they fell on, and where the battery lands with the cases settled against their check counted
-neither way. Read an over-aim or on-aim battery there before counting it as a limit found. Fails
-concentrated on one check across families are the first thing to read.
-
-Read the climb before paying for it. This is an operator reading rather than a controller gate: run
-`bun .claude/skills/whole-run-investigation/scripts/wri.ts climb <campaign dir>` whenever a new
-`versions/<battery>/` appears. It classifies each battery edge as `restated`, `replaced`, `adjusted`,
-`narrowed`, `widened`, `eased` or `escalated`, and **only `escalated` changes what the solver has to
-reason about**. So if the last two edges are anything else, the campaign is not climbing, whatever its
-score. Three `too-easy` placements in a row mean the level moved but no battery found the limit, and the
-answer is to rebuild what the tasks demand. One campaign adopted four versions whose agent, brief and
-evaluator were byte-identical, which is four rounds spent on `tasks.json` alone. The verdicts live in
-`climb-velocity.ts` beside `wri.ts`, and three of them are worth knowing precisely. `replaced` means fewer
-than half the task ids carried over. `adjusted` means the same checks at the same tier with numbers moved,
-and cannot say which way. `escalated` reads the highest tier any check reaches, so more checks at an
-occupied tier are `widened`. `wri.ts` also runs `delta`, `yield`, `timeline`, `walls`, `handoff`, `gates`
-and `target` over the same target.
+Read the climb before paying for it, from the authored bytes: `bun run runs climb <run>` (or `wri.ts
+climb <campaign dir>`) whenever a new `versions/<battery>/` appears, hours before its battery scores.
+Each edge gets a structural label, `restated`, `replaced`, `adjusted`, `narrowed`, `widened`, `eased`
+or `escalated`, from check tiers and counts (`verdictOf`, `climb-velocity.ts`). A label is a reading,
+not a forecast: all three `escalated` edges in a census of 170 on 2026-09-29 were followed by batteries
+that passed every case, and 2d7812's new load sites and forbidden volume read `adjusted` because no
+count moved. So name the changed public requirement from the task rows beside the label, and read each
+battery's `fails` line (held, settled against the check, unsettled, and the checks they fell on) before
+counting a partial battery as a limit found. Three `too-easy` placements in a row mean no battery found
+the limit, and the answer is to rebuild what the tasks demand, not their numbers.
 
 ## Evidence and implementation status
 

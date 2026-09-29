@@ -171,7 +171,8 @@ Equal windows are rule, not courtesy:
 ## 5. Read the same measures on both sides
 
 Run each reader on both campaigns and set the rows side by side. **Direction** says which way is
-better for the standing goal, a climb to really hard tasks. It does not say which way is bigger.
+better for the standing goal, a healthy, ambitious climb (AGENTS.md "Goals and the climb"). It does
+not say which way is bigger.
 
 ### 5a. Where the batteries landed
 

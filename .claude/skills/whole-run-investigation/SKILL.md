@@ -346,9 +346,10 @@ bun run runs delta | climb | yield | timeline | walls | handoff | gates | target
 [The deterministic lanes reference](references/deterministic-lanes.md) owns what each prints. What
 matters here is what each can and cannot say. `delta` prints paths and counts between the measured
 source and its predecessor, never source text, so it says a surface moved and not that the move
-reached anything. `climb` labels every edge between adopted versions from the task bytes alone, and
-only `escalated` says a solver has more to reason about; `adjusted` states no direction, and
-`replaced` says the edge could not be read. `walls` classes each case against the walls the Builder
+reached anything. `climb` labels every edge between adopted versions from the task bytes alone. A
+label is structural and not a forecast: `escalated` says the checks reached a higher tier, a new
+requirement at unchanged counts reads `adjusted`, which states no direction, and `replaced` says the
+edge could not be read. `walls` classes each case against the walls the Builder
 wrote in `agent/config.yaml`, which is the one file nothing inspects again after the gate, and its
 usual decision-changing reading is the negative one: no case reached a wall, so room explains
 nothing. `timeline` says where the clock went, and its `unreadable` and `adrift` labels are

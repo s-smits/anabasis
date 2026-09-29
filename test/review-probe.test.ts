@@ -266,8 +266,8 @@ describe("probeBackedRows — a finding rests on results, not on requests", () =
 
   // `runControls` records a timeout, a thrown check, an unknown task or a pending cleanup as an
   // ordinary receipt with outcome `non-result` and no blocking checks. A pair like that is
-  // indistinguishable from "no check moved" by the moved ids alone, and the first occurrence of an
-  // agent-side defect must not be admitted blocking on it.
+  // indistinguishable from "no check moved" by the moved ids alone, and a finding citing it must not
+  // tell the author a check was executed.
   it("refuses a pair that returned without deciding, and one whose original never passed", () => {
     const state = emptyProbeState();
     state.rows.push(

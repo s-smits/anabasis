@@ -11,8 +11,8 @@
  * actually returned, and carry a demonstration before it may block.
  *
  * Reuse asks whether this exact condition and procedure were already read to completion. A
- * finding's severity reads that finding alone (`admitSeverity`); what an earlier review said reaches
- * this one only as the previous review's advisory defects and probes, carried as leads.
+ * finding's severity reads that finding alone (`blockingEvidence`); what an earlier review said
+ * reaches this one only as the previous review's advisory defects and probes, carried as leads.
  */
 import { existsSync, readdirSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
@@ -141,7 +141,7 @@ type FindingArgs = ReturnType<typeof findingArgs>;
  *  demonstrated violation before blocking, and without a floor nothing in the host checks that one
  *  was supplied: a finding that says in so many words it could not construct a concrete case still
  *  decides the next move. The floor proves only that text was supplied, never that the argument in
- *  it holds; the citations rule and, on the agent side, a probe carry the rest. */
+ *  it holds; the citations rule carries the rest. */
 const DEMONSTRATION_MIN_CHARS = 40;
 
 const CITATIONS_UNBOUND =
@@ -276,26 +276,6 @@ export function measuredAdvisory(analysisDir: string, runId: string | undefined)
   return review === undefined ? [] : advisoryDefects(review);
 }
 
-/** Admit the reviewer's chosen severity under the limits only the host can apply. Severity says how
- *  strong one finding's evidence is, so nothing outside that finding moves it: not how often its
- *  check was named before, since a naming count cannot tell two defects on one check apart, and not
- *  the findings recorded before it in the same review. How many blocking owners one round reopens
- *  is the continuation's decision.
- *
- *  An observation is always advice, and so is a defect without a demonstration and citations. A
- *  defect owned under `agent/` without a probe stays advice, because a reviewer reading an
- *  agent's source can only suspect, and one suspicion is enough to discard a working product. A
- *  probe-backed defect keeps the reviewer's severity: the candidate's own declared checks ran over
- *  its own accept control and one changed field, and the row records what they decided. */
-function admitSeverity(
-  { owner, defect }: FindingPlacement,
-  chosen: FindingSeverity,
-  host: { demonstrated: boolean; probeBacked: boolean },
-): FindingSeverity {
-  if (!defect || !host.demonstrated) return "advisory";
-  return host.probeBacked || ownerSide(owner) !== "agent" ? chosen : "advisory";
-}
-
 export function briefIdentities(root: string): BriefIdentities {
   const names = (value: JsonValue | undefined, key: string): string[] =>
     Array.isArray(value)
@@ -362,15 +342,11 @@ function boundQuote(value: JsonValue, state: SourceReadState): string | null {
   return returned ? `${path}: ${capturedJsonStringify(quote)}` : null;
 }
 
-function demonstrated(demonstration: string | null): boolean {
-  return demonstration !== null && demonstration.length >= DEMONSTRATION_MIN_CHARS;
-}
-
 /** Reopening an owner and suspending a standing issue require the same source-bound case. */
 const blockingEvidence: FindingRule = ({ parsed, citations }) => {
   const claimed = (parsed.defect === true && parsed.severity === "blocking") || parsed.disputes !== "";
   if (!claimed) return null;
-  if (!demonstrated(parsed.demonstration)) {
+  if ((parsed.demonstration?.length ?? 0) < DEMONSTRATION_MIN_CHARS) {
     return "blocking or disputing requires a concrete case in `demonstration`; otherwise record advisory without disputesIssue";
   }
   return citations === null
@@ -606,7 +582,7 @@ function findingParameters(disputable: readonly string[]) {
         type: "array",
         items: { type: "number" },
         description:
-          "The probe_check numbers whose executed result this finding rests on. Cite only probes that ran: a probe-backed defect keeps the severity you choose.",
+          "The probe_check numbers whose executed result this finding rests on. Cite only probes that ran.",
       },
       probeDirection: PROBE_DIRECTION_PARAMETER,
       publicInputPath: {
@@ -672,10 +648,12 @@ export function recordFindingTool(
       }
       const probes = probeBackedRows(state.probes, args.probeIds);
       for (const row of probes) row.cited = true;
-      const admitted = admitSeverity(verdict.placement, verdict.severity, {
-        demonstrated: demonstrated(parsed.demonstration) && subject.citations !== null,
-        probeBacked: probes.length > 0,
-      });
+      // Severity says how strong this finding's own evidence is, and `blockingEvidence` has already
+      // held a blocking defect to its demonstration and citations, whichever file owns it. So
+      // nothing else moves it: not how often its check was named before, not the findings recorded
+      // before it, not its owner's directory and not a cited probe, which runs the declared checks
+      // and so can bear on an agent file's defect only by coincidence. An observation is advice.
+      const admitted = verdict.placement.defect ? verdict.severity : "advisory";
       state.findings.push(recordedFinding(subject, verdict.placement, admitted, probes, evidencePath));
       if (admitted !== verdict.severity) {
         state.admission.severityAdjusted.push({

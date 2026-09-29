@@ -179,7 +179,7 @@ describe("review coverage tied to recorded execution", () => {
                         ...finding,
                         citations: [{ path: "agent/tools.ts", quote: "{}" }],
                       }),
-                    ).toContain("as advisory");
+                    ).toContain("as blocking");
                   }
                   const reader = input.tools.find((tool) => tool.name === "read_source")!;
                   if (mode === "complete") {
@@ -214,7 +214,7 @@ describe("review coverage tied to recorded execution", () => {
       expect(result.admission).toEqual({
         continuations: 1,
         citationRefusals: 1,
-        severityAdjusted: [{ owner: "agent/tools-spec.json", requested: "blocking", admitted: "advisory" }],
+        severityAdjusted: [],
       });
       expect(JSON.stringify(result.admission)).not.toMatch(
         /PRIVATE_UNREAD_QUOTE|Private source-derived|Private specimen/,

@@ -11,8 +11,8 @@
  *
  * Absent is not fixed. A review that did not name a defect measured nothing about it, and only a
  * battery run under the condition that observed a failure can settle one. Nor does anything here
- * change a severity: whether an advisory defect that keeps standing should escalate is decided by
- * `admitSeverity` alone, and this record is what an operator reads to make that call.
+ * change a severity, which reads each finding's own evidence alone (`record_finding`), and this
+ * record is what an operator reads to decide whether an advisory defect that keeps standing matters.
  */
 import { findingSeverity } from "../analyse/finding-owner.ts";
 import { type AnalysisFinding, namedSubject } from "../analyse/iteration-analysis.ts";

@@ -186,11 +186,13 @@ export function probeBackedRows(state: ProbeState, cited: JsonValue | undefined)
   return state.rows.filter((row) => conclusive(row) && numbers.has(row.id)).sort((a, b) => a.id - b.id);
 }
 
-/** A review that executed probes and then records a defect without saying whether it rests
- *  on them loses the one route by which an agent-side defect may block, and its evidence record
- *  cannot link the finding to the rows that support it — which is exactly what a reviewer does when
- *  it narrates what its probes returned inside the claim prose and leaves `probeIds` unset. Asking
- *  costs one argument, and `probeIds: []` is the answer when the reading came from source alone. */
+/** A review that executed probes and then records an evaluation defect without saying whether it
+ *  rests on them leaves an evidence record that cannot link the finding to the rows that support it,
+ *  and a projection that cannot tell the author what was executed — which is exactly what a reviewer
+ *  does when it narrates what its probes returned inside the claim prose and leaves `probeIds` unset.
+ *  Asking costs one argument, and `probeIds: []` is the answer when the reading came from source
+ *  alone. A defect in an agent file is not asked, since a probe runs the declared checks and says
+ *  nothing about the agent. */
 export function probeCitationRefusal(
   finding: { defect: boolean | null; owner: string | null },
   state: ProbeState,
@@ -431,7 +433,7 @@ const PROBE_CHECK_CONTRACT = {
   name: "probe_check",
   label: "Probe a declared check",
   description:
-    "Execute the candidate's own declared checks over one accept control and over a copy of it with a single field changed, and return which checks moved their verdict. Use it instead of arguing a check's behaviour from source: choose a replacement that breaks a public obligation, so a check reading that field would have to refuse it, and read what the checks actually did. No check moving is not by itself proof that nothing reads the field, since a check that reads it can accept the new value too, so state which obligation the changed artifact breaks. The path must already exist in the accept control's artifact and the value must differ from the one it carries. For a string field holding a source file or other long text, send `find` and `replace` in place of `value`: `find` must occur exactly once in that leaf, it becomes `replace`, and every other byte stays. Cite the probe numbers you relied on in `probeIds` when you record the finding; a finding resting on a probe whose original passed and whose changed artifact reached a verdict keeps the severity you choose.",
+    "Execute the candidate's own declared checks over one accept control and over a copy of it with a single field changed, and return which checks moved their verdict. Use it instead of arguing a check's behaviour from source: choose a replacement that breaks a public obligation, so a check reading that field would have to refuse it, and read what the checks actually did. No check moving is not by itself proof that nothing reads the field, since a check that reads it can accept the new value too, so state which obligation the changed artifact breaks. The path must already exist in the accept control's artifact and the value must differ from the one it carries. For a string field holding a source file or other long text, send `find` and `replace` in place of `value`: `find` must occur exactly once in that leaf, it becomes `replace`, and every other byte stays. Cite the probe numbers you relied on in `probeIds` when you record the finding; only a probe whose original passed and whose changed artifact reached a verdict is executed evidence.",
   parameters: readerParameters({
     type: "object",
     additionalProperties: false,

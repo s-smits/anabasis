@@ -3,8 +3,8 @@
  *
  * Review spend is bounded by the measured-condition digest, so the question is what counts as
  * a new condition and what is the same one seen twice. Severity reads nothing from earlier
- * reviews: an agent-side defect read from source is advice, and one a probe demonstrated keeps
- * the reviewer's severity.
+ * reviews and nothing from the owner's directory: a demonstrated, cited defect keeps the reviewer's
+ * severity wherever it sits, and a cited probe neither lifts nor lowers it.
  */
 import { EVALUATOR_FILE } from "../src/meta/bundle-layout.ts";
 import { afterAll, describe, expect, test } from "bun:test";
@@ -13,7 +13,6 @@ import { join } from "../src/meta/path.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import { CITATIONS, DEMO, REVIEW_IDENTITY, call, reviewState } from "./helpers/review-fixtures.ts";
 import type { JsonValue } from "../src/meta/json-shape.ts";
-import { ownerSide } from "../src/author/feedback-routing.ts";
 import { publicEpochReview } from "../src/review/epoch-review-public.ts";
 import {
   EPOCH_REVIEW_SCHEMA,
@@ -131,38 +130,54 @@ describe("a condition is reviewed once", () => {
     expect(conditionAlreadyReviewed(root, current, REVIEW_IDENTITY)).toBe(false);
   });
 
-  test("an agent-side defect read from source advises however often it recurs", async () => {
-    // Without the floor, a first blocking tools-spec finding can send a harness that passed its
-    // whole battery back to the starter seed. It is the owner's tier that decides who gets the
-    // floor, so the two tiers are pinned first — every reading below turns on them.
-    //
-    // Read the severity assertions with the writer in mind: `recordFinding` only writes a
-    // `severity` field when it demotes, so `"advisory"` is a demotion and `undefined` is the
-    // requested blocking standing unchanged.
-    expect(ownerSide("agent/tools-spec.json")).toBe("agent");
-    expect(ownerSide(EVALUATOR_FILE)).toBe("correctness-model");
-    const state = reviewState();
+  test("every owner is held to one demonstration rule, and an unrelated probe moves no severity", async () => {
+    // A demonstrated, cited defect keeps the severity the reviewer chose, whichever side owns it.
+    // The agent side once also needed a cited probe, and any conclusive probe satisfied that, so a
+    // probe of an evaluator check that had nothing to do with the agent's tool decided whether a
+    // source reading of that tool reopened the product.
     const identities = { schemaRoots: ["layout"], checkIds: ["shortcut-check", "budget-check"] };
-    const first = recordFindingTool([], [], "e", state, { identities });
     const named = {
       defect: true,
-      severity: "blocking",
+      owner: "agent/tools-spec.json",
       citations: CITATIONS,
       demonstration: DEMO,
       claim: "the tool supplies the remaining decision",
+      checkId: "shortcut-check",
     };
-    await call(first, { ...named, owner: "agent/tools-spec.json", checkId: "shortcut-check" });
-    expect(state.findings[0]?.severity).toBe("advisory");
-    // The identical finding on an evaluation owner is admitted blocking on its first reading,
-    // because the floor is the agent tier's alone. All that settles is the severity; what the
-    // author does next is the run loop's decision, not this one's.
-    const evaluatorSide = reviewState();
-    await call(recordFindingTool([], [], "e", evaluatorSide, { identities }), {
-      ...named,
-      owner: EVALUATOR_FILE,
-      checkId: "budget-check",
-    });
-    expect(evaluatorSide.findings[0]?.severity).toBeUndefined();
+    const reviewed = (severity: string, extra: Record<string, JsonValue>) => {
+      const state = reviewState();
+      // A conclusive probe of an evaluator check the finding does not name.
+      state.probes.rows.push({
+        id: 1,
+        controlId: "accept-a",
+        taskId: "t0",
+        path: "layout.budget",
+        change: { value: "0" },
+        refused: null,
+        baseline: { outcome: "pass", blockingCheckIds: [] },
+        mutated: { outcome: "fail", blockingCheckIds: ["budget-check"] },
+        applicableCheckIds: ["budget-check"],
+        movedCheckIds: ["budget-check"],
+      });
+      return call(recordFindingTool([], [], "e", state, { identities }), { ...named, severity, ...extra });
+    };
+    expect(await reviewed("blocking", { probeIds: [1] })).toBe(BLOCKING);
+    expect(await reviewed("blocking", {})).toBe(BLOCKING);
+    expect(await reviewed("advisory", { probeIds: [1] })).toBe(ADVISORY);
+    expect(await reviewed("advisory", {})).toBe(ADVISORY);
+    // The identical finding on an evaluation owner is held to the same rule.
+    expect(await reviewed("blocking", { owner: EVALUATOR_FILE, checkId: "budget-check", probeIds: [] })).toBe(
+      BLOCKING,
+    );
+    // Without a demonstration nothing blocks, on either side.
+    const bare = reviewState();
+    expect(
+      await call(recordFindingTool([], [], "e", bare, { identities }), {
+        ...named,
+        severity: "blocking",
+        demonstration: "too short",
+      }),
+    ).toContain("refused: blocking or disputing requires a concrete case");
   });
 
   test("what a probe executed reaches the author, whatever severity the finding is held at", async () => {
@@ -234,18 +249,16 @@ describe("a condition is reviewed once", () => {
     );
   });
 
-  test("a probe-backed agent-side defect blocks on its first reading, and an uncited probe does not", async () => {
-    // The agent-tier floor above exists because a reviewer reading source can only suspect: a
-    // defect that concedes no current artifact distinguishes the two readings can go no
-    // further than advice. A probe row is the candidate's own declared checks ruling on the
-    // candidate's own accept control, so the first-occurrence floor does not apply to it.
+  test("only a probe that decided both sides is recorded as the finding's executed evidence", async () => {
+    // A probe row is the candidate's own declared checks ruling on the candidate's own accept
+    // control, and it is evidence only where both sides reached a verdict and the original passed.
     const named = {
       defect: true,
-      owner: "agent/tools-spec.json",
+      owner: EVALUATOR_FILE,
       severity: "blocking",
       citations: CITATIONS,
       demonstration: DEMO,
-      claim: "the tool supplies the remaining decision",
+      claim: "the check refuses what the rule admits",
       checkId: "shortcut-check",
     };
     const identities = { schemaRoots: ["layout"], checkIds: ["shortcut-check"] };
@@ -265,52 +278,30 @@ describe("a condition is reviewed once", () => {
       movedCheckIds: ["shortcut-check"],
       refused,
     });
-
-    const backed = reviewState();
-    backed.probes.rows.push(ran(1, null));
-    expect(
-      await call(recordFindingTool([], [], "e", backed, { identities }), {
-        ...named,
-        probeIds: [1],
-      }),
-    ).toBe(BLOCKING);
-    expect(backed.findings[0]?.severity).toBeUndefined();
-    expect(backed.findings[0]?.claim).toContain("Executed probes: 1");
-
-    // Citing a probe the host refused credits the request, not a result.
-    const refused = reviewState();
-    refused.probes.rows.push(ran(1, "the checks did not settle"));
-    expect(
-      await call(recordFindingTool([], [], "e", refused, { identities }), {
-        ...named,
-        probeIds: [1],
-      }),
-    ).toBe(ADVISORY);
-    expect(refused.findings[0]?.claim).not.toContain("Executed probes");
-
-    // A pair that returned without deciding is not a result. `runControls` does not throw when a
-    // check times out or an evaluation fails: the receipt comes back `non-result` with no blocking
-    // checks, which reads exactly like "no check moved" to anything that only asks whether the
-    // probe ran.
-    const unsettled = reviewState();
-    unsettled.probes.rows.push({ ...ran(1, null), mutated: side("non-result"), movedCheckIds: [] });
-    expect(
-      await call(recordFindingTool([], [], "e", unsettled, { identities }), {
-        ...named,
-        probeIds: [1],
-      }),
-    ).toBe(ADVISORY);
-    expect(unsettled.findings[0]?.claim).not.toContain("Executed probes");
-
-    // Nor is a changed artifact informative against an original the checks already refuse.
-    const unsound = reviewState();
-    unsound.probes.rows.push({ ...ran(1, null), baseline: side("fail", ["shortcut-check"]) });
-    expect(
-      await call(recordFindingTool([], [], "e", unsound, { identities }), {
-        ...named,
-        probeIds: [1],
-      }),
-    ).toBe(ADVISORY);
+    const recorded = async (row: ReturnType<typeof ran>) => {
+      const state = reviewState();
+      state.probes.rows.push(row);
+      expect(
+        await call(recordFindingTool([], [], "e", state, { identities }), { ...named, probeIds: [1] }),
+      ).toBe(BLOCKING);
+      return state.findings[0];
+    };
+    const backed = await recorded(ran(1, null));
+    expect(backed?.claim).toContain("Executed probes: 1");
+    expect(backed?.probes).toHaveLength(1);
+    // Citing a probe the host refused credits the request, not a result. A pair that returned
+    // without deciding is not a result either: `runControls` does not throw when a check times out,
+    // and the receipt comes back `non-result` with no blocking checks, which reads exactly like "no
+    // check moved". Nor is a changed artifact informative against an original the checks refuse.
+    for (const row of [
+      ran(1, "the checks did not settle"),
+      { ...ran(1, null), mutated: side("non-result"), movedCheckIds: [] },
+      { ...ran(1, null), baseline: side("fail", ["shortcut-check"]) },
+    ]) {
+      const finding = await recorded(row);
+      expect(finding?.claim).not.toContain("Executed probes");
+      expect(finding?.probes).toBeUndefined();
+    }
   });
 
   test("a probe-backed evaluator defect keeps the blocking severity the reviewer chose", async () => {
@@ -353,14 +344,13 @@ describe("a condition is reviewed once", () => {
     expect(await reviewed("blocking", [])).toBe(BLOCKING);
   });
 
-  test("a defect recorded after a probe ran must say whether it rests on it", async () => {
+  test("an evaluation defect recorded after a probe ran must say whether it rests on it", async () => {
     // A review can run all eight probes, write a defect whose own claim narrates what they
-    // returned, and still leave `probeIds` unset. That finding is not probe-backed: it takes the
-    // source-derived advisory floor, and its recorded claim carries no link to the rows that
-    // support it. Asking costs one argument.
+    // returned, and still leave `probeIds` unset. Its recorded claim then carries no link to the
+    // rows that support it, and the author is told nothing was executed. Asking costs one argument.
     const named = {
       defect: true,
-      owner: "agent/tools-spec.json",
+      owner: EVALUATOR_FILE,
       severity: "advisory",
       citations: CITATIONS,
       demonstration: DEMO,
@@ -406,7 +396,18 @@ describe("a condition is reviewed once", () => {
     inconclusive.probes.rows.push({ ...ran(1), baseline: side("fail", ["shortcut-check"]) });
     expect(await call(recordFindingTool([], [], "e", inconclusive, { identities }), named)).toBe(ADVISORY);
 
-    // Only a defect can be admitted blocking on a probe, so only it is asked.
+    // A probe runs the declared checks, so it says nothing about an agent file, and a defect owned
+    // there is not asked about the probes the review ran.
+    const agent = reviewState();
+    agent.probes.rows.push(ran(1));
+    expect(
+      await call(recordFindingTool([], [], "e", agent, { identities }), {
+        ...named,
+        owner: "agent/tools-spec.json",
+      }),
+    ).toBe(ADVISORY);
+
+    // Nor is an observation, which asks for no repair.
     const observed = reviewState();
     observed.probes.rows.push(ran(1));
     expect(

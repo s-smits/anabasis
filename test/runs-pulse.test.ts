@@ -127,9 +127,24 @@ describe("runs pulse", () => {
     ).toEqual({
       side: "above",
       rounds: 2,
+      tooEasy: 0,
     });
     expect(offAimStreak([battery(6, 6, "too-easy"), battery(3, 7, "on-aim")])).toBeNull();
     expect(offAimStreak([battery(0, 0, null)])).toBeNull();
+  });
+
+  it("names a stall at three too-easy batteries in a row, and not while an over-aim one ends the run", () => {
+    const easy = [battery(5, 5, "too-easy"), battery(7, 7, "too-easy"), battery(7, 7, "too-easy")];
+    expect(offAimStreak([battery(5, 7, "over-aim"), ...easy])).toEqual({
+      side: "above",
+      rounds: 4,
+      tooEasy: 3,
+    });
+    const stalled = statusLine(reading(0, { batteries: easy }), 10);
+    expect(stalled).toContain("above the aim 3 in a row; 3 too-easy in a row, a stall");
+    const bracketing = statusLine(reading(0, { batteries: [...easy, battery(6, 7, "over-aim")] }), 10);
+    expect(bracketing).toContain("above the aim 4 in a row");
+    expect(bracketing).not.toContain("stall");
   });
 
   it("numbers a new round and carries the last battery into its line", () => {

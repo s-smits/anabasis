@@ -50,6 +50,11 @@ import { collectRows, type RunRow } from "./rows.ts";
 const QUIET_MS = 20 * 60_000;
 /** Failed Builder calls between two looks that make a burst rather than ordinary friction. */
 const FAILED_BURST = 3;
+/** AGENTS.md "Goals and the climb": this many `too-easy` placements in a row mean no battery found
+ *  the limit. The controller deliberately never stops on a reading of the tasks (`LoopState`), so
+ *  the stall is the operator's to call, and the pulse names it rather than leaving it inside a
+ *  streak that also counts `over-aim` batteries. */
+const STALL_BATTERIES = 3;
 const MEASURING = new Set(["adopt", "controls", "solve", "measure-on", "grade"]);
 const REVIEWING = new Set(["judge", "claim", "analyse", "admission", "next"]);
 /** Top-level transitions that are the loop's ordinary machinery and would bury the rest. */
@@ -100,22 +105,33 @@ function sideOf(zone: BandZone | null): "above" | "below" | "on" | null {
   return zone === "too-easy" || zone === "over-aim" ? "above" : "below";
 }
 
-/** Consecutive batteries on one side of the aim, counted back from the latest placed one. */
+/** Consecutive batteries on one side of the aim, counted back from the latest placed one, and how
+ *  many of the latest of them were `too-easy`. */
 export function offAimStreak(
   batteries: readonly PulseBattery[],
-): { side: "above" | "below"; rounds: number } | null {
-  const sides = batteries.flatMap((battery) => sideOf(battery.zone) ?? []);
-  const last = sides.at(-1);
-  if (last === undefined || last === "on") return null;
-  let rounds = 0;
-  for (let index = sides.length - 1; index >= 0 && sides[index] === last; index -= 1) rounds += 1;
-  return { side: last, rounds };
+): { side: "above" | "below"; rounds: number; tooEasy: number } | null {
+  const zones = batteries.flatMap((battery) => battery.zone ?? []);
+  const last = sideOf(zones.at(-1) ?? null);
+  if (last === null || last === "on") return null;
+  const trailing = (holds: (zone: BandZone) => boolean) => {
+    const from = zones.findLastIndex((zone) => !holds(zone));
+    return zones.length - 1 - from;
+  };
+  return {
+    side: last,
+    rounds: trailing((zone) => sideOf(zone) === last),
+    tooEasy: trailing((zone) => zone === "too-easy"),
+  };
 }
 
 function streakText(batteries: readonly PulseBattery[]): string {
   const streak = offAimStreak(batteries);
   if (streak === null) return "";
-  return `, ${streak.side} the aim ${String(streak.rounds)} in a row`;
+  const stall =
+    streak.tooEasy >= STALL_BATTERIES
+      ? `; ${String(streak.tooEasy)} too-easy in a row, a stall: no battery found the limit`
+      : "";
+  return `, ${streak.side} the aim ${String(streak.rounds)} in a row${stall}`;
 }
 
 function batteryText(battery: PulseBattery): string {

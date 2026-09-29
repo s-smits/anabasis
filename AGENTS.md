@@ -548,6 +548,36 @@ the battery was paid for.
    nothing uses. A cut preserves isolation, identities, non-results, denominators, claims, rollback and
    controller-owned submission.
 
+   **Take the super-Pareto form: about half the complexity for 90 to 95 percent of the result.** This is the
+   one statement of the rule, and every other place that asks for the simplest path means it. When a change
+   writes or rewrites a component, look first for the algorithm that needs roughly half the mechanism of the
+   fuller one and still does nearly all of what it would, and take it unless the part it gives up is one of
+   the guarantees just listed or a decision the recorded evidence shows it changes. It is the default rather
+   than a compromise, and the reason is speed more than tidiness. The loop learns from measured rounds, and
+   a component half the size is read, tested, replaced and measured again sooner, so the round that finds
+   the missing few percent arrives sooner too. The separate fixed-harness difficulty session is the example
+   worth keeping in mind: it prescribed a level, a family composition and a parent lineage, and across 33
+   recorded rounds it never once left the too-easy zone, while the open path that replaced it prescribes
+   none of that. The gate audit of 2026-09-25 took the same shape when it commented out the 21 of 50
+   refusals it could not show were right, instead of refining each one.
+
+   Measure both sides rather than asserting them. `reduce-complexity` puts numbers on the mechanism, and a
+   replay over recorded inputs, or the decision the component feeds, puts one on what it still does; a trade
+   stated with one side measured is a guess. Name the remainder you gave up in the commit body, so that a
+   later round needing it knows it was left out on purpose rather than missed. And do not overdo it. Working
+   code is not rewritten only to reach the ratio, a guarantee is never a percentage to trade, and when the
+   simple form turns out to lose more than the few percent, say so and keep the fuller one.
+
+   Complexity is not only the mechanism a line count sees, so look for the simplification in three more
+   places. It can be mathematical: a closed form in place of a search, or one quantity computed once where
+   three readers each approximated it. It can be an information gap closed. An explicit connection between
+   two components — one owner, one schema, the data it carries stated — adds an edge to the import graph and
+   still lowers complexity, because no reader has to guess any longer whether the connection exists or what
+   crosses it. A published limit declared without the artifact path it bounds is the opposite case: every
+   reader of the solver's margins has to guess which field the limit is about, and most guess nothing. And
+   the model is a component too, so what it reliably does in its own reasoning needs no mechanism built
+   around it.
+
    **Keep no backwards compatibility** (2026-09-22). A reader takes the current schema and version only. A
    legacy alias, a fallback branch, a superseded reader or a set member nothing produces is removed even
    if older recorded runs become unreadable, and a reader meeting an older version refuses it.
@@ -1922,9 +1952,10 @@ census, `tools/oxlint/simplify-census.ts`) during the work rather than only at t
 `/simplify` on the finished diff. Whoever wrote a rewrite lints it strictly before handing it back (§3). A
 mis-targeted finding from either tool is a reason to tune that rule's source more precisely (rule 8), and
 never to switch it off. Prefer removing unneeded work, then existing code, then stdlib or native features,
-then installed dependencies, and only then minimum new code. Preserve trust validation, data-loss
-handling, security, accessibility and requested behaviour, and reuse the focused checks and the ordinary
-gate. If no useful cut remains, say "already the smallest honest form".
+then installed dependencies, and only then minimum new code, and let rule 8's super-Pareto form decide how
+much of the old behaviour that minimum must keep. Preserve trust validation, data-loss handling, security,
+accessibility and requested behaviour, and reuse the focused checks and the ordinary gate. If no useful cut
+remains, say "already the smallest honest form".
 
 ### Versions
 

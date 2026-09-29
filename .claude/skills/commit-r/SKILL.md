@@ -25,7 +25,9 @@ is one question someone could want changed. Some examples of that kind of questi
 - **prompting:** what the Builder is told about the reference solve.
 
 Each compartment gets its own **hypothesis**, written before any test: what should change, and
-why a simpler production path probably reaches the same outcome. Two compartments in one pass must
+why a production path at about half the complexity probably reaches the same outcome, or 90 to 95
+percent of it — the super-Pareto form of rule 8 in `AGENTS.md` — and what it would give up if it
+does not reach all of it. Two compartments in one pass must
 carry different hypotheses. If they would share one, they are one compartment.
 
 Take one to three compartments per pass, which usually comes to 500 to 2,000 test lines in all.
@@ -55,7 +57,9 @@ requires of any working commit.
 4. **Read why they fail, and look for the faster path.** Before touching production, ask which
    module actually owns the behaviour, whether a simpler owner exists, and which adjacent functions
    or type members only served the old shape. Grep every export and every member of a union: a
-   branch whose producer is gone is dead code to remove, not to preserve. A negative claim such as
+   branch whose producer is gone is dead code to remove, not to preserve. Then look for the simpler
+   algorithm, not only the simpler owner: the one that computes the answer once instead of twice,
+   or drops a case the recorded evidence never reaches. A negative claim such as
    "nothing produces X" needs the grep against `origin/main` too, in the same turn.
 5. **`R: <production paths>`**. `git rm` the production files the rewrite replaces, and commit with
    the subject `R: src/x.ts src/y.ts`.
@@ -66,8 +70,9 @@ requires of any working commit.
    - run typecheck, `bun run lint -- --strict`, `bun tools/loc/source-policy.ts` (no arguments)
      and `bun tools/loc/complexity-policy.ts`, plus every test file that imports the compartment.
 
-   The body says what the rewrite found. Name any behaviour that changed, and any that looked dead
-   but is left for the operator because a contract describes it as live.
+   The body says what the rewrite found. Name any behaviour that changed, anything the simpler form
+   gave up and how that was measured, and any code that looked dead but is left for the operator
+   because a contract describes it as live.
 7. **Fix in place.** Every published commit passes the gate on its own, so a finding on an
    earlier commit is fixed inside it: `git commit --fixup=<sha>`, then
    `GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash <sha>~1`.
@@ -96,6 +101,8 @@ For each compartment, report four things:
 - the hypothesis;
 - the four working commits (R, tests, R, production) and the squashed commit that replaced them;
 - the test count, with how many failed on purpose and then passed;
-- what the rewrite found: the owner moved, the branches removed, anything left for the operator.
+- what the rewrite found: the owner moved, the branches removed, what the simpler form gave up,
+  anything left for the operator.
 
-State the line counts before and after, measured, not estimated.
+State the line counts before and after, measured, not estimated. When the compartment gave nothing
+up, say that, because it is the claim a reader will check first.

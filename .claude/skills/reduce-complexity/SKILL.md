@@ -13,6 +13,12 @@ comparable.
 The honest order is: measure, cut, measure again, and put both numbers in the PR body. A
 simplification that cannot show a number it moved is a rewrite.
 
+These numbers are one side of a trade. Rule 8 of `AGENTS.md` asks for the super-Pareto form,
+about half the complexity for 90 to 95 percent of the result, and this skill measures only the
+first half of that sentence. The second half is measured elsewhere, by a replay over recorded
+inputs or by the decision the component feeds. A pass that reports a large fall here and nothing
+about what the component still does has shown that it is smaller, not that it is better.
+
 ## One command for the whole picture
 
 ```sh

@@ -6,10 +6,12 @@
  * disagreement between guard and operating system is observable rather than resolved inside a tool.
  */
 import type { JsonObject, JsonValue } from "../meta/json-shape.ts";
+import { rmSync } from "../meta/filesystem.ts";
 import { isAbsolute, join, relative, resolve as resolvePath } from "../meta/path.ts";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { createPatch } from "diff";
 import {
+  bashCallTmpdir,
   bashDescription,
   bashEnv,
   bashKilledNotice,
@@ -309,6 +311,8 @@ export function createBuilderTools(isolation: BuilderIsolation): AgentTool[] {
         if (refusal !== null) throw new Error(refusal);
         const timeoutMs = bashTimeoutMs(params.timeout);
         const startedMs = Date.now();
+        // A TMPDIR for this call alone, removed with it where the call made it on the host.
+        const temp = bashCallTmpdir();
         const outcome = await runIsolated(policy, record, {
           capability: "bash",
           mode: "exec",
@@ -316,10 +320,12 @@ export function createBuilderTools(isolation: BuilderIsolation): AgentTool[] {
           args: ["-lc", params.command],
           cwd,
           paths: [cwd],
-          env: bashEnv(workDir),
+          env: { ...bashEnv(workDir), TMPDIR: temp.path },
           osRefusalIsOutcome: true,
           timeoutMs,
           signal, // An aborted prompt waits for running tools, so abort kills the command.
+        }).finally(() => {
+          if (temp.made) rmSync(temp.path, { recursive: true, force: true });
         });
         const whole = `${outcome.stdout}${outcome.stderr}` || "(no output)";
         const tail = truncateTail(whole);

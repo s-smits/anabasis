@@ -11,8 +11,8 @@
  *
  * Three bundle names are deliberately absent, because a module already owns each with its meaning
  * attached: `BUILT_AGENTS_FILE` in `src/solve/built-starter.ts`, `REFERENCE_SOLVE_ENTRY` in
- * `src/truth/evaluator-process-bundle.ts` and `HARNESS_CONFIG_FILE` in
- * `src/truth/harness-config.ts`. Moving them here would trade one owner for another rather than
+ * `src/correctness-bundle/evaluator-process-bundle.ts` and `HARNESS_CONFIG_FILE` in
+ * `src/correctness-bundle/harness-config.ts`. Moving them here would trade one owner for another rather than
  * removing a second spelling.
  *
  * Tests keep spelling the literals, and no file under `test/` imports this module. A fixture that

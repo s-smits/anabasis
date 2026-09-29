@@ -11,8 +11,8 @@ import {
   latestRebuildAdvicePath,
   readLatestRebuildAdvice,
 } from "../author/rebuild-advice.ts";
-import { type EpochReviewInput, carriedDemonstrations, runEpochReview } from "../review/epoch-reviewer.ts";
-import type { ReviewProbeRow } from "../review/review-probe.ts";
+import { type EpochReviewInput, runEpochReview } from "../review/epoch-reviewer.ts";
+import { NOTHING_CARRIED, carriedDemonstrations } from "../review/review-carry.ts";
 import { publicEpochReview } from "../review/epoch-review-public.ts";
 import type {
   AdmissionLineage,
@@ -22,14 +22,14 @@ import type {
   PriorEvidence,
 } from "../author/campaign-types.ts";
 import { makeAgentToolsProbes } from "../author/agent-tools-session.ts";
-import type { ProbeControlsOptions } from "../truth/probes.ts";
+import type { ProbeControlsOptions } from "../correctness-bundle/probes.ts";
 import { loadRepoEnv } from "../backends/env.ts";
 import { type ResolvedSlots, resolveSlots } from "../backends/resolve.ts";
 import type { PreparedUserContext } from "../builder/user-context.ts";
 import type { HarnessAuthoring } from "../critic/types.ts";
 import { type RunObserver, createRunObserver } from "../observe/run-observer.ts";
-import { readValidatedBrief } from "../truth/public-resources.ts";
-import { makeProbeControls } from "../truth/probes.ts";
+import { readValidatedBrief } from "../correctness-bundle/public-resources.ts";
+import { makeProbeControls } from "../correctness-bundle/probes.ts";
 import type { VerifierHostHandle } from "../verify/verifier-port.ts";
 import type { AskManifest } from "./ask-manifest.ts";
 import type { AuthoringAdvice, ReviewAuthoring } from "./authoring-review.ts";
@@ -67,10 +67,6 @@ export interface HarnessBuildOptions {
    *  kickoff's content hash keys the epoch, and an advisory note must not re-key a campaign. */
   advisoryNote?: string;
   measured?: BuilderCampaignInput["measured"];
-  /** The run's pass-rate band, read from `thresholds.frozen.yaml` by the controller. The Builder's
-   *  difficulty sentences quote the counts it implies, so it must be the band the placement is read
-   *  against. Absent, the prompt falls back to the code-owned policy row. */
-  band?: [number, number];
   /** Immutable public context available through the context tool. */
   userContext?: PreparedUserContext;
   /** Run-bound diagnostic channel supplied by the full-run controller. */
@@ -99,10 +95,6 @@ export interface HarnessBuildOptions {
   priorEvidence?: PriorEvidence;
   admissionLineage?: AdmissionLineage;
   diagnosisInput?: DiagnosisInput;
-  // Gate audit 2026-09-25 (docs/gate-audit.md, repeated-public-condition): commented out (unsure): the
-  // admitted-history public battery prints only the repeated-condition refusal read.
-  // /** Admitted-history public fingerprints for the A→B→A refusal of a task-only experiment. */
-  // priorPublicTaskFingerprints?: readonly string[];
   /** The selector's reading of the adopted product's batteries; a held limit refuses a product change. */
   /** Controller iteration identity for this immutable product version. */
   productVersionId?: string;
@@ -264,7 +256,7 @@ export function authoringReviewText(
     ...(shown.length === 0 ? [] : [`Original request: ${capturedJsonStringify(request)}`]),
     ...rows,
   ].join("\n");
-  return { text, findings: shown.length };
+  return { text, blocking };
 }
 
 /** Carry an authoring review's disputes onto the issue register the next build reads. The measured
@@ -290,14 +282,15 @@ export function recordAuthoringDisputes(
  *  measured reviews with a null condition; only the public projection of its findings returns to
  *  the Builder.
  *
- *  One reviewer serves one round, and the probes each review rested its findings on are handed to
- *  the next review of that round. They are carried here rather than by `AuthoringReviews`, which
- *  is the Builder's side of the join: a probe row holds a counterexample value and the checks it
- *  moved, so it stays on the reviewer's side. */
+ *  One reviewer serves one round, and the probes each review rested its findings on, with the
+ *  checks its findings named and its advisory defects, are handed to the next review of that
+ *  round. They are carried here rather than by `AuthoringReviews`, which is the Builder's side of
+ *  the join: a probe row holds a counterexample value and the checks it moved, so it stays on the
+ *  reviewer's side. */
 function authoringReviewer(binding: AuthoringReviewBinding): ReviewAuthoring {
   const { repoRoot, slug, review, publicRequest, observer, providerBudget } = binding;
-  let demonstrations: readonly ReviewProbeRow[] = [];
-  return async (root, trigger, experiment, rehearsals) => {
+  let demonstrations = NOTHING_CARRIED;
+  return async (root, trigger, rehearsals) => {
     const runId = `authoring-${Bun.randomUUIDv7()}`;
     const advice = readLatestRebuildAdvice(repoRoot, slug);
     const result = await runEpochReview({
@@ -308,7 +301,6 @@ function authoringReviewer(binding: AuthoringReviewBinding): ReviewAuthoring {
       analysis: null,
       priorAdvice: advice,
       priorAdviceOnSeededTree: advice === null ? null : measuredSelectedProduct(repoRoot, slug, advice.runId),
-      experiment,
       rehearsals,
       demonstrations,
       review,
@@ -317,12 +309,8 @@ function authoringReviewer(binding: AuthoringReviewBinding): ReviewAuthoring {
       ...keyIfDefined("providerBudget", providerBudget),
     });
     demonstrations = carriedDemonstrations(result) ?? demonstrations;
-    const dir = join(campaignDir(repoRoot, slug), "analysis");
-    mkdirSync(dir, { recursive: true });
-    writeCompleted(join(dir, `${runId}-epoch-review.json`), result);
     const { findings, disputes } = publicEpochReview(result, {
       brief: result.status === "completed" ? readValidatedBrief(root) : null,
-      deferAdvisory: true,
     });
     recordAuthoringDisputes(repoRoot, slug, disputes);
     return authoringReviewText(trigger, result.status, publicRequest, findings);
@@ -373,12 +361,6 @@ async function runEpochBuild(
       ...keyIfDefined("advisoryNote", options.advisoryNote),
       ...keyIfDefined("measured", options.measured),
       ...keyIfDefined("userContext", options.userContext),
-      ...keyIfDefined("band", options.band),
-      // Gate audit 2026-09-25 (docs/gate-audit.md, repeated-public-condition): commented out (unsure): the
-      // admitted-history public battery prints only the repeated-condition refusal read.
-      // ...keyIfDefined("priorPublicTaskFingerprints", options.priorPublicTaskFingerprints),
-      // A reopen is the one round harness_reset works in; its pass keys the once-per-scope rule,
-      // so a resumed round finds its own reset in history rather than wiping its later work.
       ...keyIfDefined("resetKey", options.epochPass),
     },
     {

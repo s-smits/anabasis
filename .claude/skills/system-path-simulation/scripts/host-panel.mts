@@ -43,14 +43,14 @@ import { sha256 } from "#src/meta/digest.ts";
 import { BRIEF_FILE, CONTROLS_FILE } from "#src/meta/bundle-layout.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { asRecord, isString, type JsonValue } from "#src/meta/json-shape.ts";
-import type { Brief } from "#src/truth/brief.ts";
-import { externalChecksOf } from "#src/truth/brief.ts";
-import { type ControlCorpus, isControlCorpus } from "#src/truth/controls.ts";
-import { loadCorrectnessModel } from "#src/truth/contracts.ts";
-import { evaluateCheckProgram } from "#src/truth/predicate.ts";
-import { runControls } from "#src/truth/run-controls.ts";
-import type { ControlReceipt } from "#src/truth/battery-record.ts";
-import { primarySide, sideMatchesExpected } from "#src/truth/control-receipts.ts";
+import type { Brief } from "#src/correctness-bundle/brief.ts";
+import { externalChecksOf } from "#src/correctness-bundle/brief.ts";
+import { type ControlCorpus, isControlCorpus } from "#src/correctness-bundle/controls.ts";
+import { loadCorrectnessModel } from "#src/correctness-bundle/contracts.ts";
+import { evaluateCheckProgram } from "#src/correctness-bundle/predicate.ts";
+import { runControls } from "#src/correctness-bundle/run-controls.ts";
+import type { ControlReceipt } from "#src/correctness-bundle/battery-record.ts";
+import { primarySide, sideMatchesExpected } from "#src/correctness-bundle/control-receipts.ts";
 import { loadRecordedTasks } from "#src/run/run-driver.ts";
 import { compilePublicArtifactSchema } from "#src/solve/public-artifact-schema.ts";
 import { createSubmissionAuthority } from "#src/solve/final-submission.ts";
@@ -283,13 +283,7 @@ let control: Awaited<ReturnType<typeof runControls>> | null = null;
 try {
   const evaluate = evaluateCheckProgram(brief, await loadCorrectnessModel(candidate, lifetime));
   if (corpus.accept.length + corpus.reject.length > 0) {
-    control = await runControls(
-      evaluate,
-      corpus,
-      [task],
-      { brief, externalChecks, verifierLifetime: lifetime },
-      host,
-    );
+    control = await runControls(evaluate, corpus, [task], { brief, verifierLifetime: lifetime }, host);
     receipts = control.controlReceipts;
   }
 } catch (cause) {

@@ -1,5 +1,12 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdirSync, symlinkSync, unlinkSync, writeFileSync } from "../src/meta/filesystem.ts";
+import {
+  closeSync,
+  mkdirSync,
+  openSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from "../src/meta/filesystem.ts";
 import { join, dirname } from "../src/meta/path.ts";
 import { runReaderTurn } from "../src/review/review-reader.ts";
 import {
@@ -9,14 +16,20 @@ import {
   reviewInventory,
   reviewVerifierEvidence,
   reviewCoverage,
+  TOOLCHAIN_PREFIX,
+  type ToolchainReach,
+  namedTexts,
+  toolchainReach,
 } from "../src/review/review-sources.ts";
+import { portableToolTreeDigest } from "../src/verify/tool-inventory.ts";
+import type { ToolEntry } from "../src/verify/verifier-port.ts";
 import { BUNDLE_FILES } from "../src/author/feedback-routing.ts";
 import { EvidenceLog } from "../src/claim/evidence-log.ts";
-import { verifierEnvironmentHashOfTools } from "../src/truth/verifier-environment.ts";
+import { verifierEnvironmentHashOfTools } from "../src/correctness-bundle/verifier-environment.ts";
 import { sha256 } from "../src/meta/digest.ts";
 import { type EpochReviewInput, runEpochReview } from "../src/review/epoch-reviewer.ts";
 import { publicEpochReview } from "../src/review/epoch-review-public.ts";
-import { double } from "./helpers/doubles.ts";
+import { double, required } from "./helpers/doubles.ts";
 import { reviewSlotPin } from "../src/review/review-session.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import { call } from "./helpers/review-fixtures.ts";
@@ -114,7 +127,7 @@ describe("review coverage tied to recorded execution", () => {
         treeRoot: ".",
         analysis: null,
         priorAdvice: null,
-        publicRequest: "Choose a count.",
+        publicRequest: null,
         review: REVIEW,
         readerTurn: (input) =>
           runReaderTurn({
@@ -166,7 +179,7 @@ describe("review coverage tied to recorded execution", () => {
                         ...finding,
                         citations: [{ path: "agent/tools.ts", quote: "{}" }],
                       }),
-                    ).toContain("as advisory");
+                    ).toContain("as blocking");
                   }
                   const reader = input.tools.find((tool) => tool.name === "read_source")!;
                   if (mode === "complete") {
@@ -194,12 +207,21 @@ describe("review coverage tied to recorded execution", () => {
       );
       expect(result.coverage.complete).toBe(mode === "complete");
       expect(result.report).toBe(mode === "failed" ? null : LONG_SYNTHESIS);
-      expect(publicEpochReview(result).findings).toHaveLength(mode === "complete" ? 2 : 0);
-      if (mode === "failed") expect(result.findings).toEqual([]);
+      // Both findings the host admitted before the turn ended stay recorded however it ended, and
+      // reach the public projection either way: a completed review's at their admitted severity,
+      // an unfinished one's as advice that says the review did not finish.
+      expect(result.findings).toHaveLength(2);
+      const projected = publicEpochReview(result, { brief: null }).findings;
+      expect(projected.map((finding) => finding.severity ?? "blocking")).toEqual(
+        mode === "complete" ? ["advisory", "blocking"] : ["advisory", "advisory"],
+      );
+      expect(projected.every((finding) => finding.claim.includes("did not finish"))).toBe(
+        mode !== "complete",
+      );
       expect(result.admission).toEqual({
         continuations: 1,
         citationRefusals: 1,
-        severityAdjusted: [{ owner: "agent/tools-spec.json", requested: "blocking", admitted: "advisory" }],
+        severityAdjusted: [],
       });
       expect(JSON.stringify(result.admission)).not.toMatch(
         /PRIVATE_UNREAD_QUOTE|Private source-derived|Private specimen/,
@@ -237,7 +259,11 @@ describe("review coverage tied to recorded execution", () => {
                   bundleSnapshot: { agentHash: "a", correctnessModelHash: "c", taskSetHash: "t" },
                   backendPin: "built-pin",
                 },
-                battery: { summary: { passed: 0, verified: 0, unaccepted: 0, nonResults: 0 } },
+                battery: {
+                  summary: { passed: 0, verified: 0, unaccepted: 0, nonResults: 0 },
+                  blockingByCheck: {},
+                  applicableByCheck: {},
+                },
               })
             : null,
         readerTurn: async ({ prompt, tools }) => {
@@ -351,7 +377,11 @@ describe("review coverage tied to recorded execution", () => {
           bundleSnapshot: { agentHash: "a", correctnessModelHash: "c", taskSetHash: "t" },
           backendPin: "built-pin",
         },
-        battery: { summary: { passed: 1, verified: 1, unaccepted: 0, nonResults: 0 } },
+        battery: {
+          summary: { passed: 1, verified: 1, unaccepted: 0, nonResults: 0 },
+          blockingByCheck: {},
+          applicableByCheck: {},
+        },
       }),
       vetoed: [
         {
@@ -411,11 +441,10 @@ describe("review coverage tied to recorded execution", () => {
     // The artifacts are required reads for settling the veto and the dispute, not covered source files.
     expect(result.reads).toContain("runs/r1/cases/roof-3/artifact.json");
     expect(result.reads).toContain("runs/r1/cases/roof-4/artifact.json");
-    // roof-5 names the same check but was never opened, so it is not among the settled cases.
-    expect(result.contestedReads).toEqual([
-      "runs/r1/cases/roof-3/artifact.json",
-      "runs/r1/cases/roof-4/artifact.json",
-    ]);
+    // Reading settles nothing: no finding named a case, so all three stay unsettled, the two read
+    // and roof-5, which names the same check and was never opened.
+    expect(result.dispositions).toEqual([]);
+    expect(result.unsettled).toEqual(["roof-3", "roof-5", "roof-4"]);
   });
 
   test("a completed review stands in only for the same contested artifacts and standing issues", async () => {
@@ -472,8 +501,13 @@ describe("review coverage tied to recorded execution", () => {
           identities: {
             bundleSnapshot: { agentHash: "a", correctnessModelHash: "c", taskSetHash: "t" },
             backendPin: "built-pin",
+            builtEffort: "medium",
           },
-          battery: { summary: { passed: 1, verified: 1, unaccepted: 0, nonResults: 0 } },
+          battery: {
+            summary: { passed: 1, verified: 1, unaccepted: 0, nonResults: 0 },
+            blockingByCheck: {},
+            applicableByCheck: {},
+          },
         }),
         readerTurn: async ({ tools }) => {
           turns += 1;
@@ -613,83 +647,6 @@ describe("review coverage tied to recorded execution", () => {
     expect(reviewVerifierEvidence(root, "r1").identity).not.toBe(first);
   });
 
-  test("rereading a condition under another reviewer does not manufacture recurrence", async () => {
-    const root = coreTree();
-    const path = "agent/tools.ts",
-      quote = "return { count: 11 };";
-    writeFileSync(join(root, path), quote);
-    writeFileSync(
-      join(root, "correctness-model/brief.json"),
-      JSON.stringify({ artifactSchema: [{ name: "count" }], truthChecks: [{ id: "bounds" }] }),
-    );
-    const log = new EvidenceLog(join(root, "runs/r1"));
-    log.write("battery.json", {
-      runId: "r1",
-      cases: [],
-      execution: { executed: [], tools: {}, verifierEnvironmentHash: null },
-      executionEvidence: [],
-      truthCheckFiring: NO_FIRING,
-    });
-    log.record();
-    const reviewDir = join(root, "campaigns/bounds/analysis");
-    mkdirSync(reviewDir, { recursive: true });
-    for (const [index, taskSetHash, model, reasoningEffort] of [
-      [0, "t1", "gpt-6-astra", "low"],
-      [1, "t1", "gpt-6-astra", "low"],
-      [2, "t1", "gpt-6-astra", "medium"],
-      [3, "t1", "gpt-5.6-sol", "medium"],
-      [4, "t2", "gpt-5.6-sol", "medium"],
-    ] as const) {
-      const review = { enabled: true, kind: "codex", model, reasoningEffort, source: "operator" } as const;
-      const result = await runEpochReview({
-        repoRoot: root,
-        slug: "bounds",
-        runId: "r1",
-        treeRoot: ".",
-        priorAdvice: null,
-        publicRequest: "Choose a count at most ten.",
-        analysis: double<EpochReviewInput["analysis"]>({
-          slug: "bounds",
-          runId: "r1",
-          treeRoot: ".",
-          cases: [],
-          identities: {
-            bundleSnapshot: { agentHash: "a", correctnessModelHash: "c", taskSetHash },
-            backendPin: "built-pin",
-          },
-          battery: { summary: { passed: 0, verified: 0, unaccepted: 0, nonResults: 0 } },
-        }),
-        review,
-        readerTurn: async ({ tools }) => {
-          const reader = tools.find((tool) => tool.name === "read_source")!;
-          for (const file of reviewInventory(root).files) await call(reader, { path: file });
-          const finding = tools.find((tool) => tool.name === "record_finding")!;
-          expect(
-            await call(finding, {
-              defect: true,
-              claim: "the writer exceeds the upper bound",
-              owner: "agent/tools-spec.json",
-              severity: "advisory",
-              checkId: "bounds",
-              demonstration:
-                "The request limits count to ten; this writer always returns eleven, so its output violates that limit. This is source-derived.",
-              citations: [{ path, quote }],
-            }),
-          ).toBe(`recorded defect as ${taskSetHash === "t2" ? "blocking" : "advisory"}`);
-          return { pin: reviewSlotPin(review), text: "A source-derived boundary gap.", error: null };
-        },
-      });
-      expect(result.status).toBe("completed");
-      expect(result.coverage.complete).toBe(true);
-      expect(result.findings[0]?.severity).toBe(taskSetHash === "t2" ? undefined : "advisory");
-      // An older prompt/policy changed reuse identity while all persisted measured fields stayed fixed.
-      if (index === 0 && result.condition !== null) {
-        result.condition.digest = "earlier-review-prompt-and-policy";
-      }
-      writeFileSync(join(reviewDir, `r${index}-epoch-review.json`), JSON.stringify(result));
-    }
-  });
-
   test("the epoch review checks quotations and excludes incomplete or failed reviews from admission", async () => {
     const root = coreTree();
     const sourcePath = "correctness-model/evaluator.ts";
@@ -717,7 +674,11 @@ describe("review coverage tied to recorded execution", () => {
         bundleSnapshot: { agentHash: "a", correctnessModelHash: "c", taskSetHash: "t" },
         backendPin: "built-pin",
       },
-      battery: { summary: { passed: 0, verified: 0, unaccepted: 0, nonResults: 0 } },
+      battery: {
+        summary: { passed: 0, verified: 0, unaccepted: 0, nonResults: 0 },
+        blockingByCheck: {},
+        applicableByCheck: {},
+      },
     });
     for (const mode of ["complete", "incomplete", "failed"] as const) {
       const result = await runEpochReview({
@@ -760,9 +721,12 @@ describe("review coverage tied to recorded execution", () => {
       });
       expect(result.status).toBe(mode === "complete" ? "completed" : mode);
       expect(result.reviewerEffort).toBe("low");
-      expect(result.findings).toHaveLength(mode === "failed" ? 0 : 1);
-      expect(publicEpochReview(result).findings).toHaveLength(mode === "complete" ? 1 : 0);
-      expect(JSON.stringify(publicEpochReview(result))).not.toContain(quote);
+      expect(result.findings).toHaveLength(1);
+      const projected = publicEpochReview(result, { brief: null });
+      expect(projected.findings.map((row) => row.severity ?? "blocking")).toEqual([
+        mode === "complete" ? "blocking" : "advisory",
+      ]);
+      expect(JSON.stringify(projected)).not.toContain(quote);
     }
   });
 });
@@ -943,5 +907,112 @@ describe("what the reviewer may open", () => {
     expect(await call(edge, { path: "edge.ts" })).toEndWith("(1 character remains; call again to continue.)");
     expect(state.readChars).toBe(source.length);
     expect(state.reads).toEqual(Array(Math.ceil(source.length / 16_000)).fill(EVALUATOR_TS));
+  });
+});
+
+/**
+ * The tool tree a recorded verifier digest covers. A checker's model of an installed tool can only be
+ * checked against the tool's own files, and those sit wherever the tool put them: a fixed window of
+ * the shallowest files reaches the shims at the top and none of the definitions below. So the whole
+ * tree reads by name, each file only while it still counts as it did when the review opened, since
+ * that count is what the recorded digest was computed from.
+ */
+describe("the tool tree a recorded digest covers", () => {
+  const P = TOOLCHAIN_PREFIX;
+  const tree = (root: string) => join(root, ".toolchain");
+  const write = (root: string, rel: string, bytes: string | Uint8Array) => {
+    mkdirSync(dirname(join(tree(root), rel)), { recursive: true });
+    writeFileSync(join(tree(root), rel), bytes);
+  };
+  const entry = (treeDigest: string | undefined) => ({
+    "verifier:solve:0": {
+      id: "solve",
+      path: "/abs/.toolchain/bin/solve",
+      digest: "a".repeat(64),
+      source: "workspace-toolchain",
+      kind: "script",
+      interpreter: "sh",
+      ...(treeDigest === undefined ? null : { treeDigest }),
+    } satisfies ToolEntry,
+  });
+  const verified = (root: string) =>
+    required(toolchainReach(root, entry(portableToolTreeDigest(tree(root)))), "a verified tool tree");
+  /** A reader over no source of its own, so every tree file is read by name. */
+  const reader = (root: string, reach: ToolchainReach, state = reviewState()) =>
+    readSourceTool(root, new Set(), state, {}, namedTexts(new Map(), reach));
+
+  test("grants nothing when no recorded tree digest matches the tree as it is now", () => {
+    const root = scratchDir("ana-review-toolchain-");
+    write(root, "libexec/solver.py", "def solve(frame):\n    return frame\n");
+    const recorded = portableToolTreeDigest(tree(root));
+    write(root, "libexec/solver.py", "def solve(frame):\n    return None\n");
+    expect(toolchainReach(root, entry(recorded))).toBeNull();
+    expect(toolchainReach(root, entry(undefined))).toBeNull();
+  });
+
+  test("reads any file of the tree by name however deep, installed packages included, and a directory as its listing", async () => {
+    const root = scratchDir("ana-review-toolchain-");
+    for (let i = 0; i < 101; i += 1) write(root, `bin/tool-${String(i)}`, "#!/bin/sh\n");
+    write(root, "share/lib/a/b/c/d/defs.h", "#define DEFAULT_PORT 21\n");
+    write(root, "node_modules/pkg/index.js", "module.exports = 1;\n");
+    const tool = reader(root, verified(root));
+    expect(await call(tool, { path: `${P}share/lib/a/b/c/d/defs.h` })).toContain("#define DEFAULT_PORT 21");
+    expect(await call(tool, { path: `${P}node_modules/pkg/index.js` })).toContain("module.exports");
+    const top = await call(tool, { path: P });
+    for (const child of ["bin/", "node_modules/", "share/"]) expect(top).toContain(child);
+    expect(await call(tool, { path: `${P}share/lib/a` })).toContain("b/");
+  });
+
+  test("refuses a file changed since the review opened, and any path that is no text file or directory of the tree", async () => {
+    const root = scratchDir("ana-review-toolchain-");
+    write(root, "libexec/solver.py", "def solve(frame):\n    return frame\n");
+    write(root, "libexec/engine.so", new Uint8Array([0x7f, 0x45, 0x4c, 0x46, 0, 1, 2]));
+    write(root, "share/table.csv", "x".repeat(2 * 1024 * 1024));
+    symlinkSync("solver.py", join(tree(root), "libexec/alias.py"));
+    const tool = reader(root, verified(root));
+    write(root, "libexec/solver.py", "def solve(frame):\n    return None\n");
+    const changed = await call(tool, { path: `${P}libexec/solver.py` });
+    expect(changed).toStartWith("refused:");
+    expect(changed).toContain("changed since the review opened");
+    for (const rel of [
+      "../escape.txt",
+      "libexec/missing.py",
+      "libexec/engine.so",
+      "share/table.csv",
+      "libexec/alias.py",
+    ]) {
+      expect(await call(tool, { path: `${P}${rel}` }), rel).toStartWith("refused:");
+    }
+    // A path outside the tree's prefix is still held to the inventory.
+    expect(await call(tool, { path: "evaluator.ts" })).toContain("is not in the inventory");
+  });
+
+  test("returns only bytes its count was taken over, even where two reads of one path differ", async () => {
+    const root = scratchDir("ana-review-toolchain-");
+    write(root, "libexec/solver.py", "");
+    const tool = reader(root, verified(root));
+    // Where opening /dev/fd/N shares that descriptor's offset, as on Darwin, a link to it gives its
+    // whole file to the first read and nothing to every later one, which counts as the empty file
+    // the review opened on. No change time moves between the two reads.
+    const unhashed = join(root, "unhashed.py");
+    writeFileSync(unhashed, "import os  # never counted\n");
+    const fd = openSync(unhashed, "r");
+    try {
+      unlinkSync(join(tree(root), "libexec/solver.py"));
+      symlinkSync(`/dev/fd/${String(fd)}`, join(tree(root), "libexec/solver.py"));
+      const read = await call(tool, { path: `${P}libexec/solver.py` });
+      expect(read).not.toContain("never counted");
+      expect(read).toContain("changed since the review opened");
+    } finally {
+      closeSync(fd);
+    }
+  });
+
+  test("keeps the automatic scan off the tree, so a file nobody named is never read", async () => {
+    const root = scratchDir("ana-review-toolchain-");
+    write(root, "bin/solve", "#!/bin/sh\n");
+    const state = reviewState();
+    expect(await call(reader(root, verified(root), state), {})).toContain("No unread source remains");
+    expect(state.reads).toHaveLength(0);
   });
 });

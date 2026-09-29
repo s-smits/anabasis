@@ -1,5 +1,5 @@
 /** One revocable DraftStore view for one registered generated-tool call. */
-import type { ToolKind } from "../truth/tools-spec.ts";
+import type { ToolKind } from "../correctness-bundle/tools-spec.ts";
 import { DraftStore } from "./draft-store.ts";
 import { isFunction, isString } from "../meta/json-shape.ts";
 

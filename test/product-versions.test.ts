@@ -16,12 +16,15 @@ import { fingerprintSlug } from "../src/claim/fingerprint.ts";
 import { campaignDir } from "../src/meta/campaign-root.ts";
 import { hashJsonValue } from "../src/meta/stable-json.ts";
 import { advanceClaimStage, readClaimStages } from "../src/run/claim-stages.ts";
-import { ControllerLedger } from "../src/run/controller-ledger.ts";
+import { Database } from "bun:sqlite";
+import { ControllerLedger, controllerLedgerPath } from "../src/run/controller-ledger.ts";
 import { promoteCandidate, recordExperimentIntegrityHold } from "../src/run/candidate-promotion.ts";
 import { MEMORY_FILE, SCRATCHPAD_FILE } from "../src/author/builder-memory.ts";
 import {
+  ProductVersionFromAnotherSource,
   bindProductMeasurement,
   measuredProductDir,
+  productHistoryDirs,
   productVersionDir,
   publishProductVersion,
   readProductVersion,
@@ -104,6 +107,18 @@ test("published bytes remain available; selection, decision and admission commit
   expect(() => bindProductMeasurement(root, slug, "second-battery", first)).toThrow("different product");
 });
 
+test("a version under measurement reads its own battery before its decision row exists", () => {
+  const { root, source } = fixture();
+  const first = publishProductVersion(source("first"));
+  selectInitialProduct(root, slug, "first");
+  const second = publishProductVersion(source("second"));
+  // The review of the second version's battery runs before promotion records its decision, so a
+  // history read from the ledger alone would hold no row for the battery under review.
+  expect(productHistoryDirs(second)).toContain(second);
+  expect(productHistoryDirs(second).filter((dir) => dir === first)).toHaveLength(1);
+  expect(productHistoryDirs(first).filter((dir) => dir === first)).toHaveLength(1);
+});
+
 test("zero verified cases keep the selected product and leave the advice packet unadmitted", () => {
   const { root, source } = fixture();
   const first = publishProductVersion(source("first"));
@@ -143,6 +158,24 @@ test("source edits leave captured bytes unchanged; altered or missing selected b
   expect(() => selectedProductDir(root, slug)).toThrow("retained product version agent bundle hashes");
   rmSync(join(version, "agent", "index.ts"));
   expect(() => selectedProductDir(root, slug)).toThrow("retained product version agent bundle hashes");
+});
+
+test("a manifest in another schema is another source's only where the ledger registered its bytes", () => {
+  const { root, source } = fixture();
+  const version = publishProductVersion(source("first"));
+  selectInitialProduct(root, slug, "first");
+  const file = join(version, "version.json");
+  const foreign = { ...JSON.parse(readFileSync(file, "utf8")), schema: "product-version/v1" };
+  writeFileSync(file, JSON.stringify(foreign));
+  // Edited in place, the ledger still names the bytes this source published: damage.
+  expect(() => selectedProductDir(root, slug)).toThrow(
+    "product version is missing, altered, or unregistered",
+  );
+  // Registered as those bytes, the way an older source's own publication left them.
+  const db = new Database(controllerLedgerPath(campaignDir(root, slug)));
+  db.run("UPDATE product_versions SET manifest_digest=? WHERE id=?", [hashJsonValue(foreign), "first"]);
+  db.close();
+  expect(() => selectedProductDir(root, slug)).toThrow(ProductVersionFromAnotherSource);
 });
 
 test("an unregistered publication or lost database cannot become a fresh selected product", () => {
@@ -195,6 +228,35 @@ test("publication preserves accepted file bytes and tool reference without impor
   rmSync(join(version, ".toolchain"));
   symlinkSync(join(root, "elsewhere"), join(version, ".toolchain"));
   expect(() => readProductVersion(root, slug, "first")).toThrow("tool-tree reference changed");
+});
+
+test("a battery binds a retained version only while its tool tree holds the bytes it was published with", () => {
+  const { root, source } = fixture();
+  const input = source("first");
+  const tools = join(input.acceptedSnapshot, ".toolchain");
+  mkdirSync(join(tools, "bin"), { recursive: true });
+  writeFileSync(join(tools, "bin", "analyse"), "#!/bin/sh\necho one\n");
+  const version = publishProductVersion(input);
+  bindProductMeasurement(root, slug, "first-battery", version);
+  // A run's own bytecode is not an edit, so a reused round binds the same version again.
+  mkdirSync(join(tools, "lib", "__pycache__"), { recursive: true });
+  writeFileSync(join(tools, "lib", "__pycache__", "cli.pyc"), "bytecode");
+  bindProductMeasurement(root, slug, "reused-battery", version);
+  // Same path, same length, other bytes: the link still names the tree it named at publication.
+  writeFileSync(join(tools, "bin", "analyse"), "#!/bin/sh\necho two\n");
+  expect(readProductVersion(root, slug, "first")).toBe(version);
+  expect(() => bindProductMeasurement(root, slug, "edited-battery", version)).toThrow(
+    "tool tree changed since publication",
+  );
+  // A reclaimed tree leaves history readable and the version unmeasurable.
+  rmSync(tools, { recursive: true });
+  expect(readProductVersion(root, slug, "first")).toBe(version);
+  expect(() => bindProductMeasurement(root, slug, "reclaimed-battery", version)).toThrow(
+    "tool tree changed since publication",
+  );
+  using ledger = ControllerLedger.open(campaignDir(root, slug));
+  expect(ledger.measuredProduct("reused-battery")).toBe("first");
+  expect(ledger.measuredProduct("edited-battery")).toBeNull();
 });
 
 test("changed file sets and linked product directories are refused even when link targets match", () => {

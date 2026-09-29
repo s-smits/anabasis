@@ -20,14 +20,14 @@
  * can be seen for what it is.
  *
  * Its walls are rule 4's. The packet holds the measured harness's public operating guide and tool
- * descriptions, the recorded public domain and task cards, and the solver's own traces; the case
- * outcome is the only verdict it carries. It never opens `verifier.json`, the Judge's record, an
+ * descriptions, the recorded public domain and task cards, and the solver's own traces, of which a
+ * solve that did not pass shows its structure and not its payloads (`solve-steps.ts` says why); the
+ * case outcome is the only verdict it carries. It never opens `verifier.json`, the Judge's record, an
  * accepted artifact or anything under the correctness model, so a change to protected verifier
  * detail cannot move its prompt, and `promptDigest` records the prompt so that is checkable. That
  * is also why the boundary and the falsifier may reach the next authoring pass through the
  * rebuild advice: nothing protected went in, so nothing protected can come out. It selects no
- * owner, and its confidence is computed from how many sampled cases it said the reading holds for,
- * never stated by the model.
+ * owner, and its support is counted from the sampled cases it named and the contrasts it cited.
  */
 import { campaignDir } from "../meta/campaign-root.ts";
 import { readJsonFileOrNull } from "../meta/completed-json.ts";
@@ -41,7 +41,7 @@ import {
   type RebuildAdvicePacket,
   environmentOwned,
   isStanding,
-  issueStatusWord,
+  issueFacts,
 } from "../author/rebuild-advice.ts";
 import { type VerifiedTraceRead, campaignTraceRoots, readVerifiedTraceUnder } from "../claim/trace-read.ts";
 import { classifyCaseOutcome } from "../claim/case-record.ts";
@@ -54,8 +54,8 @@ import {
   JUDGE_PUBLIC_CONTEXT_FILE,
   JUDGE_PUBLIC_CONTEXT_SCHEMA,
   projectDeclared,
-} from "../truth/declared-projection.ts";
-import { DEFAULT_HARNESS_SETTINGS, harnessSettings } from "../truth/harness-config.ts";
+} from "../correctness-bundle/declared-projection.ts";
+import { DEFAULT_HARNESS_SETTINGS, harnessSettings } from "../correctness-bundle/harness-config.ts";
 import { TOOLS_SPEC_FILE } from "../meta/bundle-layout.ts";
 import { BUILT_AGENTS_FILE } from "../solve/built-starter.ts";
 import { type JsonValue, isRecord, isString } from "../meta/json-shape.ts";
@@ -69,7 +69,7 @@ import { type CompiledSolve, type SolveWalls, batteryCensus, compileSolve } from
 import { DIAGNOSIS_SYSTEM_PROMPT, recordDiagnosisTool } from "./diagnosis-tool.ts";
 import { boundText } from "../meta/bounded-text.ts";
 
-export const DIAGNOSIS_READING_SCHEMA = "diagnosis-reading/v3";
+export const DIAGNOSIS_READING_SCHEMA = "diagnosis-reading/v4";
 
 /** Issues offered per reading, worst share first. */
 const MAX_ISSUES = 6;
@@ -149,11 +149,12 @@ interface DiagnosisReaderInput {
   readerTurn?: typeof runReaderTurn;
 }
 
-/** The issues this reader can say something about: standing, not the environment's, and about the
- *  solve rather than the evaluation. Worst share first. */
-export function diagnosableIssues(issues: readonly AdviceIssue[]): AdviceIssue[] {
+/** What this reader can speak to, worst share first: standing issues that battery `runId` saw, since
+ *  only its traces are read, and that belong to the solve, not the environment or the evaluation. */
+export function diagnosableIssues(issues: readonly AdviceIssue[], runId: string): AdviceIssue[] {
+  const solveSide = (issue: AdviceIssue) => !environmentOwned(issue) && !issue.kind.startsWith("judge-");
   return issues
-    .filter((issue) => isStanding(issue) && !environmentOwned(issue) && !issue.kind.startsWith("judge-"))
+    .filter((issue) => isStanding(issue) && issue.lastSeenRunId === runId && solveSide(issue))
     .sort((a, b) => b.count / Math.max(b.denominator, 1) - a.count / Math.max(a.denominator, 1));
 }
 
@@ -289,7 +290,7 @@ function issueOffer(issue: AdviceIssue, compiled: readonly Compiled[], read: Rec
   const key = issue.id.slice(0, 12);
   const detail = issue.detail === null ? "" : ` (${issue.detail})`;
   const block = [
-    `ISSUE ${key} — family ${issue.family}, kind ${issue.kind}${detail}: ${issue.count} of ${issue.denominator}, ${issueStatusWord(issue)}, first seen ${issue.firstSeenRunId}.`,
+    `ISSUE ${key} — family ${issue.family}, kind ${issue.kind}${detail}: ${issue.count} of ${issue.denominator}, ${issueFacts(issue)}.`,
     `Showing ${shown.length} of ${matching.length} failing solves; ${contrasts.length === 0 ? "no passing solve of this family to contrast" : `${contrasts.length} passing solve(s) of this family to contrast`}.`,
     ...(firstShown === undefined
       ? []
@@ -354,7 +355,7 @@ export function diagnosisPacket(
  */
 export async function readDiagnoses(input: DiagnosisReaderInput): Promise<DiagnosisReaderEvidence> {
   const { analysis, repoRoot } = input;
-  const diagnosable = diagnosableIssues(input.advice.issues);
+  const diagnosable = diagnosableIssues(input.advice.issues, analysis.runId);
   const issues = diagnosable.slice(0, MAX_ISSUES);
   const evidence: DiagnosisReaderEvidence = {
     schema: DIAGNOSIS_READING_SCHEMA,

@@ -23,18 +23,21 @@ import { fingerprintSlug } from "../../src/claim/fingerprint.ts";
 import { builtSolveIsolation } from "../../src/run/built-agent-runtime.ts";
 import { compilePublicArtifactSchema } from "../../src/solve/public-artifact-schema.ts";
 import type { RunCondition } from "../../src/claim/case-record.ts";
-import type { Brief } from "../../src/truth/brief.ts";
-import type { VerificationInput } from "../../src/truth/build-deps.ts";
-import { type VerificationRunnerOptions, makeVerify } from "../../src/truth/verification-runner.ts";
-import { type Toolset } from "../../src/truth/contracts.ts";
+import type { Brief } from "../../src/correctness-bundle/brief.ts";
+import type { VerificationInput } from "../../src/correctness-bundle/build-deps.ts";
+import {
+  type VerificationRunnerOptions,
+  makeVerify,
+} from "../../src/correctness-bundle/verification-runner.ts";
+import { type Toolset } from "../../src/correctness-bundle/contracts.ts";
 import {
   MATCHING_BRIEF,
   MATCHING_REJECTS,
   MATCHING_EVALUATOR_SOURCE,
   MATCHING_REFERENCE_SOURCE,
 } from "./matching-fixture.ts";
-import type { BuildTask, TaskBattery } from "../../src/truth/tasks.ts";
-import { type Solver } from "../../src/truth/solve.ts";
+import type { BuildTask, TaskBattery } from "../../src/correctness-bundle/tasks.ts";
+import { type Solver } from "../../src/correctness-bundle/solve.ts";
 import { double, required } from "./doubles.ts";
 import { runtimeProcess } from "../../src/meta/process.ts";
 

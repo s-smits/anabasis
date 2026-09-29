@@ -28,6 +28,7 @@ import {
   readFileSync,
   readlinkSync,
   realpathSync,
+  renameSync,
   rmSync,
   symlinkSync,
   unlinkSync,
@@ -47,8 +48,8 @@ import {
   workspaceStatus,
 } from "../src/author/domain-repo.ts";
 import { MEMORY_FILE, builderMemoryBlock } from "../src/author/builder-memory.ts";
-import { BUILT_PRESET_IDS, presetToolNames } from "../src/truth/built-presets.ts";
-import { loadBuiltStarterFactory } from "../src/truth/contracts.ts";
+import { BUILT_PRESET_IDS, presetToolNames } from "../src/correctness-bundle/built-presets.ts";
+import { loadBuiltStarterFactory } from "../src/correctness-bundle/contracts.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { SAFEGUARDS_LOG_FILE, createSafeguardContext } from "../src/meta/safeguard.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
@@ -90,6 +91,15 @@ function seedWithUvVenv(seed: string, home: string): string {
   chmodSync(join(bin, "f2py"), 0o755);
   return python;
 }
+
+/** A compiled file naming the adopted tree, as a sketch the Builder built inside a tool's scratch
+ *  directory carries its source path in its debug strings. Its NUL bytes make it a binary, whose
+ *  strings a text replacement would break, so the copy can only drop it. */
+const compiledNaming = (adopted: string): Buffer =>
+  Buffer.concat([
+    Buffer.from([0xca, 0xfe, 0xba, 0xbe, 0, 0, 0, 2]),
+    Buffer.from(`${adopted}/private-runtime\0`),
+  ]);
 
 const gitOut = (dir: string, args: string[]): string => execTextSync("git", ["-C", dir, ...args]).trim();
 
@@ -176,7 +186,7 @@ describe("the domain workspace repository", () => {
     const dir = tmp();
     initWorkspace(dir, seed);
     const owned = readFileSync(join(dir, ".toolchain/venv/bin/f2py"), "utf8");
-    expect(owned).toContain(`'''exec' "${join(dir, ".toolchain/venv/bin/python3")}" "$0" "$@"`);
+    expect(owned).toContain(`'''exec' "${join(realpathSync(dir), ".toolchain/venv/bin/python3")}" "$0" "$@"`);
     expect(owned).not.toContain(python);
     expect(owned).toContain("from numpy.f2py.f2py2e import main");
   });
@@ -212,7 +222,7 @@ describe("the domain workspace repository", () => {
     const dir = tmp();
     initWorkspace(dir, seed);
     expect(readFileSync(join(dir, ".toolchain/venv/pyvenv.cfg"), "utf8")).toBe(
-      `home = ${join(dir, ".toolchain")}/py/bin\n`,
+      `home = ${join(realpathSync(dir), ".toolchain")}/py/bin\n`,
     );
     expect(readFileSync(join(adopted, "venv/pyvenv.cfg"), "utf8")).toBe(`home = ${adopted}/py/bin\n`);
 
@@ -222,6 +232,25 @@ describe("the domain workspace repository", () => {
     const besideDir = tmp();
     initWorkspace(besideDir, sibling);
     expect(readFileSync(join(besideDir, ".toolchain/venv/pyvenv.cfg"), "utf8")).toBe(`home = ${beside}\n`);
+  });
+
+  it("names the repair tree by its real path when the workspace is reached through a linked ancestor", () => {
+    // A run worktree reaches its campaigns through a `campaigns` link, and the walls grant the tool
+    // tree by its realpath, so a venv home or launcher spelled through the link starts no Python.
+    const seed = tmp();
+    const adopted = join(realpathSync(seed), ".toolchain");
+    seedWithUvVenv(seed, `${adopted}/py/bin`);
+    const real = realpathSync(tmp());
+    const linked = join(tmp(), "campaigns");
+    symlinkSync(real, linked);
+    const dir = join(linked, "workspace");
+    initWorkspace(dir, seed);
+    const owned = join(real, "workspace", ".toolchain");
+    const config = readFileSync(join(dir, ".toolchain/venv/pyvenv.cfg"), "utf8");
+    expect(config).toBe(`home = ${owned}/py/bin\n`);
+    const launcher = readFileSync(join(dir, ".toolchain/venv/bin/f2py"), "utf8");
+    expect(launcher).toContain(`'''exec' "${owned}/venv/bin/python3" "$0" "$@"`);
+    expect(`${config}${launcher}`).not.toContain(linked);
   });
 
   it("names a partial copy an interrupted pass left beside the tool tree, and still seeds", () => {
@@ -269,7 +298,7 @@ describe("the domain workspace repository", () => {
     seedBundles(seed);
     const tools = join(seed, TOOLCHAIN);
     mkdirSync(join(tools, "bin"), { recursive: true });
-    writeFileSync(join(tools, "custom"), `#!/bin/sh\nexec "${realpathSync(tools)}/private-runtime"\n`);
+    writeFileSync(join(tools, "custom"), compiledNaming(realpathSync(tools)));
     chmodSync(join(tools, "custom"), 0o755);
     writeFileSync(join(tools, "bin/plain"), '#!/bin/sh\nexec cat "$@"\n');
     chmodSync(join(tools, "bin/plain"), 0o755);
@@ -321,7 +350,7 @@ describe("the domain workspace repository", () => {
     seedBundles(seed);
     const tools = join(seed, TOOLCHAIN);
     mkdirSync(join(tools, "bin"), { recursive: true });
-    writeFileSync(join(tools, "custom"), `#!/bin/sh\nexec "${realpathSync(tools)}/private-runtime"\n`);
+    writeFileSync(join(tools, "custom"), compiledNaming(realpathSync(tools)));
     chmodSync(join(tools, "custom"), 0o755);
     writeFileSync(join(tools, "bin/plain"), '#!/bin/sh\nexec cat "$@"\n');
     chmodSync(join(tools, "bin/plain"), 0o755);
@@ -333,6 +362,56 @@ describe("the domain workspace repository", () => {
     const copied = log.lines().filter((line) => line.includes("54-rebuild-seed-tool-tree-copied"));
     expect(copied).toHaveLength(1);
     expect(copied[0]).toContain("dropped=1 droppedFirst=custom");
+  });
+
+  it("moves a script that runs a file in the adopted tree by absolute path, so the seed keeps the tool", () => {
+    // A Builder's wrapper names the program it runs by absolute path into its own epoch, and the seed
+    // used to drop every such script, so each round re-authored the verifier's only tool.
+    const seed = tmp();
+    seedBundles(seed);
+    const tools = join(seed, TOOLCHAIN);
+    mkdirSync(join(tools, "bin"), { recursive: true });
+    const adopted = realpathSync(tools);
+    writeFileSync(join(tools, "answer.txt"), "seeded answer\n");
+    const wrapper = `#!/bin/sh\n# authored analysis\nexec /bin/cat "${adopted}/answer.txt" "$@"\n`;
+    writeFileSync(join(tools, "bin/analyze"), wrapper);
+    chmodSync(join(tools, "bin/analyze"), 0o755);
+    const log = safeguardLog();
+    const dir = tmp();
+    initWorkspace(dir, seed, log.context);
+    const owned = join(realpathSync(dir), TOOLCHAIN);
+    expect(readFileSync(join(dir, ".toolchain/bin/analyze"), "utf8")).toBe(
+      wrapper.replace(`${adopted}/`, `${owned}/`),
+    );
+    expect(readFileSync(join(tools, "bin/analyze"), "utf8")).toBe(wrapper);
+    // With the adopted tree gone, the copy still runs, so nothing it names resolves there.
+    renameSync(tools, `${tools}-moved`);
+    expect(execTextSync(join(dir, ".toolchain/bin/analyze"), [])).toBe("seeded answer\n");
+    const copied = log.lines().filter((line) => line.includes("54-rebuild-seed-tool-tree-copied"));
+    expect(copied).toHaveLength(1);
+    expect(copied[0]).toContain("launchersRewritten=1");
+    expect(copied[0]).toContain("dropped=0");
+  });
+
+  it("drops a script naming the adopted tree when the repair path could not stand where that path stood", () => {
+    // Nothing parses the script, so its path may sit bare, where a space in the repair path would
+    // split one argument into two. The Python header quotes its own target and still moves.
+    const seed = tmp();
+    const python = seedWithUvVenv(seed, "/host/python");
+    writeFileSync(join(seed, ".toolchain/run"), `#!/bin/sh\nexec ${python} "$@"\n`);
+    chmodSync(join(seed, ".toolchain/run"), 0o755);
+    const dir = join(tmp(), "camp aign");
+    mkdirSync(dir, { recursive: true });
+    const log = safeguardLog();
+    initWorkspace(dir, seed, log.context);
+    expect(existsSync(join(dir, ".toolchain/run"))).toBe(false);
+    expect(readFileSync(join(dir, ".toolchain/venv/bin/f2py"), "utf8")).toContain(
+      join(realpathSync(dir), TOOLCHAIN),
+    );
+    const copied = log.lines().filter((line) => line.includes("54-rebuild-seed-tool-tree-copied"));
+    expect(copied).toHaveLength(1);
+    expect(copied[0]).toContain("launchersRewritten=1 singleQuoted=1");
+    expect(copied[0]).toContain("dropped=1 droppedFirst=run");
   });
 
   it("drops a launcher whose destination cannot be quoted, rather than ending the rebuild", () => {

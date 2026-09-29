@@ -22,6 +22,7 @@ import { OBSERVED_INTERFACES } from "../../src/observe/run-observer.ts";
 import { builderToolFindings, builderToolsReport } from "./builder-tools.ts";
 import { builderToolJourneysReport } from "./builder-tool-journeys.ts";
 import { judgeReport } from "./judge.ts";
+import { checksReport } from "./checks.ts";
 import { outcomeReport } from "./metrics.ts";
 import {
   type CaseFilters,
@@ -51,6 +52,7 @@ const USAGE = [
   "  outcome <campaignDir> <runId> --observations [filters] searchable lifecycle events",
   "  outcome <campaignDir> <runId> --trace <taskId>        one digest-verified case trace",
   "  outcome <campaignDir> <runId> --judge                 validated judge census evidence",
+  "  outcome <campaignDir> <runId> --checks                every check run, its time and its tool runs",
   "",
   "case filters: --result <pass|fail|unaccepted|non-result> --variant <variant> --family <name>",
   "              --tool <name> --telemetry <state> --query <text> --limit <n>",
@@ -69,7 +71,8 @@ type Mode =
   | "case"
   | "observations"
   | "trace"
-  | "judge";
+  | "judge"
+  | "checks";
 
 interface Args {
   positional: string[];
@@ -117,6 +120,7 @@ const MODES = new Map<string, Mode>([
   ["--cases", "cases"],
   ["--observations", "observations"],
   ["--judge", "judge"],
+  ["--checks", "checks"],
 ]);
 
 function setMode(args: Args, mode: Mode): void {
@@ -302,6 +306,7 @@ function render(args: Args): string {
     return JSON.stringify(queryObservations(campaignDir, selector, filters), null, 2);
   }
   if (mode === "judge") return JSON.stringify(judgeReport(campaignDir, selector), null, 2);
+  if (mode === "checks") return JSON.stringify(checksReport(campaignDir, selector), null, 2);
   if (mode === "scorecard") {
     return JSON.stringify(campaignScorecard(campaignDir, selector, args.bundle, args.pack), null, 2);
   }

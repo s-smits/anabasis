@@ -12,12 +12,12 @@ import { afterAll, describe, expect, it } from "bun:test";
 import { OPUS_SANDBOX, TRUSS_CRASH, blockingRow } from "./helpers/builder-campaign.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import { double } from "./helpers/doubles.ts";
-import { controllerValidatedFinding } from "../src/truth/brief.ts";
+import { controllerValidatedFinding } from "../src/correctness-bundle/brief.ts";
 import { makeCensusGate } from "../src/run/census-gate.ts";
 import type { VerifierExecutionEvidence } from "../src/verify/verifier-port.ts";
 import type { BuiltHarness, CampaignFeedback } from "../src/author/campaign-types.ts";
-import { TOOL_REFUSED_CODE } from "../src/truth/grounding-coverage.ts";
-import { VerifierExecutionNonResult } from "../src/truth/verifier-nonresult.ts";
+import { TOOL_REFUSED_CODE } from "../src/correctness-bundle/grounding-coverage.ts";
+import { VerifierExecutionNonResult } from "../src/correctness-bundle/verifier-nonresult.ts";
 
 afterAll(cleanupScratch);
 
@@ -174,10 +174,13 @@ describe("a census that ends in a verifier non-result", () => {
     expect(probeCalls).toBe(probes);
     expect(feedback.map((row) => row.owner)).toEqual([owner]);
     if (owner !== "environment") return;
-    // An environment row carries no repairable path, and the census records a non-result.
+    // An environment row names the host step it stopped on, with no repairable path, and the
+    // census records a non-result.
     expect(feedback[0]?.severity).toBe("blocking");
     expect(feedback[0]?.claim).toContain(`tool "${evidence.toolId}" (${evidence.outcome}), twice`);
-    expect(feedback[0]?.findings ?? []).toHaveLength(0);
+    expect((feedback[0]?.findings ?? []).map((found) => [found.code, found.path])).toEqual([
+      [evidence.outcome === "sandbox" ? "tool-wall-refusal" : "tool-unavailable", "environment"],
+    ]);
     expect(read("census.json").verdict).toMatchObject({
       kind: "non-result",
       evidence: { path: "environment-non-result.json", sha256: expect.any(String) },
@@ -193,6 +196,65 @@ describe("a census that ends in a verifier non-result", () => {
     });
     expect(feedback[0]?.owner).toBe("correctness-model/evaluator.ts");
     expect(feedback[0]?.findings?.[0]?.detail).not.toContain("t17");
+  });
+
+  const GRADING_TIMEOUT: VerifierExecutionEvidence = {
+    ...TRUSS_CRASH,
+    phase: "solvability",
+    subjectId: "self:t17",
+    attempt: 2,
+    outcome: "timeout",
+    timedOut: true,
+    exitCode: null,
+    signal: "SIGTERM",
+    durationMs: 60_210,
+    nonResultReason: 'tool "truss-contract-checker" exceeded 60000ms; process group absence was verified',
+  };
+
+  it("gives a grading timeout that recurred alone both timings, the slowest completed run and the host load", async () => {
+    const { feedback } = await runGate("rerun-timeout", {
+      probeControls: async () => ({ findings: [] }),
+      solvability: async () => {
+        throw new VerifierExecutionNonResult(GRADING_TIMEOUT, {
+          first: { ...GRADING_TIMEOUT, attempt: 1, durationMs: 60_140 },
+          slowestCompletedMs: 57_300,
+          load: { first: 11.25, rerun: 3.5, cores: 8 },
+        });
+      },
+    });
+    const finding = feedback[0]?.findings?.[0];
+    expect(finding?.code).toBe("tool-timeout");
+    for (const fact of [
+      'outcome "timeout": tool "truss-contract-checker" exceeded 60000ms',
+      "(attempt 2)",
+      "timed out first beside the other reference tasks after 60140 ms, then again when rerun alone",
+      'slowest run of tool "truss-contract-checker" on check "design-contract" that completed in this census took 57300 ms',
+      "the ceiling is this harness's own setting gate.tool_run_seconds in agent/config.yaml, now 300000 ms and without a host maximum",
+      "one check with all its tool runs is held to gate.check_seconds, now 600000 ms",
+      "raising the ceiling where it needs to",
+      "Host load average was 11.3 at the first timeout and 3.5 at the second, on 8 cores",
+    ]) {
+      expect(finding?.detail).toContain(fact);
+    }
+    expect(finding?.detail).not.toContain("t17");
+    expect(finding?.detail).not.toContain("up to the ceiling,");
+  });
+
+  it("adds no rerun sentence to a timeout that never earned a rerun", async () => {
+    const { feedback } = await settle("unrerun-timeout", { ...GRADING_TIMEOUT, attempt: 1 });
+    const detail = feedback[0]?.findings?.[0]?.detail ?? "";
+    expect(feedback[0]?.findings?.[0]?.code).toBe("tool-timeout");
+    expect(detail).not.toContain("rerun alone");
+    expect(detail).not.toContain("Host load");
+    // The one fact a Builder cannot see from its session: the wall is its own to raise.
+    expect(detail).toContain(
+      "The wall it met is the evaluator's timeoutMs capped by gate.tool_run_seconds in agent/config.yaml (default 300 s), which the harness may raise as far as the tool needs.",
+    );
+  });
+
+  it("names the wall's source only on a run that timed out", async () => {
+    const { feedback } = await settle("crash-no-wall", TRUSS_CRASH);
+    expect(feedback[0]?.findings?.[0]?.detail).not.toContain("gate.tool_run_seconds");
   });
 
   it("drains a reference solve still running past the wall before the retry starts", async () => {
@@ -255,7 +317,11 @@ describe("a census that ends in a verifier non-result", () => {
       "correctness-model/evaluator.ts",
       "correctness-model/evaluator.ts",
     ]);
-    expect(codesOf(feedback)).toEqual(["DISCRIMINATION_REJECT_PASSED", "SOLVABILITY_CENSUS_BLOCKED"]);
+    expect(codesOf(feedback)).toEqual([
+      TOOL_REFUSED_CODE,
+      "DISCRIMINATION_REJECT_PASSED",
+      "SOLVABILITY_CENSUS_BLOCKED",
+    ]);
     const census = read("census.json");
     expect(census.verdict).toMatchObject({ kind: "non-result" });
     expect(census.blocking).toHaveLength(3);

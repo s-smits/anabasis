@@ -17,6 +17,24 @@ import type { OptionalEnvValues } from "./scrub-env.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hasText, textOr } from "../meta/text.ts";
 import { readJsonFile } from "../meta/completed-json.ts";
+import { sha256 } from "../meta/digest.ts";
+import { compareCodeUnits } from "../meta/stable-json.ts";
+import type { RepoEnv } from "./env.ts";
+import { getAccountId } from "./oauth/openai-codex.ts";
+import type { BackendKind, ResolvedSlots } from "./resolve.ts";
+
+/** Which account a provider kind books against, without the credential that opens it: the source
+ *  that supplied the credential (`process`, an env file or the stored login, as `login status`
+ *  names it) and a 16-hex prefix of the sha256 of the account's identity. Codex digests the
+ *  ChatGPT account id its access token claims, because the token itself changes at every refresh
+ *  while the account does not; Claude and OpenRouter have no identity apart from the credential,
+ *  so theirs digests the credential. Sixteen hex characters tell two accounts apart and cannot be
+ *  turned back into the token. Null digest means no credential was found. */
+type CredentialProvenance = {
+  kind: BackendKind;
+  source: string | null;
+  accountDigest: string | null;
+};
 
 type LoginState = { ok: true } | { ok: false; reason: string };
 
@@ -138,4 +156,40 @@ export function openrouterLoginState(env: OptionalEnvValues): LoginState {
   }
   if (hasText(env[apiKeyEnv])) return { ok: true };
   return { ok: false, reason: `${apiKeyEnv} is not set` };
+}
+
+function accountDigest(identity: string | null | undefined): string | null {
+  return hasText(identity) ? sha256(identity).slice(0, 16) : null;
+}
+
+export function credentialProvenance(kind: BackendKind, repo: RepoEnv): CredentialProvenance {
+  const { env, sources } = repo;
+  if (kind === "codex") {
+    const read = readCodexAuthJson(env);
+    return {
+      kind,
+      source: read.ok ? codexAuthFile(env) : null,
+      accountDigest: read.ok ? accountDigest(getAccountId(read.token)) : null,
+    };
+  }
+  let key: string;
+  if (kind === "claude") {
+    key = hasText(env.CLAUDE_CODE_OAUTH_TOKEN) ? "CLAUDE_CODE_OAUTH_TOKEN" : "ANTHROPIC_API_KEY";
+  } else {
+    try {
+      key = openRouterEndpointFrom(env).apiKeyEnv;
+    } catch {
+      return { kind, source: null, accountDigest: null };
+    }
+  }
+  const digest = accountDigest(env[key]);
+  return { kind, source: digest === null ? null : (sources[key] ?? null), accountDigest: digest };
+}
+
+/** One provenance row per distinct kind the run's slots use, in kind order, so the opening names
+ *  every account the run can spend against and none it cannot. */
+export function slotCredentials(slots: ResolvedSlots, repo: RepoEnv): CredentialProvenance[] {
+  const kinds = new Set([slots.builder.kind, slots.built.kind]);
+  if (slots.review.enabled) kinds.add(slots.review.kind);
+  return [...kinds].sort(compareCodeUnits).map((kind) => credentialProvenance(kind, repo));
 }

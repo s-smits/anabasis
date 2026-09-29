@@ -19,17 +19,15 @@
  * finding detail does not either: an identifier and its path are enough to say "you already
  * produced this".
  */
-import { boundText } from "../meta/bounded-text.ts";
 import { readFileSync } from "../meta/filesystem.ts";
 import { basename, dirname, join } from "../meta/path.ts";
 import { ITERATION_FILE, listIterationDirs } from "../builder/campaign-iterations.ts";
 import { campaignEpochOrder } from "./campaign-epoch.ts";
-import type { ContractFinding } from "../truth/brief.ts";
-import { controllerValidatedFindings, projectFindingForAuthor } from "../truth/brief.ts";
+import type { ContractFinding } from "../correctness-bundle/brief.ts";
+import { controllerValidatedFindings, projectFindingForAuthor } from "../correctness-bundle/brief.ts";
 import type { IterationEvidence } from "./campaign-types.ts";
 import { parseJsonAs } from "../meta/json-runtime.ts";
 import { isNumber, isRecord } from "../meta/json-shape.ts";
-import { parseExperimentSubmission } from "./experiment-plan.ts";
 
 /** The code every memory finding carries in the Builder's opening advisory. */
 export const ITERATION_MEMORY_CODE = "prior-iteration-memory";
@@ -40,9 +38,6 @@ const LOOKBACK = 4;
 
 /** Bound historical reminders; current blocking feedback has its own complete delivery. */
 const MAX_REFUSALS = 12;
-
-/** Bytes kept of a recorded proposal's gap and of its change, each. */
-const PROPOSAL_FIELD_BYTES = 240;
 
 /** A completed pass with its memory label: `NN` in this epoch, `epoch-<key>/NN` in an earlier one,
  *  since ordinals restart at 01 in every epoch. */
@@ -110,27 +105,17 @@ function readCompleted(campaignDir: string): CompletedPass[] {
     .slice(-LOOKBACK);
 }
 
-/** One line per completed pass: what it ended as, which owner it named, how hard it worked and
- *  what it proposed. A recorded proposal runs to about 2,000 bytes with its digest, so the line
- *  keeps the parts that answer a repeat: the gap and change say what was tried, the target what was
- *  expected, and the admitted scope what the bytes actually did. */
+/** One line per completed pass: what it ended as, which owner it named, how hard it worked, and
+ *  what the accepted bytes were admitted as, which the bytes alone decide. */
 function summarise({ evidence, label }: CompletedPass): string {
   const focus = evidence.focusOwner ? `, part ${evidence.focusOwner}` : "";
   const retried = Object.entries(evidence.attempts)
     .filter(([, count]) => count > 1)
     .map(([session, count]) => `${session} x${count}`);
   const retries = retried.length === 0 ? "" : ` (retried ${retried.join(", ")})`;
-  const proposal = parseExperimentSubmission(evidence.experimentProposal);
-  if (proposal === null) return `${label} ${evidence.outcome}${focus}${retries}`;
-  const target = `, target ${proposal.target.comparator} ${proposal.target.verifiedPasses} verified passes`;
-  const admitted =
-    evidence.experimentScope === undefined
-      ? "not admitted"
-      : `admitted as ${evidence.experimentScope.actual}`;
-  const gap = boundText(proposal.gap, PROPOSAL_FIELD_BYTES).shown;
-  const change = boundText(proposal.change, PROPOSAL_FIELD_BYTES).shown;
-  const proposed = `; proposed ${proposal.scope} scope, gap "${gap}", change "${change}"${target}; ${admitted}`;
-  return `${label} ${evidence.outcome}${focus}${retries}${proposed}`;
+  const parts = [`${label} ${evidence.outcome}${focus}${retries}`];
+  if (evidence.experimentScope !== undefined) parts.push(`admitted as ${evidence.experimentScope.actual}`);
+  return parts.join("; ");
 }
 
 /**

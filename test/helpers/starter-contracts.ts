@@ -4,19 +4,11 @@
  * both sides on the same bytes.
  */
 import { readFileSync } from "../../src/meta/filesystem.ts";
-import type { Brief } from "../../src/truth/brief.ts";
+import type { Brief } from "../../src/correctness-bundle/brief.ts";
 import { parseJsonAs } from "../../src/meta/json-runtime.ts";
 
 export const STARTER_ENTRY = readFileSync(
   new URL("../../starters/pi-built-harness/STARTER.md", import.meta.url),
-  "utf8",
-);
-
-/** The graded corpus the entry links to. Its four tiers are the scale
- *  `.claude/skills/whole-run-investigation/classifier/query-complexity.mjs` later classifies a
- *  measured battery against, so the Builder authors against the scale its own tasks are read on. */
-export const STARTER_LADDER = readFileSync(
-  new URL("../../starters/pi-built-harness/starter-pack/difficulty-ladder.md", import.meta.url),
   "utf8",
 );
 

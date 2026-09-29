@@ -4,6 +4,7 @@ import { afterAll, describe, expect, it } from "bun:test";
 import { CASE_TRACE_SCHEMA } from "../src/backends/trace-capture.ts";
 import { sha256 } from "../src/meta/digest.ts";
 import { caseRecordRow } from "./helpers/case-record-row.ts";
+import { required } from "./helpers/doubles.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import { CLASS_NAMES, type ProseRow, anchorVector, axis, writeSession } from "./helpers/prose-session.ts";
 import { selectCampaignEpoch } from "../src/author/campaign-epoch.ts";
@@ -12,17 +13,17 @@ import {
   DRIFT_RUN,
   consecutive,
   driftRuns,
-} from "../.claude/skills/whole-run-investigation/classifier/prose-classify.mjs";
+} from "../.claude/skills/whole-run-investigation/classifier/prose-classify.ts";
 import {
   RESTATED_COSINE,
   buildNarrative,
   renderNarrative,
   uuidV7Ms,
-} from "../.claude/skills/whole-run-investigation/classifier/run-narrative.mjs";
+} from "../.claude/skills/whole-run-investigation/classifier/run-narrative.ts";
 import {
   buildTimeline,
   classifyTimeline,
-} from "../.claude/skills/whole-run-investigation/scripts/timeline.mjs";
+} from "../.claude/skills/whole-run-investigation/scripts/timeline.ts";
 
 const RUN = "r1";
 const KICKOFF = "one line";
@@ -174,7 +175,7 @@ describe("run narrative", () => {
     expect(narrative.calibration).toMatchObject({ driftRun: DRIFT_RUN, restatedCosine: RESTATED_COSINE });
 
     const slots = slotsOf(narrative);
-    const [session] = slots.builder.sessions;
+    const session = required(slots.builder.sessions[0], "first builder session");
     expect(session).toMatchObject({
       where: `${EPOCH}/s01`,
       anchor: "execution-record",
@@ -189,10 +190,10 @@ describe("run narrative", () => {
       atMs: STARTED,
       class: "intro",
     });
-    expect(session.units[2].atMs).toBe(STARTED + 120_000);
+    expect(session.units[2]?.atMs).toBe(STARTED + 120_000);
 
     // The solve turn carries no time of its own, so its unit is placed by the case window alone.
-    const [entry] = slots.built.cases;
+    const entry = required(slots.built.cases[0], "first built case");
     expect(entry).toMatchObject({
       taskId: "t-01",
       outcome: "verified",

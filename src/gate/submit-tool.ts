@@ -11,8 +11,7 @@ import type {
   BuilderExecutionRecorder,
   BuilderSubmitAttempt,
 } from "../author/builder-execution.ts";
-import type { CandidateSnapshot } from "../author/candidate-check.ts";
-import type { ExperimentSubmission } from "../author/experiment-plan.ts";
+import { type CandidateSnapshot, conditionKey } from "../author/candidate-check.ts";
 import {
   type AuthorCheckStage,
   type BuilderAuthorFeedback,
@@ -20,7 +19,7 @@ import {
   authorFindingOverview,
 } from "../builder/author-feedback.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
-import { type ContractFinding, controllerValidatedFinding } from "../truth/brief.ts";
+import { type ContractFinding, controllerValidatedFinding } from "../correctness-bundle/brief.ts";
 
 /** What the controller read the submitted bytes as: the identity of the two contract roots at the
  *  submitted commit. The execution record compares submissions on this rather than on the commit,
@@ -43,9 +42,10 @@ export type BuilderSubmitOutcome =
       terminal?: boolean;
       /** A controller stop that did not validate or inspect a candidate tree. */
       kind?: "controller-terminal";
-      experimentProposal?: ExperimentSubmission;
-      /** Where the plan and this round's rehearsals disagree: advice, never a refusal. */
-      advice?: readonly string[];
+      /** The stages that reached a verdict and each code under its stage (`stagesOf`), for a
+       *  refusal a gate run produced; `stage` names only the first stage that refused. */
+      stagesRun?: string[];
+      stagedCodes?: string[];
     } & SubmittedTree);
 
 type Refused = Extract<BuilderSubmitOutcome, { ok: false }>;
@@ -74,8 +74,9 @@ export const SUBMIT_DESCRIPTION =
 
 interface SubmitToolBinding {
   submit(input: { turn: number }): BuilderSubmitOutcome | Promise<BuilderSubmitOutcome>;
-  /** Asked before any attempt is counted. Text it returns is this call's whole result: nothing was
-   *  submitted, and no attempt is recorded. */
+  /** Asked before any attempt is counted: an Epoch review showing a blocking finding the Builder has
+   *  not read. Its text is this call's whole result: nothing was submitted, no attempt is recorded,
+   *  and no strike is counted. */
   hold?: () => Promise<string | null>;
   state: SubmitSessionState;
   recorder: BuilderExecutionRecorder;
@@ -156,7 +157,6 @@ export function renderRefusal(
     ...history,
     ...echo,
     ...drift,
-    ...(outcome.advice ?? []),
   ].join("\n");
 }
 
@@ -175,7 +175,6 @@ async function settleSubmit(binding: SubmitToolBinding) {
   // Read before this attempt joins the record, so it names a strictly earlier submission.
   const closest = outcome.ok ? null : recorder.fewestFindingsRefusal(outcome.stage);
   const attempt = recorder.recordSubmit({
-    ...keyIfDefined("experimentProposal", outcome.experimentProposal),
     kind: outcome.ok ? "candidate" : (outcome.kind ?? "candidate"),
     turn: state.activeTurn,
     outcome: outcome.ok ? "accepted" : "refused",
@@ -193,7 +192,7 @@ async function settleSubmit(binding: SubmitToolBinding) {
     return {
       ...text(
         `Accepted. Agent ${outcome.fingerprint.agentHash.slice(0, 12)}, correctnessModel ${outcome.fingerprint.correctnessModelHash.slice(0, 12)}, ${outcome.changedPaths.length} changed paths. The candidate is fixed at this accepted tree: the build is complete, and later file edits are not part of it.`,
-        { outcome: "accepted", candidateId: outcome.snapshotId },
+        { outcome: "accepted", candidateId: outcome.snapshotId, conditionId: conditionKey(outcome) },
       ),
       terminate: true,
     };
@@ -209,6 +208,14 @@ async function settleSubmit(binding: SubmitToolBinding) {
       outcome: "refused",
       stage: outcome.stage,
       findings: outcome.findings.length,
+      ...keyIfDefined(
+        "findingCodes",
+        outcome.findings.length === 0
+          ? undefined
+          : [...new Set(outcome.findings.map((finding) => finding.code))].sort(),
+      ),
+      ...keyIfDefined("stagesRun", outcome.stagesRun),
+      ...keyIfDefined("stagedCodes", outcome.stagedCodes),
       ...keyIfDefined("reason", state.terminal ? "terminal-refusal" : undefined),
     }),
     terminate: state.terminal,
@@ -216,7 +223,7 @@ async function settleSubmit(binding: SubmitToolBinding) {
 }
 
 export function makeSubmitTool(binding: SubmitToolBinding): AgentTool<typeof SubmitParams> {
-  const { state } = binding;
+  const { state, recorder } = binding;
   let inFlight = false;
   return {
     name: "submit",
@@ -250,9 +257,16 @@ export function makeSubmitTool(binding: SubmitToolBinding): AgentTool<typeof Sub
       }
       inFlight = true;
       try {
+        // A session with no review beside it binds no hold and awaits nothing here, so the gate run
+        // this call starts is still published before its first await and a preview started
+        // meanwhile joins it.
+        const started = Date.now();
         const held = binding.hold === undefined ? null : await binding.hold();
-        // Gate audit 2026-09-25 (docs/gate-audit.md, review-unread-hold): kept: the Builder reads the review's findings before a submit ends the round they apply to
-        if (held !== null) return text(held, { outcome: "blocked", reason: "review-unread" });
+        if (held !== null) {
+          // The review's findings ride this call's result, as they ride any other tool's.
+          recorder.authoringReviewed(state.activeTurn, "submit", held.length, Date.now() - started);
+          return text(held, { outcome: "blocked", reason: "review-unread" });
+        }
         state.attempts += 1;
         return await settleSubmit(binding);
       } finally {

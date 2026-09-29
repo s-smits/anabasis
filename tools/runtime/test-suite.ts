@@ -18,8 +18,9 @@
  * three times itself, while a laptop that merely looks busy keeps its workers. Then, when the
  * first process fails, the run is attributed before it is believed: if a clock ended every
  * failure, or the host passed twice its cores in load while they ran, the failed files run again
- * alone and that verdict is the suite's. A failure on a quiet host, and more failed files than a
- * busy host explains, both stand as they were printed.
+ * alone, beside any whose worker crashed or that Bun never finished, and that verdict is the
+ * suite's. A failure on a quiet host, more of those files than a busy host explains, and a run
+ * that bailed before reaching the rest all stand as they were printed.
  *
  * The wall. `--timeout=60000` bounds each test, not the worker. Bun 1.4 sometimes leaves a
  * `--test-worker` spinning at full CPU with exited, unreaped children after a subprocess-heavy
@@ -92,7 +93,8 @@ const COMMON_FLAGS = [
  *  assertion: a run where the two agree failed on time alone. `errors` counts what Bun printed
  *  outside any test, which appears in no result line and so in neither set. `interrupted` holds the
  *  files Bun said it was still running when interrupted, or whose worker crashed, and `incomplete`
- *  those it said it had not started, or aborted, or had no live worker for. */
+ *  those it said it had not started, or aborted, or had no live worker for. `bailed` says Bun
+ *  stopped at `--bail`, leaving files it never ran and so never named. */
 export interface WalledRun {
   exitCode: number | null;
   reported: Set<string>;
@@ -103,7 +105,17 @@ export interface WalledRun {
   failures: number;
   clockEnded: number;
   errors: number;
+  bailed: boolean;
   peakLoad: number;
+}
+
+/** What a process printed, before its exit and the wall's load reading join it. */
+type ProcessOutput = Omit<WalledRun, "exitCode" | "peakLoad">;
+
+/** `run` fills as `scanLine` reads each line of one process's stderr. */
+interface OutputReader {
+  run: ProcessOutput;
+  scanLine: (line: string) => void;
 }
 
 /** What the output relay and the wall share while one process runs: the relay resets the clock,
@@ -114,9 +126,16 @@ interface WallState {
   walled: boolean;
 }
 
-/** Bun names a per-test wall on the line after the result. Either way the clock decided, and
- *  nothing was asserted about the code. */
-const TIMED_OUT_NOTICE = /^\s*\^ this test timed out after \d+ms\.$/;
+/** Bun names a per-test wall on the line after the result, in one of two sentences: the test's
+ *  own, or a hook's, which is also what a timed-out `beforeAll` or `afterAll` prints. Either way
+ *  the clock decided, and nothing was asserted about the code. The duration on the result line is
+ *  no substitute: a test with a longer timeout of its own can fail an assertion after the suite's
+ *  wall, and then nothing about it was the clock's. */
+const TIMED_OUT_NOTICE =
+  /^\s*\^ (?:this test timed out after \d+ms|a beforeEach\/afterEach hook timed out for this test)\.$/;
+
+/** Bun's line when `--bail` stopped the run, on stderr after the failure that tripped it. */
+const BAILED_OUT = /^Bailed out after \d+ failures?$/;
 
 /** Bun heads an error that belongs to no test with this banner and prints no result line for it:
  *  a module that would not load, a stray throw between tests. It reaches the suite on stderr, and
@@ -137,7 +156,8 @@ type Reason =
   | "too-many-failed"
   | "clock-only"
   | "crowded-host"
-  | "unhandled-error";
+  | "unhandled-error"
+  | "bailed";
 
 /** What to do with a first process's result: run `rerun` again and take that verdict, or let the
  *  first verdict stand. `subject` is the files the reason is about, for the sentence the caller
@@ -414,8 +434,62 @@ function startWall(
   return ticker;
 }
 
-/** One `bun test` process under the idle wall, relaying its output. Bun prints file headers
- *  relative to `cwd`, the request's working directory. */
+/** What one process's stderr says, line by line: a line about a file Bun did not finish, a file
+ *  header, a result line under it, the notice that a clock ended the test above it, an error
+ *  outside any test, or the bail. Bun prints file headers relative to `cwd`, the request's working
+ *  directory. `run` fills as `scanLine` reads, so the relay and a test feed it the same way. */
+export function outputReader(cwd: string): OutputReader {
+  const run: ProcessOutput = {
+    reported: new Set<string>(),
+    failed: new Set<string>(),
+    interrupted: new Set<string>(),
+    incomplete: new Set<string>(),
+    inFlight: null,
+    failures: 0,
+    clockEnded: 0,
+    errors: 0,
+    bailed: false,
+  };
+  let awaitingNotice = false;
+  // Bun's `norm`, resolving to this file's spelling of a file rather than to a bucket entry.
+  const norm = (p: string) =>
+    fileIdentity(
+      resolve(
+        cwd,
+        p
+          .trim()
+          .replace(/:$/, "")
+          .replace(/ \(\d+s\)$/, "")
+          .replaceAll("\\", "/"),
+      ),
+    );
+  const readInterrupt = interruptReader(norm, run.interrupted, run.incomplete);
+  const scanLine = (line: string): void => {
+    if (readInterrupt(line)) return;
+    if (/^\S+\.(?:test|spec)\.[cm]?[jt]sx?:$/.test(line)) {
+      run.inFlight = fileIdentity(resolve(cwd, line.slice(0, -1)));
+      awaitingNotice = false;
+      return;
+    }
+    const header = run.inFlight;
+    if (header === null || !/^\((?:pass|fail|skip|todo)\) /.test(line)) {
+      if (awaitingNotice && TIMED_OUT_NOTICE.test(line)) {
+        run.clockEnded++;
+        awaitingNotice = false;
+      } else if (UNHANDLED_ERROR.test(line)) run.errors++;
+      else if (BAILED_OUT.test(line)) run.bailed = true;
+      return;
+    }
+    run.reported.add(header);
+    awaitingNotice = line.startsWith("(fail) ");
+    if (!awaitingNotice) return;
+    run.failed.add(header);
+    run.failures++;
+  };
+  return { run, scanLine };
+}
+
+/** One `bun test` process under the idle wall, relaying its output through `outputReader`. */
 async function runWalled(
   command: string[],
   temporaryRoot: string,
@@ -436,57 +510,9 @@ async function runWalled(
     detached: true,
   });
   active = child;
-  const reported = new Set<string>();
-  const failed = new Set<string>();
-  const interrupted = new Set<string>();
-  const incomplete = new Set<string>();
-  let failures = 0,
-    clockEnded = 0,
-    errors = 0,
-    awaitingNotice = false;
   const state: WallState = { lastOutputAt: performance.now(), peakLoad: hostLoad(), walled: false };
   let pending = "";
-  let header: string | null = null;
-  // Bun's `norm`, resolving to this file's spelling of a file rather than to a bucket entry.
-  const norm = (p: string) =>
-    fileIdentity(
-      resolve(
-        cwd,
-        p
-          .trim()
-          .replace(/:$/, "")
-          .replace(/ \(\d+s\)$/, "")
-          .replaceAll("\\", "/"),
-      ),
-    );
-  const readInterrupt = interruptReader(norm, interrupted, incomplete);
-  /** One output line: a line about a file Bun did not finish, a file header, a result line under
-   *  it, or the wall's own notice. */
-  const scanLine = (line: string): void => {
-    if (readInterrupt(line)) return;
-    if (/^\S+\.(?:test|spec)\.[cm]?[jt]sx?:$/.test(line)) {
-      header = fileIdentity(resolve(cwd, line.slice(0, -1)));
-      awaitingNotice = false;
-      return;
-    }
-    if (header === null || !/^\((?:pass|fail|skip|todo)\) /.test(line)) {
-      if (awaitingNotice && TIMED_OUT_NOTICE.test(line)) {
-        clockEnded++;
-        awaitingNotice = false;
-      } else if (UNHANDLED_ERROR.test(line)) errors++;
-      return;
-    }
-    reported.add(header);
-    awaitingNotice = false;
-    if (!line.startsWith("(fail) ")) return;
-    failed.add(header);
-    failures++;
-    // The result line reports the test's own duration, so a test that ran past the suite's wall
-    // was ended by it whether or not the notice followed.
-    const duration = /\[(\d+(?:\.\d+)?)ms\]$/.exec(line.trimEnd());
-    if (duration !== null && Number(duration[1]) >= PER_TEST_WALL_MS) clockEnded++;
-    else awaitingNotice = true;
-  };
+  const { run, scanLine } = outputReader(cwd);
   const relay = async (
     source: ReadableStream<Uint8Array>,
     sink: typeof Bun.stdout,
@@ -513,18 +539,7 @@ async function runWalled(
   clearInterval(ticker);
   // Once the wall has fired, the group's own exit (130 after the interrupt, 137 after a kill) is not
   // the verdict.
-  return {
-    exitCode: state.walled ? null : exitCode,
-    reported,
-    failed,
-    interrupted,
-    incomplete,
-    inFlight: header,
-    failures,
-    clockEnded,
-    errors,
-    peakLoad: state.peakLoad,
-  };
+  return { ...run, exitCode: state.walled ? null : exitCode, peakLoad: state.peakLoad };
 }
 
 /** Every rule that decides whose verdict the suite reports, in one place and away from the
@@ -579,10 +594,16 @@ export function attribute(
   const because: Reason | null =
     first.clockEnded === first.failures ? "clock-only" : first.peakLoad > cores * 2 ? "crowded-host" : null;
   if (because === null) return { rerun: null, exitCode: first.exitCode, because: "stands", subject: [] };
-  if (failed.length > RERUN_FILE_LIMIT) {
-    return { rerun: null, exitCode: first.exitCode, because: "too-many-failed", subject: failed };
+  // A bailed run never ran the files after the failure that stopped it, and names none of them, so
+  // a passing rerun of the failed files alone would clear an invocation nothing has yet tested.
+  if (first.bailed) return { rerun: null, exitCode: first.exitCode, because: "bailed", subject: failed };
+  // A file whose worker crashed, or that Bun aborted or never started, printed no `(fail)` line, so
+  // it is not in `failed` but it is in the exit code: it runs again beside them or the verdict stands.
+  const unfinished = [...new Set([...failed, ...first.interrupted, ...first.incomplete])];
+  if (unfinished.length > RERUN_FILE_LIMIT) {
+    return { rerun: null, exitCode: first.exitCode, because: "too-many-failed", subject: unfinished };
   }
-  return { rerun: failed, exitCode: first.exitCode, because, subject: failed };
+  return { rerun: unfinished, exitCode: first.exitCode, because, subject: unfinished };
 }
 
 async function main(): Promise<number> {
@@ -650,6 +671,7 @@ async function main(): Promise<number> {
         "clock-only": `host-wall: ${machine}; ${rerunning}`,
         "crowded-host": `host-wall: ${machine}; ${rerunning}`,
         "unhandled-error": `host-wall: error: ${String(first.errors)} error(s) printed outside any test, which running any file again cannot clear.`,
+        bailed: `host-wall: error: ${machine}, but the run bailed, so the files it never ran cannot be cleared by running the failed ones again: ${relative(step.subject)}`,
       };
       console.error(said[step.because]);
     }

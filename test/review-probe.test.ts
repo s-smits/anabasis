@@ -9,10 +9,15 @@
  * to change one line is a probe nobody runs.
  */
 import { afterAll, describe, expect, it } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
-import { join } from "../src/meta/path.ts";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { join, relative } from "../src/meta/path.ts";
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { JsonValue } from "../src/meta/json-shape.ts";
+import { parseJsonAs } from "../src/meta/json-runtime.ts";
+import type { Brief } from "../src/correctness-bundle/brief.ts";
+import { bundleSnapshotToolTree } from "../src/claim/bundle-snapshot.ts";
+import { portableToolTreeDigest } from "../src/verify/tool-inventory.ts";
+import type { ToolEntry } from "../src/verify/verifier-port.ts";
 import {
   PROBE_BUDGET,
   type ReviewProbeRow,
@@ -20,6 +25,7 @@ import {
   emptyProbeState,
   missingFieldRefusal,
   probeBackedRows,
+  probeShows,
   probeTool,
   withReplacedField,
 } from "../src/review/review-probe.ts";
@@ -46,11 +52,31 @@ const LONG_NOTE = `${"x".repeat(6_000)} looked it up`;
 
 /** The uppercase candidate, with accept controls whose artifacts carry one field the declared
  *  check reads and one it does not. That second field is the case a reading reviewer cannot
- *  settle: nothing in the source says out loud that no check observes it. */
+ *  settle: nothing in the source says out loud that no check observes it. A second check, `shout`,
+ *  reads the answer too but applies to the `second` family alone, so a probe of a `first` task
+ *  never runs it. */
 function candidateTree(): string {
   const dir = mkdtempSync(join(import.meta.dir, ".ana-scratch-review-probe-"));
   trees.push(dir);
   uppercaseFixture(dir);
+  const briefPath = join(dir, "correctness-model/brief.json");
+  const brief = parseJsonAs<Brief>(readFileSync(briefPath, "utf8"));
+  const [answer] = brief.truthChecks;
+  brief.truthChecks.push({
+    ...answer!,
+    id: "shout",
+    assertion: "The answer is in capitals.",
+    execution: { ...answer!.execution, families: ["second"] },
+  });
+  writeFileSync(briefPath, JSON.stringify(brief));
+  const evaluator = join(dir, "correctness-model/evaluator.ts");
+  writeFileSync(
+    evaluator,
+    readFileSync(evaluator, "utf8").replace(
+      "export const checks = {",
+      "export const checks = { shout: ({artifact}) => artifact.answer === String(artifact.answer).toUpperCase(),",
+    ),
+  );
   writeFileSync(
     join(dir, "correctness-model/controls.json"),
     JSON.stringify({
@@ -89,6 +115,7 @@ const heldRow = (id: number, refused: string | null): ReviewProbeRow => ({
   change: { value: "1" },
   baseline: null,
   mutated: null,
+  applicableCheckIds: [],
   movedCheckIds: [],
   refused,
 });
@@ -239,8 +266,8 @@ describe("probeBackedRows — a finding rests on results, not on requests", () =
 
   // `runControls` records a timeout, a thrown check, an unknown task or a pending cleanup as an
   // ordinary receipt with outcome `non-result` and no blocking checks. A pair like that is
-  // indistinguishable from "no check moved" by the moved ids alone, and the first occurrence of an
-  // agent-side defect must not be admitted blocking on it.
+  // indistinguishable from "no check moved" by the moved ids alone, and a finding citing it must not
+  // tell the author a check was executed.
   it("refuses a pair that returned without deciding, and one whose original never passed", () => {
     const state = emptyProbeState();
     state.rows.push(
@@ -253,11 +280,37 @@ describe("probeBackedRows — a finding rests on results, not on requests", () =
   });
 });
 
+// A probe row keeps each side's verdict and blocking checks, and the checks the task's family
+// selects. "Did not move" alone would also cover a check that never ran on this task, or a side that
+// reached no verdict, and a direction read off that would send the author the opposite repair.
+describe("probeShows — the direction one probe establishes for one check", () => {
+  const side = (outcome: "pass" | "fail" | "non-result", blockingCheckIds: string[] = []) => ({
+    outcome,
+    blockingCheckIds,
+  });
+  const shown = (baseline: ReturnType<typeof side> | null, mutated: ReturnType<typeof side> | null) => {
+    const row = { ...heldRow(1, null), baseline, mutated, applicableCheckIds: ["answer"] };
+    return [probeShows(row, "answer"), probeShows(row, "shout"), probeShows(row, null)];
+  };
+
+  it("reads a pass that failed as a refusal, and a pass that stayed a pass as an acceptance", () => {
+    expect(shown(side("pass"), side("fail", ["answer"]))).toEqual(["rejects-valid", null, "rejects-valid"]);
+    expect(shown(side("pass"), side("pass"))).toEqual(["accepts-invalid", null, "accepts-invalid"]);
+  });
+
+  it("establishes nothing where a side reached no verdict or the original never passed", () => {
+    expect(shown(side("pass"), side("non-result"))).toEqual([null, null, null]);
+    expect(shown(side("non-result"), side("fail", ["answer"]))).toEqual([null, null, null]);
+    expect(shown(side("fail", ["answer"]), side("pass"))).toEqual([null, null, null]);
+    expect(shown(null, null)).toEqual([null, null, null]);
+  });
+});
+
 describe("probe_check — the candidate's own checks over one changed field", () => {
   it("names the checks a changed field moves, and reports the silence when none does", async () => {
     const dir = candidateTree();
     const state = emptyProbeState();
-    const probe = probeTool(dir, join(dir, "probe-lifetime"), state);
+    const probe = probeTool(dir, join(dir, "probe-lifetime"), state, {});
     try {
       const moved = await run(probe.tool, "1", { controlId: "accept-a", path: ANSWER, value: '"a"' });
       expect(text(moved)).toContain("original: pass");
@@ -288,6 +341,13 @@ describe("probe_check — the candidate's own checks over one changed field", ()
       ]);
       expect(state.rows[0]?.baseline).toEqual({ outcome: "pass", blockingCheckIds: [] });
       expect(state.rows[0]?.mutated).toEqual({ outcome: "fail", blockingCheckIds: ["answer"] });
+      // accept-a binds a `first` task, whose family does not select `shout`: the probe ran it on
+      // neither side, so it shows nothing about it in either direction.
+      expect(state.rows.map((row) => row.applicableCheckIds)).toEqual([["answer"], ["answer"]]);
+      expect(state.rows.map((row) => [probeShows(row, "answer"), probeShows(row, "shout")])).toEqual([
+        ["rejects-valid", null],
+        ["accepts-invalid", null],
+      ]);
     } finally {
       await probe.close(false);
     }
@@ -296,7 +356,7 @@ describe("probe_check — the candidate's own checks over one changed field", ()
   it("edits one passage of a text leaf, however long the leaf, and records the edit it ran", async () => {
     const dir = candidateTree();
     const state = emptyProbeState();
-    const probe = probeTool(dir, join(dir, "probe-lifetime"), state);
+    const probe = probeTool(dir, join(dir, "probe-lifetime"), state, {});
     try {
       const moved = await run(probe.tool, "1", {
         controlId: "accept-b",
@@ -333,7 +393,7 @@ describe("probe_check — the candidate's own checks over one changed field", ()
   it("refuses an unknown control, an absent path, a malformed change and the probe past the budget", async () => {
     const dir = candidateTree();
     const state = emptyProbeState();
-    const probe = probeTool(dir, join(dir, "probe-lifetime"), state);
+    const probe = probeTool(dir, join(dir, "probe-lifetime"), state, {});
     const refusal = async (id: string, args: Record<string, JsonValue>) =>
       text(await run(probe.tool, id, args));
     try {
@@ -436,7 +496,7 @@ describe("probe_check — the candidate's own checks over one changed field", ()
     const dir = candidateTree();
     const state = emptyProbeState();
     for (let i = 0; i < PROBE_BUDGET - 2; i += 1) state.rows.push(heldRow(i + 1, "held"));
-    const probe = probeTool(dir, join(dir, "probe-lifetime"), state);
+    const probe = probeTool(dir, join(dir, "probe-lifetime"), state, {});
     try {
       // Four calls issued together: each awaits the candidate load and the check run before it
       // records, which is where two unserialised probes once read the same row count.
@@ -461,7 +521,7 @@ describe("probe_check — the candidate's own checks over one changed field", ()
       const lifetimeRoot = join(dir, "probe-lifetime");
       // An unreadable receipt left by an earlier owner is unresolved cleanup from the start.
       mkdirSync(join(lifetimeRoot, "stale-receipt"), { recursive: true });
-      const probe = probeTool(dir, lifetimeRoot, emptyProbeState());
+      const probe = probeTool(dir, lifetimeRoot, emptyProbeState(), {});
       await run(probe.tool, "1", { controlId: "accept-a", path: ANSWER, value: '"a"' });
       if (failed) await probe.close(true);
       else await expect(probe.close(false)).rejects.toBeInstanceOf(VerifierOperationalStop);
@@ -506,11 +566,122 @@ describe("probe_check — the candidate's own checks over one changed field", ()
     expect(settled).toBe(true);
   }, 120_000);
 
+  // A review an exception ends has already admitted its findings, and its caller never receives a
+  // return value to write them from. So the review is recorded before the exception propagates,
+  // whether the reader threw or the probe cleanup found a child it could not settle.
+  it("records a review before a reader or cleanup exception propagates", async () => {
+    const review = {
+      enabled: true,
+      kind: "codex",
+      model: "gpt-6-astra",
+      reasoningEffort: "low",
+      source: "operator",
+    } as const;
+    const observation = {
+      defect: false,
+      claim: "the family asks more than the harness reaches",
+      severity: "advisory",
+    };
+    const reviewed = async (runId: string, reader: (tools: readonly ReaderTool[]) => Promise<void>) => {
+      const dir = candidateTree();
+      const repoRoot = `${dir}-repo`;
+      trees.push(repoRoot);
+      const analysis = join(repoRoot, "campaigns", "probe", "analysis");
+      // A receipt the lifetime cannot read counts as an unsettled child, so a clean turn's cleanup
+      // throws: the shape a copied lifetime directory gave a live replay.
+      if (runId === "r-cleanup") {
+        mkdirSync(join(analysis, `${runId}-probe-lifetime`, "stale"), { recursive: true });
+      }
+      const outcome = runEpochReview({
+        repoRoot,
+        slug: "probe",
+        runId,
+        treeRoot: relative(repoRoot, dir),
+        analysis: null,
+        priorAdvice: null,
+        publicRequest: null,
+        review,
+        readerTurn: async ({ tools }) => {
+          await reader(tools);
+          return { pin: "codex/gpt-6-astra", text: "Finished.", error: null };
+        },
+      });
+      const settled = await outcome.then(
+        () => null,
+        (cause: unknown) => cause,
+      );
+      return {
+        settled,
+        recorded: parseJsonAs<JsonValue>(readFileSync(join(analysis, `${runId}-epoch-review.json`), "utf8")),
+      };
+    };
+    const finding = (tools: readonly ReaderTool[]) =>
+      run(tools.find((tool) => tool.name === "record_finding")!, "f", observation);
+
+    const thrown = await reviewed("r-reader", async (tools) => {
+      await finding(tools);
+      throw new Error("provider budget denied");
+    });
+    expect(String(thrown.settled)).toContain("provider budget denied");
+    expect(thrown.recorded).toMatchObject({
+      status: "failed",
+      reason: "epoch-reviewer: provider budget denied",
+      findings: [{ defect: false, claim: observation.claim }],
+      report: null,
+    });
+
+    const cleanup = await reviewed("r-cleanup", async (tools) => {
+      await run(tools.find((tool) => tool.name === "probe_check")!, "1", {
+        controlId: "accept-a",
+        path: ANSWER,
+        value: '"a"',
+      });
+      await finding(tools);
+    });
+    expect(cleanup.settled).toBeInstanceOf(VerifierOperationalStop);
+    expect(cleanup.recorded).toMatchObject({
+      status: "failed",
+      findings: [{ defect: false, claim: observation.claim }],
+      report: "Finished.",
+    });
+    expect(JSON.stringify(cleanup.recorded)).toContain("verifier process cleanup is incomplete");
+  }, 120_000);
+
+  // A measured review's recorded verifier tools name the tool tree its battery ran. A probe over a
+  // tree that has moved since would report verdicts from an environment the measurement never used.
+  it("runs a measured review's probe only over a tool tree its battery recorded", async () => {
+    const dir = candidateTree();
+    const helper = join(dir, ".toolchain/bin/helper");
+    mkdirSync(join(dir, ".toolchain/bin"), { recursive: true });
+    writeFileSync(helper, "#!/bin/sh\nexit 0\n");
+    const recorded = {
+      helper: double<ToolEntry>({ treeDigest: portableToolTreeDigest(bundleSnapshotToolTree(dir)!) }),
+    };
+    const probeOnce = async (lifetime: string) => {
+      const state = emptyProbeState();
+      const probe = probeTool(dir, join(dir, lifetime), state, recorded);
+      try {
+        const reply = text(await run(probe.tool, "1", { controlId: "accept-a", path: ANSWER, value: '"a"' }));
+        return { reply, state };
+      } finally {
+        await probe.close(false);
+      }
+    };
+    const same = await probeOnce("probe-lifetime-same");
+    expect(same.state.rows.map((row) => row.movedCheckIds)).toEqual([["answer"]]);
+    writeFileSync(helper, "#!/bin/sh\nexit 1\n");
+    const moved = await probeOnce("probe-lifetime-moved");
+    expect(moved.reply).toContain(
+      "refused: the candidate's .toolchain is not the tool tree its measured battery ran",
+    );
+    expect(moved.state).toEqual({ rows: [], refused: 1 });
+  }, 120_000);
+
   it("records a candidate it cannot load as a refused row rather than throwing the review away", async () => {
     const dir = mkdtempSync(join(import.meta.dir, ".ana-scratch-review-probe-empty-"));
     trees.push(dir);
     const state = emptyProbeState();
-    const probe = probeTool(dir, join(dir, "probe-lifetime"), state);
+    const probe = probeTool(dir, join(dir, "probe-lifetime"), state, {});
     try {
       expect(
         text(await run(probe.tool, "1", { controlId: "accept-a", path: ANSWER, value: '"x"' })),
@@ -529,7 +700,7 @@ describe("probe_check — the candidate's own checks over one changed field", ()
 describe("what the reviewer is told a probe can reach", () => {
   it("the tool contract offers the edit as the alternative to a value", () => {
     const dir = candidateTree();
-    const { tool } = probeTool(dir, join(dir, "probe-lifetime"), emptyProbeState());
+    const { tool } = probeTool(dir, join(dir, "probe-lifetime"), emptyProbeState(), {});
     const contract = JSON.stringify(tool.parameters);
     expect(contract).toContain('"required":["controlId","path"]');
     expect(contract).toContain('"find"');
@@ -551,5 +722,14 @@ describe("what the reviewer is told a probe can reach", () => {
     // Stated once, in the probe paragraph, which already owns the two-readings duty.
     expect(EPOCH_REVIEW_PROMPT.split("two readings of a requirement").length - 1).toBe(1);
     expect(EPOCH_REVIEW_PROMPT.split("`find`").length - 1).toBe(2);
+  });
+
+  // A host double that rejects equivalent code fails valid answers while every accept control, all
+  // written the reference's way, still passes; only a probe writing the valid variant shows it.
+  it("the prompt runs a probe the other way, to a valid variant a check refuses", () => {
+    expect(EPOCH_REVIEW_PROMPT).toContain("The probe runs the other way too");
+    expect(EPOCH_REVIEW_PROMPT).toContain(
+      "a declared check that now refuses it has rejected a valid answer, a defect owned by correctness-model/evaluator.ts",
+    );
   });
 });

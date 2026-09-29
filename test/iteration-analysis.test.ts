@@ -19,6 +19,7 @@ import {
   admitFindings,
   checkCounts,
   hostFindings,
+  recordedBuiltEffort,
 } from "../src/analyse/iteration-analysis.ts";
 import { authorSessionOwner } from "../src/analyse/finding-owner.ts";
 import type { NonResultKind } from "../src/claim/record-events.ts";
@@ -73,8 +74,10 @@ function packet(overrides?: {
         correctnessModelHash: "b".repeat(64),
         scoringHash: "b".repeat(64),
         taskSetHash: "c".repeat(64),
+        toolTreeDigest: null,
       },
       backendPin: "codex:test",
+      builtEffort: "high",
       buildInputsHash: "d".repeat(64),
       isolationStrength: "physical",
     },
@@ -316,6 +319,7 @@ describe("controller admission", () => {
       readChars: 12,
       refused: 0,
       probes: emptyProbeState(),
+      dispositions: [],
       delivered: [
         { path: "evaluator.ts", digest: "", length: 0, pages: [{ start: 0, text: "return true;" }] },
       ],
@@ -381,9 +385,12 @@ describe("controller admission", () => {
     // The request has one owner: every prompt rendering these rows states it once under its own
     // heading, and a copy per finding would repeat it once per finding in one authoring prompt.
     expect(JSON.stringify(admission.feedback)).not.toContain(request);
-    expect(JSON.stringify(admission.feedback)).toContain(brief.truthChecks[0]!.assertion);
-    expect(JSON.stringify(admission.feedback)).toContain(brief.ruleDecisions![0]!.statement);
-    expect(JSON.stringify(admission.feedback)).toContain("plausible counterexample");
+    // A defect naming a declared check carries that check's public obligation, whichever file it
+    // names, and no repair: what to change in the brief is the author's decision.
+    expect(admission.feedback[0]?.claim).toStartWith(
+      "Epoch review (correctness-model/brief.json): check `compile` at artifact path `files`; a defect.\nDeclared public obligation: ",
+    );
+    expect(JSON.stringify(admission.feedback)).not.toContain("decide the public rule");
     expect(JSON.stringify(admission.feedback)).not.toContain("PRIVATE_EXAMPLE");
     expect(state.findings[0]?.claim).toContain("PRIVATE_EXAMPLE");
     const advisory: ReviewState = {
@@ -391,6 +398,7 @@ describe("controller admission", () => {
       readChars: 12,
       refused: 0,
       probes: emptyProbeState(),
+      dispositions: [],
       delivered: [
         { path: "evaluator.ts", digest: "", length: 0, pages: [{ start: 0, text: "return true;" }] },
       ],
@@ -412,15 +420,14 @@ describe("controller admission", () => {
         claim: "whether the external package observes this property is unproved",
       }),
     );
-    // The same check, observed rather than demonstrated: it asks for no repair, so it carries no
-    // obligation to bind one to. Left unbounded, one such assertion repeats verbatim on every
-    // round and crowds out everything else the rebuild author reads.
+    // The same check, observed rather than demonstrated, carries no obligation. Left unbounded, one
+    // such assertion repeats verbatim on every round and crowds out everything else the rebuild
+    // author reads.
     const observed =
       publicEpochReview({ status: "completed", ...advisory }, contract).findings[0]?.claim ?? "";
-    expect(observed).toContain("check `compile`");
-    expect(observed).toContain("asks for no repair");
-    expect(observed).not.toContain(brief.truthChecks[0]!.assertion);
-    expect(observed).not.toContain("plausible counterexample");
+    expect(observed).toBe(
+      "Epoch review (no file named): check `compile`; an observation, not a demonstrated defect.",
+    );
     expect(
       admitFindings(root, packet(), publicEpochReview({ status: "completed", ...advisory }).findings)
         .feedback,
@@ -535,5 +542,20 @@ describe("checkCounts — a recorded firing ledger as a count map", () => {
     expect(checkCounts(null)).toBeNull();
     expect(checkCounts({ "tc-a": -1 })).toBeNull();
     expect(checkCounts({ "tc-a": 1.5 })).toBeNull();
+  });
+});
+
+describe("recordedBuiltEffort — the Built effort a battery's case rows recorded", () => {
+  it("names the effort only when every row's session check recorded the same one", () => {
+    const row = (reasoningEffort?: string) =>
+      double<Parameters<typeof recordedBuiltEffort>[0][number]>({
+        isolation:
+          reasoningEffort === undefined ? null : { strength: "physical", session: { reasoningEffort } },
+      });
+    expect(recordedBuiltEffort([row("xhigh"), row("xhigh")])).toBe("xhigh");
+    // A row with no session check, rows that disagree, and no rows at all are unknown, never "".
+    expect(recordedBuiltEffort([row("xhigh"), row()])).toBeNull();
+    expect(recordedBuiltEffort([row("xhigh"), row("low")])).toBeNull();
+    expect(recordedBuiltEffort([])).toBeNull();
   });
 });

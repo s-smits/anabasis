@@ -2,31 +2,31 @@
  * The Epoch Reviewer beside a live authoring session. A review starts at a completed host tool call
  * over bytes frozen the way the gate freezes a candidate, and the Builder keeps working while it
  * runs; what it found rides the first tool result after it finishes. Submit is the one call that
- * waits for it, and findings the Builder has not read come back in place of that submit's verdict.
+ * waits for it, and a blocking finding the Builder has not read comes back in place of that
+ * submit's verdict; advisory findings ride the next tool result like any other review.
  * Each review is handed the round's blind rehearsals as well, as the bytes the solver submitted and
  * the one verdict they earned, which is more than the Builder that ran them is shown.
  */
 import { ensureBundleSnapshot } from "../claim/bundle-snapshot.ts";
 import { type FingerprintEvidence, fingerprintSlug } from "../claim/fingerprint.ts";
-import { type ExperimentSubmission, type RehearsalRow, currentPlan } from "../author/experiment-plan.ts";
-import type { SubmittedRehearsal } from "../builder/harness-trial.ts";
+import type { RehearsalRow, SubmittedRehearsal } from "../builder/harness-trial.ts";
 import type { AuthoringReviewClock } from "../gate/review-clock.ts";
 import type { RehearsalCase } from "../review/epoch-reviewer.ts";
 
 /** `repair` follows a clear `correctness_check` over a changed product; `backstop` is the clock. */
 type ReviewTrigger = "repair" | "backstop";
 
-/** What one review hands the Builder: its public text, and how many findings that text shows. A
- *  review showing none holds no submit. */
+/** What one review hands the Builder: its public text, and how many of the findings that text
+ *  shows block submit. A review showing no blocking finding holds no submit: an advisory finding
+ *  asks for no change before submit, so holding for one only spends the round's time. */
 export interface AuthoringAdvice {
   text: string;
-  findings: number;
+  blocking: number;
 }
 
 export type ReviewAuthoring = (
   root: string,
   trigger: ReviewTrigger,
-  plan: ExperimentSubmission | null,
   rehearsals: readonly RehearsalCase[],
 ) => Promise<AuthoringAdvice>;
 
@@ -35,7 +35,7 @@ export type ReviewAuthoring = (
  *  text says neither. The call reached no gate, so the same bytes submitted next are judged as a
  *  first submission of them. */
 const HELD_SUBMIT =
-  "Nothing was submitted. An Epoch review that ran while you worked finished with findings you had not yet read; they follow. This call counted as no submit, so call submit again once you have read them, with or without changes.";
+  "Nothing was submitted. An Epoch review that ran while you worked finished with a blocking finding you had not yet read; the review follows. This call counted as no submit, so call submit again once you have read it, with or without changes.";
 
 type Settled = { advice: AuthoringAdvice } | { error: unknown };
 
@@ -71,14 +71,15 @@ export class AuthoringReviews {
     return settled.advice.text;
   };
 
-  /** Wait for a review in flight, and return findings the Builder has not read. Submit calls it
-   *  before counting an attempt and returns that text in place of the verdict; the round's end calls
-   *  it so that no review outlives the round that started it, and what it returns there is dropped
-   *  with the round. With nothing in flight and nothing unread it returns at once. */
+  /** Wait for a review in flight, and return an unread review that shows a blocking finding. Submit
+   *  calls it before counting an attempt and returns that text in place of the verdict; the round's
+   *  end calls it so that no review outlives the round that started it, and what it returns there
+   *  is dropped with the round. An unread review with no blocking finding stays unread, so it rides
+   *  the submit's own result, or the next call's. With nothing in flight it returns at once. */
   readonly join = async (): Promise<string | null> => {
     await this.running;
     const { settled } = this;
-    if (settled === null || "error" in settled || settled.advice.findings === 0) return null;
+    if (settled === null || "error" in settled || settled.advice.blocking === 0) return null;
     this.settled = null;
     return `${HELD_SUBMIT}\n${settled.advice.text}`;
   };
@@ -114,8 +115,7 @@ export class AuthoringReviews {
         ...rest,
         current: candidateId === snapshot.id,
       }));
-      const plan = currentPlan(this.workspace);
-      this.settled = { advice: await this.review(snapshot.dir, trigger, plan, rehearsals) };
+      this.settled = { advice: await this.review(snapshot.dir, trigger, rehearsals) };
       this.clock.read(fingerprint);
     } catch (error) {
       this.settled = { error };

@@ -1,13 +1,16 @@
 /**
  * The served tool surface the conformance probe reconciles with the declared contract, in
- * src/truth/probe-tool-surface.ts: the descriptions each task's worker serves, a registration that
- * moves between tasks, and how the probed workers end. `closeOneAtATime` sits here because
+ * src/correctness-bundle/probe-tool-surface.ts: the descriptions each task's worker serves, a registration
+ * that moves between tasks, and how the probed workers end. `closeOneAtATime` sits here because
  * probes.ts is its only consumer and its cases are about the same worker lifetime.
  */
 import { afterAll, describe, expect, it } from "bun:test";
 import { closeOneAtATime } from "../src/solve/built-starter.ts";
 import { WRITER_BINDING_SENTENCE } from "../src/solve/published-margin.ts";
-import { terminationFindings, toolDescriptionParityFindings } from "../src/truth/probe-tool-surface.ts";
+import {
+  terminationFindings,
+  toolDescriptionParityFindings,
+} from "../src/correctness-bundle/probe-tool-surface.ts";
 import { TASK, TASK_TWO, TOOLS_SOURCE, probeSlugs } from "./helpers/probe-slug.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 

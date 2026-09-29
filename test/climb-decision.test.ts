@@ -11,13 +11,7 @@
  * null the decision turns into its one "no difficulty evidence" answer.
  */
 import { describe, expect, it } from "bun:test";
-import {
-  aimCounts,
-  type BandZone,
-  bandLandmarks,
-  measureDifficulty,
-  placeOnBand,
-} from "../src/claim/battery-difficulty.ts";
+import { aimCounts, type BandZone, measureDifficulty, placeOnBand } from "../src/claim/battery-difficulty.ts";
 import { wilsonInterval } from "../src/claim/estimation.ts";
 import { POLICY } from "../src/critic/policy.ts";
 import { type ClimbBattery, countUnaccepted } from "../src/run/climb-history.ts";
@@ -62,8 +56,6 @@ const stuck = (runId: string, failed: string[]) =>
 const subset = (attempts: number, passes: number) => ({ items: [], changedSubset: { attempts, passes } });
 
 const family = (item: string, passes: number, attempts: number) => ({ item, attempts, passes });
-
-const continuation = (n: number) => renderBatteryContract(n, n, POLICY.climb.band, true);
 
 const place = (passes: number, n: number, band: readonly [number, number] = BAND) =>
   required(placeOnBand(passes, n, band), `${passes} of ${n} has no placement`);
@@ -124,41 +116,17 @@ describe("placeOnBand — one count, one zone", () => {
     expect(place(0, 15).aim).toEqual(aimCounts(15, BAND));
   });
 
-  it("is the one numeric owner: every surface that names a count reads it from the battery size", () => {
+  it("is the one numeric owner, and no author surface restates its counts", () => {
     const [floor, ceiling] = POLICY.climb.band;
     const tooEasy = Array.from({ length: 26 }, (_, k) => k).find(
       (k) => place(k, 25, POLICY.climb.band).lo > ceiling,
     );
     const range = `${Math.ceil(floor * 25)} to ${Math.floor(ceiling * 25)}`;
     expect([tooEasy, range]).toEqual([18, "5 to 12"]);
-    expect(bandLandmarks(25, POLICY.climb.band)).toEqual({
-      tooHardUpTo: 1,
-      aim: [5, 12],
-      tooEasyFrom: 18,
-      first: 3,
-    });
-    expect(continuation(25)).toContain(`Aim for ${range} of 25`);
-    expect(continuation(25)).toContain(`passing ${tooEasy} of 25 or more`);
-    // A continuation names the aim alone; the first-battery count is the fresh path's.
-    expect(continuation(25)).not.toContain("verified cases to pass");
-    expect(continuation(25)).not.toContain("the first battery above");
-    expect(renderBatteryContract(25)).toContain("Expect about 3 of 25 verified cases to pass");
-    expect(continuation(25)).toContain("does not by itself answer a battery that found no limit");
-    expect(continuation(25)).toContain(
-      "a re-tuned published number is harder demand only where a witness of yours reaches it and a rehearsal shows your solver does not",
-    );
-    // A smaller battery restates every count from its own size.
-    expect(bandLandmarks(10, POLICY.climb.band)).toEqual({
-      tooHardUpTo: null,
-      aim: [2, 5],
-      tooEasyFrom: 9,
-      first: 1,
-    });
-    expect(renderBatteryContract(10)).toContain("about 1 of 10 verified cases to pass");
-    expect(continuation(10)).toContain("Aim for 2 to 5 of 10");
-    expect(continuation(10)).toContain("passing 9 of 10 or more");
-    // The system prompt states no count at all; the contract rendered for the round's size does.
+    expect(place(0, 25, POLICY.climb.band).aim).toEqual([5, 12]);
+    // Neither the system prompt nor the round's battery contract states a count at any size.
     expect(SCOPE_CLAUSE.join(" ")).not.toMatch(/of 25|verified pass|battery/);
+    for (const size of [10, 25]) expect(renderBatteryContract(size)).not.toMatch(/\d+ to \d+|\d+ or more/);
   });
 });
 
@@ -212,15 +180,15 @@ describe("decideDifficulty — the placement of the latest battery", () => {
     // The full band, not the crossed bound alone: "too easy" without a lower edge invites
     // overshooting into too hard.
     expect(decision.rationale).toContain("90/100");
-    expect(decision.rationale).toContain("target range [0.2, 0.5]");
+    expect(decision.rationale).toContain("against band [0.2, 0.5]");
     expect(decision.evidence).toEqual([{ runId: "run-x", batterySha256: "a".repeat(64) }]);
   });
 
   it.each([
-    [5, "significantly too hard"],
-    [90, "significantly too easy"],
-    [40, "on the calibration target"],
-  ])("words %s of 100 as %s", (passed, words) => {
+    [5, "too-hard"],
+    [90, "too-easy"],
+    [40, "on-aim"],
+  ])("records %s of 100 as %s", (passed, words) => {
     expect(decideDifficulty([battery({ n: 100, passed })]).rationale).toContain(words);
   });
 
@@ -272,18 +240,18 @@ describe("decideDifficulty — the batteries placed nowhere", () => {
     [
       "a changed subset identified but never measured",
       [battery({ n: 25, passed: 20, measured: subset(0, 0) })],
-      "the deciding sample of 0/0",
+      "0/0 against band [0.2, 0.5]: cannot be placed",
     ],
     [
       "every attempt refused at admission",
       [battery({ n: 25, passed: 0, unaccepted: 25 })],
-      "zero cases were truth-verified",
+      "none truth-verified",
     ],
     // A wall of admission refusals evaluates nothing to repeat and has no family rows.
     [
       "a refused wall after a stuck battery",
       [stuck("r1", EIGHT), { ...stuck("r2", EIGHT), n: 25, passed: 0, unaccepted: 25 }],
-      "zero cases were truth-verified",
+      "none truth-verified",
     ],
     [
       "a refused wall over conflicting families",
@@ -295,7 +263,7 @@ describe("decideDifficulty — the batteries placed nowhere", () => {
           measured: { items: [family("saturated", 25, 25), family("infeasible", 0, 25)] },
         }),
       ],
-      "zero cases were truth-verified",
+      "none truth-verified",
     ],
   ])("places nothing on %s", (_name, history, named) => {
     const decision = decideDifficulty(history);
@@ -436,5 +404,17 @@ describe("decideDifficulty — two families pulling the pooled rate apart", () =
     const decision = decideDifficulty([battery({ n, passed, measured: { items } })]);
     expect(decision).not.toHaveProperty("conflict");
     expect(decision.placement).not.toBeNull();
+  });
+});
+
+describe("decideDifficulty — a family the environment censored whole", () => {
+  it("states the family beside the placement and still places the battery", () => {
+    const decision = decideDifficulty([battery({ n: 4, passed: 4, censoredFamilies: ["wide-span"] })]);
+    expect(decision.censored).toEqual({ families: ["wide-span"] });
+    expect(decision.placement).not.toBeNull();
+  });
+
+  it("states nothing when every family kept a scored case", () => {
+    expect(decideDifficulty([battery({ n: 6, passed: 4 })])).not.toHaveProperty("censored");
   });
 });

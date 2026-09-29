@@ -12,8 +12,9 @@ The alternative was to leave a rule unregistered until its overhaul finished, an
 unregistered rule holds nothing, so the pattern keeps arriving in new files while the old ones are
 being cleaned. A rule with a 35-file exemption is already holding the other 470.
 
-Three entries here are not debt and will not shrink to nothing, because the rule is wrong about
-this repository rather than the repository being wrong:
+Two entries here are not debt and will not shrink to nothing, because the rule is wrong about
+this repository rather than the repository being wrong. A third, the `**/*.mjs` and `**/*.js`
+block, went on 2026-09-26 with the last file it matched; the section of that date says why.
 
 - `typescript/await-thenable` is off under `test/**`. Bun declares `expect(...).rejects` and
   `.resolves` without a Thenable type, so all 215 reports were `await expect(...)` and none was a
@@ -25,14 +26,6 @@ this repository rather than the repository being wrong:
   widened again on 2026-09-20. The configuration difference stands on its own: these files are
   written against an AST the checker does not type, so the exhaustiveness rule reads unions it
   cannot see the arms of.
-- `typescript/require-array-sort-compare` and `typescript/no-misused-spread` are off under
-  `**/*.mjs` and `**/*.js`. Both read the checker, and `tsconfig.json` covers no `.js` or `.mjs`
-  file, so both see `any` and fail closed. All 25 reports were wrong: 24 `.sort()` calls on sets of
-  ids, families, paths and rule names, and one spread of a ledger row that is an object. The
-  spelling the sort rule asks for — an explicit `(a, b) => (a < b ? -1 : a > b ? 1 : 0)` — is what
-  the default comparator already does for strings, so following it at 24 sites adds noise and no
-  proof. Both rules still hold every typed file, where 176 bare `.sort()` calls pass because the
-  checker can see they sort strings.
 
 Eight entries that were a rule losing to a stricter one are gone, because the rule now measures
 what it is losing to. `ana/no-single-caller-helper` reads its caller before reporting: if the
@@ -42,7 +35,7 @@ is reported. A caller at either ceiling has no legal spelling that also absorbs 
 report asked for a file that could not pass the gate; that is the admission test in
 `SHAPE-RULESET.md` failing at a site, and the rule yields at the site rather than being baselined
 per file. Twelve reports across `src/author`, `src/backends`, `src/builder`, `src/solve`,
-`src/truth` and `vendor/pi-claude-bridge` went that way, and no site that should report stopped
+`src/correctness-bundle` and `vendor/pi-claude-bridge` went that way, and no site that should report stopped
 reporting: the whole-tree A/B with the ledger block emptied read 41 before and 28 after.
 
 Two details of that measurement are worth keeping. The line ceiling reads the **outermost**
@@ -96,6 +89,37 @@ assignable to `JsonValue` for want of an index signature.
 the rule registered, its sites fixed, its traps written into the rule's own comment and fixtures —
 its section here stops changing a decision. Shorten the ledger from the oldest end rather than put
 it on the ignore list; `SHAPE-RULESET.md` lost two shipped `ana` entries that way on 2026-09-20.
+
+## The skill scripts become TypeScript, and the `.mjs` block goes with them, 2026-09-26
+
+The 2026-09-20 sections below concluded twice that the skill scripts should stay untyped: once
+because `checkJs` cost 3,776 errors to catch a rename defect `no-undef` already caught, and once
+when four type-aware rules turned out to be sampling files no typecheck program read. The operator
+reversed that on 2026-09-26 and asked for the conversion, so all 72 tracked `.mjs` and `.js` files
+under `.claude/` and `test/` were renamed to `.ts` and typed. The rename alone put 3,350 errors in
+front of `tsc`, which is the same order as the earlier measurement: 2,156 of them were a parameter
+or binding with no annotation, and 414 were a property read off an untyped JSON value.
+
+The typing kept raw JSON as `unknown` or `JsonValue` at each reader and narrowed it with the guards
+`src/meta` already owns, rather than casting it to the shape the script hoped for. Six assertions
+remain across the scripts, each with its `SAFETY:` comment, and the tests take no new ones. Where a
+script reads a record `src` writes, it now imports `src`'s type for it, which is the point of the
+exercise: a schema change there is now a compile error in the reader, not an `undefined` in its
+report.
+
+It found one defect that behaved wrongly on good input. `coverage-harvest` and
+`mutation-adjudicate` passed `timeoutMs` to `spawnCollected` as a positional argument the function
+does not take, so both ran under its ten-minute default whatever wall they had configured. Typing
+also turned up places where malformed input crashed with an anonymous `TypeError`; those now throw
+an `Error` naming the field, and none of them was made to carry on quietly instead.
+
+With no JavaScript left in the lint scope, the `**/*.mjs` and `**/*.js` override block had nothing
+to hold, so it is gone whole, and `allowJs` left `tsconfig.json` with it. That settles the reopening
+condition written below for `require-array-sort-compare`, `no-base-to-string`,
+`restrict-template-expressions` and `no-misused-spread`: the files they were misreading are now in
+the typecheck program, and all four hold them under `bun run lint -- --strict` with no finding and
+no ledger row. What still relaxes these scripts is the `.claude/**/*.ts` block, which predates this
+change and is untouched by it.
 
 ## Three owner rules for the skill library, and their debt, 2026-09-23
 
@@ -849,7 +873,7 @@ something else, and the collision is silent at the point of insertion.
 
 ### Two files at a frozen size refused the import line
 
-`src/builder/tools.ts` is held at 403 nonblank lines and `src/truth/probes.ts` at 436 in
+`src/builder/tools.ts` is held at 403 nonblank lines and `src/correctness-bundle/probes.ts` at 436 in
 `tools/loc/source-policy.json`. An import line is a line, and both went one over. Three conditions
 in those two files therefore spell the comparison out instead of importing the predicate. That is
 the frozen limit working as intended — it asks for the smaller honest form, and here the smaller
@@ -907,7 +931,7 @@ trees are in scope for this rule now, and the anti-slop sites it was hiding are 
 which the rule does not read: it charges each report against the 115-line function ceiling and
 complexity 22, the two ceilings its doc names, and not against a file frozen at its size. Inlining
 into such a file fails the gate the same way, which is the admission test failing at one site. This
-pass hit that from the other direction — `src/builder/tools.ts` and `src/truth/probes.ts` had no
+pass hit that from the other direction — `src/builder/tools.ts` and `src/correctness-bundle/probes.ts` had no
 room for an import line, three sections above.
 
 ### The next rung after that
@@ -927,7 +951,7 @@ wrong about this tree, in four repeatable ways.
 
 **A `let` a closure assigns — nine.** Control-flow analysis does not follow an assignment made
 inside a callback, so a flag set in a `forEach` or a stream handler reads as never-assigned at the
-`if` below it. `src/builder/file-window.ts:166` and `:193`, `src/truth/verification-runner.ts:494`
+`if` below it. `src/builder/file-window.ts:166` and `:193`, `src/correctness-bundle/verification-runner.ts:494`
 and `:497`, `src/builder/command-guard.ts:245`, `src/review/review-sources.ts:70`,
 `tools/runtime/test-suite.ts:348`, `test/read-root-attestation.test.ts:26`. Deleting any of those
 checks changes what the program does.
@@ -1451,7 +1475,7 @@ which is why the count was three times the work.
 | `vendor/pi-built/jsonl-reader.ts` | 2 | fixed — `append` takes and returns the dropping state |
 | `src/builder/command-guard.ts` | 1 | fixed — the rewriter collects targets, the decision reads them |
 | `src/review/review-sources.ts` | 1 | fixed — `add` and `walk` answer whether the cap is still open |
-| `src/truth/verification-runner.ts` | 3 | **no outcome to return.** `gradingStarted` and `gradingStopped` are one phase's lifecycle, set by a per-case callback a bounded-concurrency pool invokes. The pool has no single outcome to hand back, and the phase lines are the point |
+| `src/correctness-bundle/verification-runner.ts` | 3 | **no outcome to return.** `gradingStarted` and `gradingStopped` are one phase's lifecycle, set by a per-case callback a bounded-concurrency pool invokes. The pool has no single outcome to hand back, and the phase lines are the point |
 | `src/verify/host.ts` | 1 | a different cause: `scope.closed` is narrowed by a guard before an `await` and changed by another task during it, the fifth cause this file already records |
 | `tools/runtime/test-suite.ts` | 1 | `walled` is set by a `setInterval` tick. A timer has no return path at all |
 | `vendor/pi-claude-bridge/prompt-stream.ts` | 1 | in the tree `claude/bridge-rewrite-0919` is rewriting; take it there |
@@ -1660,7 +1684,7 @@ one-off, because once a rule is in the gate its sites never accumulate again, wh
 what makes the next one-off safe.
 
 The oracle has to be the whole gate and not just the type checker, and the size policy is the
-reason. Two files, `src/builder/tools.ts` and `src/truth/probes.ts`, sit at a frozen size in
+reason. Two files, `src/builder/tools.ts` and `src/correctness-bundle/probes.ts`, sit at a frozen size in
 `tools/loc/source-policy.json`, where the one added import line is the whole cost. A file like
 that is not held — the edits were not wrong — it is **constrained**, and the fixer is told it may
 not grow. What to do then is the fixer's business, and this one writes the predicate out inline,
@@ -1922,7 +1946,7 @@ keeping:
 - **A decision chain.** A body that is nothing but `if (…) return a;` lines and a final `return z`
   has no spelling *this ruleset* accepts: a nested ternary trips `ana/no-tangled-ternary`, and one
   assignment per arm trips `ana/no-arms-differing-in-one-term`. `leafCategory`
-  (`src/truth/draft-summary.ts:6`) is three of them, and every legal form of it inside
+  (`src/correctness-bundle/draft-summary.ts:6`) is three of them, and every legal form of it inside
   `boundedDraftSummary` is refused by one of this repository's own rules.
 
 That left **17**, swept by hand across sixteen files, and the rule measures 0.
@@ -2476,7 +2500,7 @@ manifest this reader cannot read. It now parses `JsonValue` and builds the manif
 rows; a row it cannot read is `run-unrecorded`, which is the refusal the comment already promised.
 Two hostile cases in `test/evidence-log.test.ts` fail when either guard is weakened to a `continue`.
 
-**`src/truth/reference-solve-child.ts` and `src/truth/evaluator-process-child.ts` — admitted.**
+**`src/correctness-bundle/reference-solve-child.ts` and `src/correctness-bundle/evaluator-process-child.ts` — admitted.**
 Both read a protocol message from the parent process that spawned them, over a pipe the host owns.
 `request.protocol !== PROTOCOL` and `row.type === "start"` are version tripwires over bytes this
 program wrote itself, not validation of untrusted input, and the writer is one build away from the

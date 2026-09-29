@@ -4,8 +4,8 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { capturedJsonParse as nativeParse } from "../meta/json-runtime.ts";
 import { canonicalJsonCopy as trustedJson } from "../meta/stable-json.ts";
-import { BUILT_PRESET_IDS, type BuiltPresetId } from "../truth/built-presets.ts";
-import type { PublicTask } from "../truth/task-split.ts";
+import { BUILT_PRESET_IDS, type BuiltPresetId } from "../correctness-bundle/built-presets.ts";
+import type { PublicTask } from "../correctness-bundle/task-split.ts";
 import type {
   BuiltStarterCheckpoint,
   BuiltStarterNonResult,

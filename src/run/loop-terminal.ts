@@ -25,8 +25,8 @@ const LOOP_TERMINAL_CODES = [
 export type LoopTerminalCode = (typeof LOOP_TERMINAL_CODES)[number];
 
 /** Why a round's build step ended without a candidate to measure: a refused campaign's one clause,
- *  a candidate identical to its round's entry tree, or a move the fixed-product policy refuses. */
-export type BuildClause = CampaignClause | "candidate-unchanged" | "fixed-product-boundary";
+ *  or a move the fixed-product policy refuses. */
+export type BuildClause = CampaignClause | "fixed-product-boundary";
 
 /** The terminal each build clause ends the run with. Null lets the round retry within the shared
  *  unresolved-authoring allowance, because a Builder session is stochastic and one bad round is
@@ -40,7 +40,6 @@ export const CLAUSE_ENDINGS = {
   "fixed-product-boundary": "fixed-product-boundary",
   "iterations-exhausted": null,
   "no-progress": null,
-  "candidate-unchanged": null,
 } as const satisfies Record<BuildClause, LoopTerminalCode | null>;
 
 /** Whether a recorded string names a build clause, for readers of recorded iteration rows. */

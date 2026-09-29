@@ -5,7 +5,7 @@ import {
   epochReviewer,
   harnessTrial,
   renderReviewYield,
-} from "../.claude/skills/whole-run-investigation/scripts/review-yield.mjs";
+} from "../.claude/skills/whole-run-investigation/scripts/review-yield.ts";
 import { mkdirSync, utimesSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import { join } from "../src/meta/path.ts";
@@ -315,7 +315,6 @@ describe("review-yield: diagnosis reader", () => {
     cause: "public interface mismatch",
     falsifier: "the interface agrees",
     support: { cases: 2, shown: 3, matching: 3, contrasts: 0 },
-    confidence: "medium",
   };
   const cited = { boundary: "c01.s2", supporting: ["c01", "c02"], contrast: [] };
   /** A complete current diagnosis reading, with the fields a test varies. */
@@ -406,10 +405,7 @@ describe("review-yield: diagnosis reader", () => {
 describe("review-yield: composer", () => {
   it("reports every component as no-opportunity on an empty campaign and renders the table", () => {
     const root = campaign();
-    const report: {
-      complete: boolean;
-      components: Array<{ component: string; verdict: string; status: string }>;
-    } = buildReviewYield(root);
+    const report = buildReviewYield(root);
     expect(report.complete).toBe(true);
     expect(report.components.map((row) => [row.component, row.verdict, row.status])).toEqual([
       ["epoch-reviewer", "no-opportunity", "ok"],

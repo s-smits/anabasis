@@ -9,7 +9,7 @@
  * of these rows is what the Judge exit in judge-reviews.ts reads.
  */
 import { join } from "../meta/path.ts";
-import { confirmedDisagreement, type JudgeSubjectEvidence } from "../truth/judge.ts";
+import { confirmedDisagreement, type JudgeSubjectEvidence } from "../review/judge.ts";
 import { isBoolean, type JsonValue } from "../meta/json-shape.ts";
 import { readJsonFile } from "../meta/completed-json.ts";
 
@@ -68,6 +68,16 @@ export function isDisputedFail(
   row: Pick<ContestedCase, "judge" | "verifier" | "checkIds" | "confirmed">,
 ): boolean {
   return !row.verifier && row.judge && row.confirmed && row.checkIds.length > 0;
+}
+
+/** The contested rows as the Epoch Reviewer takes them: the vetoes and the disputed fails it
+ *  settles, and every other disagreement, which it may read and settles nothing on. */
+export function reviewerContested(rows: readonly ContestedCase[]) {
+  return {
+    vetoed: rows.filter(isVetoed),
+    disputed: rows.filter(isDisputedFail),
+    otherContested: rows.filter((row) => !isVetoed(row) && !isDisputedFail(row)),
+  };
 }
 
 /** Every case whose judge verdict contradicts verifier truth. Subjects without a judge evidence or

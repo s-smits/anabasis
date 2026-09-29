@@ -117,7 +117,7 @@ describe("the record a round settles", () => {
     expect(sink.settled).toHaveLength(1);
     const evidence = required(sink.settled[0], "the settled record");
     expect(evidence).toMatchObject({
-      schema: "builder-execution/v6",
+      schema: "builder-execution/v7",
       backend: "claude",
       turns: 3,
       outcome: "turn-bound",
@@ -156,7 +156,16 @@ describe("the record a round settles", () => {
       description: "inspect",
       execute: async () => ({
         content: [{ type: "text", text: "private-result-text" }],
-        details: { receipt: { outcome: "clear", findings: 0, resultDigest: "safe-result-digest" } },
+        details: {
+          receipt: {
+            outcome: "clear",
+            findings: 0,
+            resultDigest: "safe-result-digest",
+            conditionId: "snap-tools",
+            stagesRun: ["bundle", "census"],
+            stagedCodes: ["census:tool-timeout", 7],
+          },
+        },
       }),
     });
     const trialTool = toolDouble({
@@ -191,7 +200,14 @@ describe("the record a round settles", () => {
         action: "task",
         target: { taskId: "public-task-7" },
         dispatchOutcome: "returned",
-        semantic: { outcome: "clear", findings: 0, resultDigest: "safe-result-digest" },
+        semantic: {
+          outcome: "clear",
+          findings: 0,
+          resultDigest: "safe-result-digest",
+          conditionId: "snap-tools",
+          stagesRun: ["bundle", "census"],
+          stagedCodes: ["census:tool-timeout"],
+        },
       },
       {
         sequence: 2,

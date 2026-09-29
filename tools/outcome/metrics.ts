@@ -22,8 +22,8 @@ import { type ControllerEvidence, readControllerEvidence } from "../../src/run/c
 import { isControllerBatteryRunId } from "../../src/run/controller-battery-record-policy.ts";
 import { ControllerLedger, controllerLedgerExists } from "../../src/run/controller-ledger.ts";
 import { BUILT_STANDARD_TOOL_NAMES } from "../../src/solve/built-starter.ts";
-import { isBuiltPresetId, presetToolNames } from "../../src/truth/built-presets.ts";
-import { PUBLIC_RESOURCES_TOOL, readPublicResources } from "../../src/truth/public-resources.ts";
+import { isBuiltPresetId, presetToolNames } from "../../src/correctness-bundle/built-presets.ts";
+import { PUBLIC_RESOURCES_TOOL, readPublicResources } from "../../src/correctness-bundle/public-resources.ts";
 import { scanTokens } from "../loc/token-facts.ts";
 import { countNonBlank, excludedAs } from "../loc/nonblank-loc.ts";
 import {
@@ -421,7 +421,7 @@ function limitMarginTable(campaignDir: string, runId: string): OutcomeMetrics["l
       return {
         ...row,
         shareWithin5pct: share,
-        reading: `${row.family}: ${row.within5pct} of ${row.paired} paired ${row.limits} limits within 5% of the reference (${percent}), ${row.within1pct} within 1%, ${row.unpaired} unpaired, over ${row.tasks} task(s); ${row.limits === "hidden" ? "heuristic" : "declared"} pairing`,
+        reading: `${row.family}: ${row.within5pct} of ${row.paired} paired ${row.limits} limits within 5% of the reference (${percent}), ${row.within1pct} within 1%, ${row.derived} derived, ${row.unpaired} unpaired, over ${row.tasks} task(s); ${row.limits === "hidden" ? "heuristic" : "declared"} pairing`,
       };
     }),
   };

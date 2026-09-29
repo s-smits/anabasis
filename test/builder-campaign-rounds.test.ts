@@ -27,7 +27,6 @@ import {
   completeBundle,
   namedTool,
   openingPrompt,
-  proposeExperiment,
   replyText,
   submitOnce,
   submitTool,
@@ -49,7 +48,7 @@ import type { CampaignFeedback } from "../src/author/campaign-types.ts";
 import { runBuilderCampaign } from "../src/run/builder-campaign.ts";
 import type { BuilderCampaignDeps, BuilderCampaignInput } from "../src/run/builder-campaign.ts";
 import { renderBatteryContract } from "../src/run/climb-readout.ts";
-import { loadSolvabilityPublicSchema } from "../src/truth/solvability-artifact-schema.ts";
+import { loadSolvabilityPublicSchema } from "../src/correctness-bundle/solvability-artifact-schema.ts";
 import { readExecutionEvidence } from "../tools/outcome/builder-execution-facts.ts";
 
 afterAll(cleanupScratch);
@@ -102,7 +101,7 @@ describe("the opening a round composes", () => {
     expect(turns).toBe(3);
   });
 
-  it("serves one round contract to the opening and harness_inspect, ahead of the advice, on the closed roster with the plan view", async () => {
+  it("serves one round contract to the opening and harness_inspect, ahead of the advice, on the closed roster", async () => {
     // The contract has one owner and two readers; comparing both against what the round actually
     // served, rather than against the renderer, is what catches the readers drifting apart.
     const campaignDir = scratchDir("ana-contract-readers-");
@@ -110,7 +109,6 @@ describe("the opening a round composes", () => {
     let delivered = "";
     let served = "";
     let roster: string[] = [];
-    let plan = "";
     await expect(
       runBuilderCampaign(
         { campaignDir, ...FRESH_BUILD, advisoryNote: note },
@@ -126,13 +124,6 @@ describe("the opening a round composes", () => {
                 action: "readiness",
               });
               served = inspected.content[0]?.text ?? "{}";
-              const page = await namedTool(tools, "context").execute("context-1", {
-                question: "what does the round plan need",
-                decides: "whether to write EXPERIMENT.json",
-                depth: "page",
-                id: "round/plan",
-              });
-              plan = page.content[0]?.text ?? "";
               return { status: "failed", errorMessages: ["stop after prompt proof"] };
             }),
         },
@@ -142,13 +133,12 @@ describe("the opening a round composes", () => {
     expect(contract).toContain("Task count: exactly 4 tasks.");
     expect(contract).toContain(renderBatteryContract(4));
     expect(delivered).toContain(contract);
-    expect(delivered).not.toContain(renderBatteryContract(25));
+    // The task count sentence carries the size; the battery contract states no count at any size.
+    expect(renderBatteryContract(4)).toBe(renderBatteryContract(25));
     expect(delivered.indexOf("Task count: exactly 4 tasks.")).toBeLessThan(delivered.indexOf(note));
     expect(roster).toEqual(expect.arrayContaining(["harness_inspect", "harness_trial", "submit"]));
     // No adoption gate is supplied, so correctness_check is not registered.
     expect(roster).not.toContain("correctness_check");
-    // A first round scores its rehearsals only against a plan it was shown how to write.
-    expect(plan).toContain("Round plan: EXPERIMENT.json is not written yet. Write EXPERIMENT.json as");
   });
 
   it.concurrent("opens a probe round on the range it may choose in, not one size", async () => {
@@ -156,10 +146,9 @@ describe("the opening a round composes", () => {
     expect(prompt).toContain("Task count: between 5 and 10 tasks — choose the size in that range yourself.");
     expect(prompt).not.toContain("exactly 10 tasks");
     expect(prompt).toContain(renderBatteryContract(10, 5));
-    expect(prompt).toContain(
-      "read the row for the size you pick: 5 tasks — author for about 1, aim 1 to 2, 5 or more finds no limit.",
-    );
-    expect(prompt).toContain("8 tasks — author for about 1, aim 2 to 4, 7 or more finds no limit");
+    // A probe is sized to pass some but not all, so no size in the range states an aim.
+    expect(prompt).not.toMatch(/\d+ tasks: aim/);
+    expect(prompt).not.toContain("finds no limit");
     expect(prompt).not.toContain("for your chosen size");
     expect(prompt).not.toMatch(/\bof 10\b/);
   });
@@ -337,30 +326,23 @@ describe("the admission a repair earns", () => {
     });
   });
 
-  it.concurrent("admits a model-proposed controls repair and records the proposal captured at submit", async () => {
+  it.concurrent("admits a model-proposed controls repair", async () => {
     const { campaignDir, workspace, adoptedDir } = adoptedRound("ana-primary-controls-repair-");
-    let captured: ReturnType<typeof proposeExperiment> | undefined;
     const outcome = await runBuilderCampaign(
       { campaignDir, ...FRESH_BUILD, maxTurns: 1, experiment: "build", adoptedDir },
       {
         ...BARE,
-        gates: async () => {
-          proposeExperiment(workspace, "tasks", "A later background edit is not the submitted proposal.");
-          return [];
-        },
+        gates: async () => [],
         open: async (tools) =>
           scriptedSession(async () => {
             touch(workspace, "correctness-model/controls.json");
-            captured = proposeExperiment(workspace);
             await replyText(submitTool(tools), "controls-repair");
             return { status: "completed", assistantText: "submitted" };
           }),
       },
     );
     expect(outcome.buildAdmissible).toBe(true);
-    expect(outcome.experimentProposal).toEqual(captured);
-    expect(outcome.iterations[0]?.experimentProposal).toEqual(captured);
-    expect(readExecutionEvidence(campaignDir)[0]?.submits[0]?.experimentProposal).toEqual(captured);
+    expect(readExecutionEvidence(campaignDir)[0]?.submits[0]?.outcome).toBe("accepted");
   });
 
   it.concurrent("admits a rebuild that moves the task battery, and leaves the route to the Builder", async () => {
@@ -382,23 +364,15 @@ describe("the admission a repair earns", () => {
           scriptedSession(async (turn) => {
             prompt = turn.prompt;
             touch(workspace, "correctness-model/tasks.json");
-            proposeExperiment(workspace, "tasks");
             await submitTool(tools).execute("rebuild-moved", {});
             return { status: "completed", assistantText: "submitted" };
           }),
       },
     );
     expect(outcome.buildAdmissible).toBe(true);
-    for (const sentence of [
-      "no axis, step size, family mix or parent bijection is prescribed",
-      "extra cases on the same rule establish coverage, a new identifier",
-      "Move one part per experiment",
-      "recorded as a build, and their result credits neither",
-      "fix a known evaluator defect before claiming a task-only challenge",
-    ]) {
-      expect(prompt).toContain(sentence);
-    }
-    expect(prompt).not.toContain("Keep the previous battery's family composition");
+    expect(prompt).toContain("The user's request, unchanged:");
+    // The route is the Builder's: the round prescribes no composition, step or order of moves.
+    expect(prompt).not.toMatch(/family composition|Move one part per experiment|parent bijection/);
   });
 
   it.concurrent("serves every carried owner and admits a package repair whose suggested files never moved", async () => {
@@ -440,7 +414,11 @@ describe("the admission a repair earns", () => {
     );
     expect(outcome).toMatchObject({
       buildAdmissible: true,
-      experimentScope: { actual: "build", freeze: null },
+      // The bytes decide the scope: a fresh build has no adopted product to hold a freeze against.
+      experimentScope: {
+        actual: "build",
+        freeze: { state: "unproven", clauses: ["evaluation-baseline-absent"] },
+      },
     });
     expect(censusRuns).toBe(1);
     expect(prompt).toContain("- correctness-model/controls.json:");
@@ -458,7 +436,6 @@ describe("the admission a repair earns", () => {
       const tasks = structuredClone(MATCHING_TASKS);
       tasks[0]!.publicInput = { variant: 7, parts: ["alpha"], bindings: [{ part: "alpha", slot: "s3" }] };
       writeFileSync(join(workspace, "correctness-model/tasks.json"), JSON.stringify(tasks));
-      proposeExperiment(workspace);
     });
     const outcome = await runBuilderCampaign(
       {
@@ -508,20 +485,12 @@ describe("the admission a repair earns", () => {
       ]),
     };
     const helper = join(workspace, "correctness-model/repair-helper.ts");
-    let draft: ReturnType<typeof proposeExperiment> | undefined;
     for (const first of [true, false]) {
       let opened = false;
       await runBuilderCampaign(input, {
         ...BARE,
         open: async () => {
           opened = true;
-          if (first) {
-            draft = proposeExperiment(workspace);
-          } else {
-            expect(JSON.parse(readFileSync(join(workspace, "EXPERIMENT.json"), "utf8"))).toMatchObject({
-              gap: draft?.gap,
-            });
-          }
           for (const [path, original] of initial) {
             expect(readFileSync(join(workspace, path), "utf8")).toBe(first ? original : `${original}\n`);
             writeFileSync(join(workspace, path), `${original}\n`);

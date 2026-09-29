@@ -26,7 +26,7 @@ import { existsSync, readdirSync } from "#src/meta/filesystem.ts";
 import { basename, dirname, isAbsolute, join, resolve } from "#src/meta/path.ts";
 import { type CaseOutcome, classifyCaseOutcome, outcomeTally } from "#src/claim/case-record.ts";
 import { defaultProductDir } from "#src/meta/campaign-root.ts";
-import { BATTERY_FILE, batteryPath } from "#src/truth/battery-record.ts";
+import { BATTERY_FILE, batteryPath } from "#src/correctness-bundle/battery-record.ts";
 import { REPORTING_Z, wilsonInterval } from "#src/claim/estimation.ts";
 import { type ExitWith, exitWith, runCommand } from "#skills/main/cli.ts";
 import { asRecord, isBoolean, isNumber, isString } from "#src/meta/json-shape.ts";

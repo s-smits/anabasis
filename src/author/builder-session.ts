@@ -18,19 +18,19 @@
  * The session stays responsible for authoring throughout: this driver opens no specialist
  * sub-session and hands the candidate files to no other author.
  */
+import { POLICY } from "../critic/policy.ts";
 import type { PiTool } from "../backends/pi-session.ts";
 import { BuilderAuthorFeedback } from "../builder/author-feedback.ts";
 import { authoringIdentity, PRIMARY_AUTHOR_PATHS } from "./author-first.ts";
 import type { FingerprintEvidence } from "../claim/fingerprint.ts";
 import type { RunObserver } from "../observe/run-observer.ts";
-import type { ContractFinding } from "../truth/brief.ts";
+import type { ContractFinding } from "../correctness-bundle/brief.ts";
 import { BuildAgentTurnNonResult, openBuildSession } from "./build-agent.ts";
 import { CampaignBudgetExhausted } from "../run/controller-ledger.ts";
 import type { ModelAttemptGate } from "../run/campaign-budget.ts";
 import type { ProviderResourceBudget } from "../run/provider-resource-budget.ts";
 import { type BuilderExecutionEvidence, BuilderExecutionRecorder } from "./builder-execution.ts";
 import { sessionClock, withCustomToolReceipts } from "./builder-tool-receipts.ts";
-import { STALLED_TURNS } from "./builder-continuation.ts";
 import { MEMORY_FILE, SCRATCHPAD_FILE, SCRATCH_DIR, builderMemoryBlock } from "./builder-memory.ts";
 import { builderSystemPrompt } from "./builder-start-prompt.ts";
 import {
@@ -64,14 +64,12 @@ interface BuilderSessionInput {
    *  opening would state them twice; after compaction the context tool's round source still has
    *  them. */
   freshContext?: string;
-  /** The round plan's compact view, which every continuation carries. */
-  planView?: () => string;
   /** The operator's cap on session work (`--max-builder-turns`), which model turns and refused
    *  submits share. A turn is one prompt and the tool iterations inside it are free, so a session
    *  can author everything within turn 1 and make a dozen refused submits that all record
    *  `turn: 1` without the count moving — which is why the same number also ends the session at
    *  its maxTurns-th refused submit. Absent, the round has no cap, as a Codex goal has none: it
-   *  ends on acceptance, a final refusal, `STALLED_TURNS` turns without a successful tool call,
+   *  ends on acceptance, a final refusal, `POLICY.loop.stalledTurns` turns without a successful tool call,
    *  the budget or a thrown turn. */
   maxTurns?: number;
   /** Whether the Builder slot carries public web search. The slot profile decides it and the system
@@ -89,10 +87,10 @@ export type WorkspaceSeed = "adopted" | "starter" | "resumed";
  *  last round, because acceptance and a final refusal both end the round at that turn's boundary,
  *  so the next round has to say how the last one finished. */
 const ENDED: Record<RoundEnding, string> = {
-  accepted: "Your last submit was accepted, and the controller took that candidate forward.",
+  accepted: "Your last submit was accepted.",
   "terminal-refusal": "The last round ended on a final submit refusal.",
   "turn-bound": "The last round reached its turn limit without an accepted submit.",
-  "no-progress": `The last round ended after ${STALLED_TURNS} turns in a row without a successful tool call.`,
+  "no-progress": `The last round ended after ${POLICY.loop.stalledTurns} turns in a row without a successful tool call.`,
   "budget-limited": "The last round ended when the run's model budget ran out.",
   "turn-non-result":
     "The last round ended when a model turn failed on the provider's side, after its retries.",
@@ -120,8 +118,8 @@ export interface BuilderSessionDeps {
    *  the session is still authoring; the public advice it returns rides that tool's result, so the
    *  review reaches the Builder without a turn of its own. */
   afterTool?: () => Promise<string | null>;
-  /** Submit's join with that review: text returned here replaces the submit's verdict, and the call
-   *  counts as no submit. */
+  /** Submit's hold: the join with that review. A review returned here replaces the submit's
+   *  verdict, and the call counts as no submit. */
   beforeSubmit?: () => Promise<string | null>;
   /** Opens the Builder slot's host session; a continued conversation reconfigures its own instead. */
   open: OpenSession;
@@ -258,12 +256,15 @@ function roundPrompt(input: BuilderSessionInput, previous: PreviousRound | null)
     // A bound the model cannot observe cannot steer it, so an operator cap is stated rather than
     // merely enforced. A Claude session can run as a single turn, which makes a turn reserve
     // meaningless as a pace signal; left with one, a session authors for hours past its first clear
-    // preview without submitting. So the pace is stated as an action instead. Readiness names the
-    // rehearsals as well as the preview: judged by validity alone, a Builder whose rehearsals all
-    // passed submitted anyway, declared a target below what they implied, and measured a full pass.
-    `${input.maxTurns === undefined ? "" : `Round limit: ${input.maxTurns} assistant turns. `}Build, check and rehearse the candidate, and submit` +
-      ` once a clear preview says it works and your rehearsals agree with the aim; further polish belongs to the next` +
-      ` round.`,
+    // preview without submitting. So the pace is stated as an action instead. It names no rehearsal
+    // condition: rehearsals pass far more often than a Builder predicts, so asking them to agree with
+    // a predicted count held rounds back for hours without changing where the battery landed.
+    // The cap counts replies, not tool calls, and says so: read as a count of steps, fifteen turns
+    // looked nearly spent a dozen calls into the first, and a Builder dropped a change it had
+    // judged right for want of turns it still had.
+    `${input.maxTurns === undefined ? "" : `Round limit: ${input.maxTurns} assistant turns, each ending when you reply without a tool call; tool calls inside a turn do not count. `}Build, check and rehearse the candidate, and submit` +
+      ` once a clear preview says it works; the measured battery, not a rehearsal, decides where it lands, and further` +
+      ` polish belongs to the next round.`,
     HANDOVER,
   ];
   const context = [input.advisory ?? "", previous === null ? (input.freshContext ?? "") : ""]
@@ -388,7 +389,7 @@ function roundRoster(context: RoundContext, feedback: BuilderAuthorFeedback): Pi
     activeTurn: () => state.activeTurn,
     checkpoint,
     closed: () => settledClosure(state),
-    clock: sessionClock(() => state.attempts > 0),
+    clock: sessionClock(() => state.attempts),
     afterTool:
       afterTool === undefined
         ? undefined
@@ -430,7 +431,6 @@ async function runRoundTurns(
       checkpoint,
       kickoff: input.kickoff,
       ...keyIfDefined("maxTurns", maxTurns),
-      ...keyIfDefined("planView", input.planView),
       openedAtMs,
       ...keyIfDefined("observer", deps.observer),
       // The operator's cap applies across the whole session, so each new turn receives only what
@@ -453,7 +453,7 @@ async function runRoundTurns(
 }
 
 /** Run one Builder round until it settles. Like a Codex goal, a round has no turn ceiling of its
- *  own: it ends on an accepted submit, a final refusal, `STALLED_TURNS` turns in a row without a
+ *  own: it ends on an accepted submit, a final refusal, `POLICY.loop.stalledTurns` turns in a row without a
  *  successful tool call, the budget, a thrown turn, or the operator's `maxTurns` when one is set. */
 export async function runBuilderSession(
   input: BuilderSessionInput,

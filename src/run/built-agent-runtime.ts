@@ -3,7 +3,7 @@ import { type PiBuiltRuntime, piBuiltSolver } from "../backends/pi-built.ts";
 import type { RunObserver } from "../observe/run-observer.ts";
 import type { ProviderResourceBudget } from "./provider-resource-budget.ts";
 import type { SafeguardContext } from "../meta/safeguard.ts";
-import type { Solver } from "../truth/solve.ts";
+import type { Solver } from "../correctness-bundle/solve.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { EnvironmentRefusal } from "../backends/environment-refusal.ts";
 import type { OsIsolationRuntime } from "../verify/os-isolation.ts";

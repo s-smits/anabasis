@@ -20,20 +20,29 @@ import { createSubmissionAuthority } from "../solve/final-submission.ts";
 import { compilePublicArtifactSchema } from "../solve/public-artifact-schema.ts";
 import { piBuiltReadAllowRoots, piBuiltSolver, resolvePiBuiltRuntime } from "../backends/pi-built.ts";
 import type { VerifierHostHandle } from "../verify/verifier-port.ts";
-import { resolveVerifier } from "../truth/verification-registry.ts";
-import { CASE_ARTIFACT_FILE, type CaseRecord, SUBMIT_MAX_ATTEMPTS } from "../truth/battery-record.ts";
-import { type Brief, externalChecksOf, throwIfInvalid } from "../truth/brief.ts";
-import { validateBrief } from "../truth/brief-validator.ts";
-import { loadCorrectnessModel } from "../truth/contracts.ts";
-import { type ControlCorpus, isControlCorpus } from "../truth/controls.ts";
-import { evaluateCheckProgram } from "../truth/predicate.ts";
+import { resolveVerifier } from "../correctness-bundle/verification-registry.ts";
+import {
+  CASE_ARTIFACT_FILE,
+  type CaseRecord,
+  SUBMIT_MAX_ATTEMPTS,
+} from "../correctness-bundle/battery-record.ts";
+import { type Brief, externalChecksOf, throwIfInvalid } from "../correctness-bundle/brief.ts";
+import { validateBrief } from "../correctness-bundle/brief-validator.ts";
+import { loadCorrectnessModel } from "../correctness-bundle/contracts.ts";
+import { type ControlCorpus, isControlCorpus } from "../correctness-bundle/controls.ts";
+import { evaluateCheckProgram } from "../correctness-bundle/predicate.ts";
 import { createVerifierLifetime, VerifierOperationalStop } from "../verify/verifier-lifetime.ts";
-import { applicableCheckIds } from "../truth/run-controls.ts";
-import { builtStarterFactoryForSolver } from "../truth/solve.ts";
-import { gradeCase, type SolveCaseEvidence, solveCase, solverBlockerOf } from "../truth/solve-case.ts";
-import { commitPublicTask } from "../truth/task-split.ts";
-import { type BuildTask, SAFE_TASK_ID } from "../truth/tasks.ts";
-import { type PublicTaskVerdict, publicTaskVerdict } from "../truth/verdict-binding.ts";
+import { applicableCheckIds } from "../correctness-bundle/run-controls.ts";
+import { builtStarterFactoryForSolver } from "../correctness-bundle/solve.ts";
+import {
+  gradeCase,
+  type SolveCaseEvidence,
+  solveCase,
+  solverBlockerOf,
+} from "../correctness-bundle/solve-case.ts";
+import { commitPublicTask } from "../correctness-bundle/task-split.ts";
+import { type BuildTask, SAFE_TASK_ID } from "../correctness-bundle/tasks.ts";
+import { type PublicTaskVerdict, publicTaskVerdict } from "../correctness-bundle/verdict-binding.ts";
 import type { CorrectnessModelResult } from "../verify/correctness-model-result.ts";
 import { builtSolveIsolation } from "./built-agent-runtime.ts";
 import { resolveBuiltSlot } from "./harness-measure.ts";

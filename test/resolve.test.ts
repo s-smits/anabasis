@@ -4,6 +4,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { afterEach, describe, expect, it } from "bun:test";
 import { loadRepoEnv } from "../src/backends/env.ts";
+import { keyIfDefined } from "../src/meta/optional-key.ts";
 import type { OptionalEnvValues } from "../src/backends/scrub-env.ts";
 import { backendPinOf, resolveSlots } from "../src/backends/resolve.ts";
 
@@ -261,6 +262,31 @@ describe("slot resolution", () => {
     const slots = resolveSlots(root, "s1", env);
     expect(slots.built).toMatchObject({ kind: "claude", source: "operator", model: "claude-opus-5" });
     expect(slots.builder).toMatchObject({ kind: "claude", source: "env" });
+  });
+});
+
+describe("the withheld-instruments launch condition", () => {
+  it("is off and absent unless the key says true, and never reaches the Builder or an inherited review", () => {
+    const root = repo(operatorFile("s1", { review: { inherit: true } }));
+    const at = (value?: string) =>
+      resolveSlots(
+        root,
+        "s1",
+        loadRepoEnv(root, {
+          ...RUNNABLE_SIDES,
+          ...keyIfDefined("HARNESS_BUILT_WITHHOLD_INSTRUMENTS", value),
+        }),
+      );
+    const off = at();
+    expect(at("false")).toEqual(off);
+    expect("withholdInstruments" in off.built).toBe(false);
+    const on = at("true");
+    expect(on.built).toEqual({ ...off.built, withholdInstruments: true });
+    expect(on.builder).toEqual(off.builder);
+    expect(on.review).toEqual(off.review);
+    // The pin stays the model's: the condition is recorded in the battery's run condition instead.
+    expect(backendPinOf(on)).toBe(backendPinOf(off));
+    expect(() => at("1")).toThrow("must be true or false");
   });
 });
 

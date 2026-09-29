@@ -38,6 +38,28 @@ function starterClosingWith(termination: GeneratedToolWorkerEvidence["terminatio
   });
 }
 
+/** A starter that closes with the scripted termination on each task's nth attempt, and normally
+ *  once the script runs out, counting the attempts per task. */
+function starterClosingInTurn(script: GeneratedToolWorkerEvidence["termination"][]) {
+  const attempts = new Map<string, number>();
+  const factory: StarterFactory = async (options) => {
+    const seen = attempts.get(options.task.taskId) ?? 0;
+    attempts.set(options.task.taskId, seen + 1);
+    const termination = script[seen];
+    return termination === undefined
+      ? createSolvabilityStarter(options)
+      : starterClosingWith(termination)(options);
+  };
+  return { factory, attempts: () => [...attempts.values()] };
+}
+
+const CLOSE_DEADLINE = {
+  status: "non-result",
+  kind: "runtime",
+  message: "generated-tool worker did not close within 1000ms",
+  deadline: true,
+} as const;
+
 afterAll(cleanupScratch);
 
 describe("the representation the submission path must express", () => {
@@ -85,36 +107,6 @@ describe("the representation the submission path must express", () => {
     expect(failure(result)).toContain("$.design");
   });
 
-  it.concurrent("types a public-valid nullable branch omitted by the writer schema as a representation defect", async () => {
-    const fixture = specimen({
-      verifier: GOOD_VERIFIER,
-      schema: [{ name: "answer", "shape": "string or null" }],
-      answers: [null, "B"],
-      acceptArtifacts: [{ answer: null }, { answer: "B" }],
-      writerKinds: { answer: "string" },
-    });
-    const result = await witness(fixture);
-
-    expect(result.evidence?.cases).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          taskId: "ta",
-          artifact: { answer: null },
-          status: "failed",
-          failure: "representation-defect",
-          submissionPath: null,
-        }),
-        expect.objectContaining({ taskId: "tb", status: "passed" }),
-      ]),
-    );
-    expect(result.findings).toContainEqual(
-      expect.objectContaining({
-        code: "solvability-representation-defect",
-        disclosure: expect.objectContaining({ classification: "generated-toolset-contract" }),
-      }),
-    );
-  });
-
   const HOST_NON_RESULT = {
     status: "non-result" as const,
     row: { nonResultKind: "submission-path-host" },
@@ -148,6 +140,18 @@ describe("the representation the submission path must express", () => {
       expected: HOST_NON_RESULT,
     },
     {
+      // The same protocol kind as the row below, told apart only by the host's own clock.
+      worker: "timing out on a writer request after its handshake",
+      starter: () =>
+        starterClosingWith({
+          status: "non-result",
+          kind: "protocol",
+          message: "generated-tool worker request timed out after 30000ms",
+          deadline: true,
+        }),
+      expected: HOST_NON_RESULT,
+    },
+    {
       worker: "closing with pending requests after its handshake",
       starter: () =>
         starterClosingWith({
@@ -175,5 +179,65 @@ describe("the representation the submission path must express", () => {
     expect(result.findings).toContainEqual(
       expect.objectContaining({ ...finding, disclosure: expect.objectContaining({ classification }) }),
     );
+  });
+
+  // The battery's rule: once the reference submit was accepted, the host-marked close handshake
+  // timeout is cleanup evidence. Without the marker the same deadline stays a host non-result above.
+  it.concurrent("keeps an accepted reference submit whose worker timed out closing", async () => {
+    const result = await witness(specimen({ verifier: GOOD_VERIFIER }), {
+      createSolvabilityStarter: starterClosingWith({
+        status: "non-result",
+        kind: "runtime",
+        message: "generated-tool worker did not close within 1000ms",
+        deadline: true,
+        closeHandshakeTimeout: true,
+      }),
+    });
+
+    expect(result.findings).toEqual([]);
+    expect(statuses(result)).toEqual(["passed", "passed"]);
+  });
+});
+
+// Every recorded pre-accept close deadline (8 of 8, 2026-09-24/25) cleared on a later check of the
+// same bytes, so the census gives the case one fresh attempt before the host's non-result stands.
+describe("one fresh attempt after a host non-result", () => {
+  it.concurrent("passes a case whose first worker missed its close deadline and whose second closed", async () => {
+    const starter = starterClosingInTurn([CLOSE_DEADLINE]);
+    const result = await witness(specimen({ verifier: GOOD_VERIFIER }), {
+      createSolvabilityStarter: starter.factory,
+    });
+
+    expect(result.findings).toEqual([]);
+    expect(statuses(result)).toEqual(["passed", "passed"]);
+    expect(starter.attempts()).toEqual([2, 2]);
+    expect(result.evidence?.cases[0]?.rerunAfterNonResult).toContain("did not close within 1000ms");
+  });
+
+  it.concurrent("keeps the host non-result when the second attempt misses its deadline too", async () => {
+    const starter = starterClosingInTurn([CLOSE_DEADLINE, CLOSE_DEADLINE, CLOSE_DEADLINE]);
+    const result = await witness(specimen({ verifier: GOOD_VERIFIER }), {
+      createSolvabilityStarter: starter.factory,
+    });
+
+    expect(statuses(result)).toEqual(["non-result", "non-result"]);
+    expect(starter.attempts()).toEqual([2, 2]);
+    expect(codes(result)).toContain("solvability-submission-path-host-non-result");
+  });
+
+  it.concurrent("does not retry a representation defect, which the same bytes would repeat", async () => {
+    const broken = {
+      status: "non-result",
+      kind: "protocol",
+      message: "generated-tool worker closed with pending requests",
+    } as const;
+    const starter = starterClosingInTurn([broken]);
+    const result = await witness(specimen({ verifier: GOOD_VERIFIER }), {
+      createSolvabilityStarter: starter.factory,
+    });
+
+    expect(statuses(result)).toEqual(["failed", "failed"]);
+    expect(starter.attempts()).toEqual([1, 1]);
+    expect(result.evidence?.cases[0]).not.toHaveProperty("rerunAfterNonResult");
   });
 });

@@ -239,7 +239,7 @@ gives you, then read.
 1. **Record the baseline.** Run the whole suite once in the tree you will edit and keep the log:
    files, pass, skip, fail, `expect()` calls and seconds. That count is what the audit is measured
    against at the end.
-2. **Static census.** `bun .claude/skills/test-impact-and-consolidation/scripts/case-census.mjs`
+2. **Static census.** `bun .claude/skills/test-impact-and-consolidation/scripts/case-census.ts`
    (with `REPO=<tree>`) reports duplicate titles, identical callbacks, import-subset pairs and helper
    names repeated across suites. Duplication in this suite rarely shows as copied titles; it shows as
    one contract under different titles in a family, so read the families it points at.

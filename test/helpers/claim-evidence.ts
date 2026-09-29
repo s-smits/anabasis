@@ -22,7 +22,10 @@ import type {
   RuntimeModelIdentity,
 } from "../../src/claim/runtime-model-identity.ts";
 import type { JudgeEvidence } from "../../src/claim/judge.ts";
-import { NO_EXTERNAL_EXECUTION, type VerifierExecutionEvidence } from "../../src/truth/grounding.ts";
+import {
+  NO_EXTERNAL_EXECUTION,
+  type VerifierExecutionEvidence,
+} from "../../src/correctness-bundle/grounding.ts";
 
 /** Four verified case identities, three passing — matching `greenEvidence()`'s `verified: 4`. Every
  *  case exercises the declared authored check c1; per-case tool coverage applies only to required
@@ -76,6 +79,7 @@ export function qiskitExecution(subjectIds: readonly string[]): VerifierExecutio
       attempt: 1,
       checkId: "resonance",
       adapterId: "qiskit-adapter",
+      artifactInput: true,
     })),
     verifierEnvironmentHash: "e".repeat(64),
     tools: QISKIT_TOOLS,
@@ -124,7 +128,6 @@ export function greenEvidence(overrides: Partial<ClaimEvidence> = {}): ClaimEvid
     runtimeIdentities: codexIdentities(),
     thresholdManifestDigest: "f".repeat(64),
     capabilities: ["web-search:off"],
-    predictions: [{ id: "p1", outcome: "held" }],
     bundles: {
       agentHash: "a".repeat(64),
       correctnessModelHash: "g".repeat(64),

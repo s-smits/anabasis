@@ -14,15 +14,17 @@
 //   AGENTS.md forbids assigning to the environment;
 //   a signal is not an exit code. Under Bubblewrap it arrives wrapped inside one, and reading it
 //   as a code would report a killed worker as a crashing one;
-//   a close the host's own wall ended carries `deadline`, so a reader can tell a wait limit from
-//   a reported failure.
+//   a close or a request the host's own wall ended carries `deadline`, so a reader can tell a wait
+//   limit from a reported failure.
 
 import { describe, expect, it } from "bun:test";
+import { ENVIRONMENT_OWNED_NONRESULT_KINDS } from "../src/claim/record-events.ts";
 import {
   closeRefusal,
   exitOwner,
   exitTermination,
   readyTimeoutCause,
+  requestTimeoutCause,
 } from "../src/solve/generated-tool-worker-termination.ts";
 
 describe("what stops a close from being an ordinary one", () => {
@@ -109,11 +111,16 @@ describe("a startup the host gave up waiting for", () => {
   it("blames the host while the walls were still going up", () => {
     const cause = readyTimeoutCause("pending", 30_000);
     expect(cause).toMatchObject({ kind: "runtime", deadline: true });
+    expect(ENVIRONMENT_OWNED_NONRESULT_KINDS.has(cause.kind)).toBe(true);
     expect(cause.message).toContain("before its ready handshake");
   });
 
   it("points at the candidate's loading once its walls are installed", () => {
     const cause = readyTimeoutCause("installed", 30_000);
+    // The battery charges the case to the author, as F2 does, rather than letting it count
+    // towards an environment-blocked battery.
+    expect(cause.kind).toBe("protocol");
+    expect(ENVIRONMENT_OWNED_NONRESULT_KINDS.has(cause.kind)).toBe(false);
     expect(cause.message).toContain("loading the candidate harness");
     expect(cause.message).toContain("30000ms");
   });
@@ -125,6 +132,22 @@ describe("a startup the host gave up waiting for", () => {
   });
 });
 
+describe("a request the host gave up waiting for", () => {
+  // Read without `deadline`, F2 charged a loaded host's slow reply to the writer as a
+  // representation defect, and a Builder answered it by rewriting bytes that were never wrong.
+  it("marks the host's own wait, so F2 reads it as a non-result", () => {
+    expect(requestTimeoutCause(30_000)).toEqual({
+      kind: "protocol",
+      message: "generated-tool worker request timed out after 30000ms",
+      deadline: true,
+    });
+  });
+
+  it("leaves a close with a request still in flight unmarked, since that is the worker's own break", () => {
+    expect(closeRefusal("done", 1)?.deadline).toBeUndefined();
+  });
+});
+
 describe("every cause names the subject", () => {
   it("prefixes each message with the worker, so a log line stands alone", () => {
     const causes = [
@@ -132,6 +155,7 @@ describe("every cause names the subject", () => {
       closeRefusal("done", 1)?.message,
       readyTimeoutCause("installed", 1).message,
       readyTimeoutCause("pending", 1).message,
+      requestTimeoutCause(1).message,
     ];
     for (const message of causes) expect(message).toMatch(/^generated-tool worker /);
   });

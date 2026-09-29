@@ -7,10 +7,11 @@
  *
  * The first group is what the packet knows. One battery's observations are counted against the
  * right denominators, with a verified failure, an unaccepted attempt and a non-result kept apart;
- * an issue then ages across later batteries through active, tentatively-fixed, confirmed-fixed,
- * regressed, retired and disputed. The retired case is the one to read closely, because a family
- * that left the task set makes its issue retired rather than fixed, and absence counts towards a
- * fix only when the family actually ran.
+ * an issue then records, across later batteries, the complete rechecks that did not observe it,
+ * the condition gaps that made a battery incomparable, its retirement, its return and its dispute,
+ * and never a verdict of fixed. The retired case is the one to read closely, because a family that
+ * left the task set makes its issue retired rather than absent, and a recheck counts only when the
+ * family actually ran.
  *
  * The second group is what the packet must not say. A finding bound to a single case is dropped
  * rather than aggregated, the render carries families, kinds and counts but never a task id or
@@ -25,7 +26,7 @@
  */
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { hashJsonBytes } from "../src/meta/json-runtime.ts";
-import { mkdirSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { chmodSync, mkdirSync, realpathSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { writeCompleted } from "../src/meta/completed-json.ts";
 import { join } from "../src/meta/path.ts";
 import { afterEach, describe, expect, it } from "bun:test";
@@ -38,7 +39,11 @@ import {
 } from "../src/analyse/iteration-analysis.ts";
 import type { JudgeReviewsResult } from "../src/analyse/judge-reviews.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
-import { double } from "./helpers/doubles.ts";
+import { double, required } from "./helpers/doubles.ts";
+import { EvidenceLog } from "../src/claim/evidence-log.ts";
+import { verifierEnvironmentHashOfTools } from "../src/correctness-bundle/verifier-environment.ts";
+import { resolveToolInventory } from "../src/verify/tool-inventory.ts";
+import { taskSetDigest } from "../src/claim/fingerprint.ts";
 import {
   type BatteryCondition,
   batteryCondition,
@@ -53,9 +58,10 @@ import {
   adviceTotals,
   advanceIssues,
   attachIssueReadings,
+  blockingLine,
   deriveRebuildAdvice,
   isStanding,
-  issueStatusWord,
+  issueFacts,
   latestRebuildAdvicePath,
   readLatestRebuildAdvice,
   rebuildAdvicePath,
@@ -104,8 +110,10 @@ function analysis(
         correctnessModelHash: "b".repeat(64),
         scoringHash: "b".repeat(64),
         taskSetHash: "c".repeat(64),
+        toolTreeDigest: null,
       },
       backendPin: "codex:test",
+      builtEffort: "high",
       buildInputsHash: "d".repeat(64),
       isolationStrength: "physical",
     },
@@ -179,8 +187,9 @@ function admission(admitted: AnalysisFinding[] = []): AdmittedEvidence {
 function conditionOf(data: IterationAnalysis, overrides?: Partial<BatteryCondition>): BatteryCondition {
   return {
     scoringHash: MEASURED_UNDER.scoringHash,
+    checkTools: MEASURED_UNDER.checkTools,
     measuredCondition: MEASURED_UNDER.measuredCondition,
-    familyInputs: new Map(data.cases.map((row) => [row.family, MEASURED_UNDER.publicInputs] as const)),
+    familyInputs: new Map(data.cases.map((row) => [row.family, MEASURED_UNDER.taskInputs] as const)),
     ...overrides,
   };
 }
@@ -232,7 +241,7 @@ describe("what one battery observes", () => {
     ]);
     // Verified failures use verified cases; an unaccepted attempt has no truth verdict.
     expect(result.issues.find((row) => row.kind === "non-result")?.detail).toBe("provider");
-    expect(result.issues.every((row) => issueStatusWord(row) === "active")).toBe(true);
+    expect(result.issues.every(isStanding)).toBe(true);
   });
 
   it("reads confirmed Judge disagreements in both directions as advisory rows, and drops unconfirmed ones", () => {
@@ -345,101 +354,114 @@ describe("how an issue ages across batteries", () => {
     count: 1,
     denominator: 2,
   };
-  const words = (issues: readonly AdviceIssue[]) => issues.map(issueStatusWord);
-  /** The battery's family rows. A family is only evidence about an issue once it produced a
-   *  truth-verified case; `verified: 0` is a family the provider never let run. */
-  const ran = (...names: string[]) =>
-    names.map((family) => ({
+  const facts = (issues: readonly AdviceIssue[]) => issues.map(issueFacts);
+  /** One family's row in the battery, every case of it truth-verified and passing unless `counts`
+   *  says otherwise. */
+  const familyRow = (
+    family: string,
+    counts?: { verified?: number; unaccepted?: number; nonResults?: number },
+  ) => {
+    const verified = counts?.verified ?? 1;
+    return {
       family,
-      verified: 1,
-      passed: 1,
+      verified,
+      passed: verified,
       unaccepted: 0,
       nonResults: 0,
-      publicInputs: MEASURED_UNDER.publicInputs,
-    }));
-  const unverified = (family: string) => [
-    {
-      family,
-      verified: 0,
-      passed: 0,
-      unaccepted: 0,
-      nonResults: 5,
-      publicInputs: MEASURED_UNDER.publicInputs,
-    },
-  ];
+      ...counts,
+      taskInputs: MEASURED_UNDER.taskInputs,
+    };
+  };
+  /** The battery's family rows. A family is only evidence about an issue once it produced a
+   *  truth-verified case; `verified: 0` is a family the provider never let run. */
+  const ran = (...names: string[]) => names.map((family) => familyRow(family));
+  const unverified = (family: string) => [familyRow(family, { verified: 0, nonResults: 5 })];
 
-  it("ages an absent issue to tentatively fixed, then confirmed fixed after the second battery", () => {
+  it("counts each complete recheck that did not observe the issue, and states the count rather than a fix", () => {
     const once = advance([priorIssue()], [], "r2", ran("beams"), "complete");
     expect(once).toEqual([
       expect.objectContaining({ absentBatteries: 1, firstSeenRunId: "r1", observedUnder: MEASURED_UNDER }),
     ]);
-    expect(words(once)).toEqual(["tentatively-fixed"]);
+    expect(facts(once)).toEqual(["first seen r1, not observed in 1 complete recheck since r1"]);
     const twice = advance(once, [], "r3", ran("beams"), "complete");
     expect(twice).toEqual([expect.objectContaining({ absentBatteries: 2 })]);
-    expect(words(twice)).toEqual(["confirmed-fixed"]);
+    expect(facts(twice)).toEqual(["first seen r1, not observed in 2 complete rechecks since r1"]);
   });
 
-  it("retires an issue whose family left the task set, and reactivates it without a regression if the family returns", () => {
+  it("retires an issue whose family left the task set, and observes it again without a return if the family comes back", () => {
     // Without this, an issue stays active through every later battery of a rebuilt task set that
     // no longer holds its family. Absence of the family is not evidence of a fix either.
     const gone = advance([priorIssue()], [], "r2", ran("joints"), "complete");
     expect(gone).toEqual([
       expect.objectContaining({ retired: true, absentBatteries: 0, lastSeenRunId: "r1" }),
     ]);
-    expect(words(gone)).toEqual(["retired"]);
+    expect(facts(gone)).toEqual(["first seen r1, last seen r1, family left the task set"]);
     expect(advance(gone, [], "r3", ran("joints"), "complete")).toEqual(gone);
     const returned = advance(gone, [beamsFail], "r4", ran("beams"), "complete");
     expect(returned).toEqual([expect.objectContaining({ firstSeenRunId: "r1", lastSeenRunId: "r4" })]);
-    expect(words(returned)).toEqual(["active"]);
+    expect(facts(returned)).toEqual(["first seen r1, last seen r4"]);
   });
 
   it("carries an issue unchanged when its family ran but the provider measured none of it", () => {
     // A battery whose cases were nearly all provider non-results still lists every family in its
-    // rows, so reading appearance as "ran" ages each of their issues one battery closer to
-    // confirmed-fixed on a battery that verified nothing. A family that produced no truth-verified
+    // rows, so reading appearance as "ran" counts a recheck for each of their issues on a battery
+    // that verified nothing. A family that produced no truth-verified
     // case is evidence in neither direction: it did not leave the task set, so it is not retired,
     // and nothing observed the issue, so it does not age.
     const held = advance([priorIssue()], [], "r2", unverified("beams"), "complete");
     expect(held).toEqual([
       expect.objectContaining({ absentBatteries: 0, retired: false, lastSeenRunId: "r1" }),
     ]);
-    expect(words(held)).toEqual(["active"]);
-    // Two such batteries still say nothing; the first measured one ages it.
+    expect(held.filter(isStanding)).toEqual(held);
+    // Two such batteries still say nothing; the first measured one counts a recheck.
     expect(advance(held, [], "r3", unverified("beams"), "complete")).toEqual(held);
-    expect(words(advance(held, [], "r4", ran("beams"), "complete"))).toEqual(["tentatively-fixed"]);
+    expect(advance(held, [], "r4", ran("beams"), "complete")[0]?.absentBatteries).toBe(1);
   });
 
-  it("keeps a Judge issue active while the battery's census is unvalidated", () => {
+  it("carries an issue unchanged through a partial recheck, and ages it once every case of its family is verified", () => {
+    // Task A failed and task B passed. A battery in which A came back a provider non-result and B
+    // passed again never re-verified the case that exposed the issue, so its absence says nothing
+    // about the case; counted, two such batteries would read as two rechecks no verdict had made.
+    const onePassOneNonResult = [familyRow("beams", { nonResults: 1 })];
+    const held = advance([priorIssue()], [], "r2", onePassOneNonResult, "complete");
+    expect(held).toEqual([priorIssue()]);
+    expect(advance(held, [], "r3", onePassOneNonResult, "complete")).toEqual(held);
+    // An unaccepted case left no verdict either.
+    expect(advance(held, [], "r3", [familyRow("beams", { unaccepted: 1 })], "complete")).toEqual(held);
+    const verified = advance(held, [], "r3", [familyRow("beams", { verified: 2 })], "complete");
+    expect(verified).toEqual([expect.objectContaining({ absentBatteries: 1, lastSeenRunId: "r1" })]);
+  });
+
+  it("keeps a Judge issue standing while the battery's census is unvalidated", () => {
     // A Judge that disagrees on the same case again under an unvalidated census has observed
-    // nothing admissible, so ageing the issue there would move it to tentatively-fixed.
+    // nothing admissible, so counting a recheck there would record an absence nothing observed.
     const judgeIssue = priorIssue({ kind: "judge-passed-verifier-failed" });
     const unvalidated = advance([judgeIssue], [], "r2", ran("beams"), "incomplete");
     expect(unvalidated).toEqual([expect.objectContaining({ absentBatteries: 0, lastSeenRunId: "r1" })]);
-    expect(words(unvalidated)).toEqual(["active"]);
-    expect(words(advance(unvalidated, [], "r3", ran("beams"), "complete"))).toEqual(["tentatively-fixed"]);
-    expect(words(advance([judgeIssue], [], "r2", ran("joints"), "incomplete"))).toEqual(["retired"]);
+    expect(unvalidated.filter(isStanding)).toEqual(unvalidated);
+    expect(advance(unvalidated, [], "r3", ran("beams"), "complete")[0]?.absentBatteries).toBe(1);
+    expect(advance([judgeIssue], [], "r2", ran("joints"), "incomplete")[0]?.retired).toBe(true);
   });
 
   it("keeps a dispute only while the issue is disputed", () => {
-    // Left in place, a dispute string rides a confirmed-fixed issue through every later battery.
+    // Left in place, a dispute string rides an issue no recheck observes through every later battery.
     const disputed = priorIssue({ dispute: "the evaluator pins a stale header" });
     const seenAgain = advance([disputed], [beamsFail], "r2", ran("beams"), "complete");
     expect(seenAgain).toEqual([expect.objectContaining({ dispute: "the evaluator pins a stale header" })]);
-    expect(words(seenAgain)).toEqual(["disputed"]);
+    expect(facts(seenAgain)).toEqual(["first seen r1, last seen r2, disputed"]);
     const absent = advance([disputed], [], "r2", ran("beams"), "complete");
-    expect(absent).toEqual([expect.objectContaining({ dispute: null })]);
-    expect(words(absent)).toEqual(["tentatively-fixed"]);
+    expect(absent).toEqual([expect.objectContaining({ dispute: null, absentBatteries: 1 })]);
     expect(advance([disputed], [], "r2", ran("joints"), "complete")).toEqual([
       expect.objectContaining({ retired: true, dispute: null }),
     ]);
     const back = advance(absent, [beamsFail], "r3", ran("beams"), "complete");
     expect(back).toEqual([expect.objectContaining({ returned: true, dispute: null })]);
-    expect(words(back)).toEqual(["regressed"]);
+    expect(facts(back)).toEqual(["first seen r1, last seen r3, seen again after an absence"]);
   });
 
-  it("marks a fixed issue that reappears as regressed and keeps its first-seen battery", () => {
-    const fixed = advance([priorIssue()], [], "r2", ran("beams"), "complete");
-    const back = advance(fixed, [beamsFail], "r3", ran("beams"), "complete");
+  it("records an issue observed after a complete recheck missed it as returned, and keeps its first-seen battery", () => {
+    const missed = advance([priorIssue()], [], "r2", ran("beams"), "complete");
+    const back = advance(missed, [beamsFail], "r3", ran("beams"), "complete");
     expect(back).toEqual([
       expect.objectContaining({
         returned: true,
@@ -448,16 +470,38 @@ describe("how an issue ages across batteries", () => {
         absentBatteries: 0,
       }),
     ]);
-    expect(words(back)).toEqual(["regressed"]);
-    // An issue seen again while still active stays active rather than reading as a regression.
+    // An issue seen again with no recheck between did not go anywhere, so it did not return.
     const again = advance([priorIssue()], [beamsFail], "r2", ran("beams"), "complete");
     expect(again).toEqual([expect.objectContaining({ returned: false, lastSeenRunId: "r2" })]);
-    expect(words(again)).toEqual(["active"]);
+    expect(facts(again)).toEqual(["first seen r1, last seen r2"]);
   });
 
-  it("keeps a diagnosis on an issue the next battery observes again", () => {
-    const next = advance([priorIssue({ diagnosis: READING })], [beamsFail], "r2", ran("beams"), "complete");
-    expect(next).toEqual([expect.objectContaining({ diagnosis: READING, lastSeenRunId: "r2" })]);
+  it("carries a dispute to a re-observation only under the condition that recorded it, and a diagnosis to none", () => {
+    // Identity is kind, family and detail, not the failure's cause. A dispute an evaluator defect
+    // earned, kept across the evaluator's repair, would suspend the solver failure the repaired
+    // evaluator now reports in the same family. A diagnosis read one battery's traces, so it stays
+    // with that observation: a partial recheck carries it, and the next observation is read afresh.
+    const dispute = "the evaluator pins a stale header";
+    const read = priorIssue({ diagnosis: READING, dispute });
+    const same = advance([read], [beamsFail], "r2", ran("beams"), "complete");
+    expect(same).toEqual([expect.objectContaining({ diagnosis: null, dispute, lastSeenRunId: "r2" })]);
+    const partial = advance([read], [], "r2", [familyRow("beams", { nonResults: 1 })], "complete");
+    expect(partial).toEqual([read]);
+    const repaired = advanceIssues(
+      [read],
+      [beamsFail],
+      "r2",
+      { ...MEASURED_UNDER, families: ran("beams"), scoringHash: "8".repeat(64) },
+      "complete",
+    );
+    expect(repaired).toEqual([
+      expect.objectContaining({ diagnosis: null, dispute: null, lastSeenRunId: "r2" }),
+    ]);
+    expect(repaired.filter(isStanding)).toHaveLength(1);
+    const otherTasks = [{ ...familyRow("beams"), taskInputs: "9".repeat(64) }];
+    expect(advance([read], [beamsFail], "r2", otherTasks, "complete")).toEqual([
+      expect.objectContaining({ diagnosis: null, dispute: null }),
+    ]);
   });
 
   it("gives different kinds and different non-result details different identities", () => {
@@ -585,7 +629,7 @@ describe("the issue register and its projection", () => {
       null,
     );
     const text = renderRebuildAdvice(result);
-    expect(text).toContain("[active] joints: 1/1 verified cases failed");
+    expect(text).toContain("- joints: 1/1 verified cases failed (first seen base, last seen base)");
     expect(text).toContain("1/2 environment non-results of kind sandbox");
     // The battery's counts and its families' passes are the climb readout's, which renders above
     // this packet; a second copy here was a second owner of one count.
@@ -709,7 +753,7 @@ describe("the issue register and its projection", () => {
 
   it("keeps public aggregate claims while private diagnosis prose cannot change the author handover", () => {
     // Findings and Judge exits have public aggregate producers. Diagnosis prose can identify a
-    // failed case without its task id, so only its typed owner/confidence metadata crosses.
+    // failed case without its task id, so only its typed owner and support counts cross.
     const claim = "PLANTED-CLAIM";
     const reason = "PLANTED-REASON";
     const contested = judges({
@@ -749,13 +793,13 @@ describe("the issue register and its projection", () => {
       ...advice,
       issues: [
         priorIssue({
-          diagnosis: { ...READING, cause: "PLANTED-CAUSE", runId: "r1", confidence: "low" },
+          diagnosis: { ...READING, cause: "PLANTED-CAUSE", runId: "r1" },
         }),
         priorIssue({ family: "joints", dispute: "PLANTED-DISPUTE" }),
       ],
     };
     const diagnosed = renderRebuildAdvice(withReadings);
-    expect(diagnosed).toContain("diagnosis (r1, low confidence");
+    expect(diagnosed).toContain("diagnosis (r1: holds for 2 of 3 sampled");
     // The reader's prompt holds no protected detail, so its located boundary and its falsifier
     // reach the author; the cause is its free argument and stays recorded, as a dispute's prose does.
     expect(diagnosed).toContain(READING.falsifier);
@@ -851,15 +895,22 @@ describe("the issue register and its projection", () => {
     expect(blank).not.toContain("blocked no shipping artifact");
   });
 
-  it("keeps both fix statuses in the register and out of the render", () => {
+  it("renders no roster, rather than an empty line, when every check lacks a recorded applicable count", () => {
+    // Untripped with no applicable row lands in none of the three lists; the orientation and the
+    // packet both drop a null line, and would have kept an empty one.
+    expect(blockingLine({ legacy: 0 }, {}, 3, 3)).toBeNull();
+    expect(blockingLine({ legacy: 0 }, { legacy: 3 }, 3, 3)).toContain("legacy 3");
+  });
+
+  it("keeps complete rechecks in the register and out of the render", () => {
     const first = packet([caseRow("t1", { family: "beams", truthOk: false, pass: false })]);
     const second = packet([caseRow("t1", { family: "beams" })], first);
     const third = packet([caseRow("t1", { family: "beams" })], second);
-    expect(second.issues.map(issueStatusWord)).toEqual(["tentatively-fixed"]);
-    expect(third.issues.map(issueStatusWord)).toEqual(["confirmed-fixed"]);
-    // Neither status reaches the author: the render carries what is standing now, and a family
+    expect(second.issues.map((row) => row.absentBatteries)).toEqual([1]);
+    expect(third.issues.map((row) => row.absentBatteries)).toEqual([2]);
+    // Neither count reaches the author: the render carries what is standing now, and a family
     // that already passes is something to escalate rather than something to repair.
-    expect(renderRebuildAdvice(second)).not.toContain("[tentatively-fixed]");
+    expect(renderRebuildAdvice(second)).toBe("");
     const text = renderRebuildAdvice(third);
     // Nothing stands, so the packet says nothing; the readout's family line says beams passed.
     expect(text).toBe("");
@@ -868,7 +919,7 @@ describe("the issue register and its projection", () => {
   it("drops a retired issue from the render and keeps its status in the register", () => {
     const first = packet([caseRow("t1", { family: "beams", truthOk: false, pass: false })]);
     const rebuilt = packet([caseRow("t9", { family: "joints" })], first);
-    expect(rebuilt.issues.map(issueStatusWord)).toEqual(["retired"]);
+    expect(rebuilt.issues.map((row) => row.retired)).toEqual([true]);
     // The family left the task set, so naming it asks the author for nothing it can do.
     expect(renderRebuildAdvice(rebuilt)).toBe("");
   });
@@ -919,7 +970,7 @@ describe("the issue register and its projection", () => {
     expect(result.issues).toHaveLength(10);
     expect(result.findings).toHaveLength(6);
     const text = renderRebuildAdvice(result);
-    expect(text.split("\n- [active]")).toHaveLength(7);
+    expect(text.split("\n- family-")).toHaveLength(7);
     expect(text).toContain("(6 of 10 shown)");
     expect(text).toContain(" bytes omitted]");
     expect(text).toContain("2 further admitted findings omitted from this packet.");
@@ -947,26 +998,26 @@ describe("the issue register and its projection", () => {
 });
 
 describe("a reading attaches to an issue without changing what the battery counted", () => {
-  it("attaches a diagnosis to the named issue without changing counts or status", () => {
+  it("attaches a diagnosis to the named issue without changing counts or standing", () => {
     const before = advicePacket([issue(), issue({ id: JOINTS, kind: "unaccepted", family: "joints" })]);
     const after = attachIssueReadings(before, { diagnoses: [{ issueIds: [BEAMS], diagnosis: READING }] });
     expect(after.issues[0]?.diagnosis?.cause).toBe(READING.cause);
     expect(after.issues[0]?.count).toBe(2);
-    expect(issueStatusWord(after.issues[0] ?? issue())).toBe("active");
+    expect(isStanding(after.issues[0] ?? issue())).toBe(true);
     expect(after.issues[1]?.diagnosis).toBeNull();
   });
 
-  it("marks an active issue as disputed and records the reason", () => {
+  it("marks a standing issue as disputed and records the reason", () => {
     const after = attachIssueReadings(advicePacket([issue()]), {
       disputes: [{ issueId: BEAMS, reason: "the check cannot fail on a real task" }],
     });
-    expect(issueStatusWord(after.issues[0] ?? issue())).toBe("disputed");
+    expect(isStanding(after.issues[0] ?? issue())).toBe(false);
     expect(after.issues[0]?.dispute).toBe("the check cannot fail on a real task");
   });
 
-  it("a dispute leaves fixed and retired issues unchanged", () => {
-    for (const fixedOrGone of [{ absentBatteries: 2 }, { retired: true }]) {
-      const before = advicePacket([issue(fixedOrGone)]);
+  it("a dispute leaves rechecked and retired issues unchanged", () => {
+    for (const recheckedOrGone of [{ absentBatteries: 2 }, { retired: true }]) {
+      const before = advicePacket([issue(recheckedOrGone)]);
       const after = attachIssueReadings(before, {
         disputes: [{ issueId: BEAMS, reason: "evaluation artefact" }],
       });
@@ -978,23 +1029,50 @@ describe("a reading attaches to an issue without changing what the battery count
     const before = advicePacket([issue()]);
     expect(attachIssueReadings(before, {})).toBe(before);
   });
+
+  it("a Judge settlement holds once every case the issue counts is settled, and touches no other", () => {
+    const twoFamilies = advicePacket([issue(), issue({ id: JOINTS, family: "joints" })]);
+    // The issue counts two cases, and one settled case leaves its unsettled sibling standing.
+    expect(attachIssueReadings(twoFamilies, { settled: [BEAMS] }).issues.map(isStanding)).toEqual([
+      true,
+      true,
+    ]);
+    const after = attachIssueReadings(twoFamilies, { settled: [BEAMS, BEAMS] });
+    expect(after.issues.map(isStanding)).toEqual([false, true]);
+    expect(after.issues.map(issueFacts)[0]).toBe("first seen r1, last seen r1, settled by an epoch review");
+    expect(after.issues[0]?.count).toBe(2);
+    for (const notStanding of [{ absentBatteries: 2 }, { retired: true }, { dispute: "evaluation" }]) {
+      const before = advicePacket([issue(notStanding)]);
+      expect(attachIssueReadings(before, { settled: [BEAMS, BEAMS] })).toEqual(before);
+    }
+    // A later battery that observes the disagreement again records it afresh, standing.
+    const [again] = advance(
+      after.issues.slice(0, 1),
+      [{ kind: "verified-fail", family: "beams", detail: null, count: 2, denominator: 5 }],
+      "r3",
+      advicePacket([]).families,
+      "complete",
+    );
+    expect(again?.judgeSettled).toBeUndefined();
+    expect(isStanding(again ?? issue())).toBe(true);
+  });
 });
 
 describe("what the author reads", () => {
-  it("lists disputed issues separately from active issues", () => {
+  it("lists disputed issues separately from standing issues", () => {
     const rendered = renderRebuildAdvice(
       advicePacket([issue({ dispute: "the check cannot fail on a real task" })]),
     );
     expect(rendered).toContain("Disputed issues");
     expect(rendered).toContain("beams (verified-fail)");
     expect(rendered).not.toContain("the check cannot fail on a real task");
-    expect(rendered).not.toContain("- [disputed]");
+    expect(rendered).not.toContain("- beams:");
   });
 
   it("a diagnosis publishes its owner, boundary and falsifier, and keeps its cause", () => {
     const rendered = renderRebuildAdvice(advicePacket([issue({ diagnosis: READING })]));
     expect(rendered).toContain(
-      "diagnosis (r2, medium confidence: holds for 2 of 3 sampled of 3 failing cases, 1 passing contrast): agent/tools-spec.json.",
+      "diagnosis (r2: holds for 2 of 3 sampled of 3 failing cases, 1 passing contrast): agent/tools-spec.json.",
     );
     expect(rendered).toContain(
       `First failure boundary at a call to write_layout: ${READING.boundary.reading}. Falsifier:`,
@@ -1018,11 +1096,9 @@ describe("what the author reads", () => {
     );
   });
 
-  it("environment non-results do not instruct a rebuild to change the harness", () => {
+  it("names the environment as the owner of an environment non-result, and only of one", () => {
     const rendered = renderRebuildAdvice(advicePacket([issue({ kind: "non-result", detail: "provider" })]));
-    expect(rendered).toContain("environment non-result alone calls for an unchanged rerun");
-    expect(rendered).toContain("environment non-results of kind provider");
-    expect(rendered).not.toContain("an active or regressed issue is what the rebuild must move");
+    expect(rendered).toContain("environment non-results of kind provider, owned by the environment");
     // A `verifier` kind is not an environment failure and must not read as one.
     const verifier = renderRebuildAdvice(advicePacket([issue({ kind: "non-result", detail: "verifier" })]));
     expect(verifier).toContain(
@@ -1033,8 +1109,8 @@ describe("what the author reads", () => {
 });
 
 describe("whether an absence is comparable evidence", () => {
-  const ran = (publicInputs: string | null = MEASURED_UNDER.publicInputs) => [
-    { family: "beams", verified: 2, passed: 2, unaccepted: 0, nonResults: 0, publicInputs },
+  const ran = (taskInputs: string | null = MEASURED_UNDER.taskInputs) => [
+    { family: "beams", verified: 2, passed: 2, unaccepted: 0, nonResults: 0, taskInputs },
   ];
   const beamsFail = {
     kind: "verified-fail" as const,
@@ -1045,17 +1121,19 @@ describe("whether an absence is comparable evidence", () => {
   };
   const other = (digit: string) => digit.repeat(64);
 
-  it("reads an absence on other public inputs as unmeasured, never as a fix", () => {
+  it("reads an absence on other task inputs as unmeasured, never as a fix", () => {
     // The family ran and every verified case passed, but on tasks it never failed: nothing about
     // the issue was asked again, so the absence proves nothing about whether it was repaired.
     const moved = advance([issue()], [], "r2", ran(other("9")), "complete");
     expect(moved).toEqual([
-      expect.objectContaining({ absentBatteries: 0, unmeasured: ["public-inputs"], lastSeenRunId: "r1" }),
+      expect.objectContaining({ absentBatteries: 0, unmeasured: ["task-inputs"], lastSeenRunId: "r1" }),
     ]);
-    expect(moved.map(issueStatusWord)).toEqual(["unmeasured"]);
+    expect(moved.map(issueFacts)).toEqual([
+      "first seen r1, last seen r1, latest recheck not comparable (task inputs changed)",
+    ]);
     expect(moved.filter(isStanding)).toEqual([]);
-    // A family whose public tasks could not be vouched for compares with nothing.
-    expect(advance([issue()], [], "r2", ran(null), "complete")[0]?.unmeasured).toEqual(["public-inputs"]);
+    // A family whose tasks could not be vouched for compares with nothing.
+    expect(advance([issue()], [], "r2", ran(null), "complete")[0]?.unmeasured).toEqual(["task-inputs"]);
   });
 
   it("reads an absence under a changed scoring program as unmeasured, even on identical inputs", () => {
@@ -1069,7 +1147,31 @@ describe("whether an absence is comparable evidence", () => {
       "complete",
     );
     expect(weaker[0]?.unmeasured).toEqual(["scoring"]);
-    expect(weaker.map(issueStatusWord)).toEqual(["unmeasured"]);
+  });
+
+  it("reads an absence after a tool the checks ran moved as unmeasured, even with the scoring hash unchanged", () => {
+    // The scoring hash covers evaluator.ts and what it imports. An analyser a check runs is outside
+    // it, so a round that replaced the analyser asked the checks a different question.
+    const replaced = advanceIssues(
+      [issue()],
+      [],
+      "r2",
+      { ...MEASURED_UNDER, families: ran(), checkTools: other("6") },
+      "complete",
+    );
+    expect(replaced[0]?.unmeasured).toEqual(["check-tools"]);
+    expect(renderRebuildAdvice(advicePacket(replaced))).toContain(
+      "beams (verified-fail: check tools changed)",
+    );
+    // A battery whose record could not be vouched for compares with nothing.
+    const unvouched = advanceIssues(
+      [issue()],
+      [],
+      "r2",
+      { ...MEASURED_UNDER, families: ran(), checkTools: null },
+      "complete",
+    );
+    expect(unvouched[0]?.unmeasured).toEqual(["check-tools"]);
   });
 
   it("reads an absence under another Built model or resource condition as unmeasured", () => {
@@ -1080,25 +1182,23 @@ describe("whether an absence is comparable evidence", () => {
       { ...MEASURED_UNDER, families: ran(other("9")), measuredCondition: other("7") },
       "complete",
     );
-    expect(otherModel[0]?.unmeasured).toEqual(["public-inputs", "built-condition"]);
+    expect(otherModel[0]?.unmeasured).toEqual(["task-inputs", "built-condition"]);
   });
 
-  it("an unmeasured issue ages again once a comparable battery runs, and comes back as active rather than regressed", () => {
+  it("an unmeasured issue counts a recheck once a comparable battery runs, and seeing it again after none is no return", () => {
     const moved = advance([issue()], [], "r2", ran(other("9")), "complete");
     const comparable = advance(moved, [], "r3", ran(), "complete");
     expect(comparable).toEqual([expect.objectContaining({ absentBatteries: 1, unmeasured: [] })]);
-    expect(comparable.map(issueStatusWord)).toEqual(["tentatively-fixed"]);
-    // Seen again after an absence no battery could compare, the issue never read as fixed, so its
-    // return is not a regression.
+    // Seen again after an absence no battery could compare, no complete comparable recheck ever
+    // missed it, so it did not return.
     const seen = advance(moved, [beamsFail], "r3", ran(other("9")), "complete");
     expect(seen).toEqual([
       expect.objectContaining({
         returned: false,
         unmeasured: [],
-        observedUnder: { ...MEASURED_UNDER, publicInputs: other("9") },
+        observedUnder: { ...MEASURED_UNDER, taskInputs: other("9") },
       }),
     ]);
-    expect(seen.map(issueStatusWord)).toEqual(["active"]);
   });
 
   it("records the condition each family ran under on the packet and on every issue it observed", () => {
@@ -1108,43 +1208,61 @@ describe("whether an absence is comparable evidence", () => {
       familyInputs: new Map([["beams", other("5")]]),
     });
     expect(result.scoringHash).toBe(MEASURED_UNDER.scoringHash);
+    expect(result.checkTools).toBe(MEASURED_UNDER.checkTools);
     expect(result.measuredCondition).toBe(MEASURED_UNDER.measuredCondition);
-    expect(result.families.map((row) => row.publicInputs)).toEqual([other("5")]);
-    expect(result.issues[0]?.observedUnder).toEqual({ ...MEASURED_UNDER, publicInputs: other("5") });
+    expect(result.families.map((row) => row.taskInputs)).toEqual([other("5")]);
+    expect(result.issues[0]?.observedUnder).toEqual({ ...MEASURED_UNDER, taskInputs: other("5") });
   });
 
   it("tells the author an unmeasured issue is unmeasured, not fixed and not standing", () => {
     const rendered = renderRebuildAdvice(
       advicePacket([
-        issue({ unmeasured: ["public-inputs", "scoring"] }),
+        issue({ unmeasured: ["task-inputs", "scoring"] }),
         issue({ id: JOINTS, family: "joints" }),
       ]),
     );
     expect(rendered).toContain(
-      "Unmeasured issues — absent from this battery, but their family did not rerun under the condition that observed them, so the absence is not a fix: beams (verified-fail: public inputs, scoring program changed).",
+      "Unmeasured issues — absent from this battery, but their family did not rerun under the condition that observed them, so the absence is not a fix: beams (verified-fail: task inputs, scoring program changed).",
     );
-    expect(rendered).toContain("[active] joints");
-    expect(rendered).not.toContain("[unmeasured]");
+    expect(rendered).toContain("- joints: 2/5");
+    expect(rendered).not.toContain("- beams:");
     expect(rendered).not.toContain("fixed");
   });
 });
 
 describe("measuredConditionDigest", () => {
   const facts = {
+    runId: "r1",
     builtPin: "codex:built-model:high",
+    builtEffort: "high",
     isolationStrength: "physical",
-    runCondition: { variant: "shipping", advisorsRemoved: [] },
+    runCondition: { variant: "shipping", advisorsRemoved: [], builtProcedure: "p" },
   };
 
-  it("moves with the Built model, the isolation and the run condition", () => {
+  it("moves with the Built model, its effort, the isolation and the run condition", () => {
     const base = measuredConditionDigest(facts);
     for (const moved of [
       { ...facts, builtPin: "codex:built-model:low" },
+      { ...facts, builtEffort: "low" },
       { ...facts, isolationStrength: "UNPROVEN" },
-      { ...facts, runCondition: { variant: "shipping", advisorsRemoved: ["hint"] } },
+      { ...facts, runCondition: { ...facts.runCondition, advisorsRemoved: ["hint"] } },
+      { ...facts, runCondition: { ...facts.runCondition, builtProcedure: "q" } },
     ]) {
       expect(measuredConditionDigest(moved)).not.toBe(base);
     }
+    // Another battery under the same recorded effort is the same condition; an unrecorded effort is
+    // unknown, so it matches no other battery.
+    expect(measuredConditionDigest({ ...facts, runId: "r2" })).toBe(base);
+    const unrecorded = { ...facts, builtEffort: null };
+    expect(measuredConditionDigest({ ...unrecorded, runId: "r2" })).not.toBe(
+      measuredConditionDigest(unrecorded),
+    );
+    // A condition recorded before the host's share of the prompt was is unknown in the same way.
+    const { builtProcedure: _recorded, ...older } = facts.runCondition;
+    const olderFacts = { ...facts, runCondition: older };
+    expect(measuredConditionDigest({ ...olderFacts, runId: "r2" })).not.toBe(
+      measuredConditionDigest(olderFacts),
+    );
   });
 
   // agent/config.yaml is harness bytes the Builder owns: raising solve_minutes for a family that kept
@@ -1166,5 +1284,215 @@ describe("measuredConditionDigest", () => {
     const before = batteryCondition(recorded, tree).measuredCondition;
     writeFileSync(join(tree, "agent", "config.yaml"), "solver:\n  max_turns: 24\n  solve_minutes: 120\n");
     expect(batteryCondition(recorded, tree).measuredCondition).toBe(before);
+  });
+});
+
+describe("the tasks a family ran", () => {
+  // A probe that moves only a hidden limit asks the verifier another question while the solver reads
+  // the same bytes, so the family's digest has to move with it, and only that family's.
+  it("a probe that moves only a hidden operand is another question, and an unvouched tree is unknown", () => {
+    const tree = scratchDir("ana-family-tasks-");
+    mkdirSync(join(tree, "correctness-model"), { recursive: true });
+    const write = (limit: number) =>
+      writeFileSync(
+        join(tree, "correctness-model", "tasks.json"),
+        JSON.stringify([
+          { taskId: "t1", family: "beams", publicInput: { span: 4 }, hidden: [{ limit }] },
+          { taskId: "t2", family: "joints", publicInput: { span: 5 }, hidden: [{ limit: 2 }] },
+        ]),
+      );
+    const read = (taskSetHash: string | null) =>
+      batteryCondition(
+        double<Parameters<typeof batteryCondition>[0]>({
+          runId: "run-tasks",
+          cases: [
+            { taskId: "t1", family: "beams" },
+            { taskId: "t2", family: "joints" },
+          ],
+          identities: {
+            backendPin: "codex:built-model:high",
+            isolationStrength: "physical",
+            bundleSnapshot: { scoringHash: "s", taskSetHash },
+          },
+          battery: { condition: { variant: "shipping", advisorsRemoved: [] } },
+        }),
+        tree,
+      ).familyInputs;
+    write(1);
+    const recorded = taskSetDigest(tree);
+    const before = read(recorded);
+    write(3);
+    const after = read(taskSetDigest(tree));
+    expect(before.get("beams")).toMatch(/^[0-9a-f]{64}$/);
+    expect(after.get("beams")).not.toBe(before.get("beams"));
+    expect(after.get("joints")).toBe(before.get("joints"));
+    // The tree no longer hashes to the task set the battery recorded, so nothing is vouched for.
+    expect([...read(recorded).values()]).toEqual([null, null]);
+  });
+});
+
+describe("the tools a battery's checks ran", () => {
+  const script = {
+    digest: "a".repeat(64),
+    kind: "script",
+    interpreter: "sh",
+    interpreterDigest: "b".repeat(64),
+  };
+  // A workspace tool is recorded with its portable digest, the file with the tree's path taken out.
+  const analyser = { ...script, source: "workspace-toolchain", portableDigest: "9".repeat(64) };
+  const families = [
+    {
+      family: "beams",
+      verified: 2,
+      passed: 2,
+      unaccepted: 0,
+      nonResults: 0,
+      taskInputs: MEASURED_UNDER.taskInputs,
+    },
+  ];
+
+  /** One measured battery whose checks ran `tool` out of a tool tree with digest `tree`, or off the
+   *  host PATH when `tree` is null, recorded the way a battery closes: the tool map and its
+   *  environment hash under `execution`, the file named by the run's manifest. `execution`
+   *  overrides what the record says. */
+  function recordBattery(
+    tool: Omit<typeof script, "interpreter" | "interpreterDigest"> & {
+      source: string;
+      interpreter: string | null;
+      interpreterDigest?: string;
+      portableDigest?: string;
+    },
+    tree: string | null,
+    execution?: { verifierEnvironmentHash: string },
+  ) {
+    const measuredDir = scratchDir("ana-check-tools-");
+    const tools = { "truss-analyze": tree === null ? tool : { ...tool, treeDigest: tree } };
+    const environment = verifierEnvironmentHashOfTools(tools);
+    const log = new EvidenceLog(join(measuredDir, "runs", "r2"));
+    log.write("battery.json", {
+      runId: "r2",
+      cases: [],
+      execution: { executed: [], verifierEnvironmentHash: environment, tools, ...execution },
+    });
+    log.record();
+    const recorded = double<Parameters<typeof batteryCondition>[0]>({
+      runId: "r2",
+      cases: [],
+      identities: {
+        backendPin: "codex:built-model:high",
+        isolationStrength: "physical",
+        bundleSnapshot: { scoringHash: MEASURED_UNDER.scoringHash },
+      },
+      battery: { condition: { variant: "shipping", advisorsRemoved: [] } },
+    });
+    return { measuredDir, environment, checkTools: batteryCondition(recorded, measuredDir).checkTools };
+  }
+
+  const absentUnder = (was: string | null, now: string | null) =>
+    advanceIssues(
+      [issue({ observedUnder: { ...MEASURED_UNDER, checkTools: was } })],
+      [],
+      "r3",
+      { ...MEASURED_UNDER, families, checkTools: now },
+      "complete",
+    );
+
+  /** A `truss-analyze` wrapper installed in `workspace`'s tool tree, naming the tree by its absolute
+   *  path and exec'ing the script beside it, whose body is `cli`; resolved the way a battery's
+   *  verifier resolves it and recorded as that battery's one check tool. */
+  function installedIn(workspace: string, cli: string) {
+    const tree = join(workspace, ".toolchain");
+    const wrapper = join(tree, "bin", "truss-analyze");
+    mkdirSync(join(tree, "bin"), { recursive: true });
+    mkdirSync(join(tree, "lib"), { recursive: true });
+    writeFileSync(wrapper, `#!/bin/sh\nexec "${realpathSync.native(tree)}/lib/truss_cli.sh" "$@"\n`);
+    writeFileSync(join(tree, "lib", "truss_cli.sh"), cli);
+    chmodSync(wrapper, 0o755);
+    const found = resolveToolInventory({ toolIds: ["truss-analyze"], toolTree: tree, pathDirs: [] });
+    const entry = required(found.inventory["truss-analyze"], "installed wrapper");
+    const recorded = {
+      digest: entry.digest,
+      source: entry.source,
+      kind: entry.kind,
+      interpreter: entry.interpreter,
+      ...keyIfDefined("interpreterDigest", entry.interpreterDigest),
+      ...keyIfDefined("portableDigest", entry.portableDigest),
+    };
+    return { entry, battery: recordBattery(recorded, required(entry.treeDigest, "tree digest")) };
+  }
+
+  it("reads an issue as unmeasured when the tree behind an unchanged check tool moved", () => {
+    // The wrapper's own bytes and its interpreter are fixed while the tree it was installed in
+    // moved. The record cannot say whether the change was the script the wrapper execs or a solver
+    // tool beside it, so the absence is not counted towards a fix.
+    const was = recordBattery(analyser, "5".repeat(64));
+    const treeMoved = recordBattery(analyser, "6".repeat(64));
+    expect(treeMoved.checkTools).toMatch(/^[0-9a-f]{64}$/);
+    expect(treeMoved.checkTools).not.toBe(was.checkTools);
+    const after = absentUnder(was.checkTools, treeMoved.checkTools);
+    expect(after[0]?.unmeasured).toEqual(["check-tools"]);
+  });
+
+  it("reads an issue as unmeasured when a script was rewritten behind a byte-identical wrapper", () => {
+    const was = installedIn(scratchDir("ana-workspace-"), "#!/bin/sh\necho pass\n");
+    const rewritten = installedIn(scratchDir("ana-rewritten-workspace-"), "#!/bin/sh\necho fail\n");
+    expect(rewritten.entry.portableDigest).toBe(required(was.entry.portableDigest, "portable digest"));
+    expect(rewritten.entry.interpreterDigest).toBe(was.entry.interpreterDigest);
+    expect(rewritten.battery.checkTools).toMatch(/^[0-9a-f]{64}$/);
+    expect(rewritten.battery.checkTools).not.toBe(was.battery.checkTools);
+    expect(absentUnder(was.battery.checkTools, rewritten.battery.checkTools)[0]?.unmeasured).toEqual([
+      "check-tools",
+    ]);
+  });
+
+  it("counts a complete recheck when a reseed only moved the tree a wrapper names", () => {
+    // A wrapper that names its tree by absolute path has other raw bytes in every workspace the
+    // tree is copied into, while the file and the tree with that path taken out are the same.
+    const cli = "#!/bin/sh\necho pass\n";
+    const was = installedIn(scratchDir("ana-workspace-"), cli);
+    const reseeded = installedIn(scratchDir("ana-reseeded-workspace-"), cli);
+    expect(reseeded.entry.digest).not.toBe(was.entry.digest);
+    expect(reseeded.entry.treeDigest).toBe(required(was.entry.treeDigest, "tree digest"));
+    expect(reseeded.battery.checkTools).toMatch(/^[0-9a-f]{64}$/);
+    expect(reseeded.battery.checkTools).toBe(was.battery.checkTools);
+    expect(absentUnder(was.battery.checkTools, reseeded.battery.checkTools)).toEqual([
+      expect.objectContaining({ absentBatteries: 1, unmeasured: [] }),
+    ]);
+  });
+
+  it("reads an issue as unmeasured when a check tool's own bytes or its interpreter moved", () => {
+    const was = recordBattery(analyser, "5".repeat(64));
+    for (const moved of [
+      recordBattery({ ...analyser, portableDigest: "c".repeat(64) }, "5".repeat(64)),
+      recordBattery({ ...analyser, interpreterDigest: "d".repeat(64) }, "5".repeat(64)),
+      recordBattery({ ...script, source: "host" }, null),
+    ]) {
+      expect(moved.checkTools).toMatch(/^[0-9a-f]{64}$/);
+      expect(moved.checkTools).not.toBe(was.checkTools);
+      expect(absentUnder(was.checkTools, moved.checkTools)[0]?.unmeasured).toEqual(["check-tools"]);
+    }
+  });
+
+  it("compares a battery record it cannot vouch for with nothing", () => {
+    const was = recordBattery(analyser, "5".repeat(64));
+    expect(was.checkTools).toMatch(/^[0-9a-f]{64}$/);
+    // An environment hash the tool map does not recompute is a record no reader can trust.
+    expect(
+      recordBattery(analyser, "5".repeat(64), { verifierEnvironmentHash: "e".repeat(64) }).checkTools,
+    ).toBeNull();
+    // A workspace tool recorded without its portable digest is an older record.
+    expect(recordBattery({ ...script, source: "workspace-toolchain" }, "5".repeat(64)).checkTools).toBeNull();
+    // Bytes that moved after the manifest recorded them are damaged evidence.
+    const damaged = recordBattery(analyser, "5".repeat(64));
+    writeFileSync(join(damaged.measuredDir, "runs", "r2", "battery.json"), "{}");
+    const reread = double<Parameters<typeof batteryCondition>[0]>({
+      runId: "r2",
+      cases: [],
+      identities: { backendPin: "p", isolationStrength: "physical", bundleSnapshot: { scoringHash: "s" } },
+      battery: { condition: { variant: "shipping", advisorsRemoved: [] } },
+    });
+    expect(batteryCondition(reread, damaged.measuredDir).checkTools).toBeNull();
+    expect(absentUnder(was.checkTools, null)[0]?.unmeasured).toEqual(["check-tools"]);
+    expect(absentUnder(null, was.checkTools)[0]?.unmeasured).toEqual(["check-tools"]);
   });
 });

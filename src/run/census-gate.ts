@@ -18,21 +18,23 @@ import type { BuiltHarness, CampaignFeedback, FeedbackOwner } from "../author/ca
 import { TOOL_NON_RESULT_FILE, toolNonResultCode } from "../author/tool-non-result.ts";
 import { type TracePointer, tracePointer } from "../claim/case-record.ts";
 import { writeCompleted } from "../meta/completed-json.ts";
-import { type ContractFinding, controllerValidatedFindings } from "../truth/brief.ts";
-import { TOOL_REFUSED_CODE } from "../truth/grounding-coverage.ts";
-import type { ProbeControls, ProbeControlsResult } from "../truth/probes.ts";
-import type { ControlReceipt } from "../truth/battery-record.ts";
-import { REFERENCE_SOLVE_ENTRY } from "../truth/evaluator-process-bundle.ts";
-import type { CheckCost, ToolCheckCoverage } from "../truth/grounding-coverage.ts";
+import { type ContractFinding, controllerValidatedFindings } from "../correctness-bundle/brief.ts";
+import { TOOL_REFUSED_CODE } from "../correctness-bundle/grounding-coverage.ts";
+import type { ProbeControls, ProbeControlsResult } from "../correctness-bundle/probes.ts";
+import type { ControlReceipt } from "../correctness-bundle/battery-record.ts";
+import { REFERENCE_SOLVE_ENTRY } from "../correctness-bundle/evaluator-process-bundle.ts";
+import type { CheckCost, ToolCheckCoverage } from "../correctness-bundle/grounding-coverage.ts";
 import {
+  type TimeoutRerun,
   VerifierExecutionNonResult,
   environmentOwnedToolNonResult,
   toolRetryDelay,
-} from "../truth/verifier-nonresult.ts";
+} from "../correctness-bundle/verifier-nonresult.ts";
 import type { VerifierExecutionEvidence } from "../verify/verifier-port.ts";
+import type { SubjectCheckRun } from "../verify/correctness-model-result.ts";
 import type { SolvabilityCensusGate } from "./solvability-gate.ts";
-import { harnessSettings } from "../truth/harness-config.ts";
-import type { SolvabilityStageCache } from "../truth/solvability-stages.ts";
+import { DEFAULT_HARNESS_SETTINGS, harnessSettings } from "../correctness-bundle/harness-config.ts";
+import type { SolvabilityStageCache } from "../correctness-bundle/solvability-stages.ts";
 import { VerifierOperationalStop, type VerifierLifetime } from "../verify/verifier-lifetime.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { EVALUATOR_FILE, GENERATED_TOOLS_FILE } from "../meta/bundle-layout.ts";
@@ -47,9 +49,9 @@ interface CensusGateOptions {
   /** Required battery size; the census must cover the complete task set. */
   expectedTasks: number;
   /** F2 reference solve of every task, run beside the control census. The same slot carries the
-   *  representation census and the accept-control independence reading, which raise findings of
-   *  their own against `brief` and `accept-controls`; all three need F2's witnesses, which exist
-   *  only while F2 is running. */
+   *  input-insensitivity observation, which rides inside a blocking census row as diagnosis, and
+   *  the accept-control independence reading, which raises at most one advisory finding against the
+   *  controls; all three need F2's witnesses, which exist only while F2 is running. */
   solvability?: SolvabilityCensusGate;
   /** Wait before the one retry an environment-owned refusal earns; tests pass 0. */
   toolRetryWaitMs?: number;
@@ -82,6 +84,8 @@ type CensusEvidence = {
    *  `correctness_check`, the only point where a check's price is visible with session left to
    *  cut it. */
   checkCost?: CheckCost[];
+  /** One row per check per control attempt, host evidence that no author projection reads. */
+  checkRuns?: SubjectCheckRun[];
   /** Every blocking row behind a `fail`, by owner and finding codes. `findings` above holds only
    *  the executed control census, and most fails come from the battery count, reject coverage or
    *  F2 rows while `findings` stays empty, so without this field the record would give no reason
@@ -228,6 +232,7 @@ function persistCensus(
     ...keyIfDefined("controlReceipts", probe?.controlReceipts),
     ...keyIfDefined("toolCheckCoverage", probe?.toolCheckCoverage),
     ...keyIfDefined("checkCost", probe?.checkCost),
+    ...keyIfDefined("checkRuns", probe?.checkRuns),
     ...keyIfDefined("executionEvidence", probe?.executionEvidence),
     blocking: feedback
       .values()
@@ -260,7 +265,6 @@ function persistFailure(
   return feedback;
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, tool-environment): kept: a census the host environment refused settles as a typed non-result, never as a verdict on the candidate
 /**
  * One settlement for a census the host environment refused: the recorded evidence behind a digest
  * pointer, and a single environment-owned refusal row.
@@ -281,7 +285,23 @@ function settleEnvironment(
   writeCompleted(join(context.iterationDir, file), payload);
   return persistFailure(
     context,
-    [{ owner: "environment", severity: "blocking", claim, evidence }],
+    [
+      {
+        owner: "environment",
+        severity: "blocking",
+        claim,
+        evidence,
+        // The claim is composed from public identities alone (a declared tool, a control id, a vendor
+        // package), so it crosses as the finding's detail under the code naming what the host could not do.
+        findings: controllerValidatedFindings([
+          {
+            code: "kind" in payload ? payload.kind : toolNonResultCode(payload),
+            path: "environment",
+            detail: claim,
+          },
+        ]),
+      },
+    ],
     completed,
     { kind: "non-result", evidence: tracePointer(context.iterationDir, file) },
   );
@@ -392,9 +412,10 @@ function settleModuleResolution(context: CensusContext): CampaignFeedback[] | nu
 /**
  * What the author may read about a failed tool run. Two kinds of fact cross: the identities it
  * wrote itself, and what the host measured around the process — how it ended, how long it ran, how
- * many bytes it wrote, and for a `sandbox` or `protocol` outcome the host's own reason, which is
- * host-authored text about the request or the byte counts rather than anything the tool printed. Tool stdout and stderr stay
- * protected as verifier output under rule 4.
+ * many bytes it wrote, and for a `sandbox`, `protocol` or `timeout` outcome the host's own reason,
+ * which is host-authored text about the request, the byte counts or the wall the run met rather
+ * than anything the tool printed. Tool stdout and stderr stay protected as verifier output under
+ * rule 4.
  *
  * The cell facts in `advice` are what the Builder cannot observe from its own session, where the
  * same command works: a tool that needs HOME fails here and nowhere the author can see, and a
@@ -406,7 +427,7 @@ function settleModuleResolution(context: CensusContext): CampaignFeedback[] | nu
 export function toolRunFailureDetail(evidence: VerifierExecutionEvidence): string {
   const subject = evidence.phase === "discrimination" ? ` on control "${evidence.subjectId}"` : "";
   const reason =
-    (evidence.outcome === "sandbox" || evidence.outcome === "protocol") &&
+    (evidence.outcome === "sandbox" || evidence.outcome === "protocol" || evidence.outcome === "timeout") &&
     evidence.nonResultReason !== undefined
       ? `: ${evidence.nonResultReason}`
       : "";
@@ -420,7 +441,15 @@ export function toolRunFailureDetail(evidence: VerifierExecutionEvidence): strin
   const advice = started
     ? ` Cell facts: cwd, TMPDIR and HOME are one private scratch directory holding only the files this evaluate wrote from artifact or public-task bytes, no network, sandbox "${evidence.sandbox}", environment variables received: PATH, TMPDIR, HOME. A tool that works in the authoring session and not here is missing one of those facts or an input file. Give the run every file it reads, a timeoutMs it can finish in, and read its exit code and stderr in the evaluator instead of letting it fail the case.`
     : " The host refused the request before starting a process; change the request the evaluator makes.";
-  return `Tool "${evidence.toolId}" (${evidence.toolSource}, run as \`${[evidence.command, ...evidence.args].join(" ")}\`) reached no completed run for check "${evidence.checkId}"${subject} (attempt ${evidence.attempt}): outcome "${evidence.outcome}"${reason}. Process facts: ${ended}, ${evidence.durationMs} ms, ${evidence.stdoutBytes} stdout bytes, ${evidence.stderrBytes} stderr bytes.${advice}`;
+  return `Tool "${evidence.toolId}" (${evidence.toolSource}, run as \`${[evidence.command, ...evidence.args].join(" ")}\`) reached no completed run for check "${evidence.checkId}"${subject} (attempt ${evidence.attempt}): outcome "${evidence.outcome}"${reason}. Process facts: ${ended}, ${evidence.durationMs} ms, ${evidence.stdoutBytes} stdout bytes, ${evidence.stderrBytes} stderr bytes.${wallSource(evidence)}${advice}`;
+}
+
+/** Where a timed-out run's wall came from, since a Builder that cannot see it takes the host default
+ *  for a fixed ceiling and cuts its checks rather than raising it. */
+function wallSource(evidence: VerifierExecutionEvidence): string {
+  if (!evidence.timedOut) return "";
+  const defaultSeconds = DEFAULT_HARNESS_SETTINGS.toolRunMs / 1000;
+  return ` The wall it met is the evaluator's timeoutMs capped by gate.tool_run_seconds in agent/config.yaml (default ${defaultSeconds} s), which the harness may raise as far as the tool needs.`;
 }
 
 /** Which census met the failure: host structure rather than anything the verifier printed, so it
@@ -429,7 +458,6 @@ export function toolRunFailureDetail(evidence: VerifierExecutionEvidence): strin
 const censusName = (error: VerifierExecutionNonResult): string =>
   error.evidence.phase === "solvability" ? "solvability census" : "control census";
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, tool-environment): kept: the host's own outcome kind decides whether a tool non-result is the author's or the environment's, and neither is a verdict
 /**
  * A tool run that started and then failed is the Builder's defect, not the environment's, and the
  * distinction decides whether a campaign continues. A declared `node checker.js` in a cell where
@@ -466,7 +494,7 @@ function settleNonResult(
         {
           code: toolNonResultCode(error.evidence),
           path: EVALUATOR_FILE,
-          detail: toolRunFailureDetail(error.evidence),
+          detail: `${toolRunFailureDetail(error.evidence)}${rerunDetail(context, error.rerun)}`,
         },
       ]),
     },
@@ -476,7 +504,20 @@ function settleNonResult(
   });
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, tool-environment): kept: a tool the host could not run twice is the environment's outage, not the candidate's defect
+/** The timings that tell a wall too tight for the tool from a tool that hangs: both timeouts, the
+ *  slowest run of the same tool and check that completed, which wall bound it, and how loaded the
+ *  host was each time. Every number is a host measurement, so it crosses to the author whole. */
+function rerunDetail(context: CensusContext, rerun: TimeoutRerun | undefined): string {
+  if (rerun === undefined) return "";
+  const { first, slowestCompletedMs, load } = rerun;
+  const { toolRunMs: ceilingMs, checkWallMs } = harnessSettings(context.slugDir);
+  const slowest =
+    slowestCompletedMs === null
+      ? `No run of tool "${first.toolId}" on check "${first.checkId}" completed in this census`
+      : `The slowest run of tool "${first.toolId}" on check "${first.checkId}" that completed in this census took ${slowestCompletedMs} ms`;
+  return ` It timed out first beside the other reference tasks after ${first.durationMs} ms, then again when rerun alone. ${slowest}; the ceiling is this harness's own setting gate.tool_run_seconds in agent/config.yaml, now ${ceilingMs} ms and without a host maximum, and a wall below it is the timeoutMs the evaluator requested; one check with all its tool runs is held to gate.check_seconds, now ${checkWallMs} ms. Host load average was ${load.first.toFixed(1)} at the first timeout and ${load.rerun.toFixed(1)} at the second, on ${load.cores} cores. A completed run near the wall means the tool's cost meets it: give the run a timeoutMs with room, raising the ceiling where it needs to, or less work per run; no completed run on a quiet host means the tool does not finish on this input.`;
+}
+
 function settleToolUnavailable(
   context: CensusContext,
   error: VerifierExecutionNonResult,
@@ -491,7 +532,6 @@ function settleToolUnavailable(
   );
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, tool-environment): kept: a census the wall cut reached no verdict, and its time is the candidate's own bytes to cut
 /** A census the wall cut settles like a tool run that timed out: the checks and the reference
  *  solve are the candidate's own bytes, so the time they take is the Builder's to cut. Treating it
  *  as an environment non-result instead ends the session at its first submit over a candidate with
@@ -579,23 +619,40 @@ function settleFailure(
   return attempt === "first" ? "retry" : settleToolUnavailable(context, failure, completed);
 }
 
-/** The control census's one row: every finding it returned refuses the candidate. */
-function controlsRows(findings: ContractFinding[]): CampaignFeedback[] {
-  if (findings.length === 0) return [];
+/** The control census's rows: every finding it returned refuses the candidate, and the timed-out
+ *  controls ride beside them as one advisory row that refuses nothing. */
+function controlsRows(findings: ContractFinding[], advisory: ContractFinding[] = []): CampaignFeedback[] {
+  const row = (
+    severity: CampaignFeedback["severity"],
+    rows: ContractFinding[],
+    claim: string,
+  ): CampaignFeedback[] =>
+    rows.length === 0
+      ? []
+      : [
+          {
+            owner: EVALUATOR_FILE,
+            severity,
+            claim,
+            evidence: "census gate: executed discrimination evidence (census.json)",
+            findings: controllerValidatedFindings(rows),
+          },
+        ];
   return [
-    {
-      owner: EVALUATOR_FILE,
-      severity: "blocking",
-      claim: `control census against the installed tools returned ${findings.length} finding(s)`,
-      evidence: "census gate: executed discrimination evidence (census.json)",
-      findings: controllerValidatedFindings(findings),
-    },
+    ...row(
+      "blocking",
+      findings,
+      `control census against the installed tools returned ${findings.length} finding${findings.length === 1 ? "" : "s"}`,
+    ),
+    ...row("advisory", advisory, "control census examples whose tool run timed out, which refuses nothing"),
   ];
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, condition-identity): kept: a census that did not run under the verifier identity captured at submit graded a different condition from the one measured
-/** The control findings, with the drift the census observed against the identity captured at submit. */
-function controlFindings(harness: BuiltHarness, probe: ProbeControlsResult): ContractFinding[] {
+/** The drift the census observed against the identity captured at submit. The installed tools
+ *  moved under the gate, which says nothing about the candidate's bytes, so the row is the
+ *  environment's: a preview is not remembered, and a submit that meets it ends the session as
+ *  environment-blocked (`gateTerminalClause`) rather than striking the candidate. */
+function driftRows(harness: BuiltHarness, probe: ProbeControlsResult): CampaignFeedback[] {
   const captured = harness.conformance?.verifierEnvironmentHash;
   // A census stopped before its controls ran — an evaluator that would not load, say — establishes
   // no identity at all, so an absent hash on either side is silence rather than disagreement.
@@ -604,18 +661,23 @@ function controlFindings(harness: BuiltHarness, probe: ProbeControlsResult): Con
     probe.verifierEnvironmentHash === undefined ||
     probe.verifierEnvironmentHash === captured
   ) {
-    return probe.findings;
+    return [];
   }
   return [
-    ...probe.findings,
-    ...controllerValidatedFindings([
-      {
-        code: "verifier-condition-drift",
-        path: ".toolchain",
-        detail:
-          "The control census did not establish the installed verifier identity captured at submit; submit again under the current tool condition.",
-      },
-    ]),
+    {
+      owner: "environment",
+      severity: "blocking",
+      claim: "the control census ran under a verifier identity other than the one captured at submit",
+      evidence: "census gate: executed discrimination evidence (census.json)",
+      findings: controllerValidatedFindings([
+        {
+          code: "verifier-condition-drift",
+          path: ".toolchain",
+          detail:
+            "The installed verifier identity moved between the capture at submit and the control census, so the host's tool condition changed under the gate. A check of the same bytes runs the census again; a submit that ends on this row ends the session as environment-blocked.",
+        },
+      ]),
+    },
   ];
 }
 
@@ -638,7 +700,7 @@ async function runCensus(
       : wall.under("reference solve", solvability(harness, iterationDir, slugDir, wall.stopped, stages)),
   ]);
   const probe = controls.status === "fulfilled" ? controls.value : undefined;
-  const findings = probe === undefined ? [] : controlFindings(harness, probe);
+  const findings = probe?.findings ?? [];
   // A check that called its tool and met a sandbox or unreadable-tool refusal twice is the
   // environment's non-result under rule 15, not a correctness-model finding: there is nothing in
   // the candidate's bytes to repair. It is pulled out of `findings` here and settled below.
@@ -646,7 +708,14 @@ async function runCensus(
   const referenceRows = reference.status === "fulfilled" ? reference.value : [];
   const completed: Completed = {
     ...keyIfDefined("probe", probe),
-    rows: [...controlsRows(findings.filter((finding) => finding !== refusal)), ...referenceRows],
+    rows: [
+      ...controlsRows(
+        findings.filter((finding) => finding.code !== TOOL_REFUSED_CODE),
+        probe?.advisory,
+      ),
+      ...(probe === undefined ? [] : driftRows(harness, probe)),
+      ...referenceRows,
+    ],
   };
   // The controls are checked first, so the reported failure is the earlier stage's and the
   // reference solve's completed rows ride beside it rather than replacing it.
@@ -665,8 +734,8 @@ async function runCensus(
   }
   const feedback = completed.rows;
   // A row's presence alone does not fail the census: an advisory finding is a reading, not a
-  // refusal, and the representation census and accept-control independence check both report
-  // things only the Builder can weigh. So the verdict counts blocking rows and the advisory ones
+  // refusal, and the accept-control independence check reports something only the Builder can
+  // weigh. So the verdict counts blocking rows and the advisory ones
   // stay in the iteration record for `correctness_check`; `solvability-gate.ts` groups the same way.
   const verdict = feedback.some((row) => row.severity === "blocking") ? "fail" : "pass";
   persistCensus(context, feedback, probe, verdict, {

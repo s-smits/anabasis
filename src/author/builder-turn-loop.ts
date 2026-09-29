@@ -1,19 +1,16 @@
 /** One persistent Builder turn: record it and choose the next prompt. */
 import type { AgentSession, AgentTurnEvent, AgentTurnResult, TurnUsage } from "../backends/backend-types.ts";
+import { POLICY } from "../critic/policy.ts";
 import type { RunObserver } from "../observe/run-observer.ts";
 import { observeBuilderTurn } from "../observe/model-turn-observer.ts";
-import type { ContractFinding } from "../truth/brief.ts";
+import type { ContractFinding } from "../correctness-bundle/brief.ts";
 import type { CandidateCheckOutcome } from "./candidate-check.ts";
 import { BuildAgentTurnNonResult, runModelAttempt } from "./build-agent.ts";
 import type { ModelAttemptGate } from "../run/campaign-budget.ts";
 import type { ProviderResourceBudget } from "../run/provider-resource-budget.ts";
-import {
-  continuePrompt,
-  STALLED_TURNS,
-  toolFailureNote,
-  unchangedAuthoringNote,
-} from "./builder-continuation.ts";
+import { continuePrompt, toolFailureNote, unchangedAuthoringNote } from "./builder-continuation.ts";
 import { authoringIdentity } from "./author-first.ts";
+import { memoryOverCapNotice } from "./builder-memory.ts";
 import type { BuilderExecutionRecorder } from "./builder-execution.ts";
 import { awaitTurnRetry, type TurnRetryContext } from "./turn-retry.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
@@ -62,8 +59,6 @@ interface BuilderTurnInput {
   authoring: { workspace: string; paths: readonly string[]; openingIdentity: string };
   /** When the session opened, so the continuation can read elapsed time and not only turns. */
   openedAtMs: number;
-  /** The round plan's compact view, read afresh at each turn boundary. */
-  planView?: () => string;
 }
 
 /** The turn's event sink, including at most one liveness checkpoint per minute. */
@@ -173,15 +168,14 @@ export async function runBuilderTurn(
 }
 
 /** Codex's no-progress rule: a turn in which no tool call succeeded made no progress, and
- *  `STALLED_TURNS` of them in a row end the round as `no-progress`. The backend's tally counts the
+ *  `POLICY.loop.stalledTurns` of them in a row end the round as `no-progress`. The backend's tally counts the
  *  CLI's own tools as well as the hosted ones; a backend that reports none leaves the count alone,
  *  because an unknown tally is not the same as zero calls. A round that settled in this turn is
  *  left as it settled. The run may retry the build, and the conversation continues either way. */
-// Gate audit 2026-09-25 (docs/gate-audit.md, no-progress): kept: turns with no successful tool call change nothing, and the clause is retryable on the same conversation
 function countIdleTurn(state: BuilderTurnState, calls: AgentTurnResult["toolCalls"]): void {
   if (calls === undefined) return;
   state.idleTurns = calls.total > calls.failed ? 0 : state.idleTurns + 1;
-  if (state.idleTurns < STALLED_TURNS || state.accepted !== null || state.terminal) return;
+  if (state.idleTurns < POLICY.loop.stalledTurns || state.accepted !== null || state.terminal) return;
   state.terminal = true;
   state.terminalClause = "no-progress";
 }
@@ -209,12 +203,12 @@ function nextTurnPrompt(input: BuilderTurnInput, result: AgentTurnResult): strin
     activeTurn: state.activeTurn,
     maxTurns: input.maxTurns,
     elapsedMs: Date.now() - input.openedAtMs,
-    ...keyIfDefined("planView", input.planView?.()),
   };
   return [
     continuePrompt(goal),
     toolFailureNote(result.toolCalls),
     unchangedAuthoringNote(owned, authoring.paths),
+    memoryOverCapNotice(authoring.workspace) ?? "",
   ]
     .filter((part) => part !== "")
     .join("\n\n");

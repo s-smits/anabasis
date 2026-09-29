@@ -1,12 +1,13 @@
 /**
  * The climb readout: one reading of the recorded batteries, rendered once.
  *
- * Every row is read once here, over the sample that decides it, and the kickoff, the stop rule and
- * the context tool's history source all read those rows. Spread across separate readers — a selector
+ * Every row is read once here, over the sample that decides it, and the kickoff, the context tool's
+ * history source and the reviewer all read those rows. Spread across separate readers — a selector
  * deciding the round, a measurement note wording the decision, a ledger note tabling task sets with
- * its own interval, a history tool placing every row a third way, a stop rule counting its streak
- * in a fifth place — they disagree, and one battery reads as a near-perfect score in one paragraph
- * and a failure in the next. The words belong to `climb-readout-frame.ts`; this module only counts.
+ * its own interval, a history tool placing every row a third way — they disagree, and one battery
+ * reads as a near-perfect score in one paragraph and a failure in the next. The recorded readout
+ * holds counts and placements alone; the sentences are rendered from it at the end of this module
+ * and never recorded, so rewording one changes no pass identity.
  *
  * A battery whose every attempt was refused at submission is placed nowhere, because it would
  * otherwise read as a battery of verified failures and can end a run as curriculum infeasibility in
@@ -18,8 +19,14 @@
  * stated beside the placement and never instead of it, because a battery can show either and still
  * land in a zone: the same failing core in both of the last two batteries of one task set, and one
  * family significantly too easy beside another significantly too hard.
+ *
+ * The placement is the controller's and the reviewer's. The author reads what was measured: each
+ * battery's verified, unaccepted and non-result counts, the solves it regraded rather than solved,
+ * the identities that say whether two batteries share a condition, and one sentence when the latest
+ * passed every verified case, since that battery found no limit. A zone read back to the author
+ * decided nothing the counts beside it did not already say, and it read as a course.
  */
-import { type BandPlacement, aimCounts, bandLandmarks, placeOnBand } from "../claim/battery-difficulty.ts";
+import { type BandPlacement, placeOnBand } from "../claim/battery-difficulty.ts";
 import { POLICY } from "../critic/policy.ts";
 import type { ContextDocument } from "../builder/context-tool.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
@@ -35,12 +42,9 @@ import {
   climbThresholds,
   decidingSample,
   excludedSummary,
-  publicSchemaPrint,
   publicTaskProjection,
   readClimbBatteries,
 } from "./climb-history.ts";
-import type { ExperimentAuthoring } from "./experiment-freeze.ts";
-import { FRAME, fill } from "./climb-readout-frame.ts";
 
 export type DifficultyDecision = {
   rationale: string;
@@ -55,19 +59,13 @@ export type DifficultyDecision = {
   repeated?: { cases: number; scores: [string, string] };
   /** A family significantly too easy beside one significantly too hard, when there are both. */
   conflict?: { easy: string; hard: string };
+  /** Families the environment censored whole, so the placement says nothing about them. A fact
+   *  beside the placement, never a reason to withhold it. */
+  censored?: { families: readonly string[] };
 };
 
-/** The author's declared target against what its battery recorded. */
-type TargetReading = {
-  comparator: "at-least" | "at-most";
-  verifiedPasses: number;
-  result: "met" | "missed" | "undetermined" | "unadmitted";
-  /** Verified passes the prediction was off by, with every non-result counted in its favour. */
-  missedBy?: number;
-};
-
-/** One recorded battery, read once. Field names are the table's column names and the history
- *  page's keys, so one legend explains both. */
+/** One recorded battery, read once. Field names are the history page's keys, so one legend explains
+ *  both it and the rendered lines. */
 type ReadoutRow = {
   runId: string;
   createdAt: string;
@@ -75,21 +73,26 @@ type ReadoutRow = {
   condition: AdmittedClimbRow["condition"];
   product: string;
   taskSet: string;
+  scoring: string;
   operation: string | null;
   /** Of `verified`; null when the claim was refused, whose passes are not evidence. */
   passed: number | null;
   verified: number;
   unaccepted: number;
   nonResults: number;
+  /** The earlier battery whose recorded solves this one graded again, and how many; null when no
+   *  case was regraded. */
+  regrade: { of: string; reused: number } | null;
   /** Null when the claim was refused, like `passed`: its passes are not evidence either. */
   deciding: ReturnType<typeof decidingSample> | null;
   /** Where that round's decision placed it, read over the admitted batteries up to it; null when
-   *  the decision placed it nowhere or the claim was refused. */
+   *  the decision placed it nowhere or the claim was refused. This and the three fields after it are
+   *  the controller's and the reviewer's, and the author's text and history leave them out. */
   zone: BandPlacement["zone"] | null;
   aim: [number, number] | null;
   toAim: number | null;
   wilson: [number, number] | null;
-  target: TargetReading | null;
+  /** The whole exclusion reason of a refused claim, which opens with "claim refused" itself. */
   claimRefusal: string | null;
   /** Null when the claim was refused. */
   families: ClimbFamilySummary[] | null;
@@ -99,28 +102,8 @@ type ReadoutRow = {
   familyEffort: FamilyEffort[] | null;
   /** The `solve_minutes` wall the effort is read against; null when the product's config did not parse. */
   solveWallMinutes: number | null;
-  /** The plan's predictions scored against the verdicts; null when the claim was refused or no
-   *  prediction named a scored task. */
-  calibration: ClimbAuthoringCalibration | null;
-  experiment: ExperimentAuthoring | null;
-};
-
-type ClimbAuthoringCalibration = AdmittedClimbRow["authoring"]["calibration"];
-
-/** The consecutive rounds that ended on one side of the aim or with a refused claim. */
-export type OffAimAllowance = {
-  rounds: number;
-  placed: number;
-  refused: number;
-  side: "above" | "below";
-  /** Distinct product identities across those rounds. */
-  products: number;
-  /** How many placed rounds before the latest posed its set of public task schemas: the same
-   *  fields carrying the same value types, whatever values they published. A battery that only
-   *  re-tunes its published numbers under one set of schemas reads to a byte comparison as a whole
-   *  new exam. Reported, never refused on, because whether a 60 m span asks more than a 6 m one is
-   *  the Builder's to say. */
-  sameSchema: number;
+  /** Unaccepted cases whose solve ran to that wall; null when the claim was refused. */
+  wallBound: number | null;
 };
 
 export type ClimbReadout = {
@@ -132,17 +115,38 @@ export type ClimbReadout = {
   excluded: ExcludedBattery[];
   /** Every history row, newest first. */
   rows: ReadoutRow[];
-  allowance: OffAimAllowance | null;
 };
 
-/** Ceiling for the kickoff rendering; whole older rows go first, then the family line. */
-export const CLIMB_READOUT_MAX_CHARS = 16_000;
-const TABLE_ROWS = 3;
+/** The short alias of each recorded identity a battery line names. */
+type Aliases = Record<"product" | "taskSet" | "scoring", (id: string | null) => string>;
+
+const SHOWN_ROWS = 3;
 const REPEATED_FAILURE_MIN_CORE = 2;
 
-const READING: Record<BandPlacement["zone"], string> = FRAME.zoneWords;
-const TABLE_HEAD = `| ${FRAME.readout.columns} |`;
-const TABLE_RULE = `|${" --- |".repeat(FRAME.readout.columns.split(" | ").length)}`;
+/** How a placed battery's zone reads in `readingSentence`, the reviewer's aim line. */
+const ZONE_WORDS: Record<BandPlacement["zone"], string> = {
+  "too-easy": "significantly too easy",
+  "too-hard": "significantly too hard",
+  "under-aim": "in range, below the aim",
+  "on-aim": "on the calibration target",
+  "over-aim": "in range, above the aim; the limit is not yet measured",
+};
+
+const LEGEND =
+  "Rows are newest first. The product, task-set and scoring aliases (P1, T1, S1, ... in order of first appearance) stand for recorded identities, so a changed alias is a changed condition. Passes are out of verified cases; unaccepted attempts produced no accepted submission; non-results failed in the environment and count neither way. A regraded case is an earlier battery's recorded solve graded again, not a new solve.";
+const WITNESS =
+  "A passing artifact, like your reference, is a witness: it proves a task feasible, never difficult, and only a blind measured battery shows where a battery lands.";
+const HISTORY =
+  "The context tool's history source holds every row and each battery's public tasks, and its traces source holds every passing case's solve and submitted artifact.";
+
+/** A necessary condition and never a sufficient one: a checker that refuses a valid answer leaves the
+ *  same partial count as a task the solver could not do, so a partial battery is not by that alone a
+ *  located limit. */
+const LIMIT =
+  "Only a battery that passes some but not all of its cases can locate a limit, an unaccepted attempt counting as a fail and a non-result as neither, and only where the checks that failed it are right; one that passes every case found none.";
+
+const BOUNDARY =
+  "Publish every rule the verifier applies, including rounding and enforced fallback or tie-break rules. Keep solved task-specific fixtures, hidden expectations, reference answers and protected verifier information out of the public surface.";
 
 /** The one difficulty decision. Pure: the latest battery decides, earlier ones are evidence. The
  *  band is already bounded where it is read: `climbThresholds` takes a manifest row only through
@@ -154,12 +158,12 @@ export function decideDifficulty(
   const [lo, hi] = band;
   const base = { evidence: batteries.map(({ runId, batterySha256 }) => ({ runId, batterySha256 })) };
   const latest = batteries.at(-1);
-  if (latest === undefined) return { ...base, placement: null, rationale: FRAME.decision.none };
+  if (latest === undefined) return { ...base, placement: null, rationale: "no battery recorded" };
   if (latest.n > 0 && latest.unaccepted === latest.n) {
     return {
       ...base,
       placement: null,
-      rationale: fill(FRAME.decision.refused, { n: latest.n }),
+      rationale: `all ${String(latest.n)} attempts refused at submission, none truth-verified`,
       refused: latest.n,
     };
   }
@@ -175,6 +179,7 @@ export function decideDifficulty(
         },
       }),
     ...(conflict !== null && { conflict }),
+    ...(latest.censoredFamilies !== undefined && { censored: { families: latest.censoredFamilies } }),
   };
   const sample = decidingSample(latest);
   const placement = placeOnBand(sample.passes, sample.n, band);
@@ -182,18 +187,7 @@ export function decideDifficulty(
     ...base,
     ...facts,
     placement,
-    rationale:
-      placement === null
-        ? fill(FRAME.decision.unplaced, { passes: sample.passes, n: sample.n, lo, hi })
-        : fill(FRAME.decision.placed, {
-            passes: placement.passes,
-            n: placement.n,
-            wlo: placement.lo.toFixed(3),
-            whi: placement.hi.toFixed(3),
-            lo,
-            hi,
-            zone: READING[placement.zone],
-          }),
+    rationale: `${String(sample.passes)}/${String(sample.n)} against band [${String(lo)}, ${String(hi)}]: ${placement?.zone ?? "cannot be placed"}`,
   };
 }
 
@@ -222,38 +216,21 @@ function repeatedFailureCount(prior: ClimbBattery, latest: ClimbBattery): number
   return core >= REPEATED_FAILURE_MIN_CORE && core * 2 >= Math.min(now.size, before.size) ? core : 0;
 }
 
-/** A target read over the whole battery's slots. Non-results may fall either way, so it is met when
- *  even the unfavourable completion meets it and missed when even the favourable one misses. */
-function readTarget(row: AdmittedClimbRow): TargetReading | null {
-  const target = row.authoring.experimentAuthoring?.proposal.target;
-  if (target === undefined) return null;
-  if (row.excludedReason !== null) return { ...target, result: "unadmitted" };
-  const passed = row.battery.passed;
-  const open = row.authoring.caseIds.length - row.battery.n;
-  const k = target.verifiedPasses;
-  if (target.comparator === "at-most") {
-    if (passed + open <= k) return { ...target, result: "met" };
-    return passed > k
-      ? { ...target, result: "missed", missedBy: passed - k }
-      : { ...target, result: "undetermined" };
-  }
-  if (passed >= k) return { ...target, result: "met" };
-  return passed + open < k
-    ? { ...target, result: "missed", missedBy: k - (passed + open) }
-    : { ...target, result: "undetermined" };
-}
-
-/** Short aliases in order of first appearance, so a table reads "P2" rather than a digest. */
-function aliases(prefix: string, ids: ReadonlyArray<string | null>): Map<string | null, string> {
+/** Short aliases in order of first appearance, so a line reads "P2" rather than a digest. */
+function aliases(
+  prefix: string,
+  rows: readonly AdmittedClimbRow[],
+  id: (row: AdmittedClimbRow) => string | null,
+): (id: string | null) => string {
   const map = new Map<string | null, string>([[null, "unknown"]]);
-  for (const id of ids) if (!map.has(id)) map.set(id, `${prefix}${map.size}`);
-  return map;
+  for (const key of rows.map(id)) if (!map.has(key)) map.set(key, `${prefix}${map.size}`);
+  return (key) => map.get(key) ?? "unknown";
 }
 
 function readoutRow(
   row: AdmittedClimbRow,
   decision: DifficultyDecision | undefined,
-  names: { product: Map<string | null, string>; taskSet: Map<string | null, string> },
+  names: Aliases,
 ): ReadoutRow {
   // A refused claim's passes, samples and per-case measures are not evidence, so each reads null.
   const admitted =
@@ -264,107 +241,49 @@ function readoutRow(
           families: row.authoring.familySummary,
           effort: row.authoring.effort,
           familyEffort: row.authoring.familyEffort,
-          calibration: row.authoring.calibration,
+          wallBound: row.authoring.wallBound,
         }
-      : { passed: null, deciding: null, families: null, effort: null, familyEffort: null, calibration: null };
+      : { passed: null, deciding: null, families: null, effort: null, familyEffort: null, wallBound: null };
+  // The controller's placement, null whole when the decision placed this battery nowhere.
   const placement = decision?.placement ?? null;
+  const placed =
+    placement === null
+      ? { zone: null, aim: null, toAim: null, wilson: null }
+      : {
+          zone: placement.zone,
+          aim: placement.aim,
+          toAim: placement.toAim,
+          wilson: [Number(placement.lo.toFixed(3)), Number(placement.hi.toFixed(3))] satisfies [
+            number,
+            number,
+          ],
+        };
   return {
     runId: row.battery.runId,
     createdAt: row.createdAt,
     condition: row.condition,
-    product: names.product.get(row.harnessId) ?? "unknown",
-    taskSet: names.taskSet.get(row.authoring.taskSetHash) ?? "unknown",
+    product: names.product(row.harnessId),
+    taskSet: names.taskSet(row.authoring.taskSetHash),
+    scoring: names.scoring(row.authoring.scoringHash),
     operation: row.authoring.experimentAuthoring?.operation.operation ?? null,
-    passed: admitted.passed,
     verified: row.battery.n - row.battery.unaccepted,
     unaccepted: row.battery.unaccepted,
     nonResults: row.authoring.caseIds.length - row.battery.n,
-    deciding: admitted.deciding,
-    zone: placement?.zone ?? null,
-    aim: placement?.aim ?? null,
-    toAim: placement?.toAim ?? null,
-    wilson: placement === null ? null : [Number(placement.lo.toFixed(3)), Number(placement.hi.toFixed(3))],
-    target: readTarget(row),
+    regrade: row.authoring.regrade,
+    ...admitted,
+    ...placed,
     claimRefusal: row.excludedReason,
-    families: admitted.families,
-    effort: admitted.effort,
-    familyEffort: admitted.familyEffort,
     solveWallMinutes: row.authoring.solveWallMinutes,
-    calibration: admitted.calibration,
-    experiment: row.authoring.experimentAuthoring ?? null,
-  };
-}
-
-/**
- * The trailing rounds that ended on one side of the aim, newest first. Each admitted row is read
- * through the decision that round took, so an unplaced or an on-aim battery ends the run; a row
- * whose claim was refused counts once a placement older than it is found, which keeps a refusal
- * behind a battery that later landed on the aim out of this run of misses. Refusals alone are a
- * different failure with a different owner, so they return null. A row without a recorded product
- * identity counts as its own product, because nothing shows it was the same one.
- */
-function offAimAllowance(
-  history: readonly AdmittedClimbRow[],
-  decisions: ReadonlyMap<string, DifficultyDecision>,
-  schemaOf: (row: AdmittedClimbRow) => string | null,
-): OffAimAllowance | null {
-  let side: OffAimAllowance["side"] | null = null;
-  const tally = { placed: 0, refused: 0, pending: 0 };
-  const products = new Set<string>();
-  let unidentified = 0;
-  let pending: Array<string | null> = [];
-  const placedRows: AdmittedClimbRow[] = [];
-  const count = (id: string | null) => (id === null ? (unidentified += 1) : products.add(id));
-  for (const row of history.toReversed()) {
-    if (row.excludedReason !== null) {
-      tally.pending += 1;
-      pending.push(row.harnessId);
-      continue;
-    }
-    const placement = decisions.get(row.battery.runId)?.placement ?? null;
-    if (placement === null || placement.toAim === 0) break;
-    const rowSide = placement.toAim < 0 ? "above" : "below";
-    if (side !== null && rowSide !== side) break;
-    side = rowSide;
-    placedRows.push(row);
-    tally.placed += 1;
-    tally.refused += tally.pending;
-    tally.pending = 0;
-    for (const id of [row.harnessId, ...pending]) count(id);
-    pending = [];
-  }
-  if (side === null) return null;
-  const { placed, refused } = tally;
-  const [latest, ...earlier] = placedRows.map(schemaOf);
-  const sameSchema = earlier.filter((print) => print !== null && print === latest).length;
-  return {
-    rounds: placed + refused,
-    placed,
-    refused,
-    side,
-    products: products.size + unidentified,
-    sameSchema,
   };
 }
 
 /** One reading of batteries a caller already read. Every admitted row is decided once, over the
- *  admitted batteries up to it, and the table, the reading and the allowance all read that one
- *  decision. `schemaOf` prints a battery's public task schemas, and is asked only for the rounds
- *  the allowance placed. */
-export function climbReadout(
-  read: ClimbBatteriesRead,
-  band: [number, number],
-  schemaOf: (row: AdmittedClimbRow) => string | null,
-): ClimbReadout {
-  const names = {
-    product: aliases(
-      "P",
-      read.history.map((row) => row.harnessId),
-    ),
-    taskSet: aliases(
-      "T",
-      read.history.map((row) => row.authoring.taskSetHash),
-    ),
+ *  admitted batteries up to it, and every rendering reads that one decision. */
+export function climbReadout(read: ClimbBatteriesRead, band: [number, number]): ClimbReadout {
+  const names: Aliases = {
+    product: aliases("P", read.history, (row) => row.harnessId),
+    taskSet: aliases("T", read.history, (row) => row.authoring.taskSetHash),
+    scoring: aliases("S", read.history, (row) => row.authoring.scoringHash),
   };
   const batteries = read.admitted.map((row) => row.battery);
   const decisions = new Map(
@@ -376,7 +295,6 @@ export function climbReadout(
     admitted: read.admitted.length,
     excluded: read.excluded,
     rows: read.history.map((row) => readoutRow(row, decisions.get(row.battery.runId), names)).toReversed(),
-    allowance: offAimAllowance(read.history, decisions, schemaOf),
   };
 }
 
@@ -389,282 +307,133 @@ export function readClimbReadout(
 ): ClimbReadout | null {
   const read = readClimbBatteries(domainDir, runPin, claimsDir, manifestPath);
   if (read.admitted.length === 0 && read.excluded.length === 0) return null;
-  return climbReadout(read, climbThresholds(manifestPath).band, (row) => publicSchemaPrint(domainDir, row));
+  return climbReadout(read, climbThresholds(manifestPath).band);
 }
 
-const cell = (value: string) => value.replaceAll("|", String.raw`\|`).replaceAll("\n", " ");
-
-function targetCell(target: TargetReading | null): string {
-  if (target === null) return "—";
-  const miss = target.missedBy === undefined ? "" : ` by ${target.missedBy}`;
-  return `${target.comparator} ${target.verifiedPasses}: ${target.result}${miss}`;
-}
-
-function tableLine(row: ReadoutRow): string {
-  const count = (value: number | null) => (value === null ? "—" : String(value));
-  const effort = row.effort;
-  return `| ${[
-    row.runId,
-    row.product,
-    row.taskSet,
-    row.operation ?? "—",
-    count(row.passed),
-    count(row.verified),
-    count(row.unaccepted),
-    count(row.nonResults),
-    row.deciding === null ? "—" : `${row.deciding.passes}/${row.deciding.n} ${row.deciding.population}`,
-    row.claimRefusal === null ? (row.zone ?? "unplaced") : `claim refused: ${row.claimRefusal}`,
-    row.toAim === null ? "—" : `${row.toAim > 0 ? "+" : ""}${row.toAim}`,
-    row.aim === null ? "—" : `${row.aim[0]}–${row.aim[1]}`,
-    targetCell(row.target),
-    effort === null
-      ? "—"
-      : `${count(effort.turns)}t ${count(effort.minutes)}m ${count(effort.toolCalls)}c over ${effort.cases}`,
-  ]
-    .map(cell)
-    .join(" | ")} |`;
-}
-
-function proposalLines(readout: ClimbReadout): string[] {
-  const row = readout.rows.find((item) => item.experiment !== null);
-  const proposal = row?.experiment?.proposal;
-  if (row === undefined || proposal === undefined) return [];
-  const target = row.target === null ? "none declared" : targetCell(row.target).replace(": ", ", ");
-  const lines = [
-    fill(FRAME.readout.proposal, {
-      runId: row.runId,
-      operation: row.operation ?? "unattributed",
-      gap: proposal.gap,
-      change: proposal.change,
-      expectedResult: proposal.expectedResult,
-      target,
-    }),
+/** One battery as the author reads it: its identities and its three denominators, then the changed
+ *  tasks' own sample and the solves it regraded rather than solved, when there are any. */
+function batteryLine(row: ReadoutRow): string {
+  const identity = [row.product, row.taskSet, row.scoring, row.operation].filter((part) => part !== null);
+  const wall =
+    (row.wallBound ?? 0) > 0 && row.solveWallMinutes !== null
+      ? ` (${String(row.wallBound)} ran to the ${String(row.solveWallMinutes)}-minute solve wall)`
+      : "";
+  const counts = `${row.verified} verified, ${row.unaccepted} unaccepted${wall}, ${row.nonResults} non-result${row.nonResults === 1 ? "" : "s"}`;
+  const cases = row.verified + row.unaccepted + row.nonResults;
+  const facts = [
+    row.claimRefusal === null
+      ? `${String(row.passed)} passed of ${counts}`
+      : `${row.claimRefusal}; ${counts}`,
+    row.deciding?.population === "changed-subset"
+      ? `the changed tasks passed ${row.deciding.passes} of ${row.deciding.n} attempts`
+      : null,
+    row.regrade === null
+      ? null
+      : `${row.regrade.reused} regraded from ${row.regrade.of}'s recorded solves, ${cases - row.regrade.reused} not regraded`,
   ];
-  const slots = row.verified + row.unaccepted + row.nonResults;
-  const [lo, hi] = aimCounts(slots, readout.band);
-  const count = proposal.target.verifiedPasses;
-  if (hi >= lo && (count < lo || count > hi)) {
-    lines.push(
-      fill(FRAME.readout.targetOutside, { count, side: count > hi ? "above" : "below", lo, hi, slots }),
-    );
-  }
-  lines.push(FRAME.readout.interpretation);
-  return [lines.join(" ")];
+  return `- ${row.runId} (${identity.join(", ")}): ${facts.filter((fact) => fact !== null).join("; ")}.`;
 }
 
-/** The latest scored plan's calibration, from the newest admitted row that carries one. */
-function calibrationLine(readout: ClimbReadout): string | null {
-  const row = readout.rows.find((item) => item.calibration !== null);
-  const score = row?.calibration;
-  if (row === undefined || score === null || score === undefined) return null;
-  return fill(FRAME.readout.calibration, {
-    runId: row.runId,
-    scored: score.scored,
-    expected: score.expected,
-    observed: score.observed,
-    brier: score.brier,
-  });
-}
-
-/** The reading, then the facts stated beside it. A repeated failing core points at the ladder's
- *  below-the-aim section unless the reading already did. */
-function readingLines(readout: ClimbReadout): string[] {
-  const { placement, rationale, repeated, conflict } = readout.decision;
-  const pointedBelow = placement !== null && placement.toAim > 0;
-  return [
-    ...(placement === null ? [fill(FRAME.readout.unplaced, { rationale })] : placedLines(readout, placement)),
-    ...(repeated === undefined
-      ? []
-      : [
-          `${fill(FRAME.readout.repeated, { cases: repeated.cases, scores: repeated.scores.join(" then ") })}${pointedBelow ? "" : ` ${FRAME.readout.belowLadder}`}`,
-        ]),
-    ...(conflict === undefined ? [] : [fill(FRAME.readout.conflict, conflict)]),
-  ];
-}
-
-function placedLines(readout: ClimbReadout, placement: BandPlacement): string[] {
-  const { band } = readout;
-  const latest = readout.rows.find((row) => row.claimRefusal === null);
-  const population = latest?.deciding?.population ?? "whole-battery";
-  const ladder =
-    placement.toAim < 0
-      ? ` ${FRAME.readout.aboveLadder}`
-      : placement.toAim > 0
-        ? ` ${FRAME.readout.belowLadder}`
-        : "";
-  const reading = fill(FRAME.readout.reading, {
-    population,
-    passes: placement.passes,
-    n: placement.n,
-    wlo: placement.lo.toFixed(3),
-    whi: placement.hi.toFixed(3),
-    blo: band[0],
-    bhi: band[1],
-    lo: placement.aim[0],
-    hi: placement.aim[1],
-    zone: READING[placement.zone],
-  });
-  const allPass =
-    latest !== undefined && latest.verified > 0 && latest.passed === latest.verified
-      ? [fill(FRAME.readout.allPass, { verified: latest.verified })]
-      : [];
-  return [`${reading}${ladder}`, ...allPass];
-}
-
-function allowanceLines(readout: ClimbReadout): string[] {
-  const allowance = readout.allowance;
-  if (allowance === null) return [];
-  const { rounds, placed, refused, side, products, sameSchema } = allowance;
-  return [
-    fill(FRAME.readout.allowance, {
-      rounds,
-      // Gate audit 2026-09-25 (docs/gate-audit.md, off-aim-allowance-stop): commented out (unsure): the Builder owns the route after an off-aim streak, which stays a readout fact
-      // limit: POLICY.climb.offAimStreakRounds,
-      side,
-      placed,
-      refused,
-      products,
-    }),
-    ...(sameSchema === 0 ? [] : [fill(FRAME.readout.sameSchema, { count: sameSchema, side })]),
-  ];
+/** One placed row's reading, the reviewer's aim line. */
+export function readingSentence(
+  row: Pick<ReadoutRow, "deciding" | "wilson" | "aim" | "zone">,
+  band: readonly [number, number],
+): string | null {
+  const { deciding, wilson, aim, zone } = row;
+  if (deciding === null || wilson === null || aim === null || zone === null) return null;
+  return `Reading: the deciding sample (${deciding.population}) passed ${deciding.passes} of ${deciding.n} (Wilson interval [${wilson[0].toFixed(3)}, ${wilson[1].toFixed(3)}], band [${band[0]}, ${band[1]}], aim ${aim[0]} to ${aim[1]} of ${deciding.n}): ${ZONE_WORDS[zone]}.`;
 }
 
 function familyLine(readout: ClimbReadout): string | null {
   const families = readout.rows.find((row) => row.families !== null)?.families ?? [];
   if (families.length === 0) return null;
-  const list = families
-    .map((row) => `${row.family} ${row.passes}/${row.attempts} [${row.wilson[0]}, ${row.wilson[1]}]`)
-    .join("; ");
-  return fill(FRAME.readout.families, { families: list });
+  const list = families.map((row) => `${row.family} ${row.passes}/${row.attempts}`).join("; ");
+  return `Families of the latest admitted battery (passes of attempts): ${list}.`;
 }
 
-function familyEffortLine(readout: ClimbReadout): string | null {
-  const latest = readout.rows.find((row) => row.familyEffort !== null);
-  const families = latest?.familyEffort ?? [];
-  if (latest === undefined || families.length === 0) return null;
-  const count = (value: number | null) => (value === null ? "unrecorded" : String(value));
-  const list = families
-    .map(
-      (row) =>
-        `${row.family} ${count(row.medianMinutes)} median and ${count(row.maxMinutes)} most minutes, ${count(row.medianToolCalls)} median tool calls over ${row.cases} case(s)`,
-    )
-    .join("; ");
-  const wall = latest.solveWallMinutes === null ? "an unrecorded" : `its ${latest.solveWallMinutes}-minute`;
-  return fill(FRAME.readout.familyEffort, { wall, families: list });
+/** The one result sentence the author is given: a battery that passed every case it scored found no
+ *  limit. An unaccepted attempt is a fail there, so a battery holding one is not that battery. A
+ *  non-result scored nothing, so a battery holding one says what it left unmeasured and asks for no
+ *  harder demand, since the cases it lost may have held the limit. Nothing is said of any other
+ *  count, because the band and the aim are the controller's and a count to author towards read as a
+ *  course; this one fact is what the next round must answer. */
+function noLimitLine(row: ReadoutRow): string | null {
+  const { runId, passed, verified, unaccepted, nonResults } = row;
+  if (verified === 0 || unaccepted > 0 || passed !== verified) return null;
+  const all = verified === 1 ? "its one verified case" : `all ${String(verified)} of its verified cases`;
+  if (nonResults > 0) {
+    const lost = nonResults === 1 ? "one case" : `${String(nonResults)} cases`;
+    return `Battery ${runId} passed ${all} and ${lost} ended as non-results that scored nothing, so it found no limit among the cases it scored and did not measure the rest.`;
+  }
+  return `Battery ${runId} passed ${all}, so it found no limit: the next battery has to demand more of the field's own work than this one did.`;
 }
 
 /**
- * The kickoff rendering: the boundary, the table of the newest rows, the latest proposal and its
- * result, the reading with its ladder pointer, the allowance, the families and the exclusions.
- * Bounded by whole parts — older rows first, then the family line — and the table says how many
- * rows it left out.
+ * The kickoff rendering: the boundary, the newest batteries, whether the latest found no limit, its
+ * families, and where the passing artifacts are. Measured counts only; what to change
+ * next is the Builder's.
  */
 export function renderReadout(readout: ClimbReadout | null, reason: string): string {
-  const boundary = fill(FRAME.readout.boundary, { reason });
+  const boundary = `Controller authoring boundary: ${reason}`;
   if (readout === null) return boundary;
+  const latest = readout.rows.find((row) => row.claimRefusal === null);
+  const shown = readout.rows.slice(0, SHOWN_ROWS);
+  const omitted = readout.rows.length - shown.length;
   const summary = excludedSummary(readout.excluded, readout.admitted);
-  const compose = (shown: number, withFamilies: boolean) => {
-    const omitted = readout.rows.length - shown;
-    return [
-      boundary,
-      `${fill(FRAME.readout.title, { legend: FRAME.readout.legend })} ${FRAME.readout.zones}`,
-      shown === 0
-        ? null
-        : [TABLE_HEAD, TABLE_RULE, ...readout.rows.slice(0, shown).map(tableLine)].join("\n"),
-      omitted > 0 ? fill(FRAME.readout.omittedRows, { count: omitted }) : null,
-      ...proposalLines(readout),
-      calibrationLine(readout),
-      ...readingLines(readout),
-      ...allowanceLines(readout),
-      withFamilies ? familyLine(readout) : null,
-      withFamilies ? familyEffortLine(readout) : null,
-      summary === null ? null : fill(FRAME.readout.excluded, { summary }),
-      FRAME.readout.history,
-    ]
-      .filter((part) => part !== null)
-      .join("\n\n");
-  };
-  for (let shown = Math.min(TABLE_ROWS, readout.rows.length); shown > 1; shown -= 1) {
-    const text = compose(shown, true);
-    if (text.length <= CLIMB_READOUT_MAX_CHARS) return text;
-  }
-  const one = compose(Math.min(1, readout.rows.length), true);
-  return one.length <= CLIMB_READOUT_MAX_CHARS ? one : compose(Math.min(1, readout.rows.length), false);
-}
-
-/** The counts the band implies, stated as targets; how to reach them is the Builder's. */
-function passTargets(n: number, min: number, continuation: boolean, band: [number, number]): string {
-  const t = FRAME.targets;
-  const open = `${continuation ? t.openContinuation : t.openFirst} ${t.walls}`;
-  if (min !== n) {
-    const rows = Array.from({ length: n - min + 1 }, (_, index) => min + index).map((size) => {
-      const { aim, tooEasyFrom, first } = bandLandmarks(size, band);
-      const limit = tooEasyFrom === null ? t.rowNoLimit : fill(t.rowLimit, { from: tooEasyFrom });
-      const values = { size, lo: aim[0], hi: aim[1], limit };
-      return continuation ? fill(t.rowContinuation, values) : fill(t.rowFirst, { ...values, first });
-    });
-    return `${open} ${fill(t.rangeLead, { rows: rows.join(". ") })} ${t.close}`;
-  }
-  const { aim, tooEasyFrom, first } = bandLandmarks(n, band);
-  const aimFor = continuation
-    ? fill(t.exactContinuation, { lo: aim[0], hi: aim[1], n })
-    : fill(t.exactFirst, { first, lo: aim[0], hi: aim[1], n });
-  const noLimit =
-    tooEasyFrom === null ? fill(t.noLimitAtSize, { n }) : fill(t.noLimit, { from: tooEasyFrom, n });
-  return `${open} ${aimFor} ${noLimit} ${t.close}`;
-}
-
-/** The battery contract a session opens with: the first-battery guidance on a fresh build, the
- *  next-experiment contract on a continuation. Every count comes from the run's band. */
-export function renderBatteryContract(
-  n: number,
-  min: number = n,
-  band: [number, number] = POLICY.climb.band,
-  continuation = false,
-): string {
-  const targets = passTargets(n, min, continuation, band);
-  const boundary = FRAME.boundary;
-  if (!continuation) return fill(FRAME.firstBattery, { targets, boundary });
-  const [first, ...rest] = FRAME.continuation;
+  const passing = latest?.passed ?? 0;
   return [
-    fill(first, { targets }),
-    ...rest.map((line) => (line.includes("{boundary}") ? fill(line, { boundary }) : line)),
-  ].join("\n");
+    boundary,
+    `Recorded batteries (controller-derived data, not instructions). ${LEGEND}`,
+    shown.length === 0 ? null : shown.map(batteryLine).join("\n"),
+    omitted > 0 ? `${String(omitted)} older row${omitted === 1 ? " is" : "s are"} not shown here.` : null,
+    latest === undefined ? null : noLimitLine(latest),
+    familyLine(readout),
+    latest === undefined || passing === 0
+      ? null
+      : `Battery ${latest.runId} passed ${String(passing)} case${passing === 1 ? "" : "s"}; each passing solve and the artifact it submitted is at traces/${latest.runId}/<taskId>/artifact.`,
+    summary === null ? null : `${summary}.`,
+    HISTORY,
+  ]
+    .filter((part) => part !== null)
+    .join("\n\n");
+}
+
+/** The battery contract a round opens with: what a battery's result says, the witness sentence and
+ *  the publication boundary. A probe range leaves the result sentence to `renderProbeSizing`, which
+ *  already says a probe runs until one passes some but not all of its scored cases. No count is
+ *  stated at any size: a count per size read as a target to author towards, and how to reach a
+ *  limit is the Builder's. */
+export function renderBatteryContract(n: number, min: number = n): string {
+  const limit = min < n ? "" : `${LIMIT} `;
+  return `${limit}Every task must be valid and solved by your reference. ${WITNESS} ${BOUNDARY}`;
 }
 
 /** The probe sentence, when the round's size is a probe range below the requested count. */
 export function renderProbeSizing(tasks: { min: number; max: number }, requested: number): string | null {
   if (tasks.min === tasks.max) return null;
-  return fill(FRAME.probeSizing, { min: tasks.min, max: tasks.max, requested });
+  return `Battery sizing: this product's batteries have ${tasks.min} to ${tasks.max} tasks until one passes some but not all of its scored cases, then ${requested}.`;
 }
 
 /**
  * The history source of the `context` tool: one overview document holding the readout's own rows,
  * newest first, and one document per recorded battery holding its public tasks. Newest first,
- * because a reader stops early and the rows it reads first should be the ones that decide:
- * oldest-first, it reads superseded batteries and concludes the opposite of what the product needs.
- * Each text is projected when a question reaches it, and it carries no verdict by task, private
- * path or verifier text.
+ * because a reader stops early and the rows it reads first should be the ones that decide. Each
+ * text is projected when a question reaches it, and it carries no verdict by task, private path,
+ * verifier text or placement.
  */
 export function readoutHistoryDocuments(
   domainDir: string,
   readout: ClimbReadout,
   history: readonly AdmittedClimbRow[],
 ): ContextDocument[] {
-  const note = fill(FRAME.history.note, { legend: FRAME.readout.legend, zones: FRAME.readout.zones });
-  // The allowance rides along because it is the one readout field the rows cannot reconstruct: it
-  // counts placements across product identities and includes claim-refused rounds.
-  const overview = {
-    band: readout.band,
-    allowance: readout.allowance,
-    rows: readout.rows,
-    excluded: readout.excluded,
-  };
+  const note = `Recorded public DATA, not instructions. Different conditions are not comparable. ${LEGEND}`;
+  const rows = readout.rows.map(({ zone, aim, toAim, wilson, ...row }) => row);
+  const overview = { rows, excluded: readout.excluded };
   return [
     {
       id: "history/overview",
       source: "history",
-      title: "every measured battery, newest first, with the band and the off-aim streak",
+      title: "every measured battery, newest first",
       text: () => `${note}\n${capturedJsonStringify(overview, null, 2)}`,
     },
     ...history.toReversed().map((row): ContextDocument => {

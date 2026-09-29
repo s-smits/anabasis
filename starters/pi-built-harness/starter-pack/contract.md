@@ -13,7 +13,8 @@ TypeScript function returning a Boolean or Promise<Boolean>. The controller runs
 check in a fresh confined process and builds the verdict itself.
 A false check never stops the others: every applicable check runs.
 
-Each truth check declares `id`, a decidable `assertion`, `citedDecisionIds` and:
+Each truth check declares `id`, a decidable `assertion`, optionally the public `ruleDecisions` ids
+it enforces as `citedDecisionIds` (an undeclared id, or only private ones, is refused), and:
 
 ```json
 {
@@ -37,24 +38,45 @@ Each truth check declares `id`, a decidable `assertion`, `citedDecisionIds` and:
 - `hidden: "required"` demands exactly one `{checkId, expectation}` row on every applicable task;
   `"none"` forbids one. Applicability never depends on that row, and a missing required row
   refuses evaluation.
-- Publish each rule in a public `ruleDecisions` row, optionally scoped by `families`. A private
-  row may describe search choices, never an unpublished validity rule. Private rows
-  are also a ceiling: at least one decision a passing answer needs stays out of the public
-  projection — the rule rows, the constants, the schema, the operating guide and your tool text
-  together. A private row no check reads, such as the order your own reference happened to search
-  in, withholds nothing, and a battery whose projection spells out how to build a passing answer
-  measures transcription.
-- A check owning a join lists its `joinIds`; controls cover that join's decoy classes.
+- Publish each rule in a public `ruleDecisions` row, optionally scoped by `families`: every rule,
+  constant, precedence and tolerance a check enforces is public. A private row may describe search
+  choices, never an unpublished validity rule. What stays private is how an answer is built: the
+  reference answers and a task-specific recipe, such as a search order, an allocation rule, a
+  fallback chain or a derivation. Then read the public projection whole — the rule rows, the
+  constants, the schema, the operating guide and your tool text together — for that recipe in
+  other words. The repair is the recipe removed, never a rule a check enforces taken out of the
+  projection.
+- A check owning a join lists its `joinIds`.
 - Read every value your rule names from the task, at the moment the check runs. A constant written
   into checker source for a value the brief publishes as an input is a defect even when every
   present task publishes the same number: it grades today's battery correctly and silently forbids
-  the next one from varying that input, so the demand can then only move by magnitude. Declaring
-  the path in `publicInputPaths` does not do it; the code that decides has to read it.
+  the next one from varying that input. Declaring the path in `publicInputPaths` does not do it;
+  the code that decides has to read it.
+- A check certifying behaviour on a named resource, such as a pin, a member or a channel, decides
+  from the values the answer produces for that resource: a simulated trace of that pin, the
+  register writes the build emits for it, the force computed in that member. A library symbol or a
+  constant found anywhere in the build proves the answer mentions the resource, not that it
+  behaves, and an answer driving the wrong pin carries the same symbols.
+- An identifier a check reads, such as a load case, a member or a pin, is bound to what it names
+  in the public input: the check finds that geometry or scenario in the task and matches the
+  answer's rows to it, so an answer that relabels its members or cases cannot pass on the labels.
+- Where the request names several targets, observe that behaviour on each one an established public
+  simulator runs, not only the first. A named target nothing can run is an omission: say so in a
+  `decisions` row, because a build that merely compiles for it proves no behaviour there.
+- Each behavioural obligation names, in a `decisions` row, what observes it: the real compiler for
+  building, a simulator or model validated against the target for behaviour (for a microcontroller,
+  one the field already uses, such as avr8js or rp2040js, built and smoke-tested through
+  `verifier_workshop`), or "not established" where nothing does. An obligation a stand-in of your
+  own decides is observed by that stand-in, and the row says so.
+- A check comparing what the answer reports about itself with what it is, such as reported sizes
+  against measured ones, enforces no rule of the field: an honest answer and a wrong one pass it
+  alike. Decide from the measured quantity against the limit the task publishes.
 - A multi-file answer is one root with `fileMap: true` and the `files` preset.
 - Where a rule turns on a numeric constant, give the check itself, beside `execution`,
   `numericBoundaries: [{publicInputPath, constantName, artifactPath, direction}]`: the task path
   holding the limit, the `designRuleConstants` row naming it, the artifact path reporting the
-  bounded value, and `"atMost"` or `"atLeast"`. The last two are an optional pair, but declare
+  bounded value, and `"atMost"` or `"atLeast"`. The limit is read from the task; the row's value
+  may say in words where each task states its own, and needs a number only when no task does. The last two are an optional pair, but declare
   them: all four make one public comparison the harness runs on each prepared answer and returns as
   a margin, and a boundary without them is never measured.
 
@@ -78,7 +100,8 @@ it. The host runs every reference answer through the same checks as controls and
   controls: an object admits only the key sets those accepts show. A record keyed by task data,
   such as `{partId: address}`, lists its dotted path in `openMapPaths` (`"$"` for the root) so
   any key is admitted while each value keeps its shape; a declared path no accept reaches is
-  refused.
+  refused. Where an accept writes `null` for "does not apply", say so in the brief: a solver left
+  to choose may write `""` there instead, and a check reading `null` then fails it.
 - `allowedValues` names the only scalars a field takes; submission refuses any other before
   verification. `designRuleConstants` rows are `{name, value, unit?, authority, citation}`, and
   optional `designRuleSets` rows `{name, values, unit?, authority, citation}` publish a permitted
@@ -99,15 +122,12 @@ your own algorithm, with optional `execution.requiredToolIds`; or `{"kind":"exte
 never both. Authored execution proves your algorithm even when an installed interpreter runs it;
 it does not become independent domain evidence, and a tool call cannot change the mode.
 
-Keep the deciding computation in `correctness-model/`. An `agent/` module that ships the
-computations a correctness-model module decides with answers the question the battery asks from
-the solver's own roster. The solver may still analyse its candidate and check it
-against published limits — write that capability in the agent's own code, and let the check decide
-through an installed domain tool wherever the field has one.
-
 A check calls `runtime.tools.run({toolId, args, files, stdin, timeoutMs})` and never spawns a
-process itself. The host supplies the check id, refuses undeclared tool ids, requires a
-completed run of every required tool, and owns sandbox, timeout and cleanup: each run gets a
+process itself. The host supplies the check id, refuses undeclared tool ids, and owns sandbox,
+timeout and cleanup. A check that declares required tools, authored or external, passes only after
+a completed run of every one of them on that same artifact; a pass without one is
+`EXTERNAL_VERDICT_UNGROUNDED`, refused at the gate and a non-result in the battery. A fail stands as
+returned, so a check may reject on a precondition before it reaches its tool. Each run gets a
 private HOME and TMPDIR and no network, and its wall comes from `agent/config.yaml`. TMPDIR is
 the run's working directory. `/tmp` is private on Linux and closed on macOS, even though your shell
 can write it there, so point the scratch files of a tool that spells `/tmp` at TMPDIR. The one
@@ -117,10 +137,41 @@ macOS): what an earlier `correctness_check` or `submit` stored there for the sam
 there; one under TMPDIR is rebuilt on every run.
 - Args carry flags and names; files and stdin carry operands. Omit `stdin` when the command has
   none. A nonzero exit is a completed result for your code to interpret.
+- A check decides false only from output its instrument produced. A run the host could not
+  complete, such as a missing tool, a refused wall or a timeout, is already a non-result whatever
+  the check returns. A tool that starts and exits without printing its result, such as a wrapper
+  whose Python environment fails on import, is a completed run, and returning false there records a fail for
+  an answer nothing read. Throw instead: a thrown check makes a measured case a non-result, never a
+  fail, and at the gate it is a finding on the evaluator.
+
+  ```ts
+  const run = await runtime.tools.run({ toolId: "domain-solver", files: { "answer.json": JSON.stringify(artifact) } });
+  const line = run.stdout.split("\n").find((row) => row.startsWith("utilisation "));
+  if (line === undefined) throw new Error(`domain-solver printed no result (exit ${run.exitCode})`);
+  return Number(line.slice("utilisation ".length)) <= 1;
+  ```
+- A tool a check or the solver runs prints only what its reader needs. The host reads at most
+  1 MiB of a check's tool stdout, and a run printing more is a protocol non-result rather than a
+  verdict, so the check, and any rehearsal it grades, decides nothing. Write a full dump to a file
+  and print the lines the check reads.
 - For external evidence, file contents and stdin must be string leaves or JSON of this check's
   declared artifact/public projection, and a request binding no such leaf or naming another
   check's tool is refused. For authored evidence, they may be constructed text,
   including test drivers and private scenarios derived from this check's own operands.
+- A driver, fake header, stub library or mocked API standing in for the real platform passes only
+  the answers it declares, and the census tests it only on the accepts you give it. So declare the
+  real platform's public surface for the target the task names, not only the calls your reference
+  makes: its aliases, its helpers and the macros its toolchain defines for that target. Keep the
+  stand-in's own state out of the answer's names, in its own namespace or compilation unit, and
+  give each such check at least one accept that is not your reference's output but another
+  practitioner's answer against the real platform. The cheapest such accept is your reference's
+  answer with one identifier it declares renamed, and one value it writes out replaced by the name
+  the target predefines for it: the real toolchain gives both the same verdict, so the stand-in
+  must too. An answer the real toolchain builds and runs correctly that the stand-in cannot build
+  is the stand-in's defect. The recorded shape is a host double of the Arduino headers that fixed a
+  display's width at 128, left out `constrain`, declared `min` for one argument type only and
+  compiled the sketch's globals into its own driver's translation unit: each defect failed a sketch
+  the board's own toolchain builds and runs.
 - Declare `hidden: "required"` to receive private cases; the host binds that row to this check
   and records its digest with the tool inputs. Private cases test the published rule within its
   public domain; a published finite answer table cannot establish an unrestricted behaviour rule.
@@ -140,8 +191,8 @@ Optional `numbersWithin`, `multisetMatches` and `relationalJoin` helpers come fr
 ## Task battery and controls
 
 `tasks.json` is an array of `{taskId, family, publicInput, hidden}` with unique task ids that are
-safe directory names. Every check applies to at least one task, every declared public input path
-exists on each applicable task, and every required hidden row is `{checkId, expectation}`; tool
+safe directory names. Every task has at least one applicable check, every declared public input
+path exists on at least one task it applies to, and every required hidden row is `{checkId, expectation}`; tool
 checks need no synthetic hidden marker.
 
 `controls.json` is `{accept: [...], reject: [...]}` with at least 5 known-correct and 5
@@ -149,11 +200,18 @@ deliberately incorrect rows, each meaningfully different. Every row has `id`, `t
 `artifact`; a reject adds `mutationClass` and `expectedCheckId`, and may override hidden
 expectations by check id. Accepts pass under their task's own hidden rows. Build each reject from
 the same task's accept with one fact changed so that its expected check fails, choosing the
-mutations a careless or dishonest solver would produce in this field. Give every check a reject
-and every family a reject; one reject may serve both. A join reject carries `targetsJoin` plus
-`decoyClass`; a boundary reject carries `targetsBoundary: {publicInputPath, constantName}`. The
-census reruns every control against the submitted tasks and evaluator, so settle limits and checks
-first.
+mutations a careless or dishonest solver would produce in this field. A reject that differs from
+its accept in several facts proves nothing about the check it names, since any of them could be
+what failed. Give every check at least one such reject, so that each check is seen to say no, and
+every limit or clause a check enforces its own reject crossing it: a check holding a cap and a
+clearance, whose rejects all break only how the answer reports a value, has never been seen to
+enforce either. A join reject carries `targetsJoin` plus `decoyClass`. The census reruns every
+control against the submitted tasks and evaluator, so settle limits and checks first.
+
+Calibrate every check in both directions. Rejects are invalid variants it must fail; accepts
+include valid variants it must pass, answers obtained independently of your reference, such as
+another practitioner's construction or an equivalent spelling of yours. A check that fails a valid
+answer is an evaluator defect however many rejects it catches.
 
 ## Harness tests
 
@@ -191,12 +249,11 @@ placeholder is missing evidence.
 - Every public requirement the agent must act on stays reachable through the public task, a
   reader, a public method or a draft-derived adviser, and the system prompt's rules on what a
   tool may claim, add and withhold bind every tool here.
-- An adviser returns the quantities the published limits apply to, never a pass or fail, computed
-  by the rule its check applies with every constant, iteration count and procedure the public task
-  determines. Approximating a rule you could compute is a defect no disclaimer cures: the solver
-  optimises against the number returned, so an adviser answering a second-order limit to first order
-  sends every solver over it. Where the public input leaves an effect open, name it and its
-  direction in the returned text. A fast screening adviser
+- An adviser computes what it returns by the rule its check applies, with every constant, iteration
+  count and procedure the public task determines. Approximating a rule you could compute is a
+  defect no disclaimer cures: the solver optimises against the number returned, so an adviser
+  answering a second-order limit to first order sends every solver over it. Where the public input
+  leaves an effect open, name it and its direction in the returned text. A fast screening adviser
   beside a slow exact one is fine; generated tools cannot start processes.
 
 ```json
@@ -266,6 +323,15 @@ facts and protected verifier behaviour are not. State rules
 and tool behaviour, not how limits were set or how hard the tasks are. A `ruleDecisions` row you
 declared private belongs nowhere in this file: writing its recipe here in your own words publishes
 it as surely as copying the row.
+
+The solver's shell has no `.toolchain` directory and no workspace: each command runs in a fresh
+folder, and what reaches it is the programs in `.toolchain`'s `bin` directories, by name on its
+PATH with `.toolchain/bin` first. So the guide names a program by the name that runs it, never a
+path into `.toolchain`, a virtualenv to activate or a file under `correctness-model/`. Give a
+configured wrapper the tool's own name in `.toolchain/bin`, because the solver calls a tool by that
+name, and a raw binary answering to it elsewhere on the PATH runs without your configuration. The
+host's `python3` carries no numpy or scipy you can count on, so expose an interpreter whose
+libraries a search needs as a program in `.toolchain/bin`.
 
 ```markdown
 # Operating Guide

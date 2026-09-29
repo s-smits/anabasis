@@ -5,7 +5,6 @@
  * over a private copy of the adopted product; the accepted bytes then decide the attribution. Two
  * variants are adopted: authored checks alone, and checks that require the installed fixture tool.
  */
-import { PLAN_FIELDS } from "./experiment-plan.ts";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { expect } from "bun:test";
 import { double, required, scriptedSession } from "./doubles.ts";
@@ -15,7 +14,7 @@ import { join } from "../../src/meta/path.ts";
 import { scratchDir } from "./scratch.ts";
 import { fingerprintSlug } from "../../src/claim/fingerprint.ts";
 import { makeAgentToolsProbes } from "../../src/author/agent-tools-session.ts";
-import { makeProbeControls } from "../../src/truth/probes.ts";
+import { makeProbeControls } from "../../src/correctness-bundle/probes.ts";
 import { makeSolvabilityCensusGate } from "../../src/run/solvability-gate.ts";
 import { publishProductVersion } from "../../src/run/product-versions.ts";
 import { makeCensusGate } from "../../src/run/census-gate.ts";
@@ -27,7 +26,6 @@ import {
 } from "../../src/verify/verifier-lifetime.ts";
 import type { BuiltHarness, FeedbackOwner } from "../../src/author/campaign-types.ts";
 import type { HarnessExperiment } from "../../src/critic/types.ts";
-import { EXPERIMENT_FILE } from "../../src/author/builder-memory.ts";
 
 const FRESH = {
   slug: "matching",
@@ -42,12 +40,10 @@ export interface AdoptedProduct {
   harness: BuiltHarness;
 }
 
-/** One continuation: the fixture battery (redesigned or the adopted one) plus an edit, under a
- *  declared scope. `admitted` is the attribution the accepted bytes must carry; `refused` is the
- *  code the submission must name instead. */
+/** One continuation: the fixture battery (redesigned or the adopted one) plus an edit. `admitted` is the attribution the accepted bytes must carry; `refused`
+ *  is the code the submission must name instead. */
 export interface IntentRow {
   tool: boolean;
-  scope: "tasks" | "product";
   redesign: boolean;
   /** The owner of an admitted blocking finding about the adopted product. */
   owner?: FeedbackOwner;
@@ -135,17 +131,6 @@ export const EDITS = {
   },
 } as const;
 
-function proposal(scope: IntentRow["scope"]) {
-  return {
-    scope,
-    target: { comparator: "at-least" as const, verifiedPasses: 0 },
-    gap: "The prior battery did not test the proposed condition.",
-    change: "Change the proposed condition.",
-    ...PLAN_FIELDS,
-    expectedResult: "All four tasks remain publicly solvable.",
-  };
-}
-
 function priorEvidence(owner: FeedbackOwner | undefined) {
   const claim = {
     severity: "blocking" as const,
@@ -175,7 +160,6 @@ export async function checkIntent(shared: AdoptedProduct, row: IntentRow): Promi
     const session = scriptedBuilderTurn(() => {
       uppercaseFixture(workspace, row.redesign, row.tool);
       row.edit?.(workspace);
-      writeFileSync(join(workspace, EXPERIMENT_FILE), JSON.stringify(proposal(row.scope)));
     });
     const outcome = await runBuilderCampaign(
       {
@@ -196,7 +180,6 @@ export async function checkIntent(shared: AdoptedProduct, row: IntentRow): Promi
         },
       },
     );
-    // An admission refusal still runs the gates once, so one submit reports every stage.
     expect(gateCalls).toBe(1);
     expect(readFileSync(join(adoptedDir, "agent/BUILT_AGENTS.md"), "utf8")).toBe(adoptedGuide);
     if (row.refused !== undefined) {
@@ -207,7 +190,8 @@ export async function checkIntent(shared: AdoptedProduct, row: IntentRow): Promi
     if (!outcome.buildAdmissible) throw new Error(session.last.submission);
     expect(outcome.experimentScope?.actual).toBe(required(row.admitted, "admitted attribution"));
     expect(outcome.iterations[0]?.experimentScope).toEqual(outcome.experimentScope);
-    expect(session.last.prompt).toContain("Choose the next useful experiment");
+    // The round opened as a continuation, on a workspace seeded from the adopted product.
+    expect(session.last.prompt).toContain("seeding copied the adopted product's .toolchain");
     // Conformance evidence stays beside the iteration, never inside the accepted bytes.
     expect(existsSync(join(outcome.acceptedSnapshot, "conformance.json"))).toBe(false);
     expect(existsSync(join(outcome.iterationDir, "conformance.json"))).toBe(!row.unprobed);

@@ -1,0 +1,78 @@
+import type { VerifierExecutionNonResultKind } from "../verify/correctness-model-result.ts";
+import type { VerifierExecutionEvidence } from "../verify/verifier-port.ts";
+
+type TimedRun = Pick<VerifierExecutionEvidence, "phase" | "toolId" | "checkId">;
+
+/**
+ * What an F2 grading run that timed out twice leaves for the author to weigh: it timed out beside
+ * the other reference tasks, then again when rerun alone. Most recorded timeouts were a tool's
+ * ordinary cost meeting its wall rather than a wrong answer, so the refusal carries the timings and
+ * the host load that tell those apart instead of the bare outcome.
+ */
+export interface TimeoutRerun {
+  /** The first run's evidence, from beside the other lanes. */
+  first: VerifierExecutionEvidence;
+  /** Longest completed run of the same tool on the same check in this census; null when none completed. */
+  slowestCompletedMs: number | null;
+  /** One-minute host load average when each timeout was seen, and the host's cores. */
+  load: { first: number; rerun: number; cores: number };
+}
+
+/**
+ * A tool run the host authorised produced no completed run. The host alone writes the kind: a
+ * tool has no wire on which to report its own outcome, so the kind is a host measurement and can
+ * be read for ownership directly. Two kinds are the environment's — the OS wall was unavailable or
+ * refused, or the installed tool could not be read — and every other kind (timeout, crash) is the
+ * run of a tool the author chose over an input the artifact produced, which the author can act on.
+ *
+ * A control (`discrimination`) and a reference solve (`solvability`) meet the same event, so one
+ * class carries both and the census gate settles them in one place. It carries the exact host
+ * evidence rather than a copied kind string, so the settlement records typed evidence.
+ */
+export const ENVIRONMENT_OWNED_TOOL_NON_RESULT_KINDS: ReadonlySet<string> = new Set<string>([
+  "sandbox",
+  "verifierUnavailable",
+] satisfies VerifierExecutionNonResultKind[]);
+
+/** Pause before the one retry allowed for an environment-owned kind. A short delay gives a
+ *  temporary filesystem or sandbox problem time to clear; retrying immediately may reproduce
+ *  the same failure before the host has recovered. */
+const TOOL_RETRY_DELAY_MS = 3000;
+
+export function environmentOwnedToolNonResult(kind: string): boolean {
+  return ENVIRONMENT_OWNED_TOOL_NON_RESULT_KINDS.has(kind);
+}
+
+export function toolRetryDelay(waitMs: number = TOOL_RETRY_DELAY_MS): Promise<void> {
+  return Bun.sleep(waitMs);
+}
+
+export class VerifierExecutionNonResult extends Error {
+  constructor(
+    readonly evidence: VerifierExecutionEvidence,
+    readonly rerun?: TimeoutRerun,
+  ) {
+    super(
+      `${evidence.phase} evaluate of "${evidence.subjectId}" could not run: tool "${evidence.toolId}" for check "${evidence.checkId}" ended as ${evidence.outcome}`,
+    );
+    this.name = "VerifierExecutionNonResult";
+  }
+}
+
+/** The longest run of a timed-out tool on the same check in the same stage that did complete, or
+ *  null when none did. F2 and the control census both put it beside a second timeout, because a
+ *  completed run near the wall says the tool's cost meets it, and none at all says it may not finish. */
+export function slowestCompletedMs(
+  evidence: readonly (TimedRun & Pick<VerifierExecutionEvidence, "outcome" | "durationMs">)[],
+  timedOut: TimedRun,
+): number | null {
+  const durations = evidence.flatMap((row) =>
+    row.phase === timedOut.phase &&
+    row.outcome === "executed" &&
+    row.toolId === timedOut.toolId &&
+    row.checkId === timedOut.checkId
+      ? [row.durationMs]
+      : [],
+  );
+  return durations.length === 0 ? null : Math.max(...durations);
+}

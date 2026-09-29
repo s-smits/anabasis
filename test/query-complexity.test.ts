@@ -4,6 +4,7 @@ import { join } from "../src/meta/path.ts";
 import { afterEach, describe, expect, it } from "bun:test";
 import type { CaseRecordRow } from "../src/claim/case-record.ts";
 import { caseRecordRow } from "./helpers/case-record-row.ts";
+import { double } from "./helpers/doubles.ts";
 import {
   ANCHOR_SHA256,
   STRUCTURE_KEYS,
@@ -15,8 +16,9 @@ import {
   readBattery,
   structureOf,
   unitsOf,
-} from "../.claude/skills/whole-run-investigation/classifier/query-complexity.mjs";
+} from "../.claude/skills/whole-run-investigation/classifier/query-complexity.ts";
 import {
+  type ClimbReport,
   VELOCITY_SCHEMA,
   numericDriftOf,
   outcomesOf,
@@ -27,7 +29,7 @@ import {
   velocityOf,
   placementOf,
   verdictOf,
-} from "../.claude/skills/whole-run-investigation/scripts/climb-velocity.mjs";
+} from "../.claude/skills/whole-run-investigation/scripts/climb-velocity.ts";
 
 /** The bundle fields these fixtures write. The module reads a bundle as parsed JSON, so the test
  *  names the shape it authors rather than borrowing one from the reader. */
@@ -40,6 +42,7 @@ interface TruthCheck {
     artifactPaths: string[];
     publicInputPaths: string[];
     requiredToolIds?: string[];
+    evidence?: { kind: "authored" } | { kind: "external"; requiredToolIds: string[] };
   };
   numericBoundaries?: { publicInputPath: string; constantName: string }[];
 }
@@ -150,6 +153,26 @@ describe("query complexity", () => {
     });
   });
 
+  it.concurrent("counts an external check's instrument as tooled, and an authored one without a tool as not", () => {
+    const external = check("states", "the nonlinear states hold", {
+      execution: {
+        families: "all",
+        artifactPaths: ["$.design"],
+        publicInputPaths: [],
+        evidence: { kind: "external", requiredToolIds: ["truss-python"] },
+      },
+    });
+    const authored = check("mass", "the mass stays under its cap", {
+      execution: {
+        families: "all",
+        artifactPaths: ["$.design"],
+        publicInputPaths: [],
+        evidence: { kind: "authored" },
+      },
+    });
+    expect(structureOf(light, { ...brief, truthChecks: [external, authored] }).tooled).toBe(1);
+  });
+
   it.concurrent("reports every structural key it declares", () => {
     expect(Object.keys(structureOf(heavy, brief)).sort()).toEqual([...STRUCTURE_KEYS].sort());
   });
@@ -233,11 +256,43 @@ describe("climb velocity", () => {
 
   // Direction is absent on purpose: a loosened limit moved just as far as a tightened one.
   it.concurrent.each([
-    [100, { median: 0, moved: 0 }],
-    [90, { median: 0.1, moved: 1 }],
-    [110, { median: 0.1, moved: 1 }],
+    [100, { median: 0, moved: 0, joined: 1, tasks: 1 }],
+    [90, { median: 0.1, moved: 1, joined: 1, tasks: 1 }],
+    [110, { median: 0.1, moved: 1, joined: 1, tasks: 1 }],
   ])("measures how far a published number of 100 moved to %d", (after, drift) => {
     expect(numericDriftOf(reading(100), reading(after))).toEqual(drift);
+  });
+
+  // Renaming every task once read as "numbers moved 0" and so as `restated`, over batteries whose
+  // limits had moved 3.75 times: the join found nothing and reported nothing as no change.
+  it.concurrent("names a battery whose task ids all changed as replaced, not restated", () => {
+    const renamed = { rows: [{ taskId: "heavy-02", numerics: { "limits.mass": 375 } }] };
+    const drift = numericDriftOf(reading(100), renamed);
+    expect(drift).toEqual({ median: 0, moved: 0, joined: 0, tasks: 1 });
+    const flat = { checks: 0, limits: 0, coupled: 0, tooled: 0, rules: 0, roots: 0, inputs: 0, scenarios: 0 };
+    const tiers = { checkTiers: { easy: 0, medium: 2, hard: 0, frontier: 0 } };
+    expect(verdictOf(tiers, tiers, null, flat, drift)).toBe("replaced");
+  });
+
+  // A renumbered battery keeps one id by chance, and that one task's unchanged numbers once read
+  // as the whole battery standing still: 1 of 25 joined, 0 moved, `restated`. A battery adding one
+  // new task to 24 unchanged ones still asked for something the last did not, so it is not restated.
+  it.concurrent("reads a mostly renumbered or partly new battery as moved, not restated", () => {
+    const flat = { checks: 0, limits: 0, coupled: 0, tooled: 0, rules: 0, roots: 0, inputs: 0, scenarios: 0 };
+    const tiers = { checkTiers: { easy: 0, medium: 2, hard: 0, frontier: 0 } };
+    const rows = (ids: string[]) => ({
+      rows: ids.map((taskId) => ({ taskId, numerics: { "limits.mass": 100 } })),
+    });
+    const ids = Array.from({ length: 25 }, (_, at) => `truss-${at}`);
+    const renumbered = numericDriftOf(
+      rows(ids.slice(0, 5)),
+      rows(["truss-0", ...ids.slice(5).map((id) => `${id}b`)]),
+    );
+    expect(renumbered).toEqual({ median: 0, moved: 0, joined: 1, tasks: 21 });
+    expect(verdictOf(tiers, tiers, null, flat, renumbered)).toBe("replaced");
+    const oneNew = numericDriftOf(rows(ids.slice(0, 24)), rows(ids));
+    expect(verdictOf(tiers, tiers, null, flat, oneNew)).toBe("adjusted");
+    expect(verdictOf(tiers, tiers, null, flat, numericDriftOf(rows(ids), rows(ids)))).toBe("restated");
   });
 
   const counts = (passed: number, verified: number, unaccepted = 0) => ({
@@ -273,7 +328,8 @@ describe("climb velocity", () => {
   it.concurrent("refuses a rate change it cannot draw from two verified batteries", () => {
     const one = { batteries: [{ counts: { verified: 25 }, placement: placementOf(counts(24, 25)) }] };
     expect(velocityOf(one)).toMatchObject({ reason: "one verified battery: a rate change needs two" });
-    expect(velocityOf({ batteries: [{ counts: { verified: 0 }, placement: null }] })).toMatchObject({
+    const none = { batteries: [{ counts: { verified: 0 }, placement: null }] };
+    expect(velocityOf(none)).toMatchObject({
       reason: "no battery verified a case",
     });
   });
@@ -313,34 +369,35 @@ describe("climb velocity", () => {
       placement: null,
       recorded: null,
     });
-    const report = (verdict: ReturnType<typeof verdictOf>) => ({
-      schema: VELOCITY_SCHEMA,
-      campaign: "/c",
-      model: {},
-      batteries: [battery("i03"), battery("i04")],
-      // `source` is required on an Edge, and null is its own reading: the two bundles were not read.
-      edges: [
-        {
-          from: "i03",
-          to: "i04",
-          verdict,
-          novelty: null,
-          drift: { median: 0, moved: 0 },
-          delta: zeros,
-          source: null,
-          outcome: "unobservable",
-        },
-      ],
-    });
+    const report = (verdict: ReturnType<typeof verdictOf>) =>
+      double<ClimbReport>({
+        schema: VELOCITY_SCHEMA,
+        campaign: "/c",
+        model: {},
+        batteries: [battery("i03"), battery("i04")],
+        // `source` is required on an Edge, and null is its own reading: the two bundles were not read.
+        edges: [
+          {
+            from: "i03",
+            to: "i04",
+            verdict,
+            novelty: null,
+            drift: { median: 0, moved: 0 },
+            delta: zeros,
+            source: null,
+            outcome: "unobservable",
+          },
+        ],
+      });
 
     expect(render(report("escalated"))).toContain(
-      "latest edge: i03 -> i04 escalated — the checks reached a higher tier, so this battery can find a limit the last one missed",
+      "latest edge: i03 -> i04 escalated — the checks reached a higher tier; the tier says what the checks read, not whether the tasks ask more",
     );
     expect(render(report("widened"))).toContain(
-      "widened — the checks held their tier, so this battery asks the solver for nothing the last one did not",
+      "widened — the checks held their tier; new tasks or scenarios may still ask more, so read the task rows",
     );
     expect(render(report("eased"))).toContain(
-      "eased — the checks fell down the tier order, so this battery asks for less than the last one",
+      "eased — the checks fell down the tier order; new tasks or scenarios may still ask more",
     );
     expect(render({ ...report("escalated"), edges: [] })).toContain(
       "latest edge: none, because an edge needs two batteries",
@@ -395,7 +452,7 @@ describe("climb velocity", () => {
   // script exists to prevent.
   it.concurrent("names a retreat instead of reporting it as adjusted", () => {
     const flat = { checks: 0, limits: 0, coupled: 0, tooled: 0, rules: 0, roots: 0, inputs: 0, scenarios: 0 };
-    const still = { median: 0, moved: 0 };
+    const still = { median: 0, moved: 0, joined: 1, tasks: 1 };
     const tiers = (medium: number, hard: number) => ({ checkTiers: { easy: 0, medium, hard, frontier: 0 } });
     expect(verdictOf(tiers(0, 2), tiers(2, 0), null, flat, still)).toBe("eased");
     expect(verdictOf(tiers(2, 0), tiers(0, 2), null, flat, still)).toBe("escalated");

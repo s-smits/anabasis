@@ -33,13 +33,19 @@ import { fingerprintSlug } from "../claim/fingerprint.ts";
 import { assertPathSegment } from "../meta/path-segment.ts";
 import { hashJsonBytes, parseJsonAs } from "../meta/json-runtime.ts";
 import { sameJsonValue } from "../meta/stable-json.ts";
-import type { VerificationReport } from "../truth/build-deps.ts";
-import { type BuiltPresetId, isBuiltPresetId, presetToolNames } from "../truth/built-presets.ts";
-import { type CaseRecord, batteryPath, readRecordedBatteryRecord } from "../truth/battery-record.ts";
-import { type VerificationRunnerOptions, makeVerify } from "../truth/verification-runner.ts";
-import type { BuildTask } from "../truth/tasks.ts";
+import type { VerificationReport } from "../correctness-bundle/build-deps.ts";
+import { type BuiltPresetId, isBuiltPresetId, presetToolNames } from "../correctness-bundle/built-presets.ts";
+import {
+  type CaseRecord,
+  batteryPath,
+  readRecordedBatteryRecord,
+} from "../correctness-bundle/battery-record.ts";
+import { type VerificationRunnerOptions, makeVerify } from "../correctness-bundle/verification-runner.ts";
+import type { BuildTask } from "../correctness-bundle/tasks.ts";
 import { isRecord, isString } from "../meta/json-shape.ts";
 import { TASKS_FILE, TOOLS_SPEC_FILE } from "../meta/bundle-layout.ts";
+import { checkInstrumentIds } from "../correctness-bundle/check-instruments.ts";
+import { builtProcedureDigest } from "../solve/built-starter.ts";
 import { readJsonFile } from "../meta/completed-json.ts";
 
 interface DriveBatteryOptions {
@@ -285,16 +291,23 @@ export function loadRecordedTasks(slugDir: string): BuildTask[] {
   return /* SAFETY: the check above returned when `!Array.isArray(parsed) || parsed.length === 0`. */ parsed as BuildTask[];
 }
 
-/** The battery's run condition: the main condition, no adviser removed, and a digest over
- *  offered tool names (the tree's tools-spec names plus preset tools). Read from the
+/** The battery's run condition: the main condition, what was removed from the solver, and a digest
+ *  over offered tool names (the tree's tools-spec names plus preset tools). Read from the
  *  spec the runtime registers from, so the hash and the offered roster share one source. A tree
  *  without a tools-spec, which submit refuses and only fixtures carry, has no roster to digest:
- *  toolInterfaceHash null states that, never a hash over guessed names. `advisorsRemoved` stays in
- *  the row shape because the case record's validator reads a campaign's whole history; every
- *  battery records it empty. */
-export function batteryCondition(slugDir: string): RunCondition {
+ *  toolInterfaceHash null states that, never a hash over guessed names. `advisorsRemoved` is empty
+ *  unless the operator withheld the checks' instruments, when it names each one the shell closed as
+ *  `instrument:<toolId>`; it enters `measuredConditionDigest`, so such a battery is its own
+ *  condition and an issue it lacks is unmeasured rather than fixed. */
+export function batteryCondition(slugDir: string, withholdInstruments = false): RunCondition {
+  const advisorsRemoved = withholdInstruments
+    ? checkInstrumentIds(slugDir).map((id) => `instrument:${id}`)
+    : [];
+  const builtProcedure = builtProcedureDigest();
   const file = join(slugDir, TOOLS_SPEC_FILE);
-  if (!existsSync(file)) return { variant: SHIPPING_VARIANT, advisorsRemoved: [], toolInterfaceHash: null };
+  if (!existsSync(file)) {
+    return { variant: SHIPPING_VARIANT, advisorsRemoved, toolInterfaceHash: null, builtProcedure };
+  }
   const parsed = parseJsonAs<{
     presets?: unknown;
     tools?: Array<{ name?: unknown }>;
@@ -308,5 +321,10 @@ export function batteryCondition(slugDir: string): RunCondition {
     ),
     ...presetToolNames(selected),
   ].sort();
-  return { variant: SHIPPING_VARIANT, advisorsRemoved: [], toolInterfaceHash: hashJsonBytes(offered) };
+  return {
+    variant: SHIPPING_VARIANT,
+    advisorsRemoved,
+    toolInterfaceHash: hashJsonBytes(offered),
+    builtProcedure,
+  };
 }

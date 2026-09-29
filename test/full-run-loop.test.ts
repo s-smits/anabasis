@@ -7,6 +7,7 @@
  * build, gate and measurement stages in full-run-scripted-loop.test.ts.
  */
 import { afterEach, describe, expect, it } from "bun:test";
+import { Database } from "bun:sqlite";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
@@ -20,6 +21,9 @@ import {
   selectedProductDir,
 } from "../src/run/product-versions.ts";
 import { fingerprintSlug } from "../src/claim/fingerprint.ts";
+import { campaignDir } from "../src/meta/campaign-root.ts";
+import { hashJsonValue } from "../src/meta/stable-json.ts";
+import { controllerLedgerPath } from "../src/run/controller-ledger.ts";
 import type { AskManifest } from "../src/run/ask-manifest.ts";
 import { writeFixtureThresholds } from "./helpers/thresholds.ts";
 import { double, rejectionOf, required } from "./helpers/doubles.ts";
@@ -99,12 +103,34 @@ describe("opening and closing the run", () => {
 
   it("records an aborted terminal for a failure after the launch opened, so a dead campaign says why", async () => {
     const root = repo();
-    writeFileSync(join(selectedProductDir(root, SLUG), "version.json"), '{"schema":"product-version/v9"}');
+    const manifest = join(selectedProductDir(root, SLUG), "version.json");
+    writeFileSync(manifest, JSON.stringify({ ...JSON.parse(readFileSync(manifest, "utf8")), id: "other" }));
     const error = await rejectionOf(runFullRun(launch({ maxIterations: 1 }), root, measuringDeps()));
     expect(error.message).toContain("product version is missing, altered, or unregistered");
     const recorded = recordedTerminal(root);
     expect(recorded.outcome).toBe("aborted");
     expect(recorded.terminalReason).toContain(error.message);
+  });
+
+  it("stops before round one, as a typed stop and not an abort, on a version another source recorded", async () => {
+    const root = repo();
+    const manifest = join(selectedProductDir(root, SLUG), "version.json");
+    const foreign = { ...JSON.parse(readFileSync(manifest, "utf8")), schema: "product-version/v1" };
+    writeFileSync(manifest, JSON.stringify(foreign));
+    // The ledger names those bytes, as an older source's own publication registered them.
+    const db = new Database(controllerLedgerPath(campaignDir(root, SLUG)));
+    db.run("UPDATE product_versions SET manifest_digest=? WHERE id=?", [hashJsonValue(foreign), "current"]);
+    db.close();
+    const drives: Drive[] = [];
+    const outcome = await runFullRun(launch({ maxIterations: 1 }), root, measuringDeps(drives));
+    expect(outcome.terminal).toStartWith("stopped: ");
+    expect(outcome.terminal).toContain('recorded as "product-version/v1" by another source');
+    expect(fullRunExitStatus(outcome.terminal)).toBe(1);
+    expect(drives).toEqual([]);
+    const recorded = recordedTerminal(root);
+    expect(recorded.outcome).toBe("completed");
+    expect(recorded.abortClause).toBeNull();
+    expect(recorded.terminalReason).toBe(outcome.terminal);
   });
 
   it("refuses a battery size the frozen policy does not admit, before any round runs", async () => {

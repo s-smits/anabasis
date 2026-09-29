@@ -40,31 +40,33 @@
 import { readFileSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
 import { bundleSnapshotToolTree } from "../claim/bundle-snapshot.ts";
-import { type Brief, externalChecksOf } from "../truth/brief.ts";
-import { validateBrief } from "../truth/brief-validator.ts";
-import type { ControlCorpus } from "../truth/controls.ts";
-import { type EvaluatorFn, loadCorrectnessModel } from "../truth/contracts.ts";
-import { evaluateCheckProgram } from "../truth/predicate.ts";
-import { runControls } from "../truth/run-controls.ts";
-import type { BuildTask } from "../truth/tasks.ts";
-import type { ControlReceipt, ControlReceiptOutcome } from "../truth/battery-record.ts";
-import { resolveVerifier } from "../truth/verification-registry.ts";
+import { type Brief, externalChecksOf } from "../correctness-bundle/brief.ts";
+import { validateBrief } from "../correctness-bundle/brief-validator.ts";
+import type { ControlCorpus } from "../correctness-bundle/controls.ts";
+import { type EvaluatorFn, loadCorrectnessModel } from "../correctness-bundle/contracts.ts";
+import { evaluateCheckProgram } from "../correctness-bundle/predicate.ts";
+import { applicableCheckIds, runControls } from "../correctness-bundle/run-controls.ts";
+import type { BuildTask } from "../correctness-bundle/tasks.ts";
+import type { ControlReceipt, ControlReceiptOutcome } from "../correctness-bundle/battery-record.ts";
+import { resolveVerifier } from "../correctness-bundle/verification-registry.ts";
 import { loadRecordedTasks } from "../run/run-driver.ts";
 import {
   type VerifierLifetime,
   closeVerifierLifetime,
   createVerifierLifetime,
 } from "../verify/verifier-lifetime.ts";
-import type { VerifierHostHandle } from "../verify/verifier-port.ts";
+import type { ToolEntry, VerifierHostHandle } from "../verify/verifier-port.ts";
 import { parseJsonAs } from "../meta/json-runtime.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { jsonPathTokens, plainRecord } from "../meta/json-evidence.ts";
 import { type JsonValue, isNumber, isString } from "../meta/json-shape.ts";
 import { type ReaderTool, type ReaderToolResult, readerParameters, readerToolText } from "./review-reader.ts";
+import { toolchainReach } from "./review-sources.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { boundText } from "../meta/bounded-text.ts";
 import { BRIEF_FILE, CONTROLS_FILE } from "../meta/bundle-layout.ts";
 import { contractDefect } from "../analyse/finding-owner.ts";
+import { PROBE_DIRECTIONS, type ProbeDirection } from "../analyse/iteration-analysis.ts";
 
 /** Probes per review. Each one loads the generated check program in a confined child and may launch
  *  the declared external tools, so it costs about what one census control costs. Eight is enough to
@@ -75,6 +77,15 @@ export const PROBE_BUDGET = 8;
  *  passage. A whole file past this ceiling is still reachable, by an edit of the passage that
  *  matters rather than a retyped file. */
 const VALUE_MAX_CHARS = 4_000;
+/** `record_finding`'s `probeDirection` as the reviewer reads it. The direction is what the probe
+ *  was meant to be, decided against the public rule before its verdict, so it rides only on a
+ *  defect that cites one that ran and only where that probe shows it (`probeShows`). */
+export const PROBE_DIRECTION_PARAMETER = {
+  type: "string",
+  enum: [...PROBE_DIRECTIONS],
+  description:
+    "For a defect citing probeIds: decide before reading the probe's verdict whether its changed artifact stays valid under the public rule you cite, and name what the check then did. rejects-valid: the rule allows the variant and the check refused it. accepts-invalid: the rule forbids the variant and the check passed it. Leave it out when the probe does not establish which. It crosses to authoring as fixed text, and the two repairs are opposite.",
+};
 /** What a probe changed: a whole replacement value as the reviewer wrote it, or the one passage of
  *  a text leaf that `find` names, rewritten to `replace`. */
 type ProbeEdit = { find: string; replace: string };
@@ -90,14 +101,18 @@ export type ReviewProbeRow = {
   change: ProbeChange;
   baseline: ProbeSide | null;
   mutated: ProbeSide | null;
-  /** Declared checks whose verdict the one changed field moved. Empty is the decisive negative: no
-   *  declared check applicable to this task reads that field. */
+  /** The declared checks the task's family selects. Each runs on every artifact that reaches a
+   *  verdict, so one a side does not name as blocking passed there; a check outside these ran on
+   *  neither side, and the probe says nothing about it. */
+  applicableCheckIds: string[];
+  /** Declared checks whose verdict the one changed field moved, where both sides reached one. */
   movedCheckIds: string[];
   /** Why nothing executed; null when the pair ran. */
   refused: string | null;
   /** Set when a finding this review recorded rests on the row, which makes it one of the
-   *  demonstrations the next authoring review of the round is shown (`carriedDemonstrations`). A
-   *  failed turn keeps the mark and drops the finding, so it carries nothing. */
+   *  demonstrations the next authoring review of the round is shown (`carriedDemonstrations`). The
+   *  mark is set only beside an admitted finding, and a failed turn keeps both, so its cited rows
+   *  carry as an incomplete review's do. */
   cited?: true;
 };
 
@@ -136,11 +151,26 @@ export function emptyProbeState(): ProbeState {
  *  indistinguishable from "no check moved" by the ids alone. The original must also pass, because a
  *  changed artifact says nothing against a control the checks already refuse. */
 function conclusive(row: ReviewProbeRow): boolean {
-  return (
-    row.refused === null &&
-    row.baseline?.outcome === "pass" &&
-    (row.mutated?.outcome === "pass" || row.mutated?.outcome === "fail")
-  );
+  return row.refused === null && probeShows(row, null) !== null;
+}
+
+/** One side's verdict on `checkId`, or on the whole artifact when a finding names no check; null
+ *  where that side reached no verdict or the check does not apply to the task. */
+function verdictOn(side: ProbeSide | null, checkId: string | null, applicable: readonly string[]) {
+  if (side === null || side.outcome === "non-result") return null;
+  if (checkId === null) return side.outcome;
+  if (!applicable.includes(checkId)) return null;
+  return side.blockingCheckIds.includes(checkId) ? "fail" : "pass";
+}
+
+/** The direction one probe establishes for a check: a false rejection where it passed the original
+ *  and failed the change, a false acceptance where it passed both. Null where the probe establishes
+ *  neither, so a check that never ran on this task cannot read as one that let an answer through. */
+export function probeShows(row: ReviewProbeRow, checkId: string | null): ProbeDirection | null {
+  const before = verdictOn(row.baseline, checkId, row.applicableCheckIds);
+  const after = verdictOn(row.mutated, checkId, row.applicableCheckIds);
+  if (before !== "pass" || after === null) return null;
+  return after === "fail" ? "rejects-valid" : "accepts-invalid";
 }
 
 /** The probe rows a finding cites that are executed evidence. A finding citing an id that never
@@ -156,11 +186,13 @@ export function probeBackedRows(state: ProbeState, cited: JsonValue | undefined)
   return state.rows.filter((row) => conclusive(row) && numbers.has(row.id)).sort((a, b) => a.id - b.id);
 }
 
-/** A review that executed probes and then records a defect without saying whether it rests
- *  on them loses the one route to a first-occurrence blocking finding, and its evidence record
- *  cannot link the finding to the rows that support it — which is exactly what a reviewer does when
- *  it narrates what its probes returned inside the claim prose and leaves `probeIds` unset. Asking
- *  costs one argument, and `probeIds: []` is the answer when the reading came from source alone. */
+/** A review that executed probes and then records an evaluation defect without saying whether it
+ *  rests on them leaves an evidence record that cannot link the finding to the rows that support it,
+ *  and a projection that cannot tell the author what was executed — which is exactly what a reviewer
+ *  does when it narrates what its probes returned inside the claim prose and leaves `probeIds` unset.
+ *  Asking costs one argument, and `probeIds: []` is the answer when the reading came from source
+ *  alone. A defect in an agent file is not asked, since a probe runs the declared checks and says
+ *  nothing about the agent. */
 export function probeCitationRefusal(
   finding: { defect: boolean | null; owner: string | null },
   state: ProbeState,
@@ -311,17 +343,14 @@ const sideOf = (receipt: ControlReceipt | undefined): ProbeSide | null =>
 
 /** Checks that decided one artifact and not the other. The comparison is symmetric because a
  *  replacement that makes a refusing check stop refusing is the same evidence as one that makes it
- *  start: either way the check read the field, which is the only thing a probe answers. */
-function movedChecks(baseline: ProbeSide | null, mutated: ProbeSide | null): string[] {
-  if (baseline === null || mutated === null) return [];
-  const before = new Set(baseline.blockingCheckIds);
-  const after = new Set(mutated.blockingCheckIds);
-  return [
-    ...new Set([
-      ...baseline.blockingCheckIds.filter((id) => !after.has(id)),
-      ...mutated.blockingCheckIds.filter((id) => !before.has(id)),
-    ]),
-  ].sort();
+ *  start: either way the check read the field, which is the only thing a probe answers. A side that
+ *  reached no verdict blocks on nothing, so it moves nothing either. */
+function movedChecks(row: Omit<ReviewProbeRow, "movedCheckIds">): string[] {
+  return row.applicableCheckIds.filter((id) => {
+    const before = verdictOn(row.baseline, id, row.applicableCheckIds);
+    const after = verdictOn(row.mutated, id, row.applicableCheckIds);
+    return before !== null && after !== null && before !== after;
+  });
 }
 
 /** Run the pair through the census path. The synthetic corpus declares both artifacts as accepts
@@ -336,26 +365,19 @@ async function runPair(
   artifact: JsonValue,
   mutated: JsonValue,
 ): Promise<ControlReceipt[]> {
-  const corpus: ControlCorpus = {
-    accept: [
-      { id: baselineId(probe), taskId, artifact },
-      { id: mutatedId(probe), taskId, artifact: mutated },
-    ],
-    reject: [],
-  };
-  const execution = await runControls(
+  const accept = [
+    { id: baselineId(probe), taskId, artifact },
+    { id: mutatedId(probe), taskId, artifact: mutated },
+  ];
+  const options = { brief: candidate.brief, lanes: 1, verifierLifetime: candidate.lifetime };
+  const run = await runControls(
     candidate.evaluate,
-    corpus,
+    { accept, reject: [] },
     candidate.tasks,
-    {
-      brief: candidate.brief,
-      externalChecks: externalChecksOf(candidate.brief),
-      lanes: 1,
-      verifierLifetime: candidate.lifetime,
-    },
+    options,
     candidate.verifier,
   );
-  return execution.controlReceipts;
+  return run.controlReceipts;
 }
 
 /** The reply names an edit by its size rather than echoing it, because the reviewer wrote both
@@ -411,7 +433,7 @@ const PROBE_CHECK_CONTRACT = {
   name: "probe_check",
   label: "Probe a declared check",
   description:
-    "Execute the candidate's own declared checks over one accept control and over a copy of it with a single field changed, and return which checks moved their verdict. Use it instead of arguing a check's behaviour from source: choose a replacement that breaks a public obligation, so a check reading that field would have to refuse it, and read what the checks actually did. No check moving is not by itself proof that nothing reads the field, since a check that reads it can accept the new value too, so state which obligation the changed artifact breaks. The path must already exist in the accept control's artifact and the value must differ from the one it carries. For a string field holding a source file or other long text, send `find` and `replace` in place of `value`: `find` must occur exactly once in that leaf, it becomes `replace`, and every other byte stays. Cite the probe numbers you relied on in `probeIds` when you record the finding; a probe whose original passed and whose changed artifact reached a verdict may be admitted blocking on its first occurrence.",
+    "Execute the candidate's own declared checks over one accept control and over a copy of it with a single field changed, and return which checks moved their verdict. Use it instead of arguing a check's behaviour from source: choose a replacement that breaks a public obligation, so a check reading that field would have to refuse it, and read what the checks actually did. No check moving is not by itself proof that nothing reads the field, since a check that reads it can accept the new value too, so state which obligation the changed artifact breaks. The path must already exist in the accept control's artifact and the value must differ from the one it carries. For a string field holding a source file or other long text, send `find` and `replace` in place of `value`: `find` must occur exactly once in that leaf, it becomes `replace`, and every other byte stays. Cite the probe numbers you relied on in `probeIds` when you record the finding; only a probe whose original passed and whose changed artifact reached a verdict is executed evidence.",
   parameters: readerParameters({
     type: "object",
     additionalProperties: false,
@@ -456,14 +478,25 @@ const PROBE_CHECK_CONTRACT = {
  * and the budget are read off `state.rows` at the moment a probe starts: two probes started
  * together would take the same id, which names their synthetic control subjects and is what a
  * finding cites, and both would pass the last budget slot.
+ *
+ * `tools` are the verifier tools a measured battery recorded, none for an authoring review. Where
+ * they name a tool tree, the candidate opens only while its `.toolchain` is one of those trees, and
+ * the host then refuses the tools of any evaluation that finds the tree moved from the one it resolved.
  */
-export function probeTool(root: string, lifetimeRoot: string, state: ProbeState): ReviewProbeHandle {
+export function probeTool(
+  root: string,
+  lifetimeRoot: string,
+  state: ProbeState,
+  tools: Readonly<Record<string, ToolEntry>>,
+): ReviewProbeHandle {
+  const measuredTree = Object.values(tools).some((tool) => tool.treeDigest !== undefined);
   let opened: Promise<ProbeCandidate> | null = null;
   const refuse = (why: string): Promise<ReaderToolResult> => {
     state.refused += 1;
     return Promise.resolve(readerToolText(`refused: ${why}`));
   };
-  const record = (row: ReviewProbeRow): ReaderToolResult => {
+  const record = (settled: Omit<ReviewProbeRow, "movedCheckIds">): ReaderToolResult => {
+    const row = { ...settled, movedCheckIds: movedChecks(settled) };
     state.rows.push(row);
     return readerToolText(renderRow(row));
   };
@@ -476,10 +509,15 @@ export function probeTool(root: string, lifetimeRoot: string, state: ProbeState)
     } catch {
       return refuse("value must be JSON text; quote a string value");
     }
+    if (opened === null && measuredTree && toolchainReach(root, tools) === null) {
+      return refuse(
+        "the candidate's .toolchain is not the tool tree its measured battery ran, so a probe here would report verdicts from a tool environment the measurement never used",
+      );
+    }
     const id = state.rows.length + 1;
     const base = { id, controlId: request.controlId, path: request.path, change: request.change };
     const failed = (taskId: string, reason: string) =>
-      record({ ...base, taskId, baseline: null, mutated: null, movedCheckIds: [], refused: reason });
+      record({ ...base, taskId, baseline: null, mutated: null, applicableCheckIds: [], refused: reason });
     let candidate: ProbeCandidate;
     try {
       candidate = await (opened ??= openCandidate(root, lifetimeRoot));
@@ -518,14 +556,13 @@ export function probeTool(root: string, lifetimeRoot: string, state: ProbeState)
         boundText(`the checks did not settle: ${errorMessage(cause)}`, 300).shown,
       );
     }
-    const baseline = sideOf(receipts.find((row) => row.controlId === baselineId(id)));
-    const changed = sideOf(receipts.find((row) => row.controlId === mutatedId(id)));
+    const task = candidate.tasks.find((row) => row.taskId === control.taskId);
     return record({
       ...base,
       taskId: control.taskId,
-      baseline,
-      mutated: changed,
-      movedCheckIds: movedChecks(baseline, changed),
+      baseline: sideOf(receipts.find((row) => row.controlId === baselineId(id))),
+      mutated: sideOf(receipts.find((row) => row.controlId === mutatedId(id))),
+      applicableCheckIds: task === undefined ? [] : applicableCheckIds(candidate.brief, task),
       refused: null,
     });
   };

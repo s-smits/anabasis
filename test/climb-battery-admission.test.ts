@@ -26,6 +26,7 @@ import {
   harnessBundleIdentity,
 } from "../src/run/climb-battery-admission.ts";
 import { required } from "./helpers/doubles.ts";
+import { EXPERIMENT_AUTHORING_SCHEMA } from "../src/run/experiment-freeze.ts";
 
 const RUN_PIN = "test/pin";
 const CREATED_AT = "2026-01-01T00:00:00.000Z";
@@ -35,6 +36,16 @@ const DIGEST_A: ThresholdIdentity = { kind: "digest", digest: "digest-a" };
 /** Battery fields a case replaces. `undefined` is a value here, not an absence: it is how a case
  *  records a battery MISSING one field, which is what several refusals are about. */
 type BatteryFields = { [field: string]: JsonValue | undefined };
+
+const ATTRIBUTION = {
+  operation: { operation: "task-probe", moved: ["tasks"] },
+  baseline: { agentHash: "a", correctnessModelHash: "c", taskSetHash: "t" },
+  actual: "climb",
+  changedTaskIds: ["t1"],
+};
+const CURRENT_AUTHORING = { schema: EXPERIMENT_AUTHORING_SCHEMA, ...ATTRIBUTION };
+/** The shape an earlier source wrote: the round plan beside the attribution, and no version. */
+const EARLIER_AUTHORING = { plan: null, changedFamilies: null, ...ATTRIBUTION };
 
 const tmp = () => mkdtempSync(join(tmpdir(), "ana-admission-"));
 
@@ -145,11 +156,18 @@ describe("admission — the gates over the battery's own bytes", () => {
       "a case row states no acceptedSubmit",
     ],
     [
-      "malformed experiment authoring",
-      { experimentAuthoring: { actual: "climb" } },
+      "malformed experiment authoring of this version",
+      { experimentAuthoring: { schema: EXPERIMENT_AUTHORING_SCHEMA, actual: "climb" } },
       RUN_PIN,
       UNSTATED,
-      "malformed or has an unbound proposal digest",
+      "recorded experiment authoring is malformed",
+    ],
+    [
+      "experiment authoring an earlier source recorded, as that version rather than as malformed",
+      { experimentAuthoring: EARLIER_AUTHORING },
+      RUN_PIN,
+      UNSTATED,
+      "recorded experiment authoring is unversioned, from another source; this source reads experiment-authoring/v2 only",
     ],
     [
       "a foreign pin, which is not this condition's history",
@@ -217,6 +235,7 @@ describe("admission — the gates over the battery's own bytes", () => {
     ["history across pins when the caller states none", { backendPin: "other/pin" }, null, UNSTATED],
     ["the matching frozen manifest", { thresholdManifestDigest: "digest-a" }, RUN_PIN, DIGEST_A],
     ["the shipping condition", { condition: { variant: "shipping" } }, RUN_PIN, UNSTATED],
+    ["experiment authoring of this version", { experimentAuthoring: CURRENT_AUTHORING }, RUN_PIN, UNSTATED],
   ])("admits %s", (_battery, overrides, pin, digest) => {
     const tree = tmp();
     writeBattery(tree, "r1", overrides);

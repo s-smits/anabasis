@@ -1,8 +1,6 @@
-import { PLAN_FIELDS } from "./helpers/experiment-plan.ts";
 import { required, text } from "./helpers/doubles.ts";
 import { MATCHING_BRIEF, MATCHING_TASKS, writeMatchingBuildFixture } from "./helpers/matching-fixture.ts";
-import { loadSolvabilityPublicSchema } from "../src/truth/solvability-artifact-schema.ts";
-import { EXPERIMENT_FILE } from "../src/author/builder-memory.ts";
+import { loadSolvabilityPublicSchema } from "../src/correctness-bundle/solvability-artifact-schema.ts";
 import {
   existsSync,
   readFileSync,
@@ -38,7 +36,6 @@ import {
 } from "../src/claim/bundle-snapshot.ts";
 import { type FingerprintEvidence, fingerprintSlug } from "../src/claim/fingerprint.ts";
 import { type JsonObject, asRecord, isString } from "../src/meta/json-shape.ts";
-import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import {
   type Gate,
@@ -46,12 +43,17 @@ import {
   clearPreview,
   createValidationMemory,
   previewCandidate,
+  stagesOf,
   submitStages,
 } from "../src/gate/validation-pipeline.ts";
 import { checkCandidate, conditionKey } from "../src/author/candidate-check.ts";
-import { type Brief, controllerValidatedFinding } from "../src/truth/brief.ts";
-import type { BuildTask } from "../src/truth/tasks.ts";
-import type { ControlCorpus } from "../src/truth/controls.ts";
+import {
+  type Brief,
+  controllerValidatedFinding,
+  controllerValidatedFindings,
+} from "../src/correctness-bundle/brief.ts";
+import type { BuildTask } from "../src/correctness-bundle/tasks.ts";
+import type { ControlCorpus } from "../src/correctness-bundle/controls.ts";
 import { writeBoundRepresentation } from "./helpers/bound-representation.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 
@@ -61,8 +63,6 @@ interface Session {
   gate: Gate;
   feedback?: BuilderAuthorFeedback;
   trialsDir?: string;
-  experimentProposalRequired?: true;
-  planAdvice?: () => string[];
   /** Extra validation sequence input, e.g. an adopted baseline. */
   validation?: Partial<Pick<PipelineInput, "adoptedDir" | "toolsProbes">>;
 }
@@ -132,7 +132,6 @@ function session(dir: string, options: Session) {
         {
           slug: "matching",
           exactTasks: 4,
-          ...keyIfDefined("experimentProposalRequired", options.experimentProposalRequired),
         },
         {
           input: {
@@ -146,7 +145,6 @@ function session(dir: string, options: Session) {
       ),
     expectedTasks: 4,
     feedback: options.feedback ?? new BuilderAuthorFeedback(),
-    planAdvice: options.planAdvice ?? (() => []),
   });
   let receipt: BuilderCustomToolSemantic | undefined;
   const check = async () => {
@@ -183,7 +181,7 @@ const GATE_FEEDBACK: CampaignFeedback[] = [
     owner: "correctness-model/brief.json",
     severity: "advisory",
     claim: "advisory only",
-    evidence: "representation census",
+    evidence: "F2 observation",
   },
   {
     owner: "correctness-model/controls.json",
@@ -208,8 +206,9 @@ const rowsOf = (body: JsonObject) => ({ ...body, stages: undefined, repeated: un
  *  for this candidate, because it contains no environment failure. */
 const PRODUCT_GATE_FEEDBACK: CampaignFeedback[] = GATE_FEEDBACK.filter((row) => row.owner !== "environment");
 
-it("rechecks changed installed-tool or interpreter bytes, preserves every trial and remembers each condition", async () => {
-  const dir = workspace("tool-condition");
+/** Grounds the fixture's second check on the installed tool `field-engine`, and returns the
+ *  workspace `.toolchain/bin` it is installed into. */
+function groundOnFieldEngine(dir: string): string {
   const model = join(dir, "correctness-model");
   const brief = parseJsonAs<Brief>(readFileSync(join(model, "brief.json"), "utf8"));
   const check = brief.truthChecks[1]!;
@@ -227,6 +226,12 @@ it("rechecks changed installed-tool or interpreter bytes, preserves every trial 
   writeFileSync(join(model, "controls.json"), JSON.stringify(controls));
   const bin = join(dir, ".toolchain", "bin");
   mkdirSync(bin, { recursive: true });
+  return bin;
+}
+
+it("rechecks changed installed-tool or interpreter bytes, preserves every trial and remembers each condition", async () => {
+  const dir = workspace("tool-condition");
+  const bin = groundOnFieldEngine(dir);
   const install = (exit: number) => {
     writeFileSync(join(bin, "field-engine"), `#!/bin/sh\nexit ${exit}\n`);
     chmodSync(join(bin, "field-engine"), 0o755);
@@ -275,6 +280,56 @@ it("rechecks changed installed-tool or interpreter bytes, preserves every trial 
   expect(trials).toHaveLength(5);
 });
 
+/** A wrapper over logic in the tool tree, as 7 of 9 recorded domain toolchains install theirs. */
+function wrapperCondition(name: string) {
+  const dir = workspace(name);
+  const bin = groundOnFieldEngine(dir);
+  writeFileSync(
+    join(bin, "field-engine"),
+    '#!/bin/sh\nexec python3 "$(dirname "$0")/../libexec/field.py" "$@"\n',
+  );
+  chmodSync(join(bin, "field-engine"), 0o755);
+  const write = (rel: string, body: string) => {
+    mkdirSync(join(dir, ".toolchain", rel, ".."), { recursive: true });
+    writeFileSync(join(dir, ".toolchain", rel), body);
+  };
+  write("libexec/field.py", "LIMIT = 0.5\n");
+  const key = () => {
+    const candidate = checkCandidate(dir, { slug: "matching", exactTasks: 4 });
+    if (!candidate.ok) throw new Error("fixture candidate refused");
+    return conditionKey(candidate);
+  };
+  return { write, key };
+}
+
+it("reads a repair behind an unchanged wrapper, and a package installed under home, as a new condition", () => {
+  const { write, key } = wrapperCondition("tool-tree-repair");
+  const before = key();
+  write("libexec/field.py", "LIMIT = 0.7\n");
+  expect(key()).not.toBe(before);
+  // The first bytes again are the first condition again, so what it earned still answers for it.
+  write("libexec/field.py", "LIMIT = 0.5\n");
+  expect(key()).toBe(before);
+  // Only Arduino's own inventory is run-written; a file of that name holding anything else is the tool's.
+  write("etc/inventory.yaml", "all:\n    hosts: [field]\n");
+  expect(key()).not.toBe(before);
+  write("home/venv/lib/python3.12/site-packages/fieldlib-1.0.dist-info/METADATA", "Name: fieldlib\n");
+  expect(key()).not.toBe(before);
+});
+
+it("keeps the condition when running the tool only wrote its own caches into the tree", () => {
+  const { write, key } = wrapperCondition("tool-tree-run");
+  const before = key();
+  write("libexec/__pycache__/field.cpython-312.pyc", "bytecode");
+  write("home/Library/Caches/pip/http/entry", "cached");
+  write("home/.cache/matplotlib/fontlist.json", "{}");
+  write(
+    "arduino/inventory.yaml",
+    "installation:\n    id: a\n    secret: b\nbuild_cache:\n    compilation_count_since_last_purge: 7\n",
+  );
+  expect(key()).toBe(before);
+});
+
 describe("correctness_check", () => {
   // The description names what runs and what it returns; how the stages stop one another is each
   // stage receipt's to say, so a second account of that order in the description is one to drift.
@@ -285,9 +340,8 @@ describe("correctness_check", () => {
       },
       expectedTasks: 4,
       feedback: new BuilderAuthorFeedback(),
-      planAdvice: () => [],
     });
-    for (const gate of ["installed tools", "EXPERIMENT.json", "conformance", "control census", "F2"]) {
+    for (const gate of ["installed tools", "conformance", "control census", "F2"]) {
       expect(description).toContain(gate);
     }
     expect(description).toContain("submit remains the only acceptance path");
@@ -337,17 +391,8 @@ describe("correctness_check", () => {
     );
     const dir = workspace("operation-candidate");
     writeFileSync(join(dir, "agent/BUILT_AGENTS.md"), "A changed solving method.");
-    const proposal = {
-      scope: "product",
-      target: { comparator: "at-least", verifiedPasses: 2 },
-      gap: "Gap.",
-      change: "Change.",
-      ...PLAN_FIELDS,
-      expectedResult: "Result.",
-    };
-    writeFileSync(join(dir, EXPERIMENT_FILE), JSON.stringify(proposal));
+    // No plan is written: the operation is read from the bytes alone.
     const { check } = session(dir, {
-      experimentProposalRequired: true,
       validation: { adoptedDir },
       gate: async () => [],
     });
@@ -401,29 +446,11 @@ describe("correctness_check", () => {
     const body = await check();
     expect(body.status).toBe("findings");
     expect(body.stage).toBe("bundle");
-    expect(body.notReached).toEqual(["validation", "conformance", "gates"]);
+    expect(body.notReached).toEqual(["conformance", "gates"]);
     expect(gated).toBe(false);
     expect(existsSync(trialsDir)).toBe(false);
     expect(nested(body, "findings").totalFindings).toBeGreaterThan(0);
     expect(nested(body, "truth").verdict).toBe("not-run");
-    expect(body.planAdvice).toBeUndefined();
-  });
-
-  // The plan's disagreement with the round's rehearsals rides beside the result and refuses nothing.
-  it("carries the round plan's advice beside the result without changing it", async () => {
-    let advice: string[] = [];
-    const { check } = session(workspace("advised", false), {
-      gate: async () => [],
-      planAdvice: () => advice,
-    });
-    expect((await check()).planAdvice).toBeUndefined();
-    advice = [
-      "Advice: rehearsals already passed 2 distinct task(s) (t1, t2) against a target of at most 1 verified passes.",
-    ];
-    const body = await check();
-    expect(body.planAdvice).toEqual(advice);
-    expect(body.status).toBe("findings");
-    expect(body.stage).toBe("bundle");
   });
 
   it("reaches the gate on a valid tree, records the trial under trials/<snapshotId> and reports coverage", async () => {
@@ -521,12 +548,11 @@ describe("correctness_check", () => {
     expect(gateCalls).toBe(1);
     expect(readdirSync(trialsDir)).toEqual([text(first.snapshotId)]);
     expect(second.repeated).toBe(
-      "the workspace and installed-tool bytes are unchanged: conformance and gate rows are remembered, not re-run; bundle and candidate validation were checked again",
+      "the workspace and installed-tool bytes are unchanged: conformance and gate rows are remembered, not re-run; the bundle was checked again",
     );
     expect(rowsOf(second)).toEqual(rowsOf(first));
     expect(second.stages).toEqual([
       { stage: "bundle", status: "passed", source: "executed", ms: expect.any(Number) },
-      { stage: "validation", status: "passed", source: "executed", ms: expect.any(Number) },
       { stage: "conformance", status: "passed", source: "reused", ms: 0 },
       { stage: "gates", status: "refused", source: "reused", ms: 0 },
     ]);
@@ -559,18 +585,46 @@ describe("correctness_check", () => {
     const first = await check();
     expect(first.status).toBe("findings");
     expect(codesOf(first)).toEqual(["gate-unvalidated"]);
-    // Gate audit 2026-09-25 (docs/gate-audit.md, preview-attempt-spent): commented out (unsure): a runtime non-result is no verdict on the bytes, so a retry on them should run
-    // // The reserved attempt still stands, exactly as it does for a blocked outcome, so the same
-    // // tree cannot buy the paid validation sequence again; it is refused instead of answered from memory.
-    // const second = await check();
-    // expect(gateCalls).toBe(1);
-    // expect(second.repeated).toBeUndefined();
-    // expect(codesOf(second)).toEqual(["preview-attempt-spent"]);
-    // A host outage is no verdict on these bytes, so the same tree runs again rather than reading it back.
     const second = await check();
     expect(gateCalls).toBe(2);
     expect(second.repeated).toBeUndefined();
     expect(codesOf(second)).toEqual(["gate-unvalidated"]);
+  });
+
+  /** A census refusal whose one finding carries `code`, owned by the evaluator as every tool
+   *  non-result is: the author still owns it, and only memory treats a timeout differently. */
+  const toolRefusal = (code: string): CampaignFeedback[] => [
+    {
+      owner: "correctness-model/evaluator.ts",
+      severity: "blocking",
+      claim: "control census: a declared check's tool run ended without a verdict",
+      evidence: "protected host evidence",
+      findings: controllerValidatedFindings([
+        { code, path: "correctness-model/evaluator.ts", detail: "tool run" },
+      ]),
+    },
+  ];
+
+  it.each([
+    ["tool-timeout", 2, false],
+    ["census-wall-exceeded", 2, false],
+    ["tool-crash", 1, true],
+  ])("remembers a %s refusal only when it is a verdict on the bytes", async (code, calls, remembered) => {
+    // A timeout mostly measures the host's load, so the same bytes may finish next time; a crash
+    // is a verdict on those bytes and repeats for free.
+    const dir = workspace(`timeout-${code}`);
+    let gateCalls = 0;
+    const { check } = session(dir, {
+      gate: async () => {
+        gateCalls += 1;
+        return toolRefusal(code);
+      },
+    });
+    expect((await check()).status).toBe("findings");
+    const second = await check();
+    expect(gateCalls).toBe(calls);
+    expect(second.repeated !== undefined).toBe(remembered);
+    expect(codesOf(second)).toEqual([code]);
   });
 
   it("previews every distinct candidate and answers unchanged bytes from memory", async () => {
@@ -637,11 +691,20 @@ describe("correctness_check", () => {
       stage: "gates",
       findings: 2,
       candidateId: expect.any(String),
+      conditionId: expect.any(String),
       reason: "refused-gates",
       // Which gates refused the tree survives the session on the receipt, never in the text.
       findingCodes: ["gate-unvalidated", "tasks-hidden-operand-unexpected"],
+      // Each code under the stage that emitted it, and the stages that ran, so a later receipt that
+      // never reached this stage is not read as having answered it.
+      stagesRun: ["bundle", "conformance", "gates"],
+      stagedCodes: ["gates:gate-unvalidated", "gates:tasks-hidden-operand-unexpected"],
     });
     expect(JSON.stringify(body)).not.toContain("findingCodes");
+    expect(JSON.stringify(body)).not.toContain("stagedCodes");
+    // The condition is the bytes and the installed tool tree; with no declared tool it is the bytes.
+    expect(receipt()?.conditionId).toBe(receipt()?.candidateId);
+    expect(JSON.stringify(body)).not.toContain("conditionId");
     answer = [];
     writeFileSync(join(dir, "correctness-model", "guide.md"), "# repaired\n");
     const repaired = await check();
@@ -671,8 +734,6 @@ describe("correctness_check", () => {
     });
   });
 
-  // Gate audit 2026-09-25 (docs/gate-audit.md, preview-attempt-spent): commented out (unsure): a runtime non-result is no verdict on the bytes, so a retry on them should run
-  // it("keeps the stored rows when a check is blocked or spent, so no code reads as resolved", async () => {
   it("keeps the stored rows when a check is blocked, however often, so no code reads as resolved", async () => {
     // A blocked call used to record zero rows in the store and report every earlier code resolved,
     // though nothing had judged the changed tree.
@@ -690,9 +751,6 @@ describe("correctness_check", () => {
     expect(nested(blocked, "findings").sinceLast).toBeUndefined();
     expect(nested(blocked, "findings").navigation).toContain("replaced nothing");
     expect(receipt()).not.toHaveProperty("resolved");
-    // Gate audit 2026-09-25 (docs/gate-audit.md, preview-attempt-spent): commented out (unsure): a runtime non-result is no verdict on the bytes, so a retry on them should run
-    // const spent = await check();
-    // expect(codesOf(spent)).toEqual(["preview-attempt-spent"]);
     expect((await check()).status).toBe("blocked");
     expect(receipt()).not.toHaveProperty("resolved");
     expect(feedback.page()).toMatchObject({ available: true, source: "correctness_check", totalFindings: 2 });
@@ -743,7 +801,7 @@ describe("correctness_check", () => {
     expect(body.status).toBe("findings");
     expect(body.stage).toBe("bundle");
     expect(codesOf(body)).toEqual(["tool-missing"]);
-    expect(body.notReached).toEqual(["validation", "conformance", "gates"]);
+    expect(body.notReached).toEqual(["conformance", "gates"]);
     expect(gateRan).toBe(false);
     expect(existsSync(trialsDir)).toBe(false);
   });
@@ -761,7 +819,7 @@ describe("correctness_check", () => {
     const body = await check();
     expect(body.status).toBe("findings");
     expect(body.stage).toBe("bundle");
-    expect(body.notReached).toEqual(["validation", "conformance", "gates"]);
+    expect(body.notReached).toEqual(["conformance", "gates"]);
     expect(gated).toBe(false);
     expect(JSON.stringify(body.findings)).toContain("non-regular-entry");
   });
@@ -788,44 +846,6 @@ describe("correctness_check", () => {
     expect(joined.status).toBe("blocked");
     expect(rowsOf(joined)).toEqual(rowsOf(body));
   });
-
-  // Gate audit 2026-09-25 (docs/gate-audit.md, preview-attempt-spent): commented out (unsure): a runtime non-result is no verdict on the bytes, so a retry on them should run
-  // it("a blocked outcome spends the snapshot's attempt: the same tree cannot buy the validation sequence again", async () => {
-  //   // The uncached paths — a thrown conformance load, a thrown gate, a typed generated-runtime
-  //   // non-result — never enter `previews`, so before attempt reservation each repeat re-ran the
-  //   // paid validation sequence without reaching any ceiling. The slot is now reserved before the first stage.
-  //   const dir = workspace("blocked-repeat");
-  //   let gateCalls = 0;
-  //   const { check } = session(dir, {
-  //     gate: async () => {
-  //       gateCalls += 1;
-  //       throw new Error("verifier host refused");
-  //     },
-  //   });
-  //   const first = await check();
-  //   expect(first.status).toBe("blocked");
-  //   const second = await check();
-  //   expect(gateCalls).toBe(1);
-  //   expect(second.status).toBe("findings");
-  //   expect(codesOf(second)).toEqual(["preview-attempt-spent"]);
-  //   expect(JSON.stringify(second)).toContain("already spent their preview attempt");
-  // });
-  //
-  // it("distinct blocked snapshots each run once and stay unremembered", async () => {
-  //   const dir = workspace("blocked-distinct");
-  //   let gateCalls = 0;
-  //   const { check } = session(dir, {
-  //     gate: async () => {
-  //       gateCalls += 1;
-  //       throw new Error("verifier host refused");
-  //     },
-  //   });
-  //   expect((await check()).status).toBe("blocked");
-  //   expect(codesOf(await check())).toEqual(["preview-attempt-spent"]);
-  //   writeFileSync(join(dir, "correctness-model", "guide.md"), "# changed once\n");
-  //   expect((await check()).status).toBe("blocked");
-  //   expect(gateCalls).toBe(2);
-  // });
 
   it("a blocked outcome is no verdict: the same tree runs the validation sequence again", async () => {
     const dir = workspace("blocked-repeat");
@@ -859,48 +879,6 @@ describe("correctness_check", () => {
     expect(clearPreview(memory, key)).toBeUndefined();
     expect((await check()).status).toBe("clear");
     expect(clearPreview(memory, key)).toBeDefined();
-  });
-
-  it("records no clear preview when admission refused beside clear gates", async () => {
-    const dir = workspace("clear-admission-refused");
-    writeBoundRepresentation(dir, undefined, readFileSync(join(dir, "agent/tools-spec.json"), "utf8"));
-    writeFileSync(join(dir, EXPERIMENT_FILE), "{}");
-    const { check, memory } = session(dir, {
-      gate: async () => [],
-      experimentProposalRequired: true,
-      validation: { adoptedDir: dir },
-    });
-    const body = await check();
-    expect(body.stage).toBe("validation");
-    expect(clearPreview(memory, text(body.snapshotId))).toBeUndefined();
-    expect(memory.previews.has(text(body.snapshotId))).toBe(true);
-  });
-
-  it("a cached refusal still returns repeated instead of re-running its stages", async () => {
-    const dir = workspace("refused-memo");
-    writeBoundRepresentation(dir, undefined, readFileSync(join(dir, "agent/tools-spec.json"), "utf8"));
-    writeFileSync(join(dir, EXPERIMENT_FILE), "{}");
-    let gateCalls = 0;
-    // A continuation whose plan does not parse refuses at admission; the gates still run once
-    // beside it, and the executed stages are remembered by condition.
-    const { check } = session(dir, {
-      gate: async () => {
-        gateCalls += 1;
-        return [];
-      },
-      experimentProposalRequired: true,
-      validation: { adoptedDir: dir },
-    });
-    const first = await check();
-    expect(first.status).toBe("findings");
-    expect(first.stage).toBe("validation");
-    expect(gateCalls).toBe(1);
-    const second = await check();
-    expect(gateCalls).toBe(1);
-    expect(second.repeated).toBe(
-      "the workspace and installed-tool bytes are unchanged: conformance and gate rows are remembered, not re-run; bundle and candidate validation were checked again",
-    );
-    expect(rowsOf(second)).toEqual(rowsOf(first));
   });
 });
 
@@ -1052,5 +1030,48 @@ describe("assertTaskSetMatchesFingerprint (conformance-evidence task-set binding
     expect(() =>
       assertTaskSetMatchesFingerprint(slugDir, fingerprint.taskSetHash, "conformance evidence"),
     ).toThrow(/task identity drifted/);
+  });
+});
+
+describe("stagesOf", () => {
+  const finding = (code: string) => ({ code, path: "correctness-model/brief.json", detail: code });
+  const ran = (referenceSolve: boolean) =>
+    stagesOf({
+      gated: { trialDir: "", feedback: [], conditionDigest: null, scope: { referenceSolve } },
+      receipts: [
+        { stage: "bundle", status: "refused", source: "executed", ms: 0 },
+        { stage: "conformance", status: "passed", source: "executed", ms: 0 },
+        { stage: "gates", status: "refused", source: "executed", ms: 0 },
+      ],
+      refusals: [
+        { stage: "bundle", findings: [finding("tasks-self-reported-expectation")] },
+        { stage: "gates", findings: [finding("DISCRIMINATION_ACCEPT_REJECTED")] },
+      ],
+    });
+
+  it("files each code under the stage that emitted it", () => {
+    expect(ran(true)).toEqual({
+      stagesRun: ["bundle", "conformance", "gates"],
+      stagedCodes: ["bundle:tasks-self-reported-expectation", "gates:DISCRIMINATION_ACCEPT_REJECTED"],
+    });
+  });
+
+  it("names a gates run that skipped the reference solve `census`, so it answers no reference-solve code", () => {
+    expect(ran(false)).toEqual({
+      stagesRun: ["bundle", "conformance", "census"],
+      stagedCodes: ["bundle:tasks-self-reported-expectation", "census:DISCRIMINATION_ACCEPT_REJECTED"],
+    });
+  });
+
+  it("leaves a stage that never reached a verdict out of the stages run", () => {
+    const blocked = stagesOf({
+      gated: null,
+      receipts: [
+        { stage: "conformance", status: "blocked", source: "executed", ms: 0 },
+        { stage: "gates", status: "not-run", source: "executed", ms: 0 },
+      ],
+      refusals: [],
+    });
+    expect(blocked).toEqual({ stagesRun: [], stagedCodes: [] });
   });
 });

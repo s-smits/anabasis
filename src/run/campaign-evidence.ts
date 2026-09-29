@@ -18,8 +18,6 @@ import type {
   BuiltHarness,
 } from "../author/campaign-types.ts";
 import { SOURCE_IDENTITY } from "./source-identity.ts";
-import { hashJsonValue } from "../meta/stable-json.ts";
-import { keysIf } from "../meta/optional-key.ts";
 import { type CandidateSnapshot, conditionKey } from "../author/candidate-check.ts";
 import { experimentOperation } from "../gate/experiment-admission.ts";
 import { candidateExperimentScope } from "./experiment-freeze.ts";
@@ -56,11 +54,8 @@ export function decorateIterationEvidence(
 
 /** The submission condition an iteration was measured under, stamped onto its evidence.
  *
- * The candidate's bytes alone identify the condition, until the Builder proposes an experiment
- * over them: a proposal is part of what the round is asking, so it joins the identity, and the
- * bytes keep their own id beside it under `candidateConditionId`. The experiment scope is the
- * separate question of what the proposal is allowed to have moved, which only a round opened with
- * a declared experiment asks.
+ * The candidate's bytes alone identify the condition, and what the bytes moved against the adopted
+ * product is derived from them on every continuation.
  *
  * Held here beside `decorateIterationEvidence` because both answer one question — what this
  * iteration's record says about itself — and the build and climb controllers must not each carry
@@ -72,27 +67,10 @@ export function stampSubmissionCondition(
   harness: BuiltHarness,
   round: { experiment?: HarnessAuthoring; adoptedDir?: string },
 ): void {
-  const proposal = candidate.experimentProposal;
   evidence.submissionConditionId = conditionKey(candidate);
-  if (proposal !== undefined) {
-    evidence.experimentProposal = proposal;
-    evidence.submissionConditionId = hashJsonValue({
-      candidate: conditionKey(candidate),
-      experimentProposal: proposal.digest,
-    });
-    evidence.candidateConditionId = conditionKey(candidate);
-  }
   if (round.experiment === undefined) return;
   evidence.experimentScope = {
-    ...candidateExperimentScope(
-      round.experiment,
-      round.adoptedDir,
-      candidate.snapshotDir,
-      harness.conformance,
-      proposal?.scope,
-    ),
-    ...keysIf(proposal !== undefined, () => ({
-      operation: experimentOperation(candidate, round.adoptedDir),
-    })),
+    ...candidateExperimentScope(round.adoptedDir, candidate.snapshotDir, harness.conformance),
+    operation: experimentOperation(candidate, round.adoptedDir),
   };
 }

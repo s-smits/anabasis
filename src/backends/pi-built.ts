@@ -26,8 +26,8 @@ import {
 import { GeneratedToolWorkerNonResult, createGeneratedToolStarter } from "../solve/generated-tool-worker.ts";
 import { withTimeLeftAtSubmit } from "../solve/submit-time-left.ts";
 import { PENDING_REQUESTS_AT_CLOSE } from "../solve/generated-tool-worker-termination.ts";
-import { loadBuiltControllerInterface } from "../truth/contracts.ts";
-import { runtimeNonResultReason } from "../truth/runtime-blocker.ts";
+import { loadBuiltControllerInterface } from "../correctness-bundle/contracts.ts";
+import { runtimeNonResultReason } from "../correctness-bundle/runtime-blocker.ts";
 import {
   type BuiltRuntimeBoundaryEvidence,
   type SolveOutcome,
@@ -36,7 +36,7 @@ import {
   type SolverNonResult,
   nonResultOutcome,
   withSolverBuiltStarterFactory,
-} from "../truth/solve.ts";
+} from "../correctness-bundle/solve.ts";
 import type { SolveIsolationPolicy } from "../verify/solve-sandbox.ts";
 import { type PiCredential, type PiProfile, claudeCliExecutable, resolvePiSlot } from "./pi-providers.ts";
 import { PI_AGENT_RUNTIME } from "./model-selection.ts";
@@ -48,7 +48,7 @@ import {
   PiBuiltWorkerNonResult,
   startPiBuiltWorker,
 } from "./pi-built-process.ts";
-import { DEFAULT_HARNESS_SETTINGS, type HarnessSettings } from "../truth/harness-config.ts";
+import { DEFAULT_HARNESS_SETTINGS, type HarnessSettings } from "../correctness-bundle/harness-config.ts";
 import type { ResolvedSlots } from "./resolve.ts";
 import { createTraceRecorder } from "./trace-capture.ts";
 import { keyIfDefined, keysIf } from "../meta/optional-key.ts";
@@ -78,6 +78,8 @@ export interface PiBuiltRuntime {
   readyWallMs?: number;
   /** Test option: the whole-solve wall in milliseconds; production reads the bundle's agent/config.yaml. */
   solveWallMs?: number;
+  /** The operator's withheld-instruments launch condition, from the Built slot; absent when off. */
+  withholdInstruments?: true;
 }
 
 type PiBuiltStart = Omit<PiWire.PiBuiltStart, "workerInstanceId">;
@@ -164,7 +166,7 @@ export function resolvePiBuiltRuntime(
   env: OptionalEnvValues = Bun.env,
 ): PiBuiltRuntime {
   const { profile, auth } = resolvePiSlot("built", slots.built, { webSearch: true }, repoRoot, env);
-  return { profile, auth, policy };
+  return { profile, auth, policy, ...keyIfDefined("withholdInstruments", slots.built.withholdInstruments) };
 }
 
 let workerBundle: Promise<PiBuiltWorkerBundle> | null = null;
@@ -262,15 +264,10 @@ function generatedCloseFailure(
   submitted: boolean,
 ): SolverNonResult | null {
   const { termination } = generatedWorker;
-  const benignCloseTimeout =
-    submitted &&
-    termination.status === "non-result" &&
-    termination.kind === "runtime" &&
-    termination.deadline === true &&
-    termination.closeHandshakeTimeout === true;
-  return termination.status === "non-result" && !benignCloseTimeout
-    ? { kind: termination.kind, message: termination.message }
-    : null;
+  if (termination.status === "normal" || (submitted && termination.closeHandshakeTimeout === true)) {
+    return null;
+  }
+  return { kind: termination.kind, message: termination.message };
 }
 
 /** The wall ends the solver's time, not its answer. Whatever it has prepared goes through the same
@@ -290,14 +287,16 @@ async function submitAtWall(
     .catch(() => undefined);
 }
 
-/** The whole-solve wall stopped a solver that was still answering inside its silence wall. Running
- *  out of time is the attempt's own result rather than an environment failure: an accepted submit is
- *  graded, and anything else is an unaccepted case that stays in the difficulty denominator, with
- *  the tool calls its trace saw. Recording it as a runtime non-result instead would remove a real
- *  attempt from the denominator. The wall usually lands mid-call, so the generated worker's pending
- *  requests at close are its consequence and are suppressed here; every other close failure keeps
- *  its non-result. */
-function exhaustedOutcome(
+/** The model worker stopped where its ending is not the case's result: the whole-solve wall ended a
+ *  solver still answering inside its silence wall, or the worker failed after the solver's submit
+ *  was accepted, when the host already holds the bytes it grades. Either way the attempt is real:
+ *  an accepted submit is graded, and anything else is an unaccepted case that stays in the
+ *  difficulty denominator, with the tool calls its trace saw. Recording it as a runtime non-result
+ *  instead would remove a real attempt from the denominator, and the worker's failure stays on the
+ *  runtime boundary. The worker usually stops mid-call, so the generated worker's pending requests
+ *  at close are its consequence and are suppressed here; every other close failure keeps its
+ *  non-result. */
+function stoppedOutcome(
   error: PiBuiltWorkerNonResult,
   generatedWorker: GeneratedToolWorkerEvidence,
   evidence: BuiltCaseEvidence,
@@ -409,6 +408,7 @@ const harnessRuntime = (
 /** `maxTurns` overrides the harness's own `solver.max_turns` (tests and the export path). */
 export function piBuiltSolver(runtime: PiBuiltRuntime, options: BuiltSolverOptions = {}): Solver {
   const { maxTurns, observer, observationPhase, providerBudget, safeguardContext } = options;
+  const signal = providerBudget?.cancellationSignal;
   const solver: Solver = async (task, toolset, submitted) => {
     const starter: BuiltStarter = toolset;
     if (starter.preparationNonResult) return nonResultOutcome(starter.preparationNonResult);
@@ -455,7 +455,7 @@ export function piBuiltSolver(runtime: PiBuiltRuntime, options: BuiltSolverOptio
         tools,
         onMessage: events,
         reserveTurn: providerBudget === undefined ? undefined : () => providerBudget.reserve("built"),
-        signal: providerBudget?.cancellationSignal,
+        signal,
       });
       generatedWorker = await starter.close();
       return completedOutcome(result, generatedWorker, {
@@ -469,8 +469,12 @@ export function piBuiltSolver(runtime: PiBuiltRuntime, options: BuiltSolverOptio
         await submitAtWall(tools, task.taskId);
       }
       generatedWorker ??= await starter.close();
-      if (error instanceof PiBuiltWorkerNonResult && error.solveTimeExhausted) {
-        return exhaustedOutcome(error, generatedWorker, {
+      // A controller cancel after the submit still voids the case: it stopped the case before grading.
+      if (
+        error instanceof PiBuiltWorkerNonResult &&
+        (error.solveTimeExhausted || (submitted() && signal?.aborted !== true))
+      ) {
+        return stoppedOutcome(error, generatedWorker, {
           ...turns,
           trace: recorder.trace(),
           submitted: submitted(),
@@ -503,6 +507,7 @@ export function piBuiltSolver(runtime: PiBuiltRuntime, options: BuiltSolverOptio
       publicArtifactSchema,
       sessionIsolation: runtime.policy,
       ...keyIfDefined("safeguardContext", safeguardContext),
+      ...keyIfDefined("withholdInstruments", runtime.withholdInstruments),
     });
   });
 }
@@ -522,24 +527,36 @@ export async function preflightPiBuilt(runtime: PiBuiltRuntime) {
     // reporting a real gap rather than a test shortcut.
     ...keysIf(runtime.profile.transport === "claude", () => ({ claudeCliPath: claudeCliExecutable() })),
   };
-  const result = await startPiBuiltWorker({
-    runtime,
-    bundle: await bundleWorker(),
-    start,
-    conditionDigest: conditionDigest(start),
-    tools: new Map(),
-    onMessage: () => {},
-  }).catch((cause: unknown) => {
-    // Before the ready handshake nothing product-owned has run, which is why the bundle the wall
-    // cannot read and the worker the host ended are both raised as an `EnvironmentRefusal`: they
-    // belong to the environment owner, and `controller-unclassified` would name nobody.
-    if (cause instanceof PiBuiltWorkerNonResult && cause.modelWorker.modelSelection === null) {
-      throw new EnvironmentRefusal(
-        `Pi Built preflight worker never reached its ready handshake: ${cause.message}`,
-      );
-    }
-    throw cause;
-  });
+  const bundle = await bundleWorker();
+  const attempt = () =>
+    startPiBuiltWorker({
+      runtime,
+      bundle,
+      start,
+      conditionDigest: conditionDigest(start),
+      tools: new Map(),
+      onMessage: () => {},
+    });
+  const beforeReady = (cause: unknown): cause is PiBuiltWorkerNonResult =>
+    cause instanceof PiBuiltWorkerNonResult && cause.modelWorker.modelSelection === null;
+  // A loaded host can hold a worker past its ready wall, so a start that never became ready gets one
+  // fresh start before it refuses: one missed handshake otherwise ends the whole run.
+  const result = await attempt()
+    .catch(async (cause: unknown) => {
+      if (!beforeReady(cause)) throw cause;
+      return await attempt();
+    })
+    .catch((cause: unknown) => {
+      // Before the ready handshake nothing product-owned has run, which is why the bundle the wall
+      // cannot read and the worker the host ended are both raised as an `EnvironmentRefusal`: they
+      // belong to the environment owner, and `controller-unclassified` would name nobody.
+      if (beforeReady(cause)) {
+        throw new EnvironmentRefusal(
+          `Pi Built preflight worker never reached its ready handshake: ${cause.message}`,
+        );
+      }
+      throw cause;
+    });
   if (result.modelWorker.confinedPid === null || result.modelWorker.modelSelection === null) {
     throw new Error("Pi Built preflight completed without complete worker evidence");
   }

@@ -37,7 +37,7 @@ import {
 import {
   censusProse,
   publicCensus,
-} from "../.claude/skills/whole-run-investigation/classifier/prose-input.mjs";
+} from "../.claude/skills/whole-run-investigation/classifier/prose-input.ts";
 import { double } from "./helpers/doubles.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import { executionRecord, submitRow } from "./helpers/session-execution-record.ts";
@@ -88,7 +88,7 @@ function opening(root: string, runId: string, writtenAt?: string): string {
 function terminal(root: string, runId: string, writtenAt: string): void {
   writeFileSync(
     join(opening(root, runId), "terminal.json"),
-    JSON.stringify({ schema: "campaign-terminal/v4", outcome: "completed", writtenAt }),
+    JSON.stringify({ schema: "campaign-terminal/v5", outcome: "completed", writtenAt }),
   );
 }
 
@@ -273,7 +273,7 @@ describe("the prose sidecar", () => {
     writeFileSync(executionPath, JSON.stringify(execution));
     const refused = publicCensus(censusProse(root));
     expect(refused.ok).toBe(false);
-    expect(refused.captures[1].state).toBe("receipt-mismatch");
+    expect(refused.captures[1]?.state).toBe("receipt-mismatch");
     expect(refused.issues).toContain(
       "builder-execution-02.json and builder-prose-02.jsonl: capture receipts disagree",
     );
@@ -283,7 +283,7 @@ describe("the prose sidecar", () => {
     const prosePath = join(epochDir, "builder-prose-02.jsonl");
     writeFileSync(prosePath, readFileSync(prosePath, "utf8").split("\n").slice(1).join("\n"));
     const unbound = publicCensus(censusProse(root));
-    expect(unbound.captures[1].state).toBe("receipt-mismatch");
+    expect(unbound.captures[1]?.state).toBe("receipt-mismatch");
     expect(unbound.issues).toContain(
       "builder-execution-02.json and builder-prose-02.jsonl: a capture receipt is missing",
     );
@@ -443,7 +443,7 @@ describe("what the reader derives", () => {
     const { epochDir } = campaign();
     const refused = {
       outcome: "refused" as const,
-      stage: "validation" as const,
+      stage: "gates" as const,
       findingsDigest: "d",
       findingCodes: ["missing-check"],
     };
@@ -497,7 +497,7 @@ describe("what the reader derives", () => {
   const withoutKind = Object.fromEntries(Object.entries(submitRow(1)).filter(([field]) => field !== "kind"));
   it.each([
     [
-      "an unknown schema, keeping the sessions after it",
+      "an older version as that version, keeping the sessions after it",
       {
         [FIRST]: executionRecord({ turns: 1 }),
         "builder-execution-02.json": { schema: "builder-execution/v2" },
@@ -506,14 +506,20 @@ describe("what the reader derives", () => {
       [1, 3],
       [
         "builder-execution-02.json",
-        ': malformed execution record with unknown schema "builder-execution/v2"',
+        ": recorded as builder-execution/v2 by another source; this source reads builder-execution/v7 only",
       ],
+    ],
+    [
+      "a schema that names no execution record as malformed",
+      { [FIRST]: { schema: "session-notes/v1" } },
+      [],
+      [FIRST, ': malformed execution record with unknown schema "session-notes/v1"'],
     ],
     [
       "a submit row that does not say which kind it is",
       { [FIRST]: { ...executionRecord(), submits: [withoutKind] } },
       [],
-      [FIRST, ": builder-execution/v6 record has an incomplete or invalid shape"],
+      [FIRST, ": builder-execution/v7 record has an incomplete or invalid shape"],
     ],
     [
       "a missing middle session, still reading the sessions past it",

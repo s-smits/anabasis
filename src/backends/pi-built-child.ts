@@ -23,7 +23,7 @@ import { PiPromptRecord, openPiAgentSession, piRuntimeIdentity, settledStatus } 
 import { piTurnUsage } from "./pi-usage.ts";
 import { parseJsonAs } from "../meta/json-runtime.ts";
 import { runtimeProcess } from "../meta/process.ts";
-import { runtimeNonResultReason } from "../truth/runtime-blocker.ts";
+import { runtimeNonResultReason } from "../correctness-bundle/runtime-blocker.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hasText } from "../meta/text.ts";
 import { boundText } from "../meta/bounded-text.ts";

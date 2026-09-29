@@ -1,6 +1,6 @@
 ---
 name: builder-blocking-loop
-description: "Get told the moment a live Builder session is blocked (five refused submits in a row, a repeated findings set, twelve checks without acceptance, two environment previews in a row, two hours without a submit) and fix the owner iteratively: read, fix on the owning PR, then keep the run or kill it and relaunch on the upgraded system, and rearm. Use while a paid run is live and the operator wants blocking caught and repaired, not only reported."
+description: "Get told the moment a live Builder session is blocked (five refused submits in a row, a repeated findings set, twelve checks without acceptance, two environment previews in a row, two hours since a submit or rehearsal last returned) and fix the owner iteratively: read, fix on the owning PR, then keep the run or kill it and relaunch on the upgraded system, and rearm. Use while a paid run is live and the operator wants blocking caught and repaired, not only reported."
 ---
 
 # Builder blocking loop
@@ -34,8 +34,16 @@ Each sits one step above the worst a session that still reached acceptance recor
 | same findings on consecutive refusals | 2 | 1 | none |
 | `correctness_check` without an accepted submit | 12 | 11 (`-11`) | none |
 | preview environment non-results in a row | 2 | 1 (`-7`) | 7d433e (`-16`), census wall |
-| Builder minutes without a submit | 120 | 91 | `-13`, 129 min |
+| Builder minutes since its last submit or `harness_trial` returned | 120 | 353 (`3fd52f9e-3`) | none surveyed |
 | no campaign evidence and no session write | 45 min | existing stall row | none |
+
+The minutes row no longer meets the sentence above it. It used to count every Builder minute
+until the first submit row, and a submit a review holds unread records no row, so on 2026-09-28 it
+stopped three live sessions, one of them after four held submits and nine rehearsals. It now counts
+from the last `submit` of any outcome or `harness_trial` to return. Over the 167 epochs recorded
+2026-09-22..28, that reading reaches 120 in 18 of the 140 that reached acceptance, against 50 under
+the old one, and the worst of them spent 150 of its 353 quiet minutes in 84 `bash` calls. So 120 is
+a lead that still fires on healthy sessions, and moving it is the operator's survey to make.
 
 A row is a lead, not a verdict. Change a limit only with a new survey of recorded epochs, in
 `BUILDER_LIMITS` and this table together.

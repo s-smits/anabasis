@@ -10,7 +10,11 @@
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import type { CampaignFeedback } from "../author/campaign-types.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
-import { type ContractFinding, controllerValidatedFinding, projectFindingForAuthor } from "../truth/brief.ts";
+import {
+  type ContractFinding,
+  controllerValidatedFinding,
+  projectFindingForAuthor,
+} from "../correctness-bundle/brief.ts";
 import { characterWindow, windowRange } from "./read-window.ts";
 import { boundText } from "../meta/bounded-text.ts";
 
@@ -27,7 +31,7 @@ const VARIANT_INDEX_BYTES = 160;
 export const FEEDBACK_NAVIGATION =
   'Use harness_inspect {"action":"feedback"} to page every group; add "group", "field" and "offset" to read an exact code, path or detail.';
 
-export type AuthorCheckStage = "bundle" | "validation" | "conformance" | "gates";
+export type AuthorCheckStage = "bundle" | "conformance" | "gates";
 interface AuthorRefusalIdentity {
   attempt: number;
   turn: number;

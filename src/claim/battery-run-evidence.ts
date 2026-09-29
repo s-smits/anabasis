@@ -1,13 +1,13 @@
 import type { NonResultKind } from "./record-events.ts";
-import type { BatteryRecord } from "../truth/battery-record.ts";
+import type { BatteryRecord } from "../correctness-bundle/battery-record.ts";
 import { runtimeIdentityCensus, scoredCases } from "./battery-facts.ts";
 import type { ClaimEvidence, RunStatusEvidence, ScoredCase, StalenessEvidence } from "./claim-evidence.ts";
-import type { ControlCorpus } from "../truth/controls.ts";
+import type { ControlCorpus } from "../correctness-bundle/controls.ts";
 import {
   checkReceiptSet,
   controlReceiptInvalidFinding,
   totalsMatchRecorded,
-} from "../truth/control-receipts.ts";
+} from "../correctness-bundle/control-receipts.ts";
 import { isString } from "../meta/json-shape.ts";
 
 interface BatteryEvidenceCase {
@@ -75,8 +75,10 @@ export function batteryClaimInput(
       checkIds: [...checkIds],
     };
   });
+  // The census recorded its own R2 findings with these receipts; the read-back checks only that the
+  // rows are whole and still add up to the recorded totals.
   const receiptCheck = checkReceiptSet(corpus, battery.discrimination.controlReceipts);
-  const receiptFindings = [...receiptCheck.findings];
+  const receiptFindings = receiptCheck.findings;
   const calculatedTotals = receiptCheck.totals;
   if (calculatedTotals !== null && !totalsMatchRecorded(battery.discrimination, calculatedTotals)) {
     receiptFindings.push(
@@ -97,7 +99,6 @@ export function batteryClaimInput(
       thresholdManifestDigest: battery.thresholdManifestDigest,
       runtimeIdentities: runtimeIdentityCensus(battery.cases),
       capabilities: [...battery.capabilities],
-      predictions: null,
       truthCheckFiring: battery.truthCheckFiring,
       judge: battery.judge,
     },

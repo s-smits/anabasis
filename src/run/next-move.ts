@@ -4,8 +4,6 @@ import { existsSync } from "../meta/filesystem.ts";
 import { campaignDir } from "../meta/campaign-root.ts";
 import { join, relative } from "../meta/path.ts";
 import { FROZEN_MANIFEST_PATH } from "../critic/manifest.ts";
-// Gate audit 2026-09-25 (docs/gate-audit.md, off-aim-allowance-stop): commented out (unsure): the Builder owns the route after an off-aim streak, which stays a readout fact
-// import { POLICY } from "../critic/policy.ts";
 import { type CampaignBindingInput, latestCampaignEpochForBinding } from "../author/campaign-epoch.ts";
 import { latestPreAdoptionFeedback } from "../author/campaign-memory.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
@@ -14,6 +12,9 @@ import { readAdmission } from "./admission.ts";
 import type { AskManifest } from "./ask-manifest.ts";
 import { claimsDirFor } from "./claim-write.ts";
 import { type ClimbReadout, readClimbReadout } from "./climb-readout.ts";
+import { type Remeasure, censoredRemeasure } from "./battery-reuse.ts";
+import { isString } from "../meta/json-shape.ts";
+import type { SlotChoice } from "../backends/resolve.ts";
 
 export interface NextMove {
   /** `rebuild` is the retained round name for adopted-product authoring, not an order to redesign. */
@@ -22,6 +23,8 @@ export interface NextMove {
   seed?: "adopted";
   /** One measured condition opens one resumable pass; prose changes cannot reset its allowance. */
   reopenKey?: string;
+  /** A `measure` that solves only these cases of that battery again and regrades the rest. */
+  remeasure?: Remeasure;
 }
 
 interface SelectedNextMove {
@@ -43,35 +46,17 @@ export function epochPassOf(decision: NextMove): string | undefined {
   return decision.reopenKey ?? decision.reason;
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, off-aim-allowance-stop): commented out (unsure): the Builder owns the route after an off-aim streak, which stays a readout fact
-// /** The stop once the off-aim allowance is spent, or null while it lasts. The sentence is the run's
-//  * last word to the operator and no Builder reads it, so it lives here rather than in the climb
-//  * frame, whose revision names what a Builder was told. A streak above the aim says the run found no
-//  * limit; it never says none is reachable, because easy batteries show only that this search did not
-//  * reach one. A streak below the aim says nothing about a limit at all. */
-// export function allowanceStop(readout: ClimbReadout | null): string | null {
-//   const allowance = readout?.allowance ?? null;
-//   if (allowance === null || allowance.rounds < POLICY.climb.offAimStreakRounds) return null;
-//   const { rounds, placed, refused, side, products } = allowance;
-//   return [
-//     `Stopped at the configured off-aim allowance: ${rounds} consecutive rounds ended ${side} the aim or with a refused claim (${placed} placed ${side} the aim, ${refused} claim-refused) across ${products} product identities.`,
-//     side === "above"
-//       ? "This run did not find a limit: every placed battery in the streak landed above the aim."
-//       : null,
-//     "This ends the allocated search; it does not establish that another product would add no evidence.",
-//   ]
-//     .filter((line) => line !== null)
-//     .join(" ");
-// }
-
 /** Build when no adopted product exists; measure a condition that has not been measured.
  * Thereafter the Builder chooses a hypothesis and a permitted scope from the actual evidence.
- * A host/environment blocker still stops before another authoring or measurement spend. */
+ * A host/environment blocker still stops before another authoring or measurement spend. A battery
+ * the environment cut short is measured again on unchanged bytes before any rebuild, because the
+ * Builder would otherwise author against cases nothing measured. */
 export function decideNextMove(
   product: "adopted" | "none",
   feedback: CampaignFeedback[] | null,
   readout: ClimbReadout | null = null,
   preAdoption = false,
+  remeasure: Remeasure | null = null,
 ): NextMove {
   if (product === "none") {
     return { move: "build", reason: "no adopted domain harness; build one from the original request" };
@@ -85,12 +70,6 @@ export function decideNextMove(
       reason: `blocking feedback includes environment outside the product (${blocking.join(", ")}); authoring cannot clear the complete packet`,
     };
   }
-  // Gate audit 2026-09-25 (docs/gate-audit.md, off-aim-allowance-stop): commented out (unsure): the Builder owns the route after an off-aim streak, which stays a readout fact
-  // // The allowance counts rounds that ended off the aim or with a refused claim; the Builder still
-  // // chooses what to change while it runs, and spending it ends the campaign rather than holding
-  // // anything fixed.
-  // const stop = allowanceStop(readout);
-  // if (stop !== null) return { move: "stop", reason: stop };
   // A same-condition battery that created no claim was still an attempt at this condition, so the
   // round has been observed; an identity or comparability refusal says nothing about it.
   const observed = (readout?.admitted ?? 0) > 0 || (readout?.excluded ?? []).some((row) => row.claimRefused);
@@ -100,11 +79,18 @@ export function decideNextMove(
       reason: "no saved measurement has feedback; measure the current harness to produce it",
     };
   }
+  if (!preAdoption && blocking.length === 0 && remeasure !== null) {
+    return {
+      move: "measure",
+      reason: `${remeasure.taskIds.length} case(s) of battery ${remeasure.of} ended in environment-owned non-results; rerun them without changing the harness and regrade the rest`,
+      remeasure,
+    };
+  }
   const reason = [
     preAdoption
       ? "pre-adoption continuation: finish or revise the in-flight proposal"
       : "the measured condition is ready for the Builder's next experiment",
-    "start from the adopted product; choose task redesign or product repair, state what would support or contradict it, and submit the corresponding bytes",
+    "start from the adopted product; choose task redesign or product repair, and submit the corresponding bytes",
     // Named, not required: an open campaign admits a candidate that leaves these owners alone, so
     // promising otherwise here tells the Builder its own experiment will be refused when it will not.
     blocking.length === 0 ? null : `blocking feedback stands against ${blocking.join(", ")}`,
@@ -126,8 +112,10 @@ export function selectNextMoveFromDisk(input: {
   runId: string;
   domainDir: string;
   builder: NonNullable<CampaignBindingInput["builder"]>;
+  /** This run's Built slot, which a remeasure's re-solved cases would run under. */
+  built: Pick<SlotChoice, "reasoningEffort" | "withholdInstruments">;
 }): SelectedNextMove {
-  const { repoRoot, manifest, baseKickoff, runPin, domainDir, builder } = input;
+  const { repoRoot, manifest, baseKickoff, runPin, domainDir, builder, built } = input;
   const { priorEvidence: measured, lineage } = readAdmission(repoRoot, manifest.slug);
   const readout = readClimbReadout(
     domainDir,
@@ -144,11 +132,16 @@ export function selectNextMoveFromDisk(input: {
   const blocks = (rows: CampaignFeedback[] | null) =>
     rows?.some((row) => row.severity === "blocking") === true;
   const fromPreAdoption = !blocks(measured?.feedback ?? null) && blocks(preAdoption);
+  const adopted = existsSync(domainDir);
+  const remeasure = adopted
+    ? censoredRemeasure({ repoRoot, slug: manifest.slug, runPin, built, candidateDir: domainDir }, readout)
+    : "no adopted product";
   const decided = decideNextMove(
-    existsSync(domainDir) ? "adopted" : "none",
+    adopted ? "adopted" : "none",
     fromPreAdoption ? preAdoption : (measured?.feedback ?? null),
     readout,
     fromPreAdoption,
+    isString(remeasure) ? null : remeasure,
   );
   return {
     prior: fromPreAdoption ? null : measured,

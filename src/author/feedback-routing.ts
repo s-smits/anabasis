@@ -1,9 +1,9 @@
 /** Owner labels identify repair surfaces. The complete admitted feedback is the repair agenda;
  * an owner never limits which safe findings the Builder can read. */
 import { BUILT_AGENTS_FILE } from "../solve/built-starter.ts";
-import { projectFindingForAuthor } from "../truth/brief.ts";
-import { REFERENCE_SOLVE_ENTRY } from "../truth/evaluator-process-bundle.ts";
-import { HARNESS_CONFIG_FILE } from "../truth/harness-config.ts";
+import { projectFindingForAuthor } from "../correctness-bundle/brief.ts";
+import { REFERENCE_SOLVE_ENTRY } from "../correctness-bundle/evaluator-process-bundle.ts";
+import { HARNESS_CONFIG_FILE } from "../correctness-bundle/harness-config.ts";
 import type { CampaignFeedback, FeedbackOwner } from "./campaign-types.ts";
 import {
   AGENT_DIR,

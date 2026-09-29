@@ -18,7 +18,9 @@ import {
   codexAuthFile,
   codexLoginState,
   claudeLoginState,
+  credentialProvenance,
   openrouterLoginState,
+  slotCredentials,
 } from "../src/backends/login-state.ts";
 import { loadRepoEnv } from "../src/backends/env.ts";
 import { decodeJwtPayload, getAccountId } from "../src/backends/oauth/openai-codex.ts";
@@ -390,5 +392,71 @@ describe("login-state owners", () => {
   it("requires the OpenRouter key", () => {
     expect(openrouterLoginState({})).toEqual({ ok: false, reason: "OPENROUTER_API_KEY is not set" });
     expect(openrouterLoginState({ OPENROUTER_API_KEY: "k" })).toEqual({ ok: true });
+  });
+});
+
+describe("credential provenance in the opening", () => {
+  const claude = { kind: "claude", model: null, reasoningEffort: "high", source: "env" } as const;
+  const claudeSlots = {
+    slug: "claude",
+    builder: claude,
+    built: claude,
+    review: { ...claude, enabled: true, source: "env" },
+    operatorConfig: null,
+  } as const;
+
+  it("names the source and tells two accounts apart without ever carrying the token", () => {
+    const repo = makeScratchDir("ana-provenance-");
+    const first = "fake-first-account-token";
+    const second = "fake-second-account-token";
+    writeFileSync(join(repo, ".env"), `CLAUDE_CODE_OAUTH_TOKEN=${first}\n`, "utf8");
+    const fromFile = credentialProvenance("claude", loadRepoEnv(repo, {}));
+    const fromProcess = credentialProvenance(
+      "claude",
+      loadRepoEnv(repo, { CLAUDE_CODE_OAUTH_TOKEN: second }),
+    );
+    expect(fromFile.source).toBe(".env");
+    expect(fromProcess.source).toBe("process");
+    expect(fromFile.accountDigest).toMatch(/^[0-9a-f]{16}$/);
+    expect(fromFile.accountDigest).not.toBe(fromProcess.accountDigest);
+    const rows = JSON.stringify(slotCredentials(claudeSlots, loadRepoEnv(repo, {})));
+    expect(rows).not.toContain(first);
+    expect(rows).not.toContain("first-account");
+    // Three claude slots are one account, so one row.
+    expect(JSON.parse(rows)).toEqual([fromFile]);
+  });
+
+  it("keys a Codex login on its account id, so a refreshed token keeps its digest", () => {
+    const home = makeScratchDir("ana-provenance-codex-");
+    const write = (account: string, exp: number) =>
+      writeFileSync(
+        join(home, "auth.json"),
+        JSON.stringify({
+          tokens: {
+            access_token: fakeJwt({ "https://api.openai.com/auth": { chatgpt_account_id: account }, exp }),
+          },
+        }),
+        "utf8",
+      );
+    const repo = { env: { CODEX_HOME: home }, sources: { CODEX_HOME: "process" } };
+    write("acc-1", 100);
+    const before = credentialProvenance("codex", repo);
+    write("acc-1", 200);
+    expect(credentialProvenance("codex", repo)).toEqual(before);
+    write("acc-2", 200);
+    expect(credentialProvenance("codex", repo).accountDigest).not.toBe(before.accountDigest);
+    expect(before.source).toBe(join(home, "auth.json"));
+  });
+
+  it("records no source and no digest when the kind has no credential", () => {
+    const repo = makeScratchDir("ana-provenance-none-");
+    expect(credentialProvenance("claude", loadRepoEnv(repo, {}))).toEqual({
+      kind: "claude",
+      source: null,
+      accountDigest: null,
+    });
+    expect(credentialProvenance("codex", { env: { CODEX_HOME: join(repo, "absent") }, sources: {} })).toEqual(
+      { kind: "codex", source: null, accountDigest: null },
+    );
   });
 });

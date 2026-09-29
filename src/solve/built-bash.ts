@@ -47,7 +47,8 @@ import {
   toolTreeSearchDirs,
 } from "../verify/solve-command-isolation.ts";
 import type { SolveIsolationPolicy } from "../verify/solve-sandbox.ts";
-import { DEFAULT_HARNESS_SETTINGS, type HarnessSettings } from "../truth/harness-config.ts";
+import { canonicalForms } from "../verify/wall-policy.ts";
+import { DEFAULT_HARNESS_SETTINGS, type HarnessSettings } from "../correctness-bundle/harness-config.ts";
 import { BUILT_SHELL_RULES } from "./dcg-rules.ts";
 import { ARTIFACT_JSON_MAX_BYTES } from "./draft-store.ts";
 import { FILE_MAP_MAX_ENTRIES, pathProblem } from "./file-map.ts";
@@ -86,6 +87,9 @@ interface BuiltBashOptions {
   publicResourceFiles?: number;
   /** The adopted bundle's `.toolchain`, first on PATH; null when it has none. */
   toolTree?: string | null;
+  /** Programs under the tool tree a command may not run: a check's deciding instruments, when the
+   *  operator launched the run with them withheld. Empty leaves the shell exactly as before. */
+  withheld?: readonly string[];
   /** Where the destructive-command guard is looked up: the controller's environment. */
   guardEnv?: OptionalEnvValues;
   safeguardContext?: SafeguardContext;
@@ -103,9 +107,7 @@ const WALLS =
   "what is missing into your home directory.";
 const SCRATCH_FOLDER =
   " The command runs in a fresh private folder that is removed when it ends; nothing there becomes " +
-  "your answer, which you still record with the harness's own tools. A driver you keep in your home " +
-  "directory and re-run, reading its inputs from a file you edit between commands, buys more " +
-  "candidates than retyping the work each time.";
+  "your answer, which you still record with the harness's own tools.";
 
 interface ReadTree {
   files: Record<string, string>;
@@ -239,7 +241,8 @@ function canRun(path: string): boolean {
  * PATH the command already carries. Ranking the survivors by what they look like would be the loop
  * choosing domain content, which is the Builder's to choose.
  */
-function installedPrograms(toolTree: string | null): string {
+function installedPrograms(toolTree: string | null, withheld: readonly string[]): string {
+  const closed = new Set(withheld.flatMap((path) => canonicalForms(path)));
   // The same directories the command's PATH holds, in its order, so the first entry of a name here
   // is the one a bare name would actually run.
   const dirs = toolTree === null ? [] : toolTreeSearchDirs(toolTree);
@@ -248,7 +251,8 @@ function installedPrograms(toolTree: string | null): string {
       dirs.flatMap((dir) =>
         readdirSync(dir)
           .sort(compareCodeUnits)
-          .filter((name) => canRun(join(dir, name))),
+          .filter((name) => canRun(join(dir, name)))
+          .filter((name) => !canonicalForms(join(dir, name)).some((form) => closed.has(form))),
       ),
     ),
   ];
@@ -348,6 +352,7 @@ export function createBuiltBashTool({
   home,
   publicResourceFiles = 0,
   toolTree = null,
+  withheld = [],
   guardEnv = Bun.env,
   safeguardContext,
   timeouts = DEFAULT_HARNESS_SETTINGS,
@@ -360,7 +365,7 @@ export function createBuiltBashTool({
     ...base,
     name: BUILT_BASH_TOOL,
     parameters: shellParameters(timeouts),
-    description: `${base.description}${port === null ? SCRATCH_FOLDER : draftFolder(port.root)}${WALLS}${publicFolder}${installedPrograms(toolTree)} ${BUILT_SHELL_RULES.join(" ")}`,
+    description: `${base.description}${port === null ? SCRATCH_FOLDER : draftFolder(port.root)}${WALLS}${publicFolder}${installedPrograms(toolTree, withheld)} ${BUILT_SHELL_RULES.join(" ")}`,
     executionMode: "sequential",
     execute: async (callId, params, signal, onUpdate): Promise<AgentToolResult<unknown>> => {
       const { command, timeout } =
@@ -391,7 +396,7 @@ export function createBuiltBashTool({
           mkdirSync(dirname(join(answer, path)), { recursive: true });
           writeFileSync(join(answer, path), content, "utf8");
         }
-        const isolation = commandIsolationPolicy(policy, { work, home, temp, toolTree });
+        const isolation = commandIsolationPolicy(policy, { work, home, temp, toolTree, withheld });
         const env = isolation.environment;
         const shell = createBashTool({
           prepare: (execution) => {

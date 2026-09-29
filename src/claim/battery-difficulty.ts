@@ -4,8 +4,6 @@
  * - `placeOnBand` says where k passes of n sit against the target band. It is the one owner of
  *   "too easy", "too hard" and "on aim": the selector acts on its zone, the evidence note words
  *   it, and the per-family rows read it rather than re-deriving the comparison.
- * - `bandLandmarks` reads the same placements back as pass counts for a battery size, so a prompt
- *   that says "18 of 25 or more found no limit" follows the band instead of repeating it.
  * - `measureDifficulty` tallies the verified cases per item into the recorded battery.
  *
  * Sample size has a single owner, the interval. A thin sample widens it until neither outer zone
@@ -50,9 +48,6 @@ export type BandPlacement = {
   /** Passes to gain (positive) or lose (negative) to land on the aim; zero on it. */
   toAim: number;
 };
-
-/** A first battery's aim, about 3 of 25 verified passes (operator decision). */
-const FIRST_BATTERY_RATE = 0.12;
 
 /** Scale a rate to n, rounded first so 0.2 × 15 = 3.0000000000000004 reads as 3. */
 const scaled = (rate: number, n: number) => Number((rate * n).toFixed(9));
@@ -99,19 +94,6 @@ function bandZone(
   if (toAim > 0) return "under-aim";
   if (toAim < 0) return "over-aim";
   return "on-aim";
-}
-
-/** The pass counts a battery of n cases reads as under the band: too hard at or below
- *  `tooHardUpTo`, too easy from `tooEasyFrom` (null when no count qualifies), the aim, and the
- *  first battery's overshoot. Derived by placing every count, so sentences and decisions agree. */
-export function bandLandmarks(n: number, band: readonly [number, number]) {
-  const placed = Array.from({ length: n + 1 }, (_, k) => placeOnBand(k, n, band)).filter((p) => p !== null);
-  return {
-    tooHardUpTo: placed.findLast((p) => p.zone === "too-hard")?.passes ?? null,
-    aim: aimCounts(n, band),
-    tooEasyFrom: placed.find((p) => p.zone === "too-easy")?.passes ?? null,
-    first: Math.max(1, Math.round(scaled(FIRST_BATTERY_RATE, n))),
-  };
 }
 
 /** Tally verified cases per item, hardest first by measured pass rate, then by name so that two

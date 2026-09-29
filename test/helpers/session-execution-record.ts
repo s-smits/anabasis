@@ -1,5 +1,5 @@
 /**
- * A complete `builder-execution/v6` record for the tests that read, write or census one without
+ * A complete `builder-execution/v7` record for the tests that read, write or census one without
  * running a Builder session: the execution-record validator, the writer and reader, and the
  * Builder tool census.
  *
@@ -65,7 +65,7 @@ export function submitRow(ordinal: number, over: Partial<BuilderSubmitAttempt> =
 export function executionRecord(overrides: ExecutionRecordOverrides = {}): BuilderExecutionEvidence {
   const { toolCalls, usage, submits, customCalls, ...rest } = overrides;
   return {
-    schema: "builder-execution/v6",
+    schema: "builder-execution/v7",
     backend: "claude",
     runtimeIdentity: null,
     turns: 0,

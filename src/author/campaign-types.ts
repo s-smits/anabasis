@@ -4,11 +4,10 @@ import type { FingerprintEvidence } from "../claim/fingerprint.ts";
 import type { SourceIdentity } from "../run/source-identity.ts";
 import type { ExperimentScope } from "../run/experiment-freeze.ts";
 import type { PublicArtifactSchema } from "../solve/public-artifact-schema.ts";
-import type { Brief, ContractFinding } from "../truth/brief.ts";
-import type { ControlCorpus } from "../truth/controls.ts";
-import type { TaskBattery } from "../truth/tasks.ts";
-import type { ToolsSpec } from "../truth/tools-spec.ts";
-import type { ExperimentSubmission } from "./experiment-plan.ts";
+import type { Brief, ContractFinding } from "../correctness-bundle/brief.ts";
+import type { ControlCorpus } from "../correctness-bundle/controls.ts";
+import type { TaskBattery } from "../correctness-bundle/tasks.ts";
+import type { ToolsSpec } from "../correctness-bundle/tools-spec.ts";
 import type { BundleFile } from "./feedback-routing.ts";
 import type { WorkspaceChange } from "./domain-repo.ts";
 
@@ -54,7 +53,6 @@ export type AdmissionLineage = { digest: string };
 type IterationOutcome = "fingerprinted" | "gates-blocked";
 
 export type IterationEvidence = {
-  experimentProposal?: ExperimentSubmission;
   experimentScope?: ExperimentScope;
   ordinal: number;
   dir: string;
@@ -68,8 +66,6 @@ export type IterationEvidence = {
    *  `stampSubmissionCondition` sets it before the record is written, so a completed record without
    *  it is refused rather than read as a condition nobody stamped. */
   submissionConditionId?: string;
-  /** Battery-only authoring's gate identity excludes explanatory metadata from repetition accounting. */
-  candidateConditionId?: string;
   consumedEvidenceDigests?: string[];
   /** Present exactly when this iteration read a current-policy packet that seeded no owner, so a
    * review can tell an unseeded build from one that had no packet at all. */
@@ -83,14 +79,12 @@ export type CampaignClause =
   | "campaign-binding-mismatch"
   | "improvement-memory-missing"
   | "environment-blocked"
-  | "authoring-stalled" // a no-op identity resubmitted to POLICY.loop.noopSubmitStrikes, or one commit recorded unchanged to unchangedCandidateStrikes
-  // Gate audit 2026-09-25 (docs/gate-audit.md, tool-non-result-ceiling): commented out (unsure): a tool that cannot run is an environment fact each run records, not a Builder stall
-  // | "verifier-required"
+  | "authoring-stalled" // a no-op identity resubmitted to POLICY.loop.noopSubmitStrikes
   | "iterations-exhausted"
-  | "no-progress" // a Builder round went STALLED_TURNS turns without a successful tool call; the run may retry the build on the same conversation
+  | "no-progress" // a Builder round went POLICY.loop.stalledTurns turns without a successful tool call; the run may retry the build on the same conversation
   | "budget-limited";
 
-export type CampaignOutcome = (
+export type CampaignOutcome =
   | {
       buildAdmissible: true;
       ordinal: number;
@@ -100,15 +94,5 @@ export type CampaignOutcome = (
       experimentScope?: ExperimentScope;
       harness: BuiltHarness;
       iterations: IterationEvidence[];
-      /** Strikes already spent on the commit this candidate carries, counting this round: the
-       *  durable per-commit unchanged tally the campaign replayed from disk, extended by this
-       *  invocation's own iterations. The round reads it when the candidate turns out to equal its
-       *  own round entry, so the ceiling is reached at the same total whether the strikes fell
-       *  inside one invocation or across fourteen. */
-      unchangedCandidateSubmissions: number;
     }
-  | { buildAdmissible: false; clause: CampaignClause; iterations: IterationEvidence[] }
-) & { experimentProposal?: ExperimentSubmission };
-
-/** Author-safe finding with its recorded routing severity. */
-export type AuthorRepairFinding = ContractFinding & { severity?: CampaignFeedback["severity"] };
+  | { buildAdmissible: false; clause: CampaignClause; iterations: IterationEvidence[] };

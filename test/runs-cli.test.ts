@@ -5,7 +5,6 @@ import { join } from "../src/meta/path.ts";
 import { CASE_RECORD_SCHEMA } from "../src/claim/case-record.ts";
 import { DIFFICULTY_DECISION_SCHEMA } from "../src/run/difficulty-decision.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
-import { keyIfNotNull } from "../src/meta/optional-key.ts";
 import { serviceManager } from "../.claude/skills/launch-run/scripts/service.ts";
 import {
   latestRun,
@@ -667,38 +666,32 @@ describe("row and column helpers", () => {
 });
 
 /**
- * The climb-readout wording is part of the measured condition: a Builder told different sentences
- * about the band was answering a different question, so two batteries rendered from different
- * frames are two conditions however alike their counts look. A `difficulty-decisions/` record is
- * the only place that wording is witnessed — the record keeps the counts and the identities the
- * decision was read over, never the sentences it produced.
+ * A `difficulty-decisions/` record keeps the counts and the identities the decision was read over,
+ * never the sentences the readout produced. The reader takes the current schema alone and says how
+ * many records it refused, so a battery whose record it will not open does not read like a battery
+ * that never ran.
  */
-describe("the climb wording batteries were authored under", () => {
-  const FRAME_A = "68b53b674476ae7a9db1d27e7668812fbd4cd574a047e9b7ab84b3cdfee6c431";
-  const FRAME_B = "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0";
+describe("the climb decisions recorded for a run", () => {
   const CURRENT_SCHEMA = DIFFICULTY_DECISION_SCHEMA;
-  const RETIRED_SCHEMA = "difficulty-decision/v3";
+  const RETIRED_SCHEMA = "difficulty-decision/v8";
 
-  /** One `difficulty-decisions/` record in the shape `recordDifficultyDecision` writes. A null
-   *  frame omits the field, which under the current schema is an incomplete record rather than an
-   *  older one. The schema is a parameter because a recorded corpus holds more than one, and the
-   *  record's body cannot say which. */
+  /** One `difficulty-decisions/` record in the shape `recordDifficultyDecision` writes. An
+   *  incomplete one omits the rationale, which the schema declares mandatory. */
   function writeDecision(
     campaignDir: string,
     runId: string,
-    frame: string | null,
     schema: string = CURRENT_SCHEMA,
+    complete = true,
   ): void {
     writeJson(join(campaignDir, "difficulty-decisions", `${runId}.json`), {
       schema,
       runId,
       slug: "slug",
       digest: `${runId}-digest`,
-      ...keyIfNotNull("frame", frame),
       difficulty: {
         admitted: 1,
         decision: {
-          rationale: `${runId} placed on the band`,
+          ...(complete && { rationale: `${runId} placed on the band` }),
           evidence: [{ runId, batterySha256: "c".repeat(64) }],
           placement: { passes: 9, n: 25, zone: "on-aim" },
         },
@@ -706,40 +699,21 @@ describe("the climb wording batteries were authored under", () => {
     });
   }
 
-  /** A run with two recorded batteries, each with its own decision. */
-  function twoBatteries(first: string | null, second: string | null): string {
-    const root = checkout();
-    const campaignDir = writeOpening(root, "slug-aaaaaaaa-1", "run-1", OPENED_AT);
-    writeCases(campaignDir, [caseLine(1, "run-1-i02", "pass"), caseLine(2, "run-1-i03", "pass")]);
-    writeDecision(campaignDir, "run-1-i02", first);
-    writeDecision(campaignDir, "run-1-i03", second);
-    const chosen = collectDetail(root, "run-1", {
-      closedLimit: 8,
-      manager,
-      query: noService,
-    });
-    return renderShow(required(chosen.detail, "run-1"), []);
-  }
-
   it("reads the current schema and refuses every other, rather than reading both as one set", () => {
     const root = checkout();
     const campaignDir = writeOpening(root, "slug-aaaaaaaa-1", "run-1", OPENED_AT);
-    writeDecision(campaignDir, "run-1-i02", FRAME_A, RETIRED_SCHEMA);
-    writeDecision(campaignDir, "run-1-i03", FRAME_B, CURRENT_SCHEMA);
+    writeDecision(campaignDir, "run-1-i02", RETIRED_SCHEMA);
+    writeDecision(campaignDir, "run-1-i03", CURRENT_SCHEMA);
     const decisions = readDifficultyDecisions(onlyRun(root));
-    // Both records say `placed`, so nothing in the row separates the retired selector's word from
-    // the band owner's. The reader takes the one it can account for and names the other as refused.
-    expect(decisions.rows.map((row) => row.frame)).toEqual([FRAME_B]);
+    expect(decisions.rows.map((row) => row.runId)).toEqual(["run-1-i03"]);
     expect(decisions.refused).toEqual([RETIRED_SCHEMA]);
   });
 
   it("refuses a current-schema record missing a mandatory field instead of reading it as null", () => {
     const root = checkout();
     const campaignDir = writeOpening(root, "slug-aaaaaaaa-1", "run-1", OPENED_AT);
-    writeDecision(campaignDir, "run-1-i02", null, CURRENT_SCHEMA);
+    writeDecision(campaignDir, "run-1-i02", CURRENT_SCHEMA, false);
     const decisions = readDifficultyDecisions(onlyRun(root));
-    // v5 declares `frame` mandatory, so a record without one is damaged rather than older. Admitting
-    // it as a row with a null frame is what would put the nullability back into every reader above.
     expect(decisions.rows).toEqual([]);
     expect(decisions.refused).toEqual([`${CURRENT_SCHEMA} incomplete`]);
   });
@@ -747,8 +721,8 @@ describe("the climb wording batteries were authored under", () => {
   it("reads each decision's placement and evidence, in round order past two padded digits", () => {
     const root = checkout();
     const campaignDir = writeOpening(root, "slug-aaaaaaaa-1", "run-1", OPENED_AT);
-    writeDecision(campaignDir, "run-1-i100", FRAME_A);
-    writeDecision(campaignDir, "run-1-i99", FRAME_A);
+    writeDecision(campaignDir, "run-1-i100");
+    writeDecision(campaignDir, "run-1-i99");
     const decisions = readDifficultyDecisions(onlyRun(root));
     expect(decisions.rows.map((row) => [row.runId, row.placement, row.admitted, row.evidenceRunIds])).toEqual(
       [
@@ -758,37 +732,21 @@ describe("the climb wording batteries were authored under", () => {
     );
   });
 
-  it("names one frame for the run's batteries, since a run is one process", () => {
-    const shown = twoBatteries(FRAME_A, FRAME_A);
-    expect(shown).toContain(`Climb wording: ${FRAME_A.slice(0, 12)}`);
-    expect(shown).not.toContain("Climb records refused");
-  });
-
   it("says how many records it refused and under which versions, rather than omitting them", () => {
     const root = checkout();
     const campaignDir = writeOpening(root, "slug-aaaaaaaa-1", "run-1", OPENED_AT);
     writeCases(campaignDir, [caseLine(1, "run-1-i02", "pass"), caseLine(2, "run-1-i03", "pass")]);
-    writeDecision(campaignDir, "run-1-i02", FRAME_A, RETIRED_SCHEMA);
-    writeDecision(campaignDir, "run-1-i03", FRAME_B, CURRENT_SCHEMA);
-    const shown = renderShow(
-      required(collectDetail(root, "run-1", { closedLimit: 8, manager, query: noService }).detail, "run-1"),
-      [],
-    );
-    // A battery whose record this reader will not open must not read like a battery that never ran.
+    writeDecision(campaignDir, "run-1-i02", RETIRED_SCHEMA);
+    writeDecision(campaignDir, "run-1-i03", CURRENT_SCHEMA);
+    const show = () =>
+      renderShow(
+        required(collectDetail(root, "run-1", { closedLimit: 8, manager, query: noService }).detail, "run-1"),
+        [],
+      );
+    const shown = show();
     expect(shown).toContain(`Climb records refused: 1 (${RETIRED_SCHEMA})`);
     expect(shown).toContain(`not ${CURRENT_SCHEMA}`);
-    expect(shown).toContain(`Climb wording: ${FRAME_B.slice(0, 12)}`);
-  });
-
-  it("says nothing about wording when the run recorded no decision at all", () => {
-    const root = checkout();
-    const campaignDir = writeOpening(root, "slug-aaaaaaaa-1", "run-1", OPENED_AT);
-    writeCases(campaignDir, [caseLine(1, "run-1-i02", "pass")]);
-    const chosen = collectDetail(root, "run-1", {
-      closedLimit: 8,
-      manager,
-      query: noService,
-    });
-    expect(renderShow(required(chosen.detail, "run-1"), [])).not.toContain("Climb wording");
+    writeDecision(campaignDir, "run-1-i02", CURRENT_SCHEMA);
+    expect(show()).not.toContain("Climb records refused");
   });
 });

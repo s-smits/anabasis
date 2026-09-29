@@ -26,7 +26,6 @@ import {
   completeBundle,
   installTool,
   namedTool,
-  proposeExperiment,
   replyText,
   requireExternalVerifier,
   runOneTool,
@@ -37,10 +36,9 @@ import {
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import { MATCHING_ACCEPTS, MATCHING_REJECTS, padToCalibrationFloor } from "./helpers/matching-fixture.ts";
 import { double, required, scriptedSession, toolDouble } from "./helpers/doubles.ts";
-import { writeBoundRepresentation } from "./helpers/bound-representation.ts";
 import { hashJsonValue } from "../src/meta/stable-json.ts";
-import { controllerValidatedFinding } from "../src/truth/brief.ts";
-import { VerifierExecutionNonResult } from "../src/truth/verifier-nonresult.ts";
+import { controllerValidatedFinding } from "../src/correctness-bundle/brief.ts";
+import { VerifierExecutionNonResult } from "../src/correctness-bundle/verifier-nonresult.ts";
 import { createVerifierHost } from "../src/verify/host.ts";
 import type { VerifierHostHandle } from "../src/verify/verifier-port.ts";
 import { makeCensusGate } from "../src/run/census-gate.ts";
@@ -268,15 +266,12 @@ describe("a gate run two callers may share", () => {
     expect(resumeCampaignMemory(campaignDir, "matching", KICKOFF_HASH).clause).toBeNull();
   });
 
-  // Gate audit 2026-09-25 (docs/gate-audit.md, preview-attempt-spent): commented out (unsure): a runtime non-result is no verdict on the bytes, so a retry on them should run
-  // it("publishes submit's run before its first await, so a preview started meanwhile joins it and spends its attempt", async () => {
   it("publishes submit's run before its first await, so a preview started meanwhile joins it", async () => {
     const campaignDir = scratchDir("ana-submit-publishes-");
     const workspace = join(campaignDir, "workspace");
     let probeLoads = 0;
     const loading = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
-    let joined = "";
     await runBuilderCampaign(
       { campaignDir, ...FRESH_BUILD, maxTurns: 2 },
       {
@@ -307,13 +302,7 @@ describe("a gate run two callers may share", () => {
             release.resolve();
             await Promise.all([submitting, joining]);
             expect(probeLoads).toBe(1);
-            // Gate audit 2026-09-25 (docs/gate-audit.md, preview-attempt-spent): commented out (unsure): a runtime non-result is no verdict on the bytes, so a retry on them should run
-            // joined = await replyText(check(tools), "check-2");
-            // expect(probeLoads).toBe(1);
-            // await submitTool(tools).execute("submit-2", {});
-            // expect(probeLoads).toBe(2);
-            // A runtime non-result is no verdict on the bytes, so a later call on them runs again.
-            joined = await replyText(check(tools), "check-2");
+            await replyText(check(tools), "check-2");
             expect(probeLoads).toBe(2);
             await submitTool(tools).execute("submit-2", {});
             expect(probeLoads).toBe(3);
@@ -321,9 +310,6 @@ describe("a gate run two callers may share", () => {
           }),
       },
     );
-    // Gate audit 2026-09-25 (docs/gate-audit.md, preview-attempt-spent): commented out (unsure): a runtime non-result is no verdict on the bytes, so a retry on them should run
-    // expect(joined).toContain("preview-attempt-spent");
-    expect(joined).not.toContain("preview-attempt-spent");
   });
 
   it.concurrent("keeps one session across a post-record gate refusal and admits only the clean resubmission", async () => {
@@ -438,56 +424,25 @@ describe("the receipts a gate run records", () => {
     expect(lines[0]).toContain("submit refused at stage");
     expect(lines[0]).toContain("with generated-load-crash");
     expect(lines[0]).not.toContain("handshake");
-  });
-
-  it("runs the gates beside an admission refusal without writing an iteration or a parity safeguard", async () => {
-    // Check and submit report the same admission refusal, so a clear gate run followed by an
-    // admission-only refusal is agreement between the two paths, not safeguard 33's divergence.
-    const campaignDir = scratchDir("ana-admission-gated-");
-    const workspace = join(campaignDir, "workspace");
-    commitRoundEntry(workspace);
-    const adoptedDir = join(campaignDir, "adopted");
-    cpSync(workspace, adoptedDir, { recursive: true, filter: (path) => !path.includes("/.git") });
-    writeBoundRepresentation(
-      adoptedDir,
-      undefined,
-      readFileSync(join(adoptedDir, "agent/tools-spec.json"), "utf8"),
-    );
-    const texts: string[] = [];
-    const gateDirs: string[] = [];
-    const { result: outcome, lines } = await safeguard33(() =>
-      runBuilderCampaign(
-        { campaignDir, ...FRESH_BUILD, maxTurns: 1, experiment: "build", adoptedDir },
-        {
-          ...BARE,
-          gates: async (_harness, iterationDir) => {
-            gateDirs.push(iterationDir);
-            return [];
-          },
-          open: async (tools) =>
-            scriptedSession(async () => {
-              writeFileSync(join(workspace, "EXPERIMENT.json"), "{}");
-              texts.push(
-                await replyText(check(tools), "check"),
-                await replyText(submitTool(tools), "submit"),
-              );
-              return { status: "completed", assistantText: "submitted" };
-            }),
-        },
-      ),
-    );
-    for (const text of texts) expect(text).toContain("experiment-plan-schema");
-    expect(outcome.buildAdmissible).toBe(false);
-    expect(outcome.iterations).toEqual([]);
-    expect(gateDirs).toHaveLength(1);
-    expect(gateDirs[0]).toContain(join(campaignDir, "trials"));
-    expect(lines).toEqual([]);
+    // The submit's own receipt names the refusal's codes, as a correctness_check receipt does; a
+    // clear check names none.
+    const calls = readExecutionEvidence(campaignDir)[0]?.customCalls ?? [];
+    const semantic = (tool: string) => calls.find((call) => call.tool === tool)?.semantic;
+    expect(semantic("submit")).toMatchObject({
+      outcome: "refused",
+      findingCodes: ["generated-load-crash", "submit-bound"],
+      // Staged as a preview stages them, so a reader never files a code under the aggregate
+      // stage; the submit bound no stage emitted stays unstaged.
+      stagesRun: ["bundle", "conformance", "census"],
+      stagedCodes: ["conformance:generated-load-crash"],
+    });
+    expect(semantic("correctness_check")).toMatchObject({ outcome: "clear" });
+    expect(semantic("correctness_check")).not.toHaveProperty("findingCodes");
   });
 
   it.concurrent("returns the refusal submit gives, with receipts for the work that ran, before either spends the census", async () => {
     // Two shapes of one parity: an unknown check identity, which the bundle stage settles alone,
-    // and a malformed proposal beside a broken bundle, which used to be returned alone with the
-    // bundle receipt marked passed although the file contract never ran.
+    // and a bundle missing its operating guide on a continuation of an adopted product.
     const run = async (author: (workspace: string) => void, adopted: boolean) => {
       const campaignDir = scratchDir("ana-check-parity-");
       const workspace = join(campaignDir, "workspace");
@@ -539,17 +494,11 @@ describe("the receipts a gate run records", () => {
     expect(unknown.preview).toMatchObject({
       status: "findings",
       stage: "bundle",
-      notReached: ["validation", "conformance", "gates"],
+      notReached: ["conformance", "gates"],
     });
 
-    const malformed = await run((workspace) => {
-      bundleWithoutGuide(workspace);
-      writeFileSync(join(workspace, "EXPERIMENT.json"), "{");
-    }, true);
-    for (const text of malformed.texts) {
-      expect(text).toContain("experiment-proposal-read");
-      expect(text).toContain("BUILT_AGENTS.md");
-    }
+    const malformed = await run((workspace) => bundleWithoutGuide(workspace), true);
+    for (const text of malformed.texts) expect(text).toContain("BUILT_AGENTS.md");
     expect(malformed.preview).toMatchObject({
       status: "findings",
       stage: "bundle",
@@ -557,20 +506,18 @@ describe("the receipts a gate run records", () => {
     });
     expect(malformed.preview.stages.map((receipt: { status: string }) => receipt.status)).toEqual([
       "refused",
-      "refused",
       "not-run",
       "not-run",
     ]);
   });
 
-  it("returns a remembered gate refusal under the commit and proposal of the submit that asked", async () => {
+  it("returns a remembered gate refusal under the commit of the submit that asked", async () => {
     const campaignDir = scratchDir("ana-remembered-commit-");
     const workspace = join(campaignDir, "workspace");
     commitRoundEntry(workspace);
     const adoptedDir = join(campaignDir, "adopted");
     cpSync(join(workspace, "agent"), join(adoptedDir, "agent"), { recursive: true });
     cpSync(join(workspace, "correctness-model"), join(adoptedDir, "correctness-model"), { recursive: true });
-    const proposals: ReturnType<typeof proposeExperiment>[] = [];
     let gateCalls = 0;
     await runBuilderCampaign(
       { campaignDir, ...FRESH_BUILD, maxTurns: 2, experiment: "build", adoptedDir },
@@ -594,9 +541,11 @@ describe("the receipts a gate run records", () => {
           scriptedSession(async () => {
             const file = join(workspace, "correctness-model/controls.json");
             writeFileSync(file, `${readFileSync(file, "utf8")}\n`);
-            for (const gap of ["First public gap.", "Second public gap."]) {
-              proposals.push(proposeExperiment(workspace, "product", gap));
-              await submitTool(tools).execute(gap, {});
+            // A note edit commits new bytes outside the contract roots, so the second submit carries
+            // a new commit over the same candidate.
+            for (const note of ["First public gap.", "Second public gap."]) {
+              writeFileSync(join(workspace, "MEMORY.md"), `# notes\n${note}\n`);
+              await submitTool(tools).execute(note, {});
             }
             return { status: "completed", assistantText: "submitted" };
           }),
@@ -604,7 +553,6 @@ describe("the receipts a gate run records", () => {
     );
     expect(gateCalls).toBe(1);
     const submits = readExecutionEvidence(campaignDir)[0]?.submits ?? [];
-    expect(submits.map((row) => row.experimentProposal)).toEqual(proposals);
     expect(submits[1]?.commit).not.toBe(submits[0]?.commit);
     expect(submits[1]?.commit).toBe(
       Bun.spawnSync(["git", "-C", workspace, "rev-parse", "HEAD"]).stdout.toString().trim(),
@@ -668,7 +616,7 @@ describe("a check that names an installed tool", () => {
     // The first refusal is the recovery surface: the guidance must survive the wall projection
     // instead of laundering to the generic unclassified label. The script already knows the tool;
     // this proves the words reach the consumer, not that a model would act on them.
-    const campaignDir = scratchDir("ana-verifier-required-e2e-");
+    const campaignDir = scratchDir("ana-tool-missing-e2e-");
     const workspace = join(campaignDir, "workspace");
     const session = submittingSession(() => {
       completeBundle(workspace);
@@ -697,7 +645,7 @@ describe("a check that names an installed tool", () => {
     expect(outcome).toMatchObject({ buildAdmissible: true });
   });
 
-  it.concurrent("accepts a candidate whose named tool is installed, freezes it once, and ignores a stale tasks proposal", async () => {
+  it.concurrent("accepts a candidate whose named tool is installed and freezes it once", async () => {
     const campaignDir = scratchDir("ana-primary-provenance-declaration-");
     const workspace = join(campaignDir, "workspace");
     const replies: string[] = [];
@@ -708,8 +656,6 @@ describe("a check that names an installed tool", () => {
         open: async (tools) =>
           scriptedSession(async () => {
             completeBundle(workspace);
-            // A stale draft cannot open an adopted or fixed scope on a fresh build.
-            proposeExperiment(workspace, "tasks");
             requireExternalVerifier(workspace);
             installTool(workspace, "field-engine");
             replies.push(
@@ -722,14 +668,13 @@ describe("a check that names an installed tool", () => {
     );
     expect(replies[0]).toContain("Accepted");
     expect(replies[1]).toContain("Nothing was submitted a second time");
-    expect(outcome.experimentProposal).toBeUndefined();
-    expect(readExecutionEvidence(campaignDir)[0]?.submits[0]?.experimentProposal).toBeUndefined();
+    expect(outcome).not.toHaveProperty("experimentScope");
   });
 
   it.concurrent("keeps the bundle's own findings beside the missing-tool finding", async () => {
     // Substituting one reason for the other leaves the second defect unnamed, so it never gets
     // repaired. The battery holds 4 tasks and the ask states 5, so the count refuses in the same submit.
-    const campaignDir = scratchDir("ana-primary-verifier-required-census-");
+    const campaignDir = scratchDir("ana-tool-missing-beside-bundle-");
     const workspace = join(campaignDir, "workspace");
     let opening = "";
     let reply = "";
@@ -844,6 +789,8 @@ describe("a check that names an installed tool", () => {
     expect(iteration.feedback).toEqual([
       expect.objectContaining({ owner: "environment", severity: "blocking" }),
     ]);
-    expect(iteration.feedback[0].findings ?? []).toHaveLength(0);
+    expect(iteration.feedback[0].findings).toEqual([
+      expect.objectContaining({ code: "tool-unavailable", path: "environment" }),
+    ]);
   });
 });

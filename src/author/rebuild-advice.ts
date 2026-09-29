@@ -9,18 +9,21 @@
  * readout, which renders above this packet, so `renderRebuildAdvice` carries the issue register
  * alone.
  *
- * An issue is four recorded facts and no state machine. `absentBatteries` counts the batteries in
- * which its family ran without it on a comparable condition, `unmeasured` names what moved when the
- * latest such battery was not comparable, `returned` says the latest observation followed an
- * absence, and `retired` says the family left the task set; `issueStatusWord` derives from them the
- * word every reader used to store for itself, because two representations of one lifecycle can
- * disagree. Comparable means the family's public inputs, the scoring program and the Built
- * condition all match the battery that last observed the issue (`issue-condition.ts`). Issue
- * identity is `kind + family + detail` and deliberately excludes the harness identity, which is
- * what lets one issue be followed across a rebuild.
+ * An issue is recorded facts and no lifecycle. `firstSeenRunId` and `lastSeenRunId` say where it
+ * was observed, `absentBatteries` counts the later batteries that verified its whole family on a
+ * comparable condition without observing it, `unmeasured` names what moved when the latest such
+ * battery was not comparable, `returned` says it was observed again after an absence, and `retired`
+ * says the family left the task set. Nothing turns them into "fixed" or "regressed": identity is
+ * `kind + family + detail`, which names where a failure showed and not what caused it, so an
+ * absence is a failure not seen again and never a repair. `issueFacts` states them as one phrase.
+ * Comparable means the family's tasks, hidden expectations included, the scoring program, the tools
+ * its checks ran and the Built condition all match the battery that last observed the issue
+ * (`issue-condition.ts`).
+ * Identity deliberately excludes the harness, which is what lets one issue be followed across a
+ * rebuild.
  *
  * Everything the rows already determine is derived rather than stored — the battery's totals, and
- * how many consecutive packets have carried an unowned diagnosis. Only `diagnosis` and `dispute`
+ * how many consecutive packets have carried an unplaced finding. Only `diagnosis` and `dispute`
  * are written from outside, through `attachIssueReadings` after the packet is derived, and neither
  * changes a count or any decision, so the register stays controller-owned.
  *
@@ -49,7 +52,7 @@ import type { JudgeReviewsResult } from "../analyse/judge-reviews.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { BRIEF_FILE, GENERATED_TOOLS_FILE, TOOLS_SPEC_FILE } from "../meta/bundle-layout.ts";
 import { BUILT_AGENTS_FILE } from "../solve/built-starter.ts";
-import { HARNESS_CONFIG_FILE } from "../truth/harness-config.ts";
+import { HARNESS_CONFIG_FILE } from "../correctness-bundle/harness-config.ts";
 import { type BundleFile, isBundleFile } from "./feedback-routing.ts";
 import {
   type BatteryCondition,
@@ -58,11 +61,8 @@ import {
   conditionGaps,
 } from "./issue-condition.ts";
 
-export const REBUILD_ADVICE_SCHEMA = "rebuild-advice/v8";
+export const REBUILD_ADVICE_SCHEMA = "rebuild-advice/v11";
 const REBUILD_ADVICE_LATEST = "rebuild-advice-latest.json";
-
-/** Batteries of recorded absence after which a fix reads as confirmed rather than tentative. */
-const CONFIRMED_FIXED_AFTER = 2;
 
 /** What a battery can say about a family without naming a task. */
 type AdviceIssueKind =
@@ -96,8 +96,8 @@ export type DiagnosisOwner = (typeof DIAGNOSIS_OWNERS)[number];
  *  trace, with the observation that would refute it. It is advice: it selects no owner and changes
  *  no count, and the controller's own routing still decides where any repair goes. */
 export type IssueDiagnosis = {
-  /** The battery whose traces it was read from, so an aging issue shows whether its diagnosis still
-   *  describes the battery in front of the author. */
+  /** The battery whose traces it was read from, which is the battery that last observed its issue:
+   *  a later observation drops it, and that battery's traces are read afresh. */
   runId: string;
   owner: DiagnosisOwner;
   /** The first observed failure boundary: the tool called at that step, or null when the boundary is
@@ -108,10 +108,9 @@ export type IssueDiagnosis = {
   /** One observation a later battery could record that would show the reading is wrong. */
   falsifier: string;
   /** Sampled failing cases the reader said the reading holds for, of those it was shown, of all the
-   *  cases carrying the issues, and the passing contrasts it cited. */
+   *  cases carrying the issues, and the passing contrasts it cited. They are rendered as counts and
+   *  graded into nothing, because no measurement calibrates a grade drawn from them. */
   support: { cases: number; shown: number; matching: number; contrasts: number };
-  /** Derived from `support` by the controller, never stated by the reader. */
-  confidence: "low" | "medium" | "high";
 };
 
 export type AdviceIssue = {
@@ -126,29 +125,37 @@ export type AdviceIssue = {
   denominator: number;
   firstSeenRunId: string;
   lastSeenRunId: string;
-  /** Batteries since `lastSeenRunId` in which the family ran and the issue was absent; zero when
-   *  the latest battery observed it. A family that did not run cannot age its issues. */
+  /** Complete rechecks since `lastSeenRunId`: later batteries on a comparable condition in which
+   *  every case of the family was truth-verified and the issue was absent. A partial recheck counts
+   *  nothing, since the case left without a verdict may be the one that failed. */
   absentBatteries: number;
-  /** The latest observation followed an absence: the issue came back. */
+  /** Some observation after the first followed a complete recheck that did not observe it. */
   returned: boolean;
-  /** The family left the task set, so this battery could not observe the issue. Retirement proves
-   *  no fix, which is why it is a separate fact from absence: read as absence, it would age towards
-   *  fixed while the advice asked the author to move something it cannot observe. */
+  /** The family left the task set, so this battery could not observe the issue. That is a separate
+   *  fact from absence: counted as a recheck, it would say the failure was not seen again on tasks
+   *  no battery posed. */
   retired: boolean;
   /** The condition of the battery that last observed the issue, which every later absence is
    *  compared against. */
   observedUnder: IssueCondition;
   /** What moved when the latest battery that ran the family without the issue was not comparable;
-   *  empty otherwise. Non-empty, the absence is carried as unmeasured rather than aged: identical
+   *  empty otherwise. Non-empty, the absence is unmeasured rather than a recheck: identical
    *  inputs under a weaker evaluator, or other inputs altogether, make an issue vanish unrepaired. */
   unmeasured: ConditionGap[];
-  /** The diagnosis reader's structured reading; null when none was read or the reading
-   *  failed. It is carried forward while the issue lives, so one reading serves later batteries. */
+  /** The diagnosis reader's reading of the battery that last observed the issue; null when none was
+   *  read or the reading failed. It stays with that observation, so a partial recheck carries it and
+   *  the next observation drops it: a reading of earlier traces would otherwise stand for a battery
+   *  whose reader abstained, failed or never ran. */
   diagnosis: IssueDiagnosis | null;
   /** The epoch reviewer's argument that this failure belongs to the evaluation. The register keeps
    *  counting a disputed issue: a dispute is a reason not to rebuild the agent around it, never a
-   *  reason to stop observing it. */
+   *  reason to stop observing it. It survives a re-observation only under `observedUnder`. */
   dispute: string | null;
+  /** A Judge issue every one of whose counted cases this battery's epoch review settled in the
+   *  check's favour, each on an artifact it read, with a probe in which the Judge's reading moved the
+   *  check. It stops the issue standing for this battery alone: the next battery that observes the
+   *  disagreement records it afresh, without the flag. */
+  judgeSettled?: true;
 };
 
 type AdviceFamilyRow = {
@@ -157,9 +164,9 @@ type AdviceFamilyRow = {
   passed: number;
   unaccepted: number;
   nonResults: number;
-  /** The digest of the family's public inputs in this battery, or null when they could not be
-   *  vouched for. */
-  publicInputs: string | null;
+  /** The digest of the family's whole tasks in this battery, hidden expectations included, or
+   *  null when they could not be vouched for. */
+  taskInputs: string | null;
 };
 
 /** A finding no bundle file holds, which is therefore an observation and always advice: the
@@ -186,9 +193,10 @@ export type RebuildAdvicePacket = {
   /** The Built model pin the battery was measured under, which is the pin its climb readout is read
    *  under when a later reader has only this packet. */
   backendPin: string;
-  /** The scoring program and the measured condition the battery ran under; with each family's
-   *  `publicInputs`, the condition its issues were observed under. */
+  /** The scoring program, the tools its checks ran and the measured condition the battery ran
+   *  under; with each family's `taskInputs`, the condition its issues were observed under. */
   scoringHash: string;
+  checkTools: string | null;
   measuredCondition: string;
   /** The battery, one row per family. The totals are read off these rows rather than stored beside
    *  them, where the two could come to disagree. */
@@ -213,11 +221,11 @@ type Observed = {
   denominator: number;
 };
 
-/** The battery an advance reads: the families it ran, with the scoring program and the Built
- *  condition every one of them ran under. */
+/** The battery an advance reads: the families it ran, with the scoring program, the check tools and
+ *  the Built condition every one of them ran under. */
 type MeasuredBattery = { families: readonly AdviceFamilyRow[] } & Pick<
   IssueCondition,
-  "scoringHash" | "measuredCondition"
+  "scoringHash" | "checkTools" | "measuredCondition"
 >;
 
 /** Standing issues the render shows, and the findings and claim length beside them. Unbounded, one
@@ -230,27 +238,39 @@ const FINDING_CLAIM_BYTES = 600;
 
 /** How the unmeasured line names each part of the condition that moved. */
 const GAP_WORDS: Record<ConditionGap, string> = {
-  "public-inputs": "public inputs",
+  "task-inputs": "task inputs",
   scoring: "scoring program",
+  "check-tools": "check tools",
   "built-condition": "Built model or resources",
 };
 
-/** An issue this battery observed, that nothing contests and whose family is still in the task set:
- *  the one thing the diagnosis reader, the epoch reviewer and the render all mean by "standing". */
-export function isStanding(issue: AdviceIssue): boolean {
-  return (
-    !issue.retired && issue.dispute === null && issue.absentBatteries === 0 && issue.unmeasured.length === 0
-  );
-}
+/** No complete recheck since its last observation, comparable or not, and a family still in the task
+ *  set: an issue this battery observed, or one it carried because it could not recheck it. */
+const unrechecked = (issue: AdviceIssue) =>
+  !issue.retired && issue.absentBatteries === 0 && issue.unmeasured.length === 0;
 
-/** The word for one issue's recorded facts, derived here for readers that show a status rather
- *  than act on one, so that no reader stores a second copy of the lifecycle. */
-export function issueStatusWord(issue: AdviceIssue): string {
-  if (issue.retired) return "retired";
-  if (issue.dispute !== null) return "disputed";
-  if (issue.unmeasured.length > 0) return "unmeasured";
-  if (issue.absentBatteries === 0) return issue.returned ? "regressed" : "active";
-  return issue.absentBatteries >= CONFIRMED_FIXED_AFTER ? "confirmed-fixed" : "tentatively-fixed";
+/** Unrechecked, undisputed and not settled by an epoch review's probe. */
+export const isStanding = (issue: AdviceIssue): boolean =>
+  unrechecked(issue) && issue.dispute === null && issue.judgeSettled !== true;
+
+const gapWords = (issue: AdviceIssue) => issue.unmeasured.map((gap) => GAP_WORDS[gap]).join(", ");
+
+/** The register's facts about one issue as one phrase, for the readers that show them. */
+export function issueFacts(issue: AdviceIssue): string {
+  const rechecks = issue.absentBatteries;
+  return [
+    `first seen ${issue.firstSeenRunId}`,
+    rechecks === 0
+      ? `last seen ${issue.lastSeenRunId}`
+      : `not observed in ${rechecks} complete recheck${rechecks === 1 ? "" : "s"} since ${issue.lastSeenRunId}`,
+    issue.returned ? "seen again after an absence" : null,
+    issue.unmeasured.length === 0 ? null : `latest recheck not comparable (${gapWords(issue)} changed)`,
+    issue.retired ? "family left the task set" : null,
+    issue.dispute === null ? null : "disputed",
+    issue.judgeSettled === true ? "settled by an epoch review" : null,
+  ]
+    .filter((fact) => fact !== null)
+    .join(", ");
 }
 
 export function adviceIssueId(kind: AdviceIssueKind, family: string, detail: string | null): string {
@@ -277,7 +297,7 @@ function familyRows(analysis: IterationAnalysis, condition: BatteryCondition): A
       passed,
       unaccepted,
       nonResults,
-      publicInputs: condition.familyInputs.get(family) ?? null,
+      taskInputs: condition.familyInputs.get(family) ?? null,
     }))
     .sort((a, b) => a.family.localeCompare(b.family));
 }
@@ -356,10 +376,10 @@ function observedIssues(
   return out;
 }
 
-/** Advance the register by one battery: an observed issue resets its absence and remembers whether
- *  it came back, and an unobserved one ages only when its family actually ran on a comparable
- *  condition. A Judge issue that no complete Judge review could observe is carried unchanged rather
- *  than aged towards a fix, because an absent review is not evidence of absence. */
+/** Advance the register by one battery: an observed issue resets its rechecks and remembers whether
+ *  it came back, and an unobserved one counts a recheck only when every case of its family was
+ *  verified on a comparable condition. A Judge issue that no complete Judge review could observe is
+ *  carried unchanged, because an absent review is not evidence of absence. */
 export function advanceIssues(
   previous: readonly AdviceIssue[],
   observed: readonly Observed[],
@@ -369,8 +389,9 @@ export function advanceIssues(
 ): AdviceIssue[] {
   const byFamily = new Map(battery.families.map((row) => [row.family, row] as const));
   const conditionOf = (family: string): IssueCondition => ({
-    publicInputs: byFamily.get(family)?.publicInputs ?? null,
+    taskInputs: byFamily.get(family)?.taskInputs ?? null,
     scoringHash: battery.scoringHash,
+    checkTools: battery.checkTools,
     measuredCondition: battery.measuredCondition,
   });
   const byId = new Map(previous.map((issue) => [issue.id, issue] as const));
@@ -380,6 +401,10 @@ export function advanceIssues(
     const id = adviceIssueId(entry.kind, entry.family, entry.detail);
     seen.add(id);
     const prior = byId.get(id);
+    const now = conditionOf(entry.family);
+    // Identity names no cause: a dispute an evaluator defect earned would otherwise suspend the
+    // solver failure its repair now exposes.
+    const same = prior !== undefined && conditionGaps(prior.observedUnder, now).length === 0;
     next.push({
       id,
       kind: entry.kind,
@@ -392,20 +417,17 @@ export function advanceIssues(
       absentBatteries: 0,
       returned: prior !== undefined && (prior.absentBatteries > 0 || prior.returned),
       retired: false,
-      observedUnder: conditionOf(entry.family),
+      observedUnder: now,
       unmeasured: [],
-      diagnosis: prior?.diagnosis ?? null,
-      // A disputed issue observed again is still disputed: the dispute is about whose defect the
-      // failure is, and seeing it a second time is not an answer to that question.
-      dispute: prior?.dispute ?? null,
+      diagnosis: null,
+      // Seen again on the same bytes, a disputed issue is still disputed: the dispute is about whose
+      // defect the failure is, and seeing it a second time is not an answer to that question.
+      dispute: same ? prior.dispute : null,
     });
   }
   for (const issue of previous) {
     if (seen.has(issue.id)) continue;
-    const family = byFamily.get(issue.family);
-    const ran =
-      family === undefined ? undefined : { verified: family.verified, now: conditionOf(issue.family) };
-    next.push(agedIssue(issue, ran, judgeReview));
+    next.push(agedIssue(issue, byFamily.get(issue.family), conditionOf(issue.family), judgeReview));
   }
   return next.sort(
     (a, b) =>
@@ -415,32 +437,27 @@ export function advanceIssues(
   );
 }
 
-/** `ran` is the family's truth-verified case count and condition in this battery, or undefined when
- *  the family is not in it at all. Absence of the family retires the issue; a family the provider
- *  never let run observed nothing and moves it neither way, which is the same carry the Judge branch
- *  below makes for the same reason. A battery of provider non-results still counts every family in
- *  it as having run, so the zero-verified branch is what keeps those issues from ageing. A family
- *  that ran on another condition than the one that observed the issue leaves it unmeasured, with
- *  its absence count where it was. */
+/** `family` is the issue's family row in this battery, undefined when the family is not in it, and
+ *  `now` the condition it ran under. Absence of the family retires the issue. Absence of the issue
+ *  counts only when the family's recheck is complete, every case of it truth-verified with no
+ *  non-result and no unaccepted attempt, because the case that exposed the issue may be the one left
+ *  without a verdict. Otherwise the issue is carried unchanged, as the Judge branch below carries it
+ *  for the same reason. A family that ran on another condition than the one that observed the issue
+ *  leaves it unmeasured, with its recheck count where it was. */
 function agedIssue(
   issue: AdviceIssue,
-  ran: { verified: number; now: IssueCondition } | undefined,
+  family: AdviceFamilyRow | undefined,
+  now: IssueCondition,
   judgeReview: "complete" | "incomplete",
 ): AdviceIssue {
-  if (ran === undefined) return { ...issue, retired: true, dispute: null };
-  if (ran.verified === 0) return issue;
+  if (family === undefined) return { ...issue, retired: true, dispute: null };
+  if (family.verified === 0 || family.unaccepted + family.nonResults > 0) return issue;
   if (issue.kind.startsWith("judge-") && judgeReview === "incomplete") return issue;
   // An issue the battery no longer shows carries no dispute: a dispute kept across batteries of
   // absence promises a withholding the controller is no longer applying.
-  const gaps = conditionGaps(issue.observedUnder, ran.now);
-  if (gaps.length > 0) return { ...issue, unmeasured: gaps, retired: false, dispute: null };
-  return {
-    ...issue,
-    absentBatteries: issue.absentBatteries + 1,
-    unmeasured: [],
-    retired: false,
-    dispute: null,
-  };
+  const unmeasured = conditionGaps(issue.observedUnder, now);
+  const absentBatteries = issue.absentBatteries + (unmeasured.length === 0 ? 1 : 0);
+  return { ...issue, absentBatteries, unmeasured, retired: false, dispute: null };
 }
 
 /** Attach what the two review readers said to the register this battery just advanced. They run
@@ -449,12 +466,14 @@ function agedIssue(
  *
  *  A dispute suspends an issue instead of closing it: the author is told not to rebuild around it,
  *  and the next battery still counts it. Only a standing issue can be suspended, because disputing
- *  one already fixed or retired would resurrect it. */
+ *  one a complete recheck did not observe, or one retired, would resurrect it. */
 export function attachIssueReadings(
   packet: RebuildAdvicePacket,
   readings: {
     diagnoses?: ReadonlyArray<{ issueIds: readonly string[]; diagnosis: IssueDiagnosis }>;
     disputes?: ReadonlyArray<{ issueId: string; reason: string }>;
+    /** Judge issue ids the epoch review settled in the check's favour, one per settled case. */
+    settled?: readonly string[];
   },
 ): RebuildAdvicePacket {
   // One reading may cover several issues, which is how the reader says two kinds in two families
@@ -465,16 +484,22 @@ export function attachIssueReadings(
     ),
   );
   const disputed = new Map((readings.disputes ?? []).map((row) => [row.issueId, row.reason] as const));
-  if (diagnosed.size === 0 && disputed.size === 0) return packet;
+  const settled = readings.settled ?? [];
+  if (diagnosed.size === 0 && disputed.size === 0 && settled.length === 0) return packet;
   return {
     ...packet,
     issues: packet.issues.map((issue) => {
       const reading = diagnosed.get(issue.id);
-      const dispute = isStanding(issue) ? disputed.get(issue.id) : undefined;
-      if (reading === undefined && dispute === undefined) return issue;
+      const standing = isStanding(issue);
+      const dispute = standing ? disputed.get(issue.id) : undefined;
+      // Settled once every case the issue counts is, so one settled case leaves its siblings standing.
+      const settles =
+        standing && dispute === undefined && settled.filter((id) => id === issue.id).length >= issue.count;
+      if (reading === undefined && dispute === undefined && !settles) return issue;
       return {
         ...issue,
         ...(dispute === undefined ? null : { dispute }),
+        ...(settles ? { judgeSettled: true as const } : null),
         ...(reading === undefined ? null : { diagnosis: reading }),
       };
     }),
@@ -518,6 +543,7 @@ export function deriveRebuildAdvice(
     analysisDigest: hashJsonBytes(analysis),
     backendPin: analysis.identities.backendPin,
     scoringHash: condition.scoringHash,
+    checkTools: condition.checkTools,
     measuredCondition: condition.measuredCondition,
     families,
     blockingByCheck: analysis.battery.blockingByCheck,
@@ -526,7 +552,12 @@ export function deriveRebuildAdvice(
       previous?.issues ?? [],
       observed,
       analysis.runId,
-      { families, scoringHash: condition.scoringHash, measuredCondition: condition.measuredCondition },
+      {
+        families,
+        scoringHash: condition.scoringHash,
+        checkTools: condition.checkTools,
+        measuredCondition: condition.measuredCondition,
+      },
       judgeReview,
     ),
     // Advice only: counts and families, never task ids.
@@ -610,15 +641,14 @@ export function environmentOwned(issue: AdviceIssue): boolean {
 
 function issueLine(issue: AdviceIssue): string {
   const kind = issue.detail ?? "unknown";
-  // The line says which side of the split a non-result fell on, because the standing-issues heading
-  // tells the author an environment non-result calls for an unchanged rerun, and a `verifier` kind
-  // sitting silently under that sentence reads as covered by it when it is not.
+  // The line says which side of the split a non-result fell on, because rule 15 gives an
+  // environment failure to the environment owner, and a `verifier` kind is not one.
   const nonResult = environmentOwned(issue)
-    ? `environment non-results of kind ${kind}`
+    ? `environment non-results of kind ${kind}, owned by the environment`
     : `runtime non-results of kind ${kind}, a kind that does not establish an environment failure`;
   const words = issue.kind === "non-result" ? nonResult : ISSUE_WORDS[issue.kind];
   const diagnosis = issue.diagnosis === null ? "" : `\n  ${diagnosisLine(issue.diagnosis)}`;
-  return `- [${issueStatusWord(issue)}] ${issue.family}: ${issue.count}/${issue.denominator} ${words} (first seen ${issue.firstSeenRunId}, last seen ${issue.lastSeenRunId})${diagnosis}`;
+  return `- ${issue.family}: ${issue.count}/${issue.denominator} ${words} (${issueFacts(issue)})${diagnosis}`;
 }
 
 /** The diagnosis as the author reads it: which file the failure points to, where the solve failed,
@@ -634,14 +664,14 @@ export function diagnosisLine(diagnosis: IssueDiagnosis): string {
       : `, ${support.contrasts} passing contrast${support.contrasts === 1 ? "" : "s"}`;
   const where = boundary.tool === null ? "at the solve's end" : `at a call to ${boundary.tool}`;
   const reading = /[.!?]$/.test(boundary.reading) ? boundary.reading : `${boundary.reading}.`;
-  return `diagnosis (${diagnosis.runId}, ${diagnosis.confidence} confidence: holds for ${support.cases} of ${support.shown} sampled of ${support.matching} failing cases${contrasts}): ${diagnosis.owner}. First failure boundary ${where}: ${reading} Falsifier: ${diagnosis.falsifier}`;
+  return `diagnosis (${diagnosis.runId}: holds for ${support.cases} of ${support.shown} sampled of ${support.matching} failing cases${contrasts}): ${diagnosis.owner}. First failure boundary ${where}: ${reading} Falsifier: ${diagnosis.falsifier}`;
 }
 
-/** What is failing now, largest first, capped. A fixed issue is deliberately absent: which families
- *  passed every verified case is the climb readout's family line, and naming them here as well asks
- *  opposite things of one family — preserve it as a confirmed fix, and harden it as a sentinel. A
- *  retired issue names a family that left the task set, which the author can neither move nor keep.
- *  The register records both either way, so an issue that returns is still a regression. */
+/** What is failing now, largest first, capped. An issue a complete recheck did not observe is
+ *  deliberately absent: which families passed every verified case is the climb readout's family
+ *  line, and naming them here as well asks opposite things of one family — keep it, and harden it as
+ *  a sentinel. A retired issue names a family that left the task set, which the author can neither
+ *  move nor keep. The register records both either way, so an issue observed again says it returned. */
 function standingLines(issues: readonly AdviceIssue[]): string[] {
   const standing = [...issues]
     .filter(isStanding)
@@ -649,24 +679,18 @@ function standingLines(issues: readonly AdviceIssue[]): string[] {
   if (standing.length === 0) return [];
   const shown = standing.slice(0, RENDERED_ISSUES);
   const omitted = standing.length > shown.length ? ` (${shown.length} of ${standing.length} shown)` : "";
-  return [
-    `Standing issues, largest first${omitted}. Use the recorded owners as starting points for diagnosis. An environment non-result alone calls for an unchanged rerun, not a harness change.`,
-    ...shown.map(issueLine),
-  ];
+  return [`Standing issues, largest first${omitted}:`, ...shown.map(issueLine)];
 }
 
 /** Issues the latest battery could not measure, named as such. Left out, an issue that vanished
- *  when its family's tasks, its evaluator or its Built condition changed reads exactly like one the
- *  harness repaired, because a fixed issue is also absent from the standing lines. */
+ *  when its family's tasks, its evaluator or its Built condition changed reads exactly like one a
+ *  complete recheck did not observe, because that one is also absent from the standing lines. */
 function unmeasuredLine(issues: readonly AdviceIssue[]): string | null {
-  const unmeasured = issues.filter((issue) => issueStatusWord(issue) === "unmeasured");
+  const unmeasured = issues.filter((issue) => !issue.retired && issue.unmeasured.length > 0);
   if (unmeasured.length === 0) return null;
   const shown = unmeasured
     .slice(0, RENDERED_ISSUES)
-    .map(
-      (issue) =>
-        `${issue.family} (${issue.kind}: ${issue.unmeasured.map((gap) => GAP_WORDS[gap]).join(", ")} changed)`,
-    );
+    .map((issue) => `${issue.family} (${issue.kind}: ${gapWords(issue)} changed)`);
   const more = unmeasured.length - shown.length;
   return `Unmeasured issues — absent from this battery, but their family did not rerun under the condition that observed them, so the absence is not a fix: ${shown.join("; ")}${more > 0 ? `; ${String(more)} more` : ""}.`;
 }
@@ -698,7 +722,7 @@ function findingLines(findings: readonly AdviceFinding[]): string[] {
  *  opposite repairs -- raise the rule, or give the battery a task that reaches it. Zero verified
  *  cases prove nothing about any check, so the roster stays silent until a battery has graded
  *  something. */
-function blockingLine(
+export function blockingLine(
   blockingByCheck: Record<string, number>,
   applicableByCheck: Record<string, number>,
   verified: number,
@@ -720,7 +744,7 @@ function blockingLine(
   // The sentence is appended only when one check really does carry every failure; beside a single
   // failed case and six checks it would say nothing.
   const alone = blocked.length === 1 && blocked[0]?.[1] === verified - passed;
-  return [
+  const lines = [
     blocked.length === 0
       ? null
       : `Verified failures by declared check (${verified - passed} failed; a case may block on several): ${blocked.map(([checkId, count]) => `${checkId} ${count}`).join(", ")}.${alone ? " One check carrying every failure asks whether its rule is stated in the public contract before the count reads as solver capability." : ""}`,
@@ -730,23 +754,28 @@ function blockingLine(
     unposed.length === 0
       ? null
       : `Declared checks no verified case posed, so this battery measured nothing about them: ${unposed.join(", ")}.`,
-  ]
-    .filter((line): line is string => line !== null)
-    .join("\n");
+  ].filter((line): line is string => line !== null);
+  // A check with no applicable count recorded lands in none of the three lists, so a roster of such
+  // checks alone has nothing to say and must not leave an empty line behind.
+  return lines.length === 0 ? null : lines.join("\n");
 }
 
 /** The one model-visible projection of the issue register: kinds and counts, ordered by what the
- *  next experiment decides. Where the battery landed on the band and what its totals were belong to
- *  the climb readout, which renders above this packet, so neither is repeated here. */
+ *  next experiment decides. Each battery's measured counts belong to the climb readout, which
+ *  renders above this packet, so they are not repeated here. */
 export function renderRebuildAdvice(packet: RebuildAdvicePacket): string {
   const totals = adviceTotals(packet.families);
   const disputed = packet.issues.filter((issue) => issue.dispute !== null && !issue.retired);
+  const settled = packet.issues.filter((issue) => unrechecked(issue) && issue.judgeSettled === true);
   return [
     ...standingLines(packet.issues),
     unmeasuredLine(packet.issues),
     disputed.length === 0
       ? null
-      : `Disputed issues — an epoch review argued these come from the evaluation rather than the harness, so do not rebuild the agent around them: ${disputed.map((issue) => `${issue.family} (${issue.kind})`).join("; ")}.`,
+      : `Disputed issues — an epoch review argued these come from the evaluation rather than the harness: ${disputed.map((issue) => `${issue.family} (${issue.kind})`).join("; ")}.`,
+    settled.length === 0
+      ? null
+      : `Settled Judge disagreements — an epoch review showed by execution that the check stands: ${settled.map((issue) => `${issue.family} (${issue.kind})`).join("; ")}.`,
     blockingLine(packet.blockingByCheck, packet.applicableByCheck, totals.verified, totals.passed),
     packet.judge === null || packet.judge.exit === "none"
       ? null

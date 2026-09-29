@@ -7,8 +7,8 @@
  * checked here. The reader is shown every failing solve as addressable steps, with the harness
  * surface the solver ran under and a passing solve of the same family beside it. A reading it records
  * is structured, carries a boundary the controller resolved to a shown step and a falsifier, and has
- * its confidence computed rather than stated. And a change to protected detail alone leaves its
- * prompt byte-identical.
+ * its support counted rather than graded. And a change to protected detail alone leaves its prompt
+ * byte-identical.
  */
 import { afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, writeFileSync } from "../src/meta/filesystem.ts";
@@ -21,14 +21,19 @@ import type { ReadCaseTrace } from "../src/claim/trace-read.ts";
 import type { JsonValue } from "../src/meta/json-shape.ts";
 import type { CaseEvidence } from "../src/analyse/iteration-analysis.ts";
 import type { ReaderTool, runReaderTurn } from "../src/review/review-reader.ts";
-import { adviceIssueId, attachIssueReadings, renderRebuildAdvice } from "../src/author/rebuild-advice.ts";
+import {
+  adviceIssueId,
+  attachIssueReadings,
+  isStanding,
+  renderRebuildAdvice,
+} from "../src/author/rebuild-advice.ts";
 import {
   type DiagnosisReaderEvidence,
   diagnosableIssues,
   diagnosisPacket,
   readDiagnoses,
 } from "../src/review/diagnosis-reader.ts";
-import { diagnosisConfidence, recordDiagnosisTool } from "../src/review/diagnosis-tool.ts";
+import { recordDiagnosisTool } from "../src/review/diagnosis-tool.ts";
 import { batteryCensus, compileSolve } from "../src/review/solve-steps.ts";
 
 const REVIEW = {
@@ -43,10 +48,13 @@ type Call = { tool: string; ok: boolean | null; digest?: string; result: string;
 
 type Row = { taskId: string; family: string; outcome: "pass" | "fail" | "unaccepted"; calls: Call[] };
 
+/** The battery's artifact writer, the tool every beams solve calls. */
+const WRITER = "write_layout";
+
 /** A failing beams solve: it reads the constants, then the writer refuses the pinned joint. */
 const WRITER_REFUSES: Call[] = [
   { tool: "read_constants", ok: true, result: '{"span":12}' },
-  { tool: "write_layout", ok: false, result: "unknown support kind 'pinned'", args: '{"support":"pinned"}' },
+  { tool: WRITER, ok: false, result: "unknown support kind 'pinned'", args: '{"support":"pinned"}' },
   { tool: "submit", ok: true, result: "Submitted." },
 ];
 
@@ -59,9 +67,9 @@ const ROWS: Row[] = [
     outcome: "fail",
     calls: [
       { tool: "read_constants", ok: true, result: '{"span":9}' },
-      { tool: "write_layout", ok: false, digest: "same", result: "unknown support kind 'pinned'" },
-      { tool: "write_layout", ok: false, digest: "same", result: "unknown support kind 'pinned'" },
-      { tool: "write_layout", ok: false, digest: "same", result: "unknown support kind 'pinned'" },
+      { tool: WRITER, ok: false, digest: "same", result: "unknown support kind 'pinned'" },
+      { tool: WRITER, ok: false, digest: "same", result: "unknown support kind 'pinned'" },
+      { tool: WRITER, ok: false, digest: "same", result: "unknown support kind 'pinned'" },
       { tool: "submit", ok: true, result: "Submitted." },
     ],
   },
@@ -71,7 +79,7 @@ const ROWS: Row[] = [
     outcome: "pass",
     calls: [
       { tool: "read_constants", ok: true, result: '{"span":6}' },
-      { tool: "write_layout", ok: true, result: "layout written with a fixed support" },
+      { tool: WRITER, ok: true, result: "layout written with a fixed support" },
       { tool: "submit", ok: true, result: "Submitted." },
     ],
   },
@@ -119,7 +127,10 @@ function onlyTool(tools: readonly ReaderTool[]): ReaderTool {
   return tool;
 }
 
-function battery() {
+/** An issue the battery `r2` observed, which is the only kind the reader is offered. */
+const observed = (overrides?: Parameters<typeof issue>[0]) => issue({ lastSeenRunId: "r2", ...overrides });
+
+function battery(rows: readonly Row[] = ROWS) {
   const root = scratchDir("ana-diagnosis-reader-");
   const domain = join(root, "domains", "truss");
   const log = new EvidenceLog(join(domain, "runs", "r2"));
@@ -128,7 +139,7 @@ function battery() {
     schema: "judge-public-context/v1",
     publicDomain: { domain: "steel roof trusses", hiddenReference: "PRIVATE_DOMAIN" },
   });
-  const cases = ROWS.map((row): CaseEvidence => {
+  const cases = rows.map((row): CaseEvidence => {
     const dir = `cases/${row.taskId}`;
     log.write(`${dir}/trace.json`, {
       schema: "case-trace/v4",
@@ -155,7 +166,7 @@ function battery() {
       schema: "built-starter-registration/v2",
       tools: [
         { name: "read_constants", owner: "domain", authority: "read" },
-        { name: "write_layout", owner: "domain", authority: "write" },
+        { name: WRITER, owner: "domain", authority: "write" },
       ],
     });
     if (row.outcome === "fail") log.write(`${dir}/verifier.json`, { message: "PRIVATE_VERIFIER_A" });
@@ -181,15 +192,13 @@ function battery() {
     join(measuredDir, "agent", "tools-spec.json"),
     JSON.stringify({
       presets: ["shell"],
-      tools: [
-        { name: "write_layout", kind: "artifact-writer", description: "Writes supports as fixed or roller." },
-      ],
+      tools: [{ name: WRITER, kind: "artifact-writer", description: "Writes supports as fixed or roller." }],
     }),
   );
   const analysis = { slug: "truss", runId: "r2", cases };
   const advice = advicePacket([
-    issue({ count: 3, denominator: 4 }),
-    issue({ id: JOINTS, kind: "unaccepted", family: "joints", count: 1, denominator: 1 }),
+    observed({ count: 3, denominator: 4 }),
+    observed({ id: JOINTS, kind: "unaccepted", family: "joints", count: 1, denominator: 1 }),
   ]);
   return { root, log, measuredDir, analysis, advice };
 }
@@ -230,14 +239,22 @@ describe("what the diagnosis reader leaves behind", () => {
 describe("what the diagnosis reader is shown", () => {
   test("every failing solve as addressable steps, beside the harness surface and a passing contrast", async () => {
     const { prompt, evidence } = await read(battery());
-    expect(prompt).toContain(
-      '  s2 write_layout ERR turn 2 1.5s → unknown support kind \'pinned\' | args: {"support":"pinned"}',
-    );
+    // A failing solve shows which tool it called and how the call ended, and not what it read or sent.
+    expect(prompt).toContain("  s2 write_layout ERR turn 2 1.5s\n");
+    expect(prompt).not.toContain("unknown support kind");
+    expect(prompt).not.toContain('{"support":"pinned"}');
     // Three identical refusals in a row are one fact, shown once as a range.
     expect(prompt).toContain("  s2–s4 ×3 write_layout ERR");
     expect(prompt).toContain("  end stop stop; 3 of 24 turns;");
     expect(prompt).toContain("accepted submission: yes");
+    // The passing contrast, whose artifact the battery already publishes, shows its payloads.
+    expect(prompt).toContain("  s2 write_layout ok turn 2 1.5s → layout written with a fixed support");
+    expect(prompt).toContain("accepted submission: yes; final text: Done.");
     expect(prompt).toContain("Showing 3 of 3 failing solves; 1 passing solve(s) of this family to contrast.");
+    // Each issue states where it was seen, and no lifecycle word the record cannot settle.
+    expect(prompt).toContain(
+      `ISSUE ${BEAMS.slice(0, 12)} — family beams, kind verified-fail: 3 of 4, first seen r1, last seen r2.`,
+    );
     expect(prompt).toContain("c04 (pass)");
     expect(prompt).toContain("- write_layout [artifact-writer]: Writes supports as fixed or roller.");
     expect(prompt).toContain("Write the layout with write_layout, then submit.");
@@ -274,12 +291,37 @@ describe("what the diagnosis reader is shown", () => {
     expect((await read(fixture)).evidence.promptDigest).not.toBe(before.evidence.promptDigest);
   });
 
+  test("a failing solve's own values leave the prompt byte-identical, while a passing solve's move it", async () => {
+    // The failing c01 and the passing c04 each carry a candidate's area in what write_layout said and
+    // was sent; the recorder keeps the arguments on the failing row.
+    const withAreas = (failing: string, passing: string) =>
+      ROWS.map((row, index): Row => {
+        const area = index === 0 ? failing : index === 3 ? passing : null;
+        if (area === null) return row;
+        const calls = row.calls.map((entry) =>
+          entry.tool === WRITER
+            ? { ...entry, result: `candidate A-${area}mm2 written`, args: `{"area":${area}}` }
+            : entry,
+        );
+        return { ...row, calls };
+      });
+    const before = await read(battery(withAreas("1200", "900")));
+    const after = await read(battery(withAreas("1350", "900")));
+    expect(before.prompt).not.toContain("1200");
+    expect(before.prompt).toContain("→ candidate A-900mm2 written");
+    expect(after.prompt).toBe(before.prompt);
+    expect(after.evidence.promptDigest).toBe(before.evidence.promptDigest);
+    // The nearest hostile case: the passing solve's value is shown, so moving it alone moves the digest.
+    const passing = await read(battery(withAreas("1200", "950")));
+    expect(passing.evidence.promptDigest).not.toBe(before.evidence.promptDigest);
+  });
+
   test("offers at most six issues and records how many it left out", async () => {
     const families = ["f1", "f2", "f3", "f4", "f5", "f6", "f7"];
     const fixture = {
       ...battery(),
       advice: advicePacket(
-        families.map((family) => issue({ id: adviceIssueId("verified-fail", family, null), family })),
+        families.map((family) => observed({ id: adviceIssueId("verified-fail", family, null), family })),
       ),
     };
     const { evidence } = await read(fixture);
@@ -290,22 +332,34 @@ describe("what the diagnosis reader is shown", () => {
   test("offers only standing solve-side issues, never the Judge's disagreements or the environment's", () => {
     const judge = adviceIssueId("judge-failed-verifier-passed", "beams", null);
     const provider = adviceIssueId("non-result", "beams", "provider");
-    const offered = diagnosableIssues([
-      issue({ id: judge, kind: "judge-failed-verifier-passed" }),
-      issue({ id: provider, kind: "non-result", detail: "provider" }),
-      issue({ id: JOINTS, kind: "unaccepted", family: "joints", count: 1, denominator: 1 }),
-      issue({ count: 1, denominator: 4 }),
-      issue({ id: adviceIssueId("verified-fail", "old", null), family: "old", absentBatteries: 2 }),
-    ]);
+    const offered = diagnosableIssues(
+      [
+        observed({ id: judge, kind: "judge-failed-verifier-passed" }),
+        observed({ id: provider, kind: "non-result", detail: "provider" }),
+        observed({ id: JOINTS, kind: "unaccepted", family: "joints", count: 1, denominator: 1 }),
+        observed({ count: 1, denominator: 4 }),
+        observed({ id: adviceIssueId("verified-fail", "old", null), family: "old", absentBatteries: 2 }),
+      ],
+      "r2",
+    );
     expect(offered.map((row) => row.id)).toEqual([JOINTS, BEAMS]);
+  });
+
+  test("offers no standing issue an earlier battery last saw, since these traces hold no failing solve of it", () => {
+    // A family that left a case without a verdict carries its unobserved issues unchanged, and they
+    // stand; offered here, each would arrive as "Showing 0 of 0 failing solves".
+    const carried = issue({ lastSeenRunId: "r1" });
+    expect(isStanding(carried)).toBe(true);
+    const seen = observed({ id: JOINTS, kind: "unaccepted", family: "joints" });
+    expect(diagnosableIssues([carried, seen], "r2").map((row) => row.id)).toEqual([JOINTS]);
   });
 });
 
 describe("what a reading records", () => {
-  test("a structured diagnosis whose boundary resolves to the shown step and whose confidence is computed", async () => {
+  test("a structured diagnosis whose boundary resolves to the shown step and whose support is counted", async () => {
     const fixture = battery();
     const { evidence, replies } = await read(fixture, [WRITER_READING]);
-    expect(replies[0]).toBe("recorded for 1 issue(s): high confidence (3 of 3 shown, 1 contrast(s))");
+    expect(replies[0]).toBe("recorded for 1 issue(s): holds for 3 of 3 shown, 1 contrast(s)");
     expect(evidence.diagnoses).toEqual([
       {
         issueIds: [BEAMS],
@@ -313,11 +367,10 @@ describe("what a reading records", () => {
         diagnosis: {
           runId: "r2",
           owner: "agent/tools-spec.json",
-          boundary: { tool: "write_layout", reading: WRITER_READING.boundaryReading },
+          boundary: { tool: WRITER, reading: WRITER_READING.boundaryReading },
           cause: WRITER_READING.cause,
           falsifier: WRITER_READING.falsifier,
           support: { cases: 3, shown: 3, matching: 3, contrasts: 1 },
-          confidence: "high",
         },
       },
     ]);
@@ -346,7 +399,6 @@ describe("what a reading records", () => {
       matching: 4,
       contrasts: 0,
     });
-    expect(evidence.diagnoses[0]?.diagnosis.confidence).toBe("medium");
   });
 
   test.each([
@@ -437,18 +489,6 @@ describe("what a reading records", () => {
   });
 });
 
-describe("confidence is how far the reading was sampled", () => {
-  test.each([
-    [{ cases: 3, shown: 4, matching: 9, contrasts: 1 }, "high"],
-    [{ cases: 3, shown: 4, matching: 9, contrasts: 0 }, "medium"],
-    [{ cases: 2, shown: 4, matching: 4, contrasts: 0 }, "medium"],
-    [{ cases: 2, shown: 6, matching: 6, contrasts: 0 }, "low"],
-    [{ cases: 1, shown: 1, matching: 1, contrasts: 1 }, "low"],
-  ] as const)("%o reads %s", (support, expected) => {
-    expect(diagnosisConfidence(support)).toBe(expected);
-  });
-});
-
 describe("a solve compiled into steps", () => {
   const WALLS = { maxTurns: 4, solveMinutes: 1 };
   const trace = (calls: Call[], turns: number): ReadCaseTrace => ({
@@ -465,8 +505,9 @@ describe("a solve compiled into steps", () => {
   });
 
   test("a long solve keeps its opening, first failures and close, and omitted steps cannot be cited", () => {
+    // Alternating tools, since a failing solve's consecutive calls of one tool and status are one step.
     const calls: Call[] = Array.from({ length: 30 }, (_, index) => ({
-      tool: index === 10 ? "write_layout" : "bash",
+      tool: index === 10 ? WRITER : index % 2 === 0 ? "bash" : "read",
       ok: index !== 10,
       result: `step ${index + 1}`,
     }));
@@ -493,12 +534,68 @@ describe("a solve compiled into steps", () => {
     // Each é is two UTF-8 bytes, so the 240-byte bound holds 120 of the 200.
     const solve = compileSolve(
       "c03",
-      "fail",
+      "pass",
       trace([{ tool: "bash", ok: true, result: "é".repeat(200) }], 1),
       WALLS,
       "none",
     );
     expect(solve.text).toContain(`→ ${"é".repeat(120)} […160 bytes omitted]`);
+  });
+
+  test("a solve that did not pass withholds every payload its artifact could ride in, and keeps its structure", () => {
+    const candidate = (mass: string): ReadCaseTrace => {
+      const base = trace(
+        [
+          { tool: "read_constants", ok: true, result: `{"span":12,"best":"truss-${mass}kg"}` },
+          {
+            tool: WRITER,
+            ok: false,
+            result: `truss-${mass}kg refused`,
+            args: `{"label":"truss-${mass}kg"}`,
+          },
+        ],
+        2,
+      );
+      return {
+        ...base,
+        turns: [
+          { stopReason: "toolUse", timingMs: 15_000, errorMessage: "provider stream reset" },
+          { stopReason: "stop", assistantPreview: `Submitted truss-${mass}kg.`, timingMs: 15_000 },
+        ],
+      };
+    };
+    for (const outcome of ["fail", "unaccepted", "non-result"] as const) {
+      const light = compileSolve("c05", outcome, candidate("412"), WALLS, "none");
+      const heavy = compileSolve("c05", outcome, candidate("467"), WALLS, "none");
+      expect(heavy.text).toBe(light.text);
+      expect(light.text).not.toContain("412");
+      expect(light.text).toContain("  s1 read_constants ok turn 1 1.5s\n  s2 write_layout ERR turn 2 1.5s\n");
+      expect(light.text).toContain("turn error turn ?: provider stream reset");
+      expect(light.text).not.toContain("final text:");
+      expect([...light.refs.keys()]).toEqual(["c05.s1", "c05.s2", "c05.end"]);
+    }
+    // Whether two failing calls sent the same arguments is itself their content, so they group on
+    // tool and status alone, and changing one call's arguments leaves the text as it was.
+    const repeated = (second: string) =>
+      compileSolve(
+        "c06",
+        "fail",
+        trace(
+          [
+            { tool: WRITER, ok: false, result: "refused", digest: "a" },
+            { tool: WRITER, ok: false, result: "refused", digest: second },
+          ],
+          2,
+        ),
+        WALLS,
+        "none",
+      ).text;
+    expect(repeated("b")).toBe(repeated("a"));
+    expect(repeated("b")).toContain("  s1–s2 ×2 write_layout ERR");
+    // A passing solve's artifact is already published, so its payloads stay.
+    const passed = compileSolve("c05", "pass", candidate("412"), WALLS, "accepted");
+    expect(passed.text).toContain('→ truss-412kg refused | args: {"label":"truss-412kg"}');
+    expect(passed.text).toContain("final text: Submitted truss-412kg.");
   });
 
   test("a missing trace compiles to nothing citable", () => {
@@ -516,7 +613,7 @@ describe("the tool alone", () => {
       [issue({ count: 3, denominator: 4 })],
     );
     const sink: DiagnosisReaderEvidence = {
-      schema: "diagnosis-reading/v3",
+      schema: "diagnosis-reading/v4",
       slug: "truss",
       runId: "r2",
       readerPin: null,

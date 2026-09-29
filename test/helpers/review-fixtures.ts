@@ -25,12 +25,13 @@ export const BEAMS = adviceIssueId("verified-fail", "beams", null);
 export const JOINTS = adviceIssueId("unaccepted", "joints", null);
 
 /** The condition every fixture battery measured under: one family's public inputs, the scoring
- *  program and the Built model and resource condition. An issue ages towards fixed only across
- *  batteries that share all three, so a test that means a different condition says which part
- *  moved. */
+ *  program, the tools its checks ran and the Built model and resource condition. An absence counts
+ *  as a complete recheck only across batteries that share all four, so a test that means a
+ *  different condition says which part moved. */
 export const MEASURED_UNDER = {
-  publicInputs: "1".repeat(64),
+  taskInputs: "1".repeat(64),
   scoringHash: "2".repeat(64),
+  checkTools: "4".repeat(64),
   measuredCondition: "3".repeat(64),
 } as const;
 
@@ -61,7 +62,6 @@ export const READING: IssueDiagnosis = {
   cause: "the writer tool cannot express a pinned joint",
   falsifier: "a beams solve writes a pinned joint through write_layout and still fails",
   support: { cases: 2, shown: 3, matching: 3, contrasts: 1 },
-  confidence: "medium",
 };
 
 export function issue(overrides: Partial<AdviceIssue> = {}): AdviceIssue {
@@ -93,6 +93,7 @@ export function advicePacket(issues: AdviceIssue[]): RebuildAdvicePacket {
     backendPin: "codex:built-model:high",
     analysisDigest: "d".repeat(64),
     scoringHash: MEASURED_UNDER.scoringHash,
+    checkTools: MEASURED_UNDER.checkTools,
     measuredCondition: MEASURED_UNDER.measuredCondition,
     families: [
       {
@@ -101,7 +102,7 @@ export function advicePacket(issues: AdviceIssue[]): RebuildAdvicePacket {
         passed: 3,
         unaccepted: 0,
         nonResults: 0,
-        publicInputs: MEASURED_UNDER.publicInputs,
+        taskInputs: MEASURED_UNDER.taskInputs,
       },
     ],
     blockingByCheck: {},
@@ -119,6 +120,7 @@ export function reviewState(): ReviewState {
     readChars: 12,
     refused: 0,
     probes: emptyProbeState(),
+    dispositions: [],
     delivered: [
       { path: "evaluator.ts", digest: "", length: 0, pages: [{ start: 0, text: CITATIONS[0]!.quote }] },
     ],

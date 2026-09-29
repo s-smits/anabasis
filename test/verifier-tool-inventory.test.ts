@@ -9,13 +9,19 @@
 import { afterAll, describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs";
 
+import { verifierEnvironmentHashOfTools } from "../src/correctness-bundle/verifier-environment.ts";
 import { chmodSync, mkdirSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { sha256OfFile } from "../src/meta/digest.ts";
 import { isString } from "../src/meta/json-shape.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { join } from "../src/meta/path.ts";
 import { createVerifierHost } from "../src/verify/host.ts";
-import { TOOL_ID_RE, resolveToolInventory } from "../src/verify/tool-inventory.ts";
+import {
+  TOOL_ID_RE,
+  portableFileCount,
+  portableToolTreeCounts,
+  resolveToolInventory,
+} from "../src/verify/tool-inventory.ts";
 import { commandSearchPath, toolTreeSearchDirs } from "../src/verify/solve-command-isolation.ts";
 import { prepareVerifierReads } from "../src/verify/darwin-seatbelt.ts";
 import { exactReadDrift } from "../src/verify/exact-read-attestation.ts";
@@ -104,6 +110,85 @@ describe("resolving the tool inventory", () => {
     expect(resolved.inventory["frame-check"]?.packages).toEqual(["numpy==2.1.0", "openseespy==3.5.1"]);
     expect(resolved.inventory["sh-tool"]).not.toHaveProperty("packages");
     expect(resolved.inventory.cat).not.toHaveProperty("packages");
+  });
+
+  it("records the program a shell wrapper execs as its interpreter, and keeps the shell when the exec names no literal path", () => {
+    // A truss Builder's `bin/truss-analyze` was `#!/bin/sh` over `exec "<tree>/struct-venv/bin/python"
+    // … truss_cli.py`, so the entry named `sh`, bound /bin/sh's bytes and listed no packages, while
+    // the python that decided every verdict went unrecorded.
+    const ws = workspace();
+    // Interpreters without a shebang, as a real python is, so a hand-over ends at them.
+    const interpreter = (dir: string, name: string) => {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, name), `\u007fELF ${name}`);
+      chmodSync(join(dir, name), 0o755);
+      return join(dir, name);
+    };
+    const python = interpreter(join(ws.toolTree, "venv", "bin"), "python3");
+    const sitePackages = join(ws.toolTree, "venv", "lib", "python3.12", "site-packages");
+    mkdirSync(join(sitePackages, "numpy-2.1.0.dist-info"), { recursive: true });
+    const host = scratchDir("ana-host-python-");
+    const hostPython = interpreter(join(host, "bin"), "python3.14");
+    mkdirSync(join(host, "lib", "python3.14", "site-packages", "scipy-1.14.1.dist-info"), {
+      recursive: true,
+    });
+    const bin = join(ws.toolTree, "bin");
+    script(bin, "truss-analyze", [
+      "# authored corotational truss analysis",
+      `exec "${python}" "${join(ws.toolTree, "truss_cli.py")}" "$@"`,
+    ]);
+    // pip's own header for a long interpreter path, which the reseed also writes.
+    script(bin, "truss", [`'''exec' "${python}" "$0" "$@"`, "' '''", "import sys"]);
+    script(bin, "truss-chain", [`exec "${join(bin, "truss")}" "$@"`]);
+    script(bin, "host-analyze", [
+      'root="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"',
+      `PYTHONPATH="$root/ops-arm" exec ${hostPython} "$root/truss_analysis.py" "$@"`,
+    ]);
+    script(bin, "cat-wrapper", ['exec /bin/cat "$@"']);
+    // What only running the shell decides stays the shell's: a variable, a choice, a block, a
+    // search, `env`, and no exec at all.
+    const shellDecides = {
+      rooted: ['ROOT="$(cd "$(dirname "$0")/.." && pwd)"', 'exec "$ROOT/venv/bin/python3" "$@"'],
+      chooser: [`[ -n "$A" ] && exec "${python}" "$@"`, `exec ${hostPython} "$@"`],
+      guarded: [`if [ -n "$A" ]; then`, `  exec "${python}" "$@"`, "fi", `exec ${hostPython} "$@"`],
+      searched: ['exec python3 "$@"'],
+      env: ['exec /usr/bin/env python3 "$@"'],
+      plain: [`"${python}" "$@"`],
+    };
+    for (const [id, lines] of Object.entries(shellDecides)) script(bin, id, lines);
+    const resolved = resolveToolInventory({
+      toolIds: [
+        "truss-analyze",
+        "truss",
+        "truss-chain",
+        "host-analyze",
+        "cat-wrapper",
+        ...Object.keys(shellDecides),
+      ],
+      toolTree: ws.toolTree,
+      pathDirs: ["/bin"],
+    });
+    const venvPython = { kind: "script", interpreter: "python3", interpreterDigest: sha256OfFile(python) };
+    for (const id of ["truss-analyze", "truss", "truss-chain"]) {
+      expect(resolved.inventory[id]).toMatchObject({ ...venvPython, packages: ["numpy==2.1.0"] });
+    }
+    expect(resolved.inventory["host-analyze"]).toMatchObject({
+      kind: "script",
+      interpreter: "python3.14",
+      interpreterDigest: sha256OfFile(hostPython),
+      packages: ["scipy==1.14.1"],
+    });
+    expect(resolved.inventory["cat-wrapper"]).toMatchObject({
+      interpreter: "cat",
+      interpreterDigest: sha256OfFile("/bin/cat"),
+    });
+    for (const id of Object.keys(shellDecides)) {
+      expect(resolved.inventory[id]).toMatchObject({
+        interpreter: "sh",
+        interpreterDigest: sha256OfFile("/bin/sh"),
+      });
+      expect(resolved.inventory[id]).not.toHaveProperty("packages");
+    }
   });
 
   // One program search for the inventory, the check cell and the Built shell (2026-09-16): a program
@@ -195,6 +280,7 @@ describe("resolving the tool inventory", () => {
       }
       const host = createVerifierHost({
         inventory: resolved.inventory,
+        toolTree: ws.toolTree,
         baseDir: ws.cells,
         requireOsSandbox: false,
       });
@@ -240,6 +326,114 @@ describe("resolving the tool inventory", () => {
     expect(resolved.invalid).toEqual(["bad/id"]);
     // An invalid id is not also reported missing: it never entered resolution.
     expect(resolved.inventory["bad/id"]).toBeUndefined();
+  });
+
+  it("counts a large file behind a shim by its bytes, so a same-length change moves the tree digest", () => {
+    // An engine or shared library over 1 MiB behind an unchanged wrapper can change without
+    // changing its length; a tree digest counting it by size would call both one environment.
+    const large = new Uint8Array((1 << 20) + 512).fill(7);
+    const treeDigest = (bytes: Uint8Array) => {
+      const ws = workspace();
+      script(join(ws.toolTree, "bin"), "engine", ['exec "$(dirname "$0")/../lib/engine.bin" "$@"']);
+      mkdirSync(join(ws.toolTree, "lib"), { recursive: true });
+      const engine = join(ws.toolTree, "lib", "engine.bin");
+      writeFileSync(engine, bytes);
+      const read = () => resolveToolInventory({ toolIds: ["engine"], toolTree: ws.toolTree, pathDirs: [] });
+      return { digest: required(read().inventory["engine"], "engine").treeDigest, engine, read };
+    };
+    const original = treeDigest(large);
+    const changed = large.slice();
+    changed[changed.length - 1] = 8;
+
+    expect(treeDigest(changed).digest).not.toBe(original.digest);
+    // A byte-identical copy elsewhere keeps the identity, since a copy keeps no time or inode.
+    expect(treeDigest(large).digest).toBe(original.digest);
+    // A rewrite in place that puts the mtime back to the nanosecond is still reread rather than
+    // answered from memory, since only the kernel sets the ctime.
+    const stamp = `${original.engine}.stamp`;
+    expect(Bun.spawnSync(["touch", "-r", original.engine, stamp]).exitCode).toBe(0);
+    writeFileSync(original.engine, changed);
+    expect(Bun.spawnSync(["touch", "-r", stamp, original.engine]).exitCode).toBe(0);
+    fs.unlinkSync(stamp);
+    expect(required(original.read().inventory["engine"], "engine").treeDigest).not.toBe(original.digest);
+  });
+
+  it("counts a tool tree copied to another path as the same tree, and any byte the copy changed as a new one", () => {
+    // A reseed copies `.toolchain` into the next epoch's workspace and rewrites its launchers,
+    // activation scripts and wrappers to name the new path. Counted by raw bytes, that moved the
+    // tree digest and the environment hash on every reseed, so a task-only round read as scoring
+    // moved and was recorded as a new baseline.
+    const seed = (edit: (root: string) => Record<string, string | Uint8Array> = () => ({})) => {
+      const ws = workspace();
+      const root = fs.realpathSync.native(ws.toolTree);
+      // One occurrence straddles the 1 MiB read boundary, so only a carried tail can see it whole.
+      const engine = new Uint8Array((1 << 20) + 4096).fill(7);
+      engine.set(new TextEncoder().encode(root), (1 << 20) - 5);
+      const files: Record<string, string | Uint8Array> = {
+        "bin/truss-solve": `#!/bin/sh\nexec "${root}/venv/bin/python" "${root}/truss_cli.py" "$@"\n`,
+        "venv/bin/truss": `#!/bin/sh\n'''exec' "${root}/venv/bin/python" "$0" "$@"\n' '''\nimport truss\n`,
+        "venv/bin/activate": `VIRTUAL_ENV="${root}/venv"\nexport VIRTUAL_ENV\n`,
+        "truss_cli.py": "print('solve')\n",
+        "lib/engine.bin": engine,
+        ...edit(root),
+      };
+      for (const [rel, bytes] of Object.entries(files)) {
+        mkdirSync(join(root, rel, ".."), { recursive: true });
+        writeFileSync(join(root, rel), bytes);
+        chmodSync(join(root, rel), 0o755);
+      }
+      const resolved = resolveToolInventory({
+        toolIds: ["truss-solve"],
+        toolTree: ws.toolTree,
+        pathDirs: [],
+      });
+      return {
+        root,
+        tree: required(resolved.inventory["truss-solve"], "truss-solve").treeDigest,
+        environment: verifierEnvironmentHashOfTools(resolved.inventory),
+      };
+    };
+    const original = seed();
+    const copy = seed();
+    expect(copy.root).not.toBe(original.root);
+    expect(copy.tree).toBe(original.tree);
+    expect(copy.environment).toBe(original.environment);
+
+    const moved = [
+      // A byte of a script the wrapper runs, and a byte of the wrapper beside the path it names.
+      seed(() => ({ "truss_cli.py": "print('solve!')\n" })),
+      seed((root) => ({
+        "bin/truss-solve": `#!/bin/sh\nexec "${root}/venv/bin/python" -u "${root}/truss_cli.py"\n`,
+      })),
+      // The same bytes around the path with the path somewhere else in them.
+      seed((root) => ({ "venv/bin/activate": `VIRTUAL_ENV="/venv${root}"\nexport VIRTUAL_ENV\n` })),
+      // A copy still naming the tree it came from runs that tree's interpreter, not its own.
+      seed(() => ({
+        "bin/truss-solve": `#!/bin/sh\nexec "${original.root}/venv/bin/python" "${original.root}/truss_cli.py" "$@"\n`,
+      })),
+    ];
+    for (const changed of moved) {
+      expect(changed.tree).not.toBe(original.tree);
+      expect(changed.environment).not.toBe(original.environment);
+    }
+  });
+
+  it("counts bytes already read as the tree counted the file they were read from, the root taken out across a read boundary too", () => {
+    // A reader holding a file to its recorded count compares the bytes it will return, not a
+    // second read of the path, so the count of bytes in hand has to be the tree's count of the file.
+    const root = fs.realpathSync.native(workspace().toolTree);
+    const named = new Uint8Array((1 << 20) + 4096).fill(7);
+    named.set(new TextEncoder().encode(root), (1 << 20) - 5);
+    writeFileSync(join(root, "bin/engine.bin"), named);
+    writeFileSync(join(root, "bin/wrapper"), `#!/bin/sh\nexec "${root}/bin/engine.bin" "$@"\n`);
+    writeFileSync(join(root, "bin/plain"), "#!/bin/sh\nexit 0\n");
+    const counts = portableToolTreeCounts(root);
+    for (const rel of ["bin/engine.bin", "bin/wrapper", "bin/plain"]) {
+      const path = join(root, rel);
+      const count = required(counts.get(rel), rel);
+      expect(portableFileCount(fs.readFileSync(path), root), rel).toBe(count);
+      expect(count === sha256OfFile(path), rel).toBe(rel === "bin/plain");
+    }
   });
 
   it("admits a plain command name and refuses anything that can address a file", () => {

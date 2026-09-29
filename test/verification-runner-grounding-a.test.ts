@@ -12,7 +12,7 @@ import { readFileSync, existsSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 
 import { afterAll, describe, expect, it } from "bun:test";
-import type { ControlReceipt } from "../src/truth/battery-record.ts";
+import type { ControlReceipt } from "../src/correctness-bundle/battery-record.ts";
 import {
   ACCEPTS,
   EVALUATOR_SOURCE,
@@ -69,6 +69,7 @@ describe("makeVerify external-verifier grounding (C3)", () => {
           attempt: 1,
           checkId: "ghost-ref",
           adapterId: TOOL_ID,
+          artifactInput: true,
         }))
         .sort(bySubject),
     );
@@ -174,6 +175,16 @@ describe("makeVerify external-verifier grounding (C3)", () => {
       expect(unbacked.map((row: { runtimeNonResultKind: string }) => row.runtimeNonResultKind)).toEqual(
         Array(TASKS.tasks.length - verified.length).fill("verifier-throw"),
       );
+      // No verdict, and still the case's own record of which check threw and by what kind.
+      for (const row of unbacked) {
+        const recorded = JSON.parse(
+          readFileSync(join(slugDir, "runs", runId, "cases", row.taskId, "verifier.json"), "utf8"),
+        );
+        expect(recorded).toMatchObject({ ok: null, issues: [], checkReceipts: [] });
+        expect(
+          recorded.checkRuns.filter((run: { outcome: string }) => run.outcome === "threw"),
+        ).toMatchObject([{ checkId: "parts-assigned", errorKind: "generated" }]);
+      }
     },
     60_000,
   );
@@ -286,6 +297,50 @@ describe("makeVerify external-verifier grounding (C3)", () => {
     60_000,
   );
 
+  // A check that throws on the output its timed-out tool never produced is explained by the host's
+  // timeout row, so t3 keeps the host's kind. The same throw after a run the host completed has no
+  // host outage behind it, and stays the author's verifier-throw.
+  const THROWS_ON_GAMMA = (condition: string) =>
+    `if (${condition}) throw new Error("tool gave no output to parse");\n      return run.exitCode === 0;`;
+  it.concurrent.each([
+    {
+      row: "a host timeout",
+      source: GAMMA_WALL_SOURCE.replace("return run.exitCode === 0;", THROWS_ON_GAMMA("run.nonResult")),
+      tool: GAMMA_HANGS_TOOL_SCRIPT,
+      kind: "timeout",
+      outcome: "timeout",
+    },
+    {
+      row: "an executed run",
+      source: VERIFIER_EVALUATOR_SOURCE.replace(
+        "return run.exitCode === 0;",
+        THROWS_ON_GAMMA('JSON.stringify(artifact).includes("gamma")'),
+      ),
+      tool: TOOL_SCRIPT,
+      kind: "verifier-throw",
+      outcome: "executed",
+    },
+  ])(
+    "records a check that throws after $row as $kind",
+    async ({ row, source, tool, kind, outcome }) => {
+      const slugDir = externalSlug(source);
+      installTool(slugDir, tool);
+      const runId = `run-c3-throw-after-${row.replaceAll(" ", "-")}`;
+      const report = await scriptedVerify(runId)(matchingBattery(slugDir));
+      expect(report.score.map((scored) => scored.caseId)).toEqual(["t1", "t2"]);
+      const battery = JSON.parse(readFileSync(join(slugDir, "runs", runId, "battery.json"), "utf8"));
+      expect(battery.cases.find((scored: { taskId: string }) => scored.taskId === "t3")).toMatchObject({
+        truthOk: null,
+        pass: null,
+        runtimeNonResultKind: kind,
+      });
+      expect(battery.executionEvidence).toContainEqual(
+        expect.objectContaining({ runId, phase: "battery", subjectId: "t3", outcome }),
+      );
+    },
+    60_000,
+  );
+
   it.concurrent("refuses a cell file the author supplied rather than the submission's own bytes", async () => {
     // The shim-header shape the tool port exists to close: a check that compiles the artifact
     // against a header its own author wrote judges it in a compile environment the Builder
@@ -319,9 +374,18 @@ describe("makeVerify external-verifier grounding (C3)", () => {
     "  if (runtime) {",
     '  if (runtime && request.publicTask.taskId !== "t3") {',
   );
+  /** The tool check rejects t3 on a precondition before it reaches its tool. */
+  const PRECHECK_FAIL_SOURCE = VERIFIER_EVALUATOR_SOURCE.replace(
+    "  if (runtime) {",
+    '  if (request.publicTask.taskId === "t3") return false;\n    if (runtime) {',
+  );
   /** One battery whose evaluator never runs the tool for t3; returns the scored ids and t3's row. */
-  async function runSelectiveSkip(runId: string, flubTaskIds?: ReadonlySet<string>) {
-    const slugDir = externalSlug(SELECTIVE_SKIP_SOURCE, {
+  async function runSelectiveSkip(
+    runId: string,
+    flubTaskIds?: ReadonlySet<string>,
+    source = SELECTIVE_SKIP_SOURCE,
+  ) {
+    const slugDir = externalSlug(source, {
       accept: ACCEPTS,
       reject: [...REJECTS, ...TOOL_REJECTS],
     });
@@ -354,7 +418,7 @@ describe("makeVerify external-verifier grounding (C3)", () => {
       runtimeNonResultKind: "verifier",
     });
     expect(skipped.runtimeNonResult).toContain('"ghost-ref"');
-    expect(skipped.runtimeNonResult).toContain("ran no tool for this case");
+    expect(skipped.runtimeNonResult).toContain("EXTERNAL_VERDICT_UNGROUNDED");
   }, 60_000);
 
   it.concurrent("a case that fails a check with complete evidence grades as a truth fail even when a tool run was skipped", async () => {
@@ -362,6 +426,19 @@ describe("makeVerify external-verifier grounding (C3)", () => {
     // filing those cases as verifier non-results loses a real fail. A skipped run can only
     // withhold a pass, so the failing authored check decides t3.
     const { scored, t3: failed } = await runSelectiveSkip("run-c3-silent-skip-failed", new Set(["t3"]));
+    expect(scored).toEqual(["t1", "t2", "t3"]);
+    expect(failed).toMatchObject({ truthOk: false, pass: false });
+    expect(failed.runtimeNonResult ?? null).toBeNull();
+  }, 60_000);
+
+  it.concurrent("a tool check that rejects on a precondition before running its tool grades as a truth fail", async () => {
+    // The only blocking check is the one that declares the tool, and it never ran it. A missing
+    // run can withhold a pass but cannot manufacture a fail, so the fail is the case's verdict.
+    const { scored, t3: failed } = await runSelectiveSkip(
+      "run-c3-precheck-fail",
+      undefined,
+      PRECHECK_FAIL_SOURCE,
+    );
     expect(scored).toEqual(["t1", "t2", "t3"]);
     expect(failed).toMatchObject({ truthOk: false, pass: false });
     expect(failed.runtimeNonResult ?? null).toBeNull();

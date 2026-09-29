@@ -78,14 +78,12 @@ function readRecord(
   const plain = plainRecord(parsed);
   const schema = isString(plain?.schema) ? plain.schema : "";
   if (schema !== BUILDER_EXECUTION_SCHEMA) {
-    return {
-      unavailable: {
-        kind: "record",
-        path,
-        session,
-        reason: `malformed execution record with unknown schema ${JSON.stringify(schema)}`,
-      },
-    };
+    // Another version of this record is intact evidence this source keeps no reader for, not a
+    // malformed one, so it is refused as that version.
+    const reason = schema.startsWith("builder-execution/")
+      ? `recorded as ${schema} by another source; this source reads ${BUILDER_EXECUTION_SCHEMA} only`
+      : `malformed execution record with unknown schema ${JSON.stringify(schema)}`;
+    return { unavailable: { kind: "record", path, session, reason } };
   }
   if (!isCurrentExecutionRecord(parsed)) {
     return {

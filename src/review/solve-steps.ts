@@ -14,16 +14,23 @@
  * twelve times is one fact. A long solve keeps its opening, its first failures and its closing
  * steps, and says how many it left out between them; the steps it leaves out cannot be cited.
  *
- * Everything here is what the solver itself saw or did: tool names, its own arguments on a failed
- * call, the result previews it read, its stop reason, and how many turns and minutes it used
- * against the walls its harness declares. None of it is verifier output.
+ * Everything here is what the solver itself saw or did, and none of it is verifier output. That is
+ * not enough for rule 4, which withholds a failing artifact whatever file it sits in: a failing
+ * solve's result previews, its arguments on a failed call and its final text routinely carry the
+ * failing candidate's own values, and a diagnosis reading them can hand those values to the next
+ * authoring pass. So only a passing solve, whose artifact the battery already publishes, shows
+ * those payloads. Every other solve shows its structure alone: tool names, step references, each
+ * call's outcome, turn and time, the stop reason, a typed turn error, and its turns and minutes
+ * against the walls its harness declares. Nothing here tells a public compiler diagnostic from a
+ * tool echoing the draft back, so a failing solve's results are withheld whole.
  */
 import type { CaseOutcome } from "../claim/case-record.ts";
 import type { ReadCaseTrace } from "../claim/trace-read.ts";
 import { isNumber, isString, type JsonValue } from "../meta/json-shape.ts";
 import { boundText } from "../meta/bounded-text.ts";
 
-/** UTF-8 bytes shown of a result preview, a call's arguments, a turn error and the final text. */
+/** UTF-8 bytes shown of a result preview, a call's arguments, a turn error and the final text; the
+ *  preview, arguments and final text of a passing solve only. */
 const RESULT_BYTES = 240;
 const ARGS_BYTES = 240;
 const TURN_ERROR_BYTES = 400;
@@ -63,29 +70,36 @@ type Group = { first: number; last: number; step: Step };
 
 const oneLine = (text: string) => text.replace(/\s+/g, " ").trim();
 
-function stepOf(call: Record<string, JsonValue>): Step {
-  const tool = isString(call.toolName) ? call.toolName : "?";
-  const status = call.isError === true ? "ERR" : call.isError === false ? "ok" : "OPEN";
+/** What a passing solve's call read and, on a failed call, what it sent. */
+function payload(call: Record<string, JsonValue>): string {
   const said = isString(call.resultExcerpt)
     ? call.resultExcerpt
     : isString(call.resultPreview)
       ? call.resultPreview
       : "";
-  const turn = isNumber(call.turn) ? ` turn ${call.turn}` : "";
-  const time = isNumber(call.timingMs) ? ` ${(call.timingMs / 1000).toFixed(1)}s` : "";
   const args = isString(call.argsExcerpt)
     ? ` | args: ${boundText(oneLine(call.argsExcerpt), ARGS_BYTES).shown}`
     : "";
-  const result = boundText(oneLine(said), RESULT_BYTES).shown || "(no result recorded)";
+  return ` → ${boundText(oneLine(said), RESULT_BYTES).shown || "(no result recorded)"}${args}`;
+}
+
+function stepOf(call: Record<string, JsonValue>, open: boolean): Step {
+  const tool = isString(call.toolName) ? call.toolName : "?";
+  const status = call.isError === true ? "ERR" : call.isError === false ? "ok" : "OPEN";
+  const turn = isNumber(call.turn) ? ` turn ${call.turn}` : "";
+  const time = isNumber(call.timingMs) ? ` ${(call.timingMs / 1000).toFixed(1)}s` : "";
+  const digest = isString(call.argsDigest) ? call.argsDigest : null;
   return {
     tool,
     status,
-    digest: isString(call.argsDigest) ? call.argsDigest : null,
-    line: `${tool} ${status}${turn}${time} → ${result}${args}`,
+    // A solve that did not pass withholds its arguments, and so whether two of them were equal.
+    digest: open ? digest : "withheld",
+    line: `${tool} ${status}${turn}${time}${open ? payload(call) : ""}`,
   };
 }
 
-/** Consecutive steps that are the same call with the same outcome, as one range. A call whose
+/** Consecutive steps that are the same call with the same outcome, as one range: the same arguments
+ *  in a passing solve, the same tool and status in one that did not pass. A passing call whose
  *  argument digest is unknown never merges, since two unknowns are not known to be equal. */
 function groups(steps: readonly Step[]): Group[] {
   const out: Group[] = [];
@@ -131,7 +145,7 @@ function turnFacts(trace: ReadCaseTrace) {
   };
 }
 
-function endLine(trace: ReadCaseTrace, walls: SolveWalls, submission: Submission) {
+function endLine(trace: ReadCaseTrace, walls: SolveWalls, submission: Submission, open: boolean) {
   const facts = turnFacts(trace);
   const hit = {
     turns: facts.turns >= walls.maxTurns,
@@ -150,12 +164,15 @@ function endLine(trace: ReadCaseTrace, walls: SolveWalls, submission: Submission
     ...reached,
     `accepted submission: ${submission === "accepted" ? "yes" : "no"}`,
     ...(facts.turnError === null ? [] : [`turn error ${facts.turnError}`]),
-    `final text: ${boundText(facts.finalText, FINAL_TEXT_BYTES).shown || "(none recorded)"}`,
+    ...(open
+      ? [`final text: ${boundText(facts.finalText, FINAL_TEXT_BYTES).shown || "(none recorded)"}`]
+      : []),
   ];
   return { line: parts.join("; "), hit };
 }
 
-/** One case's solve as addressable steps. `label` is the case's anonymous name in this packet. */
+/** One case's solve as addressable steps. `label` is the case's anonymous name in this packet; a
+ *  solve whose outcome is not a pass shows no payload the failing artifact could ride in. */
 export function compileSolve(
   label: string,
   outcome: CaseOutcome,
@@ -174,11 +191,15 @@ export function compileSolve(
       walls: { turns: false, minutes: false },
     };
   }
-  const steps = trace.toolCalls.map(stepOf);
+  const open = outcome === "pass";
+  const steps = trace.toolCalls.map((call) => stepOf(call, open));
   const all = groups(steps);
   const shown = shownGroups(all);
   const refs = new Map<string, string | null>();
   const lines: string[] = [head];
+  if (!open) {
+    lines.push("  (result previews, call arguments and final text withheld: this solve did not pass)");
+  }
   if (trace.truncated) {
     lines.push("  (the recorded trace is a prefix: its capture hit a bound, so later steps are unrecorded)");
   }
@@ -197,7 +218,7 @@ export function compileSolve(
   }
   if (steps.length > next) lines.push(`  … ${steps.length - next} step(s) omitted, not citable`);
   if (steps.length === 0) lines.push("  (no tool call recorded)");
-  const end = endLine(trace, walls, submission);
+  const end = endLine(trace, walls, submission, open);
   refs.set(`${label}.end`, null);
   lines.push(`  end ${end.line}`);
   return {

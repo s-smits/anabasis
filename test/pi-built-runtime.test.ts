@@ -34,9 +34,9 @@ import {
 import { BUILT_SHELL_RULES } from "../src/solve/dcg-rules.ts";
 import { createSubmissionAuthority, submissionPortOf } from "../src/solve/final-submission.ts";
 import { compilePublicArtifactSchema } from "../src/solve/public-artifact-schema.ts";
-import { DEFAULT_HARNESS_SETTINGS } from "../src/truth/harness-config.ts";
-import { solverNonResultReason } from "../src/truth/runtime-blocker.ts";
-import { builtStarterFactoryForSolver } from "../src/truth/solve.ts";
+import { DEFAULT_HARNESS_SETTINGS } from "../src/correctness-bundle/harness-config.ts";
+import { solverNonResultReason } from "../src/correctness-bundle/runtime-blocker.ts";
+import { TURN_PERMIT_REFUSED_PREFIX, builtStarterFactoryForSolver } from "../src/correctness-bundle/solve.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
@@ -63,6 +63,8 @@ interface SolveOptions {
   budget?: ProviderResourceBudget;
   observer?: RunObserver;
   close?: (solver: ReturnType<typeof piBuiltSolver>) => never;
+  /** Cancels the budget's active turns once the solve's submit is accepted. */
+  cancelOnAccept?: boolean;
 }
 
 setDefaultTimeout(60_000);
@@ -104,6 +106,17 @@ export function createDomainHarness(task) {
         },
       }),
       defineDraftTool({
+        name: "stall",
+        label: "Stall",
+        description: "Read the public answer after half a minute.",
+        parameters: Type.Object({}),
+        executionMode: "sequential",
+        run: async () => {
+          await new Promise((resolve) => setTimeout(resolve, 30_000));
+          return { text: task.publicInput.answer };
+        },
+      }),
+      defineDraftTool({
         name: "utilisation",
         label: "Utilisation",
         description: "Divide the load by the capacity the task carries.",
@@ -124,6 +137,7 @@ writeFileSync(
     tools: [
       { name: "write_answer", kind: "artifact-writer", description: "Write and prepare the public answer." },
       { name: "slow_read", kind: "reader", description: "Read the public answer slowly." },
+      { name: "stall", kind: "reader", description: "Read the public answer after half a minute." },
       { name: "utilisation", kind: "reader", description: "Report the utilisation of the prepared answer." },
     ],
   }),
@@ -179,28 +193,41 @@ async function solve(rows: FauxRow[], options: SolveOptions = {}) {
   if (createStarter === undefined) throw new Error("the Pi solver carries no production starter factory");
   const toolset = await createStarter(options.slug ?? SLUG, TASK, submissionPortOf(authority), SCHEMA);
   const accepted = () => authority.finalSubmission()?.accepted === true;
-  const outcome = await solver(TASK, toolset, accepted);
-  return { outcome, accepted: accepted(), solver, toolset };
+  const watch =
+    options.cancelOnAccept === true
+      ? setInterval(() => {
+          if (accepted()) options.budget?.cancelActiveTurns(new Error("operator stop"));
+        }, 20)
+      : undefined;
+  try {
+    const outcome = await solver(TASK, toolset, accepted);
+    return { outcome, accepted: accepted(), solver, toolset };
+  } finally {
+    clearInterval(watch);
+  }
 }
 
 describe("the Built harness instructions", () => {
   // The prompt is a condition identity: two runs are comparable only when it is byte-identical.
   // These assertions name the duties it owes rather than repeating it, so a reworded sentence that
   // keeps every duty is one deliberate digest change here instead of a diff of the whole text.
-  it("states the checking duty and the solve wall, and leaves the rest to tools", () => {
+  it("states the solve wall and what it submits, and leaves the method to the solver", () => {
     const prompt = builtSystemPrompt(DEFAULT_HARNESS_SETTINGS.solveMs);
-    expect(prompt).toContain("a breach it reports is a failed requirement");
-    expect(prompt).toContain("widening the worst margin");
-    // The wall submits the answer last prepared, so a solver that experimented past its best
-    // candidate shipped the worse one. save_candidate and restore_candidate are how it returns.
-    expect(prompt).toContain("Save it before you change it");
     expect(prompt).toContain("120 minutes");
-    expect(prompt).toContain("Where a requirement is a numeric limit");
-    // Asking the solver to compare each reported value with each published requirement, and to
-    // hold margin where its own model only approximated one, did not stop answers breaching a
-    // published limit by their own numbers; readMargins measures that on the prepared answer
-    // instead, so the clauses are gone.
-    for (const asked of ["keep margin on every limit", "compare each result", "Do not submit an answer"]) {
+    // The wall sends the answer last prepared, not the best one, which the solver cannot observe;
+    // save_candidate and restore_candidate describe themselves in the roster.
+    expect(prompt).toContain("the last answer an artifact-writer prepared is submitted for you");
+    // The Built Harness owns its solving method. Clauses asking the solver to grade each candidate,
+    // adjust for each breach, search, save or widen a margin made every task the same loop.
+    for (const asked of [
+      "keep margin on every limit",
+      "compare each result",
+      "Do not submit an answer",
+      "a breach it reports",
+      "bounded search",
+      "Save it before you change it",
+      "widening the worst margin",
+    ]) {
       expect(prompt).not.toContain(asked);
     }
     // The shell rules belong to the shell's own description, where a guard refusal quotes them.
@@ -339,6 +366,18 @@ describe("the solve loop", () => {
     expect(budget.snapshot().used).toBe(1);
   });
 
+  // The controller's own ledger refused the turn, so no provider was reached: the case must not
+  // count towards the battery's provider stop or read as a provider outage.
+  it("records a turn the run's budget refused as the controller's, not the provider's", async () => {
+    const { outcome, accepted } = await solve([{ text: "planning" }, WRITE, SUBMIT], {
+      maxTurns: 3,
+      budget: new ProviderResourceBudget(1),
+    });
+    expect(accepted).toBe(false);
+    expect(outcome.nonResult?.kind).toBe("runtime");
+    expect(outcome.nonResult?.message).toStartWith(TURN_PERMIT_REFUSED_PREFIX);
+  });
+
   it("keeps the redacted failed-turn marker the non-result reader classifies", async () => {
     const secret = "fake-pi-built-secret-that-must-not-escape";
     const { outcome } = await solve([{ stopReason: "error", errorMessage: `provider repeated ${secret}` }], {
@@ -399,6 +438,37 @@ describe("the whole-solve wall", () => {
     });
     expect(outcome.completedTurns).toBe(1);
     expect(outcome.runtimeIdentities).toHaveLength(1);
+  });
+});
+
+describe("a worker failure after an accepted submit", () => {
+  // The host already holds the accepted bytes, so the worker going silent afterwards is cleanup
+  // evidence on the boundary and the case is graded. A controller cancel stops the case before
+  // grading, so it still voids the submit.
+  const submitThenStall = [
+    WRITE,
+    SUBMIT,
+    { toolCalls: [...(SUBMIT_AGAIN.toolCalls ?? []), { id: "stall", name: "stall", arguments: {} }] },
+  ];
+
+  it("keeps the accepted submit and records the silence wall as evidence", async () => {
+    const { outcome, accepted } = await solve(submitThenStall, { runtime: { turnWallMs: 2_000 } });
+    expect(accepted).toBe(true);
+    expect(outcome.nonResult).toBeUndefined();
+    expect(outcome.runtimeBoundary?.modelWorker.termination).toMatchObject({
+      status: "non-result",
+      kind: "runtime",
+      message: expect.stringContaining("silent past its bounded turn time"),
+    });
+  });
+
+  it("still voids the accepted submit when the controller cancels the worker", async () => {
+    const { outcome, accepted } = await solve(submitThenStall, {
+      budget: new ProviderResourceBudget(10),
+      cancelOnAccept: true,
+    });
+    expect(accepted).toBe(true);
+    expect(outcome.nonResult).toEqual({ kind: "runtime", message: "controller cancelled the Built worker" });
   });
 });
 

@@ -35,12 +35,14 @@ import type { HarnessMeasureResult } from "./harness-measure.ts";
 import { recordMeasurement } from "./claim-stages.ts";
 import type { NextMove } from "./next-move.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
-import type { BundleSnapshotFact } from "../truth/battery-record.ts";
+import type { BundleSnapshotFact } from "../correctness-bundle/battery-record.ts";
 import type { ProviderResourceBudget } from "./provider-resource-budget.ts";
 import type { SafeguardContext } from "../meta/safeguard.ts";
 import type { VerifierLifetime } from "../verify/verifier-lifetime.ts";
 import { bindProductMeasurement, selectedProductDir } from "./product-versions.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
+import type { BatteryReuse } from "../correctness-bundle/recorded-solve.ts";
+import { regradeForCorrection, remeasureReuse } from "./battery-reuse.ts";
 
 interface PostBuildInput {
   args: FullRunArgs;
@@ -304,10 +306,34 @@ function refuseBrokenFreeze(input: PostBuildInput): CandidateEvaluation | null {
   return { ...NOTHING_EVALUATED, promotion };
 }
 
+/** The recorded solves this round's battery grades instead of solving, or undefined when it solves
+ *  every task. Whichever way it goes, the reason is recorded beside the round. */
+function batteryReuse(input: PostBuildInput): BatteryReuse | undefined {
+  const { remeasure } = input.decision;
+  if (input.build === "reused" && remeasure !== undefined) {
+    fullrunLine(`${input.manifest.slug}: remeasure — ${input.decision.reason}`);
+    return remeasureReuse(input.measureDir, remeasure);
+  }
+  if (input.build !== "candidate") return undefined;
+  const { reuse, reason } = regradeForCorrection({
+    repoRoot: input.repoRoot,
+    slug: input.manifest.slug,
+    runPin: input.runPin,
+    built: input.slots.built,
+    candidateDir: input.measureDir,
+    experimentAuthoring: input.experimentAuthoring,
+  });
+  if (reuse === null) return undefined;
+  fullrunLine(`${input.manifest.slug}: regrade — ${reason}`);
+  input.absentSteps.push(`blind solve: skipped — ${reason}`);
+  return reuse;
+}
+
 /** The round's one battery. Its identity is recorded immediately before it drives, so a drive
  *  that dies mid-battery still leaves its case rows inside the recorded denominator. */
 async function driveCandidate(input: PostBuildInput): Promise<HarnessMeasureResult> {
   const { manifest, repoRoot, runId, measureDir } = input;
+  const reuse = batteryReuse(input);
   bindProductMeasurement(repoRoot, manifest.slug, runId, measureDir);
   return await input.deps.drive(manifest, {
     runId,
@@ -321,6 +347,7 @@ async function driveCandidate(input: PostBuildInput): Promise<HarnessMeasureResu
     ...keyIfDefined("verifierLifetime", input.verifierLifetime),
     ...keyIfDefined("providerBudget", input.providerBudget),
     ...keyIfDefined("safeguardContext", input.safeguardContext),
+    ...keyIfDefined("reuse", reuse),
   });
 }
 

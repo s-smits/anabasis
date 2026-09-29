@@ -1,23 +1,24 @@
 # Deterministic lanes
 
-Eleven readers, one question each, no provider call. `review-angles.md` holds the semantic lanes a
+Thirteen readers, one question each, no provider call. `review-angles.md` holds the semantic lanes a
 paid sweep spends on; this file holds what a local read already answers, so a live run can be
 assessed without one, and it names the trigger string each reader prints beside the semantic lane
-that string starts. Every reader is a lane of `scripts/wri.mjs`, selected by name:
+that string starts. Every reader is a lane of `scripts/wri.ts`, selected by name:
 
 ```text
-bun .claude/skills/whole-run-investigation/scripts/wri.mjs <lane> <campaign>/<runId> [flags]
+bun .claude/skills/whole-run-investigation/scripts/wri.ts <lane> <campaign>/<runId> [flags]
 ```
 
 The lanes are `snapshot`, `challenge`, `delta` and `overview`, which collect; `climb`, `yield`,
-`posture`, `timeline`, `walls` and `handoff`, which read the campaign; and `archive`, which
-writes the record. `brief.mjs` runs the six campaign lanes as `CAMPAIGN_LANES` and renders their
-trigger lines into the sweep brief, so a trigger below is the same bytes whether it was read from
+`posture`, `timeline`, `walls`, `handoff`, `gates` and `target`, which read the campaign; and `archive`,
+which writes the record. `brief.ts` runs the eight campaign lanes as `CAMPAIGN_LANES` and renders
+their trigger lines into the sweep brief, reading an in-process lane's triggers from the
+`<lane>.triggers.json` it writes beside its capture, so a trigger below is the same bytes whether it was read from
 a lane's own output or from the brief.
 
 ## The digest
 
-`snapshot` runs `digest.mjs` over the run and prints numbered blocks. Each block is one question,
+`snapshot` runs `digest.ts` over the run and prints numbered blocks. Each block is one question,
 and the blocks that start a semantic lane print a capitalised trigger before the first colon of a
 line. The trigger carries its lane in parentheses where one lane owns it; a trigger without a
 suffix is settled by the primary reviewer under the row it belongs to, or mapped by the brief to
@@ -47,10 +48,9 @@ nothing; block 3c, the repeated-condition census, prints `REPEATED CONDITION (la
 public condition recurs on a fixed product.
 
 Block 4, workshop and spend, reads the tool installs and the ledger. Block 4b, band placement,
-reads `difficulty-decisions/<runId>-<digest>.json` (`difficulty-decision/v7`) for the
-`placement.zone`, the target result and the off-aim allowance: `TARGET MISSED (lane 10)` where
-the declared `target` reads `missed`, and `OFF-AIM STREAK (lane 10)` where two or more
-consecutive placements sit on one side of the aim; an over-aim zone with no trigger of its own is
+reads `difficulty-decisions/<runId>-<digest>.json` (`difficulty-decision/v9`) for the
+`placement.zone`: `OFF-AIM STREAK (lane 10)` where two or more consecutive placements sit on one
+side of the aim; an over-aim zone with no trigger of its own is
 read by lanes 5 and 12. Block 4c, role spend and censoring, reads `providerResourceBudget.byRole`
 and the retry rows: `REVIEW TURNS EXCEED SOLVER TURNS (lane 24)`, `DECISION ON CENSORED BATTERY
 (lane 24)` where a decision was taken on a battery the environment cut short, and `EXPLICIT
@@ -63,9 +63,8 @@ prints `MEMORY OVER READ CAP (lane 26)`.
 Block 5, integrity probes, and block 5b, served-model attestation, belong to rows H and I:
 `SERVED MODEL MISMATCH` and `UNATTESTED ROWS` carry no lane suffix because the primary settles
 them. Block 6, the rehearsal ledger, joins every `harness_trial` row to the accepted submit by
-`candidateId`: `SUBMITTED BYTES NEVER REHEARSED (lane 11)` and `REHEARSAL CONTRADICTS TARGET
-(lane 11)` where a rehearsed pass sits against the plan's own prediction, and `REHEARSAL NOT-RUN
-(lane 9)` where a verdict is `not-run`. Block 6b, toolchain retention, reads each
+`candidateId`: `SUBMITTED BYTES NEVER REHEARSED (lane 11)` where no rehearsal ran on the accepted
+bytes, and `REHEARSAL NOT-RUN (lane 9)` where a verdict is `not-run`. Block 6b, toolchain retention, reads each
 `versions/<id>/.toolchain` without following it: `VERSION TOOLCHAIN IS A SYMLINK (lane 2)`,
 `VERSION TOOLCHAIN DANGLING (lane 2)`, and `WRAPPER-ONLY TOOL DIGEST (lane 2)` where a
 `verifierTools[]` entry of `kind: "script"` hashes a wrapper and nothing behind it.
@@ -78,56 +77,93 @@ them. Block 6, the rehearsal ledger, joins every `harness_trial` row to the acce
 8 and 22 read its sequence counts; the packet is private to lane 23 and is read after the
 telemetry, never before.
 
-`delta` runs `source-delta.mjs` between the run's `source.commit` and the review tree, and prints
+`delta` runs `source-delta.ts` between the run's `source.commit` and the review tree, and prints
 `MODEL-VISIBLE SURFACE CHANGED (lane 21)` where a prompt-bearing file moved, and `UNREACHED
 CHANGED SAFEGUARDS (lane 21)` where a `safeguardTriggered("id")` call changed and
 `SAFEGUARDS_LOG.txt` under `campaigns/<slug>/safeguards/<runId>/` holds no line for it. A delta
 touching `src/solve` starts lane 3 and one touching `src/review/epoch-review-public.ts` starts
 lane 13.
 
-`overview` runs `run-overview.mjs`, which groups every trigger the collect lanes printed by the
+`overview` runs `run-overview.ts`, which groups every trigger the collect lanes printed by the
 lane suffix it carries, so the brief can say which lanes have something to read.
 
 ## The campaign lanes
 
-`climb` runs `climb-velocity.mjs` over consecutive versions and labels every edge `restated`,
-`adjusted`, `narrowed`, `widened`, `eased` or `escalated`; `adjusted` deliberately states no
-direction, and every label starts lanes 10 and 20.
+`climb` runs `climb-velocity.ts` over consecutive versions and labels every edge `restated`,
+`adjusted`, `narrowed`, `widened`, `eased`, `escalated` or `replaced`; `adjusted` deliberately
+states no direction, `replaced` means fewer than half the task ids carried over so the numbers
+could not be compared, and every label starts lanes 10 and 20.
 
-`yield` runs `review-yield.mjs` and gives each review component a status per finding —
+`yield` runs `review-yield.ts` and gives each review component a status per finding —
 `consumed`, `unobservable`, `advisory-only` or `not-consumed`. The `epoch-reviewer` component is
 read first by lanes 12 and 14, and the `harness-trial` component by lane 11.
 
-`posture` classifies `builder-prose.jsonl` through `classifier/prose-classify.mjs`; a run under
+`posture` classifies `builder-prose.jsonl` through `classifier/prose-classify.ts`; a run under
 the row floor is `thin`, and a capture the reader refuses leaves the posture `unreadable`, both of
 which lane 26 reads as a statement about the writer or the reader rather than the Builder.
 
 `timeline` reads `observability/<runId>.jsonl` and prints the `STALLS` longest gaps; a gap over
 thirty minutes starts lane 24, and `--classify` labels each stretch `adrift` or `unreadable`
-through `classifier/run-narrative.mjs`, where `adrift` starts lane 25.
+through `classifier/run-narrative.ts`, where `adrift` starts lane 25.
 
-`walls` runs `walls.mjs`, whose `boundOf` labels every case `unrecorded`, `time-bound`,
+`walls` runs `walls.ts`, whose `boundOf` labels every case `unrecorded`, `time-bound`,
 `turn-bound`, `unstarted`, `submitted` or `no-submit`, and prints each bound's share against
 `BOUND_SHARE`; a battery whose solves sit at a bound starts lane 22, and one whose solves all sit
 at a tiny share of it starts lane 8.
 
-`handoff` runs `handoffs.mjs` and prints four tables, each labelled with the lane it starts: the
+`handoff` runs `handoffs.ts` and prints four tables, each labelled with the lane it starts: the
 census per channel (present, served, read, acted) for lane 17, the calibration table for lane 10,
 the triage table for lane 15 and the same-task table for lane 18.
+
+`gates` runs `gate-rent.ts` over every Builder session's `correctness_check` and `submit` receipts
+and joins each refusal code to its component in `gate-ledger.ts`, which carries the gate audit's
+priors — `pRight` and `pStall` — for every component, deleted ones included, and names each
+component's retired codes, because a run recorded before the audit still names them. The codes one
+component emits on one receipt are one firing, and a qualifier such as `tool-timeout` counts only
+where it rides beside no code of the component it details. Consecutive refusals carrying one
+component are one episode, and each ends `repaired` (the component went away and the bundle moved),
+`repaired-tool-condition` (the bundle stayed and the installed-tool condition moved),
+`cleared-without-edit` (the whole submission condition stayed), `bundle-unchanged-condition-unknown` (the bundle stayed and the receipts recorded no tool
+condition), `answered-identity-unrecorded` or `unanswered`. Only a receipt that cleared, or that
+refused having run the stage each of the episode's codes came from, can answer it: a check that
+stopped at conformance never ran the reference solve, and a code its receipt did not stage is not
+filed under the receipt's aggregate stage, so only a clear answers it. It prints `GATE STALL`, `GATE CLEARED WITHOUT
+EDIT`, `BELOW-BAR GATE FIRED` (a kept, narrowed or rewritten component whose `pRight` is under
+`REFUSAL_BAR`), `UNLEDGERED REFUSAL CODE`, `REVIEW HOLD CHAIN` and `CEILING ENDED RUN`, each for
+lane 27. For lane 28 it reads every `evaluation-correction` from the recorded batteries themselves,
+pairs each with the latest earlier battery of the baseline it recorded (agent, correctness model
+and task set), or says the baseline is unresolved, names the bundle files that moved between the
+two, and prints `EVALUATION CORRECTION REPLAY CANDIDATE` with the `replay --under` command where
+the scoring closure (`scoringClosureHash`) or a task's hidden expectations moved, or the closure
+cannot be read. A replay
+candidate stays one after the replay is run, because nothing records that it was.
+
+`target` runs `hardware-target.ts`. It reads the recorded request from the
+`prompt-ingested` user-directive row of `observability/<runId>.jsonl` and the current epoch's
+`correctness-model/brief.json` `domain`, matches both against `HARDWARE_TARGETS`, the one list of
+board and microcontroller families (ESP32, RP2040, Raspberry Pi, STM32, AVR, nRF, SAMD, Teensy,
+MSP430, PIC), and prints `HARDWARE TARGET NAMED (lanes 29, 30)` when either names one. The same row
+names every run in a sibling campaign whose opening carries this run's `requestDigest` on another
+`source.commit`, with the nearest earlier and later one, which is what lane 29's matched-window
+comparison starts from. `--reference <abs dir>` pins an external reference tree by Git revision, or
+by `portableToolTreeDigest` when it is not a Git tree, and records an absent one as a gap. The same
+detection gates lane 30 in `manifest-inputs.ts`, so a request naming no target never launches it.
 
 ## The archive
 
 `archive` writes the sweep's record under `wri-archive/v2` from the lanes above and the semantic
-reports, and `validate-archive.mjs` and `validate-reports.mjs` refuse a record whose digest
+reports, and `validate-archive.ts` and `validate-reports.ts` refuse a record whose digest
 verdicts or lane titles are not the catalogue's. The digest verdict set is the block list above,
 so `band-placement`, `rehearsal-ledger` and `toolchain-retention` are verdicts and a saturation
 ledger is not.
 
 ## Tiers
 
-`brief.mjs` decides the tier from the run's shape and bounds the semantic lanes it may launch, by
-trigger first and by the default set only where no trigger picks: probe, which is a run not scored
-or under two hours, launches four lanes, by default 5, 8, 12 and 25; standard launches eight, the
-probe set plus 1, 9, 14 and 24; deep, which is twelve hours, three epochs or three batteries,
-launches fourteen, the standard set plus 2, 6, 10, 11, 13 and 22. Twenty-six is the ceiling. Lanes
-7 and 23 sit outside every tier and are launched alone, only when their own trigger fired.
+`brief.ts` decides the tier from the run's shape and bounds the semantic lanes it may launch, by
+trigger first and by the default set only where no trigger picks, with the tier's standing lanes
+(`STANDING_LANES`) joining every sweep: probe, which is a run not scored or under two hours,
+launches six lanes, by default 5, 8, 12 and 25 with 31 and 34 standing; standard launches twelve,
+the probe set plus 1, 9, 14 and 24 with 31, 33, 34 and 37 standing; deep, which is twelve hours,
+three epochs or three batteries, launches nineteen, the standard set plus 2, 6, 10, 11, 13 and 22
+with 31, 32, 33, 34 and 37 standing. Thirty-eight is the ceiling. Lanes 7, 23 and 30 sit outside
+every tier and are launched alone, only when their own trigger fired.

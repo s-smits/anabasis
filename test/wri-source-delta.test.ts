@@ -2,7 +2,7 @@ import { afterAll, describe, expect, it } from "bun:test";
 import {
   buildSourceDelta,
   renderSourceDelta,
-} from "../.claude/skills/whole-run-investigation/scripts/source-delta.mjs";
+} from "../.claude/skills/whole-run-investigation/scripts/source-delta.ts";
 import { mkdirSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import { join } from "../src/meta/path.ts";
@@ -104,6 +104,56 @@ describe("source-delta reach", () => {
     const delta = buildSourceDelta({ campaign: current, runId: "run-b", repo, previous });
     expect(delta.previousCommit).toBe(older);
     expect(delta.state).toBe("resolved");
+  });
+
+  it("skips earlier campaigns of the lane that launched from the same source", () => {
+    const { repo, older, newer } = repoWithTwoCommits();
+    const root = scratchDir("ana-source-delta-campaigns-");
+    campaign(root, "lane-1", "run-a", older, "2026-09-01T00:00:00.000Z");
+    campaign(root, "lane-2", "run-b", newer, "2026-09-02T00:00:00.000Z");
+    const current = campaign(root, "lane-3", "run-c", newer, "2026-09-03T00:00:00.000Z");
+    // lane-2 is nearer by launch time and ran this same commit, so it would read as no delta.
+    const delta = buildSourceDelta({ campaign: current, runId: "run-c", repo });
+    expect(delta.state).toBe("resolved");
+    expect(delta.previousCommit).toBe(older);
+    expect(delta.previousProvenance).toContain("lane-1");
+
+    const sameOnly = scratchDir("ana-source-delta-campaigns-");
+    campaign(sameOnly, "lane-1", "run-a", newer, "2026-09-01T00:00:00.000Z");
+    const alone = campaign(sameOnly, "lane-2", "run-b", newer, "2026-09-02T00:00:00.000Z");
+    const none = buildSourceDelta({ campaign: alone, runId: "run-b", repo });
+    expect(none.state).toBe("previous-unresolved");
+    expect(none.reason).toContain("on another source");
+  });
+
+  it("reads safeguard declarations from run source and never from tests", () => {
+    const { repo, newer } = repoWithTwoCommits();
+    mkdirSync(join(repo, "src", "gate"), { recursive: true });
+    mkdirSync(join(repo, "test"), { recursive: true });
+    writeFileSync(
+      join(repo, "src", "gate", "submit.ts"),
+      'safeguardTriggered("33-preview-clear-submit-refused", "x");\n' +
+        'safeguardTriggered("45-case-grading-skipped", "y");\n',
+    );
+    writeFileSync(
+      join(repo, "test", "sensor.test.ts"),
+      'safeguardTriggered(`${SENSOR}`, "x");\nsafeguardTriggered("99-test-sensor", "y");\n',
+    );
+    git(repo, ["add", "."]);
+    git(repo, ["commit", "-q", "-m", "three"]);
+    const head = git(repo, ["rev-parse", "HEAD"]);
+    const root = scratchDir("ana-source-delta-campaigns-");
+    campaign(root, "lane-1", "run-a", newer, "2026-09-01T00:00:00.000Z");
+    const current = campaign(root, "lane-2", "run-b", head, "2026-09-02T00:00:00.000Z");
+    const delta = buildSourceDelta({ campaign: current, runId: "run-b", repo });
+    expect(delta.changed.map((entry: { path: string }) => entry.path).sort()).toEqual([
+      "src/gate/submit.ts",
+      "test/sensor.test.ts",
+    ]);
+    expect(delta.safeguards).toEqual([
+      { id: "33-preview-clear-submit-refused", state: "unreached", firings: 0 },
+      { id: "45-case-grading-skipped", state: "unreached", firings: 0 },
+    ]);
   });
 
   it("counts a safeguard log only for this run's canonical iterations", () => {

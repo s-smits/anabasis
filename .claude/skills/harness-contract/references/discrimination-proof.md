@@ -33,9 +33,9 @@ Every reject declares the truth check its change must trip. Run the controls aga
 observed check with `expectedCheckId`. A schema or empty-output failure does not prove the named
 join or check.
 
-Require one decoy reject for every `(join, decoyClass)`. This is a coverage matrix, not a total.
-Add a second matrix over `(check, family)`: for every family a check applies to, one accept and
-one reject whose only blocking failure is that check. A clean census over family-local dispatches
+Give every check at least one reject that makes it say no: the census refuses a check no reject
+trips. A reject's `targetsJoin` and `decoyClass` are the Builder's own plan, and nothing counts
+them. A clean census over family-local dispatches
 says nothing about shipped batteries. After measurement, count rejections per check. Zero means
 no observed rejection in that battery; it does not prove the check cannot reject. Separate a
 missing capability from a check whose submitted cases all satisfy its rule. Use a recorded passing

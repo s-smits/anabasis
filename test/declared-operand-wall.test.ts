@@ -14,14 +14,14 @@
 import { describe, expect, it } from "bun:test";
 
 import type { JsonValue } from "../src/meta/json-shape.ts";
-import type { Brief, BriefTruthCheck } from "../src/truth/brief.ts";
-import type { ControlCorpus } from "../src/truth/controls.ts";
-import { runControls as runProductionControls } from "../src/truth/run-controls.ts";
-import { evaluationPublicTask } from "../src/truth/task-split.ts";
-import type { BuildTask } from "../src/truth/tasks.ts";
+import type { Brief, BriefTruthCheck } from "../src/correctness-bundle/brief.ts";
+import type { ControlCorpus } from "../src/correctness-bundle/controls.ts";
+import { runControls as runProductionControls } from "../src/correctness-bundle/run-controls.ts";
+import { evaluationPublicTask } from "../src/correctness-bundle/task-split.ts";
+import type { BuildTask } from "../src/correctness-bundle/tasks.ts";
 import { double } from "./helpers/doubles.ts";
 import { evaluateCheckProgram } from "../vendor/correctness-model-bundle/evaluate.ts";
-import type { CheckRunner } from "../src/truth/correctness-model-contract.ts";
+import type { CheckRunner } from "../src/correctness-bundle/correctness-model-contract.ts";
 import type { ToolRunRequest, VerifierRuntime } from "../src/verify/verifier-port.ts";
 
 /** The hostile task: one declared operand and one undeclared field beside it. */

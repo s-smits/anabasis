@@ -1,7 +1,7 @@
 /**
  * The limit margin pairs each numeric leaf of a check's hidden operand with the nearest number the
- * reference artifact holds under that check's declared artifact paths. These cases pin the three
- * readings a family row can give a leaf — within 5%, outside it, unpaired — and the refusals that
+ * reference artifact holds under that check's declared artifact paths. These cases pin the four
+ * readings a family row can give a leaf — within 5%, outside it, derived, unpaired — and the refusals that
  * keep a missing or malformed reference artifact from becoming a fabricated row. The last case
  * holds the host-only wall in source: nothing but the claim writer, the measure step and the
  * operator's outcome report may reach the module that reads or writes these numbers.
@@ -12,8 +12,8 @@ import { join, relative } from "../src/meta/path.ts";
 import type { JsonValue } from "../src/meta/json-shape.ts";
 import type { SolvabilityCaseEvidence, SolvabilityEvidence } from "../src/claim/readiness.ts";
 import { limitMargin, readLimitMargin, writeLimitMargin } from "../src/run/limit-margin.ts";
-import type { Brief, BriefTruthCheck } from "../src/truth/brief.ts";
-import type { BuildTask } from "../src/truth/tasks.ts";
+import type { Brief, BriefTruthCheck } from "../src/correctness-bundle/brief.ts";
+import type { BuildTask } from "../src/correctness-bundle/tasks.ts";
 import { MATCHING_BRIEF } from "./helpers/matching-fixture.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 
@@ -77,6 +77,35 @@ describe("limit margin against the reference solve", () => {
         within1pct: 0,
         within5pct: 1,
         medianRelativeDistance: expect.closeTo((0.02 + 0.5) / 2, 9),
+        derived: 0,
+        unpaired: 1,
+      },
+    ]);
+  });
+
+  // A check whose declared artifact paths reach only text, such as a source file whose behaviour the
+  // expectation is compared with, holds no number to pair a hidden leaf against: the compared value
+  // comes from running it. That is a different fact from a reference that lacks the path entirely.
+  it("counts a hidden leaf whose check reaches only text as derived, apart from one whose path is absent", () => {
+    const brief: Brief = {
+      ...MATCHING_BRIEF,
+      truthChecks: [numericCheck("timing", ["$.files"]), numericCheck("mass-limit", ["$.mass"])],
+    };
+    const rows = limitMargin(
+      brief,
+      [task("t1", "firmware", { timing: { samples: [102, 103] }, "mass-limit": 40 })],
+      [caseOf("t1", { files: { "main.c": "int main(void) { return 0; }" } })],
+    );
+    expect(rows).toEqual([
+      {
+        family: "firmware",
+        limits: "hidden",
+        tasks: 1,
+        paired: 0,
+        within1pct: 0,
+        within5pct: 0,
+        medianRelativeDistance: null,
+        derived: 2,
         unpaired: 1,
       },
     ]);
@@ -116,6 +145,7 @@ describe("limit margin against the reference solve", () => {
         within1pct: 1,
         within5pct: 1,
         medianRelativeDistance: expect.closeTo(0.01, 9),
+        derived: 0,
         unpaired: 0,
       },
     ]);
@@ -158,6 +188,7 @@ describe("limit margin against the reference solve", () => {
         within1pct: 0,
         within5pct: 1,
         medianRelativeDistance: expect.closeTo((0.02 + 0.8) / 2, 9),
+        derived: 0,
         unpaired: 1,
       },
     ]);
@@ -172,6 +203,46 @@ describe("limit margin against the reference solve", () => {
     };
     const halfStated: Brief = { ...brief, truthChecks: [{ ...mass, numericBoundaries: [half] }] };
     expect(limitMargin(halfStated, tasks, [caseOf("tight", artifact)])).toEqual([]);
+  });
+
+  // A limit on a value the answer does not state, mass computed from members, sections and density,
+  // is declared against the structure it is computed from. That path reaches an object rather than a
+  // number, so no reading of the reference's bytes measures it; counting it unpaired said the value
+  // was unreadable, when the reference states everything the value is computed from.
+  it("counts a published limit whose artifact path reaches a structure as derived, apart from one whose path is absent", () => {
+    const mass: BriefTruthCheck = {
+      ...numericCheck("mass-within-limit", ["$.design"]),
+      numericBoundaries: [
+        {
+          publicInputPath: "$.massCap",
+          constantName: "mass-cap",
+          artifactPath: "$.design",
+          direction: "atMost",
+        },
+      ],
+    };
+    const brief: Brief = { ...MATCHING_BRIEF, truthChecks: [mass] };
+    const tasks: BuildTask[] = [
+      { taskId: "computed", family: "truss", publicInput: { span: 12, massCap: 18 }, hidden: [] },
+      { taskId: "absent", family: "truss", publicInput: { span: 12, massCap: 18 }, hidden: [] },
+    ];
+    const rows = limitMargin(brief, tasks, [
+      caseOf("computed", { design: { members: [{ area: 0.002, length: 4 }] } }),
+      caseOf("absent", { members: [] }),
+    ]);
+    expect(rows).toEqual([
+      {
+        family: "truss",
+        limits: "published",
+        tasks: 2,
+        paired: 0,
+        within1pct: 0,
+        within5pct: 0,
+        medianRelativeDistance: null,
+        derived: 1,
+        unpaired: 1,
+      },
+    ]);
   });
 
   // Rule 4 in source: the margin is computed from hidden operands and reference artifacts, so only

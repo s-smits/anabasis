@@ -1,17 +1,25 @@
+/**
+ * What a launch request means, before anything is spent: the presets and model conditions, the
+ * parsed options, one plan per run, the argument lists handed to the controller and to the probe,
+ * and the opening check that says the controller started what was planned.
+ *
+ * `tools/runs` reads `CONDITIONS`, `PRESETS`, `SLOTS` and `DEFAULT_DISK_MIN_GIB` from here, and every
+ * launched tree runs its own copy of this file through `probe.ts`, so the probe's argument list
+ * keeps the spelling every version of this file accepts.
+ */
 import { CliArgumentError, type ExitWith, parseCliArgs } from "#skills/main/cli.ts";
 import { isAbsolute, join } from "#src/meta/path.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { asRecord, isBoolean, isString } from "#src/meta/json-shape.ts";
-import type { JsonObject } from "#src/meta/json-shape.ts";
-
-type ParsedCliArgs = ReturnType<typeof parseCliArgs>;
+import type { JsonObject, JsonValue } from "#src/meta/json-shape.ts";
 
 export const PRESETS = {
   truss:
     "Design lightweight 3D steel trusses around irregular supports and forbidden volumes, choosing joint positions, connectivity and catalogue sections within strict mass limits.\nMeet strength, buckling and deflection requirements under self-weight, reversing wind and asymmetric live loads, including geometric nonlinearity and specified single-member-loss scenarios.",
 };
-const PRESET_NAMES = Object.keys(PRESETS).join("|");
+const PRESET_PROMPTS: ReadonlyMap<string, string> = new Map(Object.entries(PRESETS));
 export const SLOTS = ["builder", "built", "review"] as const;
+/** The model one `--model` name selects, and its effort on each slot in `SLOTS` order. */
 export const CONDITIONS = {
   sol: { kind: "codex", model: "gpt-6-sol", efforts: ["high", "high", "medium"] },
   luna: { kind: "codex", model: "gpt-5.6-luna", efforts: ["max", "max", "max"] },
@@ -20,8 +28,16 @@ export const CONDITIONS = {
   fable: { kind: "claude", model: "claude-fable-5-1", efforts: ["medium", "medium", "medium"] },
 } as const;
 export const DEFAULT_DISK_MIN_GIB = 20;
+/** Where a launch keeps its receipts, logs and frozen environment, relative to the run tree. */
+export const SCRATCH = ".scratch/quick-run";
+/**
+ * Whether the launch runs `bun run gate` first. `auto` skips it when the pre-push hook recorded a
+ * whole-gate pass of the exact commit; `run` always gates and `skip` never does.
+ */
+export const GATES = ["auto", "run", "skip"] as const;
 export type Condition = keyof typeof CONDITIONS;
 export type Backend = (typeof CONDITIONS)[Condition]["kind"];
+export type Gate = (typeof GATES)[number];
 export interface SourceIdentity {
   commit: string;
   sourceDigest: string;
@@ -40,7 +56,6 @@ export interface RunPlan {
   branch: string;
   label: string;
   log: string;
-  runtimeTemp?: string;
   /** An existing project this run continues; absent for a fresh one. */
   project?: string;
 }
@@ -50,24 +65,40 @@ export interface OpeningPlan extends RunPlan, RequestIdentity {
   service: string;
 }
 
+const PROMPT_REFUSAL = "--prompt must be one or two non-empty lines without CR or NUL";
+const COMMIT = /^[0-9a-f]{40}$/;
+const DIGEST = /^[0-9a-f]{64}$/;
+/** The options that name one run, each id's safe shape, and the refusal when a batch would share it. */
+const ONE_RUN_IDS = [
+  [
+    "run",
+    /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,85}$/,
+    "--run requires one preset, one condition and a safe id of at most 86 characters",
+  ],
+  [
+    "project",
+    /^[a-z0-9][a-z0-9-]*$/,
+    "--project requires one preset, one condition and an existing project id",
+  ],
+] as const;
+
+/** The options the controller receives as given, and the probe with it, so both digest one command. */
+const CARRIED = ["max-iterations", "stop-after-ms", "project"] as const;
 /** The options that stay absent unless the operator passes them. */
 const OPTIONAL_VALUES = [
-  "max-iterations",
-  "stop-after-ms",
+  ...CARRIED,
   "kill-after-ms",
   "run",
   "prompt",
-  "project",
   "env-file",
   "codex-home",
   "output-dir",
 ] as const;
 
 /** The launcher's arguments, parsed by `.claude/skills/main/cli.ts`, so a misspelled flag refuses
- *  and a value may be passed once. `--condition` is the legacy alias of `--model`, and
- *  `launchOptions` refuses the pair as one option passed twice. */
+ *  and a value may be passed once. `--condition` is the legacy alias of `--model`. */
 export const LAUNCH_ARGUMENTS = {
-  values: ["model", "condition", "source", "budget", "tasks", ...OPTIONAL_VALUES],
+  values: ["model", "condition", "source", "budget", "tasks", "gate", ...OPTIONAL_VALUES],
   flags: ["help", "list", "dry-run"],
   positionals: [0, Number.MAX_SAFE_INTEGER],
 } as const;
@@ -77,6 +108,7 @@ export type LaunchOptions = Partial<Record<(typeof OPTIONAL_VALUES)[number], str
   source: string;
   budget: string;
   tasks: string;
+  gate: Gate;
   help: boolean;
   list: boolean;
   "dry-run": boolean;
@@ -84,10 +116,13 @@ export type LaunchOptions = Partial<Record<(typeof OPTIONAL_VALUES)[number], str
   conditions: Condition[];
 };
 
-export const HELP = `Usage: bun .claude/skills/launch-run/scripts/launch.ts <${PRESET_NAMES}|custom>... [options]
+const PRESET_NAMES = [...PRESET_PROMPTS.keys(), "custom"].join("|");
+export const HELP = `Usage: bun .claude/skills/launch-run/scripts/launch.ts <${PRESET_NAMES}>... [options]
   --model sol,luna,astra,opus,fable Standard model presets; default opus (legacy alias: --condition)
   --source <ref|sha|pr:number>     Default current origin/main
   --budget N --tasks N            Defaults 1320 provider turns and 25 tasks per run
+  --gate auto|run|skip            Default auto: skip bun run gate when the pre-push hook recorded a
+                                  whole-gate pass of the resolved commit, run it otherwise
   --max-iterations N              Optional controller round cap
   --stop-after-ms N               Optional time boundary: the controller stops after the first completed round past N ms
   --kill-after-ms N               Operator SIGTERM at N ms after launch begins; 30 s grace then service removal
@@ -101,7 +136,7 @@ export const HELP = `Usage: bun .claude/skills/launch-run/scripts/launch.ts <${P
   --list                         Exact preset prompts
   --help                         This help
 Repeat a preset for independent replicas, for example truss truss --model sol,astra.
-One Bun command prepares and probes the batch, gates its source once, then launches it.`;
+One Bun command prepares and probes the batch, gates its source at most once, then launches it.`;
 
 function conditionName(value: string, refuse: ExitWith): Condition {
   if (!Object.hasOwn(CONDITIONS, value)) {
@@ -111,7 +146,9 @@ function conditionName(value: string, refuse: ExitWith): Condition {
   return value as Condition;
 }
 
-function validateOptionValues(options: LaunchOptions, refuse: ExitWith): void {
+/** What the parser cannot see for itself: the option values that must be numbers, paths, a prompt or
+ *  an id naming exactly one run. */
+function refuseValues(options: LaunchOptions, refuse: ExitWith): void {
   for (const key of ["budget", "tasks", "max-iterations", "stop-after-ms", "kill-after-ms"] as const) {
     const value = options[key];
     if (value !== undefined && (!/^[1-9]\d*$/.test(value) || !Number.isSafeInteger(Number(value)))) {
@@ -122,18 +159,27 @@ function validateOptionValues(options: LaunchOptions, refuse: ExitWith): void {
     const value = options[key];
     if (value !== undefined && !isAbsolute(value)) refuse(`--${key} must be absolute`);
   }
+  const lines = options.prompt?.split("\n") ?? [];
+  if (/[\r\0]/.test(options.prompt ?? "") || lines.length > 2 || lines.some((line) => !line.trim())) {
+    refuse(PROMPT_REFUSAL);
+  }
+  const oneRun = options.names.length === 1 && options.conditions.length === 1;
+  for (const [key, pattern, refusal] of ONE_RUN_IDS) {
+    const value = options[key];
+    if (value !== undefined && (!oneRun || !pattern.test(value))) refuse(refusal);
+  }
 }
 
 /**
  * The launch options a parse admits, refusing through `refuse` what the parser cannot see: an
- * undeclared condition or preset, `--model` beside `--condition`, a prompt that is not one or two
- * lines, and a `--run` or `--project` that would name more than one run.
+ * undeclared condition, preset or gate, `--model` beside `--condition`, and every value
+ * `refuseValues` checks.
  */
-export function launchOptions(parsed: ParsedCliArgs, refuse: ExitWith): LaunchOptions {
+export function launchOptions(parsed: ReturnType<typeof parseCliArgs>, refuse: ExitWith): LaunchOptions {
   const { single, flags, positionals: names } = parsed;
   if (single.has("model") && single.has("condition")) refuse("--model and --condition are one option");
   const condition = single.get("model") ?? single.get("condition") ?? "opus";
-  const conditions = condition.split(",").map((name) => conditionName(name, refuse));
+  const gate = single.get("gate") ?? "auto";
   const options: LaunchOptions = {
     ...Object.fromEntries(
       OPTIONAL_VALUES.flatMap((key) => (single.has(key) ? [[key, single.get(key)]] : [])),
@@ -142,38 +188,23 @@ export function launchOptions(parsed: ParsedCliArgs, refuse: ExitWith): LaunchOp
     source: single.get("source") ?? "origin/main",
     budget: single.get("budget") ?? "1320",
     tasks: single.get("tasks") ?? "25",
+    gate: GATES.find((name) => name === gate) ?? refuse(`--gate must be one of ${GATES.join(", ")}`),
     help: flags.has("help"),
     list: flags.has("list"),
     "dry-run": flags.has("dry-run"),
     names,
-    conditions,
+    conditions: condition.split(",").map((name) => conditionName(name, refuse)),
   };
   if (options.help || options.list) return options;
-  if (names.length === 0) refuse(`name a preset: ${PRESET_NAMES.replaceAll("|", ", ")} or custom`);
+  if (names.length === 0) refuse(`name a preset: ${PRESET_NAMES.replaceAll("|", ", ")}`);
   for (const name of names) {
-    if (!Object.hasOwn(PRESETS, name) && name !== "custom") refuse(`unknown preset ${name}; use --list`);
+    if (!PRESET_PROMPTS.has(name) && name !== "custom") refuse(`unknown preset ${name}; use --list`);
   }
-  if (new Set(conditions).size !== conditions.length) refuse("name each condition once");
-  const { prompt, run, project } = options;
-  if (names.includes("custom") !== (prompt !== undefined)) {
+  if (new Set(options.conditions).size !== options.conditions.length) refuse("name each condition once");
+  if (names.includes("custom") !== (options.prompt !== undefined)) {
     refuse("custom and --prompt must be supplied together");
   }
-  if (
-    prompt !== undefined &&
-    (/[\r\0]/.test(prompt) ||
-      prompt.split("\n").length > 2 ||
-      prompt.split("\n").some((line) => !line.trim()))
-  ) {
-    refuse("--prompt must be one or two non-empty lines without CR or NUL");
-  }
-  validateOptionValues(options, refuse);
-  const oneRun = names.length === 1 && conditions.length === 1;
-  if (run !== undefined && (!oneRun || !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,85}$/.test(run))) {
-    refuse("--run requires one preset, one condition and a safe id of at most 86 characters");
-  }
-  if (project !== undefined && (!oneRun || !/^[a-z0-9][a-z0-9-]*$/.test(project))) {
-    refuse("--project requires one preset, one condition and an existing project id");
-  }
+  refuseValues(options, refuse);
   return options;
 }
 
@@ -185,17 +216,19 @@ const throwArgument: ExitWith = (message) => {
 export function parseOptions(argv: readonly string[]): LaunchOptions {
   return launchOptions(parseCliArgs(argv, LAUNCH_ARGUMENTS), throwArgument);
 }
+
+/** One plan per preset and condition. A preset named twice is a replica, and each gets an `-rN`. */
 export function planRuns(options: LaunchOptions, parent: string, suffix: string): RunPlan[] {
-  return options.names.flatMap((name, index) =>
+  const { names } = options;
+  return names.flatMap((name, index) =>
     options.conditions.map((condition) => {
       const replica =
-        options.names.indexOf(name) === options.names.lastIndexOf(name)
+        names.indexOf(name) === names.lastIndexOf(name)
           ? ""
-          : `-r${options.names.slice(0, index + 1).filter((item) => item === name).length}`;
+          : `-r${names.slice(0, index + 1).filter((item) => item === name).length}`;
       const runId = options.run ?? `${name}-${condition}${replica}-${suffix}`;
       const dir = join(parent, `ana-run-${runId}`);
-      const prompt =
-        name === "custom" ? options.prompt : Object.entries(PRESETS).find(([preset]) => preset === name)?.[1];
+      const prompt = name === "custom" ? options.prompt : PRESET_PROMPTS.get(name);
       if (prompt === undefined) throw new Error(`missing prompt for ${name}`);
       return {
         runId,
@@ -205,32 +238,40 @@ export function planRuns(options: LaunchOptions, parent: string, suffix: string)
         prompt,
         branch: `codex/run-${runId}`,
         label: `ana.fullrun.${runId}`,
-        log: join(dir, ".scratch/quick-run/fullrun.log"),
+        log: join(dir, SCRATCH, "fullrun.log"),
         ...keyIfDefined("project", options.project),
       };
     }),
   );
 }
 
+/** Each slot's effort under one condition, keyed by slot rather than by position in `SLOTS`. */
+function slotEfforts(name: Condition): Record<(typeof SLOTS)[number], string> {
+  const [builder, built, review] = CONDITIONS[name].efforts;
+  return { builder, built, review };
+}
+
 export function slotEnvironment(name: Condition): Record<string, string> {
-  const condition = CONDITIONS[name];
-  const prefix = condition.kind.toUpperCase();
+  const { kind, model } = CONDITIONS[name];
+  const prefix = kind.toUpperCase();
+  const efforts = slotEfforts(name);
   return Object.fromEntries(
-    SLOTS.flatMap((slot, i) => {
-      const effort = condition.efforts[i];
-      if (effort === undefined) {
-        throw new Error(`condition ${name} names no effort for the ${slot} slot`);
-      }
-      return [
-        [`${prefix}_${slot.toUpperCase()}_MODEL`, condition.model],
-        [`${prefix}_${slot.toUpperCase()}_REASONING_EFFORT`, effort],
-      ];
-    }),
+    SLOTS.flatMap((slot) => [
+      [`${prefix}_${slot.toUpperCase()}_MODEL`, model],
+      [`${prefix}_${slot.toUpperCase()}_REASONING_EFFORT`, efforts[slot]],
+    ]),
   );
 }
 
+function carried(options: LaunchOptions): string[] {
+  return CARRIED.flatMap((key) => {
+    const value = options[key];
+    return value === undefined ? [] : [`--${key}`, value];
+  });
+}
+
 export function fullrunArgs(plan: RunPlan, options: LaunchOptions, source: SourceIdentity): string[] {
-  const args = [
+  return [
     "--run",
     plan.runId,
     "--prompt",
@@ -242,11 +283,30 @@ export function fullrunArgs(plan: RunPlan, options: LaunchOptions, source: Sourc
     "--expected-source",
     `${source.commit}:${source.sourceDigest}`,
     ...SLOTS.flatMap((slot) => [`--${slot}-backend`, CONDITIONS[plan.condition].kind]),
+    ...carried(options),
   ];
-  for (const key of ["max-iterations", "stop-after-ms", "project"] as const) {
-    if (options[key] !== undefined) args.push(`--${key}`, options[key]);
-  }
-  return args;
+}
+
+/**
+ * The arguments `launch.ts` hands the launched tree's `probe.ts`. That probe is the launched
+ * revision's own, however old, so this list keeps the spelling every version parses: `custom` with
+ * the prompt verbatim, the legacy `--condition`, and nothing a later launcher added.
+ */
+export function probeArgs(plan: RunPlan, options: LaunchOptions): string[] {
+  return [
+    "custom",
+    "--prompt",
+    plan.prompt,
+    "--run",
+    plan.runId,
+    "--condition",
+    plan.condition,
+    "--budget",
+    options.budget,
+    "--tasks",
+    options.tasks,
+    ...carried(options),
+  ];
 }
 
 /** A recorded JSON row read as a dictionary, with an absent or wrongly shaped value reading as
@@ -255,36 +315,30 @@ export function fullrunArgs(plan: RunPlan, options: LaunchOptions, source: Sourc
 export function record(value: unknown): JsonObject {
   return asRecord(value) ?? {};
 }
+const hex = (value: JsonValue | undefined, pattern: RegExp): value is string =>
+  isString(value) && pattern.test(value);
+
 export function sourceIdentity(value: unknown): SourceIdentity {
-  const row = record(value);
-  if (
-    !isString(row.commit) ||
-    !/^[0-9a-f]{40}$/.test(row.commit) ||
-    !isString(row.sourceDigest) ||
-    !/^[0-9a-f]{64}$/.test(row.sourceDigest) ||
-    !isBoolean(row.dirty)
-  ) {
+  const { commit, sourceDigest, dirty } = record(value);
+  if (!hex(commit, COMMIT) || !hex(sourceDigest, DIGEST) || !isBoolean(dirty)) {
     throw new Error("target returned an incomplete source identity");
   }
-  return { commit: row.commit, sourceDigest: row.sourceDigest, dirty: row.dirty };
+  return { commit, sourceDigest, dirty };
 }
 export function requestIdentity(value: unknown): RequestIdentity {
-  const row = record(value);
-  if (
-    !isString(row.requestDigest) ||
-    !/^[0-9a-f]{64}$/.test(row.requestDigest) ||
-    !isString(row.commandDigest) ||
-    !/^[0-9a-f]{64}$/.test(row.commandDigest)
-  ) {
+  const { requestDigest, commandDigest } = record(value);
+  if (!hex(requestDigest, DIGEST) || !hex(commandDigest, DIGEST)) {
     throw new Error("target returned incomplete request and command identities");
   }
-  return { requestDigest: row.requestDigest, commandDigest: row.commandDigest };
+  return { requestDigest, commandDigest };
 }
 
+/** Every way an opening fails to record the planned run, as short names; none when it matches. */
 export function openingProblems(value: unknown, plan: OpeningPlan): string[] {
   const opening = record(value),
     project = record(opening.project),
-    source = record(opening.source);
+    source = record(opening.source),
+    slots = record(opening.modelSlots);
   const problems: string[] = [];
   if (opening.runId !== plan.runId) problems.push("run id");
   if (plan.project !== undefined) {
@@ -303,15 +357,11 @@ export function openingProblems(value: unknown, plan: OpeningPlan): string[] {
   if (project.requestDigest !== plan.requestDigest) problems.push("prompt/request digest");
   if (record(opening.command).digest !== plan.commandDigest) problems.push("command digest");
   if (record(opening.providerResourceBudget).cap !== Number(plan.budget)) problems.push("provider budget");
-  const condition = CONDITIONS[plan.condition],
-    slots = record(opening.modelSlots);
-  for (const [i, slot] of SLOTS.entries()) {
+  const { kind, model } = CONDITIONS[plan.condition];
+  const efforts = slotEfforts(plan.condition);
+  for (const slot of SLOTS) {
     const seen = record(slots[slot]);
-    if (
-      seen.kind !== condition.kind ||
-      seen.model !== condition.model ||
-      seen.reasoningEffort !== condition.efforts[i]
-    ) {
+    if (seen.kind !== kind || seen.model !== model || seen.reasoningEffort !== efforts[slot]) {
       problems.push(`${slot} model slot`);
     }
   }

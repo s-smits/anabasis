@@ -12,8 +12,8 @@
  * that also decides anything. A clause name is never recycled for a different meaning: an older
  * record stays recognisable only while the words in it still mean what they meant.
  */
-import type { GroundingEvidence, TruthGrounding } from "../truth/grounding.ts";
-import type { ToolCheckCoverage } from "../truth/grounding-coverage.ts";
+import type { GroundingEvidence, TruthGrounding } from "../correctness-bundle/grounding.ts";
+import type { ToolCheckCoverage } from "../correctness-bundle/grounding-coverage.ts";
 import type { DiscriminationClaimabilityFinding } from "./discrimination-claimability.ts";
 import type { JudgeDecision, JudgeEvidence, JudgeState } from "./judge.ts";
 import type { RuntimeIdentityCaseEvidence } from "./runtime-model-identity.ts";
@@ -57,10 +57,10 @@ interface DiscriminationEvidence {
  * assertion and returns pass or fail, rather than skipping it as inapplicable.
  *
  * A check that misreads its hidden operand can skip every case and still leave a ready claim, with
- * only artifact shape actually checked. These counts are what detects a declared check that never
- * runs despite having applicable verified cases, which `tasks-check-family-unbound` cannot: that
- * gate refuses a check scoped to families the battery lacks, so it establishes scope on paper
- * alone, and only the battery can record which checks actually assessed an artifact.
+ * only artifact shape actually checked. These counts are what detect a declared check that never
+ * ran, whether it had applicable verified cases or was scoped to families this battery lacks: a
+ * task probe may narrow the battery below a check's families, and the check then reads 0 here
+ * rather than refusing the candidate.
  */
 export type TruthCheckFiringEvidence = {
   /**
@@ -105,13 +105,6 @@ export type TruthCheckFiringEvidence = {
   verifierVerifiedCount: number;
 };
 
-/** One improvement-memory prediction with its post-battery classification and closing disposition. */
-export interface PredictionItem {
-  id: string;
-  outcome: "open" | "held" | "refuted" | "inconclusive" | "unexercised";
-  disposition?: "repair" | "delete" | "retest";
-}
-
 /** The recorded harness's three separate content hashes, matching FingerprintEvidence.
  *  correctnessModelHash excludes tasks.json. Without taskSetHash, changed questions or hidden
  *  expectations could appear to be the same measured condition. */
@@ -135,8 +128,6 @@ export interface ClaimEvidence {
   /** Resolved Built Harness capabilities, e.g. ["web-search:off"], as the battery recorded them:
    *  the claim states whether web search was available and by which mechanism. */
   capabilities: string[];
-  /** Registered prediction record, or null when no improvement-memory sidecar exists for this slug. */
-  predictions: PredictionItem[] | null;
   /** Per-check execution counts from the battery. The evaluation runner records them on every
    *  battery, a skipped one included, with every declared check at zero until it fires. */
   truthCheckFiring: TruthCheckFiringEvidence;
@@ -186,7 +177,7 @@ export interface ClaimCreationInput {
 export interface ClaimClause {
   clause: string;
   detail: string;
-  /** True when the remedy is in-loop: resume, rerun or prediction closure. */
+  /** True when the remedy is in-loop: a resume or a rerun. */
   repairable: boolean;
 }
 

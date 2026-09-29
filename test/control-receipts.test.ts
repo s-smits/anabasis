@@ -1,18 +1,18 @@
 import { describe, expect, it } from "bun:test";
-import type { Brief } from "../src/truth/brief.ts";
-import type { EvaluatorFn } from "../src/truth/contracts.ts";
-import type { ControlCorpus } from "../src/truth/controls.ts";
-import { EvaluatorProcessFailure } from "../src/truth/evaluator-process.ts";
-import { inLanes, runControls } from "../src/truth/run-controls.ts";
+import type { Brief } from "../src/correctness-bundle/brief.ts";
+import type { EvaluatorFn } from "../src/correctness-bundle/contracts.ts";
+import type { ControlCorpus } from "../src/correctness-bundle/controls.ts";
+import { EvaluatorProcessFailure } from "../src/correctness-bundle/evaluator-process.ts";
+import { inLanes, runControls } from "../src/correctness-bundle/run-controls.ts";
 import {
   type SettledControl,
   TOOL_REFUSED_CODE,
   unexecutedGroundingFindings,
-} from "../src/truth/grounding-coverage.ts";
+} from "../src/correctness-bundle/grounding-coverage.ts";
 import { VerifierOperationalStop } from "../src/verify/verifier-lifetime.ts";
-import { checkReceiptSet, totalsMatchRecorded } from "../src/truth/control-receipts.ts";
-import type { ControlReceipt } from "../src/truth/battery-record.ts";
-import type { BuildTask } from "../src/truth/tasks.ts";
+import { checkReceiptSet, totalsMatchRecorded } from "../src/correctness-bundle/control-receipts.ts";
+import type { ControlReceipt } from "../src/correctness-bundle/battery-record.ts";
+import type { BuildTask } from "../src/correctness-bundle/tasks.ts";
 import type {
   EvaluationScopeHandle,
   ExecutedCheckBinding,
@@ -77,6 +77,11 @@ const EXTERNAL_BRIEF: Brief = {
   ],
 };
 
+const EXTERNAL_OPTIONS = {
+  brief: EXTERNAL_BRIEF,
+  runId: "receipt-run",
+};
+
 const EXTERNAL_CORPUS: ControlCorpus = {
   accept: [accept],
   reject: [
@@ -125,7 +130,7 @@ const intrinsicEvaluate: EvaluatorFn = ({ artifact }) =>
  * the evaluator's verdict; another outcome replaces that verdict with a non-result.
  */
 function fakeToolHost(
-  outcomeFor: (attempt: number) => VerifierExecutionEvidence["outcome"] = () => "executed",
+  outcomeFor: (attempt: number, subjectId: string) => VerifierExecutionEvidence["outcome"] = () => "executed",
   pendingInvocations = 0,
 ): VerifierHostHandle {
   const evidence: VerifierExecutionEvidence[] = [];
@@ -137,7 +142,8 @@ function fakeToolHost(
           abandon() {},
           async run(request) {
             const bad = isBadArtifact(subject.artifact);
-            const outcome = outcomeFor(subject.attempt);
+            // The host's outcome under test falls on the reject; the accept's run always completes.
+            const outcome = bad ? outcomeFor(subject.attempt, subject.subjectId) : "executed";
             const row = double<VerifierExecutionEvidence>({
               toolId: request.toolId,
               checkId: request.checkId,
@@ -156,6 +162,7 @@ function fakeToolHost(
                 attempt: subject.attempt,
                 checkId: request.checkId,
                 adapterId: request.toolId,
+                artifactInput: true,
               });
             }
             const code = bad ? 1 : 0;
@@ -185,9 +192,9 @@ function fakeToolHost(
   };
 }
 
-/** This fixture uses the tool's exit code to decide the reject; its accept runs no tool. */
-const externalEvaluate: EvaluatorFn = async ({ artifact }, runtime) => {
-  if (!isBadArtifact(artifact)) return verdict();
+/** This fixture decides every example by the tool's exit code, since a pass the tool never ran
+ *  for is ungrounded (R1). */
+const externalEvaluate: EvaluatorFn = async (_request, runtime) => {
   if (runtime === undefined) throw new Error("missing verifier runtime");
   const run = await runtime.tools.run({ toolId: "checker", checkId: "external-check" });
   return run.exitCode === 0 ? verdict() : verdict([ISSUE("external-check")]);
@@ -258,8 +265,7 @@ describe("control receipts", () => {
       [TASK],
       { brief: BRIEF },
     );
-    // Gate audit 2026-09-25 (docs/gate-audit.md, reject-discrimination): commented out (unsure): a reject control that passes its named check no longer refuses the candidate or the claim
-    // expect(wrong.claimable).toBe(false);
+    expect(wrong.claimable).toBe(false);
     expect(wrong.rejectsAttributed).toBe(0);
     expect(wrong.controlReceipts[1]?.observedBlockingCheckIds).toEqual(["other-check"]);
 
@@ -376,11 +382,7 @@ describe("control receipts", () => {
       externalEvaluate,
       EXTERNAL_CORPUS,
       [TASK],
-      {
-        brief: EXTERNAL_BRIEF,
-        runId: "receipt-run",
-        externalChecks: [{ checkId: "external-check", adapterId: "checker" }],
-      },
+      EXTERNAL_OPTIONS,
       verifier,
     );
     expect(execution).toMatchObject({
@@ -394,15 +396,57 @@ describe("control receipts", () => {
       observedBlockingCheckIds: ["external-check"],
     });
     // The binding is per subject and per check: nothing else may be read as grounding this reject.
-    expect(verifier.executedBindings()).toEqual([
+    expect(verifier.executedBindings().filter((row) => row.subjectId !== "accept-1")).toEqual([
       {
         phase: "discrimination",
         subjectId: "reject-external",
         attempt: 1,
         checkId: "external-check",
         adapterId: "checker",
+        artifactInput: true,
       },
     ]);
+  });
+
+  it("refuses a control that passed a check without running its required tool", async () => {
+    // R1: the accept's pass rests on "external-check", whose tool this evaluator never runs.
+    const skipsTheTool: EvaluatorFn = async (request, runtime) =>
+      isBadArtifact(request.artifact) ? externalEvaluate(request, runtime) : verdict();
+    const execution = await runControls(
+      skipsTheTool,
+      EXTERNAL_CORPUS,
+      [TASK],
+      EXTERNAL_OPTIONS,
+      fakeToolHost(),
+    );
+    expect(execution.claimable).toBe(false);
+    expect(execution.findings.map((finding) => finding.code)).toEqual(["EXTERNAL_VERDICT_UNGROUNDED"]);
+    expect(execution.findings[0]?.message).toContain('"external-check"');
+  });
+
+  it("reports a reject that passed its named check as passed, not as ungrounded by a check it never ran", async () => {
+    // The census runs only a reject's named check, so the tool check never runs on this reject,
+    // and its pass rests on the authored check alone.
+    const brief: Brief = { ...BRIEF, truthChecks: [...BRIEF.truthChecks, ...EXTERNAL_BRIEF.truthChecks] };
+    const slipped = {
+      id: "reject-intrinsic",
+      taskId: TASK.taskId,
+      artifact: { slip: true },
+      mutationClass: "intrinsic-miss",
+      expectedCheckId: "intrinsic-check",
+    };
+    const missesIt: EvaluatorFn = async (request, runtime) =>
+      isRecord(request.artifact) && request.artifact.slip === true
+        ? verdict()
+        : externalEvaluate(request, runtime);
+    const execution = await runControls(
+      missesIt,
+      { accept: [accept], reject: [...EXTERNAL_CORPUS.reject, slipped] },
+      [TASK],
+      { brief, runId: "receipt-run" },
+      fakeToolHost(),
+    );
+    expect(execution.findings.map((finding) => finding.code)).toEqual(["DISCRIMINATION_REJECT_PASSED"]);
   });
 
   it("lets a host-measured non-result outrank the verdict the evaluator returned", async () => {
@@ -411,16 +455,12 @@ describe("control receipts", () => {
       externalEvaluate,
       EXTERNAL_CORPUS,
       [TASK],
-      {
-        brief: EXTERNAL_BRIEF,
-        runId: "receipt-run",
-        externalChecks: [{ checkId: "external-check", adapterId: "checker" }],
-      },
+      EXTERNAL_OPTIONS,
       verifier,
     );
     // The evaluator returned a blocking issue for "external-check"; the host row says the run never
-    // completed, and that fact settles the reject as its own non-result receipt. An author-owned
-    // kind spends no second attempt, and the corpus keeps running: the accept keeps its verdict.
+    // completed, and that fact settles the reject as its own non-result receipt. A timeout earns one
+    // run alone, which timed out too, and the corpus keeps running: the accept keeps its verdict.
     expect(
       discrimination.controlReceipts.map((receipt) => [
         receipt.controlId,
@@ -431,11 +471,96 @@ describe("control receipts", () => {
       ["accept-1", "pass", null],
       ["reject-external", "non-result", "timeout"],
     ]);
-    expect(verifier.evidence().map((row) => row.attempt)).toEqual([1]);
+    expect(
+      verifier
+        .evidence()
+        .filter((row) => row.subjectId === "reject-external")
+        .map((row) => row.attempt),
+    ).toEqual([1, 2]);
     // No floor was requested, so the settled receipt is the only trace: the reject stays in the
     // declared count, and nothing failed or was attributed.
     expect(discrimination).toMatchObject({ rejects: 1, rejectsFailed: 0, rejectsAttributed: 0 });
     expect(discrimination.findings.map((finding) => finding.code)).not.toContain("DISCRIMINATION_NOT_PROVEN");
+  });
+
+  describe("a reject whose tool timed out", () => {
+    const run = (
+      outcomeFor: (attempt: number, subjectId: string) => VerifierExecutionEvidence["outcome"],
+      reject: ControlCorpus["reject"] = EXTERNAL_CORPUS.reject,
+    ) => {
+      const verifier = fakeToolHost(outcomeFor);
+      const settled = new Map<string, SettledControl>();
+      const options = {
+        ...EXTERNAL_OPTIONS,
+        onSettled: (controlId: string, observation: SettledControl) => settled.set(controlId, observation),
+      };
+      return runControls(externalEvaluate, { accept: [accept], reject }, [TASK], options, verifier).then(
+        (discrimination) => ({
+          discrimination,
+          settled,
+          attempts: verifier.evidence().map((row) => [row.subjectId, row.attempt]),
+        }),
+      );
+    };
+    const sibling = { ...item(EXTERNAL_CORPUS.reject, 0), id: "reject-sibling" };
+
+    it("runs once more alone and settles on the verdict that run reached", async () => {
+      const { discrimination, settled, attempts } = await run((attempt) =>
+        attempt === 1 ? "timeout" : "executed",
+      );
+      expect(attempts).toEqual([
+        ["accept-1", 1],
+        ["reject-external", 1],
+        ["reject-external", 2],
+      ]);
+      expect(settled.get("reject-external")).toEqual({ attempt: 2, hostNonResult: null });
+      expect(discrimination.controlReceipts.map((receipt) => receipt.observedOutcome)).toEqual([
+        "pass",
+        "fail",
+      ]);
+      expect(discrimination.findings).toEqual([]);
+      expect(discrimination.claimable).toBe(true);
+    });
+
+    // Not the author's refusal, since the check has its reject; but no claim rests on it either.
+    it("holds the claim open under its own code when the run alone times out too", async () => {
+      const { discrimination, settled } = await run(() => "timeout");
+      expect(settled.get("reject-external")).toEqual({ attempt: 2, hostNonResult: "timeout" });
+      expect(discrimination.findings.map((finding) => [finding.code, finding.message])).toEqual([
+        [
+          "DISCRIMINATION_CHECK_TIMED_OUT",
+          'every reject naming check "external-check" as its expectedCheckId timed out, so none reached a verdict',
+        ],
+      ]);
+      expect(discrimination.claimable).toBe(false);
+    });
+
+    // A crash is the check's own run failing, not the host's pace, so it buys nothing.
+    it("leaves a crash to settle at once", async () => {
+      const { discrimination, attempts } = await run(() => "crash");
+      expect(attempts.filter(([subject]) => subject === "reject-external")).toEqual([["reject-external", 1]]);
+      expect(discrimination.findings.map((finding) => finding.code)).toContain(
+        "DISCRIMINATION_PROBE_NO_VERDICT",
+      );
+    });
+
+    // One reject that finishes is all a check needs, and a check a sibling already witnessed is proved.
+    it("reruns only the first timed-out reject of a check nothing else witnessed", async () => {
+      const always = await run(() => "timeout", [item(EXTERNAL_CORPUS.reject, 0), sibling]);
+      expect(always.attempts.filter(([subject]) => subject !== "accept-1")).toEqual([
+        ["reject-external", 1],
+        ["reject-sibling", 1],
+        ["reject-external", 2],
+      ]);
+      const witnessed = await run(
+        (_attempt, subjectId) => (subjectId === "reject-external" ? "timeout" : "executed"),
+        [item(EXTERNAL_CORPUS.reject, 0), sibling],
+      );
+      expect(witnessed.attempts.filter(([subject]) => subject === "reject-external")).toEqual([
+        ["reject-external", 1],
+      ]);
+      expect(witnessed.discrimination.claimable).toBe(true);
+    });
   });
 
   it("spends one fresh execution on an environment-owned host refusal, then settles the control", async () => {
@@ -444,30 +569,49 @@ describe("control receipts", () => {
       externalEvaluate,
       EXTERNAL_CORPUS,
       [TASK],
-      {
-        brief: EXTERNAL_BRIEF,
-        runId: "receipt-run",
-        externalChecks: [{ checkId: "external-check", adapterId: "checker" }],
-      },
+      EXTERNAL_OPTIONS,
       verifier,
     );
     expect(discrimination.controlReceipts.map((receipt) => receipt.nonResultKind)).toEqual([null, "sandbox"]);
-    // A control with no verdict witnesses no cell: one no-verdict row keeps the claim open.
-    expect(discrimination.findings.map((finding) => finding.code)).toEqual([
-      "DISCRIMINATION_PROBE_NO_VERDICT",
-    ]);
+    // A control with no verdict witnesses no cell, so the claim stays open; a sandbox refusal that
+    // survived its retry is named as the environment's, which the census settles as a non-result.
+    expect(discrimination.findings.map((finding) => finding.code)).toEqual(["verifier-tool-refused"]);
     expect(discrimination.claimable).toBe(false);
     expect(verifier.evidence().map((row) => [row.subjectId, row.attempt])).toEqual([
+      ["accept-1", 1],
+      ["reject-external", 1],
+      ["reject-external", 2],
+    ]);
+  });
+
+  it("settles an authored check's twice-refused tool as the environment's, as it does an external check's", async () => {
+    // The same tool call under authored evidence: the check's semantics are the author's, but the
+    // host that could not run its tool is still the environment, so no evaluator.ts row is left.
+    const authored: Brief = {
+      ...EXTERNAL_BRIEF,
+      truthChecks: EXTERNAL_BRIEF.truthChecks.map((check) => ({
+        ...check,
+        execution: { ...check.execution, requiredToolIds: ["checker"], evidence: { kind: "authored" } },
+      })),
+    };
+    const verifier = fakeToolHost(() => "verifierUnavailable");
+    const discrimination = await runControls(
+      externalEvaluate,
+      EXTERNAL_CORPUS,
+      [TASK],
+      { ...EXTERNAL_OPTIONS, brief: authored, toolRetryWaitMs: 0 },
+      verifier,
+    );
+    expect(discrimination.findings.map((finding) => finding.code)).toEqual([TOOL_REFUSED_CODE]);
+    expect(discrimination.claimable).toBe(false);
+    expect(verifier.evidence().map((row) => [row.subjectId, row.attempt])).toEqual([
+      ["accept-1", 1],
       ["reject-external", 1],
       ["reject-external", 2],
     ]);
   });
 
   it.each([
-    // Gate audit 2026-09-25 (docs/gate-audit.md, census-grounding-owed): commented out (unsure): an example whose check made no completed tool run, with no host refusal, no longer refuses adoption at the census
-    // ["timeout", "generated-external-grounding-unexecuted"],
-    // ["crash", "generated-external-grounding-unexecuted"],
-    // ["throw", "generated-external-grounding-unexecuted"],
     ["timeout", null],
     ["crash", null],
     ["throw", null],
@@ -493,15 +637,14 @@ describe("control receipts", () => {
         { accept: [], reject: EXTERNAL_CORPUS.reject },
         [TASK],
         {
-          brief: EXTERNAL_BRIEF,
-          runId: "receipt-run",
-          externalChecks: [{ checkId: "external-check", adapterId: "checker" }],
+          ...EXTERNAL_OPTIONS,
           toolRetryWaitMs: 0,
           onSettled: (controlId, observation) => settled.set(controlId, observation),
         },
         verifier,
       );
-      expect(settled.get("reject-external")?.attempt).toBe(2);
+      // A retry that timed out runs once more alone, which times out again at attempt 3.
+      expect(settled.get("reject-external")?.attempt).toBe(retry === "timeout" ? 3 : 2);
       const findings = unexecutedGroundingFindings({
         brief: EXTERNAL_BRIEF,
         tasks: [TASK],
@@ -534,9 +677,7 @@ describe("control receipts", () => {
       { accept: [], reject: [stopping, item(EXTERNAL_CORPUS.reject, 0)] },
       [TASK],
       {
-        brief: EXTERNAL_BRIEF,
-        runId: "receipt-run",
-        externalChecks: [{ checkId: "external-check", adapterId: "checker" }],
+        ...EXTERNAL_OPTIONS,
         toolRetryWaitMs: 0,
       },
       verifier,
@@ -567,9 +708,7 @@ describe("control receipts", () => {
       { accept: [], reject: [stopping, item(EXTERNAL_CORPUS.reject, 0)] },
       [TASK],
       {
-        brief: EXTERNAL_BRIEF,
-        runId: "receipt-run",
-        externalChecks: [{ checkId: "external-check", adapterId: "checker" }],
+        ...EXTERNAL_OPTIONS,
         toolRetryWaitMs: 0,
       },
       verifier,
@@ -602,11 +741,7 @@ describe("control receipts", () => {
         throwingEvaluate,
         EXTERNAL_CORPUS,
         [TASK],
-        {
-          brief: EXTERNAL_BRIEF,
-          runId: "receipt-run",
-          externalChecks: [{ checkId: "external-check", adapterId: "checker" }],
-        },
+        EXTERNAL_OPTIONS,
         verifier,
       );
       // The accept ran no tool, so its throw stays the author's; the reject's host row wins.

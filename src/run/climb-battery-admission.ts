@@ -9,7 +9,6 @@
  * decision across both would give one battery two chances to be excluded for two different reasons.
  */
 import { capturedJsonParse, capturedJsonStringify } from "../meta/json-runtime.ts";
-import { Check as validateSchema } from "typebox/value";
 import { existsSync, readFileSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
 import type { MeasuredDifficulty } from "../claim/battery-difficulty.ts";
@@ -17,10 +16,9 @@ import { recordedEvidence } from "../claim/evidence-log.ts";
 import { loadFrozenManifest } from "../critic/manifest.ts";
 import { isBoolean, isNumber, isString, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
-import { BATTERY_FILE } from "../truth/battery-record.ts";
-import { recordedVerifierHash } from "../truth/verifier-environment.ts";
-import { parseExperimentSubmission } from "../author/experiment-plan.ts";
-import { ExperimentAuthoringSchema, type ExperimentAuthoring } from "./experiment-freeze.ts";
+import { BATTERY_FILE } from "../correctness-bundle/battery-record.ts";
+import { recordedVerifierHash } from "../correctness-bundle/verifier-environment.ts";
+import { type ExperimentAuthoring, experimentAuthoringRefusal } from "./experiment-freeze.ts";
 import { SHIPPING_VARIANT } from "./run-driver.ts";
 
 /** The two claim clauses the climb does not read. Both count something the environment failed to
@@ -38,7 +36,7 @@ import { SHIPPING_VARIANT } from "./run-driver.ts";
 const ENVIRONMENT_CLAUSES = new Set(["runtime-model-identity-unproven", "non-result-ratio-excessive"]);
 
 /** Partial recorded battery shape. Admission validates the experiment authoring before returning
- *  the evidence, because a malformed proposal digest is a refusal rather than a field to skip; the
+ *  the evidence, because a malformed attribution is a refusal rather than a field to skip; the
  *  history reader checks the remaining fields it consumes, at the point it consumes them. */
 export interface BatteryEvidence {
   runId?: unknown;
@@ -47,6 +45,7 @@ export interface BatteryEvidence {
   condition?: { variant?: unknown };
   bundleSnapshot?: { agentHash?: unknown; scoringHash?: unknown; taskSetHash?: unknown };
   execution?: JsonValue;
+  regrade?: { of?: unknown; reused?: unknown };
   cases?: Array<{
     taskId?: unknown;
     family?: unknown;
@@ -118,6 +117,12 @@ export type BatteryAdmission =
       createdAt: string;
     }
   | { ok: false; excluded: ExcludedBattery };
+
+/** A refused claim whose every clause is the environment's, the one reading both the climb and
+ *  the authoring allowance take of a refusal. */
+export function refusedForEnvironmentOnly(names: readonly string[]): boolean {
+  return names.length > 0 && names.every((name) => ENVIRONMENT_CLAUSES.has(name));
+}
 
 export function currentThresholdDigest(manifestPath?: string): ThresholdIdentity {
   if (manifestPath === undefined) return { kind: "unstated" };
@@ -196,7 +201,7 @@ function claimFacts(claimsDir: string, runId: string): ClaimFacts {
       // climb simply stops being its second reader. The shorter sample is then read honestly,
       // because `placeOnBand` owns whether the cases that did run are enough to place at all, and
       // refuses a placement rather than misplacing one.
-      if (createdAt !== null && names.length > 0 && names.every((name) => ENVIRONMENT_CLAUSES.has(name))) {
+      if (createdAt !== null && refusedForEnvironmentOnly(names)) {
         return { refusal: null, createdAt };
       }
       return {
@@ -323,13 +328,11 @@ export function admitBattery(
   if (!evidence.cases.every((row) => isBoolean(row.acceptedSubmit))) {
     return refuse("a case row states no acceptedSubmit, which every battery the runner writes records");
   }
-  if (
-    evidence.experimentAuthoring !== undefined &&
-    (!validateSchema(ExperimentAuthoringSchema, evidence.experimentAuthoring) ||
-      parseExperimentSubmission(evidence.experimentAuthoring.proposal) === null)
-  ) {
-    return refuse("recorded experiment authoring is malformed or has an unbound proposal digest");
-  }
+  const authoringRefusal =
+    evidence.experimentAuthoring === undefined
+      ? null
+      : experimentAuthoringRefusal(evidence.experimentAuthoring);
+  if (authoringRefusal !== null) return refuse(authoringRefusal);
   if (evidence.runId !== name) {
     return refuse(
       "recorded battery carries a different runId than its directory — a relocated run dir is not this tree's history",

@@ -69,7 +69,7 @@ describe("one round's turn loop", () => {
   });
 
   // A changed tree with the same diagnosis is repair in progress, and a byte-identical resubmit is
-  // counted by the controller's unchanged-candidate owner; neither is an in-session strike.
+  // counted in the session record as `unchangedTreeSubmits`; neither is an in-session strike.
   it.each([
     ["the same diagnosis on changed trees", ["1", "2", "3", "4"], 0],
     ["alternating diagnoses on changed trees", ["1", "2", "3", "4", "5"], 0],

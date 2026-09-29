@@ -9,6 +9,7 @@ import { loadRepoEnv } from "../src/backends/env.ts";
 import { resolveSlots } from "../src/backends/resolve.ts";
 import { readCaseRecord } from "../src/claim/case-record.ts";
 import { EPOCH_REVIEW_SCHEMA, measuredConditionOf } from "../src/review/epoch-review-findings.ts";
+import { recordEpochReview } from "../src/review/epoch-reviewer.ts";
 import { analyseStep } from "../src/run/analyse-step.ts";
 import { measurementDriverId } from "../src/run/harness-measure.ts";
 import { LIMIT_MARGIN_SCHEMA, limitMarginFile, readLimitMargin } from "../src/run/limit-margin.ts";
@@ -16,8 +17,6 @@ import { MATCHING_TASKS, scriptedMatchingSolver } from "./helpers/matching-fixtu
 import { builtSession, fullFakeHost, probeEvidence } from "./helpers/measure-doubles.ts";
 import { DRIVER_ID, measure, measureScratch, scaffoldRepo } from "./helpers/measure-repo.ts";
 import { cleanupScratch } from "./helpers/scratch.ts";
-import { PLAN_FIELDS } from "./helpers/experiment-plan.ts";
-import { hashJsonValue } from "../src/meta/stable-json.ts";
 
 /**
  * The shared measurement entrypoint. The driver reads an adopted product, resolves the Built slot,
@@ -105,14 +104,14 @@ describe("measureHarness", () => {
     ).rejects.toThrow("provider interrupted the epoch review");
     const interrupted = JSON.parse(readFileSync(ledger, "utf8"));
     expect(interrupted.runId).toBe("m4-ledger");
-    // Each family's public inputs are digested from the battery's own recorded task projections,
-    // and the two families ran different tasks, so their digests differ.
+    // Each family's tasks are digested from the measured tree, vouched for by the task-set hash
+    // the battery recorded, and the two families ran different tasks, so their digests differ.
     const digest = expect.stringMatching(/^[0-9a-f]{64}$/);
     expect(interrupted.families).toEqual([
-      { family: "single-part", verified: 2, passed: 2, unaccepted: 0, nonResults: 0, publicInputs: digest },
-      { family: "two-part", verified: 2, passed: 2, unaccepted: 0, nonResults: 0, publicInputs: digest },
+      { family: "single-part", verified: 2, passed: 2, unaccepted: 0, nonResults: 0, taskInputs: digest },
+      { family: "two-part", verified: 2, passed: 2, unaccepted: 0, nonResults: 0, taskInputs: digest },
     ]);
-    expect(interrupted.families[0].publicInputs).not.toBe(interrupted.families[1].publicInputs);
+    expect(interrupted.families[0].taskInputs).not.toBe(interrupted.families[1].taskInputs);
     expect(interrupted.scoringHash).toMatch(/^[0-9a-f]{64}$/);
     expect(interrupted.measuredCondition).toMatch(/^[0-9a-f]{64}$/);
     // The complete step republishes the same battery's ledger with what the readers attached.
@@ -137,6 +136,7 @@ describe("measureHarness", () => {
             condition: measuredConditionOf({
               ...input.analysis.identities.bundleSnapshot,
               builtPin: input.analysis.identities.backendPin,
+              builtEffort: input.analysis.identities.builtEffort,
               verifierIdentity: null,
             }),
             reviewerPin: "pin",
@@ -144,7 +144,8 @@ describe("measureHarness", () => {
             requestDigest: "request",
             obligationsDigest: "obligations",
             reads: [],
-            contestedReads: [],
+            dispositions: [],
+            unsettled: [],
             coverage: { files: 0, opened: 0, chars: 0 },
             findings: [],
             disputes: [],
@@ -156,75 +157,94 @@ describe("measureHarness", () => {
     }
   });
 
-  // The review of a measured battery is shown the plan that battery was measured under, read from
-  // the battery's own record rather than from a workspace that may have moved on since. A battery
-  // measured with no plan hands the reviewer null, which it states rather than omits.
-  it.concurrent("hands the epoch reviewer the plan recorded with the battery it reads", async () => {
-    const repo = scaffoldRepo(join(SCRATCH_ROOT, "analyse-plan"), { toolsSpec: true, conformance: true });
+  // A measured battery is reviewed once, so a review a session limit refused would be lost for good.
+  // When the limit names its reset, the step waits for it and reviews once more before it publishes;
+  // a completed review and a refusal naming no reset are each read exactly once.
+  it.concurrent("reviews a measured battery again after the reset a session limit named, and only then", async () => {
+    const repo = scaffoldRepo(join(SCRATCH_ROOT, "analyse-reset"), { toolsSpec: true, conformance: true });
     const processEnv = { HARNESS_BUILT_BACKEND: "codex", CODEX_BUILT_MODEL: "gpt-5.5" };
-    const body = {
-      ...PLAN_FIELDS,
-      scope: "product" as const,
-      gap: "Every family passes.",
-      change: "Couple two published limits.",
-      expectedResult: "At most one pass.",
-      target: { comparator: "at-most" as const, verifiedPasses: 1 },
-    };
-    const proposal = { ...body, digest: hashJsonValue(body) };
-    const base = {
+    await measure({
+      runId: "m4-reset",
       repoRoot: repo,
       processEnv,
       solver: scriptedMatchingSolver(new Set(), () => {}),
       createVerifier: () => fullFakeHost(),
       isolationProbe: () => probeEvidence(true),
       sessionProbe: async () => builtSession(),
-    };
-    await measure({
-      ...base,
-      runId: "m4-plan",
-      experimentAuthoring: {
-        proposal,
-        operation: { operation: "harness-intervention", moved: ["harness"] },
-        actual: "build",
-        baseline: { agentHash: "a", correctnessModelHash: "c", taskSetHash: "t" },
-        changedTaskIds: null,
-      },
     });
-    await measure({ ...base, runId: "m4-noplan" });
     const measured = join(repo, "domains", "bridge-truss");
     const resolvedSlots = {
       ...resolveSlots(repo, "bridge-truss", loadRepoEnv(repo, processEnv)),
       review: { enabled: false, source: "operator" } as const,
     };
-    const shown = new Map<string, unknown>();
-    for (const runId of ["m4-plan", "m4-noplan"]) {
-      await analyseStep(repo, "bridge-truss", runId, measured, {
+    const SESSION_LIMIT =
+      "epoch-reviewer turn failed: You've hit your session limit · resets 12:20pm (Europe/Amsterdam) (status 429)";
+    // 10:00 in Amsterdam (CEST): the reset is 2 h 20 min away, and the wait adds its one-minute margin.
+    const now = () => new Date("2026-09-24T08:00:00Z");
+    const reviewed = async (first: { status: "failed" | "completed"; reason: string }) => {
+      const waits: number[] = [];
+      let calls = 0;
+      const step = await analyseStep(repo, "bridge-truss", "m4-reset", measured, {
         resolvedSlots,
+        resetWait: {
+          now,
+          wait: async (ms) => {
+            waits.push(ms);
+          },
+        },
         epochReview: async (input) => {
-          shown.set(runId, input.experiment);
-          return {
+          if (input.analysis === null) throw new Error("measured review lost its analysis");
+          calls += 1;
+          const { status, reason } = calls === 1 ? first : { status: "completed" as const, reason: "second" };
+          // The review records itself, so a stand-in for it does too.
+          return recordEpochReview(repo, {
             schema: EPOCH_REVIEW_SCHEMA,
             slug: "bridge-truss",
-            runId,
-            status: "skipped",
-            reason: "review-slot-off",
+            runId: "m4-reset",
+            status,
+            reason,
             condition: null,
-            reviewerPin: null,
+            reviewerPin: "pin",
             reviewerEffort: null,
             requestDigest: "request",
             obligationsDigest: "obligations",
             reads: [],
-            contestedReads: [],
+            dispositions: [],
+            unsettled: [],
             coverage: { files: 0, opened: 0, chars: 0 },
             findings: [],
             disputes: [],
             report: null,
-          };
+          });
         },
       });
-    }
-    expect(shown.get("m4-plan")).toEqual(proposal);
-    expect(shown.get("m4-noplan")).toBeNull();
+      const recorded = JSON.parse(
+        readFileSync(
+          join(repo, "campaigns", "bridge-truss", "analysis", "m4-reset-epoch-review.json"),
+          "utf8",
+        ),
+      );
+      return { calls, waits, absent: step.absent, recorded: recorded.reason };
+    };
+    expect(await reviewed({ status: "failed", reason: SESSION_LIMIT })).toEqual({
+      calls: 2,
+      waits: [(2 * 60 + 20) * 60_000 + 60_000],
+      absent: [],
+      recorded: "second",
+    });
+    expect(await reviewed({ status: "completed", reason: "first" })).toEqual({
+      calls: 1,
+      waits: [],
+      absent: [],
+      recorded: "first",
+    });
+    const generic = "epoch-reviewer turn failed: status 429: Too Many Requests";
+    expect(await reviewed({ status: "failed", reason: generic })).toEqual({
+      calls: 1,
+      waits: [],
+      absent: [`epoch review: failed — ${generic}`],
+      recorded: generic,
+    });
   });
 
   it.concurrent("drives one battery through measurement and records its claim and case rows", async () => {
@@ -315,6 +335,7 @@ describe("measureHarness", () => {
     const analysis = deriveIterationAnalysis(repo, "bridge-truss", "m4-e2e");
     expect(analysis.schema).toBe("iteration-analysis/v5");
     expect(analysis.identities.isolationStrength).toBe("physical");
+    expect(analysis.identities.builtEffort).toBe(builtSession().reasoningEffort);
     expect(analysis.identities.bundleSnapshot.agentHash).toMatch(/^[0-9a-f]{64}$/);
     expect(isString(analysis.identities.bundleSnapshot.taskSetHash)).toBe(true);
     expect(analysis.battery.runId).toBe("m4-e2e");

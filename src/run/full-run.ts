@@ -1,16 +1,16 @@
 /** Run the build → measure → analyse loop from one direct prompt and recorded evidence. */
 import { BuilderConversation } from "../author/builder-conversation.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
-import { selectedProductDir } from "./product-versions.ts";
+import { ProductVersionFromAnotherSource, selectedProductDir } from "./product-versions.ts";
 import { campaignDir } from "../meta/campaign-root.ts";
-import { join, resolve } from "../meta/path.ts";
+import { join, relative, resolve } from "../meta/path.ts";
 import { readClimbReadout } from "./climb-readout.ts";
 import { claimsDirFor } from "./claim-write.ts";
 import { FROZEN_MANIFEST_PATH } from "../critic/manifest.ts";
 import type { AdmittedEvidence } from "../analyse/iteration-analysis.ts";
 import type { JudgeReviewsResult } from "../analyse/judge-reviews.ts";
 import { setProjectBackendSelection } from "../backends/project-backends.ts";
-import { backendPinOf } from "../backends/resolve.ts";
+import { WITHHOLD_INSTRUMENTS_ENV, backendPinOf } from "../backends/resolve.ts";
 import { fullrunLine, startFullRunObservation } from "../observe/run-observer.ts";
 import { analyseStep } from "./analyse-step.ts";
 import type { AskManifest } from "./ask-manifest.ts";
@@ -56,7 +56,7 @@ import {
   safeguardTempRootPressure,
   type SafeguardContext,
 } from "../meta/safeguard.ts";
-import { cleanStaleTempRootScratch } from "../meta/temp-scratch-clean.ts";
+import { cleanStaleTempRootScratch, removeRunTempRootAtExit } from "../meta/temp-scratch-clean.ts";
 import { ProviderResourceBudget } from "./provider-resource-budget.ts";
 import { FullRunClosure } from "./full-run-deadline.ts";
 import { campaignVerifierLifetime } from "./verifier-lifetime.ts";
@@ -165,6 +165,7 @@ export async function runFullRun(
     );
   }
   safeguardTempRootPressure(safeguardContext);
+  removeRunTempRootAtExit();
   const state: ControllerRunState = { opening: null, iterations: [], absentSteps: [] };
   const builderConversation = new BuilderConversation();
   try {
@@ -316,13 +317,47 @@ function fullRunOutcome(
   };
 }
 
+/** A continued project whose selected version another source recorded stops before round one, as
+ *  a recorded round with a `stopped:` terminal and nothing built or measured: the version is intact
+ *  evidence this source keeps no reader for, which is the operator's to act on, not a failure the
+ *  controller owns. Any other refusal of the selected product still aborts, because that one is
+ *  damage. */
+function stopForAnotherSource(
+  state: ControllerRunState,
+  input: Pick<FullRunInput, "manifest" | "project"> & { repoRoot: string; baseRunId: string },
+  error: ProductVersionFromAnotherSource,
+): FullRunOutcome {
+  const { repoRoot, manifest, project } = input;
+  state.openIfUnopened?.();
+  const [, pending] = startIteration(state, input.baseRunId, 1);
+  const result: IterationResult = {
+    decision: { move: "stop", reason: error.message },
+    nextDecision: null,
+    measuredTree: relative(repoRoot, campaignDir(repoRoot, manifest.slug)),
+    build: "stopped",
+    buildClause: null,
+    buildDetail: null,
+    steps: { promotion: null, measure: null, claimStage: null, judges: null, admission: null },
+  };
+  const rounds: FullRunRound[] = [];
+  recordRound(rounds, pending, `stopped: ${error.message}`, result, manifest.slug);
+  return fullRunOutcome(manifest, project, result, state.absentSteps, rounds);
+}
+
+/** The slot choices the launch flags make, before anything resolves the slots. */
+function applyLaunchSlots(args: FullRunArgs, repoRoot: string, projectId: string): void {
+  // Set on every launch, off included, so the condition is the flag's and never a `.env` file's.
+  Bun.env[WITHHOLD_INSTRUMENTS_ENV] = String(args.withholdInstruments === true);
+  for (const slot of ["builder", "built", "review"] as const) {
+    const selection = args.backendSelections?.[slot];
+    if (selection !== undefined) setProjectBackendSelection(repoRoot, projectId, slot, selection);
+  }
+}
+
 async function runUnderLock(run: LockedRun): Promise<FullRunOutcome> {
   const { args, repoRoot, deps, admitted, state, safeguardContext, stopRequested, builderConversation } = run;
   const { prompt, userContext, project } = admitted;
-  for (const slot of ["builder", "built", "review"] as const) {
-    const selection = args.backendSelections?.[slot];
-    if (selection !== undefined) setProjectBackendSelection(repoRoot, project.id, slot, selection);
-  }
+  applyLaunchSlots(args, repoRoot, project.id);
   const manifest: AskManifest =
     args.expectedTasks === undefined
       ? admitted.manifest
@@ -371,11 +406,14 @@ async function runUnderLock(run: LockedRun): Promise<FullRunOutcome> {
       claimsDirFor(repoRoot, manifest.slug),
       join(repoRoot, FROZEN_MANIFEST_PATH),
     );
-  state.verifierLifetime = campaignVerifierLifetime(
-    campaignDir(repoRoot, manifest.slug),
-    baseRunId,
-    selectedProductDir(repoRoot, manifest.slug),
-  );
+  let adopted: string;
+  try {
+    adopted = selectedProductDir(repoRoot, manifest.slug);
+  } catch (error) {
+    if (!(error instanceof ProductVersionFromAnotherSource)) throw error;
+    return stopForAnotherSource(state, { repoRoot, manifest, project, baseRunId }, error);
+  }
+  state.verifierLifetime = campaignVerifierLifetime(campaignDir(repoRoot, manifest.slug), baseRunId, adopted);
   const rounds: FullRunRound[] = [];
   const loopStartedMs = Date.now();
   let blockedRounds = 0,

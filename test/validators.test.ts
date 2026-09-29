@@ -1,11 +1,16 @@
 import { describe, expect, it } from "bun:test";
-import { validateBrief } from "../src/truth/brief-validator.ts";
-import { type Brief, applicableTruthChecks, projectFindingForAuthor } from "../src/truth/brief.ts";
-import { loadFailureFinding } from "../src/truth/load-fault.ts";
-import { normalizeToolsSpec, validateToolsSpec } from "../src/truth/tools-spec.ts";
-import { validateTasks } from "../src/truth/tasks.ts";
+import { validateBrief } from "../src/correctness-bundle/brief-validator.ts";
+import {
+  type Brief,
+  applicableTruthChecks,
+  projectFindingForAuthor,
+} from "../src/correctness-bundle/brief.ts";
+import { loadFailureFinding } from "../src/correctness-bundle/load-fault.ts";
+import { normalizeToolsSpec, validateToolsSpec } from "../src/correctness-bundle/tools-spec.ts";
+import { validateTasks } from "../src/correctness-bundle/tasks.ts";
 import { double, required } from "./helpers/doubles.ts";
 import { resolveJsonPath } from "../src/meta/json-evidence.ts";
+import type { JsonValue } from "../src/meta/json-shape.ts";
 import { checkPublicInputs } from "../vendor/correctness-model-bundle/evaluation-public-task.ts";
 
 function greenBrief(overrides: Partial<Brief> = {}): Brief {
@@ -80,17 +85,42 @@ describe("brief and task contract", () => {
     const noFamily = validateTasks(brief, {
       tasks: [tasks[0], { ...tasks[1], family: "uncovered", hidden: [] }],
     });
-    expect(codes(noFamily)).toEqual(
-      expect.arrayContaining(["tasks-no-applicable-checks", "tasks-check-family-unbound"]),
-    );
-    // "slot-binding" is scoped to family "b"; a battery whose tasks are all "a" never runs it.
+    expect(codes(noFamily)).toContain("tasks-no-applicable-checks");
+    // "slot-binding" is scoped to family "b"; a task probe whose tasks are all "a" does not run it
+    // this battery, which the claim's firing counts record, and nothing is wrong with the candidate.
     const unbound = validateTasks(brief, {
       tasks: [tasks[0], { ...tasks[1], family: "a", hidden: [{ checkId: "ghost-ref", expectation: true }] }],
     });
-    expect(codes(unbound)).toContain("tasks-check-family-unbound");
-    expect(unbound.findings.find((f) => f.code === "tasks-check-family-unbound")?.detail).toContain(
-      '"slot-binding"',
-    );
+    expect(unbound.ok).toBe(true);
+  });
+  it("requires a numeric boundary constant only where no task states the limit as a number", () => {
+    // Recorded truss 3fd52f9e-16: each task published its own mass cap, the constant said so in
+    // words, and the refusal made the Builder invent the tightest cap as the constant's value.
+    const brief = greenBrief();
+    const check = required(brief.truthChecks[0], "first check");
+    check.numericBoundaries = [{ publicInputPath: "$.limits.batchSize", constantName: "max-batch-size" }];
+    const constant = required(brief.designRuleConstants[0], "constant");
+    constant.value = "published per task at $.limits.batchSize";
+    expect(validateBrief(brief).ok).toBe(true);
+    const withLimit = (batchSize: JsonValue) => ({
+      ...task("aa", "a", "ghost-ref"),
+      publicInput: { limits: { batchSize } },
+    });
+    const other = task("bb", "b", "slot-binding");
+    expect(validateTasks(brief, { tasks: [withLimit(180), other] }).ok).toBe(true);
+    for (const unstated of [withLimit("180"), task("aa", "a", "ghost-ref")]) {
+      expect(validateTasks(brief, { tasks: [unstated, other] }).findings).toContainEqual(
+        expect.objectContaining({
+          code: "brief-numeric-boundary-constant-invalid",
+          path: "truthChecks[0].numericBoundaries[0].constantName",
+        }),
+      );
+    }
+    // A numeric constant states the limit itself, and a check this battery never runs states none.
+    constant.value = 220;
+    expect(validateTasks(brief, { tasks: [withLimit("180"), other] }).ok).toBe(true);
+    constant.value = "published per task";
+    expect(validateTasks(brief, { tasks: [task("bb", "b", "slot-binding")] }).ok).toBe(true);
   });
   it("admits safe task identities and refuses path-like and duplicate ones", () => {
     const brief = greenBrief();
@@ -168,17 +198,15 @@ describe("brief and task contract", () => {
     ).toContain("tasks-public-rule-path-missing");
     check.numericBoundaries[0] = { publicInputPath: "$.batchSize", constantName: "missing" };
     expect(codes(validateBrief(brief))).toContain("brief-numeric-boundary-constant-invalid");
+    check.numericBoundaries[0] = { publicInputPath: "$.batchSize", constantName: "max-batch-size" };
     check.numericBoundaries[0] = { publicInputPath: "$.limits.batchSize", constantName: "max-batch-size" };
     expect(validateBrief(brief).ok).toBe(true);
     delete check.numericBoundaries;
     check.execution.artifactPaths = ["$.missing"];
     expect(codes(validateBrief(brief))).toContain("brief-check-artifact-root-undeclared");
     check.execution.artifactPaths = ["$.good"];
-    // Gate audit 2026-09-25 (docs/gate-audit.md, brief-artifact-root-unread): commented out (unsure): an
-    // artifact root no check declares it reads is refused by static rule; unsure a declared path proves a
-    // root is measured, or its absence that it is not.
-    // brief.artifactSchema.push({ name: "unused", "shape": "string" });
-    // expect(codes(validateBrief(brief))).toContain("brief-artifact-root-unread");
+    brief.artifactSchema.push({ name: "unused", "shape": "string" });
+    expect(codes(validateBrief(brief))).toContain("brief-artifact-root-unread");
     check.joinIds = ["unknown"];
     expect(codes(validateBrief(brief))).toEqual(
       expect.arrayContaining(["brief-check-join-undeclared", "brief-join-check-ownership-invalid"]),
@@ -251,14 +279,6 @@ describe("brief and task contract", () => {
     ...overrides,
   });
   it.each<[string, Partial<Brief>, { code?: string; path?: string }]>([
-    // Gate audit 2026-09-25 (docs/gate-audit.md, brief-constant-uncited): commented out (unsure): a
-    // design-rule constant must name an authority and citation; unsure a non-empty string proves the value is
-    // right.
-    // [
-    //   "an uncited constant",
-    //   { designRuleConstants: [constant("x", 1, "")] },
-    //   { code: "brief-constant-uncited" },
-    // ],
     [
       "a duplicate constant name",
       { designRuleConstants: [constant("cap", 1), constant("cap", 2, "section 2")] },
@@ -269,19 +289,10 @@ describe("brief and task contract", () => {
       { designRuleConstants: [constant(" ", 1)] },
       { code: "brief-design-rule-constant-name-empty" },
     ],
-    // Gate audit 2026-09-25 (docs/gate-audit.md, brief-join-no-decoys): commented out (unsure): a join must
-    // declare at least one decoy class; unsure it earns a refusal, since no rule asks for a control of any
-    // declared class.
-    // ["a join without decoys", { joins: [join("j", [])] }, { code: "brief-join-no-decoys" }],
     [
       "a duplicate join id",
       { joins: [...greenBrief().joins, join("parts-to-slots", ["other"])] },
       { code: "brief-duplicate-join-id" },
-    ],
-    [
-      "a duplicate decoy class",
-      { joins: [join("parts-to-slots", ["alias-swap", "alias-swap"])] },
-      { code: "brief-duplicate-decoy-class" },
     ],
     ["an empty artifact schema", { artifactSchema: [] }, { code: "brief-no-artifact-schema" }],
     [
@@ -310,12 +321,15 @@ describe("brief and task contract", () => {
       "brief-artifact-field-allowed-values-invalid",
     );
   });
+  it("admits a join that repeats a decoy class, because nothing reads the classes", () => {
+    expect(
+      validateBrief(greenBrief({ joins: [join("parts-to-slots", ["alias-swap", "alias-swap"])] })).ok,
+    ).toBe(true);
+  });
   it("leaves the zero-truth-checks case to brief-no-truth-checks instead of firing per root", () => {
     const found = codes(validateBrief(greenBrief({ truthChecks: [] })));
     expect(found).toContain("brief-no-truth-checks");
-    // Gate audit 2026-09-25 (docs/gate-audit.md, brief-artifact-root-unread): commented out (unsure): the
-    // unread-root rule this assertion keeps quiet is commented out.
-    // expect(found).not.toContain("brief-artifact-root-unread");
+    expect(found).not.toContain("brief-artifact-root-unread");
   });
   it("a brief in a foreign shape yields shape-mismatch findings naming the fields", () => {
     // Parseable JSON without the required Brief fields.

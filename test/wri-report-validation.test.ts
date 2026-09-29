@@ -1,5 +1,5 @@
 /**
- * What `validate-reports.mjs` binds and what it rejects. A report is joined to its task by name,
+ * What `validate-reports.ts` binds and what it rejects. A report is joined to its task by name,
  * to its launch by prompt digest, and to its assigned lanes by heading; under each lane heading it
  * owes the four report sections, and every finding names one owner from the closed set.
  */
@@ -9,17 +9,18 @@ import { spawnTextSync } from "./helpers/bun-spawn-sync.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import {
   ANGLE_COUNT,
+  FIX_AUTHORITY,
   ISOLATED_ANGLES,
-} from "../.claude/skills/whole-run-investigation/scripts/catalogue-shape.mjs";
+} from "../.claude/skills/whole-run-investigation/scripts/catalogue-shape.ts";
 import {
   FINDING_OWNERS,
   REPORT_SECTIONS,
-} from "../.claude/skills/whole-run-investigation/scripts/manifest-reporting.mjs";
+} from "../.claude/skills/whole-run-investigation/scripts/manifest-reporting.ts";
 import { afterAll, describe, expect, it } from "bun:test";
 
 const root = resolve(import.meta.dirname, "..");
-const script = join(root, ".claude/skills/whole-run-investigation/scripts/validate-reports.mjs");
-const launcher = join(root, ".claude/skills/codex-luna-swarm/scripts/luna-sessions.mjs");
+const script = join(root, ".claude/skills/whole-run-investigation/scripts/validate-reports.ts");
+const launcher = join(root, ".claude/skills/codex-luna-swarm/scripts/luna-sessions.ts");
 
 const LANE = "lane_05";
 const TRIGGER = "Starts from block 1's product validity chain.";
@@ -109,6 +110,39 @@ function run(tasks: string, summary: string) {
   return spawnTextSync(Bun.argv[0]!, [script, "--tasks", tasks, "--summary", summary]);
 }
 
+/** One lane of a native review: the prompt the manifest composes for a Claude subagent, byte for
+ *  byte as `--transport native` writes it beside tasks.json, and the report the primary saved from
+ *  that subagent under `native-output/`. */
+function nativeLane(f: { dir: string; tasks: string }, name: string): string {
+  const instructions = "shared instructions";
+  writeFileSync(join(f.dir, "instructions.md"), `${instructions}\n`);
+  const task: string = JSON.parse(readFileSync(f.tasks, "utf8")).find(
+    (row: { name: string }) => row.name === name,
+  ).task;
+  mkdirSync(join(f.dir, "prompts"), { recursive: true });
+  writeFileSync(
+    join(f.dir, "prompts", `${name}.md`),
+    `${instructions}\n\n---\n\n# Your assignment\n\n${task}\n\n${FIX_AUTHORITY}\n`,
+  );
+  mkdirSync(join(f.dir, "native-output"), { recursive: true });
+  const report = join(f.dir, "native-output", `${name}.md`);
+  writeFileSync(report, laneReport(name));
+  return report;
+}
+
+/** Add one open-lane task to the fixture's manifest, after the tasks it already holds. */
+function addTask(f: { tasks: string }, lane: number): string {
+  const name = `lane_${String(lane).padStart(2, "0")}`;
+  const tasks = JSON.parse(readFileSync(f.tasks, "utf8"));
+  tasks.push({
+    name,
+    task: `assignedSession: ${name}\nassignedLanes: ${name.slice(5)}\n\nReview the next question.`,
+    admission: admission(name, [lane]),
+  });
+  writeFileSync(f.tasks, JSON.stringify(tasks));
+  return name;
+}
+
 function receiptOf(f: { result: string }) {
   return JSON.parse(readFileSync(f.result, "utf8"));
 }
@@ -135,7 +169,7 @@ describe("WRI report validation", () => {
     const receipt = receiptOf(f);
 
     expect(result.status).toBe(0);
-    expect(receipt.schema).toBe("wri-report-validation/v2");
+    expect(receipt.schema).toBe("wri-report-validation/v3");
     expect(receipt.complete).toBe(true);
     expect(receipt.rows[0].assignedLanes).toEqual(["05"]);
     expect(receipt.rows[0].reportedLanes).toEqual(["05"]);
@@ -280,6 +314,68 @@ console.log(JSON.stringify({ type: "thread.started", thread_id: "thread_test_123
     expect(retiredSummary.stderr).toContain("summary.json is not a completed Luna summary");
   });
 
+  it("lets a hardware session write its own scratch and no read-only session write anything", () => {
+    const f = fixture({ launch: false });
+    const scratch = join(f.dir, "hw-scratch", "lane_30");
+    const hardware = {
+      name: "lane_30",
+      task: "assignedSession: lane_30\nassignedLanes: 30\n\nRun the ground truth.",
+      admission: admission("lane_30", [30]),
+      scratch,
+    };
+    const open = JSON.parse(readFileSync(f.tasks, "utf8"))[0];
+    writeFileSync(f.tasks, JSON.stringify([open, hardware]));
+    const hardwareReport = join(f.output, "lane_30.md");
+    writeFileSync(hardwareReport, laneReport("lane_30"));
+    writeFileSync(
+      f.summary,
+      JSON.stringify({
+        schemaVersion: 1,
+        type: "luna_sessions.completed",
+        outputDir: f.output,
+        sessions: [
+          { name: LANE, status: "completed", exitCode: 0, reportPath: f.report },
+          { name: "lane_30", status: "completed", exitCode: 0, reportPath: hardwareReport },
+        ],
+      }),
+    );
+    const launchWith = (rows: { sandbox: string; ownedPaths: string[] }[]): string[] => {
+      writeFileSync(
+        join(f.output, "launch.json"),
+        JSON.stringify({
+          type: "luna_sessions.launch",
+          outputDir: f.output,
+          sessions: [LANE, "lane_30"].map((name, at) => ({
+            name,
+            workdir: f.dir,
+            promptSha256: "0".repeat(64),
+            ...rows[at],
+          })),
+        }),
+      );
+      run(f.tasks, f.summary);
+      return receiptOf(f).launchBinding.issues;
+    };
+    const sandboxIssues = (issues: string[]) => issues.filter((row) => /sandbox|ownedPaths/.test(row));
+    const readOnly = { sandbox: "read-only", ownedPaths: [] };
+    const owner = { sandbox: "workspace-write", ownedPaths: [scratch] };
+    expect(sandboxIssues(launchWith([readOnly, owner]))).toEqual([]);
+    expect(sandboxIssues(launchWith([owner, owner]))).toEqual([
+      "launch.sessions[0].sandbox must be read-only",
+      "launch.sessions[0].ownedPaths must be an empty array",
+    ]);
+    expect(sandboxIssues(launchWith([readOnly, { ...owner, ownedPaths: [scratch, f.dir] }]))).toEqual([
+      "launch.sessions[1].ownedPaths must name only its hardware scratch",
+    ]);
+    expect(sandboxIssues(launchWith([readOnly, readOnly]))).toEqual([
+      "launch.sessions[1].sandbox must be workspace-write for its hardware scratch",
+      "launch.sessions[1].ownedPaths must name only its hardware scratch",
+    ]);
+    // A scratch on a session with no hardware lane is refused before any launch is read.
+    writeFileSync(f.tasks, JSON.stringify([{ ...open, scratch }, hardware]));
+    expect(run(f.tasks, f.summary).stderr).toContain("scratch is set on a session with no hardware lane");
+  });
+
   it("rejects a present but stale Luna launch record", () => {
     const f = fixture();
     writeFileSync(
@@ -386,6 +482,50 @@ console.log(JSON.stringify({ type: "thread.started", thread_id: "thread_test_123
     expect(result.stderr).toContain("summary session order/identity differs from tasks");
   });
 
+  it("accepts a native review's saved reports against the prompts the manifest composed", () => {
+    const f = fixture({ launch: false });
+    rmSync(f.output, { recursive: true });
+    nativeLane(f, LANE);
+    const out = join(f.dir, "wri-report-validation.json");
+    const validate = () => spawnTextSync(Bun.argv[0]!, [script, "--tasks", f.tasks, "--out", out]);
+    const receipt = () => JSON.parse(readFileSync(out, "utf8"));
+
+    expect(validate().status).toBe(0);
+    expect(receipt()).toMatchObject({ complete: true, summaryPath: null, launchBinding: null });
+    expect(receipt().rows[0]).toMatchObject({ transport: "native", status: "accepted-for-adjudication" });
+
+    // A prompt edited after the manifest composed it is not the prompt the lane was assigned.
+    const prompt = join(f.dir, "prompts", `${LANE}.md`);
+    writeFileSync(prompt, `${readFileSync(prompt, "utf8")}Also read the verifier output.\n`);
+    expect(validate().status).toBe(1);
+    expect(receipt().rows[0].issues).toContain(
+      `prompts/${LANE}.md differs from the prompt the manifest composes`,
+    );
+    rmSync(join(f.dir, "native-output", `${LANE}.md`));
+    expect(validate().status).toBe(1);
+    expect(receipt().rows[0].issues).toEqual(["no Luna session and no native report names this task"]);
+  });
+
+  it("joins a review whose lanes ran partly on Luna and partly native, and refuses a lane reported twice", () => {
+    const f = fixture();
+    const native = addTask(f, 6);
+    nativeLane(f, native);
+
+    expect(run(f.tasks, f.summary).status).toBe(0);
+    const receipt = receiptOf(f);
+    expect(receipt.complete).toBe(true);
+    expect(receipt.rows.map((row: { transport: string }) => row.transport)).toEqual(["luna", "native"]);
+
+    // A lane no transport reported is missing work, not a refusal of the whole collection.
+    addTask(f, 8);
+    expect(run(f.tasks, f.summary).status).toBe(1);
+    expect(receiptOf(f).rows[2]).toMatchObject({ transport: null, status: "rejected" });
+
+    nativeLane(f, LANE);
+    expect(run(f.tasks, f.summary).status).toBe(1);
+    expect(receiptOf(f).rows[0].issues).toEqual(["reported both by a Luna session and by a native report"]);
+  });
+
   it("refuses an inactive admission, an older admission schema and a lane without its trigger", () => {
     const inactive = fixture();
     const inactiveTasks = JSON.parse(readFileSync(inactive.tasks, "utf8"));
@@ -465,7 +605,7 @@ console.log(JSON.stringify({ type: "thread.started", thread_id: "thread_test_123
     const result = run(f.tasks, f.summary);
     const receipt = receiptOf(f);
     expect(result.status).toBe(2);
-    expect(receipt.schema).toBe("wri-report-validation/v2");
+    expect(receipt.schema).toBe("wri-report-validation/v3");
     expect(receipt.complete).toBe(false);
     expect(receipt.rows).toEqual([]);
     expect(receipt.issues[0]).toContain("ENOENT");

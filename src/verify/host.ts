@@ -16,7 +16,7 @@
  * that rejects the artifact has answered and the evaluator reads that answer. Missing tool, wall
  * refusal, changed tool bytes, timeout, spawn failure, a program the tool's shell could not execute
  * and stdout past the host's cap are typed non-results: no answer exists, and the row says which kind. The evaluator's own returned result cannot turn a non-result into an
- * answer, because the runner reads these rows directly (`src/truth/tool-runs.ts`).
+ * answer, because the runner reads these rows directly (`src/correctness-bundle/tool-runs.ts`).
  */
 import {
   lstatSync,
@@ -35,7 +35,7 @@ import { sha256, sha256OfFile } from "../meta/digest.ts";
 import { cancellableByteStream } from "../meta/cancellable-stream.ts";
 import { isString } from "../meta/json-shape.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
-import { interpreterDigest, toolProvenance } from "./tool-inventory.ts";
+import { interpreterDigest, portableToolTreeDigest, toolProvenance } from "./tool-inventory.ts";
 import type { VerifierExecutionNonResultKind } from "./correctness-model-result.ts";
 import type { ExactReadDrift } from "./exact-read-attestation.ts";
 import { LINUX_BWRAP_ID, bwrapWrappedSignal } from "./linux-bwrap.ts";
@@ -85,7 +85,9 @@ export const DEFAULT_TOOL_TIMEOUT_MS = 300_000;
  *  little room for any of them. */
 export const TOOL_TIMEOUT_CEILING_MS = DEFAULT_TOOL_TIMEOUT_MS;
 
-const STDOUT_MAX_BYTES = 1024 * 1024;
+/** The stdout a check's tool run may write; past it the run is a protocol non-result. The starter
+ *  contract states this figure to the Builder, so a change here changes that text too. */
+export const STDOUT_MAX_BYTES = 1024 * 1024;
 /** The shell's own exit codes for a program it could not execute (126) or could not find (127). */
 const SHELL_COULD_NOT_RUN = new Set<number | null>([126, 127]);
 /** The shell's own launch-failure line, as bash (`w: line 2: p: cannot execute: …`), dash
@@ -150,9 +152,14 @@ interface Scope {
   tail: Promise<void>;
   pendingAtClose: number;
   closed: boolean;
+  /** The live `.toolchain` tree digest, walked at this scope's first workspace-tool run rather
+   *  than at every run, because a large install takes a noticeable fraction of a second to walk;
+   *  null when the walk could not complete. */
+  treeDigest?: string | null;
   /** Stops for this scope's live children and for its waits on another scope's identical run. */
   children: Set<() => Promise<VerifierProcessSettlement | null>>;
-  receipts: Set<string>;
+  /** Each process receipt this scope began, with the cell its process ran in. */
+  receipts: Map<string, string>;
 }
 
 type EvidenceBase = Omit<
@@ -181,6 +188,8 @@ type RunInputs = {
   files: Record<string, string>;
   stdin: string | null;
   inputPaths: string[];
+  /** A non-empty file or stdin that is a string leaf or the JSON of the artifact. */
+  artifactInput: boolean;
 };
 /** The executable facts one evidence row names; null when nothing resolved. */
 type EvidenceTool = { command: string; source: ToolEntry["source"] | "cell"; kind: ToolEntry["kind"] };
@@ -218,15 +227,25 @@ function shellCouldNotLaunch(run: EvidenceRun): boolean {
  *  under another python3 is a different tool and may well give a different answer. That covers an
  *  interpreter unresolvable when the snapshot was taken and resolvable now: it decides the grade and
  *  no run ever hashed it, which is drift in the one direction the snapshot cannot see. Both sides
- *  absent is not movement, and the exec then fails on its own as `verifierUnavailable`. */
-function movedSinceSnapshot(entry: ToolEntry, liveDigest: string, toolTree: string | null): string | null {
+ *  absent is not movement, and the exec then fails on its own as `verifierUnavailable`. A workspace
+ *  tool is also its tree, since the file the id names is often a shim over a script beside it. */
+function movedSinceSnapshot(
+  entry: ToolEntry,
+  liveDigest: string,
+  toolTree: string | null,
+  liveTree: () => string | null,
+): string | null {
   if (liveDigest !== entry.digest) return "bytes changed";
-  if (entry.kind === "binary") return null;
-  const live = interpreterDigest(entry.path, toolTree);
-  if (live === entry.interpreterDigest) return null;
-  return entry.interpreterDigest === undefined
-    ? `now resolves a ${entry.interpreter ?? "interpreter"} that was not pinned at snapshot`
-    : `resolves a different ${entry.interpreter ?? "interpreter"}`;
+  const live = entry.kind === "binary" ? undefined : interpreterDigest(entry.path, toolTree);
+  if (live !== entry.interpreterDigest) {
+    return entry.interpreterDigest === undefined
+      ? `now resolves a ${entry.interpreter ?? "interpreter"} that was not pinned at snapshot`
+      : `resolves a different ${entry.interpreter ?? "interpreter"}`;
+  }
+  // Last, so an interpreter installed in the tree is still named as the interpreter that moved.
+  return entry.treeDigest === undefined || liveTree() === entry.treeDigest
+    ? null
+    : "toolchain tree changed or could not be read";
 }
 
 /** The tool timeout: what the evaluator asked for, at least one millisecond and at most the
@@ -549,7 +568,7 @@ class VerifierHost implements VerifierHostHandle {
       pendingAtClose: 0,
       closed: false,
       children: new Set(),
-      receipts: new Set(),
+      receipts: new Map(),
     };
     for (const check of scope.subject.checks ?? []) this.checkCell(scope, check.id);
     return {
@@ -571,8 +590,13 @@ class VerifierHost implements VerifierHostHandle {
         if (!scope.closed) this.forceClose(scope);
         while (scope.inFlight.size > 0) await Promise.allSettled(scope.inFlight);
         const receiptIds = (this.lifetime?.pendingReceipts() ?? []).filter((id) => scope.receipts.has(id));
-        if (receiptIds.length === 0) {
-          for (const cell of scope.cells.values()) rmSync(cell.path, { recursive: true, force: true });
+        // A cell whose process is unsettled stays for the lifetime's recovery, which removes that
+        // exact cell once its group is gone. Every other cell of the scope goes now: recovery only
+        // knows the cells its receipts name, so one kept here for a sibling's receipt is never
+        // removed by anything.
+        const held = new Set(receiptIds.map((id) => scope.receipts.get(id)));
+        for (const cell of scope.cells.values()) {
+          if (!held.has(cell.path)) rmSync(cell.path, { recursive: true, force: true });
         }
         return {
           pendingInvocations: scope.pendingAtClose,
@@ -590,6 +614,16 @@ class VerifierHost implements VerifierHostHandle {
     scope.closed = true;
     scope.pendingAtClose = scope.inFlight.size;
     for (const stop of scope.children) void stop().catch(() => {});
+  }
+
+  private liveTree(scope: Scope): string | null {
+    if (scope.treeDigest !== undefined || this.toolTree === null) return scope.treeDigest ?? null;
+    try {
+      scope.treeDigest = portableToolTreeDigest(this.toolTree);
+    } catch {
+      scope.treeDigest = null;
+    }
+    return scope.treeDigest;
   }
 
   private checkCell(scope: Scope, checkId: string): ToolCell {
@@ -680,18 +714,25 @@ class VerifierHost implements VerifierHostHandle {
     if (violation !== null) authoringDefect(violation, "verifier-tool-input");
     const files: Record<string, string> = Object.create(null);
     const inputPaths = new Set<string>();
+    let artifactInput = false;
+    const origins = (content: string): string[] => {
+      const paths = cell.leaves.get(content) ?? ["authored:derived"];
+      if (content !== "" && paths.some((path) => path.startsWith("artifact:"))) artifactInput = true;
+      return paths;
+    };
     for (const [name, content] of Object.entries(request.files ?? {})) {
       const rel = cellRelativePath(name);
       if (rel === null) authoringDefect(`file "${name}" is not a cell-relative path`);
       if (Object.hasOwn(files, rel)) authoringDefect(`multiple input names resolve to "${rel}"`);
       files[rel] = content;
-      for (const path of cell.leaves.get(content) ?? ["authored:derived"]) inputPaths.add(path);
+      for (const path of origins(content)) inputPaths.add(path);
     }
     const stdin = request.stdin ?? null;
     if (stdin !== null) {
-      for (const path of cell.leaves.get(stdin) ?? ["authored:derived"]) inputPaths.add(path);
+      for (const path of origins(stdin)) inputPaths.add(path);
     }
-    return { args: [...args], files, stdin, inputPaths: [...inputPaths].sort(compareCodeUnits) };
+    const sorted = [...inputPaths].sort(compareCodeUnits);
+    return { args: [...args], files, stdin, inputPaths: sorted, artifactInput };
   }
 
   private async run(scope: Scope, request: ToolRunRequest): Promise<ToolRunResult> {
@@ -703,7 +744,7 @@ class VerifierHost implements VerifierHostHandle {
           toolId: isString(request?.toolId) ? request.toolId : "",
           checkId: isString(request?.checkId) ? request.checkId : "",
         },
-        { args: [], files: {}, stdin: null, inputPaths: [] },
+        { args: [], files: {}, stdin: null, inputPaths: [], artifactInput: false },
         null,
       );
       return nonResult(
@@ -752,7 +793,10 @@ class VerifierHost implements VerifierHostHandle {
       );
     }
     base = { ...base, toolDigest: liveDigest };
-    const moved = source === "cell" ? null : movedSinceSnapshot(entry, liveDigest, this.toolTree);
+    const moved =
+      source === "cell"
+        ? null
+        : movedSinceSnapshot(entry, liveDigest, this.toolTree, () => this.liveTree(scope));
     if (moved !== null) {
       return nonResult(
         unspawned(base),
@@ -806,7 +850,14 @@ class VerifierHost implements VerifierHostHandle {
         },
       };
     } else {
-      const tool = { tree: this.toolTree, digest: liveDigest, interpreterDigest: entry.interpreterDigest };
+      // By content rather than by path: a copy of the tree reuses its cache, and a tree rewritten in
+      // place does not.
+      const tool = {
+        tree: this.liveTree(scope),
+        digest: liveDigest,
+        portableDigest: entry.portableDigest,
+        interpreterDigest: entry.interpreterDigest,
+      };
       const launch = {
         scope,
         cell,
@@ -823,18 +874,22 @@ class VerifierHost implements VerifierHostHandle {
     }
     if (result.executed && !scope.closed) {
       if (source !== "cell") this.usedTools.set(request.toolId, { ...entry, digest: liveDigest });
-      this.bindings.set(
-        `${subject.phase}\u0000${subject.subjectId}\u0000${String(subject.attempt)}\u0000${request.checkId}\u0000${request.toolId}`,
-        {
-          phase: subject.phase,
-          subjectId: subject.subjectId,
-          attempt: subject.attempt,
-          checkId: request.checkId,
-          adapterId: request.toolId,
-        },
-      );
+      this.bind(subject, request, inputs);
     }
     return result;
+  }
+
+  /** One binding per subject, check and tool; it carries artifact input once any of its runs did. */
+  private bind(subject: VerifierSubject, request: ToolRunRequest, inputs: RunInputs): void {
+    const key = `${subject.phase}\u0000${subject.subjectId}\u0000${String(subject.attempt)}\u0000${request.checkId}\u0000${request.toolId}`;
+    this.bindings.set(key, {
+      phase: subject.phase,
+      subjectId: subject.subjectId,
+      attempt: subject.attempt,
+      checkId: request.checkId,
+      adapterId: request.toolId,
+      artifactInput: this.bindings.get(key)?.artifactInput === true || inputs.artifactInput,
+    });
   }
 
   private evidenceBase(
@@ -949,7 +1004,7 @@ class VerifierHost implements VerifierHostHandle {
     if (this.lifetime === null) throw new VerifierOperationalStop("no-lifetime", []);
     const startedAt = Date.now();
     const lease = this.lifetime.begin({ role: "tool", cell: cell.path, requestDigest: base.requestDigest });
-    scope.receipts.add(lease.id);
+    scope.receipts.set(lease.id, cell.path);
     let child: Bun.Subprocess<"ignore" | Uint8Array<ArrayBuffer>, "pipe", "pipe">;
     try {
       child = Bun.spawn({

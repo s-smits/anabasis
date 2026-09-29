@@ -20,7 +20,7 @@
  * it fails and nobody read them.
  */
 import { resolveJsonPath } from "../meta/json-evidence.ts";
-import { type JsonObject, isNumber, isRecord } from "../meta/json-shape.ts";
+import { isNumber, isRecord } from "../meta/json-shape.ts";
 
 export type MarginDirection = "atMost" | "atLeast";
 
@@ -59,15 +59,13 @@ interface MarginReading {
   artifactPath: string;
   direction: MarginDirection;
   reported: number | null;
+  /** The artifact path is present and holds something other than a number, such as the design a
+   *  mass is computed from: the bounded value is derived from it, not stated there to be read. */
+  derived: boolean;
   limit: number | null;
   /** How far inside its limit the reported value sits. Negative is a breach, null unreadable. */
   slack: number | null;
   breached: boolean;
-}
-
-function numberAt(root: JsonObject, path: string): number | null {
-  const resolved = resolveJsonPath(root, path);
-  return resolved.found && isNumber(resolved.value) ? resolved.value : null;
 }
 
 /** Every comparison that applies to this task's family, read against one prepared answer. */
@@ -83,8 +81,10 @@ export function readMargins(
   const task = isRecord(publicInput) ? publicInput : {};
   return margins.flatMap((margin) => {
     if (margin.families !== null && !margin.families.includes(family)) return [];
-    const reported = numberAt(answer, margin.artifactPath);
-    const limit = numberAt(task, margin.publicInputPath);
+    const at = resolveJsonPath(answer, margin.artifactPath);
+    const reported = at.found && isNumber(at.value) ? at.value : null;
+    const stated = resolveJsonPath(task, margin.publicInputPath);
+    const limit = stated.found && isNumber(stated.value) ? stated.value : null;
     const slack =
       reported === null || limit === null
         ? null
@@ -97,6 +97,7 @@ export function readMargins(
         artifactPath: margin.artifactPath,
         direction: margin.direction,
         reported,
+        derived: reported === null && at.found && at.value !== null,
         limit,
         slack,
         breached: slack !== null && slack < 0,
@@ -112,8 +113,9 @@ function decimal(value: number): string {
 function marginLine(reading: MarginReading): string {
   const bound = reading.direction === "atMost" ? "at most" : "at least";
   if (reading.slack === null) {
-    const missing =
-      reading.reported === null
+    const missing = reading.derived
+      ? `the value at ${reading.artifactPath} in your answer is not a number, so this limit is not read against it`
+      : reading.reported === null
         ? `your answer reports nothing at ${reading.artifactPath}`
         : "this task states no limit";
     return `${reading.label}: not checked — ${missing}.`;

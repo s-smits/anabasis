@@ -2,7 +2,7 @@
 
 This file records one pass over every component that can refuse a Builder's candidate or hold a
 measured battery back from a claim: the submit and preview gate (`src/gate/validation-pipeline.ts`
-and what it calls), the battery pre-case in `src/truth/verification-runner.ts`, and claim
+and what it calls), the battery pre-case in `src/correctness-bundle/verification-runner.ts`, and claim
 readiness (`src/claim/readiness.ts`, `src/claim/claim.ts`). Each component was put to one question:
 are we at least 98% sure it refuses something that is actually wrong? The operator set that bar so
 that a gate the evidence cannot defend gives the Builder room rather than a refusal.
@@ -21,48 +21,46 @@ solves (Bae et al., EACL 2026; Zotos et al., 2025), which is the case against a 
 decides from the task text alone whether a battery is demanding enough. Those rules are the ones
 this pass took out or archived.
 
-Every component still in the tree carries one comment line naming this file and its id:
+This file is the index of what survived. Each entry below names a refusal by the kebab id its
+ledger card uses, says what it refuses and why that is at least 98% likely to be a real defect, and
+where it has moved to a readout or advice, says what the Builder or the reviewer now reads instead.
+The rewritten decisions live with the code that applies them: R1 in `src/correctness-bundle/tool-runs.ts`, R2
+beside the control receipts the census writes and the claim reads, R3 in
+`src/correctness-bundle/rule-decisions.ts`, and R4 in `heldCountsAgainstAuthor` (`src/run/full-run-round.ts`).
+`test/gate-decisions.test.ts` holds STARTER.md's Gates section to the source: every code it names is
+one some source file still emits.
 
-```text
-// Gate audit 2026-09-25 (docs/gate-audit.md, <id>): kept: <why>
-// Gate audit 2026-09-25 (docs/gate-audit.md, <id>): commented out (unsure): <why>
-```
-
-A commented-out component is left in place, line for line, with its call sites and its tests, so
-restoring it is uncommenting the blocks that carry its id and the prose lines named in its entry.
-Its finding code is no longer produced, and the model-visible text that described it has been
-taken out, since a rule the Builder is told about and nothing enforces is worse than no rule.
-
-The blocks were archived in commit 3be43b8 and have not moved since, while the code around them has.
-The consolidation that followed renamed what several of them read. A finding's owner, for one, is
-now the bundle file at fault, such as `correctness-model/evaluator.ts`, rather than a word such as
-`correctness-model`. So a restore starts from 3be43b8 and translates each uncommented line into the
-current vocabulary before it can compile.
+The first pass marked each component with a `Gate audit 2026-09-25` comment line and archived the
+unsure ones as commented-out blocks. The second pass, on 2026-09-26, deleted every archived block it
+found no reason to restore and removed the markers, since an index in one file does not go stale in
+fifty-two places at once. The archived bytes remain at commit 3be43b8.
 
 ## Kept
 
 Each kept component refuses a candidate, holds a battery or bounds a loop because something is
-actually wrong with it, and the refusal names what to repair. Behaviour is unchanged; only the
-comment line above the producer is new.
+actually wrong with it, and the refusal names what to repair.
 
 ### bundle-shape
 
 Refuses a brief, task or control row that does not parse into its declared shape
-(`shape-mismatch`, `fieldFinding` in `src/truth/brief.ts`). Nothing downstream can read a malformed
+(`shape-mismatch`, `fieldFinding` in `src/correctness-bundle/brief.ts`). Nothing downstream can read a malformed
 row, so the refusal names the field instead of letting a later stage crash on it.
 
 ### task-shape
 
 Refuses a `tasks.json` that is not a bare array, a task id that is duplicated or unsafe as a
-directory name, a missing hidden operand, a declared public path absent from an applicable task,
-and a check that applies to no task (`tasks-shape`, `tasks-check-family-unbound`,
-`tasks-no-applicable-checks`; `src/truth/tasks.ts`, `src/author/candidate-check.ts`). Every later
-stage indexes by these, so a violation fails the round at the first case rather than here.
+directory name, a missing hidden operand, a declared public path absent from every applicable task,
+and a task no check applies to (`tasks-shape`, `tasks-no-applicable-checks`; `src/correctness-bundle/tasks.ts`,
+`src/author/candidate-check.ts`). Every later stage indexes by these, so a violation fails the
+round at the first case rather than here. A check scoped to families the battery lacks
+(`tasks-check-family-unbound`) no longer refuses, since 2026-09-26: a task probe that keeps
+`brief.json` fixed may narrow the battery below a check's families, and that check simply does not
+run this battery, which the claim's `firedByCheck` records as 0.
 
 ### task-count
 
 Refuses a battery whose size differs from the one the run asked for (`tasks-exact-census`,
-`src/truth/tasks.ts`). Size is a measurement condition code owns, and it is refused rather than
+`src/correctness-bundle/tasks.ts`). Size is a measurement condition code owns, and it is refused rather than
 clamped because a silently changed size is a silently changed condition.
 
 ### harness-config
@@ -75,20 +73,20 @@ carry the artifact, otherwise fails as a non-result in a paid battery.
 ### tools-spec-structure
 
 Refuses tool rows with bad keys, kinds or duplicate names, starter tools left in, and leftover
-data-reader state (`tools-data-reader-state` and the structural codes of `src/truth/tools-spec.ts`).
+data-reader state (`tools-data-reader-state` and the structural codes of `src/correctness-bundle/tools-spec.ts`).
 Conformance registers exactly this roster, so it has to parse into one stable worker contract.
 
 ### accept-schema
 
 Refuses an accept control the public artifact schema cannot compile, or one off the declared
 top-level schema (`controls-accept-public-schema-inconsistent`, `controls-accept-off-schema`;
-`src/author/fresh-candidate-contract.ts`, `src/truth/controls.ts`). That is a contradiction inside
+`src/author/fresh-candidate-contract.ts`, `src/correctness-bundle/controls.ts`). That is a contradiction inside
 the Builder's own bytes, and the solver is told the same schema.
 
 ### expected-check-inapplicable
 
 Refuses a reject control whose named check does not apply to its task's family
-(`controls-expected-check-inapplicable`, `src/truth/controls.ts`). Such a reject can never fail on
+(`controls-expected-check-inapplicable`, `src/correctness-bundle/controls.ts`). Such a reject can never fail on
 that check, so it calibrates nothing.
 
 ### tool-identity
@@ -103,60 +101,120 @@ Refuses agent code importing the correctness model, an unvetted package or a bui
 material, non-regular files and capability escapes (`src/claim/bundle-validation.ts`,
 `src/claim/fingerprint.ts`). This is the isolation of hidden data from the solver.
 
-### experiment-plan-schema
-
-Refuses an `EXPERIMENT.json` that does not read as `experiment-plan/v2` (`experiment-plan-schema`,
-`experiment-proposal-shape`, `experiment-proposal-read`; `src/author/experiment-plan.ts`). The plan
-feeds prediction scoring and the reviewer's orientation, which read only its one schema.
+The capability-escape scan (`correctness-model-capability-escape`) reads the code the verifier
+runs, since 2026-09-27: `evaluator.ts` and `reference/index.ts` with every module each reaches at
+run time (`verifierSourceFiles`, over `runtimeClosure` in `src/claim/scoring-closure.ts`). It used
+to read every code file but those named `*.test.*`, and its one recorded firing, firmware
+9c0c68b1-10 seq 37, refused a `local-runtime.test-support.ts` only `evaluator.test.ts` imported;
+the Builder moved it to `scratch/`. A file's name now decides nothing either way.
+When an import the walk does not follow may still run package code it never read — a module it
+cannot scan, or a bare specifier naming neither a Node builtin nor a controller package — the
+closure says nothing about what runs, and the scan falls back to every code file in the package
+(`opaque`, `runtimeClosure`). A builtin is a leaf and keeps the closure; none of the 208 recorded
+correctness models under `campaigns/` has an opaque closure, so the fallback changes no recorded
+outcome.
 
 ### f2-reference-verdict
 
 Refuses a candidate whose reference solve is rejected by its own checks, with
 `SOLVABILITY_CENSUS_BLOCKED` and `SOLVABILITY_FAILURE_CONCENTRATION` beside it
-(`src/truth/solvability.ts`, `src/run/solvability-gate.ts`). A reference the checks reject shows,
+(`src/correctness-bundle/solvability.ts`, `src/run/solvability-gate.ts`). A reference the checks reject shows,
 before any paid solve, that no pass is reachable through the declared path. This is the answer-key
-check the benchmark literature says to keep.
+check the benchmark literature says to keep. Of its 15 recorded episodes to 2026-09-25, 8 caught a
+real defect, 3 were the candidate's own `.toolchain` that could not run inside the cell (truss-8,
+-9 and -10: every check rejected every task, the reference bytes were identical before and after,
+and only the tool condition moved) and 4 were host limits. Since 2026-09-27 the row names the
+installed tools as the suspect, owned by the evaluator with `SOLVABILITY_INSTALLED_TOOLS_SUSPECT` at
+`.toolchain`, when every applicable check rejected every task and none passed on a task held to at
+least two checks, or when a rejected answer passed with the same bytes over the same correctness
+model under a different tool condition earlier in the session. It still refuses. Of the host
+limits, a tool stdout over the 1 MiB cap and a 126/127 exit were already tool non-results at the
+head; the QEMU wall (firmware-10, never repaired) and host load (firmware-5) remain unseparated.
 
 ### f2-representation-defect
 
 Refuses a reference answer the writer, the DraftStore or the submit path cannot carry
-(`src/run/solvability-gate.ts`). Every solve would meet the same defect.
+(`src/run/solvability-gate.ts`). Every solve would meet the same defect. Until 2026-09-26 it also
+refused a writer that accepted `""` where the reference answer wrote null. The writer's parameters
+are the compiled public schema, so that was a statement about a legitimately nullable string field
+rather than a carry defect, and its only recorded firing cost a forty-call repair loop. The branch
+is deleted; `contract.md` now tells the Builder to publish null as the absence value, and a solver
+that writes `""` there is graded by the checks. Until 2026-09-27 a worker request the controller
+stopped waiting for also landed here, because it carried the protocol kind without the host's
+deadline mark. Both firings recorded on 2026-09-24 were that timeout on a loaded host, 0 of 2 a
+defect in the bytes; the request timer now marks `deadline` and the case is a host non-result.
+
+### f2-host-nonresult
+
+Settles a reference solve or submission path the host broke as a per-case environment non-result
+(`solvability-submission-path-host-non-result`, `solvability-reference-solve-host-non-result`;
+`src/correctness-bundle/solvability.ts`), which ends a submit as `environment-blocked`. It fired
+8 times across the firmware and truss runs of 2026-09-24/25, each a worker that missed its
+1000 ms close deadline before the submit was accepted, 7 read as `gate-unvalidated` and 1 under
+the older spelling `gate-environment`. None was a defect in the bytes: each cleared on a later
+check of byte-identical candidates, and most of those candidates had cleared before. Since
+2026-09-27 the census gives such a case one fresh attempt on the same bytes. The solve memory
+keeps no host non-result, so the stage that failed runs again, and only a second host non-result
+stands; the row keeps the first attempt's error as `rerunAfterNonResult`. A product failure is
+not retried, since the same bytes fail the same way.
 
 ### accept-control-rejected
 
 Refuses a candidate, and at claim time a battery, when a known-valid accept control fails a check
-(`DISCRIMINATION_ACCEPT_REJECTED`; `src/truth/run-controls.ts`, `src/truth/control-receipts.ts`).
+(`DISCRIMINATION_ACCEPT_REJECTED`; `src/correctness-bundle/run-controls.ts`, `src/correctness-bundle/control-receipts.ts`).
 When the checks reject an answer the Builder vouches for, no measured pass can be read through them.
+Since 2026-09-27 an accept whose blocking checks' tools exited 126 or 127 and did no work anywhere
+in the census is routed to `.toolchain` rather than to the correctnessModel (below).
 
 ### controls-no-verdict
 
-Refuses a control whose check threw or reached no verdict (`DISCRIMINATION_NOT_PROVEN`,
-`PROBE_NO_VERDICT`; `src/truth/run-controls.ts`). It witnesses nothing about the checks.
+Refuses a control whose check threw or reached no verdict because its tool run crashed
+(`DISCRIMINATION_NOT_PROVEN`, `PROBE_NO_VERDICT`; `src/correctness-bundle/run-controls.ts`). It
+witnesses nothing about the checks. A control whose tool timed out refuses nothing: it is the
+advisory `controls-tool-timeout` (`timedOutControls`, `src/correctness-bundle/control-receipts.ts`),
+and since 2026-09-27 a reject whose check nothing else proved runs once more alone first, and a
+check whose every reject timed out is the advisory `DISCRIMINATION_CHECK_TIMED_OUT` (below).
+The blocking `tool-timeout` that remains is F2's, a reference artifact's grading run that timed
+out, and since 2026-09-27 that refuses only after a rerun alone (below). A tool the host refused twice, for `sandbox` or
+`verifierUnavailable`, is no longer counted here: since 2026-09-26 it is `verifier-tool-refused`,
+which `tool-environment` below settles as the environment's, whether an authored or an external
+check called the tool.
 
 ### external-result-unbound
 
 Refuses a check that returns while its tool runs are still running (`EXTERNAL_RESULT_UNBOUND`,
-`src/truth/run-controls.ts`). Its verdict grounds on nothing it waited for.
+`src/correctness-bundle/run-controls.ts`). Its verdict grounds on nothing it waited for.
 
 ### tool-environment
 
 Settles a census or tool run the host could not execute as an environment non-result
-(`census-wall-exceeded`, `CENSUS_UNAVAILABLE`, the settle functions of `src/run/census-gate.ts` and
-`src/run/solvability-gate.ts`). It is never a verdict on the candidate (rule 15).
+(`verifier-tool-refused`, and `settleToolUnavailable` and `settleEnvironment` in
+`src/run/census-gate.ts`), and a reference solve the host broke as a per-case environment
+non-result in `src/run/solvability-gate.ts`. It is never a verdict on the candidate (rule 15). A
+blocking environment row is not remembered as a verdict on the bytes, and a submit that meets one
+ends the session as `environment-blocked` (`gateTerminalClause`), so an environment owner on a
+candidate defect costs the campaign rather than a strike. Two neighbours are therefore the
+author's on purpose: `census-wall-exceeded`, since the checks and the reference solve are the
+candidate's bytes and their time is the Builder's to cut, and `SOLVABILITY_CENSUS_UNAVAILABLE`, a
+census with no evidence, whose every cause is either the candidate's bytes or cannot be told apart
+from what its generated code did to the snapshot; the row names the cause code. Until 2026-09-26 a
+control whose tool the host refused twice was a no-verdict refusal of the check and condition drift
+was an evaluator row; both now carry the `environment` owner.
 
 ### condition-identity
 
 Refuses a verifier condition that drifted, a worker whose contract differs across tasks, and a
 generated toolset that did not terminate (`verifier-condition-drift`, `task-worker-binding-drift`,
-`generated-toolset-termination`; `src/run/census-gate.ts`, `src/truth/probe-tool-surface.ts`).
-Measurement refuses the same, so the gate refuses it first.
+`generated-toolset-termination`; `src/run/census-gate.ts`, `src/correctness-bundle/probe-tool-surface.ts`).
+Measurement refuses the same, so the gate refuses it first. Verifier drift is the host's and
+refuses as `environment`: a check of the same bytes runs again, and a submit that meets it ends the
+session as `environment-blocked`. The other two are the candidate's.
 
 ### measure-grounding
 
-Makes a verified case whose externally grounded check ran no tool a typed non-result, and names at
-readiness and in the claim an external check with no tool run on its verified cases
-(`src/truth/solve-case.ts`, `src/claim/readiness.ts`, `src/claim/claim.ts`). Without the run there
-is no tool evidence behind the verdict.
+Names at readiness an external check with no tool run on any verified case (`inertToolFindings`,
+`src/claim/readiness.ts`). The per-case half is R1 (`grounded-verdict` below), which the claim now
+reads from the battery's non-result rows rather than deriving again.
 
 ### build-failed-ceiling
 
@@ -172,18 +230,17 @@ non-results (`src/run/full-run-round.ts`). Remeasuring the same dead environment
 ### noop-submit-strike
 
 Counts a byte-identical resubmit of a refused candidate as a strike, and ends the session as
-`authoring-stalled` at `noopSubmitStrikes` (`src/gate/candidate-memory.ts`). The same bytes cannot
-earn a different verdict.
-
-### unchanged-candidate-strike
-
-Counts a round that settles on its own entry tree, up to `unchangedCandidateStrikes`
-(`src/run/full-run-build-step.ts`). Such a round has nothing new to measure.
+`authoring-stalled` at `noopSubmitStrikes` (`src/gate/candidate-memory.ts`), which ends the campaign
+as `build-failed`; the strike and final messages now say the campaign ends rather than the round.
+The same bytes cannot earn a different verdict. The condition is the candidate's bytes, every
+resolved tool entry and the tool tree's content, so a repair behind an unchanged wrapper script is
+not a strike, and a tool run that only wrote bytecode, user caches or Arduino's compile counter is
+(`toolTreeDigest`, `src/verify/tool-inventory.ts`).
 
 ### no-progress
 
-Ends a round as the retryable `no-progress` clause after three turns in a row without a successful
-tool call (`src/author/builder-turn-loop.ts`). Those turns change nothing, and the clause resumes
+Ends a round as the retryable `no-progress` clause after `stalledTurns` turns in a row without a
+successful tool call (`POLICY.loop`, read by `src/author/builder-turn-loop.ts`). Those turns change nothing, and the clause resumes
 the same conversation.
 
 ### battery-sizing
@@ -198,8 +255,13 @@ Holds a measured candidate with no verified case instead of selecting it
 
 ### review-unread-hold
 
-Returns an authoring review's unread findings in place of a submit verdict (`review-unread`,
-`src/gate/submit-tool.ts`). The Builder reads them before a submit ends the round they apply to.
+Returns an unread authoring review in place of a submit verdict when it shows a blocking finding
+(`review-unread`, `src/gate/submit-tool.ts`, `join` in `src/run/authoring-review.ts`), so the
+Builder reads a demonstrated defect before a submit ends the round it applies to. Until 2026-09-27
+it held for any shown finding, advisory ones included, and the triage of 28 recorded runs counted
+34 holds in 19 chains and about 79 minutes of waiting, with two campaigns whose every held review
+was advisory and whose identical candidate was then accepted. An advisory finding asks for no change
+before submit, so it now rides the next tool result and holds nothing.
 
 ### continuation-nudge
 
@@ -228,171 +290,250 @@ Refuses `harness_reset` outside a reopen rebuild and a second reset of one scope
 (`src/builder/harness-reset.ts`). A fresh build has no seed to return to, and the per-scope marker
 keeps a resumed round from wiping its own work.
 
-## Commented out (unsure)
+## Narrowed, 2026-09-26
 
-Each entry below names what the component refused, why the audit was unsure it refuses something
-actually wrong, and how to restore it. To restore one, uncomment every block under a marker naming
-its id (`grep -rn "gate-audit.md, <id>" src tools test .claude`), then put back the prose this entry
-names.
+### operating-guide-shape
 
-### representation-blocking
+Refuses an empty operating guide and the unchanged starter seed, which carries a
+`starter-placeholder:` marker (`guideFindings`, `src/author/candidate-check.ts`). Both are a guide
+nobody wrote. The 8,192-byte cap and the task-identifier scan are deleted: a long guide is a cost
+the battery measures, and whether guidance says too much is review's.
 
-Refused a candidate whose reference answer spelled an absence or whose artifact root transcribed a
-public input (`REFERENCE_ANSWER_SPELLS_ABSENCE`, `ARTIFACT_ROOT_TRANSCRIBES_PUBLIC_INPUT`;
-`src/run/representation-census.ts`, `src/run/solvability-gate.ts`). Both are shape heuristics over
-the answer rather than a demonstrated wrong verdict. The witness shape and `inputInsensitivity`
-stay live.
+### key-material-file
 
-### tool-program-argument
+Refuses an agent file whose name can only mean an answer: an answer key, an `answers.json` and its
+siblings, or hidden expectations (`KEY_MATERIAL_RE`, `src/claim/bundle-validation.ts`). The
+`reference-solver` and `expected-outputs` patterns are deleted, because a solver-side search or a
+tool tabulating what a public input implies is legitimate agent code under exactly those names, and
+no recorded campaign ever tripped the rule. The rest of `bundle-walls` is unchanged.
 
-Refused an external check passing program text as a tool argument, multi-line or over 256 bytes
-(`solvability-tool-program-argument`, `src/verify/self-grounding.ts`). An argument's length does
-not show whose algorithm decides. Restore the STARTER.md and AGENTS.md sentences on the argument
-limit with it.
+## Rewritten, 2026-09-26
 
-### tool-self-authored
+Components the second audit judged right in intent and wrong in shape, because each was a patch at
+one stage. Each is now one decision with one owner that every stage applying it calls, so no stage
+keeps a copy of its own.
 
-Refused an external check whose tool bytes equal candidate-authored files
-(`solvability-tool-self-authored`, `src/verify/self-grounding.ts`). A bounded digest match is not a
-proof of provenance either way; the claim records each tool's source and digest instead.
+### grounded-verdict (R1)
 
-### census-inert-tool
+Replaces `f2-witness-relay`, `census-grounding-owed` and the per-case half of `measure-grounding`
+(`src/correctness-bundle/tool-runs.ts`). A pass is ungrounded when an applicable check that declares required
+tools, authored or external, has no completed run of one of them on that same subject. A fail is
+never refused for a missing run: a skipped run could only have withheld a pass, and refusing one
+mislabelled correct prechecks and every census reject that passed its check. One code,
+`EXTERNAL_VERDICT_UNGROUNDED`. The F2 witness fails, a census control is refused, and a battery or
+rehearsal case is a `verifier` non-result. A control whose tool crashed stays with
+`DISCRIMINATION_PROBE_NO_VERDICT`; a control whose tool timed out refuses nothing and is read
+beside the verdict as the advisory `controls-tool-timeout`, while R2 still refuses a check whose
+only rejects reached no verdict. An F2 grading run that timed out is rerun alone once before it
+refuses (`controls-no-verdict`, below). `generated-correctness-model-relay` is gone as a
+classification. The claim's `external-grounding-case-uncovered` clause is deleted, since no verified
+pass can now lack its run.
 
-Refused adoption when the census never launched a declared external tool
-(`external-check-tool-unlaunched` at the census, `src/truth/probes.ts`). Readiness still names the
-same fact through `inertToolFindings`, where it bounds a claim rather than an authoring round.
+### every-check-rejects (R2)
 
-### census-grounding-owed
+Replaces `reject-discrimination` and `public-rule-control-coverage`. Two decisions over the settled
+control receipts, which the census writes and the claim reads back through `checkReceiptSet`, so the
+two cannot disagree: a reject whose `expectedCheckId` did not fail on it
+(`DISCRIMINATION_REJECT_PASSED`), and a check some bound task declares that no reject names
+(`DISCRIMINATION_CHECK_UNREJECTED`). A reject whose tool run crashed is
+`DISCRIMINATION_PROBE_NO_VERDICT`'s, and one that timed out refuses nothing and is listed in the
+advisory `controls-tool-timeout` row. Neither is a miss, and unless the environment refused it,
+neither names its check, so a check whose only reject crashed is still unrejected. A check whose
+every reject timed out is not: since 2026-09-27 it is `DISCRIMINATION_CHECK_TIMED_OUT`, which the
+census reads as advisory while the execution keeps it, so the claim stays open (below). The per-family reject and the per-cell
+accept requirements are gone: mutation analysis asks that every check be seen to kill a mutant, not
+that every family supply one, and the claim's `intrinsic-` and `external-grounding-uncovered`
+clauses are deleted as the same fact read a second time.
 
-Refused adoption when an example's external check made no completed tool run and no host refusal
-explained it (`generated-external-grounding-unexecuted`, `src/truth/grounding-coverage.ts`). The
-refused bucket, a host that refused the tool, stays an environment non-result. Restore the
-STARTER.md Grounding section with it.
+### declared-means-graded (R3)
 
-### f2-witness-relay
+Replaces `brief-artifact-root-unread` and `published-rules` (`src/correctness-bundle/rule-decisions.ts`),
+restored as two refusals in `validateBrief`, so a fresh build and a continuation meet them alike.
+An artifact root no check lists in its `artifactPaths`, with no check reading `$`, is refused
+(`brief-artifact-root-unread`), and so is a check citing an undeclared rule row or only private
+ones (`brief-cited-decision-withheld`); a private construction note cited beside a public rule
+passes, which was the one recorded snapshot the stricter form would have refused. The requirement that every check cite some rule
+(`brief-rule-unpublished`) is deleted: a citation cannot show that the cited prose states what the
+check enforces. A declared path proves the value reaches a check and not that any verdict depends
+on it, so the Epoch Reviewer's probe paragraph now asks for a probe of a root no public rule plainly
+governs (`review-probing-findings/v8`).
 
-Marked a reference solve that relayed the correctness model as a
-`generated-correctness-model-relay` finding (`src/truth/solvability-witness.ts`).
-`uncoveredExternalCheckIds`, which measurement reads, stays live.
+### held-rounds (R4)
 
-### reject-discrimination
+Replaces `held-candidate-ceiling` (`heldCountsAgainstAuthor`, `src/run/full-run-round.ts`). A held
+candidate now counts against the unresolved-authoring allowance unless the environment owns the
+hold: its battery was not delivered (no claim, or a provider stop that created none, which
+`environment-blocked-ceiling` already counts), or its claim was refused only for the environment
+clauses the climb already sets aside (`refusedForEnvironmentOnly`,
+`src/run/climb-battery-admission.ts`, one owner for both). A zero-verified battery the environment
+carried is the author's: prior 10 asks for a hard battery, and a battery nothing passed is one the
+author cannot yet read. The old ceiling's one recorded firing, truss-sol-cb274b at b665608, ended a
+run whose four held candidates had verified 10, 15, 11 and 15 cases, every claim refused for
+`runtime-model-identity-unproven` alone because the codex route recorded no per-case served
+identity. Under R4 none of those holds counts, and `test/full-run-round.test.ts` holds that case
+beside one that adds a clause the environment does not own, which still counts. The promotion hold
+behind it (`candidate-claim-refused`, `src/run/candidate-promotion.ts`) still holds such a candidate,
+by an operator decision recorded there that routes any narrowing to the claim's own clauses in
+`src/claim/`. The archived off-aim stop (`off-aim-allowance-stop`) is deleted rather than
+restored as a flag, because `--iteration-budget` already bounds a campaign and the streak stays a
+readout fact. A resumed round no longer tells the Builder its accepted candidate was taken forward,
+which an unchanged candidate is not.
 
-Refused a candidate, and at claim time a battery, when a reject control passed its named check
-(`DISCRIMINATION_REJECT_PASSED` in `src/truth/run-controls.ts`, the reject side of
-`src/truth/control-receipts.ts`, and the external and intrinsic grounding-uncovered clauses of
-`src/claim/claim.ts`). A passing reject can be a loose check or a mis-built reject, and the audit
-could not tell which one the refusal was catching. A candidate whose rejects pass is now measured
-and claimable.
+### numeric-boundary-constant (BR-9), 2026-09-27
 
-### repeated-public-condition
+A truth check's `numericBoundaries` row names the task path holding a limit and the
+`designRuleConstants` row naming it (`src/correctness-bundle/numeric-boundary.ts`). The brief
+validator required that row's value to be a number, but nothing reads it: `readMargins` takes the
+limit from the task, and the control census matches the (check, path, constant) triple alone. Its
+one recorded firing, truss 3fd52f9e-16, refused a constant whose value said each task publishes its
+own cap, and the Builder answered by writing the tightest cap in as the value. The brief now needs
+the constant declared, and task validation (`unstatedLimitFindings`) refuses a non-numeric one only
+when no task the check applies to states the limit as a number, which is a limit stated nowhere.
+Same code, `brief-numeric-boundary-constant-invalid`, at both stages.
 
-Refused a task-only round on a fixed product whose public-battery fingerprint matched a condition
-that product had already measured (`climb-battery-repeats-history` from `REPEATED_CONDITION`;
-`src/gate/experiment-admission.ts`, `src/run/climb-history.ts`, `src/run/builder-campaign.ts`,
-`src/run/full-run-build-step.ts`, `src/run/harness-build.ts`). The fingerprint hashes public inputs
-only, and a repeat measures the same condition again rather than misstating one. Restore AGENTS.md
-rule 10's "Refuse a repeated public condition on a fixed product".
+## Deleted, 2026-09-26
 
-### product-repair-required
+The second audit (54 components read against their recorded firings and their stated reason) found
+no decision these fourteen changed correctly, so their commented-out code, markers and tests are gone
+rather than waiting to be restored: `tool-program-argument`, `tool-self-authored`, `repeated-public-
+condition`, `product-repair-required`, `operating-guide-retired-tool`, `task-variation`, `brief-
+constant-uncited`, `brief-join-no-decoys`, `agent-deciding-computation`, `repeated-findings-stall`,
+`tool-non-result-ceiling`, `preview-attempt-spent`, and in the pass after them `representation-blocking`
+(a copied root or an absence spelling on every reference witness, shape heuristics that R3's root
+probe and the reviewer's most-failed-check probe now ask by measurement) and `census-inert-tool`
+(readiness's `inertToolFindings` already bounds the claim on the same fact). Two live refusals with no producer left to
+refuse went with them: `tasks-difficulty-unrequested` and `tools-data-reader-state`.
 
-Refused a task-only round while admitted blocking feedback still owed a product repair
-(`experiment-product-repair-required`, `src/gate/experiment-admission.ts`). The audit could not show
-that the owner routing names a real product blocker rather than an advisory row. Restore AGENTS.md
-rule 10's "A known product blocker cannot be evaded by changing tasks or relabelling scope".
+## Moved to advice, 2026-09-28
 
-### public-rule-control-coverage
+`experiment-plan-schema` refused an `EXPERIMENT.json` that did not read as `experiment-plan/v3`
+(`experiment-plan-schema`, `experiment-proposal-shape`, `experiment-proposal-read`). Its presence
+switches nothing any more: attribution, the submission condition and every gate read the bytes, so a
+refusal of the plan refused a candidate over text that decides no outcome. `capturePlan`
+(`src/author/experiment-plan.ts`) then read each field on its own and the plan was scored instead of
+checked, its declared families against the families whose public inputs changed. On 2026-09-29 the
+file itself went, because a score of a declaration decides nothing either: a round's intent is the
+Builder's own note in `MEMORY.md` or `SCRATCHPAD.md`, which no code grades.
 
-Refused a control corpus missing an accept per check-by-family cell, or a reject per check and per
-family (`controls-public-rule-positive-missing`, `controls-public-rule-negative-missing`;
-`publicRuleFindings` in `src/truth/controls.ts`). The census runs every control the Builder wrote,
-and the audit was unsure that a coverage count refuses a wrong corpus rather than a small one.
-`starter-pack/contract.md` still asks for that coverage as advice; restore AGENTS.md rule 12's
-statement that the gate checks it.
+## Deleted, 2026-09-29
 
-### operating-guide-retired-tool
+`unchanged-candidate-strike` counted a rebuild that settled on its own entry tree as
+`candidate-unchanged`, up to `unchangedCandidateStrikes`, on the reasoning that such a round has
+nothing new to measure. Once a repeat became a measured experiment that reasoning fell away: on a
+rebuild the entry tree is the adopted product, so an unedited submit is exactly a repeat, and the
+round told the Builder "Accepted" before refusing it, while the same repeat with a note moved was
+measured. The promotion clause `stale-task-identity` went the same day for the same reason: it held
+every measured repeat, kept its packet unpublished and counted it towards `candidate-held`. A repeat
+that verified nothing is still held on its own battery (`candidate-zero-verified`), and spend is
+bounded by the provider and campaign budgets.
 
-Refused an operating guide naming a tool an earlier tools spec declared and the current one does
-not, found by scanning Git history (`operating-guide-retired-tool`; `src/author/candidate-check.ts`,
-`src/author/domain-repo.ts`). A history scan of code spans is a weak witness for a stale guide.
+## Correctness-check triage, 2026-09-27
 
-### operating-guide-policy
+A third pass read every firing of the census components across 28 recorded runs, per firing and
+from the receipts, and changed what those firings showed was wrong.
 
-Refused an empty, oversized (over 8,192 bytes), placeholder or task-naming operating guide
-(`operating-guide-shape`, `operating-guide-task-identifier`, `MAX_GUIDE_BYTES`;
-`src/author/candidate-check.ts`). A missing guide is still refused. Whether these byte shapes earn a
-refusal rather than review was unclear. Restore the contract.md and STARTER.md guide-size sentences
-with it.
+### controls-boundary-witness (deleted)
 
-### task-variation
+Refused a reject whose `targetsBoundary: {publicInputPath, constantName}` together with its
+`expectedCheckId` was not a triple some check's `numericBoundaries` declared
+(`controls-boundary-check-mismatch`), or that claimed a join decoy beside the boundary
+(`controls-boundary-join-witness-overloaded`). It fired twice, both times on a real misspelling,
+and both times on a field nothing read: the census proves a reject by running its
+`expectedCheckId` alone, and no census, claim or reader consumed the annotation. The Builder
+answered the first firing by deleting the annotation. The field, both codes and
+`numericBoundaryObligations`, whose only caller this was, are gone; a recorded `controls.json` that
+still carries the field is admitted, since the row parse ignores keys it does not name.
+`numericBoundaries` on a check stays, because `publishedMargins` reads it.
 
-Refused a family whose declared public paths held one value across its tasks
-(`tasks-structural-variation-shortfall`, `src/truth/tasks.ts`). Declared variation proves coverage
-rather than demand: 18 firmware tasks satisfied it while every one published the same display.
-Restore the contract.md, FRAME `firstBattery` and AGENTS.md rule 11 variation sentences with it.
+### accept-control-rejected (routing rewritten)
 
-### brief-artifact-root-unread
+Seven of eight recorded refusals were real, and in five of those the fault was a tool that could
+not run in the snapshot or the verifier cell — a relocated venv, a wrapper that would not launch,
+an emulator the wall refused — while the finding told the Builder to fix the correctnessModel. A
+tool that fails silently on one input is not yet that: a compiler refusing a broken accept also
+exits 1 with nothing on stdout, and so does a working compiler rejecting every accept over the
+same invalid construct, so even the whole census does not separate them on exit 1. The host already
+types the unambiguous launch failures as non-results that never reach this refusal: a spawn that
+failed, a wall refusal, and a 126 or 127 whose stderr ends in the shell's own launch line. An
+accept is routed to `.toolchain`, as its own `DISCRIMINATION_ACCEPT_REJECTED` finding, only when
+each of its blocking checks has a run that exited 126 or 127 with no stdout and that run's tool
+never exited 0 or wrote stdout on any accept or reject (`silentTools`,
+`src/correctness-bundle/run-controls.ts`). A tool that only ever failed silently with another code
+keeps the rejection the correctnessModel's, and the finding names the install as the other reading
+with the by-hand run that tells them apart. One working run anywhere keeps it the correctnessModel's
+outright. The refusal itself is unchanged; only its owner and remedy moved.
 
-Refused an artifact-schema root no check lists in its `artifactPaths`
-(`brief-artifact-root-unread`, `src/truth/brief-validator.ts`). Naming a path does not prove a
-check reads it materially, so the refusal checked a declaration, not decoration.
+### controls-no-verdict (F2 timeout rerun alone)
 
-### published-rules
+Every recorded blocking `tool-timeout` came from F2, the grading of a reference artifact, and in 17
+of 22 of those censuses the wall was only 1.0 to 1.6 times the same tool's slowest completed run
+on other tasks: the timeout measured the tool's cost with four lanes sharing the host more often
+than a hang. A grading run that timed out now waits for the F2 lanes to drain and runs its whole
+case once more, alone among F2's cases (the control census may still be running beside it), under
+the next host attempt (`rerunAlone` in `src/correctness-bundle/run-controls.ts`, which the
+control census shares, and `rerunCase` in `src/correctness-bundle/solvability.ts`); a case that completes there is judged like any other. A
+second timeout refuses as before, and the `tool-timeout` finding now carries the host's wall, the
+first timeout's duration, the slowest completed run of the same tool on the same check, the
+`gate.tool_run_seconds` ceiling, and the host load average at each timeout against its cores
+(`rerunDetail`, `src/run/census-gate.ts`). A stop or a census wall cut leaves no room for the
+rerun, and the first timeout stands. Timeouts are not routed to the environment: rule 9 keeps a
+timeout diagnosable unless the evidence proves the environment owns it, and the load figures are
+there for the author to read that, not for the gate to guess it.
 
-Required every truth check to cite a public `ruleDecisions` row and no private one
-(`brief-cited-decision-withheld`, `brief-rule-unpublished`). The producer sits commented at the end
-of `src/truth/rule-decisions.ts`, beside the citation shape it read, and its call in
-`src/author/fresh-candidate-contract.ts`. A citation cannot show that the cited prose states what
-the check enforces.
+Every `tool-timeout` finding, rerun or not, also says where its wall came from: the evaluator's
+`timeoutMs` capped by `gate.tool_run_seconds` in `agent/config.yaml`, with the default and the ten
+times it that the harness may raise it to (`wallSource`, `src/run/census-gate.ts`). A Builder that
+could not see the ceiling took the host default for a fixed limit and cut its checks rather than
+raising it.
 
-### brief-constant-uncited
+### accept-control-rejected (verifier wall signals, Darwin)
 
-Refused a design-rule constant with no authority or citation (`brief-constant-uncited`,
-`src/truth/brief-validator.ts`). A non-empty string does not prove the value is sourced.
+The verifier's Seatbelt profile is deny-default and grants `process*`, which does not cover
+`signal`, so a tool could not stop a process it had started: an emulator harness ending QEMU got
+EPERM from `kill`, its accept controls failed `target-behaviour`, and the census refused the
+candidate as `DISCRIMINATION_ACCEPT_REJECTED` and `SOLVABILITY_CENSUS_BLOCKED` owned by the
+correctnessModel, while the same tool worked in the Builder's `(allow default)` shell. The
+firmware run 7398e7-10 met it on its target-behaviour accepts. The verifier profile now carries
+`(allow signal (target same-sandbox))` (`prepareDarwinSeatbelt`, `src/verify/darwin-seatbelt.ts`),
+which reaches every process under the wall and none outside it, and its policy identity names the
+grant. Linux needs no counterpart: Bubblewrap runs the command in a private pid and user namespace
+with no seccomp filter, where a process already signals its own children; that is read from
+`src/verify/linux-bwrap.ts`, not run.
 
-### brief-join-no-decoys
+### controls-no-verdict (control timeout rerun alone), 2026-09-27
 
-Refused a declared join with no decoy classes (`brief-join-no-decoys`,
-`src/truth/brief-validator.ts`). No rule asks for a control of any declared class, so the empty list
-decided nothing.
+A control whose tool timed out refused nothing already, but R2 still refused the check whose every
+reject timed out, as `DISCRIMINATION_CHECK_UNREJECTED` with the remedy "add a reject". On truss
+snapshots that main refused as `PROBE_NO_VERDICT`, the stack refused that way beside an advisory
+`controls-tool-timeout`, and the Builder was told to add a reject it already had, for a timeout that
+may have been the host's load. Two things changed. The control census now calls F2's owner,
+`rerunAlone` (`src/correctness-bundle/run-controls.ts`): once the reject lanes drain, the first
+timed-out reject of each check no other reject witnessed runs once more, alone and under the next
+host attempt, and the first rerun that times out again ends the pass. An accept that timed out is
+not rerun, because it refuses nothing either way. A crash settles at once as before. Then a check
+whose rejects all still timed out gets its own code, `DISCRIMINATION_CHECK_TIMED_OUT`
+(`controlDecisionFindings`, `src/correctness-bundle/control-receipts.ts`), which `timeoutReadout`
+moves beside the timed-out examples as an advisory row. The execution keeps it among its findings, so
+`claimable` stays false and the battery replay records no cases until a reject of that check
+finishes; no pass rate rests on a check nothing saw fail. The `controls-tool-timeout` row now
+names the host's reason, which carries the wall the run met, the slowest completed run of the same
+tool on the same check (`slowestCompletedMs`, shared with F2), the `gate.tool_run_seconds` wall,
+and whether the example timed out again alone. The timeout is not settled as the environment's:
+an environment row at submit ends the session as `environment-blocked`, which would let a tool
+that never finishes end a campaign.
 
-### agent-deciding-computation
+### controls-no-verdict (authored check, tool refused twice), 2026-09-27
 
-Refused an agent module exporting the computations a correctness-model module decides with, found
-by an AST copy scan (`agent-carries-deciding-computation`; `src/claim/bundle-validation.ts`,
-`src/claim/correctness-model-hygiene.ts`, `src/claim/fingerprint.ts`). A name-and-shape scan does
-not identify a copied decision. `scannableBundleSource` and the capability-escape scan stay live.
-
-### off-aim-allowance-stop
-
-Stopped a campaign after `climb.offAimStreakRounds` consecutive rounds on one side of the aim
-(`allowanceStop` in `src/run/next-move.ts`, `src/critic/policy.ts`, FRAME `readout.allowance`,
-`tools/runs/pulse.ts`). The route after an off-aim streak belongs to the Builder, and the streak
-stays a readout fact. Restore the AGENTS.md loop-ceiling entry and the FRAME stop wording with it.
-
-### held-candidate-ceiling
-
-Counted `candidate-zero-verified` holds toward the build-failed stall limit
-(`src/run/full-run-round.ts`). A zero-verified battery is the hard battery design prior 10 asks
-for, not an authoring stall.
-
-### repeated-findings-stall
-
-Ended a session as `authoring-stalled` when one refusal repeated `stalledFindingsRepeats` times
-(`authoring-repeated-findings`; `src/gate/candidate-memory.ts`, `src/gate/settlement.ts`,
-`src/run/builder-campaign.ts`). One refusal over changed bytes is repair in progress, not a proven
-stall.
-
-### tool-non-result-ceiling
-
-Ended a campaign after `toolNonResultRefusals` repeated tool non-results
-(`tool-non-result-repeat`, `tool-non-result-ceiling`; `src/author/tool-non-result.ts` and the
-campaign memory). A tool that cannot run is an environment fact each run records (rule 15), not a
-Builder stall.
-
-### preview-attempt-spent
-
-Refused a `correctness_check` retry on bytes whose last preview ended without a verdict
-(`src/gate/check-tool.ts`, `src/gate/validation-pipeline.ts`). A runtime non-result is no verdict on
-the bytes, so a retry on them now runs. The clear-verdict cache and the shared in-flight gate stay.
-Restore AGENTS.md rule 14's "remembered as spent" sentence and the `harness_inspect` readiness
-wording with it.
+The audit of 2026-09-26 found that the environment route for a tool the host refused twice existed
+only for an external check, through its grounding row, so an authored check that ran a tool through
+`execution.requiredToolIds` and met the same `sandbox` or `verifierUnavailable` refusal twice kept
+a `PROBE_NO_VERDICT` row owned by `correctness-model/evaluator.ts`. That row was remembered as a
+verdict on the bytes, and a byte-identical resubmit struck, which rule 14 forbids. The route had
+already moved by the time this entry was written: `admitObservation`
+(`src/correctness-bundle/run-controls.ts`) gives any control whose environment-owned refusal
+survived its retry `verifier-tool-refused`, whatever evidence kind its check declares, and the
+census gate settles that code as the environment's. What was missing was a test holding it for an
+authored check. `test/control-receipts.test.ts` now runs the external check's tool call under
+authored evidence with the host refusing it twice, and expects `verifier-tool-refused` alone after
+two attempts. Restricting the branch to briefs that declare an external check fails that test and
+no other in the file.

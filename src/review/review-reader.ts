@@ -48,7 +48,7 @@ interface ReaderTurnInput {
   tools: ReaderTool[];
   systemPrompt: string;
   prompt: string;
-  /** After a settled successful turn, the reader may expose unfinished work. Null ends reading. */
+  /** After a settled successful turn, the next prompt back to unfinished work. Null ends reading. */
   continuePrompt?: () => string | null;
   /** Same lifecycle with a deterministic session in tests; production resolves the review slot. */
   openSession?: () => Promise<HostSession>;

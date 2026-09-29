@@ -81,7 +81,7 @@ Then take the next compartment from step 2.
 ## What a pass must not do
 
 - **Change model-visible text without flagging it as a new condition.** A literal that reaches a
-  Builder, Judge or reviewer moves a prompt digest, and a climb-frame line moves `FRAME_REVISION`.
+  Builder, Judge or reviewer moves a prompt digest.
   Say so in the commit body, and leave text whose change is an open operator decision out of scope.
 - **Silence a failing old test.** It is either a boundary the rewrite keeps, or one the commit body
   retires, with the reason.

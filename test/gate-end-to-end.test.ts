@@ -78,7 +78,6 @@ describe("the submit gate end to end", () => {
     const outcome = await preview("clean");
     expect(status(outcome)).toEqual({
       bundle: "passed",
-      validation: "passed",
       conformance: "passed",
       gates: "passed",
     });
@@ -92,7 +91,6 @@ describe("the submit gate end to end", () => {
     );
     expect(status(outcome)).toEqual({
       bundle: "refused",
-      validation: "not-run",
       conformance: "not-run",
       gates: "not-run",
     });
@@ -116,7 +114,6 @@ describe("the submit gate end to end", () => {
     // The census needs no generated tool, so it still runs; F2 does, so it is left out.
     expect(status(outcome)).toEqual({
       bundle: "passed",
-      validation: "passed",
       conformance: "refused",
       gates: "passed",
     });
@@ -124,20 +121,7 @@ describe("the submit gate end to end", () => {
     expect(rows(outcome)).toEqual([["task-public-path-absent"]]);
   }, 120_000);
 
-  // Gate audit 2026-09-25 (docs/gate-audit.md, reject-discrimination): commented out (unsure): a reject control that passes its named check no longer refuses the candidate or the claim
-  // it.concurrent("refuses a reject that passes its named check at the control census", async () => {
-  //   const outcome = await preview("reject-passes", (dir) =>
-  //     edit(dir, "correctness-model/controls.json", (text) => {
-  //       const controls = JSON.parse(text);
-  //       controls.reject[0].artifact = { answer: "A" };
-  //       return JSON.stringify(controls);
-  //     }),
-  //   );
-  //   expect(status(outcome)).toMatchObject({ conformance: "passed", gates: "refused" });
-  //   expect(rows(outcome)).toEqual([["DISCRIMINATION_REJECT_PASSED"]]);
-  // }, 120_000);
-
-  it.concurrent("admits a reject that passes its named check at the control census", async () => {
+  it.concurrent("refuses a reject that passes its named check at the control census", async () => {
     const outcome = await preview("reject-passes", (dir) =>
       edit(dir, "correctness-model/controls.json", (text) => {
         const controls = JSON.parse(text);
@@ -145,16 +129,16 @@ describe("the submit gate end to end", () => {
         return JSON.stringify(controls);
       }),
     );
-    expect(status(outcome)).toMatchObject({ conformance: "passed", gates: "passed" });
-    expect(rows(outcome)).toEqual([]);
+    expect(status(outcome)).toMatchObject({ conformance: "passed", gates: "refused" });
+    expect(rows(outcome)).toEqual([["DISCRIMINATION_REJECT_PASSED"]]);
   }, 120_000);
 
-  it.concurrent("keeps the claim open with one no-verdict row when the host cannot run the rejects to a verdict", async () => {
+  it.concurrent("reads a check whose every reject timed out beside the verdict instead of refusing it", async () => {
     // The installed tool loops on the rejects' empty answer and exits on every other one, and only
     // the rejects get the 400 ms wall. An answer that exits gets a minute, because on a loaded host
     // its launch alone can outlast 400 ms, and an accept that times out adds a solvability row this
-    // test is not about. The rejects reach no verdict, so the census keeps the
-    // DISCRIMINATION_PROBE_NO_VERDICT row runControls records for them.
+    // test is not about. Every reject of the check times out, alone as well, so the check is read as
+    // timed out rather than unrejected: one advisory row that refuses nothing and holds the claim.
     const outcome = await preview(
       "no-verdict",
       (dir) => {
@@ -171,10 +155,8 @@ describe("the submit gate end to end", () => {
       },
       true,
     );
-    expect(outcome.gated).toMatchObject({ feedback: [{ severity: "blocking" }] });
-    // Gate audit 2026-09-25 (docs/gate-audit.md, census-grounding-owed): commented out (unsure): an example whose check made no completed tool run, with no host refusal, no longer refuses adoption at the census
-    // expect(rows(outcome)).toEqual([["generated-external-grounding-unexecuted"]]);
-    expect(rows(outcome)).toEqual([["DISCRIMINATION_PROBE_NO_VERDICT"]]);
+    expect(outcome.gated).toMatchObject({ feedback: [{ severity: "advisory" }] });
+    expect(rows(outcome)).toEqual([["DISCRIMINATION_CHECK_TIMED_OUT", "controls-tool-timeout"]]);
   }, 120_000);
 
   it.concurrent("refuses a reference solve that fails one task at F2", async () => {

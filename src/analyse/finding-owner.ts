@@ -1,5 +1,5 @@
 import { isBundleFile } from "../author/feedback-routing.ts";
-import { TASKS_FILE } from "../meta/bundle-layout.ts";
+import { CORRECTNESS_MODEL_DIR, TASKS_FILE } from "../meta/bundle-layout.ts";
 import type { CampaignFeedback, FeedbackOwner } from "../author/campaign-types.ts";
 import type { AnalysisFinding } from "./iteration-analysis.ts";
 
@@ -14,9 +14,10 @@ export function findingSeverity(finding: AnalysisFinding): CampaignFeedback["sev
   return finding.defect ? (finding.severity ?? "blocking") : "advisory";
 }
 
-/** A defect repaired where it sits: every defect but one in the task set, which asks for a fresh
- *  battery rather than a repair. Only this one settles vetoed rows against its check, carries a
- *  repair order, escalates when it recurs and owes the probes it rests on. */
+/** A defect in the evaluation contract: owned under `correctness-model/` by any file but the task
+ *  set. Only this one settles a contested case against its check and owes the probes it rests on,
+ *  because a probe runs the declared checks and so speaks to the evaluation and nothing else. */
 export function contractDefect(finding: { defect: boolean | null; owner: string | null }): boolean {
-  return finding.defect === true && finding.owner !== TASKS_FILE;
+  const { owner } = finding;
+  return finding.defect === true && owner?.startsWith(CORRECTNESS_MODEL_DIR) === true && owner !== TASKS_FILE;
 }

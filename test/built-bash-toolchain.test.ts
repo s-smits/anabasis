@@ -16,6 +16,7 @@ import { type BuiltFilePort, createBuiltBashTool } from "../src/solve/built-bash
 import { commandIsolationPolicy } from "../src/verify/solve-command-isolation.ts";
 import { type SolveIsolationPolicy, solveIsolationPolicy } from "../src/verify/solve-sandbox.ts";
 import { darwinUserTempRoot } from "../src/verify/wall-policy.ts";
+import { withheldInstrumentPaths } from "../src/verify/tool-inventory.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { double } from "./helpers/doubles.ts";
 import { errorMessage } from "../src/meta/runtime-values.ts";
@@ -210,5 +211,93 @@ describe("the harness's own tool tree", () => {
     expect(withoutTree.environment.PATH).not.toContain(toolTree);
     expect(withTree.policyHash).not.toBe(withoutTree.policyHash);
     expect(withTree.readAllowRoots.some((root) => root.endsWith("/.toolchain"))).toBe(true);
+  });
+});
+
+// The operator's withheld-instruments condition: a check's deciding program in the bundle's own
+// tree cannot be run by the solver, while the rest of the tree and the host's shared interpreters
+// stay, and with nothing withheld the shell is byte-identical to the shell without the condition.
+describe("withheld instruments", () => {
+  const root = join(mkdtempSync(join(tmpdir(), "ana-bash-withheld-")), "campaigns", "slug", "workspace");
+  const tree = join(root, ".toolchain");
+  mkdirSync(join(tree, "bin"), { recursive: true });
+  writeFileSync(join(tree, "bin", "check-tool"), "#!/bin/sh\necho check-tool ran\n", { mode: 0o755 });
+  writeFileSync(join(tree, "bin", "solver-tool"), "#!/bin/sh\necho solver-tool ran\n", { mode: 0o755 });
+  const withheld = withheldInstrumentPaths(["check-tool", "sh", "absent-tool"], tree);
+  afterAll(() => rmSync(root, { recursive: true, force: true }));
+
+  async function shell(command: string, closed: readonly string[]): Promise<string> {
+    try {
+      const result = await createBuiltBashTool({
+        policy: session,
+        port: port(),
+        home: sessionHome,
+        toolTree: tree,
+        withheld: closed,
+        guardEnv: NO_GUARD,
+      }).execute("call-1", double({ command }), undefined, undefined);
+      return result.content.map((part) => (part.type === "text" ? part.text : "")).join("");
+    } catch (error) {
+      return errorMessage(error);
+    }
+  }
+
+  it("withholds only the tree's own check tool, never a host interpreter or a missing id", () => {
+    expect(withheld).toEqual([join(tree, "bin", "check-tool")]);
+    expect(withheldInstrumentPaths(["check-tool"], null)).toEqual([]);
+  });
+
+  it("refuses the check-only instrument by name, by path and as a script, and runs the rest", async () => {
+    const byName = await shell("check-tool; echo after-name", withheld);
+    expect(byName).not.toContain("check-tool ran");
+    expect(byName).toContain("after-name");
+    const byPath = await shell(
+      `${join(tree, "bin", "check-tool")}; sh ${join(tree, "bin", "check-tool")}; cat ${join(tree, "bin", "check-tool")}`,
+      withheld,
+    );
+    expect(byPath).not.toContain("check-tool ran");
+    expect(byPath).not.toContain("echo check-tool");
+    const rest = await shell("solver-tool && sh -c 'echo shared interpreter ran'", withheld);
+    expect(rest).toContain("solver-tool ran");
+    expect(rest).toContain("shared interpreter ran");
+  });
+
+  it("leaves the check tool running and the description whole when the condition is off", async () => {
+    expect(await shell("check-tool", [])).toContain("check-tool ran");
+    const described = (closed: readonly string[]) =>
+      createBuiltBashTool({
+        policy: session,
+        port: null,
+        home: sessionHome,
+        toolTree: tree,
+        withheld: closed,
+      }).description;
+    expect(described([])).toContain("run by name: check-tool, solver-tool.");
+    expect(described(withheld)).toContain("run by name: solver-tool.");
+    expect(
+      createBuiltBashTool({ policy: session, port: null, home: sessionHome, toolTree: tree }).description,
+    ).toBe(described([]));
+  });
+
+  it("hashes and stages a policy with nothing withheld exactly as one without the condition", () => {
+    const work = join(sessionHome, "work");
+    const temp = join(sessionHome, "tmp");
+    const before = commandIsolationPolicy(session, { work, home: sessionHome, temp, toolTree: tree });
+    const empty = commandIsolationPolicy(session, {
+      work,
+      home: sessionHome,
+      temp,
+      toolTree: tree,
+      withheld: [],
+    });
+    const closed = commandIsolationPolicy(session, {
+      work,
+      home: sessionHome,
+      temp,
+      toolTree: tree,
+      withheld,
+    });
+    expect(empty).toEqual(before);
+    expect(closed.policyHash).not.toBe(before.policyHash);
   });
 });

@@ -6,6 +6,7 @@ import type { PiTool } from "../backends/pi-session.ts";
 import { BuilderExecutionRecorder } from "./builder-execution.ts";
 import { hasText } from "../meta/text.ts";
 import { MOVE_TO_AUTHORING, NO_SUBMIT_REMINDER_MS } from "./builder-continuation.ts";
+import { availableParallelism, loadavg } from "../meta/os.ts";
 
 /** The session the receipts are written against: who records, which turn is open, how a checkpoint
  *  is taken, whether the session has closed, and the optional hooks. */
@@ -15,7 +16,7 @@ type BuilderToolReceiptSession = {
   readonly checkpoint: () => void;
   readonly closed: () => "accepted" | "terminal-refusal" | null;
   readonly afterTool?: (() => Promise<string | null>) | undefined;
-  readonly clock?: (() => string | null) | undefined;
+  readonly clock?: ((clearPreview: boolean) => string | null) | undefined;
 };
 
 function closedResult(reason: "accepted" | "terminal-refusal"): AgentToolResult<unknown> {
@@ -38,34 +39,58 @@ function closedResult(reason: "accepted" | "terminal-refusal"): AgentToolResult<
  *  without a submit, the continuation's ask to author. It exists because a Claude Builder session
  *  runs as one turn, so a turn boundary may not come for hours. A session can author for three
  *  hours before its first submit, and without this clock the continuation says nothing in all that
- *  time. */
+ *  time. The half-hour line carries the host load beside the minutes, because a round sharing its
+ *  host with other campaigns can see its compiles and previews run several times slower, and a
+ *  Builder that cannot see the load reads that as its own tool being slow or flaky.
+ *
+ *  A clear preview changes what the no-submit facts mean. Asking a Builder that holds one to "move
+ *  to authoring" is simply false, and a Builder with a clear preview and no submit is the case that
+ *  ran longest: rounds kept reshaping a candidate for hours after the gate had already cleared it.
+ *  So the clock remembers the last clear `correctness_check` and states how long ago it was, while
+ *  no submit has followed, in place of the authoring ask. `submits` is the round's submit count
+ *  rather than whether it has submitted at all, so a refused submit made before that clear preview
+ *  does not silence it. */
 export function sessionClock(
-  submitted: () => boolean = () => true,
+  submits: () => number = () => 0,
   now: () => number = () => performance.now(),
-): () => string | null {
+  load: () => string = hostLoad,
+): (clearPreview: boolean) => string | null {
   const opened = now();
   let marks = 0;
   let asked = false;
-  return () => {
-    const elapsed = now() - opened;
+  let clear: { at: number; submits: number } | null = null;
+  return (clearPreview) => {
+    const at = now();
+    if (clearPreview) clear = { at, submits: submits() };
+    const elapsed = at - opened;
     const minutes = Math.floor(elapsed / 60_000);
+    const since =
+      clear === null || submits() > clear.submits
+        ? null
+        : `The last clear correctness_check was ${String(Math.floor((at - clear.at) / 60_000))} min ago, and no candidate has been submitted since.`;
     const lines: string[] = [];
     if (Math.floor(minutes / 30) > marks) {
       marks = Math.floor(minutes / 30);
-      lines.push(`Round clock: ${String(minutes)} min since this round opened.`);
+      lines.push(`Round clock: ${String(minutes)} min since this round opened; ${load()}.`);
+      if (since !== null) lines.push(since);
     }
-    if (!asked && elapsed >= NO_SUBMIT_REMINDER_MS && !submitted()) {
+    if (!asked && elapsed >= NO_SUBMIT_REMINDER_MS && submits() === 0) {
       asked = true;
-      lines.push(`No candidate has been submitted yet. ${MOVE_TO_AUTHORING}`);
+      if (since === null) lines.push(`No candidate has been submitted yet. ${MOVE_TO_AUTHORING}`);
+      else if (!lines.includes(since)) lines.push(since);
     }
     return lines.length === 0 ? null : lines.join("\n");
   };
 }
 
+/** The host's one-minute load average against its cores, as the clock states it. */
+function hostLoad(): string {
+  return `host load average ${(loadavg()[0] ?? 0).toFixed(1)} on ${String(availableParallelism())} cores`;
+}
+
 /** Wait for `pending` unless `signal` aborts first; an aborted wait resolves so the caller can
- *  refuse dispatch on its own ownership check. `awaitTurnRetry` shares it: its reset wait runs for
- *  hours and ends the same way, by asking its own gates once the race settles. */
-export function raceAbort(pending: Promise<unknown>, signal: AbortSignal | undefined): Promise<void> {
+ *  refuse dispatch on its own ownership check. */
+function raceAbort(pending: Promise<unknown>, signal: AbortSignal | undefined): Promise<void> {
   if (signal === undefined) {
     return pending.then(
       () => undefined,
@@ -97,9 +122,15 @@ export function withCustomToolReceipts(
   let active = 0;
   let reviewing: Promise<string | null> | null = null;
   // A call refused because the round closed states no time; the clock reads only for open calls.
-  const settle = async (name: string, turn: number, open: boolean): Promise<string | null> => {
+  const settle = async (
+    name: string,
+    turn: number,
+    open: boolean,
+    result?: AgentToolResult<unknown>,
+  ): Promise<string | null> => {
     active -= 1;
-    const time = open ? clock() : null;
+    const clear = name === "correctness_check" && asRecord(result?.details)?.status === "clear";
+    const time = open ? clock(clear) : null;
     const review = await reviewAfter(name, turn);
     return [review, time].filter(Boolean).join("\n") || null;
   };
@@ -164,7 +195,7 @@ export function withCustomToolReceipts(
         // minutes to the tool, which can be most of a long call's recorded duration. The receipt is
         // in `details`.
         recorder.customToolFinished(sequence, "returned", result);
-        const advice = await settle(name, turn, closure === null);
+        const advice = await settle(name, turn, closure === null, result);
         // Public advice rides the completed result as one more text block.
         if (hasText(advice)) {
           result = { ...result, content: [...result.content, { type: "text", text: advice }] };

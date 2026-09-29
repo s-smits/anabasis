@@ -1,5 +1,5 @@
 /**
- * What `build-manifest.mjs` composes from a frozen snapshot, and what it refuses to launch.
+ * What `build-manifest.ts` composes from a frozen snapshot, and what it refuses to launch.
  *
  * The builder is a command, so every rule here spawns it. What each test varies is one argument or
  * one field of the snapshot; the rest is the same launch every time. So one `snapshot()` writes the
@@ -23,14 +23,17 @@ import {
   DETERMINISTIC_ROW_TITLES,
   DIGEST_VERDICTS,
   FIX_AUTHORITY,
+  GROUND_TRUTH_LANE,
+  HARDWARE_TARGET_LANE,
   ISOLATED_ANGLES,
   leafPrompt,
   MIN_AUTO_SESSIONS,
   READ_ONLY_AUTHORITY,
   PUBLIC_ONLY_LANE,
+  scratchAuthority,
   TRACE_CHALLENGE_LANE,
-} from "../.claude/skills/whole-run-investigation/scripts/catalogue-shape.mjs";
-import { REPORT_SECTIONS } from "../.claude/skills/whole-run-investigation/scripts/manifest-reporting.mjs";
+} from "../.claude/skills/whole-run-investigation/scripts/catalogue-shape.ts";
+import { REPORT_SECTIONS } from "../.claude/skills/whole-run-investigation/scripts/manifest-reporting.ts";
 
 type View = { label: string; file: string; status: string; required: boolean; bytes: number; sha256: string };
 type Status = {
@@ -62,13 +65,14 @@ type Admission = {
   lanes: number[];
   triggers: string[];
 };
-type Task = { name: string; task: string; admission: Admission };
+type Task = { name: string; task: string; admission: Admission; scratch: string | null };
+type LunaRow = { name: string; task: string; workdir?: string; sandbox?: string; ownedPaths?: string[] };
 type Snapshot = ReturnType<typeof snapshot>;
 type Edit = (text: string) => string;
 
 const REPO = resolve(import.meta.dirname, "..");
 const SKILL = join(REPO, ".claude/skills/whole-run-investigation");
-const SCRIPT = join(SKILL, "scripts/build-manifest.mjs");
+const SCRIPT = join(SKILL, "scripts/build-manifest.ts");
 const OPEN_LANES = ANGLE_COUNT - ISOLATED_ANGLES.size;
 const SCAN_VIEW = JSON.stringify({
   findings: [{ rule: "telemetry-constant", battery: "run-1-on", statement: "turns is 1." }],
@@ -76,6 +80,9 @@ const SCAN_VIEW = JSON.stringify({
 /** Every launch carries one; the tests that are not about it use this one. */
 const ORIENTATION =
   "## orientation\n1. The product is a link budget checker.\n2. Loose end: usb-pd is 0/6.\n\n";
+/** The operator directive a firmware run's journal records, which names three boards. */
+const FIRMWARE_REQUEST =
+  "Build a harness that writes firmware for ESP32, Raspberry Pi Pico and Arduino Uno, where the code must compile.";
 /** The lane titles of the maintained catalogue, so the fixture reads like the real one. */
 const LANE_TITLES = [
   "Request-to-verdict chain",
@@ -113,14 +120,17 @@ const byteLength = (body: string): number => new TextEncoder().encode(body).byte
 const laneNames = (from: number, to: number): string[] =>
   Array.from({ length: to - from + 1 }, (_, index) => laneName(from + index));
 const allLanes = (): number[] => Array.from({ length: ANGLE_COUNT }, (_, index) => index + 1);
-/** The session names a full sweep produces when both isolated lanes fired: each isolated lane
- *  alone, and the open lanes between them in contiguous groups. */
+/** The session names a full sweep produces when every isolated lane fired: each isolated lane
+ *  alone, and the open lanes between them in contiguous groups, the lanes after the ground-truth
+ *  lane in one group of their own. */
 const FULL_SWEEP = [
   `lanes_01_${pad(PUBLIC_ONLY_LANE - 1)}`,
   laneName(PUBLIC_ONLY_LANE),
   `lanes_${pad(PUBLIC_ONLY_LANE + 1)}_${pad(TRACE_CHALLENGE_LANE - 1)}`,
   laneName(TRACE_CHALLENGE_LANE),
-  `lanes_${pad(TRACE_CHALLENGE_LANE + 1)}_${pad(ANGLE_COUNT)}`,
+  `lanes_${pad(TRACE_CHALLENGE_LANE + 1)}_${pad(GROUND_TRUTH_LANE - 1)}`,
+  laneName(GROUND_TRUTH_LANE),
+  ...(ANGLE_COUNT > GROUND_TRUTH_LANE ? [`lanes_${pad(GROUND_TRUTH_LANE + 1)}_${pad(ANGLE_COUNT)}`] : []),
 ];
 
 afterEach(cleanupScratch);
@@ -213,12 +223,31 @@ function identityRepo() {
   return { path, head: spawnSync("git", ["-C", path, "rev-parse", "HEAD"]).stdout.trim() };
 }
 
-/** A complete digest-bound snapshot in the shape trace-review writes, with 25 verified cases and a
- *  complete trace-challenge packet unless the test says otherwise. */
+/** The campaign a snapshot names: its journal records the operator directive, which names hardware
+ *  unless the test says otherwise. */
+function recordedCampaign(request: string): string {
+  const campaign = scratchDir("ana-build-campaign-");
+  mkdirSync(join(campaign, "observability"), { recursive: true });
+  writeFileSync(
+    join(campaign, "observability", "run-1.jsonl"),
+    `${JSON.stringify({ type: "prompt-ingested", contract: "builder", role: "user-directive", prompt: request })}\n`,
+  );
+  return campaign;
+}
+
+/** A complete digest-bound snapshot in the shape trace-review writes, with 25 verified cases, a
+ *  complete trace-challenge packet and a firmware request unless the test says otherwise. */
 function snapshot(
-  options: { complete?: boolean; runtime?: string; verified?: number; packet?: boolean } = {},
+  options: {
+    complete?: boolean;
+    runtime?: string;
+    verified?: number;
+    packet?: boolean;
+    request?: string;
+  } = {},
 ) {
   const dir = scratchDir("ana-build-snapshot-");
+  const campaign = recordedCampaign(options.request ?? FIRMWARE_REQUEST);
   const repo = identityRepo();
   const views: View[] = [];
   const put = (label: string, body: string, file = `${label}.txt`, status = "ok"): void => {
@@ -258,7 +287,7 @@ function snapshot(
       JSON.stringify({
         schema: "whole-run-trace-challenge-status/v1",
         complete: true,
-        campaign: "/campaigns/demo",
+        campaign,
         runId: "run-1",
         telemetry: join(challenge, "trace-telemetry.json"),
         packet: join(challenge, "trace-challenge-packet.json"),
@@ -272,7 +301,7 @@ function snapshot(
   const status: Status = {
     schema: "outcome-snapshot-status/v2",
     capturedAt: "2026-08-14T07:51:39.654Z",
-    campaign: "/campaigns/demo",
+    campaign,
     repo: repo.path,
     runIds: ["run-1"],
     source: { commit: repo.head, dirty: false, sourceDigest: "d".repeat(64) },
@@ -634,6 +663,7 @@ describe("what a launch composes", () => {
     expect(auto.tasks().every((task) => /^lanes_\d{2}_\d{2}$/.test(task.name))).toBe(true);
     expect(auto.stderr).toContain(`isolated-lane-untriggered: lane ${PUBLIC_ONLY_LANE}`);
     expect(auto.stderr).toContain(`isolated-lane-untriggered: lane ${TRACE_CHALLENGE_LANE}`);
+    expect(auto.stderr).toContain(`isolated-lane-untriggered: lane ${GROUND_TRUTH_LANE}`);
     const admitted = auto.tasks().flatMap((task) => task.admission.lanes);
     expect(admitted).toEqual(allLanes().filter((lane) => !ISOLATED_ANGLES.has(lane)));
     expect(admitted).toHaveLength(OPEN_LANES);
@@ -652,6 +682,13 @@ describe("what a launch composes", () => {
     expect(noPacket.status).toBe(2);
     expect(noPacket.stderr).toContain(`isolated-lane-untriggered: lane ${TRACE_CHALLENGE_LANE}`);
     expect(noPacket.stderr).toContain("carries no trace-challenge packet");
+
+    // Verified cases alone do not open the ground-truth lane: the request must name a board.
+    const truss = snapshot({ request: "Build a harness that designs steel roof trusses to Eurocode 3." });
+    const noBoard = launch(truss, "--sessions", String(GROUND_TRUTH_LANE), "--notes", notes(""));
+    expect(noBoard.status).toBe(2);
+    expect(noBoard.stderr).toContain(`isolated-lane-untriggered: lane ${GROUND_TRUTH_LANE}`);
+    expect(noBoard.stderr).toContain("names a hardware target");
   });
 
   it("composes one self-contained prompt per session for the codex transport and prints its launch", () => {
@@ -664,19 +701,65 @@ describe("what a launch composes", () => {
       "--transport",
       "codex",
     );
-    const rows = result.tasks("codex-tasks.json");
+    const rows = parseJsonAs<(LunaRow & { write?: boolean })[]>(
+      readFileSync(join(result.out, "codex-tasks.json"), "utf8"),
+    );
     const instructions = result.instructions().trim();
 
     expect(result.status).toBe(0);
     expect(rows.map((row) => row.name)).toEqual(FULL_SWEEP);
     for (const row of rows) {
       expect(row.task.startsWith(instructions)).toBe(true);
-      expect(row.task.endsWith("Authority: read-only. Do not edit files or change external state.")).toBe(
+      // Only a session holding a hardware lane runs in, and may write, its own scratch.
+      const scratch = result.task(row.name)?.scratch ?? null;
+      expect(row.task.endsWith(scratch === null ? READ_ONLY_AUTHORITY : scratchAuthority(scratch))).toBe(
         true,
       );
+      expect(row.workdir).toBe(scratch ?? undefined);
+      expect(row.write).toBe(scratch === null ? undefined : true);
     }
-    expect(result.stdout).toContain("codex-sessions.mjs launch --tasks-file");
-    expect(result.stdout).toContain("--model gpt-5.6-luna --effort max");
+    expect(rows.filter((row) => row.write === true)).toHaveLength(2);
+    expect(result.stdout).toContain("codex-sessions.ts launch --tasks-file");
+    expect(result.stdout).toContain("--model gpt-6-luna --effort max");
+  });
+
+  // Lane 30 must build an adapter and freeze its verdicts to a file of its own before it reads any
+  // verdict, and a read-only session can do neither.
+  it("gives each hardware session one writable scratch its prompt names, and keeps every other read-only", () => {
+    const result = launch(
+      snapshot(),
+      "--sessions",
+      `5,${HARDWARE_TARGET_LANE},${GROUND_TRUTH_LANE}`,
+      "--notes",
+      notes(""),
+    );
+    expect(result.status).toBe(0);
+    const luna = parseJsonAs<LunaRow[]>(readFileSync(join(result.out, "luna-tasks.json"), "utf8"));
+    const instructions = result.instructions();
+    for (const lane of [HARDWARE_TARGET_LANE, GROUND_TRUTH_LANE]) {
+      const name = laneName(lane);
+      const scratch = join(result.out, "hw-scratch", name);
+      const task = result.task(name);
+      expect(task?.scratch).toBe(scratch);
+      expect(task?.task).toContain(`Writable scratch: \`${scratch}\``);
+      expect(existsSync(scratch)).toBe(true);
+      expect(luna.find((row) => row.name === name)).toMatchObject({
+        workdir: scratch,
+        sandbox: "workspace-write",
+        ownedPaths: [scratch],
+      });
+      const prompt = leafPrompt(instructions, task?.task ?? "", task?.scratch ?? null);
+      expect(prompt.endsWith(scratchAuthority(scratch))).toBe(true);
+      expect(prompt).not.toContain(READ_ONLY_AUTHORITY);
+    }
+    const open = result.task(laneName(5));
+    expect(open?.scratch).toBeNull();
+    expect(open?.task).not.toContain("Writable scratch");
+    expect(luna.find((row) => row.name === laneName(5))).toEqual({
+      name: laneName(5),
+      task: open?.task ?? "",
+    });
+    expect(leafPrompt(instructions, open?.task ?? "", null).endsWith(READ_ONLY_AUTHORITY)).toBe(true);
   });
 
   it("launches from an incomplete snapshot and names each failed view with its captured error", () => {
@@ -756,8 +839,8 @@ describe("what a launch refuses", () => {
     expect(belowFloor.stderr).toContain(`at least ${MIN_AUTO_SESSIONS} semantic sessions`);
     expect(existsSync(belowFloor.out)).toBe(false);
 
-    // Both isolated lanes fired and neither sits at an end of the catalogue, so each needs a cut
-    // on both sides: fewer sessions than the full sweep cannot seat them alone.
+    // Every isolated lane fired, and each needs a cut on each side it has a neighbour: fewer
+    // sessions than the full sweep cannot seat them alone.
     const tooFew = launch(snapshot(), "--auto", String(FULL_SWEEP.length - 1), "--notes", notes(""));
     expect(tooFew.status).toBe(2);
     expect(tooFew.stderr).toContain(

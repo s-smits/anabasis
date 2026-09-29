@@ -71,15 +71,8 @@ function binding(overrides: Partial<ContextBinding> = {}): ContextBinding {
     join(workspace, "MEMORY.md"),
     "# Memory\nRisk: the frontier family passed every rehearsal.\n",
   );
-  writeFileSync(
-    join(workspace, "EXPERIMENT.json"),
-    '{"target":{"comparator":"at-most","verifiedPasses":2}}\n',
-  );
   mkdirSync(join(workspace, "starter-pack"));
-  writeFileSync(
-    join(workspace, "starter-pack", "difficulty-ladder.md"),
-    "- frontier — the rehearsal fails\n",
-  );
+  writeFileSync(join(workspace, "starter-pack", "contract.md"), "- frontier — the rehearsal fails\n");
   return {
     round: "Round 3 of this run.\nThe last battery: every frontier task passed.",
     workspace,
@@ -107,17 +100,17 @@ describe("the context tool", () => {
     ]);
     const { text, details } = await ask(bound, { question: "frontier rehearsal passed" });
     expect(text.split("\n")).toEqual([
-      "Citations 1-4 of 4 over 5 document(s), best match first. Page an id for the surrounding lines.",
+      "Citations 1-4 of 4 over 4 document(s), best match first. Page an id for the surrounding lines.",
       "[workspace/MEMORY.md:L2] Risk: the frontier family passed every rehearsal.",
       "[round/opening:L2] The last battery: every frontier task passed.",
-      "[workspace/starter-pack/difficulty-ladder.md:L1] - frontier — the rehearsal fails",
+      "[workspace/starter-pack/contract.md:L1] - frontier — the rehearsal fails",
       "[traces/rehearsal-1/t4:L1] t4: rehearsal passed in 3 of 120 solve minutes",
     ]);
     expect(details).toMatchObject({
       question: "frontier rehearsal passed",
       decides: "the next battery",
       depth: "cited",
-      documents: 5,
+      documents: 4,
       cited: 4,
       receipt: { outcome: "completed", resultDigest: sha256(text) },
     });
@@ -128,10 +121,9 @@ describe("the context tool", () => {
     const overview = (await ask(bound, { depth: "overview", source: "workspace" })).text;
     expect(overview).toBe(
       [
-        "documents 1-3 of 3:",
-        "- workspace/EXPERIMENT.json (workspace): EXPERIMENT.json",
+        "documents 1-2 of 2:",
         "- workspace/MEMORY.md (workspace): MEMORY.md",
-        "- workspace/starter-pack/difficulty-ladder.md (workspace): starter-pack/difficulty-ladder.md",
+        "- workspace/starter-pack/contract.md (workspace): starter-pack/contract.md",
       ].join("\n"),
     );
     const page = (await ask(bound, { depth: "page", id: "workspace/MEMORY.md", offset: 2 })).text;
@@ -155,7 +147,10 @@ describe("the context tool", () => {
   });
 });
 
-function recordedTree(secret: string): string {
+function recordedTree(
+  secret: string,
+  artifactOf: (taskId: string) => JsonValue = () => ({ report: { massKg: 2160.912 } }),
+): string {
   const tree = tmp();
   const runId = "r1";
   const model = join(tree, "correctness-model");
@@ -193,7 +188,7 @@ function recordedTree(secret: string): string {
       publicTask: { taskId, family: "frame", publicInput: { limits: { massKg: 2171.4 } } },
     });
     if (taskId !== "t3") {
-      evidence.write(`cases/${taskId}/artifact.json`, { report: { massKg: 2160.912 } });
+      evidence.write(`cases/${taskId}/artifact.json`, artifactOf(taskId));
     }
     evidence.write(`cases/${taskId}/verifier.json`, {
       stdout: secret,
@@ -237,14 +232,37 @@ async function tracesOf(
   };
 }
 
-describe("the round plan document", () => {
-  it("is offered on a continuation that binds one, and absent otherwise", async () => {
-    const bound = binding({ plan: () => "Round plan (experiment-plan/v2, tasks scope): target at-most 2." });
-    const page = (await ask(bound, { depth: "page", id: "round/plan" })).text;
-    expect(page).toBe(
-      "round/plan the round plan and its evidence — lines 1-1 of 1\n\nRound plan (experiment-plan/v2, tasks scope): target at-most 2.",
+describe("a passing rehearsal's artifact", () => {
+  // The same margin lines a measured pass carries, read from the brief the rehearsal was graded under.
+  it("is served with its margin lines against each limit the brief publishes", async () => {
+    const rehearsals = new RehearsalTraces();
+    const artifact = '{"report":{"massKg":2160.912}}';
+    rehearsals.addPass(1, "t0", ["t0 in rehearsal 1: passed."], {
+      artifact,
+      margins: [
+        {
+          label: "massBudgetKg",
+          artifactPath: "$.report.massKg",
+          publicInputPath: "$.limits.massKg",
+          direction: "atMost",
+          families: null,
+        },
+      ],
+      family: "frame",
+      publicInput: { limits: { massKg: 2171.4 } },
+    });
+    rehearsals.addPass(2, "t1", ["t1 in rehearsal 2: passed."], null);
+    const bound = binding({ rehearsals });
+    expect(rehearsals.list().map((doc) => doc.id)).toEqual([
+      "traces/rehearsal-1/t0",
+      "traces/rehearsal-1/t0/artifact",
+      "traces/rehearsal-2/t1",
+    ]);
+    const page = (await ask(bound, { depth: "page", id: "traces/rehearsal-1/t0/artifact" })).text;
+    expect(page).toContain(artifact);
+    expect(page).toContain(
+      "Published limits, measured on the artifact this solve submitted:\n- massBudgetKg: 2160.912, at most 2171.4; 10.488 to spare (0.4830063553%).",
     );
-    await expect(ask(binding(), { depth: "page", id: "round/plan" })).rejects.toThrow(/unknown context id/);
   });
 });
 

@@ -29,10 +29,8 @@ import { keyIfDefined } from "../meta/optional-key.ts";
 import { join } from "../meta/path.ts";
 import type { ExperimentOperation } from "../run/experiment-freeze.ts";
 import { defineTool } from "../solve/define-tool.ts";
-import { type ContractFinding, projectFindingForAuthor } from "../truth/brief.ts";
-// Gate audit 2026-09-25 (docs/gate-audit.md, preview-attempt-spent): commented out (unsure): a runtime non-result is no verdict on the bytes, so a retry on them should run
-// import { type GateReport, PREVIEW_ATTEMPT_SPENT } from "./validation-pipeline.ts";
-import type { GateReport } from "./validation-pipeline.ts";
+import { type ContractFinding, projectFindingForAuthor } from "../correctness-bundle/brief.ts";
+import { type GateReport, stagesOf } from "./validation-pipeline.ts";
 import { SOLVABILITY_EVIDENCE_FILE } from "../run/solvability-gate.ts";
 import { CENSUS_FILE } from "../run/census-gate.ts";
 
@@ -49,8 +47,6 @@ interface CorrectnessCheckBinding {
   /** The same store submit records its refusal into, so `harness_inspect feedback` pages a check's
    *  rows exactly as it pages a refusal's and the Builder has one place to read findings. */
   feedback: BuilderAuthorFeedback;
-  /** Where EXPERIMENT.json and this round's rehearsals disagree, as advice that refuses nothing. */
-  planAdvice: () => string[];
 }
 
 /** What this tool did not do. It rides every result, including the clear ones, because a validation
@@ -66,7 +62,7 @@ const REPAIR =
 const CLEAR =
   "The validation sequence found no blocking row on these bytes. Its controls cannot detect an obligation omitted by both the evaluator and the corpus. Reconcile the declared coverage with your public contract using harness_inspect coverage; submit when every obligation has an observation and a one-fact control. Checking unchanged bytes repeats this result without new evidence.";
 const REPEATED =
-  "the workspace and installed-tool bytes are unchanged: conformance and gate rows are remembered, not re-run; bundle and candidate validation were checked again";
+  "the workspace and installed-tool bytes are unchanged: conformance and gate rows are remembered, not re-run; the bundle was checked again";
 const BLOCKED =
   "This tree produced no reusable check result. Resolve the reported mechanism or change the files, then check or submit again.";
 
@@ -78,9 +74,7 @@ const INCOMPLETE_NAVIGATION =
  *  nothing here says how to repair anything either, since the repair sentence belongs to the result
  *  and rule 14 gives each duty one owner. */
 const DESCRIPTION =
-  "Run every gate submit runs, on the same immutable snapshot submit would adopt, without adopting: the static bundle and installed tools, candidate validation (which reads EXPERIMENT.json), generated-tool conformance, the control census and the F2 solvability census. It returns every blocking row a submit would refuse with, the advisory rows, a receipt per stage and a coverage summary. " +
-  // Gate audit 2026-09-25 (docs/gate-audit.md, preview-attempt-spent): commented out (unsure): a runtime non-result is no verdict on the bytes, so a retry on them should run
-  // "No arguments. Unchanged bytes return the remembered rows, or preview-attempt-spent when that run ended without a verdict; changed bytes run again as often as you like. " +
+  "Run every gate submit runs, on the same immutable snapshot submit would adopt, without adopting: the static bundle and installed tools, generated-tool conformance, the control census and the F2 solvability census. It returns every blocking row a submit would refuse with, the advisory rows, a receipt per stage and a coverage summary. " +
   "No arguments. Unchanged bytes return the remembered rows once a run reached a verdict and run again otherwise; changed bytes run again as often as you like. " +
   "It freezes a copy of the workspace when it starts and runs for minutes, so keep editing while it runs; the result describes the frozen copy. " +
   "It accepts nothing and returns no correctness verdict: a clear result covers the authored checks and controls, not omitted public obligations, and submit remains the only acceptance path.";
@@ -246,8 +240,6 @@ function resultOf(binding: CorrectnessCheckBinding, report: GateReport) {
       stage,
       rows,
       report.snapshotId,
-      // Gate audit 2026-09-25 (docs/gate-audit.md, preview-attempt-spent): commented out (unsure): a runtime non-result is no verdict on the bytes, so a retry on them should run
-      // report.blocked === null && report.attemptSpent !== true ? "complete" : "incomplete",
       report.blocked === null ? "complete" : "incomplete",
     ),
     stages: report.receipts,
@@ -269,10 +261,6 @@ function resultOf(binding: CorrectnessCheckBinding, report: GateReport) {
 function receiptReason(body: ReturnType<typeof resultOf>): string {
   if (body.status === "blocked") return "blocked";
   if (body.repeated !== undefined) return "remembered";
-  // Gate audit 2026-09-25 (docs/gate-audit.md, preview-attempt-spent): commented out (unsure): a runtime non-result is no verdict on the bytes, so a retry on them should run
-  // if (body.findings.groups.some((group) => group.code.text === PREVIEW_ATTEMPT_SPENT.code)) {
-  //   return "preview-attempt-spent";
-  // }
   return body.status === "clear" ? "clear" : `refused-${body.stage}`;
 }
 
@@ -286,7 +274,6 @@ export function createCorrectnessCheckTool(binding: CorrectnessCheckBinding): Ag
     run: async () => {
       const report = await binding.preview();
       const body = resultOf(binding, report);
-      const advice = binding.planAdvice();
       // Kept off `body`, which is the model-visible text: the codes already reach the model there,
       // grouped, and restating them would change what every check returns.
       const codes = [
@@ -298,12 +285,14 @@ export function createCorrectnessCheckTool(binding: CorrectnessCheckBinding): Ag
         findings: body.findings.totalFindings,
         reason: receiptReason(body),
         ...keyIfDefined("candidateId", body.snapshotId ?? undefined),
+        ...keyIfDefined("conditionId", report.conditionId),
+        ...stagesOf(report),
         ...keyIfDefined("repeated", body.repeated === undefined ? undefined : true),
         ...keyIfDefined("findingCodes", codes.length === 0 ? undefined : codes),
         ...body.findings.delta,
       };
       return {
-        text: capturedJsonStringify(advice.length === 0 ? body : { ...body, planAdvice: advice }),
+        text: capturedJsonStringify(body),
         details: { status: body.status, stage: body.stage, receipt },
       };
     },

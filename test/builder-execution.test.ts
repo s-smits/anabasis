@@ -13,7 +13,6 @@ import { afterAll, describe, expect, it } from "bun:test";
 import { writeFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 import { sha256 } from "../src/meta/digest.ts";
-import { hashJsonValue } from "../src/meta/stable-json.ts";
 import {
   type BuilderExecutionEvidence,
   BuilderExecutionRecorder,
@@ -22,7 +21,6 @@ import {
 } from "../src/author/builder-execution.ts";
 import { turnEventRecorder } from "../src/author/builder-turn-loop.ts";
 import { isCurrentExecutionRecord } from "../tools/outcome/builder-execution-current.ts";
-import { PLAN_FIELDS } from "./helpers/experiment-plan.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import { executionRecord } from "./helpers/session-execution-record.ts";
 
@@ -36,33 +34,6 @@ const ended = (toolName: string, toolCallId: string, isError = false) =>
   ({ type: "tool_ended", toolName, toolCallId, isError }) as const;
 
 describe("the submission rows", () => {
-  it("retains a captured proposal on refusal, and the reader refuses one whose digest no longer matches", () => {
-    const recorder = new BuilderExecutionRecorder(Date.now());
-    const proposal = {
-      scope: "product" as const,
-      target: { comparator: "at-least" as const, verifiedPasses: 0 },
-      gap: "Public gap",
-      change: "Proposed repair",
-      ...PLAN_FIELDS,
-      expectedResult: "Next measured result",
-    };
-    recorder.recordSubmit({
-      ...refusedSubmit,
-      turn: 1,
-      stage: "bundle",
-      commit: commit("a"),
-      experimentProposal: { ...proposal, digest: hashJsonValue(proposal) },
-    });
-    const evidence = recorder.finish("turn-bound");
-    expect(isCurrentExecutionRecord(evidence)).toBe(true);
-    expect(evidence.submits[0]?.experimentProposal).toEqual({ ...proposal, digest: hashJsonValue(proposal) });
-    const altered = structuredClone(evidence);
-    altered.submits[0]!.experimentProposal!.gap = "A different proposal";
-    expect(isCurrentExecutionRecord(altered)).toBe(false);
-    delete altered.submits[0]!.experimentProposal;
-    expect(isCurrentExecutionRecord(altered)).toBe(true);
-  });
-
   // The controller writes its own stop as a submit row; it stays in the raw rows but is never a
   // candidate tree and never the predecessor the next candidate compares itself against.
   it("keeps a controller terminal in the raw rows and out of every candidate comparison", () => {
@@ -104,7 +75,7 @@ describe("the submission rows", () => {
     });
 
     const evidence = recorder.finish("terminal-refusal");
-    expect(evidence.schema).toBe("builder-execution/v6");
+    expect(evidence.schema).toBe("builder-execution/v7");
     expect(evidence.submits.map((row) => row.kind)).toEqual([
       "candidate",
       "controller-terminal",
@@ -137,7 +108,7 @@ describe("the submission rows", () => {
     recorder.recordSubmit({
       ...refusedSubmit,
       turn: 1,
-      stage: "validation",
+      stage: "bundle",
       commit: "a1b2c3d",
       findings: [{ code: "tasks-self-reported-expectation", path: "tasks", detail: "d" }],
     });
@@ -382,7 +353,6 @@ describe("the usage account", () => {
 describe("the handover a round leaves in its workspace", () => {
   it("digests each handover file as it stands when the record is written, and null for a missing one", () => {
     const workspace = scratchDir("handovers-");
-    writeFileSync(join(workspace, "EXPERIMENT.json"), '{"gap":"one"}');
     writeFileSync(join(workspace, "MEMORY.md"), "# notes\n");
     const recorder = new BuilderExecutionRecorder(Date.now());
     recorder.handoversIn(workspace);
@@ -390,7 +360,6 @@ describe("the handover a round leaves in its workspace", () => {
     writeFileSync(join(workspace, "MEMORY.md"), "# notes\nThe round learned one thing.\n");
     const settled = recorder.finish("recorded");
     expect(checkpoint.handovers).toEqual({
-      "EXPERIMENT.json": sha256('{"gap":"one"}'),
       "MEMORY.md": sha256("# notes\n"),
       "SCRATCHPAD.md": null,
     });
@@ -403,12 +372,9 @@ describe("the handover a round leaves in its workspace", () => {
   });
 
   it.each([
-    ["a non-digest value", { "EXPERIMENT.json": "not-a-digest", "MEMORY.md": null, "SCRATCHPAD.md": null }],
-    ["a missing file key", { "EXPERIMENT.json": null, "MEMORY.md": null }],
-    [
-      "an extra file key",
-      { "EXPERIMENT.json": null, "MEMORY.md": null, "SCRATCHPAD.md": null, "NOTES.md": null },
-    ],
+    ["a non-digest value", { "MEMORY.md": "not-a-digest", "SCRATCHPAD.md": null }],
+    ["a missing file key", { "MEMORY.md": null }],
+    ["an extra file key", { "EXPERIMENT.json": null, "MEMORY.md": null, "SCRATCHPAD.md": null }],
   ])("refuses a handover map with %s", (_, handovers) => {
     const bare = new BuilderExecutionRecorder(Date.now()).finish("recorded");
     expect(isCurrentExecutionRecord({ ...bare, handovers })).toBe(false);

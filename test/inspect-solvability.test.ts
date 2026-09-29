@@ -7,7 +7,7 @@ import { selectCampaignEpoch } from "../src/author/campaign-epoch.ts";
 
 const script = join(
   import.meta.dir,
-  "../.claude/skills/attribution-and-proof/scripts/inspect-solvability.mjs",
+  "../.claude/skills/attribution-and-proof/scripts/inspect-solvability.ts",
 );
 
 afterAll(cleanupScratch);

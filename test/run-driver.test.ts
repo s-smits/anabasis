@@ -5,7 +5,14 @@
  * costs a provider call while the real fingerprint, bundle snapshot, verification and recording
  * paths still run.
  */
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 
 import { afterAll, describe, expect, it } from "bun:test";
@@ -14,13 +21,20 @@ import { keyIfDefined } from "../src/meta/optional-key.ts";
 import {
   CaseRecord as CaseRecordStore,
   type CaseRecordRow,
+  type RunCondition,
   readCaseRecord,
   verifyTracePointers,
 } from "../src/claim/case-record.ts";
 import { batteryCondition, driveBattery, summarizeRun } from "../src/run/run-driver.ts";
-import { type BuiltRuntimeBoundaryEvidence, type Solver, nonResultOutcome } from "../src/truth/solve.ts";
-import type { GeneratedToolBoundaryProbe } from "../src/solve/built-starter.ts";
 import {
+  type BuiltRuntimeBoundaryEvidence,
+  type Solver,
+  nonResultOutcome,
+} from "../src/correctness-bundle/solve.ts";
+import { builtProcedureDigest, type GeneratedToolBoundaryProbe } from "../src/solve/built-starter.ts";
+import { measuredConditionDigest } from "../src/author/issue-condition.ts";
+import {
+  MATCHING_BRIEF,
   MATCHING_TOOLS_SPEC,
   MATCHING_TASKS as TASKS,
   scriptedMatchingSolver as scriptedSolver,
@@ -34,13 +48,16 @@ import {
   batteryDisposition,
   batteryTerminalReason,
   readRecordedBatteryRecord,
-} from "../src/truth/battery-record.ts";
-import type { ControlCorpus } from "../src/truth/controls.ts";
+} from "../src/correctness-bundle/battery-record.ts";
+import type { ControlCorpus } from "../src/correctness-bundle/controls.ts";
 import { batteryClaimInput, batteryRunEvidence } from "../src/claim/battery-run-evidence.ts";
-import { NEVER_ATTEMPTED_PREFIX } from "../src/truth/battery-provider-stop.ts";
+import {
+  NEVER_ATTEMPTED_PREFIX,
+  TURN_REFUSED_STOP_PREFIX,
+} from "../src/correctness-bundle/battery-provider-stop.ts";
 import { double, required } from "./helpers/doubles.ts";
 import { caseRecordRow } from "./helpers/case-record-row.ts";
-import type { JudgeSession } from "../src/truth/judge-contract.ts";
+import type { JudgeSession } from "../src/review/judge-contract.ts";
 import { ProviderResourceBudgetExhausted } from "../src/run/provider-resource-budget.ts";
 
 const SCRIPTED_NONE = "scripted/none";
@@ -172,6 +189,60 @@ describe("the battery driver", () => {
     expect(withoutPreset).toMatch(/^[0-9a-f]{64}$/);
     expect(withPreset).toMatch(/^[0-9a-f]{64}$/);
     expect(withPreset).not.toBe(withoutPreset);
+  });
+
+  // The operator's withheld-instruments condition: off records exactly what a battery recorded
+  // before it existed; on names each check tool the bundle's own tree resolves, and not a host one,
+  // so the measured-condition digest separates the two batteries.
+  it("records withheld check instruments as removed, and nothing when the condition is off", () => {
+    const { slugDir } = slug("withheld-condition");
+    const [first, second] = MATCHING_BRIEF.truthChecks;
+    const brief = {
+      ...MATCHING_BRIEF,
+      truthChecks: [
+        { ...first, execution: { ...first?.execution, requiredToolIds: ["own-check"] } },
+        { ...second, execution: { ...second?.execution, requiredToolIds: ["sh"] } },
+      ],
+    };
+    writeFileSync(join(slugDir, "correctness-model/brief.json"), JSON.stringify(brief));
+    mkdirSync(join(slugDir, ".toolchain/bin"), { recursive: true });
+    writeFileSync(join(slugDir, ".toolchain/bin/own-check"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+    const off = batteryCondition(slugDir);
+    const on = batteryCondition(slugDir, true);
+    expect(off.advisorsRemoved).toEqual([]);
+    expect(batteryCondition(slugDir, false)).toEqual(off);
+    expect(on.advisorsRemoved).toEqual(["instrument:own-check"]);
+    expect(on.toolInterfaceHash).toBe(off.toolInterfaceHash);
+    const digest = (runCondition: typeof off) =>
+      measuredConditionDigest({
+        runId: "r",
+        builtPin: "claude/m",
+        builtEffort: "high",
+        isolationStrength: "os",
+        runCondition,
+      });
+    expect(digest(on)).not.toBe(digest(off));
+  });
+
+  // A recorded solve answers the prompt it opened with, and the host writes part of that prompt, so
+  // a host that rewords its part poses another question to the same harness.
+  it("records the host's share of the Built prompt, and another or none is another measured condition", () => {
+    const { slugDir } = slug("procedure-condition");
+    const now = batteryCondition(slugDir);
+    expect(now.builtProcedure).toBe(builtProcedureDigest());
+    const digest = (runId: string, runCondition: RunCondition) =>
+      measuredConditionDigest({
+        runId,
+        builtPin: "claude/m",
+        builtEffort: "high",
+        isolationStrength: "os",
+        runCondition,
+      });
+    expect(digest("r1", now)).toBe(digest("r2", now));
+    expect(digest("r1", { ...now, builtProcedure: "another" })).not.toBe(digest("r1", now));
+    const { builtProcedure: _recorded, ...older } = now;
+    expect(digest("r1", older)).not.toBe(digest("r1", now));
+    expect(digest("r1", older)).not.toBe(digest("r2", older));
   });
 
   it("records one case row per task with checked pointers, and reads rows only from their own bytes", async () => {
@@ -414,7 +485,7 @@ describe("battery run evidence", () => {
     ).toThrow(/mismatched non-result evidence/);
   });
 
-  it("keeps predictions outside product evidence while projecting accepted and unaccepted cases", () => {
+  it("projects accepted and unaccepted cases into the claim score", () => {
     const battery = double<BatteryRecord>({
       terminalReason: "complete",
       capabilities: [],
@@ -462,7 +533,6 @@ describe("battery run evidence", () => {
       ]),
       { accept: [], reject: [] },
     );
-    expect(projected.evidence.predictions).toBeNull();
     expect(projected.score).toEqual([
       { caseId: "verified", passed: false, truthVerified: true, checkIds: ["compile"] },
       { caseId: "unaccepted", passed: false, truthVerified: false, checkIds: ["compile"] },
@@ -554,6 +624,19 @@ describe("battery disposition", () => {
     ];
     expect(batteryDisposition("scheduled", rows)).toBe("provider-stopped");
     expect(batteryDisposition("scheduled", rows.slice(0, 2))).toBe("completed");
+  });
+
+  it("names a battery the controller cut short by refusing a turn apart from a provider stop", () => {
+    // A spent run budget is not a provider outage, and the claim reads a provider stop's reason
+    // as one.
+    const rows = [
+      { runtimeNonResult: null, solver: NO_CALL },
+      { runtimeNonResult: `${TURN_REFUSED_STOP_PREFIX} (last attempted task "t1")`, solver: NO_CALL },
+    ];
+    expect(batteryDisposition("scheduled", rows)).toBe("turn-refused-stopped");
+    expect(batteryTerminalReason("turn-refused-stopped", rows)).toBe(
+      "turn-refused-stopped: 1 of 2 cases were never attempted, because the controller refused a Built turn permit",
+    );
   });
 
   const dead = [

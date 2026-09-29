@@ -11,8 +11,8 @@
  * `claim-evidence.ts` owns the vocabulary these clauses read. This module owns the decisions.
  */
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
-import type { GroundingEvidence } from "../truth/grounding.ts";
-import { type ToolCheckCoverage, toolCheckCoverage } from "../truth/grounding-coverage.ts";
+import type { GroundingEvidence } from "../correctness-bundle/grounding.ts";
+import { type ToolCheckCoverage, toolCheckCoverage } from "../correctness-bundle/grounding-coverage.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import type {
@@ -21,7 +21,6 @@ import type {
   ClaimCreationInput,
   ClaimEvidence,
   ClaimStatement,
-  PredictionItem,
   RunStatusEvidence,
   ScoredCase,
 } from "./claim-evidence.ts";
@@ -31,10 +30,10 @@ import { runtimeIdentityFindings } from "./runtime-model-identity.ts";
 import { hasText } from "../meta/text.ts";
 
 /** Whether a clause's remedy is in-loop. `BLOCKING` needs the product rebuilt before another run,
- *  while `IN_LOOP` is a resume, rerun or prediction closure, and a refusal counts as repairable
- *  only when every clause on it is in-loop — one blocking clause is enough to mean the bytes have
- *  to change. They are declared here rather than beside their first user because the clause
- *  producers below all read them. */
+ *  while `IN_LOOP` is a resume or a rerun, and a refusal counts as repairable only when every
+ *  clause on it is in-loop — one blocking clause is enough to mean the bytes have to change. They
+ *  are declared here rather than beside their first user because the clause producers below all
+ *  read them. */
 const BLOCKING = "blocking";
 const IN_LOOP = "in-loop";
 
@@ -102,9 +101,8 @@ export class Claim {
       ...runStatusClauses(evidence),
       ...conditionIdentityClauses(evidence, identityFindings),
       ...bundleClauses(evidence.bundles),
-      ...groundingClauses(evidence, score),
+      ...groundingClauses(evidence),
       ...truthCheckFiringClauses(evidence),
-      ...predictionClauses(evidence.predictions),
       ...denominatorClauses(evidence.runStatus, score.length),
     ];
     if (clauses.length > 0) return new NonClaimable(clauses);
@@ -397,99 +395,14 @@ function bundleClauses(bundles: BundleHashesEvidence | null): ClaimClause[] {
   return [];
 }
 
-function groundingClauses(evidence: ClaimEvidence, score: ScoredCase[]): ClaimClause[] {
+function groundingClauses(evidence: ClaimEvidence): ClaimClause[] {
   const { grounding } = evidence;
   if (!grounding || grounding.declared.length === 0) {
     return [
       clause("grounding-missing", "every truth check must name where its evidence comes from", BLOCKING),
     ];
   }
-  const externalByCheck = new Map<string, string[]>();
-  for (const { checkId, grounding: g, requiredToolIds } of grounding.declared) {
-    const tools = [...(g.kind === "external-verifier" ? [g.adapterId] : []), ...(requiredToolIds ?? [])];
-    if (tools.length > 0) {
-      externalByCheck.set(checkId, [...new Set([...(externalByCheck.get(checkId) ?? []), ...tools])]);
-    }
-  }
-  return [
-    // Gate audit 2026-09-25 (docs/gate-audit.md, reject-discrimination): commented out (unsure): a reject control that passes its named check no longer refuses the candidate or the claim
-    // ...declaredGroundingClauses(grounding, evidence.discrimination.attributedCheckIds),
-    ...caseGroundingClauses(grounding.execution, externalByCheck, score),
-    ...executionResolutionClauses(grounding.execution),
-  ];
-}
-
-// Gate audit 2026-09-25 (docs/gate-audit.md, reject-discrimination): commented out (unsure): a reject control that passes its named check no longer refuses the candidate or the claim
-// /** Every check must have a reject control that failed on exactly this check, because a check that
-//  *  ran has demonstrated execution and not discrimination: an adapter can execute completely on
-//  *  every case of a battery while no control has ever made it reject an artifact. A reject that
-//  *  fails only here establishes that the check told an invalid artifact apart; what it does not
-//  *  establish is which primitive inside the check produced the verdict, since source and import
-//  *  validation are authoring checks rather than execution evidence.
-//  *
-//  *  An external check owes the same evidence under its own clause id, and an authored one keeps the
-//  *  `intrinsic-` spelling because clause names reach refusal text, where renaming one is a new
-//  *  condition. Whether an external check's tool actually ran belongs elsewhere: the
-//  *  grounding-coverage rows own it, where admission refuses a never-launched tool before the
-//  *  battery, `caseGroundingClauses` refuses a verified case without its own subject-bound run, and
-//  *  readiness names a check that ran on no verified case. */
-// function declaredGroundingClauses(
-//   grounding: GroundingEvidence,
-//   attributedCheckIds: Record<string, number>,
-// ): ClaimClause[] {
-//   const clauses: ClaimClause[] = [];
-//   for (const { checkId, grounding: g } of grounding.declared) {
-//     if (recordedCount(attributedCheckIds, checkId) === 0) {
-//       clauses.push(
-//         clause(
-//           g.kind === "external-verifier" ? "external-grounding-uncovered" : "intrinsic-grounding-uncovered",
-//           `no invalid example failed check "${checkId}"; add one that fails only because of this check`,
-//           BLOCKING,
-//         ),
-//       );
-//     }
-//   }
-//   return clauses;
-// }
-
-// Gate audit 2026-09-25 (docs/gate-audit.md, measure-grounding): kept: each verified case needs its own tool run for every applicable external check, so one run cannot vouch for a battery
-/** Per-case coverage. Run-level evidence would let one case's — or one control's — tool execution
- *  satisfy the requirement for every case that used the same check, so a whole battery could be
- *  scored on a single recorded tool run. Each applicable external check needs its own execution
- *  record for the specific verified case being scored; another case's run does not cover it. */
-function caseGroundingClauses(
-  execution: GroundingEvidence["execution"],
-  externalByCheck: Map<string, string[]>,
-  score: ScoredCase[],
-): ClaimClause[] {
-  if (externalByCheck.size === 0) return [];
-  const clauses: ClaimClause[] = [];
-  const executedTriples = new Set(
-    execution.executed.map((b) =>
-      capturedJsonStringify([b.phase, b.subjectId, b.attempt, b.checkId, b.adapterId]),
-    ),
-  );
-  for (const scored of score) {
-    // A fail decided by a check with complete evidence needs no run of the tool it skipped, since
-    // that run could only ever have withheld a pass, never granted one (`acceptedOutcome` in
-    // src/truth/solve-case.ts).
-    if (!scored.truthVerified || !scored.passed) continue;
-    for (const checkId of scored.checkIds) {
-      for (const adapterId of externalByCheck.get(checkId) ?? []) {
-        if (executedTriples.has(capturedJsonStringify(["battery", scored.caseId, 1, checkId, adapterId]))) {
-          continue;
-        }
-        clauses.push(
-          clause(
-            "external-grounding-case-uncovered",
-            `no adapter result was recorded for case "${scored.caseId}" and check "${checkId}"; run adapter "${adapterId}" for every applicable case`,
-            BLOCKING,
-          ),
-        );
-      }
-    }
-  }
-  return clauses;
+  return [...executionResolutionClauses(grounding.execution)];
 }
 
 /** A tool that ran is identified by the bytes the host hashed before spawning it, never by what it
@@ -538,38 +451,11 @@ function truthCheckFiringClauses(evidence: ClaimEvidence): ClaimClause[] {
   ];
 }
 
-/**
- * Prediction closure rule. A `held` prediction needs no further disposition; `refuted` needs
- * repair or deletion; `inconclusive` and `unexercised` need retesting or deletion, because
- * repairing what never ran closes nothing. An `open` prediction remains unfinished.
- */
-function predictionClosed(p: PredictionItem): boolean {
-  return (
-    p.outcome === "held" ||
-    (p.outcome === "refuted" && (p.disposition === "repair" || p.disposition === "delete")) ||
-    ((p.outcome === "inconclusive" || p.outcome === "unexercised") &&
-      (p.disposition === "retest" || p.disposition === "delete"))
-  );
-}
-
-function predictionClauses(predictions: PredictionItem[] | null): ClaimClause[] {
-  return (predictions ?? []).flatMap((p) =>
-    predictionClosed(p)
-      ? []
-      : [
-          clause(
-            "prediction-record-open",
-            `prediction "${p.id}" is ${p.outcome} without a final outcome; classify every item before creating a claim`,
-            IN_LOOP,
-          ),
-        ],
-  );
-}
-
 /** Explains why too many attempted cases are absent from the score denominator. The ratio decides
  *  whether the clause applies, and the recorded terminal reason is what may identify a provider
  *  stop; an outage is never inferred from the ratio alone, because a ratio cannot tell a dead
- *  provider from a harness that crashes its own cases. The producer in `src/truth/battery-record.ts`
+ *  provider from a harness that crashes its own cases. The producer in
+ * `src/correctness-bundle/battery-record.ts`
  *  writes the shared `PROVIDER_STOPPED_REASON_PREFIX`, which keeps this reader aligned with the
  *  format the reason is actually recorded in. */
 function nonResultRatioDetail(reason: string | null, nonResultTotal: number, attempted: number): string {

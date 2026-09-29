@@ -4,7 +4,7 @@
  */
 import { afterAll, describe, expect, it } from "bun:test";
 import { cleanupScratch } from "./helpers/scratch.ts";
-import { createSolvabilityStageCache } from "../src/truth/solvability-stages.ts";
+import { createSolvabilityStageCache } from "../src/correctness-bundle/solvability-stages.ts";
 import type { VerifierLifetime } from "../src/verify/verifier-lifetime.ts";
 import { required } from "./helpers/doubles.ts";
 import {

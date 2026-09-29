@@ -14,8 +14,8 @@
  * and by freezing what does cross so that a field added upstream fails here rather than arriving in
  * a prompt. So the cases below do two things a per-function test cannot. They hand the projection a
  * verifier result dense with every protected class — including the check-naming sentences
- * `acceptedOutcome` in `src/truth/solve-case.ts` composes today and `rehearseCase` happens to drop
- * — and assert the crossing key set rather than a list of strings someone thought of. And they take
+ * `acceptedOutcome` in `src/correctness-bundle/solve-case.ts` composes today and `rehearseCase` happens to
+ * drop — and assert the crossing key set rather than a list of strings someone thought of. And they take
  * a census of every key path in the model-visible result of a real rehearsal, so that a new field
  * anywhere fails by default.
  *
@@ -28,16 +28,23 @@
  */
 import { afterAll, describe, expect, it } from "bun:test";
 import { Type } from "typebox";
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from "../src/meta/filesystem.ts";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
+import { sha256 } from "../src/meta/digest.ts";
 import { keyIfNotNull, keysIf } from "../src/meta/optional-key.ts";
 import { asRecord, isString, type JsonObject } from "../src/meta/json-shape.ts";
-import { createHarnessTrialTool, verifierView } from "../src/builder/harness-trial.ts";
+import { type RehearsalRow, createHarnessTrialTool, verifierView } from "../src/builder/harness-trial.ts";
 import { RehearsalTraces } from "../src/builder/context-tool.ts";
-import type { RehearsalRow } from "../src/author/experiment-plan.ts";
 import { createBuiltStarter } from "../src/solve/built-starter.ts";
 import { defineDraftTool } from "../src/solve/draft-tool.ts";
-import { type Solver, withSolverBuiltStarterFactory } from "../src/truth/solve.ts";
+import { type Solver, withSolverBuiltStarterFactory } from "../src/correctness-bundle/solve.ts";
 import { createVerifierLifetime } from "../src/verify/verifier-lifetime.ts";
 import {
   MATCHING_BRIEF,
@@ -76,7 +83,7 @@ const DENSE_VERIFIER_RESULT = {
   kind: "verifier",
   truthOk: false,
   reason: `tool "z3-marker" for check "${FAILING_CHECK}" reached no completed run (timeout)`,
-  nonResultKind: `externally grounded check(s) "${PASSING_CHECK}" ran no tool for this case`,
+  nonResultKind: `EXTERNAL_VERDICT_UNGROUNDED: check "${PASSING_CHECK}" passed without a completed run of its required tool "z3-marker"`,
   failedCheckIds: [FAILING_CHECK],
   checkResults: { [PASSING_CHECK]: true, [FAILING_CHECK]: false },
   stdout: `stdout-marker: slot ${RIGHT_SLOT} expected, ${WRONG_SLOT} given`,
@@ -131,8 +138,6 @@ const PERMITTED_KEY_PATHS: readonly string[] = [
   "solve.nonResult",
   // What the solve spent, as a plain fact: minutes against the wall, tool calls and cost.
   "solve.effort",
-  // Where EXPERIMENT.json and the round's rehearsal verdicts disagree: the verdicts already returned.
-  "planAdvice[]",
   "error",
   // Public identities of the task the caller selected, which the caller authored.
   "task.taskId",
@@ -166,8 +171,6 @@ const PERMITTED_KEY_PATHS: readonly string[] = [
   "validation.round.passed",
   "validation.round.passedInOneTurn",
   "nextAction",
-  // A verdict the round plan does not count, because a preview rejected an accept control.
-  "calibration",
 ];
 
 /** The exact census of a rehearsal that reached a verdict. The union above catches an addition
@@ -233,6 +236,10 @@ function modelVisible(result: unknown): JsonObject {
   const body = asRecord(content[0])?.text;
   if (!isString(body)) throw new Error("the first content block carries no text");
   return required(asRecord(JSON.parse(body)), "a parsed rehearsal body");
+}
+
+function readJson(path: string): JsonObject {
+  return required(asRecord(JSON.parse(readFileSync(path, "utf8"))), path);
 }
 
 function expectNoProtectedDetail(subject: string): void {
@@ -384,27 +391,57 @@ describe("what a rehearsal may tell its author about its own answer key", () => 
     expectNoProtectedDetail(JSON.stringify(result));
     expectWithinCensus(body);
   }, 60_000);
+
+  /**
+   * The per-check log is the protected detail itself: which check failed is a failure location.
+   * Two rehearsals that fail on different checks must therefore say the same thing to the author
+   * while their host-side `checks.json` records differ, which is the rule-4 test stated exactly.
+   */
+  it("records which check failed beside the solve and returns the same bytes whichever it was", async () => {
+    const failingOn = async (failing: string) => {
+      const dir = workspace();
+      const bodies = [PASSING_CHECK, FAILING_CHECK].map((id) => `"${id}": () => ${String(id !== failing)}`);
+      writeFileSync(
+        join(dir, "correctness-model/evaluator.ts"),
+        `export const checks = { ${bodies.join(", ")} };`,
+      );
+      const { rehearsalDir, tool } = round(dir, assigningSolver(RIGHT_SLOT));
+      const result = await rehearse(tool);
+      expectNoProtectedDetail(JSON.stringify(result));
+      const body = modelVisible(result);
+      // The candidate's id digests its own evaluator bytes and the effort is wall time; neither
+      // reads the verifier's result.
+      delete body.candidate;
+      delete asRecord(body.solve)?.effort;
+      const log = readJson(join(rehearsalDir, "rehearsal-1", "checks.json"));
+      return { body, log };
+    };
+    const a = await failingOn(FAILING_CHECK);
+    const b = await failingOn(PASSING_CHECK);
+
+    expect(a.body.truth).toEqual({ verdict: "fail" });
+    expect(JSON.stringify(a.body)).toBe(JSON.stringify(b.body));
+    const failed = (log: JsonObject) =>
+      (Array.isArray(log.checkRuns) ? log.checkRuns : []).flatMap((row) =>
+        asRecord(row)?.outcome === "fail" ? [asRecord(row)?.checkId] : [],
+      );
+    expect(failed(a.log)).toEqual([FAILING_CHECK]);
+    expect(failed(b.log)).toEqual([PASSING_CHECK]);
+    expect(a.log.toolRuns).toEqual([]);
+  }, 60_000);
 });
 
-describe("what a rehearsal hands the round plan", () => {
-  // The plan's evidence and the traces source receive the verdict the result already states and
-  // what the solve spent; a failing solve's trace would show where a check bit, so it stays out.
-  it("records the verdict and effort, returns the plan's advice, and offers only a passing trace", async () => {
+describe("what a rehearsal hands the authoring review", () => {
+  // The review and the traces source receive the verdict the result already states and what the
+  // solve spent; a failing solve's trace would show where a check bit, so it stays out.
+  it("records the verdict and effort, and offers only a passing trace and its artifact", async () => {
     const dir = workspace();
     const rehearsals = new RehearsalTraces();
     const rows: RehearsalRow[] = [];
-    const plan = {
-      rehearsals,
-      onRehearsal: (row: RehearsalRow) => {
-        rows.push(row);
-        return { advice: row.verdict === "pass" ? ["Advice: a stand-in line."] : [], counted: true };
-      },
-    };
+    const plan = { rehearsals, onRehearsal: (row: RehearsalRow) => void rows.push(row) };
     const passing = modelVisible(await rehearse(round(dir, assigningSolver(RIGHT_SLOT), true, plan).tool));
-    const failing = modelVisible(await rehearse(round(dir, assigningSolver(WRONG_SLOT), true, plan).tool));
+    await rehearse(round(dir, assigningSolver(WRONG_SLOT), true, plan).tool);
 
-    expect(passing.planAdvice).toEqual(["Advice: a stand-in line."]);
-    expect(failing.planAdvice).toBeUndefined();
     expectWithinCensus(passing);
     expect(rows.map((row) => [row.taskId, row.verdict, row.toolCalls, row.wallMinutes])).toEqual([
       [TASK_ID, "pass", 2, 120],
@@ -414,26 +451,47 @@ describe("what a rehearsal hands the round plan", () => {
       "costUsd",
       "family",
       "minutes",
+      "submitted",
       "taskId",
       "toolCalls",
       "verdict",
       "wallMinutes",
     ]);
-    expect(rehearsals.list().map((doc) => doc.id)).toEqual([`traces/rehearsal-1/${TASK_ID}`]);
-    for (const doc of rehearsals.list()) expectNoProtectedDetail("text" in doc ? doc.text() : "");
+    expect(rehearsals.list().map((doc) => doc.id)).toEqual([
+      `traces/rehearsal-1/${TASK_ID}`,
+      `traces/rehearsal-1/${TASK_ID}/artifact`,
+    ]);
+    const texts = rehearsals.list().map((doc) => ("text" in doc ? doc.text() : ""));
+    for (const text of texts) expectNoProtectedDetail(text);
+    expect(texts[1]).toContain(RIGHT_SLOT);
+    expect(texts.join("\n")).not.toContain(WRONG_SLOT);
   }, 60_000);
 
-  // The verdict still crosses, but a check program that refused a known-good answer may have decided
-  // it, so the result reads no battery difficulty from it and the round count passes over it.
-  it("reads no difficulty from a verdict the plan does not count", async () => {
-    const plan = { onRehearsal: () => ({ advice: ["Advice: uncounted."], counted: false }) };
-    const failing = modelVisible(
-      await rehearse(round(workspace(), assigningSolver(WRONG_SLOT), true, plan).tool),
-    );
-    expect(failing).toMatchObject({ truth: { verdict: "fail" }, calibration: "uncounted" });
-    expect(failing.validation).toMatchObject({ truthVerdict: "fail", round: { graded: 0, passed: 0 } });
-    expect(failing.nextAction).not.toEqual(expect.stringContaining("scores near"));
-    expect(failing.nextAction).toEqual(expect.stringContaining("rejected one of its own accept controls"));
+  // Rule 4's mechanical test on the one document a rehearsal adds: two passing solves graded by
+  // evaluators that differ only in their own source and what they write to stderr must serve the
+  // same trace and artifact bytes. Stdout is the check child's protocol channel, so it is not varied.
+  it("serves the same passing artifact whatever protected detail the verifier held", async () => {
+    const served = async (marker: string) => {
+      const dir = workspace();
+      const bodies = [PASSING_CHECK, FAILING_CHECK].map(
+        (id) => `"${id}": () => { console.error("${marker}"); return true; }`,
+      );
+      writeFileSync(
+        join(dir, "correctness-model/evaluator.ts"),
+        `// ${marker}\nexport const checks = { ${bodies.join(", ")} };`,
+      );
+      const rehearsals = new RehearsalTraces();
+      const plan = { rehearsals };
+      const body = modelVisible(await rehearse(round(dir, assigningSolver(RIGHT_SLOT), true, plan).tool));
+      expect(body.truth).toEqual({ verdict: "pass" });
+      const artifact = rehearsals.list().find((doc) => doc.id.endsWith("/artifact"));
+      return artifact !== undefined && "text" in artifact ? artifact.text() : "";
+    };
+    const a = await served("stderr-marker-a");
+    const b = await served("stderr-marker-b");
+    expect(a).toContain(RIGHT_SLOT);
+    expect(sha256(b)).toBe(sha256(a));
+    expect(a).not.toContain("stderr-marker");
   }, 60_000);
 });
 
@@ -473,14 +531,21 @@ describe("the four facts that do cross", () => {
     });
   }, 60_000);
 
-  it("says a solve that submitted nothing is unaccepted, and reaches no verdict over bytes that do not exist", async () => {
+  // A measured battery counts an unaccepted attempt towards difficulty, so a rehearsal that ran and
+  // submitted nothing is a fail. The verifier still runs over nothing.
+  it("scores a solve that submitted nothing as an unaccepted fail, without grading bytes that do not exist", async () => {
     const dir = workspace();
-    const body = modelVisible(await rehearse(round(dir, assigningSolver(RIGHT_SLOT, false)).tool));
+    const rows: RehearsalRow[] = [];
+    const plan = { onRehearsal: (row: RehearsalRow) => void rows.push(row) };
+    const body = modelVisible(
+      await rehearse(round(dir, assigningSolver(RIGHT_SLOT, false), true, plan).tool),
+    );
 
     expect(body.status).toBe("unaccepted");
     expect(asRecord(body.solve)?.accepted).toBe(false);
-    expect(body.truth).toEqual({ verdict: "not-run" });
+    expect(body.truth).toEqual({ verdict: "fail" });
     expect(body.verifier).toEqual({ status: "not-run" });
+    expect(rows.map((row) => [row.verdict, row.submitted])).toEqual([["fail", false]]);
     expectWithinCensus(body);
   }, 60_000);
 
@@ -570,6 +635,15 @@ describe("what one round of rehearsals costs", () => {
     expect(tool.description).toContain("the same per-check wall your agent/config.yaml sets for the battery");
   }, 120_000);
 
+  it("names why a candidate the fingerprint refuses cannot be rehearsed", async () => {
+    const dir = workspace();
+    const { tool } = round(dir, assigningSolver(RIGHT_SLOT, true));
+    rmSync(join(dir, "correctness-model"), { recursive: true });
+    const body = modelVisible(await rehearse(tool));
+    expect(body).toMatchObject({ status: "blocked", stage: "candidate", findings: { totalFindings: 1 } });
+    expect(JSON.stringify(body)).toContain("missing-bundle");
+  });
+
   it("solves nothing and takes no ordinal for a call that never reached a solve", async () => {
     const dir = workspace();
     let solves = 0;
@@ -645,12 +719,22 @@ describe("the wall a rehearsal grades under", () => {
   }, 120_000);
 
   it("stops the same check at the check wall the harness declares", async () => {
-    const { tool } = round(slowWorkspace("gate:\n  check_seconds: 1\n"), assigningSolver(RIGHT_SLOT));
+    const { rehearsalDir, tool } = round(
+      slowWorkspace("gate:\n  check_seconds: 1\n"),
+      assigningSolver(RIGHT_SLOT),
+    );
     const body = modelVisible(await rehearse(tool));
 
     expect(body.status).toBe("non-result");
     expect(body.truth).toEqual({ verdict: "not-run" });
     expectWithinCensus(body);
+    // The host log names the check the wall stopped, by kind, and the checks it never reached.
+    const log = readJson(join(rehearsalDir, "rehearsal-1", "checks.json"));
+    const rows = (Array.isArray(log.checkRuns) ? log.checkRuns : []).map((row) => asRecord(row));
+    const at = rows.findIndex((row) => row?.checkId === PASSING_CHECK);
+    expect(rows[at]).toMatchObject({ outcome: "threw", errorKind: "timeout" });
+    expect(Number(rows[at]?.durationMs)).toBeGreaterThanOrEqual(1000);
+    expect(rows.slice(at + 1).every((row) => row?.outcome === "not-run")).toBe(true);
   }, 60_000);
 });
 

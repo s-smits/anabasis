@@ -27,6 +27,7 @@ import {
   CASE_RECORD_FILE,
   type CaseVerdict,
   caseVerdict,
+  type CaseRecordRow,
   classifyCaseOutcome,
   readCaseRecord,
   type TracePointer,
@@ -34,8 +35,8 @@ import {
 import { hashJsonBytes, parseJsonAs } from "../meta/json-runtime.ts";
 import { claimsDirFor, executedBundleSnapshotFact } from "../run/claim-write.ts";
 import { type RunSummary, assertRunIdSafe, summarizeRun } from "../run/run-driver.ts";
-import { controllerValidatedFindings } from "../truth/brief.ts";
-import { type BundleSnapshotFact, batteryPath } from "../truth/battery-record.ts";
+import { controllerValidatedFindings } from "../correctness-bundle/brief.ts";
+import { type BundleSnapshotFact, batteryPath } from "../correctness-bundle/battery-record.ts";
 import { isNumber, isRecord, isString } from "../meta/json-shape.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 
@@ -50,8 +51,9 @@ export type CaseEvidence = CaseVerdict & {
 
 export type BatteryEvidence = {
   runId: string;
-  /** The run condition the claim file restates from its battery. */
-  condition: { variant: string; advisorsRemoved: string[] };
+  /** The run condition the claim file restates from its battery; `builtProcedure` is absent from a
+   *  battery recorded before the host's share of the Built prompt was. */
+  condition: { variant: string; advisorsRemoved: string[]; builtProcedure?: string };
   claimCreated: boolean;
   /** Blocking clause names when no claim was created; empty when it was. */
   claimClauses: string[];
@@ -85,6 +87,8 @@ export type IterationAnalysis = {
   identities: {
     bundleSnapshot: BundleSnapshotFact;
     backendPin: string;
+    /** `recordedBuiltEffort` of the battery's case rows. */
+    builtEffort: string | null;
     buildInputsHash: string;
     isolationStrength: string;
   };
@@ -95,7 +99,7 @@ export type IterationAnalysis = {
 };
 
 interface ClaimFileSlice {
-  condition: { variant: string; advisorsRemoved: string[] };
+  condition: BatteryEvidence["condition"];
   claim: { ok: boolean; clauses?: Array<{ clause?: string }> };
   readiness: { clauses: Array<{ clause?: string }> } | null;
 }
@@ -112,7 +116,7 @@ interface ClaimFileSlice {
  * one still outranks the climb at promotion — exactly the misroute a severity change is made to
  * end.
  */
-export const FEEDBACK_POLICY = "severity-route/11-owner-defect";
+export const FEEDBACK_POLICY = "severity-route/14-unfinished-review-advises";
 
 /** A finding states two facts: where it sits and whether it is a defect. Only a bundle file can
  *  hold a defect, so a defect with no owner, or one owned by the environment, has no spelling. An
@@ -162,7 +166,34 @@ type FindingBody = {
    *  boundary, and the same check name arrives round after round with nothing behind it, each time
    *  ordering a rebuild the author cannot aim. */
   probes?: Array<{ controlId: string; path: string; movedCheckIds: string[] }>;
+  /** Which of the recognised demand shapes the reviewer read the finding as, from a closed set. A
+   *  typed classification, public like the owner, and rendered as its own sentence. */
+  demandGap?: DemandGap;
+  /** A second public input the finding relates the first to, validated like `publicInputPath`. */
+  secondPublicInputPath?: string;
+  /** Which way a probe-backed defect's check is wrong, from a closed set: it refused a variant the
+   *  published rule allows, or passed one the rule forbids. Absent when the reviewer did not
+   *  establish which. The moved checks alone read the same both ways, and the two repairs are
+   *  opposite, so an author left to guess tightens a check that was already refusing a valid answer. */
+  probeDirection?: ProbeDirection;
 };
+
+/** The shapes a demand finding takes: a capability no task exercises, sibling tasks differing only
+ *  in published values, a limit the first reasonable candidate clears widely, and a rule no
+ *  practitioner of the request would hold. A solver tool that reports every margin a check reads is
+ *  not one: it still leaves the solver the decision, and whether it made a battery easy is measured. */
+export const DEMAND_GAPS = [
+  "capability-unexercised",
+  "sibling-values-only",
+  "limit-cleared-widely",
+  "rule-outside-request",
+] as const;
+export type DemandGap = (typeof DEMAND_GAPS)[number];
+
+/** Whether a probe's changed artifact was meant to stay valid under the cited public rule, read
+ *  against what the checks did with it: a valid variant refused, or an invalid one passed. */
+export const PROBE_DIRECTIONS = ["rejects-valid", "accepts-invalid"] as const;
+export type ProbeDirection = (typeof PROBE_DIRECTIONS)[number];
 
 export interface AdmittedEvidence {
   digest: string;
@@ -183,17 +214,15 @@ export interface AdmittedEvidence {
  *
  *  This is a naming, not a defect identity, and the difference is the whole of what it may be used
  *  for. Two reviews naming one check is evidence that they concern one defect; it is not proof,
- *  because two defects can name the same check. `recurringDefects` and the advice packet both draw
- *  that inference, and both own it — this function establishes only that the same subject was
- *  named twice, under the conditions its callers bind it to.
+ *  because two defects can name the same check, which is why no severity reads it. The advice
+ *  packet and the carried advisory defects join on it, and each owns that inference — this
+ *  function establishes only that the same subject was named twice.
  *
  *  A bare root is not a naming. The reviewer's `schemaPath` rule requires only that the first
  *  segment be a declared `artifactSchema` root, so a domain whose schema has one root offers one
- *  bare word for any place in its artifact, and every defect then shares one identity: a
- *  floating-point rule, a header contract and a pin binding recur as each other. A new finding
- *  arrives already carrying recurrences it had nothing to do with and is demoted by them, or is
- *  forced blocking at a single recurrence and resets a working harness. A word that names the
- *  whole artifact identifies no defect in it.
+ *  bare word for any place in its artifact, and every defect would then share one identity: a
+ *  floating-point rule, a header contract and a pin binding would join as each other. A word that
+ *  names the whole artifact identifies no defect in it.
  *
  *  The check is preferred over the path because one defect's artifact location may differ between
  *  reviews of it, and a key built from check-and-path then reads one check named twice as two
@@ -299,6 +328,14 @@ function disclosedIsolationStrength(
   ][0] as string;
 }
 
+/** The one Built reasoning effort a battery's case rows recorded from their session check, or null
+ *  when a row records none or two disagree. The backend pin names no effort, so these rows are the
+ *  only record of it, and null is unknown: it matches no effort, itself included. */
+export function recordedBuiltEffort(rows: ReadonlyArray<Pick<CaseRecordRow, "isolation">>): string | null {
+  const [effort, ...others] = new Set(rows.map((row) => row.isolation?.session?.reasoningEffort ?? null));
+  return others.length === 0 ? (effort ?? null) : null;
+}
+
 /** Derive the packet from recorded evidence only, and refuse missing battery, record or claim data
  *  rather than deriving a partial packet from what is there. The next iteration must respond to the
  *  measured product's evidence, and an incomplete or mismatched record could direct its changes at
@@ -333,6 +370,7 @@ export function deriveIterationAnalysis(
     identities: {
       bundleSnapshot,
       backendPin: battery.backendPin,
+      builtEffort: recordedBuiltEffort(mine),
       buildInputsHash: battery.buildInputsHash,
       isolationStrength,
     },

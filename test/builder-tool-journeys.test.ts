@@ -96,7 +96,7 @@ function execution(
   workshopSequence = 1,
 ): BuilderExecutionEvidence {
   const base: BuilderExecutionEvidence = {
-    schema: "builder-execution/v6",
+    schema: "builder-execution/v7",
     backend: "codex",
     runtimeIdentity: null,
     turns: 6,
@@ -376,7 +376,7 @@ describe("Builder tool journeys", () => {
   it("keeps the original numbered session and surfaces an unreadable gap", () => {
     const camp = campaign();
     camp.session();
-    camp.put("builder-execution-02.json", '{"schema":"builder-execution/v6"');
+    camp.put("builder-execution-02.json", '{"schema":"builder-execution/v7"');
     camp.put("builder-execution-03.json", JSON.stringify(execution({ writtenAt: LATER })));
 
     const first = camp.report().campaigns[0];

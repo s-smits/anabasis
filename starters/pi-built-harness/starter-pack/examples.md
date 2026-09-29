@@ -28,7 +28,7 @@ Reject     the driver prints a fixed output sequence off a call counter and igno
            mutationClass "output-replays-call-counter", expectedCheckId decode-behaviour
 Tools      presets ["files"]; reader describe_frame_contract (layout, scenarios, error codes);
            adviser lay_out_frame (lays one supplied frame's bytes against the published field
-           table and returns each field's value; compares nothing with a candidate)
+           table and returns each field's value)
 Published  entrypoint, standard, signatures, byte order, output format, error codes, scenarios
 Withheld   parsing strategy, table layout, buffer management order
 ```
@@ -56,8 +56,7 @@ Checks     catalogue-conformance authored; every line names one published conduc
 Join       lines-to-buses, owned by catalogue-conformance,
            decoyClasses ["ghost-bus", "alias-swap-conductor-id"]
 Constant   ampacity-reference-ambient = 30 degC, authority IEC 60364-5-52 Table B.52.14; a reject
-           at it carries targetsBoundary {publicInputPath: "$.ambientTempC",
-           constantName: "ampacity-reference-ambient"}
+           at it names thermal-limit as its expectedCheckId
 Constant   feeder-cost-budget, the limit each task publishes at $.costBudget
 Accepts    the minimal compliant sizing, and one conductor size up still inside the budget
 Reject     one line endpoint renamed to a bus no bus row declares, everything else identical;
@@ -65,17 +64,34 @@ Reject     one line endpoint renamed to a bus no bus row declares, everything el
            expectedCheckId catalogue-conformance
 Tools      presets [shell];
            reader list_feeder_inputs; adviser analyse_supplied_network (solves a supplied bus
-           and line candidate, returns currents and voltages, compares nothing with the limits);
-           artifact-writer record_network
+           and line candidate and returns its currents and voltages); artifact-writer record_network
 Published  catalogue, derating table, reference ambient, voltage limit and its inclusivity,
            rounding, budget, load cases
 Withheld   sizing search order, sequence of conductor changes, tie-break at equal cost
 ```
 
 Examples of invalid designs: a `report` or `summary` root no check reads; a rule stated only in
-`decisions` and then enforced; a check that only compiles, parses or greps submitted source;
-twenty-five tasks from one template; a tool that reports the installed toolchain; an adviser that
-returns a complete valid answer or the per-check verdict before submit.
+`decisions` and then enforced; a check that only compiles, parses or greps submitted source; a
+tool that reports the installed toolchain; an adviser that returns a complete valid answer.
+
+## A target the solver does not reliably meet
+
+A reference that replays a stored answer is already the usual shape, and on its own it is not
+enough: the blind solver reaches the author's own answer on most tasks, well inside its wall,
+because the search that found that answer is one the solver can run too. Two constructions may
+help; neither is required, and another method is as welcome.
+
+- **A search past the solver's wall.** Run an offline search far longer than one solve may take,
+  keep its best incumbents, and store the best as the answer `reference/` replays, which F2 admits
+  as it admits any stored answer. The limit then sits between what the long search found and what a
+  short one finds. It fails when the long search finds nothing a short one does not.
+- **A planted design.** Choose a design first, derive the requirements from it and publish only the
+  requirements. It fails when the derived requirements point straight back at the planted design,
+  when many simpler answers meet them too, or when they are requirements the field would not hold.
+
+`harness_trial` estimates how reliably the solver meets a task; it does not veto one. A mass limit
+met by 3 of 6 blind solves is a task the battery can measure, not one to discard. A trial can take
+an hour and can come back `not-run`, so it is a sample you may buy, not a step you owe.
 
 ## The worked domain
 

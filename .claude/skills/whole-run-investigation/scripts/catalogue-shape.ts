@@ -1,0 +1,110 @@
+// One declaration of the catalogue's current shape, read by the manifest, the report validator,
+// the archive scaffold and the archive validator, so an added lane is one edit here rather than
+// one per reader.
+//
+// Numbering is never renumbered: a lane whose producer left the product keeps its number and reads
+// `no-opportunity`. An archive is valid only under the current shape; one written under an older
+// shape is refused.
+
+export const SHA256 = /^[0-9a-f]{64}$/;
+export const GIT_SHA = /^[0-9a-f]{40}$/;
+
+/** Semantic lanes the current catalogue declares (1..ANGLE_COUNT, contiguous, in order). */
+export const ANGLE_COUNT = 38;
+export const ANGLE_FILES = ["review-angles.md"];
+
+// These lanes keep their own evidence boundary even under explicit grouping, and launch only when
+// their deterministic trigger has fired. Their numbers are owned here and nowhere else.
+export const PUBLIC_ONLY_LANE = 7;
+export const TRACE_CHALLENGE_LANE = 23;
+export const GROUND_TRUTH_LANE = 30;
+export const ISOLATED_ANGLES = new Map([
+  [PUBLIC_ONLY_LANE, "freezes its public-only alternative corpus before reading verifier internals"],
+  [TRACE_CHALLENGE_LANE, "carries the private trace-challenge packet"],
+  [
+    GROUND_TRUTH_LANE,
+    "freezes its ground-truth verdicts before reading verifier source or recorded verdicts",
+  ],
+]);
+// The hardware ground-truth lanes compile, simulate and adapt accepted artifacts, so each session
+// holding one gets one writable scratch directory under the launch's own output; every other
+// session, and every campaign tree, stays read-only.
+export const HARDWARE_TARGET_LANE = 29;
+export const HARDWARE_LANES: ReadonlySet<number> = new Set([HARDWARE_TARGET_LANE, GROUND_TRUTH_LANE]);
+export const MIN_AUTO_SESSIONS = ISOLATED_ANGLES.size + 1; // one seat for the open lanes
+
+/** Deterministic rows the primary reviewer settles, in catalogue order, with their titles. */
+export const DETERMINISTIC_ROW_TITLES = {
+  A: "campaign identity",
+  B: "claim and promotion state",
+  C: "workspace and Git",
+  D: "static conformance",
+  E: "fingerprint and gate census",
+  F: "F2 solvability",
+  G: "case partition",
+  H: "runtime identity and isolation",
+  I: "served-model attestation",
+};
+export const DETERMINISTIC_ROWS = Object.keys(DETERMINISTIC_ROW_TITLES);
+
+/** Digest verdicts, in ledger order. Each is settled by one block of `digest.ts`. */
+export const DIGEST_VERDICTS = [
+  "discrimination-inertness",
+  "submit-stall-shape",
+  "evidence-integrity",
+  "solver-process",
+  "check-informativeness",
+  "family-wise-coverage",
+  "role-spend-and-censoring",
+  "band-placement",
+  "rehearsal-ledger",
+  "toolchain-retention",
+];
+
+/** A Luna or Codex lane reads; a native Claude lane may also repair what it proved. */
+export const READ_ONLY_AUTHORITY = "Authority: read-only. Do not edit files or change external state.";
+export const FIX_AUTHORITY = [
+  "Authority: fix what you prove. For a finding whose evidence you checked against source in this session,",
+  "make the smallest coherent repair in a worktree of your own, created from the stack head the orientation",
+  "names (else `origin/main`) with `scripts/worktree.sh new claude/wri-<lane> <absolute dir> <start point>`:",
+  "one commit per repaired finding, focused tests and `bun run lint -- --strict` green, and never a push or",
+  "a pull request. Never edit `domains/`, `campaigns/`, run trees, recorded evidence, controller locks or",
+  "another lane's worktree, and launch no product run. Every other finding stays a finding; under",
+  "`### Findings`, a repaired one names its branch and commit.",
+].join(" ");
+
+/** The directory beside `tasks.json` where the primary saves each native lane's report as
+ *  `<name>.md`, since no launcher collects what a Claude subagent returns. */
+export const NATIVE_OUTPUT = "native-output";
+
+export function angleNumbers(): number[] {
+  return Array.from({ length: ANGLE_COUNT }, (_, index) => index + 1);
+}
+
+/** The one directory a hardware session may write, under the launch output it was composed for. */
+export function hardwareScratch(outDir: string, session: string): string {
+  return `${outDir}/hw-scratch/${session}`;
+}
+
+/** The authority the Luna launcher appends for a session that owns `scratch`, spelled as
+ *  `luna-sessions-runtime.ts` spells a workspace-write session's. */
+export function scratchAuthority(scratch: string): string {
+  return [
+    `Authority: workspace-write. You own only: ${scratch}.`,
+    "Other agents may be editing the repository. Preserve their work and do not revert it.",
+  ].join("\n");
+}
+
+/** The exact prompt one lane receives: the manifest composes it, and the report validator hashes
+ *  it again to prove the launch sent what the manifest recorded. A hardware session's prompt ends
+ *  in its scratch authority; every other one ends read-only. */
+export function leafPrompt(instructions: string, task: string, scratch: string | null = null): string {
+  const authority = scratch === null ? READ_ONLY_AUTHORITY : scratchAuthority(scratch);
+  return `${instructions.trim()}\n\n${task.trim()}\n\n${authority}`;
+}
+
+/** The exact prompt a native Claude lane is handed from `prompts/<name>.md`: the manifest writes it,
+ *  and the report validator composes it again to prove the file is still what the manifest wrote. */
+export function nativePrompt(instructions: string, task: string): string {
+  return `${instructions.trimEnd()}\n\n---\n\n# Your assignment\n\n${task}\n\n${FIX_AUTHORITY}\n`;
+}

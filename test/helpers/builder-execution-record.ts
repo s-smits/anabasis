@@ -3,10 +3,8 @@ import type {
   BuilderExecutionEvidence,
   BuilderSubmitAttempt,
 } from "../../src/author/builder-execution.ts";
-import type { ExperimentSubmission } from "../../src/author/experiment-plan.ts";
-import { hashJsonValue } from "../../src/meta/stable-json.ts";
 
-/** A complete `builder-execution/v6` record, since the readers open it through the strict reader.
+/** A complete `builder-execution/v7` record, since the readers open it through the strict reader.
  *  The submit rows take the writer's defaults, and the record stores the rows alone, as the writer
  *  does; `extra` overrides any top-level field, such as `customCalls` or `turnRetries`. */
 export function executionRecord(
@@ -21,7 +19,7 @@ export function executionRecord(
       atMs: (index + 1) * 1000,
       kind: "candidate",
       outcome: "accepted",
-      stage: row.outcome === undefined || row.outcome === "accepted" ? null : "validation",
+      stage: row.outcome === undefined || row.outcome === "accepted" ? null : "gates",
       commit: "c".repeat(40),
       findingsDigest: row.outcome === undefined || row.outcome === "accepted" ? null : `digest-${index + 1}`,
       findingCodes: [],
@@ -34,7 +32,7 @@ export function executionRecord(
     }),
   );
   return JSON.stringify({
-    schema: "builder-execution/v6",
+    schema: "builder-execution/v7",
     backend: "claude",
     runtimeIdentity: null,
     turns: 0,
@@ -96,19 +94,4 @@ export function submitCall(sequence: number, candidateId: string): BuilderCustom
     dispatchOutcome: "returned",
     semantic: { outcome: "accepted", candidateId },
   };
-}
-
-/** A captured experiment plan declaring `target`, digested the way the capture digests one. */
-export function experimentProposal(target: ExperimentSubmission["target"]): ExperimentSubmission {
-  const plan = {
-    schema: "experiment-plan/v2",
-    scope: "tasks",
-    gap: "the last battery found no limit",
-    change: "harder spans",
-    expectedResult: "fewer verified passes",
-    target,
-    families: [{ family: "fam", level: "hard", move: "longer spans" }],
-    predictions: [],
-  } as const;
-  return { ...plan, families: [...plan.families], predictions: [], digest: hashJsonValue(plan) };
 }

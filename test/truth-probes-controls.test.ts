@@ -11,12 +11,12 @@ import {
   type BriefTruthCheck,
   type ContractFinding,
   projectFindingForAuthor,
-} from "../src/truth/brief.ts";
-import { probeGeneratedCorrectnessModelModule } from "../src/truth/contracts.ts";
-import type { ControlCorpus } from "../src/truth/controls.ts";
-import { makeProbeControls, withGroundingFindings } from "../src/truth/probes.ts";
-import type { BuildTask } from "../src/truth/tasks.ts";
-import { verifierEnvironmentHashOfTools } from "../src/truth/verifier-environment.ts";
+} from "../src/correctness-bundle/brief.ts";
+import { probeGeneratedCorrectnessModelModule } from "../src/correctness-bundle/contracts.ts";
+import type { ControlCorpus } from "../src/correctness-bundle/controls.ts";
+import { makeProbeControls, withGroundingFindings } from "../src/correctness-bundle/probes.ts";
+import type { BuildTask } from "../src/correctness-bundle/tasks.ts";
+import { verifierEnvironmentHashOfTools } from "../src/correctness-bundle/verifier-environment.ts";
 import { resolveToolInventory } from "../src/verify/tool-inventory.ts";
 import { createVerifierLifetime } from "../src/verify/verifier-lifetime.ts";
 import type { VerifierExecutionEvidence } from "../src/verify/verifier-port.ts";
@@ -122,15 +122,8 @@ describe("the controls probe", () => {
     return { brief, corpus, tasks, dir: writeSlug(name, { brief, corpus, tasks }) };
   }
 
-  // Gate audit 2026-09-25 (docs/gate-audit.md, census-grounding-owed): commented out (unsure): an example whose check made no completed tool run, with no host refusal, no longer refuses adoption at the census
-  // // A check's external evidence is owed only where the check applies, so the probe asks the one
-  // // applicability owner instead of pairing every control with every check.
-  // it.concurrent("charges external evidence only in the declared check families", async () => {
   it.concurrent("records the declared tool set as the census identity although no control ran it", async () => {
     const fixture = externalFixture("controls-external-applicability", "cat");
-    // Gate audit 2026-09-25 (docs/gate-audit.md, census-grounding-owed): commented out (unsure): an example whose check made no completed tool run, with no host refusal, no longer refuses adoption at the census
-    // // The host double reports one timed-out run elsewhere and none for these controls, so every
-    // // applicable control owes a completed run.
     const elsewhere = double<VerifierExecutionEvidence>({
       subjectId: "elsewhere",
       checkId: BRIEF.truthChecks[1]!.id,
@@ -138,15 +131,6 @@ describe("the controls probe", () => {
       outcome: "timeout",
     });
     const result = await censusOf(fixture, { createVerifier: () => hostWithEvidence([elsewhere]) });
-    // Gate audit 2026-09-25 (docs/gate-audit.md, census-grounding-owed): commented out (unsure): an example whose check made no completed tool run, with no host refusal, no longer refuses adoption at the census
-    // const grounding = result.findings.filter((f) => f.code === "generated-external-grounding-unexecuted");
-    // // Four controls bind t1's declared family; the t2 control is outside that scope, and the two
-    // // rejects aimed at the other check owe no run of this one. One row carries the remaining two.
-    // expect(grounding).toHaveLength(1);
-    // expect(grounding[0]?.detail).toContain(
-    //   '2 example(s) of required check "expected-binding" returned with no run of tool "cat" launched (0 runs), although the check called it for other examples: "a1", "r-wrongbind";',
-    // );
-    // expect(grounding.some((f) => f.detail.includes("r-wrongbind-two-part"))).toBe(false);
     // The census identity is the declared tool set, as submit hashes it, although no control ran cat.
     expect(result.verifierEnvironmentHash).toBe(
       verifierEnvironmentHashOfTools(resolveToolInventory({ toolIds: ["cat"], toolTree: null }).inventory),
@@ -196,7 +180,6 @@ describe("the controls probe", () => {
       "tool-check-launched",
       [...ACCEPTS, ...REJECTS].map((control) => launched(control.id)),
     );
-    expect(result.findings.filter((f) => f.code === "external-check-tool-unlaunched")).toEqual([]);
     const coverage = result.toolCheckCoverage ?? [];
     expect(coverage).toHaveLength(1);
     expect(coverage[0]?.checkId).toBe("expected-binding");
@@ -205,62 +188,34 @@ describe("the controls probe", () => {
     expect(coverage[0]?.rejects).toBeGreaterThan(0);
   }, 30_000);
 
-  // Gate audit 2026-09-25 (docs/gate-audit.md, census-inert-tool): commented out (unsure): a declared tool the census never launched no longer refuses adoption; readiness still names it
-  // it.concurrent("refuses a check whose declared tool the host never ran, naming the check and the tool", async () => {
   it.concurrent("records no launch for a check whose declared tool the host never ran", async () => {
     const result = await toolBackedSlug("tool-check-unlaunched", []);
-    // Gate audit 2026-09-25 (docs/gate-audit.md, census-inert-tool): commented out (unsure): a declared tool the census never launched no longer refuses adoption; readiness still names it
-    // const inert = result.findings.filter((f) => f.code === "external-check-tool-unlaunched");
-    // expect(inert).toHaveLength(1);
-    // expect(inert[0]?.path).toBe("correctness-model/evaluator.ts");
-    // expect(inert[0]?.detail).toContain('"expected-binding"');
-    // expect(inert[0]?.detail).toContain('"checker"');
-    // Gate audit 2026-09-25 (docs/gate-audit.md, census-grounding-owed): commented out (unsure): an example whose check made no completed tool run, with no host refusal, no longer refuses adoption at the census
-    // // One row for the pair, not a second row per example that owed the run.
-    // expect(result.findings.filter((f) => f.code === "generated-external-grounding-unexecuted")).toEqual([]);
-    // Gate audit 2026-09-25 (docs/gate-audit.md, census-inert-tool): commented out (unsure): a declared tool the census never launched no longer refuses adoption; readiness still names it
-    // // Public authoring identities only, so the detail survives the author boundary.
-    // expect(inert[0]?.disclosure).toMatchObject({ class: "authored" });
     expect(result.toolCheckCoverage?.[0]?.attestedLaunches).toBe(0);
   }, 30_000);
 
-  // Gate audit 2026-09-25 (docs/gate-audit.md, reject-discrimination): commented out (unsure): a reject control that passes its named check no longer refuses the candidate or the claim
-  // it.concurrent("returns author-classified findings when the corpus stops discriminating", async () => {
-  //   // A "reject" that is actually clean: both named programs accept the bound task's answer.
-  //   const clean = (id: string) => ({
-  //     id,
-  //     taskId: "t1",
-  //     artifact: { assignments: [{ part: "alpha", slot: "s3" }] },
-  //     mutationClass: "no-op",
-  //     expectedCheckId: "parts-assigned",
-  //   });
-  //   const burned = {
-  //     accept: ACCEPTS,
-  //     reject: [...REJECTS, clean("r-actually-clean"), clean("r-also-clean")],
-  //   };
-  //   const slugDir = writeSlug("controls-burned", { corpus: burned });
-  //   const { findings } = await makeProbeControls({ verifierLifetime: LIFETIME })(slugDir, BRIEF, burned, [
-  //     TASK,
-  //     TASK_TWO,
-  //   ]);
-  //   expect(findings).toHaveLength(1);
-  //   expect(findings[0]).toMatchObject({
-  //     code: "DISCRIMINATION_REJECT_PASSED",
-  //     path: "correctness-model/controls.json",
-  //   });
-  //   expect(findings[0]?.detail).toContain("r-actually-clean");
-  //   // The finding is composed from public authoring identities, so it survives projection with
-  //   // its control row id and mutation class and the author knows which row to repair.
-  //   // SAFETY: toHaveLength(1)/toMatchObject above proved findings[0] exists.
-  //   const first = findings[0] as ContractFinding;
-  //   expect(first.disclosure).toMatchObject({ class: "authored" });
-  //   const projected = projectFindingForAuthor(first);
-  //   expect(projected.code).toBe("DISCRIMINATION_REJECT_PASSED");
-  //   // Both passing rejects share one row rather than one sentence each.
-  //   expect(projected.detail).toBe(
-  //     '2 invalid example(s) passed the check that should reject them: "r-actually-clean" (no-op), "r-also-clean" (no-op). Change each example so that check fails on it, or fix the check',
-  //   );
-  // });
+  it.concurrent("reads a check whose every reject timed out twice beside the verdict, not in it", async () => {
+    // Both rejects naming expected-binding time out in the lanes and again alone.
+    const timedOut = (subjectId: string, attempt: number) =>
+      double<VerifierExecutionEvidence>({
+        phase: "discrimination",
+        subjectId,
+        attempt,
+        checkId: "expected-binding",
+        toolId: "checker",
+        outcome: "timeout",
+        durationMs: 300_000,
+        nonResultReason: 'tool "checker" exceeded 300000ms',
+      });
+    const rows = ["r-wrongbind", "r-wrongbind-two-part"].flatMap((id) => [timedOut(id, 1), timedOut(id, 2)]);
+    const result = await toolBackedSlug("tool-check-timed-out", rows);
+    const codes = (findings: readonly { code: string }[] | undefined) =>
+      (findings ?? []).map(({ code }) => code);
+    expect(codes(result.findings)).not.toContain("DISCRIMINATION_CHECK_TIMED_OUT");
+    expect(codes(result.findings)).not.toContain("DISCRIMINATION_CHECK_UNREJECTED");
+    expect(codes(result.advisory)).toEqual(
+      expect.arrayContaining(["DISCRIMINATION_CHECK_TIMED_OUT", "controls-tool-timeout"]),
+    );
+  }, 30_000);
 
   it.concurrent("strips correctnessModel issue text from a rejected valid example before the author projection", async () => {
     // Rebind the membership program to public parts, so this rejection comes from a public rule.
@@ -304,7 +259,7 @@ describe("the controls probe", () => {
     // Exact stripped sentence: one row for both examples, grouped by the check that blocked them,
     // and nothing from the correctnessModel's issue text.
     expect(projectFindingForAuthor(finding).detail).toBe(
-      '2 valid example(s) were rejected by the correctnessModel, on [parts-assigned]: "a-correctnessModel-rejects", "a-ghost-two". Fix the correctnessModel so declared-valid examples pass',
+      '2 valid examples were rejected by the correctnessModel, on [parts-assigned]: "a-correctnessModel-rejects", "a-ghost-two". Fix the correctnessModel so declared-valid examples pass',
     );
   });
 
@@ -357,9 +312,21 @@ describe("the controls probe", () => {
     const result = await makeProbeControls({ verifierLifetime: LIFETIME })(slugDir, brief, hostile, tasks);
     // Attribution is only observable once the second check reached a verdict of its own.
     expect(result.checkCost?.map((row) => row.checkId)).toContain("unrelated-limit");
+    // The census records a row per dispatched check, bound to its control, one for each the bill counts.
+    for (const cost of result.checkCost ?? []) {
+      const rows = (result.checkRuns ?? []).filter(
+        (row) => row.checkId === cost.checkId && row.outcome !== "not-run",
+      );
+      expect(rows).toHaveLength(cost.evaluations);
+      expect(
+        rows.every((row) =>
+          [...hostile.accept, ...hostile.reject].some((control) => control.id === row.subjectId),
+        ),
+      ).toBe(true);
+    }
     // The alias reject fails its named check and unrelated-limit together; the named check
-    // rejected it, so the cascade is attributed and the census reports nothing.
-    expect(result.findings.map((finding) => finding.code)).toEqual([]);
+    // rejected it, so the cascade is attributed. No reject names unrelated-limit, so R2 refuses that.
+    expect(result.findings.map((finding) => finding.code)).toEqual(["DISCRIMINATION_CHECK_UNREJECTED"]);
   }, 30_000);
 
   it.concurrent("maps a broken Correctness Model evaluator to typed authoring findings before any verification", async () => {

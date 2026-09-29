@@ -3,8 +3,8 @@ import { describe, expect, it } from "bun:test";
 import type { AgentSession } from "../src/backends/backend-types.ts";
 import { evaluatorIndependence } from "../src/claim/calibration.ts";
 import { judgeDecision, validateJudgeEvidence } from "../src/claim/judge.ts";
-import { JudgeCensus, type JudgeCensusSubject } from "../src/truth/judge-census.ts";
-import { runJudgePhase } from "../src/truth/judge-phase.ts";
+import { JudgeCensus, type JudgeCensusSubject } from "../src/review/judge-census.ts";
+import { runJudgePhase } from "../src/review/judge-phase.ts";
 import {
   type JudgeAttempt,
   type JudgeSession,
@@ -14,9 +14,9 @@ import {
   judgeSubject,
   sessionJudge,
   summarizeJudge,
-} from "../src/truth/judge.ts";
-import { SANITIZER_VERSION } from "../src/truth/sanitize.ts";
-import { RATIONALE_MAX, errorText } from "../src/truth/judge-drivers.ts";
+} from "../src/review/judge.ts";
+import { SANITIZER_VERSION } from "../src/correctness-bundle/sanitize.ts";
+import { RATIONALE_MAX, errorText } from "../src/review/judge-drivers.ts";
 import { double, required, scriptedSession } from "./helpers/doubles.ts";
 import type { JsonValue } from "../src/meta/json-shape.ts";
 import {
@@ -312,6 +312,56 @@ describe("Judge verdict schema", () => {
     await expect(judge(REQUEST)).resolves.toEqual(
       attempt({ error: "judge completed without schema output", errorKind: "protocol" }),
     );
+  });
+});
+
+// A session limit that names its reset is a pause, not exhaustion: the subject waits for that reset
+// and opens one more fresh session, so a battery reviewed on a spent account keeps its verdicts. A
+// generic 429 names no clock, so nothing is known to clear it and the subject stays a non-result.
+describe("a Judge subject refused by a provider limit", () => {
+  const SESSION_LIMIT = "You've hit your session limit · resets 12:20pm (Europe/Amsterdam) (status 429)";
+  // 10:00 in Amsterdam (CEST), so the named reset is 2 h 20 min away, and the wait adds its margin.
+  const NOW = new Date("2026-09-24T08:00:00Z");
+  const RESET_WAIT_MS = (2 * 60 + 20) * 60_000 + 60_000;
+
+  const refusedOnce = (refusal: string) => {
+    const waits: number[] = [];
+    let opened = 0;
+    const judge = sessionJudge({
+      openSession: async (tool: AgentTool<never>) => {
+        opened += 1;
+        return scriptedSession(async () => {
+          if (opened === 1) return { status: "failed", errorMessages: [refusal] };
+          await tool.execute("call-1", double({ verdict: "pass", rationale: "the route is complete" }));
+          return { status: "completed" };
+        });
+      },
+      resetWait: {
+        now: () => NOW,
+        wait: async (ms) => {
+          waits.push(ms);
+        },
+      },
+    });
+    return { judge, waits, opened: () => opened };
+  };
+
+  it("waits for the reset the provider named and records the verdict of one fresh session", async () => {
+    const { judge, waits, opened } = refusedOnce(SESSION_LIMIT);
+    await expect(judge(REQUEST)).resolves.toEqual(
+      attempt({ verdict: true, rationale: "the route is complete" }),
+    );
+    expect(waits).toEqual([RESET_WAIT_MS]);
+    expect(opened()).toBe(2);
+  });
+
+  it("does not wait on a generic 429 that names no reset", async () => {
+    const { judge, waits, opened } = refusedOnce("status 429: Too Many Requests");
+    await expect(judge(REQUEST)).resolves.toEqual(
+      attempt({ error: "judge turn failed: status 429: Too Many Requests", errorKind: "provider" }),
+    );
+    expect(waits).toEqual([]);
+    expect(opened()).toBe(1);
   });
 });
 

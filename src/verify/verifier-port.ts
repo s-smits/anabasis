@@ -11,7 +11,7 @@
  */
 import type { VerifierExecutionNonResultKind } from "./correctness-model-result.ts";
 import type { VerifierCleanup } from "./verifier-lifetime.ts";
-import type { BriefTruthCheck } from "../truth/brief.ts";
+import type { BriefTruthCheck } from "../correctness-bundle/brief.ts";
 
 /**
  * What either wall mechanism is asked to confine: one resolved command and its arguments, the
@@ -41,11 +41,22 @@ export interface ToolEntry {
    *  A Builder can write its own script into `.toolchain/bin` and grade a whole battery with it,
    *  and `source` alone would call that the same kind of thing as a downloaded cross compiler. */
   kind: "binary" | "script";
-  /** The shebang command's basename for a script (`python3`, `sh`); null for a binary. */
+  /** The basename of the program a script runs as: its shebang command (`python3`, `sh`), or for a
+   *  shell wrapper whose `exec` names a literal program, that program (the `python` a `sh` wrapper
+   *  execs); null for a binary. */
   interpreter: string | null;
   /** sha256 of that interpreter's bytes as the cell's search path resolved it at snapshot time;
    *  absent for a binary or an interpreter that could not be found. */
   interpreterDigest?: string;
+  /** `portableToolTreeDigest` of the candidate's `.toolchain` at resolution, for a workspace tool;
+   *  absent for a host tool. The id names one file, and that file is often a shim over a script
+   *  beside it, so the entry digest alone does not identify the program that decides. */
+  treeDigest?: string;
+  /** The executable as `portableToolTreeDigest` counts a file, with its tree's own path taken out of
+   *  the bytes, for a workspace tool; absent for a host tool. A copy of the tree at another path
+   *  rewrites its launchers and wrappers to name that path, so `digest` moves with every copy and
+   *  this does not, which is why `verifierEnvironmentHash` binds this in its place. */
+  portableDigest?: string;
   /** `name==version` of the Python distributions beside a script's interpreter, sorted; absent
    *  when there are none. Installation only, and outside every identity hash. */
   packages?: string[];
@@ -182,9 +193,10 @@ export type VerifierExecutionEvidence = {
   };
   /** The tool cache this run's cell started from (`engine-cell-env.ts`), beside the tool digest it
    *  is keyed by, so a verdict that ran warm reads differently from one that ran clean. Absent when
-   *  the host has no tool tree to key a cache by, and on a reused answer, which restored nothing. */
+   *  the host has no tool tree it could read to key a cache by, and on a reused answer, which
+   *  restored nothing. */
   cache?: {
-    /** Derived from the tool tree, `toolDigest` and the interpreter's digest. */
+    /** Derived from the tool tree's content, the tool's bytes and the interpreter's digest. */
     key: string;
     /** The store tree the cache was restored from and stored back to. */
     path: string;
@@ -204,6 +216,9 @@ export interface ExecutedCheckBinding {
   attempt: number;
   checkId: string;
   adapterId: string;
+  /** Whether at least one of those runs was handed non-empty artifact bytes as a file or stdin.
+   *  Only such a run can have decided anything about the artifact; args are not classified. */
+  artifactInput: boolean;
 }
 
 /** The evaluator-facing contract — run, and nothing else. The artifact comes from the bound

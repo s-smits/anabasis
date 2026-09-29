@@ -8,7 +8,6 @@
  * pass, must not read as 20/25.
  */
 
-import { PLAN_FIELDS } from "./helpers/experiment-plan.ts";
 import { mkdirSync, readFileSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 
@@ -16,11 +15,10 @@ import { afterAll, describe, expect, it } from "bun:test";
 import type { MeasuredDifficulty } from "../src/claim/battery-difficulty.ts";
 import { recordedEvidence } from "../src/claim/evidence-log.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
-import { hashJsonValue } from "../src/meta/stable-json.ts";
 import { decideDifficulty } from "../src/run/climb-readout.ts";
-import { type Solver, nonResultOutcome } from "../src/truth/solve.ts";
-import type { BuildTask } from "../src/truth/tasks.ts";
-import { makeVerify } from "../src/truth/verification-runner.ts";
+import { type Solver, nonResultOutcome } from "../src/correctness-bundle/solve.ts";
+import type { BuildTask } from "../src/correctness-bundle/tasks.ts";
+import { makeVerify } from "../src/correctness-bundle/verification-runner.ts";
 import { required } from "./helpers/doubles.ts";
 import {
   ACCEPTS,
@@ -35,6 +33,7 @@ import {
   SCRIPTED_CONDITION,
   SCRIPTED_THRESHOLD_DIGEST,
 } from "./helpers/verification-runner-fixtures.ts";
+import { EXPERIMENT_AUTHORING_SCHEMA } from "../src/run/experiment-freeze.ts";
 
 interface RecordedBatteryView {
   cases: Array<{ pass: unknown; truthOk: unknown }>;
@@ -69,13 +68,9 @@ async function battery(slugDir: string, runId: string, tasks: BuildTask[]): Prom
 }
 
 describe("the changed subset the next difficulty decision reads", () => {
-  it.each(
-    ["verified-fail", "non-result"].flatMap((condition) =>
-      ["proposal", "unlevelled"].map((mode) => ({ condition, mode })),
-    ),
-  )(
-    "keeps $condition $mode apart from the unchanged 20/20 beside it",
-    async ({ condition, mode }) => {
+  it.each(["verified-fail", "non-result"].map((condition) => ({ condition })))(
+    "keeps $condition apart from the unchanged 20/20 beside it",
+    async ({ condition }) => {
       const slugDir = bundleSlug();
       const first = required(TASKS.tasks[0], "first fixture task");
       const second = required(TASKS.tasks[1], "second fixture task");
@@ -84,15 +79,12 @@ describe("the changed subset the next difficulty decision reads", () => {
         ...Array.from({ length: 5 }, (_, i) => ({
           ...first,
           taskId: i === 0 ? first.taskId : `moved-${i}`,
-          level: 2,
         })),
         ...Array.from({ length: 20 }, (_, i) => ({
           ...(i === 1 ? third : second),
           taskId: i === 0 ? second.taskId : i === 1 ? third.taskId : `unchanged-${i}`,
-          level: 2,
         })),
       ];
-      if (mode === "unlevelled") for (const task of tasks) Reflect.deleteProperty(task, "level");
       writeFileSync(join(slugDir, "correctness-model/tasks.json"), JSON.stringify(tasks));
 
       const runId = "run-thin-moved";
@@ -101,14 +93,6 @@ describe("the changed subset the next difficulty decision reads", () => {
         condition === "non-result" && task.family === first.family
           ? nonResultOutcome({ kind: "runtime", message: "fixture worker could not start" })
           : substantive(task, ...rest);
-      const proposal = {
-        scope: "tasks" as const,
-        target: { comparator: "at-least" as const, verifiedPasses: 0 },
-        gap: "The old tasks are too easy.",
-        change: "Change five public inputs.",
-        ...PLAN_FIELDS,
-        expectedResult: "The changed subset fails more often.",
-      };
       await makeVerify({
         solver,
         backendPin: "scripted/none",
@@ -117,7 +101,7 @@ describe("the changed subset the next difficulty decision reads", () => {
         capabilities: ["web-search:off"],
         runId,
         experimentAuthoring: {
-          proposal: { ...proposal, digest: hashJsonValue(proposal) },
+          schema: EXPERIMENT_AUTHORING_SCHEMA,
           operation: { operation: "task-probe" as const, moved: ["tasks" as const] },
           actual: "climb" as const,
           baseline: { agentHash: "a", correctnessModelHash: "c", taskSetHash: "t" },
@@ -159,15 +143,15 @@ describe("the changed subset the next difficulty decision reads", () => {
           measured: written.measured,
         },
       ]);
-      // 0 of 5 alone has Wilson interval [0, 0.434]; diluted by the unchanged 20/20 it reads 20/25.
+      // The changed subset decides: 0 of 5, never the 20/25 the unchanged 20/20 would dilute it to.
       if (movedN === 0) {
         expect(decision).toMatchObject({
           placement: null,
-          rationale: expect.stringContaining("the deciding sample of 0/0"),
+          rationale: "0/0 against band [0.2, 0.5]: cannot be placed",
         });
       } else {
         expect(decision.placement).not.toBeNull();
-        expect(decision.rationale).toContain("[0.000, 0.434]");
+        expect(decision.rationale).toBe("0/5 against band [0.2, 0.5]: under-aim");
       }
     },
     60_000,
@@ -177,18 +161,12 @@ describe("the changed subset the next difficulty decision reads", () => {
 describe("the family tally", () => {
   it.concurrent("counts every verified case by family, and records nothing else", async () => {
     const slugDir = bundleSlug();
-    const { measured } = await battery(
-      slugDir,
-      "run-family-001",
-      TASKS.tasks.map((task) => ({ ...task, level: 2 })),
-    );
+    const { measured } = await battery(slugDir, "run-family-001", TASKS.tasks);
     expect(Object.keys(measured)).toEqual(["items"]);
     expect(measured.items.map((row) => Object.keys(row))).toEqual(
       measured.items.map(() => ["item", "attempts", "passes"]),
     );
     expect(measured.items.reduce((sum, row) => sum + row.attempts, 0)).toBe(TASKS.tasks.length);
-    // An authored level changes nothing about the tally, which is the point of having removed it.
-    expect((await battery(slugDir, "run-family-002", TASKS.tasks)).measured).toEqual(measured);
   }, 60_000);
 
   it.concurrent("tallies an entirely unaccepted battery as failures without verifying anything", async () => {

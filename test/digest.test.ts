@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from "bun:test";
-import { buildDigest } from "../.claude/skills/whole-run-investigation/scripts/digest.mjs";
+import { buildDigest } from "../.claude/skills/whole-run-investigation/scripts/digest.ts";
 import {
   cpSync,
   mkdirSync,
@@ -8,18 +8,13 @@ import {
   symlinkSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
-import { isString } from "../src/meta/json-shape.ts";
+import { isString, type JsonValue } from "../src/meta/json-shape.ts";
 import { recordDigestBattery } from "./helpers/digest-battery.ts";
 import { caseRecordRow } from "./helpers/case-record-row.ts";
 import type { CaseRecordRow } from "../src/claim/case-record.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { recordedController } from "./helpers/recorded-controller.ts";
-import {
-  executionRecord,
-  experimentProposal,
-  submitCall,
-  trialCall,
-} from "./helpers/builder-execution-record.ts";
+import { executionRecord, submitCall, trialCall } from "./helpers/builder-execution-record.ts";
 import { EPOCH_REVIEW_SCHEMA } from "../src/review/epoch-review-findings.ts";
 import type { TurnRetryRow } from "../src/author/builder-execution.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
@@ -61,6 +56,16 @@ function fixture(): DigestFixture {
             { checkId: "beta-check", kind: "external-verifier", adapterId: "beta-engine" },
           ],
           verifierEnvironmentHash: null,
+          externalCheckCoverage: [
+            {
+              checkId: "beta-check",
+              toolId: "beta-engine",
+              attestedLaunches: 0,
+              cellProgramLaunches: 0,
+              rejects: 1,
+              kind: "external",
+            },
+          ],
         },
       },
     }),
@@ -101,10 +106,8 @@ function fixture(): DigestFixture {
       ok: false,
       issues: [
         {
-          // Historical verdict shape: severity "error" with the optional `blocking` field
-          // omitted. The digest reader treats that omission as blocking, so this fixture
-          // contributes one measured rejection for beta-check.
-          severity: "error",
+          // The evaluator's issue shape: `{checkId, message}`, every one blocking, so this
+          // fixture contributes one measured rejection for beta-check.
           checkId: "beta-check",
           message: "secret-verifier-detail-7731: main.c:81 missing token",
         },
@@ -225,12 +228,12 @@ describe("digest", () => {
     writeFileSync(
       join(dir, "0.json"),
       JSON.stringify({
-        schema: "difficulty-decision/v7",
+        schema: "difficulty-decision/v9",
         runId: "placed-0",
         difficulty: {
           band: [0.2, 0.5],
           decision: {
-            rationale: "5/6, Wilson interval [0.436, 0.970] against target range [0.2, 0.5]",
+            rationale: "5/6 against band [0.2, 0.5]: over-aim",
             placement: { passes: 5, n: 6, zone: "over-aim", aim: [2, 3], toAim: -2 },
           },
           admitted: 1,
@@ -242,7 +245,7 @@ describe("digest", () => {
     writeFileSync(
       join(dir, "1.json"),
       JSON.stringify({
-        schema: "difficulty-decision/v7",
+        schema: "difficulty-decision/v9",
         runId: "unplaced-1",
         difficulty: {
           decision: { placement: null, rationale: "no batteries recorded" },
@@ -270,12 +273,13 @@ describe("digest", () => {
     ["a v4 record", { schema: "difficulty-decision/v4", runId: "old-4" }, "difficulty-decision/v4"],
     ["a v5 record", { schema: "difficulty-decision/v5", runId: "old-5" }, "difficulty-decision/v5"],
     ["a v6 record", { schema: "difficulty-decision/v6", runId: "old-6" }, "difficulty-decision/v6"],
+    ["a v8 record", { schema: "difficulty-decision/v8", runId: "old-8" }, "difficulty-decision/v8"],
   ])("refuses %s by name rather than reading it or calling it never recorded", (_title, record, reason) => {
     const paths = fixture();
     mkdirSync(join(paths.campaign, "difficulty-decisions"));
     writeFileSync(join(paths.campaign, "difficulty-decisions", "0.json"), JSON.stringify(record));
     const digest = digestOf(paths);
-    expect(digest).toContain(`refused, not difficulty-decision/v7 — 0.json: ${reason}`);
+    expect(digest).toContain(`refused, not difficulty-decision/v9 — 0.json: ${reason}`);
     expect(digest).not.toContain(record.runId);
     expect(digest).not.toContain("no recorded difficulty decisions");
     expect(digest).not.toMatch(/satClimbs|satLevelled|satRange|satBroadens|THRESHOLD DRIFT/);
@@ -289,7 +293,7 @@ describe("digest", () => {
       writeFileSync(
         join(dir, "0.json"),
         JSON.stringify({
-          schema: "difficulty-decision/v7",
+          schema: "difficulty-decision/v9",
           // run-4 graded 1 and passed 1, so a decision that read it above the aim and got a
           // perfect battery back is lane 5's question.
           runId: "run-4",
@@ -331,21 +335,16 @@ describe("digest", () => {
     expect(digest).not.toContain("missing token");
   });
 
-  it("counts an omitted blocking field but not an explicit false or a warning", () => {
+  it("counts every issue naming a check, as the verdict binding blocks on each", () => {
     const paths = fixture();
     const verdict = join(paths.domainsRoot, "demo-slug", "runs", "run-1", "cases", "t1", "verifier.json");
     const bothInert =
       "UNTRIPPED IN SHIPPING (rejCtl>0, shipRej=0 over 2 graded rows): alpha-check, beta-check";
-    // The fixture row omits `blocking`, so beta-check has a shipping rejection and stays out.
+    // The fixture's issue carries no severity, which is the shape the evaluator writes.
     expect(digestOf(paths)).not.toContain(bothInert);
-    for (const issue of [
-      { severity: "error", blocking: false, checkId: "beta-check", message: "soft, ships disclosed" },
-      { severity: "warning", checkId: "beta-check", message: "advisory only" },
-    ]) {
-      writeFileSync(verdict, JSON.stringify({ ok: false, issues: [issue] }));
-      recordDigestBattery(join(paths.domainsRoot, "demo-slug"), ["run-1"]);
-      expect(digestOf(paths)).toContain(bothInert);
-    }
+    writeFileSync(verdict, JSON.stringify({ ok: false, issues: [{ message: "names no check" }] }));
+    recordDigestBattery(join(paths.domainsRoot, "demo-slug"), ["run-1"]);
+    expect(digestOf(paths)).toContain(bothInert);
   });
 
   it("counts a contested verified case by the checks its judge-reviews row names", () => {
@@ -382,30 +381,46 @@ describe("digest", () => {
     );
   });
 
-  it("names an installed-tool claim by its verifier environment digest, and an in-process claim as such", () => {
+  it("grounds each check in the tool launches its claim attested for it, and a check with none in-process", () => {
     const paths = fixture();
     const claimPath = join(paths.campaign, "claims", "run-1.json");
     const groundings = [
       { checkId: "alpha-check", kind: "authored", adapterId: null },
       { checkId: "beta-check", kind: "external-verifier", adapterId: "beta-engine" },
     ];
-    // A claim from the installed-tools source: no registry provenance, an environment hash instead.
-    writeFileSync(
-      claimPath,
-      JSON.stringify({ claim: { statement: { groundings, verifierEnvironmentHash: "abcdef0123456789" } } }),
+    // The environment hash is claim-wide and exists because a tool was declared, so it says
+    // nothing about which check that tool decided.
+    const claimWith = (externalCheckCoverage: JsonValue[]) => {
+      const statement = { groundings, verifierEnvironmentHash: "abcdef0123456789", externalCheckCoverage };
+      writeFileSync(claimPath, JSON.stringify({ claim: { statement } }));
+      return digestOf(paths);
+    };
+    const betaRow = (attestedLaunches: number, cellProgramLaunches: number) => ({
+      checkId: "beta-check",
+      toolId: "beta-engine",
+      attestedLaunches,
+      cellProgramLaunches,
+      rejects: 1,
+      kind: "external",
+    });
+    const launched = claimWith([betaRow(3, 0)]);
+    expect(launched).toMatch(/^alpha-check\s+authored\s+-\s+in-process\s+/m);
+    expect(launched).toMatch(
+      /^beta-check\s+external-verifier\s+beta-engine\s+installed-tool:beta-engine\s+/m,
     );
-    expect(digestOf(paths)).toMatch(
-      /^beta-check\s+external-verifier\s+beta-engine\s+installed-tool:abcdef012\s+/m,
-    );
-    expect(digestOf(paths)).toContain(
+    expect(launched).toContain(
       "algorithm independence and the complete imported dependency chain remain unproved",
     );
-    // Nothing ran outside the process: the column must not read as a missing field.
-    writeFileSync(
-      claimPath,
-      JSON.stringify({ claim: { statement: { groundings, verifierEnvironmentHash: null } } }),
+    // A declared tool the host never launched decided nothing, so the process did; and a program
+    // the check built in its own cell is not an installed tool.
+    expect(claimWith([betaRow(0, 0)])).toMatch(
+      /^beta-check\s+external-verifier\s+beta-engine\s+in-process\s+/m,
     );
-    expect(digestOf(paths)).toMatch(/^beta-check\s+external-verifier\s+beta-engine\s+in-process\s+/m);
+    expect(claimWith([betaRow(0, 2)])).toMatch(
+      /^beta-check\s+external-verifier\s+beta-engine\s+cell-program\s+/m,
+    );
+    // No row means no verified case applied the check, so the claim grounds it in nothing.
+    expect(claimWith([])).toMatch(/^beta-check\s+external-verifier\s+beta-engine\s+-\s+/m);
   });
 
   it("reads the battery root matching the recorded digest when an earlier root has a changed copy", () => {
@@ -606,7 +621,7 @@ describe("digest", () => {
     expect(damaged).not.toContain("epoch-aa: workshop 2 actions");
   });
 
-  // The ledgers digest-ledgers.mjs reads. Each case writes the recorded shape a real
+  // The ledgers digest-ledgers.ts reads. Each case writes the recorded shape a real
   // campaign carries and checks the trigger row a lane is admitted on, plus its nearest quiet shape.
   it("classifies provider-typed non-results as censoring and reads the Builder's allowance waits", () => {
     const paths = fixture();
@@ -654,7 +669,7 @@ describe("digest", () => {
     writeFileSync(
       join(paths.campaign, "difficulty-decisions", "run-3.json"),
       JSON.stringify({
-        schema: "difficulty-decision/v7",
+        schema: "difficulty-decision/v9",
         runId: "run-3",
         difficulty: {
           decision: { placement: { zone: "on-aim" }, evidence: [{ runId: "run-2" }] },
@@ -759,7 +774,7 @@ describe("digest", () => {
     expect(refused).toContain("advisory in 2 measured reviews (run-1, run-2)");
   });
 
-  it("joins each rehearsal to the accepted submit's candidate and reads the declared target against it", () => {
+  it("joins each rehearsal to the accepted submit's candidate", () => {
     const paths = fixture();
     const candidate = "c".repeat(64);
     for (const [n, taskId] of [
@@ -770,22 +785,18 @@ describe("digest", () => {
         recursive: true,
       });
     }
-    const write = (submitted: string, verifiedPasses: number) =>
+    const write = (submitted: string) =>
       writeFileSync(
         join(paths.campaign, "epoch-aa", "builder-execution.json"),
-        executionRecord(
-          [{ experimentProposal: experimentProposal({ comparator: "at-most", verifiedPasses }) }],
-          0,
-          {
-            customCalls: [
-              trialCall(1, "t1", candidate, "pass"),
-              trialCall(2, "t2", candidate, "not-run"),
-              submitCall(3, submitted),
-            ],
-          },
-        ),
+        executionRecord([{}], 0, {
+          customCalls: [
+            trialCall(1, "t1", candidate, "pass"),
+            trialCall(2, "t2", candidate, "not-run"),
+            submitCall(3, submitted),
+          ],
+        }),
       );
-    write(candidate, 0);
+    write(candidate);
     const digest = digestOf(paths);
     expect(digest).toContain(
       "epoch-aa/builder-execution.json: rehearsals 2 (pass 1, not-run 1) · accepted submits 1",
@@ -793,22 +804,12 @@ describe("digest", () => {
     expect(digest).not.toContain("rehearsal case directories");
     expect(digest).toContain("REHEARSAL NOT-RUN (lane 9): 1 of 2 rehearsals reached no verdict");
     expect(digest).not.toContain("SUBMITTED BYTES NEVER REHEARSED");
-    // A pass the rehearsal already recorded on the frozen bytes is a verified pass the battery will
-    // find again, so an at-most 0 target is contradicted before the battery runs.
-    expect(digest).toContain(
-      "REHEARSAL CONTRADICTS TARGET (lane 11): epoch-aa declared at-most 0 verified passes; 1 rehearsal pass(es) on the submitted bytes already exceed it (1 > 0)",
-    );
-    write(candidate, 1);
-    expect(digestOf(paths)).toContain(
-      "target at-most 1 · rehearsal passes on the submitted bytes 1 · not contradicted",
-    );
     // Rehearsals of other bytes say nothing about the candidate the submit froze.
-    write("d".repeat(64), 0);
+    write("d".repeat(64));
     const other = digestOf(paths);
     expect(other).toContain(
       "SUBMITTED BYTES NEVER REHEARSED (lane 11): epoch-aa candidate dddddddddddddddd · 2 rehearsal(s) on other bytes",
     );
-    expect(other).not.toContain("REHEARSAL CONTRADICTS TARGET");
     rmSync(join(paths.campaign, "epoch-aa", "rehearsals", "rehearsal-2"), { recursive: true });
     expect(digestOf(paths)).toContain("rehearsal case directories 1 against 2 recorded call(s)");
   });
@@ -840,6 +841,14 @@ describe("digest", () => {
                 interpreter: "bash",
                 digest: "y",
               },
+              {
+                toolId: "tree-wrap",
+                kind: "script",
+                source: "workspace-toolchain",
+                interpreter: "python3",
+                digest: "z",
+                treeDigest: "sha256:" + "a".repeat(64),
+              },
             ],
           },
         },
@@ -853,14 +862,16 @@ describe("digest", () => {
     expect(digest).toContain(
       `VERSION TOOLCHAIN DANGLING (lane 2): versions/v3/.toolchain → ${gone} resolves to nothing`,
     );
-    expect(digest).toContain("run-1: verifier tools 2 · binaries 1 · scripts 1");
+    expect(digest).toContain("run-1: verifier tools 3 · binaries 1 · scripts 2");
     expect(digest).toContain(
       "WRAPPER-ONLY TOOL DIGEST (lane 2): run-1 wrap (workspace-toolchain, interpreter bash)",
     );
     expect(digest).not.toContain("WRAPPER-ONLY TOOL DIGEST (lane 2): run-1 gcc");
+    // A script whose whole tool tree is digested is not attested by its wrapper bytes alone.
+    expect(digest).not.toContain("WRAPPER-ONLY TOOL DIGEST (lane 2): run-1 tree-wrap");
   });
 
-  it("reads an off-aim streak and a missed target from the recorded readout rows", () => {
+  it("reads an off-aim streak from the recorded placements, and states no target", () => {
     const paths = fixture();
     const dir = join(paths.campaign, "difficulty-decisions");
     mkdirSync(dir);
@@ -868,7 +879,7 @@ describe("digest", () => {
       writeFileSync(
         join(dir, `${name}.json`),
         JSON.stringify({
-          schema: "difficulty-decision/v7",
+          schema: "difficulty-decision/v9",
           runId,
           difficulty: {
             decision: { placement: { passes: 5, n: 6, zone: "over-aim", aim: [2, 3], toAim } },
@@ -884,14 +895,10 @@ describe("digest", () => {
         passed: 5,
         verified: 6,
         zone: "over-aim",
-        target: { comparator: "at-most", verifiedPasses: 2, result: "missed", missedBy: 3 },
       },
     ]);
     const one = digestOf(paths);
-    expect(one).toContain("  run-1: target at-most 2 · passed 5/6 · missed");
-    expect(one).toContain(
-      "TARGET MISSED (lane 10): run-1 declared at-most 2 verified passes and measured 5, missed by 3",
-    );
+    expect(one).not.toContain("TARGET MISSED");
     expect(one).not.toContain("OFF-AIM STREAK");
     decision("1", "d2", -2, []);
     expect(digestOf(paths)).toContain(
@@ -963,7 +970,7 @@ describe("digest", () => {
     expect(quiet).toContain("run-1: judge on · census battery 2 · disagreements 0/2 · exit completed");
     expect(quiet).toContain("lane 16: no census recorded a Judge/verifier disagreement");
     // The census carries no controls by construction, so neither a controls column nor an alarm
-    // about their absence tells a reader anything: src/truth/judge.ts writes a constant zero.
+    // about their absence tells a reader anything: src/review/judge.ts writes a constant zero.
     expect(quiet).not.toContain("JUDGE CENSUS WITHOUT CONTROLS");
     expect(quiet).not.toContain("controlValidity");
 

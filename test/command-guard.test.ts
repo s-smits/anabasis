@@ -269,6 +269,42 @@ EOF`,
     expect(workspaceResidual("rm -rf build", "core.git:reset-hard")).toBeNull();
   });
 
+  it.concurrent("reads an rm line in a quoted heredoc body no shell runs as text", () => {
+    const rm = "core.filesystem:rm-rf-general";
+    const edit = (open: string) =>
+      [
+        `cd .toolchain/bin && ${open}`,
+        "p='fw-lib.sh'; s=open(p).read()",
+        "s=s.replace('''x",
+        ' rm -rf "$FW_TMP/fw-stage-$target"',
+        " mkdir -p x''','y')",
+        "open(p,'w').write(s)",
+        "PY",
+      ].join("\n");
+    expect(workspaceAllows(edit("python3 - <<'PY'"), rm)).toBe(true);
+    expect(workspaceAllows(`cat > f <<'EOF'\nrm -rf "$X"\nEOF`, rm)).toBe(true);
+    // The rest of the body stays in the residual, so the guard still reads it.
+    expect(workspaceResidual(`python3 - <<'PY'\nrm -rf "$X"\nprint(1)\nPY`, rm)).toBe(
+      "python3 - <<'PY'\ntrue\nprint(1)\nPY",
+    );
+    // A body a shell runs is shell, and an unquoted body is read as the command's own.
+    expect(workspaceAllows(edit("bash <<'PY'"), rm)).toBe(false);
+    expect(workspaceAllows(edit("cat <<'PY' | sh"), rm)).toBe(false);
+    expect(workspaceAllows(edit("python3 - <<PY"), rm)).toBe(false);
+    // A cd in a body a shell runs moves that shell, so the relative remove after it leaves the tree.
+    expect(workspaceAllows("bash <<'EOF'\ncd /\nrm -rf usr\nEOF", rm)).toBe(false);
+    expect(workspaceAllows("cat <<'EOF' | sh\ncd /\nrm -rf usr\nEOF", rm)).toBe(false);
+    expect(workspaceAllows("rm -rf build && python3 - <<'PY'\ncd /\nPY", rm)).toBe(true);
+    // A body written to a file a later shell runs, or piped to one on another line, is shell too.
+    expect(workspaceAllows("cat > s.sh <<'EOF'\nrm -rf ~\nEOF\nbash s.sh", rm)).toBe(false);
+    expect(workspaceAllows("cat <<'EOF' |\ncd /\nrm -rf usr\nEOF\nbash", rm)).toBe(false);
+    expect(workspaceAllows(`"$SHELL" <<'EOF'\ncd /\nrm -rf usr\nEOF`, rm)).toBe(false);
+    // A redirect's residual keeps a body a shell runs, so the guard reads that body again.
+    const redirect = "core.filesystem:redirect-truncate-dynamic-path";
+    const shelled = ["bash <<'EOF'", 'echo x > "$TMPDIR/a"', "rm -rf /usr", "EOF"].join("\n");
+    expect(workspaceResidual(shelled, redirect)).toContain("rm -rf /usr");
+  });
+
   it.concurrent("refuses the destructive shapes and lets ordinary work through", () => {
     const env = { PATH: fakeGuard("dcg"), HOME: temp("ana-home-") };
     // Start with a checkout that discards uncommitted work, as in the manual guard check.

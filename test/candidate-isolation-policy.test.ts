@@ -56,9 +56,9 @@ describe("policy derivation", () => {
       const record = openPathRecord(epochDir, "public-contract");
       for (const [path, allowed] of [
         ["src/verify/verifier-port.ts", true],
-        ["src/truth/correctness-model-contract.ts", true],
+        ["src/correctness-bundle/correctness-model-contract.ts", true],
         ["src/verify/host.ts", false],
-        ["src/truth/contracts.ts", false],
+        ["src/correctness-bundle/contracts.ts", false],
         ["src/verify/verifier-lifetime.ts", false],
       ] as const) {
         const target = join(actualRoot, path);
@@ -222,7 +222,7 @@ describe("policy derivation", () => {
     for (const dir of ["agent-bundle", "correctness-model-bundle", "correctness-model-prims"]) {
       mkdirSync(join(sourceRoot, "vendor", dir), { recursive: true });
     }
-    for (const dir of ["solve", "truth", "verify"]) {
+    for (const dir of ["solve", "correctness-bundle", "verify"]) {
       mkdirSync(join(sourceRoot, "src", dir), { recursive: true });
     }
     writeFileSync(

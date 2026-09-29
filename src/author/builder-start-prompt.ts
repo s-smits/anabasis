@@ -35,20 +35,15 @@ export const BUILDER_WORKSPACE_CARD = [
   "Every file under agent/ and correctness-model/ is submitted; keep scratch files, seed projects and experiments elsewhere in the workspace, not in /tmp.",
 ].join(" ");
 
-/** The requested work stays whole, and so does its difficulty.
- *
- *  The last sentence is here because the difficulty text elsewhere — the frontier tier, the
- *  above-the-aim checklist — reads, to a Builder whose field has no numeric limits, as a list of
- *  things to supply. Asked for a finite shared resource, a set of degraded states and a report duty,
- *  such a Builder invents all three: tick deadlines, scaled supply budgets, dwell rules nobody in the
- *  field would recognise. Each invented rule has the Builder as its only authority, so a solver that
- *  read it another way fails on the wording, and the battery measures the rule instead of the work.
- *  So the clause says where demand is found — inside the field, and in more of the requested
- *  capabilities at once — and the ladder carries the method. */
+/** The requested work stays whole. The last sentence answers Builders who, asked for a hard
+ *  battery in a field with no numeric limits, invented tick deadlines, scaled supply budgets and
+ *  dwell rules nobody in the field would recognise: each such rule has the Builder as its only
+ *  authority, so a solver that read it another way fails on the wording, and the battery measures
+ *  the rule instead of the work. */
 export const SCOPE_CLAUSE = [
   "Treat every broadly sensible request as workable and build a real candidate, even in a new domain; choose the representation, tools, verification method and experiment from the request and the evidence.",
   "A short request names a whole field. Map the families a practitioner would recognise, let the tasks span them, and record in the brief which families the harness covers and which it leaves out; for one named build, vary its stated conditions, and for a named site or dataset, use its facts and the jobs a user would do there. Evaluate values the solver must derive, never copying, reordering or relabelling public input. Let the request choose the answer shape: files for source code and configuration, a declared structured artifact for records, calculations and plans.",
-  "Find the difficulty inside that field: the finite resources its practitioners share, the ways its parts fail and its inputs arrive, the classes its standards define, and more of the requested capabilities working together in each task. A limit, state or duty the field does not hold measures your wording rather than the solver, so add none.",
+  "A limit, state or duty the field does not hold measures your wording rather than the solver, so add none.",
 ] as const;
 
 /** What the solver may read, what it must never read, and what its tools may do for it.
@@ -59,27 +54,28 @@ export const SCOPE_CLAUSE = [
  *  reference recipe private and then write that same recipe into BUILT_AGENTS.md as guidance, in its
  *  own words, where no literal comparison of the two texts would see it.
  *
- *  The tools sentence replaced one asking for "an analysis showing each requirement's value, limit
- *  and margin". Builders read it as a duty to port the verifier into the agent, and a verifier-exact
- *  adviser over every listed state turns any feasible task into iterate-until-clear, so batteries
- *  passed whole however long their state lists grew. The analysis stays — a solver without one fails
- *  on arithmetic, which measures nothing — and the sentence now says where difficulty must then
- *  live. The program sentence answers harnesses that published an exact call sequence and graded a
- *  call trace, which turned writing the program into transcribing it. */
+ *  The tools sentence sets no ceiling on what an analysis may report. Knowing whether a candidate
+ *  meets the rules is not knowing how to build one, a solver without an analysis fails on
+ *  arithmetic, which measures nothing, and whether a rich tool left a battery too easy is for blind
+ *  measurement to say rather than for a rule written in advance. The program sentence answers
+ *  harnesses that published an exact call sequence and graded a call trace, which turned writing
+ *  the program into transcribing it. */
 export const PUBLICATION_CLAUSE = [
   "Publish everything the verifier requires of an answer wherever the solver reads it: constants with their authority, units, precision and rounding, comparison direction and tolerance, canonical form, required paths and entry points, and the assumptions an installed tool applies. A solver that follows every published rule must never fail on a rule it could not read; where a practitioner could read a rule two ways, the brief states the verified reading.",
   "Withhold hidden expectations, private controls and decisions, reference answers and protected verifier information from everything the solver reads, in any wording, tool results included. For a program, publish the behaviour it must show, not the calls or steps that produce it: a published sequence turns writing the program into transcribing it.",
-  "Give the solver a practitioner's tools — the real toolchain, an analysis of a candidate computed by the rule its check applies, a bounded search — and leave it the decision the task asks for. An adviser that reports every margin across every state the task lists turns the task into trial and error, so the difficulty must then lie where it cannot reach; a tool that grades a candidate still leaves it that decision.",
+  "Give the solver a practitioner's tools — the real toolchain, an analysis of a candidate computed by the rule its check applies, a bounded search — and leave it the decision the task asks for; a tool that grades a candidate, however fully, still leaves it that decision.",
 ] as const;
 
 /** Verification that means something, and the real installed tools it rests on. The first sentence
  *  answers harnesses that graded a self-reported design record against their own arithmetic, and
  *  program behaviour through a call trace into a host stand-in the Builder wrote; the install duty
  *  answers one that repeated a rendered "not found" back as its reason for a stand-in, and one that
- *  then compiled against a header it had written itself; the last sentence answers one that pasted
- *  the agent's own analysis into the evaluator. */
+ *  then compiled against a header it had written itself; the three states replace a rule that a
+ *  capability could be left out only once nothing could observe it, which gave unfinished work no
+ *  honest name besides finished or out of scope; the last sentence answers one that pasted the
+ *  agent's own analysis into the evaluator. */
 export const VERIFICATION_CLAUSE = [
-  "Every advertised capability maps to a check that can fail on real tasks; declare a capability no route can check as an explicit omission in the brief. Decide what the delivered work does by building, running or recomputing it on the supplied inputs, and accept every implementation the brief permits: a check that reads the answer's own report, recognises how its source is written or replays its calls into a stand-in you wrote grades your model of the work, not the work. Agreement among check, reference solve and controls is circular when they share an omission.",
+  "Every advertised capability maps to a check that can fail on real tasks. The brief records each capability the request names in one of three states: implemented and checked; required but not yet implemented or verified, with what is missing; or outside the request. Never present unfinished work as finished or narrow the request quietly; you may sequence the work. Decide what the delivered work does by building, running or recomputing it on the supplied inputs, and accept every implementation the brief permits: a check that reads the answer's own report, recognises how its source is written or replays its calls into a stand-in you wrote grades your model of the work, not the work. Agreement among check, reference solve and controls is circular when they share an omission.",
   "Acquire the tool before writing around it. The domain's practitioners already have established open-source tooling with a published interface: find it from public sources and install it; Bash has network access. A tool you have not searched for and tried to install is not an unavailable tool.",
   "A stand-in for the target is the last route and proves conformance to the stand-in alone: name it and what you tried in the brief, and do not describe its result as compiling, building or simulating for that target. Never replace a failing verifier tool with the agent's own analysis.",
 ] as const;

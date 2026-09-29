@@ -13,20 +13,20 @@
  *                                 Every no is recorded as `skipped` with its reason, so a campaign
  *                                 never reads an absent review as a clean one.
  *   What is the reviewer shown?   `orientation` and the three tools: read_source over a closed
- *                                 path set, one bounded probe, one finding recorder.
- *   What came back?               `recordedReview` — coverage, probes and, only from a turn that
- *                                 finished, the findings.
+ *                                 path set, probe_check within its budget, one finding recorder.
+ *   What came back?               `recordedReview` — coverage, probes, every finding the host
+ *                                 admitted, and, only from a turn that finished, the report.
  *
  * `epoch-review-findings.ts` owns what a review is worth afterwards and what the reviewer may
- * record. Its authority is deliberately small: one finding tool, one bounded experiment, no claim
- * naming an individual task, at most one routable blocking harness defect per review, and no power
- * over a pass, an acceptance, a claim or a promotion. Its second effect is the issue dispute: a
- * finding may argue that a standing issue belongs to the evaluation rather than the harness, which
- * withholds that issue's agent advice so the next authoring pass does not rebuild the agent around
- * a defect it does not have.
+ * record. Its authority is deliberately small: one finding tool, one budgeted experiment tool, at
+ * most six findings, none naming an individual task and each admitted at the severity its own
+ * evidence supports, and no power over a pass, an acceptance, a claim or a promotion. Several may
+ * block; how many owners a round reopens is the continuation's decision (`src/run/next-move.ts`). A
+ * completed review may also dispute a standing issue as the evaluation's, which withholds its agent
+ * advice so the next authoring pass does not rebuild the agent around a defect it lacks.
  */
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
-import { existsSync, readFileSync } from "../meta/filesystem.ts";
+import { existsSync, mkdirSync, readFileSync } from "../meta/filesystem.ts";
 import { campaignDir } from "../meta/campaign-root.ts";
 import { join, relative } from "../meta/path.ts";
 import type { IterationAnalysis } from "../analyse/iteration-analysis.ts";
@@ -35,15 +35,17 @@ import {
   type AdviceIssue,
   type RebuildAdvicePacket,
   adviceTotals,
+  blockingLine,
   diagnosisLine,
 } from "../author/rebuild-advice.ts";
-import type { ExperimentSubmission, RehearsalRow } from "../author/experiment-plan.ts";
+import type { RehearsalRow } from "../builder/harness-trial.ts";
 import { familyTally } from "../claim/case-record.ts";
 import { FROZEN_MANIFEST_PATH } from "../critic/manifest.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
+import { boundText } from "../meta/bounded-text.ts";
+import { writeCompleted } from "../author/campaign-epoch.ts";
 import { claimsDirFor } from "../run/claim-write.ts";
-import { type ClimbReadout, readClimbReadout } from "../run/climb-readout.ts";
-import { FRAME, fill } from "../run/climb-readout-frame.ts";
+import { type ClimbReadout, readClimbReadout, readingSentence } from "../run/climb-readout.ts";
 import { selectedProductDir } from "../run/product-versions.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { keyIfDefined, keysIf } from "../meta/optional-key.ts";
@@ -51,9 +53,9 @@ import type { ReviewChoice } from "../backends/resolve.ts";
 import type { RunObserver } from "../observe/run-observer.ts";
 import type { ProviderResourceBudget } from "../run/provider-resource-budget.ts";
 import { runReaderTurn } from "./review-reader.ts";
-import { type ReviewProbeRow, emptyProbeState, probeTool } from "./review-probe.ts";
+import { emptyProbeState, probeTool } from "./review-probe.ts";
+import { type AdvisoryDefect, type Demonstrations, NOTHING_CARRIED, advisoryRecord } from "./review-carry.ts";
 import { EPOCH_REVIEW_PROMPT } from "./epoch-review-prompt.ts";
-import { roundPlanLines } from "./round-plan-lines.ts";
 import { reviewSlotPin } from "./review-session.ts";
 import type { ContestedCase } from "../analyse/judge-contested.ts";
 import {
@@ -61,6 +63,10 @@ import {
   type ReviewVerifierEvidence,
   deliveredSource,
   readSourceTool,
+  type ToolchainReach,
+  TOOLCHAIN_PREFIX,
+  namedTexts,
+  toolchainReach,
   reviewCoverage,
   reviewInventory,
   reviewVerifierEvidence,
@@ -70,13 +76,16 @@ import {
   EPOCH_REVIEW_SCHEMA,
   type EpochReviewEvidence,
   type ReviewState,
+  type SettlementCase,
   briefIdentities,
   conditionAlreadyReviewed,
   measuredConditionOf,
+  earlierTaskFindings,
+  measuredAdvisory,
   recordFindingTool,
-  recurringDefects,
 } from "./epoch-review-findings.ts";
 import { TASKS_FILE } from "../meta/bundle-layout.ts";
+import { earlierTaskFindingLines } from "./epoch-review-public.ts";
 
 export interface EpochReviewInput {
   repoRoot: string;
@@ -95,21 +104,19 @@ export interface EpochReviewInput {
    *  and null leaves the comparison unmade rather than guessing; `whoseBattery` words all three, so
    *  that a null cannot fall through to the confident sentence and assert what it withholds. */
   priorAdviceOnSeededTree?: boolean | null;
-  /** The round's `EXPERIMENT.json`: at a checkpoint the plan the workspace holds now, beside a
-   *  measured battery the plan recorded with it. Null states that there is none; left out, the
-   *  orientation says the same, because a caller that has no plan to hand has none to show. */
-  experiment?: ExperimentSubmission | null;
   /** Verifier passes the Main Judge failed with a citation; each must be settled. Empty at an
    *  authoring checkpoint and for batteries reviewed without a Judge. */
   vetoed?: readonly ContestedCase[];
   /** Verifier fails the Main Judge passed, with the failing checks on record; settled the other way. */
   disputed?: readonly ContestedCase[];
+  /** Every other case the Judge and the verifier decided differently — unconfirmed, or a failing
+   *  case with no deciding check on record. Offered to read beside the settlement work, never owed. */
+  otherContested?: readonly ContestedCase[];
   /** The round's blind rehearsals, at an authoring checkpoint alone. */
   rehearsals?: readonly RehearsalCase[];
-  /** The probes the previous authoring review of this round rested its findings on, at an
-   *  authoring checkpoint alone. They hold counterexample values and name checks, so the next
-   *  reviewer is their one reader. */
-  demonstrations?: readonly ReviewProbeRow[];
+  /** What the previous authoring review of this round carried, at an authoring checkpoint alone.
+   *  Its probes hold counterexample values, so the next reviewer is their one reader. */
+  demonstrations?: Demonstrations;
   review: ReviewChoice;
   publicRequest: string | null;
   observer?: RunObserver;
@@ -147,6 +154,35 @@ type OpenSession =
       analysisDir: string;
       verifier: ReviewVerifierEvidence;
     };
+
+/**
+ * The question a placement opens. A battery on the aim opens the one a battery below it opens: its
+ * fails locate a limit only where the checks that failed it are right, and a false rejection placed
+ * on the aim reads exactly like a limit reached.
+ *
+ * The two sides do not open the same question. Above the aim the question is whether the tasks
+ * demand too little of the request, and "they were easy, and I found no obligation they leave
+ * undemanded" is an answer to it: a finding required by the score alone presses the author to add
+ * rules the request never held. Below the aim the count says the opposite, and two things produce
+ * it without the tasks being hard at all: a rule the checks apply that the brief does not publish,
+ * and a valid answer the writer tool cannot express. Each of those fails every task, which is what
+ * hardness looks like from the count, and neither can be told from hardness by the count alone.
+ *
+ * This review is where they become separable, because `probe_check` runs the declared checks here
+ * and the Builder never sees a verifier verdict at all. The probe runs in the opposite direction on
+ * the two sides: above the aim it looks for a check that does not move on a field the request
+ * constrains, below it for one that moves on a field the brief leaves free. Below the aim the
+ * first probe goes to the check the orientation lists first under verified failures, the one that
+ * blocked the most: a check reading narrower than its published rule fails valid work and reads
+ * exactly like difficulty from the counts. That instruction is the reviewer's own, which is why it
+ * is the reviewer's alone.
+ */
+const PLACEMENT_LEADS = {
+  above:
+    " A placement above the aim is a lead, not a finding on its own: it asks which obligation of the request those tasks do not demand, and tasks that were easy while leaving none undemanded are a result to report, not a defect to record.",
+  below:
+    " A placement on or below the aim is a lead, not a finding on its own, and hardness is the last of its readings rather than the first. A rule the checks apply that the brief does not publish fails every task: probe an accept control at a field the public contract leaves free, and a check that moves on it is that rule, owned by `correctness-model/brief.json`. Where the verified failures are listed by declared check, start from the first one listed: probe at a path it reads, with a value a practitioner of the request would accept and the published rules allow, and say whether it reads narrower than its rule, wider, or as stated. An answer a correct solver cannot write through the tools it was given fails every task too, owned by `agent/tools-spec.json`; the accept controls are the shapes the writer is known to produce. Record an observation of hardness, owned by correctness-model/tasks.json, once you have read the brief and the writer schema against the artifact and neither holds.",
+};
 
 /** The settlement work a review owes beyond its source: each contested case with its direction, its
  *  checks and its artifact bytes, and each standing issue it may dispute. `conditionAlreadyReviewed`
@@ -193,6 +229,7 @@ function openSession(input: EpochReviewInput): OpenSession {
       : measuredConditionOf({
           ...analysis.identities.bundleSnapshot,
           builtPin: analysis.identities.backendPin,
+          builtEffort: analysis.identities.builtEffort,
           verifierIdentity: null,
         });
   // Every field a skipped or failed review still owes its campaign, filled in before anything can
@@ -209,12 +246,13 @@ function openSession(input: EpochReviewInput): OpenSession {
     reviewerEffort: input.review.enabled ? (input.review.reasoningEffort ?? null) : null,
     requestDigest: hashJsonValue({
       publicRequest: input.publicRequest,
-      policy: "review-probing-findings/v7",
+      policy: "review-probing-findings/v13",
       prompt: EPOCH_REVIEW_PROMPT,
     }),
     obligationsDigest: obligationsDigest(input, disputableIssues(input)),
     reads: [],
-    contestedReads: [],
+    dispositions: [],
+    unsettled: settlementCases(input).map((row) => row.taskId),
     coverage: { files: 0, opened: 0, chars: 0 },
     findings: [],
     disputes: [],
@@ -282,6 +320,13 @@ function contestedLines(input: EpochReviewInput): string[] {
     ...(input.disputed ?? []).map((row) =>
       line("Disputed fail", row, `failed ${row.checkIds.join(", ")}; the Judge passed it`),
     ),
+    ...(input.otherContested ?? []).map((row) =>
+      line(
+        "Also contested, not required to settle",
+        row,
+        `the verifier ${row.verifier ? "passed" : "failed"} it${row.checkIds.length > 0 ? ` on ${row.checkIds.join(", ")}` : ""} and the Judge ${row.judge ? "passed" : "failed"} it`,
+      ),
+    ),
   ];
 }
 
@@ -307,32 +352,37 @@ function rehearsalLines(rehearsals: readonly RehearsalCase[]): string[] {
 }
 
 /**
- * What an authoring review hands the next one of its round: the probes its recorded findings rested
- * on, or null when it recorded none, because a review that failed or never ran has weighed nothing
- * and the set the one before it carried still stands. A finished review that rested nothing on a
- * probe carries an empty set, which ends the chain.
- */
-export function carriedDemonstrations(
-  review: Pick<EpochReviewEvidence, "status" | "probes">,
-): ReviewProbeRow[] | null {
-  if (review.status !== "completed" && review.status !== "incomplete") return null;
-  return (review.probes ?? []).filter((row) => row.cited === true);
-}
-
-/**
  * Each carried probe as the probe_check call that re-runs it and the checks it moved. Its number
  * stays behind, since it numbered a probe of another review and this review's own numbering starts
  * again at one: a finding here rests on the probe this review runs, and on nothing it was shown.
+ * Then each check a carried finding or probe named that the brief under review no longer declares,
+ * as a fact: a reviewer shown only the probe of a deleted check reads the deletion as a repair. A
+ * brief declaring no check, as an unreadable one reads, proves no removal.
  */
-function demonstrationLines(rows: readonly ReviewProbeRow[]): string[] {
-  if (rows.length === 0) return [];
+function demonstrationLines({ probes, named }: Demonstrations, declared: readonly string[]): string[] {
+  const namers = new Map<string, string>();
+  for (const { checkId, severity } of named) {
+    if (severity === "blocking" || !namers.has(checkId)) {
+      namers.set(checkId, `the previous review's ${severity} finding named`);
+    }
+  }
+  for (const checkId of probes.flatMap((row) => row.movedCheckIds)) {
+    if (!namers.has(checkId)) namers.set(checkId, "a carried probe moved");
+  }
+  const gone = [...namers].flatMap(([checkId, namer]) =>
+    declared.length === 0 || declared.includes(checkId)
+      ? []
+      : [`Check ${checkId}, which ${namer}, is no longer declared in this candidate's brief.`],
+  );
+  if (probes.length === 0) return gone;
   return [
     "Probes the previous review of this round rested its findings on, as it ran them against the bytes it read. Re-run any you rely on with probe_check, since the tree may have changed, and cite the new numbers: a line here is a lead, not a probe of this review, and backs no finding.",
-    ...rows.map(({ controlId, path, change, movedCheckIds }) => {
+    ...probes.map(({ controlId, path, change, movedCheckIds }) => {
       const moved =
         movedCheckIds.length === 0 ? "no declared check moved" : `moved ${movedCheckIds.join(", ")}`;
       return `- probe_check ${capturedJsonStringify({ controlId, path, ...change })}: ${moved}.`;
     }),
+    ...gone,
   ];
 }
 
@@ -389,11 +439,11 @@ function checkpointLines(input: EpochReviewInput): string[] {
  * The reviewer is the only component that reads the measured tree against the original request, so
  * it has to be told what a battery aims for. A raw "20 of 25 verified cases passed" does not say
  * that this is eight passing cases above the top of the aim, which is the shape design prior 10
- * exists to catch. The climb readout already owns that reading for the author, and `placeOnBand`
- * already placed each of its rows, so the review takes the readout's own row for the battery and
- * renders it through the same `FRAME` line the author reads. Placing or wording it here would be a
- * second standard: one battery could then reach the author as on the aim and the reviewer as
- * significantly too easy.
+ * exists to catch. `placeOnBand` already placed each row of the climb readout, so the review takes
+ * the readout's own row for the battery and words it through `readingSentence`, the one sentence
+ * that states a placement to a model; the author is shown no placement and no count to aim at.
+ * Placing it again here would be a second standard, and the sizing decision and this review could
+ * then read one battery two ways.
  *
  * The readout is read once, under the pin the battery was measured with, which the caller already
  * holds. It is public: every sentence it sends is stated to the Builder, so nothing protected
@@ -429,45 +479,11 @@ function aimLine(
   if (zone === null || aim === null || toAim === null || deciding === null || wilson === null) {
     const decided = readout.decision.evidence.at(-1)?.runId === runId;
     return decided
-      ? fill(FRAME.readout.unplaced, { rationale: readout.decision.rationale })
+      ? `Reading: ${readout.decision.rationale}.`
       : "Aim: the climb readout placed no zone for this battery; read the counts alone.";
   }
-  const reading = fill(FRAME.readout.reading, {
-    population: deciding.population,
-    passes: deciding.passes,
-    n: deciding.n,
-    wlo: wilson[0].toFixed(3),
-    whi: wilson[1].toFixed(3),
-    blo: readout.band[0],
-    bhi: readout.band[1],
-    lo: aim[0],
-    hi: aim[1],
-    zone: FRAME.zoneWords[zone],
-  });
-  return `${reading}${lead(toAim)}`;
-}
-
-/**
- * The question a placement opens. A battery on the aim opens none: it measured the limit it was
- * climbing towards, so there is nothing about its position left to explain.
- *
- * The two sides do not open the same question. Above the aim the tasks demand too little of the
- * request. Below the aim the count says the opposite, and two things produce it without the tasks
- * being hard at all: a rule the checks apply that the brief does not publish, and a valid answer
- * the writer tool cannot express. Each of those fails every task, which is what hardness looks like
- * from the count, and neither can be told from hardness by the count alone.
- *
- * This review is where they become separable, because `probe_check` runs the declared checks here
- * and the Builder never sees a verifier verdict at all. The probe runs in the opposite direction on
- * the two sides: above the aim it looks for a check that does not move on a field the request
- * constrains, below it for one that moves on a field the brief leaves free. That instruction is
- * the reviewer's own, which is why it is not the author's ladder pointer from `FRAME`.
- */
-function lead(toAim: number): string {
-  if (toAim === 0) return "";
-  return toAim < 0
-    ? " A placement above the aim is a lead, not a finding on its own: the finding is the obligation of the request those tasks do not demand."
-    : " A placement below the aim is a lead, not a finding on its own, and hardness is the last of its readings rather than the first. A rule the checks apply that the brief does not publish fails every task: probe an accept control at a field the public contract leaves free, and a check that moves on it is that rule, owned by `correctness-model/brief.json`. An answer a correct solver cannot write through the tools it was given fails every task too, owned by `agent/tools-spec.json`; the accept controls are the shapes the writer is known to produce. Record an observation of hardness, owned by correctness-model/tasks.json, once you have read the brief and the writer schema against the artifact and neither holds.";
+  const reading = readingSentence({ deciding, wilson, aim, zone }, readout.band);
+  return `${reading ?? ""}${toAim < 0 ? PLACEMENT_LEADS.above : PLACEMENT_LEADS.below}`;
 }
 
 /** The standing issues the review may dispute, each with the diagnosis reader's reading of it. The
@@ -493,6 +509,11 @@ function orientation(
   inventory: ReviewInventory,
   verifier: ReviewVerifierEvidence,
   issues: readonly AdviceIssue[],
+  measured: {
+    aim: string;
+    earlier: readonly string[];
+    declared: readonly string[];
+  },
 ): string {
   const { analysis } = input;
   return [
@@ -503,15 +524,18 @@ function orientation(
       : [
           `Battery: ${analysis.battery.summary.passed} of ${analysis.battery.summary.verified} verified cases passed; ${analysis.battery.summary.unaccepted} unaccepted at submission; ${analysis.battery.summary.nonResults} runtime non-results.`,
           `Per family (passed/verified): ${familyLine(analysis)}.`,
-          aimLine(input, () => join(input.repoRoot, input.treeRoot), {
-            runId: input.runId,
-            pin: analysis.identities.backendPin,
-          }),
+          blockingLine(
+            analysis.battery.blockingByCheck,
+            analysis.battery.applicableByCheck,
+            analysis.battery.summary.verified,
+            analysis.battery.summary.passed,
+          ),
+          measured.aim,
+          ...measured.earlier,
         ]),
-    ...roundPlanLines(input.experiment ?? null, analysis),
     ...contestedLines(input),
     ...rehearsalLines(input.rehearsals ?? []),
-    ...demonstrationLines(input.demonstrations ?? []),
+    ...demonstrationLines(input.demonstrations ?? NOTHING_CARRIED, measured.declared),
     ...standingIssueLines(issues),
     `Read with read_source, then record findings. Files in the review (${inventory.files.length}, truncated: ${inventory.truncated}):`,
     inventory.files.join("\n"),
@@ -521,7 +545,18 @@ function orientation(
     ...Object.entries(verifier.tools).map(
       ([alias, tool]) => `${alias}: ${tool.kind}, ${tool.source}, ${tool.path}, sha256 ${tool.digest}`,
     ),
-  ].join("\n");
+  ]
+    .filter((line) => line !== null)
+    .join("\n");
+}
+
+/** The tool tree the review may read, when the recorded tree digest still covers the tree. */
+function toolchainLines(toolchain: ToolchainReach | null): string[] {
+  return toolchain === null
+    ? []
+    : [
+        `The recorded verifier tree digest covers the tool tree, which lies outside the coverage this review is held to. Every file and directory in it reads by name as ${TOOLCHAIN_PREFIX}<path>, installed packages included, and a directory reads as its listing (${TOOLCHAIN_PREFIX} alone for the top).`,
+      ];
 }
 
 /** Resume a reader that stopped while pages remain, and count the resumption. It resumes only
@@ -542,13 +577,15 @@ function unreadSourcePrompt(state: ReviewState, sourcePaths: ReadonlySet<string>
   };
 }
 
-/** What the session recorded. A failed turn keeps its reads, its coverage and its probes, because
- *  those happened and the campaign should be able to see them, but it drops its findings: a review
- *  that did not finish has not weighed what it read, and a half-formed finding would reopen an
- *  authoring area on its own. */
+/** What the session recorded. A failed turn keeps everything that happened: its reads, coverage and
+ *  probes, and every finding and dispute the host admitted, since each passed the admission a
+ *  completed review's does. What an unfinished review may route is its readers' decision, and they
+ *  route a failed turn's findings as an incomplete one's. `failure` is an exception the turn or the
+ *  probe cleanup raised, which fails the review as a failed turn does; a turn that finished before
+ *  its cleanup failed keeps its report. */
 function recordedReview(
   evidence: EpochReviewEvidence,
-  turn: ReaderTurn,
+  turn: ReaderTurn & { failure: string | null },
   state: ReviewState,
   coverage: ReviewCoverage,
   verifier: ReviewVerifierEvidence,
@@ -557,11 +594,20 @@ function recordedReview(
     ...evidence,
     reviewerPin: turn.pin,
     reads: state.reads,
+    dispositions: state.dispositions,
+    unsettled: evidence.unsettled.filter(
+      (taskId) => !state.dispositions.some((row) => row.taskId === taskId),
+    ),
     coverage,
     admission: state.admission,
+    findings: state.findings,
+    disputes: state.disputes,
     ...keysIf(state.probes.rows.length > 0, () => ({ probes: state.probes.rows })),
   };
   if (turn.error !== null) return { ...settled, status: "failed", reason: turn.error };
+  if (turn.failure !== null) {
+    return { ...settled, status: "failed", reason: turn.failure, report: turn.text || null };
+  }
   return {
     ...settled,
     status: coverage.complete ? "completed" : "incomplete",
@@ -569,18 +615,64 @@ function recordedReview(
       ? null
       : (verifier.unavailable ??
         `Source coverage incomplete: truncated=${coverage.truncated}, ${coverage.missing.length} missing or incompletely read entries`),
-    findings: state.findings,
-    disputes: state.disputes,
     report: turn.text,
   };
 }
 
+/** The advisory defects the review before this one left: the round's previous review's at an
+ *  authoring checkpoint, and the previous battery's completed review's for a measured one. */
+function earlierAdvisory(input: EpochReviewInput, analysisDir: string): readonly AdvisoryDefect[] {
+  if (input.analysis === null) return input.demonstrations?.advisory ?? [];
+  return measuredAdvisory(analysisDir, input.priorAdvice?.runId);
+}
+
+/** What a measured battery adds to the session: its placement against the aim, and the task-set
+ *  findings earlier reviews of the same task set recorded. */
+function measuredContext(input: EpochReviewInput, evidence: EpochReviewEvidence, analysisDir: string) {
+  const { analysis } = input;
+  if (analysis === null) return { aim: "", earlier: [] };
+  return {
+    aim: aimLine(input, () => join(input.repoRoot, input.treeRoot), {
+      runId: input.runId,
+      pin: analysis.identities.backendPin,
+    }),
+    earlier:
+      evidence.condition === null
+        ? []
+        : earlierTaskFindingLines(earlierTaskFindings(analysisDir, evidence.condition, input.runId)),
+  };
+}
+
+/** The listed vetoes and disputed fails, as `record_finding` may settle them. */
+function settlementCases(input: EpochReviewInput): SettlementCase[] {
+  const listed = (kind: SettlementCase["kind"], rows: readonly ContestedCase[] | undefined) =>
+    (rows ?? []).map((row) => ({
+      taskId: row.taskId,
+      family: row.family,
+      kind,
+      checkIds: row.checkIds,
+      path: contestedArtifact(input.treeRoot, row),
+    }));
+  return [...listed("vetoed", input.vetoed), ...listed("disputed", input.disputed)];
+}
+
+/** The review's one writer, which `runEpochReview` calls on every way out: a refused session, a
+ *  finished or failed turn, and an exception the turn or the probe cleanup raised. */
+export function recordEpochReview(repoRoot: string, evidence: EpochReviewEvidence): EpochReviewEvidence {
+  const dir = join(campaignDir(repoRoot, evidence.slug), "analysis");
+  mkdirSync(dir, { recursive: true });
+  writeCompleted(join(dir, `${evidence.runId}-epoch-review.json`), evidence);
+  return evidence;
+}
+
 /** Read one condition once, and record what came back whether or not the reader finished. A
- *  refused session returns its evidence unread rather than nothing, so every campaign round leaves
- *  a review record that says what happened to it. */
+ *  refused session records its evidence unread rather than nothing, so every campaign round leaves
+ *  a review record that says what happened to it, and a review an exception ends is recorded before
+ *  the exception propagates: its findings, coverage and probes were admitted before it, and a
+ *  caller that never receives a return value has nothing else to write them from. */
 export async function runEpochReview(input: EpochReviewInput): Promise<EpochReviewEvidence> {
   const opened = openSession(input);
-  if (!opened.admitted) return opened.evidence;
+  if (!opened.admitted) return recordEpochReview(input.repoRoot, opened.evidence);
   const { evidence, root, analysisDir, verifier } = opened;
   const inventory = reviewInventory(root);
   const issues = disputableIssues(input);
@@ -590,17 +682,20 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
     refused: 0,
     delivered: [],
     probes: emptyProbeState(),
+    dispositions: [],
     findings: [],
     disputes: [],
     admission: { continuations: 0, citationRefusals: 0, severityAdjusted: [] },
   };
-  const probe = probeTool(root, join(analysisDir, `${input.runId}-probe-lifetime`), state.probes);
-  const contested = new Map(
-    [...(input.vetoed ?? []), ...(input.disputed ?? [])].flatMap((row) => {
-      const path = contestedArtifact(input.treeRoot, row);
-      return path === null || row.artifact === null ? [] : [[path, row.artifact] as const];
-    }),
-  );
+  const lifetime = join(analysisDir, `${input.runId}-probe-lifetime`);
+  const probe = probeTool(root, lifetime, state.probes, verifier.tools);
+  const measured = measuredContext(input, evidence, analysisDir);
+  const identities = briefIdentities(root);
+  const contested = [
+    ...(input.vetoed ?? []),
+    ...(input.disputed ?? []),
+    ...(input.otherContested ?? []),
+  ].flatMap((row) => contestedArtifact(input.treeRoot, row) ?? []);
   // A rehearsal's bytes are read under its name and, like a contested artifact, lie outside the
   // coverage the review is held to, which counts the tree and the verifier alone.
   const rehearsed = new Map(
@@ -611,9 +706,15 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
   const sourcePaths = new Set([
     ...inventory.files,
     ...Object.keys(verifier.tools),
-    ...contested.keys(),
+    ...contested,
     ...rehearsed.keys(),
   ]);
+  const unread = unreadSourcePrompt(state, sourcePaths);
+  // The tool tree is readable beside the source and outside it: not in the coverage the review is
+  // held to, and not among the pages the unread prompt resumes the reader for, so the automatic
+  // scan reads none of it: every tree file is read by name.
+  const toolchain = toolchainReach(root, verifier.tools);
+  const readable = new Set(sourcePaths);
   // The task ids a finding may not name, since a finding is about a family and a claim pinned to
   // one task cannot direct an authoring pass. A measured battery supplies them; at an authoring
   // checkpoint they come from the draft's own task file, and a partial draft still gets a reading.
@@ -627,53 +728,57 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
       inventory.missing.push(TASKS_FILE);
     }
   }
-  // The reader rethrows a provider-budget stop, so the probe lifetime has to settle in `finally`
-  // rather than after the turn. `failed` carries that fact into `closeVerifierLifetime`, which
-  // swallows an unsettled-children error when a primary failure is already propagating and throws
-  // it when there is none, so a cleanup failure is suppressed only behind a failure already on its
-  // way up.
-  let failed = false;
-  let turn: ReaderTurn;
+  // The reader rethrows a provider-budget stop, and the probe cleanup throws when a verifier child is
+  // left unsettled after a clean turn; either is held until the review is recorded. A cleanup failure
+  // behind a failure already on its way up is swallowed by `closeVerifierLifetime`.
+  let turn: ReaderTurn = { pin: reviewSlotPin(input.review), text: "", error: null };
+  let thrown: { cause: unknown } | null = null;
   try {
     turn = await (input.readerTurn ?? runReaderTurn)({
       review: input.review,
       repoRoot: input.repoRoot,
       role: "epoch-reviewer",
       tools: [
-        readSourceTool(root, sourcePaths, state, verifier.tools, rehearsed),
+        readSourceTool(root, readable, state, verifier.tools, namedTexts(rehearsed, toolchain)),
         probe.tool,
         recordFindingTool(
           issues,
           taskIds,
           join("campaigns", input.slug, "analysis", `${input.runId}-epoch-review.json`),
           state,
-          {
-            identities: briefIdentities(root),
-            recurring:
-              evidence.condition === null ? new Map() : recurringDefects(analysisDir, evidence.condition),
-          },
+          { identities, cases: settlementCases(input) },
         ),
       ],
-      continuePrompt: unreadSourcePrompt(state, sourcePaths),
+      continuePrompt: unread,
       systemPrompt: EPOCH_REVIEW_PROMPT,
-      prompt: orientation(input, inventory, verifier, issues),
+      prompt: [
+        orientation(input, inventory, verifier, issues, { ...measured, declared: identities.checkIds }),
+        ...toolchainLines(toolchain),
+      ].join("\n"),
       ...keyIfDefined("observer", input.observer),
       ...keyIfDefined("providerBudget", input.providerBudget),
     });
   } catch (cause) {
-    failed = true;
-    throw cause;
-  } finally {
-    await probe.close(failed);
+    thrown = { cause };
   }
-  const contestedReads = [...contested].flatMap(([path, artifact]) =>
-    state.reads.includes(path) ? [artifact] : [],
-  );
-  return recordedReview(
-    { ...evidence, contestedReads },
-    turn,
+  try {
+    await probe.close(thrown !== null);
+  } catch (cause) {
+    thrown ??= { cause };
+  }
+  const failure =
+    thrown === null ? null : boundText(`epoch-reviewer: ${errorMessage(thrown.cause)}`, 300).shown;
+  const recorded = recordedReview(
+    evidence,
+    { ...turn, failure },
     state,
     reviewCoverage(inventory, verifier, state),
     verifier,
   );
+  const written = recordEpochReview(input.repoRoot, {
+    ...recorded,
+    ...advisoryRecord(recorded, earlierAdvisory(input, analysisDir)),
+  });
+  if (thrown !== null) throw thrown.cause;
+  return written;
 }

@@ -2,10 +2,10 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 import { evaluateCheckProgram } from "../vendor/correctness-model-bundle/evaluate.ts";
-import type { CheckFn } from "../src/truth/correctness-model-contract.ts";
-import { runControls } from "../src/truth/run-controls.ts";
-import { applicableTruthChecks } from "../src/truth/brief.ts";
-import { checkReceiptSet } from "../src/truth/control-receipts.ts";
+import type { CheckFn } from "../src/correctness-bundle/correctness-model-contract.ts";
+import { runControls } from "../src/correctness-bundle/run-controls.ts";
+import { applicableTruthChecks } from "../src/correctness-bundle/brief.ts";
+import { checkReceiptSet } from "../src/correctness-bundle/control-receipts.ts";
 import { VerifierOperationalStop, type VerifierLifetime } from "../src/verify/verifier-lifetime.ts";
 import {
   MATCHING_BRIEF,
@@ -83,6 +83,13 @@ test("cleanup pending keeps the completed control and stops without executing la
   expect(result.findings.some((row) => row.message.includes("cleanup is pending"))).toBe(true);
 });
 
+// One reject names parts-assigned alone, so a brief holding only that check leaves R2's
+// every-check-rejects half with nothing to refuse, and the cases read attribution alone.
+const PARTS_ONLY = {
+  ...MATCHING_BRIEF,
+  truthChecks: MATCHING_BRIEF.truthChecks.filter((check) => check.id === "parts-assigned"),
+};
+
 test("a live cascading rejection that includes the declared check is attributed; one that misses it is not", async () => {
   const cascade = await runControls(
     () => ({
@@ -95,7 +102,7 @@ test("a live cascading rejection that includes the declared check is attributed;
     }),
     { accept: [], reject: [MATCHING_REJECTS[0]!] },
     MATCHING_TASKS,
-    { brief: MATCHING_BRIEF },
+    { brief: PARTS_ONLY },
   );
   expect(cascade.rejectsFailed).toBe(1);
   expect(cascade.rejectsAttributed).toBe(1);
@@ -110,7 +117,7 @@ test("a live cascading rejection that includes the declared check is attributed;
     }),
     { accept: [], reject: [MATCHING_REJECTS[0]!] },
     MATCHING_TASKS,
-    { brief: MATCHING_BRIEF },
+    { brief: PARTS_ONLY },
   );
   expect(alone.rejectsAttributed).toBe(1);
   expect(alone.findings).toEqual([]);
@@ -126,8 +133,7 @@ test("a live cascading rejection that includes the declared check is attributed;
   );
   expect(elsewhere.rejectsFailed).toBe(1);
   expect(elsewhere.rejectsAttributed).toBe(0);
-  // Gate audit 2026-09-25 (docs/gate-audit.md, reject-discrimination): commented out (unsure): a reject control that passes its named check no longer refuses the candidate or the claim
-  // expect(elsewhere.findings.some((row) => row.code === "DISCRIMINATION_REJECT_PASSED")).toBe(true);
+  expect(elsewhere.findings.map((row) => row.code)).toContain("DISCRIMINATION_REJECT_PASSED");
 });
 
 test("controls run in lanes and still settle in corpus order", async () => {

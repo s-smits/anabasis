@@ -5,9 +5,9 @@ import { createGeneratedToolStarter } from "../src/solve/generated-tool-worker.t
 import { compilePublicArtifactSchema } from "../src/solve/public-artifact-schema.ts";
 import { createSubmissionAuthority, submissionPortOf } from "../src/solve/final-submission.ts";
 import { WRITER_BINDING_SENTENCE, readMargins, renderMargins } from "../src/solve/published-margin.ts";
-import { publishedMargins } from "../src/truth/numeric-boundary.ts";
-import { validateBrief } from "../src/truth/brief-validator.ts";
-import type { Brief } from "../src/truth/brief.ts";
+import { publishedMargins } from "../src/correctness-bundle/numeric-boundary.ts";
+import { validateBrief } from "../src/correctness-bundle/brief-validator.ts";
+import type { Brief } from "../src/correctness-bundle/brief.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 
 const MARGINS = [
@@ -87,13 +87,37 @@ describe("published margins", () => {
 
   // An unreadable operand is unknown, not a breach: the verifier owns correctness and a missing
   // number must not read as a failure the solver then chases.
-  it("reads a missing or non-numeric operand as unchecked", () => {
-    const readings = readMargins(MARGINS, "wide", { limits: {} }, { report: { massKg: "heavy", spanM: 14 } });
+  it("reads a missing operand as unchecked", () => {
+    const readings = readMargins(MARGINS, "wide", { limits: {} }, { report: { spanM: 14 } });
     expect(readings.every(({ breached, slack }) => !breached && slack === null)).toBe(true);
     const table = renderMargins(readings);
     expect(table).toContain("massBudgetKg: not checked — your answer reports nothing at $.report.massKg.");
     expect(table).toContain("spanMinM: not checked — this task states no limit.");
     expect(table).not.toContain("not yet sendable");
+  });
+
+  // A limit on a value computed from the answer, mass from members and sections, is declared against
+  // the structure it is computed from. That path is present and holds no number, which is a
+  // different fact from an answer that states nothing there, and the host-only limit margin counts
+  // the two apart.
+  it("marks a path that reaches a structure rather than a number as derived, and an absent or null one as not", () => {
+    const at = (artifactPath: string) => [{ ...MARGINS[0]!, artifactPath }];
+    const answer = { report: { massKg: 2100, design: { members: [{ area: 0.002 }] }, note: null } };
+    const derived = (artifactPath: string) =>
+      readMargins(at(artifactPath), "wide", TASK, answer).map((reading) => reading.derived);
+    expect(derived("$.report.design")).toEqual([true]);
+    expect(derived("$.report.massKg")).toEqual([false]);
+    expect(derived("$.report.absent")).toEqual([false]);
+    expect(derived("$.report.note")).toEqual([false]);
+    // The solver reads the same fact: the path is there, and it holds nothing this table can compare.
+    const table = renderMargins(readMargins(at("$.report.design"), "wide", TASK, answer));
+    expect(table).toContain(
+      "massBudgetKg: not checked — the value at $.report.design in your answer is not a number, so this limit is not read against it.",
+    );
+    // A string where a number belongs is the same fact, and still no breach.
+    const heavy = readMargins(at("$.report.massKg"), "wide", TASK, { report: { massKg: "heavy" } });
+    expect(heavy.map((reading) => [reading.derived, reading.breached])).toEqual([[true, false]]);
+    expect(renderMargins(heavy)).toContain("the value at $.report.massKg in your answer is not a number");
   });
 
   it("states the host binding without a count, so one registration serves every family", () => {

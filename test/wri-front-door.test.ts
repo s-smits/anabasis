@@ -8,16 +8,22 @@ import {
   buildOverview,
   digestTriggers,
   readOverview,
-} from "../.claude/skills/whole-run-investigation/scripts/run-overview.mjs";
+} from "../.claude/skills/whole-run-investigation/scripts/run-overview.ts";
 import {
   buildSharedInstructions,
   renderSharedInstructions,
-} from "../.claude/skills/whole-run-investigation/scripts/shared-instructions.mjs";
-import { scaffoldArchive } from "../.claude/skills/whole-run-investigation/scripts/archive-scaffold.mjs";
-import { LANES, renderLanes, selectLanes } from "../.claude/skills/whole-run-investigation/scripts/wri.mjs";
-import { ANGLE_COUNT } from "../.claude/skills/whole-run-investigation/scripts/catalogue-shape.mjs";
-import { ARCHIVE_SCHEMA } from "../.claude/skills/whole-run-investigation/scripts/archive-shape.mjs";
-import { required } from "./helpers/doubles.ts";
+} from "../.claude/skills/whole-run-investigation/scripts/shared-instructions.ts";
+import { scaffoldArchive } from "../.claude/skills/whole-run-investigation/scripts/archive-scaffold.ts";
+import {
+  LANES,
+  type Lane,
+  type LaneContext,
+  renderLanes,
+  selectLanes,
+} from "../.claude/skills/whole-run-investigation/scripts/wri.ts";
+import { ANGLE_COUNT } from "../.claude/skills/whole-run-investigation/scripts/catalogue-shape.ts";
+import { ARCHIVE_SCHEMA } from "../.claude/skills/whole-run-investigation/scripts/archive-shape.ts";
+import { double, required } from "./helpers/doubles.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 
 const repoRoot = resolve(import.meta.dirname, "..");
@@ -247,7 +253,7 @@ function reviewFixture(): string {
     join(output, "launch.json"),
     json({
       type: "luna_sessions.launch",
-      model: "gpt-5.6-luna",
+      model: "gpt-6-luna",
       reasoningEffort: "max",
       sessions: [{ name: "lane_05", promptSha256: "c".repeat(64) }],
     }),
@@ -348,7 +354,7 @@ describe("archive scaffold", () => {
     expect(built.schema).toBe(ARCHIVE_SCHEMA);
     expect(built.identity).toMatchObject({ runId: RUN, sourceRevision: COMMIT, bundle: "bundle-1" });
     expect(built.terminalAccounting.denominator).toMatchObject({ total: 75, nonResult: 3 });
-    // The states are the ones validate-archive.mjs accepts: not-triggered/unknown, and never the status names.
+    // The states are the ones validate-archive.ts accepts: not-triggered/unknown, and never the status names.
     expect(
       built.predictions.map((row) => [
         row.id,
@@ -382,6 +388,45 @@ describe("archive scaffold", () => {
     expect(built.safeguardCensus.ids).toEqual(["99-test-sensor"]);
     expect(built.lifecycle.stage).toBe("terminal");
     expect(built.terminalAccounting).toMatchObject({ completedRounds: 3, counts: { controller: 3 } });
+  });
+
+  it("scaffolds a lane a native Claude subagent reported beside the Luna lanes", () => {
+    const review = reviewFixture();
+    const lanes = join(review, "lanes");
+    const tasks = parseJsonAs<JsonValue[]>(readFileSync(join(lanes, "tasks.json"), "utf8"));
+    tasks.push({
+      name: "lane_06",
+      task: "assignedSession: lane_06\nassignedLanes: 06\nexpectedHeading: ## lane_06\n",
+      admission: { schema: "wri-progressive-admission/v2", mode: "targeted" },
+    });
+    writeFileSync(join(lanes, "tasks.json"), json(tasks));
+    mkdirSync(join(lanes, "prompts"), { recursive: true });
+    writeFileSync(join(lanes, "prompts", "lane_06.md"), "the composed native prompt\n");
+    mkdirSync(join(lanes, "native-output"), { recursive: true });
+    writeFileSync(join(lanes, "native-output", "lane_06.md"), "## lane_06\n\n### Findings\n\nnone\n");
+
+    const first = scaffoldArchive(review);
+    const luna = readFileSync(join(first.archiveDir, "luna_syntheses.md"), "utf8");
+    expect(luna).toContain("| lane_06 | 06 | completed | - | - |");
+    expect(luna).toContain("## lane_06\n\n### Findings\n\nnone");
+    expect(luna).toContain(`Native reports: \`${join(lanes, "native-output")}\` (lane_06).`);
+    type Session = {
+      id: string;
+      state: string;
+      transport: string;
+      model: string | null;
+      promptSha256: string;
+    };
+    const sessions = parseJsonAs<{ sessionStates: Session[] }>(
+      readFileSync(join(first.archiveDir, "review.json"), "utf8"),
+    ).sessionStates;
+    expect(sessions.map((row) => [row.id, row.state, row.transport, row.model])).toEqual([
+      ["lane_05", "complete", "luna-sessions", "gpt-6-luna"],
+      ["lane_06", "complete", "native", null],
+    ]);
+    expect(sessions[1]?.promptSha256).toBe(
+      new Bun.CryptoHasher("sha256").update("the composed native prompt\n").digest("hex"),
+    );
   });
 
   // controller-denominator.ts records a case record it could not read as `invalid`. The scaffold
@@ -461,18 +506,12 @@ describe("archive scaffold", () => {
 });
 
 describe("deterministic lane catalogue", () => {
-  interface Lane {
-    name: string;
-    label: string;
-    collect?: boolean;
-    needs?: (context: { campaign: string }) => string | null;
-  }
-  const lanes: Lane[] = LANES;
+  const lanes: readonly Lane[] = LANES;
   const args = (values: Record<string, string>, flags: string[] = []) => ({
     flag: (name: string) => flags.includes(name),
     value: (name: string, fallback: string | null = null) => values[name] ?? fallback,
   });
-  const select = (values: Record<string, string>, flags: string[] = []): Lane[] | null =>
+  const select = (values: Record<string, string>, flags: string[] = []): readonly Lane[] | null =>
     selectLanes(args(values, flags));
 
   it("gives every lane a unique name and a label of at most three words", () => {
@@ -500,9 +539,9 @@ describe("deterministic lane catalogue", () => {
   it("skips the climb lane until the campaign has adopted a version", () => {
     const campaign = scratchDir("wri-climb-");
     const climb = lanes.find((lane) => lane.name === "climb");
-    expect(climb?.needs?.({ campaign })).toBe("no adopted version, so no battery yet");
+    expect(climb?.needs?.(double<LaneContext>({ campaign }))).toBe("no adopted version, so no battery yet");
     mkdirSync(join(campaign, "versions"));
-    expect(climb?.needs?.({ campaign })).toBeNull();
+    expect(climb?.needs?.(double<LaneContext>({ campaign }))).toBeNull();
   });
 
   it("prints one row per lane under its rank and marks exactly the lanes collect also runs", () => {

@@ -294,6 +294,32 @@ describe("composition: a probe certifies only its own family's session", () => {
     },
   );
 
+  it("gives a preflight that missed its ready wall one fresh start before it refuses", async () => {
+    const policy = builtSolveIsolation(repoRoot);
+    const profile = {
+      provider: "anthropic",
+      transport: "claude",
+      model: "claude-opus-5",
+      thinkingLevel: "medium",
+    } as const;
+    const auth = async () => ({ type: "bearer", token: "fake-pi-built-test-token" }) as const;
+    let starts = 0;
+    const recovering = {
+      profile,
+      auth,
+      policy,
+      get readyWallMs() {
+        starts += 1;
+        return starts === 1 ? 1 : 30_000;
+      },
+    };
+    expect((await preflightPiBuilt(recovering)).confinedPid).toBeGreaterThan(0);
+    expect(starts).toBe(2);
+    await expect(preflightPiBuilt({ profile, auth, policy, readyWallMs: 1 })).rejects.toThrow(
+      EnvironmentRefusal,
+    );
+  });
+
   it("refuses host isolation without evidence of a separate confined process", () => {
     // A library-style agent loop (pi-agent-core, @opencode-ai/sdk-next) runs the model's tools in
     // the controller's own process, so there is no second pid to witness. Whatever the probe

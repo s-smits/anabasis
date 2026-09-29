@@ -1,17 +1,19 @@
 /**
- * One reading per recorded battery, and every rendering reads that same one. The reading is where a
- * battery's sample, its placement on the band and its declared target are settled, so most of what
- * is pinned below is what must not be settled quietly: a battery refused whole is placed nowhere
- * instead of as too hard, a repeated failing core is stated beside its zone rather than instead of it, a claim-refused battery stays in the table with its refusal
- * and counts inside the allowance, and every non-result counts in the prediction's favour before a
- * target is called missed.
+ * One reading per recorded battery, and every rendering reads that same one. The controller settles
+ * each battery's sample and its placement on the band, so what is pinned below is first what must
+ * not be settled quietly: a battery refused whole is placed nowhere instead of as too hard, a
+ * repeated failing core stays a recorded fact beside its zone, and a claim-refused battery keeps a
+ * row carrying its refusal.
  *
- * The rendering half is bounded rather than open-ended. It drops whole older rows and then the
- * family line to stay under its character ceiling, and says that it did; it leaves no placeholder
- * unfilled in any sentence it sends; and nothing protected reaches the text, so changing the failed
- * task ids changes nothing the Builder can read.
+ * The author reads measured facts and no placement: per battery the verified, unaccepted and
+ * non-result counts kept apart, the solves regraded from an earlier battery apart from the fresh
+ * ones, and the product, task-set and scoring identities that say whether two batteries share a
+ * condition. No count to author towards reaches it at any size. What it is told about a limit is a
+ * necessary condition and never a sufficient one: a battery that passes some but not all of its
+ * cases can locate a limit only where the checks that failed it are right, since a checker that
+ * refuses a valid answer produces the same partial count. Nothing protected reaches the text, so
+ * changing the failed task ids changes nothing the Builder can read.
  */
-import { PLAN_FIELDS } from "./helpers/experiment-plan.ts";
 import { describe, expect, it } from "bun:test";
 import type {
   AdmittedClimbRow,
@@ -21,24 +23,20 @@ import type {
   FamilyEffort,
 } from "../src/run/climb-history.ts";
 import {
-  CLIMB_READOUT_MAX_CHARS,
   type ClimbReadout,
   climbReadout,
   readoutHistoryDocuments,
   renderBatteryContract,
   renderReadout,
 } from "../src/run/climb-readout.ts";
-import { FRAME, FRAME_REVISION, fill } from "../src/run/climb-readout-frame.ts";
-import type { ExperimentAuthoring } from "../src/run/experiment-freeze.ts";
+import { EXPERIMENT_AUTHORING_SCHEMA, type ExperimentAuthoring } from "../src/run/experiment-freeze.ts";
 import { capturedJsonParse } from "../src/meta/json-runtime.ts";
 import { isRecord } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { required } from "./helpers/doubles.ts";
-import { STARTER_LADDER } from "./helpers/starter-contracts.ts";
 
 const BAND: [number, number] = [0.2, 0.5];
 const DOMAIN = "/nonexistent-domain";
-const UNFILLED = /\{[A-Za-z]+\}/;
 
 type Spec = {
   passed: number;
@@ -49,27 +47,26 @@ type Spec = {
   changed?: { attempts: number; passes: number };
   families?: Array<{ item: string; attempts: number; passes: number }>;
   product?: string | null;
+  scoring?: string | null;
+  regrade?: { of: string; reused: number };
   refused?: string;
-  target?: { comparator: "at-least" | "at-most"; verifiedPasses: number };
   failed?: string[];
-  gap?: string;
+  /** Recorded as a task probe. */
+  probe?: true;
   effort?: ClimbEffort;
   familyEffort?: FamilyEffort[];
-  calibration?: AdmittedClimbRow["authoring"]["calibration"];
+  wall?: number;
+  wallBound?: number;
 };
 
-function authoring(target: NonNullable<Spec["target"]>, gap: string): ExperimentAuthoring {
-  const proposal: ExperimentAuthoring["proposal"] = {
-    scope: "tasks",
-    gap,
-    change: "harder spans",
-    ...PLAN_FIELDS,
-    expectedResult: "fewer passes",
-    digest: "d",
-    target,
-  };
+/** The exclusion reason `admitBattery` records for a refused claim. It opens with its own "claim
+ *  refused", so the battery line must not say it twice. */
+const REFUSED =
+  "claim refused: verifier environment unbound — a battery that created no claim is not climb evidence";
+
+function authoring(): ExperimentAuthoring {
   return {
-    proposal,
+    schema: EXPERIMENT_AUTHORING_SCHEMA,
     operation: { operation: "task-probe", moved: ["tasks"] },
     baseline: { agentHash: "agent", correctnessModelHash: "model", taskSetHash: "tasks" },
     actual: "climb",
@@ -96,25 +93,21 @@ function row(runId: string, index: number, spec: Spec): AdmittedClimbRow {
   };
   const recorded: AdmittedClimbRow["authoring"] = {
     taskSetHash: "tasks",
+    scoringHash: spec.scoring === undefined ? "scoring-a" : spec.scoring,
+    regrade: spec.regrade ?? null,
     caseIds: Array.from({ length: slots }, (_, i) => `task-${String(i)}`),
     familySummary: (spec.families ?? []).map((family) => ({
       family: family.item,
       attempts: family.attempts,
       passes: family.passes,
-      wilson: [0, 1],
     })),
     effort: spec.effort ?? null,
     familyEffort: spec.familyEffort ?? [],
-    calibration: spec.calibration ?? null,
     passedTaskIds: [],
-    solveWallMinutes: 120,
+    solveWallMinutes: spec.wall ?? 120,
+    wallBound: spec.wallBound ?? 0,
   };
-  if (spec.target !== undefined || spec.gap !== undefined) {
-    recorded.experimentAuthoring = authoring(
-      spec.target ?? { comparator: "at-least", verifiedPasses: 0 },
-      spec.gap ?? "the limit is unmeasured",
-    );
-  }
+  if (spec.probe === true) recorded.experimentAuthoring = authoring();
   return {
     createdAt: `2026-09-21T${String(10 + index)}:00:00Z`,
     condition: { backendPin: "pin", thresholdManifestDigest: "digest-a", variant: "shipping" },
@@ -137,8 +130,11 @@ function historyOf(...rows: AdmittedClimbRow[]): ClimbBatteriesRead {
   };
 }
 
-const readoutOf = (...rows: AdmittedClimbRow[]) => climbReadout(historyOf(...rows), BAND, () => null);
+const readoutOf = (...rows: AdmittedClimbRow[]) => climbReadout(historyOf(...rows), BAND);
 const render = (readout: ClimbReadout) => renderReadout(readout, "choose the next experiment");
+/** The rendered line of one battery, or "absent". */
+const lineOf = (text: string, runId: string) =>
+  text.split("\n").find((line) => line.startsWith(`- ${runId} `)) ?? "absent";
 /** One history document's text: the overview, or one battery's public tasks; "absent" when the
  *  source holds no such document. */
 const history = (readout: ClimbReadout, rows: AdmittedClimbRow[], runId = "overview") => {
@@ -153,30 +149,24 @@ const historyBody = (readout: ClimbReadout, rows: AdmittedClimbRow[]) => {
 };
 
 describe("one reading per battery", () => {
-  it("reads a changed subset over its own sample in the table, the reading and the history", () => {
-    // 20 retained tasks passed and the 5 changed ones failed: the subset decides, never 20 of 25.
-    const subset = row("r1", 0, {
-      passed: 20,
-      n: 25,
-      changed: { attempts: 5, passes: 0 },
-      target: { comparator: "at-most", verifiedPasses: 4 },
-    });
+  it("states a changed subset's own sample beside the whole battery, and keeps the zone for the controller", () => {
+    const subset = row("r1", 0, { passed: 20, n: 25, changed: { attempts: 5, passes: 0 } });
     const readout = readoutOf(subset);
-    const text = render(readout);
-    expect(text).toContain("| 0/5 changed-subset | under-aim | +1 | 1–2 |");
-    expect(text).toContain("Reading: the deciding sample (changed-subset) passed 0 of 5");
-    expect(text).not.toContain("passed 20 of 25");
-    // The target is read over the whole battery's slots, which is what the author predicted.
-    expect(text).toContain("at-most 4: missed by 16");
-    const { rows } = historyBody(readout, [subset]);
-    const [first] = Array.isArray(rows) ? rows : [];
-    expect(first).toMatchObject({
+    // The controller still places the battery over the subset, never over 20 of 25.
+    expect(readout.rows[0]).toMatchObject({
       deciding: { population: "changed-subset", passes: 0, n: 5 },
       zone: "under-aim",
     });
+    expect(lineOf(render(readout), "r1")).toBe(
+      "- r1 (P1, T1, S1): 20 passed of 25 verified, 0 unaccepted, 0 non-results; the changed tasks passed 0 of 5 attempts.",
+    );
+    const { rows } = historyBody(readout, [subset]);
+    const [first] = Array.isArray(rows) ? rows : [];
+    expect(first).toMatchObject({ deciding: { population: "changed-subset", passes: 0, n: 5 } });
+    expect(first).not.toHaveProperty("zone");
   });
 
-  it("places a battery refused whole nowhere instead of placing it too hard", () => {
+  it("places a battery refused whole nowhere, and states that none of it was verified", () => {
     const readout = readoutOf(
       row("r1", 0, { passed: 3, n: 10 }),
       row("r2", 1, { passed: 0, n: 25, unaccepted: 25 }),
@@ -185,15 +175,13 @@ describe("one reading per battery", () => {
       ["r2", null],
       ["r1", "on-aim"],
     ]);
-    const text = render(readout);
-    expect(text).toContain("| unplaced |");
-    expect(text).not.toContain("| too-hard |");
-    expect(text).toContain("Reading: all 25 attempts were refused at submission admission");
-    // An unplaced round ends the allowance's run of misses.
-    expect(readout.allowance).toBeNull();
+    expect(readout.decision.refused).toBe(25);
+    expect(lineOf(render(readout), "r2")).toBe(
+      "- r2 (P1, T1, S1): 0 passed of 0 verified, 25 unaccepted, 0 non-results.",
+    );
   });
 
-  it("states a repeated failing core beside the zone, and counts the round in the streak", () => {
+  it("keeps a repeated failing core as a fact beside the zone, and never names its tasks", () => {
     const failed = ["core-a", "core-b"];
     const readout = readoutOf(
       row("r1", 0, { passed: 8, n: 10, failed }),
@@ -203,25 +191,17 @@ describe("one reading per battery", () => {
       placement: { zone: "over-aim" },
       repeated: { cases: 2, scores: ["8/10", "8/10"] },
     });
-    const text = render(readout);
-    expect(text).toContain("| over-aim |");
-    expect(text).toContain(
-      "The same 2 cases failed in both of the last two batteries of one recorded task set (8/10 then 8/10).",
-    );
-    // The reading points above the aim, so the repeat carries the below-the-aim pointer itself.
-    expect(text).toContain(FRAME.readout.belowLadder);
-    expect(text).not.toContain("core-a");
-    expect(readout.allowance).toMatchObject({ rounds: 2, placed: 2, side: "above" });
+    expect(render(readout)).not.toContain("core-a");
   });
 
-  it("keeps a claim-refused battery in the table with its refusal, and counts it inside the allowance", () => {
+  it("keeps a claim-refused battery as a row carrying its refusal", () => {
     const rows = [
       row("r1", 0, { passed: 25, n: 25 }),
       row("r2", 1, {
         passed: 9,
         n: 10,
-        refused: "verifier environment unbound",
-        target: { comparator: "at-most", verifiedPasses: 4 },
+        refused: REFUSED,
+        probe: true,
         effort: { cases: 10, turns: 4, minutes: 9, toolCalls: 40 },
       }),
       row("r3", 2, { passed: 11, n: 11, families: [{ item: "beams", attempts: 11, passes: 11 }] }),
@@ -237,37 +217,25 @@ describe("one reading per battery", () => {
       zone: null,
       families: null,
       effort: null,
-      claimRefusal: "verifier environment unbound",
-      target: { comparator: "at-most", verifiedPasses: 4, result: "unadmitted" },
-    });
-    expect(readout.allowance).toEqual({
-      rounds: 3,
-      placed: 2,
-      refused: 1,
-      side: "above",
-      products: 1,
-      sameSchema: 0,
+      claimRefusal: REFUSED,
     });
     const text = render(readout);
-    expect(text).toContain("| claim refused: verifier environment unbound |");
-    expect(text).toContain("Off-aim streak: 3 consecutive rounds have ended above the aim");
-    expect(text).toContain(
-      "Families of the latest admitted battery (passes of attempts, Wilson interval): beams 11/11",
+    expect(text).toContain("Families of the latest admitted battery (passes of attempts): beams 11/11.");
+    expect(lineOf(text, "r3")).toBe(
+      "- r3 (P1, T1, S1): 11 passed of 11 verified, 0 unaccepted, 0 non-results.",
     );
-    // The round states the allowance once. A session whose opening turn compaction cut reads the
-    // same counts back here, because the rows cannot reconstruct them: this one spans two
-    // placements and a refused claim.
-    expect(historyBody(readout, rows).allowance).toEqual(readout.allowance);
+    expect(lineOf(text, "r2")).toBe(
+      `- r2 (P1, T1, S1, task-probe): ${REFUSED}; 10 verified, 0 unaccepted, 0 non-results.`,
+    );
+    expect(text).not.toContain("claim refused: claim refused");
     // A refused claim's passes are not evidence, so changing only them changes nothing sent.
-    expect(text).toContain("| r3 | P1 | T1 | — | 11 | 11 | 0 | 0 | 11/11 whole-battery | too-easy |");
-    expect(text).toContain("| r2 | P1 | T1 | task-probe | — | 10 | 0 | 0 | — | claim refused:");
     const other = [...rows];
     other[1] = row("r2", 1, {
       passed: 2,
       n: 10,
       changed: { attempts: 5, passes: 1 },
-      refused: "verifier environment unbound",
-      target: { comparator: "at-most", verifiedPasses: 4 },
+      refused: REFUSED,
+      probe: true,
     });
     const otherReadout = readoutOf(...other);
     expect(render(otherReadout)).toBe(text);
@@ -275,28 +243,56 @@ describe("one reading per battery", () => {
   });
 });
 
-describe("the declared target", () => {
-  const read = (target: NonNullable<Spec["target"]>) =>
-    readoutOf(row("r1", 0, { passed: 4, n: 8, slots: 10, target })).rows[0]?.target;
-
-  // Four of eight verified passed and two slots ended as non-results: either could have passed, so
-  // each counts in the prediction's favour before it is called missed.
-  it.each<["at-least" | "at-most", number, Partial<NonNullable<ReturnType<typeof read>>>]>([
-    ["at-least", 5, { result: "undetermined" }],
-    ["at-least", 7, { result: "missed", missedBy: 1 }],
-    ["at-least", 4, { result: "met" }],
-    ["at-most", 5, { result: "undetermined" }],
-    ["at-most", 6, { result: "met" }],
-    ["at-most", 3, { result: "missed", missedBy: 1 }],
-  ])("reads %s %s over 4 of 8 verified in 10 slots", (comparator, verifiedPasses, result) => {
-    expect(read({ comparator, verifiedPasses })).toMatchObject(result);
+describe("the measured facts the author reads", () => {
+  it("keeps six verified fails, six unaccepted attempts and six non-results apart", () => {
+    const lines = [
+      { passed: 0, n: 6 },
+      { passed: 0, n: 6, unaccepted: 6 },
+      { passed: 0, n: 6, unaccepted: 6, wallBound: 4 },
+      { passed: 0, n: 0, slots: 6 },
+    ].map((spec) => lineOf(render(readoutOf(row("r1", 0, spec))), "r1"));
+    expect(lines).toEqual([
+      "- r1 (P1, T1, S1): 0 passed of 6 verified, 0 unaccepted, 0 non-results.",
+      "- r1 (P1, T1, S1): 0 passed of 0 verified, 6 unaccepted, 0 non-results.",
+      "- r1 (P1, T1, S1): 0 passed of 0 verified, 6 unaccepted (4 ran to the 120-minute solve wall), 0 non-results.",
+      "- r1 (P1, T1, S1): 0 passed of 0 verified, 0 unaccepted, 6 non-results.",
+    ]);
   });
 
-  it("says when the target itself lies outside the aim", () => {
+  it("tells solves regraded from an earlier battery apart from fresh ones", () => {
     const text = render(
-      readoutOf(row("r1", 0, { passed: 4, n: 25, target: { comparator: "at-least", verifiedPasses: 20 } })),
+      readoutOf(
+        row("r1", 0, { passed: 6, n: 6 }),
+        row("r2", 1, { passed: 7, n: 7, regrade: { of: "r1", reused: 6 } }),
+      ),
     );
-    expect(text).toContain("That target, 20, lies above the aim of 5 to 12 of 25");
+    expect(lineOf(text, "r2")).toBe(
+      "- r2 (P1, T1, S1): 7 passed of 7 verified, 0 unaccepted, 0 non-results; 6 regraded from r1's recorded solves, 1 not regraded.",
+    );
+    expect(lineOf(text, "r1")).toBe(
+      "- r1 (P1, T1, S1): 6 passed of 6 verified, 0 unaccepted, 0 non-results.",
+    );
+  });
+
+  it("aliases the scoring program, so a changed evaluator reads as a changed condition", () => {
+    const text = render(
+      readoutOf(row("r1", 0, { passed: 3, n: 6 }), row("r2", 1, { passed: 5, n: 6, scoring: "scoring-b" })),
+    );
+    expect(lineOf(text, "r2")).toStartWith("- r2 (P1, T1, S2): ");
+    expect(lineOf(text, "r1")).toStartWith("- r1 (P1, T1, S1): ");
+  });
+
+  it("states no zone, aim or interval, whichever side of the band a battery reads", () => {
+    for (const passed of [0, 2, 5]) {
+      const rows = [
+        row("r1", 0, { passed, n: 5, families: [{ item: "beams", attempts: 5, passes: passed }] }),
+      ];
+      const readout = readoutOf(...rows);
+      const text = [render(readout), history(readout, rows)].join("\n");
+      expect(text).not.toMatch(
+        /too-easy|too-hard|under-aim|on-aim|over-aim|Wilson|wilson|"aim"|toAim|Reading:/,
+      );
+    }
   });
 });
 
@@ -307,98 +303,34 @@ describe("rendering", () => {
     );
   });
 
-  it("drops whole older rows and then the family line to stay under its ceiling, and says so", () => {
-    const families = Array.from({ length: 600 }, (_, i) => ({
-      item: `family-${"x".repeat(30)}-${String(i)}`,
-      attempts: 2,
-      passes: 1,
-    }));
-    const rows = Array.from({ length: 5 }, (_, i) => row(`r${String(i)}`, i, { passed: 3, n: 10, families }));
+  it("shows the newest three rows whole and counts the rest", () => {
+    const rows = Array.from({ length: 5 }, (_, i) => row(`r${String(i)}`, i, { passed: 3, n: 10 }));
     const text = render(readoutOf(...rows));
-    expect(text.length).toBeLessThanOrEqual(CLIMB_READOUT_MAX_CHARS);
-    expect(text).toContain("4 older row(s) are not shown here.");
-    expect(text).not.toContain("Families of the latest admitted battery");
-    // Whole rows only: every table line is complete.
-    const lines = text.split("\n").filter((line) => line.startsWith("|"));
-    expect(lines).toHaveLength(3);
-    for (const line of lines) expect(line.endsWith("|")).toBe(true);
-    expect(text).toContain("| r4 |");
+    expect(text).toContain("2 older rows are not shown here.");
+    const lines = text.split("\n").filter((line) => /^- r\d/.test(line));
+    expect(lines.map((line) => line.split(" ")[1])).toEqual(["r4", "r3", "r2"]);
+    expect(render(readoutOf(...rows.slice(0, 4)))).toContain("1 older row is not shown here.");
   });
 
-  // Each recorded fact renders when the battery carries it and not otherwise, and none reads what
-  // the solver spent as nearness to a limit, in either direction.
-  it.each<[string, Partial<Spec>, string, string]>([
-    [
-      'every row\'s spend, with a measure no case recorded as "—"',
-      { effort: { cases: 6, turns: 1, minutes: 14.8, toolCalls: null } },
-      "| 1t 14.8m —c over 6 |",
-      "m —c over",
-    ],
-    [
-      "each family's effort against the solve wall, as a fact and never as difficulty",
-      {
-        familyEffort: [
-          { family: "span", cases: 3, medianMinutes: 9, maxMinutes: 20, medianToolCalls: 14 },
-          { family: "joint", cases: 2, medianMinutes: null, maxMinutes: null, medianToolCalls: 6 },
-        ],
-      },
-      "Solve effort by family in the latest admitted battery, against its 120-minute solve wall: span 9 median and 20 most minutes, 14 median tool calls over 3 case(s); joint unrecorded median and unrecorded most minutes, 6 median tool calls over 2 case(s). Effort is what the solver spent and says nothing about difficulty",
-      "Solve effort by family",
-    ],
-    [
-      "the latest plan's predictions scored against its verdicts",
-      { calibration: { scored: 5, brier: 0.21, expected: 1.4, observed: 3 } },
-      "Predictions bound to r1: 5 scored task(s), 1.4 passes expected and 3 observed, Brier score 0.21",
-      "Predictions bound to",
-    ],
-  ])("states %s", (_name, extra, sentence, marker) => {
-    const text = render(readoutOf(row("r1", 0, { passed: 2, n: 5, ...extra })));
-    expect(text).toContain(sentence);
-    expect(text).not.toMatch(/near the wall|under a quarter|too fast|too slow/);
-    expect(render(readoutOf(row("r1", 0, { passed: 2, n: 5 })))).not.toContain(marker);
+  it("points at the latest battery's passing artifacts, and leaves the witness sentence to the contract", () => {
+    const text = render(readoutOf(row("r1", 0, { passed: 6, n: 6 })));
+    expect(text).toContain(
+      "Battery r1 passed 6 cases; each passing solve and the artifact it submitted is at traces/r1/<taskId>/artifact.",
+    );
+    // The round contract rides in the same opening prompt and already says what a witness proves.
+    expect(text).not.toContain("it proves a task feasible, never difficult");
+    expect(renderBatteryContract(6)).toContain("it proves a task feasible, never difficult");
+    expect(render(readoutOf(row("r1", 0, { passed: 0, n: 6 })))).not.toContain("traces/r1");
   });
 
-  it("says a battery passing every verified case found no limit and asks for a new move", () => {
-    const allPass = render(readoutOf(row("r1", 0, { passed: 5, n: 5 })));
-    expect(allPass).toContain(
-      "The latest battery passed every one of its 5 verified cases, so it found no limit.",
-    );
-    expect(allPass).toContain("declare it per family as a new move in EXPERIMENT.json");
-    // Named states are coverage; a re-tuned number is a move only when a witness reaches it and the
-    // solver does not, because a limit at the author's own reference is one the solver beats.
-    expect(allPass).toContain(
-      "A longer list of named states is not one; a re-tuned number is one only where a witness of yours reaches it and a rehearsal shows your solver does not.",
-    );
-    expect(render(readoutOf(row("r1", 0, { passed: 4, n: 5 })))).not.toContain("found no limit.");
-    // Refused attempts are not verified, so a battery passing every verified case is still all-pass.
-    expect(render(readoutOf(row("r1", 0, { passed: 3, n: 5, unaccepted: 2 })))).toContain(
-      "every one of its 3 verified cases",
-    );
-  });
-
-  it.each([
-    ["above", 4, "ladder"],
-    ["below", 0, "ladder"],
-    ["on", 2, "none"],
-  ] as const)(
-    "steers a battery %s the aim without calling a tuned number or an eased one no move",
-    (_side, passed, ladder) => {
-      // The readout, the continuation contract and the ladder section the readout points to, as one text.
-      const readout = readoutOf(row("r1", 0, { passed, n: 5 }));
-      const text = [
-        render(readout),
-        renderBatteryContract(5, 5, BAND, true),
-        ladder === "ladder" ? STARTER_LADDER : "",
-      ]
+  it("states no course: no streak, target, prediction, ladder or move", () => {
+    for (const passed of [0, 2, 5]) {
+      const text = [render(readoutOf(row("r1", 0, { passed, n: 5, probe: true }))), renderBatteryContract(5)]
         .join("\n")
         .replace(/\s+/g, " ");
-      expect(text).not.toMatch(/re-tuned (published )?number establishes neither/);
-      expect(text).not.toContain("does not mean loosening");
-      // Reaching the calibration target proves no capability limit.
-      expect(text).not.toMatch(/at the limit|measured a limit|where the limit is measured/);
-      if (ladder === "none") expect(text).toContain("on the calibration target.");
-    },
-  );
+      expect(text).not.toMatch(/streak|predict|ladder|new move|comparator/i);
+    }
+  });
 
   it("renders nothing protected: failed task ids never reach the text, and changing them changes nothing", () => {
     const a = row("r1", 0, { passed: 3, n: 10, failed: ["secret-alpha", "secret-beta"] });
@@ -409,64 +341,54 @@ describe("rendering", () => {
     for (const text of [render(readA), history(readA, [a])]) expect(text).not.toContain("secret-");
   });
 
-  it("leaves no placeholder unfilled in any sentence it sends", () => {
-    const rows = [
-      row("r1", 0, { passed: 25, n: 25, gap: "g" }),
-      row("r2", 1, { passed: 0, n: 5, unaccepted: 5 }),
-      row("r3", 2, {
-        passed: 9,
-        n: 10,
-        refused: "claim refused",
-        target: { comparator: "at-least", verifiedPasses: 9 },
-      }),
-      row("r4", 3, {
-        passed: 2,
-        n: 10,
-        families: [{ item: "beams", attempts: 10, passes: 2 }],
-        target: { comparator: "at-most", verifiedPasses: 3 },
-        effort: { cases: 10, turns: 4, minutes: 9, toolCalls: 40 },
-      }),
-    ];
-    const readout = readoutOf(...rows);
-    const texts = [
-      render(readout),
-      history(readout, rows),
-      renderBatteryContract(25),
-      renderBatteryContract(10, 5),
-      renderBatteryContract(25, 25, BAND, true),
-      renderBatteryContract(10, 5, [0.2, 0.95], true),
-    ];
-    for (const text of texts) expect(text).not.toMatch(UNFILLED);
-    // A target every outcome meets is no prediction, and neither is one the rehearsals contradict.
-    expect(renderBatteryContract(25, 25, BAND, true)).toContain(
-      "A target every outcome meets predicts nothing",
+  it("states what a limit needs for a battery of the round's one size, and no count at any size", () => {
+    const probe = renderBatteryContract(10, 5);
+    const one = renderBatteryContract(25);
+    expect(one).toContain(
+      "Only a battery that passes some but not all of its cases can locate a limit, an unaccepted attempt counting as a fail and a non-result as neither, and only where the checks that failed it are right; one that passes every case found none.",
     );
+    // A partial count is necessary and not sufficient, so nothing says a partial battery located one.
+    expect(one).not.toContain("locates a limit");
+    // A probe range leaves that sentence to the sizing sentence, which already says "some but not all".
+    expect(probe).not.toContain("locate a limit");
+    for (const text of [probe, one]) {
+      expect(text).not.toMatch(/\baim\b|\d+ tasks|\d+ to \d+|Calibration|band/);
+      expect(text).toContain("Every task must be valid and solved by your reference.");
+      expect(text).toContain("it proves a task feasible, never difficult");
+    }
   });
 
-  it("carries a declared band into the reading, the contract and the history", () => {
+  it("keeps a declared band in the controller's placement and out of the author's history", () => {
     const declared: [number, number] = [0.6, 0.9];
     const battery = row("r1", 0, { passed: 4, n: 5 });
-    const readout = climbReadout(historyOf(battery), declared, () => null);
+    const readout = climbReadout(historyOf(battery), declared);
     expect(readout.decision).toMatchObject({ placement: { zone: "on-aim", aim: [3, 4] } });
-    const text = render(readout);
-    expect(text).toContain("target range [0.6, 0.9], aim 3 to 4 of 5): on the calibration target.");
-    expect(renderBatteryContract(5, 5, declared, true)).toContain("Aim for 3 to 4 of 5");
-    expect(historyBody(readout, [battery]).band).toEqual(declared);
+    expect(historyBody(readout, [battery])).not.toHaveProperty("band");
   });
 
-  it("states in every contract that the solver has walls the reference does not", () => {
-    const contracts = [
-      renderBatteryContract(25),
-      renderBatteryContract(10, 5),
-      renderBatteryContract(25, 25, BAND, true),
-      renderBatteryContract(10, 5, BAND, true),
+  it("says the latest battery found no limit only when it passed every case it scored", () => {
+    expect(render(readoutOf(row("r1", 0, { passed: 6, n: 6 })))).toContain(
+      "Battery r1 passed all 6 of its verified cases, so it found no limit: the next battery has to demand more of the field's own work than this one did.",
+    );
+    expect(render(readoutOf(row("r1", 0, { passed: 1, n: 1 })))).toContain(
+      "Battery r1 passed its one verified case, so it found no limit",
+    );
+    // A non-result scored nothing, so a battery that lost cases to one asks for no harder demand.
+    const censored = render(readoutOf(row("r1", 0, { passed: 1, n: 1, slots: 6 })));
+    expect(censored).toContain(
+      "Battery r1 passed its one verified case and 5 cases ended as non-results that scored nothing, so it found no limit among the cases it scored and did not measure the rest.",
+    );
+    expect(censored).not.toContain("demand more");
+    // An unaccepted attempt is a fail, and a battery with no pass or a partial one says nothing more.
+    const silent = [
+      row("r1", 0, { passed: 5, n: 6, unaccepted: 1 }),
+      row("r1", 0, { passed: 0, n: 6 }),
+      row("r1", 0, { passed: 3, n: 6 }),
     ];
-    for (const contract of contracts) {
-      expect(contract).toContain("every .toolchain binary in its shell, under the walls agent/config.yaml");
-      expect(contract).toContain("the reference solve is held to none of them");
-      expect(contract).toContain("only if the solver cannot run that search inside its walls");
-      expect(contract).not.toContain("cannot reach");
-    }
+    for (const battery of silent) expect(render(readoutOf(battery))).not.toContain("found no limit");
+    // Only the latest battery speaks: an earlier whole pass under a later partial one says nothing.
+    const text = render(readoutOf(row("r1", 0, { passed: 6, n: 6 }), row("r2", 1, { passed: 3, n: 6 })));
+    expect(text).not.toContain("found no limit");
   });
 });
 
@@ -487,14 +409,5 @@ describe("the history page", () => {
   it("holds no document for a runId it has no history for, and says why a battery cannot be read", () => {
     expect(history(readout, rows, "r9")).toBe("absent");
     expect(history(readout, rows, "r2")).toContain("No public task of r2 can be vouched for");
-  });
-});
-
-describe("the frame", () => {
-  it("fills a sentence exactly, and refuses a missing or an unasked value", () => {
-    expect(fill("{a} of {b}", { a: 1, b: 2 })).toBe("1 of 2");
-    expect(() => fill("{a} of {b}", { a: 1 })).toThrow("{b} has no value");
-    expect(() => fill("{a}", { a: 1, c: 3 })).toThrow("no {c} placeholder");
-    expect(FRAME_REVISION).toMatch(/^[a-f0-9]{64}$/);
   });
 });

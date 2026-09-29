@@ -9,41 +9,17 @@ import { join } from "../meta/path.ts";
 import { ITERATION_FILE, iterationOrdinal, listIterationDirs } from "../builder/campaign-iterations.ts";
 import { type CampaignEpochEvidence, writeCompleted } from "./campaign-epoch.ts";
 import type { CampaignClause, CampaignFeedback, IterationEvidence } from "./campaign-types.ts";
-// Gate audit 2026-09-25 (docs/gate-audit.md, tool-non-result-ceiling): commented out (unsure): a tool that cannot run is an environment fact each run records, not a Builder stall
-// import { type ToolNonResultCounts, chargedTrialRunDirs, replayNonResultRefusals } from "./tool-non-result.ts";
 import { parseJsonAs } from "../meta/json-runtime.ts";
 import { isString } from "../meta/json-shape.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 
 export interface CampaignMemory {
   clause: CampaignClause | null;
-  /** Latest completed child tree. Null means no evidence can prove a repair baseline. */
-  workspaceCommit: string | null;
   /** The last candidate and tool condition that reached the gates and stayed blocked, with its
    *  spent strikes. Only a gate-settled refusal leaves iteration evidence, so a bundle-stage
    *  refusal stays session-local by design. */
   lastBlockedCandidateId: string | null;
   lastBlockedCandidateStrikes: number;
-  // Gate audit 2026-09-25 (docs/gate-audit.md, repeated-findings-stall): commented out (unsure): one refusal repeated over changed bytes is repair in progress, not a proven stall
-  // /** The unbroken trailing run of gates-blocked findings hashes, oldest first. The stall detector
-  //  *  counts repeats over it, which is how a loop that keeps churning the tree without moving the
-  //  *  findings is stopped: every fingerprint differs while the findingsHash does not, so the
-  //  *  fingerprint cannot detect it. Any other outcome resets the run. */
-  // trailingBlockedFindingsHashes: string[];
-  // Gate audit 2026-09-25 (docs/gate-audit.md, tool-non-result-ceiling): commented out (unsure): a tool that cannot run is an environment fact each run records, not a Builder stall
-  // /** Refused control censuses this campaign has already charged to each Builder-declared engine
-  //  *  id, read from the census gate's own records. Restoring the per-engine count is what makes a
-  //  *  restarted invocation continue it instead of receiving a fresh allowance, since a campaign can
-  //  *  spread its refusals over several invocations and exhaust none of them. */
-  // toolNonResultRefusals: ToolNonResultCounts;
-  /** How often each workspace commit has been recorded as an unchanged candidate: a settled
-   *  iteration whose child tree equals its own round entry. The round then refuses it as
-   *  `candidate-unchanged` without measuring it, so the strike costs one whole authoring session
-   *  and leaves no trace inside the next one. Keyed by commit and never reset, because the evidence
-   *  is per tree: one commit can collect the clause twenty times over as many controller
-   *  invocations, where a per-session or trailing-run counter sees one sighting each time. A commit
-   *  the Builder actually moves takes its own key. */
-  unchangedCandidateCommits: Record<string, number>;
   carried: CampaignFeedback[];
 }
 
@@ -51,51 +27,6 @@ export interface CampaignMemory {
  *  else. */
 export function nextOrdinal(campaignDir: string): number {
   return Math.max(0, ...listIterationDirs(campaignDir).map((name) => iterationOrdinal(name) ?? 0)) + 1;
-}
-
-// Gate audit 2026-09-25 (docs/gate-audit.md, repeated-findings-stall): commented out (unsure): one refusal repeated over changed bytes is repair in progress, not a proven stall
-// /** The trailing gates-blocked findings run, extended by a blocked iteration and reset by a
-//  *  fingerprinted one. One rule serves the disk replay and the in-session extension, so the two
-//  *  cannot disagree. */
-// export const extendTrailingBlockedFindings = (
-//   trail: readonly string[],
-//   evidence: IterationEvidence,
-// ): string[] =>
-//   evidence.outcome === "gates-blocked" && evidence.findingsHash !== null
-//     ? [...trail, evidence.findingsHash]
-//     : [];
-
-/** The one reading of "this settled iteration changed nothing": a completed gate settlement whose
- *  fingerprinted child tree is its own round entry, with no path added and none deleted. The
- *  round's `candidate-unchanged` refusal reads the same three fields on the same evidence. */
-export function unchangedCandidateCommit(evidence: IterationEvidence): string | null {
-  const change = evidence.workspaceChange;
-  if (evidence.outcome !== "fingerprinted") return null;
-  if (change === undefined || change.baseCommit !== change.commit) return null;
-  return change.changedPaths.length === 0 && change.deletedPaths.length === 0 ? change.commit : null;
-}
-
-/** Add one completed iteration to the per-commit unchanged count, for the replay and the running
- *  invocation alike. */
-function countUnchanged(
-  counts: Readonly<Record<string, number>>,
-  evidence: IterationEvidence,
-): Record<string, number> {
-  const commit = unchangedCandidateCommit(evidence);
-  return commit === null ? { ...counts } : { ...counts, [commit]: (counts[commit] ?? 0) + 1 };
-}
-
-/** Strikes already spent on the commit this campaign would resubmit: the replayed tally extended
- *  by the iterations of the running invocation, read at that invocation's newest recorded commit.
- *  Zero when the newest iteration moved the tree, which is the whole point of the per-commit
- *  key. */
-export function unchangedCandidateSubmissions(
-  memory: CampaignMemory,
-  iterations: readonly IterationEvidence[],
-): number {
-  const counts = iterations.reduce(countUnchanged, memory.unchangedCandidateCommits);
-  const commit = iterations.at(-1)?.workspaceChange?.commit ?? memory.workspaceCommit;
-  return commit === null ? 0 : (counts[commit] ?? 0);
 }
 
 /** Settled iteration DIRECTORIES, oldest first. The directory rather than the record file,
@@ -118,15 +49,9 @@ function readIteration(file: string): IterationEvidence {
     throw new Error(`${file}: completed iteration has no feedback array`);
   }
   // `stampSubmissionCondition` stamps every record before its one writer writes it.
-  const { submissionConditionId, candidateConditionId } = evidence;
+  const { submissionConditionId } = evidence;
   if (!isString(submissionConditionId) || submissionConditionId.length === 0) {
     throw new Error(`${file}: completed iteration states no submission condition`);
-  }
-  if (
-    candidateConditionId !== undefined &&
-    (!isString(candidateConditionId) || candidateConditionId.length === 0)
-  ) {
-    throw new Error(`${file}: completed iteration has an invalid submission condition`);
   }
   return evidence;
 }
@@ -144,45 +69,26 @@ export function settleUnresolved(evidence: IterationEvidence): CampaignFeedback[
 function emptyMemory(clause: CampaignClause | null): CampaignMemory {
   return {
     clause,
-    workspaceCommit: null,
     lastBlockedCandidateId: null,
     lastBlockedCandidateStrikes: 0,
-    // Gate audit 2026-09-25 (docs/gate-audit.md, repeated-findings-stall): commented out (unsure): one refusal repeated over changed bytes is repair in progress, not a proven stall
-    // trailingBlockedFindingsHashes: [],
-    // Gate audit 2026-09-25 (docs/gate-audit.md, tool-non-result-ceiling): commented out (unsure): a tool that cannot run is an environment fact each run records, not a Builder stall
-    // toolNonResultRefusals: {},
-    unchangedCandidateCommits: {},
     carried: [],
   };
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, tool-non-result-ceiling): commented out (unsure): a tool that cannot run is an environment fact each run records, not a Builder stall
-// function replay(dirs: string[], chargedTrialRuns: readonly string[] = []): CampaignMemory {
 function replay(dirs: string[]): CampaignMemory {
   const memory = emptyMemory(null);
   for (const dir of dirs) {
     const evidence = readIteration(join(dir, ITERATION_FILE));
     memory.carried = settleUnresolved(evidence);
-    memory.workspaceCommit = evidence.workspaceChange?.commit ?? null;
-    // Gate audit 2026-09-25 (docs/gate-audit.md, repeated-findings-stall): commented out (unsure): one refusal repeated over changed bytes is repair in progress, not a proven stall
-    // memory.trailingBlockedFindingsHashes = extendTrailingBlockedFindings(
-    //   memory.trailingBlockedFindingsHashes,
-    //   evidence,
-    // );
-    memory.unchangedCandidateCommits = countUnchanged(memory.unchangedCandidateCommits, evidence);
     // Only a blocked pass moves the blocked-candidate streak; a fingerprinted one leaves it be.
     if (evidence.outcome !== "gates-blocked") continue;
-    const candidateId = evidence.candidateConditionId ?? evidence.submissionConditionId ?? null;
+    const candidateId = evidence.submissionConditionId ?? null;
     memory.lastBlockedCandidateStrikes =
       candidateId !== null && candidateId === memory.lastBlockedCandidateId
         ? memory.lastBlockedCandidateStrikes + 1
         : 0;
     memory.lastBlockedCandidateId = candidateId;
   }
-  // Gate audit 2026-09-25 (docs/gate-audit.md, tool-non-result-ceiling): commented out (unsure): a tool that cannot run is an environment fact each run records, not a Builder stall
-  // // Read the engine id from the census gate's record rather than extracting it from feedback text.
-  // // A counter that can end a campaign must use the host's recorded fields.
-  // memory.toolNonResultRefusals = replayNonResultRefusals([...dirs, ...chargedTrialRuns]);
   return memory;
 }
 
@@ -218,8 +124,6 @@ export function resumeCampaignMemory(campaignDir: string, slug: string, kickoffH
     return emptyMemory("campaign-binding-mismatch");
   }
   try {
-    // Gate audit 2026-09-25 (docs/gate-audit.md, tool-non-result-ceiling): commented out (unsure): a tool that cannot run is an environment fact each run records, not a Builder stall
-    // return replay(completedIterationDirs(campaignDir), chargedTrialRunDirs(campaignDir));
     return replay(completedIterationDirs(campaignDir));
   } catch {
     return emptyMemory("improvement-memory-missing");

@@ -24,17 +24,15 @@ import {
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import { double, required, scriptedSession, toolDouble } from "./helpers/doubles.ts";
 import { MATCHING_OPERATING_GUIDE } from "./helpers/matching-fixture.ts";
-import { PLAN_FIELDS } from "./helpers/experiment-plan.ts";
 import { runBuilderCampaign } from "../src/run/builder-campaign.ts";
 import type { BuilderCampaignDeps } from "../src/run/builder-campaign.ts";
 import { readExecutionEvidence } from "../tools/outcome/builder-execution-facts.ts";
 import { createBuiltStarter } from "../src/solve/built-starter.ts";
 import { defineDraftTool } from "../src/solve/draft-tool.ts";
-import { type Solver, withSolverBuiltStarterFactory } from "../src/truth/solve.ts";
+import { type Solver, withSolverBuiltStarterFactory } from "../src/correctness-bundle/solve.ts";
 import { createVerifierLifetime } from "../src/verify/verifier-lifetime.ts";
 
 const ADVICE = "Public review advice.";
-const GAP = "The writer cannot express a pinned joint.";
 
 /** A tool call that must come back without waiting for a review does so well inside this. */
 const PROMPT_MS = 2_000;
@@ -50,8 +48,9 @@ afterAll(cleanupScratch);
 
 const noop = toolDouble({ name: "noop", execute: async () => ({ content: [{ type: "text", text: "ok" }] }) });
 
-function advice(findings: number): AuthoringAdvice {
-  return { text: `${ADVICE} (${String(findings)} shown)`, findings };
+/** A review's public text, showing `blocking` blocking findings among whatever advisory ones. */
+function advice(blocking: number): AuthoringAdvice {
+  return { text: `${ADVICE} (${String(blocking)} blocking)`, blocking };
 }
 
 /** The tool result as the model reads it, refused if it waited on a review longer than a prompt
@@ -68,7 +67,6 @@ class HeldReviews {
   readonly calls: Array<{
     root: string;
     trigger: string;
-    gap: string | null;
     rehearsals: readonly unknown[];
     settle: PromiseWithResolvers<AuthoringAdvice>;
   }> = [];
@@ -76,11 +74,10 @@ class HeldReviews {
   readonly review: NonNullable<BuilderCampaignDeps["reviewAuthoring"]> = async (
     root,
     trigger,
-    plan,
     rehearsals: readonly unknown[],
   ) => {
     const settle = Promise.withResolvers<AuthoringAdvice>();
-    this.calls.push({ root, trigger, gap: plan?.gap ?? null, rehearsals, settle });
+    this.calls.push({ root, trigger, rehearsals, settle });
     return settle.promise;
   };
 
@@ -106,22 +103,11 @@ class HeldReviews {
   }
 }
 
-/** A bundle the gate clears, with the round plan beside it in the workspace. */
+/** A bundle the gate clears. */
 function authorable(workspace: string): void {
   completeBundle(workspace);
   requireExternalVerifier(workspace);
   installTool(workspace, "field-engine");
-  writeFileSync(
-    join(workspace, "EXPERIMENT.json"),
-    JSON.stringify({
-      ...PLAN_FIELDS,
-      scope: "product",
-      gap: GAP,
-      change: "Add pinned joints to the writer.",
-      expectedResult: "More accepted submissions.",
-      target: { comparator: "at-least", verifiedPasses: 1 },
-    }),
-  );
 }
 
 function reviseGuide(workspace: string, line: string): void {
@@ -166,18 +152,20 @@ function bindingSolver(slot: string): Solver {
 }
 
 /** A campaign whose round runs `body`. `parent` puts the scratch inside the checkout, where a
- *  rehearsal's compiled correctness model resolves its `@ana/*` imports. */
+ *  rehearsal's compiled correctness model resolves its `@ana/*` imports; at one turn, a refused
+ *  submit is final. */
 function campaign(
   prefix: string,
   held: HeldReviews,
   deps: Partial<BuilderCampaignDeps> = {},
   parent?: string,
+  maxTurns = 1,
 ) {
   const campaignDir = scratchDir(prefix, parent);
   const workspace = join(campaignDir, "workspace");
   const run = (body: (tools: readonly unknown[]) => Promise<void>) =>
     runBuilderCampaign(
-      { ...FRESH_BUILD, campaignDir, maxTurns: 1 },
+      { ...FRESH_BUILD, campaignDir, maxTurns },
       {
         tools: [noop],
         toolsProbes: () => ({ load: async () => [] }),
@@ -199,7 +187,7 @@ describe("the Epoch Reviewer beside an authoring session", () => {
       const [check, call] = [namedTool(tools, "correctness_check"), namedTool(tools, "noop")];
       // The check returns without the review it made due, which is still running.
       expect(await promptly(check.execute("check", {}))).not.toContain(ADVICE);
-      expect(held.calls.map(({ trigger, gap }) => [trigger, gap])).toEqual([["repair", GAP]]);
+      expect(held.calls.map(({ trigger }) => trigger)).toEqual(["repair"]);
       expect(held.calls[0]?.root).toContain(".bundle-snapshots");
       expect(await promptly(call.execute("while-running", {}))).not.toContain(ADVICE);
       await held.finish(0, advice(0));
@@ -334,17 +322,27 @@ describe("the Epoch Reviewer beside an authoring session", () => {
     expect(outcome.buildAdmissible).toBe(true);
   });
 
-  it("lets a submit through when the review it waited for shows no finding", async () => {
+  it("judges a submit whose review shows advisory findings alone, and hands that review over beside the verdict", async () => {
+    // An advisory finding asks for no change before submit, so holding the submit for one only
+    // spends the round's time: the call that waited is judged, and the review rides its result.
     const held = new HeldReviews();
-    const { workspace, run } = campaign("ana-review-join-clear-", held);
+    const { workspace, run } = campaign("ana-review-join-advisory-", held, {}, undefined, 2);
     const outcome = await run(async (tools) => {
       authorable(workspace);
       await promptly(namedTool(tools, "correctness_check").execute("check", {}));
-      const submitting = submitTool(tools).execute("submit", {});
+      const spec = join(workspace, "agent/tools-spec.json");
+      const checked = readFileSync(spec, "utf8");
+      writeFileSync(spec, "{");
+      const submitting = submitTool(tools).execute("refused", {});
       await held.finish(0, advice(0));
-      const result = await promptly(submitting);
-      expect(result).toContain("Accepted.");
-      expect(result).not.toContain(ADVICE);
+      const refused = await promptly(submitting);
+      expect(refused).toContain("Submit 1 was refused");
+      expect(refused).toContain(ADVICE);
+      expect(refused).not.toContain("Nothing was submitted.");
+      writeFileSync(spec, checked);
+      const accepted = await promptly(submitTool(tools).execute("accepted", {}));
+      expect(accepted).toContain("Accepted.");
+      expect(accepted).not.toContain(ADVICE);
     });
     expect(outcome.buildAdmissible).toBe(true);
   });
@@ -427,6 +425,29 @@ describe("the Epoch Reviewer beside an authoring session", () => {
       expect(held.calls).toHaveLength(2);
       expect(held.calls[1]!.rehearsals).toMatchObject([{ ordinal: 1, verdict: "fail", current: false }]);
     });
+  }, 60_000);
+
+  // Submit waits on an unread review alone: a rehearsal pass is evidence the Builder reads, and
+  // submit judges the bytes as they stand.
+  it("accepts a submit after a rehearsal passed, holding nothing on it", async () => {
+    const held = new HeldReviews();
+    const parent = scratchDir(".ana-scratch-review-no-plan-hold-", import.meta.dir);
+    const deps = {
+      builtSolver: () => bindingSolver("s3"),
+      verifierLifetime: createVerifierLifetime({ root: join(parent, ".verifier") }),
+    };
+    const { workspace, run } = campaign("ana-review-no-plan-hold-", held, deps, parent);
+    const outcome = await run(async (tools) => {
+      completeBundle(workspace);
+      const trial = JSON.stringify(
+        await namedTool(tools, "harness_trial").execute("rehearse", { taskId: "t1" }),
+      );
+      expect(trial).toContain(String.raw`\"verdict\":\"pass\"`);
+      const result = await promptly(submitTool(tools).execute("submit", {}));
+      expect(result).toContain("Accepted.");
+      expect(result).not.toContain("Nothing was submitted.");
+    });
+    expect(outcome.buildAdmissible).toBe(true);
   }, 60_000);
 
   it("does not review a draft that cannot be frozen, and tries again at the next completed call", async () => {

@@ -497,7 +497,7 @@ function claudeQueryOptions(opening: ClaudeQueryOpening): QueryOptions {
 		// v4 boundary: no CLI skill discovery — the Built prompt may not vary with host state.
 		skills: [],
 		permissionMode: "bypassPermissions",
-		// v4 boundary: documented as required beside bypassPermissions at SDK 0.3.271 (sdk.d.ts:1861).
+		// v4 boundary: documented as required beside bypassPermissions at SDK 0.3.284 (sdk.d.ts:1977).
 		allowDangerouslySkipPermissions: true,
 		includePartialMessages: true,
 		// v4 boundary: the preset carries the CLI's own framing and this host's directory and git

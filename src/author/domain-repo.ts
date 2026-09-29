@@ -29,9 +29,6 @@ import { relocateToolLauncher } from "./toolchain-relocation.ts";
 import { type SafeguardContext, safeguardTriggered } from "../meta/safeguard.ts";
 import { hostTool } from "../meta/host-tool.ts";
 import { runtimeProcess } from "../meta/process.ts";
-// Gate audit 2026-09-25 (docs/gate-audit.md, operating-guide-retired-tool): commented out (unsure): only the
-// revision reader used these.
-// import { decodeOutput, runSyncOrThrow } from "../meta/subprocess.ts";
 import { CAPTURE_MAX_BYTES, runTextSyncOrThrow } from "../meta/subprocess.ts";
 import { dirname, isAbsolute, join, relative, resolve } from "../meta/path.ts";
 import { containsPath } from "../meta/path-containment.ts";
@@ -105,7 +102,6 @@ const STARTER_REFERENCES = [
   "starter-pack/contract.md",
   "starter-pack/examples.md",
   "starter-pack/add-ons.json",
-  "starter-pack/difficulty-ladder.md",
 ] as const;
 
 /** Point the workspace's runtime link at this controller's interpreter, resolved rather than as
@@ -192,6 +188,12 @@ function copySeedToolTree(dir: string, safeguard?: SafeguardContext): string | n
   const dropped: string[] = [];
   try {
     const source = realpathSync(path);
+    // Every path the relocation writes names the copy by its real location, because that is the
+    // spelling the walls grant: the verifier and the Built solver open the tool tree through its
+    // realpath, and Seatbelt checks the path a process asks for, so a venv home or a launcher
+    // reached through a linked ancestor (a run worktree's `campaigns` link, say) is denied inside
+    // the wall and Python starts with no stdlib. `path` stays the handle for the file operations.
+    const destination = join(realpathSync.native(dir), WORKSPACE_TOOL_TREE);
     cpSync(source, copy, { recursive: true, mode: constants.COPYFILE_FICLONE, verbatimSymlinks: true });
     // Relative links already name the copied packages. Absolute internal links must move too,
     // while external runtime links keep their targets. A linked directory is never walked, because
@@ -207,7 +209,7 @@ function copySeedToolTree(dir: string, safeguard?: SafeguardContext): string | n
       if (!entry.isSymbolicLink()) {
         // The walk lists directories as well, and a directory is not a file the Builder can open.
         if (entry.isFile()) counts.files += 1;
-        const relocated = relocateToolLauncher(link, source, path, name);
+        const relocated = relocateToolLauncher(link, source, destination, name);
         // A file the copy cannot make stand alone is left out of the copy, not treated as a reason
         // to end the run. The refusal this replaces told its reader to recreate the installation in
         // the repair workspace and then made that impossible, because it fires on things like a
@@ -254,7 +256,7 @@ function copySeedToolTree(dir: string, safeguard?: SafeguardContext): string | n
     ].filter((name) => readFileSync(join(path, name), "utf8").includes(`${source}/`));
     for (const name of homed) {
       const config = join(path, name);
-      writeFileSync(config, readFileSync(config, "utf8").replaceAll(`${source}/`, `${path}/`));
+      writeFileSync(config, readFileSync(config, "utf8").replaceAll(`${source}/`, `${destination}/`));
     }
     if (homed.length > 0) {
       safeguardTriggered(
@@ -372,31 +374,6 @@ function headFromRefFiles(dir: string): string | null {
 export function workspaceHead(dir: string): string {
   return headFromRefFiles(dir) ?? git(dir, ["rev-parse", "HEAD"]);
 }
-
-// Gate audit 2026-09-25 (docs/gate-audit.md, operating-guide-retired-tool): commented out (unsure): only the
-// retired-tool scan read a file's revisions.
-// /** The text of `path` at every revision in the history of `commit` that added or changed it, newest
-//  *  first. A commit's ancestry never changes, so a caller that names one reads the same revisions
-//  *  however the Builder commits meanwhile. `git log` writes each revision as the `cat-file --batch`
-//  *  request for its blob, so one process answers for every revision, each blob a header line carrying
-//  *  its byte size followed by that many bytes. The filter names what to keep because git's excluding
-//  *  `d` drops the root commit too. */
-// export function fileRevisions(dir: string, commit: string, path: string): string[] {
-//   const requests = git(dir, ["log", `--format=%H:${path}`, "--diff-filter=AMT", commit, "--", path]);
-//   if (requests === "") return [];
-//   const blobs = runSyncOrThrow([hostTool("git"), "-C", dir, "cat-file", "--batch"], {
-//     input: `${requests}\n`,
-//     maxBuffer: CAPTURE_MAX_BYTES,
-//   });
-//   const texts: string[] = [];
-//   for (let at = 0; at < blobs.length; ) {
-//     const header = blobs.indexOf(10, at);
-//     const end = header + 1 + Number(decodeOutput(blobs.subarray(at, header)).split(" ")[2]);
-//     texts.push(decodeOutput(blobs.subarray(header + 1, end)));
-//     at = end + 1;
-//   }
-//   return texts;
-// }
 
 /** A content identity for a candidate that failed validation, taken from the committed tree objects
  *  of the two contract roots. The workspace-root note files sit outside both roots, so note churn

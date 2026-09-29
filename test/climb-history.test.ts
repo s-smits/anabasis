@@ -1,6 +1,6 @@
 /**
- * The climb-evidence reader: one recorded population, and the climb readout's off-aim allowance
- * read from it on disk.
+ * The climb-evidence reader: one recorded population, and the climb readout read from it on
+ * disk.
  *
  * `admitBattery` decides whether each run directory belongs here at all and names every refusal;
  * `test/climb-battery-admission.test.ts` owns those gates. What is left — and what this file states
@@ -18,24 +18,15 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { type JsonValue, isString } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
-import { hashJsonValue } from "../src/meta/stable-json.ts";
 import { EvidenceLog } from "../src/claim/evidence-log.ts";
 import {
   type AdmittedClimbRow,
   type ClimbBatteriesRead,
   climbThresholds,
   excludedSummary,
-  // Gate audit 2026-09-25 (docs/gate-audit.md, repeated-public-condition): commented out (unsure): only the
-  // fingerprint cases below read these.
-  // priorPublicFingerprints,
-  // productConditionFingerprint,
-  // publicBatteryFingerprint,
   readClimbBatteries,
 } from "../src/run/climb-history.ts";
-// Gate audit 2026-09-25 (docs/gate-audit.md, off-aim-allowance-stop): commented out (unsure): the Builder owns the route after an off-aim streak, which stays a readout fact
-// import { POLICY } from "../src/critic/policy.ts";
-import { type OffAimAllowance, readClimbReadout, renderReadout } from "../src/run/climb-readout.ts";
-import { PLAN_FIELDS } from "./helpers/experiment-plan.ts";
+import { readClimbReadout, renderReadout } from "../src/run/climb-readout.ts";
 import { required } from "./helpers/doubles.ts";
 import { fixtureThresholdDigest } from "./helpers/thresholds.ts";
 
@@ -58,6 +49,8 @@ interface CaseRow {
   /** Wall-clock minutes the solve took. A negative value records the two instants in reverse. */
   minutes?: number;
   publicInput?: JsonValue;
+  /** The recorded reason a case ended in a runtime non-result. */
+  runtimeNonResult?: string;
 }
 
 type BatteryFields = { [field: string]: JsonValue | undefined };
@@ -77,6 +70,7 @@ function caseRecord(row: CaseRow): JsonValue {
     ...keyIfDefined("family", row.family),
     pass: row.pass,
     acceptedSubmit: row.acceptedSubmit ?? row.pass !== null,
+    ...keyIfDefined("runtimeNonResult", row.runtimeNonResult),
     ...keyIfDefined("solver", Object.keys(solver).length === 0 ? undefined : solver),
   };
 }
@@ -282,11 +276,45 @@ describe("what one battery contributes to the reading", () => {
         },
       },
     ],
-    ["states no calibration without a bound plan", passes(2), {}, { authoring: { calibration: null } }],
   ])("%s", (_name, cases, overrides, expected) => {
     const tree = tmp();
     writeBattery(tree, "r1", cases, RECORDED_AT, overrides);
     expect(admittedOnly(tree)).toMatchObject(expected);
+  });
+
+  it("counts the unaccepted cases whose solve ran to the product's own wall", () => {
+    const tree = tmp();
+    mkdirSync(join(tree, "agent"), { recursive: true });
+    writeFileSync(join(tree, "agent", "config.yaml"), "solver:\n  solve_minutes: 12\n");
+    writeBattery(
+      tree,
+      "r1",
+      [
+        { taskId: "cut", pass: false, acceptedSubmit: false, minutes: 12 },
+        // Unaccepted well inside the wall, and accepted at the wall: neither was cut by it.
+        { taskId: "early", pass: false, acceptedSubmit: false, minutes: 3 },
+        { taskId: "slow", pass: true, minutes: 12 },
+      ],
+      RECORDED_AT,
+    );
+    expect(admittedOnly(tree).authoring).toMatchObject({ solveWallMinutes: 12, wallBound: 1 });
+  });
+
+  it("names a family every case of which ended in a non-result, and no family that kept one scored", () => {
+    const tree = tmp();
+    const cut = { pass: null, acceptedSubmit: false, runtimeNonResult: "usage limit reached" };
+    writeBattery(
+      tree,
+      "r1",
+      [
+        { taskId: "a", family: "span", pass: true },
+        { taskId: "b", family: "span", ...cut },
+        { taskId: "c", family: "joint", ...cut },
+        { taskId: "d", family: "joint", ...cut },
+      ],
+      RECORDED_AT,
+    );
+    expect(admittedOnly(tree).battery.censoredFamilies).toEqual(["joint"]);
   });
 
   it("calls the failing set unknown, never empty, when one failing row carries no id", () => {
@@ -303,41 +331,6 @@ describe("what one battery contributes to the reading", () => {
     const { battery } = admittedOnly(tree);
     expect(battery.passed).toBe(1);
     expect(battery).not.toHaveProperty("failedTaskIds");
-  });
-
-  it("scores the bound plan's predictions against the verdicts", () => {
-    const plan = {
-      ...PLAN_FIELDS,
-      scope: "tasks" as const,
-      gap: "g",
-      change: "c",
-      expectedResult: "r",
-      target: { comparator: "at-most" as const, verifiedPasses: 1 },
-      predictions: [
-        { taskId: "t1", pass: 0.2 },
-        { taskId: "t2", pass: 0.9 },
-        { taskId: "unmeasured", pass: 0.5 },
-      ],
-    };
-    const experimentAuthoring = {
-      proposal: { ...plan, digest: hashJsonValue(plan) },
-      operation: { operation: "task-probe", moved: ["tasks"] },
-      baseline: { agentHash: "agent", correctnessModelHash: "model", taskSetHash: "tasks" },
-      actual: "climb",
-      changedTaskIds: [],
-    };
-    const tree = tmp();
-    const cases = [
-      { taskId: "t1", pass: true },
-      { taskId: "t2", pass: false },
-    ];
-    writeBattery(tree, "r1", cases, RECORDED_AT, { experimentAuthoring });
-    expect(read(tree).admitted[0]?.authoring.calibration).toEqual({
-      scored: 2,
-      brier: 0.725,
-      expected: 1.1,
-      observed: 1,
-    });
   });
 
   it("reads history across model pins when no pin is stated, keeping each battery's own label", () => {
@@ -368,7 +361,7 @@ describe("what one battery contributes to the reading", () => {
     const a = rendered("secret-verifier-a");
     expect(rendered("secret-verifier-b")).toBe(a);
     expect(a).not.toContain("secret-verifier");
-    expect(a).toContain("Solve effort by family");
+    expect(a).toContain("Battery r1 passed 1 case;");
   });
 });
 
@@ -415,11 +408,9 @@ describe("the frozen climb thresholds a round reads", () => {
   });
 });
 
-describe("the off-aim allowance, read from recorded batteries", () => {
+describe("the climb readout, read from recorded batteries", () => {
   /** A battery of five, all passing: above the aim of 1 to 2, and significantly so. */
   const above = 5;
-  /** A battery of five passing one: on the aim, which ends a run of misses. */
-  const onAim = 1;
 
   type Round = { passed: number | null; agent?: string | null; inputs?: readonly JsonValue[] };
 
@@ -451,68 +442,7 @@ describe("the off-aim allowance, read from recorded batteries", () => {
   const readout = (tree: string, manifest?: string) =>
     required(readClimbReadout(tree, RUN_PIN, join(tree, "claims"), manifest), "a climb readout");
 
-  // Gate audit 2026-09-25 (docs/gate-audit.md, off-aim-allowance-stop): commented out (unsure): the Builder owns the route after an off-aim streak, which stays a readout fact
-  // const limit = POLICY.climb.offAimStreakRounds;
-  const limit = 3;
-  const products = Array.from({ length: limit }, (_, i) => ({ passed: above, agent: `agent-${String(i)}` }));
-  const olderRefusals = [{ passed: null }, { passed: null }, { passed: 2 }, { passed: above }];
-
-  it.each<[string, Round[], Partial<OffAimAllowance>]>([
-    [
-      "counts every trailing miss on one side, and stops at a battery on the aim",
-      [{ passed: above }, { passed: onAim }, { passed: above }, { passed: above }],
-      { rounds: 2, placed: 2, refused: 0, side: "above", products: 1, sameSchema: 0 },
-    ],
-    [
-      "stops where the product crossed the aim, because that is two runs of misses",
-      [{ passed: above }, { passed: above }, { passed: 0 }],
-      { rounds: 1, side: "below" },
-    ],
-    [
-      "counts product identities across the run",
-      [{ passed: above, agent: "agent-old" }, { passed: above }, { passed: above }],
-      { rounds: 3, products: 2 },
-    ],
-    // A null identity never proves sameness.
-    [
-      "counts two unidentified batteries as two products",
-      [
-        { passed: above, agent: null },
-        { passed: above, agent: null },
-      ],
-      { rounds: 2, products: 2 },
-    ],
-    // Refusals behind a battery that then landed on the aim are an earlier story.
-    [
-      "counts a refused round inside the run as one, and none from before it",
-      [
-        { passed: null },
-        { passed: null },
-        { passed: onAim },
-        { passed: above },
-        { passed: null },
-        { passed: above },
-      ],
-      { rounds: 3, placed: 2, refused: 1, side: "above", products: 1, sameSchema: 0 },
-    ],
-    // Reading the campaign-wide exclusion list into the count would stop a new run on its first round.
-    ["does not count refusals older than the run", olderRefusals, { rounds: 1, refused: 0 }],
-    [
-      "counts a refusal beside the run's own miss",
-      [...olderRefusals, { passed: null }],
-      { rounds: 2, placed: 1, refused: 1 },
-    ],
-    [
-      "counts a whole allowance of above-aim rounds, each product identity once",
-      products,
-      { rounds: limit, placed: limit, refused: 0, side: "above", products: limit },
-    ],
-    ["counts one short of the allowance", products.slice(1), { rounds: limit - 1 }],
-  ])("%s", (_name, rounds, allowance) => {
-    expect(readout(roundsTree(rounds)).allowance).toMatchObject(allowance);
-  });
-
-  it("reads an unplaced round as the end of the run, since it was not placed off the aim", () => {
+  it("places no battery whose every attempt was refused at submission", () => {
     // Every attempt refused at submission is no difficulty evidence, not a battery below the aim.
     const tree = roundsTree([{ passed: above }, { passed: above }]);
     writeBattery(
@@ -524,46 +454,33 @@ describe("the off-aim allowance, read from recorded batteries", () => {
     const seen = readout(tree);
     expect(seen.decision.placement).toBeNull();
     expect(seen.rows[0]).toMatchObject({ runId: "r9", zone: null });
-    expect(seen.allowance).toBeNull();
   });
 
-  it("names the batteries that posed the latest one's task schemas again, whatever values they published", () => {
-    // Re-tuned published numbers under one set of schemas are not a new exam.
-    const truss = (span: number) => ({ span, load: "snow", bays: [2, 4] });
-    const frame = (storeys: number) => ({ storeys, braced: true });
-    const mixed = (scale: number) => [
-      truss(6 * scale),
-      frame(scale),
-      truss(9 * scale),
-      truss(12 * scale),
-      frame(2),
-    ];
-    // A new mix of the same two kinds, in another order: neither a task count nor an order counts.
-    const remixed = [frame(7), frame(3), truss(90), frame(4), frame(1)];
-    const sentence =
-      "of the batteries placed above the aim before the latest one posed its set of public task schemas";
-    const retuned = readout(
+  // The off-aim streak and its same-schema count, and the calibration of per-task predictions, left
+  // the readout with the plan's target and predictions: a run of batteries above the aim, however
+  // long and however re-tuned, is read through its placements alone.
+  it("states no off-aim streak, schema count or prediction calibration after rounds above the aim", () => {
+    const inputs = (scale: number) => [1, 2, 3, 4, 5].map((span) => ({ span: span * scale, load: "snow" }));
+    const seen = readout(
       roundsTree([
-        { passed: above, inputs: mixed(1) },
-        { passed: above, inputs: mixed(10) },
-        { passed: above, inputs: remixed },
+        { passed: above, inputs: inputs(1) },
+        { passed: above, inputs: inputs(10) },
+        { passed: above, inputs: inputs(100) },
       ]),
     );
-    expect(retuned.allowance).toMatchObject({ rounds: 3, placed: 3, sameSchema: 2 });
-    expect(renderReadout(retuned, "choose the next experiment")).toContain(`2 ${sentence}`);
-    // A new field, or a value of another type, is another question, and the sentence is not printed.
-    const newQuestions = readout(
-      roundsTree([
-        { passed: above, inputs: mixed(1) },
-        { passed: above, inputs: mixed(1).map((input) => ({ ...input, support: "pinned" })) },
-        {
-          passed: above,
-          inputs: mixed(1).map((input) => ("storeys" in input ? { ...input, storeys: "1" } : input)),
-        },
-      ]),
-    );
-    expect(newQuestions.allowance).toMatchObject({ rounds: 3, placed: 3, sameSchema: 0 });
-    expect(renderReadout(newQuestions, "choose the next experiment")).not.toContain(sentence);
+    expect(seen).not.toHaveProperty("allowance");
+    const rendered = renderReadout(seen, "choose the next experiment");
+    // The placement stays the controller's; the author reads the counts it was taken over.
+    expect(seen.decision.placement?.zone).toBe("too-easy");
+    expect(rendered).not.toContain("too-easy");
+    for (const gone of [
+      "Off-aim streak",
+      "posed its set of public task schemas",
+      "Predictions bound to",
+      "Brier",
+    ]) {
+      expect(rendered).not.toContain(gone);
+    }
   });
 
   it("reads the frozen manifest's band, so an override reaches every placement", () => {
@@ -577,81 +494,24 @@ describe("the off-aim allowance, read from recorded batteries", () => {
   });
 });
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, repeated-public-condition): commented out (unsure): these cases
-// pin the admitted-history fingerprints the repeated-condition refusal compared against.
-// describe("the prior public fingerprints the repeated-condition refusal compares against", () => {
-//   /** One battery's recorded public projection, written the way the run records it. */
-//   function writeProjection(tree: string, runId: string, inputs: readonly JsonValue[]): void {
-//     const evidence = new EvidenceLog(join(tree, "runs", runId));
-//     inputs.forEach((publicInput, i) =>
-//       evidence.write(`cases/t${String(i)}/public-task.json`, {
-//         taskId: `t${String(i)}`,
-//         publicTask: { publicInput },
-//       }),
-//     );
-//     evidence.record();
-//   }
-//
-//   function measured(runId: string, count: number, harnessId: string | null = "product-a") {
-//     return {
-//       harnessId,
-//       battery: {
-//         runId,
-//         batterySha256: `sha-${runId}`,
-//         n: count,
-//         passed: count,
-//         unaccepted: 0,
-//         measured: { items: [] },
-//       },
-//       authoring: {
-//         taskSetHash: `set-${runId}`,
-//         caseIds: Array.from({ length: count }, (_, i) => `t${String(i)}`),
-//         familySummary: [],
-//         effort: null,
-//         familyEffort: [],
-//         calibration: null,
-//         passedTaskIds: [],
-//         solveWallMinutes: 120,
-//       },
-//     };
-//   }
-//
-//   const print = (inputs: readonly JsonValue[]) =>
-//     publicBatteryFingerprint(inputs.map((publicInput) => ({ publicInput })));
-//
-//   it("binds each measured exam to the product that measured it, so another product may measure it", () => {
-//     // A shared pack is how a harness intervention is compared: B on A's exam is B's first reading.
-//     const tree = tmp();
-//     const examX = [{ span: 1 }, { span: 2 }];
-//     writeProjection(tree, "a-on-x", examX);
-//     writeProjection(tree, "b-on-y", [{ span: 3 }, { span: 4 }]);
-//     const prints = priorPublicFingerprints(tree, [measured("a-on-x", 2), measured("b-on-y", 2, "product-b")]);
-//     expect(prints).toContain(productConditionFingerprint("product-a", print(examX)));
-//     expect(prints).not.toContain(productConditionFingerprint("product-b", print(examX)));
-//     // A battery without a recorded product is attributed to none.
-//     expect(priorPublicFingerprints(tree, [measured("a-on-x", 2, null)])).toEqual([]);
-//   });
-//
-//   it("prints an exam by its public inputs, so a controls or expectations edit does not reset it", () => {
-//     const tree = tmp();
-//     const exam = Array.from({ length: 6 }, (_, span) => ({ span }));
-//     writeProjection(tree, "first", exam);
-//     writeProjection(tree, "repaired", exam);
-//     const prints = priorPublicFingerprints(tree, [measured("first", 6), measured("repaired", 6)]);
-//     expect(prints).toContain(productConditionFingerprint("product-a", print(exam)));
-//     expect(new Set(prints).size).toBe(1);
-//   });
-//
-//   it("yields no fingerprint for a battery whose projection cannot be read, rather than a partial one", () => {
-//     // Hashing an absent field would collapse distinct batteries onto one sentinel print and refuse
-//     // honest fresh sets.
-//     const tree = tmp();
-//     mkdirSync(join(tree, "runs", "drifted", "cases", "t0"), { recursive: true });
-//     writeFileSync(
-//       join(tree, "runs", "drifted", "cases", "t0", "public-task.json"),
-//       JSON.stringify({ taskId: "t0", publicTask: {} }),
-//     );
-//     expect(priorPublicFingerprints(tree, [measured("drifted", 1)])).toEqual([]);
-//     expect(priorPublicFingerprints(tree, [measured("absent", 1)])).toEqual([]);
-//   });
-// });
+describe("the identities a battery line names", () => {
+  // A remeasure records its regrade even when no recorded solve matched, because the remeasure
+  // chain reads that presence; for the author every case of such a battery was solved fresh.
+  it("reads the scoring hash, and a regrade only when it reused a recorded solve", () => {
+    const tree = tmp();
+    const snapshot = { agentHash: "agent-a", correctnessModelHash: "cm-a", scoringHash: "scoring-a" };
+    writeBattery(tree, "r1", passes(3), RECORDED_AT, { bundleSnapshot: snapshot });
+    writeBattery(tree, "r2", passes(3), NEXT_DAY, {
+      bundleSnapshot: snapshot,
+      regrade: { of: "r1", reused: 2, changedPasses: 0 },
+    });
+    writeBattery(tree, "r3", passes(3), "2026-01-09T00:00:00.000Z", {
+      regrade: { of: "r2", reused: 0, changedPasses: 0 },
+    });
+    expect(read(tree).history.map((row) => [row.authoring.scoringHash, row.authoring.regrade])).toEqual([
+      ["scoring-a", null],
+      ["scoring-a", { of: "r1", reused: 2 }],
+      [null, null],
+    ]);
+  });
+});

@@ -26,17 +26,16 @@ import { fullrunLine } from "../observe/run-observer.ts";
 import type { ModelAttemptGate } from "../run/campaign-budget.ts";
 import type { ProviderResourceBudget } from "../run/provider-resource-budget.ts";
 import type { BuilderExecutionRecorder, TurnRetryRow } from "./builder-execution.ts";
-import { raceAbort } from "./builder-tool-receipts.ts";
-import { allowanceWait } from "../truth/provider-reset.ts";
+import {
+  PROVIDER_RESET_MARGIN_MS,
+  allowanceWait,
+  sleepUnlessStopped,
+} from "../correctness-bundle/provider-reset.ts";
 
 /** The whole retry budget for one turn: three further attempts, then the typed non-result. The
  *  waits grow because the causes clear on different clocks — a re-login lands in minutes, a home
  *  network outage closer to an hour. */
 export const TURN_RETRY_BACKOFF_MS = [120_000, 300_000, 600_000] as const;
-
-/** Wake a little after the provider's stated reset rather than exactly on it, so a clock that is
- *  a few seconds behind ours does not spend an attempt on the same refusal. */
-export const PROVIDER_RESET_MARGIN_MS = 60_000;
 
 /** Bytes of the transport's own words kept, enough to recognise the cause in the recorded row. */
 const REASON_MAX_BYTES = 300;
@@ -79,7 +78,7 @@ export async function awaitTurnRetry(
   const reason = boundText(joined === "" ? "no error recorded" : joined, REASON_MAX_BYTES).shown;
   // An allowance that names when it clears is a wait; one that names no clock ends the run. Each
   // clock is read from the allowance that named it, so a session limit naming noon cannot speak for
-  // a monthly spend limit beside it, which no wait clears (src/truth/provider-reset.ts).
+  // a monthly spend limit beside it, which no wait clears (src/correctness-bundle/provider-reset.ts).
   const allowance = allowanceWait(errorMessages);
   const resetAt = allowance.at;
   if (allowance.refuse || errorMessages.some((error) => PERMANENT_REFUSAL.test(error))) {
@@ -112,30 +111,9 @@ export async function awaitTurnRetry(
   fullrunLine(
     `turn retry ${row.attempt}/${row.of} (role ${row.role}): turn ${status} with no build output; waiting ${waiting} — ${row.reason}`,
   );
-  // A reset wait runs for hours, so it ends when the controller does. `cancellationSignal` is the
-  // abort FullRunClosure raises on SIGINT, SIGTERM and a provider denial, and asking the same two
-  // gates again afterwards turns it back into the stop cause the caller already handles. Without
-  // this the operator's stop is read once, before the sleep, and the run sleeps past it.
-  //
-  // Clearing the timer is what ends the wait, not resolving it. Racing `Bun.sleep(8_000)` against
-  // an abort at 200 ms returns at 201 ms and exits the process at 8002 ms, while the same race over
-  // a timer the abort clears exits at 201 ms. A run stopped during a wait until a provider-named
-  // reset would otherwise keep its process alive to that reset with terminal.json already
-  // written.
-  const stopped = context.providerBudget?.cancellationSignal;
-  await (context.wait === undefined
-    ? new Promise<void>((resolve) => {
-        const timer = setTimeout(resolve, waitMs);
-        stopped?.addEventListener(
-          "abort",
-          () => {
-            clearTimeout(timer);
-            resolve();
-          },
-          { once: true },
-        );
-      })
-    : raceAbort(context.wait(waitMs), stopped));
+  // A reset wait runs for hours, so it ends when the controller does, and asking the same two gates
+  // again afterwards turns that stop back into the cause the caller already handles.
+  await sleepUnlessStopped(waitMs, context.providerBudget?.cancellationSignal, context.wait);
   context.attemptGate?.assertAttemptAvailable();
   context.providerBudget?.assertAvailable("builder");
   return true;

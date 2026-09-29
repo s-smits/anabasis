@@ -5,7 +5,7 @@ import {
   checkInformativenessLines,
   familyCoverageLines,
   roleSpendLines,
-} from "../.claude/skills/whole-run-investigation/scripts/digest-ledgers.mjs";
+} from "../.claude/skills/whole-run-investigation/scripts/digest-ledgers.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { controllerRunOfBattery } from "../src/run/controller-battery-record-policy.ts";
 import { join } from "../src/meta/path.ts";

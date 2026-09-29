@@ -1,6 +1,8 @@
-import { mkdirSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { mkdirSync, readFileSync, writeFileSync } from "../src/meta/filesystem.ts";
 import type { JsonValue } from "../src/meta/json-shape.ts";
-import { join } from "../src/meta/path.ts";
+import { join, resolve } from "../src/meta/path.ts";
+import { runtimeProcess } from "../src/meta/process.ts";
+import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { afterAll, describe, expect, it } from "bun:test";
 import type { CaseRecordRow } from "../src/claim/case-record.ts";
 import { caseRecordRow } from "./helpers/case-record-row.ts";
@@ -17,8 +19,9 @@ import {
   renderBrief,
   runScope,
   tierOf,
-} from "../.claude/skills/whole-run-investigation/scripts/brief.mjs";
-import { LANES, lanesForScope } from "../.claude/skills/whole-run-investigation/scripts/wri.mjs";
+} from "../.claude/skills/whole-run-investigation/scripts/brief.ts";
+import { LANES, lanesForScope } from "../.claude/skills/whole-run-investigation/scripts/wri.ts";
+import { HARDWARE_TRIGGER } from "../.claude/skills/whole-run-investigation/scripts/hardware-target.ts";
 
 const RUN = "custom-test-20260919T000000000Z-abcdef";
 const START = "2026-09-19T00:00:00.000Z";
@@ -65,7 +68,7 @@ function campaignWith(rows: CaseRecordRow[], { epochs = 1, terminal = false } = 
     writeFileSync(
       join(controller, "terminal.json"),
       json({
-        schema: "campaign-terminal/v4",
+        schema: "campaign-terminal/v5",
         writtenAt: "2026-09-19T03:00:00.000Z",
         source: opening.source,
         budget: BUDGET,
@@ -104,7 +107,7 @@ describe("how big is this run", () => {
     [{ hours: 13 }, "deep"],
     [{ hours: 6, epochs: 3 }, "deep"],
     [{ hours: 6, batteries: 3 }, "deep"],
-  ])("reads a scored run of %o as %s", (size, tier) => {
+  ] as const)("reads a scored run of %o as %s", (size, tier) => {
     expect(tierOf({ epochs: 1, batteries: 1, scored: true, ...size }).tier).toBe(tier);
   });
 
@@ -114,7 +117,7 @@ describe("how big is this run", () => {
       tierOf({ hours: 6, epochs: 1, batteries: 1, scored: true }),
       tierOf({ hours: 20, epochs: 4, batteries: 5, scored: true }),
     ].map((row) => row.semanticLanes);
-    expect(counts).toEqual([4, 8, 14]);
+    expect(counts).toEqual([6, 12, 19]);
   });
 
   it("counts a live run's elapsed hours to now and its batteries by their own run ids", () => {
@@ -167,6 +170,41 @@ describe("what the read said", () => {
     return reviewDir;
   }
 
+  /** The lanes a review records, after one `wri.ts read` per lane list into the same `--out`. */
+  function readInto(campaign: string, reviewDir: string, ...reads: string[]): string[] {
+    const wri = resolve(import.meta.dirname, "../.claude/skills/whole-run-investigation/scripts/wri.ts");
+    for (const lanes of reads) {
+      const read = Bun.spawnSync({
+        cmd: [runtimeProcess.execPath, wri, "read", campaign, "--out", reviewDir, "--lanes", lanes],
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      expect(read.stderr.toString()).toBe("");
+      expect(read.exitCode).toBe(0);
+    }
+    const state = parseJsonAs<{ steps: { label: string }[] }>(
+      readFileSync(join(reviewDir, "wri-review.json"), "utf8"),
+    );
+    return state.steps.map((row) => row.label);
+  }
+
+  it("adds a narrower later read's lanes to the review rather than replacing the earlier read", () => {
+    const campaign = campaignWith([verified(RUN)], { terminal: true });
+    const reviewDir = scratchDir("ana-brief-reread-");
+    expect(readInto(campaign, reviewDir, "climb,walls", "handoff")).toEqual(["climb", "walls", "handoff"]);
+    const brief = renderBrief(reviewDir);
+    for (const lane of ["climb", "walls", "handoff"]) expect(brief).toContain(`== ${lane}`);
+    // A lane read again replaces its own row and no other.
+    expect(readInto(campaign, reviewDir, "walls")).toEqual(["climb", "handoff", "walls"]);
+  });
+
+  it("starts a review of another run empty rather than carrying that run's lanes", () => {
+    const reviewDir = scratchDir("ana-brief-reread-");
+    readInto(campaignWith([verified(RUN)], { terminal: true }), reviewDir, "climb");
+    const other = campaignWith([verified(RUN)], { terminal: true });
+    expect(readInto(other, reviewDir, "walls")).toEqual(["walls"]);
+  });
+
   it("quotes a short lane whole and points at a long one", () => {
     const long = Array.from({ length: LANE_LINES + 12 }, (_, at) => `row ${at}`).join("\n");
     const brief = renderBrief(
@@ -205,10 +243,10 @@ describe("what the read said", () => {
     expect(brief).toContain(`${RUN}  [standard]`);
     expect(brief).toContain("1 verified, 0 unaccepted, 0 non-result");
     expect(brief).toContain("terminal: completed — completed");
-    expect(brief).toContain("about 8 semantic lanes");
+    expect(brief).toContain("about 12 semantic lanes");
   });
 
-  it("says outright when the snapshot lane flagged nothing, rather than leaving the section empty", () => {
+  it("says outright when the deterministic lanes flagged nothing, rather than leaving the section empty", () => {
     const reviewDir = reviewWith([], {});
     writeFileSync(
       join(reviewDir, "overview.json"),
@@ -217,7 +255,7 @@ describe("what the read said", () => {
     expect(renderBrief(reviewDir)).toContain("no digest trigger or scan finding");
   });
 
-  it("groups the digest triggers and scan findings the snapshot lane recorded", () => {
+  it("groups the digest triggers and scan findings the deterministic lanes recorded", () => {
     const reviewDir = reviewWith([], {});
     writeFileSync(
       join(reviewDir, "overview.json"),
@@ -235,25 +273,69 @@ describe("what the read said", () => {
     const brief = renderBrief(reviewDir);
     expect(brief).toContain("digest FAMILY UNMOVED all-pass x3: FAMILY UNMOVED all-pass: alpha 5/5");
     expect(brief).toContain("scan repeated-condition x2");
-    // A family row names no lane in the catalogue, so the standard tier's default set is named.
-    expect(brief).toContain("no trigger starts a lane; the standard default set is 1,5,8,9,12,14,24,25");
-    expect(brief).toContain("launch --sessions 1,5,8,9,12,14,24,25");
+    // An all-pass family row names no lane in the catalogue, so the standard tier's default set is
+    // named, with the standing lanes every standard read opens.
+    expect(brief).toContain(
+      "no trigger starts a lane; the standard default set with its standing lanes is 1,5,8,9,12,14,24,25,31,33,34,37",
+    );
+    expect(brief).toContain("launch --sessions 1,5,8,9,12,14,24,25,31,33,34,37");
+  });
+
+  it("carries an in-process lane's triggers into the brief and the lanes they start", () => {
+    const reviewDir = reviewWith([{ label: "gates", ok: true, exitCode: 0 }], {
+      gates: "1 Builder session(s)\n",
+    });
+    writeFileSync(
+      join(reviewDir, "gates.triggers.json"),
+      json([
+        { name: "GATE STALL (lane 27)", rows: 1, examples: ["tool-timeout at epoch-a session 1"] },
+        {
+          name: "EVALUATION CORRECTION REPLAY CANDIDATE (lane 28)",
+          rows: 1,
+          examples: ["run-b after run-a"],
+        },
+      ]),
+    );
+    const brief = renderBrief(reviewDir);
+    expect(brief).toContain("digest GATE STALL (lane 27) x1: tool-timeout at epoch-a session 1");
+    expect(brief).toContain("lane 28: EVALUATION CORRECTION REPLAY CANDIDATE (lane 28)");
+    expect(brief).toContain("launch --sessions 27,28,31,33,34,37");
+    // A triggers file beside a lane the read did not run contributes nothing.
+    const unrun = reviewWith([], {});
+    writeFileSync(
+      join(unrun, "gates.triggers.json"),
+      json([{ name: "GATE STALL (lane 27)", rows: 1, examples: [] }]),
+    );
+    expect(renderBrief(unrun)).not.toContain("GATE STALL");
+    // Nor does one left beside a lane that failed this read.
+    const failed = reviewWith([{ label: "gates", ok: false, exitCode: 1 }], { gates: "gates failed: x\n" });
+    writeFileSync(
+      join(failed, "gates.triggers.json"),
+      json([{ name: "GATE STALL (lane 27)", rows: 1, examples: [] }]),
+    );
+    expect(renderBrief(failed)).not.toContain("GATE STALL");
   });
 
   it("maps each digest trigger to the lanes the catalogue starts from it, and names the launch spec", () => {
-    expect(lanesForTrigger("OFF-AIM STREAK (lane 10)")).toEqual([10]);
-    expect(lanesForTrigger("TARGET MISSED (lane 10)")).toEqual([10]);
+    // A suffixed trigger starts its own lane first, then the lane the catalogue added beside it.
+    expect(lanesForTrigger("OFF-AIM STREAK (lane 10)")).toEqual([10, 36]);
+    expect(lanesForTrigger("CENSUS WITH DISAGREEMENT (lane 16)")).toEqual([16, 32]);
+    // The plan declares no target, so no target trigger maps anywhere.
+    expect(lanesForTrigger("TARGET MISSED (lane 10)")).toEqual([]);
     expect(lanesForTrigger("REPEATED CONDITION (lane 20)")).toEqual([20]);
     expect(lanesForTrigger("MEMORY OVER READ CAP (lane 26)")).toEqual([26]);
     // The one unsuffixed trigger argues for two lanes, and a qualifier after its text still matches.
     expect(lanesForTrigger("UNTRIPPED IN SHIPPING (3 rules)")).toEqual([5, 6]);
+    // The hardware trigger starts the coverage lane and the isolated ground-truth lane together.
+    expect(lanesForTrigger(HARDWARE_TRIGGER)).toEqual([29, 30]);
     expect(lanesForTrigger("FAMILY UNMOVED all-pass")).toEqual([]);
+    expect(lanesForTrigger("FAMILY UNMOVED all-fail")).toEqual([38]);
     // A trigger that merely begins with a known name is not that trigger.
     expect(lanesForTrigger("UNTRIPPED IN SHIPPINGS")).toEqual([]);
-    // Every suffixed key names the lane its own suffix says.
+    // Every suffixed key starts the lane its own suffix says first.
     for (const [trigger, lanes] of LANE_FOR_TRIGGER) {
       const suffix = /\(lane (\d+)\)$/.exec(trigger);
-      if (suffix !== null) expect(lanes).toEqual([Number(suffix[1])]);
+      if (suffix !== null) expect(lanes[0]).toBe(Number(suffix[1]));
     }
     const suggested = laneSuggestions(
       [
@@ -270,13 +352,24 @@ describe("what the read said", () => {
         { lane: 6, triggers: ["UNTRIPPED IN SHIPPING"] },
         { lane: 10, triggers: ["OFF-AIM STREAK (lane 10)"] },
         { lane: 24, triggers: ["EXPLICIT ALLOWANCE WAIT (lane 24)"] },
+        { lane: 31, triggers: ["standing (probe)"] },
+        { lane: 34, triggers: ["standing (probe)"] },
+        { lane: 36, triggers: ["OFF-AIM STREAK (lane 10)"] },
       ],
       defaulted: false,
-      sessions: "5,6,10,24",
+      sessions: "5,6,10,24,31,34,36",
     });
-    // With no trigger picking, each tier's default set is named, and each tier keeps the one below.
-    expect(laneSuggestions([], "probe")).toEqual({ lanes: [], defaulted: true, sessions: "5,8,12,25" });
-    expect(laneSuggestions([], "deep").sessions).toBe("1,2,5,6,8,9,10,11,12,13,14,22,24,25");
+    // With no trigger picking, each tier's default set is named beside its standing lanes, and each
+    // tier keeps the one below.
+    expect(laneSuggestions([], "probe")).toEqual({
+      lanes: [
+        { lane: 31, triggers: ["standing (probe)"] },
+        { lane: 34, triggers: ["standing (probe)"] },
+      ],
+      defaulted: true,
+      sessions: "5,8,12,25,31,34",
+    });
+    expect(laneSuggestions([], "deep").sessions).toBe("1,2,5,6,8,9,10,11,12,13,14,22,24,25,31,32,33,34,37");
     expect(DEFAULT_LANES.standard).toEqual(expect.arrayContaining(DEFAULT_LANES.probe));
     expect(DEFAULT_LANES.deep).toEqual(expect.arrayContaining(DEFAULT_LANES.standard));
     expect(DEFAULT_LANES.deep).toHaveLength(14);
@@ -297,7 +390,17 @@ describe("what the read said", () => {
     );
     const brief = renderBrief(reviewDir);
     expect(brief).toContain(
-      "== lanes the triggers start\n  lane 10: OFF-AIM STREAK (lane 10)\n  lane 24: EXPLICIT ALLOWANCE WAIT (lane 24)\n  launch --sessions 10,24",
+      [
+        "== lanes the triggers start",
+        "  lane 10: OFF-AIM STREAK (lane 10)",
+        "  lane 24: EXPLICIT ALLOWANCE WAIT (lane 24)",
+        "  lane 31: standing (standard)",
+        "  lane 33: standing (standard)",
+        "  lane 34: standing (standard)",
+        "  lane 36: OFF-AIM STREAK (lane 10)",
+        "  lane 37: standing (standard)",
+        "  launch --sessions 10,24,31,33,34,36,37",
+      ].join("\n"),
     );
   });
 });

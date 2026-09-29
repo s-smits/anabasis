@@ -11,7 +11,6 @@ import {
   HANDOVER_FILES,
   type BuilderSubmitAttempt,
 } from "../../src/author/builder-execution.ts";
-import { parseExperimentSubmission } from "../../src/author/experiment-plan.ts";
 import {
   CUSTOM_TOOL_NAMES,
   bareCustomToolName,
@@ -45,10 +44,6 @@ const CURRENT_EXECUTION_OUTCOMES = new Set([
   "in-flight",
   "recorded-at-terminal",
 ]);
-
-function currentExperimentProposal(value: unknown): boolean {
-  return value === undefined || parseExperimentSubmission(value) !== null;
-}
 
 function validBackend(value: unknown): boolean {
   return value === null || (isString(value) && BACKEND_IDS.has(value));
@@ -249,15 +244,10 @@ function currentSubmitIdentity(row: EvidenceRecord): boolean {
     isPositiveInteger(row.turn) &&
     isNonNegativeInteger(row.atMs) &&
     (row.outcome === "accepted" || row.outcome === "refused") &&
-    (row.stage === null ||
-      row.stage === "bundle" ||
-      row.stage === "validation" ||
-      row.stage === "conformance" ||
-      row.stage === "gates") &&
+    (row.stage === null || row.stage === "bundle" || row.stage === "conformance" || row.stage === "gates") &&
     isString(row.commit) &&
     row.commit.length > 0 &&
-    isBoolean(row.terminal) &&
-    currentExperimentProposal(row.experimentProposal)
+    isBoolean(row.terminal)
   );
 }
 

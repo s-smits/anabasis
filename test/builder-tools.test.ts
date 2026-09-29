@@ -190,6 +190,17 @@ describe.if(osIsolationSupport().ok)("the seven capabilities through the isolati
     );
   });
 
+  it("bash: a file written under $TMPDIR is gone with the call and never reaches the run's temp root", async () => {
+    const temp = (
+      await run("bash", { command: 'echo probe > "$TMPDIR/probe"; printf "%s" "$TMPDIR"' })
+    ).trim();
+    expect(temp.startsWith(join(tmpdir(), "ana-builder-bash-"))).toBe(true);
+    expect(existsSync(temp)).toBe(false);
+    expect(existsSync(join(tmpdir(), "probe"))).toBe(false);
+    const again = (await run("bash", { command: 'printf "%s" "$TMPDIR"' })).trim();
+    expect(again).not.toBe(temp);
+  });
+
   // Safeguard 32 through the toolkit's own shell. A guard writing something that is not its hook
   // protocol has decided nothing, so the command runs, and the run this toolkit was mounted for
   // keeps the only durable trace. `Bun.env` is where the shell looks the guard up, so the swap puts

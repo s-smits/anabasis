@@ -9,6 +9,8 @@ import {
   writeCompleted,
 } from "../author/campaign-epoch.ts";
 import type { ResolvedSlots } from "../backends/resolve.ts";
+import { loadRepoEnv } from "../backends/env.ts";
+import { slotCredentials } from "../backends/login-state.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { CONTROLLER_LOCK_FILE, type LockHolderState, lockHolderState, lockToken } from "./campaign-lock.ts";
@@ -16,6 +18,7 @@ import type { FullRunArgs } from "./launch-arguments.ts";
 import type { ProjectIdentity } from "./launch-project.ts";
 import { assertSupportedHostRuntime, hostRuntimeIdentity } from "./host-runtime-policy.ts";
 import { SOURCE_IDENTITY, type SourceIdentity } from "./source-identity.ts";
+import { launchSourceRef, SOURCE_REF_ENV } from "./source-ref.ts";
 import { type CampaignBudget, loadBudget } from "./controller-ledger.ts";
 import {
   type ControllerAbortClause,
@@ -68,7 +71,7 @@ import { readJsonFile } from "../meta/completed-json.ts";
 /** `schema` is parsed bytes, so the compiler cannot own these tags as a member type and every
  *  reader compares them by hand. */
 export const CAMPAIGN_OPENING_SCHEMA = "campaign-opening/v2";
-const CAMPAIGN_TERMINAL_SCHEMA = "campaign-terminal/v4";
+const CAMPAIGN_TERMINAL_SCHEMA = "campaign-terminal/v5";
 
 export interface ControllerRunState {
   opening: { digest: string; epoch: CampaignEpochEvidence; runId: string } | null;
@@ -261,6 +264,9 @@ function writeControllerOpening(input: {
     writtenAt: new Date().toISOString(),
     runtime: hostRuntimeIdentity(),
     source: SOURCE_IDENTITY,
+    // The pull request and stack the launcher forked the commit from; null for a launch that
+    // named none, such as a direct fullrun.
+    sourceRef: launchSourceRef(Bun.env[SOURCE_REF_ENV], SOURCE_IDENTITY.commit),
     project: input.project,
     runId: input.runId,
     // Derived under the held campaign lock, before this run's own evidence exists, so a first run
@@ -273,6 +279,9 @@ function writeControllerOpening(input: {
     abandonedRuns: abandonedSiblingRuns(campaign, input.runId),
     epoch: { key: epoch.key, supersedes: epoch.supersedes },
     modelSlots: input.slots,
+    // Which account each slot's kind books against, as a source and a digest, never the token: a
+    // limit or a spend is per account, and the slots alone cannot say which account that was.
+    credentials: slotCredentials(input.slots, loadRepoEnv(input.repoRoot)),
     // budget.json spans runs and epochs, so a later run moves the counter and the file alone can
     // never say what this run spent — a campaign whose turn count is many times any one run's
     // iteration count leaves no reader able to say which run spent them. The snapshot at open and

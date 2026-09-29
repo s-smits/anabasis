@@ -9,7 +9,6 @@
  * attribution from accepted bytes, the real census, solvability and adoption path, and the real
  * recorded evidence the next round reads.
  */
-import { PLAN_FIELDS } from "./helpers/experiment-plan.ts";
 import { afterEach, describe, expect, it } from "bun:test";
 import {
   mkdirSync,
@@ -32,8 +31,8 @@ import { type FullRunDeps, parseFullRunArgs, runFullRun, slugForDirectInput } fr
 import { buildHarness } from "../src/run/harness-build.ts";
 import { measureHarness } from "../src/run/harness-measure.ts";
 import { measuredProductDir } from "../src/run/product-versions.ts";
-import type { Solver } from "../src/truth/solve.ts";
-import { readRecordedBatteryRecord } from "../src/truth/battery-record.ts";
+import type { Solver } from "../src/correctness-bundle/solve.ts";
+import { readRecordedBatteryRecord } from "../src/correctness-bundle/battery-record.ts";
 import { required } from "./helpers/doubles.ts";
 import { builtSession, fullFakeHost, probeEvidence } from "./helpers/measure-doubles.ts";
 import { type ScriptedTurn, scriptedBuilderRuntime } from "./helpers/scripted-builder-runtime.ts";
@@ -134,8 +133,8 @@ function writeBattery(workspace: string, inputs: readonly string[]): void {
   });
 }
 
-/** Round one authors the product; every later round changes only its battery and declares the
- *  experiment. Each round counts its turns from one, so `turn === 1` marks the round boundary. */
+/** Round one authors the product; every later round changes only its battery. Each round counts its
+ *  turns from one, so `turn === 1` marks the round boundary. */
 function climbScript(submits: Accepted[]): ScriptedTurn {
   let round = -1;
   return async (ctx) => {
@@ -143,20 +142,6 @@ function climbScript(submits: Accepted[]): ScriptedTurn {
     const inputs = required(BATTERIES[round], `battery for round ${round + 1}`);
     if (round === 0) uppercaseFixture(ctx.workspace, false, false, TASKS);
     writeBattery(ctx.workspace, inputs);
-    if (round > 0) {
-      const past = inputs.filter((input) => input.length > CEILING).length;
-      writeFileSync(
-        join(ctx.workspace, "EXPERIMENT.json"),
-        JSON.stringify({
-          scope: "tasks",
-          gap: "the measured battery says nothing about inputs the solver has not been asked to uppercase",
-          change: `lengthen ${past} of the ${TASKS} inputs past two characters`,
-          ...PLAN_FIELDS,
-          expectedResult: "fewer verified passes on the same product, from the longer inputs alone",
-          target: { comparator: "at-most", verifiedPasses: TASKS - past },
-        }),
-      );
-    }
     const result = await ctx.call("submit", {});
     /* SAFETY: the host's submit tool returns this receipt shape on every outcome. */
     submits.push((result as { details: { receipt: Accepted } }).details.receipt);
@@ -207,11 +192,8 @@ function decisionsOf(root: string): Record<string, string> {
   );
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, off-aim-allowance-stop): commented out (unsure): the Builder owns the route after an off-aim streak, which stays a readout fact
-// describe("the climb: one product, four batteries, one fixed competence", () => {
-//   it("measures a falling pass rate from the tasks alone, attributes each round to its bytes, and stops on the streak", async () => {
 describe("the climb: one product, five batteries, one fixed competence", () => {
-  it("measures a falling pass rate from the tasks alone, attributes each round to its bytes, and runs on through the streak", async () => {
+  it("measures a falling pass rate from the tasks alone, attributes each round to its bytes, and runs on below the aim", async () => {
     const root = scratchRepo();
     const submits: Accepted[] = [];
     const { repoRoot, ...runArgs } = {
@@ -246,26 +228,8 @@ describe("the climb: one product, five batteries, one fixed competence", () => {
       analyse: analyseStep,
     });
 
-    // Gate audit 2026-09-25 (docs/gate-audit.md, off-aim-allowance-stop): commented out (unsure): the Builder owns the route after an off-aim streak, which stays a readout fact
-    // // One authored product, three rounds that reopen and keep it, then a round that reads the
-    // // streak and stops before it opens a session, carrying its reason as the round's clause.
-    // expect(outcome.rounds.map((round) => [round.move, round.build, round.promotion, round.measured])).toEqual(
-    //   [
-    //     ["build", "adopted", null, true],
-    //     ["rebuild", "candidate", "promoted", true],
-    //     ["rebuild", "candidate", "promoted", true],
-    //     ["rebuild", "candidate", "promoted", true],
-    //     ["stop", "stopped", null, false],
-    //   ],
-    // );
-    // expect(outcome.rounds.slice(0, 4).map((round) => round.buildClause)).toEqual([null, null, null, null]);
-    // expect(outcome.terminal).toContain(
-    //   "3 consecutive rounds ended below the aim",
-    // );
-    // const batteries = outcome.rounds.slice(0, 4).map((round) => round.runId);
-    // expect(batteries).toEqual(["climb", "climb-i02", "climb-i03", "climb-i04"]);
-    // One authored product, then four rounds that reopen and keep it: the fifth reads a streak of
-    // three batteries below the aim and still opens its session, because the route is the Builder's.
+    // One authored product, then four rounds that reopen and keep it: the fifth follows three
+    // batteries below the aim and still opens its session, because the route is the Builder's.
     expect(outcome.rounds.map((round) => [round.move, round.build, round.promotion, round.measured])).toEqual(
       [
         ["build", "adopted", null, true],
@@ -289,22 +253,6 @@ describe("the climb: one product, five batteries, one fixed competence", () => {
       expect(passes).toEqual(required(BATTERIES[index], runId).map((input) => input.length <= CEILING));
     }
 
-    // Gate audit 2026-09-25 (docs/gate-audit.md, off-aim-allowance-stop): commented out (unsure): the Builder owns the route after an off-aim streak, which stays a readout fact
-    // // Accepted bytes, not the loop's name for the round, decide the attribution: the agent and
-    // // correctness-model halves of the candidate identity hold across all four, so every later round
-    // // is a task-only experiment however it was labelled.
-    // expect(submits.map((receipt) => receipt.outcome)).toEqual([
-    //   "accepted",
-    //   "accepted",
-    //   "accepted",
-    //   "accepted",
-    // ]);
-    // const product = submits.map((receipt) => receipt.candidateId.split("-").slice(0, 2).join("-"));
-    // expect(new Set(product).size).toBe(1);
-    // expect(new Set(submits.map((receipt) => receipt.candidateId)).size).toBe(4);
-    //
-    // // Every round that read a placement wrote it down, the stopping round included: its file is
-    // // the only durable evidence that the reading which ended the run happened.
     // Accepted bytes, not the loop's name for the round, decide the attribution: the agent and
     // correctness-model halves of the candidate identity hold across all five, so every later round
     // is a task-only experiment however it was labelled.
@@ -326,39 +274,14 @@ describe("the climb: one product, five batteries, one fixed competence", () => {
     // sample the note quotes, so stream and note cannot tell two stories about one battery.
     const climb = observations(root).flatMap(([, row]) => (row.owner === "climb" ? [row.claim] : []));
     expect(climb.slice(0, 2)).toEqual([
-      "too-easy: 6/6, Wilson interval [0.610, 1.000] against target range [0.2, 0.5]: significantly too easy",
-      "under-aim: 0/2, Wilson interval [0.000, 0.658] against target range [0.2, 0.5]: in range, below the aim",
+      "6/6 against band [0.2, 0.5]: too-easy",
+      "0/2 against band [0.2, 0.5]: under-aim",
     ]);
 
     // Every span the run opened also settled, success included: a reader of a live stream sees an
     // outcome and a duration for each beginning. The census is exact except `grade deferred`, one
     // row per solve that finished while an earlier case was still solving — the pool's scheduling,
     // not the run's shape. `judge` and `measure-on` are absent because the Judge is off and the
-    // Gate audit 2026-09-25 (docs/gate-audit.md, off-aim-allowance-stop): commented out (unsure): the Builder owns the route after an off-aim streak, which stays a readout fact
-    // // solver scripted. Four rounds build and measure; the stopping round records its build as failed
-    // // before any session opens, and only the first round adopts a tree.
-    // const { census, unsettled } = phases(root);
-    // expect(unsettled).toEqual([]);
-    // const { "grade deferred": heldForTheirTurn = 0, ...exact } = census;
-    // expect(heldForTheirTurn).toBeLessThanOrEqual(24);
-    // expect(exact).toEqual({
-    //   "admission completed": 4,
-    //   "adopt completed": 1,
-    //   "analyse completed": 4,
-    //   "analyse started": 4,
-    //   "build completed": 4,
-    //   "build failed": 1,
-    //   "build started": 4,
-    //   "claim completed": 4,
-    //   "controls completed": 4,
-    //   "controls started": 4,
-    //   "grade completed": 4,
-    //   "grade started": 4,
-    //   "input completed": 1,
-    //   "next completed": 3,
-    //   "solve completed": 4,
-    //   "solve started": 4,
-    // });
     // solver scripted. All five rounds build and measure, and only the first adopts a tree.
     const { census, unsettled } = phases(root);
     expect(unsettled).toEqual([]);

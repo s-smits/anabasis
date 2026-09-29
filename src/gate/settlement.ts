@@ -6,17 +6,12 @@
  */
 import { semanticFindingsIdentity } from "../author/builder-execution.ts";
 import type {
-  // Gate audit 2026-09-25 (docs/gate-audit.md, repeated-findings-stall): commented out (unsure): one refusal repeated over changed bytes is repair in progress, not a proven stall
-  // AuthorRepairFinding,
   BuiltHarness,
   CampaignClause,
   CampaignFeedback,
   IterationEvidence,
 } from "../author/campaign-types.ts";
 import { feedbackOwner } from "../author/feedback-routing.ts";
-// Gate audit 2026-09-25 (docs/gate-audit.md, repeated-findings-stall): commented out (unsure): one refusal repeated over changed bytes is repair in progress, not a proven stall
-// import { POLICY } from "../critic/policy.ts";
-// import { findingsRepeatRun, repeatedFindingsFinding } from "./candidate-memory.ts";
 
 type IterationStep =
   | { kind: "build-admissible"; evidence: IterationEvidence }
@@ -25,9 +20,6 @@ type IterationStep =
       kind: "continue";
       evidence: IterationEvidence;
       carried: CampaignFeedback[];
-      // Gate audit 2026-09-25 (docs/gate-audit.md, repeated-findings-stall): commented out (unsure): one refusal repeated over changed bytes is repair in progress, not a proven stall
-      // /** A repeated-diagnosis notice for the author; never part of findingsHash. */
-      // steering?: AuthorRepairFinding;
     };
 
 interface GateSettlementInput {
@@ -36,8 +28,6 @@ interface GateSettlementInput {
   attempts: Record<string, number>;
   ordinal: number;
   dir: string;
-  // Gate audit 2026-09-25 (docs/gate-audit.md, repeated-findings-stall): commented out (unsure): one refusal repeated over changed bytes is repair in progress, not a proven stall
-  // priorBlockedFindingsHashes: readonly string[];
 }
 
 /** The terminal clause a gate run's blocking rows force whether or not an iteration records them:
@@ -87,13 +77,5 @@ export function settleGateRun(input: GateSettlementInput): IterationStep {
   };
   const clause = gateTerminalClause(blocking);
   if (clause !== null) return { kind: "terminal", evidence, clause };
-  // Gate audit 2026-09-25 (docs/gate-audit.md, repeated-findings-stall): commented out (unsure): one refusal repeated over changed bytes is repair in progress, not a proven stall
-  // const repeats = findingsRepeatRun(input.priorBlockedFindingsHashes, findingsHash);
-  // if (repeats >= POLICY.loop.stalledFindingsRepeats) {
-  //   return { kind: "terminal", evidence, clause: "authoring-stalled" };
-  // }
-  // if (repeats > 1) {
-  //   return { kind: "continue", evidence, carried: blocking, steering: repeatedFindingsFinding(repeats) };
-  // }
   return { kind: "continue", evidence, carried: blocking };
 }

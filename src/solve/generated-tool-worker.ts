@@ -9,13 +9,13 @@ import { errorMessage } from "../meta/runtime-values.ts";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { sha256 } from "../meta/digest.ts";
 import { sameJsonValue, canonicalJsonCopy as trustedJson } from "../meta/stable-json.ts";
-import { controllerToolAuthority } from "../truth/built-presets.ts";
-import type { PublicTask } from "../truth/task-split.ts";
+import { controllerToolAuthority } from "../correctness-bundle/built-presets.ts";
+import type { PublicTask } from "../correctness-bundle/task-split.ts";
 import type { OsIsolationSupport } from "../verify/os-isolation.ts";
 import type { SolveIsolationPolicy } from "../verify/solve-sandbox.ts";
 import { createBuiltBashTool } from "./built-bash.ts";
-import { harnessConfigIssue, harnessSettings } from "../truth/harness-config.ts";
-import { type PublicBriefResource, readPublicResources } from "../truth/public-resources.ts";
+import { harnessConfigIssue, harnessSettings } from "../correctness-bundle/harness-config.ts";
+import { type PublicBriefResource, readPublicResources } from "../correctness-bundle/public-resources.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import type { SafeguardContext } from "../meta/safeguard.ts";
 import { BUILT_COMMAND_SCRATCH_ROOT } from "../verify/solve-command-isolation.ts";
@@ -28,9 +28,10 @@ import {
   submitMaterializedArtifact,
   submitToolDescription,
 } from "./built-starter.ts";
-import type { BuiltControllerInterface } from "../truth/contracts.ts";
+import type { BuiltControllerInterface } from "../correctness-bundle/contracts.ts";
 import { CONFORMANCE_PROBE_POLICY, type ConformanceEvidence } from "../claim/conformance-evidence.ts";
 import { bundleSnapshotToolTree } from "../claim/bundle-snapshot.ts";
+import { checkInstrumentPaths } from "../correctness-bundle/check-instruments.ts";
 import { fileArtifactRoot, fileArtifactRootIssue } from "./draft-files.ts";
 import { fileMapDigest } from "./draft-store.ts";
 import type { SubmissionPort } from "./final-submission.ts";
@@ -90,6 +91,9 @@ export interface GeneratedToolStarterOptions {
   traceTaskAccess?: boolean;
   /** The measuring run, carried for the shell's own safeguard; absent outside a resolved run. */
   safeguardContext?: SafeguardContext;
+  /** The operator's launch condition: the shell may not run a check's required tool that resolves
+   *  from the bundle's `.toolchain`. Absent or false leaves the shell exactly as it was. */
+  withholdInstruments?: boolean;
 }
 /** One shared projection for the build-time and production worker identity checks. */
 export function generatedToolWorkerBinding(worker: GeneratedToolWorkerCondition): GeneratedToolWorkerBinding {
@@ -264,10 +268,9 @@ function startWorkerClient(
  *
  * Both are already in the model's context — the task in its first turn, the resources through their
  * own reader — so this carries nothing new across the wall. What it removes is the step between
- * having them and computing over them: the shell's own text already advises "a driver you keep in
- * your home directory and re-run, reading its inputs from a file you edit between commands", and
- * before this the solver had to retype those inputs into a heredoc to create that file. Returns how
- * many resource files were written, which is all the shell description needs to name them.
+ * having them and computing over them: without the files, a program the solver runs over those
+ * inputs needs them retyped into a heredoc first. Returns how many resource files were written,
+ * which is all the shell description needs to name them.
  */
 export function seedSessionHome(
   home: string,
@@ -378,6 +381,7 @@ export async function createGeneratedToolStarter(
               home,
               publicResourceFiles: seedSessionHome(home, options.task, readPublicResources(options.slugDir)),
               toolTree: bundleSnapshotToolTree(options.slugDir),
+              withheld: options.withholdInstruments === true ? checkInstrumentPaths(options.slugDir) : [],
               timeouts: settings,
               ...keyIfDefined("safeguardContext", options.safeguardContext),
             }),

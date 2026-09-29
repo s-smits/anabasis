@@ -12,9 +12,9 @@ import { describe, expect, it } from "bun:test";
 import { Claim } from "../src/claim/claim.ts";
 import type { ClaimEvidence, ScoredCase } from "../src/claim/claim-evidence.ts";
 import type { JudgeEvidence } from "../src/claim/judge.ts";
-import { NEVER_ATTEMPTED_PREFIX } from "../src/truth/battery-provider-stop.ts";
-import { batteryTerminalReason } from "../src/truth/battery-record.ts";
-import { NO_EXTERNAL_EXECUTION } from "../src/truth/grounding.ts";
+import { NEVER_ATTEMPTED_PREFIX } from "../src/correctness-bundle/battery-provider-stop.ts";
+import { batteryTerminalReason } from "../src/correctness-bundle/battery-record.ts";
+import { NO_EXTERNAL_EXECUTION } from "../src/correctness-bundle/grounding.ts";
 import {
   AUTHORED_C1,
   AUTHORED_C2,
@@ -210,50 +210,11 @@ const REFUSALS = {
     repairable: false,
     detail: "[__proto__]",
   },
-  // Gate audit 2026-09-25 (docs/gate-audit.md, reject-discrimination): commented out (unsure): a reject control that passes its named check no longer refuses the candidate or the claim
-  // "a check named __proto__ with no own attribution key": {
-  //   evidence: {
-  //     ...protoCheck,
-  //     discrimination: { claimable: true, findings: [], attributedCheckIds: {} },
-  //     truthCheckFiring: firing(protoCounts(4), protoCounts(4)),
-  //   },
-  //   score: protoScore,
-  //   clause: "intrinsic-grounding-uncovered",
-  //   repairable: false,
-  //   detail: '"__proto__"',
-  // },
-  // "an authored check no reject control failed on": {
-  //   evidence: { discrimination: { claimable: true, findings: [], attributedCheckIds: {} } },
-  //   clause: "intrinsic-grounding-uncovered",
-  //   repairable: false,
-  // },
-  // "an authored check whose attribution count is zero": {
-  //   evidence: { discrimination: { claimable: true, findings: [], attributedCheckIds: { c1: 0 } } },
-  //   clause: "intrinsic-grounding-uncovered",
-  //   repairable: false,
-  // },
-  // "an authored check only a neighbouring check's rejects attribute": {
-  //   evidence: { discrimination: { claimable: true, findings: [], attributedCheckIds: { other: 5 } } },
-  //   clause: "intrinsic-grounding-uncovered",
-  //   repairable: false,
-  //   detail: 'check "c1"',
-  // },
   "no grounding at all": { evidence: { grounding: null }, clause: "grounding-missing", repairable: false },
   "a grounding that declares no check": {
     evidence: { grounding: { declared: [], execution: NO_EXTERNAL_EXECUTION } },
     clause: "grounding-missing",
     repairable: false,
-  },
-  "a refuted prediction with no disposition": {
-    evidence: { predictions: [{ id: "p1", outcome: "refuted" }] },
-    clause: "prediction-record-open",
-    repairable: true,
-    detail: 'prediction "p1" is refuted',
-  },
-  "an unexercised prediction closed by a repair, which closes nothing": {
-    evidence: { predictions: [{ id: "p1", outcome: "unexercised", disposition: "repair" }] },
-    clause: "prediction-record-open",
-    repairable: true,
   },
 } satisfies Record<string, Refusal>;
 
@@ -297,12 +258,6 @@ const CLAIMABLE = {
   "a single flake in a small battery, since the ratio needs two non-results": {
     evidence: { runStatus: terminal(2, { solver: 1 }), runtimeIdentities: firstCases(2).runtimeIdentities },
     score: firstCases(2).score,
-  },
-  "a refuted prediction closed by a repair": {
-    evidence: { predictions: [{ id: "p1", outcome: "refuted", disposition: "repair" }] },
-  },
-  "an absent prediction sidecar, which is no record rather than an open one": {
-    evidence: { predictions: null },
   },
 } satisfies Record<string, Claimable>;
 

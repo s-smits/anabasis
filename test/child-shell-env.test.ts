@@ -30,7 +30,7 @@ import {
   solverBudgetNotice,
   workspaceSolverBudgetNotice,
 } from "../src/builder/bash-install-env.ts";
-import { DEFAULT_HARNESS_SETTINGS, HARNESS_CONFIG_FILE } from "../src/truth/harness-config.ts";
+import { DEFAULT_HARNESS_SETTINGS, HARNESS_CONFIG_FILE } from "../src/correctness-bundle/harness-config.ts";
 import type { CandidateAccessPolicy } from "../src/builder/candidate-isolation.ts";
 import { DCG_RULES } from "../src/solve/dcg-rules.ts";
 

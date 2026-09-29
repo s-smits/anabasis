@@ -97,7 +97,7 @@ function campaign(prefix: string = "outcome-") {
       };
       write(openingPath, opening);
       write(terminalPath, {
-        schema: "campaign-terminal/v4",
+        schema: "campaign-terminal/v5",
         source: SOURCE,
         budget: BUDGET,
         epoch: EPOCH,
@@ -337,6 +337,7 @@ describe("the claim a battery carries", () => {
       paired: 8,
       within1pct: 2,
       within5pct: 6,
+      derived: 4,
       unpaired: 1,
     };
     mkdirSync(join(c.dir, "analysis"), { recursive: true });
@@ -353,7 +354,7 @@ describe("the claim a battery carries", () => {
     expect(table?.pairing).toMatch(/^heuristic pairing/);
     expect(table?.families[0]).toMatchObject({ ...row, shareWithin5pct: 0.75 });
     expect(table?.families[0]?.reading).toBe(
-      "alpha: 6 of 8 paired hidden limits within 5% of the reference (75%), 2 within 1%, 1 unpaired, over 3 task(s); heuristic pairing",
+      "alpha: 6 of 8 paired hidden limits within 5% of the reference (75%), 2 within 1%, 4 derived, 1 unpaired, over 3 task(s); heuristic pairing",
     );
   });
 });

@@ -21,6 +21,8 @@ function resolveClaudeCodeRuntimeModel(modelId: string, settings: LongContextSet
 	switch (modelId) {
 		case "claude-opus-5":
 			return { cliModelId: "claude-opus-5[1m]", contextWindow: ONE_M_CONTEXT };
+		case "claude-opus-5-5":
+			return { cliModelId: "claude-opus-5-5[1m]", contextWindow: ONE_M_CONTEXT };
 		case "claude-opus-4-8":
 			return { cliModelId: "claude-opus-4-8[1m]", contextWindow: ONE_M_CONTEXT };
 		case "claude-opus-4-7":

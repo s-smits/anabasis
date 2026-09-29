@@ -1,15 +1,11 @@
-import { PLAN_FIELDS } from "./helpers/experiment-plan.ts";
 import { describe, expect, it, afterEach } from "bun:test";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { type CampaignFeedback, type IterationEvidence } from "../src/author/campaign-types.ts";
-import { controllerValidatedFindings } from "../src/truth/brief.ts";
+import { controllerValidatedFindings } from "../src/correctness-bundle/brief.ts";
 import { iterationMemoryFindings, ITERATION_MEMORY_CODE } from "../src/author/iteration-memory.ts";
-import { resumeCampaignMemory, unchangedCandidateSubmissions } from "../src/author/campaign-memory.ts";
-import { POLICY } from "../src/critic/policy.ts";
-import { hashJsonValue } from "../src/meta/stable-json.ts";
 const roots: string[] = [];
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
@@ -51,41 +47,13 @@ const briefRefusal = (code: string): CampaignFeedback => ({
 const detailOf = (dir: string): string => iterationMemoryFindings(dir)[0]?.detail ?? "";
 
 describe("cross-iteration Builder memory", () => {
-  it("restores captured intent beside its outcome without trusting a changed digest", () => {
+  it("restores each pass's outcome beside what its bytes were admitted as", () => {
     const dir = tmp();
-    const proposal = {
-      scope: "tasks" as const,
-      target: { comparator: "at-least" as const, verifiedPasses: 0 },
-      gap: "Untested coupling.",
-      change: "Change task coupling.",
-      ...PLAN_FIELDS,
-      expectedResult: "More failures would support the hypothesis.",
-    };
-    settle(dir, {
-      ordinal: 1,
-      outcome: "gates-blocked",
-      experimentProposal: { ...proposal, digest: hashJsonValue(proposal) },
-      experimentScope: { actual: "climb", freeze: { state: "held", clauses: [] } },
-    });
-    expect(detailOf(dir)).toContain("Untested coupling");
-    expect(detailOf(dir)).toContain("admitted as climb");
-    expect(detailOf(dir)).toContain("gates-blocked");
-    settle(dir, { ordinal: 2, experimentProposal: { ...proposal, gap: "tampered intent", digest: "wrong" } });
-    expect(detailOf(dir)).not.toContain("tampered intent");
-  });
-  it("bounds a long recorded gap and marks what it left out", () => {
-    const dir = tmp();
-    const proposal = {
-      scope: "tasks" as const,
-      target: { comparator: "at-least" as const, verifiedPasses: 0 },
-      gap: "x".repeat(300),
-      change: "Change task coupling.",
-      ...PLAN_FIELDS,
-      expectedResult: "More failures would support the hypothesis.",
-    };
-    settle(dir, { ordinal: 1, experimentProposal: { ...proposal, digest: hashJsonValue(proposal) } });
-    expect(detailOf(dir)).toContain(
-      `gap "${"x".repeat(240)} […60 bytes omitted]", change "Change task coupling."`,
+    const climb = { actual: "climb" as const, freeze: { state: "held" as const, clauses: [] } };
+    settle(dir, { ordinal: 1, outcome: "gates-blocked", experimentScope: climb });
+    settle(dir, { ordinal: 2, outcome: "fingerprinted" });
+    expect(detailOf(dir)).toBe(
+      "Earlier build attempts: 01 gates-blocked; admitted as climb; 02 fingerprinted.",
     );
   });
   it("skips a recorded pass it cannot summarise and keeps the rest of the memory", () => {
@@ -298,66 +266,5 @@ describe("cross-iteration Builder memory", () => {
     const detail = detailOf(dir);
     expect(detail).not.toContain("01 fingerprinted");
     expect(detail).toContain("05 fingerprinted");
-  });
-
-  // truss-run1-sol-0830 recorded `candidate-unchanged` 21 times on workspace commit 52e0d68c across
-  // 14 controller invocations. Every invocation replayed the same directory and saw one sighting,
-  // because nothing on disk was keyed by the commit. These two cases check counting by commit.
-  it("counts unchanged candidate records per workspace commit across invocations", () => {
-    const dir = tmp();
-    resumeCampaignMemory(dir, "slug", "k");
-    const a = "52e0d68c".padEnd(40, "0");
-    for (const ordinal of [1, 2, 3]) {
-      settle(dir, {
-        ordinal,
-        outcome: "fingerprinted",
-        workspaceChange: { baseCommit: a, commit: a, changedPaths: [], deletedPaths: [] },
-      });
-    }
-    const memory = resumeCampaignMemory(dir, "slug", "k");
-    expect(memory.unchangedCandidateCommits[a]).toBe(3);
-    expect(unchangedCandidateSubmissions(memory, [])).toBeGreaterThanOrEqual(
-      POLICY.loop.unchangedCandidateStrikes,
-    );
-  });
-
-  it("starts a fresh count when the Builder moves the tree, and keeps the old commit's total", () => {
-    const dir = tmp();
-    resumeCampaignMemory(dir, "slug", "k");
-    const a = "a".repeat(40);
-    const b = "b".repeat(40);
-    for (const ordinal of [1, 2]) {
-      settle(dir, {
-        ordinal,
-        outcome: "fingerprinted",
-        workspaceChange: { baseCommit: a, commit: a, changedPaths: [], deletedPaths: [] },
-      });
-    }
-    settle(dir, {
-      ordinal: 3,
-      outcome: "fingerprinted",
-      workspaceChange: { baseCommit: b, commit: b, changedPaths: [], deletedPaths: [] },
-    });
-    const memory = resumeCampaignMemory(dir, "slug", "k");
-    expect(memory.unchangedCandidateCommits).toEqual({ [a]: 2, [b]: 1 });
-    // The campaign continues: the commit it would resubmit is B, sighted once.
-    expect(unchangedCandidateSubmissions(memory, [])).toBe(1);
-  });
-
-  it("does not count an iteration whose child tree moved, nor a blocked one", () => {
-    const dir = tmp();
-    resumeCampaignMemory(dir, "slug", "k");
-    const a = "a".repeat(40);
-    settle(dir, {
-      ordinal: 1,
-      outcome: "fingerprinted",
-      workspaceChange: { baseCommit: a, commit: "c".repeat(40), changedPaths: ["x"], deletedPaths: [] },
-    });
-    settle(dir, {
-      ordinal: 2,
-      outcome: "gates-blocked",
-      workspaceChange: { baseCommit: a, commit: a, changedPaths: [], deletedPaths: [] },
-    });
-    expect(resumeCampaignMemory(dir, "slug", "k").unchangedCandidateCommits).toEqual({});
   });
 });

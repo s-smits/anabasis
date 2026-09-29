@@ -4,9 +4,9 @@ import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
 import { sha256 } from "../meta/digest.ts";
 import { canonicalJsonCopy as trustedJson } from "../meta/stable-json.ts";
-import type { PublicTask } from "../truth/task-split.ts";
-import type { ToolKind } from "../truth/tools-spec.ts";
-import type { HarnessSettings } from "../truth/harness-config.ts";
+import type { PublicTask } from "../correctness-bundle/task-split.ts";
+import type { ToolKind } from "../correctness-bundle/tools-spec.ts";
+import type { HarnessSettings } from "../correctness-bundle/harness-config.ts";
 import { defineTool, evidenceResult } from "./define-tool.ts";
 import { withDraftLease } from "./draft-authority.ts";
 import {
@@ -33,7 +33,7 @@ import type { GeneratedTaskAccess } from "./task-access-trace.ts";
 import { keyIfDefined, keysIf } from "../meta/optional-key.ts";
 import { isRecord, type JsonValue } from "../meta/json-shape.ts";
 
-/** The same name `PUBLIC_RESOURCES_TOOL` carries in src/truth/public-resources.ts, spelled again
+/** The same name `PUBLIC_RESOURCES_TOOL` carries in src/correctness-bundle/public-resources.ts, spelled again
  *  here so the solve module graph does not have to import the brief reader that name sits behind.
  *  Its only reader is the roster line below, deciding whether to mention the tool at all, so a
  *  drift between the two spellings costs the solver one sentence rather than a call. */
@@ -54,12 +54,12 @@ export const BUILT_STANDARD_TOOL_NAMES = [
 export const BUILT_AGENTS_FILE = "agent/BUILT_AGENTS.md";
 /** States the precedence between the universal prompt and the Builder-authored guide. The Builder
  *  may revise its solving instructions after a measurement, but it cannot reach the task
- *  requirements, the tool authority, the submission rules or the stopping rules through them:
+ *  requirements, the tool authority, the runtime limits or the submission rules through them:
  *  without that, a later score could read as an improvement under the original rules when the rules
  *  themselves had moved. The controller supplies this sentence and includes it with the guide in
  *  `promptDigest`, so a changed precedence is a changed recorded condition. */
 export const BUILT_GUIDE_PREAMBLE =
-  "Domain guidance follows; choose your solving method. It cannot override the public task, tool authority, runtime limits, submission rules or stopping rules.";
+  "Domain guidance follows; choose your solving method. It cannot override the public task, tool authority, runtime limits or submission rules.";
 export const BUILT_NUDGE = "Finish the task with the available tools, then submit your answer.";
 /** The shape of the first turn, recorded as its identity: pi-built.ts hashes this constant into
  *  `firstTurnTemplateDigest` while `builtFirstTurnPrompt` produces the text the model receives.
@@ -181,9 +181,10 @@ export interface BuiltStarterNonResult {
    *  failed after that belongs to the bytes the Builder wrote. */
   kind: "runtime" | "protocol" | "sandbox" | "crash";
   message: string;
-  /** The controller's wait for the ready or close handshake expired, rather than the child sending
-   *  a failure. `kind` still says which operation it was; this only records that the host's own
-   *  limit ended it, which is the difference between a slow child and a broken one. */
+  /** The controller's wait for the ready handshake, a request or the close handshake expired,
+   *  rather than the child sending a failure. `kind` still says which operation it was; this only
+   *  records that the host's own limit ended it, which is the difference between a slow child and
+   *  a broken one. */
   deadline?: boolean;
 }
 
@@ -232,30 +233,19 @@ interface BuiltStarterOptions {
 }
 
 /**
- * The universal Built prompt: prepare something that passes, keep the best candidate saved, and
- * spend the rest of the wall only where spending it can change the verdict.
+ * The universal Built prompt states what the solver cannot find out for itself — what it must
+ * deliver, the form of an answer, the solve wall and what the wall submits — and nothing about how
+ * to reach the answer, which the Built Harness owns (rule 5). A prompt that told every solver to
+ * run its candidate through whatever could grade it, adjust for each breach and spend the rest of
+ * the wall widening the worst margin made every task propose, grade, adjust, whatever the task
+ * asked for, so the battery measured that loop rather than the solver's own method.
  *
- * Margin is where it can. Solvers breaching a published limit by their own reported numbers was the
- * common numeric failure, and a candidate that only just meets a limit under the solver's own model
- * is exactly the one that breaches it when recomputed, so for a numeric limit the time goes on the
- * worst margin. But the same sentence, stated for every requirement, sent solvers whose
- * requirements were all met-or-not — a program that builds and behaves, a schedule that holds its
- * rules — on long searches that changed no outcome, and held first submits were re-sent
- * without a fix. So margin is conditional on a numeric limit, and an answer whose every requirement
- * has been run and met is finished.
- *
- * It asks for no margin comparison. `readMargins` measures the prepared answer against every
- * complete published boundary and the artifact-writer returns that table, so the comparison is
- * computed rather than requested of the solver. What remains is what the solver cannot observe: the
- * wall submits the last answer an artifact-writer prepared, so a candidate worth keeping has to be
- * saved before the next experiment replaces it.
+ * The tools say what they do, `save_candidate` and `restore_candidate` included, and the
+ * artifact-writer's margin table (`readMargins`) is host fact rather than instruction.
  */
 export const builtSystemPrompt = (solveMs: number): string =>
-  "Complete the task with the available tools and submit one answer. Read every requirement before you build, and choose your approach within them. " +
+  "Complete the task with the available tools and submit one answer that meets every published requirement; the method is yours to choose. " +
   "For source code or files, write complete working files, not fragments or descriptions. " +
-  "When a tool or installed program can build, run or test your candidate, do so: a breach it reports is a failed requirement, and a requirement you have not run is one you have not checked. " +
-  "Prepare a candidate as your answer as soon as it meets every requirement you can check. Save it before you change it, so a change that does not improve it can be undone and what stays prepared at the end is the best candidate you found rather than the last one you tried. If a requirement fails, change the candidate for that reason, with commands you wait for rather than detached jobs; a bounded search over candidates is a sound way to meet a tight limit. " +
-  "Where a requirement is a numeric limit, a candidate that only just meets it by your own model may breach it when recomputed, so spend the remaining time widening the worst margin. Where every requirement is simply met or not, and a run has shown each one met, submit. " +
   `The case has ${String(Math.round(solveMs / 60_000))} minutes of solve time, and at the end the last answer an artifact-writer prepared is submitted for you.`;
 
 export function builtFirstTurnPrompt(
@@ -310,6 +300,38 @@ export function builtAgentInterface(
     tools: rows,
     operatingGuide,
   };
+}
+
+/** The host's share of the Built contract as one digest: the universal prompt, the roster sentence
+ *  with its public-rules clause, the guide preamble, the role prefix on each tool row, the nudge and
+ *  the first-turn template, composed over fixed stand-ins for what the harness authors. The
+ *  harness's share — its tools, its guide and its solve wall — is in its agent bytes, so the two
+ *  together name the prompt a case opens with, and this one moves exactly when the host rewords its
+ *  part. A recorded solve answers only the procedure it ran under. */
+export function builtProcedureDigest(): string {
+  const stand = (name: string) =>
+    defineTool({
+      name,
+      label: name,
+      description: name,
+      parameters: Type.Object({}),
+      run: () => ({ text: "" }),
+    });
+  const names = [BUILT_PUBLIC_RULES_TOOL, "stand_in"];
+  const probe = builtAgentInterface(
+    names.map(stand),
+    starterRegistration(names.map((name) => ({ name, owner: "starter", authority: "submission" }))),
+    "stand-in guide",
+    60_000,
+  );
+  return sha256(
+    trustedJson({
+      prompt: probe.promptDigest,
+      tools: probe.toolSchemaDigest,
+      nudge: BUILT_NUDGE,
+      firstTurn: BUILT_FIRST_TURN_TEMPLATE,
+    }).bytes,
+  );
 }
 
 export function starterRegistration(tools: BuiltStarterRegistration["tools"]): BuiltStarterRegistration {
@@ -508,7 +530,7 @@ function standardTools(
         }
         draft.adopt(candidate);
         return {
-          text: `Restored "${name}". Check it before you submit: the answer prepared with it is prepared again.`,
+          text: `Restored "${name}"; the answer prepared with it is prepared again.`,
           details: { saved: [...saved.keys()], restored: true, draftSeq: draft.seq },
         };
       },

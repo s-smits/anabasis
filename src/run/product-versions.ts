@@ -13,7 +13,7 @@ import {
 import { campaignDir, defaultProductDir } from "../meta/campaign-root.ts";
 import { basename, dirname, join, normalize, relative } from "../meta/path.ts";
 import { isSafePathSegment } from "../meta/path-segment.ts";
-import { isRecord } from "../meta/json-shape.ts";
+import { isRecord, type JsonValue } from "../meta/json-shape.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { parseJsonAs, capturedJsonStringify } from "../meta/json-runtime.ts";
 import { bundleSnapshotToolTree, linkWorkspaceToolTree } from "../claim/bundle-snapshot.ts";
@@ -22,12 +22,19 @@ import { type FingerprintEvidence } from "../claim/fingerprint.ts";
 import { CLAIM_STAGES_FILE, advanceClaimStage } from "./claim-stages.ts";
 import { ControllerLedger, controllerLedgerExists, fsyncPath } from "./controller-ledger.ts";
 import { CONFORMANCE_FILE } from "../claim/conformance-evidence.ts";
+import { portableToolTreeDigest } from "../verify/tool-inventory.ts";
+
+const PRODUCT_VERSION_SCHEMA = "product-version/v2";
 
 type ProductManifest = {
-  schema: "product-version/v1";
+  schema: typeof PRODUCT_VERSION_SCHEMA;
   id: string;
   fingerprint: FingerprintEvidence;
+  /** Where the version's `.toolchain` link resolved at publication, or null. */
   toolTree: string | null;
+  /** `portableToolTreeDigest` of that tree at publication, or null. The link reaches an epoch
+   *  workspace, so the path alone cannot say whether the bytes behind it are still these. */
+  treeDigest: string | null;
 };
 
 /** Campaign collections may be operator links; campaign children must be direct directories. */
@@ -60,8 +67,8 @@ export function productVersionDir(repoRoot: string, slug: string, id: string): s
   return path;
 }
 
-/** Sync every product file before the reference can commit. Runtime tool bytes have their own
- * executable attestation; this manifest binds the selected tool-tree path, not a frozen tool copy. */
+/** Sync every product file before the reference can commit. The tool tree is not among them: the
+ * manifest binds its path and digest, not a frozen copy of it. */
 function durableProductTree(path: string): void {
   const stat = lstatSync(path);
   if (stat.isDirectory()) {
@@ -82,16 +89,31 @@ function manifestAt(dir: string): ProductManifest {
   return parseJsonAs<ProductManifest>(readFileSync(file, "utf8"));
 }
 
+/** A retained version another source recorded, intact and registered but in a manifest shape this
+ *  source keeps no reader for. It is typed so the controller can stop the run with its own clause
+ *  before any round, instead of the version reading as missing or altered. */
+export class ProductVersionFromAnotherSource extends Error {
+  readonly kind = "product-version-from-another-source" as const;
+
+  constructor(dir: string, recorded: JsonValue) {
+    super(
+      `${dir}: recorded as ${capturedJsonStringify(recorded)} by another source; this source reads ${PRODUCT_VERSION_SCHEMA} only, so this project cannot continue here: start a fresh project`,
+    );
+    this.name = "ProductVersionFromAnotherSource";
+  }
+}
+
 export function readProductVersion(repoRoot: string, slug: string, id: string): string {
   const dir = productVersionDir(repoRoot, slug, id);
   using ledger = ControllerLedger.open(campaignDir(repoRoot, slug));
   const manifest = manifestAt(dir);
-  if (
-    ledger.productDigest(id) !== hashJsonValue(manifest) ||
-    manifest.schema !== "product-version/v1" ||
-    manifest.id !== id ||
-    manifest.fingerprint.slug !== slug
-  ) {
+  // Only bytes the ledger registered were recorded by some source. A manifest in another schema
+  // that the ledger does not name is damage like any other edit, and is refused as damage.
+  const registered = ledger.productDigest(id) === hashJsonValue(manifest);
+  if (registered && manifest.schema !== PRODUCT_VERSION_SCHEMA) {
+    throw new ProductVersionFromAnotherSource(dir, manifest.schema);
+  }
+  if (!registered || manifest.id !== id || manifest.fingerprint.slug !== slug) {
     throw new Error(`${dir}: product version is missing, altered, or unregistered`);
   }
   for (const part of ["agent", "correctness-model"]) {
@@ -101,17 +123,21 @@ export function readProductVersion(repoRoot: string, slug: string, id: string): 
   // A retained version links its tool tree into an epoch workspace, and those bytes sit outside
   // the fingerprint by design, at hundreds of megabytes an epoch. An operator reclaiming that
   // space leaves the link unresolvable, and the equality below then refused every retained version
-  // of the campaign, which stops a continuation before its opening exists, so no terminal records
-  // why. The
-  // product's own bytes are untouched and verifyTree above proves it. A tree that resolves
-  // somewhere else is still a changed reference and still refused; a tree that resolves nowhere is
-  // disclosed as null, and every reader of it already resolves tools on the host PATH and reports
-  // the ones it cannot find.
+  // of the campaign, history and selection alike, though the product's own bytes are untouched and
+  // verifyTree above proves it. So a tree that resolves nowhere reads as null here, and a tree that
+  // resolves somewhere else is still a changed reference and refused. Whether the tree still holds
+  // its published bytes is `bindProductMeasurement`'s question, asked where a battery runs them.
   const toolTree = bundleSnapshotToolTree(dir);
   if (toolTree !== null && toolTree !== manifest.toolTree) {
     throw new Error(`${dir}: product tool-tree reference changed`);
   }
   return dir;
+}
+
+/** `portableToolTreeDigest` of the tool tree `dir` resolves, or null where none resolves. */
+function toolTreeDigestAt(dir: string): string | null {
+  const tree = bundleSnapshotToolTree(dir);
+  return tree === null ? null : portableToolTreeDigest(tree);
 }
 
 /** Publish immutable product bytes before registering their manifest. Unreferenced output from
@@ -155,10 +181,11 @@ export function publishProductVersion(input: {
     slug,
   );
   const manifest: ProductManifest = {
-    schema: "product-version/v1",
+    schema: PRODUCT_VERSION_SCHEMA,
     id,
     fingerprint,
     toolTree: bundleSnapshotToolTree(staging),
+    treeDigest: toolTreeDigestAt(staging),
   };
   writeFileSync(join(staging, "version.json"), capturedJsonStringify(manifest));
   for (const file of [
@@ -219,7 +246,8 @@ export function selectInitialProduct(repoRoot: string, slug: string, id: string)
 
 /** Retained versions supply history without copying old runs into each new product. Held versions
  *  are in it too: their batteries were measured, and whether a measured battery is difficulty
- *  evidence is `admitBattery`'s decision, not this reader's. */
+ *  evidence is `admitBattery`'s decision, not this reader's. So is `domainDir` itself: its
+ *  decision row lands at promotion, after the review of its own battery has read this history. */
 export function productHistoryDirs(domainDir: string): string[] {
   if (basename(dirname(domainDir)) !== "versions") return [domainDir];
   const campaign = dirname(dirname(domainDir));
@@ -228,7 +256,9 @@ export function productHistoryDirs(domainDir: string): string[] {
   using ledger = ControllerLedger.open(campaign);
   return [
     defaultProductDir(repoRoot, slug),
-    ...ledger.recordedProducts().map((id) => readProductVersion(repoRoot, slug, id)),
+    ...[...new Set([...ledger.recordedProducts(), basename(domainDir)])].map((id) =>
+      readProductVersion(repoRoot, slug, id),
+    ),
   ];
 }
 
@@ -241,6 +271,12 @@ export function readRetainedVersion(repoRoot: string, slug: string, dir: string,
   return id;
 }
 
+/** Bind battery `runId` to the retained version at `dir`, once its tool tree is proved to hold the
+ *  bytes it was published with. The version reaches that tree through a link into an epoch
+ *  workspace, and the verifier host checks a tree only against the digest this battery resolves, so
+ *  a tree edited or reclaimed since publication would be measured, and attributed to this version,
+ *  with nothing comparing it to the tree the version was published with. Reading history needs no
+ *  such proof; a battery does, and this is where one starts. */
 export function bindProductMeasurement(repoRoot: string, slug: string, runId: string, dir: string): void {
   const id = readRetainedVersion(
     repoRoot,
@@ -248,6 +284,11 @@ export function bindProductMeasurement(repoRoot: string, slug: string, runId: st
     dir,
     "measurement requires an exact retained product version",
   );
+  if (toolTreeDigestAt(dir) !== manifestAt(dir).treeDigest) {
+    throw new Error(
+      `${dir}: product tool tree changed since publication; a battery would measure other tools`,
+    );
+  }
   using ledger = ControllerLedger.open(campaignDir(repoRoot, slug));
   ledger.bindMeasurement(runId, id);
 }

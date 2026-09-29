@@ -1,9 +1,13 @@
 /** Exact process lifecycle for the confined Pi model worker. */
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { attachJsonlLineReader, serializeJsonLine } from "../../vendor/pi-built/jsonl.ts";
-import { DEFAULT_HARNESS_SETTINGS } from "../truth/harness-config.ts";
+import { DEFAULT_HARNESS_SETTINGS } from "../correctness-bundle/harness-config.ts";
 import { GeneratedToolWorkerNonResult } from "../solve/generated-tool-worker.ts";
-import type { BuiltRuntimeBoundaryEvidence, SolverNonResult } from "../truth/solve.ts";
+import {
+  type BuiltRuntimeBoundaryEvidence,
+  type SolverNonResult,
+  TURN_PERMIT_REFUSED_PREFIX,
+} from "../correctness-bundle/solve.ts";
 import { witnessConfinedChild } from "../verify/os-isolation.ts";
 import { spawnUnderSolveIsolation } from "../verify/solve-sandbox.ts";
 import { MODEL_CATALOGUE_SOURCES } from "./model-selection.ts";
@@ -363,7 +367,8 @@ function grantTurnPermit(
     write({ type: "turn_permit", turn: message.turn });
     armTurnTimer(child, state, message.turn);
   } catch (error) {
-    stopWorker(child, state, "provider", errorMessage(error));
+    // The controller's own ledger refused the turn, so no provider was reached.
+    stopWorker(child, state, "runtime", `${TURN_PERMIT_REFUSED_PREFIX} ${errorMessage(error)}`);
   }
 }
 

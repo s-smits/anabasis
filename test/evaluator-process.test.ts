@@ -2,14 +2,14 @@ import { afterAll, describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { sha256OfFile } from "../src/meta/digest.ts";
 import { join } from "../src/meta/path.ts";
-import { bundleEvaluator } from "../src/truth/evaluator-process-bundle.ts";
+import { bundleEvaluator } from "../src/correctness-bundle/evaluator-process-bundle.ts";
 import {
   EVALUATOR_WALL_MS,
   evaluateIsolated,
   probeEvaluatorProcess,
-} from "../src/truth/evaluator-process.ts";
+} from "../src/correctness-bundle/evaluator-process.ts";
 import { TOOL_TIMEOUT_CEILING_MS, createVerifierHost } from "../src/verify/host.ts";
-import { loadCorrectnessModel } from "../src/truth/contracts.ts";
+import { loadCorrectnessModel } from "../src/correctness-bundle/contracts.ts";
 import { createVerifierLifetime } from "../src/verify/verifier-lifetime.ts";
 
 const ROOT = mkdtempSync(join(import.meta.dir, ".ana-scratch-evaluator-process-"));
@@ -79,6 +79,15 @@ describe("generated evaluation in a confined child", () => {
     writeFileSync(helper, "export const expected = 2;");
     expect(await (await loadCorrectnessModel(dir, LIFETIME))("text", REQUEST)).toBe(false);
     expect(await evaluate("text", REQUEST)).toBe(true);
+  });
+
+  // Replay grades a recorded bundle and runs no solver, so a solver wall current policy refuses at
+  // admission must not stop the evaluator it would otherwise load.
+  it("loads a recorded bundle whose solver wall is below the current floor", async () => {
+    const dir = fixture("function evaluate(request) { return request.artifact.text === 'real artifact'; }");
+    mkdirSync(join(dir, "agent"), { recursive: true });
+    writeFileSync(join(dir, "agent/config.yaml"), "solver:\n  solve_minutes: 1\n");
+    expect(await (await loadCorrectnessModel(dir, LIFETIME))("text", REQUEST)).toBe(true);
   });
 
   it("preserves real host evidence and the canonical tool input", async () => {

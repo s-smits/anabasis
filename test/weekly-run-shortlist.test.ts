@@ -41,7 +41,7 @@ import type { OutcomeMetrics, OutcomeReport } from "../tools/outcome/metrics.ts"
 import { caseRecordRow } from "./helpers/case-record-row.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import { weekWindow, withinWeek } from "../.claude/skills/main/week.ts";
-import { ARCHIVE_SCHEMA } from "../.claude/skills/whole-run-investigation/scripts/archive-shape.mjs";
+import { ARCHIVE_SCHEMA } from "../.claude/skills/whole-run-investigation/scripts/archive-shape.ts";
 import {
   bindSynthesis,
   buildLunaPlan,

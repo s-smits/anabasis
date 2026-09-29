@@ -2,25 +2,20 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/files
 import { join } from "../src/meta/path.ts";
 
 import { describe, expect, it } from "bun:test";
-import { validateBrief } from "../src/truth/brief-validator.ts";
-import { typecheckGeneratedModule } from "../src/truth/generated-module-typecheck.ts";
-import { type ControlCorpus, validateControls } from "../src/truth/controls.ts";
-import { type BuildTask, validateTasks } from "../src/truth/tasks.ts";
-import { validateToolsSpec } from "../src/truth/tools-spec.ts";
+import { validateBrief } from "../src/correctness-bundle/brief-validator.ts";
+import { typecheckGeneratedModule } from "../src/correctness-bundle/generated-module-typecheck.ts";
+import { type ControlCorpus, validateControls } from "../src/correctness-bundle/controls.ts";
+import { type BuildTask, validateTasks } from "../src/correctness-bundle/tasks.ts";
+import { validateToolsSpec } from "../src/correctness-bundle/tools-spec.ts";
 import { MATCHING_ACCEPTS, MATCHING_BRIEF, MATCHING_TASKS } from "./helpers/matching-fixture.ts";
 import { STARTER_DOC, STARTER_ENTRY, brief, fence, fileMapBrief } from "./helpers/starter-contracts.ts";
 import { EVALUATOR_CALIBRATION_POLICY } from "../src/claim/calibration.ts";
-// Gate audit 2026-09-25 (docs/gate-audit.md, operating-guide-policy): commented out (unsure): only the guide
-// size assertion below read it.
-// import { MAX_GUIDE_BYTES } from "../src/author/candidate-check.ts";
-// Gate audit 2026-09-25 (docs/gate-audit.md, tool-program-argument): commented out (unsure): an external check passing program text as an argument no longer refuses adoption
-// import { PROGRAM_ARGUMENT_MAX_BYTES } from "../src/verify/self-grounding.ts";
 import { hashJsonBytes, parseJsonAs } from "../src/meta/json-runtime.ts";
-import { createVerifierHost } from "../src/verify/host.ts";
+import { STDOUT_MAX_BYTES, createVerifierHost } from "../src/verify/host.ts";
 import { createVerifierLifetime } from "../src/verify/verifier-lifetime.ts";
 import { resolveToolInventory } from "../src/verify/tool-inventory.ts";
 import { evaluateCheckProgram } from "../vendor/correctness-model-bundle/evaluate.ts";
-import type { CheckFn } from "../src/truth/correctness-model-contract.ts";
+import type { CheckFn } from "../src/correctness-bundle/correctness-model-contract.ts";
 
 it.skipIf(Bun.which("python3") === null)(
   "the installed-tool example exercises the submitted entrypoint and binds its evidence",
@@ -112,30 +107,6 @@ ${fence("### Installed tools", "ts")}
 const workedBrief = () => brief("## The worked domain");
 
 describe("pi starter pack brief vocabulary", () => {
-  // Gate audit 2026-09-25 (docs/gate-audit.md, operating-guide-policy): commented out (unsure): the guide
-  // size cap is commented out with the guide policy.
-  // Gate audit 2026-09-25 (docs/gate-audit.md, tool-program-argument): commented out (unsure): an external check passing program text as an argument no longer refuses adoption
-  // // Two numbers the Builder is told hold in prose while a refusal decides them in code. Nothing
-  // // templates a Markdown file, so this is what keeps the copy and its owner from drifting apart.
-  // it.concurrent("the numbers the starter states are the numbers the refusals use", () => {
-  //   const flat = `${STARTER_ENTRY}\n${STARTER_DOC}`.replace(/\n\s*/g, " ");
-  //   expect(flat).toContain(`it stays under ${MAX_GUIDE_BYTES.toLocaleString("en-US")} bytes`);
-  //   expect(flat).toContain(`none over ${PROGRAM_ARGUMENT_MAX_BYTES} bytes`);
-  // });
-
-  // Gate audit 2026-09-25 (docs/gate-audit.md, operating-guide-policy): commented out (unsure): the candidate
-  // check no longer refuses the placeholder marker or a guide over the cap.
-  // // The seeded guide is the one required file with no green shape to start from unless the starter
-  // // ships one, and the candidate check refuses both its placeholder marker and a guide over the cap.
-  // it.concurrent("the seeded operating guide carries the marker the candidate check refuses and fits the cap", () => {
-  //   const guide = readFileSync(
-  //     join(import.meta.dir, "../starters/pi-built-harness/agent/BUILT_AGENTS.md"),
-  //     "utf8",
-  //   );
-  //   expect(guide).toContain("<!-- starter-placeholder:replace-before-submit -->");
-  //   expect(new TextEncoder().encode(guide).byteLength).toBeLessThan(MAX_GUIDE_BYTES);
-  // });
-
   // The gate map's passing shapes are examples too: the constant row must pass the brief validator
   // and the check shape must typecheck against CheckFn with the runtime as its second argument.
   it.concurrent("the STARTER.md gate map shapes satisfy their schemas", () => {
@@ -177,6 +148,81 @@ describe("pi starter pack brief vocabulary", () => {
     expect(STARTER_DOC.replace(/\s+/g, " ")).toContain(
       `at least ${minimumKnownPasses} known-correct and ${minimumKnownFailures} deliberately incorrect rows`,
     );
+  });
+
+  // Each clause answers a recorded way a battery measured something other than the request, so the
+  // text keeps saying it: a symbol check certifying a pin, a check tool printing past the host cap,
+  // and a guide naming a path the solver's shell does not have.
+  it.concurrent("contract.md binds resource checks to produced values and names the stdout cap", () => {
+    const text = STARTER_DOC.replace(/\s+/g, " ");
+    expect(text).toContain("decides from the values the answer produces for that resource");
+    expect(text).toContain(
+      "A library symbol or a constant found anywhere in the build proves the answer mentions the resource, not that it behaves",
+    );
+    const mebibytes = STDOUT_MAX_BYTES / 2 ** 20;
+    expect(Number.isInteger(mebibytes)).toBe(true);
+    expect(text).toContain(
+      `The host reads at most ${String(mebibytes)} MiB of a check's tool stdout, and a run printing more is a protocol non-result`,
+    );
+  });
+
+  // A check that fails on its own instrument's silence, one that grades the answer's report of
+  // itself, a named target no check runs and a limit no reject crosses each score an answer on
+  // something other than the rule it cites.
+  it.concurrent("contract.md keeps each check deciding the rule from what its instrument measured", () => {
+    const text = STARTER_DOC.replace(/\s+/g, " ");
+    expect(text).toContain("A check decides false only from output its instrument produced.");
+    expect(text).toContain("a thrown check makes a measured case a non-result, never a fail");
+    expect(text).toContain("throw new Error(`domain-solver printed no result");
+    expect(text).toContain("observe that behaviour on each one an established public simulator runs");
+    expect(text).toContain("A named target nothing can run is an omission");
+    expect(text).toContain("enforces no rule of the field: an honest answer and a wrong one pass it alike");
+    expect(text).toContain("every limit or clause a check enforces its own reject crossing it");
+  });
+
+  // A host double of the board headers failed equivalent sketches, relabelled answers passed loss
+  // ids a check never bound to geometry, and rejects differing in several facts proved no check:
+  // each makes a placement measure the evaluator rather than the solver.
+  it.concurrent("contract.md names what observes each obligation and calibrates checks both ways", () => {
+    const text = STARTER_DOC.replace(/\s+/g, " ");
+    expect(text).toContain('or "not established" where nothing does');
+    expect(text).toContain("so an answer that relabels its members or cases cannot pass on the labels");
+    expect(text).toContain("A reject that differs from its accept in several facts proves nothing");
+    expect(text).toContain("Calibrate every check in both directions.");
+    expect(text).toContain("fixed a display's width at 128, left out `constrain`");
+  });
+
+  // A replayed witness is already normal and the solver reaches it, so the worked routes are to a
+  // target it does not reliably meet, and a rehearsal is a sample rather than a veto. A claim that
+  // one kind of edit buys less than it looks is a theory blind measurement decides, so none is made.
+  it.concurrent("examples.md offers routes to a target the solver does not reliably meet", () => {
+    const text = STARTER_DOC.replace(/\s+/g, " ");
+    expect(text).toContain("## A target the solver does not reliably meet");
+    expect(text).toContain("**A search past the solver's wall.**");
+    expect(text).toContain("**A planted design.**");
+    expect(text).toContain(
+      "`harness_trial` estimates how reliably the solver meets a task; it does not veto one.",
+    );
+    expect(text).not.toContain("Tightening one limit everywhere buys less than it looks");
+  });
+
+  // Asking that a decision a passing answer needs stay private asks for an enforced private rule,
+  // which the sentence before it forbids; the recipe stays private and the rule never does.
+  it.concurrent("contract.md publishes every enforced rule and keeps only the construction private", () => {
+    const text = STARTER_DOC.replace(/\s+/g, " ");
+    expect(text).not.toContain("stays out of the public projection");
+    expect(text).not.toContain("withholds nothing");
+    expect(text).toContain("every rule, constant, precedence and tolerance a check enforces is public");
+    expect(text).toContain("never a rule a check enforces taken out of the projection");
+  });
+
+  it.concurrent("contract.md tells the guide to name programs the solver's shell can run", () => {
+    const text = STARTER_DOC.replace(/\s+/g, " ");
+    expect(text).toContain(
+      "the guide names a program by the name that runs it, never a path into `.toolchain`",
+    );
+    expect(text).toContain("Give a configured wrapper the tool's own name in `.toolchain/bin`");
+    expect(text).toContain("carries no numpy or scipy you can count on");
   });
 
   it.concurrent("the file-map brief contract passes validateBrief unchanged", () => {

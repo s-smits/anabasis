@@ -34,13 +34,13 @@ import { type CandidateCheckContext, loadValidatedBundle } from "../author/candi
 import type { BuilderCustomToolSemantic } from "../author/builder-execution.ts";
 import { defineTool } from "../solve/define-tool.ts";
 import { BUILT_AGENTS_FILE } from "../solve/built-starter.ts";
-import { applicableTruthChecks } from "../truth/brief.ts";
-import { typecheckGeneratedModule } from "../truth/generated-module-typecheck.ts";
-import { briefPublicResources, publicRuleDecisions } from "../truth/public-resources.ts";
-import { commitPublicTask } from "../truth/task-split.ts";
-import type { BuildTask } from "../truth/tasks.ts";
-import { expectedBuiltToolNames } from "../truth/tools-spec.ts";
-import { publicInputPathsByFamily } from "../truth/public-input-paths.ts";
+import { applicableTruthChecks, projectFindingForAuthor } from "../correctness-bundle/brief.ts";
+import { typecheckGeneratedModule } from "../correctness-bundle/generated-module-typecheck.ts";
+import { briefPublicResources, publicRuleDecisions } from "../correctness-bundle/public-resources.ts";
+import { commitPublicTask } from "../correctness-bundle/task-split.ts";
+import type { BuildTask } from "../correctness-bundle/tasks.ts";
+import { expectedBuiltToolNames } from "../correctness-bundle/tools-spec.ts";
+import { publicInputPathsByFamily } from "../correctness-bundle/public-input-paths.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
 import { isRecord, isString } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
@@ -405,6 +405,16 @@ function readinessView(
     files: state.files,
     missing: state.missing,
     findings: authorFindingOverview(state.findings),
+    // Observations that refuse nothing, such as a guide path the solver's shell cannot open. The
+    // gate records them only beside an acceptance, so this view is where the author reads them.
+    ...keyIfDefined(
+      "advisories",
+      bundle.advisories.length === 0
+        ? undefined
+        : bundle.advisories
+            .map(projectFindingForAuthor)
+            .map(({ code, path, detail }) => ({ code, path, detail })),
+    ),
     modules: state.modules,
     brief:
       brief === null

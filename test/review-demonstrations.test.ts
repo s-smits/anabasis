@@ -9,12 +9,14 @@
  * carries no probe number that review could cite, and a finding backed by it has to run it again.
  * Nothing of it reaches the Builder, because the next review is the only reader.
  */
+import { join, relative } from "../src/meta/path.ts";
 import { afterAll, describe, expect, it } from "bun:test";
 import type { JsonValue } from "../src/meta/json-shape.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { type EpochReviewEvidence, recordFindingTool } from "../src/review/epoch-review-findings.ts";
 import { publicEpochReview } from "../src/review/epoch-review-public.ts";
-import { carriedDemonstrations, runEpochReview } from "../src/review/epoch-reviewer.ts";
+import { runEpochReview } from "../src/review/epoch-reviewer.ts";
+import { type Demonstrations, NOTHING_CARRIED, carriedDemonstrations } from "../src/review/review-carry.ts";
 import type { ReviewProbeRow } from "../src/review/review-probe.ts";
 import type { ReaderTool } from "../src/review/review-reader.ts";
 import { keyIfNotNull } from "../src/meta/optional-key.ts";
@@ -79,6 +81,7 @@ function fa03b7Rows(): ReviewProbeRow[] {
     change: { value },
     baseline: pass,
     mutated,
+    applicableCheckIds: ["catalogue-mass-budget"],
     movedCheckIds: mutated === mass ? ["catalogue-mass-budget"] : [],
     refused: null,
   }));
@@ -90,7 +93,6 @@ async function massReview() {
   state.probes.rows.push(...fa03b7Rows());
   const tool = recordFindingTool([], [], "e", state, {
     identities: { schemaRoots: ["design"], checkIds: ["catalogue-mass-budget"] },
-    recurring: new Map(),
   });
   expect(await call(tool, MASS_FINDING)).toStartWith("recorded defect");
   return state;
@@ -98,41 +100,48 @@ async function massReview() {
 
 /** The uppercase candidate: one declared check, `answer`, over accept controls it passes. */
 function candidateTree(): string {
-  const dir = scratchDir(".ana-scratch-review-demonstrations-", import.meta.dir);
+  // The tree sits one level inside its scratch directory, so the repository its review records
+  // under (`${root}-repo`, beside it) is removed with it rather than left in `test/`.
+  const dir = join(scratchDir(".ana-scratch-review-demonstrations-", import.meta.dir), "tree");
   uppercaseFixture(dir);
   return dir;
 }
 
 /** One authoring review over `root`, handed `demonstrations` when there are any, whose reader
- *  takes `step`. */
+ *  takes `step` and then ends with `error`. */
 async function reviewed(
   root: string,
   runId: string,
-  demonstrations: readonly ReviewProbeRow[] | null,
+  demonstrations: Demonstrations | null,
   step: Step,
+  error: string | null = null,
 ) {
   let prompt = "";
   const result = await runEpochReview({
-    repoRoot: root,
+    // The review records itself under its campaign, which sits beside the tree it reads, as a
+    // workspace snapshot does in production, so no review finds the last one in its inventory.
+    repoRoot: `${root}-repo`,
     slug: SLUG,
     runId,
-    treeRoot: ".",
+    treeRoot: relative(`${root}-repo`, root),
     analysis: null,
     priorAdvice: null,
-    experiment: null,
     ...keyIfNotNull("demonstrations", demonstrations),
     review,
     publicRequest: REQUEST,
     readerTurn: async (input) => {
       prompt = input.prompt;
       await step(new Map(input.tools.map((tool) => [tool.name, tool])), input.prompt);
-      return { pin: null, text: "", error: null };
+      return { pin: null, text: "", error };
     },
   });
   return { prompt, result };
 }
 
 const tool = (tools: ReadonlyMap<string, ReaderTool>, name: string) => required(tools.get(name), name);
+
+/** One authoring review over a fresh candidate whose turn ends in a provider error after `step`. */
+const failedReview = (step: Step) => reviewed(candidateTree(), "authoring-f", null, step, "provider stopped");
 
 /** A finding on the uppercase check, citing the evaluator the reader has just read. */
 async function answerFinding(tools: ReadonlyMap<string, ReaderTool>, probeIds: JsonValue[]) {
@@ -150,21 +159,25 @@ async function answerFinding(tools: ReadonlyMap<string, ReaderTool>, probeIds: J
 
 /** What the Builder is handed of a review, which the carried demonstrations must never reach. */
 const builderText = (result: EpochReviewEvidence) =>
-  authoringReviewText(
-    "repair",
-    result.status,
-    REQUEST,
-    publicEpochReview(result, { brief: null, deferAdvisory: true }).findings,
-  ).text;
+  authoringReviewText("repair", result.status, REQUEST, publicEpochReview(result, { brief: null }).findings)
+    .text;
 
 describe("the probes an authoring review rested its findings on, carried to the next one", () => {
   it("carries the probes a finding rested on, and no other, as the change that ran and the checks it moved", async () => {
     const state = await massReview();
     const carried = required(
-      carriedDemonstrations({ status: "completed", probes: state.probes.rows }),
+      carriedDemonstrations({
+        runId: "authoring-0",
+        status: "completed",
+        probes: state.probes.rows,
+        findings: state.findings,
+      }),
       "a finished review's demonstrations",
     );
-    expect(carried.map(({ path, change, movedCheckIds }) => ({ path, change, movedCheckIds }))).toEqual([
+    expect(carried.named).toEqual([{ checkId: "catalogue-mass-budget", severity: "blocking" }]);
+    expect(
+      carried.probes.map(({ path, change, movedCheckIds }) => ({ path, change, movedCheckIds })),
+    ).toEqual([
       { path: "$.design.joints[8].zMm", change: { value: "3400.002" }, movedCheckIds: [] },
       {
         path: "$.design.joints[8].zMm",
@@ -175,20 +188,61 @@ describe("the probes an authoring review rested its findings on, carried to the 
   });
 
   it("carries nothing from a review that recorded no findings, so the previous review's set stands", async () => {
-    // A failed turn keeps its probes and drops its findings, so a probe one of them cited is no
-    // longer anything a recorded finding rests on.
     const { probes } = await massReview();
-    expect(carriedDemonstrations({ status: "failed", probes: probes.rows })).toBeNull();
-    expect(carriedDemonstrations({ status: "skipped", probes: probes.rows })).toBeNull();
-    // A review that finished and rested nothing on a probe ends the chain.
-    expect(carriedDemonstrations({ status: "completed", probes: fa03b7Rows() })).toEqual([]);
-    expect(carriedDemonstrations({ status: "incomplete" })).toEqual([]);
+    for (const status of ["failed", "skipped"]) {
+      expect(
+        carriedDemonstrations({ runId: "authoring-0", status, probes: probes.rows, findings: [] }),
+      ).toBeNull();
+    }
+    // A review that finished, rested nothing on a probe and named no check ends the chain.
+    expect(
+      carriedDemonstrations({
+        runId: "authoring-0",
+        status: "completed",
+        probes: fa03b7Rows(),
+        findings: [],
+      }),
+    ).toEqual(NOTHING_CARRIED);
+    expect(carriedDemonstrations({ runId: "authoring-0", status: "incomplete", findings: [] })).toEqual(
+      NOTHING_CARRIED,
+    );
+  });
+
+  it("keeps a failed turn's admitted finding and routes it as an incomplete review's", async () => {
+    const { result } = await failedReview(async (tools) => {
+      expect(await answerFinding(tools, [])).toBe("recorded defect as advisory");
+    });
+    expect(result.status).toBe("failed");
+    expect(result.findings.map((finding) => finding.checkId)).toEqual(["answer"]);
+    const incomplete = { ...result, status: "incomplete" as const };
+    expect(carriedDemonstrations(result)?.named).toEqual([{ checkId: "answer", severity: "advisory" }]);
+    expect(carriedDemonstrations(result)).toEqual(carriedDemonstrations(incomplete));
+    const contract = { brief: null };
+    expect(publicEpochReview(result, contract)).toEqual(publicEpochReview(incomplete, contract));
+  });
+
+  it("records no finding from a failed turn whose one finding the host refused, so the previous set stands", async () => {
+    const { result } = await failedReview(async (tools) => {
+      const unowned = { defect: true, claim: "The answer check is wrong.", severity: "advisory" };
+      expect(await call(tool(tools, "record_finding"), unowned)).toBe(
+        "refused: a defect must name the bundle file at fault as its owner",
+      );
+    });
+    expect(result.status).toBe("failed");
+    expect(result.findings).toEqual([]);
+    expect(carriedDemonstrations(result)).toBeNull();
   });
 
   it("shows the next review each carried probe as the call that re-runs it, and no probe number", async () => {
     const root = candidateTree();
+    const mass = await massReview();
     const carried = required(
-      carriedDemonstrations({ status: "completed", probes: (await massReview()).probes.rows }),
+      carriedDemonstrations({
+        runId: "authoring-0",
+        status: "completed",
+        probes: mass.probes.rows,
+        findings: mass.findings,
+      }),
       "carried rows",
     );
     const edit: ReviewProbeRow = {
@@ -201,8 +255,8 @@ describe("the probes an authoring review rested its findings on, carried to the 
     const nothing = async () => {};
     const [bare, empty, shown] = [
       await reviewed(root, "authoring-1", null, nothing),
-      await reviewed(root, "authoring-1", [], nothing),
-      await reviewed(root, "authoring-1", [...carried, edit], nothing),
+      await reviewed(root, "authoring-1", NOTHING_CARRIED, nothing),
+      await reviewed(root, "authoring-1", { ...carried, probes: [...carried.probes, edit] }, nothing),
     ];
     expect(bare.prompt).toBe(empty.prompt);
     expect(bare.prompt).not.toContain("probe_check {");
@@ -225,7 +279,7 @@ describe("the probes an authoring review rested its findings on, carried to the 
 
   it("re-runs a carried call as a probe of the review that ran it, and carries it on only when a finding rests on it again", async () => {
     const root = candidateTree();
-    const first = await reviewed(root, "authoring-1", [], async (tools) => {
+    const first = await reviewed(root, "authoring-1", NOTHING_CARRIED, async (tools) => {
       const ran = await call(tool(tools, "probe_check"), {
         controlId: "accept-0",
         path: "$.answer",
@@ -236,7 +290,7 @@ describe("the probes an authoring review rested its findings on, carried to the 
     });
     const carried = required(carriedDemonstrations(first.result), "the first review's demonstrations");
     expect(
-      carried.map(({ controlId, change, movedCheckIds }) => ({ controlId, change, movedCheckIds })),
+      carried.probes.map(({ controlId, change, movedCheckIds }) => ({ controlId, change, movedCheckIds })),
     ).toEqual([{ controlId: "accept-0", change: { value: MARKER }, movedCheckIds: ["answer"] }]);
 
     // The line is the call: the next review sends it back verbatim and it runs.
@@ -250,7 +304,7 @@ describe("the probes an authoring review rested its findings on, carried to the 
     expect(second.result.probes?.map(({ change, movedCheckIds }) => ({ change, movedCheckIds }))).toEqual([
       { change: { value: MARKER }, movedCheckIds: ["answer"] },
     ]);
-    expect(carriedDemonstrations(second.result)).toHaveLength(1);
+    expect(carriedDemonstrations(second.result)?.probes).toHaveLength(1);
     for (const { result } of [first, second]) {
       expect(builderText(result)).not.toContain("lowercase-probe-marker");
     }
@@ -260,6 +314,7 @@ describe("the probes an authoring review rested its findings on, carried to the 
     const root = candidateTree();
     const carried = required(
       carriedDemonstrations({
+        runId: "authoring-0",
         status: "completed",
         probes: [
           {
@@ -270,11 +325,13 @@ describe("the probes an authoring review rested its findings on, carried to the 
             change: { value: MARKER },
             baseline: { outcome: "pass", blockingCheckIds: [] },
             mutated: { outcome: "fail", blockingCheckIds: ["answer"] },
+            applicableCheckIds: ["answer"],
             movedCheckIds: ["answer"],
             refused: null,
             cited: true,
           },
         ],
+        findings: [],
       }),
       "carried rows",
     );
@@ -285,7 +342,61 @@ describe("the probes an authoring review rested its findings on, carried to the 
     expect(result.probes).toBeUndefined();
     expect(result.findings[0]?.probes).toBeUndefined();
     expect(result.findings[0]?.claim ?? "").not.toContain("Executed probes");
-    expect(carriedDemonstrations(result)).toEqual([]);
+    expect(carriedDemonstrations(result)?.probes).toEqual([]);
     expect(builderText(result)).not.toContain("lowercase-probe-marker");
   }, 120_000);
+
+  // A Builder that deletes the check a blocking finding named leaves the carried probe pointing at a
+  // check that moved and a finding with nothing to re-run against, and a reviewer shown the probe
+  // alone reads the tree as repaired.
+  it("says which check a carried finding or probe named that the brief under review no longer declares", async () => {
+    const carried = carriedNaming("geometry", "response");
+    expect(carried.named).toEqual([{ checkId: "geometry", severity: "blocking" }]);
+    const { prompt } = await reviewed(candidateTree(), "authoring-4", carried, async () => {});
+    expect(prompt).toContain(
+      "Check geometry, which the previous review's blocking finding named, is no longer declared in this candidate's brief.",
+    );
+    expect(prompt).toContain(
+      "Check response, which a carried probe moved, is no longer declared in this candidate's brief.",
+    );
+  });
+
+  it("says nothing of a named check the brief under review still declares", async () => {
+    const { prompt } = await reviewed(
+      candidateTree(),
+      "authoring-5",
+      carriedNaming("answer", "answer"),
+      async () => {},
+    );
+    expect(prompt).toContain(": moved answer.");
+    expect(prompt).not.toContain("no longer declared");
+  });
 });
+
+/** What a finished review carries when its one blocking finding named `findingCheck` and rested on
+ *  a probe that moved `probeCheck`. */
+function carriedNaming(findingCheck: string, probeCheck: string) {
+  const probe: ReviewProbeRow = {
+    ...fa03b7Rows()[0]!,
+    controlId: "accept-0",
+    path: "$.answer",
+    movedCheckIds: [probeCheck],
+    cited: true,
+  };
+  const finding = {
+    owner: "correctness-model/evaluator.ts",
+    defect: true,
+    claim: "The check reads narrower than its published rule.",
+    evidence: "e",
+    checkId: findingCheck,
+  } as const;
+  return required(
+    carriedDemonstrations({
+      runId: "authoring-0",
+      status: "completed",
+      probes: [probe],
+      findings: [finding],
+    }),
+    "carried",
+  );
+}

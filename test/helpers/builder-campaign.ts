@@ -9,7 +9,6 @@
  *
  * These checks prove routing and recording, not model authoring or solve quality.
  */
-import { PLAN_FIELDS } from "./experiment-plan.ts";
 import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "../../src/meta/filesystem.ts";
 import { join } from "../../src/meta/path.ts";
 import { expect } from "bun:test";
@@ -17,7 +16,6 @@ import type { AgentToolsProbes } from "../../src/author/agent-tools-session.ts";
 import type { CampaignFeedback, FeedbackOwner } from "../../src/author/campaign-types.ts";
 import type { PiTool } from "../../src/backends/pi-session.ts";
 import { commitAll, initWorkspace } from "../../src/author/domain-repo.ts";
-import { hashJsonValue } from "../../src/meta/stable-json.ts";
 import { type BuilderCampaignInput, runBuilderCampaign } from "../../src/run/builder-campaign.ts";
 import type { VerifierExecutionEvidence, VerifierHostHandle } from "../../src/verify/verifier-port.ts";
 import { createVerifierHost } from "../../src/verify/host.ts";
@@ -123,23 +121,6 @@ export function bundleWithoutGuide(workspace: string): void {
 export function completeBundle(workspace: string): void {
   bundleWithoutGuide(workspace);
   writeFileSync(join(workspace, "agent/BUILT_AGENTS.md"), MATCHING_OPERATING_GUIDE);
-}
-
-export function proposeExperiment(
-  workspace: string,
-  scope: "tasks" | "product" = "product",
-  gap = "The previous condition leaves a public capability unmeasured.",
-) {
-  const proposal = {
-    scope,
-    target: { comparator: "at-least" as const, verifiedPasses: 0 },
-    gap,
-    change: "Revise the public harness condition.",
-    ...PLAN_FIELDS,
-    expectedResult: "The next measurement distinguishes the revised condition.",
-  };
-  writeFileSync(join(workspace, "EXPERIMENT.json"), JSON.stringify(proposal));
-  return { ...proposal, digest: hashJsonValue(proposal) };
 }
 
 /** A host over one installed tool the fixture writes itself, so a census test settles on a row the

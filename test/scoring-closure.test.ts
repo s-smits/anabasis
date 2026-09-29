@@ -6,7 +6,7 @@ import { mkdirSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { scoringClosureHash } from "../src/claim/scoring-closure.ts";
-import { bundleEvaluator } from "../src/truth/evaluator-process-bundle.ts";
+import { bundleEvaluator } from "../src/correctness-bundle/evaluator-process-bundle.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 
 afterAll(cleanupScratch);

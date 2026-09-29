@@ -29,32 +29,6 @@
       }
     },
     {
-      "files": ["**/*.mjs", "**/*.js"],
-      "env": {
-        "builtin": true,
-        "node": true,
-        "es2024": true
-      },
-      "globals": {
-        "Bun": "readonly"
-      },
-      "rules": {
-        "anti-slop/no-runtime-typeof": "off",
-        "typescript/no-base-to-string": "off",
-        "typescript/no-misused-spread": "off",
-        "typescript/require-array-sort-compare": "off",
-        "typescript/restrict-template-expressions": "off",
-        "eslint/no-undef": "error",
-        "typescript/no-unsafe-argument": "off",
-        "typescript/no-unsafe-assignment": "off",
-        "typescript/no-unsafe-call": "off",
-        "typescript/no-unsafe-member-access": "off",
-        "typescript/no-unsafe-return": "off",
-        "typescript/no-non-null-assertion": "off",
-        "typescript/no-explicit-any": "off"
-      }
-    },
-    {
       "files": ["tools/oxlint/anti-slop/**"],
       "rules": {
         "ana/no-inline-slop-answer": "off",

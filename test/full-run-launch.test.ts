@@ -23,6 +23,8 @@ describe("the condition an operator may ask for", () => {
   it.each<[string[], Partial<FullRunArgs>]>([
     [[], { prompt: "Design steel connections", providerTurnBudget: 12, dcg: true }],
     [["--dcg", "false"], { dcg: false }],
+    [["--withhold-instruments", "true"], { withholdInstruments: true }],
+    [["--withhold-instruments", "false"], { withholdInstruments: false }],
     [["--context", "a.md", "--context", "b.md"], { contextPaths: ["a.md", "b.md"] }],
     [["--iteration-budget", "none"], { turnBudget: null }],
     [["--iteration-budget", "4"], { turnBudget: 4 }],
@@ -49,6 +51,7 @@ describe("the condition an operator may ask for", () => {
       [...MIN, "--dcg", value],
       "true | false",
     ]),
+    [[...MIN, "--withhold-instruments", "yes"], "true | false"],
     // The digest is compared byte for byte against the recorded identity, so an uppercase spelling
     // accepted here would mismatch at launch, after the composed gate has already run.
     ...["abc", `${COMMIT}:${"b".repeat(63)}`, `${"A".repeat(40)}:${DIGEST}`, COMMIT].map(

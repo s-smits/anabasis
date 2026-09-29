@@ -123,7 +123,10 @@ describe("turn-budget steering", () => {
   it("states the session limit in the opening prompt", async () => {
     const { open, opened } = scripted([undefined, undefined]);
     await runBuilderSession(INPUT(tempRoot(), 8), { open, tools: [], submit: NO_SUBMIT_THROWER });
-    expect(opened.prompts[0]).toContain("Round limit: 8 assistant turns");
+    // The unit is stated, because a model counting its tool calls as turns reads the cap as nearly spent.
+    expect(opened.prompts[0]).toContain(
+      "Round limit: 8 assistant turns, each ending when you reply without a tool call; tool calls inside a turn do not count.",
+    );
     // Scope-neutral: the opening text never names a file a task-fixed repair may not edit.
     expect(opened.prompts[0]).not.toContain("tasks.json");
   });
@@ -149,17 +152,6 @@ describe("turn-budget steering", () => {
     const uncapped = goal({ activeTurn: 2 });
     expect(uncapped).toContain("This round so far: turn 2, no submit yet.");
     expect(uncapped).not.toContain("turns remain");
-  });
-
-  it("carries the round plan's view between the round's facts and its next action, only when given one", () => {
-    const text = goal({
-      activeTurn: 2,
-      planView: "Round plan (experiment-plan/v2, tasks scope): target at-most 2.",
-    });
-    expect(text).toContain(
-      "This round so far: turn 2, no submit yet.\n\nRound plan (experiment-plan/v2, tasks scope): target at-most 2.\n\nFinish the candidate",
-    );
-    expect(goal({ activeTurn: 2 })).not.toContain("Round plan");
   });
 
   it("asks for authoring after eight turns or two hours without a submit, and for a batched repair after one", () => {

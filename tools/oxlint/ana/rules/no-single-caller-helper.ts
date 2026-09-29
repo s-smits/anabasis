@@ -80,7 +80,7 @@ const CHAIN_PEERS = 3;
  * complexity 22 in `tools/loc/complexity-policy.ts` — and a caller already at either has no legal
  * spelling that also absorbs a helper. Reporting there asks for a change the gate then refuses,
  * which is the admission test failing at one site. It happened six times in one pass over
- * `src/backends`, `src/truth`, `src/author` and `src/solve` before the rule was taught to check,
+ * `src/backends`, `src/correctness-bundle`, `src/author` and `src/solve` before the rule was taught to check,
  * every time after the push gate had already run; the arithmetic is cheap and the reader of the
  * report should not have to do it.
  *
@@ -118,8 +118,8 @@ const CHAIN_PEERS = 3;
  * leaves before its last statement, because a `return` belongs to the function that declares it:
  * the same line at a call site returns from the caller, so the inline is a restructuring into a
  * local and one assignment per escape rather than a relocation of the lines. `leafCategory` in
- * `src/truth/draft-summary.ts` is three `if (…) return a;` lines and a final `return`, and none of
- * its spellings inside `boundedDraftSummary` is the same program moved.
+ * `src/correctness-bundle/draft-summary.ts` is three `if (…) return a;` lines and a final `return`, and none
+ * of its spellings inside `boundedDraftSummary` is the same program moved.
  *
  * That second one was measured as the chain it happened to be, and reading it back a day later
  * showed the chain was the shape and not the reason. `const t = value.trim(); if (t === "")
@@ -132,10 +132,10 @@ const CHAIN_PEERS = 3;
  * this, and it was found by reading the twenty-six sites the dial produced.
  *
  * And a name read as a value keeps it, because there is no call site to put the lines at. A member
- * of a rule table, a default parameter value, a predicate handed to `.filter` — `curriculumInput`
- * sits in a `FindingRule` array in `epoch-review-findings.ts` beside eleven siblings that read as
- * words, and the only spelling that removes the name puts an anonymous arrow in the table. The
- * message would be asking for something the site does not have.
+ * of a rule table, a default parameter value, a predicate handed to `.filter` — `knownDemandGap`
+ * sits in the `FindingRule` array in `epoch-review-findings.ts`, and the only spelling that
+ * removes the name puts an anonymous arrow in the table. The message would be asking for
+ * something the site does not have.
  *
  * There is no fix, and one was written and thrown away. Substituting the arguments into a
  * one-`return` body is mechanical enough — the parameter ranges come from the scope analysis, so
@@ -220,7 +220,7 @@ export const noSingleCallerHelperRule = defineRule({
      *  land exactly as written and nothing follows them; `cost` reads that and passes it in.
      *
      *  Written first as the narrower thing in front of us, a body of `if (…) return a;` lines
-     *  and a final `return z`, which is what `leafCategory` in `src/truth/draft-summary.ts` is,
+     *  and a final `return z`, which is what `leafCategory` in `src/correctness-bundle/draft-summary.ts` is,
      *  and justified by two of this repository's own rules refusing every expression form of
      *  one: `ana/no-tangled-ternary` on a nested ternary and `ana/no-arms-differing-in-one-term`
      *  on one assignment per arm. Both were true and neither was the reason. `const t =

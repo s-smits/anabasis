@@ -47,12 +47,14 @@ export interface FullRunArgs {
   /** Install or require the host-native Builder command guard before the controller writes.
    *  CLI admission defaults this to true; false is the explicit opt-out. */
   dcg?: boolean;
+  /** The withheld-instruments launch condition; absent or false leaves the Built shell unchanged. */
+  withholdInstruments?: boolean;
   /** Absolute controller-owned engine profile captured before the Builder opens. */
   backendSelections?: Partial<Record<BackendSlot, ProjectBackendSelection>>;
 }
 
 const FULL_RUN_USAGE =
-  'usage: fullrun --prompt "<request>" --provider-turn-budget N [--project <id>] [--context <path> ...] [--expected-source <commit>:<digest>] [--run <runId>] [--max-iterations N] [--stop-after-ms N] [--max-builder-turns N] [--expected-tasks N] [--iteration-budget N|none] [--product-policy fixed] [--dcg true|false] [--builder-backend <kind>] [--built-backend <kind>] [--review-backend <kind|disabled|inherit>]';
+  'usage: fullrun --prompt "<request>" --provider-turn-budget N [--project <id>] [--context <path> ...] [--expected-source <commit>:<digest>] [--run <runId>] [--max-iterations N] [--stop-after-ms N] [--max-builder-turns N] [--expected-tasks N] [--iteration-budget N|none] [--product-policy fixed] [--dcg true|false] [--withhold-instruments true|false] [--builder-backend <kind>] [--built-backend <kind>] [--review-backend <kind|disabled|inherit>]';
 
 /** What one flag does to the arguments. The flag name is passed back in so the appliers below
  *  can stay one line each and still name themselves in their refusals. */
@@ -162,6 +164,12 @@ const FLAGS = new Map<string, Apply>([
     "--dcg",
     (args, value, flag) => {
       args.dcg = truth(flag, value);
+    },
+  ],
+  [
+    "--withhold-instruments",
+    (args, value, flag) => {
+      args.withholdInstruments = truth(flag, value);
     },
   ],
 ]);

@@ -12,7 +12,8 @@ import { join } from "../meta/path.ts";
 import { sha256 } from "../meta/digest.ts";
 import { canonicalJson } from "../meta/stable-json.ts";
 import { isRecord, isString, type JsonValue } from "../meta/json-shape.ts";
-import { parseJsonAs } from "../meta/json-runtime.ts";
+import { capturedJsonStringify, parseJsonAs } from "../meta/json-runtime.ts";
+import { Check as validateSchema } from "typebox/value";
 import {
   readBoundConformance,
   recordedVerifierEnvironmentHash,
@@ -20,22 +21,17 @@ import {
   type ConformanceEvidence,
 } from "../claim/conformance-evidence.ts";
 import { fingerprintSlug, type FingerprintEvidence } from "../claim/fingerprint.ts";
-import type { HarnessAuthoring, HarnessExperiment } from "../critic/types.ts";
-import type { Brief } from "../truth/brief.ts";
-import { briefPublicResources, judgePublicTaskOf } from "../truth/public-resources.ts";
-import { validateBrief } from "../truth/brief-validator.ts";
-import type { BuildTask } from "../truth/tasks.ts";
-import {
-  type ExperimentPlan,
-  ExperimentSubmissionSchema,
-  type ExperimentSubmission,
-} from "../author/experiment-plan.ts";
+import type { HarnessExperiment } from "../critic/types.ts";
+import type { Brief } from "../correctness-bundle/brief.ts";
+import { briefPublicResources, judgePublicTaskOf } from "../correctness-bundle/public-resources.ts";
+import { validateBrief } from "../correctness-bundle/brief-validator.ts";
+import type { BuildTask } from "../correctness-bundle/tasks.ts";
 import { BRIEF_FILE, CONTROLS_FILE, TASKS_FILE } from "../meta/bundle-layout.ts";
 
 export type ExperimentFreeze = { state: "held" | "unproven" | "broken"; clauses: string[] };
 
 const DimensionSchema = Type.Union([Type.Literal("harness"), Type.Literal("tasks"), Type.Literal("scoring")]);
-/** Host-derived from accepted bytes; the author declares only the target. */
+/** Host-derived from accepted bytes. */
 const ExperimentOperationSchema = Type.Object(
   {
     operation: Type.Union([
@@ -54,16 +50,25 @@ const ExperimentOperationSchema = Type.Object(
 export type ExperimentDimension = Static<typeof DimensionSchema>;
 export type ExperimentOperation = Static<typeof ExperimentOperationSchema>;
 
+/** The version a battery's `experimentAuthoring` is recorded under. The first shape carried no
+ *  version and held the round plan beside the attribution; this source keeps no reader for it. */
+export const EXPERIMENT_AUTHORING_SCHEMA = "experiment-authoring/v2";
+
 const experimentAuthoringFields = {
-  proposal: ExperimentSubmissionSchema,
+  schema: Type.Literal(EXPERIMENT_AUTHORING_SCHEMA),
   operation: ExperimentOperationSchema,
-  baseline: Type.Object(
-    { agentHash: Type.String(), correctnessModelHash: Type.String(), taskSetHash: Type.String() },
-    { additionalProperties: false },
-  ),
+  /** Null only for a build with no adopted product: a build attributes no task, so nothing reads a
+   *  baseline it does not have. */
+  baseline: Type.Union([
+    Type.Object(
+      { agentHash: Type.String(), correctnessModelHash: Type.String(), taskSetHash: Type.String() },
+      { additionalProperties: false },
+    ),
+    Type.Null(),
+  ]),
 };
 /** A changed product/evaluation condition carries no task-only difficulty attribution. */
-export const ExperimentAuthoringSchema = Type.Union([
+const ExperimentAuthoringSchema = Type.Union([
   Type.Object(
     {
       ...experimentAuthoringFields,
@@ -83,16 +88,12 @@ export const ExperimentAuthoringSchema = Type.Union([
 ]);
 export type ExperimentAuthoring = Static<typeof ExperimentAuthoringSchema>;
 
-/** The captured battery: its task rows in whichever of the two shapes the file holds, and the
- *  document around them, which the exam hash keeps. The requirement is the caller's, because an
- *  empty battery means something different to the authoring reader and to the exam commitment. */
-
 /** Repair direction is advisory. A broader candidate is a build, and can never inherit the
  * attribution or admission-pointer privileges of a proved evaluation-only correction. */
 export type ExperimentScope = {
   actual: HarnessExperiment;
-  freeze: ExperimentFreeze | null;
-  /** What the accepted bytes moved, when the author bound an experiment proposal. */
+  freeze: ExperimentFreeze;
+  /** What the accepted bytes moved against the adopted product. */
   operation?: ExperimentOperation;
 };
 
@@ -102,6 +103,20 @@ type FreezeFingerprint = {
   scoringHash: string;
   taskSetHash: string | null;
 };
+
+/** Why a battery's recorded experiment authoring cannot be read here, or null when it can. A record
+ *  in another version is refused as that version, since calling it malformed would read an intact
+ *  older record as corrupt current evidence; only a record claiming this version that fails its
+ *  shape is malformed. */
+export function experimentAuthoringRefusal(recorded: unknown): string | null {
+  if (isRecord(recorded) && recorded.schema !== EXPERIMENT_AUTHORING_SCHEMA) {
+    const version = recorded.schema === undefined ? "unversioned" : capturedJsonStringify(recorded.schema);
+    return `recorded experiment authoring is ${version}, from another source; this source reads ${EXPERIMENT_AUTHORING_SCHEMA} only`;
+  }
+  return validateSchema(ExperimentAuthoringSchema, recorded)
+    ? null
+    : "recorded experiment authoring is malformed";
+}
 
 /** The task file's rows, bare or under `tasks`, or null when it holds no task array at all. */
 function batteryRows(dir: string) {
@@ -148,7 +163,6 @@ export function publicTaskRows(
 /** Only new public inputs count as changed tasks; relabelling ids, families or levels cannot
  * manufacture a harder subset. Both inputs are controller-owned frozen bundles. */
 export function candidateExperimentAuthoring(
-  proposal: ExperimentSubmission,
   operation: ExperimentOperation,
   actual: HarnessExperiment,
   baseDir: string,
@@ -156,6 +170,9 @@ export function candidateExperimentAuthoring(
 ): ExperimentAuthoring {
   const base = fingerprintSlug(baseDir);
   const candidate = fingerprintSlug(candidateDir);
+  if (!base.ok && actual === "build" && operation.operation === "new-baseline") {
+    return { schema: EXPERIMENT_AUTHORING_SCHEMA, operation, actual, baseline: null, changedTaskIds: null };
+  }
   if (!base.ok || !candidate.ok || base.taskSetHash === null || candidate.taskSetHash === null) {
     throw new Error(
       "experiment authoring requires positively fingerprinted baseline and candidate batteries",
@@ -172,23 +189,22 @@ export function candidateExperimentAuthoring(
     correctnessModelHash: base.correctnessModelHash,
     taskSetHash: base.taskSetHash,
   };
-  const declared = { proposal, operation };
-  if (actual !== "climb") return { ...declared, actual, baseline, changedTaskIds: null };
+  const schema = EXPERIMENT_AUTHORING_SCHEMA;
+  if (actual !== "climb") return { schema, operation, baseline, actual, changedTaskIds: null };
   const previous = new Set(publicTaskRows(baseDir).map((task) => canonicalJson(task.publicInput)));
-  const changedTaskIds = publicTaskRows(candidateDir)
-    .filter((task) => !previous.has(canonicalJson(task.publicInput)))
-    .map((task) => task.taskId);
-  return { ...declared, actual, baseline, changedTaskIds };
+  const changed = publicTaskRows(candidateDir).filter(
+    (task) => !previous.has(canonicalJson(task.publicInput)),
+  );
+  return { schema, operation, baseline, actual, changedTaskIds: changed.map((task) => task.taskId) };
 }
 
+/** What the accepted bytes are allowed to be attributed as: an evaluation correction when the
+ *  evaluation freeze holds, a task probe when the task freeze holds, and otherwise a build. */
 export function candidateExperimentScope(
-  requested: HarnessAuthoring,
   baseDir: string | undefined,
   candidateDir: string,
   conformance?: ConformanceEvidence | null,
-  proposalScope?: ExperimentPlan["scope"],
 ): ExperimentScope {
-  if (proposalScope === undefined) return { actual: requested, freeze: null };
   let freeze: ExperimentFreeze;
   try {
     freeze =
@@ -230,7 +246,7 @@ function evaluationExamHash(dir: string): string {
 /** Check unchanged fields before probing and at final validation. Conformance later proves the
  * compiled schema identity; a changed declared representation can already be refused here.
  * `base` and `candidate` are identities the caller read; null marks an unreadable one. */
-export function evaluationInvariantClauses(
+function evaluationInvariantClauses(
   baseDir: string,
   candidateDir: string,
   base: FreezeFingerprint | null,
@@ -306,7 +322,7 @@ export function readableFingerprint(dir: string): FingerprintEvidence | null {
 /** Authored evaluation bytes: the scoring program and the battery pair. Installed tools have a
  *  separate recorded identity, and a reference solve or test the evaluator never imports scores
  *  nothing, so neither counts. */
-export function evaluationFilesUnmoved(
+function evaluationFilesUnmoved(
   baseDir: string,
   candidateDir: string,
   baseScoringHash: string,

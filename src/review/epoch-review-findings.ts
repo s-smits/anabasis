@@ -10,16 +10,18 @@
  * a claim must name public identities the measured brief declares, cite passages `read_source`
  * actually returned, and carry a demonstration before it may block.
  *
- * Reuse asks whether this exact condition and procedure were already read to completion;
- * recurrence asks how many distinct conditions named one defect before, which a reviewer seeing
- * one condition cannot observe and `admitSeverity` decides on. Both key on `namedSubject` from the
- * iteration analysis, the one rule the advice packet also uses, so no reader here may form a
- * defect identity by some other rule.
+ * Reuse asks whether this exact condition and procedure were already read to completion. A
+ * finding's severity reads that finding alone (`blockingEvidence`); what an earlier review said
+ * reaches this one only as the previous review's advisory defects and probes, carried as leads.
  */
 import { existsSync, readdirSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
-import { type AnalysisFinding, type FindingPlacement, namedSubject } from "../analyse/iteration-analysis.ts";
-import { contractDefect } from "../analyse/finding-owner.ts";
+import {
+  type AnalysisFinding,
+  DEMAND_GAPS,
+  type FindingPlacement,
+  PROBE_DIRECTIONS,
+} from "../analyse/iteration-analysis.ts";
 import type { AdviceIssue } from "../author/rebuild-advice.ts";
 import { readCompleted } from "../author/campaign-epoch.ts";
 import { BUNDLE_FILES, type BundleFile, ownerSide } from "../author/feedback-routing.ts";
@@ -31,26 +33,33 @@ import { type JsonValue, isBoolean, isString } from "../meta/json-shape.ts";
 import { keyIfNotNull, keysIf } from "../meta/optional-key.ts";
 import { type ReaderTool, readerParameters, readerToolText } from "./review-reader.ts";
 import {
+  PROBE_DIRECTION_PARAMETER,
   type ProbeState,
   type ReviewProbeRow,
   probeBackedRows,
+  probeShows,
   probeCitationRefusal,
 } from "./review-probe.ts";
 import { type ReviewVerifierEvidence, type SourceReadState, deliveredSource } from "./review-sources.ts";
+import { contractDefect } from "../analyse/finding-owner.ts";
 import { BRIEF_FILE, TASKS_FILE } from "../meta/bundle-layout.ts";
 import { readJsonFile } from "../meta/completed-json.ts";
 import { boundText } from "../meta/bounded-text.ts";
+import { type AdvisoryDefect, type AdvisoryDisposition, advisoryDefects } from "./review-carry.ts";
 
-export const EPOCH_REVIEW_SCHEMA = "epoch-review/v5";
+export const EPOCH_REVIEW_SCHEMA = "epoch-review/v7";
 /** Product identity; review procedure belongs to the review request. */
 export type MeasuredCondition = {
   /** Null when the recorded fields cannot establish a measured condition. */
   digest: string | null;
-  /** Null for a bundle with no task set; an incomplete condition cannot establish recurrence. */
+  /** Null for a bundle with no task set, which leaves the condition without a digest, so no review
+   *  of it is ever reused and no earlier task-set finding is shown against it. */
   taskSetHash: string | null;
   agentHash: string;
   correctnessModelHash: string;
   builtPin: string;
+  /** The pin names no reasoning effort; null when the cases did not all record one. */
+  builtEffort: string | null;
   verifierIdentity: string | null;
 };
 
@@ -72,10 +81,13 @@ export type EpochReviewEvidence = {
   obligationsDigest: string;
   /** Repo-relative paths the reviewer opened, in order; a paged file appears once per call. */
   reads: string[];
-  /** Repository-relative artifacts of the contested cases whose pages the reviewer opened. Private
-   *  settlement evidence: only counts and families cross to authoring, because handing back the
-   *  bytes the verifier decided on is evaluator coaching. Empty when it opened none or never ran. */
-  contestedReads: string[];
+  /** Each listed veto or disputed fail a finding settled, one per case, as the finding named it in
+   *  `settlesCases`. Private: only counts and families cross to authoring. Nothing is settled by
+   *  having been read, or by sharing a check with a finding that named another case. */
+  dispositions: CaseDisposition[];
+  /** The listed vetoes and disputed fails no finding settled. `status` says how far the reading
+   *  got; this says what of the settlement work it left open, which a completed review can too. */
+  unsettled: string[];
   /** What the host returned against the inventory, in files and characters. This counts the host
    *  side alone, so a complete coverage row establishes that the source was offered, not that the
    *  review saw it. */
@@ -98,6 +110,10 @@ export type EpochReviewEvidence = {
   /** What the review executed, absent when it executed nothing. Private: which check reacts to
    *  which changed field is verifier detail an author must not read. */
   probes?: ReviewProbeRow[];
+  /** Each advisory defect the previous completed review recorded, as this completed review left it
+   *  (`advisoryRecord`): the previous battery's review for a measured one, the round's previous
+   *  review for an authoring one. Absent where there was none, or this review did not complete. */
+  earlierAdvisory?: AdvisoryDisposition[];
   report: string | null;
 };
 
@@ -112,9 +128,29 @@ type ReviewAdmission = {
     admitted: "advisory" | "blocking";
   }>;
 };
+/** A listed contested case as `record_finding` may settle it: which way the verifier and the Judge
+ *  disagreed, the checks that decided it, and the name `read_source` delivers its artifact under. */
+export type SettlementCase = {
+  taskId: string;
+  family: string;
+  kind: "vetoed" | "disputed";
+  checkIds: readonly string[];
+  path: string | null;
+};
+/** One case a finding settled: against the check, by a defect in the evaluation contract, or in the
+ *  check's favour, by an observation whose cited probe moved that check. `finding` indexes the
+ *  review's `findings`, whose citations and probes are the evidence. */
+export type CaseDisposition = Omit<SettlementCase, "checkIds" | "path"> & {
+  checkId: string;
+  disposition: "against-check" | "check-stands";
+  finding: number;
+};
+/** The direction a defect settling each kind of case against its check must show, when it names one. */
+const AGAINST_CHECK = { vetoed: "accepts-invalid", disputed: "rejects-valid" } as const;
 const MAX_FINDINGS = 6;
 export type ReviewState = SourceReadState & {
   probes: ProbeState;
+  dispositions: CaseDisposition[];
   findings: AnalysisFinding[];
   disputes: Array<{ issueId: string; reason: string }>;
   admission: ReviewAdmission;
@@ -129,7 +165,7 @@ type FindingArgs = ReturnType<typeof findingArgs>;
  *  demonstrated violation before blocking, and without a floor nothing in the host checks that one
  *  was supplied: a finding that says in so many words it could not construct a concrete case still
  *  decides the next move. The floor proves only that text was supplied, never that the argument in
- *  it holds; the citations rule and the one-reopen cap carry the rest. */
+ *  it holds; the citations rule carries the rest. */
 const DEMONSTRATION_MIN_CHARS = 40;
 
 const CITATIONS_UNBOUND =
@@ -152,6 +188,8 @@ interface FindingCase {
   state: ReviewState;
   identities: BriefIdentities;
   taskIds: readonly string[];
+  /** The listed vetoes and disputed fails a finding may settle. */
+  cases: readonly SettlementCase[];
 }
 
 type FindingRule = (subject: FindingCase) => string | null;
@@ -159,10 +197,11 @@ type FindingRule = (subject: FindingCase) => string | null;
 type FindingSeverity = "advisory" | "blocking";
 type FindingVerdict = { why: string } | { severity: FindingSeverity; placement: FindingPlacement };
 
-/** The public identities a finding may name, and how often each defect identity recurred. */
+/** The public identities a finding may name. */
 type FindingPriors = {
   readonly identities?: BriefIdentities | undefined;
-  readonly recurring?: ReadonlyMap<string, number> | undefined;
+  /** The listed vetoes and disputed fails a finding may settle (`caseSettlement`). */
+  readonly cases?: readonly SettlementCase[] | undefined;
 };
 
 export function measuredConditionOf({
@@ -170,9 +209,10 @@ export function measuredConditionOf({
   correctnessModelHash,
   taskSetHash,
   builtPin,
+  builtEffort,
   verifierIdentity,
 }: Omit<MeasuredCondition, "digest">): MeasuredCondition {
-  const fields = { agentHash, correctnessModelHash, taskSetHash, builtPin, verifierIdentity };
+  const fields = { agentHash, correctnessModelHash, taskSetHash, builtPin, builtEffort, verifierIdentity };
   return {
     ...fields,
     digest: Object.values(fields).every((value) => isString(value) && value.trim() !== "")
@@ -183,7 +223,7 @@ export function measuredConditionOf({
 
 /** The completed reviews recorded for this campaign. An unreadable review proves nothing either
  *  way, so it is left out here and each caller decides without it: that means a corrupt file never
- *  suppresses a fresh review and never contributes a recurrence count. */
+ *  suppresses a fresh review and never contributes an earlier finding or advisory defect. */
 function completedReviews(analysisDir: string): EpochReviewEvidence[] {
   if (!existsSync(analysisDir)) return [];
   return readdirSync(analysisDir)
@@ -203,11 +243,11 @@ function completedReviews(analysisDir: string): EpochReviewEvidence[] {
     });
 }
 
-/** Whether a complete review already covered this condition, this reviewer and these obligations.
- *  All three must match: a new contested artifact or a newly standing issue under an unchanged
- *  product is new work, and skipping it would leave the one component that reads the measured tree
- *  against the original request silent about what changed. An unreadable earlier review proves no
- *  coverage, so it does not count and the review runs again. */
+/** Whether a completed review, the one status meaning a finished turn over full coverage and whose
+ *  findings route, already covered this condition, this reviewer and these obligations. All three
+ *  must match: a new contested artifact or a newly standing issue under an unchanged product is new
+ *  work, and skipping it would leave the one component that reads the measured tree against the
+ *  original request silent about what changed. An unreadable review proves no coverage. */
 export function conditionAlreadyReviewed(
   analysisDir: string,
   condition: MeasuredCondition,
@@ -223,7 +263,6 @@ export function conditionAlreadyReviewed(
     expected.reviewerEffort.trim() !== "" &&
     completedReviews(analysisDir).some(
       (review) =>
-        review.coverage?.complete === true &&
         review.condition?.digest === condition.digest &&
         review.reviewerPin === expected.reviewerPin &&
         review.reviewerEffort === expected.reviewerEffort &&
@@ -233,67 +272,32 @@ export function conditionAlreadyReviewed(
   );
 }
 
-/** How many distinct earlier conditions, each fully reviewed, named each defect identity. A
- *  reviewer sees one condition and cannot observe that history; the host can, and `admitSeverity`
- *  is the consumer that needs it, which is why the count lives here rather than in the prompt.
- *  Rereviews of the current condition, duplicate findings within one review and replay files all
- *  add no vote, because the question is how many separate measured conditions named the defect.
- *
- *  Any finding placed in a file counts as a naming, not only a defect: a check reported as a defect
- *  in one review and as an observation of hardness in the next is still that check being named a
- *  second time. An unplaced finding is the one excluded, because it is the reviewer saying it could
- *  not attribute what it saw, and counting it would let an unattributed observation force the next
- *  finding on that check to blocking. An observation the reviewer could not attribute is not a
- *  first naming; the next placed claim about that check is. */
-export function recurringDefects(analysisDir: string, current: MeasuredCondition): Map<string, number> {
-  const seen = new Map<string, Set<string>>();
-  const currentKey = current.digest;
-  if (currentKey === null) return new Map();
-  for (const review of completedReviews(analysisDir)) {
-    const priorKey = review.condition == null ? null : measuredConditionOf(review.condition).digest;
-    if (review.coverage?.complete !== true || priorKey === null || priorKey === currentKey) continue;
-    for (const finding of review.findings) {
-      if (finding.owner === null) continue;
-      const identity = namedSubject(finding);
-      if (identity === null) continue;
-      const conditions = seen.get(identity) ?? new Set<string>();
-      conditions.add(priorKey);
-      seen.set(identity, conditions);
-    }
-  }
-  return new Map([...seen].map(([identity, conditions]) => [identity, conditions.size]));
+/** The task-set findings earlier complete reviews recorded over the task set now under review. A
+ *  task-set finding asks the next battery to demand more of the request; when the battery that came
+ *  back has the same `taskSetHash`, nothing it said was acted on, and a reviewer who is not shown it
+ *  re-derives it from scratch or, worse, reads the unchanged tasks as settled. The current review's
+ *  own file is left out, since it is being written. */
+export function earlierTaskFindings(
+  analysisDir: string,
+  current: MeasuredCondition,
+  runId: string,
+): Array<{ runId: string; findings: AnalysisFinding[] }> {
+  if (current.taskSetHash === null) return [];
+  return completedReviews(analysisDir)
+    .filter((review) => review.runId !== runId && review.condition?.taskSetHash === current.taskSetHash)
+    .map((review) => ({
+      runId: review.runId,
+      findings: review.findings.filter((finding) => finding.owner === TASKS_FILE),
+    }))
+    .filter((row) => row.findings.length > 0)
+    .sort((a, b) => a.runId.localeCompare(b.runId));
 }
 
-/** Admit the reviewer's chosen severity under the limits only the host can apply. Nothing here
- *  narrows the repair the Builder may then make: the continuation decides scope, and this function
- *  decides the admitted severity alone.
- *
- *  An observation is always advice. A defect is limited, and one review may reopen at most one
- *  authoring area, because a second blocking defect in a single reading is a reason to inspect the
- *  review rather than to reopen twice. A first defect owned under `agent/` stays advisory, because
- *  a reviewer reading source can only suspect, and one suspicion is enough to discard an entire
- *  working product. A first finding still reaches authoring, as advice carrying its recorded owner.
- *
- *  Escalation is therefore once per defect identity and not more. A defect named in three
- *  consecutive reviews forces two rebuilds and survives both, because the public projection
- *  supplies only its check name and repeating the forced repair does not resolve it. So after two
- *  prior occurrences the finding is kept as advice: it keeps its owner and stays an issue the next
- *  experiment may act on, which bounds the escalation without declaring the defect fixed.
- *
- *  A probe-backed defect is exempt from the first-occurrence agent-tier floor, because a finding
- *  citing a probe is not a suspicion: the candidate's own declared checks ran over its own accept
- *  control and over one changed field, and the row records what they decided. The reviewer still
- *  owes the demonstration, the citations and the one-reopen cap. */
-function admitSeverity(
-  { owner, defect }: FindingPlacement,
-  chosen: FindingSeverity,
-  host: { blockingAlready: boolean; recurrences: number; demonstrated: boolean; probeBacked: boolean },
-): FindingSeverity {
-  if (!defect || host.blockingAlready || !host.demonstrated) return "advisory";
-  if (host.recurrences >= 2) return "advisory";
-  if (host.recurrences === 1) return "blocking";
-  if (host.probeBacked) return chosen;
-  return ownerSide(owner) === "agent" ? "advisory" : chosen;
+/** The advisory defects the completed review of battery `runId` recorded, which the next measured
+ *  review's record disposes of. None when that review did not complete or there is no such run. */
+export function measuredAdvisory(analysisDir: string, runId: string | undefined): AdvisoryDefect[] {
+  const review = completedReviews(analysisDir).find((row) => row.runId === runId);
+  return review === undefined ? [] : advisoryDefects(review);
 }
 
 export function briefIdentities(root: string): BriefIdentities {
@@ -333,6 +337,10 @@ function findingArgs(args: Record<string, JsonValue>) {
     checkId: optional("checkId"),
     artifactSchemaPath: optional("artifactSchemaPath"),
     publicInputPath: optional("publicInputPath"),
+    secondPublicInputPath: optional("secondPublicInputPath"),
+    demandGap: DEMAND_GAPS.find((gap) => gap === args.demandGap) ?? null,
+    probeDirection: PROBE_DIRECTIONS.find((direction) => direction === args.probeDirection) ?? null,
+    settlesCases: [...new Set(Array.isArray(args.settlesCases) ? args.settlesCases.filter(isString) : [])],
     unobserved: args.unobserved === true,
   };
 }
@@ -358,15 +366,11 @@ function boundQuote(value: JsonValue, state: SourceReadState): string | null {
   return returned ? `${path}: ${capturedJsonStringify(quote)}` : null;
 }
 
-function demonstrated(demonstration: string | null): boolean {
-  return demonstration !== null && demonstration.length >= DEMONSTRATION_MIN_CHARS;
-}
-
 /** Reopening an owner and suspending a standing issue require the same source-bound case. */
 const blockingEvidence: FindingRule = ({ parsed, citations }) => {
   const claimed = (parsed.defect === true && parsed.severity === "blocking") || parsed.disputes !== "";
   if (!claimed) return null;
-  if (!demonstrated(parsed.demonstration)) {
+  if ((parsed.demonstration?.length ?? 0) < DEMONSTRATION_MIN_CHARS) {
     return "blocking or disputing requires a concrete case in `demonstration`; otherwise record advisory without disputesIssue";
   }
   return citations === null
@@ -382,16 +386,6 @@ const disputeEligibility: FindingRule = ({ parsed, owner }) => {
     : "this finding cannot dispute an issue: only a defect owned under correctness-model/ may suspend diagnosis; omit disputesIssue and retry";
 };
 
-/** What a task-set defect owes: the public input path the fresh battery should move. The claim
- *  itself never crosses to authoring, so a task-set defect naming no identity projects as "no check
- *  or path named; inspect that contract for a mismatch", which names nothing the task author can act
- *  on — the same empty sentence however many rounds report it. A public input path is a public
- *  authoring identity, so unlike the claim it crosses whole. */
-const curriculumInput: FindingRule = ({ parsed, owner }) =>
-  parsed.defect === true && owner === TASKS_FILE && parsed.publicInputPath === null
-    ? `a defect owned by ${TASKS_FILE} must name, in \`publicInputPath\`, the public task input the fresh battery should vary; without it the finding reaches the task author as an empty sentence`
-    : null;
-
 const schemaPath: FindingRule = ({ parsed, identities }) => {
   if (parsed.artifactSchemaPath === null) return null;
   const segments = parsed.artifactSchemaPath.split(".");
@@ -402,13 +396,63 @@ const schemaPath: FindingRule = ({ parsed, identities }) => {
     : `artifactSchemaPath root ${root} is not a declared artifactSchema root`;
 };
 
+/** Both public input paths are held to one rule: rooted at `$.` and naming no individual task. */
 const publicInput: FindingRule = ({ parsed, taskIds }) => {
-  if (parsed.publicInputPath === null) return null;
-  if (!parsed.publicInputPath.startsWith("$.")) return "publicInputPath must start with $.";
-  const path = parsed.publicInputPath;
-  return taskIds.some((taskId) => mentionsTask(path, taskId))
-    ? "publicInputPath may not name an individual task"
+  for (const [field, path] of [
+    ["publicInputPath", parsed.publicInputPath],
+    ["secondPublicInputPath", parsed.secondPublicInputPath],
+  ] as const) {
+    if (path === null) continue;
+    if (!path.startsWith("$.")) return `${field} must start with $.`;
+    if (taskIds.some((taskId) => mentionsTask(path, taskId))) {
+      return `${field} may not name an individual task`;
+    }
+  }
+  return null;
+};
+
+/** A demand gap is one of the closed set or nothing: an unrecognised word is refused rather than
+ *  dropped, so the reviewer learns the set instead of believing it classified the finding. */
+const knownDemandGap: FindingRule = ({ parsed, args }) =>
+  args.demandGap !== undefined && parsed.demandGap === null
+    ? `demandGap must be one of ${DEMAND_GAPS.join(", ")}`
     : null;
+
+/** A finding settles exactly the listed cases it names, and only in the way its evidence can. A
+ *  defect in the evaluation contract settles a case against its check, and must not show the
+ *  opposite direction; an observation settles one in the check's favour only with a cited probe
+ *  that wrote the Judge's reading into an accept control and moved that check, since without it the
+ *  settlement is one model's reading against another's. An agent file or the task set settles
+ *  nothing, because neither decided the case. Each named case must be decided by the finding's
+ *  check, read with `read_source`, and not already settled by an earlier finding. */
+const caseSettlement: FindingRule = ({ parsed, args, owner, state, cases }) => {
+  const { checkId, settlesCases } = parsed;
+  if (settlesCases.length === 0) return null;
+  const against = contractDefect({ defect: parsed.defect, owner });
+  if (checkId === null || (parsed.defect === true && !against)) {
+    return "settlesCases is for a finding naming the deciding checkId: a defect owned under correctness-model/ other than tasks.json, or an observation";
+  }
+  if (
+    !against &&
+    !probeBackedRows(state.probes, args.probeIds).some((row) => row.movedCheckIds.includes(checkId))
+  ) {
+    return "settling a case in the check's favour requires a cited probe in which writing the Judge's reading into an accept control moved that check";
+  }
+  for (const taskId of settlesCases) {
+    const row = cases.find((listed) => listed.taskId === taskId);
+    if (row === undefined) return `settlesCases: ${taskId} is not a listed veto or disputed fail`;
+    if (!row.checkIds.includes(checkId)) return `settlesCases: ${checkId} did not decide ${taskId}`;
+    if (row.path === null || !state.reads.includes(row.path)) {
+      return `settlesCases: read ${taskId}'s artifact with read_source before settling it`;
+    }
+    if (against && parsed.probeDirection !== null && parsed.probeDirection !== AGAINST_CHECK[row.kind]) {
+      return `settlesCases: ${taskId} is a ${row.kind} case, which a ${parsed.probeDirection} finding does not settle`;
+    }
+    if (state.dispositions.some((settled) => settled.taskId === taskId)) {
+      return `settlesCases: ${taskId} is already settled by an earlier finding`;
+    }
+  }
+  return null;
 };
 
 /** Every rule `record_finding` applies, in the order it applies them. Holding them as a list is
@@ -436,7 +480,6 @@ const FINDING_RULES: readonly FindingRule[] = [
   disputeEligibility,
   ({ parsed, owner, state, args }) =>
     probeCitationRefusal({ defect: parsed.defect, owner }, state.probes, args.probeIds),
-  curriculumInput,
   ({ parsed }) =>
     parsed.unobserved && parsed.checkId !== null
       ? "an unobserved obligation has no check; name its artifactSchemaPath instead of the nearest checkId"
@@ -447,6 +490,8 @@ const FINDING_RULES: readonly FindingRule[] = [
       : null,
   schemaPath,
   publicInput,
+  knownDemandGap,
+  caseSettlement,
 ];
 
 /** The first rule that has a reason, or the severity the reviewer chose. */
@@ -492,9 +537,17 @@ function recordedFinding(
     ...keyIfNotNull("checkId", parsed.checkId),
     ...keyIfNotNull("artifactSchemaPath", parsed.artifactSchemaPath),
     ...keyIfNotNull("publicInputPath", parsed.publicInputPath),
+    ...keyIfNotNull("secondPublicInputPath", parsed.secondPublicInputPath),
+    ...keyIfNotNull("demandGap", parsed.demandGap),
     ...keysIf(parsed.unobserved, () => ({ unobserved: true as const })),
     ...keysIf(probes.length > 0, () => ({
       probes: probes.map(({ controlId, path, movedCheckIds }) => ({ controlId, path, movedCheckIds })),
+      ...keyIfNotNull(
+        "probeDirection",
+        probes.some((row) => probeShows(row, parsed.checkId) === parsed.probeDirection)
+          ? parsed.probeDirection
+          : null,
+      ),
     })),
   };
 }
@@ -522,7 +575,7 @@ function findingParameters(disputable: readonly string[]) {
         type: "string",
         enum: ["advisory", "blocking"],
         description:
-          "Choose blocking for a demonstrated violation of the request or a declared requirement with a repairable owner, supported by demonstration and citations; advisory for uncertainty, scope observations or hardness. A partial repair does not close a remaining required-property gap. Record the strongest defect first: the host may reopen at most one owner and returns the admitted severity after applying recurrence and owner constraints.",
+          "Choose blocking for a demonstrated violation of the request or a declared requirement with a repairable owner, supported by demonstration and citations; advisory for uncertainty, scope observations or hardness. A partial repair does not close a remaining required-property gap. The host returns the admitted severity after applying its evidence rules; neither how often a check was named before nor the order you record findings in changes it.",
       },
       demonstration: {
         type: "string",
@@ -573,20 +626,38 @@ function findingParameters(disputable: readonly string[]) {
         type: "array",
         items: { type: "number" },
         description:
-          "The probe_check numbers whose executed result this finding rests on. Cite only probes that ran: a probe-backed defect may be admitted blocking on its first occurrence.",
+          "The probe_check numbers whose executed result this finding rests on. Cite only probes that ran.",
       },
+      probeDirection: PROBE_DIRECTION_PARAMETER,
       publicInputPath: {
         type: "string",
         description:
-          "A `$.`-prefixed JSON path into the public task input the finding is about. Required for a defect owned by correctness-model/tasks.json: name the input the fresh battery should vary, because the claim itself does not reach the task author and this path is the whole of what it will read.",
+          "A `$.`-prefixed JSON path into the public task input the finding is about. The claim does not reach the author, so this path is part of what it reads of the finding.",
+      },
+      secondPublicInputPath: {
+        type: "string",
+        description:
+          "A second `$.`-prefixed public input path, when the obligation relates two inputs — for instance a load and the limit it must be held to. It crosses to authoring beside the first.",
+      },
+      demandGap: {
+        type: "string",
+        enum: [...DEMAND_GAPS],
+        description:
+          "For a finding about what the tasks fail to demand, which shape it takes: capability-unexercised (the request names a capability no task exercises), sibling-values-only (sibling tasks differ only in published values), limit-cleared-widely (the first reasonable candidate clears a published limit widely), rule-outside-request (a rule no practitioner of the request would hold). It crosses to authoring; the claim does not.",
+      },
+      settlesCases: {
+        type: "array",
+        items: { type: "string" },
+        description:
+          "The task ids of the listed vetoes and disputed fails this finding settles, each decided by its checkId and read with read_source first; a case you name nowhere stays unsettled. A defect owned under correctness-model/ settles them against the check. An observation settles them in the check's favour, as the Judge's error, citing in probeIds the probe that wrote the Judge's reading into an accept control and moved that check; the Judge issue stops standing once every case it counts is settled. Private: the Builder reads only how many cases in which families.",
       },
     },
   };
 }
 
-/** The `record_finding` tool. It is exported for its own test, like the diagnosis tool: the
- *  refusals and the one-blocking-defect cap are the contract worth proving, and driving them
- *  through a live review session would prove the transport instead and cost a model call to do it. */
+/** The `record_finding` tool. Its own test drives it directly, like the diagnosis tool's: the
+ *  refusals and the admitted severity are the contract worth proving, and driving them through a
+ *  live review session would prove the transport instead and cost a model call to do it. */
 export function recordFindingTool(
   offered: readonly AdviceIssue[],
   taskIds: readonly string[],
@@ -595,7 +666,6 @@ export function recordFindingTool(
   priors: FindingPriors = {},
 ): ReaderTool {
   const identities = priors.identities ?? { schemaRoots: [], checkIds: [] };
-  const recurring = priors.recurring ?? new Map<string, number>();
   const byPrefix = new Map(offered.map((issue) => [issue.id.slice(0, 12), issue.id] as const));
   return {
     name: "record_finding",
@@ -613,6 +683,7 @@ export function recordFindingTool(
         state,
         identities,
         taskIds,
+        cases: priors.cases ?? [],
       };
       const verdict = findingVerdict(subject);
       if ("why" in verdict) {
@@ -620,22 +691,27 @@ export function recordFindingTool(
         state.refused += 1;
         return Promise.resolve(readerToolText(`refused: ${verdict.why}`));
       }
-      // One review reopens at most one authoring area, so a finding recorded after a blocking
-      // defect is admitted advisory however strong its own case is: a second blocking defect in
-      // one reading is a reason to inspect the review, not to reopen twice.
-      const blockingAlready = state.findings.some((row) => row.defect && row.severity === undefined);
-      const identity = namedSubject(parsed);
-      const recurrences =
-        contractDefect(verdict.placement) && identity !== null ? (recurring.get(identity) ?? 0) : 0;
       const probes = probeBackedRows(state.probes, args.probeIds);
       for (const row of probes) row.cited = true;
-      const admitted = admitSeverity(verdict.placement, verdict.severity, {
-        blockingAlready,
-        recurrences,
-        demonstrated: demonstrated(parsed.demonstration) && subject.citations !== null,
-        probeBacked: probes.length > 0,
-      });
+      // Severity says how strong this finding's own evidence is, and `blockingEvidence` has already
+      // held a blocking defect to its demonstration and citations, whichever file owns it. So
+      // nothing else moves it: not how often its check was named before, not the findings recorded
+      // before it, not its owner's directory and not a cited probe, which runs the declared checks
+      // and so can bear on an agent file's defect only by coincidence. An observation is advice.
+      const admitted = verdict.placement.defect ? verdict.severity : "advisory";
       state.findings.push(recordedFinding(subject, verdict.placement, admitted, probes, evidencePath));
+      const disposition = subject.parsed.defect === true ? "against-check" : "check-stands";
+      for (const row of subject.cases.filter((listed) => parsed.settlesCases.includes(listed.taskId))) {
+        const { taskId, family, kind } = row;
+        state.dispositions.push({
+          taskId,
+          family,
+          kind,
+          checkId: parsed.checkId ?? "",
+          disposition,
+          finding: state.findings.length - 1,
+        });
+      }
       if (admitted !== verdict.severity) {
         state.admission.severityAdjusted.push({
           owner: subject.owner,

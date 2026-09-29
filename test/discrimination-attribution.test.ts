@@ -13,12 +13,12 @@ import { join } from "../src/meta/path.ts";
 
 import { afterAll, describe, expect, it } from "bun:test";
 import { sha256OfFile } from "../src/meta/digest.ts";
-import type { Brief } from "../src/truth/brief.ts";
-import type { EvaluationRequest } from "../src/truth/correctness-model-contract.ts";
-import type { EvaluatorFn } from "../src/truth/contracts.ts";
-import type { ControlCorpus } from "../src/truth/controls.ts";
-import { discriminationDisclosure } from "../src/truth/discrimination-author-detail.ts";
-import { runControls } from "../src/truth/run-controls.ts";
+import type { Brief } from "../src/correctness-bundle/brief.ts";
+import type { EvaluationRequest } from "../src/correctness-bundle/correctness-model-contract.ts";
+import type { EvaluatorFn } from "../src/correctness-bundle/contracts.ts";
+import type { ControlCorpus } from "../src/correctness-bundle/controls.ts";
+import { discriminationDisclosure } from "../src/correctness-bundle/discrimination-author-detail.ts";
+import { runControls } from "../src/correctness-bundle/run-controls.ts";
 import {
   VERIFIER_CONTRACT_HINTS,
   VerifierContractError,
@@ -97,10 +97,13 @@ describe("which task a control is evaluated against", () => {
       {
         brief: {
           ...BRIEF,
-          truthChecks: BRIEF.truthChecks.map((check) => ({
-            ...check,
-            execution: { ...check.execution, publicInputPaths: ["$"] },
-          })),
+          // Only the check the reject names, so every declared check has its reject.
+          truthChecks: BRIEF.truthChecks
+            .filter((check) => check.id === "parts-assigned")
+            .map((check) => ({
+              ...check,
+              execution: { ...check.execution, publicInputPaths: ["$"] },
+            })),
         },
       },
     );
@@ -252,7 +255,7 @@ describe("a control the census could not decide", () => {
     const disclosure = discriminationDisclosure(finding);
     expect(disclosure).toMatchObject({ class: "withheld", classification: "generated-evaluate-throw" });
     const authorDetail = disclosure.class === "withheld" ? disclosure.note : undefined;
-    expect(authorDetail).toContain('1 example(s) in the host\'s confined check cell: "a1"');
+    expect(authorDetail).toContain('1 example in the host\'s confined check cell: "a1"');
     expect(authorDetail).toContain("correctness-model/evaluator.test.ts");
     expect(authorDetail).not.toContain("entities is not iterable");
     // One throwing control does not poison the rest of the corpus.
@@ -288,7 +291,7 @@ describe("a control the census could not decide", () => {
     const disclosure = discriminationDisclosure(finding);
     expect(disclosure).toMatchObject({ class: "withheld", classification: "verifier-tool-input" });
     const authorDetail = disclosure.class === "withheld" ? disclosure.note : undefined;
-    expect(authorDetail).toContain("refused the tool run of 2 example(s)");
+    expect(authorDetail).toContain("refused the tool run of 2 examples");
     expect(authorDetail).toContain('Examples: "a1", "a2"');
     expect(authorDetail).toContain("stdin is not a string leaf of the artifact or public task");
     expect(authorDetail).toContain(VERIFIER_CONTRACT_HINTS["verifier-tool-input"]);

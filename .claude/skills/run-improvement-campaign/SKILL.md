@@ -1,6 +1,6 @@
 ---
 name: run-improvement-campaign
-description: "Run the improvement loop: choose one change, prove its path, freeze a prediction, launch, read recorded bytes, decide the next move. Owns experiment selection and evidence reading; the product controller owns build, measure, climb, rebuild, claim and promotion."
+description: "Run the improvement loop: choose one change, prove its path, freeze a prediction, launch, read recorded bytes, decide the next move. Owns experiment selection and evidence reading; the product controller owns build, measure, climb, rebuild, claim and promotion. Also the Super Loop's Meta Agent: a second session that audits and steers the session driving the loop so it keeps moving (references/meta-agent.md)."
 ---
 
 # Run improvement campaign
@@ -209,6 +209,14 @@ A watch is a process, so check for the process. On 2026-09-18 the last state fil
 decision both landed inside that window and neither was watched. A state file's mtime tells you when
 a watcher last ran, never that one is running now.
 
+The watchers above read runs. The session driving the loop needs a watcher of its own, because it
+can stall where no run shows it: on 2026-09-28 the main session held its launch question in a dialog
+for eight hours, and the two findings that made the question stale sat unread behind it.
+[meta-agent](references/meta-agent.md) is that watcher. It is a second session that audits the main
+one against a watch contract and steers it with bounded `CHECK` and `DIRECT` messages. It enforces
+this loop's launch, pin, prediction, order, stop and closure rules. It tells the operator at once
+when only the operator can unblock the main session.
+
 Run the watch, and every other reader here, from `origin/main`. They are operator tooling and belong
 to the current tree, not to the run's frozen source and not to an open stack that has not been
 rebased. The same 18 September evening, the watch run from the stack top printed no climb row at all
@@ -245,7 +253,11 @@ minutes on 2026-09-18 with `evidence 38 min ago, session wrote 38 min ago`, and 
 have called it stalled at 120. The watch reads the **cases the battery has open** — one directory
 per case under the retained version — against the harness's own `solve_minutes` from its accepted
 `agent/config.yaml`. Under that wall the silence is work and no row fires; past it the host stopped
-enforcing its own ceiling and the stall row is right.
+enforcing its own ceiling and the stall row is right. A `harness_trial` is the same silence one
+level up: the Builder's call holds every checkpoint until the rehearsal is graded, and truss-opus
+sat 57 minutes inside one on 2026-09-28 when the stall row fired on it. So the newest rehearsal, once it has
+written its public task and until it writes its `checks.json`, is work too, under the workspace's
+solve wall.
 
 The status prints the same count, and beside it what the bundle is made of: files, nonblank lines,
 tasks, families, checks, accept and reject controls, tools and presets, from the frozen version once
@@ -293,16 +305,18 @@ asks for more, and only a run of them says whether asking worked.
   nowhere is `overhaul`. Otherwise it moves by its zone: `too-hard` is `reserved`, and the other
   four zones are the band reading its own score, printed as `info`.
 
-The decision reads the score. `wri.mjs climb` reads the other side of the same question — the
+The decision reads the score. `wri.ts climb` reads the other side of the same question — the
 task bytes — and unlike the decision it works on a battery that has not scored yet:
 
 ```text
-bun .claude/skills/whole-run-investigation/scripts/wri.mjs climb <campaign dir> [--json]
+bun .claude/skills/whole-run-investigation/scripts/wri.ts climb <campaign dir> [--json]
 ```
 
 Per battery it prints the check-tier histogram and a median structural row; per edge, one of
-`restated`, `adjusted`, `narrowed`, `widened`, `eased` or `escalated`. Only `escalated` changes what
-the solver has to reason about. Run it whenever a new `versions/<battery>/` directory appears, and
+`restated`, `adjusted`, `narrowed`, `widened`, `eased`, `escalated` or `replaced`. Only `escalated`
+changes what the solver has to reason about, and `replaced` is no reading at all: fewer than half
+the task ids carried over, so the published numbers could not be joined, and the task bytes need
+reading by hand. Run it whenever a new `versions/<battery>/` directory appears, and
 at every read step on a campaign that has landed off its aim twice. It is read-only, it costs
 nothing, and it is the only reader that answers "did anything get harder" before the battery it
 describes is paid for.
@@ -342,9 +356,9 @@ again, since the page was never delivered.
 | you want to know | read | not |
 | --- | --- | --- |
 | whether the next battery will be asked for more | `difficulty-decisions/`, the placement the watch prints | the score |
-| whether the tasks actually got harder | `wri.mjs climb` edge verdicts and the tier histogram | the level label, new task ids, or a longer description |
+| whether the tasks actually got harder | `wri.ts climb` edge verdicts and the tier histogram | the level label, new task ids, or a longer description |
 | whether a page could have steered the Builder at all | `git show <opening source.commit>:<path>` | the working tree or the stack head |
-| whether the Builder read a starter file | the authored `EXPERIMENT.json` and the bundle bytes | read counts in `builder-path-record.jsonl`; the Builder reads through bash, so zero proves nothing |
+| whether the Builder read a starter file | the bundle bytes and the Builder's notes | read counts in `builder-path-record.jsonl`; the Builder reads through bash, so zero proves nothing |
 | whether a battery is hard or merely unsolvable | `artifact.json` beside `public-task.json` in the settled cases | a reviewer finding, a published limit, or a zero score |
 | whether a slow solve is the wall | `solver.toolCalls` in `case-result.json` | `max_turns` or the solve wall, which no recorded truss case approached |
 
@@ -396,7 +410,7 @@ On 18 September those fixture lines read as a provider outage on a run that was 
 
 ### Read the edge before you pay for the battery
 
-`wri.mjs climb` reads its tier histogram and its structural row from the authored bytes under
+`wri.ts climb` reads its tier histogram and its structural row from the authored bytes under
 `versions/<battery>/`. Neither needs a case. So the newest edge verdict exists the moment a
 candidate is adopted, hours before the battery it describes has been measured, and the reader says
 so: on 18 September it read the still-unmeasured i04 as `undated, unclaimed, no verified case` and
@@ -408,8 +422,11 @@ four hours of solves to confirm a 6 of 6 that settled nothing. Novelty across th
 0.0000, 0.0038, 0.0884: the round that changed what the solver must reason about is an order of
 magnitude away from the two that did not, and it is legible before a single case runs.
 
-Every verdict but `escalated` says this battery asks the solver for nothing the last one did not.
-That is a reading, not a stop order: the product owns its own round, and a round already in flight
+The verdict reads check tiers, and a tier is not a forecast. On 2026-09-28 one firmware run's
+edge read `escalated` with every structural count unchanged and then passed 6 of 6, and its next
+edge read `widened` with novelty 0.27 and two new families and scored 2 of 6. So read the task rows
+beside the verdict: new tasks and scenarios can ask more at an unchanged tier. It is a reading, not
+a stop order: the product owns its own round, and a round already in flight
 finishes and records. It is the moment to write the next experiment rather than to wait four hours
 for a score that cannot surprise you.
 
@@ -437,11 +454,11 @@ lead; `artifact.json` beside `public-task.json` is the measurement. When a batte
 nothing, read what blocked every case — an unpublished rule, a submission path a correct answer
 cannot use, a requirement no published tool can meet — before reading the battery as hard.
 
-A reviewer finding still cannot stop the battery that raises it: a defect owned by
-`correctness-model/tasks.json` is never repairable in its own session (`epoch-review-public.ts`),
-because its public act is "vary this in the fresh battery". When such a finding contradicts a
-standing prompt instruction, one of the two owners has to move, and which one is a question for the
-recorded cases, not for the finding.
+A reviewer finding still cannot stop the battery that raises it, and its projection
+(`epoch-review-public.ts`) says what the review found and where without naming a repair, so what a
+`correctness-model/tasks.json` defect changes is the Builder's choice. When such a finding
+contradicts a standing prompt instruction, one of the two owners has to move, and which one is a
+question for the recorded cases, not for the finding.
 
 The walls are not what stops a solve, so do not reach for them. Across every recorded truss case,
 `solver.turns` and `solver.completedTurns` are 1: the pi loop spends one turn and calls tools inside
@@ -511,6 +528,47 @@ row's outcome instead of freezing a replacement.
 Subagent and reviewer reports are model output, not authority. Check every finding against the
 source before acting on it.
 
+### Track what the gate and the checks did, and backtrack a correction
+
+A score says what the verifier decided and nothing about what the gate cost to get there, and an
+evaluation correction changes the exam without saying what the old answers were worth under it. The
+whole-run investigation reads both as lanes 27 and 28, and this loop runs them every round rather
+than waiting for a suspicion, because neither shows up in a denominator.
+
+The `gates` lane walks every Builder session's `correctness_check` and submit receipts, groups
+consecutive refusals of one code into episodes, and prints each fired component's ledger prior from
+`gate-ledger.ts` (P(right), P(stall), P(move), keyed by finding code) beside what its episodes
+actually did: repaired by a byte change, cleared with no edit at all, or left unanswered. A refusal
+that clears on unchanged bytes was not refusing something wrong, so a component that keeps doing it
+is spending the Builder's rounds against the prior the audit gave it, and a code the ledger does not
+know is a component nobody has rated. The lane gives no verdict on a component. Carry its table to
+the gate audit, which decides whether the component goes, and read a stalled episode as a round lost
+to the gate rather than to the domain.
+
+```sh
+bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.ts gates <campaign dir> [--json]
+bun run replay -- <campaign>/<earlier runId> --under <campaign>/<corrected runId>
+```
+
+Backtracking is the second half. An evaluation correction leaves its issues `unmeasured` (rule 10),
+because a fresh battery on the corrected evaluator solves new attempts and never says what the
+correction would have made of the artifacts already accepted. `replay --under` grades the earlier
+battery's recorded final submissions under the later battery's bundle snapshot and diffs every
+verdict against the recorded one. A pass that flips to a fail was a pass the old checks let through;
+a fail that flips to a pass was a check the correction repaired; no flip means the correction
+changed nothing the battery reached. A task whose public digest moved between the two batteries is
+refused as `public-task-drift` rather than graded against an exam it never sat. The `gates` lane
+reads every correction from the recorded batteries, names the bundle files it moved, and prints
+`EVALUATION CORRECTION REPLAY CANDIDATE` with the exact command wherever the scoring program moved, so
+regrade before judging a correction round: nine consecutive firmware corrections went by with none
+regraded. The candidate stays listed after the replay, because nothing records one, and nothing in
+the controller reads the replay's report either, so its flips inform the round's judgement while
+the advice still names the correction's issues `unmeasured`.
+
+In short, every round: read the gate's episodes against its priors, and regrade every correction
+under the evaluator that replaced it. The first says which checks cost rounds without catching
+anything; the second says whether a correction moved any verdict at all.
+
 ### When two batteries miss the band the same way, stop editing prose
 
 Two consecutive batteries of one product outside the band on the same side is a settled result, not
@@ -532,21 +590,24 @@ a response to this one misreads both.
 
 So on the second one: stop opening pull requests against any authoring surface, and write the
 operator one message holding both batteries' verified counts, each case's turn count and margin to
-its governing limit, what the Builder changed between them as `wri.mjs climb` reads it, and one
+its governing limit, what the Builder changed between them as `wri.ts climb` reads it, and one
 named next experiment. Then wait. Work on an authoring surface after that point is work for the next
 launch, and it should be scheduled as such rather than presented as a response to this one.
 
-Read the Builder's own `EXPERIMENT.json` before judging the round. It states the gap the Builder saw
-and the target it set itself, and a score cannot. The fourth round of 3fd52f9e-10 opens "every rule
-the harness enforced was a rule about members", adds two public checks from a published joint
-standard, and pre-registers about 1 of 5 passing with a stated fallback if 4 or more do. That is the
-mechanism working, and no reading of the three flat rounds in front of it would have predicted it.
+Read what the Builder said it set out to do, in its prose and notes, before judging the round. It
+states the gap the Builder saw, and a score cannot. The fourth round of 3fd52f9e-10 opens "every rule
+the harness enforced was a rule about members" and adds two public checks from a published joint
+standard, which no reading of the three flat rounds in front of it would have predicted. The round
+no longer writes that intent to a controller-read `EXPERIMENT.json`: the file graded whether a
+description matched a diff, and the accepted bytes already say what moved.
 
 ## 7. Decide the next move
 
 Choose one: retain and measure; fix the demonstrated owner; delete a mechanism with no consumer or
 no decision effect; investigate a consequential ambiguity; or stop because the authorised programme
-or the allowance ended. The product owns its own within-run climb and rebuild decisions.
+or the allowance ended. The product owns its own within-run climb and rebuild decisions. Whether a
+new wave of runs improved on the one it replaced is a [wave-audit](../wave-audit/SKILL.md), read
+at the first battery, the third round and the terminal.
 
 The standing goal for that choice, set by the operator on 2026-09-18, is to **optimise the climb
 towards really hard tasks**: prefer the change that shortens the run of `too-easy` placements before
@@ -574,7 +635,7 @@ recorded as `not triggered`, so a skipped skill is a decision rather than an omi
 
 | step | strict, every round | judgement, with its trigger |
 | --- | --- | --- |
-| read | `whole-run-investigation` rows A to I, then the safeguard census, then a diff of the campaign's adopted versions, then `wri.mjs climb` once the campaign has two edges | its semantic lanes, the number the tier allows, when a recorded row stays unexplained; `whole-run-investigation`'s [climb reference](../whole-run-investigation/references/climb.md) on any climb row the watch printed, and whenever a transition needs attribution |
+| read | `whole-run-investigation` rows A to I, then the safeguard census, then a diff of the campaign's adopted versions, then `wri.ts climb` once the campaign has two edges, then `wri.ts gates` and a `replay --under` for every correction it lists | its semantic lanes, the number the tier allows, when a recorded row stays unexplained; `whole-run-investigation`'s [climb reference](../whole-run-investigation/references/climb.md) on any climb row the watch printed, and whenever a transition needs attribution |
 | adjudicate | `prediction.ts adjudicate` for every row, ledger kept in the local `notes/predictions/` | `attribution-and-proof` before any sentence claims improvement |
 | patch | fix on the owning PR; `simplify` on each diff; record the `system-path-simulation` proof choice and its result | `safeguards` when a fix adds a decision no record observes; a fresh replay when existing evidence does not cover the changed consumer |
 | compose | merge in the compose tree, prove every head an ancestor; let `launch-run` own its one gate | `stack-hop` and `intelligent-rebase` when PR order changes or two fixes touch one file |

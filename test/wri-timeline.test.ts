@@ -4,10 +4,7 @@ import { afterAll, describe, expect, it } from "bun:test";
 import { campaignDir } from "../src/meta/campaign-root.ts";
 import { recordedController } from "./helpers/recorded-controller.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
-import {
-  buildTimeline,
-  renderTimeline,
-} from "../.claude/skills/whole-run-investigation/scripts/timeline.mjs";
+import { buildTimeline, renderTimeline } from "../.claude/skills/whole-run-investigation/scripts/timeline.ts";
 
 const RUN = "run-20260919T000000000Z-aaaaaa";
 /** The second round's own run id, which is the only battery that round may bind. */
@@ -120,6 +117,46 @@ describe("run timeline", () => {
       [5, "measure-on", "hook-activated"],
     ]);
     expect(timeline.stalls?.map((stall) => stall.cause)).toEqual(Array(5).fill("unattributed"));
+  });
+
+  // An authoring review runs inside the build span, so once it settles the Builder's authoring time
+  // is build again; a run-level analysis span, parented by nothing, keeps holding analyse.
+  it("returns to the build phase when a review nested in the build span settles", () => {
+    const span = (seq: number, at: string, phase: string, state: string, parentId: string | null) =>
+      JSON.stringify({
+        schema: "ana-observation/v2",
+        id: RUN + ":" + seq,
+        runId: RUN,
+        seq,
+        at,
+        parentId,
+        type: "phase-transition",
+        phase,
+        state,
+        summary: phase + " " + state,
+      });
+    const rows = (parent: string | null) => [
+      span(1, "2026-09-19T10:00:00.000Z", "build", "started", null),
+      span(2, "2026-09-19T10:10:00.000Z", "analyse", "started", parent),
+      span(3, "2026-09-19T10:20:00.000Z", "analyse", "completed", parent),
+      row(4, "2026-09-19T11:20:00.000Z", { type: "iteration-settled", ordinal: 1, outcome: "accepted" }),
+      span(5, "2026-09-19T11:30:00.000Z", "build", "completed", null),
+    ];
+    const held = (parent: string | null) =>
+      Object.fromEntries(
+        (buildTimeline({ campaign: campaign(rows(parent)), runId: RUN }).phases ?? []).map((entry) => [
+          entry.phase,
+          [entry.elapsedMinutes, entry.states],
+        ]),
+      );
+    expect(held(RUN + ":1")).toEqual({
+      build: [80, { started: 1, completed: 1 }],
+      analyse: [10, { started: 1, completed: 1 }],
+    });
+    expect(held(null)).toEqual({
+      analyse: [80, { started: 1, completed: 1 }],
+      build: [10, { started: 1, completed: 1 }],
+    });
   });
 
   it("tallies prompts, hooks, steering and settled iterations from the rows alone", () => {

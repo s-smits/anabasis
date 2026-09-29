@@ -5,19 +5,19 @@ import { sha256, sha256OfFile } from "../src/meta/digest.ts";
 import { canonicalJson } from "../src/meta/stable-json.ts";
 import { createVerifierHost } from "../src/verify/host.ts";
 import { createVerifierLifetime } from "../src/verify/verifier-lifetime.ts";
-import { loadCorrectnessModel } from "../src/truth/contracts.ts";
+import { loadCorrectnessModel } from "../src/correctness-bundle/contracts.ts";
 import { evaluateCheckProgram } from "../vendor/correctness-model-bundle/evaluate.ts";
 import { checkPublicInputs } from "../vendor/correctness-model-bundle/evaluation-public-task.ts";
 import { MATCHING_BRIEF } from "./helpers/matching-fixture.ts";
-import { externalChecksOf, type BriefTruthCheck } from "../src/truth/brief.ts";
-import { runControls } from "../src/truth/run-controls.ts";
-import { discriminationDisclosure } from "../src/truth/discrimination-author-detail.ts";
+import { externalChecksOf, type BriefTruthCheck } from "../src/correctness-bundle/brief.ts";
+import { runControls } from "../src/correctness-bundle/run-controls.ts";
+import { discriminationDisclosure } from "../src/correctness-bundle/discrimination-author-detail.ts";
 import {
   type SettledControl,
   TOOL_REFUSED_CODE,
   checkCostRows,
   unexecutedGroundingFindings,
-} from "../src/truth/grounding-coverage.ts";
+} from "../src/correctness-bundle/grounding-coverage.ts";
 
 const ROOT = mkdtempSync(join(import.meta.dir, ".ana-scratch-check-tool-boundary-"));
 const lifetime = createVerifierLifetime({ root: join(ROOT, "receipts") });
@@ -236,19 +236,35 @@ it("observes the submitted entrypoint through the complete check process and con
   const externalChecks = externalChecksOf(brief);
   const evaluate = evaluateCheckProgram(brief, await loadCorrectnessModel(dir, lifetime));
   const settled = new Map<string, SettledControl>();
+  const checkRuns: Array<{ controlId: string; attempt: number; checkId: string; outcome: string }> = [];
   const result = await runControls(
     evaluate,
     corpus,
     [task],
     {
       brief,
-      externalChecks,
       verifierLifetime: lifetime,
       onSettled: (controlId, observation) => settled.set(controlId, observation),
+      onCheckRun: (controlId, attempt, { checkId, outcome }) =>
+        checkRuns.push({ controlId, attempt, checkId, outcome }),
     },
     verifier,
   );
   expect(result.findings).toEqual([]);
+  // One row per control's check, and every tool run joins to the row of the check that launched it.
+  expect(checkRuns.map((row) => `${row.controlId}:${row.checkId}:${row.outcome}`).sort()).toEqual([
+    "a0:behavior:pass",
+    "a1:behavior:pass",
+    "wrong-behavior:behavior:fail",
+  ]);
+  for (const tool of verifier.evidence()) {
+    expect(
+      checkRuns.some(
+        (row) =>
+          row.controlId === tool.subjectId && row.attempt === tool.attempt && row.checkId === tool.checkId,
+      ),
+    ).toBe(true);
+  }
   expect(result).toMatchObject({ claimable: true, acceptsPassed: 2, rejectsFailed: 1, rejectsAttributed: 1 });
   expect(
     unexecutedGroundingFindings({
@@ -264,20 +280,108 @@ it("observes the submitted entrypoint through the complete check process and con
   expect(
     verifier.evidence().filter((row) => row.toolId === "cell:product" && row.outcome === "executed"),
   ).toHaveLength(3);
-  // An accept whose tool fails inside the cell names the tool and its exit, never its output.
+  // An accept whose tool fails inside the cell names the tool and its exit, never its output. The
+  // same compiler built the valid accept beside it, so the tool runs in the cell and the rejection
+  // stays the correctnessModel's, although this failure too wrote nothing to stdout.
   const broken = await runControls(
     evaluate,
-    { accept: [{ id: "a-broken", taskId: "t", artifact: artifact("(") }], reject: [] },
+    {
+      accept: [...corpus.accept, { id: "a-broken", taskId: "t", artifact: artifact("(") }],
+      reject: [],
+    },
     [task],
-    { brief, externalChecks, verifierLifetime: lifetime },
+    { brief, verifierLifetime: lifetime },
     host(),
   );
-  const detail = broken.findings
+  const rejected = broken.findings.filter((f) => f.code === "DISCRIMINATION_ACCEPT_REJECTED");
+  expect(rejected.map((f) => f.path)).toEqual([undefined]);
+  const detail = rejected
     .map(discriminationDisclosure)
-    .map((d) => (d.class === "authored" ? d.detail : d.note))
-    .find((text) => text?.includes("a-broken") === true);
-  expect(detail).toContain('on [behavior], where tool runs ended [cc exit 1]: "a-broken"');
+    .map((d) => (d.class === "authored" ? d.detail : d.note))[0];
+  expect(detail).toContain(
+    'by the correctnessModel, on [behavior], where tool runs ended [cc exit 1]: "a-broken"',
+  );
   expect(detail).not.toContain("error");
+});
+
+async function silentCensus(name: string, toolId: string, args: readonly string[]) {
+  const dir = join(ROOT, name);
+  mkdirSync(join(dir, "correctness-model"), { recursive: true });
+  writeFileSync(
+    join(dir, "correctness-model/evaluator.ts"),
+    `
+    export const checks = { behavior: async (_request, runtime) =>
+      (await runtime.tools.run({ toolId: ${JSON.stringify(toolId)}, args: ${JSON.stringify(args)} })).exitCode === 0 };
+  `,
+  );
+  const behavior: BriefTruthCheck = {
+    id: "behavior",
+    assertion: "the submitted entrypoint compiles",
+    execution: {
+      families: "all",
+      artifactPaths: ["$.files"],
+      publicInputPaths: [],
+      hidden: "none",
+      evidence: { kind: "authored" },
+      requiredToolIds: [toolId],
+    },
+  };
+  const brief = {
+    ...MATCHING_BRIEF,
+    joins: [],
+    truthChecks: [behavior],
+    artifactSchema: [{ name: "files", "shape": "file map", fileMap: true as const }],
+  };
+  const task = { taskId: "t", family: "f", publicInput: {}, intendedFeatures: {}, hidden: [] };
+  const accept = (id: string) => ({ id, taskId: "t", artifact: { files: { "main.c": "int main(){}" } } });
+  const path = toolId === "sh" ? "/bin/sh" : "/usr/bin/cc";
+  const verifier = createVerifierHost({
+    lifetime,
+    inventory: {
+      [toolId]: {
+        id: toolId,
+        path,
+        digest: sha256OfFile(path),
+        source: "host",
+        kind: "binary",
+        interpreter: null,
+      },
+    },
+  });
+  const result = await runControls(
+    evaluateCheckProgram(brief, await loadCorrectnessModel(dir, lifetime)),
+    { accept: [accept("a0"), accept("a1")], reject: [] },
+    [task],
+    { brief, verifierLifetime: lifetime },
+    verifier,
+  );
+  const rejected = result.findings.filter((f) => f.code === "DISCRIMINATION_ACCEPT_REJECTED");
+  const detail = discriminationDisclosure(rejected[0]!);
+  return { paths: rejected.map((f) => f.path), detail: detail.class === "authored" ? detail.detail : "" };
+}
+
+it("keeps a working compiler that rejects every accept on stderr the correctnessModel's", async () => {
+  // A real compiler that ran and refused every input the same way, exit 1 and stderr only. That is
+  // not evidence the tool could not start, so the install is named as the other reading, not the owner.
+  const { paths, detail } = await silentCensus("rejecting-compiler", "cc", ["absent.c"]);
+  expect(paths).toEqual([undefined]);
+  expect(detail).toStartWith(
+    '2 valid examples were rejected by the correctnessModel, on [behavior], where tool runs ended [cc exit 1]: "a0", "a1". No run of tool "cc" in this census exited 0 or wrote to stdout',
+  );
+  expect(detail).not.toContain("could not start in the verifier cell:");
+  expect(detail).toContain("if it cannot start, repair its install under .toolchain");
+});
+
+it("routes accepts to .toolchain when their tool exited the shell's launch code on every input", async () => {
+  // A wrapper that could not find its program exits 127; with no launch line the host recognises,
+  // the run reaches the census as executed, and the census reads the exit.
+  const { paths, detail } = await silentCensus("unlaunchable-wrapper", "sh", ["-c", "exit 127"]);
+  expect(paths).toEqual([".toolchain"]);
+  expect(detail).toStartWith(
+    '2 valid examples were rejected because tool "sh" exited with the shell\'s code for a program it could not execute (126) or find (127)',
+  );
+  expect(detail).toContain("[sh exit 127]");
+  expect(detail).toContain("Repair its install under .toolchain");
 });
 
 it("executes private authored probes and rejects a public-example lookup without narrowing valid implementations", async () => {
@@ -394,8 +498,6 @@ it("executes private authored probes and rejects a public-example lookup without
   }
 });
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, census-grounding-owed): commented out (unsure): an example whose check made no completed tool run, with no host refusal, no longer refuses adoption at the census
-// it("charges a tool the host could not run to the environment, and a run the check never made to the author", () => {
 it("charges a tool the host could not run to the environment", () => {
   // Rule 15: a sandbox refusal after its retry is the environment's non-result. Read as a missing
   // call, the Builder was told to call a tool it had called.
@@ -420,97 +522,9 @@ it("charges a tool the host could not run to the environment", () => {
       ),
     },
   ]);
-  // Gate audit 2026-09-25 (docs/gate-audit.md, census-grounding-owed): commented out (unsure): an example whose check made no completed tool run, with no host refusal, no longer refuses adoption at the census
-  // // A timeout stays the author's, but the finding says the call was made rather than asking for one.
-  // expect(unexecutedGroundingFindings(input("timeout"))).toEqual([
-  //   {
-  //     code: "generated-external-grounding-unexecuted",
-  //     path: "controls",
-  //     controlIds: ["a0"],
-  //     detail: expect.stringContaining(
-  //       'called tool "cc" for required check "bound" and the run did not complete (timeout)',
-  //     ),
-  //   },
-  // ]);
-  // expect(unexecutedGroundingFindings(input("timeout"))[0]!.detail).not.toContain("runtime.tools.run");
   // A tool the host never ran, or ran to completion, yields no row.
   expect(unexecutedGroundingFindings({ ...input("executed"), evidence: [] })).toEqual([]);
   expect(unexecutedGroundingFindings(input("executed"))).toEqual([]);
-  // Gate audit 2026-09-25 (docs/gate-audit.md, census-grounding-owed): commented out (unsure): an example whose check made no completed tool run, with no host refusal, no longer refuses adoption at the census
-  // // A check that ran the tool for one example and returned early on another is told exactly that.
-  // const early = unexecutedGroundingFindings({
-  //   ...input("executed"),
-  //   tasks: [{ taskId: "t", family: "f" }],
-  //   controls: [
-  //     { id: "a0", taskId: "t" },
-  //     { id: "r0", taskId: "t" },
-  //   ],
-  //   settled: new Map([
-  //     ["a0", { attempt: 2, hostNonResult: null }],
-  //     ["r0", { attempt: 2, hostNonResult: null }],
-  //   ]),
-  // });
-  // expect(early).toEqual([
-  //   {
-  //     code: "generated-external-grounding-unexecuted",
-  //     path: "controls",
-  //     controlIds: ["r0"],
-  //     detail: expect.stringContaining(
-  //       '1 example(s) of required check "bound" returned with no run of tool "cc" launched (0 runs), although the check called it for other examples: "r0"',
-  //     ),
-  //   },
-  // ]);
-  // // A reject aimed at another check may be refused before the analysis runs; one aimed at this check may not.
-  // const aimed = (expectedCheckId: string) =>
-  //   unexecutedGroundingFindings({
-  //     ...input("executed"),
-  //     controls: [
-  //       { id: "a0", taskId: "t" },
-  //       { id: "r0", taskId: "t", expectedCheckId },
-  //     ],
-  //     settled: new Map([
-  //       ["a0", { attempt: 2, hostNonResult: null }],
-  //       ["r0", { attempt: 2, hostNonResult: null }],
-  //     ]),
-  //   });
-  // expect(aimed("geometry")).toEqual([]);
-  // expect(aimed("bound").map((finding) => finding.code)).toEqual(["generated-external-grounding-unexecuted"]);
-  // // Once one reject aimed at this check completed a run, another may fail before the analysis
-  // // (truss 805bcc: a design with no loss path). An accept without a run and a reject whose run
-  // // did not complete still owe one.
-  // const decided = (extra: { id: string; expectedCheckId?: string; outcome?: string }) =>
-  //   unexecutedGroundingFindings({
-  //     ...input("executed"),
-  //     controls: [
-  //       { id: "a0", taskId: "t" },
-  //       { id: "r1", taskId: "t", expectedCheckId: "bound" },
-  //       { id: "r0", taskId: "t", expectedCheckId: "bound" },
-  //       { id: extra.id, taskId: "t", expectedCheckId: extra.expectedCheckId ?? null },
-  //     ],
-  //     settled: new Map(["a0", "r1", "r0", extra.id].map((id) => [id, { attempt: 2, hostNonResult: null }])),
-  //     evidence: [
-  //       { subjectId: "a0", checkId: "bound", toolId: "cc", outcome: "executed", attempt: 2 },
-  //       { subjectId: "r1", checkId: "bound", toolId: "cc", outcome: "executed", attempt: 2 },
-  //       ...(extra.outcome === undefined
-  //         ? []
-  //         : [{ subjectId: extra.id, checkId: "bound", toolId: "cc", outcome: extra.outcome, attempt: 2 }]),
-  //     ],
-  //   });
-  // expect(decided({ id: "r2", expectedCheckId: "bound" })).toEqual([]);
-  // expect(decided({ id: "a1" })).toEqual([
-  //   expect.objectContaining({
-  //     code: "generated-external-grounding-unexecuted",
-  //     detail: expect.stringContaining(
-  //       'returned with no run of tool "cc" launched (0 runs), although the check called it for other examples: "a1"',
-  //     ),
-  //   }),
-  // ]);
-  // expect(decided({ id: "r2", expectedCheckId: "bound", outcome: "timeout" })).toEqual([
-  //   expect.objectContaining({
-  //     code: "generated-external-grounding-unexecuted",
-  //     detail: expect.stringContaining('the run did not complete (timeout): "r2"'),
-  //   }),
-  // ]);
 });
 
 // Nothing else observes what one check costs: the caller of a check program receives one aggregate

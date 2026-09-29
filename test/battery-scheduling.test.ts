@@ -19,11 +19,17 @@ import { createRunObserver } from "../src/observe/run-observer.ts";
 import { BUILT_SOLVE_MAX_CONCURRENCY } from "../src/run/session-pool.ts";
 import {
   BATTERY_PROVIDER_STOP_CONSECUTIVE,
+  TURN_REFUSED_STOP_PREFIX,
   solveBatteryWithProviderStop,
-} from "../src/truth/battery-provider-stop.ts";
-import { type SolveOutcome, type Solver, nonResultOutcome } from "../src/truth/solve.ts";
-import type { BuildTask } from "../src/truth/tasks.ts";
-import { commitPublicTask } from "../src/truth/task-split.ts";
+} from "../src/correctness-bundle/battery-provider-stop.ts";
+import {
+  type SolveOutcome,
+  type Solver,
+  TURN_PERMIT_REFUSED_PREFIX,
+  nonResultOutcome,
+} from "../src/correctness-bundle/solve.ts";
+import type { BuildTask } from "../src/correctness-bundle/tasks.ts";
+import { commitPublicTask } from "../src/correctness-bundle/task-split.ts";
 import { createVerifierLifetime } from "../src/verify/verifier-lifetime.ts";
 import {
   SCRATCH_ROOT,
@@ -232,5 +238,19 @@ describe("the battery stops scheduling after consecutive provider non-results", 
     const { attempted, skipped } = await run((attempt) => (attempt % 3 === 0 ? unaccepted : provider));
     expect(attempted).toBe(12);
     expect(skipped).toEqual([]);
+  });
+
+  it.concurrent("stops at the first turn the controller refused, and names the stop as the controller's", async () => {
+    // The run's spent budget refuses every later turn too, so scheduling more buys nothing, and
+    // the refusal is not a provider outage: no row it leaves may read as one.
+    const refused = nonResultOutcome({
+      kind: "runtime",
+      message: `${TURN_PERMIT_REFUSED_PREFIX} provider resource budget exhausted`,
+    });
+    const { attempted, solved, skipped } = await run(() => refused);
+    expect(attempted).toBeLessThanOrEqual(1 + BUILT_SOLVE_MAX_CONCURRENCY);
+    expect(skipped).toHaveLength(12 - attempted);
+    for (const row of solved) expect(row.solved.nonResult?.kind).toBe("runtime");
+    for (const row of skipped) expect(row.solved.nonResult?.message).toStartWith(TURN_REFUSED_STOP_PREFIX);
   });
 });

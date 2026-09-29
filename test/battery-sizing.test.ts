@@ -10,8 +10,7 @@ import {
   taskCountSentence,
 } from "../src/run/battery-sizing.ts";
 import { directManifest } from "../src/run/direct-input.ts";
-import { POLICY } from "../src/critic/policy.ts";
-import { readClimbReadout, renderBatteryContract, renderProbeSizing } from "../src/run/climb-readout.ts";
+import { readClimbReadout, renderProbeSizing } from "../src/run/climb-readout.ts";
 import { EvidenceLog } from "../src/claim/evidence-log.ts";
 import { fingerprintSlug } from "../src/claim/fingerprint.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
@@ -31,9 +30,6 @@ import { fixtureThresholdDigest, writeFixtureThresholds } from "./helpers/thresh
 import { double, required } from "./helpers/doubles.ts";
 
 const PROBE = BATTERY_SIZE.probe;
-
-const continuation = (n: number, min = n, band = POLICY.climb.band) =>
-  renderBatteryContract(n, min, band, true);
 
 describe("batterySize", () => {
   it("accepts every size inside the policy bounds and REFUSES outside them instead of clamping", () => {
@@ -89,8 +85,14 @@ describe("batterySizingGate", () => {
   it("sizes a product past the probe to the smallest battery that still carries its last reading", () => {
     // A battery that read too easy at 25 is re-read for less: nine of eleven still reads significantly too easy, so eleven buys the reading for 44% of it.
     expect(batterySizingGate(25, 25, landed(22, 25))).toEqual({ min: 11, max: 11 });
-    expect(batterySizingGate(25, 25, landed(6, 6))).toEqual({ min: 11, max: 11 });
     expect(batterySizingGate(25, 25, landed(20, 25))).toEqual({ min: 14, max: 14 });
+  });
+
+  it("carries a too-easy reading the landing made, and never one only its projection makes", () => {
+    // 6 of 6 is significantly too easy, so eleven re-reads it; 5 of 6 is not, though 9 of 11 at the
+    // same rate would be, and shrinking on that would spend a round on a reading nobody observed.
+    expect(batterySizingGate(25, 25, landed(6, 6))).toEqual({ min: 11, max: 11 });
+    expect(batterySizingGate(25, 25, landed(5, 6))).toEqual({ min: 25, max: 25 });
   });
 
   it("keeps the requested size whenever no smaller battery holds the reading", () => {
@@ -187,14 +189,12 @@ describe("runBuildStep battery sizing", () => {
       expectedTasks: number;
       minTasks?: number;
       note?: string;
-      band?: [number, number];
     }> = [];
     const build: FullRunDeps["build"] = async (manifest, options) => {
       seen.push({
         expectedTasks: manifest.expectedTasks,
         ...keyIfDefined("minTasks", manifest.minTasks),
         ...keyIfDefined("note", options?.advisoryNote),
-        ...keyIfDefined("band", options?.band),
       });
       return double({
         buildAdmissible: false,
@@ -279,29 +279,13 @@ describe("runBuildStep battery sizing", () => {
   /** One number, three owners: a declared `climb.band` must move the placement, the prompt
    *  contract and the sizing gate together. [0.2, 0.95] makes each visible: at 25 cases no count is
    *  significantly too easy under it, and 22 of 25 no longer holds "too easy" below 25 tasks. */
-  it("moves the prompt counts and the sizing gate with a declared band, not only the placement", async () => {
+  it("moves the sizing gate with a declared band, not only the placement", async () => {
     const declared: [number, number] = [0.2, 0.95];
     // Same battery, same 22 of 25: under the code-owned ceiling it holds too-easy at eleven tasks.
     expect(await sizedRound(probeRoot(true, 25, 22), null)).toMatchObject({ expectedTasks: 11 });
     const round = await sizedRound(probeRoot(true, 25, 22, declared), null);
     // Under the declared ceiling no smaller size holds the reading, so the round keeps its size.
     expect(round.expectedTasks).toBe(25);
-    // And the band the controller read is the one the authoring session is handed.
-    expect(round.band).toEqual(declared);
-    // The Builder's sentences are written from that band, not from the policy row.
-    expect(continuation(25, 25, declared)).toContain("At 25 cases no pass count is significantly too easy");
-  });
-
-  /** The readout reports the latest battery's target either way — met, missed with a distance, or
-   *  undetermined by non-results — so the contract names the comparator's direction and that one
-   *  reader, and no reader that does not exist. */
-  it("says which comparator the direction asks for, and what the next round does with it", () => {
-    const contract = continuation(25);
-    expect(contract).toContain(
-      "at-most when this battery should pass fewer cases than the last one did, at-least when more",
-    );
-    expect(contract).toContain("reports whether that target was met and, when it was missed, by how much");
-    expect(contract).not.toContain("the next round reports how far the measurement landed from it");
   });
 });
 

@@ -4,6 +4,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
@@ -31,8 +32,42 @@ function fixture() {
   const cells = join(root, "cells");
   mkdirSync(cells);
   const lifetime = createVerifierLifetime({ root: join(root, "receipts") });
-  return { root, cells, lifetime };
+  /** A host over these cells whose one inventoried tool is `/usr/bin/true`, with one subject open. */
+  const open = (subjectId: string) => {
+    const host = createVerifierHost({
+      lifetime,
+      baseDir: cells,
+      requireOsSandbox: false,
+      inventory: {
+        true: {
+          id: "true",
+          path: "/usr/bin/true",
+          digest: sha256OfFile("/usr/bin/true"),
+          source: "host",
+          kind: "binary",
+          interpreter: null,
+        },
+      },
+    });
+    const scope = host.openSubject({
+      checks: null,
+      runId: "test",
+      phase: "discrimination",
+      subjectId,
+      attempt: 1,
+      artifact: {},
+      publicTask: null,
+    });
+    return { host, scope };
+  };
+  return { root, cells, lifetime, open };
 }
+const closedStream = () =>
+  new ReadableStream<Uint8Array>({
+    start(c) {
+      c.close();
+    },
+  });
 
 describe("verifier settlement", () => {
   it.each(["normal", "held-pipe", "unreaped"] as const)(
@@ -48,41 +83,14 @@ describe("verifier settlement", () => {
           if (mode !== "held-pipe") c.close();
         },
       });
-      const stderr = new ReadableStream<Uint8Array>({
-        start(c) {
-          c.close();
-        },
-      });
+      const stderr = closedStream();
       const unref = spyOn({ run() {} }, "run");
       const spawn = spyOn(Bun, "spawn").mockReturnValue(
         double({ pid: 987654321, exited: exit.promise, signalCode: null, stdout, stderr, unref }),
       );
       const reap = spyOn(subprocess, "terminateAndReapProcessGroup").mockResolvedValue(mode !== "unreaped");
       try {
-        const host = createVerifierHost({
-          lifetime: f.lifetime,
-          baseDir: f.cells,
-          requireOsSandbox: false,
-          inventory: {
-            true: {
-              id: "true",
-              path: "/usr/bin/true",
-              digest: sha256OfFile("/usr/bin/true"),
-              source: "host",
-              kind: "binary",
-              interpreter: null,
-            },
-          },
-        });
-        const scope = host.openSubject({
-          checks: null,
-          runId: "test",
-          phase: "discrimination",
-          subjectId: mode,
-          attempt: 1,
-          artifact: {},
-          publicTask: null,
-        });
+        const { host, scope } = f.open(mode);
         const pending = scope.port.run({ toolId: "true", checkId: "c", timeoutMs: 20 });
         if (mode !== "unreaped") exit.resolve(0);
         const before = Date.now();
@@ -120,6 +128,66 @@ describe("verifier settlement", () => {
     },
     5_000,
   );
+});
+
+describe("the cells a closed scope leaves", () => {
+  const cellsIn = (dir: string) => readdirSync(dir).filter((name) => name.startsWith("ana-cell-"));
+
+  it("removes every cell but the one an unsettled process holds, and recovery removes that one", async () => {
+    const f = fixture();
+    const unreaped = Promise.withResolvers<number>();
+    const unref = spyOn({ run() {} }, "run");
+    const spawn = spyOn(Bun, "spawn")
+      .mockReturnValueOnce(
+        double({
+          pid: 987654320,
+          exited: Promise.resolve(0),
+          signalCode: null,
+          stdout: closedStream(),
+          stderr: closedStream(),
+          unref,
+        }),
+      )
+      .mockReturnValueOnce(
+        double({
+          pid: 987654321,
+          exited: unreaped.promise,
+          signalCode: null,
+          stdout: closedStream(),
+          stderr: closedStream(),
+          unref,
+        }),
+      );
+    const reap = spyOn(subprocess, "terminateAndReapProcessGroup")
+      .mockResolvedValueOnce(true)
+      .mockResolvedValue(false);
+    const exists = spyOn(subprocess, "processGroupExists").mockReturnValue(true);
+    try {
+      const { scope } = f.open("two-cells");
+      expect((await scope.port.run({ toolId: "true", checkId: "settled", timeoutMs: 20 })).executed).toBe(
+        true,
+      );
+      await scope.port.run({ toolId: "true", checkId: "held", args: ["held"], timeoutMs: 20 });
+      expect(cellsIn(f.cells)).toHaveLength(2);
+
+      const closed = await scope.close();
+      expect(closed.cleanup?.state).toBe("pending");
+      // The settled check's cell has nothing left to wait for, so it goes with the scope.
+      expect(cellsIn(f.cells)).toHaveLength(1);
+
+      // Recovery removes the held cell only once the group it names is gone.
+      expect(f.lifetime.recover()).toHaveLength(1);
+      expect(cellsIn(f.cells)).toHaveLength(1);
+      exists.mockReturnValue(false);
+      expect(f.lifetime.recover()).toEqual([]);
+      expect(cellsIn(f.cells)).toEqual([]);
+    } finally {
+      unreaped.resolve(0);
+      spawn.mockRestore();
+      reap.mockRestore();
+      exists.mockRestore();
+    }
+  });
 });
 
 describe("durable verifier ownership", () => {

@@ -9,7 +9,9 @@ Ask one question: what may we claim? State the owner first, then the number. Say
 proves, what it does not prove, and the denominator. Do not let a summary outrun its evidence.
 
 `run-improvement-campaign` chooses the next experiment (its decide step). `system-path-simulation` tests a change or uncertain path before
-spend. This skill starts after the run: attribution, evidence strength, and permitted wording.
+spend. This skill starts after the run: attribution, evidence strength, and permitted wording. Whether a
+whole new wave of runs beat the wave it replaced is [wave-audit](../wave-audit/SKILL.md), which
+uses this skill's rules for each movement it reads.
 
 ## Rules
 
@@ -53,7 +55,7 @@ Check, in order:
    missing trigger instead of treating absent output as an absent fix.
 
 For F2, run
-`bun --no-env-file .claude/skills/attribution-and-proof/scripts/inspect-solvability.mjs <campaign root>`
+`bun --no-env-file .claude/skills/attribution-and-proof/scripts/inspect-solvability.ts <campaign root>`
 or append `<run tree> <slug>`. It reports aggregates only. Keep raw solvability evidence out of every
 Builder-visible channel. Intent comes from the active operator plan and commit message. Bind intent
 to the run using the sha in its evidence.

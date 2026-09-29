@@ -1,11 +1,9 @@
-import { PLAN_FIELDS } from "./helpers/experiment-plan.ts";
 import { afterAll, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { EvidenceLog } from "../src/claim/evidence-log.ts";
 import { fingerprintSlug } from "../src/claim/fingerprint.ts";
-import { hashJsonValue } from "../src/meta/stable-json.ts";
 import { capturedJsonParse } from "../src/meta/json-runtime.ts";
 import { isRecord } from "../src/meta/json-shape.ts";
 import { claimsDirFor } from "../src/run/claim-write.ts";
@@ -22,7 +20,7 @@ import {
 import type { FullRunDeps } from "../src/run/full-run.ts";
 import { createRunObserver } from "../src/observe/run-observer.ts";
 import { EMPTY_USER_CONTEXT } from "../src/builder/user-context.ts";
-import { validateTasks, type BuildTask } from "../src/truth/tasks.ts";
+import { validateTasks, type BuildTask } from "../src/correctness-bundle/tasks.ts";
 import { MATCHING_BRIEF, writeMatchingBuildFixture } from "./helpers/matching-fixture.ts";
 import { fixtureThresholdDigest, writeFixtureThresholds } from "./helpers/thresholds.ts";
 import { double, required } from "./helpers/doubles.ts";
@@ -53,7 +51,7 @@ function tasks(prefix: string): BuildTask[] {
 }
 
 /** Record two passing levels through the real evidence writer, then ask the disk selector. Family
- * scope is what this file is about, and test/next-move-rebuild.test.ts owns the off-aim streak. */
+ * scope is what this file is about, and test/next-move-rebuild.test.ts owns the move after a measured round. */
 function saturatedRoot(brief: typeof MATCHING_BRIEF, previous: BuildTask[]): string {
   const root = mkdtempSync(join(tmpdir(), "ana-broaden-scope-"));
   scratch.push(root);
@@ -144,6 +142,7 @@ it.each(["all", "unmeasured", "exhausted"] as const)(
       runId: "next-round",
       domainDir: join(root, "domains", SLUG),
       builder: { kind: "codex", model: "test-model", reasoningEffort: "low" },
+      built: { reasoningEffort: "low" },
     });
     expect(selected.decision).toMatchObject({ move: "rebuild", seed: "adopted" });
     expect(selected.readout?.decision).toMatchObject({ placement: { zone: "too-easy" } });
@@ -236,10 +235,11 @@ it("keeps another pin's and another threshold's public tasks readable, outside t
       runId: "next-round",
       domainDir: join(root, "domains", SLUG),
       builder: { kind: "codex", model: "test-model", reasoningEffort: "low" },
+      built: { reasoningEffort: "low" },
     });
   const alone = select();
-  // Two more passing batteries, newer than the run's own: a third same-side round would lengthen
-  // the off-aim streak, so either one entering the readout shows at once.
+  // Two more passing batteries, newer than the run's own: either one entering the readout would
+  // add a row, so it shows at once.
   recordBattery(root, "other-pin", previous, { level: 2, condition: { backendPin: "other-model" } });
   recordBattery(root, "other-thresholds", previous, {
     level: 3,
@@ -250,7 +250,6 @@ it("keeps another pin's and another threshold's public tasks readable, outside t
   expect(selected.decision.move).toBe("rebuild");
   expect(readout.decision).toEqual(required(alone.readout, "the prior readout").decision);
   expect(readout.rows).toEqual(required(alone.readout, "the prior readout").rows);
-  expect(readout.allowance).toEqual(required(alone.readout, "the prior readout").allowance);
   expect(readout.excluded.map((row) => row.runId)).toEqual(["other-pin", "other-thresholds"]);
 
   let pages: unknown[] = [];
@@ -314,21 +313,12 @@ it("keeps another pin's and another threshold's public tasks readable, outside t
   ]);
 });
 
-it("carries accepted intent and the host-derived changed subset out of the build step", async () => {
+it("carries the host-derived operation and changed subset out of the build step", async () => {
   const root = saturatedRoot(MATCHING_BRIEF, tasks("measured"));
   const baseline = join(root, "domains", SLUG);
   const acceptedSnapshot = join(root, "accepted");
   for (const dir of [baseline, acceptedSnapshot]) writeMatchingBuildFixture(dir);
   writeFileSync(join(acceptedSnapshot, "correctness-model/tasks.json"), JSON.stringify(tasks("new")));
-  const proposal = {
-    scope: "tasks" as const,
-    target: { comparator: "at-least" as const, verifiedPasses: 0 },
-    gap: "Coverage was narrow.",
-    change: "Author new families.",
-    ...PLAN_FIELDS,
-    expectedResult: "Test coordination.",
-  };
-  const experimentProposal = { ...proposal, digest: hashJsonValue(proposal) };
   const result = await runBuildStep(
     double({
       args: {},
@@ -343,7 +333,6 @@ it("carries accepted intent and the host-derived changed subset out of the build
           buildAdmissible: true,
           adopted: true,
           acceptedSnapshot,
-          experimentProposal,
           experimentScope: { actual: "climb", operation: { operation: "task-probe", moved: ["tasks"] } },
           iterations: [],
         }),
@@ -355,9 +344,9 @@ it("carries accepted intent and the host-derived changed subset out of the build
   );
   expect(result.build).toBe("candidate");
   expect(result.experiment).toBe("climb");
-  expect(result.experimentAuthoring?.proposal).toEqual(experimentProposal);
+  expect(result.experimentAuthoring?.operation.operation).toBe("task-probe");
   expect(result.experimentAuthoring?.changedTaskIds).toEqual(tasks("new").map((task) => task.taskId));
   const fingerprint = fingerprintSlug(baseline);
   if (!fingerprint.ok || fingerprint.taskSetHash === null) throw new Error("fixture baseline refused");
-  expect(result.experimentAuthoring?.baseline.taskSetHash).toBe(fingerprint.taskSetHash);
+  expect(result.experimentAuthoring?.baseline?.taskSetHash).toBe(fingerprint.taskSetHash);
 });

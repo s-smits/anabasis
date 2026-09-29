@@ -83,7 +83,7 @@ worktree's notes as a substitute for main.
 Use `codex-luna-swarm`'s direct launcher because xhigh is explicit:
 
 ```sh
-bun .agents/skills/codex-luna-swarm/scripts/luna-sessions.mjs \
+bun .agents/skills/codex-luna-swarm/scripts/luna-sessions.ts \
   --manifest /absolute/scratch/luna-sessions.json \
   --reasoning-effort xhigh \
   --max-active 4 --start-interval-ms 2000

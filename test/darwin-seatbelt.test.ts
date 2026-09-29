@@ -453,6 +453,42 @@ catch (error) { console.log("REFUSED:" + String(error.code)); }
     expect(run.stdout.trim()).toBe("REFUSED:EPERM");
   });
 
+  it.if(onDarwin)(
+    "lets a tool signal its child and grandchild, never a process outside the wall",
+    async () => {
+      const workdir = mkdtempSync(join(tmpdir(), "ana-cell-signal-"));
+      dirs.push(workdir);
+      const script = join(workdir, "checker.js");
+      // The shell prints its own backgrounded sleep's pid, so the tool holds a child and a grandchild.
+      writeFileSync(
+        script,
+        `const kill = (pid, signal) => { try { process.kill(pid, signal); return "ok"; } catch (error) { return String(error.code); } };
+const shell = Bun.spawn(["/bin/sh", "-c", "/bin/sleep 30 & echo $!; wait"], { stdout: "pipe" });
+const reader = shell.stdout.getReader();
+const grandchild = Number(new TextDecoder().decode((await reader.read()).value).trim());
+console.log(JSON.stringify({ grandchild: kill(grandchild, "SIGTERM"), child: kill(shell.pid, "SIGTERM"), outside: kill(${process.pid}, 0) }));
+process.exit(0);
+`,
+      );
+      const plan = prepared({
+        workdir,
+        resolvedCommand: realpathSync.native(Bun.argv[0]!),
+        engineArgs: [script],
+        attestedFiles: [],
+        sandboxReadRoots: [],
+      });
+      const run = await spawnText(plan.command, plan.args, {
+        cwd: workdir,
+        env: { PATH: "/usr/bin:/bin", TMPDIR: workdir },
+        timeout: 20000,
+      });
+      expect(run.stderr).toBe("");
+      // SAFETY: the checker prints exactly this one JSON line and nothing else.
+      const outcome = JSON.parse(run.stdout.trim()) as Record<string, string>;
+      expect(outcome).toEqual({ grandchild: "ok", child: "ok", outside: "EPERM" });
+    },
+  );
+
   it("keeps a concurrent verification cell denied without a writable grant", () => {
     const f = fixture();
     const cellRules = prepared(launch(f))

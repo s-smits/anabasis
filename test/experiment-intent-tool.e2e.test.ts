@@ -17,21 +17,20 @@ import { cleanupScratch } from "./helpers/scratch.ts";
 const ROWS: Array<[string, IntentRow]> = [
   [
     "a battery change over the relocated, byte-identical tool is a climb",
-    { tool: true, scope: "tasks", redesign: true, admitted: "climb" },
+    { tool: true, redesign: true, admitted: "climb" },
   ],
   [
-    "a tasks proposal over an edited tool is admitted as a build",
-    { tool: true, scope: "tasks", redesign: true, edit: EDITS.tool, admitted: "build" },
+    "a battery change over an edited tool is a build",
+    { tool: true, redesign: true, edit: EDITS.tool, admitted: "build" },
   ],
   [
     "an edited installed tool alone is an evaluation",
-    { tool: true, scope: "product", redesign: false, edit: EDITS.tool, admitted: "evaluation" },
+    { tool: true, redesign: false, edit: EDITS.tool, admitted: "evaluation" },
   ],
   [
     "a tool edited after submit captured it is refused as verifier drift",
     {
       tool: true,
-      scope: "product",
       redesign: true,
       midGate: EDITS.tool,
       refused: "verifier-condition-drift",

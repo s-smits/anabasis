@@ -9,10 +9,11 @@
  * where the artifact failed stay behind, so a change to any of those alone leaves the review's
  * prompt, and every page it reads of a rehearsal, byte for byte the same.
  */
+import { relative } from "../src/meta/path.ts";
 import { afterAll, describe, expect, it } from "bun:test";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { hashJsonValue } from "../src/meta/stable-json.ts";
-import type { RehearsalRow } from "../src/author/experiment-plan.ts";
+import type { RehearsalRow } from "../src/builder/harness-trial.ts";
 import { bundleSnapshotIdOf } from "../src/claim/bundle-snapshot.ts";
 import { fingerprintSlug } from "../src/claim/fingerprint.ts";
 import { AuthoringReviewClock } from "../src/gate/review-clock.ts";
@@ -110,6 +111,7 @@ function rehearsal(
       taskId: "t1",
       family: "single-part",
       verdict,
+      submitted: artifact !== null,
       wallMinutes: 120,
       minutes: 1,
       toolCalls: 2,
@@ -133,9 +135,9 @@ async function handed(rehearsals: readonly Rehearsal[]) {
     workspace,
     SLUG,
     new AuthoringReviewClock(null, 0),
-    async (root, _trigger, _plan, cases?: readonly unknown[]) => {
+    async (root, _trigger, cases?: readonly unknown[]) => {
       seen = { root, rehearsals: cases ?? [] };
-      return { text: "", findings: 0 };
+      return { text: "", blocking: 0 };
     },
   );
   for (const { row, submitted } of rehearsals) {
@@ -152,13 +154,14 @@ async function shown(root: string, rehearsals: readonly unknown[]) {
   let prompt = "";
   const reads = new Map<string, string>();
   const result = await runEpochReview({
-    repoRoot: root,
+    // The review records itself under its campaign, which sits beside the tree it reads, as a
+    // workspace snapshot does in production, so no review finds the last one in its inventory.
+    repoRoot: `${root}-repo`,
     slug: SLUG,
     runId: "authoring-checkpoint",
-    treeRoot: ".",
+    treeRoot: relative(`${root}-repo`, root),
     analysis: null,
     priorAdvice: null,
-    experiment: null,
     review,
     publicRequest: REQUEST,
     ...double<object>({ rehearsals }),

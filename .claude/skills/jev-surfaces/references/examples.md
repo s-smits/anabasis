@@ -276,7 +276,7 @@ proposer. First build the records, one row per submit, from the posture classifi
 
 ```ts
 // records-from-posture.ts: submit prose → records.jsonl for discover.ts, one row per submit.
-//   bun prose-classify.mjs <campaign-dir> --json > posture.json   (from the checkout, once per campaign)
+//   bun .claude/skills/whole-run-investigation/classifier/prose-classify.ts <campaign-dir> --json > posture.json   (from the checkout, once per campaign)
 //   bun records-from-posture.ts <campaign-name> posture.json >> records.jsonl
 const [group, path] = Bun.argv.slice(2);
 const posture = await Bun.file(path).json();

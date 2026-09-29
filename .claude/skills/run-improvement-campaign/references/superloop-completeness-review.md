@@ -40,7 +40,7 @@ Loop inventory, as of 18 September 2026:
 | choose, patch, compose | `run-improvement-campaign/SKILL.md`, `simplify`, `stack-hop` | — |
 | prove the changed path | `system-path-simulation` | `run-condition.mts`, `judge-replay.mts`, `review-settle.mts`, `seed-campaign.mts` |
 | predict | `run-improvement-campaign` | `prediction.ts` |
-| launch | `launch-run` | `launch.ts`, `probe.ts`, `options.ts`, `service.ts`, `stop.ts`; `preflight.mjs` |
+| launch | `launch-run` | `launch.ts`, `probe.ts`, `options.ts`, `service.ts`, `stop.ts` |
 | watch | `run-improvement-campaign` | `campaign.ts` |
 | read | `whole-run-investigation` | `wri.ts`, `references/outcome-review.md`; `bun run outcome` |
 | attribute a climb | `whole-run-investigation` | `references/climb.md` |
@@ -122,8 +122,7 @@ controller. Decide, for each: does any loop step read its output; is there a rec
 next experiment consumes, or does the finding exist only in a session's terminal; and can its
 verdicts reach a Builder-visible surface, which rule 4 forbids. Say precisely which of the two is
 wired into the cycle, which is a side channel, and what the smallest closing edge would be — reusing
-an existing artifact and consumer, not a new file format. Note also whether the cycle key the export
-records (`label.py` `CYCLE_SURFACES`) is read by every later consumer or re-decided by each.
+an existing artifact and consumer, not a new file format.
 
 ## 6. closure_and_handover
 
@@ -137,8 +136,7 @@ rereading a transcript, which is the condition this stage exists to prevent.
 ## 7. dead_mechanism_census
 
 Own everything in the loop with no live consumer. For each skill script in the inventory, find its
-callers: another script, a documented command, a test, or nothing. `scripts/stage.mjs` is the known
-example — `SKILL.md:86` tells agents not to add it while the file sits in the same skill with only
-its own test as a caller. Return every such mechanism with its last real use if you can date it, and
-say for each whether the honest repair is deletion, one line of documentation, or a consumer. Do not
-propose keeping a mechanism because removing it would be work.
+callers: another script, a documented command, a test, or nothing. Return every such mechanism with
+its last real use if you can date it, and say for each whether the honest repair is deletion, one
+line of documentation, or a consumer. Do not propose keeping a mechanism because removing it would
+be work.

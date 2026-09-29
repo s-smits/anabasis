@@ -158,7 +158,7 @@ The strongest first experiment is the simplify-precision shadow judge. It has 34
 judge labels, it changes no product behaviour, and a round of Opus judge packets is exactly
 the cost a Jev pre-screen could remove. Next come the two embedding classifiers in
 `whole-run-investigation/classifier`. They are the closest thing in the tree to what Jev does,
-but both are local on purpose, and the header of `prose-classify.mjs` says no row text leaves
+but both are local on purpose, and the header of `prose-classify.ts` says no row text leaves
 the process, so replacing either is a data decision before it is a quality one. The context
 tool's `cite` ranks lines by shared words and records the `decides` parameter without reading
 it. That makes it the best product surface, and also a new condition for every Builder turn

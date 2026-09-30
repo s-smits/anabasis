@@ -1120,7 +1120,10 @@ the battery was paid for.
     In F2, a controller deadline reached before the generated-tool worker is ready, while it waits on a
     request, or while it closes without an accepted submit is a host non-result, while a worker that
     answered its handshake and then broke protocol is a representation defect. A case the host broke gets
-    one fresh attempt on the same bytes in the census, and only a second host non-result stands. Once the
+    one fresh attempt on the same bytes in the census, and only a second host non-result stands. A census
+    whose only blocking fact is such cut-short reference solves keeps the session and the run
+    (`endsSession`): the refusal costs no strike, and the next submit of the same bytes runs the census
+    again, since a host at load cut them rather than a dead environment (887c16, 2026-09-30). Once the
     host holds what it needed (an accepted submit, or every conformance probe settled), the generated-tool
     worker's host-marked close-handshake timeout (`closeHandshakeTimeout`) is cleanup evidence, voiding no
     case and refusing no candidate, in a battery case, in F2 and in the probes alike; every other close

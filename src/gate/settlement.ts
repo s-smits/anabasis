@@ -12,6 +12,7 @@ import type {
   IterationEvidence,
 } from "../author/campaign-types.ts";
 import { feedbackOwner } from "../author/feedback-routing.ts";
+import { CASE_CODE } from "../correctness-bundle/solvability.ts";
 
 type IterationStep =
   | { kind: "build-admissible"; evidence: IterationEvidence }
@@ -30,11 +31,26 @@ interface GateSettlementInput {
   dir: string;
 }
 
-/** The terminal clause a gate run's blocking rows force whether or not an iteration records them:
- *  a blocking environment row ends the session, because no author can repair it. */
+/** Reference solves the host cut short, which the next check of the same bytes runs again. */
+const HOST_CUT_SOLVES = new Set<string>([
+  CASE_CODE["reference-solve-host"],
+  CASE_CODE["submission-path-host"],
+]);
+
+/** Whether a blocking row ends the session and the run: an environment row does, because no author
+ *  can repair it, unless all it reports is reference solves the host cut short. Those are strike-free
+ *  and unremembered already, so a resubmit of the same bytes runs the census again; ending on them
+ *  ended 887c16 (2026-09-30) after nine hours, when three of six reference solves timed out twice on
+ *  a host at load 23 and the Builder never submitted again. */
+export function endsSession(row: CampaignFeedback): boolean {
+  const findings = row.findings ?? [];
+  const hostCut = findings.length > 0 && findings.every((finding) => HOST_CUT_SOLVES.has(finding.code));
+  return row.severity === "blocking" && row.owner === "environment" && !hostCut;
+}
+
+/** The terminal clause a gate run's blocking rows force whether or not an iteration records them. */
 export function gateTerminalClause(feedback: readonly CampaignFeedback[]): CampaignClause | null {
-  const envBlocked = feedback.some((row) => row.severity === "blocking" && row.owner === "environment");
-  return envBlocked ? "environment-blocked" : null;
+  return feedback.some(endsSession) ? "environment-blocked" : null;
 }
 
 export function settleGateRun(input: GateSettlementInput): IterationStep {

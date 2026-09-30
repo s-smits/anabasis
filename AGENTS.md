@@ -1621,10 +1621,12 @@ open PR listing another open PR's commits; one left listing old copies of its ba
 warning naming the `git rebase --onto` that repairs it. **There is no hook bypass by any spelling**,
 neither `--no-verify` nor `-c core.hooksPath=…`.
 
-CI does much less than its name suggests. `.github/workflows/gate.yml` runs the gate daily at 03:17 UTC,
-plus manual dispatch, on `main` only, on macOS (Seatbelt) and Linux (Bubblewrap), and it skips a day whose
-head it has already read. It is not a required check and never sees a PR head, so pre-push is the only
-full gate a pull request gets. Isolation code must pass on both platforms.
+CI does much less than its name suggests. `.github/workflows/gate.yml` runs the gate on macOS (Seatbelt)
+and Linux (Bubblewrap) on each stack merge (the merge commit `bun run land` puts on `main`), daily at 03:17
+UTC on `main`, and on manual dispatch, and it skips a head whose tree a completed run already read. The
+merge commit has the stack top's tree, so dispatching on the top before `land --merge` reads `main` after
+it. It is not a required check, so pre-push is the only full gate a pull request gets. Isolation code
+must pass on both platforms.
 
 Only Bun 1.4.2 runs any of this. `lint.ts` points oxlint at the native `tsgolint` binary, because the
 `node_modules/.bin` entry is a `node` shim. `bunfig.toml` sets `env = false`, so `.env` is never loaded

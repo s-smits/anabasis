@@ -1,4 +1,5 @@
 /** Exact process lifecycle for the confined Pi model worker. */
+import { SOLVE_WALL_MESSAGE } from "./backend-types.ts";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { attachJsonlLineReader, serializeJsonLine } from "../../vendor/pi-built/jsonl.ts";
 import { DEFAULT_HARNESS_SETTINGS } from "../correctness-bundle/harness-config.ts";
@@ -52,7 +53,6 @@ interface PiBuiltWorkerResult {
 const READY_TIMEOUT_MS = 120_000;
 const CLOSE_TIMEOUT_MS = 2_000;
 const TURN_TIMEOUT_MS = 300_000;
-const SOLVE_WALL_MESSAGE = "Pi Built worker exceeded its bounded solve time";
 /** A stopped worker's aborted tool calls settle within this; the shell kills its process tree on abort. */
 const DISPATCH_SETTLE_MS = 10_000;
 

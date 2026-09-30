@@ -32,6 +32,7 @@ import type { ExperimentAuthoring } from "./experiment-freeze.ts";
 import { productHistoryDirs } from "./product-versions.ts";
 import { HarnessConfigError, harnessSettings } from "../correctness-bundle/harness-config.ts";
 import { settledAgainstCheck } from "../review/epoch-review-findings.ts";
+import { SOLVE_WALL_MESSAGE } from "../backends/backend-types.ts";
 
 /** Named where the refusals are decided and re-exported here, because this module is the face
  *  every reader of climb evidence goes through. */
@@ -143,9 +144,8 @@ interface ClimbAuthoringRow {
   /** The `solve_minutes` wall of the product that recorded this battery, which the effort of its
    *  cases is read against; null when that product's agent/config.yaml does not parse. */
   solveWallMinutes: number | null;
-  /** The unaccepted cases whose solve ran to its wall: a fact to read beside a lowered
-   *  `solve_minutes`, since a failure the wall caused measures the wall rather than the task. Zero
-   *  when the wall is unknown. */
+  /** The failed cases the solve wall cut: a fact to read beside a lowered `solve_minutes`, since a
+   *  failure the wall caused measures the wall rather than the task. Zero when the wall is unknown. */
   wallBound: number;
   experimentAuthoring?: ExperimentAuthoring;
 }
@@ -288,13 +288,25 @@ function solveEffort(cases: CaseRows): ClimbEffort | null {
   };
 }
 
-/** The unaccepted cases whose recorded solve ran to within `WALL_BOUND_SHARE` of the wall. */
+/** The failed cases the wall cut: an unaccepted case whose recorded solve ran to within
+ *  `WALL_BOUND_SHARE` of the wall, and a verified fail whose solver recorded the wall's own stop. The
+ *  host grades a draft accepted at the wall, so its fail stays a fail, but the wall ended the solve;
+ *  a fail submitted near the wall without that receipt was the solver's own answer. */
 function wallBoundCount(scored: CaseRows, wallMinutes: number | null): number {
   if (wallMinutes === null) return 0;
   const unaccepted = scored.filter((row) => countUnaccepted([row]) === 1);
-  return caseSpend(unaccepted).filter(
-    (row) => row.minutes !== null && row.minutes >= wallMinutes * WALL_BOUND_SHARE,
-  ).length;
+  const stoppedFails = scored.filter(
+    (row) =>
+      row.pass === false &&
+      isRecord(row.solver) &&
+      Array.isArray(row.solver.errors) &&
+      row.solver.errors.includes(SOLVE_WALL_MESSAGE),
+  );
+  return (
+    caseSpend(unaccepted).filter(
+      (row) => row.minutes !== null && row.minutes >= wallMinutes * WALL_BOUND_SHARE,
+    ).length + stoppedFails.length
+  );
 }
 
 /** The named families none of whose cases produced a scored row, or undefined when there are none. */

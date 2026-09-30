@@ -12,6 +12,7 @@
  * The band arithmetic belongs to `test/climb-decision.test.ts` and the rendered readout to
  * `test/climb-readout.test.ts`.
  */
+import { SOLVE_WALL_MESSAGE } from "../src/backends/backend-types.ts";
 import { describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
@@ -53,6 +54,8 @@ interface CaseRow {
   publicInput?: JsonValue;
   /** The recorded reason a case ended in a runtime non-result. */
   runtimeNonResult?: string;
+  /** The failures the solver's worker recorded, such as the solve wall's stop. */
+  errors?: string[];
 }
 
 type BatteryFields = { [field: string]: JsonValue | undefined };
@@ -65,6 +68,7 @@ function caseRecord(row: CaseRow): JsonValue {
   const solver = {
     ...keyIfDefined("toolCalls", row.toolCalls),
     ...keyIfDefined("turns", row.turns),
+    ...keyIfDefined("errors", row.errors),
     ...span,
   };
   return {
@@ -282,6 +286,26 @@ describe("what one battery contributes to the reading", () => {
     const tree = tmp();
     writeBattery(tree, "r1", cases, RECORDED_AT, overrides);
     expect(admittedOnly(tree)).toMatchObject(expected);
+  });
+
+  it("counts a verified fail whose draft the wall stopped, and not one the solver submitted near it", () => {
+    const tree = tmp();
+    mkdirSync(join(tree, "agent"), { recursive: true });
+    writeFileSync(join(tree, "agent", "config.yaml"), "solver:\n  solve_minutes: 1\n");
+    writeBattery(
+      tree,
+      "r1",
+      [
+        // The recorded C-6 shape: one minute, the draft auto-accepted, the real compiler refusing it.
+        { taskId: "stopped", pass: false, acceptedSubmit: true, minutes: 1, errors: [SOLVE_WALL_MESSAGE] },
+        { taskId: "submitted-late", pass: false, acceptedSubmit: true, minutes: 1 },
+        { taskId: "stopped-but-passed", pass: true, minutes: 1, errors: [SOLVE_WALL_MESSAGE] },
+      ],
+      RECORDED_AT,
+    );
+    const { authoring } = admittedOnly(tree);
+    // The fail stays a verified fail; only the wall's share of it is named.
+    expect(authoring).toMatchObject({ solveWallMinutes: 1, wallBound: 1 });
   });
 
   it("counts the unaccepted cases whose solve ran to the product's own wall", () => {

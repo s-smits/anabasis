@@ -222,12 +222,10 @@ export function publicEpochReview(
   };
 }
 
-/** The Judge issue each settled kind counts towards. An undecided dispute counts towards none: the
- *  advice raises no issue on an undecided, so settling one must not settle a Judge pass beside it. */
+/** The Judge issue each settled kind counts towards. */
 const JUDGE_ISSUE = {
   veto: "judge-failed-verifier-passed",
   "disputed-pass": "judge-passed-verifier-failed",
-  "disputed-undecided": null,
 } as const;
 
 /** The Judge issue ids a completed review settled in the check's favour, one per settled case, in
@@ -235,13 +233,14 @@ const JUDGE_ISSUE = {
  *  took. A case is settled at most once (`caseSettlement`), so the advice settles an issue once
  *  every case it counts appears here. */
 function settledJudgeIssues(settled: readonly CaseDisposition[]) {
+  // A review recorded before 2026-09-30 may have settled an undecided dispute, which counts towards
+  // no issue.
   return settled
-    .flatMap((row) => {
-      const kind = JUDGE_ISSUE[row.kind];
-      return row.disposition === "check-stands" && kind !== null
-        ? [adviceIssueId(kind, row.family, null)]
-        : [];
-    })
+    .flatMap((row) =>
+      row.disposition === "check-stands" && row.kind in JUDGE_ISSUE
+        ? [adviceIssueId(JUDGE_ISSUE[row.kind], row.family, null)]
+        : [],
+    )
     .sort();
 }
 

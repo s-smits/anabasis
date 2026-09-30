@@ -56,12 +56,12 @@ export interface JudgeRequest extends JudgeInput {
 
 export type JudgeAttempt = {
   verdict: boolean | null;
-  /** An undecided verdict, distinct from a null verdict caused by evaluator failure. */
+  /** An undecided verdict, distinct from a null verdict caused by evaluator failure. Only records
+   *  written before 2026-09-30 carry true: the verdict words are now pass and fail. */
   abstained: boolean;
   rationale: string | null;
   /** The shown rules cited verbatim — public validity assertions, `artifactSchema` or
-   *  `publicInput`: for a fail every rule it breaks, for an undecided every requirement only a run
-   *  could decide. Empty for a pass and an error. */
+   *  `publicInput`: for a fail every rule it breaks. Empty for a pass and an error. */
   rules: string[];
   error: string | null;
   /** Structural classification of `error`, typed at the site that knows what failed: a turn the
@@ -108,13 +108,7 @@ export type JudgeSubjectEvidence = JudgeSubjectEvidenceCore & {
 };
 
 /** How one answered subject stands against the verifier's verdict (`judgeCaseKind`). */
-export type JudgeCaseKind =
-  | "agree"
-  | "undecided-pass"
-  | "veto"
-  | "unconfirmed-fail"
-  | "disputed-pass"
-  | "disputed-undecided";
+export type JudgeCaseKind = "agree" | "veto" | "unconfirmed-fail" | "disputed-pass";
 
 export interface JudgeObservation {
   evidence: JudgeSubjectEvidence;

@@ -342,8 +342,7 @@ function observedIssues(
   }
   // A Judge fail of a verifier pass a second sample repeated is advice by family, and one the
   // resample did not repeat is the Judge's noise, not the battery's. A Judge pass of a verifier fail
-  // is advice on its one sample, which is all it draws; an undecided claims nothing. The verifier
-  // still decides every pass.
+  // is advice on its one sample, which is all it draws. The verifier still decides every pass.
   if (judges.census !== null) {
     const byFamily = new Map<string, { passedFailed: number; failedPassed: number }>();
     for (const row of judges.contested) {

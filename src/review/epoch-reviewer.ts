@@ -112,7 +112,7 @@ export interface EpochReviewInput {
    *  that a null cannot fall through to the confident sentence and assert what it withholds. */
   priorAdviceOnSeededTree?: boolean | null;
   /** The contested cases the review must settle (`mustSettle`): vetoes, and verifier fails the Main
-   *  Judge passed or left undecided with the failing checks on record. Empty at an authoring
+   *  Judge passed with the failing checks on record. Empty at an authoring
    *  checkpoint and for batteries reviewed without a Judge. */
   settle?: readonly ContestedCase[];
   /** Every other case the Judge and the verifier decided differently — unconfirmed, or a failing
@@ -196,7 +196,6 @@ const CONTESTED_WORDS: Record<ContestedKind, { verifier: string; judge: string }
   veto: { verifier: "passed", judge: "failed it" },
   "unconfirmed-fail": { verifier: "passed", judge: "failed it" },
   "disputed-pass": { verifier: "failed", judge: "passed it" },
-  "disputed-undecided": { verifier: "failed", judge: "left it undecided" },
 };
 
 /** The settlement work a review owes beyond its source: each contested case with its direction, its
@@ -336,7 +335,7 @@ function contestedLines(input: EpochReviewInput): string[] {
         : line(
             "Disputed fail",
             row,
-            `failed ${row.checkIds.join(", ")}; the Judge ${CONTESTED_WORDS[row.kind].judge}${row.kind === "disputed-undecided" ? ` on ${cited(row)}` : ""}`,
+            `failed ${row.checkIds.join(", ")}; the Judge ${CONTESTED_WORDS[row.kind].judge}`,
           ),
     ),
     ...(input.otherContested ?? []).map((row) =>

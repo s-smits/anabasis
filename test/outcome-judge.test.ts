@@ -68,13 +68,13 @@ function review(
   contested: ContestedCase[] = [],
   exit: JudgeReviewsResult["exit"] = {
     kind: "none",
-    cases: { veto: 0, "unconfirmed-fail": 0, "disputed-pass": 0, "disputed-undecided": 0 },
+    cases: { veto: 0, "unconfirmed-fail": 0, "disputed-pass": 0 },
     verified: 1,
     reason: "the Judge contradicted the verifier on no reviewed verified case",
   },
 ): JudgeReviewsResult {
   return {
-    schema: "judge-reviews/v14",
+    schema: "judge-reviews/v15",
     slug: "fixture",
     runId: RUN,
     judgePin: "claude/claude-opus-5",
@@ -105,7 +105,7 @@ describe("the evidence-bound judge projection", () => {
     const evidence = validEvidence();
     const exit: JudgeReviewsResult["exit"] = {
       kind: "advisory",
-      cases: { veto: 0, "unconfirmed-fail": 1, "disputed-pass": 0, "disputed-undecided": 0 },
+      cases: { veto: 0, "unconfirmed-fail": 1, "disputed-pass": 0 },
       verified: 1,
       reason: "the Judge failed 1 of 1 verified cases the verifier passed",
     };
@@ -231,7 +231,7 @@ describe("the evidence-bound judge projection", () => {
     const report = judgeReport(dir, RUN);
     expect(report).toMatchObject({ available: false });
     if (report.available) throw new Error("unreachable");
-    expect(report.reason).toContain("judge-reviews/v10 is not judge-reviews/v14");
+    expect(report.reason).toContain("judge-reviews/v10 is not judge-reviews/v15");
   });
 
   it("is reachable from the CLI as --judge", () => {

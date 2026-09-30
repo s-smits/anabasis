@@ -46,7 +46,8 @@ const SLUG = "bridge-truss";
 const RUN = "base";
 const JUDGE_PIN = "codex/gpt-5.1-codex-judge";
 const BUILT_PIN = "codex/gpt-5.1-codex";
-/** A judge verdict as the census recorded it: decided, deliberate abstention, or a failed call. */
+/** A judge verdict as the census recorded it: decided, or a failed call; an abstention is only in
+ *  records written before 2026-09-30. */
 type Verdict = boolean | null | "abstain";
 const MEMBER_CAPACITY_RULE = "every member stays under its capacity";
 
@@ -300,7 +301,7 @@ describe("the main-Judge census projection reads recorded evidence, never a mode
     const result = runJudgeReviews(analysis, { repoRoot: root, judgePin: JUDGE_PIN });
     expect(walk(root).map((path) => `${path}:${String(statSync(path).size)}`)).toEqual(before);
     expect(result.analysisDigest).toHaveLength(64);
-    expect(result.schema).toBe("judge-reviews/v14");
+    expect(result.schema).toBe("judge-reviews/v15");
     expect(result.judgePin).toBe(JUDGE_PIN);
   });
 });
@@ -359,23 +360,22 @@ describe("a cited fail joins the check it contradicts", () => {
     ]);
   });
 
-  it("a verifier fail the Judge did not fail names the failing checks and is disputed on its one sample", () => {
+  it("a verifier fail the Judge passed names the failing checks and is disputed on its one sample", () => {
     const rows = contestedCases(
       [
         subject("pass", false, true, [], { failedCheckIds: ["member-capacity"] }),
+        subject("unnamed", false, true, [], { failedCheckIds: [] }),
+        // An undecided recorded before 2026-09-30 claimed nothing, and an unanswered subject is no
+        // verdict.
         subject("undecided", false, "abstain", [MEMBER_CAPACITY_RULE], {
           failedCheckIds: ["member-capacity"],
         }),
-        subject("unnamed", false, true, [], { failedCheckIds: [] }),
-        // An undecided verifier pass is no contradiction, and an unanswered subject is no verdict.
-        subject("agreed", true, "abstain", [MEMBER_CAPACITY_RULE]),
         subject("errored", false, null, [], { failedCheckIds: ["member-capacity"] }),
       ],
       new Map([[MEMBER_CAPACITY_RULE, "member-capacity"]]),
     );
     expect(rows.map((row) => [row.taskId, row.kind, row.rules, row.checkIds, mustSettle(row)])).toEqual([
       ["pass", "disputed-pass", [], ["member-capacity"], true],
-      ["undecided", "disputed-undecided", [MEMBER_CAPACITY_RULE], ["member-capacity"], true],
       ["unnamed", "disputed-pass", [], [], false],
     ]);
   });
@@ -455,7 +455,7 @@ describe("real-case disagreements stay threshold-free", () => {
     ]);
     expect(result.exit).toMatchObject({
       kind: "advisory",
-      cases: { veto: 0, "unconfirmed-fail": 1, "disputed-pass": 0, "disputed-undecided": 0 },
+      cases: { veto: 0, "unconfirmed-fail": 1, "disputed-pass": 0 },
     });
   });
 
@@ -520,7 +520,7 @@ describe("coverage and historical records", () => {
     ]);
   });
 
-  it("counts an undecided as an answer, so a mostly undecided battery was read", () => {
+  it("reads an undecided recorded before 2026-09-30 as an answer that contests nothing", () => {
     const { root, analysis } = repoWith({
       cases: [
         { taskId: "t1", truthOk: true, judge: "abstain" },
@@ -531,8 +531,7 @@ describe("coverage and historical records", () => {
     const result = runJudgeReviews(analysis, { repoRoot: root, judgePin: null });
     expect(result.outcome).toEqual({ kind: "read" });
     expect(result.coverage).toEqual({ reviewable: 3, reviewed: 3 });
-    // Only the undecided verifier fail is contested; the undecided verifier pass is no contradiction.
-    expect(result.contested.map((row) => [row.taskId, row.kind])).toEqual([["t2", "disputed-undecided"]]);
+    expect(result.contested).toEqual([]);
   });
 
   it("contests no case whose Judge fail cites no rule", () => {
@@ -553,7 +552,7 @@ describe("the Judge exit is advice only", () => {
     expect(result.outcome).toEqual({ kind: "read" });
     expect(result.exit).toMatchObject({
       kind: "advisory",
-      cases: { veto: 0, "unconfirmed-fail": 0, "disputed-pass": 3, "disputed-undecided": 0 },
+      cases: { veto: 0, "unconfirmed-fail": 0, "disputed-pass": 3 },
       verified: 10,
     });
     // Families are authoring identities; task ids are failure locations and never leave the record.
@@ -598,19 +597,20 @@ describe("Judge prompt policy", () => {
   it("states each duty once, spells no number that could go stale and keeps the per-requirement listing out", () => {
     const { census } = ACTIVE_JUDGE_PROMPTS;
     for (const duty of [
-      "Your verdict is one of three.",
-      "you decided every stated requirement from the shown material",
-      "Do not predict its outcome from the text in either direction",
-      "Do not return undecided because a requirement is long, technical or tedious to check",
-      "cannot ground one",
-      "is not evidence against the output",
-      "where no tolerance is stated, a small difference is not a failure",
+      "Your verdict is fail or pass.",
+      "only when the shown material itself shows the breach",
+      "its unit, sign and boundaries included",
+      "is left to the verifier",
+      "Do not predict it in either direction and never fail on it",
+      "claims nothing about what you left to the verifier",
+      "being well-formed, confident or plausible is not a reason to pass",
+      "grounds none",
     ]) {
       expect(census.split(duty).length - 1).toBe(1);
     }
     expect(census).not.toMatch(/\d/);
-    // The two retired clauses that forced a pass and invited hand sums stay out.
+    // The retired clause that invited hand sums and the retired undecided verdict stay out.
     expect(census).not.toContain("carrying full precision through sums");
-    expect(census).not.toMatch(/\babstain\b/);
+    expect(census).not.toMatch(/\babstain\b|undecided/);
   });
 });

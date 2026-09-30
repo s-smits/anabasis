@@ -31,8 +31,8 @@ behind it is refused (operator decision 2026-09-22). Do not reintroduce a validi
 corpus.
 
 `JudgeDecision` is closed in source: `non-result`, `incomplete-census` and `advisory-comparison`,
-which a complete review records; an undecided counts as an answer in each. Claims recorded before
-2026-09-29 may also carry `no-battery-verdicts`, which the undecided verdict retired. A
+which a complete review records; an undecided recorded between 2026-09-29 and 2026-09-30 counts as
+an answer in each. Claims recorded before 2026-09-29 may also carry `no-battery-verdicts`. A
 disagreement means audit the verifier.
 Never rescore.
 
@@ -48,21 +48,25 @@ Every subject uses a fresh session. Never add a fallback model.
 ## Judge framing
 
 Keep all review instructions in the one model-visible prompt file. State the request shape: a
-battery case has its bound public task, the submitted artifact and the domain contract; `abstain`
-is allowed when public facts cannot decide. Do not say what would make an artifact valid.
+battery case has its bound public task, the submitted artifact and the domain contract. The verdict
+is pass or fail: a fail rests on a breach the shown material itself states, and a pass claims only
+what the Judge could read, leaving a run and any multi-step figure to the verifier. The undecided
+verdict added on 2026-09-29 was the answer to 656 of the 657 cases answered under it, and is gone.
+Do not say what would make an artifact valid.
 
 ## Disagreements are advice
 
 Every disagreement is recorded without a materiality threshold, and none of them changes a score.
 `judgeCaseKind` in `src/review/judge.ts` names how each answered case stands against the verifier
-(veto, unconfirmed fail, disputed pass, disputed undecided), and every reader counts by it.
+(agree, veto, unconfirmed fail, disputed pass), and every reader counts by it; an undecided on an
+older record is no answer to compare.
 `judgeExit` in `src/analyse/judge-reviews.ts` has two kinds: `none` when the Judge contradicted the
 verifier on no reviewed verified case, and `advisory` otherwise, with a count per kind.
-It records no finding and routes to no owner (`judge-reviews/v14`). Disagreements in both
+It records no finding and routes to no owner (`judge-reviews/v15`). Disagreements in both
 directions enter the rebuild advice packet as advisory rows named by family, and the exit reason
 is its judge line; only families and counts cross to authoring. A review recorded under another
-schema is refused rather than read, except that the whole-run digest still reads `v13`, whose
-census, contested rows and exit are the current ones.
+schema is refused rather than read, except that the whole-run digest still reads `v13` and `v14`,
+whose census, contested rows and exit it reads as the current ones.
 
 A recorded claim also names the case ids that disagreed on that battery. Those ids sit beside the
 claim; they change no score, readiness, adoption or statement.

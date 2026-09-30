@@ -972,8 +972,8 @@ when the brief also missed it, and a Judge whose citable set converges on the ch
 tests the Builder's reading twice. Agreement between the Judge and the verifier therefore does not
 test for a fault both miss, and the fails lane 16 reads are a sample of what the Judge noticed, not
 of false accepts. When a pass count looks low on decided rules, name the rival causes before
-choosing one — the prompt's not-decidable sentence, its instruction not to fail on a rule the
-material does not show, the verdict schema, whose only undecided word is `abstain`
+choosing one — the prompt's sentence on what is left to the verifier, its instruction not to fail
+on a rule the material does not show, the verdict schema, whose only words are pass and fail
 (`src/review/judge-drivers.ts`), and the pin — and say which recorded evidence separates them.
 Report counts and pass kinds; propose no counting semantics for a partial pass, which is an operator
 decision still open. The decision it changes is how much weight a Judge pass may carry in the

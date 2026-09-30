@@ -160,7 +160,7 @@ function judges(overrides: Partial<JudgeReviewsResult> = {}): JudgeReviewsResult
     coverage: { reviewable: 0, reviewed: 0 },
     exit: {
       kind: "none",
-      cases: { veto: 0, "unconfirmed-fail": 0, "disputed-pass": 0, "disputed-undecided": 0 },
+      cases: { veto: 0, "unconfirmed-fail": 0, "disputed-pass": 0 },
       verified: 0,
       reason: "no disagreement",
     },
@@ -244,7 +244,7 @@ describe("what one battery observes", () => {
     expect(result.issues.every(isStanding)).toBe(true);
   });
 
-  it("reads Judge disagreements in both directions as advisory rows, dropping an unrepeated fail and an undecided", () => {
+  it("reads Judge disagreements in both directions as advisory rows, dropping an unrepeated fail", () => {
     const contested = [
       {
         taskId: "t2",
@@ -277,16 +277,6 @@ describe("what one battery observes", () => {
         checkIds: [],
         artifact: "a.json",
       },
-      {
-        taskId: "t4",
-        family: "frames",
-        kind: "disputed-undecided" as const,
-        evidence: "e.json",
-        rules: ["the analysis converges"],
-        rationale: null,
-        checkIds: [],
-        artifact: "a.json",
-      },
     ];
     const reason =
       "the Judge disagreed with the verifier on 2 of 2 verified cases; advice only, the verifier decides";
@@ -297,7 +287,7 @@ describe("what one battery observes", () => {
         contested,
         exit: {
           kind: "advisory",
-          cases: { veto: 1, "unconfirmed-fail": 1, "disputed-pass": 1, "disputed-undecided": 1 },
+          cases: { veto: 1, "unconfirmed-fail": 1, "disputed-pass": 1 },
           verified: 2,
           reason,
         },
@@ -311,12 +301,12 @@ describe("what one battery observes", () => {
         ["judge-failed-verifier-passed", "joints"],
       ]),
     );
-    // An unrepeated fail and an undecided stay in the Judge census line but raise no issue.
-    expect(reviewed.issues.some((row) => row.family === "trusses" || row.family === "frames")).toBe(false);
+    // An unrepeated fail stays in the Judge census line but raises no issue.
+    expect(reviewed.issues.some((row) => row.family === "trusses")).toBe(false);
     expect(reviewed.judge).toEqual({
       exit: "advisory",
       reason,
-      contestedFamilies: ["beams", "frames", "joints", "trusses"],
+      contestedFamilies: ["beams", "joints", "trusses"],
     });
     // A battery with no Judge review contributes no Judge row.
     const unreviewed = derive(
@@ -782,7 +772,7 @@ describe("the issue register and its projection", () => {
       ],
       exit: {
         kind: "advisory",
-        cases: { veto: 0, "unconfirmed-fail": 0, "disputed-pass": 3, "disputed-undecided": 0 },
+        cases: { veto: 0, "unconfirmed-fail": 0, "disputed-pass": 3 },
         verified: 10,
         reason,
       },

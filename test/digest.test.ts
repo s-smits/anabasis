@@ -1037,7 +1037,7 @@ describe("digest", () => {
       JSON.stringify({ census: { judge: "on", disagreements: 1 }, exit: { kind: "completed" } }),
     );
     const refused = digestOf(paths);
-    expect(refused).toContain("refused, not judge-reviews/v14 — run-1-judges.json");
+    expect(refused).toContain("refused, not judge-reviews/v15 — run-1-judges.json");
     expect(refused).not.toContain("CENSUS WITH DISAGREEMENT");
   });
 

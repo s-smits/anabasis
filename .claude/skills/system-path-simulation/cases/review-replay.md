@@ -29,8 +29,8 @@ rules, the check ids they join to, the rationale and `digestMatch` (the request 
 recording's when the brief and artifact still read the same). `contested.json` holds every
 ContestedCase row the replay produced, in both directions, over the subject the controller's own
 Judge review reads: a veto (a verifier pass failed with a citation, and failed again in the
-confirming sample production takes) and a disputed fail (a verifier fail passed twice, naming the
-checks the verifier failed) are the two the reviewer settles. The summary line counts each. A run
+confirming sample production takes) and a disputed fail (a verifier fail the Judge passed on its
+one sample, naming the checks the verifier failed) are the two the reviewer settles. The summary line counts each. A run
 whose brief no longer validates under the current reader refuses; move to a run that does.
 
 At Opus medium the same artifact went 2 fail / 1 pass across three samples on 2026-09-15; that

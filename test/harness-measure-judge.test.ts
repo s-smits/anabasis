@@ -241,7 +241,7 @@ describe("the census Judge on a measured round", () => {
     expect(reviews.contested).toHaveLength(4);
     expect(reviews.exit).toMatchObject({
       kind: "advisory",
-      cases: { veto: 4, "unconfirmed-fail": 0, "disputed-pass": 0, "disputed-undecided": 0 },
+      cases: { veto: 4, "unconfirmed-fail": 0, "disputed-pass": 0 },
     });
   }, 240_000);
 });

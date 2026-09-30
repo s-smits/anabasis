@@ -470,8 +470,9 @@ export function checkInformativenessLines({
  * The run's recorded Judge reviews, one per `analysis/<runId>-judges.json`, in name order. The
  * writer (`runJudgeReviews`) records `JUDGE_REVIEWS_SCHEMA` and nothing else, so a record under any
  * other schema is refused by name rather than read field by field: it predates the census and
- * `contested` shapes both readers of this function take as written. v13 is the exception, whose
- * census, `contested` and exit are the current ones; only how a review states its outcome moved.
+ * `contested` shapes both readers of this function take as written. v13 and v14 are the exception:
+ * their census, `contested` rows and exit read as the current ones, which moved only how a review
+ * states its outcome (v14) and dropped the undecided kinds (v15).
  */
 export function readJudgeReviews(campaign: string): JudgeReviews {
   const rows: JudgeReviewRow[] = [];
@@ -483,7 +484,9 @@ export function readJudgeReviews(campaign: string): JudgeReviews {
     .sort()) {
     const record = readJsonAsOrNull<JudgeReviewFile | null>(join(dir, name));
     if (
-      (record?.schema !== JUDGE_REVIEWS_SCHEMA && record?.schema !== "judge-reviews/v13") ||
+      (record?.schema !== JUDGE_REVIEWS_SCHEMA &&
+        record?.schema !== "judge-reviews/v14" &&
+        record?.schema !== "judge-reviews/v13") ||
       !isString(record.runId) ||
       !Array.isArray(record.contested)
     ) {
@@ -499,7 +502,7 @@ export function readJudgeReviews(campaign: string): JudgeReviews {
 }
 
 /** Judge/verifier disagreement per battery: the review's contested rows over the census's answers,
- *  undecided included, with the vetoes the review's exit counted. The census holds no controls by construction — `src/review/judge.ts`
+ *  an older record's undecided included, with the vetoes the review's exit counted. The census holds no controls by construction — `src/review/judge.ts`
  *  records no control count — so this block reads the battery subjects offered alone. */
 export function judgeCensusLines({ judgeReviews }: JudgeCensusInput): string[] {
   const lines = ["", "## 2b judge census (analysis/*-judges.json)"];

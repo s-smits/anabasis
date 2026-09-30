@@ -9,6 +9,7 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
+import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import { double } from "./helpers/doubles.ts";
 import type { Brief } from "../src/correctness-bundle/brief.ts";
@@ -1052,19 +1053,11 @@ describe("what a finding's typed fields carry to authoring", () => {
   });
 
   // Settlement counts cases against an issue's count, so a case the issue does not count must not
-  // reach it. The advice raises no issue on an undecided, and before each case carried its kind an
-  // undecided dispute settled in the check's favour counted towards the Judge-pass issue beside it:
-  // settling one undecided and one pass here marked two passes settled when only one was read.
-  test("settling an undecided dispute settles no Judge pass issue", async () => {
-    const disputed = (taskId: string, kind: SettlementCase["kind"]) => ({
-      ...vetoedCase(taskId, "roof"),
-      kind,
-    });
-    const cases = [
-      disputed("p1", "disputed-pass"),
-      disputed("p2", "disputed-pass"),
-      disputed("u1", "disputed-undecided"),
-    ];
+  // reach it. A review recorded before 2026-09-30 may have settled an undecided dispute, on which
+  // the advice raised no issue: read back beside one settled pass, it must not mark two settled.
+  test("a stored undecided settlement settles no Judge pass issue", async () => {
+    const disputed = (taskId: string) => ({ ...vetoedCase(taskId, "roof"), kind: "disputed-pass" as const });
+    const cases = [disputed("p1"), disputed("p2")];
     const state = reviewState();
     state.reads.push(...cases.map((row) => row.path));
     state.probes.rows.push(probeRow(1, ["deflection"]));
@@ -1073,10 +1066,12 @@ describe("what a finding's typed fields carry to authoring", () => {
       claim: "the Judge misread span/250",
       severity: "advisory",
       checkId: "deflection",
-      settlesCases: ["p1", "u1"],
+      settlesCases: ["p1"],
       citations: CITATIONS,
       probeIds: [1],
     });
+    const stored = JSON.stringify({ ...state.dispositions[0], taskId: "u1", kind: "disputed-undecided" });
+    state.dispositions.push(parseJsonAs<(typeof state.dispositions)[number]>(stored));
     const projected = publicEpochReview({ status: "completed", ...state }, { brief });
     const passIssue = adviceIssueId("judge-passed-verifier-failed", "roof", null);
     expect(projected.settledJudge).toEqual([passIssue]);

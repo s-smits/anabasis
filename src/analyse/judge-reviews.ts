@@ -61,7 +61,7 @@ export type JudgeExit = {
   reason: string;
 };
 
-export const JUDGE_REVIEWS_SCHEMA = "judge-reviews/v14";
+export const JUDGE_REVIEWS_SCHEMA = "judge-reviews/v15";
 
 export type JudgeReviewsResult = {
   schema: typeof JUDGE_REVIEWS_SCHEMA;
@@ -213,11 +213,11 @@ function unreviewedReason(attempt: CensusAttempt): string {
 }
 
 function judgeExit(contested: readonly ContestedCase[], verified: number, attempt: CensusAttempt): JudgeExit {
-  const cases = { veto: 0, "unconfirmed-fail": 0, "disputed-pass": 0, "disputed-undecided": 0 };
+  const cases = { veto: 0, "unconfirmed-fail": 0, "disputed-pass": 0 };
   for (const row of contested) cases[row.kind] += 1;
   const base = { cases, verified };
   if (contested.length === 0) {
-    // No contradiction is claimed over the cases the Judge answered, undecided included, so with none
+    // No contradiction is claimed over the cases the Judge answered, so with none
     // there is nothing it was compared on, and the reason says why nothing was reviewed instead.
     const reviewed = attempt.census === null ? 0 : judgeAnswered(attempt.census.evidence);
     return {
@@ -236,7 +236,7 @@ function judgeExit(contested: readonly ContestedCase[], verified: number, attemp
     // "N citing shown rules", which counts a different thing and reads as zero for a fail that did
     // cite a rule and simply was not repeated on the re-sample. The author reads this sentence to
     // decide whether the disagreement deserves their attention, so it names both halves.
-    reason: `the Judge disagreed with the verifier on ${contested.length} of ${verified} verified cases (${cases["disputed-pass"]} verifier-fail/Judge-pass, ${cases["disputed-undecided"]} verifier-fail/Judge-undecided, ${cases.veto + cases["unconfirmed-fail"]} verifier-pass/Judge-fail); ${cases.veto} were vetoes, a cited fail of a verifier pass that a second sample repeated, which is what the epoch reviewer settles; the verifier decides every pass`,
+    reason: `the Judge disagreed with the verifier on ${contested.length} of ${verified} verified cases (${cases["disputed-pass"]} verifier-fail/Judge-pass, ${cases.veto + cases["unconfirmed-fail"]} verifier-pass/Judge-fail); ${cases.veto} were vetoes, a cited fail of a verifier pass that a second sample repeated, which is what the epoch reviewer settles; the verifier decides every pass`,
   };
 }
 

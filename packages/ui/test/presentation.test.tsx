@@ -7,10 +7,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { RecordView } from "../src/components/record.js";
 import { evaluationLabel, evidenceLabel, runLabel } from "../src/views/format.js";
 
-test("review counts read the contested kinds, count an undecided dispute, and leave absent reviews unknown", () => {
+test("review counts read the contested kinds and leave absent reviews unknown", () => {
   const exit = {
     kind: "advisory" as const,
-    cases: { veto: 1, "unconfirmed-fail": 0, "disputed-pass": 1, "disputed-undecided": 1 },
+    cases: { veto: 1, "unconfirmed-fail": 0, "disputed-pass": 1 },
     verified: 8,
     reason: "",
   };
@@ -18,7 +18,7 @@ test("review counts read the contested kinds, count an undecided dispute, and le
   const census = { runId: "r", evidence: { verdicts: 7 } } as never;
   const html = renderToStaticMarkup(<ReviewCounts counts={reviewCounts({ census, exit })} />);
   expect(html).toContain('aria-label="Agreements: 5"');
-  expect(html).toContain('aria-label="Disagreements: 3"');
+  expect(html).toContain('aria-label="Disagreements: 2"');
   for (const counts of [null, reviewCounts({ census: null, exit })]) {
     const missing = renderToStaticMarkup(<ReviewCounts counts={counts} />);
     expect(missing).toContain('aria-label="Agreements: unavailable"');

@@ -627,7 +627,7 @@ describe("climb velocity", () => {
     const settled = (task: string, disposition: CaseDisposition["disposition"]): CaseDisposition => ({
       taskId: task,
       family: "f",
-      kind: "disputed-undecided",
+      kind: "disputed-pass",
       checkId: "bench-wiring",
       disposition,
       finding: 0,

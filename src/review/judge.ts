@@ -58,8 +58,7 @@ function boundedRationale(rationale: string | null): boolean {
   return isString(rationale) && rationale.trim().length > 0 && rationale.length <= RATIONALE_MAX;
 }
 
-/** A fail cites the rules it breaks and an undecided the requirements it could not decide; a pass
- *  cites none. */
+/** A fail cites the rules it breaks; a pass cites none. */
 function rulesFitVerdict(attempt: JudgeAttempt): boolean {
   const { rules } = attempt;
   return attempt.verdict === true
@@ -67,10 +66,10 @@ function rulesFitVerdict(attempt: JudgeAttempt): boolean {
     : rules.length > 0 && rules.every((rule) => rule.length > 0);
 }
 
-/** An operational failure must state both its cause and kind: a non-abstention null with
- *  error: null would read as a verdict that never happened for no stated reason, and an error
- *  without a typed kind would record the flattened-prose state errorKind exists to remove. Both
- *  are malformed here, so a foreign Judge implementation cannot reintroduce them. */
+/** An operational failure must state both its cause and kind: a null with error: null would read
+ *  as a verdict that never happened for no stated reason, and an error without a typed kind would
+ *  record the flattened-prose state errorKind exists to remove. Both are malformed here, so a
+ *  foreign Judge implementation cannot reintroduce them. */
 function typedFailure(attempt: JudgeAttempt): boolean {
   return (
     attempt.verdict === null &&
@@ -82,20 +81,16 @@ function typedFailure(attempt: JudgeAttempt): boolean {
   );
 }
 
-/** Exactly one of the three attempt states: a verdict, an abstention, or a typed failure. */
+/** Exactly one of the two attempt states: a verdict or a typed failure. */
 function attemptWellFormed(attempt: JudgeAttempt): boolean {
-  const answered =
+  const verdict =
+    isBoolean(attempt.verdict) &&
+    !attempt.abstained &&
     boundedRationale(attempt.rationale) &&
     attempt.error === null &&
     attempt.errorKind === null &&
     rulesFitVerdict(attempt);
-  const validVerdict = answered && isBoolean(attempt.verdict) && !attempt.abstained;
-  const validAbstain = answered && attempt.verdict === null && attempt.abstained;
-  return (
-    (validVerdict || validAbstain || typedFailure(attempt)) &&
-    Number.isInteger(attempt.turns) &&
-    attempt.turns >= 0
-  );
+  return (verdict || typedFailure(attempt)) && Number.isInteger(attempt.turns) && attempt.turns >= 0;
 }
 
 async function attemptOf(
@@ -105,7 +100,7 @@ async function attemptOf(
 ): Promise<JudgeAttempt> {
   try {
     const attempt = await session.invoke(judgeInput, context);
-    if (!attemptWellFormed(attempt)) throw new Error("judge returned a malformed tri-state attempt");
+    if (!attemptWellFormed(attempt)) throw new Error("judge returned a malformed attempt");
     return attempt;
   } catch (error) {
     if (isProviderResourceBudgetInterruption(error)) throw error;
@@ -122,19 +117,16 @@ async function attemptOf(
  * - A Judge fail of a verifier pass is a veto only when a second fresh sample failed it again,
  *   since only that direction is resampled. A fail always cites its rules, so a veto is a cited
  *   one.
- * - A verifier fail the Judge passed or left undecided is disputed on its one sample.
- * - An undecided verifier pass contradicts nothing.
+ * - A Judge pass of a verifier fail is disputed on its one sample.
  *
- * Null for a subject the Judge did not answer.
+ * Null for a subject the Judge did not answer, and for an undecided recorded before 2026-09-30,
+ * which claimed nothing either way.
  */
 export function judgeCaseKind(
-  evidence: Pick<JudgeSubjectEvidence, "verdict" | "abstained" | "confirmation">,
+  evidence: Pick<JudgeSubjectEvidence, "verdict" | "confirmation">,
   verifier: "pass" | "fail",
 ): JudgeCaseKind | null {
-  if (evidence.verdict === null) {
-    if (!evidence.abstained) return null;
-    return verifier === "pass" ? "undecided-pass" : "disputed-undecided";
-  }
+  if (evidence.verdict === null) return null;
   if (evidence.verdict === (verifier === "pass")) return "agree";
   if (evidence.verdict) return "disputed-pass";
   return evidence.confirmation?.verdict === false ? "veto" : "unconfirmed-fail";

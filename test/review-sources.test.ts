@@ -428,16 +428,6 @@ describe("review coverage tied to recorded execution", () => {
           evidence: "runs/r1/cases/roof-4/judge.json",
           artifact: "runs/r1/cases/roof-4/artifact.json",
         },
-        {
-          taskId: "roof-6",
-          family: "roofs",
-          kind: "disputed-undecided",
-          rules: ["the analysis converges under every load case"],
-          rationale: "convergence needs the solver run",
-          checkIds: ["member-capacity"],
-          evidence: "runs/r1/cases/roof-6/judge.json",
-          artifact: "runs/r1/cases/roof-6/artifact.json",
-        },
       ],
       readerTurn: async ({ prompt, tools }) => {
         expect(prompt).toContain(
@@ -445,10 +435,6 @@ describe("review coverage tied to recorded execution", () => {
         );
         expect(prompt).toContain(
           "Disputed fail: roof-4 (roofs) failed member-capacity; the Judge passed it: every member is under 1.0. Artifact: runs/r1/cases/roof-4/artifact.json.",
-        );
-        // An undecided dispute carries the requirements the Judge could not decide, to aim a probe.
-        expect(prompt).toContain(
-          'Disputed fail: roof-6 (roofs) failed member-capacity; the Judge left it undecided on "the analysis converges under every load case": convergence needs the solver run.',
         );
         const reader = tools.find((tool) => tool.name === "read_source")!;
         seen = await call(reader, { path: "runs/r1/cases/roof-3/artifact.json" });
@@ -461,10 +447,10 @@ describe("review coverage tied to recorded execution", () => {
     // The artifacts are required reads for settling the veto and the dispute, not covered source files.
     expect(result.reads).toContain("runs/r1/cases/roof-3/artifact.json");
     expect(result.reads).toContain("runs/r1/cases/roof-4/artifact.json");
-    // Reading settles nothing: no finding named a case, so all four stay unsettled, the two read
-    // and roof-5 and roof-6, which name the same check and were never opened.
+    // Reading settles nothing: no finding named a case, so all three stay unsettled, the two read
+    // and roof-5, which names the same check and was never opened.
     expect(result.dispositions).toEqual([]);
-    expect(result.unsettled).toEqual(["roof-3", "roof-5", "roof-4", "roof-6"]);
+    expect(result.unsettled).toEqual(["roof-3", "roof-5", "roof-4"]);
   });
 
   // A reused review used to come back as a skip with no findings, so the round that reused it

@@ -152,7 +152,6 @@ export type CaseDisposition = Omit<SettlementCase, "checkIds" | "path"> & {
 const AGAINST_CHECK = {
   veto: "accepts-invalid",
   "disputed-pass": "rejects-valid",
-  "disputed-undecided": "rejects-valid",
 } as const;
 const MAX_FINDINGS = 6;
 export type ReviewState = SourceReadState & {

@@ -13,19 +13,18 @@ import { type JudgeCaseKind, type JudgeSubjectEvidence, judgeCaseKind } from "..
 import type { JsonValue } from "../meta/json-shape.ts";
 import { readJsonFile } from "../meta/completed-json.ts";
 
-/** The ways a Judge answer can contradict the verifier: every `JudgeCaseKind` but agreement and an
- *  undecided verifier pass. */
-export type ContestedKind = Exclude<JudgeCaseKind, "agree" | "undecided-pass">;
+/** The ways a Judge answer can contradict the verifier: every `JudgeCaseKind` but agreement. */
+export type ContestedKind = Exclude<JudgeCaseKind, "agree">;
 
 /** One judge/verifier contradiction with the per-case evidence it was read from: a Judge fail of a
- *  verifier pass, or a verifier fail the Judge did not fail. */
+ *  verifier pass, or a Judge pass of a verifier fail. */
 export type ContestedCase = {
   taskId: string;
   family: string;
   /** Which way the Judge contradicted the verifier, from `judgeCaseKind`: the one field every reader
    *  of this row switches on. */
   kind: ContestedKind;
-  /** The shown rules a Judge fail cited, or the requirements an undecided named; empty for a pass. */
+  /** The shown rules a Judge fail cited; empty for a pass. */
   rules: string[];
   /** The Judge's recorded reason, private review evidence for the epoch reviewer to weigh. */
   rationale: string | null;
@@ -62,13 +61,12 @@ export function readJson(repoRoot: string, rel: string): JsonValue {
 }
 
 /** Whether the Epoch Reviewer must settle a row. A veto is settled against the rule the Judge cited.
- *  A verifier fail the Judge passed or left undecided is settled the other way round, against a
- *  check that may refuse a correct artifact, so it needs a failing check on record. An undecided
- *  counts, because a Judge that reads firmware as undecided on its compile is the reading that found
- *  host stand-ins refusing valid source in 5 of 8 settled disputes. */
+ *  A Judge pass of a verifier fail is settled the other way round, against a check that may refuse a
+ *  correct artifact, so it needs a failing check on record. A pass claims only what the Judge could
+ *  read and leaves a compile or a run to the verifier, which is the reading that found host
+ *  stand-ins refusing valid source. */
 export function mustSettle(row: Pick<ContestedCase, "kind" | "checkIds">): boolean {
-  if (row.kind === "veto") return true;
-  return row.kind !== "unconfirmed-fail" && row.checkIds.length > 0;
+  return row.kind === "veto" || (row.kind === "disputed-pass" && row.checkIds.length > 0);
 }
 
 /** The contested rows as the Epoch Reviewer takes them: the ones it settles, and every other
@@ -77,7 +75,7 @@ export function reviewerContested(rows: readonly ContestedCase[]) {
   return { settle: rows.filter(mustSettle), otherContested: rows.filter((row) => !mustSettle(row)) };
 }
 
-/** Every Judge fail of a verifier pass and every verifier fail the Judge did not fail. Subjects
+/** Every Judge fail of a verifier pass and every Judge pass of a verifier fail. Subjects
  *  without a judge evidence, a verifier truth or an answer are skipped. `checkByAssertion` joins a
  *  cited assertion to its declared check. */
 export function contestedCases(
@@ -89,7 +87,7 @@ export function contestedCases(
     if (subject.judgePath === null || subject.judgeEvidence === null || subject.truthOk === null) continue;
     const evidence = subject.judgeEvidence;
     const kind = judgeCaseKind(evidence, subject.truthOk ? "pass" : "fail");
-    if (kind === null || kind === "agree" || kind === "undecided-pass") continue;
+    if (kind === null || kind === "agree") continue;
     const { rules } = evidence;
     rows.push({
       taskId: subject.taskId,

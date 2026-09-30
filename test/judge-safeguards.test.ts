@@ -38,7 +38,6 @@ function exit(verifierFailJudgePass: number, verifierPassJudgeFail: number, veri
       veto: verifierPassJudgeFail,
       "unconfirmed-fail": 0,
       "disputed-pass": verifierFailJudgePass,
-      "disputed-undecided": 0,
     },
     verified,
     reason: "fixture",

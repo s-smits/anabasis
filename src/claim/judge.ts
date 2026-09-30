@@ -29,13 +29,12 @@ export type JudgeEvidence =
       offered: number;
       /** Offered subjects that came back pass or fail. */
       verdicts: number;
-      /** Offered subjects that came back undecided, citing what only a run could decide — a subset
-       *  of offered - verdicts, never a wrong answer and never a proof of anything. */
+      /** Offered subjects that came back undecided, which only a review recorded before 2026-09-30
+       *  can hold — a subset of offered - verdicts, never a wrong answer and never a proof. */
       abstentions: number;
       /** Judge fails of a verifier pass a second sample repeated (`judgeCaseKind` "veto"): the
        *  cases the epoch reviewer settles and the claim reports beside its verifier rate. Every
-       *  other disagreement count is read from the per-case rows, which is where undecided
-       *  disputes are visible. */
+       *  other disagreement count is read from the per-case rows. */
       vetoed: number;
     };
 

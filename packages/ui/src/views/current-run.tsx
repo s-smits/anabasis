@@ -240,17 +240,14 @@ function ReviewStatus({ review }: { review: OutcomeJudgeReport }) {
 }
 
 /** Agreements are the pass or fail answers no contested row contradicts; disagreements are every
- *  contested row, an undecided verifier fail included. Null when the review read no census. */
+ *  contested row. Null when the review read no census. */
 export function reviewCounts(
   review: Pick<Extract<OutcomeJudgeReport, { available: true }>, "census" | "exit">,
 ): { agreed: number; contested: number } | null {
   if (review.census === null || !("evidence" in review.census)) return null;
   const { cases } = review.exit;
-  const decided = cases.veto + cases["unconfirmed-fail"] + cases["disputed-pass"];
-  return {
-    agreed: review.census.evidence.verdicts - decided,
-    contested: decided + cases["disputed-undecided"],
-  };
+  const contested = cases.veto + cases["unconfirmed-fail"] + cases["disputed-pass"];
+  return { agreed: review.census.evidence.verdicts - contested, contested };
 }
 
 export function ReviewCounts({ counts }: { counts: { agreed: number; contested: number } | null }) {

@@ -20,12 +20,12 @@ whose mechanism has left the source is dead text — say so rather than scoring 
 
 ## Shared packet
 
-**Which tree.** The loop's skills, scripts and this file live on `main`; read them at
-`3d0e0b8be` or later. The product source the loop launches is the open stack **#743 → #750**,
-whose head is PR **#750** (`codex/built-slot-account-0918`, `5456fb95b`) — read `src/`, `test/`
-and `starters/` there, not on `main`, because `main` is behind the stack. Name both revisions in
-the report; a finding against the wrong one is not a finding. Where a lens reads only skill files,
-say so and cite `main` alone.
+**Which tree.** Resolve two revisions when the review starts, and name both in the report: main's
+head, and the top of the open stack (the head no open pull request is based on, as
+[stack-hop](../../stack-hop/SKILL.md) reads it). Read the loop's skills and scripts from whichever
+of the two contains the other's changes to them, and the product source the loop launches from the
+stack top, since that is what a launch resolves. A finding against the wrong revision is not a
+finding. Where a lens reads only skill files, say so and cite the one revision it read.
 
 Every session receives: the absolute repository path and both revisions above, `AGENTS.md`, this
 skill's `SKILL.md`, and the loop inventory below. Sessions are **read-only** and independent: do not
@@ -34,8 +34,7 @@ text, counterexamples, reference artifacts, per-task failure locations), and do 
 modify a live run. Cite every claim as `path:line`. Name one innocent explanation for each open
 edge. Where an edge's status turns on a fact you cannot read, return it as a falsifier, not a guess.
 
-Loop inventory, as of 18 September 2026, with the diagnose and constraint-ledger rows added on 30
-September:
+Loop inventory, as of 30 September 2026:
 
 | stage | owner | scripts |
 | --- | --- | --- |
@@ -44,7 +43,7 @@ September:
 | diagnose | `whole-run-investigation`, `references/climb.md` "Find the binding constraint" | `wri.ts climb`, `wri.ts census`; `readClimbBatteries`, `readClimbReadout` |
 | predict | `run-improvement-campaign` | `prediction.ts` |
 | launch | `launch-run` | `launch.ts`, `probe.ts`, `options.ts`, `service.ts`, `stop.ts` |
-| watch | `run-improvement-campaign` | `campaign.ts` |
+| watch | `run-improvement-campaign`, `launch-run` | `bun run runs pulse` (attended), `campaign.ts --every` (detached) |
 | read | `whole-run-investigation` | `wri.ts`, `references/outcome-review.md`; `bun run outcome` |
 | attribute a climb | `whole-run-investigation` | `references/climb.md` |
 | independent evaluation | `harness-query` | `harness-query.mts` |
@@ -101,9 +100,12 @@ whether that is the right answer here.
 
 ## 2. watch_to_assessment
 
-Own the edge from `campaign.ts` to a decision. Determine what a deviation actually
-emits, who reads it, and which of its signals — stall minutes, disk floor, blocked Builder session,
-completion — leads to a different action rather than a line in a log. Check the detached-watcher
+Own the edge from the two watchers to a decision: the pulse a reader attends, and `campaign.ts`
+when nobody does. Determine what a deviation actually emits, who reads it, and which of its signals
+— stall minutes, disk floor, blocked Builder session, completion — leads to a different action rather
+than a line in a log. A sampled store the watcher cannot find reads as quiet, so check each sampled
+path against where the launcher actually writes it: until 2026-09-30 the session-store sample
+looked under a directory name the launcher never made. Check the detached-watcher
 contract against the 600-second Bash wall and the 290-second polling rule. Distinguish a sensor
 that changes the next move from one whose only consumer is a human reading a terminal.
 

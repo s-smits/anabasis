@@ -105,7 +105,11 @@ recorded runs broke at the same link by replaying the exported reader over every
 (`readClimbBatteries` and `readClimbReadout`, `wri.ts climb --json` per campaign, `wri.ts census` for
 the gate) rather than re-deriving each reading by hand. Count distinct runs and conditions, not
 reports, since two notes about one run are one observation, and a run whose round never reached the
-link is no opportunity, neither a break nor a hold.
+link is no opportunity, neither a break nor a hold. Count within one kind of domain before claiming
+a transfer. Limits at the reference's values bind where a longer search finds a better answer, in
+the optimisation domains (truss, reserve, buffer). A conformance domain such as firmware has no
+optimum to search, and on 2026-09-30 its flat line read at the tasks' demand and the round's length
+instead.
 
 **Hand over one constraint.** The output is the link, the owner of the bytes that would move it (a
 bundle file, `environment`, `controller-source` with the file named, or `judge`, as the catalogue
@@ -174,7 +178,11 @@ still admits a battery whose claim was refused only for an environment clause
 not yet admit it, truss c1d2a7's fourth battery, its first with failing cases at 3 of 5, lost its
 claim to one unproven model identity and appeared in neither `admitted` nor `excluded`, and the next
 decision's digest was byte-identical to the one before. So when a placement does not match the last
-battery you saw, read in order the battery's `claims/<battery>.json` (`claim.ok` and the clause
+battery you saw, first match the labels. A decision is filed under the round it opens and places the
+battery before it, so decision `iN` reads battery `i(N−1)`. This tree's readers print both (`iN
+(reads iM)`), but a snapshot of an older run reads with that run's own source, which may print the
+round alone. On 2026-09-30 a lane counted 7 of 15 placements on buffer 3af96d as disagreeing for
+exactly this reason; matched, all 16 agreed. Then read in order the battery's `claims/<battery>.json` (`claim.ok` and the clause
 names), its `promotions/<battery>.json` (`decision`, promoted or held), the run's `fullrun.log`,
 which names both, and the decision's `admitted`, `excluded` and `evidence[]`, asking whether the
 battery is in any of them.

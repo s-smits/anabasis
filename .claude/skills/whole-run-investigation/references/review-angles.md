@@ -741,10 +741,15 @@ runs draining it together each record the same wait seconds apart, so compare th
 provenance the openings disclose rather than assuming separate accounts. A generic 429, a timeout,
 a crash or an unexplained refusal is not proof of exhaustion. Silence is often work: a gap filled by
 one long Builder tool call, a `harness_trial` solve, a Builder install or an authoring review that
-holds submit is the loop running, and only a gap with no call in flight is waiting. Do not
+holds submit is the loop running, and only a gap with no call in flight is waiting. The host is
+the other shared allowance: every run's checks compile on one machine, so count the runs live over
+a slow stretch from their openings and terminals, and split the Builder's wall into tool wait and
+model time from `builder-execution.json` before owning a slow round. On 2026-09-30 eight firmware
+runs shared 12 cores at load 35 to 200, six Opus firmware rounds waited on tools for 79 to 91% of
+their wall, and arms that are all tool-bound cannot be compared on round length. Do not
 reclassify a scored case because the identity claim was refused. The decision it changes is
 ownership — `environment` against the task author — and the launch condition, which is the slot
-pins and the account.
+pins, the account and how many runs share the host.
 
 **25. Failure mechanism and non-result honesty.**
 

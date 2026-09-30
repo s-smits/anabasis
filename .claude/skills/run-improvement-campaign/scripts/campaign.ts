@@ -18,7 +18,7 @@
  * reading the owner would not stand behind never arrives as a zero.
  */
 import { existsSync, readdirSync, readFileSync, statfsSync, statSync } from "#src/meta/filesystem.ts";
-import { dirname, join } from "#src/meta/path.ts";
+import { basename, dirname, join } from "#src/meta/path.ts";
 import { campaignRoot } from "#src/meta/campaign-root.ts";
 import { isString, asRecord } from "#src/meta/json-shape.ts";
 import { readJsonFileOrNull, writeJsonFile } from "#src/meta/completed-json.ts";
@@ -442,17 +442,25 @@ function readAuthoring(campaign: string, epoch: string): Authoring {
   return { epoch, commits, session, unreadable: null, environmentInARow, environmentKind };
 }
 
+const named = (prefix: string) => (dir: string) => basename(dir).startsWith(prefix);
+
 /** Newest write among the stores a working session moves while it records no campaign evidence:
- *  the battery's case directories and the Claude CLI stores under the run's private TMPDIR as the
- *  launcher sets it. The Builder's own prose capture is written with its execution record, which
- *  the evidence age already reads. These show activity, never completed work. */
+ *  the battery's case directories and the Claude CLI stores under the run's private TMPDIR. The
+ *  launcher makes that TMPDIR as `ana-quick-run-<random>`, so the run's own is the one holding a
+ *  CLI project for the run's worktree, whose path ends in the run id. The Builder's own prose
+ *  capture is written with its execution record, which the evidence age already reads. These show
+ *  activity, never completed work. */
 function sessionWriteMs(campaign: string, runId: string, tmpParent: string): number | null {
-  const tmp = join(tmpParent, `ana-${runId}-tmp`);
+  const projects = (tmp: string): string[] =>
+    directories(tmp)
+      .filter(named("ana-claude-cli-"))
+      .map((cli) => join(cli, "projects"));
+  const owns = (tmp: string): boolean =>
+    projects(tmp).some((dir) => directories(dir).some((project) => project.endsWith(`-${runId}`)));
+  const tmp = directories(tmpParent).filter(named("ana-quick-run-")).find(owns);
   const writes = [
     ...batteryRunDirs(campaign, runId).map((dir) => newestWriteMs(join(dir, "cases"))),
-    ...(existsSync(tmp) ? readdirSync(tmp) : [])
-      .filter((name) => name.startsWith("ana-claude-cli-"))
-      .map((name) => newestWriteMs(join(tmp, name, "projects"))),
+    ...(tmp === undefined ? [] : projects(tmp)).map((dir) => newestWriteMs(dir)),
   ].filter((ms) => ms !== null);
   return writes.length === 0 ? null : Math.max(...writes);
 }

@@ -379,6 +379,20 @@ describe("watch", () => {
     expect(stops(status(f))[0]?.detail).toContain("no new evidence for 60 min");
   });
 
+  it("samples the session store in the run's own ana-quick-run TMPDIR and no other run's", () => {
+    const f = fixture("live");
+    const store = (tmp: string, runId: string): void => {
+      const project = join(f.repo, tmp, "ana-claude-cli-1", "projects", `-Users-ana-run-${runId}`);
+      mkdirSync(project, { recursive: true });
+      writeFileSync(join(project, "session.jsonl"), "{}\n");
+    };
+    expect(status(f).sessionAgeMinutes).toBeNull();
+    store("ana-quick-run-other", "fullrun-20260923-b");
+    expect(status(f).sessionAgeMinutes).toBeNull();
+    store("ana-quick-run-own", RUN);
+    expect(status(f).sessionAgeMinutes).toBe(0);
+  });
+
   it("holds info rows unattended until a stop carries them, and fires the disk row once until recovery", () => {
     const f = fixture("live");
     const fresh = (): RunStatus => ({ ...status(f), evidenceAgeMinutes: 0 });

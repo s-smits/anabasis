@@ -276,12 +276,17 @@ function roundPrompt(input: BuilderSessionInput, previous: PreviousRound | null)
     // What a full pass finds and where a battery lands are the battery contract's (`LIMIT`, `WITNESS`
     // in climb-readout.ts), stated once there. The measurements behind each clause are in AGENTS.md
     // "Goals and the climb".
+    // The raise names its route, the no-limit line's depth, because that line reaches a Builder only
+    // after a full pass in its own readout, and a round's raise otherwise takes the widening route the
+    // line ruled out: firmware 7a97af-i02 raised by five new device families, then stopped at what its
+    // simulator could model, and every solve of its five tasks still passed.
     `${roundLimit(input.maxTurns)}Build, check and rehearse the candidate, and submit` +
       ` once a clear preview says it works. A passing rehearsal is a blind solve of its task, so it shows that task` +
       ` is within the solver's reach, and the task you expect to be hardest is the one whose rehearsal says most about` +
       ` the battery. A battery whose every rehearsal passed is on course to pass every case, so before you submit` +
-      ` it, change what its hardest tasks demand and rehearse one of them again, then submit: further polish` +
-      ` belongs to the next round.`,
+      ` it, raise what its hardest tasks demand by making more of the requirements the request names act together` +
+      ` on one answer under one shared limit, not by adding tasks, families or inputs at the same demand, and` +
+      ` rehearse one of them again, then submit: further polish belongs to the next round.`,
     HANDOVER,
   ];
   const context = [input.advisory ?? "", previous === null ? (input.freshContext ?? "") : ""]

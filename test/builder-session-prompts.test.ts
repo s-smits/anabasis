@@ -120,7 +120,10 @@ describe("what the round prompt says a rehearsal is", () => {
     expect(text).toContain("A passing rehearsal is a blind solve of its task");
     expect(text).toContain("the task you expect to be hardest is the one whose rehearsal says most");
     expect(text).toContain(
-      "A battery whose every rehearsal passed is on course to pass every case, so before you submit it, change what its hardest tasks demand and rehearse one of them again, then submit: further polish belongs to the next round.",
+      "A battery whose every rehearsal passed is on course to pass every case, so before you submit it, raise what its hardest tasks demand",
+    );
+    expect(text).toContain(
+      "rehearse one of them again, then submit: further polish belongs to the next round.",
     );
     expect(text).toContain("submit once a clear preview says it works.");
     // Where a battery lands and what a full pass finds are the battery contract's, stated once there.
@@ -128,6 +131,17 @@ describe("what the round prompt says a rehearsal is", () => {
     expect(text).not.toContain("find no limit");
     expect(text).not.toContain("agree with");
     expect(text).not.toContain("until a rehearsal fails");
+  });
+
+  // The raise before submit names the no-limit line's depth route, because that line reaches a
+  // Builder only after a full pass in its own readout. Firmware 7a97af-i02's round raised by five new
+  // device families instead and stopped at what its simulator could model; all five cases passed.
+  it("names depth, not widening, as the raise when every rehearsal passed", async () => {
+    const text = (await freshPrompt({ workspace: workspace("rehearsal-depth") })).replace(/\s+/g, " ");
+    expect(text).toContain(
+      "raise what its hardest tasks demand by making more of the requirements the request names act together on one answer under one shared limit, not by adding tasks, families or inputs at the same demand",
+    );
+    expect(text).not.toContain("change what its hardest tasks demand and rehearse");
   });
 });
 

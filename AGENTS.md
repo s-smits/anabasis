@@ -432,7 +432,11 @@ independent accept of six in five of six epochs, and the Builder carried it anyw
 so a passing rehearsal shows that task is within the solver's reach, and the task the Builder expects to
 be hardest is the one whose rehearsal says most. The round prompt (`src/author/builder-session.ts`) says
 that a battery whose every rehearsal passed is on course to pass every case, so before submitting it the
-Builder changes what its hardest tasks demand once and rehearses one of them again. Once, and not until a
+Builder raises what its hardest tasks demand once, by the no-limit line's depth route (more of the
+requirements the request names acting together on one answer under one shared limit, not more tasks,
+families or inputs), and rehearses one of them again. The route is named there because the no-limit line
+reaches a Builder only after a full pass in its own readout: firmware 7a97af-i02 raised by five new device
+families, stopped at what its simulator could model, and passed 5 of 5. Once, and not until a
 rehearsal fails: nothing holds a submit on rehearsals, because the measured battery decides where it
 lands (`WITNESS`, in the battery contract), and a rehearsal hold of that kind cost whole rounds (96 of 99 predicted passes at ≤0.3 did pass;
 "What has cost whole rounds"). Across 241 batteries from 2026-09-25 on, the rehearsed task had sat at

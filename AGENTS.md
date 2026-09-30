@@ -113,11 +113,12 @@ because moving it cost something.
     the Builder's own reference on 5 of 6 tasks. So seek tasks beyond the fixed solver's observed
     capability, by whatever stronger witness the Builder chooses, and locate the transition by blind
     measurement. A first battery authored above it, about 3 of 25, is a hypothesis rather than a
-    prerequisite; later batteries aim inside `climb.band` (below). An unbracketed boundary is reported
-    unlocated, never met with manufactured failures. **No course is prescribed.** Campaign 3fd52f9e-28
-    followed a prescribed three-stage course and moved only its published magnitudes for four consecutive
-    batteries, so the Builder is told what was measured and never a count to author towards, and the
-    route is the Builder's. Useful adopted work is retained.
+    prerequisite; later batteries swing between 1/n and n−1/n and narrow into `climb.band` (below). An
+    unbracketed boundary is reported unlocated, never met with manufactured failures. **No course is
+    prescribed.** Campaign 3fd52f9e-28 followed a prescribed three-stage course and moved only its
+    published magnitudes for four consecutive batteries. So the Builder is told what was measured and
+    what a round is for, a battery that fails some of its cases, and never a count to author towards;
+    the route is the Builder's. Useful adopted work is retained.
 
 ### Owners and handoffs
 
@@ -188,112 +189,112 @@ secret keys you know about, because the key you did not know about goes out with
 
 **The goal is a healthy, ambitious climb** (operator, 2026-09-29, replacing "optimise the climb toward
 really hard tasks" of 2026-09-18). The product is worth something only where a fixed solver fails for
-reasons the evaluation can prove, so each battery should ask more of the field than the one before it,
-for a reason the Builder can name, until one locates where the solver stops; and every fail that
-locates it has to be earned. Ambition without health manufactures a limit, and health without ambition
-measures a solved exam. The public yardstick is the README's: on the same 25 held-out hard tasks at
-cycles 1, 3, 5 and 7, Anabasis verified 6, 8, 11 and 12 and Prime-agent 8, 9, 8 and 8, both on Claude
-Opus 5 at medium thinking with the same verifier, Anabasis at 120 minutes per task against 45. Widen
-that gap on harder tasks, never by inflating pass rates on easy ones.
+reasons the evaluation can prove. So each battery asks more of the field than the one before it, for a
+reason the Builder can name, and every fail that locates where the solver stops is earned. Ambition
+without health manufactures a limit, and health without ambition measures a solved exam. The public
+yardstick is the README's. On the same 25 held-out hard tasks at cycles 1, 3, 5 and 7, Anabasis verified
+6, 8, 11 and 12 and Prime-agent 8, 9, 8 and 8. Both ran on Claude Opus 5 at medium thinking with the same
+verifier, Anabasis at 120 minutes per task against 45. Widen that gap on harder tasks, never by inflating
+pass rates on easy ones.
+
+**A battery below n/n is what an ambitious round expects, and a run of n/n batteries is the failure to
+fix** (operator, 2026-09-30). A full pass measured nothing about where the solver stops. On source
+887c163ee six Sol runs passed every case of every battery, reserve 6a8ca0 thirteen times at 7/7 and bulk
+RNA-seq 36e268 eleven times at n/n.
 
 The climb has three named parts, all read on verified cases:
 
-- **The initial rung** brackets the solver: a probe battery of 5–10 tasks that passes some cases and
-  fails some, 1/n to n−1/n, so the limit lies inside what the battery asks. A probe at n/n found no
-  limit and one at 0/n usually found a defect, so neither is a rung. The probe graduates to the
-  requested size once its bracket also lands at or under the aim (`batterySizingGate`,
-  `src/run/battery-sizing.ts`), because every
-  recorded graduation from a near-full bracket (5/6, 7/8) went straight back to a near-full battery.
-  So did all three that graduated at or under the aim and measured a full pass next: f0fb83's 2/6,
-  2d7812's 3/6 and 3e4693's 3/6 (2026-09-28 and 29). Every fail in those probes fell on one check
-  the Epoch Reviewer then settled against. A settled case now leaves the sample (`admittedClimbRow`),
-  so each of those probes reads 2/2 or 3/3 and stays a probe.
-- **Curriculum filtering** is the climb after it, at full size, between 1/25 and 24/25. As in RL
-  curriculum filtering, which drops prompts every sample solves or none does because they carry no
-  signal, a battery at 0/n or n/n says nothing about where the solver stops. Here the unit is the
-  battery rather than the task, since each task is solved once. A full pass is answered by asking
-  more and an empty battery by reading what blocked every case (truss-27's 0/6 was a real demand, then
-  1/7 and 3/10). The readout names a full pass (`noLimitLine`) and shows an empty battery by its counts
-  alone, and never states the region's bounds.
-- **The band** is the target inside that region: `climb.band`, 5–12 verified of 25, where the limit
-  is located rather than only bracketed.
+- **The initial rung** brackets the solver: a probe of 5–10 tasks that passes some cases and fails some,
+  1/n to n−1/n. A probe at n/n found no limit and one at 0/n usually a defect, so neither is a rung. It
+  graduates to the requested size once its bracket also lands at or under the aim (`batterySizingGate`),
+  since every graduation from a near-full bracket (5/6, 7/8) went straight back to a near-full battery. A
+  case settled against its check leaves the sample (`admittedClimbRow`); without that, f0fb83's 2/6 and
+  the 3/6 of 2d7812 and 3e4693 graduated on one settled check and measured a full pass next.
+- **Curriculum filtering** is the climb after it, at full size, between 1/25 and 24/25. RL curriculum
+  filtering drops prompts every sample solves or none does, because they carry no signal. In the same way
+  a battery at 0/n or n/n says nothing about where the solver stops. The unit here is the battery, since
+  each task is solved once. A full pass is answered by asking more, and an empty battery by reading what
+  blocked every case: truss-27's 0/6 was a real demand, then 1/7 and 3/10.
+- **The band** is the target inside that region: `climb.band`, 5–12 verified of 25, where the limit is
+  located rather than only bracketed. Landing there is not the end, because the next requirement moves
+  the line again.
 
 **Its shape is a line that moves** (operator, 2026-09-29, from the launch film). A raised requirement
-drops the pass rate, a repair or rebuild lifts it, the next requirement drops it again, and over the 8
-or 12 rounds of a run the swings narrow into the band; the film draws 25, 6, 5, 24, 17, 21, 12, 19, 21,
-9, 12 and 11 of 25 as an illustration. Each swing is a battery answering what the Builder changed, so
-the fluctuation is the signal, and 8 of 11 after 10 of 11 is progress though both sit above the aim. A
-flat line is the failure at any level: of the 42 local runs with two or more placed batteries on
-2026-09-29, 28 passed every case of every battery, 186 of their 213 batteries were full passes, and none
-of the eight that reached eight batteries placed on the aim on earned fails. truss-sol-cb274b alone has
-the shape, at 3/8, 10/25, 15/25 and 11/25.
+drops the pass rate, a repair or rebuild lifts it, and the next requirement drops it again. Over the 8 or
+12 rounds of a run the swings narrow into the band. The film draws 25, 6, 5, 24, 17, 21, 12, 19, 21, 9, 12
+and 11 of 25 as an illustration. Each swing is a battery answering what the Builder changed, so the
+fluctuation is the signal, and 8 of 11 after 10 of 11 is progress though both sit above the aim.
+truss-sol-cb274b alone had the shape on 2026-09-29, at 3/8, 10/25, 15/25 and 11/25.
 
-**Ambitious** means the climb keeps moving toward the solver's limit.
+**Progress is read on that line** (`wri.ts climb`, `climb-velocity/v2`), with four numbers:
 
-- A full pass is a question, not a win: it found no limit, and the next battery answers it with a
-  changed public requirement from the request's own field, deeper in what the tasks already exercise
-  or across what the request names and no task does yet. The Builder records that requirement and the
-  reasoning it adds in its notes (rule 11); a plan written there is carried and built, and the
-  all-pass line of the readout asks for it.
-- Tightening a feasible limit is a legitimate route, and blind measurement, not a prompt, says whether
-  it made a battery harder. It is also the recorded way to stall: campaign 3fd52f9e-28 moved only
-  published magnitudes for four batteries, and truss-sol-2d7812 passed 5/5 five batteries in a row, one
-  of them after a mass-only tightening, because the solver ships lighter than the Builder's reference.
-- Progress has two numbers, both from `difficulty-decisions/` (the climb reference owns them): how
-  many batteries came before the first in-band placement, and the share of placements `on-aim` rather
-  than `too-easy` or `over-aim`. A change that raises a score, adds tasks or renames levels without
-  moving either has not served the goal.
+- **signal**: the claimed batteries between 1/n and n−1/n, counted over the first 8 and the first 12;
+- **swing**: the mean move in pass rate per battery, which is 0 for a line of full passes at any size;
+- **flat**: the stall rule of `bun run runs pulse`, `STALL_BATTERIES` in a row on one side of the aim,
+  none closer than the closest before them;
+- **carried**: the tasks measured again unchanged after a full pass.
+
+A zone cannot stand in for these, since 3/3 places `over-aim` and passes everything. The line ranks
+custom-sol-f0fb83 (3 of 14 with signal, a 13.8-point swing) above truss-sol-198d70 (2 of 13, 3.9) and
+6a8ca0 (0 of 13, flat). A change that raises a score, adds tasks or renames levels without moving the line
+has not served the goal.
+
+**Ambitious** is what the Builder does, and since 2026-09-30 its prompts say so:
+
+- It authors the next battery's tasks as ones it expects the solver to fail, on a changed public
+  requirement from the request's own field, deeper in what the tasks exercise or across what the request
+  names and no task does yet. A stricter demand on an obligation the request names is not an added
+  requirement, as the kickoff now says. Both 887c163ee Builders had declined every stricter route by
+  quoting "add no requirement it does not name".
+- It raises what the checks hold and where the limits sit, not only how big the inputs are: 6a8ca0 grew
+  its inputs from 24 to 53 and its scenarios from 20 to 91 at unchanged check tiers and limits. Tightening
+  alone is not enough either, because 6a8ca0's limits sat at its reference's values and its solver held
+  the same optimiser. So the change has to be one the passing solves' own steps do not settle.
+- It carries no task unchanged across a full pass. 36e268 grew about one task a round, and on 2026-09-30,
+  570 of the 1,465 tasks measured after a full pass in local campaigns were carried unchanged.
+- It does not submit a battery its rehearsals predict at n/n. When every rehearsal passed, it changes
+  what the hardest tasks demand once and rehearses again; both 887c163ee Builders submitted on one pass.
+- It records the changed requirement and its reasoning in its notes (rule 11), where a plan is carried.
 
 **Healthy** means every step of it is true.
 
-- The demand comes from the field, never from a rule the Builder adds (rule 11): an invented duty,
+- The demand comes from the field, never from a rule the Builder adds (rule 11). An invented duty,
   deadline or report format measures the solver's reading of the author's wording.
 - A fail counts only where it is earned: the check that decided it holds the artifact to a rule the
   public projection states. The Epoch Reviewer settles that per case (rule 9), quoting the public
-  sentence before it calls the Judge wrong. The controller counts a case its completed review settled
-  against the one check that decided it neither way, and drops a veto so settled rather than turning
-  it into a fail (`admittedClimbRow`, `difficulty-decision/v10`). custom-sol-2d7812's first firmware
-  battery read 4/6 on two fails of one bench check that held meter output to HIGH/LOW where the
-  published rule also allowed ALARM/OK; on the public rules it was an all-pass.
+  sentence before it calls the Judge wrong. A case its completed review settled against the one check
+  that decided it counts neither way, and a veto so settled is dropped rather than turned into a fail
+  (`admittedClimbRow`, `difficulty-decision/v10`). custom-sol-2d7812's firmware battery read 4/6 on
+  two fails of a check stricter than its published rule, and on the public rules it was an all-pass.
 - An unbracketed boundary is reported unlocated, never met with manufactured failures (prior 10). The
   three outcomes stay apart, and only verified cases place a battery.
 - The Builder is told what was measured and never a count, share or zone to author towards (prior 10).
   The band, the aim and the placement stay with the controller and the Epoch Reviewer.
-- Useful adopted work is retained, and a check repaired is a new condition, not a difficulty advance.
+- Useful adopted work is retained, and a repaired check is a new condition, not a difficulty advance.
 
 The band is `climb.band`, `[0.20, 0.50]` on the 95% Wilson interval, whose one z is `REPORTING_Z`
 (`src/claim/estimation.ts`). `placeOnBand` (`src/claim/battery-difficulty.ts`) decides the zone in two
-steps: the interval decides `too-easy` or `too-hard`, meaning significantly so, and the point count
-decides `under-aim`, `on-aim` or `over-aim`. For 25 tasks, 5–12 verified is on the aim (`aimCounts`) and
-18 or more is significantly too easy. On-aim is the calibration target, not a proved limit, and a battery
-too small to hold a whole count inside the band (`aimCounts` empty) is refused a placement. The ceiling's
-history lives beside `climb.band` in `thresholds.frozen.yaml`.
+steps. The interval decides `too-easy` or `too-hard`, meaning significantly so. The point count decides
+`under-aim`, `on-aim` or `over-aim`. For 25 tasks, 5–12 verified is on the aim (`aimCounts`), and 18 or
+more is significantly too easy. On-aim is the calibration target, not a proved limit. A battery too small
+to hold a whole count inside the band (`aimCounts` empty) is refused a placement. The ceiling's history
+lives beside `climb.band` in `thresholds.frozen.yaml`.
 
-What the Builder reads is the climb readout (`renderReadout`, `src/run/climb-readout.ts`): the newest
-rows, whether the latest battery found a limit, its families, where its passing artifacts landed, and
-how many cases were settled against their check. `renderBatteryContract` says that only a battery passing
-some but not all of its cases can locate a limit, and only where the checks that failed it are right.
-The Epoch Reviewer alone reads the placement (`readingSentence`). An epoch's `pass` hashes the readout's
-facts, not its wording, so a reworded readout opens no new epoch. Solve effort per row is served through
-the context tool's history source and never read as difficulty.
+The Builder reads the climb readout (`renderReadout`, `src/run/climb-readout.ts`): the newest rows,
+whether the latest battery found a limit, its families, where its passing artifacts landed, and how many
+cases were settled against their check. `renderBatteryContract` says that only a battery passing some
+but not all of its cases can locate a limit. The Epoch Reviewer alone reads the placement
+(`readingSentence`). An epoch's `pass` hashes the readout's facts, not its wording.
 
-Read the climb before paying for it, from the authored bytes: `bun run runs climb <run>` (or `wri.ts
-climb <campaign dir>`) whenever a new `versions/<battery>/` appears, hours before its battery scores.
-Each edge gets a structural label, `restated`, `replaced`, `adjusted`, `narrowed`, `widened`, `eased`
-or `escalated`, from check tiers and counts (`verdictOf`, `climb-velocity.ts`). A label is a reading,
-not a forecast: all three `escalated` edges in a census of 170 on 2026-09-29 were followed by batteries
-that passed every case, and so were 16 of the 17 edges that widened on a new input or rule alone, among
-them 2d7812's new load sites and forbidden volume. So name the changed public requirement from the task rows beside the label, and read each
-battery's `fails` line (held, settled against the check, unsettled, and the checks they fell on) before
-counting a partial battery as a limit found. A stall is a flat line: three batteries in a row on one
-side of the aim that come no closer to it than the closest before them, read on the counts the
-decision placed, so a fail settled against its check does not count as closer. A zone cannot say it:
-truss-sol-198d70's `over-aim` batteries were 3/3, 2/2 and 2/2, which pass every case, and after its
-6/7, 25/25 and 10/11 a 9/11 would read `too-easy` and still be its closest battery to the aim. No
-recorded run first placed on the aim after its fifth battery (51 runs, 2026-09-29). The answer is to
-rebuild what the tasks demand, not their numbers. The controller never stops on a reading of the
-tasks (`LoopState`) and the Builder is told no zone, so stopping a stalled run is the operator's
-call, which `bun run runs pulse` names when it arrives.
+Read the climb before paying for it: run `bun run runs climb <run>` (or `wri.ts climb <campaign dir>`)
+whenever a new `versions/<battery>/` appears, hours before its battery scores. Each edge gets a
+structural label from check tiers and counts (`verdictOf`): `restated`, `replaced`, `adjusted`,
+`narrowed`, `widened`, `eased` or `escalated`. A label is a reading, not a forecast. In a census of 170
+edges on 2026-09-29, all three `escalated` edges and 16 of the 17 that widened on a new input or rule
+alone were followed by full passes. So name the changed public requirement from the task rows. Read each
+battery's `fails` line (held, settled against the check, unsettled) before counting a partial battery as
+a limit found. The controller never stops on a reading of the tasks (`LoopState`), so stopping a flat
+run is the operator's call, which `bun run runs pulse` names when it arrives.
 
 ## Evidence and implementation status
 

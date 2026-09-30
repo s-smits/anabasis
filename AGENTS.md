@@ -486,6 +486,54 @@ a limit found, and read its wall-bound count before counting a miss as the task'
 band on the same side is a settled result ("While it runs"). The whole-run digest's 4b block lists each
 decision with the battery it reads, and its `OFF-AIM STREAK` line is a lead for review lane 10.
 
+### Open gaps: why batteries still pass whole
+
+On 2026-09-30, 265 of 299 recorded batteries had passed every case. The leniency is not in the grading.
+Since 2026-09-23 the Judge vetoed 5 of 1,411 verifier passes (firmware 2 of 901, truss 3 of 510), and
+counting all five would move no battery out of too-easy. Of the 22 verified fails that found a limit, 17
+were contested, and the check was the stricter side (the Judge passed 11; the review settled 6 against
+the check). It is not in the answers either, since every firmware reference passes F2, nor in the
+limits: truss acef98-i03 set limits at 1.02 times a search of 45 minutes to 3.4 hours and still passed 5
+of 6, refuting prediction 579d4990. The gaps are on the task side. Delete a bullet in the commit that
+closes it.
+
+- **First tasks ask for one published behaviour each.** All 10 solves of firmware 7a97af passed in 1.1
+  to 5.6 of 120 minutes, 9 with the first draft unedited, and 7 of 29 firmware batteries passed with a
+  harness that only compiled. Depth reached a Builder only after a full pass or after every rehearsal
+  passed. Owner: the last line of `INTENT_CLAUSE` (818bee65), which is not yet measured. Change
+  `SCOPE_CLAUSE` ("let the tasks span them", "vary its stated conditions") only if that line does not
+  carry it.
+- **Graduation dilutes a bracket.** A probe at 2/6 or 3/6 grows to 25 tasks and the ~19 added tasks
+  pass. That happened in 10 of 13 recorded regresses, and with every probe fail held, 12 of 13 would
+  still read too easy. The Builder heard only "Task count: exactly N tasks". Owner:
+  `renderProbeSizing`; the sentence naming the hardest families' demand is on claude/graduation-demand.
+- **The worked example is a toy.** The one worked domain in `starter-pack/examples.md` is a duty
+  roster: one or two shifts, one public rule, a greedy reference, and families that differ in size. Its
+  list of targets the solver does not reliably meet leads with three limit-tightening routes and puts
+  demand last. At least 52 of 310 Builder sessions since 2026-09-23 read it (13 through the read tool,
+  39 in prose or compaction read-lists; reads through bash are unrecorded). Replace it with families
+  that differ by which requirements interact under one shared limit, an obvious answer that fails, and a
+  very hard family.
+- **Aim at very hard to land at hard** (operator, 2026-09-30). 36 of 39 first batteries were authored
+  under "author above what you believe", and 29 passed whole, so an aim sentence alone does not move the
+  line. The worked example and the depth line carry it, with no count (prior 10).
+- **`WITNESS_BUDGET` rests on the refuted mechanism** and binds nothing in firmware, where no search
+  sets a limit (`src/run/climb-readout.ts`; `witness-budget` under "Ablated components").
+- **The Epoch Reviewer cannot name requirements exercised one at a time.** No `demandGap` value
+  (`src/review/epoch-review-findings.ts`) covers it, and its orientation reads easy tasks as a result.
+- **The expected-output oracle is unmeasured.** The firmware `rules.ts` is both the check's expectation
+  and the solver's `expected_behaviour`, so the solver can compute every expected value before it
+  submits, which `PUBLICATION_CLAUSE` calls the field's own work.
+- **The firmware instrument cannot drive input.** Espressif QEMU 9.2.2 shows GPIO output through
+  `-trace memory_region_ops_write`, and `-icount shift=3,sleep=off` gives guest time; 5 of 11 Opus
+  versions rebuilt pins from that trace. It has no GPIO input, ADC, I2C devices beyond TMP105, or
+  RMT/PCNT, so it cannot check debounce, edge interrupts, analog input or deadlines at a pin. Owners:
+  the host toolchain (a GPIO-input patch, estimated at about 100 lines of C) or a `simulation-seed/v1`
+  runner seed (operator).
+
+All of these are model-visible, so the stack that closes them is one new condition. Freeze a prediction
+per change, simulate a fresh firmware first round, and launch only on the operator's word.
+
 ### Tried and taken out
 
 Each of these was built, measured and removed, and the reason is the measurement. Do not bring one back

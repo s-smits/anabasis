@@ -77,7 +77,16 @@ export function readyTimeoutCause(walls: Walls, readyTimeoutMs: number): Cause {
  *  only that no reply came in time, never that the writer cannot carry the value it was handed: in
  *  the one recorded F2 firing (firmware-9, 2026-09-24) the same writer bytes answered on the next
  *  check, on a host whose other workers were missing their close deadline too. So `deadline` is
- *  set, and F2 reads the case as a host non-result rather than a representation defect. */
-export function requestTimeoutCause(requestTimeoutMs: number): Cause {
-  return cause("protocol", `request timed out after ${requestTimeoutMs}ms`, true);
+ *  set, and F2 reads the case as a host non-result rather than a representation defect.
+ *
+ *  A trusted request ran only product code on the host wall, so, as with a startup whose walls
+ *  were still going up, the lost wait is the host's: 887c16's pico-mood-light (2026-09-30) lost a
+ *  trusted request on a host at load 28, and its `protocol` kind told the Builder the failure
+ *  might be its own. A candidate request stays `protocol`, the author's slow code. */
+export function requestTimeoutCause(requestTimeoutMs: number, served: "product" | "candidate"): Cause {
+  return cause(
+    served === "product" ? "runtime" : "protocol",
+    `request timed out after ${requestTimeoutMs}ms`,
+    true,
+  );
 }

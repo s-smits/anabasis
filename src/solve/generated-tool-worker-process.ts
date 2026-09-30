@@ -442,10 +442,12 @@ export class WorkerClient {
       const requestId = crypto.randomUUID();
       const frame = serializeGeneratedToolParentFrame({ ...message, requestId });
       const result = Promise.withResolvers<AcceptedResult>();
-      const trusted =
-        message.type !== "execute" || presetOwningTool(this.presets, message.name) !== undefined;
-      const wallMs = trusted ? HOST_WALL_MS : this.requestTimeoutMs;
-      const timer = setTimeout(() => this.fail(raise(requestTimeoutCause(wallMs))), wallMs);
+      const served =
+        message.type !== "execute" || presetOwningTool(this.presets, message.name) !== undefined
+          ? "product"
+          : "candidate";
+      const wallMs = served === "product" ? HOST_WALL_MS : this.requestTimeoutMs;
+      const timer = setTimeout(() => this.fail(raise(requestTimeoutCause(wallMs, served))), wallMs);
       this.pending.set(requestId, { expected: REQUEST_REPLY[message.type], timer, ...result });
       // oxlint-disable-next-line typescript/no-floating-promises -- writeFrame records stdin failures through this.fail.
       void this.writeFrame(frame);

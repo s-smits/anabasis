@@ -136,11 +136,24 @@ describe("a request the host gave up waiting for", () => {
   // Read without `deadline`, F2 charged a loaded host's slow reply to the writer as a
   // representation defect, and a Builder answered it by rewriting bytes that were never wrong.
   it("marks the host's own wait, so F2 reads it as a non-result", () => {
-    expect(requestTimeoutCause(30_000)).toEqual({
+    expect(requestTimeoutCause(30_000, "candidate")).toEqual({
       kind: "protocol",
       message: "generated-tool worker request timed out after 30000ms",
       deadline: true,
     });
+    // The battery still charges a candidate's slow reply to the author.
+    expect(ENVIRONMENT_OWNED_NONRESULT_KINDS.has(requestTimeoutCause(30_000, "candidate").kind)).toBe(false);
+  });
+
+  it("gives a trusted request's lost wait to the environment, as a startup before its walls", () => {
+    // Only product code ran, so nothing the author wrote can explain the silence.
+    const cause = requestTimeoutCause(120_000, "product");
+    expect(cause).toEqual({
+      kind: "runtime",
+      message: "generated-tool worker request timed out after 120000ms",
+      deadline: true,
+    });
+    expect(ENVIRONMENT_OWNED_NONRESULT_KINDS.has(cause.kind)).toBe(true);
   });
 
   it("leaves a close with a request still in flight unmarked, since that is the worker's own break", () => {
@@ -155,7 +168,8 @@ describe("every cause names the subject", () => {
       closeRefusal("done", 1)?.message,
       readyTimeoutCause("installed", 1).message,
       readyTimeoutCause("pending", 1).message,
-      requestTimeoutCause(1).message,
+      requestTimeoutCause(1, "candidate").message,
+      requestTimeoutCause(1, "product").message,
     ];
     for (const message of causes) expect(message).toMatch(/^generated-tool worker /);
   });

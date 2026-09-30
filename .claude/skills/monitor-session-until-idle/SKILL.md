@@ -59,6 +59,8 @@ Treat run numbers as labels. Bind claims to exact identities. Check digests, exe
 
 Use two liveness signals when possible: task status, controller lock, provider child, heartbeat, workspace changes, recorded session result, or terminal receipt. Quiet output alone does not show a stall.
 
+A quiet Anabasis Builder is usually waiting on a tool, not thinking. On 2026-09-30, live Opus firmware rounds spent 79–91% of their wall inside tool calls, and one `correctness_check` ran 137 min. Before calling the model slow, take the union of the call intervals in the epoch's `builder-execution.json` (`customCalls`, each with `startedAtMs` and `durationMs`) against its wall.
+
 Keep evidence levels separate:
 
 ```text

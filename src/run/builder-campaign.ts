@@ -536,7 +536,7 @@ class BuilderCampaignController {
       rehearsals: this.rehearsals,
       user: input.userContext ?? EMPTY_USER_CONTEXT,
     });
-    const { builtSolver } = deps;
+    const { builtSolver, conversation } = deps;
     const trial = createHarnessTrialTool({
       workspace: this.workspace,
       context: toolContext,
@@ -548,6 +548,10 @@ class BuilderCampaignController {
         builtSolver === undefined ? undefined : () => builtSolver(deps.providerBudget),
       ),
       ...keyIfDefined("verifierLifetime", deps.verifierLifetime),
+      ...keyIfDefined(
+        "tellOnce",
+        conversation === undefined ? undefined : (key: string) => conversation.tellOnce(key),
+      ),
     });
     const reset = createHarnessResetTool({
       workspace: this.workspace,

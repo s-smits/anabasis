@@ -18,7 +18,10 @@ trail and workspace, and append the resolution. Its prompt must say that the pro
 the measured actor and its own prose is research only. Keep each steward in its assigned scratch
 directory, read-only outside it unless the operator separately authorised a source change. For a
 batch, use one steward per independent condition; do not ask one steward to coordinate several conditions or
-let stewards spawn further agents.
+let stewards spawn further agents. The steward runs `run-segment.mts` under
+`bun --env-file=.accounts/claudeN.env`, on the account SKILL.md's steward rule chose from
+`.accounts/usage`, never the live runs' or the parent's. `run-segment.mts` strips the launching
+session's `CLAUDE*` variables itself and prints the names it dropped.
 
 The unit is a **segment**: one seeded start, the production toolkit, and the contiguous stretch of
 checkpoints your question covers — three of the twenty rather than all of them. It is not a turn;
@@ -100,7 +103,10 @@ work as well as an unstaged diff, while preserving legal whitespace, newlines an
 filenames. The question is otherwise typed three times per condition — in the handover, in each
 prediction's caught/missed clause, and again at adjudication — and one hand-written copy mis-sliced
 `git status --porcelain`, so a condition's recorded evidence reads `EMORY.md`. That bug belonged to the
-operator's script, which is the worst place for it.
+operator's script, which is the worst place for it. The CLI counts from the workspace's seeding
+commit by default (`--since root`): a checkpoint commit moves HEAD, and a status against HEAD then
+reads a clean tree after real work. `--since HEAD` is the handover's view since the last
+checkpoint; a module caller passes `seedCommit(workspace)` as `changedPaths`' third argument.
 
 Two more inputs bind the segment to its question:
 

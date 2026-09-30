@@ -24,12 +24,17 @@ what they show and delete the settled entries.
   session limit: one 429 (`session limit, resets 14:20`) ended the audit subagent and the run's
   Builder in the same minute; a fresh token on the same account died the same way at 13:49. The
   launcher now runs one minimal Builder-slot turn before the gate and refuses with the provider's
-  reset clause (main 69ed55b5b).
-  Stewards are gone; the launching session runs its own conditions. Seeded rounds default the
-  Built slot to scripted, so the Builder → Built Harness handover stays unexercised until a real
-  battery; when the question is the measure stage, run `--built live`. Still open: one runner for
-  a seeded round (`run-condition.mts`) with gate questions no longer routed through
-  `run-segment.mts`, and a SKILL.md near one page.
+  reset clause (main 69ed55b5b). Stewards went; the launching session ran its own conditions.
+  Seeded rounds default the Built slot to scripted, so the Builder → Built Harness handover stays
+  unexercised until a real battery; when the question is the measure stage, run `--built live`.
+- 2026-09-29, stewards return on an account of their own. The 2026-09-15 death was one account
+  carrying the steward's condition, the run's Builder and the parent at once. The operator's
+  numbered accounts in `.accounts/` separate them: a steward's condition spends an account no live
+  run and no parent is spending, so its 429 ends only itself. The rule is below.
+- 2026-09-30, three truss and esp32 stewards spent their first minutes on hand steps: a seed refused
+  3,466 tool-tree references, and a second five-minute `--relocate` run left them naming the main
+  checkout's tree; Built pins unlike the record turned a rebuild into a measure; `CLAUDE*` variables
+  were unset by hand; a transcript copy was lost to the CLI's close stub. Helpers own each step now.
 
 ## Standing triggers
 
@@ -54,11 +59,47 @@ bind the join the condition proved, or the next change reopens the question. The
 two tests that each hand-roll the same record — the watchdog readiness file on 2026-09-01 — so
 neither runs the real writer against the real reader. `cases/layer-walk.md` names the method.
 
-**The launching session runs its conditions.** No steward subagent (operator decision
-2026-09-15): a subagent shares the account's session limit, and its death loses the condition's
-trail. The actor under test keeps the run's own condition — for the standard Opus 5 run that is
-`claude-opus-5` at medium through the production backend — and the session never stands in for it
-(operator decision 2026-09-01).
+**A steward runs its condition on an account of its own.** A steward subagent may own one
+condition again (operator decision 2026-09-29), but only when that condition's model calls go
+through a numbered account that no live run and not the launching session is spending. Without
+such an account, the launching session runs its own conditions, as it did from 2026-09-15.
+
+- **Choose from `.accounts/usage`.** Run it from the main checkout. It prints each numbered
+  account's 5-hour and weekly windows and prints no token. It marks the account behind the plain
+  `CLAUDE_CODE_OAUTH_TOKEN`, which is the one `launch-run` hands to live Claude runs by default.
+  Pick an account that is:
+  - not the plain one, and not the one a live run was launched on with `.accounts/launch claudeN`
+    (`scripts/credential-use.mts` names the credential file each open run's launch receipt holds);
+  - not the one the launching session runs on;
+  - showing neither `rejected` nor a window near full.
+
+  The reading on 2026-09-29: claude1 at 3 % (5-hour) and 6 % (week), claude2 as the plain token
+  at 88 % of its week, claude4 `rejected`.
+- **Pass the account as an env file.** Run every model-calling script as
+  `bun --env-file=.accounts/claudeN.env .claude/skills/system-path-simulation/scripts/<script>.mts …`.
+  Every slot resolves its credential through `loadRepoEnv(repoRoot, Bun.env)`, and there the
+  process environment wins over the checkout's `.env`. So this one flag moves the Builder, Built,
+  Judge and review slots together. A shell that already exports `CLAUDE_CODE_OAUTH_TOKEN` beats
+  the file, so check that it is unset. `run-condition.mts` records it and names open runs sharing it.
+- **The runners drop the launching session's variables.** `run-condition`, `run-segment`,
+  `review-settle` and `judge-replay` strip and print each `CLAUDE*` name the product does not read
+  (`CLAUDE_EFFORT`, `CLAUDECODE`, …; `session-env.mts`), which it would hand on to the Builder's
+  CLI. A paid launch starts under `env -i` and never has them.
+- **Treat the files as secrets.** `.accounts/` is local and untracked (`.git/info/exclude`). Each
+  `claudeN.env` holds that account's token under `CLAUDE_CODE_OAUTH_TOKEN`, the one name the
+  launcher reads, and is written by `.accounts/launch claudeN`.
+  - Never print, copy or `cat` these files, and never put a token on a command line.
+  - If a file is missing, report it. Do not rebuild it from `.env` by hand or look for another.
+- **The steward's own session still spends the parent's account.** Only the condition moves, so
+  keep the steward's reasoning short and let the condition's calls carry the spend.
+- **The steward's shape.** One steward per condition, at most four in parallel, and none spawns
+  further agents. Each writes its trail to the report path it was given, so a dead steward loses
+  nothing the parent cannot read. The steward briefs the parent with the account it used and that
+  account's `.accounts/usage` line before and after.
+
+The actor under test keeps the run's own condition — for the standard Opus 5 run that is
+`claude-opus-5` at medium through the production backend — and neither the session nor a steward
+ever stands in for it (operator decision 2026-09-01).
 
 ## Rules that hold for every case
 
@@ -84,7 +125,33 @@ question does not depend on; everything earlier is paid for and confounds nothin
 Copy the required recorded source bytes into an owned fixture before invoking a mutating
 production helper. Inspect linked runtime and tool trees too: a copied workspace can still write
 through `.toolchain` into the original run, outside its fingerprint. Use owned tool fixtures for
-startup and resume probes; keep real recorded trees read-only.
+startup and resume probes; keep real recorded trees read-only. A republish opens a fresh epoch, so
+the source epoch's `MEMORY.md` and `SCRATCHPAD.md` do not follow it (production carries notes only
+when an epoch supersedes one); the seed names their sizes, and the stated delta must too.
+
+**Optional: give the condition an active tool tree.** Do this when the actor will compile, run or
+rehearse through the product's tools. Without a tree it spends its wall reinstalling, and the
+condition ends up measuring installation instead of the question. Skip it when the question is
+prose or planning, or when a reinstall is cheap. On 2026-09-30 a truss Builder with no recorded
+tree reinstalled OpenSeesPy from the uv cache in 6 seconds; an esp32 tree is 12 GB of arduino cores.
+
+- **Seeding already clones the tree.** `seed-campaign.mts` republish clones the selected product's
+  tool tree into the owned seed with APFS clonefile and rewrites the references inside it to the
+  seed's own tree by rule, under every spelling of the source; `--relocate` now answers only
+  references outside the tool tree.
+- **Check the tree exists before relying on it.** `scripts/tool-tree.mts --campaign <dir>` says
+  whether the selected product's recorded `toolTree` still resolves and lists the family's other
+  trees; every epoch tree of the truss campaign `…-3fd52f9e-29` was swept on 2026-09-30. The seed
+  and `run-condition.mts` both warn of a gone tree, `--tool-tree <tree>` seeds a family tree
+  instead, or let the actor reinstall and record that it did.
+- **Clone anything the actor may write; do not link it.** A symlink into a recorded run lets the
+  condition write through to that run, and the audit refuses it as an escape. Link only to a host
+  file that no recorded run owns and the condition cannot change, such as `~/.bun/bin/bun`.
+- **Give each parallel condition its own seed.** A campaign holds one `.controller.lock`, so two
+  conditions or live arms from one position each need a seed; `--as-slug a,b,c` seeds them in one
+  call. The esp32 ablation arms of 2026-09-30 were three seeds of one campaign.
+- **Write it in the trail.** `seed.json` records the tree's source (`toolTreeSource`); add its size
+  and whether the actor reinstalled anyway, which is a finding about the seed, not the product.
 
 **Choose the production owner before the helper.** A session measures authoring, a Builder campaign
 also measures continuation and admission, and a full run adds measurement and routing. Read the
@@ -96,8 +163,7 @@ For admission or semantic comparisons, read [authoring-comparison](cases/authori
 from 2026-08-17). This is the whole segment's model-turn ceiling, not a tool-call limit: one turn
 may contain many tool calls. A condition may request fewer turns but never more. A segment that cannot
 answer inside about fifteen turns is badly staged, not under-funded: seed later and ask something
-narrower.
-`turn-budget-reached` is a result to read, not a failure to retry.
+narrower. `turn-budget-reached` is a result to read, not a failure to retry.
 Keep any smaller authorised bound. Turns, tool calls, submissions and elapsed time are separate:
 one native turn can contain six submissions and hours of real compiler work. Record progress and
 settlement at their own boundaries; do not add turns, nudges or a new source revision to an active
@@ -170,12 +236,14 @@ A position is four separable facts, each derived or authored on its own:
   so a seeded kickoff is proved byte-equal rather than asserted;
 - the **controller state** that put the actor here — `controller/<fullrun-*>/opening.json` and
   `terminal.json`, plus the recorded case rows for that checkpoint;
-- the **history the actor is told it lived** — the misleading part. Where the actor's own SDK
-  transcript exists (`~/.claude/projects/<workspace-slug>/*.jsonl` for a Claude slot),
-  `scripts/position-packet.mts` copies its last three to five exchanges verbatim — tool calls and
-  results — under a summary that is labelled as authored, so only the summary is yours. Ten
-  exchanges drown the situation (operator decision 2026-08-23). A Codex slot leaves a rollout
-  under `~/.codex/sessions` in another shape; there the history stays authored and labelled.
+- the **history the actor is told it lived** — the misleading part. A Claude slot's own transcript
+  lives in `$TMPDIR/ana-claude-cli-*/projects/<cwd-slug>/*.jsonl` only while its session is open;
+  `scripts/condition-evidence.mts` keeps each state of it during a live condition, and a past
+  run's `epoch-*/builder-prose*.jsonl` keeps only the words. `scripts/position-packet.mts`
+  copies a transcript's last three to five exchanges verbatim — tool calls and results — under a
+  summary labelled as authored, so only the summary is yours. Ten exchanges drown the situation
+  (operator decision 2026-08-23). A Codex slot leaves a rollout under `~/.codex/sessions` in another
+  shape; there the history stays authored and labelled.
 
 Deriving three and labelling the fourth beats a whole position hand-built for coherence. Label them
 where the predictions are written: a finding is as strong as the weakest part the behaviour
@@ -183,10 +251,9 @@ depended on.
 
 Usually no run stood exactly here, and then the quantity is the **delta to the nearest real
 position**: one battery earlier, eight tasks instead of 25, a rebuild advice packet the real run had
-settled.
-A delta you cannot state in one line means the position was decorated rather than derived. The
-condition is part of it — four conditions on 2026-08-17 ran at `--effort medium` and `low` against a run
-that pins higher, which is a different actor rather than a cheaper one.
+settled. A delta you cannot state in one line means the position was decorated rather than derived.
+The condition is part of it — four conditions on 2026-08-17 ran at `--effort medium` and `low`
+against a run that pins higher, which is a different actor rather than a cheaper one.
 
 Two traps run the other way. Real bytes are not automatically the right bytes: seeding from a run
 that predates the change under test measures the old product. And a position no completed run has
@@ -243,8 +310,7 @@ change production prose:
 
 1. **Natural transition:** A followed by B, with neither C nor D named.
 2. **Context-minus control:** the same bytes and contract without the authored transition sentence.
-3. **Counterfactual transition:** the smallest legitimate B′ for which the correct branch should
-   change.
+3. **Counterfactual transition:** the smallest legitimate B′ that should change the correct branch.
 
 The first pair measures whether the transition steered behaviour. The counterfactual measures
 whether the actor read its meaning rather than merely following its vocabulary. If B and B′ lead
@@ -278,8 +344,12 @@ a relative path or an unknown option.
 | `difficulty-watch.mts` | the authoring sequence and submit rows from recorded builder-execution records, codes only |
 | `predictions.mts` | `--hash`, `--verify`, `--resolve`, `--unresolved` on the prediction note |
 | `run-segment.mts`, `seed-kickoff.mts` | a seeded live segment over the production backend |
-| `seed-campaign.mts` | clone a recorded campaign into a fresh tree, or republish its selected product under a new slug here, with the symlink and absolute-path audit and `seed.json` |
-| `run-condition.mts` | one real controller round over a seeded slug with each slot `live`, a scripted module or `capture`; wall, sampled process census, preregistration digest, `report.json` |
+| `workspace-changes.mts` | a workspace's changed paths and `diffSha`, counted from its seeding commit, since checkpoint commits move HEAD (`--since HEAD` for the view since the last one) |
+| `seed-campaign.mts` | clone a recorded campaign into a fresh tree, or republish its selected product here under one or more new slugs (`--as-slug a,b`); symlink and absolute-path audit, the owned tool tree relocated by rule, `seed.json`; names what it could not carry (a swept tree, the epoch's notes), and `--tool-tree` stages another tree |
+| `tool-tree.mts` | whether the selected product's recorded tool tree still resolves, its size, and the family's existing trees; `--digest` says which match the recorded digest |
+| `run-condition.mts` | one real controller round over a seeded slug with each slot `live`, a scripted module, `no-solve` or `capture`; `--preset` as launch-run pins it; `--capture` compares a first prompt with an earlier capture; preflight of session variables, Built pin, tool tree and credential; wall, sampled process census, preregistration digest, `report.json` |
+| `condition-evidence.mts` | a condition's live CLI transcripts and durable Builder records, kept under content names that never overwrite (`--follow` while live), a per-session tool tally and `--grep` over the prose |
+| `credential-use.mts` | the credential file each open launched run holds, from its launch receipt; names only |
 | `judge-replay.mts` | the live Main Judge over recorded battery cases under the current prompt; verdicts and every contested row |
 | `review-settle.mts` | the live Epoch Reviewer over a scratch copy of a recorded battery and its Judge disagreements; the evidence and its public projection |
 | `host-panel.mts` | valid, equivalent and hostile artifacts for one task through the real verifier host; fingerprint before and after |
@@ -308,35 +378,28 @@ called the wrong export and failed before reaching the product fact at all; a se
 both conditions rebuilt from placeholders while the note declared an adopted-product position
 (2026-09-13; `run-segment.mts` now commits such a seed as the root and verifies the bytes).
 
-For every refusal you intend to report, name the production
-caller and confirm it passes the same arguments your script passed, from a tree set up the way
-production sets one up. If the real caller passes more, your scenario is not yet the production
-scenario.
-Preserve the failed attempt and classify its owner: simulation setup, shared product code,
-generated candidate, or provider/host environment. A repaired setup gets a new labelled attempt;
-do not fold it into a model's failure count. Reproduce a shared defect against unchanged candidate
-bytes when possible, then add the positive and nearest hostile case to its existing owning test.
+For every refusal you intend to report, name the production caller and confirm it passes the same
+arguments your script passed, from a tree set up the way production sets one up. If the real
+caller passes more, your scenario is not yet the production scenario. Preserve the failed attempt
+and classify its owner: simulation setup, shared product code, generated candidate, or
+provider/host environment. A repaired setup gets a new labelled attempt; do not fold it into a
+model's failure count. Reproduce a shared defect against unchanged candidate bytes when possible,
+then add the positive and nearest hostile case to its existing owning test.
 
 ## Test the helpers without model spend
 
-For a changed simulation script, use the repository's prepared-worktree runner and the suites in
-`test/`. From that prepared tree:
+Run a changed script's owning suites through the prepared-worktree runner; none calls a model:
 
 ```sh
-bun run test -- test/sps-*.test.mjs test/system-path-simulation-segment-loop.test.ts test/system-path-simulation-workspace-changes.test.ts test/full-run-scripted-loop.test.ts
+bun run test -- test/sps-*.test.ts test/system-path-simulation-*.test.ts test/full-run-scripted-loop.test.ts
 ```
 
-One `test/sps-<helper>.test.mjs` per helper: select only the ones owning the change. Bun never
-descends into this hidden directory, so a suite written beside its helper is never run by
-anything — `test/test-discovery-completeness.test.ts` refuses one. Zero discovered tests is not a
-pass. A prose-only skill edit needs frontmatter/link validation and diff review, not this runtime
-matrix or a paid model replay.
-
-It opens no model session. It covers the seeder's audit and republication, the runner's slot modes and refusals, the host panel's verdict rows, exact kickoff and appendix bytes, prompt-surface identity,
-strict preflight refusal before backend construction, fresh scratch-condition isolation, hostile Git
-filenames, staged and untracked workspace identity, each CLI projection, the shared turn budget,
-idle settlement and controller handover. A passing matrix is mechanism evidence for the helpers;
-it says nothing about the model behaviour a later condition measures.
+One `test/sps-<helper>.test.ts` owns each helper, and `test/sps-refusals.test.ts` holds one row
+per declared option refusal: select only the ones owning the change. Bun never descends into this
+hidden directory, so `test/test-discovery-completeness.test.ts` refuses a suite written beside its
+helper. Zero discovered tests is not a pass. A prose-only skill edit needs frontmatter/link
+validation and diff review, not this runtime matrix or a paid model replay. A passing matrix is
+mechanism evidence for the helpers, not for the model behaviour a later condition measures.
 
 ## Result
 
@@ -351,10 +414,9 @@ exercise it, schedule a command or choose the next experiment. The improvement l
 that decision and launch boundary.
 
 A deterministic check never predicts provider behaviour, output quality or later runtime branches;
-when the question is one of those, either accept the risk or run the rehearsal in
-`cases/fullrun-conditions.md`. A rehearsal's result is the prediction note with its resolution section,
-not one of the three words.
-For live conditions also report operational closure, semantic verdicts and prediction resolution
-separately. Preserve verified, unaccepted and non-result denominators; list unexecuted probes.
-A host-blocked condition can leave a prediction unresolved. Admission, a compiler exit and a
-passing generated control set each prove their own condition, not complete domain correctness.
+for those, accept the risk or run the rehearsal in `cases/fullrun-conditions.md`, whose result is
+the prediction note with its resolution section, not one of the three words. For live conditions
+also report operational closure, semantic verdicts and prediction resolution separately. Preserve
+verified, unaccepted and non-result denominators; list unexecuted probes. A host-blocked condition
+can leave a prediction unresolved. Admission, a compiler exit and a passing generated control set
+each prove their own condition, not complete domain correctness.

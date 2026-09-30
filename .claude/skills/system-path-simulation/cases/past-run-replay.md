@@ -38,13 +38,15 @@ pick into the prediction note.
 ## 2. Take the position from the snapshot bytes
 
 Open the campaign of the chosen run (the run root is recorded in the synthesis; live runs sit in
-their own worktrees) and read, in this order: `controller/<runId>/opening.json` for source, epoch
+their own worktrees; a seeded condition's `seed.json` names its source) and read, in this order: `controller/<runId>/opening.json` for source, epoch
 and the three slots; `difficulty-watch.mts --campaign` for the authoring sequence and the submit rows;
 the recorded case rows for the checkpoint you replay. Derive the four position facts from the
 position section of `SKILL.md`; the history the actor is told it lived is the only authored part.
-Where the run's Builder ran on a Claude slot, its transcript sits under
-`~/.claude/projects/<workspace-slug>/` and `position-packet.mts --transcript <jsonl>
---summary-file <md> --exchanges 5` copies the last exchanges verbatim under your summary, so the
+Where the run's Builder ran on a Claude slot, its transcript lived under
+`$TMPDIR/ana-claude-cli-*/projects/<cwd-slug>/` only while its session was open, so a past run
+keeps only the words, in `epoch-*/builder-prose*.jsonl`; `condition-evidence.mts` keeps the
+transcript of a condition you run now. With a kept transcript, `position-packet.mts --transcript
+<jsonl> --summary-file <md> --exchanges 5` copies the last exchanges verbatim under your summary, so the
 actor resumes from its own last tool results rather than from your account of them. The delta to
 the real position is `commitsSince` plus whatever
 `git log --oneline <source>..HEAD -- <paths>` lists for the component.

@@ -87,6 +87,10 @@ severity now reads each finding's own evidence, so both would be admitted as rec
   reads no prior occurrence and can dispute nothing. That is the weaker condition, not a refusal.
 - An old run's `.toolchain` link may point at an epoch workspace that no longer holds the tools;
   the review then ends `incomplete` with the three verifier entries missing, and still settles the
-  veto. That is the recorded position's property, not a staging fault.
-- The review slot is the one in `--repo`'s `.env` chain; a drained account returns 429 as a
-  transport error on every sample. Check `bun run login -- status` first.
+  veto. That is the recorded position's property, not a staging fault. `tool-tree.mts --campaign`
+  says so before the replay and lists the family's trees that still exist.
+- The review slot is the one in `--repo`'s `.env` chain unless the process environment names
+  another; a drained account returns 429 as a transport error on every sample. Read
+  `.accounts/usage` first. When the account is not the plain one, run the script as
+  `bun --env-file=.accounts/claudeN.env …`, following SKILL.md's steward rule. Both scripts strip
+  the launching session's `CLAUDE*` variables before the slot opens and print the names.

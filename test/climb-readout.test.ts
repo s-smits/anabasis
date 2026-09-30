@@ -409,6 +409,25 @@ describe("rendering", () => {
     const text = render(readoutOf(row("r1", 0, { passed: 6, n: 6 }), row("r2", 1, { passed: 3, n: 6 })));
     expect(text).not.toContain("found no limit");
   });
+
+  it("says how much of the solve wall a full pass's slowest solve took", () => {
+    // Of 233 all-pass batteries from 2026-09-25 to 09-30, 153 finished their slowest solve inside a
+    // tenth of the 120-minute wall, and the round that authored the next one was never told so.
+    const effort = { cases: 6, turns: 3, minutes: 3.1, toolCalls: 12 };
+    expect(render(readoutOf(row("r1", 0, { passed: 6, n: 6, effort })))).toContain(
+      "across what the request names and no task does yet. Its slowest solve took 3.1 of the 120 minutes a solve may run. Record in your notes",
+    );
+    // Unrecorded minutes stay unsaid rather than read as none.
+    expect(
+      render(readoutOf(row("r1", 0, { passed: 6, n: 6, effort: { ...effort, minutes: null } }))),
+    ).not.toContain("slowest solve");
+    // A battery that failed a case, or lost one to a non-result, says nothing of it.
+    const silent = [
+      row("r1", 0, { passed: 3, n: 6, effort }),
+      row("r1", 0, { passed: 1, n: 1, slots: 6, effort }),
+    ];
+    for (const battery of silent) expect(render(readoutOf(battery))).not.toContain("slowest solve");
+  });
 });
 
 describe("the history page", () => {

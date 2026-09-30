@@ -379,7 +379,10 @@ function familyLine(readout: ClimbReadout): string | null {
  *  are already public, in the context tool's traces source. It asks the Builder to write down the
  *  requirement the next battery changes (AGENTS.md rule 11), and argues for no route: an all-pass
  *  streak's only standing push used to be "demand more", which named nothing, while a plan written
- *  into the notes was carried and built (Luna lanes, 2026-09-29). */
+ *  into the notes was carried and built (Luna lanes, 2026-09-29). It also says how much of the solve
+ *  wall the slowest solve took: of 233 all-pass batteries from 2026-09-25 to 09-30, 153 finished
+ *  theirs inside a tenth of the 120-minute wall (median 5.9 minutes), sized to the Builder's own
+ *  reference, and the round that set the next one read only that every case had passed. */
 function noLimitLine(row: ReadoutRow): string | null {
   const { runId, passed, verified, unaccepted, nonResults } = row;
   if (verified === 0 || unaccepted > 0 || passed !== verified) return null;
@@ -388,7 +391,12 @@ function noLimitLine(row: ReadoutRow): string | null {
     const lost = nonResults === 1 ? "one case" : `${String(nonResults)} cases`;
     return `Battery ${runId} passed ${all} and ${lost} ended as non-results that scored nothing, so it found no limit among the cases it scored and did not measure the rest.`;
   }
-  return `Battery ${runId} passed ${all}, so it found no limit: the next battery has to demand more of the field's own work than this one did, deeper in what its tasks already exercise or across what the request names and no task does yet. Record in your notes which public requirement it changes and the reasoning that change adds. ${MEASURE_SOLVES}`;
+  const slowest = row.effort?.minutes ?? null;
+  const spent =
+    slowest === null || row.solveWallMinutes === null
+      ? ""
+      : ` Its slowest solve took ${String(slowest)} of the ${String(row.solveWallMinutes)} minutes a solve may run.`;
+  return `Battery ${runId} passed ${all}, so it found no limit: the next battery has to demand more of the field's own work than this one did, deeper in what its tasks already exercise or across what the request names and no task does yet.${spent} Record in your notes which public requirement it changes and the reasoning that change adds. ${MEASURE_SOLVES}`;
 }
 
 /**

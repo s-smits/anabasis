@@ -1,0 +1,63 @@
+diff --git a/AGENTS.md b/AGENTS.md
+index 66fefe44f1d2a16e95e2c1b370bd9ee4807521d8..fa9f2a210513a7f7984b7933e289dc38dfcd717b 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -135,6 +135,12 @@ because moving it cost something.
+     yet measured ("Open gaps"), and which requirements, which limit and how far stay the Builder's (prior
+     5). Useful adopted work is retained.
+
++Experimental arm `ABLATED(shared-margin)` removes only the system prompt's shared-margin definition.
++It retains the demand goal, the round and no-limit coupling advice, all correctness controls and the
++ordinary climb. This is a measurement condition, not a revision of the settled priors. Restore the
++marked line in `src/author/builder-start-prompt.ts` and its expectation in
++`test/builder-start-prompt.test.ts`, or revert the arm commit, to recover the control.
++
+ ### Owners and handoffs
+
+ Four owners divide the work, and what each one never owns matters as much as what it does. The Harness
+diff --git a/src/author/builder-start-prompt.ts b/src/author/builder-start-prompt.ts
+index 31c6ae006779a933f9138eacf25f8cc564607daf..6aaa7ba137987707ef62ed09aadc82ca138528ae 100644
+--- a/src/author/builder-start-prompt.ts
++++ b/src/author/builder-start-prompt.ts
+@@ -21,7 +21,7 @@ import { DCG_RULES } from "../solve/dcg-rules.ts";
+  *  battery that fails some of its cases on the rules it publishes (AGENTS.md "Goals and the
+  *  climb"). It states no count, share or zone.
+  *
+- *  The last line puts depth in the first tasks and is the one place it is defined; the round
++ *  In the control, the last line puts depth in the first tasks and defines a shared margin; the round
+  *  prompt's raise and the no-limit line name it at their moments without defining it again. Its
+  *  clause is the no-limit line's, because requirements side by side are not yet depth: each of
+  *  firmware 7a97af's five first tasks combined several and all 10 solves passed in minutes, while
+@@ -31,7 +31,9 @@ export const INTENT_CLAUSE = [
+   "You are the Builder. From the one-line request you build a product the controller adopts and measures: a Built Harness in agent/ with which a separate solving model answers each task, and a correctness model in correctness-model/ that decides, without the solver's help, whether an answer is right. Useful computation belongs in the solver's tools; the host verifier owns correctness and the controller owns acceptance, scores and claims.",
+   "A round succeeds when the controller accepts a candidate whose checks separate a correct answer from a convincing wrong one in every family. A sound candidate measured now teaches more than a better one measured later; after measurement, choose the next experiment the recorded evidence supports.",
+   "An ambitious round expects its battery to fail some cases on the rules it publishes: a battery the solver passes whole says nothing about where it stops.",
+-  "Build that demand into the first tasks, not later: make several of the request's requirements act together on a single answer, so that meeting one spends the margin another needs.",
++  // ABLATED(shared-margin): restore this line instead of the one below to recover the control.
++  // "Build that demand into the first tasks, not later: make several of the request's requirements act together on a single answer, so that meeting one spends the margin another needs.",
++  "Build that demand into the first tasks, not later.",
+ ] as const;
+
+ /** Where the tools are rooted and what is submitted. The pack is the whole standing channel into an
+diff --git a/test/builder-start-prompt.test.ts b/test/builder-start-prompt.test.ts
+index bb628cc9c2dd72fd5b0686358d368c9f1a67f752..f6f40c699d92d721a4ea3e0b9fc6b185ec616eda 100644
+--- a/test/builder-start-prompt.test.ts
++++ b/test/builder-start-prompt.test.ts
+@@ -201,12 +201,11 @@ describe("Builder start prompt", () => {
+     }
+   });
+
+-  /** Firmware 7a97af's first tasks each combined several requirements and every solve still passed in
+-   *  minutes, so the intent clause defines depth by requirements that compete for one margin, and it
+-   *  is the one surface that defines it. */
+-  it("asks for depth in the first tasks, as requirements that compete", () => {
+-    expect(flat(INTENT_CLAUSE.join(" "))).toContain("Build that demand into the first tasks, not later:");
+-    expect(PROMPT).toContain(
++  /** The arm retains first-task demand while leaving its method open. Coupling advice in the round
++   *  and no-limit readout is deliberately outside this narrow intervention. */
++  it("keeps demand in the first tasks without prescribing a shared margin", () => {
++    expect(flat(INTENT_CLAUSE.join(" "))).toContain("Build that demand into the first tasks, not later.");
++    expect(PROMPT).not.toContain(
+       "several of the request's requirements act together on a single answer, so that meeting one spends the margin another needs.",
+     );
+     expect(PROMPT).not.toContain("transcription");

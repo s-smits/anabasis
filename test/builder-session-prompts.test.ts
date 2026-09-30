@@ -38,6 +38,7 @@ import { BuilderAuthorFeedback } from "../src/builder/author-feedback.ts";
 import { createRunObserver } from "../src/observe/run-observer.ts";
 import { controllerValidatedFinding, controllerValidatedFindings } from "../src/correctness-bundle/brief.ts";
 import { required } from "./helpers/doubles.ts";
+import { expectNoRestatedDuty } from "./helpers/duty-overlap.ts";
 import {
   ACCEPTED,
   INPUT,
@@ -133,15 +134,16 @@ describe("what the round prompt says a rehearsal is", () => {
     expect(text).not.toContain("until a rehearsal fails");
   });
 
-  // The raise before submit names the no-limit line's depth route, because that line reaches a
-  // Builder only after a full pass in its own readout. Firmware 7a97af-i02's round raised by five new
-  // device families instead and stopped at what its simulator could model; all five cases passed.
+  // The raise before submit names depth, which the intent clause defines, because a raise otherwise
+  // widens: firmware 7a97af-i02's round raised by five new device families instead and stopped at what
+  // its simulator could model; all five cases passed.
   it("names depth, not widening, as the raise when every rehearsal passed", async () => {
     const text = (await freshPrompt({ workspace: workspace("rehearsal-depth") })).replace(/\s+/g, " ");
     expect(text).toContain(
-      "raise what its hardest tasks demand by making more of the requirements the request names act together on one answer under one shared limit, not by adding tasks, families or inputs at the same demand",
+      "raise what its hardest tasks demand by making more of the request's requirements act together, not by adding tasks, families or inputs at the same demand",
     );
     expect(text).not.toContain("change what its hardest tasks demand and rehearse");
+    expectNoRestatedDuty(text);
   });
 });
 

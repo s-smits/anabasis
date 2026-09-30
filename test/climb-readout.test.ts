@@ -34,6 +34,7 @@ import { capturedJsonParse } from "../src/meta/json-runtime.ts";
 import { isRecord } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { required } from "./helpers/doubles.ts";
+import { expectNoRestatedDuty } from "./helpers/duty-overlap.ts";
 
 const BAND: [number, number] = [0.2, 0.5];
 const DOMAIN = "/nonexistent-domain";
@@ -384,14 +385,15 @@ describe("rendering", () => {
     // A full pass also names what to read before the next battery: how the passing solves won, not how
     // far their answers sat from the reference. Pointed at that distance, every round of the five
     // all-pass batteries of run 6a8ca0 (2026-09-30) moved limits or enlarged instances that the solver's
-    // same enumeration still settled in one turn. Depth is requirements acting together under one
-    // shared limit, and no widening route is offered: a wider battery at the same demand passed whole.
+    // same enumeration still settled in one turn. The line names depth, which the intent clause
+    // defines, and offers no widening route: a wider battery at the same demand passed whole.
     expect(render(readoutOf(row("r1", 0, { passed: 6, n: 6 })))).toContain(
-      "Battery r1 passed all 6 of its verified cases, so it found no limit. More tasks, families, inputs or scenarios at the same demand measure the same reach again, so the next battery has to demand more of the field's own work within its tasks: make more of the requirements the request names act together on one answer under one shared limit, so that meeting one spends the margin another needs, in tasks you expect the solver to fail. Carry none of its tasks forward unchanged, since a task it passed measures the same pass again: raise what each one demands or replace it. Record in your notes which public requirement it changes and the reasoning that change adds. Before you set the next battery, read how its passing solves reached their answers, the tools they called and the search they ran: a limit moved or an instance enlarged while those same steps would still find an answer asks nothing new, so the change has to be one those steps do not settle.",
+      "Battery r1 passed all 6 of its verified cases, so it found no limit. More tasks, families, inputs or scenarios at the same demand measure the same reach again, so the next battery has to demand more of the field's own work within its tasks: make more of the request's requirements act together in each task, in tasks you expect the solver to fail. Carry none of its tasks forward unchanged, since a task it passed measures the same pass again: raise what each one demands or replace it. Record in your notes which public requirement it changes and the reasoning that change adds. Before you set the next battery, read how its passing solves reached their answers, the tools they called and the search they ran: a limit moved or an instance enlarged while those same steps would still find an answer asks nothing new, so the change has to be one those steps do not settle.",
     );
     expect(render(readoutOf(row("r1", 0, { passed: 1, n: 1 })))).toContain(
       "Battery r1 passed its one verified case, so it found no limit",
     );
+    expectNoRestatedDuty(render(readoutOf(row("r1", 0, { passed: 6, n: 6 }))));
     expect(render(readoutOf(row("r1", 0, { passed: 6, n: 6 })))).not.toContain(
       "across what the request names",
     );

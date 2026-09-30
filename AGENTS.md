@@ -524,9 +524,10 @@ closes it.
 
 - **First tasks combine requirements that the solver still meets in minutes** (firmware 7a97af under
   "Authoring"), and 7 of 29 firmware batteries passed with a harness that only compiled. Depth reached a
-  Builder only after a full pass or after every rehearsal passed. Owner: the last line of `INTENT_CLAUSE` (818bee65), which is not yet measured. Change
-  `SCOPE_CLAUSE` ("let the tasks span them", "vary its stated conditions") only if that line does not
-  carry it.
+  Builder only after a full pass or after every rehearsal passed. Owner: the last line of
+  `INTENT_CLAUSE`, which since 2026-09-30 defines depth as requirements that compete, "so that meeting
+  one spends the margin another needs", and is not yet measured. Change `SCOPE_CLAUSE` ("let the tasks
+  span them", "vary its stated conditions") only if that line does not carry it.
 - **Graduation may dilute a bracket.** A probe at 2/6 or 3/6 grows to 25 tasks and the ~19 added tasks
   pass, in 10 of 13 recorded regresses, and with every probe fail held 12 of 13 would still read too
   easy. The added tasks are not isolated as the cause: 10 of the 11 former-limit tasks carried unchanged
@@ -588,9 +589,14 @@ without new evidence that answers it.
   the batteries of 2026-09-23 to 30, 71 of the 74 scored batteries after a widened edge from a full pass
   passed whole. The one recorded demand that dropped pass rates was interaction: on the 2026-09-15 truss
   pack series, one added interaction per task passed 22 of 23 (Sol high), while the same requirements
-  stacked inside one shared mass limit passed 7 of 20 (Sol high) and 2 of 23 (Opus 5). The no-limit
-  line, the round prompt's raise before submit and the intent clause now name that depth and no other
-  route.
+  stacked inside one shared mass limit passed 7 of 20 (Sol high) and 2 of 23 (Opus 5). The intent
+  clause defines that depth, the round prompt's raise before submit and the no-limit line name it at
+  their moments, and no surface offers another route.
+- **Stating each passing solve's slack against every published limit in the opening** (`solverRecord`),
+  2026-09-29 to 30. It was added because Builders setting their next limits did not open the traces,
+  and so it pointed every round at limit distance: the twin of the reference-distance pointer above,
+  and the route the witness test did not show makes a task hard (prior 10). It was not measured on its
+  own. The same margins stay beside each passing artifact in the context tool's traces.
 - **Searching each reference as long as a solve may run** (`witness-budget`, one sentence in
   `renderBatteryContract`), 2026-09-30, and twice before unmeasured (83a24567, d21f1a27). As a duty it
   bound every task to one method: its truss prediction did not hold as frozen (prior 10), in firmware,
@@ -1219,10 +1225,12 @@ the battery was paid for.
     not show it (prior 10). Tightening stays legitimate, since a slack limit is a finding about its
     reference, and a longer search stays an optional method; what the evidence does not support is
     leading with it as the route to difficulty, as `examples.md`'s list still does ("Open gaps"). Each
-    prompt says it once: the Builder system prompt owns the clauses, `examples.md` the optional routes
-    to a target the solver does not reliably meet, and
+    prompt says it once: the Builder system prompt owns the clauses, publication and the definition of
+    depth among them, `examples.md` the optional routes to a target the solver does not reliably meet,
     `roundPrompt` and `renderBatteryContract` when to submit and what a witness proves, and the climb
-    readout's no-limit line asks for the changed requirement and its reasoning in the notes. The round prompt asks for a submit once a clear preview says the candidate works, because the
+    readout's no-limit line asks for the changed requirement and its reasoning in the notes.
+    `test/helpers/duty-overlap.ts` holds the kickoff, the round prompt, the contract, the full-pass
+    readout and the sizing sentences to that: none may restate a sentence the system prompt carries. The round prompt asks for a submit once a clear preview says the candidate works, because the
     measured battery, not a rehearsal, decides where it lands (`WITNESS`), and nothing holds a submit on rehearsals
     (the 96-of-99 history is under "What has cost whole rounds").
 

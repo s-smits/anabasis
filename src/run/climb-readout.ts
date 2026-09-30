@@ -155,9 +155,6 @@ const LIMIT =
 const MEASURE_SOLVES =
   "Before you set the next battery, read how its passing solves reached their answers, the tools they called and the search they ran: a limit moved or an instance enlarged while those same steps would still find an answer asks nothing new, so the change has to be one those steps do not settle.";
 
-const BOUNDARY =
-  "Publish every rule the verifier applies, including rounding and enforced fallback or tie-break rules. Keep solved task-specific fixtures, hidden expectations, reference answers and protected verifier information out of the public surface.";
-
 /** The one difficulty decision. Pure: the latest battery decides, earlier ones are evidence. The
  *  band is already bounded where it is read: `climbThresholds` takes a manifest row only through
  *  `band01`, which falls back to policy on an inverted, non-numeric or out-of-range pair. */
@@ -388,10 +385,9 @@ export function fullPass({
  *
  *  On a full pass the line asks for tasks the Builder expects the solver to fail and rules out
  *  carrying one forward unchanged, since a bare push to "demand more" is answered by growth and by
- *  passed tasks measured again. It names depth as requirements acting together on one answer under
- *  one shared limit and offers no widening route, because a wider battery at the same demand passed
- *  whole again while stacked requirements were what dropped pass rates (AGENTS.md "Goals and the
- *  climb"). It asks for the changed requirement and its reasoning in the notes
+ *  passed tasks measured again. It names depth, which the intent clause defines, and offers no
+ *  widening route, because a wider battery at the same demand passed whole again while stacked
+ *  requirements were what dropped pass rates (AGENTS.md "Goals and the climb"). It asks for the changed requirement and its reasoning in the notes
  *  (AGENTS.md rule 11), where a plan is carried. It states how much of the
  *  solve wall the slowest solve took, because a battery sized to the Builder's own reference can
  *  finish far inside it while the next round reads only that every case passed. It ends with
@@ -409,7 +405,7 @@ function noLimitLine(row: ReadoutRow): string | null {
     slowest === null || row.solveWallMinutes === null
       ? ""
       : ` Its slowest solve took ${String(slowest)} of the ${String(row.solveWallMinutes)} minutes a solve may run.`;
-  return `Battery ${runId} passed ${all}, so it found no limit. More tasks, families, inputs or scenarios at the same demand measure the same reach again, so the next battery has to demand more of the field's own work within its tasks: make more of the requirements the request names act together on one answer under one shared limit, so that meeting one spends the margin another needs, in tasks you expect the solver to fail. Carry none of its tasks forward unchanged, since a task it passed measures the same pass again: raise what each one demands or replace it.${spent} Record in your notes which public requirement it changes and the reasoning that change adds. ${MEASURE_SOLVES}`;
+  return `Battery ${runId} passed ${all}, so it found no limit. More tasks, families, inputs or scenarios at the same demand measure the same reach again, so the next battery has to demand more of the field's own work within its tasks: make more of the request's requirements act together in each task, in tasks you expect the solver to fail. Carry none of its tasks forward unchanged, since a task it passed measures the same pass again: raise what each one demands or replace it.${spent} Record in your notes which public requirement it changes and the reasoning that change adds. ${MEASURE_SOLVES}`;
 }
 
 /**
@@ -442,14 +438,14 @@ export function renderReadout(readout: ClimbReadout | null, reason: string): str
     .join("\n\n");
 }
 
-/** The battery contract a round opens with: what a battery's result says, the witness sentence and
- *  the publication boundary. A probe range leaves the result sentence to `renderProbeSizing`, which
+/** The battery contract a round opens with: what a battery's result says and the witness sentence.
+ *  Publication is the system prompt's (`PUBLICATION_CLAUSE`), stated once there. A probe range leaves the result sentence to `renderProbeSizing`, which
  *  already says what a probe must pass before the requested size. No count is
  *  stated at any size: a count per size read as a target to author towards, and how to reach a
  *  limit is the Builder's. */
 export function renderBatteryContract(n: number, min: number = n): string {
   const limit = min < n ? "" : `${LIMIT} `;
-  return `${limit}Every task must be valid and solved by your reference. ${WITNESS} ${BOUNDARY}`;
+  return `${limit}Every task must be valid and solved by your reference. ${WITNESS}`;
 }
 
 /**

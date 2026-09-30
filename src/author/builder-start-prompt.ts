@@ -21,15 +21,17 @@ import { DCG_RULES } from "../solve/dcg-rules.ts";
  *  battery that fails some of its cases on the rules it publishes (AGENTS.md "Goals and the
  *  climb"). It states no count, share or zone.
  *
- *  The last line puts depth in the first tasks. The round prompt names it only as the route of a
- *  raise before submit, and a first round authored without it wrote one published behaviour per
- *  task: all 10 solves of firmware 7a97af passed in a few minutes of their wall, 9 of them with the
- *  first draft unedited. */
+ *  The last line puts depth in the first tasks and is the one place it is defined; the round
+ *  prompt's raise and the no-limit line name it at their moments without defining it again. Its
+ *  clause is the no-limit line's, because requirements side by side are not yet depth: each of
+ *  firmware 7a97af's five first tasks combined several and all 10 solves passed in minutes, while
+ *  on the truss pack series the same requirements passed 22 of 23 one interaction at a time and 7 of
+ *  20 inside one shared limit (AGENTS.md prior 10, "Tried and taken out"). */
 export const INTENT_CLAUSE = [
   "You are the Builder. From the one-line request you build a product the controller adopts and measures: a Built Harness in agent/ with which a separate solving model answers each task, and a correctness model in correctness-model/ that decides, without the solver's help, whether an answer is right. Useful computation belongs in the solver's tools; the host verifier owns correctness and the controller owns acceptance, scores and claims.",
   "A round succeeds when the controller accepts a candidate whose checks separate a correct answer from a convincing wrong one in every family. A sound candidate measured now teaches more than a better one measured later; after measurement, choose the next experiment the recorded evidence supports.",
   "An ambitious round expects its battery to fail some cases on the rules it publishes: a battery the solver passes whole says nothing about where it stops.",
-  "Build that demand into the first tasks, not later: a task asking for one published behaviour is transcription for a strong solver, while one where several of the request's requirements act together on a single answer makes it derive what they require together.",
+  "Build that demand into the first tasks, not later: make several of the request's requirements act together on a single answer, so that meeting one spends the margin another needs.",
 ] as const;
 
 /** Where the tools are rooted and what is submitted. The pack is the whole standing channel into an
@@ -78,8 +80,8 @@ export const NO_GRADER_IN_REACH =
  *  "Goals and the climb"). The program sentence answers harnesses that published an exact call
  *  sequence and graded a call trace, which turned writing the program into transcribing it. */
 export const PUBLICATION_CLAUSE = [
-  "Publish everything the verifier requires of an answer wherever the solver reads it: constants with their authority, units, precision and rounding, comparison direction and tolerance, canonical form, required paths and entry points, and the assumptions an installed tool applies. A solver that follows every published rule must never fail on a rule it could not read; where a practitioner could read a rule two ways, the brief states the verified reading.",
-  "Withhold hidden expectations, private controls and decisions, reference answers and protected verifier information from everything the solver reads, in any wording, tool results included. For a program, publish the behaviour it must show, not the calls or steps that produce it: a published sequence turns writing the program into transcribing it.",
+  "Publish everything the verifier requires of an answer wherever the solver reads it: constants with their authority, units, precision and rounding, comparison direction and tolerance, canonical form, tie-break and fallback rules, required paths and entry points, and the assumptions an installed tool applies. A solver that follows every published rule must never fail on a rule it could not read; where a practitioner could read a rule two ways, the brief states the verified reading.",
+  "Withhold hidden expectations, private controls and decisions, reference answers, solved task-specific fixtures and protected verifier information from everything the solver reads, in any wording, tool results included. For a program, publish the behaviour it must show, not the calls or steps that produce it: a published sequence turns writing the program into transcribing it.",
   "Give the solver a practitioner's tools — the real toolchain it builds with, readers, writers, a bounded search — and leave it the analysis and the decision the task asks for.",
   NO_GRADER_IN_REACH,
 ] as const;

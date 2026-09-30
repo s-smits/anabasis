@@ -110,7 +110,7 @@ function decimal(value: number): string {
   return Number.isInteger(value) ? String(value) : String(Number(value.toPrecision(10)));
 }
 
-export function marginLine(reading: MarginReading): string {
+function marginLine(reading: MarginReading): string {
   const bound = reading.direction === "atMost" ? "at most" : "at least";
   if (reading.slack === null) {
     const missing = reading.derived

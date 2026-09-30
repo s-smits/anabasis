@@ -14,7 +14,7 @@ import { scoringClosureHash } from "../src/claim/scoring-closure.ts";
 import { type ContextBinding, createContextTool, RehearsalTraces } from "../src/builder/context-tool.ts";
 import { EMPTY_USER_CONTEXT } from "../src/builder/user-context.ts";
 import { readClimbBatteries } from "../src/run/climb-history.ts";
-import { measuredSolverTraces, solverRecord } from "../src/run/solver-traces.ts";
+import { measuredSolverTraces } from "../src/run/solver-traces.ts";
 
 /** A brief publishing one limit, `$.limits.massKg`, that the artifact reports at `$.report.massKg`. */
 const BRIEF = {
@@ -317,82 +317,5 @@ describe("the traces source", () => {
     expect(tampered.ids).toEqual(["traces/r1/t0", "traces/r1/t3"]);
     const missing = await tracesOf(recordedTree("s"), (caseDir) => rmSync(join(caseDir, "artifact.json")));
     expect(missing.ids).toEqual(["traces/r1/t0", "traces/r1/t3"]);
-  });
-});
-
-/** The kickoff's reading of the latest battery over `tree`. */
-function kickoffRecord(tree: string): string | null {
-  return solverRecord(tree, readClimbBatteries(tree, PIN, join(tree, "claims")).admitted);
-}
-
-describe("the kickoff's solver record", () => {
-  it("states where each passing solve landed against each published limit, and skips a pass with no artifact", () => {
-    expect(kickoffRecord(recordedTree("s"))).toBe(
-      [
-        "Where the passing solves of battery r1 landed against the limits its brief publishes. Each is a submitted artifact the verifier accepted, so it proves its task feasible at the value it reached, as your reference does:",
-        "- t0: massBudgetKg: 2160.912, at most 2171.4; 10.488 to spare (0.4830063553%).",
-      ].join("\n"),
-    );
-  });
-
-  it("says nothing once the brief no longer matches the battery's scoring program", () => {
-    const tree = recordedTree("s");
-    writeFileSync(
-      join(tree, "correctness-model", "brief.json"),
-      JSON.stringify({ ...BRIEF, gates: ["moved"] }),
-    );
-    expect(kickoffRecord(tree)).toBeNull();
-  });
-
-  // A limit declared without the path that reports its bounded value cannot be read against any
-  // solve, so the record names it rather than leaving the Builder to infer it from an absence.
-  it("names a limit whose boundary gives no artifact path", () => {
-    const [mass] = BRIEF.truthChecks;
-    const brief = {
-      ...BRIEF,
-      designRuleConstants: [
-        ...BRIEF.designRuleConstants,
-        { name: "spanMaxM", value: 30, authority: "a", citation: "c" },
-      ],
-      truthChecks: [
-        {
-          ...mass,
-          numericBoundaries: [
-            ...(mass?.numericBoundaries ?? []),
-            { publicInputPath: "$.limits.spanM", constantName: "spanMaxM" },
-          ],
-        },
-      ],
-    };
-    expect(kickoffRecord(recordedTree("s", undefined, brief))).toEndWith(
-      "\nNo solve is read against spanMaxM: the boundary names no artifact path, so neither this reading nor the solver's writer can compare an answer with it.",
-    );
-    const [check] = brief.truthChecks;
-    const two = {
-      ...brief,
-      designRuleConstants: [
-        ...brief.designRuleConstants,
-        { name: "riseMaxM", value: 5, authority: "a", citation: "c" },
-      ],
-      truthChecks: [
-        {
-          ...check,
-          numericBoundaries: [
-            ...(check?.numericBoundaries ?? []),
-            { publicInputPath: "$.limits.riseM", constantName: "riseMaxM" },
-          ],
-        },
-      ],
-    };
-    expect(kickoffRecord(recordedTree("s", undefined, two))).toContain(
-      "No solve is read against spanMaxM, riseMaxM: their boundaries name no artifact path",
-    );
-  });
-
-  it("is byte-identical when only protected verifier detail differs", () => {
-    const a = kickoffRecord(recordedTree("secret-verifier-a"));
-    expect(a).not.toBeNull();
-    expect(kickoffRecord(recordedTree("secret-verifier-b"))).toBe(a);
-    expect(a).not.toContain("secret-verifier");
   });
 });

@@ -17,6 +17,7 @@ import { describe, expect, it } from "bun:test";
 import { existsSync, readFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 import { STARTER_DOC, STARTER_ENTRY } from "./helpers/starter-contracts.ts";
+import { SYSTEM_SENTENCES, expectNoRestatedDuty, flat, overlap } from "./helpers/duty-overlap.ts";
 // The producer's own module. builder-session.ts re-exports the prompt, but a prompt test that names
 // the barrel says the session owns the prompt text.
 import {
@@ -29,12 +30,12 @@ import {
 import { MEMORY_FILE, SCRATCHPAD_FILE } from "../src/author/builder-memory.ts";
 import { SUBMIT_DESCRIPTION } from "../src/gate/submit-tool.ts";
 import { renderBatteryContract } from "../src/run/climb-readout.ts";
+import { renderProbeSizing } from "../src/run/battery-sizing.ts";
 import { directKickoff } from "../src/run/direct-input.ts";
 import { DCG_RULES } from "../src/solve/dcg-rules.ts";
 import { DEFAULT_HARNESS_SETTINGS } from "../src/correctness-bundle/harness-config.ts";
 import { CENSUS_LANES } from "../src/correctness-bundle/run-controls.ts";
 
-const flat = (text: string) => text.replace(/\s+/g, " ");
 const bytes = (text: string) => new TextEncoder().encode(text).byteLength;
 
 /** src/ as one text: a taught refusal code is held to a literal the source still emits, and a wall
@@ -46,18 +47,6 @@ const SOURCE_TEXT = [...new Bun.Glob("**/*.ts").scanSync(SRC_DIR)]
   .join("\n");
 
 const PROMPT = builderSystemPrompt(true);
-
-/** Sentences of the composed prompt, for the properties that read one duty at a time. */
-const SENTENCES = PROMPT.split(/(?<=[.:])\s+/)
-  .map(flat)
-  .filter((line) => line.length > 40);
-
-const words = (line: string) => new Set(line.toLowerCase().match(/[a-z]{4,}/g) ?? []);
-
-function overlap(left: Set<string>, right: Set<string>): number {
-  const shared = [...left].filter((word) => right.has(word)).length;
-  return shared / Math.min(left.size, right.size);
-}
 
 describe("Builder start prompt", () => {
   /** The prompt is paid on every turn of every authoring session; STARTER.md is paid once. So the
@@ -172,9 +161,9 @@ describe("Builder start prompt", () => {
    *  the clause body and again in the closing paragraph; left to hand inspection, that repetition
    *  surfaces only when someone needs the bytes back. */
   it("states each duty once", () => {
-    for (const [index, sentence] of SENTENCES.entries()) {
-      for (const other of SENTENCES.slice(index + 1)) {
-        expect(overlap(words(sentence), words(other)), `${sentence}\n~~\n${other}`).toBeLessThan(0.55);
+    for (const [index, sentence] of SYSTEM_SENTENCES.entries()) {
+      for (const other of SYSTEM_SENTENCES.slice(index + 1)) {
+        expect(overlap(sentence, other), `${sentence}\n~~\n${other}`).toBeLessThan(0.55);
       }
     }
   });
@@ -190,8 +179,8 @@ describe("Builder start prompt", () => {
     });
     const closing = kickoff.split("\n").at(-1) ?? "";
     for (const line of closing.split(/(?<=[.:])\s+/).map(flat)) {
-      for (const sentence of SENTENCES) {
-        expect(overlap(words(line), words(sentence)), `${line}\n~~\n${sentence}`).toBeLessThan(0.55);
+      for (const sentence of SYSTEM_SENTENCES) {
+        expect(overlap(line, sentence), `${line}\n~~\n${sentence}`).toBeLessThan(0.55);
       }
     }
   });
@@ -200,11 +189,36 @@ describe("Builder start prompt", () => {
    *  the one surface that points at it, so the prompt carries neither that pointer nor a recipe. The
    *  counts stay with the authoring context that knows this run's battery size (AGENTS.md prior 10:
    *  no course is prescribed). */
-  /** Firmware 7a97af's first round wrote one published behaviour per task, and every solve passed in
-   *  minutes with the first draft; the round prompt named depth only for a raise before submit. */
-  it("asks for depth in the first tasks, not only in a later raise", () => {
+  /** Firmware 7a97af's first tasks each combined several requirements and every solve still passed in
+   *  minutes, so the intent clause defines depth by requirements that compete for one margin, and it
+   *  is the one surface that defines it. */
+  it("asks for depth in the first tasks, as requirements that compete", () => {
     expect(flat(INTENT_CLAUSE.join(" "))).toContain("Build that demand into the first tasks, not later:");
-    expect(PROMPT).toContain("several of the request's requirements act together on a single answer");
+    expect(PROMPT).toContain(
+      "several of the request's requirements act together on a single answer, so that meeting one spends the margin another needs.",
+    );
+    expect(PROMPT).not.toContain("transcription");
+  });
+
+  /** The contract, the sizing sentences and the trial tool are read at their own moments, beside the
+   *  system prompt; each names its trigger and leaves the duty to the clause that owns it. */
+  it("leaves the contract, the sizing sentences and the trial tool no duty the system prompt states", () => {
+    for (const text of [
+      renderBatteryContract(25),
+      renderBatteryContract(10, 5),
+      renderProbeSizing({ min: 5, max: 10 }, 25, null) ?? "",
+      renderProbeSizing({ min: 25, max: 25 }, 25, 6) ?? "",
+    ]) {
+      expectNoRestatedDuty(text);
+    }
+  });
+
+  /** The contract once restated the publication clause in its own words every round; the system
+   *  prompt owns it, including the tie-break and fallback rules only the restatement named. */
+  it("owns publication, which the battery contract no longer restates", () => {
+    expect(PROMPT).toContain("tie-break and fallback rules");
+    expect(PROMPT).toContain("solved task-specific fixtures");
+    expect(flat(renderBatteryContract(25))).not.toContain("Publish");
   });
 
   it("points at measurement for difficulty and prescribes no course", () => {

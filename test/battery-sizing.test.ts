@@ -141,7 +141,7 @@ describe("a product past the probe keeps the smallest size that still holds its 
 describe("the probe sentence", () => {
   it("states the rule a probe graduates on without a share to author towards", () => {
     expect(renderProbeSizing(PROBE, 25, null)).toBe(
-      "Battery sizing: this product's batteries have 5 to 10 tasks until one passes some of its scored cases and the controller reads it as hard enough, then 25.",
+      "Battery sizing: this product's batteries stay at the task count above until one passes some of its scored cases and the controller reads it as hard enough, then 25.",
     );
   });
 

@@ -1,0 +1,113 @@
+diff --git a/AGENTS.md b/AGENTS.md
+index 66fefe44f1d2a16e95e2c1b370bd9ee4807521d8..a89328c697892dffaeb8f62119c7a492d27ff580 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -135,6 +135,11 @@ because moving it cost something.
+     yet measured ("Open gaps"), and which requirements, which limit and how far stay the Builder's (prior
+     5). Useful adopted work is retained.
+
++Experimental arm `ABLATED(examples-reminder)` suppresses only the first graded rehearsal's reminder.
++The examples file, STARTER.md link, session bookkeeping and all rehearsal feedback remain. This is a
++measurement condition, not a new default. Restore the marked return in `src/builder/harness-trial.ts`
++and its pointer expectations in `test/harness-trial.test.ts`, or revert the arm commit, for the control.
++
+ ### Owners and handoffs
+
+ Four owners divide the work, and what each one never owns matters as much as what it does. The Harness
+diff --git a/src/builder/harness-trial.ts b/src/builder/harness-trial.ts
+index cc9b6540fe79f6dc824247df8819ca9d5185df18..82978acb4ec6e94125ecf0a706d0ac9128906e9a 100644
+--- a/src/builder/harness-trial.ts
++++ b/src/builder/harness-trial.ts
+@@ -52,7 +52,7 @@ import { harnessSettings } from "../correctness-bundle/harness-config.ts";
+ import type { RehearsalTraces } from "./context-tool.ts";
+ import { effortPhrase, type SolveEffort, solverTraceLines, traceEffort } from "./solver-trace-text.ts";
+
+-/** The worked examples a session's first graded rehearsal names, once (see `roundClause`). It
++/** The control's worked-examples reminder, retained for restoration and the availability test. It
+  *  says what the file holds and quotes none of its headings, since one of them states the climb's aim
+  *  and a sentence repeated every round is the aim-sentence channel prior 10 keeps closed. */
+ export const EXAMPLES_POINTER =
+@@ -510,13 +510,18 @@ function notePassEffort(tally: RoundRehearsals, row: RehearsalRow): void {
+  * backend every solve records one turn whatever it does, so a turn count is always one and says
+  * nothing (AGENTS.md "Goals and the climb").
+  *
+- * The first graded rehearsal instead names the worked examples, once per session (`tellOnce`,
+- * asked only where the clause is rendered, so a result that shows none leaves it owed): it
+- * is the first moment the Builder holds a measurement of its own tasks, and the starter's pointer
+- * alone was read in 52 of 310 recorded sessions. It points at the file and asks nothing.
++ * The control names the examples at the first graded rehearsal. This arm retains its session
++ * bookkeeping and the starter's file and link, but suppresses the reminder. It changes no verdict,
++ * effort, aggregate count or subsequent feedback. The historical 52/310 reads do not establish an
++ * effect on task demand.
+  */
+ function roundClause(tally: RoundRehearsals, tellOnce: (key: string) => boolean): string {
+-  if (tally.graded === 1) return tellOnce("examples") ? EXAMPLES_POINTER : "";
++  if (tally.graded === 1) {
++    // ABLATED(examples-reminder): restore the return below instead of this block for the control.
++    // return tellOnce("examples") ? EXAMPLES_POINTER : "";
++    tellOnce("examples");
++    return "";
++  }
+   if (tally.graded < 2) return "";
+   const { longestPassWallPercent: percent, mostPassToolCalls: calls } = tally;
+   const wall = percent === null ? null : `took more than ${String(percent)}% of the solve wall`;
+diff --git a/test/harness-trial.test.ts b/test/harness-trial.test.ts
+index 7629a94e9c9acecadb7f1215f75cb0b71e81dc7b..235beb8303cb66176d13b08352a7168bf339b19b 100644
+--- a/test/harness-trial.test.ts
++++ b/test/harness-trial.test.ts
+@@ -718,7 +718,7 @@ describe("what one round of rehearsals costs", () => {
+     const second = modelVisible(await rehearse(tool));
+
+     expect(isString(first.nextAction) ? first.nextAction : "").not.toContain("Across this round");
+-    expect(first.nextAction).toContain(EXAMPLES_POINTER.trim());
++    expect(first.nextAction).not.toContain(EXAMPLES_POINTER.trim());
+     expect(second.nextAction).not.toContain("examples.md");
+     expect(asRecord(first.validation)?.round).toEqual({
+       graded: 1,
+@@ -740,25 +740,28 @@ describe("what one round of rehearsals costs", () => {
+   }, 60_000);
+ });
+
+-describe("the worked-examples pointer", () => {
++describe("the ablated worked-examples reminder", () => {
+   // A run's one Builder conversation continues its session across rounds, and each round builds a
+-  // new tool. So the pointer is told once per session, which the conversation answers; a round
+-  // with no conversation is its own session.
+-  it("names the examples at a session's first graded rehearsal, not again in its next round", async () => {
++  // new tool. The arm suppresses the reminder, retaining the same session bookkeeping.
++  it("suppresses the reminder on a graded solver miss and a continued round, preserving both verdicts", async () => {
+     const dir = workspace();
+     const told = new Set<string>();
+     const tellOnce = (key: string) => !told.has(key) && told.add(key).has(key);
+-    const first = round(dir, assigningSolver(RIGHT_SLOT), true, { tellOnce });
++    const first = round(dir, assigningSolver(null, false), true, { tellOnce });
+     const opened = modelVisible(await rehearse(first.tool));
+-    const next = round(dir, assigningSolver(RIGHT_SLOT), true, { tellOnce });
++    const next = round(dir, assigningSolver(null, false), true, { tellOnce });
+     const continued = modelVisible(await rehearse(next.tool));
+
+-    expect(opened.nextAction).toContain(EXAMPLES_POINTER.trim());
++    expect(opened.nextAction).not.toContain(EXAMPLES_POINTER.trim());
++    expect(asRecord(opened.truth)?.verdict).toBe("fail");
++    expect(asRecord(opened.validation)?.round).toMatchObject({ graded: 1, passed: 0 });
++    expect(told.has("examples")).toBe(true);
+     expect(continued.nextAction).not.toContain("examples.md");
+-    expect(asRecord(continued.validation)?.round).toMatchObject({ graded: 1, passed: 1 });
++    expect(asRecord(continued.truth)?.verdict).toBe("fail");
++    expect(asRecord(continued.validation)?.round).toMatchObject({ graded: 1, passed: 0 });
+   }, 60_000);
+
+-  it("leaves the pointer owed after a rehearsal that graded nothing", async () => {
++  it("leaves session bookkeeping untouched after a rehearsal that graded nothing", async () => {
+     let asked = 0;
+     const tellOnce = () => {
+       asked += 1;
+@@ -774,7 +777,7 @@ describe("the worked-examples pointer", () => {
+   // It names a file the copied starter carries, restates no duty from the system prompt, and carries
+   // no word of the climb's aim: repeated in every round, a heading like examples.md's "A target the
+   // solver does not reliably meet" would be an aim sentence (prior 10).
+-  it("names a file the starter carries, restates no duty and states no aim", () => {
++  it("keeps the control's reminder and the starter file available for restoration", () => {
+     const path = /(starter-pack\/\S+\.md)/.exec(EXAMPLES_POINTER)?.[1];
+     expect(path).toBeDefined();
+     expect(existsSync(join(import.meta.dir, "../starters/pi-built-harness", path ?? "missing"))).toBe(true);

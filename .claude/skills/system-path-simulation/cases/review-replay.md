@@ -88,5 +88,7 @@ severity now reads each finding's own evidence, so both would be admitted as rec
 - An old run's `.toolchain` link may point at an epoch workspace that no longer holds the tools;
   the review then ends `incomplete` with the three verifier entries missing, and still settles the
   veto. That is the recorded position's property, not a staging fault.
-- The review slot is the one in `--repo`'s `.env` chain; a drained account returns 429 as a
-  transport error on every sample. Check `bun run login -- status` first.
+- The review slot is the one in `--repo`'s `.env` chain unless the process environment names
+  another; a drained account returns 429 as a transport error on every sample. Read
+  `.accounts/usage` first. When the account is not the plain one, run the script as
+  `bun --env-file=.accounts/claudeN.env …`, following SKILL.md's steward rule.

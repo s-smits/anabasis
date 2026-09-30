@@ -386,7 +386,7 @@ describe("rendering", () => {
     // all-pass batteries of run 6a8ca0 (2026-09-30) moved limits or enlarged instances that the solver's
     // same enumeration still settled in one turn.
     expect(render(readoutOf(row("r1", 0, { passed: 6, n: 6 })))).toContain(
-      "Battery r1 passed all 6 of its verified cases, so it found no limit: the next battery has to demand more of the field's own work than this one did, deeper in what its tasks already exercise or across what the request names and no task does yet. Record in your notes which public requirement it changes and the reasoning that change adds. Before you set the next battery, read how its passing solves reached their answers, the tools they called and the search they ran: a limit moved or an instance enlarged while those same steps would still find an answer asks nothing new, so the change has to be one those steps do not settle.",
+      "Battery r1 passed all 6 of its verified cases, so it found no limit: the next battery has to demand more of the field's own work than this one did, deeper in what its tasks already exercise or across what the request names and no task does yet, in tasks you expect the solver to fail. Carry none of its tasks forward unchanged, since a task it passed measures the same pass again: raise what each one demands or replace it. Record in your notes which public requirement it changes and the reasoning that change adds. Before you set the next battery, read how its passing solves reached their answers, the tools they called and the search they ran: a limit moved or an instance enlarged while those same steps would still find an answer asks nothing new, so the change has to be one those steps do not settle.",
     );
     expect(render(readoutOf(row("r1", 0, { passed: 1, n: 1 })))).toContain(
       "Battery r1 passed its one verified case, so it found no limit",
@@ -397,6 +397,7 @@ describe("rendering", () => {
       "Battery r1 passed its one verified case and 5 cases ended as non-results that scored nothing, so it found no limit among the cases it scored and did not measure the rest.",
     );
     expect(censored).not.toContain("demand more");
+    expect(censored).not.toContain("Carry none of its tasks forward");
     expect(censored).not.toContain("read how its passing solves reached their answers");
     // An unaccepted attempt is a fail, and a battery with no pass or a partial one says nothing more.
     const silent = [
@@ -415,7 +416,7 @@ describe("rendering", () => {
     // tenth of the 120-minute wall, and the round that authored the next one was never told so.
     const effort = { cases: 6, turns: 3, minutes: 3.1, toolCalls: 12 };
     expect(render(readoutOf(row("r1", 0, { passed: 6, n: 6, effort })))).toContain(
-      "across what the request names and no task does yet. Its slowest solve took 3.1 of the 120 minutes a solve may run. Record in your notes",
+      "raise what each one demands or replace it. Its slowest solve took 3.1 of the 120 minutes a solve may run. Record in your notes",
     );
     // Unrecorded minutes stay unsaid rather than read as none.
     expect(

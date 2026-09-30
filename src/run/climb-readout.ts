@@ -382,7 +382,13 @@ function familyLine(readout: ClimbReadout): string | null {
  *  into the notes was carried and built (Luna lanes, 2026-09-29). It also says how much of the solve
  *  wall the slowest solve took: of 233 all-pass batteries from 2026-09-25 to 09-30, 153 finished
  *  theirs inside a tenth of the 120-minute wall (median 5.9 minutes), sized to the Builder's own
- *  reference, and the round that set the next one read only that every case had passed. */
+ *  reference, and the round that set the next one read only that every case had passed.
+ *
+ *  It names the tasks as ones the Builder expects the solver to fail, and rules out carrying one
+ *  through unchanged, because the push to "demand more" was answered by growth: bulk RNA-seq run
+ *  36e268 passed every case of eleven batteries while adding about one task a round, and 53 of the
+ *  tasks measured after those full passes were the same bytes the solver had already passed; across
+ *  the local campaigns on 2026-09-30, 570 of the 1,465 tasks measured after a full pass were. */
 function noLimitLine(row: ReadoutRow): string | null {
   const { runId, passed, verified, unaccepted, nonResults } = row;
   if (verified === 0 || unaccepted > 0 || passed !== verified) return null;
@@ -396,7 +402,7 @@ function noLimitLine(row: ReadoutRow): string | null {
     slowest === null || row.solveWallMinutes === null
       ? ""
       : ` Its slowest solve took ${String(slowest)} of the ${String(row.solveWallMinutes)} minutes a solve may run.`;
-  return `Battery ${runId} passed ${all}, so it found no limit: the next battery has to demand more of the field's own work than this one did, deeper in what its tasks already exercise or across what the request names and no task does yet.${spent} Record in your notes which public requirement it changes and the reasoning that change adds. ${MEASURE_SOLVES}`;
+  return `Battery ${runId} passed ${all}, so it found no limit: the next battery has to demand more of the field's own work than this one did, deeper in what its tasks already exercise or across what the request names and no task does yet, in tasks you expect the solver to fail. Carry none of its tasks forward unchanged, since a task it passed measures the same pass again: raise what each one demands or replace it.${spent} Record in your notes which public requirement it changes and the reasoning that change adds. ${MEASURE_SOLVES}`;
 }
 
 /**

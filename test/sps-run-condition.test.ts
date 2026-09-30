@@ -14,7 +14,11 @@ import {
   descendantsOf,
   parseProcessTable,
 } from "../.claude/skills/system-path-simulation/scripts/process-census.mts";
-import { REPO_ROOT, runTypeScript } from "../.claude/skills/system-path-simulation/scripts/test-support.ts";
+import {
+  REPO_ROOT,
+  type RunTypeScriptOptions,
+  runTypeScript,
+} from "../.claude/skills/system-path-simulation/scripts/test-support.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { required } from "./helpers/doubles.ts";
 
@@ -23,6 +27,9 @@ interface ConditionReport {
   schema: string;
   result: string;
   slots: unknown;
+  pins: { built: string; recordedBuilt: string | null; builtFollowsRecord: boolean };
+  firstPromptMatchesCapture?: boolean;
+  sessionEnvStripped: string[];
   outcome: {
     rounds: { runId: string; move: string; build: string; measured: boolean; terminal: string }[];
   } | null;
@@ -37,6 +44,7 @@ interface CaptureReport {
   backend: string;
   firstPromptSha256: string;
   systemPromptSha256: string;
+  systemPromptIsSurface: boolean;
 }
 
 /** The controller needs the frozen thresholds beside its campaigns. Six is a valid
@@ -52,8 +60,8 @@ let turnModule = "";
 let solverModule = "";
 let promptFile = "";
 
-function run(args: string[]) {
-  return runTypeScript("run-condition.mts", args);
+function run(args: string[], options: RunTypeScriptOptions = {}) {
+  return runTypeScript("run-condition.mts", args, options);
 }
 
 /** The strict parser admits each option once, so overrides replace the default value. */
@@ -134,6 +142,16 @@ describe("run-condition preflight", () => {
     expect(existsSync(join(scratch, "campaigns", "projects.json"))).toBe(false);
   });
 
+  it.each([
+    [{ "--preset": "gpt" }, "--preset must be one of"],
+    [{ "--capture": "/nowhere" }, "a scripted Builder has none"],
+  ])("refuses %o before any campaign write", (overrides, message) => {
+    const result = run(base(overrides));
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain(message);
+    expect(existsSync(join(scratch, "campaigns", SLUG, ".controller.lock"))).toBe(false);
+  });
+
   it("refuses an existing report and a live actor without a wall", () => {
     mkdirSync(out, { recursive: true });
     writeFileSync(join(out, "report.json"), "{}");
@@ -146,7 +164,7 @@ describe("run-condition preflight", () => {
 });
 
 describe("run-condition through the real controller", () => {
-  it("runs one scripted build, measure and analyse round and records it", () => {
+  it("runs one scripted build, measure and analyse round and records it, and the next condition's Built label follows that record", () => {
     const result = run([...base(), "--json"]);
     expect(result.exitCode).toBe(3);
     const report = parseJsonAs<ConditionReport>(readFileSync(join(out, "report.json"), "utf8"));
@@ -183,6 +201,19 @@ describe("run-condition through the real controller", () => {
     expect(cases).toHaveLength(TASKS);
     expect(cases.every((row) => row.pass === true)).toBe(true);
     expect(parseJsonAs<ConditionReport>(result.stdout).result).toBe("completed");
+
+    // A different Built model in the environment would relabel the next condition's batteries, and
+    // the climb readout would set this one aside; the scripted slot takes the recorded pin instead.
+    const { backendPin } = parseJsonAs<{ backendPin: string }>(readFileSync(battery, "utf8"));
+    const kind = backendPin.split("/")[0] ?? "";
+    for (const dir of ["vendor", "src"]) symlinkSync(join(REPO_ROOT, dir), join(scratch, dir));
+    const next = join(scratch, "next");
+    run(base({ "--builder": "capture", "--run": "c2", "--out": next }), {
+      env: { ...Bun.env, [`${kind.toUpperCase()}_BUILT_MODEL`]: "another-model" },
+    });
+    const pins = parseJsonAs<ConditionReport>(readFileSync(join(next, "report.json"), "utf8")).pins;
+    expect(pins).toMatchObject({ recordedBuilt: backendPin, builtFollowsRecord: true });
+    expect(pins.built.startsWith(`${backendPin}@`)).toBe(true);
   });
 
   it("rehearses harness_trial with the scripted Built solver the battery measures with", () => {
@@ -213,7 +244,8 @@ describe("run-condition through the real controller", () => {
     // Production composition derives the Builder's read contract from the source tree's vendor
     // barrels, so the scratch root carries the tree's own source beside its campaigns.
     for (const dir of ["vendor", "src"]) symlinkSync(join(REPO_ROOT, dir), join(scratch, dir));
-    const result = run(base({ "--builder": "capture" }));
+    // Started from inside an agent session, the runner drops that session's variables first.
+    const result = run(base({ "--builder": "capture" }), { env: { ...Bun.env, CLAUDE_EFFORT: "xhigh" } });
     expect(result.exitCode).toBe(0);
     const capture = parseJsonAs<CaptureReport>(readFileSync(join(out, "capture.json"), "utf8"));
     expect(capture.toolNames).toContain("submit");
@@ -225,13 +257,49 @@ describe("run-condition through the real controller", () => {
     expect(capture.webSearch).toBe(capture.backend !== "openrouter");
     expect(capture.firstPromptSha256).toMatch(/^[0-9a-f]{64}$/);
     expect(capture.systemPromptSha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(capture.systemPromptIsSurface).toBe(true);
     expect(readFileSync(join(out, "captured-first-prompt.txt"), "utf8")).toContain("USER REQUEST");
     const report = parseJsonAs<ConditionReport>(readFileSync(join(out, "report.json"), "utf8"));
     expect(report.result).toBe("captured");
+    expect(report.sessionEnvStripped).toContain("CLAUDE_EFFORT");
     expect(report.firstBuilderPrompt.sha256).toBe(capture.firstPromptSha256);
     expect(report.outcome).toBeNull();
     expect(result.stderr).toContain("result      captured");
     expect(existsSync(join(scratch, "campaigns", SLUG, "versions"))).toBe(false);
+
+    const again = join(scratch, "again");
+    const same = run(base({ "--builder": "capture", "--run": "c2", "--out": again, "--capture": out }));
+    expect(same.stderr).toContain(`prompt      matches the capture at ${join(out, "capture.json")}`);
+    expect(
+      parseJsonAs<ConditionReport>(readFileSync(join(again, "report.json"), "utf8"))
+        .firstPromptMatchesCapture,
+    ).toBe(true);
+    writeFileSync(promptFile, "Build a harness that lowercases letters.\n");
+    const other = join(scratch, "other");
+    run(base({ "--builder": "capture", "--run": "c3", "--out": other, "--capture": out }));
+    expect(
+      parseJsonAs<ConditionReport>(readFileSync(join(other, "report.json"), "utf8"))
+        .firstPromptMatchesCapture,
+    ).toBe(false);
+  });
+
+  it("measures a no-solve Built slot as typed non-results", () => {
+    const result = run(base({ "--built": "no-solve" }));
+    expect(result.exitCode).toBe(3);
+    const report = parseJsonAs<ConditionReport & { outcome: { rounds: { runId: string }[] } }>(
+      readFileSync(join(out, "report.json"), "utf8"),
+    );
+    expect(report.slots).toMatchObject({ built: { mode: "no-solve" } });
+    const runId = required(report.outcome.rounds[0], "round").runId;
+    const battery = parseJsonAs<{ backendPin: string; cases: { pass: unknown }[] }>(
+      readFileSync(
+        join(scratch, "campaigns", SLUG, "versions", runId, "runs", runId, "battery.json"),
+        "utf8",
+      ),
+    );
+    // A non-result is neither a pass nor a fail: every case leaves the denominator.
+    expect(battery.cases.map((row) => row.pass)).toEqual(Array.from({ length: TASKS }, () => null));
+    expect(result.stderr).toContain("typed non-results recorded");
   });
 });
 

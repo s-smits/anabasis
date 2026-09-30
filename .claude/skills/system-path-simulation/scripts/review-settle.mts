@@ -52,12 +52,17 @@ import { type ContestedCase, reviewerContested } from "#src/analyse/judge-contes
 import { runJudgeReviews } from "#src/analyse/judge-reviews.ts";
 import { readValidatedBrief } from "#src/correctness-bundle/public-resources.ts";
 import { absoluteOption, type ExitWith, exitWith, parseOrDie, requiredOption } from "#skills/main/cli.ts";
+import { scrubSessionEnv } from "./session-env.mts";
 import { CASE_RECORD_FILE } from "#src/claim/case-record.ts";
 import { JUDGE_PUBLIC_CONTEXT_FILE } from "#src/correctness-bundle/declared-projection.ts";
 
 const fail: ExitWith = exitWith("review-settle");
 
 const args = parseOrDie(fail, { values: ["repo", "slug", "run", "contested", "scratch", "request"] });
+
+/** The calling session's own variables never reach the model's CLI (session-env.mts). */
+const strippedEnv = scrubSessionEnv();
+if (strippedEnv.length > 0) console.error(`session env: stripped ${strippedEnv.join(" ")}`);
 const requiredValue = requiredOption(fail, args.single);
 const absolute = absoluteOption(fail);
 const repo = absolute("repo", requiredValue("repo"));

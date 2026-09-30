@@ -48,6 +48,7 @@ import { type ContestedCase, contestedCases, reviewerContested } from "#src/anal
 import { caseSubjects } from "#src/analyse/judge-reviews.ts";
 import { deriveIterationAnalysis } from "#src/analyse/iteration-analysis.ts";
 import { type CommandArgs, type ExitWith, runCommand } from "#skills/main/cli.ts";
+import { scrubSessionEnv } from "./session-env.mts";
 import { readJsonFile } from "#src/meta/completed-json.ts";
 import { loadRecordedTasks } from "#src/run/run-driver.ts";
 
@@ -218,6 +219,11 @@ if (import.meta.main) {
         "usage: judge-replay.mts --repo /abs/checkout --slug <slug> --run <runId> --task <taskId> [--task <taskId>...] [--repeat <n>] --out /abs/report-dir",
       options: { repo: "abs", slug: "text", run: "text", task: "list", repeat: "int", out: "abs" },
     },
-    replay,
+    (args) => {
+      // The calling session's own variables never reach the judge's CLI (session-env.mts).
+      const strippedEnv = scrubSessionEnv();
+      if (strippedEnv.length > 0) console.error(`session env: stripped ${strippedEnv.join(" ")}`);
+      return replay(args);
+    },
   );
 }

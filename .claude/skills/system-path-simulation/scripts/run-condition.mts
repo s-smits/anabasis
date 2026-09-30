@@ -13,10 +13,26 @@
  *   bun .claude/skills/system-path-simulation/scripts/run-condition.mts \
  *     --project <slug> --prompt-file /abs/one-liner.txt --run <runId> \
  *     --expected-tasks 25 --provider-turn-budget 15 --out /abs/report-dir \
- *     --builder live|capture|/abs/turn.mts --built live|/abs/solver.mts --review live|off \
+ *     --builder live|capture|/abs/turn.mts --built live|no-solve|/abs/solver.mts --review live|off \
+ *     [--preset opus|sol|luna|astra|fable] [--capture /abs/capture-dir] \
  *     [--root /abs/tree] [--max-iterations N] [--max-builder-turns N] [--wall-ms N] \
  *     [--predictions /abs/note.md] [--dcg true|false] [--census-ms N] [--allow-dirty] \
  *     [--real-isolation] [--json]
+ *
+ * Before any provider work it settles four things stewards did by hand on 2026-09-30:
+ *   - the calling session's `CLAUDE*` variables leave this process (session-env.mts);
+ *   - `--preset` pins each live slot's backend, model and effort from launch-run's condition table,
+ *     the one a paid launch reads;
+ *   - a scripted or `no-solve` Built slot takes the latest recorded battery's Built pin, and a live
+ *     one that differs is named. Two truss conditions that day labelled Built claude/claude-opus-5-5
+ *     against batteries recorded under codex/gpt-6-sol, so the climb readout set all seven aside and
+ *     the controller chose measure instead of rebuild;
+ *   - the selected product's tool tree is checked, since a swept one sends the Builder to reinstall.
+ * `--built no-solve` is the typed runtime non-result every steward wrote as its own module.
+ * `--capture <dir>` compares this run's first prompt, live or captured, with the one an earlier
+ * capture recorded (a seed that reproduces its source's first prompt, a live call that saw the
+ * preregistered one), and `capture.json` says whether the system prompt is
+ * `show-prompt-surfaces --surface system`'s.
  *
  * `--builder capture` opens the production session composition, records the system prompt
  * digest, the roster names and the exact first prompt to `<out>/capture.json`, then stops before
@@ -35,7 +51,11 @@ import { runtimeProcess } from "#src/meta/process.ts";
 import type { RunObserver } from "#src/observe/run-observer.ts";
 import type { HostSession } from "#src/backends/pi-session.ts";
 import type { SessionProfileEvidence } from "#src/backends/session-isolation.ts";
-import { type Solver, withSolverBuiltStarterFactory } from "#src/correctness-bundle/solve.ts";
+import {
+  nonResultOutcome,
+  type Solver,
+  withSolverBuiltStarterFactory,
+} from "#src/correctness-bundle/solve.ts";
 import { loadBuiltStarterFactory } from "#src/correctness-bundle/contracts.ts";
 import {
   HOST_SOLVE_ISOLATION_FIXTURE,
@@ -55,10 +75,26 @@ import {
 import { absoluteOption, exitWith, type ExitWith, parseOrDie, requiredOption } from "#skills/main/cli.ts";
 import { type ProcessCensusSnapshot, startProcessCensus } from "./process-census.mts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
-import { isFunction } from "#src/meta/json-shape.ts";
-import type { Callable, OpenRecord } from "#src/meta/json-shape.ts";
+import { asRecord, type Callable, isFunction, isString, type OpenRecord } from "#src/meta/json-shape.ts";
 import { keyIfDefined, keyIfNotNull, keysIf } from "#src/meta/optional-key.ts";
-import { writeJsonFile } from "#src/meta/completed-json.ts";
+import { readJsonFileOrNull, writeJsonFile } from "#src/meta/completed-json.ts";
+import { builderSystemPrompt } from "#src/author/builder-start-prompt.ts";
+import { productToolTree, usableToolTree } from "./tool-tree.mts";
+import { selectedProductDir } from "#src/run/product-versions.ts";
+import { claimsDirFor } from "#src/run/claim-write.ts";
+import { readClimbBatteries } from "#src/run/climb-history.ts";
+import { loadRepoEnv } from "#src/backends/env.ts";
+import {
+  BACKEND_KINDS,
+  type BackendKind,
+  type BackendSlot,
+  backendConditionPin,
+  resolveSlots,
+  resolvedSlot,
+} from "#src/backends/resolve.ts";
+import { CONDITIONS, type Condition, SLOTS, slotEnvironment } from "#skills/launch-run/scripts/options.ts";
+import { scrubSessionEnv } from "./session-env.mts";
+import { credentialFileOf, openRunsOn } from "./credential-use.mts";
 
 const die: ExitWith = exitWith("run-condition");
 
@@ -73,17 +109,24 @@ type BuilderMode =
   | { kind: "scripted"; path: string; turn: ScriptedTurn };
 type BuiltMode = { kind: "live" } | { kind: "scripted"; path: string; solver: Solver };
 
+const NO_SOLVE = "no-solve";
+
 interface FirstPrompt {
   turn: number | undefined;
   role: string;
   sha256: string;
   chars: number;
+  /** Written to its own file; the report carries the digest. */
+  text?: string;
 }
 
 interface Capture {
   backend: string;
   webSearch: boolean;
   systemPromptSha256: string;
+  /** Whether the system prompt is byte-identical to `builderSystemPrompt(webSearch)`, which is
+   *  what `show-prompt-surfaces --surface system` prints. */
+  systemPromptIsSurface: boolean;
   toolNames: string[];
   firstPrompt?: string;
   firstPromptSha256?: string;
@@ -96,6 +139,18 @@ interface Seen {
   capture: Capture | null;
 }
 const seen: Seen = { firstPrompt: null, capture: null };
+
+/** First, before anything can read the environment: the calling session's own variables go. */
+const strippedEnv = scrubSessionEnv();
+
+/** The Built slot a condition that measures no model runs (`--built no-solve`): every solve is a
+ *  typed runtime non-result, so no rehearsal or battery row can be read as a solve. */
+const noSolve: Solver = async (task) =>
+  nonResultOutcome({
+    kind: "runtime",
+    message: `simulation condition: the Built slot is scripted and does not solve (task ${task.taskId})`,
+  });
+
 class CaptureStop extends Error {
   constructor() {
     super(CAPTURE_STOP);
@@ -142,6 +197,7 @@ async function builderMode(value: string): Promise<BuilderMode> {
 
 async function builtMode(value: string): Promise<BuiltMode> {
   if (value === "live") return { kind: "live" };
+  if (value === NO_SOLVE) return { kind: "scripted", path: NO_SOLVE, solver: noSolve };
   const path = absolutePath("built", value);
   if (!existsSync(path)) die(`--built module does not exist: ${path}`);
   return { kind: "scripted", path, solver: await loadExport("built", path, "solver", isCallable<Solver>) };
@@ -190,6 +246,7 @@ function promptRecorder(record: (prompt: FirstPrompt) => void): (observer: RunOb
           role: event.role,
           sha256: sha256(event.prompt),
           chars: event.prompt.length,
+          text: event.prompt,
         });
       }
       return observer.prompt(event);
@@ -214,6 +271,7 @@ function captureRuntime(out: string, onCapture: (capture: Capture) => void): Bui
           backend: runtime.backend,
           webSearch: runtime.webSearch,
           systemPromptSha256: sha256(systemPrompt),
+          systemPromptIsSurface: systemPrompt === builderSystemPrompt(runtime.webSearch),
           toolNames,
         };
         return {
@@ -235,6 +293,82 @@ function captureRuntime(out: string, onCapture: (capture: Capture) => void): Bui
   };
 }
 
+/** The preregistered capture a live condition's first prompt is compared with. */
+function readCapture(dir: string) {
+  const path = join(dir, "capture.json");
+  const digest = asRecord(readJsonFileOrNull(path))?.firstPromptSha256;
+  if (!isString(digest)) die(`--capture ${dir} holds no capture.json with a first prompt digest`);
+  return { path, firstPromptSha256: digest };
+}
+
+/** `kind/model` split into the backend the controller is told and the model pin, or null for a pin
+ *  this runner cannot restate (an OpenRouter route, an unresolved model). */
+function pinBackend(pin: string): { kind: BackendKind; model: string } | null {
+  const slash = pin.indexOf("/");
+  const kind = BACKEND_KINDS.find((candidate) => candidate === pin.slice(0, slash));
+  const model = pin.slice(slash + 1);
+  if (kind === undefined || kind === "openrouter" || model === "" || model === "unresolved") return null;
+  return { kind, model };
+}
+
+/** The Built pin the selected product's latest recorded battery carries, or null when there is none
+ *  or the history cannot be read here; the controller then reports that reading itself. */
+function latestRecordedBuiltPin(root: string, project: string): string | null {
+  try {
+    const { history } = readClimbBatteries(
+      selectedProductDir(root, project),
+      null,
+      claimsDirFor(root, project),
+    );
+    return history.at(-1)?.condition.backendPin ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** The selected product's tool tree, as recorded or linked, and whether a Builder would have it. */
+function selectedToolTree(root: string, project: string) {
+  try {
+    const tree = productToolTree(selectedProductDir(root, project));
+    const usable = usableToolTree(tree);
+    return { path: usable ?? tree.recorded ?? tree.link, present: usable !== null };
+  } catch {
+    return { path: null, present: false };
+  }
+}
+
+const isCondition = (value: string): value is Condition => Object.hasOwn(CONDITIONS, value);
+
+/** Each slot's backend as the controller will be told it (`--<slot>-backend`), or null when the
+ *  tree's operator file and environment decide. A preset pins every live slot to one launch-run
+ *  condition: its backend and the model and effort variables a paid launch of it carries. */
+function presetKinds(
+  name: Condition | undefined,
+  live: Readonly<Record<BackendSlot, boolean>>,
+): Record<BackendSlot, BackendKind | null> {
+  const kinds: Record<BackendSlot, BackendKind | null> = { builder: null, built: null, review: null };
+  if (name === undefined) return kinds;
+  const env = slotEnvironment(name);
+  for (const slot of SLOTS) {
+    if (!live[slot]) continue;
+    kinds[slot] = CONDITIONS[name].kind;
+    for (const [key, value] of Object.entries(env)) {
+      if (key.includes(`_${slot.toUpperCase()}_`)) Bun.env[key] = value;
+    }
+  }
+  return kinds;
+}
+
+/** A slot's condition as the controller will resolve it: a backend this runner passes, else the
+ *  tree's operator file and environment. */
+function plannedPin(root: string, project: string, slot: BackendSlot, kind: BackendKind | null): string {
+  const env = loadRepoEnv(root);
+  const choice =
+    kind === null ? resolveSlots(root, project, env)[slot] : resolvedSlot(kind, env.env, slot, "operator");
+  if ("enabled" in choice && !choice.enabled) return "disabled";
+  return `${backendConditionPin(choice)}@${choice.reasoningEffort}`;
+}
+
 const parsed = parseOrDie(die, {
   values: [
     "root",
@@ -253,6 +387,8 @@ const parsed = parseOrDie(die, {
     "review",
     "dcg",
     "census-ms",
+    "preset",
+    "capture",
   ],
   flags: ["json", "allow-dirty", "real-isolation"],
 });
@@ -298,6 +434,38 @@ if (builder.kind === "live" && wallMs === null) {
 if (builder.kind === "capture" && built.kind === "live") {
   die("--builder capture stops before any battery; pair it with a scripted --built");
 }
+const presetName = single.get("preset");
+if (presetName !== undefined && !isCondition(presetName)) {
+  die(`--preset must be one of ${Object.keys(CONDITIONS).join(", ")}, got ${JSON.stringify(presetName)}`);
+}
+const capturePath = single.has("capture") ? absolutePath("capture", required("capture")) : null;
+if (capturePath !== null && builder.kind === "scripted") {
+  die("--capture compares a live or captured Builder's first prompt; a scripted Builder has none");
+}
+const capturedBefore = capturePath === null ? null : readCapture(capturePath);
+
+const live: Record<BackendSlot, boolean> = {
+  builder: builder.kind !== "scripted",
+  built: built.kind === "live",
+  review: reviewValue === "live",
+};
+const slotKinds = presetKinds(presetName, live);
+const recordedBuiltPin = latestRecordedBuiltPin(root, project);
+// A scripted Built slot measures no model, so its pin is only a label, and the climb readout admits
+// a battery only under the pin it was recorded with: the label follows the record.
+const followed = live.built || recordedBuiltPin === null ? null : pinBackend(recordedBuiltPin);
+if (followed !== null) {
+  slotKinds.built = followed.kind;
+  Bun.env[`${followed.kind.toUpperCase()}_BUILT_MODEL`] = followed.model;
+}
+const plannedPins: Record<BackendSlot, string> = {
+  builder: plannedPin(root, project, "builder", slotKinds.builder),
+  built: plannedPin(root, project, "built", slotKinds.built),
+  review: live.review ? plannedPin(root, project, "review", slotKinds.review) : "disabled",
+};
+const builtPinDiffers = recordedBuiltPin !== null && !plannedPins.built.startsWith(`${recordedBuiltPin}@`);
+const toolTree = selectedToolTree(root, project);
+const credentialFile = credentialFileOf(runtimeProcess.execArgv);
 
 const predictionsPath = single.get("predictions");
 const predictions =
@@ -338,6 +506,10 @@ const fullRunArgv = [
     ? ["--max-builder-turns", positiveInteger("max-builder-turns", required("max-builder-turns"))]
     : []),
   ...(reviewValue === "off" ? ["--review-backend", "disabled"] : []),
+  ...SLOTS.flatMap((slot) => {
+    const kind = slotKinds[slot];
+    return kind === null || (slot === "review" && reviewValue === "off") ? [] : [`--${slot}-backend`, kind];
+  }),
   // A scripted or captured Builder opens no command shell, so the host guard has nothing to guard.
   "--dcg",
   dcgValue ?? (builder.kind === "live" ? "true" : "false"),
@@ -407,9 +579,30 @@ note(`tree        ${SCRIPT_ROOT}`);
 note(`root        ${root}`);
 note(`campaign    ${campaign}`);
 note(`source      ${source.commit.slice(0, 9)}${source.dirty ? " (dirty)" : ""}`);
-note(`builder     ${builder.kind}${builder.kind === "scripted" ? ` ${builder.path}` : ""}`);
-note(`built       ${built.kind}${built.kind === "scripted" ? ` ${built.path}` : ""}`);
-note(`review      ${reviewValue}`);
+note(
+  `builder     ${builder.kind}${builder.kind === "scripted" ? ` ${builder.path}` : ` ${plannedPins.builder}`}`,
+);
+note(
+  `built       ${built.kind}${built.kind === "scripted" ? ` ${built.path}` : ""} ${plannedPins.built}${followed === null ? "" : " (the latest recorded battery's pin)"}`,
+);
+if (builtPinDiffers) {
+  note(
+    `warning     the recorded batteries carry Built ${recordedBuiltPin ?? ""}; the climb readout sets them aside under ${plannedPins.built}, so the controller may choose measure where the record would rebuild`,
+  );
+}
+note(`review      ${reviewValue} ${plannedPins.review}`);
+if (!toolTree.present) {
+  note(
+    `warning     the selected product's tool tree ${toolTree.path ?? ""} does not resolve; the Builder starts without it (tool-tree.mts lists family trees to clone)`,
+  );
+}
+if (strippedEnv.length > 0) note(`session env stripped ${strippedEnv.join(" ")}`);
+if (credentialFile !== null) {
+  const others = openRunsOn(credentialFile, root);
+  note(
+    `credential  ${credentialFile}${others.length === 0 ? "" : ` (also open on it: ${others.join(", ")})`}`,
+  );
+}
 note(`wall        ${wallMs === null ? "none" : `${wallMs} ms`}`);
 if (predictions !== null) note(`predictions ${predictions.path} sha256 ${predictions.sha256.slice(0, 16)}…`);
 
@@ -447,8 +640,16 @@ const controller = (() => {
 })();
 
 // The captured first prompt is written to its own file and reaches the report as a digest, so the
-// report does not carry a second copy of it.
+// report does not carry a second copy of it. A live condition's first prompt is kept the same way.
 const capture = seen.capture === null ? null : { ...seen.capture, firstPrompt: undefined };
+const firstPrompt = seen.firstPrompt === null ? null : { ...seen.firstPrompt, text: undefined };
+if (seen.firstPrompt?.text !== undefined && builder.kind === "live") {
+  writeFileSync(join(out, "first-prompt.txt"), seen.firstPrompt.text);
+}
+const firstPromptMatchesCapture =
+  capturedBefore === null || seen.firstPrompt === null
+    ? null
+    : seen.firstPrompt.sha256 === capturedBefore.firstPromptSha256;
 const report = {
   schema: REPORT_SCHEMA,
   tree: SCRIPT_ROOT,
@@ -461,17 +662,23 @@ const report = {
     built:
       built.kind === "scripted"
         ? {
-            mode: "scripted",
+            mode: built.path === NO_SOLVE ? NO_SOLVE : "scripted",
             module: built.path,
             isolation: parsed.flags.has("real-isolation") ? "real" : "scripted",
           }
         : { mode: "live" },
     review: reviewValue,
   },
+  pins: { ...plannedPins, recordedBuilt: recordedBuiltPin, builtFollowsRecord: followed !== null },
+  toolTree,
+  sessionEnvStripped: strippedEnv,
+  credentialFile,
   result: captured ? "captured" : failure === null ? "completed" : "failed",
   ...keyIfNotNull("failure", captured ? null : failure),
   ...keyIfNotNull("capture", capture),
-  firstBuilderPrompt: seen.firstPrompt,
+  firstBuilderPrompt: firstPrompt,
+  ...keyIfNotNull("capturedFrom", capturedBefore?.path ?? null),
+  ...keyIfNotNull("firstPromptMatchesCapture", firstPromptMatchesCapture),
   outcome:
     outcome === null
       ? null
@@ -504,6 +711,16 @@ else {
     }
   }
   if (seen.firstPrompt !== null) note(`prompt      first builder prompt sha256 ${seen.firstPrompt.sha256}`);
+  if (firstPromptMatchesCapture !== null) {
+    note(
+      `prompt      ${firstPromptMatchesCapture ? "matches" : "DIFFERS FROM"} the capture at ${capturedBefore?.path ?? ""}`,
+    );
+  }
+  if (seen.capture !== null) {
+    note(
+      `capture     system prompt ${seen.capture.systemPromptIsSurface ? "is" : "IS NOT"} show-prompt-surfaces --surface system${seen.capture.webSearch ? " --web-search" : ""}`,
+    );
+  }
   note(`descendants ${descendants.present.length} of ${descendants.observed.length} sampled still present`);
   note(`report      ${join(out, REPORT_FILE)}`);
   if (predictions !== null) {

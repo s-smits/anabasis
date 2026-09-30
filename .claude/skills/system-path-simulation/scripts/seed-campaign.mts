@@ -36,7 +36,20 @@
  * is the retained product's own `.toolchain`, whose realpath the immutable manifest pins; it is
  * reported under `toolTreeLinks`, not as an escape.
  *
- * `seed.json` (schema `simulation-seed/v1`) lands inside the destination campaign.
+ * A republish relocates the owned seed's `.toolchain` by rule, flag or not: that tree sits outside
+ * the fingerprint, and a firmware seed on 2026-09-30 refused on 3,466 references, every one inside
+ * the arduino build cache under `.toolchain/home/.cache`, and cost a second five-minute run with
+ * `--relocate`. The source tool tree, under either spelling, becomes the seed's own tool tree, the
+ * spelling production's workspace copy then moves; other references move to the new campaign or
+ * the destination root. A file whose first 8 KiB hold no NUL is searched whole up to 64 MiB (that
+ * seed's 105 linker maps, 19 MB each, went unaudited under the old 4 MiB limit); a larger one is
+ * listed under `unscanned`. A refusal with more than twenty files lists directories with counts.
+ * `--as-slug a,b,c` seeds one arm per slug from the same recorded position. A recorded tool tree
+ * that is gone is said beside the summary; `--tool-tree /abs/tree` stages another in its place
+ * (tool-tree.mts lists the family's), as two truss conditions on 2026-09-30 would have needed.
+ *
+ * `seed.json` (schema `simulation-seed/v1`) lands inside the destination campaign. Its `bytesSha256`
+ * covers every file outside a `.toolchain`; each tool tree is listed by path and size instead.
  */
 import {
   chmodSync,
@@ -74,11 +87,21 @@ import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import type { JsonValue } from "#src/meta/json-shape.ts";
 import { absoluteOption, type ExitWith, exitWith, parseOrDie } from "#skills/main/cli.ts";
 import { CONFORMANCE_FILE } from "#src/claim/conformance-evidence.ts";
+import { readEpochRecord } from "#src/author/campaign-epoch.ts";
+import { HANDOVER_FILES } from "#src/author/builder-execution.ts";
+import { WORKSPACE_DIR } from "#src/author/builder-memory.ts";
+import { productToolTree, SEED_MANIFEST, usableToolTree } from "./tool-tree.mts";
+import { readHead } from "./file-head.mts";
 
 const die: ExitWith = exitWith("seed-campaign");
 
 const REPO_ROOT = resolve(dirname(Bun.fileURLToPath(import.meta.url)), "../../../..");
-const TEXT_SCAN_LIMIT = 4 * 1024 * 1024;
+const HEAD_BYTES = 8192;
+/** A file with no NUL in its head is searched whole up to this size and listed as unscanned above it. */
+const TEXT_SCAN_LIMIT = 64 * 1024 * 1024;
+/** A refusal naming more files than this lists directories instead. */
+const LISTED_REFUSAL_ROWS = 20;
+const TOOL_TREE = ".toolchain";
 
 export interface SymlinkRow {
   path: string;
@@ -91,6 +114,10 @@ export interface AbsoluteRefRow {
   sha256Before: string;
   sha256After: string | null;
   immutable: boolean;
+}
+export interface UnscannedRow {
+  path: string;
+  bytes: number;
 }
 /** One source path and the copy path that now stands for it. */
 export interface SeedAlias {
@@ -110,12 +137,17 @@ export interface SeedAudit {
   /** Links resolving outside both trees (runtime paths); reported, never a refusal. */
   external: SymlinkRow[];
   absoluteRefs: AbsoluteRefRow[];
+  /** Files that read as text but exceed `TEXT_SCAN_LIMIT`, so no reference in them was counted. */
+  unscanned: UnscannedRow[];
+  /** Whether `--relocate` was passed; a row relocated by rule has its `sha256After` without it. */
   relocated: boolean;
 }
 export interface SeedOptions {
   allowAbsoluteRefs?: boolean;
   relocate?: boolean;
   productId?: string;
+  /** Republish only: stage this tool tree instead of the source product's, for a swept one. */
+  toolTree?: string;
 }
 export interface SeedManifest {
   schema: "simulation-seed/v1";
@@ -130,10 +162,17 @@ export interface SeedManifest {
   fingerprintAfter: FingerprintEvidence | null;
   files: number;
   bytesSha256: string;
+  /** Files under a `.toolchain`, outside `bytesSha256`: listed by relative path and size. */
+  toolTrees: { files: number; bytes: number; listingSha256: string };
   lockRemoved: boolean;
   /** Campaign-relative scratch directories removed from the clone before the audit. */
   droppedScratch: string[];
   audit: SeedAudit;
+  /** Republish only: the source product's tool tree as its link names it, and whether it still
+   *  resolved. A swept tree seeds nothing, and the Builder meets an empty `.toolchain`. */
+  toolTreeSource: { recorded: string | null; present: boolean; staged: string | null } | null;
+  /** Republish only: the source's current epoch notes, which a fresh campaign does not inherit. */
+  notesNotCarried: { epoch: string; files: { file: string; bytes: number }[] } | null;
   carried: {
     historyRuns: number;
     sourceHistoryRuns: number;
@@ -143,6 +182,11 @@ export interface SeedManifest {
   };
 }
 
+interface Occurrence {
+  at: number;
+  needle: string;
+}
+
 export class SeedRefusal extends Error {}
 
 function inside(parent: string, child: string): boolean {
@@ -150,10 +194,21 @@ function inside(parent: string, child: string): boolean {
   return path === "" || (!path.startsWith("..") && !isAbsolute(path));
 }
 
-/** Every entry under `root`, links unfollowed. */
-function entries(root: string): string[] {
-  return [...new Bun.Glob("**/*").scanSync({ cwd: root, dot: true, onlyFiles: false, followSymlinks: false })]
-    .map((name) => join(root, name))
+/** Every entry under `root`, links unfollowed, without walking the top-level names in `skip`. */
+function entries(root: string, skip: readonly string[] = []): string[] {
+  return readdirSync(root)
+    .filter((name) => !skip.includes(name))
+    .flatMap((name) => {
+      const path = join(root, name);
+      if (!lstatSync(path).isDirectory()) return [path];
+      const nested = new Bun.Glob("**/*").scanSync({
+        cwd: path,
+        dot: true,
+        onlyFiles: false,
+        followSymlinks: false,
+      });
+      return [path, ...[...nested].map((child) => join(path, child))];
+    })
     .sort();
 }
 
@@ -166,32 +221,63 @@ function resolvedLinkTarget(link: string) {
   return { target, resolved: resolve(realpathSync(ancestor), relative(ancestor, targetPath)) };
 }
 
-function textOf(path: string): string | null {
-  const stat = lstatSync(path);
-  if (!stat.isFile() || stat.size > TEXT_SCAN_LIMIT) return null;
-  const bytes = readFileSync(path);
-  if (bytes.subarray(0, 8192).includes(0)) return null;
-  try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-  } catch {
-    return null;
+/** A file's bytes when it reads as text. The head is sniffed before the rest is read, so a
+ *  binary costs 8 KiB rather than its size. */
+function textBytes(path: string, size: number): Buffer | "binary" | "unscanned" {
+  if (readHead(path, Math.min(HEAD_BYTES, size)).includes(0)) return "binary";
+  return size > TEXT_SCAN_LIMIT ? "unscanned" : readFileSync(path);
+}
+
+/** Non-overlapping occurrences of any needle, earliest first and the longest where two start at
+ *  one offset, so a path spelled under two roots (`/tmp` and `/private/tmp`) counts once. */
+function occurrences(bytes: Buffer, needles: readonly string[]): Occurrence[] {
+  const found: Occurrence[] = [];
+  const next = needles.map((needle) => bytes.indexOf(needle));
+  for (let start = 0; ; ) {
+    let best: Occurrence | null = null;
+    for (const [index, needle] of needles.entries()) {
+      let at = next[index] ?? -1;
+      if (at !== -1 && at < start) {
+        at = bytes.indexOf(needle, start);
+        next[index] = at;
+      }
+      if (at === -1) continue;
+      if (best === null || at < best.at || (at === best.at && needle.length > best.needle.length)) {
+        best = { at, needle };
+      }
+    }
+    if (best === null) return found;
+    found.push(best);
+    start = best.at + Buffer.byteLength(best.needle);
   }
 }
 
-function countOccurrences(text: string, needle: string): number {
-  let count = 0;
-  for (let at = text.indexOf(needle); at !== -1; at = text.indexOf(needle, at + needle.length)) count += 1;
-  return count;
+/** Replace each `from` with its `to` in one pass, so a destination that contains a source spelling
+ *  is never rewritten twice. */
+function rewriteBytes(bytes: Buffer, rewrites: readonly SeedAlias[]): Buffer {
+  const parts: Buffer[] = [];
+  let start = 0;
+  for (const { at, needle } of occurrences(
+    bytes,
+    rewrites.map((pair) => pair.from),
+  )) {
+    const to = rewrites.find((pair) => pair.from === needle)?.to ?? needle;
+    parts.push(bytes.subarray(start, at), Buffer.from(to));
+    start = at + Buffer.byteLength(needle);
+  }
+  parts.push(bytes.subarray(start));
+  return Buffer.concat(parts);
 }
 
 /** Audit one copied tree against the source root it was taken from. `immutableRoots` name the
- *  retained versions whose bytes must not move; `pinnedToolTrees` their manifest tool paths. */
+ *  retained versions whose bytes must not move; `pinnedToolTrees` their manifest tool paths; `skip`
+ *  top-level names already audited. */
 export function auditSeed(
   copyRoot: string,
   sourceRoot: string,
   immutableRoots: readonly string[],
   pinnedToolTrees: readonly string[],
-  aliases: readonly SeedAlias[] = [],
+  { aliases = [], skip = [] }: { aliases?: readonly SeedAlias[]; skip?: readonly string[] } = {},
 ): SeedAudit {
   const source = realpathSync(sourceRoot);
   const copy = realpathSync(copyRoot);
@@ -203,10 +289,14 @@ export function auditSeed(
     toolTreeLinks: [],
     external: [],
     absoluteRefs: [],
+    unscanned: [],
     relocated: false,
   };
   const roots = [...new Set([source, sourceRoot, ...aliases.map((alias) => alias.from)])];
-  for (const path of entries(copy)) {
+  // The manifest's own tool-tree path is the pinned link reported below, not a stray reference;
+  // only a pinned tree under the source root or an alias is part of the count at all.
+  const pinned = pinnedToolTrees.filter((tree) => roots.some((root) => inside(root, tree)));
+  for (const path of entries(copy, skip)) {
     const stat = lstatSync(path);
     if (stat.isSymbolicLink()) {
       const { target, resolved } = resolvedLinkTarget(path);
@@ -218,19 +308,20 @@ export function auditSeed(
       continue;
     }
     if (!stat.isFile()) continue;
-    const text = textOf(path);
-    if (text === null) continue;
-    // The manifest's own tool-tree path is the pinned link reported above, not a stray reference;
-    // only a pinned tree under the source root or an alias is part of the count at all.
-    const pinnedCount = pinnedToolTrees
-      .filter((tree) => roots.some((root) => inside(root, tree)))
-      .reduce((sum, tree) => sum + countOccurrences(text, tree), 0);
-    const count = roots.reduce((sum, root) => sum + countOccurrences(text, root), 0) - pinnedCount;
+    const bytes = textBytes(path, stat.size);
+    if (bytes === "binary") continue;
+    if (bytes === "unscanned") {
+      audit.unscanned.push({ path, bytes: stat.size });
+      continue;
+    }
+    const count = occurrences(bytes, [...roots, ...pinned]).filter(
+      ({ needle }) => !pinned.includes(needle),
+    ).length;
     if (count === 0) continue;
     audit.absoluteRefs.push({
       path,
       count,
-      sha256Before: sha256(readFileSync(path)),
+      sha256Before: sha256(bytes),
       sha256After: null,
       immutable: immutableRoots.some((root) => inside(root, path)),
     });
@@ -238,23 +329,29 @@ export function auditSeed(
   return audit;
 }
 
-/** Rewrite the source root to the destination root, and each alias to its copy, in every mutable listed file. */
-function relocateRefs(audit: SeedAudit, sourceRoot: string, destinationRoot: string): void {
+/** Rewrite each listed mutable file that `relocates` admits, most specific spelling first. */
+function relocateRefs(
+  audit: SeedAudit,
+  rewrites: readonly SeedAlias[],
+  relocates: (row: AbsoluteRefRow) => boolean = () => true,
+): void {
   for (const row of audit.absoluteRefs) {
-    if (row.immutable) continue;
-    const text = textOf(row.path);
-    if (text === null) continue;
-    let rewritten = text;
-    for (const alias of audit.aliases) rewritten = rewritten.replaceAll(alias.from, alias.to);
-    rewritten = rewritten
-      .replaceAll(audit.sourceRoot, destinationRoot)
-      .replaceAll(sourceRoot, destinationRoot);
+    if (row.immutable || !relocates(row)) continue;
+    const bytes = rewriteBytes(readFileSync(row.path), rewrites);
     // A staged product copy keeps the retained version's read-only modes; this copy is ours to edit.
     chmodSync(row.path, statSync(row.path).mode | 0o200);
-    writeFileSync(row.path, rewritten);
-    row.sha256After = sha256(readFileSync(row.path));
+    writeFileSync(row.path, bytes);
+    row.sha256After = sha256(bytes);
   }
-  audit.relocated = true;
+}
+
+/** The source root and each alias, as the rewrites a clone applies. */
+function rootRewrites(audit: SeedAudit, sourceRoot: string, destinationRoot: string): SeedAlias[] {
+  return [
+    ...audit.aliases,
+    { from: audit.sourceRoot, to: destinationRoot },
+    { from: sourceRoot, to: destinationRoot },
+  ];
 }
 
 /** Point each escape whose target lies inside a tree this seed copied at the same place in the copy. */
@@ -274,26 +371,72 @@ function relinkIntoCopies(audit: SeedAudit, copies: readonly SeedAlias[]): void 
   audit.escapes = escapes;
 }
 
+/** One line per open reference, or per directory once there are too many to read. */
+function referenceLines(open: readonly AbsoluteRefRow[]): string[] {
+  const mark = (immutable: boolean) => (immutable ? " [immutable product bytes]" : "");
+  if (open.length <= LISTED_REFUSAL_ROWS) {
+    return open.map((row) => `absolute reference ${row.path} x${row.count}${mark(row.immutable)}`);
+  }
+  let keys = open.map((row) => dirname(row.path));
+  while (new Set(keys).size > LISTED_REFUSAL_ROWS) keys = keys.map((key) => dirname(key));
+  const groups = new Map<string, { files: number; refs: number; immutable: boolean }>();
+  for (const [index, row] of open.entries()) {
+    const key = keys[index] ?? dirname(row.path);
+    const group = groups.get(key) ?? { files: 0, refs: 0, immutable: false };
+    groups.set(key, {
+      files: group.files + 1,
+      refs: group.refs + row.count,
+      immutable: group.immutable || row.immutable,
+    });
+  }
+  const total = open.reduce((sum, row) => sum + row.count, 0);
+  return [
+    `absolute references in ${open.length} files (${total} occurrences), by directory:`,
+    ...[...groups].map(
+      ([key, group]) => `  ${key}/ files ${group.files} refs ${group.refs}${mark(group.immutable)}`,
+    ),
+  ];
+}
+
 function refuseOnAudit(audit: SeedAudit, options: SeedOptions): void {
   const open = audit.absoluteRefs.filter((row) => row.sha256After === null);
   if (audit.escapes.length === 0 && (open.length === 0 || options.allowAbsoluteRefs === true)) return;
   const rows = [
     ...audit.escapes.map((row) => `symlink escape ${row.path} -> ${row.target} (${row.resolved})`),
-    ...open.map(
-      (row) =>
-        `absolute reference ${row.path} x${row.count}${row.immutable ? " [immutable product bytes]" : ""}`,
-    ),
+    ...(options.allowAbsoluteRefs === true ? [] : referenceLines(open)),
   ];
-  throw new SeedRefusal(`seed audit refused:\n${rows.join("\n")}`);
+  const remedy =
+    open.length === 0 || options.allowAbsoluteRefs === true
+      ? []
+      : [
+          options.relocate === true
+            ? "the references left are in immutable product bytes, which --relocate never rewrites"
+            : "--relocate rewrites the mutable references to the destination; --allow-absolute-refs seeds with them as they are",
+        ];
+  throw new SeedRefusal(`seed audit refused:\n${[...rows, ...remedy].join("\n")}`);
 }
 
+/** Every file's bytes outside a `.toolchain`, and each tool tree's files by path and size: a tool
+ *  tree is outside the fingerprint and gigabytes large, and its relocated files carry their own
+ *  digests under `absoluteRefs`. */
 function digestTree(root: string) {
   const rows: string[] = [];
+  const tools: string[] = [];
+  let toolBytes = 0;
   for (const path of entries(root)) {
     const stat = lstatSync(path);
-    if (stat.isFile()) rows.push(`${relative(root, path)}\0${sha256(readFileSync(path))}`);
+    if (!stat.isFile()) continue;
+    const name = relative(root, path);
+    if (name.split("/").includes(TOOL_TREE)) {
+      tools.push(`${name}\0${stat.size}`);
+      toolBytes += stat.size;
+    } else rows.push(`${name}\0${sha256(readFileSync(path))}`);
   }
-  return { files: rows.length, bytesSha256: sha256(rows.join("\n")) };
+  return {
+    files: rows.length + tools.length,
+    bytesSha256: sha256(rows.join("\n")),
+    toolTrees: { files: tools.length, bytes: toolBytes, listingSha256: sha256(tools.join("\n")) },
+  };
 }
 
 function clone(from: string, to: string): void {
@@ -381,7 +524,7 @@ function requireAbsent(path: string): void {
 }
 
 function writeManifest(manifest: SeedManifest): string {
-  const path = join(manifest.campaign, "seed.json");
+  const path = join(manifest.campaign, SEED_MANIFEST);
   writeFileSync(path, JSON.stringify(manifest, null, 2));
   return path;
 }
@@ -423,16 +566,18 @@ export function seedCampaignInto(
     ...aliasOf(sourceCampaign, campaign),
     ...(existsSync(sourceDomain) ? aliasOf(sourceDomain, domain) : []),
   ];
-  const audit = auditSeed(campaign, fromRoot, immutable, pinned, aliases);
+  const audit = auditSeed(campaign, fromRoot, immutable, pinned, { aliases });
   if (existsSync(domain)) {
-    const domainAudit = auditSeed(domain, fromRoot, [], pinned, aliases);
+    const domainAudit = auditSeed(domain, fromRoot, [], pinned, { aliases });
     audit.escapes.push(...domainAudit.escapes);
     audit.toolTreeLinks.push(...domainAudit.toolTreeLinks);
     audit.external.push(...domainAudit.external);
     audit.absoluteRefs.push(...domainAudit.absoluteRefs);
+    audit.unscanned.push(...domainAudit.unscanned);
   }
   if (options.relocate === true) {
-    relocateRefs(audit, fromRoot, intoRoot);
+    relocateRefs(audit, rootRewrites(audit, fromRoot, intoRoot));
+    audit.relocated = true;
     relinkIntoCopies(audit, [
       { from: realpathSync(sourceCampaign), to: realpathSync(campaign) },
       ...(existsSync(domain) ? [{ from: realpathSync(sourceDomain), to: realpathSync(domain) }] : []),
@@ -455,6 +600,8 @@ export function seedCampaignInto(
     lockRemoved,
     droppedScratch,
     audit,
+    toolTreeSource: null,
+    notesNotCarried: null,
     carried: {
       historyRuns: historyRows(intoRoot, slug),
       sourceHistoryRuns: historyRows(fromRoot, slug),
@@ -468,15 +615,14 @@ export function seedCampaignInto(
 }
 
 /** Copy the selected product's bytes and tool tree into an owned seed, relinking tool links that
- *  pointed inside the source tool tree so the copy is self-contained. */
-function stageSeed(sourceProduct: string, seed: string): void {
+ *  pointed inside the source tool tree so the copy is self-contained. Returns the source tool tree. */
+function stageSeed(sourceProduct: string, seed: string, toolTree: string | null): string | null {
   mkdirSync(seed, { recursive: true });
   for (const part of ["agent", "correctness-model"]) clone(join(sourceProduct, part), join(seed, part));
   const conformance = join(sourceProduct, CONFORMANCE_FILE);
   if (existsSync(conformance)) cpSync(conformance, join(seed, CONFORMANCE_FILE));
-  const toolTree = bundleSnapshotToolTree(sourceProduct);
-  if (toolTree === null) return;
-  const copy = join(seed, ".toolchain");
+  if (toolTree === null) return null;
+  const copy = join(seed, TOOL_TREE);
   clone(toolTree, copy);
   for (const path of entries(copy)) {
     if (!lstatSync(path).isSymbolicLink()) continue;
@@ -485,6 +631,35 @@ function stageSeed(sourceProduct: string, seed: string): void {
     rmSync(path);
     symlinkSync(relative(dirname(path), join(copy, relative(toolTree, resolved))) || ".", path);
   }
+  return toolTree;
+}
+
+/** The rewrites a republish applies, most specific first: the source tool tree under each spelling
+ *  (the manifest's, its real path, and the run root's when `campaigns/` is a link) becomes the seed's
+ *  own tool tree, the spelling production's workspace copy moves next; the source campaign under
+ *  either spelling becomes the new campaign; the source root becomes the destination root. */
+function republishRewrites(
+  toolTree: string | null,
+  sourceCampaign: string,
+  campaign: string,
+  audit: SeedAudit,
+  { fromRoot, intoRoot }: { fromRoot: string; intoRoot: string },
+): SeedAlias[] {
+  const realCampaign = realpathSync(sourceCampaign);
+  const tools: SeedAlias[] = [];
+  if (toolTree !== null && existsSync(toolTree)) {
+    const to = realpathSync(join(campaign, "seed", TOOL_TREE));
+    const real = realpathSync(toolTree);
+    const spellings = new Set([toolTree, real]);
+    if (inside(realCampaign, real)) spellings.add(join(sourceCampaign, relative(realCampaign, real)));
+    tools.push(...[...spellings].map((from) => ({ from, to })));
+  }
+  return [
+    ...tools,
+    { from: realCampaign, to: campaign },
+    { from: sourceCampaign, to: campaign },
+    ...rootRewrites({ ...audit, aliases: [] }, fromRoot, intoRoot),
+  ];
 }
 
 function carryHistory(
@@ -520,6 +695,20 @@ function carryHistory(
   };
 }
 
+/** The source's current epoch notes. A republished campaign opens its first epoch with nothing to
+ *  supersede, so production's `carryMemoryForward` has no predecessor to carry from; carrying the
+ *  controller's epoch record by hand would let a pass-less build on the same ask land in a copied
+ *  epoch with no workspace. The seed reports the delta instead. */
+function currentNotes(sourceCampaign: string): SeedManifest["notesNotCarried"] {
+  const epoch = readEpochRecord(sourceCampaign)?.current;
+  if (epoch === undefined) return null;
+  const files = HANDOVER_FILES.flatMap((file) => {
+    const size = statSync(join(sourceCampaign, epoch, WORKSPACE_DIR, file), { throwIfNoEntry: false })?.size;
+    return size === undefined ? [] : [{ file, bytes: size }];
+  });
+  return { epoch, files };
+}
+
 /** Republish the selected product of `campaigns/<slug>` as a fresh product under `asSlug`. */
 export function republishAsSlug(
   fromRoot: string,
@@ -534,9 +723,25 @@ export function republishAsSlug(
   requireAbsent(campaign);
   const productId = options.productId ?? `seed-${selectedProductId(campaignDir(fromRoot, slug)) ?? "domain"}`;
   const seed = join(campaign, "seed");
-  stageSeed(sourceProduct, seed);
-  const audit = auditSeed(seed, fromRoot, [], []);
-  if (options.relocate === true) relocateRefs(audit, fromRoot, intoRoot);
+  const sourceCampaign = campaignDir(fromRoot, slug);
+  const sourceTools = productToolTree(sourceProduct);
+  const recordedTree = usableToolTree(sourceTools);
+  const toolTree = stageSeed(
+    sourceProduct,
+    seed,
+    options.toolTree === undefined ? recordedTree : realpathSync(options.toolTree),
+  );
+  const aliases = aliasOf(sourceCampaign, campaign);
+  const audit = auditSeed(seed, fromRoot, [], [], { aliases });
+  // The owned tool tree moves by rule: it is outside the fingerprint, and a build cache there names
+  // the source by the thousand. The product's own bytes move only on request.
+  const ownTools = join(realpathSync(seed), TOOL_TREE);
+  relocateRefs(
+    audit,
+    republishRewrites(toolTree, sourceCampaign, campaign, audit, { fromRoot, intoRoot }),
+    (row) => options.relocate === true || inside(ownTools, row.path),
+  );
+  audit.relocated = options.relocate === true;
   try {
     refuseOnAudit(audit, options);
   } catch (error) {
@@ -560,7 +765,8 @@ export function republishAsSlug(
   selectInitialProduct(intoRoot, asSlug, productId);
   const carried = carryHistory(fromRoot, slug, intoRoot, asSlug, version);
   readProductVersion(intoRoot, asSlug, productId);
-  const after = auditSeed(campaign, fromRoot, [version], []);
+  // The seed was audited above; the rest of the campaign is what publication and history added.
+  const after = auditSeed(campaign, fromRoot, [version], [], { aliases, skip: ["seed"] });
   if (after.escapes.length > 0) {
     throw new SeedRefusal(
       `carried history escapes into the source: ${after.escapes.map((row) => row.path).join(", ")}`,
@@ -582,9 +788,16 @@ export function republishAsSlug(
     droppedScratch: [],
     audit: {
       ...audit,
-      external: after.external,
-      absoluteRefs: [...audit.absoluteRefs, ...after.absoluteRefs.filter((row) => !inside(seed, row.path))],
+      external: [...audit.external, ...after.external],
+      absoluteRefs: [...audit.absoluteRefs, ...after.absoluteRefs],
+      unscanned: [...audit.unscanned, ...after.unscanned],
     },
+    toolTreeSource: {
+      recorded: sourceTools.recorded ?? sourceTools.link,
+      present: recordedTree !== null,
+      staged: toolTree,
+    },
+    notesNotCarried: currentNotes(sourceCampaign),
     carried,
   };
   writeManifest(manifest);
@@ -593,11 +806,55 @@ export function republishAsSlug(
 
 const absolute = absoluteOption(die);
 
+/** What a republish could not seed, said beside the summary rather than left in seed.json. */
+function warnings(manifest: SeedManifest): string[] {
+  const lines: string[] = [];
+  const tools = manifest.toolTreeSource;
+  if (tools !== null && !tools.present) {
+    lines.push(
+      tools.staged === null
+        ? `warning: the recorded tool tree ${tools.recorded ?? "(none)"} is gone, so the seed has none; tool-tree.mts lists the family's trees, and --tool-tree <tree> seeds one of them`
+        : `note: the recorded tool tree ${tools.recorded ?? "(none)"} is gone; seeded ${tools.staged} instead`,
+    );
+  }
+  const notes = manifest.notesNotCarried;
+  if (notes !== null && notes.files.length > 0) {
+    const files = notes.files.map(({ file, bytes }) => `${file} ${bytes} B`).join(", ");
+    lines.push(`note: ${notes.epoch}'s ${files} are not carried; the Builder opens on the starters`);
+  }
+  if (manifest.audit.unscanned.length > 0) {
+    lines.push(
+      `warning: ${manifest.audit.unscanned.length} text files above 64 MiB were not scanned (audit.unscanned)`,
+    );
+  }
+  return lines;
+}
+
+function summary(manifest: SeedManifest): string {
+  const { audit } = manifest;
+  const moved = audit.absoluteRefs.filter((row) => row.sha256After !== null).length;
+  return (
+    `seeded ${manifest.mode} ${manifest.slug}${manifest.asSlug === null ? "" : ` as ${manifest.asSlug}`} into ${manifest.campaign}: ` +
+    `${manifest.files} files, product ${manifest.selectedProductId ?? "none"}, history ${manifest.carried.historyRuns}/${manifest.carried.sourceHistoryRuns}, ` +
+    `escapes ${audit.escapes.length}, relinked ${audit.relinked.length}, absolute refs ${audit.absoluteRefs.length} (${moved} relocated)` +
+    `${audit.relocated ? " --relocate" : ""}, unscanned ${audit.unscanned.length}`
+  );
+}
+
+/** `--tool-tree`: an existing absolute tree, and only for a republish, which is what stages one. */
+function toolTreeOption(value: string | undefined, mode: SeedManifest["mode"]): string | undefined {
+  if (value === undefined) return undefined;
+  if (mode === "clone") die("--tool-tree needs --as-slug: a clone copies the campaign's own trees");
+  const tree = absolute("tool-tree", value);
+  if (!existsSync(tree)) die(`--tool-tree ${tree} does not exist`);
+  return tree;
+}
+
 function main(argv: readonly string[]): void {
   const parsed = parseOrDie(
     die,
     {
-      values: ["from-root", "slug", "into-root", "as-slug", "product-id"],
+      values: ["from-root", "slug", "into-root", "as-slug", "product-id", "tool-tree"],
       flags: ["allow-absolute-refs", "relocate", "json"],
     },
     argv,
@@ -605,34 +862,44 @@ function main(argv: readonly string[]): void {
   const { single, flags } = parsed;
   const fromRoot = absolute("from-root", single.get("from-root") ?? die("--from-root is required"));
   const slug = single.get("slug") ?? die("--slug is required");
-  const asSlug = single.get("as-slug");
+  const asSlugs = single
+    .get("as-slug")
+    ?.split(",")
+    .map((name) => name.trim())
+    .filter((name) => name !== "");
   const intoRootFlag = single.get("into-root");
-  if (intoRootFlag === undefined && asSlug === undefined) {
+  if (intoRootFlag === undefined && asSlugs === undefined) {
     die("--into-root (clone) or --as-slug (republish) is required");
   }
+  if (asSlugs?.length === 0) die("--as-slug names no slug");
   const intoRoot = intoRootFlag === undefined ? REPO_ROOT : absolute("into-root", intoRootFlag);
   const options: SeedOptions = {
     allowAbsoluteRefs: flags.has("allow-absolute-refs"),
     relocate: flags.has("relocate"),
     ...keyIfDefined("productId", single.get("product-id")),
+    ...keyIfDefined(
+      "toolTree",
+      toolTreeOption(single.get("tool-tree"), asSlugs === undefined ? "clone" : "republish"),
+    ),
   };
-  let manifest: SeedManifest;
+  const manifests: SeedManifest[] = [];
   try {
-    manifest =
-      asSlug === undefined
-        ? seedCampaignInto(fromRoot, slug, intoRoot, options)
-        : republishAsSlug(fromRoot, slug, asSlug, intoRoot, options);
+    // One arm per slug from the same recorded position; an arm that refuses stops the rest, and
+    // the arms already seeded stay as they are.
+    for (const asSlug of asSlugs ?? [null]) {
+      const manifest =
+        asSlug === null
+          ? seedCampaignInto(fromRoot, slug, intoRoot, options)
+          : republishAsSlug(fromRoot, slug, asSlug, intoRoot, options);
+      manifests.push(manifest);
+      if (!flags.has("json")) console.log([summary(manifest), ...warnings(manifest)].join("\n"));
+    }
   } catch (error) {
     if (!(error instanceof SeedRefusal)) throw error;
     die(error.message, 1);
   }
-  if (flags.has("json")) console.log(JSON.stringify(manifest, null, 2));
-  else {
-    console.log(
-      `seeded ${manifest.mode} ${manifest.slug}${manifest.asSlug === null ? "" : ` as ${manifest.asSlug}`} into ${manifest.campaign}: ` +
-        `${manifest.files} files, product ${manifest.selectedProductId ?? "none"}, history ${manifest.carried.historyRuns}/${manifest.carried.sourceHistoryRuns}, ` +
-        `escapes ${manifest.audit.escapes.length}, relinked ${manifest.audit.relinked.length}, absolute refs ${manifest.audit.absoluteRefs.length}${manifest.audit.relocated ? " (relocated)" : ""}`,
-    );
+  if (flags.has("json")) {
+    console.log(JSON.stringify(manifests.length === 1 ? manifests[0] : manifests, null, 2));
   }
 }
 

@@ -92,6 +92,7 @@ import { asRecord, isFunction, isString } from "#src/meta/json-shape.ts";
 import type { OpenRecord } from "#src/meta/json-shape.ts";
 import { keyIfDefined, keyIfNotNull } from "#src/meta/optional-key.ts";
 import { hasText } from "#src/meta/text.ts";
+import { scrubSessionEnv } from "./session-env.mts";
 
 const die: ExitWith = exitWith("run-segment");
 
@@ -177,6 +178,10 @@ const parsed = parseOrDie(die, {
   flags: ["no-tools", "json", "check"],
 });
 const single = parsed.single;
+
+/** The calling session's own variables never reach the model's CLI (session-env.mts). */
+const strippedEnv = scrubSessionEnv();
+if (strippedEnv.length > 0) console.error(`session env: stripped ${strippedEnv.join(" ")}`);
 
 for (const value of parsed.repeated.get("step") ?? []) {
   const marker = value.indexOf(":");

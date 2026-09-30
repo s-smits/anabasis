@@ -18,14 +18,22 @@
  * As a command, for adjudication:
  *
  *   bun .claude/skills/system-path-simulation/scripts/workspace-changes.mts \
- *     /abs/epoch/workspace
+ *     /abs/epoch/workspace [--since root|HEAD|<rev>]
+ *
+ * The command diffs from the workspace's root commit by default, the controller's seeding commit.
+ * On 2026-09-30 it came back empty for a firmware condition whose Builder had changed four files:
+ * the controller's "salvage: unsettled tree before checkpoint" commits had moved HEAD six times, so
+ * a status against HEAD saw a clean tree. `--since HEAD` is the handover's view, which the module
+ * function keeps as its default.
  */
 
 import { lstatSync, readFileSync, readlinkSync } from "#src/meta/filesystem.ts";
 import { resolve } from "#src/meta/path.ts";
 import { exitWith, parseOrDie } from "#skills/main/cli.ts";
-import { gitOutput } from "#skills/main/git.ts";
+import { gitOutput, gitText } from "#skills/main/git.ts";
 import { isString } from "#src/meta/json-shape.ts";
+import { keyIfNotNull } from "#src/meta/optional-key.ts";
+import { errorMessage } from "#src/meta/runtime-values.ts";
 import { BUILT_AGENTS_FILE } from "#src/solve/built-starter.ts";
 
 /** These note files can change without a product edit, so the default filtered list omits them.
@@ -41,6 +49,8 @@ export interface WorkspaceChanges {
   substantive: string[];
   /** sha256 of HEAD, raw status and current changed-path bytes. The legacy name is kept for callers. */
   diffSha: string;
+  /** The commit the paths are counted from, when not the status against HEAD. */
+  since?: string;
 }
 
 interface PorcelainStatus {
@@ -65,6 +75,25 @@ function porcelainStatus(workspace: string): PorcelainStatus {
   return { raw, paths };
 }
 
+/** Every path that differs from `base` in the working tree, committed or not, then every untracked
+ *  path. Renames are split into their two sides, so both names are listed. */
+function statusSince(workspace: string, base: string): PorcelainStatus {
+  const tracked = gitOutput(workspace, "diff", "--name-only", "-z", "--no-renames", base, "--");
+  const untracked = gitOutput(workspace, "ls-files", "--others", "--exclude-standard", "-z");
+  const paths = [...tracked.split("\0"), ...untracked.split("\0")].filter((path) => path !== "");
+  return { raw: `${tracked}\0\0${untracked}`, paths };
+}
+
+/** The controller's seeding commit: the workspace's root, which no checkpoint commit moves. */
+export function seedCommit(workspace: string): string {
+  const roots = gitText(workspace, "rev-list", "--max-parents=0", "HEAD").split("\n");
+  const [root] = roots;
+  if (roots.length !== 1 || root === undefined || root === "") {
+    throw new Error(`${workspace} has ${roots.length} root commits; pass --since <rev>`);
+  }
+  return root;
+}
+
 function hashField(hash: Bun.CryptoHasher, label: string, value: string | Uint8Array): void {
   const bytes = isString(value) ? new TextEncoder().encode(value) : value;
   hash.update(`${label}:${bytes.length}\0`);
@@ -74,10 +103,11 @@ function hashField(hash: Bun.CryptoHasher, label: string, value: string | Uint8A
 /** `git diff` omits untracked files and, without HEAD, staged changes. Bind the baseline, Git's raw
  * status and the realised bytes at every current path instead. This also distinguishes two conditions
  * that create the same filename with different content, which the previous empty-diff hash did not. */
-function workspaceChangeDigest(workspace: string, status: PorcelainStatus): string {
+function workspaceChangeDigest(workspace: string, status: PorcelainStatus, since: string | null): string {
   const hash = new Bun.CryptoHasher("sha256");
   hashField(hash, "format", "workspace-change/v2");
   hashField(hash, "head", gitOutput(workspace, "rev-parse", "HEAD"));
+  if (since !== null) hashField(hash, "since", since);
   hashField(hash, "status", status.raw);
   for (const path of [...new Set(status.paths)].sort()) {
     hashField(hash, "path", path);
@@ -103,7 +133,7 @@ function workspaceChangeDigest(workspace: string, status: PorcelainStatus): stri
 
 /**
  * Read the workspace's changed paths. `exclude` defaults to the session note files; pass `[]` to
- * count everything.
+ * count everything. `since` counts from that commit instead of from HEAD, commits included.
  *
  * The parsing is the whole point of having this in one place. NUL-delimited porcelain keeps every
  * legal path byte out of the record delimiter and reports every untracked file rather than folding
@@ -112,18 +142,32 @@ function workspaceChangeDigest(workspace: string, status: PorcelainStatus): stri
 export function changedPaths(
   workspace: string,
   exclude: readonly string[] = SESSION_NOTE_PATHS,
+  since: string | null = null,
 ): WorkspaceChanges {
-  const status = porcelainStatus(workspace);
+  const status = since === null ? porcelainStatus(workspace) : statusSince(workspace, since);
   const all = status.paths;
   const excluded = new Set(exclude);
   return {
     all,
     substantive: all.filter((path) => !excluded.has(path)),
-    diffSha: workspaceChangeDigest(workspace, status),
+    diffSha: workspaceChangeDigest(workspace, status, since),
+    ...keyIfNotNull("since", since),
   };
 }
 
 if (import.meta.main) {
-  const [workspace = ""] = parseOrDie(exitWith("workspace-changes"), { positionals: 1 }).positionals;
-  console.log(JSON.stringify(changedPaths(workspace), null, 2));
+  const die = exitWith("workspace-changes");
+  const parsed = parseOrDie(die, { positionals: 1, values: ["since"] });
+  const [workspace = ""] = parsed.positionals;
+  const since = parsed.single.get("since") ?? "root";
+  let base: string | null = null;
+  try {
+    base =
+      since === "HEAD"
+        ? null
+        : gitText(workspace, "rev-parse", since === "root" ? seedCommit(workspace) : since);
+  } catch (error) {
+    die(errorMessage(error));
+  }
+  console.log(JSON.stringify(changedPaths(workspace, SESSION_NOTE_PATHS, base), null, 2));
 }

@@ -154,8 +154,8 @@ citable set leaves out.
 **33. Reference provenance and witness strength.** Standing in standard and deep reads: classify
 each reference solve as computing or replaying, and say what its witness proves about the task.
 
-**34. Check mirroring in solver tools.** Standing at every tier: say which declared checks a
-Builder tool mirrors and whether solves show propose, read, adjust in place of a decision.
+**34. Check mirroring in solver tools.** Standing at every tier: say which declared checks a tool,
+program on the solver's PATH or guide line mirrors, and how often solves propose, read, adjust.
 
 **35. Independent recomputation of passes.** From a dangling toolchain or a perfect battery,
 recompute a sample of passes from public facts before reading the evaluator, and count which held.

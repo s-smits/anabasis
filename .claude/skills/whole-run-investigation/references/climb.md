@@ -211,10 +211,10 @@ capability it needs, the plausible wrong artifacts each check must reject, and t
 make it harder with its realised value in the task bytes: interacting constraints, resource limits,
 dependency depth, distractors, cross-source facts. The demand comes from the request's own field,
 never from a rule the Builder added to it, which is lane 31's question. Withhold a sufficient
-construction algorithm across everything the agent reads, while a tool that evaluates a proposed
-design can be legitimate support. Check coupled copies of a public value, such as a number
-duplicated inside an opaque JSON string, before a one-path move, against the adopted predecessor
-rather than the latest held candidate.
+construction algorithm across everything the agent reads; a reusable algorithm or bounded search
+is support, and a tool analysing a design as a check does is lane 34's. Check coupled copies of
+a public value, such as a number duplicated inside an opaque JSON string, before a one-path move,
+against the adopted predecessor rather than the latest held candidate.
 
 ## Choosing one change
 

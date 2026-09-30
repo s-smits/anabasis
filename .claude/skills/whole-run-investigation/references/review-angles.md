@@ -688,10 +688,10 @@ a solve the whole-solve wall stopped after a tool call is an unaccepted attempt 
 calls, not a non-result. Read each case's `built-runtime.json` and `final-submission.json`,
 `trace-telemetry.json` from the `challenge` lane (call spread, tool census, distinct ordered
 sequences per battery and per family, so one expensive family cannot disappear in the aggregate),
-and the wall shares `walls.ts` prints. A public candidate analysis or a check of a published limit
-is legitimate solving support, and a tool is an answer shortcut only when it supplies the remaining
-decision the solver was meant to make, which lane 23 settles alone and lane 34 reads from the tool
-side. Do not open the private packet. The decision it changes is whether a wall-bound case enters
+and the wall shares `walls.ts` prints. Reusable algorithms, a bounded search and the host's margin
+table on published limits are legitimate solving support; a tool, program or guide line that
+analyses a candidate the way a check does is lane 34's finding, and lane 23 reads its use per case.
+Do not open the private packet. The decision it changes is whether a wall-bound case enters
 the difficulty denominator as a failure; it routes to `agent/config.yaml` for a wall the Builder
 set, `agent/BUILT_AGENTS.md` when the guide sends the solver into work the wall cannot hold, and
 `agent/tools-spec.json` when a tool's own timeout is the wall.
@@ -1012,24 +1012,24 @@ Starts from every run at every tier as a standing lane, because the solver's too
 Builder's too, and from block 1b's `CHECK CODE IN SOLVER REACH (lane 34)` and `CHECK TOOL IN SOLVER
 TRACE (lane 23)`.
 
-The question is whether a Builder-written solver tool reports what the checks read, so that solving
-becomes propose, read the failing state, adjust. Keep two things apart first. The host's own margin
-table, `readMargins` (`src/solve/published-margin.ts`, called from `src/solve/built-starter.ts`),
-reads every complete published boundary against a prepared answer and returns it in the
-artifact-writer's text; its readings ride the trace as `details.margins`. That is controller code,
-the same for every domain, and a published limit checked is legitimate solving support under rule
-9. A Builder tool in `agent/tools.ts` that computes the quantity a declared check reads, over a
-proposed design, and returns it with its limit is a different thing, because it lets the solver
-find the check's boundary without reasoning about the field. So for each Builder tool, list which
-declared checks it mirrors — same operands, same computation — and which it leaves the solver to
-reason about. Then read the traces for the shape: a proposal, a reading showing a breach, an
-adjustment, repeated until clear, with no derivation between readings. The shape is a lead, not a
-verdict, because a capable practitioner also iterates against a calculator; the question is
-whether passing still demanded a decision the tool did not supply, which lane 23 settles from the
-private packet when a case needs it. Report tools, check ids and trace counts. The decision it
-changes is whether a pass rate measures synthesis or search against a mirror; it routes to
-`agent/tools.ts` and `agent/tools-spec.json` for a mirroring tool, and to `controller-source`
-(`src/solve/published-margin.ts`) only for the host's table.
+The question is whether anything in the solver's reach analyses a candidate the way a check does,
+so that solving becomes propose, read the failing state, adjust. Keep two things apart first. The
+host's own margin table, `readMargins` (`src/solve/published-margin.ts`, called from
+`src/solve/built-starter.ts`), reads every complete published boundary against a prepared answer
+and returns it in the artifact-writer's text; its readings ride the trace as `details.margins`.
+That is controller code, the same for every domain, and it stays legitimate, as do reusable
+algorithms and a bounded search. A tool in `agent/tools.ts`, a program on the solver's PATH or a
+guide line that computes what a declared check reads over a proposed candidate, whether through the
+check's code, a copy of it, its instrument or a verdict, is the finding, because the solver then
+searches against the grader instead of doing the field's work. So for each, list which declared
+checks it mirrors — same operands, same computation — and which it leaves the solver to reason
+about. Then read the traces for the shape: a proposal, a reading showing a breach, an adjustment,
+repeated until clear, with no derivation between readings. The shape says how much the mirror
+carried, not whether it is one. Report tools, check ids and trace counts. The decision it changes
+is whether a pass rate measures synthesis or search against a mirror; it routes to `agent/tools.ts`
+and `agent/tools-spec.json` for a mirroring tool, `agent/BUILT_AGENTS.md` for a guide line, and
+`controller-source` for a check program on the solver's PATH (`src/solve/built-bash.ts`) or the
+host's table (`src/solve/published-margin.ts`).
 
 **35. Independent recomputation of passes.**
 

@@ -86,7 +86,9 @@ Ten decisions are settled. Code that quietly moves one is a defect rather than a
 because moving it cost something.
 
 1. **Correctness has one owner.** The host verifier, running the declared checks and installed tools,
-   decides every pass. No model judge, review or Builder claim sets a score.
+   decides every pass. No model judge, review or Builder claim sets a score. Nor is the Judge where
+   scores run lenient: from 2026-09-23 to 30 it vetoed 5 of 1,411 verifier passes, and on the 17
+   contested fails of the 22 that located a limit the check was the stricter side ("Open gaps").
 2. **The input is one line.** No hidden plan, custom driver or evaluator hint rescues a launch.
 3. **The Builder authors the whole bundle.** Nothing under `domains/` is hand-written or repaired. A
    defect seen across domains is fixed where it came from, which is the Builder prompt, the shared
@@ -110,15 +112,27 @@ because moving it cost something.
    outcome.
 10. **Bracket a witnessed capability boundary.** Every admitted task has a verifier-accepted witness,
     which proves it feasible (optimum ≤ reference ≤ limit) and never difficult: run 371f8f's solver beat
-    the Builder's own reference on 5 of 6 tasks. So seek tasks beyond the fixed solver's observed
-    capability, by whatever stronger witness the Builder chooses, and locate the transition by blind
-    measurement. A first battery authored above it, about 3 of 25, is a hypothesis rather than a
-    prerequisite; later batteries swing between 1/n and n−1/n and narrow into `climb.band` (below). An
-    unbracketed boundary is reported unlocated, never met with manufactured failures. **No course is
+    the Builder's own reference on 5 of 6 tasks, and truss-26 and -29's solvers on 107 of 134. A
+    stronger witness does not make a task difficult either. On 2026-09-30 six truss-25 limits reset at
+    1.02× the best of a 45-minute to 3.4-hour search, up to 59% lighter than the Builder's references,
+    still passed 5 of 6 under the recorded 90-minute Opus solver, which came within 1.3% of that best on
+    every pass and beat it on three; the one fail was strength and member-loss resilience, not mass
+    (prediction 579d4990, refuted). In an optimisation domain the solver is as good a search as the
+    author, and a conformance domain such as firmware has no optimum to search. So seek tasks beyond the
+    fixed solver's observed capability in what they demand rather than in where their limits sit, and
+    locate the transition by blind measurement. The operator aims a first battery at very hard, about 3
+    of 25, so that it lands at least at hard (2026-09-30). That aim is a hypothesis rather than a
+    prerequisite, and it reaches the Builder as demand in the tasks, never as a count or an aim sentence,
+    since 29 of the 36 first batteries authored under "author above what you believe" passed whole.
+    Later batteries swing between 1/n and n−1/n and narrow into `climb.band` (below). An unbracketed
+    boundary is reported unlocated, never met with manufactured failures. **No course is
     prescribed.** Campaign 3fd52f9e-28 followed a prescribed three-stage course and moved only its
     published magnitudes for four consecutive batteries. So the Builder is told what was measured and
-    what a round is for, a battery that fails some of its cases, and never a count to author towards;
-    the route is the Builder's. Useful adopted work is retained.
+    what a round is for, a battery that fails some of its cases, and never a count to author towards.
+    The one kind of demand the loop names is depth, more of the request's requirements acting together
+    on one answer under one shared limit, because it is the one recorded demand that dropped pass rates
+    while widening kept batteries whole ("Tried and taken out"); which requirements, which limit and how
+    far stay the Builder's (prior 5). Useful adopted work is retained.
 
 ### Owners and handoffs
 
@@ -394,10 +408,15 @@ have admitted it and since which.
 
 - It authors the next battery's tasks as ones it expects the solver to fail, on a changed public
   requirement from the request's own field.
-- It raises what the checks hold and where the limits sit, not only how big the inputs are: 6a8ca0 grew
-  its inputs from 24 to 53 and its scenarios from 20 to 91 at unchanged check tiers and limits. Tightening
-  alone is not enough either, because 6a8ca0's limits sat at its reference's values and its solver held
-  the same optimiser. So the change has to be one the passing solves' own steps do not settle.
+- It builds depth into the first tasks, not only into a raise after they pass (`INTENT_CLAUSE`,
+  2026-09-30), because a task asking for one published behaviour is transcription for a strong solver:
+  firmware 7a97af's tasks each asked for one, over sound references and rejects, and all 10 of its
+  solves passed within 5.6 of 120 minutes ("Open gaps").
+- It raises what the checks hold together, not only how big the inputs are or where a limit sits: 6a8ca0
+  grew its inputs from 24 to 53 and its scenarios from 20 to 91 at unchanged check tiers and limits.
+  Tightening alone is not enough either, because 6a8ca0's limits sat at its reference's values and its
+  solver held the same optimiser, and truss limits reset at 1.02× a search of up to 3.4 hours still
+  passed 5 of 6 (prior 10). So the change has to be one the passing solves' own steps do not settle.
 - It carries no task unchanged across a full pass. 36e268 grew about one task a round, and 53 of the
   tasks it measured after its full passes were bytes the solver had already passed; on 2026-09-30, 570
   of the 1,465 tasks measured after a full pass in local campaigns were carried unchanged.
@@ -438,7 +457,10 @@ Builder raises what its hardest tasks demand once, by the no-limit line's depth 
 requirements the request names acting together on one answer under one shared limit, not more tasks,
 families or inputs), and rehearses one of them again. The route is named there because the no-limit line
 reaches a Builder only after a full pass in its own readout: firmware 7a97af-i02 raised by five new device
-families, stopped at what its simulator could model, and passed 5 of 5. Once, and not until a
+families, stopped at what its simulator could model, and passed 5 of 5. What stopped it was the board's
+pin inputs and further bus devices, which its emulator cannot drive ("Open gaps"), while the interactions
+depth asks for, such as one sensor trajectory driving several outputs that must agree, are observable
+there already. Once, and not until a
 rehearsal fails: nothing holds a submit on rehearsals, because the measured battery decides where it
 lands (`WITNESS`, in the battery contract), and a rehearsal hold of that kind cost whole rounds (96 of 99 predicted passes at ≤0.3 did pass;
 "What has cost whole rounds"). Across 241 batteries from 2026-09-25 on, the rehearsed task had sat at
@@ -565,11 +587,13 @@ without new evidence that answers it.
   which the solver's same method still settled in one turn; `MEASURE_SOLVES` now points at the method.
 - **Offering a widening route after a full pass** ("across what the request names and no task does
   yet"), until 2026-09-30. Conformer 5cc42c and buffer 3af96d took it, adding conditions, families and
-  tasks, and kept passing whole; firmware 3e4693's widened edges were followed by 6/6 and 9/9. The one
-  recorded demand that dropped pass rates was interaction: on the 2026-09-15 truss pack series, one
-  added interaction per task passed 22 of 23 (Sol high), while the same requirements stacked inside one
-  shared mass limit passed 7 of 20 (Sol high) and 2 of 23 (Opus 5). The no-limit line now names that
-  depth and no other route.
+  tasks, and kept passing whole; firmware 3e4693's widened edges were followed by 6/6 and 9/9, and across
+  the batteries of 2026-09-23 to 30, 71 of the 74 scored batteries after a widened edge from a full pass
+  passed whole. The one recorded demand that dropped pass rates was interaction: on the 2026-09-15 truss
+  pack series, one added interaction per task passed 22 of 23 (Sol high), while the same requirements
+  stacked inside one shared mass limit passed 7 of 20 (Sol high) and 2 of 23 (Opus 5). The no-limit
+  line, the round prompt's raise before submit and the intent clause now name that depth and no other
+  route.
 - **A second Wilson implementation** (`wilsonZ`) and the `minLevelN` floor, which discarded a placement
   whenever fewer than four tasks changed, until 2026-09-18.
 - **The transplant census**, until 2026-09-25, which refused one deliverable passing every sibling task.
@@ -590,10 +614,19 @@ it either moves to "Tried and taken out" or its comments are deleted.
   - 83a24567 stated it, and it left on 2026-09-28 when `difficulty-ladder.md` was cut as a whole;
   - an earlier start-prompt sentence was removed on overlap grounds (d21f1a27).
 
-  It remains an optional route in `examples.md`, "A search past the solver's wall". A controlled test
-  that answers whether a longer witness search opens a gap the solver cannot close is running on
-  truss-25 acef98-i03, prediction 579d4990. Grep: `rg "witness-budget"`. Measured by: the run launched
-  from this commit (filled at launch).
+  It remains an optional route in `examples.md`, "A search past the solver's wall". The controlled test
+  has read, and it refuted the mechanism the sentence rests on: six truss-25 acef98-i03 tasks re-limited
+  at 1.02× the best of a 45-minute to 3.4-hour search passed 5 of 6 (prediction 579d4990, prior 10).
+  The one truss run carrying the sentence, truss-sol-4ec6db (with the early-accept cues also ablated), set
+  its first battery's limits at its own best after a search of about 12 minutes and measured 5/5 twice.
+  In a frame simulation the Opus Builder given the sentence started one 95-minute search with about 75
+  minutes of its wall left and never submitted, because the sentence ties the search to no wall the
+  round has. Firmware has no optimum for it to search: the firmware fork given the sentence tied no
+  limit to a solve's minutes in its first round and raised difficulty by stacking requirements instead
+  (prediction 62424ee4, refuted). So the sentence is to come out, and this entry moves to "Tried and
+  taken out" when its source does. Grep: `rg "witness-budget"`. Measured by:
+  probe-2026-09-30T16-30-15-681Z, truss-sol-20260930T121837318Z-4ec6db and
+  custom-opus-20260930T124451370Z-350009.
 
 ## Evidence and implementation status
 
@@ -1195,10 +1228,13 @@ the battery was paid for.
     and report rules, so a failing battery measured the solver's reading of the author's wording. The
     truss Builders lengthened a listed set of load cases and called it a tier. And both shipped solver
     tools reporting every margin a check reads, so the solver could propose, read the failing state and
-    adjust. None of these, nor tightening a feasible limit toward a stronger witness (a legitimate route),
-    proves a task harder or easier by itself; blind measurement decides, which is why since 2026-09-29 no
-    prompt argues the third in advance. Each prompt says it once: the Builder system prompt owns the
-    clauses, `examples.md` the optional routes to a target the solver does not reliably meet, and
+    adjust. None of these, nor tightening a feasible limit toward a stronger witness, proves a task harder
+    or easier by itself; blind measurement decides, and on 2026-09-30 it read the third: truss limits at
+    1.02× a search of up to 3.4 hours still passed 5 of 6 (prior 10). Tightening stays legitimate, since
+    a slack limit is a finding about its reference, but it is no route to difficulty, which the ablated
+    `witness-budget` sentence and `examples.md`'s search route still argue ("Ablated components"). Each
+    prompt says it once: the Builder system prompt owns the clauses, `examples.md` the optional routes
+    to a target the solver does not reliably meet, and
     `roundPrompt` and `renderBatteryContract` when to submit and what a witness proves, and the climb
     readout's no-limit line asks for the changed requirement and its reasoning in the notes. The round prompt asks for a submit once a clear preview says the candidate works, because the
     measured battery, not a rehearsal, decides where it lands (`WITNESS`), and nothing holds a submit on rehearsals

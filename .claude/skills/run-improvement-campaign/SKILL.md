@@ -41,6 +41,18 @@ Prefer, in order: delete the competing owner, reuse the existing one, then add t
 is a budget, not an invitation to open a sibling file: get under it by collapsing what you added
 and cutting the prose the change made redundant.
 
+Record where each design choice comes from: recorded data, a source opened in this session, or
+your own reasoning. The data decides; the literature's use is the alternatives the data never
+tested. Before settling a mechanism others have studied, such as a judge, an abstention, a
+verifier split or a search budget, spend one bounded check of about twenty minutes. Quote what
+each opened source says, and list its alternatives as considered or as the next experiment. Reopen
+a citation carried forward from code or a note before relying on it. The Judge round-2 rewrite of
+2026-09-30 was right on its data. Yet it carried a comment citing a table for a claim the table
+does not make, and it left two published alternatives unrecorded: a reference answer the Judge
+generates in a separate call (MT-Bench, Table 4: 3 of 20 failures against 14 of 20 without one),
+and abstention decided by a calibrated external confidence rather than the Judge's own verdict
+(Trust or Escalate).
+
 Two failure shapes are worth naming because both have cost whole rounds here:
 
 - **A gate that cannot fire before the thing it exists to cause.** `experiment-limit-held` refused
@@ -619,6 +631,23 @@ projection does not support or a count told to the Builder has failed the goal h
 and so has one that raises a score, adds tasks or renames levels without moving a placement.
 [The climb reference](../whole-run-investigation/references/climb.md) holds the two recorded numbers
 that say whether it moved.
+
+Four patterns from 2026-09-30 point at an owner before the evidence is complete:
+
+- **A limit is only as tight as the search behind its reference.** Forty minutes into a four-hour
+  search, the witness experiment found truss answers 11 to 59% lighter than the Builder's accepted
+  references on three tasks. A battery scored against a reference measures the reference search as
+  much as the solver. Before blaming the frame for a flat climb, measure how far a longer search
+  moves the reference.
+- **A verdict channel earns its place by coverage.** The undecided Judge verdict came back on 656
+  of 657 answered cases, so its precision settled nothing. Delete or fix a channel that covers
+  nothing; a precise silence is not a result.
+- **Broaden a rule before specialising it.** Four domain clauses in the Judge prompt became one
+  reading rule, and it decided all 73 replayed cases across six domains. A product that builds a
+  harness per domain can still be judged by one rule the domains share.
+- **A hand step done twice becomes a helper.** Simulation stewards relocated tool trees, matched
+  Built pins and stripped session variables by hand. PR #95 made each step a helper, and the next
+  condition seeded four arms in two calls.
 
 Track the four evidence levels separately — present in source, deterministically proved,
 live-exercised, outcome-proved — and never let one stand in for the next. Keep negative results and

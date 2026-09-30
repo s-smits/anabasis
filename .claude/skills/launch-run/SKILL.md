@@ -104,6 +104,16 @@ itself, and it confounds any comparison of round length, because every arm is th
 tools. [The Super Loop's launch step](../run-improvement-campaign/SKILL.md#4-launch-through-one-owner)
 records what 2026-09-30 measured under it.
 
+Before a Claude-backed launch, read `.accounts/usage` in the main checkout, where it exists. It is
+local and untracked, prints each numbered account's 5-hour and weekly windows, marks the plain
+`CLAUDE_CODE_OAUTH_TOKEN`'s account, and prints no token. If the plain account's week or 5-hour
+window is `rejected` or near full, launch through `.accounts/launch claudeN <the same arguments>`
+on an account with room. That script passes that account's private env file as `--env-file`. A
+run lasts hours, so a window near full at launch ends the run with a provider limit partway
+through. Choosing among the operator's numbered accounts this way is authorised (2026-09-29) and is
+not a substitution. Put each run on an account no steward is using, and never print or copy
+the env files.
+
 Use `--help` for limits and paths; `--dry-run` plans without setup, secrets or launch.
 Experiment predictions belong to the campaign workflow, outside this launch helper.
 

@@ -69,14 +69,17 @@ import { join } from "#src/meta/path.ts";
 import { decidingSample, type ClimbBattery } from "#src/run/climb-history.ts";
 import { readRecordedBatteryRecord } from "#src/correctness-bundle/battery-record.ts";
 import {
+  type Bundle,
   MODEL_IDENTITY,
   STRUCTURE_KEYS,
   TIER_ORDER,
+  appliesTo,
+  loadBundle,
   readVersionDir,
   renderBattery,
 } from "../classifier/query-complexity.ts";
 import { isNumber } from "#src/meta/json-shape.ts";
-import { compareCodeUnits } from "#src/meta/stable-json.ts";
+import { compareCodeUnits, stableJson } from "#src/meta/stable-json.ts";
 import { readDifficultyDecisions } from "./digest-ledgers.ts";
 import { readJsonAs, readJsonAsOrNull } from "./run-overview.ts";
 import type { CaseDisposition, EpochReviewEvidence } from "#src/review/epoch-review-findings.ts";
@@ -156,6 +159,14 @@ export interface NumericDrift {
   moved: number;
   joined: number;
   tasks: number;
+}
+
+/** The later battery's tasks that carry the same id, public input and family checks as the one
+ *  before it, of `tasks` in all, and whether that earlier battery passed every case it verified. */
+interface Carried {
+  unchanged: number;
+  tasks: number;
+  afterFullPass: boolean;
 }
 
 export type EdgeVerdict =
@@ -403,6 +414,31 @@ export function numericDriftOf(
   return { median: changes[Math.floor(changes.length / 2)] ?? 0, moved: changes.length, joined, tasks };
 }
 
+/** The checks that apply to one family, as the bytes a solver of its task reads them in. */
+function familyChecks(brief: Bundle["brief"], family: string): string {
+  return stableJson((brief.truthChecks ?? []).filter((check) => appliesTo(check, family)));
+}
+
+/** How many of the later battery's tasks the solver meets exactly as before: the same id, public
+ *  input and family checks. After a full pass such a task measures a known pass again. Bulk RNA-seq
+ *  run 36e268 passed every case of eleven batteries while growing by about one task a round, and 53
+ *  of the tasks after those full passes were carried this way; a verdict cannot show it, and neither
+ *  can the numeric drift, which reads zero for a carried task and for a task whose one new input
+ *  carries no number. The correctness-model source can still ask more of an unchanged task, and the
+ *  digest row beside this one names the file when it moved. */
+function carriedOf(before: Bundle, after: Bundle): Omit<Carried, "afterFullPass"> {
+  const earlier = new Map(before.tasks.map((task) => [task.taskId, task]));
+  const unchanged = after.tasks.filter((task) => {
+    const was = earlier.get(task.taskId);
+    return (
+      was !== undefined &&
+      stableJson(was) === stableJson(task) &&
+      familyChecks(before.brief, task.family) === familyChecks(after.brief, task.family)
+    );
+  }).length;
+  return { unchanged, tasks: after.tasks.length };
+}
+
 /** The rank of the highest tier a battery's checks reach. Adding or dropping checks at tiers it
  *  already occupies leaves it where it was, which is the whole point: the count is read by the
  *  structural deltas, and the tier order by this. Null when a battery declares no check. */
@@ -548,6 +584,14 @@ export async function readCampaign(campaign: string, options: Parameters<typeof 
       drift,
       delta,
       source: sourceMovesOf(before.dir, after.dir),
+      carried: {
+        ...carriedOf(loadBundle(before.dir), loadBundle(after.dir)),
+        // A full pass: every case it verified passed, and no attempt went unaccepted.
+        afterFullPass:
+          before.counts.verified > 0 &&
+          before.counts.unaccepted === 0 &&
+          before.counts.passed === before.counts.verified,
+      },
       outcome:
         after.counts.verified === 0
           ? ("unobservable" as const)
@@ -680,6 +724,14 @@ function lineLines(line: ClimbLine): string[] {
   ];
 }
 
+/** How many solves the run spent measuring again what a full pass had already answered. */
+function carriedLine(report: ClimbReport): string {
+  const after = report.edges.filter((edge) => edge.carried.afterFullPass);
+  const tasks = after.reduce((sum, edge) => sum + edge.carried.unchanged, 0);
+  if (after.length === 0) return "  carried: no edge follows a full pass";
+  return `  carried: ${tasks} tasks measured again unchanged over the ${after.length} edge${after.length === 1 ? "" : "s"} after a full pass; a task that passed changes or leaves`;
+}
+
 export function render(report: ClimbReport): string {
   const lines = [`${report.batteries.length} batteries in ${report.campaign}`];
   for (const refusal of report.refusedDecisions ?? []) {
@@ -727,6 +779,10 @@ export function render(report: ClimbReport): string {
         `      correctness-model source, digests only, unread by the two rows above: ${moved.length === 0 ? "no file moved" : `${moved.join(", ")} moved`}, ${edge.source.unchanged} of ${edge.source.read} unchanged`,
       );
     }
+    const { unchanged, tasks, afterFullPass } = edge.carried;
+    lines.push(
+      `      carried ${unchanged} of ${tasks} tasks unchanged in id, public input and family checks${afterFullPass && unchanged > 0 ? ", after a battery that passed every case, so each re-measures a known pass" : ""}`,
+    );
     lines.push(
       `      outcome ${edge.outcome === "unobservable" ? "unobservable" : `${edge.outcome.passed}/${edge.outcome.verified}`}`,
     );
@@ -736,6 +792,6 @@ export function render(report: ClimbReport): string {
       `  ${battery.createdAt ?? "undated"}  ${battery.runId}: ${battery.counts.passed}/${battery.counts.verified} passed, ${battery.counts.unaccepted} unaccepted, ${battery.counts.nonResult} non-result; claimed with no version of its own, so on the line and on no edge`,
     );
   }
-  lines.push(...lineLines(lineOf(report)), latestEdgeLine(report));
+  lines.push(...lineLines(lineOf(report)), carriedLine(report), latestEdgeLine(report));
   return lines.join("\n");
 }

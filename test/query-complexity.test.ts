@@ -444,6 +444,7 @@ describe("climb velocity", () => {
             drift: { median: 0, moved: 0 },
             delta: zeros,
             source: null,
+            carried: { unchanged: 0, tasks: 0, afterFullPass: false },
             outcome: "unobservable",
           },
         ],
@@ -678,6 +679,54 @@ describe("climb velocity", () => {
     expect(render(report)).toContain(
       "run-c: 2/3 passed, 0 unaccepted, 0 non-result; claimed with no version of its own, so on the line and on no edge",
     );
+  });
+
+  // A task measured again exactly as it was, after a battery that passed every case, re-measures a
+  // known pass. The count reads the task and the checks of its family, so a moved input or a changed
+  // check on that family takes the task out of it, and a battery that failed a case carries nothing.
+  it.concurrent("counts the tasks a battery carried unchanged after a full pass", async () => {
+    const stricter = {
+      ...brief,
+      truthChecks: brief.truthChecks.map((each) =>
+        each.id === "loss" ? { ...each, assertion: "every limit holds in each double-loss scenario" } : each,
+      ),
+    };
+    const edgeOf = async (briefs: [Brief, Brief], lighter: boolean, fails: number) => {
+      const dir = twoVersions("ana-climb-carried-", briefs, (model, index) => {
+        if (index === 1 && lighter) {
+          write(join(model, "tasks.json"), [heavy, { ...light, publicInput: { limits: { mass: 90 } } }]);
+        }
+      });
+      writeCaseRecord(
+        dir,
+        ["a", "b"].map((task, index) =>
+          caseRecordRow(task, "f", { runId: "run-a", ...(index < fails && { truthOk: false, pass: false }) }),
+        ),
+      );
+      const report = await readCampaign(dir, { embed: fakeEmbed });
+      return { carried: report.edges[0]?.carried, text: render(report) };
+    };
+    const same = await edgeOf([brief, brief], false, 0);
+    expect(same.carried).toEqual({ unchanged: 2, tasks: 2, afterFullPass: true });
+    expect(same.text).toContain(
+      "carried 2 of 2 tasks unchanged in id, public input and family checks, after a battery that passed every case",
+    );
+    expect(same.text).toContain(
+      "carried: 2 tasks measured again unchanged over the 1 edge after a full pass",
+    );
+    expect((await edgeOf([brief, brief], true, 0)).carried).toEqual({
+      unchanged: 1,
+      tasks: 2,
+      afterFullPass: true,
+    });
+    expect((await edgeOf([brief, stricter], false, 0)).carried).toEqual({
+      unchanged: 1,
+      tasks: 2,
+      afterFullPass: true,
+    });
+    const partial = await edgeOf([brief, brief], false, 1);
+    expect(partial.carried).toEqual({ unchanged: 2, tasks: 2, afterFullPass: false });
+    expect(partial.text).toContain("carried: no edge follows a full pass");
   });
 
   // The hostile half: two identical bundles must not read as a moved correctness model.

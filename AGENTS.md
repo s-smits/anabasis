@@ -262,7 +262,7 @@ All three are read on verified cases.
   the probe's hardest families, not of those that passed (`renderProbeSizing`), because 12 of 13
   recorded successors would still read too easy with every probe fail held. That does not isolate the
   added tasks as the cause: 10 of the 11 former-limit tasks carried unchanged passed in the successor,
-  and 12 of the 13 transitions changed the evaluator. A case
+  and 11 of the 13 transitions changed the scoring program. A case
   settled against its check leaves the sample (`admittedClimbRow`); without that, f0fb83's 2/6 and the
   3/6 of 2d7812 and 3e4693 graduated on one settled check and measured a full pass next.
 - **Curriculum filtering** is the climb after it, at full size, between 1/25 and 24/25. RL curriculum
@@ -531,7 +531,7 @@ closes it.
 - **Graduation may dilute a bracket.** A probe at 2/6 or 3/6 grows to 25 tasks and the ~19 added tasks
   pass, in 10 of 13 recorded regresses, and with every probe fail held 12 of 13 would still read too
   easy. The added tasks are not isolated as the cause: 10 of the 11 former-limit tasks carried unchanged
-  passed again, and 12 of the 13 transitions changed the evaluator. The Builder heard only "Task count: exactly N tasks". Owner:
+  passed again, and 11 of the 13 transitions changed the scoring program. The Builder heard only "Task count: exactly N tasks". Owner:
   `renderProbeSizing`, which now names the hardest families' demand at graduation, not yet measured.
 - **The worked example is a toy.** The one worked domain in `starter-pack/examples.md` is a duty
   roster: one or two shifts, one public rule, a greedy reference, and families that differ in size. Its

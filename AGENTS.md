@@ -111,15 +111,15 @@ because moving it cost something.
    outcome.
 10. **Bracket a witnessed capability boundary.** Every admitted task has a verifier-accepted witness,
     which proves it feasible (optimum ≤ reference ≤ limit) and never difficult: run 371f8f's solver beat
-    the Builder's own reference on 5 of 6 tasks, and truss-26 and -29's solvers on 107 of 134. A
-    stronger witness does not make a task difficult either. On 2026-09-30 six truss-25 limits reset at
-    1.02× the best of a 45-minute to 3.4-hour search, up to 59% lighter than the Builder's references,
-    still passed 5 of 6 under the recorded 90-minute Opus solver, which came within 1.3% of that best on
-    every pass and beat it on three; the one fail was strength and member-loss resilience, not mass
-    (prediction 579d4990, refuted). In an optimisation domain the solver is as good a search as the
-    author, and a conformance domain such as firmware has no optimum to search. So seek tasks beyond the
-    fixed solver's observed capability in what they demand rather than in where their limits sit, and
-    locate the transition by blind measurement. The operator aims a first battery at very hard, about 3
+    the Builder's own reference on 5 of 6 tasks, and truss-26 and -29's solvers on 107 of 134. Nor has a
+    stronger witness yet been shown to make one difficult. On 2026-09-30 six truss-25 limits reset at
+    1.02× the best of a longer search passed 5 of 6 under the recorded 90-minute Opus solver (prediction
+    579d4990, refuted as frozen). Three of those searches ran 45 minutes and moved their limits by 0.2 to
+    2.3%; the three that ran 3.4 hours cut them by 12 to 59%, and one of the three failed, on strength
+    and member-loss resilience under the lighter limit rather than on mass. So a longer search stays an
+    optional method whose effect is measured on six tasks only, and a conformance domain such as firmware
+    has no optimum to search. Seek tasks beyond the fixed solver's observed capability in what they
+    demand, not only in where their limits sit, and locate the transition by blind measurement. The operator aims a first battery at very hard, about 3
     of 25, so that it lands at least at hard (2026-09-30). That aim is a hypothesis rather than a
     prerequisite, and it reaches the Builder as demand in the tasks, never as a count or an aim sentence,
     since 29 of the 36 first batteries authored under "author above what you believe" passed whole.
@@ -131,8 +131,9 @@ because moving it cost something.
     The one kind of demand the loop names is depth, more of the request's requirements acting together
     on one answer under one shared limit, so that meeting one spends the margin another needs, because
     it is the one recorded demand that dropped pass rates
-    while widening kept batteries whole ("Tried and taken out"); which requirements, which limit and how
-    far stay the Builder's (prior 5). Useful adopted work is retained.
+    while widening kept batteries whole ("Tried and taken out"). Whether naming it moves a Builder is not
+    yet measured ("Open gaps"), and which requirements, which limit and how far stay the Builder's (prior
+    5). Useful adopted work is retained.
 
 ### Owners and handoffs
 
@@ -258,8 +259,10 @@ All three are read on verified cases.
   graduates to the requested size once its bracket also lands at or under the aim (`batterySizingGate`),
   since every graduation from a near-full bracket (5/6, 5/6, 7/8) went straight back to a near-full
   battery (25/25, 21/23, 24/25). The round it graduates in asks for the tasks it adds at the demand of
-  the probe's hardest families, not of those that passed (`renderProbeSizing`), because tasks added at
-  the passing demand read 12 of 13 recorded successors too easy even with every probe fail held. A case
+  the probe's hardest families, not of those that passed (`renderProbeSizing`), because 12 of 13
+  recorded successors would still read too easy with every probe fail held. That does not isolate the
+  added tasks as the cause: 10 of the 11 former-limit tasks carried unchanged passed in the successor,
+  and 12 of the 13 transitions changed the evaluator. A case
   settled against its check leaves the sample (`admittedClimbRow`); without that, f0fb83's 2/6 and the
   3/6 of 2d7812 and 3e4693 graduated on one settled check and measured a full pass next.
 - **Curriculum filtering** is the climb after it, at full size, between 1/25 and 24/25. RL curriculum
@@ -408,13 +411,14 @@ have admitted it and since which.
 - It authors the next battery's tasks as ones it expects the solver to fail, on a changed public
   requirement from the request's own field.
 - It builds depth into the first tasks, not only into a raise after they pass (`INTENT_CLAUSE`,
-  2026-09-30), because a task asking for one published behaviour is transcription for a strong solver:
-  firmware 7a97af's tasks each asked for one, over sound references and rejects, and all 10 of its
-  solves passed in 1.1 to 5.6 of 120 minutes, 9 with the first draft unedited.
+  2026-09-30). Requirements side by side in one task are not yet depth: each of firmware 7a97af's five
+  first tasks combined several published requirements, such as a debounced button against light phases
+  or a peak hold against a bar level, over sound references and rejects, and all 10 of its solves
+  passed in 1.1 to 5.6 of 120 minutes, 9 with no edit-tool call after the first draft.
 - It raises what the checks hold together, not only how big the inputs are or where a limit sits: 6a8ca0
   grew its inputs from 24 to 53 and its scenarios from 20 to 91 at unchanged check tiers and limits.
   Tightening alone is not enough either, because 6a8ca0's limits sat at its reference's values and its
-  solver held the same optimiser, and limits reset at a far longer search's best still passed (prior
+  solver held the same optimiser, and limits reset at a longer search's best mostly still passed (prior
   10). So the change has to be one the passing solves' own steps do not settle.
 - It carries no task unchanged across a full pass. 36e268 grew about one task a round, and 53 of the
   tasks it measured after its full passes were bytes the solver had already passed; on 2026-09-30, 570
@@ -518,14 +522,15 @@ the check). It is not in the answers either, since every firmware reference pass
 limits (prior 10). The gaps are on the task side. Delete a bullet in the commit that
 closes it.
 
-- **First tasks ask for one published behaviour each** (firmware 7a97af under "Authoring"), and 7 of 29
-  firmware batteries passed with a harness that only compiled. Depth reached a Builder only after a full
-  pass or after every rehearsal passed. Owner: the last line of `INTENT_CLAUSE` (818bee65), which is not yet measured. Change
+- **First tasks combine requirements that the solver still meets in minutes** (firmware 7a97af under
+  "Authoring"), and 7 of 29 firmware batteries passed with a harness that only compiled. Depth reached a
+  Builder only after a full pass or after every rehearsal passed. Owner: the last line of `INTENT_CLAUSE` (818bee65), which is not yet measured. Change
   `SCOPE_CLAUSE` ("let the tasks span them", "vary its stated conditions") only if that line does not
   carry it.
-- **Graduation dilutes a bracket.** A probe at 2/6 or 3/6 grows to 25 tasks and the ~19 added tasks
-  pass. That happened in 10 of 13 recorded regresses, and with every probe fail held, 12 of 13 would
-  still read too easy. The Builder heard only "Task count: exactly N tasks". Owner:
+- **Graduation may dilute a bracket.** A probe at 2/6 or 3/6 grows to 25 tasks and the ~19 added tasks
+  pass, in 10 of 13 recorded regresses, and with every probe fail held 12 of 13 would still read too
+  easy. The added tasks are not isolated as the cause: 10 of the 11 former-limit tasks carried unchanged
+  passed again, and 12 of the 13 transitions changed the evaluator. The Builder heard only "Task count: exactly N tasks". Owner:
   `renderProbeSizing`, which now names the hardest families' demand at graduation, not yet measured.
 - **The worked example is a toy.** The one worked domain in `starter-pack/examples.md` is a duty
   roster: one or two shifts, one public rule, a greedy reference, and families that differ in size. Its
@@ -587,12 +592,12 @@ without new evidence that answers it.
   line, the round prompt's raise before submit and the intent clause now name that depth and no other
   route.
 - **Searching each reference as long as a solve may run** (`witness-budget`, one sentence in
-  `renderBatteryContract`), 2026-09-30, and twice before unmeasured (83a24567, d21f1a27). Its mechanism
-  was refuted in truss (prior 10), and in firmware, which has no optimum to search, the fork given it
-  tied no limit to a solve's minutes and raised difficulty by stacking requirements (prediction
-  62424ee4). In a frame simulation an Opus Builder started one 95-minute search with about 75 minutes
-  of its wall left and never submitted. `examples.md` still offers the route, "A search past the
-  solver's wall" ("Open gaps").
+  `renderBatteryContract`), 2026-09-30, and twice before unmeasured (83a24567, d21f1a27). As a duty it
+  bound every task to one method: its truss prediction did not hold as frozen (prior 10), in firmware,
+  which has no optimum to search, the fork given it tied no limit to a solve's minutes and raised
+  difficulty by stacking requirements (prediction 62424ee4), and in a frame simulation an Opus Builder
+  started one 95-minute search with about 75 minutes of its wall left and never submitted. A longer
+  search stays an optional method in `examples.md`, "A search past the solver's wall".
 - **A second Wilson implementation** (`wilsonZ`) and the `minLevelN` floor, which discarded a placement
   whenever fewer than four tasks changed, until 2026-09-18.
 - **The transplant census**, until 2026-09-25, which refused one deliverable passing every sibling task.
@@ -1210,9 +1215,10 @@ the battery was paid for.
     truss Builders lengthened a listed set of load cases and called it a tier. And both shipped solver
     tools reporting every margin a check reads, so the solver could propose, read the failing state and
     adjust. None of these, nor tightening a feasible limit toward a stronger witness, proves a task harder
-    or easier by itself; blind measurement decides, and it has read the third (prior 10). Tightening stays
-    legitimate, since a slack limit is a finding about its reference, but it is no route to difficulty,
-    which `examples.md`'s search route still argues ("Open gaps"). Each
+    or easier by itself; blind measurement decides, and its one reading of the third, six truss tasks, did
+    not show it (prior 10). Tightening stays legitimate, since a slack limit is a finding about its
+    reference, and a longer search stays an optional method; what the evidence does not support is
+    leading with it as the route to difficulty, as `examples.md`'s list still does ("Open gaps"). Each
     prompt says it once: the Builder system prompt owns the clauses, `examples.md` the optional routes
     to a target the solver does not reliably meet, and
     `roundPrompt` and `renderBatteryContract` when to submit and what a witness proves, and the climb

@@ -548,10 +548,10 @@ show whether the line moved.
 
 Five patterns from 2026-09-30 point at an owner before the evidence is complete:
 
-- **A limit is only as tight as the search behind its reference, and tightening it does not make
-  the solver fail** (the witness experiment, AGENTS.md prior 10). In an optimisation domain the
-  solver is itself the better search, so a slack limit is a finding about the reference; difficulty
-  has to come from what the task demands.
+- **A limit is only as tight as the search behind its reference, and tightening it has not yet been
+  shown to make the solver fail** (the witness experiment, six truss tasks, AGENTS.md prior 10). A
+  slack limit is a finding about the reference; so far, difficulty has come from what the task
+  demands.
 - **A control that equals the reference proves nothing at the limit.** In the lane reads of
   2026-09-30 the firmware and conformer accept controls sat on the reference and none probed a
   boundary, so no check was exercised where a solver's answer lands. RNA-seq set its floors at

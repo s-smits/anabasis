@@ -12,9 +12,10 @@ bun .claude/skills/whole-run-investigation/scripts/wri.ts <lane> <campaign>/<run
 The lanes are `snapshot`, `challenge`, `delta` and `overview`, which collect; `climb`, `yield`,
 `posture`, `timeline`, `walls`, `handoff`, `gates` and `target`, which read the campaign; and `archive`,
 which writes the record. `brief.ts` runs the eight campaign lanes as `CAMPAIGN_LANES` and renders
-their trigger lines into the sweep brief, reading an in-process lane's triggers from the
-`<lane>.triggers.json` it writes beside its capture, so a trigger below is the same bytes whether it was read from
-a lane's own output or from the brief.
+their trigger lines into the sweep brief, reading an in-process lane's triggers from the report it
+records at `<review>/<lane>.json`, so a trigger below is the same bytes whether it was read from a
+lane's own output or from the brief. Inside a review every lane runs from the run's measured
+checkout, so an older run is read by the readers of the source that wrote it.
 
 ## The digest
 

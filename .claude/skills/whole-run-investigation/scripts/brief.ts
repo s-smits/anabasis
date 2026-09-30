@@ -101,10 +101,15 @@ interface OverviewFile {
   scanFindings?: ScanFinding[];
 }
 
-/** `wri-review.json` as the brief reads it. */
+/** `wri-review.json` as the brief reads it. A review recorded before the read resolved its
+ *  measured checkout carries no reader and no scope, and is sized here. */
 interface ReviewState {
   campaign: string;
   runId: string;
+  repo?: string | null;
+  chosen?: string;
+  passed?: string[];
+  scope?: RunScope;
   steps?: BriefStep[] | null;
 }
 
@@ -346,13 +351,15 @@ export function laneSuggestions(triggers: readonly DigestTrigger[], tier: Tier):
  *  lane already produced; the brief repeats none of its reasoning. */
 function pressing(reviewDir: string, tier: Tier, steps: readonly BriefStep[]): string[] {
   const overview = readJsonAsOrNull<OverviewFile | null>(join(reviewDir, "overview.json"));
-  // The trigger rows the in-process lanes wrote beside their captures (`<lane>.triggers.json`), in
-  // lane order, so a lead a campaign-only read raises reaches the brief without a snapshot. A lane
-  // that failed this read contributes none, whatever an earlier read left beside it.
+  // The trigger rows of the in-process lanes' reports (`<lane>.json`), in lane order, so a lead a
+  // campaign-only read raises reaches the brief without a snapshot. A lane that failed this read
+  // contributes none, whatever an earlier read left beside it.
   const fromLanes = steps.flatMap((step) => {
     if (step.ok !== true) return [];
-    const rows = readJsonAsOrNull<DigestTrigger[] | null>(join(reviewDir, `${step.label}.triggers.json`));
-    return Array.isArray(rows) ? rows : [];
+    const rows = readJsonAsOrNull<{ triggers?: DigestTrigger[] } | null>(
+      join(reviewDir, `${step.label}.json`),
+    );
+    return Array.isArray(rows?.triggers) ? rows.triggers : [];
   });
   if (overview === null && fromLanes.length === 0) return [];
   const triggers = [
@@ -416,9 +423,16 @@ function laneBlocks(reviewDir: string, steps: readonly BriefStep[]): string[] {
 export function renderBrief(reviewDir: string): string {
   const state = readJsonAsOrNull<ReviewState | null>(join(reviewDir, "wri-review.json"));
   if (state === null) throw new Error(`no wri-review.json under ${reviewDir}; run \`wri.ts read\` first`);
-  const scope = runScope(state.campaign, state.runId);
+  const scope = state.scope ?? runScope(state.campaign, state.runId);
+  const readers =
+    state.repo === undefined || state.repo === null
+      ? []
+      : [
+          `  readers ${state.repo} (${state.chosen ?? "--repo"})`,
+          ...(state.passed ?? []).map((reason) => `    passed over ${reason}`),
+        ];
   return [
-    renderScope(scope),
+    [renderScope(scope), ...readers].join("\n"),
     "",
     ...laneBlocks(reviewDir, state.steps ?? []),
     "",

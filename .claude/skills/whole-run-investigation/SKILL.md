@@ -98,7 +98,14 @@ bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.ts read <ru
 
 A target is a campaign folder, its `controller/<runId>` folder or any selector `bun run runs show`
 takes (a run id, a project, or the head or hex tail of an id), which `wri.ts` looks up in the main
-checkout's campaign tree and refuses when it names more than one run. `scope` sizes the run from its own recorded bytes,
+checkout's campaign tree and refuses when it names more than one run. A run's records are read by
+the source that wrote them, so `read` first resolves the checkout at the opening's `source.commit`:
+`--repo` when it is clean there with its own dependencies installed, else such a registered
+worktree (the review worktree `ana-wri-<sha8>` first, the run's own worktree last, another run's
+never), else `ana-wri-<sha8>` created beside the main checkout and prepared from its own lock. Every
+lane that reads the run's records then runs as that checkout's own script, and the brief's
+`readers` line names it with every checkout passed over. A run no checkout can read is refused as
+`source-unresolved` with exit 2 before any lane. `scope` sizes the run from its own recorded bytes,
 and `read` with no `--lanes` reads what that size earns. Every lane's output is captured to
 `<review>/<lane>.txt`, the read is recorded in `<review>/wri-review.json`, and the command prints
 one bounded brief instead of the captures: the run's size and terminal, each lane quoted whole or

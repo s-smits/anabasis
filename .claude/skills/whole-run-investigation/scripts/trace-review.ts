@@ -15,7 +15,6 @@ import { productRoot } from "#src/meta/campaign-root.ts";
 import { buildDigest } from "./digest.ts";
 import { buildTimeline } from "./timeline.ts";
 import { buildReviewYield, renderReviewYield } from "./review-yield.ts";
-import { runtimeProcess } from "#src/meta/process.ts";
 import { capturedJsonParse, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { buildHarnessEvolution } from "../../final-harness-audit/scripts/harness-versions.ts";
 import { asError, errorMessage } from "#src/meta/runtime-values.ts";
@@ -35,9 +34,11 @@ import { jsonText } from "./run-overview.ts";
 const USAGE = `usage: bun run review:collect -- <campaign dir | campaign/controller/<runId>> [--run <runId>] [--repo <measured checkout>] [--out <snapshot dir>] [--cases <n>] [--all]
 
 Point at one folder. The run is the folder's own run, or the campaign's latest opening (--run
-selects another). The measured checkout is the current directory or any worktree of this
-repository when clean at the run's source commit, otherwise a detached worktree prepared once under
-~/.cache/hb4/wri-source. The snapshot lands under ~/.cache/hb4/wri/<runId> unless --out says otherwise.
+selects another). The measured checkout is --repo when it is clean at the run's source commit with
+its dependencies installed, else such a worktree of this repository (never another run's), else the
+review worktree ana-wri-<sha8> beside the main checkout, created and prepared once. wri.ts read
+runs this script from that checkout, so the run is read by its own source's readers. The snapshot
+lands under ~/.cache/hb4/wri/<runId> unless --out says otherwise.
 Collect all standard deterministic views for ONE source-bound run (the default; --all is explicit).
 Includes digest, review yield, harness evolution, Builder/tool usage,
 outcomes, scan, scorecard, warning observations, all four case partitions and sampled dossiers.
@@ -187,7 +188,7 @@ function measuredRun(args: CommandArgs) {
   }
   let checkout: MeasuredCheckout;
   try {
-    checkout = measuredCheckout(recorded.source, { repo: args.value("repo"), cwd: runtimeProcess.cwd() });
+    checkout = measuredCheckout(recorded.source, { repo: args.value("repo"), runId: recorded.runId });
   } catch (error) {
     throw new CommandFailure(
       `cannot prove a checkout at ${recorded.source.commit}: ${errorMessage(error)}`,

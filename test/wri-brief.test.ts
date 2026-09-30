@@ -6,6 +6,7 @@ import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { afterAll, describe, expect, it } from "bun:test";
 import type { CaseRecordRow } from "../src/claim/case-record.ts";
 import { caseRecordRow } from "./helpers/case-record-row.ts";
+import { stubSource } from "./helpers/measured-source.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import { readEpochRecord, selectCampaignEpoch } from "../src/author/campaign-epoch.ts";
 import { hashJsonValue } from "../src/meta/stable-json.ts";
@@ -170,12 +171,28 @@ describe("what the read said", () => {
     return reviewDir;
   }
 
-  /** The lanes a review records, after one `wri.ts read` per lane list into the same `--out`. */
-  function readInto(campaign: string, reviewDir: string, ...reads: string[]): string[] {
+  /** The lanes a review records, after one `wri.ts read` per lane list into the same `--out`, each
+   *  read through the stub source's own readers. */
+  function readInto(
+    source: { repo: string; campaign: string },
+    reviewDir: string,
+    ...reads: string[]
+  ): string[] {
     const wri = resolve(import.meta.dirname, "../.claude/skills/whole-run-investigation/scripts/wri.ts");
     for (const lanes of reads) {
       const read = Bun.spawnSync({
-        cmd: [runtimeProcess.execPath, wri, "read", campaign, "--out", reviewDir, "--lanes", lanes],
+        cmd: [
+          runtimeProcess.execPath,
+          wri,
+          "read",
+          source.campaign,
+          "--repo",
+          source.repo,
+          "--out",
+          reviewDir,
+          "--lanes",
+          lanes,
+        ],
         stdout: "pipe",
         stderr: "pipe",
       });
@@ -189,20 +206,19 @@ describe("what the read said", () => {
   }
 
   it("adds a narrower later read's lanes to the review rather than replacing the earlier read", () => {
-    const campaign = campaignWith([verified(RUN)], { terminal: true });
+    const source = stubSource();
     const reviewDir = scratchDir("ana-brief-reread-");
-    expect(readInto(campaign, reviewDir, "climb,walls", "handoff")).toEqual(["climb", "walls", "handoff"]);
+    expect(readInto(source, reviewDir, "climb,walls", "handoff")).toEqual(["climb", "walls", "handoff"]);
     const brief = renderBrief(reviewDir);
     for (const lane of ["climb", "walls", "handoff"]) expect(brief).toContain(`== ${lane}`);
     // A lane read again replaces its own row and no other.
-    expect(readInto(campaign, reviewDir, "walls")).toEqual(["climb", "handoff", "walls"]);
+    expect(readInto(source, reviewDir, "walls")).toEqual(["climb", "handoff", "walls"]);
   });
 
   it("starts a review of another run empty rather than carrying that run's lanes", () => {
     const reviewDir = scratchDir("ana-brief-reread-");
-    readInto(campaignWith([verified(RUN)], { terminal: true }), reviewDir, "climb");
-    const other = campaignWith([verified(RUN)], { terminal: true });
-    expect(readInto(other, reviewDir, "walls")).toEqual(["walls"]);
+    readInto(stubSource(), reviewDir, "climb");
+    expect(readInto(stubSource(), reviewDir, "walls")).toEqual(["walls"]);
   });
 
   it("quotes a short lane whole and points at a long one", () => {
@@ -286,32 +302,34 @@ describe("what the read said", () => {
       gates: "1 Builder session(s)\n",
     });
     writeFileSync(
-      join(reviewDir, "gates.triggers.json"),
-      json([
-        { name: "GATE STALL (lane 27)", rows: 1, examples: ["tool-timeout at epoch-a session 1"] },
-        {
-          name: "EVALUATION CORRECTION REPLAY CANDIDATE (lane 28)",
-          rows: 1,
-          examples: ["run-b after run-a"],
-        },
-      ]),
+      join(reviewDir, "gates.json"),
+      json({
+        triggers: [
+          { name: "GATE STALL (lane 27)", rows: 1, examples: ["tool-timeout at epoch-a session 1"] },
+          {
+            name: "EVALUATION CORRECTION REPLAY CANDIDATE (lane 28)",
+            rows: 1,
+            examples: ["run-b after run-a"],
+          },
+        ],
+      }),
     );
     const brief = renderBrief(reviewDir);
     expect(brief).toContain("digest GATE STALL (lane 27) x1: tool-timeout at epoch-a session 1");
     expect(brief).toContain("lane 28: EVALUATION CORRECTION REPLAY CANDIDATE (lane 28)");
     expect(brief).toContain("launch --sessions 27,28,31,33,34,37");
-    // A triggers file beside a lane the read did not run contributes nothing.
+    // A report beside a lane the read did not run contributes nothing.
     const unrun = reviewWith([], {});
     writeFileSync(
-      join(unrun, "gates.triggers.json"),
-      json([{ name: "GATE STALL (lane 27)", rows: 1, examples: [] }]),
+      join(unrun, "gates.json"),
+      json({ triggers: [{ name: "GATE STALL (lane 27)", rows: 1, examples: [] }] }),
     );
     expect(renderBrief(unrun)).not.toContain("GATE STALL");
     // Nor does one left beside a lane that failed this read.
     const failed = reviewWith([{ label: "gates", ok: false, exitCode: 1 }], { gates: "gates failed: x\n" });
     writeFileSync(
-      join(failed, "gates.triggers.json"),
-      json([{ name: "GATE STALL (lane 27)", rows: 1, examples: [] }]),
+      join(failed, "gates.json"),
+      json({ triggers: [{ name: "GATE STALL (lane 27)", rows: 1, examples: [] }] }),
     );
     expect(renderBrief(failed)).not.toContain("GATE STALL");
   });

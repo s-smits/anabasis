@@ -307,6 +307,25 @@ describe("the publication boundary", () => {
     expect(ADVISER_FENCE).not.toContain("the way the check runs it");
     expectNoRestatedDuty(ADVISER_FENCE);
   });
+
+  /** A rule's source excerpt stays behind the boundary, where the Epoch Reviewer reads it against
+   *  the rule; the offer and the reading name one directory, so neither can move alone. */
+  it("offers retained sources in the one private directory the Epoch Reviewer reads them from", () => {
+    const contract = flat(readFileSync(join(STARTER_DIR, "starter-pack/contract.md"), "utf8"));
+    for (const surface of [contract, flat(STARTER_ENTRY), EPOCH_REVIEW_PROMPT]) {
+      expect(surface).toContain("`correctness-model/sources/`");
+    }
+    expect(contract).toContain("The solver never reads this directory");
+    // The excerpt is evidence to inspect, and a disagreement is owned where the wrong statement is.
+    expect(EPOCH_REVIEW_PROMPT).toContain("the excerpt is evidence the Builder chose, not authority");
+    for (const owner of [
+      "correctness-model/brief.json for the declared rule",
+      "correctness-model/evaluator.ts for its implementation",
+      "the excerpt's own file for a misquotation or a wrong origin",
+    ]) {
+      expect(EPOCH_REVIEW_PROMPT).toContain(owner);
+    }
+  });
 });
 
 const STAGES = [

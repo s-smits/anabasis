@@ -1,0 +1,27 @@
+diff --git a/src/author/builder-start-prompt.ts b/src/author/builder-start-prompt.ts
+--- a/src/author/builder-start-prompt.ts
++++ b/src/author/builder-start-prompt.ts
+@@ -33,3 +33,5 @@
+   "An ambitious round expects its battery to fail some cases on the rules it publishes: a battery the solver passes whole says nothing about where it stops.",
+-  "Build that demand into the first tasks, not later: make several of the request's requirements act together on a single answer, so that meeting one spends the margin another needs.",
++  // ABLATED(competing-margin): remove the initial method prescription, not demand or the examples.
++  // "Build that demand into the first tasks, not later: make several of the request's requirements act together on a single answer, so that meeting one spends the margin another needs.",
++  "Build that demand into the first tasks, not later.",
+ ] as const;
+diff --git a/test/builder-start-prompt.test.ts b/test/builder-start-prompt.test.ts
+--- a/test/builder-start-prompt.test.ts
++++ b/test/builder-start-prompt.test.ts
+@@ -207,7 +207,8 @@
+-  it("asks for depth in the first tasks, as requirements that compete", () => {
+-    expect(flat(INTENT_CLAUSE.join(" "))).toContain("Build that demand into the first tasks, not later:");
+-    expect(PROMPT).toContain(
+-      "several of the request's requirements act together on a single answer, so that meeting one spends the margin another needs.",
+-    );
++  // ABLATED(competing-margin): the timing and ambition stay; the mandatory route does not.
++  it("keeps demand in the first tasks without prescribing a competing margin", () => {
++    expect(flat(INTENT_CLAUSE.join(" "))).toContain("Build that demand into the first tasks, not later.");
++    expect(PROMPT).not.toContain("so that meeting one spends the margin another needs");
++    expect(PROMPT).toContain("An ambitious round expects its battery to fail some cases");
++    expect(PROMPT).toContain("A limit, state or duty the field does not hold measures your wording");
+     expect(PROMPT).not.toContain("transcription");
+   });

@@ -295,111 +295,33 @@ are the only visible sign of what the Builder is doing.
 ### Read the climb, not only the score
 
 The watch also reads `difficulty-decisions/`, the controller's own placement per battery, and
-prints one row as each lands: `battery run-i02: 24/25 too-easy`. The placement sizes the next
-battery and orients the Epoch Reviewer, and the Builder never hears it; what asks the Builder for
-more is the no-limit line a full pass sends (AGENTS.md "Goals and the climb", under "Who hears the
-placement, and what it drives"). So a row says how the battery landed, and only a run of them says
-whether asking worked.
+prints one row as each lands: `battery run-i02: 24/25 too-easy`. A decision stating **repeated
+failures** or a **family conflict** is `surgical`, and one placed nowhere is `overhaul`. Otherwise it
+moves by its zone: `too-hard` is `reserved`, and the other four zones are the band reading its own
+score, printed as `info`. A row says how one battery landed, and only the run's line says whether
+the climb moved; a stall `bun run runs pulse` names is the operator's to stop (§7).
 
-- **read the line, not the zone.** Progress is read on the run's line of batteries, and a run of
-  full passes is the failure whatever its zones read (AGENTS.md "Goals and the climb", under "Its
-  shape, and how progress is read"). `wri.ts climb` prints that line as its `velocity`, `horizon`,
-  `flat` and `carried` lines, which
-  [the climb reference](../whole-run-investigation/references/climb.md) explains. `bun run runs
-  pulse` names a stall and this watcher does not, and stopping one is the operator's (§7). Bulk
-  RNA-seq 36e268 carried 53 passed tasks forward across its full passes, so rebuild what the tasks
-  demand, not their numbers or their count.
-- a decision stating **repeated failures** or a **family conflict** is `surgical`, and one placed
-  nowhere is `overhaul`. Otherwise it moves by its zone: `too-hard` is `reserved`, and the other
-  four zones are the band reading its own score, printed as `info`.
-
-The decision reads the score. `wri.ts climb` reads the other side of the same question — the
-task bytes — and unlike the decision it works on a battery that has not scored yet:
+Run `wri.ts climb` whenever a new `versions/<battery>/` directory appears, and at every read step
+on a campaign that has landed off its aim twice. The edge label exists the moment a candidate is
+adopted, hours before its battery scores (AGENTS.md "Goals and the climb", under "Reading the climb
+as the operator"), so that is the moment to write the next experiment rather than wait for a score
+that cannot surprise you. The round already in flight finishes and records.
 
 ```text
 bun .claude/skills/whole-run-investigation/scripts/wri.ts climb <campaign dir> [--json]
 ```
 
-Per battery it prints the check-tier histogram and a median structural row, and per edge one
-structural label, which [the climb reference](../whole-run-investigation/references/climb.md)
-explains. A label is a reading and not a forecast (AGENTS.md "Goals and the climb", under "Reading
-the climb as the operator"), so name the changed public requirement from the task rows beside it:
-truss-sol-2d7812's new load sites and forbidden volume read `widened`, two inputs more. Run it
-whenever a new `versions/<battery>/` directory appears, and at every read step on a campaign that
-has landed off its aim twice. It is read-only, it costs nothing, and it is the only reader that
-answers "did anything get harder" before the battery it describes is paid for.
-
-Run `c1d2a7`, read this way on 18 September while its fourth battery was still measuring:
-
-| edge | verdict | what moved | outcome |
-| --- | --- | --- | --- |
-| i01 → i02 | `widened` | +3 inputs, +3 scenarios, 305 numbers moved by 8.33% median, novelty 0.0000 | 6/6 |
-| i02 → i03 | `widened` (read `adjusted` before 2026-09-29) | +1 input, 12 numbers moved, novelty 0.0038 | 6/6 |
-| i03 → i04 | `escalated` | +2 checks, +1 limit, +1 tooled check, +2 rules, +36 inputs; frontier 0 → 2 | unobservable |
-
-The tier histogram held at `easy 0  medium 9  hard 6  frontier 0` for three batteries and moved only
-at the fourth. Those three — eighteen solver cases at roughly fifty minutes each — bought no
-difficulty evidence, and the score could not say so: all three read 6/6, which reads identically
-whether the tasks moved or not. A campaign whose last two edges changed no public requirement you
-can name is not climbing, whatever its zone says or its labels read. Read the edge before writing
-the round up, and do not describe a battery as adding a constraint class until this reader shows the
-checks that carry it.
-
-### The surface you steer with may not be in the measured tree
-
-A model-visible page — a starter file, a prompt section, a tool description — steers a run only if
-it is an ancestor of the run's own `source.commit`. `c1d2a7` opened at `e97f8e703`, and the
-starter's `difficulty-ladder.md` was on the open stack and on no ancestor of it: four rounds were
-read against a page the run could not see, and the reading would have blamed the Builder for
-ignoring it.
-
-So before attributing anything to the Builder, read `source.commit` out of `opening.json` and run
-`git show <commit>:<path>` for every surface your explanation depends on. Absent means the run
-measured a condition your reasoning does not describe. That is an unmeasured surface and a
-prediction for the next launch, never a Builder failure — and never a reason to patch the page
-again, since the page was never delivered.
-
-### Which reader answers which climb question
-
-The table of which reader answers each climb question, and which tempting reader does not, is in
-[the climb reference](../whole-run-investigation/references/climb.md), under "Six situations, and
-what to read first". That reference owns how to read them, the attribution, the difference between
-a harder battery and a differently-labelled one, and the walk that finds the link holding a flat
-line. The goal these readings serve is AGENTS.md "Goals and the climb".
-
-### A round the loop threw away looks exactly like a round that changed nothing
-
-The one row that decides whether a climb is stuck is the battery's score, and a battery can be
-measured, recorded, and then removed from the difficulty population without the decision saying so.
-Check that before concluding the Builder is repeating itself.
-
-On 18 September the truss run `…c1d2a7` scored 6/6 three rounds running, and its fourth battery
-scored 3 of 5 — the first failing cases of the run, against the Builder's own pre-registered
-`at-most 2`. The decision written for round 5 said `"6/6 … significantly too easy"` with
-`"admitted": 3` and `"excluded": []`, and its digest was byte-identical to round 4's. Battery i04
-was in neither list. Two readers had removed it, and the chain runs:
-
-1. the battery's claim was refused — here for one clause, `runtime-model-identity-unproven`, after
-   a transient provider disconnect lost one of five cases' identity records;
-2. a refused claim leaves the candidate's claim stage at `measured`, so promotion **held** it;
-3. a held version is not an adopted version, so `productHistoryDirs` did not offer its run
-   directory to `admitBattery`, which is where a battery earns its named exclusion;
-4. the next round therefore reseeded the Builder from the last **adopted** product — round 3 — so
-   the authored bundle of the one experiment that worked was rolled back as well.
-
-Steps 3 and the identity double-read are fixed in PR #804. **Step 2 is not**: a candidate whose
-claim was refused only for unproven model identity still loses its authored product, and the next
-rebuild starts from the round before it. That is an open decision for the operator, because the
-gate it would widen (`candidate-claim-refused`) exists for a real case — run a7f9ac, where a
-session limit cut a battery to 14 verified and 11 non-results and its refused-claim candidate
-replaced a product measured at 24/25.
-
-What to read, in order, when a decision's placement does not match the last battery you saw:
-
-- `campaigns/<slug>/claims/<battery>.json` — `claim.ok` and the clause names;
-- `campaigns/<slug>/promotions/<battery>.json` — `decision`, `promoted` or `held`;
-- the run's own `fullrun.log`, which names both in one line each;
-- the decision's `admitted`, `excluded` and `evidence[]`, and whether the battery is in any of them.
+[The climb reference](../whole-run-investigation/references/climb.md) owns the reading: the line and
+its four numbers, the edge labels and the rows to read beside them, which reader answers which climb
+question, what to read when a placement does not match the battery you saw, why a published limit,
+a reviewer finding or a zero score is a lead and the case bytes are the measurement, and the walk
+that finds the one link holding a flat line. Two rules stay here because they decide what this loop
+does next. Before attributing anything to the Builder, run `git show <opening source.commit>:<path>`
+for every surface your explanation depends on: a page absent there is an unmeasured surface and a
+prediction for the next launch, never a Builder failure and never a reason to patch the page again,
+since it was never delivered. And a reviewer finding cannot stop the battery that raises it, so when
+one contradicts a standing prompt instruction, one of the two owners has to move, and the recorded
+cases decide which.
 
 ### `[fullrun]` lines in your terminal during a gate are test fixtures
 
@@ -409,75 +331,7 @@ project id that looks like a campaign. A gate run will interleave them with what
 terminal. The live run's state is in its own log, which `lsof -p <pid>` names, and nowhere else.
 On 18 September those fixture lines read as a provider outage on a run that was working normally.
 
-### Read the edge before you pay for the battery
-
-`wri.ts climb` reads its tier histogram and its structural row from the authored bytes under
-`versions/<battery>/`. Neither needs a case. So the newest edge verdict exists the moment a
-candidate is adopted, hours before the battery it describes has been measured, and the reader says
-so: on 18 September it read the still-unmeasured i04 as `undated, unclaimed, no verified case` and
-printed its complete row beside the settled three.
-
-Run it when the version directory appears, not when the claim lands. Run `c1d2a7`'s second
-and third rounds were both `widened` in their adopted bytes, and each then spent about
-four hours of solves to confirm a 6 of 6 that settled nothing. Novelty across those edges ran
-0.0000, 0.0038, 0.0884: the round that changed what the solver must reason about is an order of
-magnitude away from the two that did not, and it is legible before a single case runs.
-
-The verdict reads check tiers, and a tier is not a forecast. On 2026-09-28 one firmware run's
-edge read `escalated` with every structural count unchanged and then passed 6 of 6, and its next
-edge read `widened` with novelty 0.27 and two new families and scored 2 of 6. So read the task rows
-beside the verdict: new tasks and scenarios can ask more at an unchanged tier. It is a reading, not
-a stop order: the product owns its own round, and a round already in flight
-finishes and records. It is the moment to write the next experiment rather than to wait four hours
-for a score that cannot surprise you.
-
-### A limit read from the task file is not yet evidence
-
-Run `c1d2a7` published every task's `massLimitKg` to three decimals — the catalogue mass of its own
-stored reference design — and compared it "with a tolerance of 0 kg". Read that way it looks
-unreachable, and its Epoch Reviewer called it a `curriculum-defect` with 39 probes behind it. Five
-commits were written on that reading before the first cases settled and refuted it: all three
-passed, with accepted designs at 202.07 kg against the 253.192 kg limit, 213.166 against 336.197 and
-434.616 against 710.678, in 45 to 59 solver tool calls. The limits were 20 to 39 per cent loose.
-
-What that measured is the Builder's reference search, not the tasks: a bounded search lands well
-above what a capable solver with a shell reaches, so a limit at the author's own best clears
-easily. Headroom above it makes a loose limit looser, and F2 already refuses a limit the reference
-cannot meet. The gate wall does not bind that search either — `STARTER.md` tells the Builder to
-store the search's best artifact per task under `reference/` and replay it inside the wall, which
-`c1d2a7` did with a 17-line `index.ts` over 2351 lines of stored geometry. What binds is the
-authoring session, so the dial is method rather than effort: the solver spends a whole per-task
-wall searching while the Builder has one session for the whole battery. The lever a reviewing
-session holds is the authoring text, never the bundle.
-
-So wait for the case bytes. A published limit, a reviewer finding and a zero-pass score are each a
-lead; `artifact.json` beside `public-task.json` is the measurement. When a battery does pass
-nothing, read what blocked every case — an unpublished rule, a submission path a correct answer
-cannot use, a requirement no published tool can meet — before reading the battery as hard.
-
-A reviewer finding still cannot stop the battery that raises it, and its projection
-(`epoch-review-public.ts`) says what the review found and where without naming a repair, so what a
-`correctness-model/tasks.json` defect changes is the Builder's choice. When such a finding
-contradicts a standing prompt instruction, one of the two owners has to move, and which one is a
-question for the recorded cases, not for the finding.
-
-The walls are not what stops a solve, so do not reach for them. Across every recorded truss case,
-`solver.turns` and `solver.completedTurns` are 1: the pi loop spends one turn and calls tools inside
-it, so `max_turns` is never approached and a number of turns means nothing to the solver. The
-measure that moves is `solver.toolCalls` in `case-result.json`, and beside it the margin between
-each accepted value and its published limit. Those two decide what a ceiling battery means: `c1d2a7`
-scored 6 of 6 twice, and the per-case rows say every case settled in one turn with the tightest
-answer still 6.7% inside its limit and the loosest 30.8%. "Passed 6 of 6" invites a harder battery;
-"passed 6 of 6, first turn, a third under the limit" says the axis being moved is the wrong one. Campaign `3fd52f9e-28`, the most
-recent: median 24 calls and 11.5 minutes of a 120-minute wall, longest 68 calls and 43 minutes, and
-the cases it failed took 43 calls on average against 25 for the ones it passed. `846c029d-3` is the
-contrast, at exactly 4 calls and 0.4 minutes in all 460 accepted cases — the regime whose proposer
-tool was the reference solve. A solver using a tenth of its time is not held back by its budget.
-
-Freedom is recorded, so do not infer it. `builder-path-record.jsonl` carries one row per guard
-decision: `c1d2a7` took 85 with zero refusals, exposed 15 tools and used 7, and left every wall in
-`agent/config.yaml` at its seeded default though each is raisable tenfold. A thin bundle from a
-session like that is a choice the prompt shaped, not a session the host boxed in.
+### On a deviation
 
 On a deviation read `campaign.ts --campaigns <dir> --run <id> --json`, then the named evidence. The
 case ledger can be legitimately empty during a real battery. A live pid alone proves nothing, a
@@ -531,44 +385,23 @@ source before acting on it.
 
 ### Track what the gate and the checks did, and backtrack a correction
 
-A score says what the verifier decided and nothing about what the gate cost to get there, and an
-evaluation correction changes the exam without saying what the old answers were worth under it. The
-whole-run investigation reads both as lanes 27 and 28, and this loop runs them every round rather
-than waiting for a suspicion, because neither shows up in a denominator.
-
-The `gates` lane walks every Builder session's `correctness_check` and submit receipts, groups
-consecutive refusals of one code into episodes, and prints each fired component's ledger prior from
-`gate-ledger.ts` (P(right), P(stall), P(move), keyed by finding code) beside what its episodes
-actually did: repaired by a byte change, cleared with no edit at all, or left unanswered. A refusal
-that clears on unchanged bytes was not refusing something wrong, so a component that keeps doing it
-is spending the Builder's rounds against the prior the audit gave it, and a code the ledger does not
-know is a component nobody has rated. The lane gives no verdict on a component. Carry its table to
-the gate audit, which decides whether the component goes, and read a stalled episode as a round lost
-to the gate rather than to the domain.
+A score says nothing about what the gate cost to reach it, and an evaluation correction changes the
+exam without saying what the old answers were worth under it; neither shows in a denominator. So
+every round, not only on a suspicion, read the `gates` lane and run every `replay --under` it lists.
+Nine consecutive firmware corrections once went by with none regraded.
 
 ```sh
 bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.ts gates <campaign dir> [--json]
 bun run replay -- <campaign>/<earlier runId> --under <campaign>/<corrected runId>
 ```
 
-Backtracking is the second half. An evaluation correction leaves its issues `unmeasured` (rule 10),
-because a fresh battery on the corrected evaluator solves new attempts and never says what the
-correction would have made of the artifacts already accepted. `replay --under` grades the earlier
-battery's recorded final submissions under the later battery's bundle snapshot and diffs every
-verdict against the recorded one. A pass that flips to a fail was a pass the old checks let through;
-a fail that flips to a pass was a check the correction repaired; no flip means the correction
-changed nothing the battery reached. A task whose public digest moved between the two batteries is
-refused as `public-task-drift` rather than graded against an exam it never sat. The `gates` lane
-reads every correction from the recorded batteries, names the bundle files it moved, and prints
-`EVALUATION CORRECTION REPLAY CANDIDATE` with the exact command wherever the scoring program moved, so
-regrade before judging a correction round: nine consecutive firmware corrections went by with none
-regraded. The candidate stays listed after the replay, because nothing records one, and nothing in
-the controller reads the replay's report either, so its flips inform the round's judgement while
-the advice still names the correction's issues `unmeasured`.
-
-In short, every round: read the gate's episodes against its priors, and regrade every correction
-under the evaluator that replaced it. The first says which checks cost rounds without catching
-anything; the second says whether a correction moved any verdict at all.
+What an episode's ending and a replay's flips mean is lanes 27 and 28 of
+[the catalogue](../whole-run-investigation/references/review-angles.md) and the `gates` lane in
+[the deterministic lanes](../whole-run-investigation/references/deterministic-lanes.md); whether a
+component keeps its place is [the gate audit](../whole-run-investigation/references/gate-audit.md),
+where the lane's table goes. Read a stalled episode as a round lost to the gate rather than to the
+domain. Nothing records a replay or reads its report, so its flips inform this round's judgement
+while the advice still names the correction's issues `unmeasured`.
 
 ### When two batteries miss the band the same way, stop editing prose
 
@@ -597,18 +430,11 @@ its governing limit, what the Builder changed between them as `wri.ts climb` rea
 named next experiment. Then wait. Work on an authoring surface after that point is work for the next
 launch, and it should be scheduled as such rather than presented as a response to this one.
 
-Then read which sentence the Builder cited when it declined to raise the demand (lane 36), because
-that is the surface the next launch changes. AGENTS.md "Goals and the climb", under "What the
-Builder is asked, round by round", records the two 887c163ee Builders that declined on the kickoff's
-wording; they then submitted on one passing rehearsal citing the round prompt's "submit once a clear
-preview says it works", so the wording was the binding constraint there.
-
-Read what the Builder said it set out to do, in its prose and notes, before judging the round. It
-states the gap the Builder saw, and a score cannot. The fourth round of 3fd52f9e-10 opens "every rule
-the harness enforced was a rule about members" and adds two public checks from a published joint
-standard, which no reading of the three flat rounds in front of it would have predicted. The round
-no longer writes that intent to a controller-read `EXPERIMENT.json`: the file graded whether a
-description matched a diff, and the accepted bytes already say what moved.
+Why the line stayed flat is then a reading for the next launch, not an edit to this one.
+[The climb reference](../whole-run-investigation/references/climb.md) walks the chain to the one
+link that held it, including which sentence the Builder cited when it declined a stricter demand
+(lane 36) and what its prose and notes say each round set out to do. That constraint is where §1
+starts.
 
 ## 7. Decide the next move
 

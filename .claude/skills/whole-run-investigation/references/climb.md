@@ -45,6 +45,17 @@ task rows beside it, and read the edge's novelty, numbers moved, delta and `carr
 reading by hand. A rule published in another `correctness-model/` file moves neither task-side row;
 the source row names which of those files changed digest.
 
+Three recorded edges show what the rows beside a label add. Truss c1d2a7's tier histogram held at
+`easy 0  medium 9  hard 6  frontier 0` for three batteries, eighteen cases at roughly fifty minutes
+each, and all three read 6/6, which a battery reads whether its tasks moved or not. Its first two
+edges read `widened` at novelty 0.0000 and 0.0038, and its third, `escalated` at novelty 0.0884, was
+the one that changed what the solver had to reason about; that was legible before a case ran. One
+firmware run's edge on 2026-09-28 read `escalated` with every structural count unchanged and then
+passed 6 of 6, while its next edge read `widened` at novelty 0.27 with two new families and scored 2
+of 6, so new tasks and scenarios can ask more at an unchanged tier. And truss-sol-2d7812's new load
+sites and forbidden volume read `widened`, two inputs more, which only the task rows name as a new
+requirement.
+
 ## Find the binding constraint
 
 A flat line is held by one link of the chain a round runs through, and the useful reading names
@@ -117,6 +128,12 @@ row before the Builder's history source is built. The off-aim streak the digest 
 the run reads it. Lane 36 asks what pressure the round text put on the Builder towards harder tasks,
 and lane 10 whether its calibration improved round over round.
 
+The Builder's freedom is recorded, so read it rather than infer it. `builder-path-record.jsonl`
+holds one row per guard decision: c1d2a7's Builder took 85 with no refusal, used 7 of the 15 tools
+exposed to it, and left every wall in `agent/config.yaml` at its seeded default although each can
+be raised tenfold. A thin bundle from a session like that is a choice the prompt shaped, not a
+session the host boxed in.
+
 ## The record the controller wrote
 
 `recordDifficultyDecision` (`src/run/difficulty-decision.ts`) writes one file per round at
@@ -149,6 +166,19 @@ admitted history and `readClimbBatteries` (`src/run/climb-history.ts`) is the hi
 both are exported, so replay them over every campaign on disk before theorising about what a round
 was told.
 
+A round the loop threw away looks exactly like a round that changed nothing. A refused claim holds
+the candidate whatever refused it (`candidate-claim-refused`, `src/run/candidate-promotion.ts`), and
+the next round reseeds from the last adopted product (AGENTS.md "After it ends"), while the climb
+still admits a battery whose claim was refused only for an environment clause
+(`ENVIRONMENT_CLAUSES`, `src/run/climb-battery-admission.ts`). On 2026-09-18, on a source that did
+not yet admit it, truss c1d2a7's fourth battery, its first with failing cases at 3 of 5, lost its
+claim to one unproven model identity and appeared in neither `admitted` nor `excluded`, and the next
+decision's digest was byte-identical to the one before. So when a placement does not match the last
+battery you saw, read in order the battery's `claims/<battery>.json` (`claim.ok` and the clause
+names), its `promotions/<battery>.json` (`decision`, promoted or held), the run's `fullrun.log`,
+which names both, and the decision's `admitted`, `excluded` and `evidence[]`, asking whether the
+battery is in any of them.
+
 ## What the round was told
 
 What each surface says today is AGENTS.md "Goals and the climb", under "What the Builder is asked,
@@ -171,7 +201,11 @@ explaining its Builder by today's wording:
   `renderProbeSizing` (`src/run/battery-sizing.ts`) states the probe range.
 
 The round states no plan. What it set out to do is in the Builder's prose and notes, and what it
-did is in the accepted bytes, which alone decide the operation it is attributed as. A run whose
+did is in the accepted bytes, which alone decide the operation it is attributed as. Read the prose
+before judging the round, because it states the gap the Builder saw and a score cannot: the fourth
+round of 3fd52f9e-10 opens "every rule the harness enforced was a rule about members" and adds two
+public checks from a published joint standard, which no reading of the three flat rounds before it
+would have predicted. A run whose
 source predates the removal of `EXPERIMENT.json` recorded one beside each accepted submit, and a
 readout row there carries it as `experiment`; nothing reads either, and an older note describing
 `experiment-plan/v2`, a family score or a pass range describes a mechanism this source does not
@@ -243,6 +277,16 @@ climb", under "What the Builder is asked, round by round". What they add to a re
 i03 its solver submitted the reference's own answer on 3 to 7 of each battery's 7 tasks, so a limit
 binds only where the solver's search falls short of the witness.
 
+A limit read from the task file is a lead, and so are a reviewer finding and a zero score; the
+measurement is `artifact.json` beside `public-task.json` in the settled cases. Truss c1d2a7
+published every mass limit at its stored reference design's catalogue mass with zero tolerance,
+which read as unreachable. Its Epoch Reviewer called that a `curriculum-defect` over 39 probes, and
+five commits were written on the reading before all three cases passed, 20 to 39 per cent inside
+their limits, in 45 to 59 tool calls. What such a limit measures is the reference's search: the
+starter has the Builder store a search's best artifact under `reference/` and replay it inside the
+gate's wall, so the author's one session for the whole battery bounds the reference while the
+solver spends a whole per-task wall, and a limit at the author's own best clears easily.
+
 Read difficulty on the changed public-input subset, so unchanged successes cannot dilute its
 failures; order batteries by claim `createdAt`, and refuse a before-and-after reading that lacks
 the chronology and task-set identity. A redesigned battery has no one-to-one map back to its
@@ -277,6 +321,17 @@ calls — by battery and by family. Within one battery, effort does not separate
 fails, so it cannot stand in for difficulty. What it can do is expose a wall: a family whose
 unaccepted cases all ran to the wall was stopped by the Builder's own setting, and `wallBound`
 counts them.
+
+Read tool calls (`solver.toolCalls` in `case-result.json`) and each accepted value's margin to its
+published limit, never turns, since every pi solve records one turn. Truss c1d2a7 passed 6 of 6
+twice with its tightest answer 6.7 per cent inside its limit and its loosest 30.8: "6 of 6" invites a
+harder battery, and the margins say the axis being moved is the wrong one. Across campaign
+3fd52f9e-28 the median solve took 24 tool calls and 11.5 of its 120 minutes, the longest 68 calls
+and 43 minutes, and failed cases averaged 43 calls against 25 for passes. Campaign 846c029d-3 took
+exactly 4 calls and 0.4 minutes in all 460 accepted cases, the regime whose proposer tool was the
+reference solve, which is lane 34's question. A solver using a tenth of its wall is not held back by
+it; truss cb274b, whose misses all ran to the wall (AGENTS.md "Goals and the climb", under "What one
+battery can say"), is the opposite reading.
 
 ## A task that demands a decision
 

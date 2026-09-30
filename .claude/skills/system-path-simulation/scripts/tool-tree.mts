@@ -118,9 +118,11 @@ function isDirectory(path: string): boolean {
   return statSync(path, { throwIfNoEntry: false })?.isDirectory() === true;
 }
 
-/** The campaign root of `root` and of every directory beside it, once per real path, `root`'s first. */
+/** The campaign root of `root` and of every directory beside it, once per real path, `root`'s first.
+ *  A plain file beside it is skipped first: a stat through `notes.md/campaigns` throws ENOTDIR,
+ *  which `throwIfNoEntry` does not cover. */
 export function siblingCampaignRoots(root: string): string[] {
-  const roots = [root, ...childDirs(dirname(root))].flatMap((dir) => {
+  const roots = [root, ...childDirs(dirname(root)).filter(isDirectory)].flatMap((dir) => {
     const campaigns = campaignRoot(dir);
     return isDirectory(campaigns) ? [realpathSync(campaigns)] : [];
   });

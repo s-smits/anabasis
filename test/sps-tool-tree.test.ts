@@ -12,7 +12,10 @@ import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { uppercaseFixture } from "./helpers/uppercase-fixture.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import { runTypeScript } from "../.claude/skills/system-path-simulation/scripts/test-support.ts";
-import type { ToolTreeReport } from "../.claude/skills/system-path-simulation/scripts/tool-tree.mts";
+import {
+  siblingCampaignRoots,
+  type ToolTreeReport,
+} from "../.claude/skills/system-path-simulation/scripts/tool-tree.mts";
 
 const SLUG = "uppercase-deadbeef-29";
 
@@ -66,6 +69,14 @@ function report(...extra: string[]): ToolTreeReport {
 }
 
 describe("tool-tree", () => {
+  it("searches the checkouts beside the campaign's by default, past a plain file among them", () => {
+    writeFileSync(join(scratch, "notes.md"), "a file beside the checkouts\n");
+    expect(siblingCampaignRoots(join(scratch, "a"))).toEqual([
+      realpathSync(join(scratch, "a", "campaigns")),
+      realpathSync(join(scratch, "b", "campaigns")),
+    ]);
+  });
+
   it("finds the selected product's tree present and lists the family's trees, the recorded one matching its digest", () => {
     const found = report("--digest");
     expect(found.family).toBe("uppercase-deadbeef");

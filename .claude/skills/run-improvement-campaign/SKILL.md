@@ -36,6 +36,10 @@ launching. Close a terminal and its owned processes before replacing that slot; 
 Paired replicas keep identical source, prompts, efforts and budgets, and each result is reported
 before any aggregate. Older runs finish on their frozen source; never rebase a live run tree.
 
+The operator's cadence is a pass every 4 to 6 hours, with one firmware run kept going (2026-09-30). It
+runs as a session cron, which dies with the session and expires after seven days. So the handover
+names the cron, its next firing and the file it runs.
+
 Keep `notes/current-state.md` under 150 nonblank lines. Compress prose before deleting a fact, and
 delete the paragraph explaining why the file is long before anything that names a head or a count.
 
@@ -58,6 +62,10 @@ Prefer, in order: delete the competing owner, reuse the existing one, then add t
 `simplify` to each improvement in the same commit. A frozen size in `tools/loc/source-policy.json`
 is a budget, not an invitation to open a sibling file: get under it by collapsing what you added
 and cutting the prose the change made redundant.
+
+When the experiment is a removal, it goes under the ablation convention (AGENTS.md "Ablated
+components"). The pass that reads its runs either strips it as if it was never there or restores
+it. It never stays marked without a date to read it again.
 
 Two failure shapes are worth naming because both have cost whole rounds here:
 
@@ -121,6 +129,18 @@ confirmed four defects and cleared four false leads that source-reading had sugg
 written from source alone added a third owner of a sentence that already had one, passed a full
 composed gate, landed on main and was reverted six minutes later. Render before you gate: a render
 costs seconds and a composed gate costs minutes.
+
+Then cost the literal reading. Multiply what the text asks by the battery size and the walls it
+names, and set the result against one round's session.
+- **The case.** #89's witness-budget sentence asked for a search "at least as long as the solver may
+  spend solving it". That is 120 minutes a task, or about 50 hours for a 25-task battery, against a
+  median slowest solve of 5.9 minutes.
+- **What missed it.** It passed its tests, its gate, and a layer walk that asked only whether the
+  stack could carry a long search. It was read for its cost only after two paid runs carried it,
+  and #90 rewords it.
+- **The rule.** A layer walk over model-visible text asks two questions: whether the stack can carry
+  the instruction, and whether a Builder can afford to follow it. This is the session's own check
+  before the push, not a separate review component.
 
 A test double proves only the interface it replaces. For authoring changes, exercise the
 production Builder entry and the current tool contract; for semantic verifier claims, push a
@@ -188,6 +208,20 @@ Two launch arguments decide whether the run can answer a climb question at all:
   so a climb question needs a boundary that holds that many, or none: truss-sol-198d70 took 17 hours
   to measure twelve batteries. A boundary that ends a run at round three measures a bracket, never a
   line.
+
+**Several arms from one recorded position.**
+- **Seed a copy per arm.** A campaign holds one `.controller.lock`, so two runs cannot continue one
+  project at once. Seed each arm with `seed-campaign.mts` republish
+  `--into-root <main checkout> --relocate`, then launch it with `--project <seeded slug>`. Each seed
+  takes about four minutes, and the product's tool tree is cloned rather than downloaded
+  ([system-path-simulation](../system-path-simulation/SKILL.md), "an active tool tree").
+- **Arms are stack levels, not sibling branches.** The pre-push hook keeps one linear stack. So the
+  landing candidate goes lowest. Above it sit measurement-only levels, each with a head tree that is
+  one condition, and each closed once its run is read.
+- **Build each level as a new branch with ordinary commits.** Moving an existing branch is a
+  rewrite, and the guard refuses it.
+
+The esp32 arms of 2026-09-30 were #90 to #92 on #89.
 
 Credentials stay where they are. Point at the main checkout's `.env` with `--env-file`; never copy
 an env, campaign, domain or config file between checkouts to make a command start. Report a missing
@@ -523,7 +557,7 @@ recorded as `not triggered`, so a skipped skill is a decision rather than an omi
 | read | `whole-run-investigation` rows A to I, then the safeguard census, then a diff of the campaign's adopted versions, then `wri.ts climb` once the campaign has two edges, then `wri.ts gates` and a `replay --under` for every correction it lists | its semantic lanes, the number the tier allows, when a recorded row stays unexplained; `whole-run-investigation`'s [climb reference](../whole-run-investigation/references/climb.md) on any climb row the watch printed, and whenever a transition needs attribution |
 | adjudicate | `prediction.ts adjudicate` for every row, ledger kept in the local `notes/predictions/` | `attribution-and-proof` before any sentence claims improvement |
 | diagnose | read `notes/binding-constraints.md` first and write this pass's row (§6); whenever two batteries miss the band the same way, `wri.ts climb` prints `flat: yes` or an adjudication is `refuted`, walk the chain per the [climb reference](../whole-run-investigation/references/climb.md#find-the-binding-constraint) | Luna lanes through `codex-luna-swarm` for the cross-run count at one link; `bounded-investigation` when a link is disputed |
-| patch | fix on the owning PR; `simplify` on each diff; record the `system-path-simulation` proof choice and its result | `safeguards` when a fix adds a decision no record observes; a fresh replay when existing evidence does not cover the changed consumer |
+| patch | fix on the owning PR; `simplify` on each diff; render and cost any model-visible text (§2) before its push; record the `system-path-simulation` proof choice and its result | `safeguards` when a fix adds a decision no record observes; a fresh replay when existing evidence does not cover the changed consumer |
 | compose | merge in the compose tree, prove every head an ancestor; let `launch-run` own its one gate | `stack-hop` and `intelligent-rebase` when PR order changes or two fixes touch one file |
 | launch | `launch-run`, freeze before the opening, detached watch, next wake | `whole-run-investigation`'s [outcome reference](../whole-run-investigation/references/outcome-review.md) assesses a suspected stall; a stop executes only under existing authority |
 | weekly | the first wake on or after Monday 00:00 UTC runs the `safeguards` removal review and `weekly-run-review`, and writes the date in the snapshot | |
@@ -547,6 +581,9 @@ Keep this list short and current; replace an entry when its lesson is absorbed e
   lever, none of them in the live source. Two hours fifty on 2026-09-18.
 - Reading the climb only after a claim lands, when the adopted bytes carried the same verdict four
   hours earlier.
+- Launching a model-visible change before its simulation. #89 went live at 12:18Z on 2026-09-30 and
+  its stewards started at 12:24Z. The defect that needed #90 was found by reading, after both paid
+  runs carried it.
 
 Upgrade this Skill when a cycle exposes duplicated work, missed closure or a wrong decision.
 Replace the obsolete rule at its owner. Do not accumulate a checklist, a runtime layer, a scheduler

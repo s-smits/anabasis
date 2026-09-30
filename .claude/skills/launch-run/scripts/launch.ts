@@ -214,6 +214,18 @@ export function stackOf(
   return { atHead: stack[0]?.head === commit, stack };
 }
 
+/**
+ * A run id's tail: the launch instant, then the pull request that carried the commit (`pr75`), or
+ * `main` for main's own head, then the commit's first seven hex. The instant keeps every id unique;
+ * `runs pulse` drops it, so two launches of one preset and model from one commit share a label.
+ */
+export function runSuffix(at: Date, commit: string | null, ref: SourceRef | null): string {
+  const top = ref?.stack?.[0];
+  const onMain = ref?.main === commit ? "main-" : "";
+  const from = top === undefined ? onMain : `pr${top.pr}-`;
+  return `${at.toISOString().replace(/[-:.]/g, "")}-${from}${commit?.slice(0, 7) ?? "unresolved"}`;
+}
+
 /** Where the launched commit came from, read once before the fork. It is annotation, so it never
  *  refuses a launch: an unreachable origin is recorded as a null `main` and stack, rather than a
  *  stale local `origin/main` read as current, and GitHub unreadable as a null stack alone, never as
@@ -700,11 +712,10 @@ export async function main(argv: readonly string[]): Promise<number> {
     mainRepo = dirname(commonDir),
     parent = options["output-dir"] ?? dirname(mainRepo),
     passRecord = join(commonDir, "ana-gate-passed");
-  const suffix = `${new Date().toISOString().replace(/[-:.]/g, "")}-${crypto.randomUUID().slice(0, 6)}`;
-  const plans = planRuns(options, parent, suffix);
   if (options["dry-run"]) {
     // A dry run fetches nothing, so only a full commit named outright reads the record.
     const commit = /^[0-9a-f]{40}$/.test(options.source) ? options.source : null;
+    const plans = planRuns(options, parent, runSuffix(new Date(), commit, null));
     const summary = {
       source: options.source,
       condition: options.condition,
@@ -717,6 +728,9 @@ export async function main(argv: readonly string[]): Promise<number> {
     console.log(JSON.stringify(summary, null, 2));
     return 0;
   }
+  const commit = resolveSource(options.source);
+  const ref = sourceRef(options.source, commit);
+  const plans = planRuns(options, parent, runSuffix(new Date(), commit, ref));
   const manager = serviceManager();
   if (!process.getuid) throw new Error("this launcher needs a POSIX user id");
   if (Bun.version !== readFileSync(join(REPO, ".bun-version"), "utf8").trim()) {
@@ -743,8 +757,6 @@ export async function main(argv: readonly string[]): Promise<number> {
     const kind = CONDITIONS[condition].kind;
     credentials[kind] ??= readCredentials(kind, options, mainRepo);
   }
-  const commit = resolveSource(options.source);
-  const ref = sourceRef(options.source, commit);
   console.log(
     `${plans.length} run(s), ${options.condition}, ${options.budget} provider turns each; source ${commit} (${describeSourceRef(ref)})`,
   );

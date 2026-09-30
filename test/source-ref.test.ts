@@ -2,6 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import {
   type OpenPullRequest,
   resolveSource,
+  runSuffix,
   sourceRef,
   stackOf,
 } from "../.claude/skills/launch-run/scripts/launch.ts";
@@ -35,6 +36,24 @@ describe("the launch source stack", () => {
 
   test("a commit already on main is carried by no open pull request", () => {
     expect(stackOf(MAIN, MAIN, OPEN, contains)).toEqual({ atHead: false, stack: [] });
+  });
+});
+
+describe("the run id's tail", () => {
+  const at = new Date("2026-09-30T09:15:00.123Z");
+
+  test("names the pull request and the commit once, after the launch instant", () => {
+    const ref = { requested: "pr:33", main: MAIN, ...stackOf(sha("m"), MAIN, OPEN, contains) };
+    expect(runSuffix(at, sha("m"), ref)).toBe("20260930T091500123Z-pr33-mmmmmmm");
+  });
+
+  test("says main for main's head, and only the commit when GitHub or origin was unreadable", () => {
+    const onMain = { requested: "origin/main", main: MAIN, atHead: false, stack: [] };
+    expect(runSuffix(at, MAIN, onMain)).toBe("20260930T091500123Z-main-0000000");
+    expect(runSuffix(at, sha("c"), { requested: sha("c"), main: null, atHead: false, stack: null })).toBe(
+      "20260930T091500123Z-ccccccc",
+    );
+    expect(runSuffix(at, null, null)).toBe("20260930T091500123Z-unresolved");
   });
 });
 

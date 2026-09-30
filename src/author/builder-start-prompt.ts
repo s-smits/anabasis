@@ -63,17 +63,21 @@ export const SCOPE_CLAUSE = [
  *
  *  The tools sentences used to set no ceiling on what an analysis may report, leaving it to blind
  *  measurement whether a rich tool left a battery too easy. Measurement answered on 2026-09-30: of
- *  297 scored batteries, 266 passed whole and 6 sat in the difficulty band. Every harness that let
- *  the solver run a check passed whole round after round, whether by an adviser importing a
- *  byte-identical copy of the check's module (reserve 6a8ca0, 13 × 7/7; buffer 3af96d, 11 × n/n), or by
- *  the verifier's analyzer on the solver's PATH with the guide giving the check's own stdin (truss
- *  3e4693, 7 × 6/6). The one structural run whose tools left the analysis to the solver (cb274b, a
- *  geometry-only screener) placed 3/8, 10/25, 15/25, 11/25 and 15/25. A solver that can ask the
- *  grader searches until it passes, so the battery measures that search. The worry that kept the
- *  ceiling off was that a solver without an analysis fails on arithmetic, which measures nothing.
- *  The real toolchain and a bounded search stay, and computing the response a check decides with
- *  is the field's own work; whether solves now fail on that work or on arithmetic is for the next
- *  measured battery to say (a new condition from this commit). The program sentence answers harnesses
+ *  298 recorded batteries, 236 passed every case. Every harness that let the solver run a check
+ *  passed whole round after round, whether by an adviser importing a byte-identical copy of the
+ *  check's module (reserve 6a8ca0, 13 × 7/7; buffer 3af96d, 11 × n/n), or by the verifier's analyzer
+ *  on the solver's PATH with the guide giving the check's own stdin (truss 3e4693, 7 × 6/6). A
+ *  solver that can ask the grader searches until it passes, so the battery measures that search.
+ *  The worry that kept the ceiling off was that a solver without an analysis fails on arithmetic.
+ *  The one structural run whose tools left the analysis to the solver (cb274b, a geometry-only
+ *  screener) showed neither that nor a failure on the field's work: its 54 misses were all walls at
+ *  about two minutes a case, and all 54 designs it submitted passed. Verified failures are 32 in
+ *  firmware, where the check observes behaviour the solver cannot fully run before submitting, 8 in
+ *  truss and none in reserve, buffer, RNA-seq or conformer batteries; truss misses are mostly walls
+ *  (79 unaccepted). The real toolchain and a bounded search stay, and computing the response a check
+ *  decides with is the field's own work; whether leaving it to the solver brings verified failures
+ *  or only slower solves is for the next measured battery to say (a new condition from this
+ *  commit). The program sentence answers harnesses
  *  that published an exact call sequence and graded a call trace, which turned writing the program
  *  into transcribing it. */
 export const PUBLICATION_CLAUSE = [

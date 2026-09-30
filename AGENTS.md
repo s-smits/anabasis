@@ -774,8 +774,9 @@ the battery was paid for.
    algorithms, bounded search and the host's margin table on published limits are legitimate solving
    support. A tool, program or guide line that analyses a candidate the way a check does, through the
    check's code or a copy of it, its instrument or a verdict, is not: until 2026-09-30 it counted as
-   support, and 266 of 297 scored batteries passed whole, every harness whose solver could run a check
-   among them (`PUBLICATION_CLAUSE` in `src/author/builder-start-prompt.ts` records the measurement). While the measured `.toolchain` digest still
+   support, and 236 of 298 recorded batteries passed every case, every harness whose solver could run a
+   check among them; the misses without one were walls, not failed analyses (`PUBLICATION_CLAUSE` in
+   `src/author/builder-start-prompt.ts` records the measurement). While the measured `.toolchain` digest still
    matches a recorded tool, the reviewer may read any text file of that tree by name (`toolchain:<path>`,
    installed packages included, each at most 1 MiB) as long as the file still counts as the recorded tree
    digest took it, and a directory reads as its listing.

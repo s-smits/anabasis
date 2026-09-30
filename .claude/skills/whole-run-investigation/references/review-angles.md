@@ -354,9 +354,10 @@ discrimination claim; it routes to `correctness-model/evaluator.ts` for the chec
 
 **8. Public disclosure and one-recipe.**
 
-Starts from a battery where every case passed in one turn at a small share of the wall, from a
-trace telemetry whose call sequences are constant across cases, and from a placement over the aim
-with a rehearsal that `passedInOneTurn`.
+Starts from a battery where every case passed at a small share of the wall, from a trace
+telemetry whose call sequences are constant across cases, and from a placement over the aim whose
+round's rehearsals all passed at a small `longestPassWallPercent`. A turn count is no evidence on
+the pi backend, which records one turn for every solve, a 75-minute solve of 72 tool calls included.
 
 The question is whether the brief and the tools publish a sufficient construction algorithm, so
 that a careful reader transcribes the answer rather than searching for it. The shape is a recipe

@@ -120,9 +120,11 @@ type BlindGrade = {
 interface RoundRehearsals {
   graded: number;
   passed: number;
-  /** Passes the solver reached without needing a second turn. A task it solves in one is not near
-   *  any limit, and the turn count is the part of that a pass/fail alone cannot say. */
-  passedInOneTurn: number;
+  /** The largest share of the solve wall any passing rehearsal took, in whole percent rounded up,
+   *  so "no pass took more than" it holds; null until a pass recorded its minutes. */
+  longestPassWallPercent: number | null;
+  /** The most tool calls any passing rehearsal made; null until a pass. */
+  mostPassToolCalls: number | null;
 }
 
 /** The fields of a grading result this boundary reads, and the only ones it can name. `kind` and
@@ -464,12 +466,22 @@ function blockedNextAction(stage: string): string {
   return "The rehearsal stopped before your solver ran: this candidate could not be read as a bundle. Use harness_inspect readiness, repair it, then repeat the rehearsal.";
 }
 
-function countRehearsal(tally: RoundRehearsals, verdict: string, turns: number | null): void {
+function countRehearsal(tally: RoundRehearsals, verdict: string): void {
   if (verdict !== "pass" && verdict !== "fail") return;
   tally.graded += 1;
-  if (verdict !== "pass") return;
-  tally.passed += 1;
-  if (turns === 1) tally.passedInOneTurn += 1;
+  if (verdict === "pass") tally.passed += 1;
+}
+
+/** Folds one passing rehearsal's effort into the round's maxima. It reads the row the authoring
+ *  review is handed, which carries the minutes and the wall as numbers, where the body carries
+ *  them as a sentence. */
+function notePassEffort(tally: RoundRehearsals, row: RehearsalRow): void {
+  if (row.verdict !== "pass") return;
+  if (row.minutes !== null && row.wallMinutes > 0) {
+    const percent = Math.ceil((row.minutes / row.wallMinutes) * 100);
+    tally.longestPassWallPercent = Math.max(tally.longestPassWallPercent ?? 0, percent);
+  }
+  tally.mostPassToolCalls = Math.max(tally.mostPassToolCalls ?? 0, row.toolCalls);
 }
 
 /**
@@ -480,16 +492,24 @@ function countRehearsal(tally: RoundRehearsals, verdict: string, turns: number |
  * It is here because a per-call sentence is the wrong unit for the decision it feeds. A battery's
  * result is a count over the whole battery, and a Builder holding six separate sentences has to
  * add them up itself, from a conversation pi compacts as it goes, whose oldest turns are the first
- * to be cut. Three recorded campaigns rehearsed and shipped anyway: of
- * 16 rehearsals carrying a verdict, 12 passed and 3 failed, and every single pass came back at one
- * turn. Each of those twelve results said, correctly, that a battery of tasks like this one scores
- * near its size. None of them said it twelve times.
+ * to be cut. Three recorded campaigns rehearsed and shipped anyway: of 16 rehearsals carrying a
+ * verdict, 12 passed and 3 failed. Each of those twelve results said, correctly, that a battery of
+ * tasks like this one scores near its size. None of them said it twelve times.
+ *
+ * Beside the count it states how hard the passes worked: the largest share of the solve wall any
+ * pass took, and the most tool calls any pass made. It counted passes "inside a single turn" until
+ * 2026-09-30, and on the pi backend every solve records one turn whatever it does: reserve run
+ * 6a8ca0's i13 reserve-6 ran 75 minutes over 72 tool calls and still read one turn, so the clause
+ * was always true and said nothing, while Builders' notes repeated it as a sign of an easy task.
  */
 function roundClause(tally: RoundRehearsals): string {
   if (tally.graded < 2) return "";
-  const inOneTurn =
-    tally.passedInOneTurn === 0 ? "" : `, ${String(tally.passedInOneTurn)} of them inside a single turn`;
-  return ` Across this round your solver has now passed ${String(tally.passed)} of ${String(tally.graded)} graded rehearsals${inOneTurn}.`;
+  const { longestPassWallPercent: percent, mostPassToolCalls: calls } = tally;
+  const wall = percent === null ? null : `took more than ${String(percent)}% of the solve wall`;
+  const tools = calls === null ? null : `made more than ${String(calls)} tool call${calls === 1 ? "" : "s"}`;
+  const effort = [wall, tools].filter((part) => part !== null);
+  const passes = effort.length === 0 ? "" : `; no pass ${effort.join(" or ")}`;
+  return ` Across this round your solver has now passed ${String(tally.passed)} of ${String(tally.graded)} graded rehearsals${passes}.`;
 }
 
 function trialNextAction(status: string, verdict: string, stage: string, tally: RoundRehearsals): string {
@@ -530,7 +550,7 @@ function trialResultSummary(value: unknown, tally: RoundRehearsals) {
   if (isNumber(solve?.turns)) receipt.turns = solve.turns;
   if (isString(candidate?.candidateId)) receipt.candidateId = candidate.candidateId;
   if (stage !== "") receipt.stage = stage;
-  countRehearsal(tally, verdict, isNumber(solve?.turns) ? solve.turns : null);
+  countRehearsal(tally, verdict);
   return {
     validation: { ...semantic, round: { ...tally } },
     // A body that already named its own cause keeps it. The status alone cannot tell a blank taskId
@@ -546,7 +566,19 @@ export function createHarnessTrialTool(binding: HarnessTrialBinding): AgentTool<
   // Round-scoped, like `ordinal`, and for the same reason: the tool instance is the round, so neither
   // count outlives it and neither has anywhere else to live. Nothing here rations rehearsals: each one
   // is a Built solve charged to the run's provider budget, which already owns that spend.
-  const tally: RoundRehearsals = { graded: 0, passed: 0, passedInOneTurn: 0 };
+  const tally: RoundRehearsals = {
+    graded: 0,
+    passed: 0,
+    longestPassWallPercent: null,
+    mostPassToolCalls: null,
+  };
+  const counted: HarnessTrialBinding = {
+    ...binding,
+    onRehearsal: (row, submitted) => {
+      notePassEffort(tally, row);
+      binding.onRehearsal?.(row, submitted);
+    },
+  };
   return defineTool({
     name: "harness_trial",
     label: "Harness trial",
@@ -555,7 +587,7 @@ export function createHarnessTrialTool(binding: HarnessTrialBinding): AgentTool<
     executionMode: "sequential",
     run: async (params, signal) => {
       ordinal += 1;
-      const result = await runTrial(binding, params.taskId, ordinal, signal);
+      const result = await runTrial(counted, params.taskId, ordinal, signal);
       // A rehearsal blocked before its solve wrote nothing under this ordinal, so the next call reuses
       // it without colliding with an evidence directory that exists.
       if (result.status === "blocked") ordinal -= 1;

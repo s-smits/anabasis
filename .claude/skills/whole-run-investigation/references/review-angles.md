@@ -429,8 +429,8 @@ Starts from block 6's `SUBMITTED BYTES NEVER REHEARSED (lane 11)` and from the `
 `harness-trial` component.
 
 The question is what the Builder did with each rehearsal verdict before it submitted. Each
-`harness_trial` row's `semantic` carries `truthVerdict`, `turns`, `submitted` and `candidateId`,
-and the accepted submit's own `candidateId` is the join: a submit whose candidate no rehearsal
+`harness_trial` row's `semantic` carries `truthVerdict`, `submitted` and `candidateId`, and the
+accepted submit's own `candidateId` is the join: a submit whose candidate no rehearsal
 graded was calibrated from belief, and a Builder whose `MEMORY.md` says the battery is untested
 against the solver has said so itself. A `pass` on the submitted bytes of every rehearsed task says
 the battery was likely to land above the aim before it was paid for. Keep in mind what each reader
@@ -680,12 +680,13 @@ The question is how the solver spent its walls. `agent/config.yaml` owns `solve_
 `max_turns`, `shell_timeout_seconds` and `shell_timeout_max_seconds`
 (`src/correctness-bundle/harness-config.ts`), and a harness may set a solver wall anywhere from a
 tenth of its default to ten times it, so a short wall is a Builder choice and the first thing to
-check when cases time out. A turn is one outer prompt carrying an unbounded tool loop, so a turn
-count below `max_turns` is not room the solver could have used; the tool calls are the work. A case
+check when cases time out. A turn is one outer prompt carrying an unbounded tool loop, and the pi
+backend records one for every solve, so a turn count below `max_turns` is not room the solver could
+have used; the tool calls are the work. A case
 that reached a wall without passing is a truncated solve and not a settled capability failure, and
 a solve the whole-solve wall stopped after a tool call is an unaccepted attempt carrying its traced
 calls, not a non-result. Read each case's `built-runtime.json` and `final-submission.json`,
-`trace-telemetry.json` from the `challenge` lane (turn and call spread, tool census, distinct ordered
+`trace-telemetry.json` from the `challenge` lane (call spread, tool census, distinct ordered
 sequences per battery and per family, so one expensive family cannot disappear in the aggregate),
 and the wall shares `walls.ts` prints. A public candidate analysis or a check of a published limit
 is legitimate solving support, and a tool is an answer shortcut only when it supplies the remaining

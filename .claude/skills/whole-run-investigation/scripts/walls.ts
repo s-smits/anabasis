@@ -250,7 +250,7 @@ export function buildWalls({ campaign, runId = null }: WallsInput) {
     batteries,
     limits: [
       "Elapsed time is the case's wall clock, including provider latency and every queue it waited in, not model work.",
-      "A turn is one outer prompt carrying an unbounded internal tool loop, so a solver that finishes without being nudged records one turn whatever it did inside it. Tool calls are that work; a turn count below the wall is not room the solver could have used.",
+      "A turn is one outer prompt carrying an unbounded internal tool loop, so a solver that finishes without being nudged records one turn whatever it did inside it, and on the pi backend every solve does. Tool calls are that work; a turn count below the wall is not room the solver could have used.",
       "A case that passed at a wall is not a defect. A case that reached a wall without passing is the one reading that supports more room, and its verdict is a truncated solve rather than a settled capability failure.",
     ],
   };

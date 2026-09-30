@@ -143,7 +143,7 @@ interface BatteryView {
     slugs?: string[];
     isolationUnproven?: number;
   };
-  telemetry?: { recorded?: number; meanTurns?: number | null; meanToolCalls?: number | null };
+  telemetry?: { recorded?: number; meanToolCalls?: number | null };
   tools?: { neverCalled?: string[] };
 }
 
@@ -765,7 +765,7 @@ function batteryFactLines(runId: string, battery: BatteryView): string[] {
   const telemetry = battery.telemetry ?? {};
   if (telemetry.recorded !== undefined) {
     lines.push(
-      `  - Telemetry: ${telemetry.recorded} recorded, mean turns ${telemetry.meanTurns ?? "null"}, mean tool calls ${telemetry.meanToolCalls ?? "null"}.`,
+      `  - Telemetry: ${telemetry.recorded} recorded, mean tool calls ${telemetry.meanToolCalls ?? "null"}.`,
     );
   }
   const never = battery.tools?.neverCalled ?? [];

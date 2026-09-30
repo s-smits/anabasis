@@ -67,8 +67,8 @@ whether each check can fail on a shipping artifact and bind to what it constrain
 reads slack: freeze a public-only corpus alone, before verifier internals, and report false
 rejections.
 
-**8. Public disclosure and one-recipe.** From one-turn solves and constant call sequences, say
-whether the brief and tools publish a sufficient construction algorithm.
+**8. Public disclosure and one-recipe.** From passes at a small share of the solve wall and constant
+call sequences, say whether the brief and tools publish a sufficient construction algorithm.
 
 **9. Rehearsal instrument reach.** From `REHEARSAL NOT-RUN`, say which families the rehearsal
 verifier deadline lets the instrument grade at all.

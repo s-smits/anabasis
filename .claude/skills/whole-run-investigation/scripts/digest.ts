@@ -490,10 +490,11 @@ function processCensus(
   );
   if (census.cases.recorded === 0) return [...lines, "no readable case traces"];
   const errors = census.tools.reduce((sum, tool) => sum + tool.errors, 0);
-  const turns = census.turnSpread;
+  // Tool calls, not turns: the pi backend records one turn for every solve, whatever it did.
+  const calls = census.toolCallSpread;
   lines.push(
     `traces ${census.cases.recorded} · distinct tool sequences ${census.sequences.distinct} · tool errors ${errors}` +
-      (turns === null ? "" : ` · turns/case min ${turns.min} median ${turns.median} max ${turns.max}`),
+      (calls === null ? "" : ` · tool calls/case min ${calls.min} median ${calls.median} max ${calls.max}`),
   );
   lines.push(...toolRosterLines(census.tools, bundleDir, bundleProvenance));
   return lines;

@@ -320,7 +320,6 @@ function pairedComparison(leftId: string, left: FactRecord[], rightId: string, r
   const delta = (pick: (record: Recorded) => number): number =>
     pairs.reduce((sum, [a, b]) => sum + pick(b) - pick(a), 0);
   const side = (record: Recorded) => ({
-    turns: record.facts.turns,
     toolCalls: record.facts.toolCalls,
     sequence: record.facts.toolNames,
     outcome: record.outcome,
@@ -335,11 +334,9 @@ function pairedComparison(leftId: string, left: FactRecord[], rightId: string, r
     left: leftId,
     right: rightId,
     sharedRecordedTasks: pairs.length,
-    turnsChanged: changed((record) => record.facts.turns),
     toolCallsChanged: changed((record) => record.facts.toolCalls),
     sequencesChanged: changed((record) => record.facts.toolNames.join("\u0000")),
     outcomesChanged: changed((record) => record.outcome),
-    rightMinusLeftTurns: delta((record) => record.facts.turns ?? 0),
     rightMinusLeftToolCalls: delta((record) => record.facts.toolCalls ?? 0),
     taskDiffs,
   };

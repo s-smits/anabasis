@@ -106,10 +106,11 @@ recorded runs broke at the same link by replaying the exported reader over every
 the gate) rather than re-deriving each reading by hand. Count distinct runs and conditions, not
 reports, since two notes about one run are one observation, and a run whose round never reached the
 link is no opportunity, neither a break nor a hold. Count within one kind of domain before claiming
-a transfer. Limits at the reference's values bind where a longer search finds a better answer, in
-the optimisation domains (truss, reserve, buffer). A conformance domain such as firmware has no
-optimum to search, and on 2026-09-30 its flat line read at the tasks' demand and the round's length
-instead.
+a transfer. A limit at the reference's value is slack where a longer search finds a better answer,
+in the optimisation domains (truss, reserve, buffer), but that slack is not what holds the line:
+on 2026-09-30 six truss limits tightened to 1.02× a search of up to 3.4 hours still passed 5 of 6.
+A conformance domain such as firmware has no optimum to search, and its flat line read at the tasks'
+demand and the round's length.
 
 **Hand over one constraint.** The output is the link, the owner of the bytes that would move it (a
 bundle file, `environment`, `controller-source` with the file named, or `judge`, as the catalogue

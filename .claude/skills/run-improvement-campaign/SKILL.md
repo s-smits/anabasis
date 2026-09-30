@@ -72,9 +72,12 @@ constraint needs a fresh walk, recorded in the ledger, that moved the constraint
 
 A constraint holds where its mechanism exists, so its ledger row names the domains it covers. The
 walk of 2026-09-30 found limits within about 2% of a reference the Builder had found in minutes.
-That witness ceiling binds the optimisation domains (truss, reserve, buffer), where a longer search
-finds a better answer. Firmware and conformer are conformance domains with no numeric optimum to
-search, and the same day's six-domain read put their link at task demand and round length instead.
+That witness ceiling looked like the link in the optimisation domains (truss, reserve, buffer),
+where a longer search finds a better answer, and its experiment came back held: at 1.02× the best of
+a search up to 3.4 hours long, 5 of 6 truss tasks still passed (§7). Firmware and conformer are
+conformance domains with no numeric optimum to search, and the same day's six-domain read put their
+link at task demand and round length. So in every domain read that day the link is what the tasks
+demand, not where their limits sit.
 Behind both sits F2. A task is admitted only with a reference the Builder solved inside its own
 round, so no task is harder than that round can solve. The Judge never sees the reference
 (AGENTS.md, "Judges advise; the verifier decides"), so a reference's quality reaches the score only
@@ -518,10 +521,9 @@ three:
 Each pass writes one row to the local `notes/binding-constraints.md`, which is never published: the
 date; the runs read; the constraint, as its link, its owner, the domains it covers and its evidence
 with denominators; its falsifier; the change, as PR and sha; the prediction ids frozen for it; and
-the outcome, once adjudicated. The next pass reads it first. The first row was written on
-2026-09-30 (the witness ceiling) and its outcome is still open, so the pass that adjudicates it
-tests the rule as well as the product; record where a pass did not fit the row rather than bending
-the row to fit.
+the outcome, once adjudicated. The next pass reads it first. The first row, written on 2026-09-30,
+named the witness ceiling, and it came back **held** the same evening, which moved the constraint
+to task demand. Record where a pass did not fit the row rather than bending the row to fit.
 
 ## 7. Decide the next move
 
@@ -546,11 +548,14 @@ show whether the line moved.
 
 Five patterns from 2026-09-30 point at an owner before the evidence is complete:
 
-- **A limit is only as tight as the search behind its reference.** Forty minutes into a four-hour
-  search, the witness experiment found truss answers 11 to 59% lighter than the Builder's accepted
-  references on three tasks. A battery scored against a reference measures the reference search as
-  much as the solver. Before blaming the frame for a flat climb, measure how far a longer search
-  moves the reference. This holds in optimisation domains only (§1).
+- **A limit is only as tight as the search behind its reference, and tightening it does not make
+  the solver fail.** The witness experiment's searches, of 45 minutes to 3.4 hours, found truss
+  answers up to 59% lighter than the Builder's accepted references. Re-limited at 1.02× those, six
+  tasks measured once with the recorded Opus solver passed 5 of 6. The one fail was decided by
+  strength, not mass. On every task it passed, the 90-minute solver came within 1.3% of the search's
+  best, and it beat that best on three (prediction 579d4990, refuted). In an optimisation domain
+  the solver is itself the better search, so a slack limit is a finding about the reference;
+  difficulty has to come from what the task demands.
 - **A control that equals the reference proves nothing at the limit.** In the lane reads of
   2026-09-30 the firmware and conformer accept controls sat on the reference and none probed a
   boundary, so no check was exercised where a solver's answer lands. RNA-seq set its floors at

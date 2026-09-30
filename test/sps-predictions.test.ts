@@ -114,6 +114,22 @@ describe("predictions", () => {
     expect(refused.stderr).toContain('"P1 — <prediction>"');
   });
 
+  // The frame × model note of 2026-09-30 was frozen with an empty "## Resolutions" heading and its
+  // checksum taken over the whole file, the digest run-condition records as predictions.sha256. The
+  // note was byte-identical, yet --verify said the pre-registered part had changed.
+  it("reads a checksum taken over the note as frozen, through its Resolutions heading", () => {
+    const frozen = `${NOTE}\n## Resolutions\n`;
+    writeFileSync(note, frozen);
+    writeFileSync(`${note}.sha256`, `${sha256(frozen)}  ${note}\n`);
+    expect(run("--verify").exitCode).toBe(0);
+    expect(run("--resolve", "P2: refuted — 25 of 25 rows carry no instant").exitCode).toBe(0);
+    expect(readFileSync(note, "utf8")).toBe(`${frozen}- P2: refuted — 25 of 25 rows carry no instant\n`);
+    expect(run("--verify").exitCode).toBe(0);
+    expect(run("--unresolved").stdout).toBe("UNRESOLVED: P1 R3\n");
+    writeFileSync(note, readFileSync(note, "utf8").replace("deadbeef. Falsifier", "cafebabe. Falsifier"));
+    expect(run("--verify").stderr).toContain("changed after its checksum was recorded");
+  });
+
   it("allows honest inconclusive and untriggered closures but not pending", () => {
     run("--hash");
     expect(run("--resolve", "P1: inconclusive — provider returned no deciding evidence").exitCode).toBe(0);

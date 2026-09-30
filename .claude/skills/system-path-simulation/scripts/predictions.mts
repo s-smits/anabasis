@@ -27,7 +27,7 @@ import { existsSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts
 import { sha256 } from "#src/meta/digest.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { absoluteOption, type ExitWith, exitWith, parseOrDie, requiredOption } from "#skills/main/cli.ts";
-import { declaredRows, splitNote } from "./prediction-note.mts";
+import { declaredRows, RESOLUTIONS_HEADING, splitNote } from "./prediction-note.mts";
 
 const die: ExitWith = exitWith("predictions");
 
@@ -142,9 +142,16 @@ function readChecksum(): string {
 function checksumMismatch(text: string): string | null {
   const checksum = readChecksum();
   const part = splitNote(text).preRegistered;
-  // A checksum computed by hand before this script existed may cover the trailing newline.
+  // A checksum computed by hand before this script existed may cover the trailing newline, or the
+  // whole note frozen with its empty heading. That is the digest run-condition records as
+  // predictions.sha256; on 2026-09-30 a byte-identical note was refused because only this was missing.
+  // Resolutions are appended below the heading, so the note through its heading line never changes.
   const actual = sha256(part.trimEnd());
+  const heading = RESOLUTIONS_HEADING.exec(text);
   if (actual === checksum || sha256(part) === checksum) return null;
+  if (heading !== null && sha256(`${text.slice(0, heading.index + heading[0].length)}\n`) === checksum) {
+    return null;
+  }
   return `the pre-registered part changed after its checksum was recorded (recorded ${checksum.slice(0, 12)}, now ${actual.slice(0, 12)})`;
 }
 

@@ -1,5 +1,5 @@
 import { Picker } from "../src/components/picker.js";
-import { ReviewCounts } from "../src/views/current-run.js";
+import { ReviewCounts, reviewCounts } from "../src/views/current-run.js";
 import { matchesTask, ToolCallDetail } from "../src/views/cases.js";
 import { FileInspector } from "../src/views/file-inspector.js";
 import { expect, test } from "bun:test";
@@ -7,14 +7,20 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { RecordView } from "../src/components/record.js";
 import { evaluationLabel, evidenceLabel, runLabel } from "../src/views/format.js";
 
-test("review counts use compared verdicts and leave absent reviews unknown", () => {
-  const html = renderToStaticMarkup(
-    <ReviewCounts evidence={{ judge: "unvalidated", disagreementDenominator: 7, disagreements: 2 }} />,
-  );
+test("review counts read the contested kinds and leave absent reviews unknown", () => {
+  const exit = {
+    kind: "advisory" as const,
+    cases: { veto: 1, "unconfirmed-fail": 0, "disputed-pass": 1 },
+    verified: 8,
+    reason: "",
+  };
+  // SAFETY: reviewCounts reads census.evidence.verdicts alone; the rest of the census is irrelevant here.
+  const census = { runId: "r", evidence: { verdicts: 7 } } as never;
+  const html = renderToStaticMarkup(<ReviewCounts counts={reviewCounts({ census, exit })} />);
   expect(html).toContain('aria-label="Agreements: 5"');
   expect(html).toContain('aria-label="Disagreements: 2"');
-  for (const evidence of [null, { judge: "off" } as const]) {
-    const missing = renderToStaticMarkup(<ReviewCounts evidence={evidence} />);
+  for (const counts of [null, reviewCounts({ census: null, exit })]) {
+    const missing = renderToStaticMarkup(<ReviewCounts counts={counts} />);
     expect(missing).toContain('aria-label="Agreements: unavailable"');
     expect(missing).toContain('aria-label="Disagreements: unavailable"');
   }

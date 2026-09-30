@@ -166,7 +166,8 @@ function batteryLines(detail: RunDetail): string[] {
   const rows = ordered.map((runId) => {
     const tally = counts.get(runId);
     const claim = claims.find((row) => row.runId === runId);
-    const decision = decisions.rows.find((row) => row.runId === runId);
+    // A decision is filed under the round it opens and places the battery its evidence ends on.
+    const decision = decisions.rows.find((row) => row.evidenceRunIds.at(-1) === runId);
     return [
       runId,
       claim?.createdAt ?? "no claim",

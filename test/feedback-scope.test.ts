@@ -12,6 +12,7 @@ import { settleGateRun } from "../src/gate/settlement.ts";
 import { settleUnresolved } from "../src/author/campaign-memory.ts";
 import { decideNextMove } from "../src/run/next-move.ts";
 import { controllerValidatedFinding } from "../src/correctness-bundle/brief.ts";
+import { CASE_CODE } from "../src/correctness-bundle/solvability.ts";
 import type { CampaignFeedback, FeedbackOwner } from "../src/author/campaign-types.ts";
 import { double } from "./helpers/doubles.ts";
 
@@ -90,6 +91,22 @@ describe("the complete repair agenda", () => {
     expect(advisory(feedback.map((entry) => ({ ...entry, severity: "advisory" })))).not.toBe(text);
   });
 
+  it("tells the Builder a finding recurs, and since which battery", () => {
+    const recurring: CampaignFeedback = {
+      ...row("correctness-model/brief.json"),
+      findings: [
+        controllerValidatedFinding({ code: "defect", path: "recorded", detail: "Publish the wiring rule." }),
+      ],
+      repeated: { count: 12, since: "custom-sol-i03" },
+    };
+    expect(advisory([recurring])).toBe(
+      "- correctness-model/brief.json: [blocking] defect: Publish the wiring rule. (recurring: 12 consecutive batteries since custom-sol-i03)",
+    );
+    expect(advisory([{ ...recurring, findings: [] }])).toBe(
+      "- correctness-model/brief.json: [blocking] a previous finding remains; inspect the public contract (recurring: 12 consecutive batteries since custom-sol-i03)",
+    );
+  });
+
   it("names the file the owner writes, not the recorded evidence the Builder cannot open", () => {
     // Of the 416 findings in the admission records under campaigns/, 411 cite a file under
     // campaigns/ and 5 under domains/. Both trees are closed to the Builder, so the citation spent
@@ -142,6 +159,26 @@ describe("the complete repair agenda", () => {
     expect(changed.evidence.findingsHash).not.toBe(first.evidence.findingsHash);
     expect(feedbackOwner([row("correctness-model/controls.json")])).toBe("correctness-model/controls.json");
     expect(feedbackOwner([])).toBeNull();
+  });
+
+  it("keeps the session and the run when all the environment reports is reference solves the host cut short", async () => {
+    const cut = (...codes: string[]): CampaignFeedback => ({
+      ...row("environment"),
+      findings: codes.map((code) =>
+        controllerValidatedFinding({ code, path: "environment", detail: "cut short on both attempts" }),
+      ),
+    });
+    const hostCut = cut(CASE_CODE["submission-path-host"], CASE_CODE["reference-solve-host"]);
+    expect(await settle([hostCut])).toMatchObject({ kind: "continue", carried: [hostCut] });
+    expect(decideNextMove("adopted", [hostCut])).toMatchObject({ move: "rebuild", seed: "adopted" });
+    // Any other environment fact still ends both: one beside the cut solves, one mixed into the row.
+    for (const blocked of [
+      [hostCut, row("environment")],
+      [cut(CASE_CODE["reference-solve-host"], CASE_CODE.sandbox)],
+    ]) {
+      expect(await settle(blocked)).toMatchObject({ kind: "terminal", clause: "environment-blocked" });
+      expect(decideNextMove("adopted", blocked).move).toBe("stop");
+    }
   });
 
   it("requests a rebuild from the adopted product for each blocking set", () => {

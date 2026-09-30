@@ -66,7 +66,7 @@ import { assertRunIdSafe, batteryCondition, driveBattery, loadRecordedTasks } fr
 import { keyIfDefined, keyIfNotNull, keysIf } from "../meta/optional-key.ts";
 import { runtimeProcess } from "../meta/process.ts";
 import type { ProviderResourceBudget } from "./provider-resource-budget.ts";
-import type { SafeguardContext } from "../meta/safeguard.ts";
+import { type SafeguardContext, safeguardTriggered } from "../meta/safeguard.ts";
 import { type VerifierLifetime, withVerifierLifetime } from "../verify/verifier-lifetime.ts";
 import { campaignVerifierLifetime } from "./verifier-lifetime.ts";
 import { selectedProductDir } from "./product-versions.ts";
@@ -161,6 +161,12 @@ interface MeasureBatteryContext {
   judge: JudgeSession | null;
   reuse?: BatteryReuse;
 }
+
+/** Safeguard 57: the controller hands type checks and bundles to child processes and keeps tool-tree
+ * digests for four roots only, and each of those levels off below half a gibibyte even on a large
+ * tool tree. A controller above a gibibyte at a battery's start holds memory none of them explains,
+ * which is how a leak shows before the host starts swapping. */
+const CONTROLLER_RSS_WATCH_BYTES = 1 << 30;
 
 /** The measurement driver's identity recorded on each case row, separate from the solving agent. */
 export function measurementDriverId(slug: string): string {
@@ -330,6 +336,14 @@ async function measureResolvedBattery(
   } = contract;
   const { runId } = options;
   fullrunLine(`${slug}: battery started (${runId}, ${tasks.length} tasks)`);
+  const { rss } = runtimeProcess.memoryUsage();
+  if (rss > CONTROLLER_RSS_WATCH_BYTES) {
+    safeguardTriggered(
+      "57-controller-memory-high",
+      `${Math.round(rss / 2 ** 20)} MB before battery ${runId}`,
+      options.safeguardContext,
+    );
+  }
   // A regrade saves the solves and keeps the review: a corrected verifier can pass an artifact the
   // Judge has never seen as a pass, which is exactly the disagreement the review exists to read.
   const judge =

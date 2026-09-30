@@ -13,25 +13,31 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { JsonValue } from "../meta/json-shape.ts";
 import type { HostSession } from "../backends/pi-session.ts";
-import type { ReviewChoice } from "../backends/resolve.ts";
+import { backendConditionPin } from "../backends/resolve.ts";
 import type { RunObserver } from "../observe/run-observer.ts";
 import {
   isProviderResourceBudgetInterruption,
   runBudgetedAgentTurn,
 } from "../run/provider-resource-budget.ts";
 import type { ProviderResourceBudget } from "../run/provider-resource-budget.ts";
-import { openReviewSession, reviewSlotPin } from "./review-session.ts";
+import { type EnabledReview, openReviewSession } from "./review-session.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { boundText } from "../meta/bounded-text.ts";
 
-/** Every reader records the same three facts: the slot it ran on, what the model said, and the
- *  one typed reason it produced nothing. `pin: null` with `error: "review-slot-off"` is the
- *  explicit disabled state, not a failure. */
+/** Every reader turn records the same three facts: the slot it ran on, what the model said, and
+ *  why the turn failed, when it did. A switched-off slot opens no turn, so it is no turn's state. */
 export type ReaderTurn = {
   pin: string | null;
   text: string;
   error: string | null;
 };
+
+/** How one review reading ended: read; not owed, with the reason; or owed and not done, with why.
+ *  Only the last is absent work, and it must never read as a review that found nothing. */
+export type ReviewOutcome =
+  | { kind: "read" }
+  | { kind: "skipped"; reason: string }
+  | { kind: "absent"; why: string };
 
 /** One reader session's deadline, continuations included. A review settles in a few minutes, so
  *  the bound is not a throughput limit; it exists for the tail, where a review still working runs
@@ -40,9 +46,9 @@ export type ReaderTurn = {
 export const READER_DEADLINE_MS = 60 * 60_000;
 
 interface ReaderTurnInput {
-  review: ReviewChoice;
+  review: EnabledReview;
   repoRoot: string;
-  /** Names the reader in the observability stream and in a failure clause. */
+  /** Names the reader in a failure clause. */
   role: string;
   /** Controller-owned in-process tools; the reader's output arrives through one of them. */
   tools: ReaderTool[];
@@ -52,7 +58,6 @@ interface ReaderTurnInput {
   continuePrompt?: () => string | null;
   /** Same lifecycle with a deterministic session in tests; production resolves the review slot. */
   openSession?: () => Promise<HostSession>;
-  observer?: RunObserver;
   providerBudget?: ProviderResourceBudget;
 }
 
@@ -61,6 +66,24 @@ export type ReaderToolResult = { content: Array<{ type: "text"; text: string }>;
 /** A reader tool: pi's tool shape, whose `parameters` a controller-written JSON schema fills
  *  (`readerParameters`) and whose `details` stay null. */
 export type ReaderTool = AgentTool<never, null>;
+
+/** The controller terminal's absent steps: one line per named reading whose outcome is absent. */
+export function absentLines(outcomes: Readonly<Record<string, ReviewOutcome>>): string[] {
+  return Object.entries(outcomes).flatMap(([name, outcome]) =>
+    outcome.kind === "absent" ? [`${name}: ${outcome.why}`] : [],
+  );
+}
+
+/** Open a reader's analyse phase row, and return what closes it on the reading's outcome. */
+export function readerPhase(role: string, observer: RunObserver | undefined) {
+  observer?.phase({ phase: "analyse", state: "started", summary: `${role} started` });
+  return (outcome: ReviewOutcome) =>
+    observer?.phase({
+      phase: "analyse",
+      state: outcome.kind === "absent" ? "failed" : "completed",
+      summary: `${role} ${outcome.kind === "absent" ? outcome.why : "completed"}`,
+    });
+}
 
 /** A controller-written JSON schema as a reader tool's parameters. */
 export function readerParameters(schema: Record<string, JsonValue>): never {
@@ -76,10 +99,7 @@ export function readerParameters(schema: Record<string, JsonValue>): never {
  * agreement.
  */
 export async function runReaderTurn(input: ReaderTurnInput): Promise<ReaderTurn> {
-  const { review, repoRoot, role, observer } = input;
-  const pin = reviewSlotPin(review);
-  if (!review.enabled) return { pin, text: "", error: "review-slot-off" };
-  const phase = observer?.phase({ phase: "analyse", state: "started", summary: `${role} started` });
+  const { review, repoRoot, role } = input;
   let session: HostSession | null = null;
   let error: string | null = null;
   let text = "";
@@ -97,14 +117,7 @@ export async function runReaderTurn(input: ReaderTurnInput): Promise<ReaderTurn>
       error ??= boundText(`${role} dispose failed: ${errorMessage(cause)}`, 300).shown;
     }
   }
-  if (phase !== undefined) {
-    observer?.phase({
-      phase: "analyse",
-      state: error === null ? "completed" : "failed",
-      summary: `${role} ${error ?? "completed"}`,
-    });
-  }
-  return { pin, text, error };
+  return { pin: backendConditionPin(review), text, error };
 }
 
 /** Continuations share one deadline and provider allowance; a failed turn is never retried. */

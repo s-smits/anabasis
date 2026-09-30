@@ -7,9 +7,10 @@ description: "Audit whether a new wave of Anabasis runs improved on the wave it 
 
 A **wave** is the set of runs launched together on one source commit, one run per condition. A wave
 audit compares a candidate wave with the baseline wave it replaced and answers one question: did
-moving the source make the loop do better at what it is for? The loop is for finding a capability
-boundary, so "better" means reaching hard, well-calibrated batteries sooner, and wasting fewer
-rounds on the way there. It does not mean scoring higher.
+moving the source make the loop do better at what it is for? The loop is for a healthy, ambitious
+climb (AGENTS.md "Goals and the climb"), so "better" means a line that locates the solver's limit
+sooner on fails that were earned, and fewer rounds wasted on the way there. It does not mean scoring
+higher.
 
 The audit reads recorded bytes. It launches nothing, stops nothing and changes no score. What it
 concludes goes back to [run-improvement-campaign](../run-improvement-campaign/SKILL.md) as the
@@ -42,8 +43,9 @@ The corpus shows how badly a raw rate misleads:
   and `writes-firmware-esp32-raspberry-9c0c68b1-*`) held 98 placed batteries: 79 `too-easy`, 16
   `over-aim`, 3 `on-aim`, and none below the aim.
 
-So a perfect battery is the base rate here, and it is not news. A first battery that places
-`on-aim` or below would be news, whatever it scored.
+So a perfect battery is the base rate here, as AGENTS.md "Goals and the climb" counts for the whole
+corpus, and it is not news. A first battery that passes some of its cases and fails some, on fails
+its review holds, would be news.
 
 Raw pass rates compare only on a shared pack. `compare-conditions.mts` refuses a join whose
 task-set hashes differ, and `harness-query` solves one fixed pack on each harness. Without a shared
@@ -105,7 +107,7 @@ commit by where it can act, because that decides what can show its effect:
 
 | reach | shows up in | example evidence |
 | --- | --- | --- |
-| model-visible Builder text (prompt, battery contract, starter, tool descriptions) | `framingDigest` changes; Builder behaviour | plan and its score, rehearsal use, notes |
+| model-visible Builder text (prompt, battery contract, starter, tool descriptions) | `framingDigest` changes; Builder behaviour | rehearsal use, the Builder's notes and prose |
 | Builder tool or gate behaviour | gate receipts, `correctness_check` rows | finding codes, episode endings in `gates` |
 | controller routing and readouts | observations, difficulty decisions, advice packets | `difficulty-decisions/*.json`, `analysis/*-rebuild-advice.json` |
 | verifier and host execution | case records, `verifier.json` | case kinds, non-result types |
@@ -171,27 +173,32 @@ Equal windows are rule, not courtesy:
 ## 5. Read the same measures on both sides
 
 Run each reader on both campaigns and set the rows side by side. **Direction** says which way is
-better for the standing goal, a climb to really hard tasks. It does not say which way is bigger.
+better for the standing goal, a healthy, ambitious climb (AGENTS.md "Goals and the climb"). It does
+not say which way is bigger.
 
 ### 5a. Where the batteries landed
 
-Band placement, per battery in claim order. There are five zones (`BandZone` in
-`src/claim/battery-difficulty.ts`): `too-hard`, `under-aim`, `on-aim`, `over-aim` and `too-easy`,
-plus `unplaced` when no verified case or `placeOnBand` refused it. The band is `climb.band`
-`[0.2, 0.50]` in `thresholds.frozen.yaml`, placed by a Wilson interval at `REPORTING_Z`.
+Band placement, per battery in claim order: one of the five `BandZone` values
+(`src/claim/battery-difficulty.ts`), or `unplaced` when no verified case or `placeOnBand` refused
+it. AGENTS.md "Goals and the climb", under "The band and the placement", owns what each zone means
+and the band, `climb.band`, it is read against.
 
 - **Readers.** For a finished run, `terminal.json` → `runEnd.climb.batteries[]`: zone, passed,
   verified, trials. For a live run, `bun run outcome <campaign> <runId> --scorecard`
   (its runEnd section reads the newest difficulty decision). `bun run runs show <runId>` gives the
   Batteries table (BATTERY, CLAIMED, PASSED, CLIMB, RATIONALE), and `difficulty-decisions/*.json`
   gives the full record.
-- **Better is** fewer `too-easy` batteries before the first battery inside the band, and any
-  `under-aim`, `on-aim` or `over-aim` placement.
+- **Better is** more batteries between 1/n and n−1/n in the first 8 and 12, a larger swing, fewer
+  tasks carried unchanged after a full pass, and a line that is not flat (`wri.ts climb`: `velocity`,
+  `horizon`, `flat`, `carried`). A zone is read beside these, never instead of them (AGENTS.md
+  "Goals and the climb", under "Its shape, and how progress is read"), so an `over-aim` or `on-aim`
+  placement counts only when it passed some cases and failed some.
 - **Traps.**
   - Placement is taken over *verified* cases, so a battery that lost cases to non-results is placed
-    on a smaller n with a wider interval. 6 of 6 verified places `too-easy`, while 4 of 4 verified
-    places `over-aim` (truss-astra, baseline below). A softer zone bought by fewer verified cases
-    is not progress, so read `verified` beside every zone.
+    on a smaller n with a wider interval. On current source 6 of 6 and 4 of 4 place `too-easy` while
+    3 of 3 places `over-aim`; the truss-astra baseline below recorded `over-aim` at 4 of 4 under its
+    own source. A softer zone bought by fewer verified cases is not progress, so read `verified`
+    beside every zone.
   - `too-hard` is not automatically progress. Check the denominators (§5f) and the evaluation
     corrections (§5e): a broken evaluator or a dead solver also lands there.
   - A battery whose claim was refused is `unplaced`.
@@ -205,17 +212,14 @@ The climb edge verdicts come from the `climb` reader (it needs an adopted versio
 bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.ts climb <campaign> [--json]
 ```
 
-Each edge between consecutive batteries gets one verdict:
+Each edge between consecutive batteries gets one of seven structural labels (`restated`,
+`replaced`, `adjusted`, `narrowed`, `widened`, `eased`, `escalated`), defined at the head of
+`climb-velocity.ts` and read as [the climb reference](../whole-run-investigation/references/climb.md)
+says. A label is a reading, not a forecast (AGENTS.md "Goals and the climb", under "Reading the
+climb as the operator"), so a higher share of `escalated` is not better by itself.
 
-| verdict | meaning |
-| --- | --- |
-| `restated` | neither the prose nor the structure moved |
-| `adjusted` | the same checks at the same tier, with only the published numbers moved |
-| `widened` | more checks, more coupled inputs or more scenarios, at the same tier |
-| `escalated` | the checks moved up the tier order |
-
-- **Better is** a higher share of `escalated`, and fewer `restated` or `adjusted` edges after a
-  `too-easy` battery.
+- **Better is** more edges whose changed public requirement you can name from the task rows, and
+  fewer `restated` or `adjusted` edges after a full pass.
 - **Trap:** a candidate with fewer batteries has fewer edges. Compare shares within the equal
   window, and name the counts.
 
@@ -362,7 +366,7 @@ sentence only when the Builder's own plan, notes or prose cite what that sentenc
   way, and the confounds of §7 are ruled out or named.
 - `regressed`: the mirror of `improved`.
 - `unchanged`: the rows sit within what one Builder resample plausibly moves. For example, both sides
-  are all `too-easy`, rehearsals passed at similar rates, and the edge mix is the same.
+  pass every case of every battery, rehearsals passed at similar rates, and the edge mix is the same.
 - `undetermined`: before the checkpoint, or when rows disagree in direction, or when a confound can
   explain the difference.
 
@@ -422,7 +426,7 @@ Predictions:         <id or plan line> — frozen <ledger | file time | post hoc
 Window:              <round r | elapsed hh:mm> on both sides
 
 Per pair:
-  <condition>  zones <b: too-easy×4> → <c: over-aim, too-easy>  edges <…>
+  <condition>  line <signal, swing, flat, carried: b → c>  zones <b: too-easy×4> → <c: over-aim, too-easy>  edges <…>
                rehearsal passes acted on <0/1 → 1/1>  gate <…>  corrections <…>
                denominators <v/u/nr → v/u/nr>  pace <…>
                verdict <improved | …> on <deciding rows>; attribution <level>; mechanisms fired <commit: output>
@@ -441,7 +445,8 @@ say which checkpoint will settle it.
 This is the baseline wave on source `4ec0615bf`, with run ids `*-20260927T052020405Z-1408e8`
 (truss) and `*-20260927T052323252Z-b445f0` (custom). Every run ended `signal-terminated` when the
 operator stopped the wave for the relaunch on `6e96003d` (`*-20260927T145744429Z-7e43c0`). Its
-`runEnd.climb` rows, read from each `terminal.json`, show what the candidate is measured against:
+`runEnd.climb` rows, read from each `terminal.json`, show what the candidate is measured against. The
+target column is the plan's, which sources before `EXPERIMENT.json`'s removal still wrote:
 
 | condition | campaign | batteries (zone, passed of verified, target) |
 | --- | --- | --- |
@@ -454,6 +459,6 @@ operator stopped the wave for the relaunch on `6e96003d` (`*-20260927T145744429Z
 
 For the truss-sol pair, the prediction frozen by file time was "first batteries at or below the aim
 (fewer 6/6 perfect batteries); no identical-exam evaluation-correction loops; the
-withhold-instruments flag stays off". Against that baseline, a candidate first battery placed
-`over-aim` or lower, with a target it could have missed, is the reading that would count as
-improvement.
+withhold-instruments flag stays off". Against that baseline, a candidate first battery that passes
+some cases and fails some, on fails its review holds, is the reading that would count as
+improvement; an `over-aim` placement at a full pass would not.

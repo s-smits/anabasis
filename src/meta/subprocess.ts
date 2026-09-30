@@ -1,5 +1,5 @@
 import { keyIfDefined } from "./optional-key.ts";
-import { basename, join } from "./path.ts";
+import { basename } from "./path.ts";
 import { runtimeProcess } from "./process.ts";
 import { errorCode, errorMessage, type RuntimeSignal } from "./runtime-values.ts";
 
@@ -252,35 +252,4 @@ export function decodeOutput(bytes: Uint8Array): string {
 /** Run a command and return its stdout as UTF-8 text, throwing on any failure. */
 export function runTextSyncOrThrow(cmd: readonly string[], options: RunSyncOptions = {}): string {
   return decodeOutput(runSyncOrThrow(cmd, options));
-}
-
-/**
- * Bundle one entry point into the worker file a confined child runs, and return that file's path.
- *
- * The options are held here rather than passed in because a worker that drifts on `format`,
- * `target` or `splitting` still builds cleanly and then fails inside the confined child, where the
- * failure reaches the controller as a protocol non-result instead of as a build error someone can
- * read. Three call sites build a worker this way: the generated-tool worker process, the Built
- * backend and the evaluator bundle. The path is returned rather than recomposed by the caller,
- * since `naming` is what decides it.
- */
-export async function buildWorkerBundle(
-  failure: string,
-  entrypoint: string,
-  outdir: string,
-  plugins: Bun.BunPlugin[] = [],
-): Promise<string> {
-  const naming = "worker.mjs";
-  const result = await Bun.build({
-    entrypoints: [entrypoint],
-    outdir,
-    naming,
-    target: "bun",
-    format: "esm",
-    splitting: false,
-    sourcemap: "none",
-    plugins,
-  });
-  if (result.success) return join(outdir, naming);
-  throw new Error(`${failure}: ${result.logs.map((log) => log.message).join("; ")}`);
 }

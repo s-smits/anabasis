@@ -15,6 +15,7 @@ import { type ClimbReadout, readClimbReadout } from "./climb-readout.ts";
 import { type Remeasure, censoredRemeasure } from "./battery-reuse.ts";
 import { isString } from "../meta/json-shape.ts";
 import type { SlotChoice } from "../backends/resolve.ts";
+import { endsSession } from "../gate/settlement.ts";
 
 export interface NextMove {
   /** `rebuild` is the retained round name for adopted-product authoring, not an order to redesign. */
@@ -48,7 +49,8 @@ export function epochPassOf(decision: NextMove): string | undefined {
 
 /** Build when no adopted product exists; measure a condition that has not been measured.
  * Thereafter the Builder chooses a hypothesis and a permitted scope from the actual evidence.
- * A host/environment blocker still stops before another authoring or measurement spend. A battery
+ * A host/environment blocker still stops before another authoring or measurement spend, unless all
+ * it reports is reference solves the host cut short (`endsSession`), which the next round submits again. A battery
  * the environment cut short is measured again on unchanged bytes before any rebuild, because the
  * Builder would otherwise author against cases nothing measured. */
 export function decideNextMove(
@@ -64,7 +66,7 @@ export function decideNextMove(
   const blocking = [
     ...new Set((feedback ?? []).filter((row) => row.severity === "blocking").map((row) => row.owner)),
   ].sort();
-  if (blocking.includes("environment")) {
+  if ((feedback ?? []).some(endsSession)) {
     return {
       move: "stop",
       reason: `blocking feedback includes environment outside the product (${blocking.join(", ")}); authoring cannot clear the complete packet`,

@@ -349,7 +349,8 @@ function diagnosisRow(campaignDir: string, runId: string): DiagnosisRow | Diagno
   }
   const { offered: offeredIds, diagnoses, abstentions } = evidence;
   if (
-    evidence.schema !== DIAGNOSIS_READING_SCHEMA ||
+    // v4 records the offered issues and readings as v5 does; only the reading's own outcome moved.
+    (evidence.schema !== DIAGNOSIS_READING_SCHEMA && evidence.schema !== "diagnosis-reading/v4") ||
     !Array.isArray(offeredIds) ||
     !Array.isArray(diagnoses) ||
     !Array.isArray(abstentions)

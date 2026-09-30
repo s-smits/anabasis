@@ -50,6 +50,11 @@ import { collectRows, type RunRow } from "./rows.ts";
 const QUIET_MS = 20 * 60_000;
 /** Failed Builder calls between two looks that make a burst rather than ordinary friction. */
 const FAILED_BURST = 3;
+/** The flat line of AGENTS.md "Goals and the climb": this many batteries in a row on one side of the
+ *  aim that came no closer to it than the closest before them, counted by side rather than zone
+ *  (`offAimStreak`). The climb reader's `flat` (`climb-velocity.ts`) reads the same rule. The
+ *  controller never stops on it (`LoopState`), so the stall is the operator's call. */
+export const STALL_BATTERIES = 3;
 const MEASURING = new Set(["adopt", "controls", "solve", "measure-on", "grade"]);
 const REVIEWING = new Set(["judge", "claim", "analyse", "admission", "next"]);
 /** Top-level transitions that are the loop's ordinary machinery and would bury the rest. */
@@ -84,14 +89,22 @@ interface PulseEvent {
   look: string[];
 }
 
-type Stage = "opening" | "build" | "measuring" | "reviewing" | "ended";
+type Stage = "opening" | "build" | "measuring" | "reviewing" | "gone" | "ended";
 
+/** A run whose process is gone with no terminal stays in `bun run runs` until the operator closes
+ *  it. On 2026-09-30 the pulse went on printing orphaned custom-sol-3e4693 as "r7 build 6h 19m",
+ *  its last round's stage, hours after its controller was killed. */
 function stageOf(reading: PulseReading): Stage {
   if (reading.terminal !== null) return "ended";
+  if (isGone(reading)) return "gone";
   const last = topLevel(reading.observations).at(-1)?.phase ?? null;
   if (last === null) return "opening";
   if (MEASURING.has(last)) return "measuring";
   return REVIEWING.has(last) ? "reviewing" : "build";
+}
+
+function isGone(reading: PulseReading): boolean {
+  return reading.state === "orphaned" || reading.state === "service-stopped";
 }
 
 function sideOf(zone: BandZone | null): "above" | "below" | "on" | null {
@@ -100,22 +113,34 @@ function sideOf(zone: BandZone | null): "above" | "below" | "on" | null {
   return zone === "too-easy" || zone === "over-aim" ? "above" : "below";
 }
 
-/** Consecutive batteries on one side of the aim, counted back from the latest placed one. */
-export function offAimStreak(
-  batteries: readonly PulseBattery[],
-): { side: "above" | "below"; rounds: number } | null {
-  const sides = batteries.flatMap((battery) => sideOf(battery.zone) ?? []);
-  const last = sides.at(-1);
-  if (last === undefined || last === "on") return null;
-  let rounds = 0;
-  for (let index = sides.length - 1; index >= 0 && sides[index] === last; index -= 1) rounds += 1;
-  return { side: last, rounds };
+/** Consecutive batteries on one side of the aim, counted back from the latest placed one, and how
+ *  many of them came after the one closest to the aim, which a tie does not replace. Above the aim a
+ *  lower pass rate is closer, below it a higher one. */
+export function offAimStreak(batteries: readonly Pick<PulseBattery, "zone" | "placedOn">[]): {
+  side: "above" | "below";
+  rounds: number;
+  flat: number;
+  closest: { passes: number; n: number };
+} | null {
+  const placed = batteries.flatMap(({ zone, placedOn }) =>
+    zone === null || placedOn === null ? [] : [{ side: sideOf(zone), ...placedOn }],
+  );
+  const side = placed.at(-1)?.side;
+  if (side !== "above" && side !== "below") return null;
+  const streak = placed.slice(placed.findLastIndex((battery) => battery.side !== side) + 1);
+  const closeness = ({ passes, n }: { passes: number; n: number }) =>
+    (side === "above" ? -1 : 1) * (passes / n);
+  const closest = streak.reduce((best, battery) => (closeness(battery) > closeness(best) ? battery : best));
+  return { side, rounds: streak.length, flat: streak.length - 1 - streak.lastIndexOf(closest), closest };
 }
 
 function streakText(batteries: readonly PulseBattery[]): string {
   const streak = offAimStreak(batteries);
   if (streak === null) return "";
-  return `, ${streak.side} the aim ${String(streak.rounds)} in a row`;
+  const text = `, ${streak.side} the aim ${String(streak.rounds)} in a row`;
+  if (streak.flat < STALL_BATTERIES) return text;
+  const { passes, n } = streak.closest;
+  return `${text}; the ${String(streak.flat)} since ${String(passes)}/${String(n)} came no closer, a stall`;
 }
 
 function batteryText(battery: PulseBattery): string {
@@ -273,8 +298,7 @@ function heldEvents(before: PulseReading, after: PulseReading): PulseEvent[] {
       look: [CASE_RECORD_FILE],
     });
   }
-  const gone = after.state === "orphaned" || after.state === "service-stopped";
-  if (gone && before.state !== after.state && after.terminal === null) {
+  if (isGone(after) && before.state !== after.state && after.terminal === null) {
     events.push({
       mark: "⚠",
       label,
@@ -345,7 +369,11 @@ export function pulseEvents(
 function inFlightText(reading: PulseReading): string | null {
   const running = reading.round.inFlight;
   if (running === null) return null;
-  return `${running.stage === "solving" ? "rehearsing" : "grading"} ${running.taskId} for ${duration(reading.now - Date.parse(running.startedAt))}`;
+  const what =
+    running.taskId === null
+      ? "checking a candidate"
+      : `${running.stage === "solving" ? "rehearsing" : "grading"} ${running.taskId}`;
+  return `${what} for ${duration(reading.now - Date.parse(running.startedAt))}`;
 }
 
 function busyText(busy: Busy | null): string | null {
@@ -410,6 +438,7 @@ export function statusLine(reading: PulseReading, width: number): string {
     measuring: () => measureStatus(reading),
     reviewing: () =>
       `reviewing: ${last?.summary ?? "?"}${last === undefined ? "" : ` ${duration(reading.now - Date.parse(last.at))}`}`,
+    gone: () => `${reading.state}: the process is gone and no terminal is recorded`,
     ended: () => `ended: ${reading.terminal ?? "?"}`,
   }[stage]();
   const batteries = reading.batteries.map(batteryText).join(" ");

@@ -1,9 +1,10 @@
 # Super Loop completeness review
 
 Independent lenses for one question: **does the Super Loop close?** The loop is the campaign cycle
-this skill owns — choose an experiment, prove the changed path, freeze a prediction, launch, watch,
-read the recorded bytes, adjudicate, patch the owner, restack, launch again. A stage that runs but
-whose output reaches no next stage is an open edge: work that costs money and changes nothing.
+this skill owns — find the binding constraint, choose an experiment, prove the changed path, freeze
+a prediction, launch, watch, read the recorded bytes, adjudicate, patch the owner, restack, launch
+again. A stage that runs but whose output reaches no next stage is an open edge: work that costs
+money and changes nothing.
 
 Completeness is not "does the code exist". An edge is **closed** only when all four hold:
 
@@ -19,12 +20,12 @@ whose mechanism has left the source is dead text — say so rather than scoring 
 
 ## Shared packet
 
-**Which tree.** The loop's skills, scripts and this file live on `main`; read them at
-`3d0e0b8be` or later. The product source the loop launches is the open stack **#743 → #750**,
-whose head is PR **#750** (`codex/built-slot-account-0918`, `5456fb95b`) — read `src/`, `test/`
-and `starters/` there, not on `main`, because `main` is behind the stack. Name both revisions in
-the report; a finding against the wrong one is not a finding. Where a lens reads only skill files,
-say so and cite `main` alone.
+**Which tree.** Resolve two revisions when the review starts, and name both in the report: main's
+head, and the top of the open stack (the head no open pull request is based on, as
+[stack-hop](../../stack-hop/SKILL.md) reads it). Read the loop's skills and scripts from whichever
+of the two contains the other's changes to them, and the product source the loop launches from the
+stack top, since that is what a launch resolves. A finding against the wrong revision is not a
+finding. Where a lens reads only skill files, say so and cite the one revision it read.
 
 Every session receives: the absolute repository path and both revisions above, `AGENTS.md`, this
 skill's `SKILL.md`, and the loop inventory below. Sessions are **read-only** and independent: do not
@@ -33,20 +34,28 @@ text, counterexamples, reference artifacts, per-task failure locations), and do 
 modify a live run. Cite every claim as `path:line`. Name one innocent explanation for each open
 edge. Where an edge's status turns on a fact you cannot read, return it as a falsifier, not a guess.
 
-Loop inventory, as of 18 September 2026:
+Loop inventory, as of 30 September 2026:
 
 | stage | owner | scripts |
 | --- | --- | --- |
 | choose, patch, compose | `run-improvement-campaign/SKILL.md`, `simplify`, `stack-hop` | — |
 | prove the changed path | `system-path-simulation` | `run-condition.mts`, `judge-replay.mts`, `review-settle.mts`, `seed-campaign.mts` |
+| diagnose | `whole-run-investigation`, `references/climb.md` "Find the binding constraint" | `wri.ts climb`, `wri.ts census`; `readClimbBatteries`, `readClimbReadout` |
 | predict | `run-improvement-campaign` | `prediction.ts` |
-| launch | `launch-run` | `launch.ts`, `probe.ts`, `options.ts`, `service.ts`, `stop.ts`; `preflight.mjs` |
-| watch | `run-improvement-campaign` | `campaign.ts` |
+| launch | `launch-run` | `launch.ts`, `probe.ts`, `options.ts`, `service.ts`, `stop.ts` |
+| watch | `run-improvement-campaign`, `launch-run` | `bun run runs pulse` (attended), `campaign.ts --every` (detached) |
 | read | `whole-run-investigation` | `wri.ts`, `references/outcome-review.md`; `bun run outcome` |
 | attribute a climb | `whole-run-investigation` | `references/climb.md` |
 | independent evaluation | `harness-query` | `harness-query.mts` |
 | close | `run-improvement-campaign` | `campaign.ts`, `prediction.ts adjudicate`, `notes/current-state.md` |
+| constraint ledger | `run-improvement-campaign` | `notes/binding-constraints.md` |
 | weekly | `weekly-run-review`, `safeguards` | `select-best-runs.ts`, `bun run outcome -- --safeguards` |
+
+Two edges run through the constraint ledger, and the four-part test holds them like any other:
+**diagnose → choose**, where the named constraint is what the next change is chosen against, and
+**adjudicate → ledger → next diagnose**, where a pass's outcome (lifted, held or unreached) is what
+the next walk reads first. Lens 3 owns the first and lens 6 the second. Neither has been exercised
+on a recorded pass yet, so a lens that finds one open or decorative reports it so.
 
 Required output, one table plus the notes below it:
 
@@ -91,9 +100,12 @@ whether that is the right answer here.
 
 ## 2. watch_to_assessment
 
-Own the edge from `campaign.ts` to a decision. Determine what a deviation actually
-emits, who reads it, and which of its signals — stall minutes, disk floor, blocked Builder session,
-completion — leads to a different action rather than a line in a log. Check the detached-watcher
+Own the edge from the two watchers to a decision: the pulse a reader attends, and `campaign.ts`
+when nobody does. Determine what a deviation actually emits, who reads it, and which of its signals
+— stall minutes, disk floor, blocked Builder session, completion — leads to a different action rather
+than a line in a log. A sampled store the watcher cannot find reads as quiet, so check each sampled
+path against where the launcher actually writes it: until 2026-09-30 the session-store sample
+looked under a directory name the launcher never made. Check the detached-watcher
 contract against the 600-second Bash wall and the 290-second polling rule. Distinguish a sensor
 that changes the next move from one whose only consumer is a human reading a terminal.
 
@@ -122,8 +134,7 @@ controller. Decide, for each: does any loop step read its output; is there a rec
 next experiment consumes, or does the finding exist only in a session's terminal; and can its
 verdicts reach a Builder-visible surface, which rule 4 forbids. Say precisely which of the two is
 wired into the cycle, which is a side channel, and what the smallest closing edge would be — reusing
-an existing artifact and consumer, not a new file format. Note also whether the cycle key the export
-records (`label.py` `CYCLE_SURFACES`) is read by every later consumer or re-decided by each.
+an existing artifact and consumer, not a new file format.
 
 ## 6. closure_and_handover
 
@@ -137,8 +148,7 @@ rereading a transcript, which is the condition this stage exists to prevent.
 ## 7. dead_mechanism_census
 
 Own everything in the loop with no live consumer. For each skill script in the inventory, find its
-callers: another script, a documented command, a test, or nothing. `scripts/stage.mjs` is the known
-example — `SKILL.md:86` tells agents not to add it while the file sits in the same skill with only
-its own test as a caller. Return every such mechanism with its last real use if you can date it, and
-say for each whether the honest repair is deletion, one line of documentation, or a consumer. Do not
-propose keeping a mechanism because removing it would be work.
+callers: another script, a documented command, a test, or nothing. Return every such mechanism with
+its last real use if you can date it, and say for each whether the honest repair is deletion, one
+line of documentation, or a consumer. Do not propose keeping a mechanism because removing it would
+be work.

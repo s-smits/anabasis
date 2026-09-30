@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "../src/meta/filesystem.ts";
 import type { JsonValue } from "../src/meta/json-shape.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
@@ -6,6 +6,7 @@ import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { afterAll, describe, expect, it } from "bun:test";
 import type { CaseRecordRow } from "../src/claim/case-record.ts";
 import { caseRecordRow } from "./helpers/case-record-row.ts";
+import { STUB_RUN, stubSource, type StubOptions } from "./helpers/measured-source.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import { readEpochRecord, selectCampaignEpoch } from "../src/author/campaign-epoch.ts";
 import { hashJsonValue } from "../src/meta/stable-json.ts";
@@ -24,6 +25,7 @@ import { LANES, lanesForScope } from "../.claude/skills/whole-run-investigation/
 import { HARDWARE_TRIGGER } from "../.claude/skills/whole-run-investigation/scripts/hardware-target.ts";
 
 const RUN = "custom-test-20260919T000000000Z-abcdef";
+const WRI = resolve(import.meta.dirname, "../.claude/skills/whole-run-investigation/scripts/wri.ts");
 const START = "2026-09-19T00:00:00.000Z";
 const BUDGET = { turnBudget: null, turnsUsed: 0, status: "active" };
 
@@ -42,6 +44,34 @@ const nonResult = (runId: string): CaseRecordRow =>
 afterAll(cleanupScratch);
 
 const json = (value: JsonValue) => `${JSON.stringify(value, null, 2)}\n`;
+
+/** One `wri.ts` command over a stub source's run, into `reviewDir`, through that source's readers. */
+function readThrough(source: { repo: string; campaign: string }, reviewDir: string, ...args: string[]) {
+  const [command = "read", ...rest] = args;
+  const run = Bun.spawnSync({
+    cmd: [
+      runtimeProcess.execPath,
+      WRI,
+      command,
+      source.campaign,
+      "--repo",
+      source.repo,
+      "--out",
+      reviewDir,
+      ...rest,
+    ],
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  return { code: run.exitCode, stdout: run.stdout.toString(), stderr: run.stderr.toString() };
+}
+
+/** The steps a review recorded. */
+function recordedSteps(reviewDir: string) {
+  return parseJsonAs<{ steps: { label: string; ok: boolean | null; skipped?: string }[] }>(
+    readFileSync(join(reviewDir, "wri-review.json"), "utf8"),
+  ).steps;
+}
 
 /** A campaign holding one run's opening, its epochs and its own case rows. */
 function campaignWith(rows: CaseRecordRow[], { epochs = 1, terminal = false } = {}): string {
@@ -159,50 +189,55 @@ describe("how big is this run", () => {
 });
 
 describe("what the read said", () => {
+  /** A review as `read` records it, sized by the run's own scope, with these steps and captures. */
   function reviewWith(steps: JsonValue[], captures: Record<string, string>): string {
     const campaign = campaignWith([verified(RUN)], { terminal: true });
     const reviewDir = scratchDir("ana-brief-review-");
+    // The scope as `read` records it: through JSON, as the file carries it.
+    const scope = parseJsonAs<JsonValue>(JSON.stringify(runScope(campaign, RUN)));
     writeFileSync(
       join(reviewDir, "wri-review.json"),
-      json({ schema: "wri-review/v1", reviewDir, campaign, runId: RUN, steps }),
+      json({
+        schema: "wri-review/v2",
+        reviewDir,
+        campaign,
+        runId: RUN,
+        repo: "/src",
+        chosen: "--repo",
+        passed: [],
+        scope,
+        steps,
+      }),
     );
     for (const [name, text] of Object.entries(captures)) writeFileSync(join(reviewDir, `${name}.txt`), text);
     return reviewDir;
   }
 
-  /** The lanes a review records, after one `wri.ts read` per lane list into the same `--out`. */
-  function readInto(campaign: string, reviewDir: string, ...reads: string[]): string[] {
-    const wri = resolve(import.meta.dirname, "../.claude/skills/whole-run-investigation/scripts/wri.ts");
+  /** The lanes a review records, after one `wri.ts read` per lane list into the same `--out`, each
+   *  read through the stub source's own readers. */
+  function readInto(source: { repo: string; campaign: string }, reviewDir: string, ...reads: string[]) {
     for (const lanes of reads) {
-      const read = Bun.spawnSync({
-        cmd: [runtimeProcess.execPath, wri, "read", campaign, "--out", reviewDir, "--lanes", lanes],
-        stdout: "pipe",
-        stderr: "pipe",
-      });
-      expect(read.stderr.toString()).toBe("");
-      expect(read.exitCode).toBe(0);
+      const { code, stderr } = readThrough(source, reviewDir, "read", "--lanes", lanes);
+      expect(stderr).toBe("");
+      expect(code).toBe(0);
     }
-    const state = parseJsonAs<{ steps: { label: string }[] }>(
-      readFileSync(join(reviewDir, "wri-review.json"), "utf8"),
-    );
-    return state.steps.map((row) => row.label);
+    return recordedSteps(reviewDir).map((row) => row.label);
   }
 
   it("adds a narrower later read's lanes to the review rather than replacing the earlier read", () => {
-    const campaign = campaignWith([verified(RUN)], { terminal: true });
+    const source = stubSource();
     const reviewDir = scratchDir("ana-brief-reread-");
-    expect(readInto(campaign, reviewDir, "climb,walls", "handoff")).toEqual(["climb", "walls", "handoff"]);
+    expect(readInto(source, reviewDir, "climb,walls", "handoff")).toEqual(["climb", "walls", "handoff"]);
     const brief = renderBrief(reviewDir);
     for (const lane of ["climb", "walls", "handoff"]) expect(brief).toContain(`== ${lane}`);
     // A lane read again replaces its own row and no other.
-    expect(readInto(campaign, reviewDir, "walls")).toEqual(["climb", "handoff", "walls"]);
+    expect(readInto(source, reviewDir, "walls")).toEqual(["climb", "handoff", "walls"]);
   });
 
   it("starts a review of another run empty rather than carrying that run's lanes", () => {
     const reviewDir = scratchDir("ana-brief-reread-");
-    readInto(campaignWith([verified(RUN)], { terminal: true }), reviewDir, "climb");
-    const other = campaignWith([verified(RUN)], { terminal: true });
-    expect(readInto(other, reviewDir, "walls")).toEqual(["walls"]);
+    readInto(stubSource(), reviewDir, "climb");
+    expect(readInto(stubSource(), reviewDir, "walls")).toEqual(["walls"]);
   });
 
   it("quotes a short lane whole and points at a long one", () => {
@@ -238,12 +273,23 @@ describe("what the read said", () => {
     expect(brief).toContain("boom");
   });
 
-  it("carries the run's own size and terminal above the lanes", () => {
-    const brief = renderBrief(reviewWith([], {}));
+  it("carries the run's own size and terminal above the lanes, and the checkout that read it", () => {
+    const reviewDir = reviewWith([], {});
+    const brief = renderBrief(reviewDir);
     expect(brief).toContain(`${RUN}  [standard]`);
     expect(brief).toContain("1 verified, 0 unaccepted, 0 non-result");
     expect(brief).toContain("terminal: completed — completed");
     expect(brief).toContain("about 12 semantic lanes");
+    expect(brief).toContain("  readers /src (--repo)");
+    // A review recorded before the read resolved its checkout carries no scope and is sized here.
+    const state = parseJsonAs<Record<string, JsonValue>>(
+      readFileSync(join(reviewDir, "wri-review.json"), "utf8"),
+    );
+    writeFileSync(
+      join(reviewDir, "wri-review.json"),
+      json({ ...state, schema: "wri-review/v1", scope: null, repo: null }),
+    );
+    expect(renderBrief(reviewDir)).toContain(`${RUN}  [standard]`);
   });
 
   it("says outright when the deterministic lanes flagged nothing, rather than leaving the section empty", () => {
@@ -286,32 +332,34 @@ describe("what the read said", () => {
       gates: "1 Builder session(s)\n",
     });
     writeFileSync(
-      join(reviewDir, "gates.triggers.json"),
-      json([
-        { name: "GATE STALL (lane 27)", rows: 1, examples: ["tool-timeout at epoch-a session 1"] },
-        {
-          name: "EVALUATION CORRECTION REPLAY CANDIDATE (lane 28)",
-          rows: 1,
-          examples: ["run-b after run-a"],
-        },
-      ]),
+      join(reviewDir, "gates.json"),
+      json({
+        triggers: [
+          { name: "GATE STALL (lane 27)", rows: 1, examples: ["tool-timeout at epoch-a session 1"] },
+          {
+            name: "EVALUATION CORRECTION REPLAY CANDIDATE (lane 28)",
+            rows: 1,
+            examples: ["run-b after run-a"],
+          },
+        ],
+      }),
     );
     const brief = renderBrief(reviewDir);
     expect(brief).toContain("digest GATE STALL (lane 27) x1: tool-timeout at epoch-a session 1");
     expect(brief).toContain("lane 28: EVALUATION CORRECTION REPLAY CANDIDATE (lane 28)");
     expect(brief).toContain("launch --sessions 27,28,31,33,34,37");
-    // A triggers file beside a lane the read did not run contributes nothing.
+    // A report beside a lane the read did not run contributes nothing.
     const unrun = reviewWith([], {});
     writeFileSync(
-      join(unrun, "gates.triggers.json"),
-      json([{ name: "GATE STALL (lane 27)", rows: 1, examples: [] }]),
+      join(unrun, "gates.json"),
+      json({ triggers: [{ name: "GATE STALL (lane 27)", rows: 1, examples: [] }] }),
     );
     expect(renderBrief(unrun)).not.toContain("GATE STALL");
     // Nor does one left beside a lane that failed this read.
     const failed = reviewWith([{ label: "gates", ok: false, exitCode: 1 }], { gates: "gates failed: x\n" });
     writeFileSync(
-      join(failed, "gates.triggers.json"),
-      json([{ name: "GATE STALL (lane 27)", rows: 1, examples: [] }]),
+      join(failed, "gates.json"),
+      json({ triggers: [{ name: "GATE STALL (lane 27)", rows: 1, examples: [] }] }),
     );
     expect(renderBrief(failed)).not.toContain("GATE STALL");
   });
@@ -403,4 +451,112 @@ describe("what the read said", () => {
       ].join("\n"),
     );
   });
+});
+
+describe("a read past a failed snapshot view", () => {
+  const FAILED: StubOptions = {
+    snapshotExit: 1,
+    snapshotStatus: {
+      schema: "outcome-snapshot-status/v2",
+      complete: false,
+      views: [
+        { label: "digest", status: "failed", required: true },
+        { label: "review-yield", status: "failed", required: true },
+        { label: `${STUB_RUN}-scan`, status: "ok", required: true },
+        { label: "timeline", status: "unsupported", required: false },
+      ],
+    },
+  };
+
+  it("reads every other lane, names the failed views at the top of the brief, then exits non-zero", () => {
+    const reviewDir = scratchDir("ana-brief-incomplete-");
+    const { code, stdout, stderr } = readThrough(stubSource(FAILED), reviewDir, "read", "--all");
+    // Every lane ran, in catalogue order, before the read said anything failed.
+    expect(recordedSteps(reviewDir).map((row) => row.label)).toEqual(LANES.map((lane) => lane.name));
+    for (const lane of [
+      "challenge",
+      "delta",
+      "climb",
+      "yield",
+      "posture",
+      "timeline",
+      "walls",
+      "handoff",
+      "gates",
+      "target",
+    ]) {
+      expect(readFileSync(join(reviewDir, `${lane}.txt`), "utf8")).toContain("read by the stub source");
+    }
+    expect(existsSync(join(reviewDir, "overview.json"))).toBe(true);
+    expect(stdout).toContain(
+      ["== SNAPSHOT INCOMPLETE", "  digest: failed", "  review-yield: failed"].join("\n"),
+    );
+    // A view the snapshot does not require is the overview's to list, not a failure of the read.
+    expect(stdout.split("== SNAPSHOT INCOMPLETE")[1]?.split("\n\n")[0]).not.toContain("timeline");
+    // The brief says the digest's leads are missing, rather than that the digest raised none.
+    expect(stdout).toContain("  digest: skipped: snapshot view digest failed");
+    expect(stdout).not.toContain("no digest trigger or scan finding");
+    expect(stderr).toContain("wri: snapshot incomplete: digest: failed, review-yield: failed");
+    expect(code).toBe(1);
+  }, 60_000);
+
+  it("skips the overview of a snapshot that recorded no status, reads the rest and exits non-zero", () => {
+    const reviewDir = scratchDir("ana-brief-no-status-");
+    const { code, stdout } = readThrough(
+      stubSource({ snapshotStatus: null, snapshotExit: 2 }),
+      reviewDir,
+      "read",
+      "--lanes",
+      "snapshot,overview,walls",
+    );
+    const [snapshot, overview, walls] = recordedSteps(reviewDir);
+    expect(snapshot).toMatchObject({ label: "snapshot", ok: false });
+    expect(overview?.skipped).toContain("no snapshot-status.json");
+    expect(walls).toMatchObject({ label: "walls", ok: true });
+    expect(stdout).toContain("== SNAPSHOT INCOMPLETE\n  snapshot-status.json: absent");
+    expect(stdout).toContain("  digest: skipped: snapshot view snapshot-status.json absent");
+    expect(code).toBe(1);
+  }, 60_000);
+
+  it("records an overview that could not read the snapshot as failed and reads on", () => {
+    const reviewDir = scratchDir("ana-brief-torn-status-");
+    const torn = { snapshotStatus: null, snapshotFiles: { "snapshot-status.json": "{" } };
+    const { code } = readThrough(stubSource(torn), reviewDir, "read", "--lanes", "snapshot,overview,walls");
+    expect(recordedSteps(reviewDir).map((row) => [row.label, row.ok])).toEqual([
+      ["snapshot", true],
+      ["overview", false],
+      ["walls", true],
+    ]);
+    expect(readFileSync(join(reviewDir, "overview.txt"), "utf8")).toContain("snapshot-status.json");
+    expect(code).toBe(1);
+  }, 60_000);
+
+  it("keeps a snapshot whose unrequired views failed a complete read", () => {
+    const reviewDir = scratchDir("ana-brief-optional-");
+    const optional = {
+      snapshotStatus: {
+        schema: "outcome-snapshot-status/v2",
+        complete: true,
+        views: [{ label: "timeline", status: "unsupported", required: false }],
+      },
+    };
+    const { code, stdout } = readThrough(
+      stubSource(optional),
+      reviewDir,
+      "read",
+      "--lanes",
+      "snapshot,walls",
+    );
+    expect(stdout).not.toContain("SNAPSHOT INCOMPLETE");
+    expect(code).toBe(0);
+  }, 60_000);
+
+  it("reads every lane of a review but launches no paid lane over an incomplete snapshot", () => {
+    const reviewDir = scratchDir("ana-brief-review-");
+    const { code, stderr } = readThrough(stubSource(FAILED), reviewDir, "review");
+    expect(existsSync(join(reviewDir, "walls.txt"))).toBe(true);
+    expect(existsSync(join(reviewDir, "lanes"))).toBe(false);
+    expect(stderr).toContain("snapshot incomplete");
+    expect(code).toBe(1);
+  }, 60_000);
 });

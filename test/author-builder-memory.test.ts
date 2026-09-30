@@ -158,6 +158,19 @@ describe("the notes block a fresh session opens on", () => {
 });
 
 describe("the handover between measured rounds", () => {
+  // Run custom-sol-20260929T132256243Z-2d7812: round 1 wrote its whole next-experiment plan as one
+  // paragraph a few dozen bytes over the scratchpad's limit, and a cut back to whole lines carried
+  // only the heading, since neither end of a single line has a line break inside its budget.
+  it("keeps both ends of a one-paragraph scratchpad over its limit, cut at words", () => {
+    const plan = `Latest clear preview snapshot precedes submission. ${"If the battery passes, add a genuinely different integration. ".repeat(32)}The bench runs a host mock, not target machine code.`;
+    const { nextPass } = campaign("# Builder memory\n\nunits are kN\n", `# Next experiment\n\n${plan}\n`);
+    const carried = read(nextPass(PASS_ONE), SCRATCHPAD_FILE);
+    expect(BYTES(carried)).toBeLessThanOrEqual(2_000);
+    expect(carried).toContain("# Next experiment\n\nLatest clear preview snapshot precedes submission. If");
+    expect(carried).toMatch(/\S <!-- memory cut to 2000 bytes: \d+ bytes dropped here -->\n\S/);
+    expect(carried).toContain("The bench runs a host mock, not target machine code.");
+  });
+
   it("carries both notes to the next pass on the same request, marked as an earlier pass", () => {
     const { first, nextPass } = campaign(
       "# Builder memory\n\nunits are kN\n",

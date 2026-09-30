@@ -324,7 +324,7 @@ describe("review-yield: diagnosis reader", () => {
     diagnoses: [],
     abstentions: [],
     refused: 0,
-    error: null,
+    outcome: { kind: "read" },
     readerText: null,
     ...fields,
   });
@@ -399,6 +399,9 @@ describe("review-yield: diagnosis reader", () => {
     expect(renderReviewYield(report)).toContain(
       "| diagnosis-reader | lane 25 | ? | ? | ? | ? | ? | failed |",
     );
+    // A reading recorded before its outcome was typed carries the same offered issues and readings.
+    record(root, "run-a", "diagnoses", { ...reading({ error: null }), schema: "diagnosis-reading/v4" }, 3);
+    expect(diagnosisReader(root).summary.opportunities).toBe(0);
   });
 });
 

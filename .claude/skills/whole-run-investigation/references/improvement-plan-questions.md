@@ -68,8 +68,8 @@ launch it. Where a question below names a lane, it means the lane's frozen repor
 
 9. **Did the harness find its own grounding, or was it handed one?** Two recorded shapes answer
    this question. In one, the generated tools hand the agent the checker's own simulator, so every
-   case passes on the first attempt and no battery finds a limit; `CHECK TOOL IN SOLVER TRACE`
-   and lane 23 are where it shows, and lane 8 where the brief itself published the recipe. In the other, a host pre-check probes for a named tool before the
+   case passes on the first attempt and no battery finds a limit; `CHECK CODE IN SOLVER REACH`,
+   `CHECK TOOL IN SOLVER TRACE` and lanes 34 and 23 are where it shows, and lane 8 where the brief itself published the recipe. In the other, a host pre-check probes for a named tool before the
    Builder has discovered one, which the operator removed because the Builder should find its own
    tool. Report whether either shape appears in this run.
 

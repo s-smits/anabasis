@@ -79,6 +79,7 @@ export const SAFEGUARD_INVENTORY: ReadonlyArray<{ readonly name: string; readonl
   { name: "54-rebuild-seed-tool-tree-copied", introduced: "2026-09-15" },
   { name: "55-rebuild-seed-venv-home-in-adopted-tree", introduced: "2026-09-15" },
   { name: "56-rebuild-workspace-resumed-dirty", introduced: "2026-09-15" },
+  { name: "57-controller-memory-high", introduced: "2026-09-30" },
 ];
 
 /** The log location of one resolved controller run. It is passed explicitly rather than derived

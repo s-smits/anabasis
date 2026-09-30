@@ -150,12 +150,13 @@ describe("the context tool", () => {
 function recordedTree(
   secret: string,
   artifactOf: (taskId: string) => JsonValue = () => ({ report: { massKg: 2160.912 } }),
+  brief: JsonValue = BRIEF,
 ): string {
   const tree = tmp();
   const runId = "r1";
   const model = join(tree, "correctness-model");
   mkdirSync(join(model, "reference"), { recursive: true });
-  writeFileSync(join(model, "brief.json"), JSON.stringify(BRIEF));
+  writeFileSync(join(model, "brief.json"), JSON.stringify(brief));
   writeFileSync(join(model, "tasks.json"), JSON.stringify({ tasks: [{ taskId: "t0", hidden: [secret] }] }));
   writeFileSync(join(model, "reference", "index.ts"), `export const designs = ${JSON.stringify(secret)};\n`);
   const evidence = new EvidenceLog(join(tree, "runs", runId));

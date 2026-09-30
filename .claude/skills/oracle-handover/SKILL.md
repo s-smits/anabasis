@@ -48,7 +48,7 @@ collector.
 | --- | --- | --- |
 | `runs/` | one zip per run | `bun .claude/skills/zip-run/scripts/zip-run.ts <run worktree> --medium --out runs/<runId>-medium.zip` ([zip-run](../zip-run/SKILL.md)) |
 | `patches/` | every commit the Oracle cannot fetch | `git diff <published> <local>`, `git format-patch -o patches/<name> <range>`, `git log --format='%h %s' <range>` |
-| `wri/` | a whole-run investigation's brief and lane files, when one was read | `wri.ts read … --out` ([whole-run-investigation](../whole-run-investigation/SKILL.md)) |
+| `wri/` | a whole-run investigation's brief and lane files, when one was read | `bun .claude/skills/whole-run-investigation/scripts/wri.ts read … --out` ([whole-run-investigation](../whole-run-investigation/SKILL.md)) |
 | `notes/` | state folders, `notes/gate-audit-ledger/`, `notes/climb-rewrite-ledger/`, `notes/predictions/`, earlier handovers | `rsync -a`, leaving out drafts and raw probe dumps |
 | `plans/` | each epoch's `EXPERIMENT.json` | copied from `campaigns/<c>/epoch-*/workspace/`, because zip-run keeps workspace files for `--verbose` |
 | `watch/` | the campaign watcher's log and state, if one ran | copied from where `campaign.ts --state` wrote them ([run-improvement-campaign](../run-improvement-campaign/SKILL.md)) |

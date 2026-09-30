@@ -33,9 +33,10 @@ certificate, exact reference template or domain-specific host branch does not es
 ## Make the launch match production
 
 `scripts/run-condition.mts` is the helper for this case: it runs the real controller round over a
-seeded slug (`seed-campaign.mts --as-slug`), with the Builder live under the requested pins and
-the Built and review slots scripted or off, and `--builder capture` records the exact production
-first prompt for that slug's epoch before anything is spent. Read the measured tree's production
+seeded slug (`seed-campaign.mts --as-slug`, which takes `a,b` for two arms), with the Builder live
+under the requested pins (`--preset <name>` takes a launch-run condition's) and the Built and
+review slots scripted or off, and `--builder capture` records the exact production first prompt
+for that slug's epoch before anything is spent. Read the measured tree's production
 composition before choosing anything else. In the 7 September
 comparison, `productionBuilderRuntime` with `runBuilderCampaign` supplied the real tool mount,
 continuation, submit, conformance, control census and F2. A session-only helper could not answer

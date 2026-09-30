@@ -3,6 +3,7 @@ import { hashJsonValue } from "../meta/stable-json.ts";
 import type {
   JudgeAttempt,
   JudgeCallContext,
+  JudgeCaseKind,
   JudgeInput,
   JudgeObservation,
   JudgeRequest,
@@ -14,6 +15,7 @@ export type {
   Judge,
   JudgeAttempt,
   JudgeCallContext,
+  JudgeCaseKind,
   JudgeInput,
   JudgeObservation,
   JudgePublicContext,
@@ -56,18 +58,18 @@ function boundedRationale(rationale: string | null): boolean {
   return isString(rationale) && rationale.trim().length > 0 && rationale.length <= RATIONALE_MAX;
 }
 
-/** A fail carries the rules it cites; a pass and an abstention carry none. */
+/** A fail cites the rules it breaks; a pass cites none. */
 function rulesFitVerdict(attempt: JudgeAttempt): boolean {
   const { rules } = attempt;
-  return attempt.verdict === false
-    ? rules.length > 0 && rules.every((rule) => rule.length > 0)
-    : rules.length === 0;
+  return attempt.verdict === true
+    ? rules.length === 0
+    : rules.length > 0 && rules.every((rule) => rule.length > 0);
 }
 
-/** An operational failure must state both its cause and kind: a non-abstention null with
- *  error: null would read as a verdict that never happened for no stated reason, and an error
- *  without a typed kind would record the flattened-prose state errorKind exists to remove. Both
- *  are malformed here, so a foreign Judge implementation cannot reintroduce them. */
+/** An operational failure must state both its cause and kind: a null with error: null would read
+ *  as a verdict that never happened for no stated reason, and an error without a typed kind would
+ *  record the flattened-prose state errorKind exists to remove. Both are malformed here, so a
+ *  foreign Judge implementation cannot reintroduce them. */
 function typedFailure(attempt: JudgeAttempt): boolean {
   return (
     attempt.verdict === null &&
@@ -79,20 +81,16 @@ function typedFailure(attempt: JudgeAttempt): boolean {
   );
 }
 
-/** Exactly one of the three attempt states: a verdict, an abstention, or a typed failure. */
+/** Exactly one of the two attempt states: a verdict or a typed failure. */
 function attemptWellFormed(attempt: JudgeAttempt): boolean {
-  const answered =
+  const verdict =
+    isBoolean(attempt.verdict) &&
+    !attempt.abstained &&
     boundedRationale(attempt.rationale) &&
     attempt.error === null &&
     attempt.errorKind === null &&
     rulesFitVerdict(attempt);
-  const validVerdict = answered && isBoolean(attempt.verdict) && !attempt.abstained;
-  const validAbstain = answered && attempt.verdict === null && attempt.abstained;
-  return (
-    (validVerdict || validAbstain || typedFailure(attempt)) &&
-    Number.isInteger(attempt.turns) &&
-    attempt.turns >= 0
-  );
+  return (verdict || typedFailure(attempt)) && Number.isInteger(attempt.turns) && attempt.turns >= 0;
 }
 
 async function attemptOf(
@@ -102,7 +100,7 @@ async function attemptOf(
 ): Promise<JudgeAttempt> {
   try {
     const attempt = await session.invoke(judgeInput, context);
-    if (!attemptWellFormed(attempt)) throw new Error("judge returned a malformed tri-state attempt");
+    if (!attemptWellFormed(attempt)) throw new Error("judge returned a malformed attempt");
     return attempt;
   } catch (error) {
     if (isProviderResourceBudgetInterruption(error)) throw error;
@@ -110,16 +108,34 @@ async function attemptOf(
   }
 }
 
-/** A verdict contradicting the verifier stands only when a second fresh sample returned the same
- *  verdict. A fail always carries its citations, so a confirmed fail is a cited one. */
-export function confirmedDisagreement(
+/**
+ * How one answered subject stands against the verifier's verdict. This is the one definition
+ * every reader of a Judge disagreement takes: the exit counts, the advice, the Epoch Reviewer's
+ * lists and settlement, and the outcome tool. Four readers each deriving the direction, the veto
+ * and "answered" for themselves disagreed as soon as the undecided verdict arrived.
+ *
+ * - A Judge fail of a verifier pass is a veto only when a second fresh sample failed it again,
+ *   since only that direction is resampled. A fail always cites its rules, so a veto is a cited
+ *   one.
+ * - A Judge pass of a verifier fail is disputed on its one sample.
+ *
+ * Null for a subject the Judge did not answer, and for an undecided recorded before 2026-09-30,
+ * which claimed nothing either way.
+ */
+export function judgeCaseKind(
   evidence: Pick<JudgeSubjectEvidence, "verdict" | "confirmation">,
-): boolean {
-  return isBoolean(evidence.verdict) && evidence.confirmation?.verdict === evidence.verdict;
+  verifier: "pass" | "fail",
+): JudgeCaseKind | null {
+  if (evidence.verdict === null) return null;
+  if (evidence.verdict === (verifier === "pass")) return "agree";
+  if (evidence.verdict) return "disputed-pass";
+  return evidence.confirmation?.verdict === false ? "veto" : "unconfirmed-fail";
 }
 
-/** `verifierVerdict` never reaches the Judge; it decides only whether a contradicting verdict is
- *  sampled again. */
+/** `verifierVerdict` never reaches the Judge; it decides only whether a fail of a verifier pass is
+ *  sampled again. That resample removed 10 wrong fails and no right one. The one drawn on a Judge
+ *  pass of a verifier fail confirmed 20 of 20 and changed no outcome, so a dispute goes to the
+ *  Epoch Reviewer on the first sample. */
 export async function judgeSubject(
   session: JudgeSession,
   request: JudgeRequest,
@@ -131,9 +147,8 @@ export async function judgeSubject(
   const { value: judgeInput, sanitized } = sanitizeJudgeInput(request);
   const context = { subjectId: request.subjectId, subjectKind };
   const attempt = await attemptOf(session, judgeInput, context);
-  const contradicts =
-    isBoolean(verifierVerdict) && isBoolean(attempt.verdict) && attempt.verdict !== verifierVerdict;
-  const confirmation = contradicts ? { confirmation: await attemptOf(session, judgeInput, context) } : {};
+  const vetoes = verifierVerdict === true && attempt.verdict === false;
+  const confirmation = vetoes ? { confirmation: await attemptOf(session, judgeInput, context) } : {};
   return {
     schema: "judge-subject/v3",
     subjectId: request.subjectId,
@@ -187,16 +202,9 @@ export function summarizeJudge(
       `subject "${row.evidence.subjectId}" passed sanitizer "${row.evidence.sanitizer.version}" but this controller runs "${SANITIZER_VERSION}"`,
     );
   }
-  const batteryVerdicts = battery.filter((row) => isBoolean(row.evidence.verdict)).length;
-  const batteryAbstentions = battery.filter((row) => row.evidence.abstained).length;
-  const comparable = battery.filter(
-    (row) => isBoolean(row.evidence.verdict) && isBoolean(row.verifierVerdict),
-  );
-  const disagreements = comparable.filter((row) => row.evidence.verdict !== row.verifierVerdict);
-  const passFailed = disagreements.filter(
-    (row) => row.verifierVerdict === true && row.evidence.verdict === false,
-  );
-  const vetoed = passFailed.filter((row) => confirmedDisagreement(row.evidence)).length;
+  const vetoed = battery.filter(
+    (row) => row.verifierVerdict === true && judgeCaseKind(row.evidence, "pass") === "veto",
+  ).length;
   return {
     judge: "unvalidated",
     judgePin: session.pin,
@@ -204,11 +212,8 @@ export function summarizeJudge(
     evaluatedPin,
     correctnessModelId,
     offered: offeredBattery,
-    verdicts: batteryVerdicts,
-    abstentions: batteryAbstentions,
-    disagreements: disagreements.length,
-    disagreementDenominator: comparable.length,
-    verifierPassJudgeFail: passFailed.length,
+    verdicts: battery.filter((row) => isBoolean(row.evidence.verdict)).length,
+    abstentions: battery.filter((row) => row.evidence.abstained).length,
     vetoed,
   };
 }

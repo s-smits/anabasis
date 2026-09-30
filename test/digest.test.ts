@@ -228,13 +228,14 @@ describe("digest", () => {
     writeFileSync(
       join(dir, "0.json"),
       JSON.stringify({
-        schema: "difficulty-decision/v9",
+        schema: "difficulty-decision/v10",
         runId: "placed-0",
         difficulty: {
           band: [0.2, 0.5],
           decision: {
             rationale: "5/6 against band [0.2, 0.5]: over-aim",
             placement: { passes: 5, n: 6, zone: "over-aim", aim: [2, 3], toAim: -2 },
+            evidence: [{ runId: "battery-i01" }, { runId: "battery-i02" }],
           },
           admitted: 1,
           excluded: [{ runId: "r2", reason: "claim refused" }],
@@ -245,7 +246,7 @@ describe("digest", () => {
     writeFileSync(
       join(dir, "1.json"),
       JSON.stringify({
-        schema: "difficulty-decision/v9",
+        schema: "difficulty-decision/v10",
         runId: "unplaced-1",
         difficulty: {
           decision: { placement: null, rationale: "no batteries recorded" },
@@ -255,7 +256,10 @@ describe("digest", () => {
       }),
     );
     const digest = digestOf(paths);
-    expect(digest).toContain("placed-0: over-aim · 5/6 aim [2,3] toAim -2 · admitted 1 excluded 1");
+    // The placed battery is the latest one the decision read, not the round the decision is named after.
+    expect(digest).toContain(
+      "placed-0 (reads battery-i02): over-aim · 5/6 aim [2,3] toAim -2 · admitted 1 excluded 1",
+    );
     expect(digest).toContain("unplaced-1: unplaced · admitted 0 excluded 0");
     expect(digest).not.toMatch(/(?:STOP|BROADEN|REBUILD) DUE/);
   });
@@ -274,12 +278,13 @@ describe("digest", () => {
     ["a v5 record", { schema: "difficulty-decision/v5", runId: "old-5" }, "difficulty-decision/v5"],
     ["a v6 record", { schema: "difficulty-decision/v6", runId: "old-6" }, "difficulty-decision/v6"],
     ["a v8 record", { schema: "difficulty-decision/v8", runId: "old-8" }, "difficulty-decision/v8"],
+    ["a v9 record", { schema: "difficulty-decision/v9", runId: "old-9" }, "difficulty-decision/v9"],
   ])("refuses %s by name rather than reading it or calling it never recorded", (_title, record, reason) => {
     const paths = fixture();
     mkdirSync(join(paths.campaign, "difficulty-decisions"));
     writeFileSync(join(paths.campaign, "difficulty-decisions", "0.json"), JSON.stringify(record));
     const digest = digestOf(paths);
-    expect(digest).toContain(`refused, not difficulty-decision/v9 — 0.json: ${reason}`);
+    expect(digest).toContain(`refused, not difficulty-decision/v10 — 0.json: ${reason}`);
     expect(digest).not.toContain(record.runId);
     expect(digest).not.toContain("no recorded difficulty decisions");
     expect(digest).not.toMatch(/satClimbs|satLevelled|satRange|satBroadens|THRESHOLD DRIFT/);
@@ -293,7 +298,7 @@ describe("digest", () => {
       writeFileSync(
         join(dir, "0.json"),
         JSON.stringify({
-          schema: "difficulty-decision/v9",
+          schema: "difficulty-decision/v10",
           // run-4 graded 1 and passed 1, so a decision that read it above the aim and got a
           // perfect battery back is lane 5's question.
           runId: "run-4",
@@ -335,6 +340,58 @@ describe("digest", () => {
     expect(digest).not.toContain("missing token");
   });
 
+  it("names check code within the solver's reach, and a check program a shell call's text names", () => {
+    const paths = fixture();
+    const domain = join(paths.domainsRoot, "demo-slug");
+    // beta-engine resolved in the Builder's tool tree, which the solver's shell searches; the
+    // battery withheld alpha-engine, and cc came from the host.
+    writeFileSync(
+      join(paths.campaign, "claims", "run-1.json"),
+      JSON.stringify({
+        condition: { advisorsRemoved: ["instrument:alpha-engine"] },
+        claim: {
+          statement: {
+            verifierTools: [
+              { toolId: "beta-engine", source: "workspace-toolchain" },
+              { toolId: "alpha-engine", source: "workspace-toolchain" },
+              { toolId: "cc", source: "host" },
+            ],
+          },
+        },
+      }),
+    );
+    writeFileSync(join(domain, "correctness-model", "metrics.ts"), "export const limit = 3;\n");
+    writeFileSync(join(domain, "agent", "metrics.ts"), "export const limit = 3;\n");
+    // The solver ran it through bash, whose arguments the trace keeps only as a digest: the
+    // clipped preview is the one place the program's name survives.
+    const bound = (runId: string, toolCalls: JsonValue[]) => {
+      const path = `runs/${runId}/cases/t1/trace.json`;
+      const trace = JSON.stringify({ schema: "case-trace/v4", turns: [], toolCalls, truncated: false });
+      writeFileSync(join(domain, path), trace);
+      return [{ path, sha256: new Bun.CryptoHasher("sha256").update(trace).digest("hex") }];
+    };
+    writeLedger(paths.campaign, [
+      gradedRow("run-1", true, {
+        traces: bound("run-1", [
+          { toolName: "bash", resultPreview: "$ beta-engine < design.json RESULT PASS" },
+        ]),
+      }),
+      gradedRow("run-4", true, { traces: bound("run-4", [{ toolName: "bash", resultPreview: "ok" }]) }),
+    ]);
+    recordDigestBattery(domain, ["run-1", "run-4"]);
+    const digest = digestOf(paths);
+    expect(digest).toContain(
+      "CHECK CODE IN SOLVER REACH (lane 34): beta-engine on the solver's PATH, from the Builder's tool tree",
+    );
+    expect(digest).toContain(
+      "CHECK CODE IN SOLVER REACH (lane 34): agent/metrics.ts is byte-identical to correctness-model/metrics.ts",
+    );
+    expect(digest).toContain(
+      "CHECK TOOL IN SOLVER TRACE (lane 23): beta-engine named in the recorded call text of 1 of 2 traces",
+    );
+    expect(digest).not.toMatch(/(alpha-engine|cc) on the solver's PATH/);
+  });
+
   it("counts every issue naming a check, as the verdict binding blocks on each", () => {
     const paths = fixture();
     const verdict = join(paths.domainsRoot, "demo-slug", "runs", "run-1", "cases", "t1", "verifier.json");
@@ -367,7 +424,7 @@ describe("digest", () => {
     writeFileSync(
       join(paths.campaign, "analysis", "run-1-judges.json"),
       JSON.stringify({
-        schema: "judge-reviews/v12",
+        schema: "judge-reviews/v13",
         runId: "run-1",
         census: null,
         // t9 was never a verified case of run-1, so its row is not attributed.
@@ -669,7 +726,7 @@ describe("digest", () => {
     writeFileSync(
       join(paths.campaign, "difficulty-decisions", "run-3.json"),
       JSON.stringify({
-        schema: "difficulty-decision/v9",
+        schema: "difficulty-decision/v10",
         runId: "run-3",
         difficulty: {
           decision: { placement: { zone: "on-aim" }, evidence: [{ runId: "run-2" }] },
@@ -875,21 +932,22 @@ describe("digest", () => {
     const paths = fixture();
     const dir = join(paths.campaign, "difficulty-decisions");
     mkdirSync(dir);
-    const decision = (name: string, runId: string, toAim: number, rows: unknown[]) =>
+    const over = { passes: 5, zone: "over-aim", toAim: -2 };
+    const decision = (name: string, runId: string, placed: typeof over | null, rows: unknown[]) =>
       writeFileSync(
         join(dir, `${name}.json`),
         JSON.stringify({
-          schema: "difficulty-decision/v9",
+          schema: "difficulty-decision/v10",
           runId,
           difficulty: {
-            decision: { placement: { passes: 5, n: 6, zone: "over-aim", aim: [2, 3], toAim } },
+            decision: { placement: placed === null ? null : { ...placed, n: 6, aim: [2, 3] } },
             admitted: 1,
             excluded: [],
             rows,
           },
         }),
       );
-    decision("0", "d1", -2, [
+    decision("0", "d1", over, [
       {
         runId: "run-1",
         passed: 5,
@@ -900,12 +958,14 @@ describe("digest", () => {
     const one = digestOf(paths);
     expect(one).not.toContain("TARGET MISSED");
     expect(one).not.toContain("OFF-AIM STREAK");
-    decision("1", "d2", -2, []);
-    expect(digestOf(paths)).toContain(
-      "OFF-AIM STREAK (lane 10): 2 consecutive placements above the aim (d1, d2)",
-    );
+    decision("1", "d2", over, []);
+    const streak = "OFF-AIM STREAK (lane 10): 2 consecutive placements above the aim (d1, d2)";
+    expect(digestOf(paths)).toContain(streak);
+    // A decision that placed nothing between them passes the streak on, as `runs pulse` counts it.
+    decision("0a", "d1a", null, []);
+    expect(digestOf(paths)).toContain(streak);
     // A placement that crossed the aim ends the streak, and one placement on a side is no streak.
-    decision("1", "d2", 1, []);
+    decision("1", "d2", { passes: 1, zone: "under-aim", toAim: 1 }, []);
     expect(digestOf(paths)).not.toContain("OFF-AIM STREAK");
   });
 
@@ -952,17 +1012,10 @@ describe("digest", () => {
     mkdirSync(join(paths.campaign, "analysis"), { recursive: true });
     const judges = (disagreements: number) =>
       JSON.stringify({
-        schema: "judge-reviews/v12",
+        schema: "judge-reviews/v14",
         runId: "run-1",
-        contested: [],
-        census: {
-          evidence: {
-            judge: "on",
-            offered: 2,
-            disagreements,
-            disagreementDenominator: 2,
-          },
-        },
+        contested: Array.from({ length: disagreements }, (_, index) => ({ taskId: `t${index}` })),
+        census: { evidence: { judge: "on", offered: 2, verdicts: 1, abstentions: 1 } },
         exit: { kind: "completed" },
       });
     writeFileSync(join(paths.campaign, "analysis", "run-1-judges.json"), judges(0));
@@ -984,7 +1037,7 @@ describe("digest", () => {
       JSON.stringify({ census: { judge: "on", disagreements: 1 }, exit: { kind: "completed" } }),
     );
     const refused = digestOf(paths);
-    expect(refused).toContain("refused, not judge-reviews/v12 — run-1-judges.json");
+    expect(refused).toContain("refused, not judge-reviews/v15 — run-1-judges.json");
     expect(refused).not.toContain("CENSUS WITH DISAGREEMENT");
   });
 

@@ -32,8 +32,9 @@ import { mkdirSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { join } from "#src/meta/path.ts";
 import { loadRepoEnv } from "#src/backends/env.ts";
 import { resolveSlots } from "#src/backends/resolve.ts";
+import { credentialProvenance } from "#src/backends/login-state.ts";
 import { judgeSessionFor } from "#src/review/review-session.ts";
-import { judgeSubject } from "#src/review/judge.ts";
+import { type JudgeSession, type JudgeSubjectEvidence, judgeSubject } from "#src/review/judge.ts";
 import { judgeBatterySubject } from "#src/review/judge-phase.ts";
 import { judgePublicTaskOf, readValidatedBrief } from "#src/correctness-bundle/public-resources.ts";
 import { campaignDir } from "#src/meta/campaign-root.ts";
@@ -47,10 +48,18 @@ import { type ContestedCase, contestedCases, reviewerContested } from "#src/anal
 import { caseSubjects } from "#src/analyse/judge-reviews.ts";
 import { deriveIterationAnalysis } from "#src/analyse/iteration-analysis.ts";
 import { type CommandArgs, type ExitWith, runCommand } from "#skills/main/cli.ts";
+import { scrubSessionEnv } from "./session-env.mts";
 import { readJsonFile } from "#src/meta/completed-json.ts";
 import { loadRecordedTasks } from "#src/run/run-driver.ts";
 
-const REPO_ROOT = join(import.meta.dir, "../../../..");
+type Sample = {
+  taskId: string;
+  sample: number;
+  started: number;
+  verifierPass: boolean;
+  recorded: JsonObject;
+  evidence: JudgeSubjectEvidence;
+};
 
 interface ReplayRow {
   taskId: string;
@@ -67,6 +76,50 @@ interface ReplayRow {
   rationale: string | null;
   error: string | null;
   errorKind: string | null;
+}
+
+/** The review slot `--repo` resolves, opened at `--repo`. The session's root is only where its
+ *  credential resolves; the prompt and schema are this script's own imports. Until 2026-09-29 it
+ *  was this script's tree, which in a worktree holds no `.env`, so every sample came back a
+ *  transport non-result naming a missing token. */
+function openJudge(repo: string, slug: string, die: ExitWith): JudgeSession {
+  const repoEnv = loadRepoEnv(repo, Bun.env);
+  const review = resolveSlots(repo, slug, repoEnv).review;
+  const session = review.enabled ? judgeSessionFor(review, repo) : null;
+  if (!review.enabled || session === null) die("the review slot is off in the named checkout");
+  const credential = credentialProvenance(review.kind, repoEnv).source;
+  if (credential === null) die(`no ${review.kind} credential resolves from ${repo}'s env chain`);
+  console.log(
+    JSON.stringify({ review, credential, pin: session.pin, promptPolicyDigest: session.promptPolicyDigest }),
+  );
+  return session;
+}
+
+function replayRow(
+  { taskId, sample, started, verifierPass, recorded, evidence }: Sample,
+  checkByAssertion: ReadonlyMap<string, string>,
+): ReplayRow {
+  const { rules } = evidence;
+  return {
+    taskId,
+    sample,
+    elapsedMs: Date.now() - started,
+    // A v2 subject recorded no input digest, so there is nothing to match rather than a mismatch.
+    digestMatch:
+      recorded.schema !== "judge-subject/v3" || evidence.schema !== "judge-subject/v3"
+        ? null
+        : recorded.judgeInputDigest === evidence.judgeInputDigest,
+    verifierPass,
+    recordedVerdict: isBoolean(recorded.verdict) ? recorded.verdict : null,
+    verdict: evidence.verdict,
+    confirmation: evidence.confirmation?.verdict ?? null,
+    abstained: evidence.abstained,
+    rules,
+    checkIds: [...new Set(rules.flatMap((rule) => checkByAssertion.get(rule) ?? []))],
+    rationale: evidence.rationale,
+    error: evidence.error,
+    errorKind: evidence.errorKind ?? null,
+  };
 }
 
 async function replay(args: CommandArgs): Promise<void> {
@@ -102,10 +155,7 @@ async function replay(args: CommandArgs): Promise<void> {
   const checkByAssertion = new Map(brief.truthChecks.map((check) => [check.assertion, check.id] as const));
   const subjects = caseSubjects(deriveIterationAnalysis(repo, slug, runId, versionDir), repo);
 
-  const review = resolveSlots(repo, slug, loadRepoEnv(repo, Bun.env)).review;
-  const session = judgeSessionFor(review, REPO_ROOT);
-  if (session === null) die("the review slot is off in the named checkout");
-  console.log(JSON.stringify({ review, pin: session.pin, promptPolicyDigest: session.promptPolicyDigest }));
+  const session = openJudge(repo, slug, die);
 
   for (const taskId of taskIds) {
     const task = tasks.find((row) => row.taskId === taskId);
@@ -130,28 +180,7 @@ async function replay(args: CommandArgs): Promise<void> {
     for (let sample = 1; sample <= repeat; sample += 1) {
       const started = Date.now();
       const evidence = await judgeSubject(session, subject.request, subject.subjectKind, verifierPass);
-      const { rules } = evidence;
-      const checkIds = [...new Set(rules.flatMap((rule) => checkByAssertion.get(rule) ?? []))];
-      const row: ReplayRow = {
-        taskId,
-        sample,
-        elapsedMs: Date.now() - started,
-        // A v2 subject recorded no input digest, so there is nothing to match rather than a mismatch.
-        digestMatch:
-          recorded.schema !== "judge-subject/v3" || evidence.schema !== "judge-subject/v3"
-            ? null
-            : recorded.judgeInputDigest === evidence.judgeInputDigest,
-        verifierPass,
-        recordedVerdict: isBoolean(recorded.verdict) ? recorded.verdict : null,
-        verdict: evidence.verdict,
-        confirmation: evidence.confirmation?.verdict ?? null,
-        abstained: evidence.abstained,
-        rules,
-        checkIds,
-        rationale: evidence.rationale,
-        error: evidence.error,
-        errorKind: evidence.errorKind ?? null,
-      };
+      const row = replayRow({ taskId, sample, started, verifierPass, recorded, evidence }, checkByAssertion);
       rows.push(row);
       console.log(JSON.stringify(row));
       // The controller's own projection over the recorded subject, so a replayed contradiction
@@ -176,9 +205,9 @@ async function replay(args: CommandArgs): Promise<void> {
     ),
   );
   writeFileSync(join(out, "contested.json"), JSON.stringify(contested, null, 2));
-  const { vetoed, disputed, otherContested } = reviewerContested(contested);
+  const { settle, otherContested } = reviewerContested(contested);
   console.log(
-    `${rows.length} verdict(s) and ${contested.length} contested row(s) written to ${out}: ${vetoed.length} vetoed, ${disputed.length} disputed, ${otherContested.length} other`,
+    `${rows.length} verdict(s) and ${contested.length} contested row(s) written to ${out}: ${settle.length} to settle, ${otherContested.length} other`,
   );
 }
 
@@ -190,6 +219,11 @@ if (import.meta.main) {
         "usage: judge-replay.mts --repo /abs/checkout --slug <slug> --run <runId> --task <taskId> [--task <taskId>...] [--repeat <n>] --out /abs/report-dir",
       options: { repo: "abs", slug: "text", run: "text", task: "list", repeat: "int", out: "abs" },
     },
-    replay,
+    (args) => {
+      // The calling session's own variables never reach the judge's CLI (session-env.mts).
+      const strippedEnv = scrubSessionEnv();
+      if (strippedEnv.length > 0) console.error(`session env: stripped ${strippedEnv.join(" ")}`);
+      return replay(args);
+    },
   );
 }

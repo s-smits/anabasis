@@ -16,45 +16,55 @@
 //              delta [--repo <abs>] [--previous <commit | abs campaign dir>]; timeline [--classify];
 //              walls [--battery <runId>]; target [--reference <abs dir>]
 //
-// `lanes` prints the deterministic catalogue and `scope` sizes one run. `read` runs the lanes named
-// by rank or by name, and with none named it sizes the run first and reads what that size earns
-// (brief.ts owns both the sizing and the digest). Every lane's output is captured to
-// `<review>/<lane>.txt` and the command prints one bounded brief instead, because the whole read is
-// the size of a paid lane's context. A lane whose report carries `triggers` also writes them to
-// `<review>/<lane>.triggers.json`, where the brief reads them beside the snapshot's own. The eight lanes that read in-process are also subcommands of
-// their own, which print one lane's view, its JSON under `--json`, and record the JSON at `--out`.
-// `review` reads every lane, prints the brief and then launches the semantic lanes the run's tier
-// names; the ordinary path is `read`, then `launch --sessions` with the lanes the brief argues for,
-// each a number from the catalogue. `brief` re-renders that digest from a finished review
-// directory. Use `collect` and `launch` separately only to edit `shared-instructions.json` between
-// them. `finish` validates the lane reports, Luna and native alike, scaffolds the archive from
-// recorded bytes and `verdicts.json`, then runs the archive validator; the investigation itself ends
-// in one adjudicated note the primary writes by hand.
+// `lanes` prints the deterministic catalogue and `scope` sizes one run. `read` resolves the run's
+// measured checkout (`resolveSourceCheckout` in main/run.ts; exit 2 when no checkout can read it)
+// and runs every lane that reads the run's records as that checkout's own script, sized by its own
+// `scope`, because a newer tree's readers refuse an older run's records; only the overview and the
+// archive check run here. It runs the lanes named by rank or by name, and with none named what the
+// run's size earns (brief.ts owns the sizing and the digest). Every lane's output is captured to
+// `<review>/<lane>.txt`, an in-process lane's report to `<review>/<lane>.json`, whose `triggers` the
+// brief reads, and the command prints one bounded brief instead, because the whole read is the size
+// of a paid lane's context. A snapshot view that fails heads the brief and stops no other lane; the
+// read exits 1 once every lane has run. `review` reads every lane, prints the brief and then
+// launches the semantic lanes the run's tier names, unless that snapshot is incomplete; the
+// ordinary path is `read`, then `launch --sessions` with the lanes the brief argues for, each a
+// number from the catalogue. `brief` re-renders that digest from a finished review directory. Use `collect` and `launch` separately only to edit `shared-instructions.json`
+// between them. `finish` validates the lane reports, Luna and native alike, scaffolds the archive
+// from recorded bytes and `verdicts.json`, then runs the archive validator; the investigation itself
+// ends in one adjudicated note the primary writes by hand.
 //
 // A target is one folder — a campaign, its `controller` directory or one `controller/<runId>`
 // folder — or a bare run id, looked up in the main checkout's campaign tree, which every run
-// worktree links to. The measured checkout comes from the run's own opening unless `--repo` names one, and
-// only when a selected lane reads it.
+// worktree links to.
 
 import { existsSync, mkdirSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { dirname, isAbsolute, join, resolve } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { scaffoldArchive } from "./archive-scaffold.ts";
-import { renderBrief, renderScope, runScope, SEMANTIC_LANES } from "./brief.ts";
+import { renderBrief, renderScope, type RunScope, runScope, SEMANTIC_LANES, snapshotGaps } from "./brief.ts";
 import { ANGLE_COUNT, NATIVE_OUTPUT } from "./catalogue-shape.ts";
 import { buildOverview, readJsonAs } from "./run-overview.ts";
-import { openRecordedRun, resolveSourceCheckout } from "#skills/main/run.ts";
+import { openRecordedRun, resolveSourceCheckout, sourceUnresolved } from "#skills/main/run.ts";
 import { buildSharedInstructions } from "./shared-instructions.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
-import { exitWith, parseCommandOrDie } from "#skills/main/cli.ts";
+import { CommandFailure, exitWith, parseCommandOrDie } from "#skills/main/cli.ts";
 import { writeJsonFile } from "#src/meta/completed-json.ts";
-import { isRecord } from "#src/meta/json-shape.ts";
+import { LAUNCH_FILE, SUMMARY_FILE } from "#skills/codex-luna-swarm/scripts/luna-receipts.ts";
+import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { emitReport } from "#skills/main/output.ts";
-import { findRun, mainCheckout, resolveRunSelector, type RunSelection } from "#tools/runs/discover.ts";
+import {
+  chooseRun,
+  mainCheckout,
+  recordedRuns,
+  resolveRunSelector,
+  type RunSelection,
+} from "#tools/runs/discover.ts";
 import { campaignRoot } from "#src/meta/campaign-root.ts";
 
 const SCRIPT_DIR = dirname(new URL(import.meta.url).pathname);
 const CHECKOUT = resolve(SCRIPT_DIR, "../../../..");
+/** This skill's directory inside any checkout, so a lane runs the measured checkout's own copy. */
+const SKILL = ".claude/skills/whole-run-investigation";
 // Bun always names its own executable first.
 const BUN = Bun.argv[0] ?? "";
 /** Where the primary writes the adjudicated note that ends an investigation; the tree ignores it. */
@@ -71,8 +81,10 @@ export interface ReadContext {
   reference: string | null;
 }
 
-/** What a lane inside a review reads: the in-process context plus the review's own paths. */
+/** What a lane inside a review reads: the run, the measured checkout whose scripts read it, and
+ *  the review's own paths. */
 export interface LaneContext extends ReadContext {
+  repo: string;
   reviewDir: string;
   runArgs: string[];
   snapshot: string;
@@ -85,14 +97,15 @@ export interface LaneReading {
   text: string;
 }
 
+/** An option an in-process lane's subcommand takes beyond the target, by its context field. */
+type LaneOption = "repo" | "previous" | "battery" | "reference";
+
 export interface Lane {
   name: string;
   label: string;
   collect?: boolean;
-  fatal?: boolean;
-  repo?: boolean;
-  options?: readonly string[];
-  flags?: readonly string[];
+  options?: readonly LaneOption[];
+  flags?: readonly "classify"[];
   cmd?: (c: LaneContext) => string[];
   read?: (c: ReadContext) => Promise<LaneReading>;
   needs?: (c: LaneContext) => string | null;
@@ -112,18 +125,19 @@ export interface StepRow {
   at: string;
 }
 
-type Scope = ReturnType<typeof runScope>;
-
 /** The review state `wri-review.json` records. */
 export interface WriReviewState {
-  schema: "wri-review/v1";
+  schema: "wri-review/v2";
   reviewDir: string;
   campaign: string;
   runId: string;
-  repo: string | null;
+  /** The checkout whose readers read the run, how it was chosen, and every one passed over. */
+  repo: string;
+  chosen: string;
+  passed: string[];
   reviewCheckout: string;
-  tier: Scope["tier"];
-  semanticLanes: Scope["semanticLanes"];
+  /** The run's size as its own source's `scope` read it. */
+  scope: RunScope;
   steps: StepRow[];
 }
 
@@ -136,26 +150,24 @@ export interface WriArgs {
 /**
  * The deterministic readers, in the order a review reads them. `collect` runs the four the paid
  * lanes consume; the rest answer one question each and cost nothing but local compute. A lane
- * whose input this target does not carry is skipped with the reason, never silently. `repo` marks
- * the lanes that open the measured checkout, which is the one expensive thing a read can do.
- * A lane with `read` runs in-process and returns its report and rendered view; it imports its
- * module only when it runs, because the classifier behind two of them loads an embedding runtime.
- * `options` and `flags` are what its own subcommand takes beyond the target.
+ * whose input this target does not carry is skipped with the reason, never silently. A lane with
+ * `cmd` is a script of its own; one with `read` runs in-process as its own subcommand, which a
+ * review asks of the measured checkout's copy of this file, and imports its module only when it
+ * runs, because the classifier behind two of them loads an embedding runtime. `options` and
+ * `flags` are what that subcommand takes beyond the target.
  */
 export const LANES: readonly Lane[] = [
   {
     name: "snapshot",
     label: "cases and traces",
     collect: true,
-    fatal: true,
-    repo: true,
     cmd: (c) => [
       BUN,
       "--no-env-file",
-      script("trace-review.ts"),
+      sourceScript(c, "scripts/trace-review.ts"),
       ...c.runArgs,
       "--repo",
-      String(c.repo),
+      c.repo,
       "--out",
       c.snapshot,
       "--all",
@@ -168,7 +180,7 @@ export const LANES: readonly Lane[] = [
     cmd: (c) => [
       BUN,
       "--no-env-file",
-      script("trace-challenge.ts"),
+      sourceScript(c, "scripts/trace-challenge.ts"),
       ...c.runArgs,
       "--out",
       join(c.snapshot, "trace-challenge"),
@@ -178,7 +190,6 @@ export const LANES: readonly Lane[] = [
     name: "delta",
     label: "source delta",
     collect: true,
-    repo: true,
     options: ["repo", "previous"],
     read: async (c) => {
       const { buildSourceDelta, renderSourceDelta } = await import("./source-delta.ts");
@@ -190,7 +201,9 @@ export const LANES: readonly Lane[] = [
     label: "shared brief",
     collect: true,
     needs: (c) =>
-      existsSync(c.snapshot) ? null : `no snapshot under ${c.snapshot}; run the snapshot lane first`,
+      existsSync(join(c.snapshot, "snapshot-status.json"))
+        ? null
+        : `no snapshot-status.json under ${c.snapshot}; the snapshot lane recorded none`,
     write: (c) => writeOverview(c),
   },
   {
@@ -199,13 +212,13 @@ export const LANES: readonly Lane[] = [
     needs: (c) => (existsSync(join(c.campaign, "versions")) ? null : "no adopted version, so no battery yet"),
     // The JSON drops each battery's family vectors, which only the verdict reads.
     read: async (c) => {
-      const { readCampaign, render, velocityOf } = await import("./climb-velocity.ts");
+      const { lineOf, readCampaign, render } = await import("./climb-velocity.ts");
       const report = await readCampaign(c.campaign);
       const batteries = report.batteries.map((battery) => ({
         ...battery,
         reading: { ...battery.reading, familyVectors: undefined },
       }));
-      return { report: { ...report, batteries, velocity: velocityOf(report) }, text: render(report) };
+      return { report: { ...report, batteries, line: lineOf(report) }, text: render(report) };
     },
   },
   {
@@ -222,7 +235,7 @@ export const LANES: readonly Lane[] = [
     cmd: (c) => [
       BUN,
       "--no-env-file",
-      join(SCRIPT_DIR, "..", "classifier", "prose-classify.ts"),
+      sourceScript(c, "classifier/prose-classify.ts"),
       c.campaign,
       "--run",
       c.runId,
@@ -285,7 +298,7 @@ export const LANES: readonly Lane[] = [
 ];
 
 const TARGET = ["out", "campaign", "run", "repo", "reference"];
-const LAUNCH = ["out", "lanes", "sessions", "effort", "title", "notes", "context"];
+const LAUNCH = ["out", "lanes", "sessions", "effort", "title", "notes", "context", "max-active"];
 /** Each subcommand's own options, so one a subcommand does not take is refused there. */
 const COMMANDS: Record<
   string,
@@ -334,29 +347,21 @@ function script(name: string): string {
   return join(SCRIPT_DIR, name);
 }
 
-/** The campaign holding `controller/<runId>/opening.json`, so a bare run id names its own folder.
- *  The main checkout owns the one campaign tree every run worktree links to. A run id is unique
- *  inside one campaign only, so two campaigns holding it is a question for the operator, not a
- *  directory-order guess. */
-function findCampaign(runId: string): string {
-  const root = mainCheckout(CHECKOUT);
-  const runs = findRun(root, runId);
-  const [only] = runs;
-  if (only === undefined) throw new Error(`no campaign under ${root} recorded an opening for ${runId}`);
-  if (runs.length > 1) {
-    throw new Error(`${runId} names a run in ${runs.length} campaigns; pass the campaign folder instead`);
-  }
-  return only.campaignDir;
+/** A file of this skill in the measured checkout, whose copy reads the run. */
+function sourceScript(c: Pick<LaneContext, "repo">, path: string): string {
+  return join(c.repo, SKILL, path);
 }
 
-/** Campaign and run from one folder, one run id, or the explicit options. */
+/** Campaign and run from one folder, the explicit options, or a run selector read the way `bun run
+ *  runs show` reads it (id, project, or the head or hex tail of an id) over the main checkout's
+ *  campaign tree, which every run worktree links to. */
 function resolveTarget(args: WriArgs, positional: string | null): RunSelection {
   const folder = positional ?? args.value("campaign");
   if (folder === null) throw new Error("name a campaign folder, a controller/<runId> folder or a run id");
-  const known = existsSync(folder) || existsSync(resolve(folder));
-  return known
-    ? resolveRunSelector(folder, args.value("run"))
-    : { ...resolveRunSelector(findCampaign(folder), folder), chosen: "run id" };
+  if (existsSync(folder) || existsSync(resolve(folder))) return resolveRunSelector(folder, args.value("run"));
+  const { location, refusal } = chooseRun(recordedRuns(mainCheckout(CHECKOUT)), folder);
+  if (location === undefined) throw new Error(refusal);
+  return { ...resolveRunSelector(location.campaignDir, location.runId), chosen: "run id" };
 }
 
 /** The archive `finish` already wrote for this run, or null while none carries its `review.json`. */
@@ -369,7 +374,7 @@ function archiveFor(runId: string): string | null {
   return null;
 }
 
-function context(state: WriReviewState): LaneContext {
+function context(state: WriReviewState, reference: string | null): LaneContext {
   return {
     campaign: state.campaign,
     runId: state.runId,
@@ -381,13 +386,14 @@ function context(state: WriReviewState): LaneContext {
     previous: null,
     classify: true,
     battery: null,
-    reference: null,
+    reference,
   };
 }
 
 /** Run one step, capturing its output to a file or streaming it, recording it in the review state.
- *  A lane always captures: the brief is what a reader opens, and the file is what a paid lane and
- *  a later question read. Only `launch`, whose output is the launcher's own progress, streams. */
+ *  A lane always captures its stdout, and its stderr too when it fails, so the brief says why: the
+ *  brief is what a reader opens, and the file is what a paid lane and a later question read. Only
+ *  `launch`, whose output is the launcher's own progress, streams. */
 function step(
   state: WriReviewState,
   label: string,
@@ -404,43 +410,54 @@ function step(
     cwd,
     stdin: "ignore",
     stdout: capture === null ? "inherit" : "pipe",
-    stderr: "inherit",
+    stderr: capture === null ? "inherit" : "pipe",
   });
-  if (capture !== null) writeFileSync(capture, result.stdout?.toString() ?? "");
   const ok = result.exitCode === 0;
+  if (capture !== null) {
+    writeFileSync(
+      capture,
+      `${result.stdout?.toString() ?? ""}${ok ? "" : (result.stderr?.toString() ?? "")}`,
+    );
+  }
   record(state, { label, ok, exitCode: result.exitCode });
   if (!ok && fatal) throw new Error(`${label} failed with exit ${result.exitCode}`);
   if (!ok) console.log(`   (${label} failed; recorded, continuing)`);
   return ok;
 }
 
-/** An in-process lane's view, captured like a spawned one's stdout. A lane that throws records the
- *  error as its capture and fails alone, as a spawned lane's non-zero exit does. */
 const isReadingLane = (lane: Lane): lane is ReadingLane => lane.read !== undefined;
-
-async function readLane(
-  lane: ReadingLane,
-  ctx: LaneContext,
-): Promise<{ ok: boolean; text: string; triggers: readonly unknown[] }> {
-  try {
-    const { report, text } = await lane.read(ctx);
-    return {
-      ok: true,
-      text,
-      triggers: isRecord(report) && Array.isArray(report.triggers) ? report.triggers : [],
-    };
-  } catch (error) {
-    console.log(`   (${lane.name} failed; recorded, continuing)`);
-    return { ok: false, text: `${lane.name} failed: ${errorMessage(error)}`, triggers: [] };
-  }
-}
 
 function record(state: WriReviewState, row: Omit<StepRow, "at">): void {
   state.steps.push({ ...row, at: new Date().toISOString() });
   saveState(state);
 }
 
-async function runLane(state: WriReviewState, lane: Lane, ctx: LaneContext): Promise<void> {
+/** A lane as the measured checkout runs it: its own script, or for an in-process lane this file's
+ *  subcommand in that checkout, with the options the review supplies and its report at
+ *  `<review>/<lane>.json`. */
+function laneCommand(lane: Lane, c: LaneContext): string[] {
+  if (lane.cmd !== undefined) return lane.cmd(c);
+  const values = (lane.options ?? []).flatMap((name) => {
+    const value = c[name];
+    return value === null ? [] : [`--${name}`, value];
+  });
+  const flags = (lane.flags ?? []).filter((name) => c[name]).map((name) => `--${name}`);
+  return [
+    BUN,
+    "--no-env-file",
+    sourceScript(c, "scripts/wri.ts"),
+    lane.name,
+    c.campaign,
+    "--run",
+    c.runId,
+    "--out",
+    join(c.reviewDir, `${lane.name}.json`),
+    ...values,
+    ...flags,
+  ];
+}
+
+function runLane(state: WriReviewState, lane: Lane, ctx: LaneContext): void {
   const missing = lane.needs === undefined ? null : lane.needs(ctx);
   if (missing !== null) {
     console.log(`   ${lane.name}: skipped, ${missing}`);
@@ -448,18 +465,19 @@ async function runLane(state: WriReviewState, lane: Lane, ctx: LaneContext): Pro
   }
   console.log(`   ${lane.name}`);
   if (lane.write !== undefined) {
-    return record(state, { label: lane.name, ok: true, exitCode: 0, wrote: lane.write(ctx) });
+    let wrote: string;
+    try {
+      wrote = lane.write(ctx);
+    } catch (error) {
+      writeFileSync(join(ctx.reviewDir, `${lane.name}.txt`), `${errorMessage(error)}\n`);
+      console.log(`   (${lane.name} failed; recorded, continuing)`);
+      return record(state, { label: lane.name, ok: false, exitCode: null });
+    }
+    return record(state, { label: lane.name, ok: true, exitCode: 0, wrote });
   }
-  if (isReadingLane(lane)) {
-    const { ok, text, triggers } = await readLane(lane, ctx);
-    writeFileSync(join(ctx.reviewDir, `${lane.name}.txt`), text.endsWith("\n") ? text : `${text}\n`);
-    // Written on every execution, empty included, so a rerun into the same review never shows the
-    // triggers an earlier execution of this lane raised.
-    writeJsonFile(join(ctx.reviewDir, `${lane.name}.triggers.json`), triggers);
-    return record(state, { label: lane.name, ok, exitCode: ok ? 0 : 1 });
-  }
-  step(state, lane.name, lane.cmd?.(ctx) ?? [], {
-    fatal: lane.fatal === true,
+  step(state, lane.name, laneCommand(lane, ctx), {
+    fatal: false,
+    cwd: ctx.repo,
     capture: join(ctx.reviewDir, `${lane.name}.txt`),
   });
 }
@@ -517,83 +535,101 @@ export function lanesForScope(scope: { readonly lanes: readonly string[] | null 
   return lanes === null ? LANES : LANES.filter((lane) => lanes.includes(lane.name));
 }
 
+/** The checkout whose readers read this run: `--repo` when it can, else the one the resolver
+ *  finds or prepares. None is a refusal with every reason, before anything is read. */
+function sourceCheckout(
+  args: WriArgs,
+  target: RunSelection,
+): { repo: string; chosen: string; passed: string[] } {
+  const { source } = openRecordedRun(target.campaign, target.runId);
+  const found = resolveSourceCheckout(source.commit, { repo: args.value("repo"), runId: target.runId });
+  if (found.state === "source-unresolved") throw new CommandFailure(sourceUnresolved(found), 2);
+  return found;
+}
+
+/** The run's size as the measured checkout's own `scope` reads it. */
+function sourceScope(repo: string, target: RunSelection): RunScope {
+  const cmd = [BUN, "--no-env-file", sourceScript({ repo }, "scripts/wri.ts"), "scope", target.campaign];
+  const result = Bun.spawnSync({
+    cmd: [...cmd, "--run", target.runId, "--json"],
+    cwd: repo,
+    stdin: "ignore",
+  });
+  if (result.exitCode !== 0) {
+    throw new Error(`the measured checkout's scope refused the run: ${result.stderr.toString().trim()}`);
+  }
+  return parseJsonAs<RunScope>(result.stdout.toString());
+}
+
 /**
- * Size the run, choose the lanes, read them, then print one brief. `select` receives the scope, so
- * `read` can defer to the tier while `collect` and `review` keep their fixed sets.
+ * Resolve the measured checkout, size the run by it, choose the lanes, read them, then print one
+ * brief. `select` receives the scope, so `read` can defer to the tier while `collect` and `review`
+ * keep their fixed sets. A read into a review that already recorded one of the same run keeps the
+ * earlier lanes' rows, so a narrower second read adds to the review rather than replacing it; a
+ * lane read again replaces only its own row. A review of another run starts empty.
  */
-/** The measured checkout, prepared only when a selected lane reads the measured source, so a read
- *  of recorded campaign bytes alone never provokes a worktree and an install. */
-function measuredRepo(args: WriArgs, target: RunSelection, lanes: readonly Lane[]): string | null {
-  if (!lanes.some((lane) => lane.repo === true)) return null;
-  const named = args.value("repo");
-  if (named !== null) return resolve(named);
-  const { commit } = openRecordedRun(target.campaign, target.runId).source;
-  return resolve(resolveSourceCheckout(commit, { cwd: runtimeProcess.cwd() }).repo);
-}
-
-/** A read into a review that already recorded one of the same run keeps the earlier lanes' rows,
- *  so a narrower second read adds to the review rather than replacing it; a lane read again
- *  replaces only its own row. A review of another run starts empty. */
-export function carryEarlierRead(
-  earlier: WriReviewState | null,
-  fresh: WriReviewState,
-  lanes: readonly Pick<Lane, "name">[],
-): WriReviewState {
-  if (earlier === null || earlier.campaign !== fresh.campaign || earlier.runId !== fresh.runId) return fresh;
-  const reread = new Set(lanes.map((lane) => lane.name));
-  return {
-    ...fresh,
-    repo: fresh.repo ?? earlier.repo,
-    steps: earlier.steps.filter((row) => !reread.has(row.label)),
-  };
-}
-
 async function runRead(
   args: WriArgs,
   positional: string | null,
-  select: (scope: Scope) => readonly Lane[],
+  select: (scope: RunScope) => readonly Lane[],
 ): Promise<WriReviewState> {
   const reviewDir = absolute(args, "out");
   const target = resolveTarget(args, positional);
-  const scope = runScope(target.campaign, target.runId);
+  const reference = args.value("reference") === null ? null : absolute(args, "reference");
+  const { repo, chosen, passed } = sourceCheckout(args, target);
+  const scope = sourceScope(repo, target);
   const lanes = select(scope);
-  const repo = measuredRepo(args, target, lanes);
-  const state = carryEarlierRead(
-    existsSync(statePath(reviewDir)) ? loadState(reviewDir) : null,
-    {
-      schema: "wri-review/v1",
-      reviewDir,
-      campaign: target.campaign,
-      runId: target.runId,
-      repo,
-      reviewCheckout: CHECKOUT,
-      tier: scope.tier,
-      semanticLanes: scope.semanticLanes,
-      steps: [],
-    },
-    lanes,
-  );
+  const earlier = existsSync(statePath(reviewDir)) ? loadState(reviewDir) : null;
+  const reread = new Set(lanes.map((lane) => lane.name));
+  const state: WriReviewState = {
+    schema: "wri-review/v2",
+    reviewDir,
+    campaign: target.campaign,
+    runId: target.runId,
+    repo,
+    chosen,
+    passed,
+    reviewCheckout: CHECKOUT,
+    scope,
+    steps:
+      earlier?.campaign === target.campaign && earlier.runId === target.runId
+        ? earlier.steps.filter((row) => !reread.has(row.label))
+        : [],
+  };
   mkdirSync(reviewDir, { recursive: true });
   saveState(state);
   console.log(
-    `run ${state.runId} (${target.chosen}), ${scope.tier} tier\n  measured checkout ${repo ?? "not needed by the selected lanes"}\n  reading ${lanes.length} lane(s):`,
+    [
+      `run ${state.runId} (${target.chosen}), ${scope.tier} tier`,
+      `  readers ${repo} (${chosen})`,
+      ...passed.map((reason) => `    passed over ${reason}`),
+      `  reading ${lanes.length} lane(s):`,
+    ].join("\n"),
   );
-  const reference = args.value("reference");
-  const ctx = { ...context(state), reference: reference === null ? null : absolute(args, "reference") };
-  for (const lane of lanes) await runLane(state, lane, ctx);
+  const ctx = context(state, reference);
+  for (const lane of lanes) runLane(state, lane, ctx);
   console.log(`\n${renderBrief(reviewDir)}\n\nrecorded: ${statePath(reviewDir)}`);
+  // Only once every lane has run, and only over this read's own snapshot, so nothing launches or
+  // collects on a partial read that its caller could take for a whole one.
+  const gaps = lanes.some((lane) => lane.name === "snapshot") ? snapshotGaps(reviewDir, state.steps) : [];
+  if (gaps.length > 0) {
+    const named = gaps.map((gap) => `${gap.label}: ${gap.status}`).join(", ");
+    throw new CommandFailure(`snapshot incomplete: ${named}; every other lane was read`, 1);
+  }
   return state;
 }
 
 /** One in-process lane as its own command: the view, or the JSON under `--json`, and the JSON
- *  recorded at `--out`. */
-async function laneCommand(args: WriArgs, positional: string | null, lane: ReadingLane): Promise<void> {
+ *  recorded at `--out`. Only `delta` reads a checkout, `--repo` or the run's own measured one. */
+async function readOneLane(args: WriArgs, positional: string | null, lane: ReadingLane): Promise<void> {
   const target = resolveTarget(args, positional);
   const out = args.value("out") === null ? null : absolute(args, "out");
+  const named = args.value("repo");
+  const repo = lane.options?.includes("repo") === true ? (named ?? sourceCheckout(args, target).repo) : null;
   const { report, text } = await lane.read({
     campaign: target.campaign,
     runId: target.runId,
-    repo: measuredRepo(args, target, [lane]),
+    repo: repo === null ? null : resolve(repo),
     previous: args.value("previous"),
     classify: args.flag("classify"),
     battery: args.value("battery"),
@@ -612,13 +648,13 @@ async function collect(args: WriArgs, positional: string | null): Promise<WriRev
 
 function launch(args: WriArgs, state: WriReviewState = loadState(absolute(args, "out"))): void {
   const lanesDir = join(state.reviewDir, "lanes");
-  if (existsSync(join(lanesDir, "luna-output", "launch.json"))) {
+  if (existsSync(join(lanesDir, "luna-output", LAUNCH_FILE))) {
     throw new Error(`${lanesDir} already holds a launch; use a fresh --out or trash the lanes directory`);
   }
   // `--sessions` names lanes from the catalogue; `--lanes` asks the manifest to pick that many, and
   // with neither the count is the one the run's tier named when it was read.
   const sessions = args.value("sessions");
-  const count = args.value("lanes") ?? String(state.semanticLanes);
+  const count = args.value("lanes") ?? String(state.scope.semanticLanes);
   if (!/^\d+$/.test(count) || Number(count) < 1 || Number(count) > ANGLE_COUNT) {
     throw new Error(
       `--lanes must be a count from 1 to ${ANGLE_COUNT}; the tiers ask ${SEMANTIC_LANES.probe} (probe), ${SEMANTIC_LANES.standard} (standard) or ${SEMANTIC_LANES.deep} (deep)`,
@@ -632,7 +668,7 @@ function launch(args: WriArgs, state: WriReviewState = loadState(absolute(args, 
     "--snapshot",
     join(state.reviewDir, "snapshot"),
     "--worktree",
-    String(state.repo),
+    state.repo,
     ...select,
     "--out",
     lanesDir,
@@ -645,7 +681,7 @@ function launch(args: WriArgs, state: WriReviewState = loadState(absolute(args, 
     "--launch",
     "--detach",
   ];
-  for (const name of ["title", "notes", "context"]) {
+  for (const name of ["title", "notes", "context", "max-active"]) {
     const given = args.value(name);
     if (given !== null && given !== "") cmd.push(`--${name}`, given);
   }
@@ -660,9 +696,9 @@ function launch(args: WriArgs, state: WriReviewState = loadState(absolute(args, 
  *  launch without its summary is still running, and a review neither transport has reported to
  *  has nothing to validate. */
 function lunaSummary(lanesDir: string): string | null {
-  const summary = join(lanesDir, "luna-output", "summary.json");
+  const summary = join(lanesDir, "luna-output", SUMMARY_FILE);
   if (existsSync(summary)) return summary;
-  if (existsSync(join(lanesDir, "luna-output", "launch.json"))) {
+  if (existsSync(join(lanesDir, "luna-output", LAUNCH_FILE))) {
     throw new Error(
       `${summary} is absent: the Luna lanes have not finished (see ${join(lanesDir, "launcher.log")})`,
     );
@@ -726,7 +762,7 @@ async function main(): Promise<void> {
     value: (name) => parsed.single.get(name) ?? null,
   };
   const lane = LANES.filter(isReadingLane).find((row) => row.name === command);
-  if (lane !== undefined) return laneCommand(args, positional, lane);
+  if (lane !== undefined) return readOneLane(args, positional, lane);
   switch (command) {
     case "lanes":
       return console.log(renderLanes());
@@ -767,6 +803,6 @@ if (import.meta.main) {
     await main();
   } catch (error) {
     console.error(`wri: ${errorMessage(error)}`);
-    runtimeProcess.exit(1);
+    runtimeProcess.exit(error instanceof CommandFailure ? error.code : 1);
   }
 }

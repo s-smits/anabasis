@@ -1,12 +1,14 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
+import { runtimeProcess } from "../src/meta/process.ts";
 import { CASE_RECORD_SCHEMA } from "../src/claim/case-record.ts";
 import { DIFFICULTY_DECISION_SCHEMA } from "../src/run/difficulty-decision.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { serviceManager } from "../.claude/skills/launch-run/scripts/service.ts";
 import {
+  chooseRun,
   latestRun,
   parseWorktreeList,
   readLaunchRecord,
@@ -24,7 +26,9 @@ import { runLiveness, type QueryResult } from "../tools/runs/state.ts";
 import { collectDetail, collectRows, splitSlug } from "../tools/runs/rows.ts";
 import { recordedCondition, resumePlan } from "../tools/runs/resume.ts";
 import { duration, renderList, renderShow } from "../tools/runs/format.ts";
-import { stopPlanOf } from "../tools/runs/cli.ts";
+import { NATIVE_VERBS, stopPlanOf } from "../tools/runs/cli.ts";
+import { RUN_VERBS } from "../.claude/skills/main/verbs.ts";
+import { LANES } from "../.claude/skills/whole-run-investigation/scripts/wri.ts";
 import { required } from "./helpers/doubles.ts";
 
 /** The one opening time every closed fixture records. */
@@ -159,6 +163,8 @@ const launchdRunning = (dir: string, runId: string) =>
 const answer = (out: string, code = 0): QueryResult => ({ code, out });
 /** What the service manager answers about a run it holds no record of. */
 const noService = (): QueryResult => answer("Could not find service", 1);
+/** The listing options of a machine where no run has a loaded service. */
+const OFFLINE = { closedLimit: 8, manager, query: noService };
 
 describe("runs list", () => {
   it("separates a closed run, an orphaned one and a live one, and counts each run's own cases", () => {
@@ -292,7 +298,7 @@ describe("runs list", () => {
     // signal while `runs resume --yes` spends provider turns reproducing the run it chose.
     writeOpening(root, "truss", "truss-opus-20260919T192747000Z-d18bef", OPENED_AT);
     writeOpening(root, "truss", "truss-opus-20260920T081500000Z-4ac221", "2026-09-20T00:00:00.000Z");
-    const options = { closedLimit: 8, manager, query: noService };
+    const options = OFFLINE;
 
     const ambiguous = collectDetail(root, "truss-opus", options);
     expect(ambiguous.detail).toBeUndefined();
@@ -332,7 +338,7 @@ describe("runs list", () => {
       project: "truss-bbbbbbbb-2",
       tag: "-second",
     });
-    const options = { closedLimit: 8, manager, query: noService };
+    const options = OFFLINE;
 
     const worktrees = new Map(collectRows(root, options).map((row) => [row.slug, row.worktree ?? ""]));
     expect(worktrees.get("truss-aaaaaaaa-1")).toContain("-first");
@@ -349,7 +355,7 @@ describe("runs list", () => {
 describe("the receipt a stop may act on", () => {
   const runId = "truss-opus-20260920T081500000Z-4ac221";
   const prompt = "designs steel roof trusses to Eurocode 3";
-  const options = { closedLimit: 8, manager, query: noService };
+  const options = OFFLINE;
 
   it("never lends one campaign's receipt to another, even when it is the only one left", () => {
     // Campaigns A and B share a run id and A's launch worktree was pruned. The single receipt used
@@ -479,20 +485,41 @@ describe("resume", () => {
     expect(plan.plan.command).toEqual([
       "bun",
       ".claude/skills/launch-run/scripts/launch.ts",
-      "custom",
       "--model",
       "opus",
       "--budget",
       "1320",
       "--project",
       "slug-aaaaaaaa-1",
+      "--source",
+      "a".repeat(40),
       "--prompt",
       "designs steel roof trusses to Eurocode 3",
       "--tasks",
       "25",
     ]);
     expect(plan.plan.warnings).toEqual([]);
+    expect(plan.plan.provenance).toContain(`source: opening.json source.commit = ${"a".repeat(40)}`);
     expect(recordedCondition(evidence.opening?.slots ?? [])).toBe("opus");
+  });
+
+  it("pins the measured source, because the launcher's default is origin/main", () => {
+    // A continuation of a run launched from a stacked PR head would otherwise run main's code, a
+    // changed condition the printed command did not show (a16848, 2026-09-30).
+    const root = checkout();
+    writeOpening(root, "slug-aaaaaaaa-1", "run-1", OPENED_AT);
+    const dir = writeLaunch(root, "run-1", "designs steel roof trusses to Eurocode 3", {
+      project: "slug-aaaaaaaa-1",
+    });
+    const opening = readRunEvidence(onlyRun(root)).opening;
+    if (opening === null) throw new Error("the fixture wrote no opening");
+    const unpinned = resumePlan({ ...opening, commit: null }, readLaunchRecord(dir));
+    expect(unpinned.ok).toBe(true);
+    if (!unpinned.ok) return;
+    expect(unpinned.plan.command).not.toContain("--source");
+    expect(unpinned.plan.warnings).toEqual([
+      "opening.json records no source.commit, so the launcher's default source applies",
+    ]);
   });
 
   it("refuses rather than inventing a prompt, and warns when the receipt and the opening disagree", () => {
@@ -516,12 +543,12 @@ describe("resume", () => {
     expect(differing.plan.command).toContain("1320");
   });
 
-  it("continues a custom run from the recorded prompt when the receipt names no preset", () => {
+  it("continues a standard run from the recorded prompt when the receipt names no preset", () => {
     const root = checkout();
     writeOpening(root, "slug-aaaaaaaa-1", "run-1", OPENED_AT);
     const evidence = readRunEvidence(onlyRun(root));
     // The prompt is the whole input, so a receipt without a preset name withholds nothing a
-    // continuation needs. `presetOf` returning null already says the launcher is told `custom`.
+    // continuation needs, and `--prompt` alone tells the launcher the run is a standard one.
     const dir = writeLaunch(root, "run-1", "writes shell completions for a CLI", {
       project: "slug-aaaaaaaa-1",
       preset: null,
@@ -532,7 +559,7 @@ describe("resume", () => {
     expect(plan.plan.command.slice(0, 3)).toEqual([
       "bun",
       ".claude/skills/launch-run/scripts/launch.ts",
-      "custom",
+      "--model",
     ]);
     expect(plan.plan.command.slice(-4)).toEqual([
       "--prompt",
@@ -590,6 +617,20 @@ describe("run selection", () => {
     expect(() => resolveRunSelector(join(campaignDir, "controller", "run-9"), "run-10")).toThrow(
       "folder names run run-9 but --run says run-10",
     );
+  });
+
+  it("names a run by its hex tail for every reader, and refuses a tail two runs share", () => {
+    // `runs show` took a hex tail that the whole-run-investigation CLI refused, because wri kept
+    // its own exact-id lookup; both now read a selector through this one rule.
+    const root = checkout();
+    writeOpening(root, "truss-aaaaaaaa-1", "truss-opus-20260920T081500000Z-2d7812", OPENED_AT);
+    writeOpening(root, "truss-bbbbbbbb-2", "truss-opus-20260921T081500000Z-9d7812", OPENED_AT);
+    const runs = recordedRuns(root);
+    expect(chooseRun(runs, "2d7812").location).toMatchObject({
+      runId: "truss-opus-20260920T081500000Z-2d7812",
+      slug: "truss-aaaaaaaa-1",
+    });
+    expect(chooseRun(runs, "d7812").refusal).toContain("names 2 recorded runs");
   });
 
   it("leaves an undated opening out of the order rather than guessing where it goes", () => {
@@ -738,15 +779,63 @@ describe("the climb decisions recorded for a run", () => {
     writeCases(campaignDir, [caseLine(1, "run-1-i02", "pass"), caseLine(2, "run-1-i03", "pass")]);
     writeDecision(campaignDir, "run-1-i02", RETIRED_SCHEMA);
     writeDecision(campaignDir, "run-1-i03", CURRENT_SCHEMA);
-    const show = () =>
-      renderShow(
-        required(collectDetail(root, "run-1", { closedLimit: 8, manager, query: noService }).detail, "run-1"),
-        [],
-      );
+    const show = () => renderShow(required(collectDetail(root, "run-1", OFFLINE).detail, "run-1"), []);
     const shown = show();
     expect(shown).toContain(`Climb records refused: 1 (${RETIRED_SCHEMA})`);
     expect(shown).toContain(`not ${CURRENT_SCHEMA}`);
     writeDecision(campaignDir, "run-1-i02", CURRENT_SCHEMA);
     expect(show()).not.toContain("Climb records refused");
+  });
+
+  it("shows each battery's placement on its own row, not on the round whose opening decided it", () => {
+    const root = checkout();
+    const campaignDir = writeOpening(root, "slug-aaaaaaaa-1", "run-1", OPENED_AT);
+    writeCases(campaignDir, [caseLine(1, "run-1", "pass"), caseLine(2, "run-1-i02", "unaccepted")]);
+    writeJson(join(campaignDir, "difficulty-decisions", "run-1-i02.json"), {
+      schema: CURRENT_SCHEMA,
+      runId: "run-1-i02",
+      slug: "slug",
+      digest: "run-1-i02-digest",
+      difficulty: {
+        admitted: 1,
+        decision: {
+          rationale: "the first battery placed",
+          evidence: [{ runId: "run-1", batterySha256: "c".repeat(64) }],
+          placement: { passes: 1, n: 1, zone: "too-easy" },
+        },
+      },
+    });
+    const shown = renderShow(required(collectDetail(root, "run-1", OFFLINE).detail, "run-1"), []);
+    const table = shown.slice(shown.indexOf("Batteries (ordered")).split("\n");
+    const row = (runId: string) => table.find((line) => line.trimStart().startsWith(`${runId} `));
+    expect(row("run-1")).toContain("too-easy");
+    expect(row("run-1-i02")).not.toContain("too-easy");
+  });
+});
+
+describe("the verbs the skills own", () => {
+  it("start scripts that exist, under names no native verb holds", () => {
+    for (const [verb, row] of RUN_VERBS) {
+      expect(NATIVE_VERBS).not.toContain(verb);
+      expect(existsSync(join(import.meta.dir, "..", ".claude", "skills", row.script))).toBe(true);
+    }
+  });
+
+  it("are exactly the WRI lanes that read in-process, each selected by its own name", () => {
+    const rows = [...RUN_VERBS].filter(([, row]) => row.script.endsWith("/wri.ts"));
+    expect(Object.fromEntries(rows.map(([verb, row]) => [verb, row.lead]))).toEqual(
+      Object.fromEntries(
+        LANES.flatMap((lane) => (lane.read === undefined ? [] : [[lane.name, [lane.name]]])),
+      ),
+    );
+  });
+
+  it("reach the script before runs parses, so its own options and exit code pass through", () => {
+    const campaignDir = writeOpening(checkout(), "slug", "run-1", OPENED_AT);
+    mkdirSync(join(campaignDir, "versions"));
+    const cli = join(import.meta.dir, "..", "tools", "runs", "cli.ts");
+    const run = Bun.spawnSync([runtimeProcess.execPath, cli, "climb", campaignDir, "--json"]);
+    expect(run.exitCode).toBe(0);
+    expect(run.stdout.toString()).toContain('"schema": "climb-velocity/v2"');
   });
 });

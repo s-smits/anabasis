@@ -9,11 +9,12 @@ import type { ClimbReadout } from "./climb-readout.ts";
  * The one schema `recordDifficultyDecision` writes, and so the only one a reader opens. A record
  * written under an earlier schema can carry a field of the same name that meant something else:
  * v6 set a battery with a repeated failing core aside with no placement, where v7 places it and
- * states the core beside the placement, and v9 drops the frame revision v8 carried, whose sentences
- * are no longer recorded. Nothing inside the record separates those cases, which leaves the
- * declared version as the whole of the evidence.
+ * states the core beside the placement, v9 drops the frame revision v8 carried, and v10 counts the
+ * cases a completed review settled against their check in `settled` rather than in `verified`.
+ * Nothing inside the record separates those cases, which leaves the declared version as the whole
+ * of the evidence.
  */
-export const DIFFICULTY_DECISION_SCHEMA = "difficulty-decision/v9";
+export const DIFFICULTY_DECISION_SCHEMA = "difficulty-decision/v10";
 
 export type DifficultyDecisionEvidence = {
   schema: typeof DIFFICULTY_DECISION_SCHEMA;

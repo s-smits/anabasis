@@ -235,6 +235,13 @@ function workspaceSentence(input: BuilderSessionInput, previous: PreviousRound |
   return `${at}: ${SEEDED[input.seed ?? "resumed"]}. Paths into the previous workspace no longer apply; relative paths start at this root.`;
 }
 
+/** The operator's turn cap as the opening states it, with the noun agreeing at a cap of one. */
+function roundLimit(maxTurns: number | undefined): string {
+  if (maxTurns === undefined) return "";
+  const turns = maxTurns === 1 ? "1 assistant turn" : `${String(maxTurns)} assistant turns`;
+  return `Round limit: ${turns}, each ending when you reply without a tool call; tool calls inside a turn do not count. `;
+}
+
 function roundPrompt(input: BuilderSessionInput, previous: PreviousRound | null): string {
   // The Builder's own notes, read back whenever the round opens in a workspace the conversation has
   // not worked in. A fresh session has never seen them. A continued one saw its last workspace's
@@ -256,19 +263,30 @@ function roundPrompt(input: BuilderSessionInput, previous: PreviousRound | null)
     // A bound the model cannot observe cannot steer it, so an operator cap is stated rather than
     // merely enforced. A Claude session can run as a single turn, which makes a turn reserve
     // meaningless as a pace signal; left with one, a session authors for hours past its first clear
-    // preview without submitting. So the pace is stated as an action instead. It names no rehearsal
-    // condition: rehearsals pass far more often than a Builder predicts, so asking them to agree with
-    // a predicted count held rounds back for hours without changing where the battery landed. It
-    // does say what a passing rehearsal is, a blind solve the solver finished, because a round whose
-    // rehearsals all pass has been submitted as though a pass said nothing about the battery, and a
-    // battery measured after such a round passes every case it scores far more often than not.
+    // preview without submitting. So the pace is stated as an action instead.
     // The cap counts replies, not tool calls, and says so: read as a count of steps, fifteen turns
     // looked nearly spent a dozen calls into the first, and a Builder dropped a change it had
     // judged right for want of turns it still had.
-    `${input.maxTurns === undefined ? "" : `Round limit: ${input.maxTurns} assistant turns, each ending when you reply without a tool call; tool calls inside a turn do not count. `}Build, check and rehearse the candidate, and submit` +
-      ` once a clear preview says it works. The measured battery, not a rehearsal, decides where it lands, but a passing` +
-      ` rehearsal is a blind solve of its task, so it shows that task is within the solver's reach; further polish` +
-      ` belongs to the next round.`,
+    // The rehearsal sentences say what a passing rehearsal is, a blind solve the solver finished;
+    // which task's pass says most, since a pass speaks only for its own task and the task a Builder
+    // happens to rehearse is an ordinary one; and that a battery whose every rehearsal passed is on
+    // course to find no limit, because saying what a pass is did not by itself stop a Builder
+    // submitting on one first-turn pass. The demand changes once, and not until a rehearsal fails:
+    // a condition a rehearsal has to meet held rounds back without moving where the battery landed.
+    // What a full pass finds and where a battery lands are the battery contract's (`LIMIT`, `WITNESS`
+    // in climb-readout.ts), stated once there. The measurements behind each clause are in AGENTS.md
+    // "Goals and the climb".
+    // The raise names its route, depth as the intent clause defines it, because a round's raise
+    // otherwise takes the widening route the no-limit line rules out: firmware 7a97af-i02 raised by
+    // five new device families, then stopped at what its simulator could model, and every solve of its
+    // five tasks still passed.
+    `${roundLimit(input.maxTurns)}Build, check and rehearse the candidate, and submit` +
+      ` once a clear preview says it works. A passing rehearsal is a blind solve of its task, so it shows that task` +
+      ` is within the solver's reach, and the task you expect to be hardest is the one whose rehearsal says most about` +
+      ` the battery. A battery whose every rehearsal passed is on course to pass every case, so before you submit` +
+      ` it, raise what its hardest tasks demand by making more of the request's requirements act together, not by` +
+      ` adding tasks, families or inputs at the same demand, and rehearse one of them again, then submit: further` +
+      ` polish belongs to the next round.`,
     HANDOVER,
   ];
   const context = [input.advisory ?? "", previous === null ? (input.freshContext ?? "") : ""]
@@ -375,7 +393,7 @@ function sessionOutcome(state: SessionState, turns: number): BuilderSessionOutco
 
 /** The round's hosted tools: the toolkit and the submit tool, every call receipted, and the round
  *  clock riding the open results. */
-function roundRoster(context: RoundContext, feedback: BuilderAuthorFeedback): PiTool[] {
+function roundRoster(context: RoundContext, feedback: BuilderAuthorFeedback, workspace: string): PiTool[] {
   const { deps, state, recorder, checkpoint, maxTurns } = context;
   // A settled round gets no review: acceptance froze its bytes and the round ends with this turn,
   // so advice from the reviewer would reach nobody who could still act on it.
@@ -385,6 +403,7 @@ function roundRoster(context: RoundContext, feedback: BuilderAuthorFeedback): Pi
     ...keyIfDefined("hold", deps.beforeSubmit),
     state,
     recorder,
+    workspace,
     feedback,
     ...keyIfDefined("maxTurns", maxTurns),
   });
@@ -467,7 +486,7 @@ export async function runBuilderSession(
   const recorder = new BuilderExecutionRecorder();
   const checkpoint = (): void => deps.onCheckpoint?.(recorder.finish("in-flight"));
   const context = { deps, state, recorder, checkpoint, maxTurns: input.maxTurns };
-  const roster = roundRoster(context, deps.feedback ?? new BuilderAuthorFeedback());
+  const roster = roundRoster(context, deps.feedback ?? new BuilderAuthorFeedback(), input.workspace);
   const systemPrompt = builderSystemPrompt(input.webSearch === true);
   deps.recordSession?.(roster, systemPrompt);
   const conversation = deps.conversation ?? new BuilderConversation();

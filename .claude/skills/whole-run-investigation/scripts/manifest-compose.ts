@@ -15,6 +15,7 @@ import { hasText } from "#src/meta/text.ts";
 import { CommandFailure } from "#skills/main/cli.ts";
 import {
   DIGEST_VERDICTS,
+  GROUND_TRUTH_LANE,
   ISOLATED_ANGLES,
   HARDWARE_LANES,
   hardwareScratch,
@@ -43,6 +44,7 @@ import {
 import { reportingLines, snapshotLines } from "./manifest-reporting.ts";
 import { renderSharedInstructions, type SharedInstructions } from "./shared-instructions.ts";
 import { writeJsonFile } from "#src/meta/completed-json.ts";
+import { LAUNCH_FILE, SUMMARY_FILE } from "#skills/codex-luna-swarm/scripts/luna-receipts.ts";
 import { readJsonAs } from "./run-overview.ts";
 
 const LAUNCH_RECORD_WAIT_MS = 30_000;
@@ -128,8 +130,8 @@ export interface DispatchInput extends SessionSet {
   bun: string;
   launch: boolean;
   detach: boolean;
+  maxActive: string | null;
   launcherPath: string;
-  codexLauncherPath: string;
 }
 
 /** The trace-challenge identity a launch binds the packet to. */
@@ -448,20 +450,23 @@ export function composeInstructions(input: InstructionInput): string {
   return lines.filter((line) => line !== null).join("\n");
 }
 
-/** The public-only lane freezes its judgement before joining outcomes. Shared orientation, scan and
- *  even aggregate verdicts are evidence from the other side of that boundary. */
-export function publicOnlySession(session: LaunchSession): boolean {
-  return session.lanes.some((lane) => lane.number === PUBLIC_ONLY_LANE);
+/** The public-only and ground-truth lanes each freeze a result before joining outcomes. Shared
+ *  orientation, scan and even aggregate verdicts are evidence from the other side of that boundary:
+ *  given the run overview, the ground-truth lane of custom-opus 198d70 froze its compiler verdicts
+ *  already knowing all 21 cases had passed, and had to call its comparison post-exposure
+ *  (2026-09-30). */
+export function blindSession(session: LaunchSession): boolean {
+  return session.lanes.some((lane) => lane.number === PUBLIC_ONLY_LANE || lane.number === GROUND_TRUTH_LANE);
 }
 
 export function publicReviewInstructions(input: InstructionInput): string {
   return [
-    "# Independent public-only review",
-    `This evidence boundary applies to lane ${PUBLIC_ONLY_LANE}; other assignments use their own context below.`,
+    "# Independent blind review",
+    `This evidence boundary applies to lanes ${PUBLIC_ONLY_LANE} and ${GROUND_TRUTH_LANE}; other assignments use their own context below.`,
     `Measured source: \`${input.revision}\` in \`${input.worktree}\`.`,
     `Campaign: \`${input.campaign}\`; run: \`${input.runId}\`.`,
     `Capture: \`${input.snapshot.status.capturedAt}\`.`,
-    "Authority: read-only, no delegation or product launches. Never change recorded evidence or controller locks.",
+    "No delegation or product launches. Never change recorded evidence or controller locks; your task's last line says what you may write.",
     "Before freezing your result, read only the original request and configured model identities from opening.json,",
     "public rules and public task inputs, public agent tools, and accepted artifact bytes selected independently",
     "of their verdicts. Select all available artifacts or a public-family sample fixed before reading outcomes.",
@@ -469,6 +474,7 @@ export function publicReviewInstructions(input: InstructionInput): string {
     "hidden expectations, evaluator/reference implementation, private traces or another reviewer's reports.",
     "Inspect only public fields when a storage file also contains protected fields; prefer recorded public-task.json.",
     "Freeze the public corpus of valid alternatives and plausibly wrong artifacts, with its identities, before any permitted later join.",
+    `Lane ${GROUND_TRUTH_LANE} also runs the recorded toolchain over those artifacts and the control artifacts, and records its verdict file's digest before reading any recorded verdict.`,
     "If forbidden information was already exposed, disclose contamination and do not claim a blinded result.",
     `Runtime: Bun ${input.bunPin}, \`${input.bun}\`. Web access: ${input.webAccess ? "available" : "unavailable"}.`,
     "Report only your assigned headings, method, frozen input identities, denominators, findings and limits.",
@@ -624,7 +630,7 @@ export function composeTasks(
         : verifiedTraceChallenge(challengeDir, challengeIdentity);
   const admissionMode = challengeIdentity?.reviewMode ?? "targeted";
   return sessions.map((session) => {
-    const parts = taskParts(publicOnlySession(session) ? { ...session, direction: "" } : session);
+    const parts = taskParts(blindSession(session) ? { ...session, direction: "" } : session);
     parts.push(...isolationLines(session, challenge));
     const hardware = outDir !== null && session.lanes.some((lane) => HARDWARE_LANES.has(lane.number));
     const scratch = hardware ? hardwareScratch(resolve(outDir), session.name) : null;
@@ -665,6 +671,7 @@ function lunaArgs({
   worktree,
   effort,
   outputDir,
+  maxActive,
 }: DispatchInput & { tasksPath: string; instructionsPath: string; outputDir: string }): string[] {
   return [
     bun,
@@ -680,20 +687,8 @@ function lunaArgs({
     outputDir,
     "--reasoning-effort",
     effort,
+    ...(maxActive === null ? [] : ["--max-active", maxActive]),
   ];
-}
-
-/** Codex transport from Claude Code: one self-contained prompt per lane, detached past the Bash
- *  tool's 600 s wall by codex-sessions.ts, so the reviewer writes no instruction packet by hand. */
-function writeCodexTasks(outPath: string, instructions: string, tasks: readonly ManifestTask[]): string {
-  const codexTasksPath = join(outPath, "codex-tasks.json");
-  const rows = tasks.map(({ name, task, scratch }) => {
-    const prompt = leafPrompt(instructions, task, scratch);
-    // A hardware session runs in, and writes, its own scratch; every other one reads.
-    return scratch === null ? { name, task: prompt } : { name, task: prompt, write: true, workdir: scratch };
-  });
-  writeJsonFile(codexTasksPath, rows);
-  return codexTasksPath;
 }
 
 export function writeAndDispatch(input: DispatchInput): void {
@@ -730,31 +725,6 @@ export function writeAndDispatch(input: DispatchInput): void {
     writeNativePrompts(outPath, input.instructions, input.tasks);
     return;
   }
-  if (input.transport === "codex") {
-    const codexTasksPath = writeCodexTasks(outPath, input.instructions, input.tasks);
-    const outputDir = join(outPath, "codex-output");
-    const args = [
-      input.bun,
-      "--no-env-file",
-      input.codexLauncherPath,
-      "launch",
-      "--tasks-file",
-      codexTasksPath,
-      "--out-dir",
-      outputDir,
-      "--workdir",
-      input.worktree,
-      "--model",
-      "gpt-6-luna",
-      "--effort",
-      input.effort,
-    ];
-    console.log(`\nlaunch:\n${args.join(" ")}`);
-    if (!input.launch) return;
-    if (!existsSync(input.codexLauncherPath)) manifestFail(`no codex launcher at ${input.codexLauncherPath}`);
-    console.log(runTextSyncOrThrow(args).trimEnd());
-    return;
-  }
   const outputDir = join(outPath, "luna-output");
   const args = lunaArgs({ ...input, tasksPath: launcherTasksPath, instructionsPath, outputDir });
   console.log(`\nlaunch:\n${args.slice(0, 3).join(" ")} ${args.slice(3).join(" ")}`);
@@ -768,9 +738,9 @@ export function writeAndDispatch(input: DispatchInput): void {
   }
   try {
     console.log(runTextSyncOrThrow(args).trimEnd());
-    if (existsSync(join(outputDir, "launch.json"))) writeLaunchInput(identity, input);
+    if (existsSync(join(outputDir, LAUNCH_FILE))) writeLaunchInput(identity, input);
   } catch (error) {
-    if (existsSync(join(outputDir, "launch.json"))) {
+    if (existsSync(join(outputDir, LAUNCH_FILE))) {
       // The launcher may have opened its immutable record before a provider failure. Keep the
       // source/input identity sidecar for an explicit incomplete collection rather than guessing.
       writeJsonFile(join(outputDir, "wri-launch-input.json"), {
@@ -828,7 +798,7 @@ function detachLauncher(args: string[], outPath: string, outputDir: string): voi
     closeSync(fd);
   }
   writeFileSync(join(outPath, "launcher.pid"), `${child.pid}\n`);
-  const launchPath = join(outputDir, "launch.json");
+  const launchPath = join(outputDir, LAUNCH_FILE);
   const deadline = Date.now() + LAUNCH_RECORD_WAIT_MS;
   while (!existsSync(launchPath)) {
     if (child.exitCode !== null || Date.now() > deadline) {
@@ -840,6 +810,6 @@ function detachLauncher(args: string[], outPath: string, outputDir: string): voi
   }
   console.log(`\ndetached launcher pid ${child.pid}; log ${logPath}`);
   console.log(
-    `sessions finish as luna_session.finished lines; luna_sessions.completed writes ${join(outputDir, "summary.json")}`,
+    `sessions finish as luna_session.finished lines; luna_sessions.completed writes ${join(outputDir, SUMMARY_FILE)}`,
   );
 }

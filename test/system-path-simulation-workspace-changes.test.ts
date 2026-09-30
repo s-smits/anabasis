@@ -13,6 +13,7 @@ import { execTextSync } from "./helpers/bun-spawn-sync.ts";
 import {
   changedPaths,
   SESSION_NOTE_PATHS,
+  seedCommit,
 } from "../.claude/skills/system-path-simulation/scripts/workspace-changes.mts";
 import { runTypeScript } from "../.claude/skills/system-path-simulation/scripts/test-support.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
@@ -129,12 +130,32 @@ describe("workspace change evidence", () => {
     expect(changedPaths(root).diffSha).not.toBe(first);
   });
 
-  it("prints the module result through the CLI", () => {
+  it("prints the module result through the CLI, counted from the seeding commit", () => {
     const root = repository();
     writeFileSync(join(root, "result.txt"), "material\n");
     const result = runTypeScript("workspace-changes.mts", [root]);
     expect(result.exitCode).toBe(0);
-    expect(parseJsonAs<unknown>(result.stdout)).toEqual(changedPaths(root));
+    expect(parseJsonAs<unknown>(result.stdout)).toEqual(
+      changedPaths(root, SESSION_NOTE_PATHS, seedCommit(root)),
+    );
     expect(result.stderr).toBe("");
+  });
+
+  it("still sees a change after a checkpoint commit has moved HEAD, while the status against HEAD does not", () => {
+    const root = repository();
+    writeFileSync(join(root, "base.txt"), "rebuilt\n");
+    writeFileSync(join(root, "MEMORY.md"), "note\n");
+    git(root, "add", "-A");
+    git(root, "commit", "--quiet", "-m", "salvage: unsettled tree before checkpoint");
+    writeFileSync(join(root, "fresh.txt"), "untracked\n");
+    expect(changedPaths(root).all).toEqual(["fresh.txt"]);
+    const result = runTypeScript("workspace-changes.mts", [root]);
+    expect(result.exitCode).toBe(0);
+    expect(parseJsonAs<{ all: string[]; substantive: string[] }>(result.stdout)).toMatchObject({
+      all: ["MEMORY.md", "base.txt", "fresh.txt"],
+      substantive: ["base.txt", "fresh.txt"],
+    });
+    const head = runTypeScript("workspace-changes.mts", [root, "--since", "HEAD"]);
+    expect(parseJsonAs<{ all: string[] }>(head.stdout).all).toEqual(["fresh.txt"]);
   });
 });

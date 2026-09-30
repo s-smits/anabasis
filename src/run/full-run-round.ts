@@ -86,8 +86,8 @@ export interface IterationResult {
  * claims — duplicates the difficulty selector's decision while being blind to the
  * verified-versus-unaccepted distinction, so three rounds of admission refusals end the loop as
  * "too hard" after the selector has already excluded that conclusion. Both are the loop answering a
- * question the decision layer owns, which is why difficulty evidence is read by the next-move
- * policy and the loop keeps only the counters.
+ * question the decision layer owns, which is why the loop keeps only the counters and a reading of
+ * the tasks stays with the parties that hear the placement (AGENTS.md "Goals and the climb").
  */
 export interface LoopState {
   budget: CampaignBudgetGate;
@@ -189,8 +189,7 @@ export async function runIteration(input: IterationInput): Promise<IterationResu
   input.onOpening?.(kickoff, epochPassOf(decision));
   // Every round that read a placement records it, whatever it then decided to do about it. The
   // record is the rebuild's workspace-reset key, the review's row for what each round did, and —
-  // for the placement that ends a campaign — the only durable trace that it was read at all;
-  // without this write, a run stops on a placement that exists in no difficulty-decisions file. The
+  // for a round that ends the run — the only durable trace that its placement was read at all. The
   // write is content-addressed, so a round that records without authoring adds one file and no
   // duplicate.
   const placement =

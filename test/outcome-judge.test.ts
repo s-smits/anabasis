@@ -41,9 +41,6 @@ function validEvidence(): Exclude<JudgeEvidence, { judge: "off" }> {
     offered: 1,
     verdicts: 1,
     abstentions: 0,
-    disagreements: 0,
-    disagreementDenominator: 1,
-    verifierPassJudgeFail: 0,
     vetoed: 0,
   };
 }
@@ -53,15 +50,13 @@ function contradictoryEvidence(): Exclude<JudgeEvidence, { judge: "off" }> {
   return { ...validEvidence(), verdicts: 2 };
 }
 
-function contestedRow(taskId: string, judge: boolean, verifier: boolean): ContestedCase {
+function contestedRow(taskId: string, kind: ContestedCase["kind"]): ContestedCase {
   return {
     taskId,
     family: "truss",
-    judge,
-    verifier,
+    kind,
     rules: [],
     rationale: null,
-    confirmed: false,
     checkIds: [],
     evidence: `${CASE_DIR}/${taskId}/judge.json`,
     artifact: `${CASE_DIR}/${taskId}/artifact.json`,
@@ -73,15 +68,13 @@ function review(
   contested: ContestedCase[] = [],
   exit: JudgeReviewsResult["exit"] = {
     kind: "none",
-    verifierFailJudgePass: 0,
-    verifierPassJudgeFail: 0,
-
+    cases: { veto: 0, "unconfirmed-fail": 0, "disputed-pass": 0 },
     verified: 1,
-    reason: "the Judge and the verifier agreed on every reviewed verified case",
+    reason: "the Judge contradicted the verifier on no reviewed verified case",
   },
 ): JudgeReviewsResult {
   return {
-    schema: "judge-reviews/v12",
+    schema: "judge-reviews/v15",
     slug: "fixture",
     runId: RUN,
     judgePin: "claude/claude-opus-5",
@@ -90,9 +83,8 @@ function review(
     census: { runId: RUN, evidence },
     contested,
     coverage: { reviewable: 2, reviewed: 2 },
-    provisional: null,
+    outcome: { kind: "read" },
     exit,
-    absent: [],
   };
 }
 
@@ -113,8 +105,7 @@ describe("the evidence-bound judge projection", () => {
     const evidence = validEvidence();
     const exit: JudgeReviewsResult["exit"] = {
       kind: "advisory",
-      verifierFailJudgePass: 0,
-      verifierPassJudgeFail: 1,
+      cases: { veto: 0, "unconfirmed-fail": 1, "disputed-pass": 0 },
       verified: 1,
       reason: "the Judge failed 1 of 1 verified cases the verifier passed",
     };
@@ -126,22 +117,23 @@ describe("the evidence-bound judge projection", () => {
     expect(report.exit).toEqual(exit);
     expect(report.contested).toEqual([]);
     expect(report.contestedUnavailable).toEqual([]);
-    expect(report.absent).toEqual([]);
+    expect(report.outcome).toEqual({ kind: "read" });
   });
 
   it("projects a complete dispute in each direction with the validated census identities", () => {
     const dir = campaignDir();
     const evidence = validEvidence();
-    writeReview(dir, review(evidence, [contestedRow("t1", false, true), contestedRow("t2", true, false)]));
+    writeReview(
+      dir,
+      review(evidence, [contestedRow("t1", "unconfirmed-fail"), contestedRow("t2", "disputed-pass")]),
+    );
     const report = availableReport(dir, RUN);
     expect(report.contested).toEqual([
       {
         runId: RUN,
         taskId: "t1",
         family: "truss",
-        judge: false,
-        verifier: true,
-        direction: "verifier-pass-judge-fail",
+        kind: "unconfirmed-fail",
         judgeEvidence: `${CASE_DIR}/t1/judge.json`,
         artifact: `${CASE_DIR}/t1/artifact.json`,
         correctnessModelId: "correctness-model@g1",
@@ -150,9 +142,7 @@ describe("the evidence-bound judge projection", () => {
         runId: RUN,
         taskId: "t2",
         family: "truss",
-        judge: true,
-        verifier: false,
-        direction: "verifier-fail-judge-pass",
+        kind: "disputed-pass",
         judgeEvidence: `${CASE_DIR}/t2/judge.json`,
         artifact: `${CASE_DIR}/t2/artifact.json`,
         correctnessModelId: "correctness-model@g1",
@@ -166,7 +156,7 @@ describe("the evidence-bound judge projection", () => {
     // Battery verdicts above the battery census fail re-validation, so the census
     // identity is a refusal — the disagreement is stated as unavailable, not presented as a
     // complete dispute the operator could act on.
-    writeReview(dir, review(contradictoryEvidence(), [contestedRow("t1", false, true)]));
+    writeReview(dir, review(contradictoryEvidence(), [contestedRow("t1", "unconfirmed-fail")]));
     const report = availableReport(dir, RUN);
     expect(report.contested).toEqual([]);
     expect(report.contestedUnavailable).toEqual([
@@ -183,7 +173,7 @@ describe("the evidence-bound judge projection", () => {
     mkdirSync(join(dir, "analysis"), { recursive: true });
     const moved = `campaigns/fixture/candidates/${RUN}/runs/${RUN}/cases/t1`;
     const row = {
-      ...contestedRow("t1", true, false),
+      ...contestedRow("t1", "disputed-pass"),
       evidence: `${moved}/judge.json`,
       artifact: `${moved}/artifact.json`,
     };
@@ -198,8 +188,8 @@ describe("the evidence-bound judge projection", () => {
   it("refuses a row with no record-backed artifact pointer", () => {
     const dir = campaignDir();
     const unbound = review(validEvidence(), [
-      { ...contestedRow("t1", false, true), artifact: null },
-      { ...contestedRow("t2", true, false), artifact: null },
+      { ...contestedRow("t1", "unconfirmed-fail"), artifact: null },
+      { ...contestedRow("t2", "disputed-pass"), artifact: null },
     ]);
     writeReview(dir, unbound);
     const report = availableReport(dir, RUN);
@@ -241,7 +231,7 @@ describe("the evidence-bound judge projection", () => {
     const report = judgeReport(dir, RUN);
     expect(report).toMatchObject({ available: false });
     if (report.available) throw new Error("unreachable");
-    expect(report.reason).toContain("judge-reviews/v10 is not judge-reviews/v12");
+    expect(report.reason).toContain("judge-reviews/v10 is not judge-reviews/v15");
   });
 
   it("is reachable from the CLI as --judge", () => {
@@ -256,7 +246,7 @@ describe("the evidence-bound judge projection", () => {
 describe("a review that recorded no census", () => {
   it("reads as a censusless review whose disagreements cannot be shown as disputes", () => {
     const dir = campaignDir();
-    writeReview(dir, { ...review(validEvidence(), [contestedRow("t1", true, false)]), census: null });
+    writeReview(dir, { ...review(validEvidence(), [contestedRow("t1", "disputed-pass")]), census: null });
     const report = availableReport(dir, RUN);
     expect(report.census).toBeNull();
     // Without a checked census identity the disagreement cannot be shown as a dispute.

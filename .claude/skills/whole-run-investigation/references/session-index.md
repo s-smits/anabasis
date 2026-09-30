@@ -67,14 +67,15 @@ whether each check can fail on a shipping artifact and bind to what it constrain
 reads slack: freeze a public-only corpus alone, before verifier internals, and report false
 rejections.
 
-**8. Public disclosure and one-recipe.** From one-turn solves and constant call sequences, say
-whether the brief and tools publish a sufficient construction algorithm.
+**8. Public disclosure and one-recipe.** From passes at a small share of the solve wall and constant
+call sequences, say whether the brief and tools publish a sufficient construction algorithm.
 
 **9. Rehearsal instrument reach.** From `REHEARSAL NOT-RUN`, say which families the rehearsal
 verifier deadline lets the instrument grade at all.
 
-**10. Difficulty calibration loop.** From `OFF-AIM STREAK`, the calibration table and the climb
-edges, say whether the batteries move towards the aim round over round.
+**10. Difficulty calibration loop.** From `OFF-AIM STREAK`, the calibration table and the `climb`
+lane's line, say whether the batteries draw the line AGENTS.md "Goals and the climb" reads progress
+on, rather than whether they approach the aim.
 
 **11. Submit decision against rehearsal evidence.** From `SUBMITTED BYTES NEVER REHEARSED`, say
 what the Builder did with each verdict before submitting.
@@ -111,7 +112,7 @@ moved between rounds and whether the accepted bytes match the declared scope.
 CHANGED`, say which changed source executed on this run.
 
 **22. Solver process and walls.** From the wall shares and the tool-in-trace lead, say how the
-solver spent its walls and whether a wall-bound case is a failure.
+solver spent its walls and whether a wall-bound miss measured the task or the wall.
 
 **23. Trace challenge.** Only when verified cases exceed zero and lane 1, 4, 8, 22 or 34 suspects a
 shortcut: open the private packet alone and show from the trace where the deciding value came
@@ -154,8 +155,8 @@ citable set leaves out.
 **33. Reference provenance and witness strength.** Standing in standard and deep reads: classify
 each reference solve as computing or replaying, and say what its witness proves about the task.
 
-**34. Check mirroring in solver tools.** Standing at every tier: say which declared checks a
-Builder tool mirrors and whether solves show propose, read, adjust in place of a decision.
+**34. Check mirroring in solver tools.** Standing at every tier: say which declared checks a tool,
+program on the solver's PATH or guide line mirrors, and how often solves propose, read, adjust.
 
 **35. Independent recomputation of passes.** From a dangling toolchain or a perfect battery,
 recompute a sample of passes from public facts before reading the evaluator, and count which held.

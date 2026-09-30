@@ -20,7 +20,8 @@ directory, read-only outside it unless the operator separately authorised a sour
 batch, use one steward per independent condition; do not ask one steward to coordinate several conditions or
 let stewards spawn further agents. The steward runs `run-segment.mts` under
 `bun --env-file=.accounts/claudeN.env`, on the account SKILL.md's steward rule chose from
-`.accounts/usage`, never the live runs' or the parent's.
+`.accounts/usage`, never the live runs' or the parent's. `run-segment.mts` strips the launching
+session's `CLAUDE*` variables itself and prints the names it dropped.
 
 The unit is a **segment**: one seeded start, the production toolkit, and the contiguous stretch of
 checkpoints your question covers — three of the twenty rather than all of them. It is not a turn;
@@ -102,7 +103,10 @@ work as well as an unstaged diff, while preserving legal whitespace, newlines an
 filenames. The question is otherwise typed three times per condition — in the handover, in each
 prediction's caught/missed clause, and again at adjudication — and one hand-written copy mis-sliced
 `git status --porcelain`, so a condition's recorded evidence reads `EMORY.md`. That bug belonged to the
-operator's script, which is the worst place for it.
+operator's script, which is the worst place for it. The CLI counts from the workspace's seeding
+commit by default (`--since root`): a checkpoint commit moves HEAD, and a status against HEAD then
+reads a clean tree after real work. `--since HEAD` is the handover's view since the last
+checkpoint; a module caller passes `seedCommit(workspace)` as `changedPaths`' third argument.
 
 Two more inputs bind the segment to its question:
 
@@ -158,18 +162,20 @@ may seed only a Builder, because its tool results carry verifier workshop output
 no simulation needs to retype a byte of model-visible text.
 
 Production's assembly is the template. `directKickoff` emits the label `USER REQUEST (verbatim)`,
-the exact one-liner, the context manifest, then the operating instruction; a climb round appends its
-difficulty contract. Mirror it:
+the exact one-liner, the context manifest, then the operating instruction; the round's opening then
+adds the task count and battery contract and, once a battery is recorded, the readout
+(`openingContext` in `src/run/builder-campaign.ts`). Mirror it:
 
 1. **Carry the real prompt verbatim**, unedited and unparaphrased, under the same label. A
    rewritten prompt makes every finding untransferable, because the paid run will never see that
    text. It is also the operator's standing rule: one short prompt, no hidden plan bolted on.
 2. **State the completed stages as settled fact**, in order: "you researched the domain, authored
-   the bundle and adopted it at level 0, and it scored 23/25."
-3. **State where the actor stands, and the scope rather than the step**: "the only interface you
-   may write this round is `correctness-model/tasks.json`" is legitimate because production imposes
-   the same scope. "Decide and take your next action now" is not — production leaves the choice of
-   action, its timing and its class to the actor.
+   the bundle and adopted it, and it scored 23/25."
+3. **State where the actor stands, and the scope rather than the step**, and a scope only where
+   production imposes the same one. The tasks-only scope older climb rounds imposed is gone: on a
+   rebuild the Builder chooses its own (`decideNextMove`, `src/run/next-move.ts`), so stating one
+   is a changed condition. "Decide and take your next action now" is not legitimate either —
+   production leaves the choice of action, its timing and its class to the actor.
 4. **Say plainly which stages were skipped and that the position was seeded.** An actor that infers
    it was fast-forwarded behaves differently from one told so, and only the second is reproducible.
 5. **Append the contract text production appends, byte for byte**, from the real assembler rather
@@ -184,7 +190,7 @@ for byte, including their trailing whitespace:
 bun .claude/skills/system-path-simulation/scripts/seed-kickoff.mts \
   --prompt-file /abs/one-liner.txt --context /abs/public-context \
   --position-file /abs/simulated-position.txt \
-  --append-file /abs/difficulty-contract.txt --out /abs/scratch/kickoff.txt
+  --append-file /abs/opening-context.txt --out /abs/scratch/kickoff.txt
 ```
 
 Omit `--position-file` for a from-scratch kickoff. The output feeds `run-segment.mts` directly,

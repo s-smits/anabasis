@@ -55,9 +55,17 @@ export function advisory(feedback: CampaignFeedback[]): string | undefined {
   return feedback
     .flatMap((row) => {
       const projected = (row.findings ?? []).map(projectFindingForAuthor);
+      const recurring =
+        row.repeated === undefined
+          ? ""
+          : ` (recurring: ${String(row.repeated.count)} consecutive batteries since ${row.repeated.since})`;
       return projected.length === 0
-        ? [`- ${row.owner}: [${row.severity}] a previous finding remains; inspect the public contract`]
-        : projected.map((finding) => `- ${row.owner}: [${row.severity}] ${finding.code}: ${finding.detail}`);
+        ? [
+            `- ${row.owner}: [${row.severity}] a previous finding remains; inspect the public contract${recurring}`,
+          ]
+        : projected.map(
+            (finding) => `- ${row.owner}: [${row.severity}] ${finding.code}: ${finding.detail}${recurring}`,
+          );
     })
     .join("\n");
 }

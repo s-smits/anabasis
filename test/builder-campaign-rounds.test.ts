@@ -146,7 +146,7 @@ describe("the opening a round composes", () => {
     expect(prompt).toContain("Task count: between 5 and 10 tasks — choose the size in that range yourself.");
     expect(prompt).not.toContain("exactly 10 tasks");
     expect(prompt).toContain(renderBatteryContract(10, 5));
-    // A probe is sized to pass some but not all, so no size in the range states an aim.
+    // A probe's sizing sentence owns what it must pass, so no size in the range states an aim.
     expect(prompt).not.toMatch(/\d+ tasks: aim/);
     expect(prompt).not.toContain("finds no limit");
     expect(prompt).not.toContain("for your chosen size");

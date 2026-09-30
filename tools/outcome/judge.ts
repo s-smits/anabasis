@@ -12,10 +12,11 @@ import {
   type JudgeReviewsResult,
 } from "../../src/analyse/judge-reviews.ts";
 import { validateJudgeEvidence } from "../../src/claim/judge.ts";
+import type { ContestedKind } from "../../src/analyse/judge-contested.ts";
 import { parseJsonAs } from "../../src/meta/json-runtime.ts";
 import { errorMessage } from "../../src/meta/runtime-values.ts";
 
-export const OUTCOME_JUDGE_SCHEMA = "outcome-judge/v2";
+export const OUTCOME_JUDGE_SCHEMA = "outcome-judge/v3";
 
 /** The checked census, or why it cannot be shown. */
 type OutcomeJudgeCensus =
@@ -29,9 +30,8 @@ interface OutcomeContestedCase {
   runId: string;
   taskId: string;
   family: string;
-  judge: boolean;
-  verifier: boolean;
-  direction: "verifier-pass-judge-fail" | "verifier-fail-judge-pass";
+  /** Which way the Judge contradicted the verifier (`judgeCaseKind`). */
+  kind: ContestedKind;
   /** Saved review path for this case. */
   judgeEvidence: string;
   /** Saved answer path checked by the source reader. */
@@ -61,9 +61,8 @@ export type OutcomeJudgeReport =
       /** Review disagreements that lack enough information to show as complete disputes. */
       contestedUnavailable: string[];
       coverage: JudgeReviewsResult["coverage"];
-      provisional: string | null;
+      outcome: JudgeReviewsResult["outcome"];
       exit: JudgeExit;
-      absent: string[];
     };
 
 function censusView(entry: BatteryCensus | null): OutcomeJudgeCensus | null {
@@ -115,9 +114,7 @@ function contestedRows(
       runId: view.runId,
       taskId: row.taskId,
       family: row.family,
-      judge: row.judge,
-      verifier: row.verifier,
-      direction: row.verifier ? "verifier-pass-judge-fail" : "verifier-fail-judge-pass",
+      kind: row.kind,
       judgeEvidence: currentEvidencePath(campaignDir, row.evidence),
       artifact: currentEvidencePath(campaignDir, row.artifact),
       correctnessModelId: view.evidence.correctnessModelId,
@@ -164,8 +161,7 @@ export function judgeReport(campaignDir: string, selector: string): OutcomeJudge
     contested: disputes.contested,
     contestedUnavailable: disputes.unavailable,
     coverage: review.coverage,
-    provisional: review.provisional,
+    outcome: review.outcome,
     exit: review.exit,
-    absent: review.absent,
   };
 }

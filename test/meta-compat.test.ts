@@ -9,6 +9,7 @@ import {
   canonicalJson,
   canonicalJsonCopy,
   compareCodeUnits,
+  hashJsonStrings,
   hashJsonValue,
   sameJsonValue,
   stableJson,
@@ -88,6 +89,16 @@ describe("stable JSON identity", () => {
     expect(hashJsonBytes(left)).toBe(sha256(JSON.stringify(left)));
     expect(hashJsonBytes(left)).not.toBe(hashJsonBytes(right));
     expect(hashJsonValue(left)).toBe(hashJsonValue(right));
+  });
+
+  it("hashes a list of strings item by item to the digest of its whole JSON text", () => {
+    for (const items of [
+      [],
+      ["only"],
+      ["bin/tool\0ab12", String.raw`quote " and \ slash`, "ä\n\u2028", "\ud800 lone"],
+    ]) {
+      expect(hashJsonStrings(items)).toBe(hashJsonValue(items));
+    }
   });
 
   it("uses explicit code-unit order and native JSON array omission semantics", () => {

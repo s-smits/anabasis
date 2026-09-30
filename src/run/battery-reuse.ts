@@ -1,18 +1,27 @@
-/** When a round's battery grades recorded solves instead of solving. Both cases keep every byte the
+/** When a round's battery grades recorded solves instead of solving. Each case keeps every byte the
  *  solver read and the condition it solved under (`solverConditionMoved`), so the Built solver would
- *  be paid to write artifacts that already exist:
+ *  be paid to write artifacts that already exist.
  *
- *  - An evaluation correction over the same agent bytes and the same public tasks regrades the
- *    latest battery under the corrected evaluator, wherever that battery sat on the band. The
- *    correction moved the evaluator alone, so regrading the same attempts is the comparison that
- *    moves one variable; a fresh solve would add the solver's own variance to it.
- *  - A battery whose every non-result the environment owns, on the product still selected,
- *    re-solves exactly those cases and regrades the rest, which is what the analysis finding
- *    "rerun without changing the harness" promises. A rebuild in its place would author against a
- *    measurement the environment cut short.
+ *  One reading decides which (`posedSolves`): a solve of the latest battery is regraded exactly when
+ *  it still poses this candidate's exam — the same agent bytes, the same solving condition, the same
+ *  public task bytes and public rules — and did not end in a non-result, which measured nothing.
+ *  Every other task is solved. No round kind is named, because the reading already tells them apart:
  *
- *  A repeat, which moves nothing the verifier reads, is solved afresh: the solver is stochastic, so
- *  a second blind solve answers whether the first result holds, which regrading it cannot. */
+ *  - An evaluation correction regrades every task under the corrected evaluator, wherever the
+ *    battery sat on the band, so the comparison moves one variable; a fresh solve would add the
+ *    solver's own variance to it. One that also moved a task solves that task alone.
+ *  - A task probe is decided on its changed tasks alone (`decidingSample`), so a fresh solve of an
+ *    unchanged task buys a replicate nothing reads: a probe that moved one task of ten paid for ten
+ *    solves to measure one.
+ *  - A remeasure of a battery whose every non-result the environment owns, on the product still
+ *    selected, solves exactly those cases, which is what the analysis finding "rerun without
+ *    changing the harness" promises.
+ *  - A harness intervention moved the agent bytes, so nothing it reads was posed before.
+ *
+ *  An unaccepted attempt is a measured failure and is regraded like a pass: solving it again would
+ *  give that task a second chance the rest of the battery never had. A repeat, which moves nothing
+ *  the verifier reads, is solved afresh: the solver is stochastic, so a second blind solve answers
+ *  whether the first result holds, which regrading it cannot. */
 import { existsSync } from "../meta/filesystem.ts";
 import { isString } from "../meta/json-shape.ts";
 import { dirname, join } from "../meta/path.ts";
@@ -46,12 +55,6 @@ import { type ClimbReadout, readClimbReadout } from "./climb-readout.ts";
 import { selectedProductDir } from "./product-versions.ts";
 import { batteryCondition, loadRecordedTasks } from "./run-driver.ts";
 
-/** A candidate that poses the exam a recorded battery already sat, with the same agent. */
-interface IdenticalExam {
-  runId: string;
-  reuse: BatteryReuse;
-}
-
 /** The cases a remeasure solves again: every other case of battery `of` is regraded from its
  *  recorded solve. */
 export interface Remeasure {
@@ -70,11 +73,9 @@ interface ExamInput {
   candidateDir: string;
 }
 
-type ExamRead = { exam: IdenticalExam } | { exam: null; reason: string };
-
 /** The recorded solves a round regrades, or null when it measures a fresh battery, with the reason
  *  either way. */
-interface CorrectionRegrade {
+interface RecordedRegrade {
   reuse: BatteryReuse | null;
   reason: string;
 }
@@ -131,74 +132,90 @@ export function solverConditionMoved(
   return null;
 }
 
-/** Whether `candidateDir` poses exactly the exam the latest battery sat — the same agent bytes, the
- *  same backend pin and the same public task bytes over the same task ids. The reason says which
- *  condition failed. */
-function identicalExam(input: ExamInput): ExamRead {
+/** The latest battery's solves that still pose `candidateDir`'s exam, or null with the condition
+ *  that moved. A solve is kept when its case reached no non-result and its public task bytes match
+ *  the candidate's; the agent bytes, the solving condition and, when the scoring moved, the brief's
+ *  public rules must match for any to be kept, because the solver read all of them. */
+function posedSolves(input: ExamInput): RecordedRegrade {
   const source = latestBattery(input.repoRoot, input.slug, input.runPin);
-  if (isString(source)) return { exam: null, reason: source };
+  if (isString(source)) return { reuse: null, reason: source };
   let battery: Pick<BatteryRecord, "backendPin" | "bundleSnapshot" | "cases" | "condition">;
   try {
     battery = readRecordedBatteryRecord(source.runDir, source.runId);
   } catch (error) {
-    return { exam: null, reason: errorMessage(error) };
+    return { reuse: null, reason: errorMessage(error) };
   }
   const fingerprint = fingerprintSlug(input.candidateDir);
-  if (!fingerprint.ok) return { exam: null, reason: "the candidate does not fingerprint" };
+  if (!fingerprint.ok) return { reuse: null, reason: "the candidate does not fingerprint" };
   if (battery.bundleSnapshot.agentHash !== fingerprint.agentHash) {
-    return { exam: null, reason: "the agent bytes moved" };
+    return { reuse: null, reason: "the agent bytes moved" };
   }
   const solving = solverConditionMoved(input, source.runId, battery);
-  if (solving !== null) return { exam: null, reason: solving };
-  const tasks = loadRecordedTasks(input.candidateDir);
-  const ids = tasks.map((task) => task.taskId);
-  if (ids.length !== battery.cases.length) return { exam: null, reason: "the task count moved" };
-  const read = readRecordedSolves(source.runDir, source.runId, ids);
-  if (!read.ok) return { exam: null, reason: read.refusal };
-  const moved = tasks.filter((task) => {
-    const solve = read.value.solves.get(task.taskId);
-    return solve === undefined || !recordedTaskMatches(task, solve);
-  });
-  if (moved.length > 0) return { exam: null, reason: `${moved.length} public task(s) moved` };
-  const scoringChanged = battery.bundleSnapshot.scoringHash !== fingerprint.scoringHash;
-  // The solver reads the brief's public rules as well as its task, so a correction that rewrote
-  // them posed a different exam even over byte-identical tasks.
+  if (solving !== null) return { reuse: null, reason: solving };
   const rules = (dir: string) => capturedJsonStringify(readPublicResources(dir));
-  if (scoringChanged && rules(dirname(dirname(source.runDir))) !== rules(input.candidateDir)) {
-    return { exam: null, reason: "the brief's public rules moved" };
+  if (
+    battery.bundleSnapshot.scoringHash !== fingerprint.scoringHash &&
+    rules(dirname(dirname(source.runDir))) !== rules(input.candidateDir)
+  ) {
+    return { reuse: null, reason: "the brief's public rules moved" };
   }
-  return { exam: { runId: source.runId, reuse: read.value } };
+  const measured = new Set(
+    battery.cases.flatMap((row) => (row.runtimeNonResultKind === null ? [row.taskId] : [])),
+  );
+  const tasks = loadRecordedTasks(input.candidateDir).filter((task) => measured.has(task.taskId));
+  const read = readRecordedSolves(
+    source.runDir,
+    source.runId,
+    tasks.map((task) => task.taskId),
+  );
+  if (!read.ok) return { reuse: null, reason: read.refusal };
+  const solves = new Map(
+    tasks.flatMap((task) => {
+      const solve = read.value.solves.get(task.taskId);
+      return solve !== undefined && recordedTaskMatches(task, solve) ? [[task.taskId, solve] as const] : [];
+    }),
+  );
+  if (solves.size === 0) return { reuse: null, reason: `no solve of ${source.runId} still poses this exam` };
+  return {
+    reuse: { ...read.value, solves },
+    reason: `${solves.size} solve(s) of battery ${source.runId} still pose this exam and are regraded; the other task(s) are solved`,
+  };
 }
 
-/** The recorded solves an evaluation correction regrades instead of solving, or null when the
- *  round measures a fresh battery. The reason is recorded either way. */
-export function regradeForCorrection(
+/** The recorded solves this round regrades instead of solving, or null when it measures a fresh
+ *  battery, with the reason either way. Every round reads the same solves; only a repeat, which
+ *  moved nothing, opts out and is solved afresh. */
+export function recordedRegrade(
   input: ExamInput & { experimentAuthoring: ExperimentAuthoring | undefined },
-): CorrectionRegrade {
-  if (input.experimentAuthoring?.operation.operation !== "evaluation-correction") {
-    return { reuse: null, reason: "not an evaluation correction" };
+): RecordedRegrade {
+  if (input.experimentAuthoring?.operation.operation === "repeat") {
+    return { reuse: null, reason: "a repeat is solved afresh" };
   }
-  const read = identicalExam(input);
-  if (read.exam === null) return { reuse: null, reason: read.reason };
-  return {
-    reuse: read.exam.reuse,
-    reason: `evaluation correction over the exam battery ${read.exam.runId} sat; its ${read.exam.reuse.solves.size} recorded solves are regraded under the corrected evaluator`,
-  };
+  return posedSolves(input);
 }
 
 /** How many remeasures in a row led to `battery`, itself included. A chain the environment keeps
  *  cutting short ends at the same allowance an all-non-result battery gets, and then the Builder
  *  has the round. */
-function remeasureChain(domainDir: string, battery: Pick<BatteryRecord, "cases" | "regrade">): number {
+function remeasureChain(
+  domainDir: string,
+  battery: Pick<BatteryRecord, "cases" | "regrade" | "bundleSnapshot">,
+): number {
   let count = 0;
   let at = battery;
-  // A remeasure re-solved some of its cases and regraded the rest; a correction's regrade reuses
-  // every case, so it does not count.
+  // A remeasure re-solved some of its cases and regraded the rest over the task set it re-poses; a
+  // correction's regrade reuses every case, and a task probe's poses another task set, so neither
+  // counts.
   while (at.regrade !== undefined && at.regrade.reused < at.cases.length) {
-    count += 1;
     const runDir = retainedRunDir(domainDir, at.regrade.of);
-    if (runDir === null) break;
-    at = readRecordedBatteryRecord(runDir, at.regrade.of);
+    if (runDir === null) {
+      count += 1;
+      break;
+    }
+    const source = readRecordedBatteryRecord(runDir, at.regrade.of);
+    if (source.bundleSnapshot.taskSetHash !== at.bundleSnapshot.taskSetHash) break;
+    count += 1;
+    at = source;
   }
   return count;
 }
@@ -251,33 +268,14 @@ export function censoredRemeasure(input: ExamInput, readout: ClimbReadout | null
   } catch (error) {
     return errorMessage(error);
   }
-  const refused = notRemeasurable(domainDir, battery) ?? solverConditionMoved(input, latest.runId, battery);
+  const refused = notRemeasurable(domainDir, battery);
   if (refused !== null) return refused;
-  const remeasure = {
+  // Read the solves it would keep now, so a record that cannot be vouched for sends the round to
+  // the Builder here rather than failing the battery it would have opened.
+  const posed = posedSolves(input);
+  if (posed.reuse === null) return posed.reason;
+  return {
     of: latest.runId,
     taskIds: battery.cases.flatMap((row) => (row.runtimeNonResultKind === null ? [] : [row.taskId])),
   };
-  // Read the kept solves now, so a record that cannot be vouched for sends the round to the
-  // Builder here rather than failing the battery it would have opened.
-  const kept = keptSolves(domainDir, remeasure);
-  return isString(kept) ? kept : remeasure;
-}
-
-function keptSolves(domainDir: string, remeasure: Remeasure): BatteryReuse | string {
-  const runDir = retainedRunDir(domainDir, remeasure.of);
-  if (runDir === null) return `battery ${remeasure.of} has no unique retained run directory`;
-  const again = new Set(remeasure.taskIds);
-  const kept = loadRecordedTasks(domainDir)
-    .map((task) => task.taskId)
-    .filter((id) => !again.has(id));
-  const read = readRecordedSolves(runDir, remeasure.of, kept);
-  return read.ok ? read.value : read.refusal;
-}
-
-/** The recorded solves a remeasure regrades: every case of its source battery except the ones it
- *  solves again. */
-export function remeasureReuse(domainDir: string, remeasure: Remeasure): BatteryReuse {
-  const kept = keptSolves(domainDir, remeasure);
-  if (isString(kept)) throw new Error(`remeasure of ${remeasure.of}: ${kept}`);
-  return kept;
 }

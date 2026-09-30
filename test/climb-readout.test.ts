@@ -34,6 +34,7 @@ import { capturedJsonParse } from "../src/meta/json-runtime.ts";
 import { isRecord } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { required } from "./helpers/doubles.ts";
+import { expectNoRestatedDuty } from "./helpers/duty-overlap.ts";
 
 const BAND: [number, number] = [0.2, 0.5];
 const DOMAIN = "/nonexistent-domain";
@@ -57,6 +58,8 @@ type Spec = {
   familyEffort?: FamilyEffort[];
   wall?: number;
   wallBound?: number;
+  /** Verified cases a completed review settled against their check, among `slots` but not `n`. */
+  settled?: number;
 };
 
 /** The exclusion reason `admitBattery` records for a refused claim. It opens with its own "claim
@@ -90,6 +93,7 @@ function row(runId: string, index: number, spec: Spec): AdmittedClimbRow {
     measured,
     taskSetHash: "tasks",
     ...keyIfDefined("failedTaskIds", spec.failed),
+    ...keyIfDefined("settledAgainst", spec.settled),
   };
   const recorded: AdmittedClimbRow["authoring"] = {
     taskSetHash: "tasks",
@@ -259,6 +263,17 @@ describe("the measured facts the author reads", () => {
     ]);
   });
 
+  it("counts the cases settled against their check apart, neither verified nor a non-result", () => {
+    const lines = [
+      { passed: 2, n: 2, slots: 6, settled: 4 },
+      { passed: 1, n: 5, slots: 7, settled: 1 },
+    ].map((spec) => lineOf(render(readoutOf(row("r1", 0, spec))), "r1"));
+    expect(lines).toEqual([
+      "- r1 (P1, T1, S1): 2 passed of 2 verified, 0 unaccepted, 0 non-results; 4 verified cases settled against their check, counted neither way.",
+      "- r1 (P1, T1, S1): 1 passed of 5 verified, 0 unaccepted, 1 non-result; 1 verified case settled against its check, counted neither way.",
+    ]);
+  });
+
   it("tells solves regraded from an earlier battery apart from fresh ones", () => {
     const text = render(
       readoutOf(
@@ -349,7 +364,7 @@ describe("rendering", () => {
     );
     // A partial count is necessary and not sufficient, so nothing says a partial battery located one.
     expect(one).not.toContain("locates a limit");
-    // A probe range leaves that sentence to the sizing sentence, which already says "some but not all".
+    // A probe range leaves that sentence to the sizing sentence, which says what a probe must pass.
     expect(probe).not.toContain("locate a limit");
     for (const text of [probe, one]) {
       expect(text).not.toMatch(/\baim\b|\d+ tasks|\d+ to \d+|Calibration|band/);
@@ -367,12 +382,20 @@ describe("rendering", () => {
   });
 
   it("says the latest battery found no limit only when it passed every case it scored", () => {
-    // A full pass also names the measurement that says why: the passing solves beside the reference.
+    // A full pass also names what to read before the next battery: how the passing solves won, not how
+    // far their answers sat from the reference. Pointed at that distance, every round of the five
+    // all-pass batteries of run 6a8ca0 (2026-09-30) moved limits or enlarged instances that the solver's
+    // same enumeration still settled in one turn. The line names depth, which the intent clause
+    // defines, and offers no widening route: a wider battery at the same demand passed whole.
     expect(render(readoutOf(row("r1", 0, { passed: 6, n: 6 })))).toContain(
-      "Battery r1 passed all 6 of its verified cases, so it found no limit: the next battery has to demand more of the field's own work than this one did. Before you set the next battery, measure what its passing solves submitted beside your own reference answer for the same task: where a limit sits well above your reference, answers worse than it passed, and where a solve matched or beat your reference, the search behind it is one the solver runs too.",
+      "Battery r1 passed all 6 of its verified cases, so it found no limit. More tasks, families, inputs or scenarios at the same demand measure the same reach again, so the next battery has to demand more of the field's own work within its tasks: make more of the request's requirements act together in each task, in tasks you expect the solver to fail. Carry none of its tasks forward unchanged, since a task it passed measures the same pass again: raise what each one demands or replace it. Record in your notes which public requirement it changes and the reasoning that change adds. Before you set the next battery, read how its passing solves reached their answers, the tools they called and the search they ran: a limit moved or an instance enlarged while those same steps would still find an answer asks nothing new, so the change has to be one those steps do not settle.",
     );
     expect(render(readoutOf(row("r1", 0, { passed: 1, n: 1 })))).toContain(
       "Battery r1 passed its one verified case, so it found no limit",
+    );
+    expectNoRestatedDuty(render(readoutOf(row("r1", 0, { passed: 6, n: 6 }))));
+    expect(render(readoutOf(row("r1", 0, { passed: 6, n: 6 })))).not.toContain(
+      "across what the request names",
     );
     // A non-result scored nothing, so a battery that lost cases to one asks for no harder demand.
     const censored = render(readoutOf(row("r1", 0, { passed: 1, n: 1, slots: 6 })));
@@ -380,7 +403,8 @@ describe("rendering", () => {
       "Battery r1 passed its one verified case and 5 cases ended as non-results that scored nothing, so it found no limit among the cases it scored and did not measure the rest.",
     );
     expect(censored).not.toContain("demand more");
-    expect(censored).not.toContain("measure what its passing solves submitted");
+    expect(censored).not.toContain("Carry none of its tasks forward");
+    expect(censored).not.toContain("read how its passing solves reached their answers");
     // An unaccepted attempt is a fail, and a battery with no pass or a partial one says nothing more.
     const silent = [
       row("r1", 0, { passed: 5, n: 6, unaccepted: 1 }),
@@ -391,6 +415,25 @@ describe("rendering", () => {
     // Only the latest battery speaks: an earlier whole pass under a later partial one says nothing.
     const text = render(readoutOf(row("r1", 0, { passed: 6, n: 6 }), row("r2", 1, { passed: 3, n: 6 })));
     expect(text).not.toContain("found no limit");
+  });
+
+  it("says how much of the solve wall a full pass's slowest solve took", () => {
+    // Of 233 all-pass batteries from 2026-09-25 to 09-30, 153 finished their slowest solve inside a
+    // tenth of the 120-minute wall, and the round that authored the next one was never told so.
+    const effort = { cases: 6, turns: 3, minutes: 3.1, toolCalls: 12 };
+    expect(render(readoutOf(row("r1", 0, { passed: 6, n: 6, effort })))).toContain(
+      "raise what each one demands or replace it. Its slowest solve took 3.1 of the 120 minutes a solve may run. Record in your notes",
+    );
+    // Unrecorded minutes stay unsaid rather than read as none.
+    expect(
+      render(readoutOf(row("r1", 0, { passed: 6, n: 6, effort: { ...effort, minutes: null } }))),
+    ).not.toContain("slowest solve");
+    // A battery that failed a case, or lost one to a non-result, says nothing of it.
+    const silent = [
+      row("r1", 0, { passed: 3, n: 6, effort }),
+      row("r1", 0, { passed: 1, n: 1, slots: 6, effort }),
+    ];
+    for (const battery of silent) expect(render(readoutOf(battery))).not.toContain("slowest solve");
   });
 });
 

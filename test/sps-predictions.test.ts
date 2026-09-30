@@ -6,6 +6,7 @@ import {
   rmSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
+import { sha256 } from "../src/meta/digest.ts";
 import { join } from "../src/meta/path.ts";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { REPO_ROOT, runTypeScript } from "../.claude/skills/system-path-simulation/scripts/test-support.ts";
@@ -82,12 +83,62 @@ describe("predictions", () => {
     },
   );
 
+  // The frame × model note of 2026-09-30 declared "P1: …". Both runners listed its rows as open;
+  // this helper read none, so it refused the hash and could not resolve a single row.
+  it('reads rows declared as "P1: …" as the runners do', () => {
+    writeFileSync(note, NOTE.replace(/^([A-Z]\d) — /gm, "$1: "));
+    const hashed = run("--hash");
+    expect(hashed.exitCode).toBe(0);
+    expect(hashed.stdout).toContain("3 row(s): P1 P2 R3");
+    expect(run("--resolve", "P2: refuted — 25 of 25 rows carry no instant").exitCode).toBe(0);
+    expect(run("--unresolved").stdout).toBe("UNRESOLVED: P1 R3\n");
+  });
+
   it("refuses to hash a note whose rows the parser cannot read", () => {
     writeFileSync(note, NOTE.replace(/^([A-Z]\d) — /gm, "- $1: "));
     const refused = run("--hash");
     expect(refused.exitCode).toBe(2);
     expect(refused.stderr).toContain('"P1 — <prediction>"');
     expect(existsSync(`${note}.sha256`)).toBe(false);
+  });
+
+  // On 2026-09-30 the P6 addendum carried a checksum written by hand. Its one row was not read, and
+  // --unresolved answered "UNRESOLVED: none" with exit 0, as if P6 were closed.
+  it("refuses to list open rows of a note whose rows the parser cannot read", () => {
+    const unread = NOTE.replace(/^([A-Z]\d) — /gm, "- $1: ");
+    writeFileSync(note, unread);
+    writeFileSync(`${note}.sha256`, `${sha256(unread.trimEnd())}  ${note}\n`);
+    const refused = run("--unresolved");
+    expect(refused.exitCode).toBe(2);
+    expect(refused.stdout).toBe("");
+    expect(refused.stderr).toContain('"P1 — <prediction>"');
+  });
+
+  // The frame × model note of 2026-09-30 was frozen with an empty "## Resolutions" heading and its
+  // checksum taken over the whole file, the digest run-condition records as predictions.sha256. The
+  // note was byte-identical, yet --verify said the pre-registered part had changed.
+  it("reads a checksum taken over the note as frozen, through its Resolutions heading", () => {
+    const frozen = `${NOTE}\n## Resolutions\n`;
+    writeFileSync(note, frozen);
+    writeFileSync(`${note}.sha256`, `${sha256(frozen)}  ${note}\n`);
+    expect(run("--verify").exitCode).toBe(0);
+    expect(run("--resolve", "P2: refuted — 25 of 25 rows carry no instant").exitCode).toBe(0);
+    expect(readFileSync(note, "utf8")).toBe(`${frozen}- P2: refuted — 25 of 25 rows carry no instant\n`);
+    expect(run("--verify").exitCode).toBe(0);
+    expect(run("--unresolved").stdout).toBe("UNRESOLVED: P1 R3\n");
+    writeFileSync(note, readFileSync(note, "utf8").replace("deadbeef. Falsifier", "cafebabe. Falsifier"));
+    expect(run("--verify").stderr).toContain("changed after its checksum was recorded");
+  });
+
+  // The P6 addendum of 2026-09-30 had no Resolutions heading and a checksum taken over the whole
+  // file. --verify passed and --resolve appended P6, then every later read refused the note: the
+  // blank line the append puts before its heading had joined the pre-registered part.
+  it("still verifies a whole-file checksum after the first resolution adds the heading", () => {
+    writeFileSync(`${note}.sha256`, `${sha256(NOTE)}  ${note}\n`);
+    expect(run("--verify").exitCode).toBe(0);
+    expect(run("--resolve", "P1: sufficed — opening.json names deadbeef").exitCode).toBe(0);
+    expect(run("--verify").exitCode).toBe(0);
+    expect(run("--unresolved").stdout).toBe("UNRESOLVED: P2 R3\n");
   });
 
   it("allows honest inconclusive and untriggered closures but not pending", () => {

@@ -41,6 +41,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "#src
 import { join } from "#src/meta/path.ts";
 import { loadRepoEnv } from "#src/backends/env.ts";
 import { resolveSlots } from "#src/backends/resolve.ts";
+import { credentialProvenance } from "#src/backends/login-state.ts";
 import { deriveIterationAnalysis } from "#src/analyse/iteration-analysis.ts";
 import { runEpochReview } from "#src/review/epoch-reviewer.ts";
 import { publicEpochReview } from "#src/review/epoch-review-public.ts";
@@ -51,12 +52,17 @@ import { type ContestedCase, reviewerContested } from "#src/analyse/judge-contes
 import { runJudgeReviews } from "#src/analyse/judge-reviews.ts";
 import { readValidatedBrief } from "#src/correctness-bundle/public-resources.ts";
 import { absoluteOption, type ExitWith, exitWith, parseOrDie, requiredOption } from "#skills/main/cli.ts";
+import { scrubSessionEnv } from "./session-env.mts";
 import { CASE_RECORD_FILE } from "#src/claim/case-record.ts";
 import { JUDGE_PUBLIC_CONTEXT_FILE } from "#src/correctness-bundle/declared-projection.ts";
 
 const fail: ExitWith = exitWith("review-settle");
 
 const args = parseOrDie(fail, { values: ["repo", "slug", "run", "contested", "scratch", "request"] });
+
+/** The calling session's own variables never reach the model's CLI (session-env.mts). */
+const strippedEnv = scrubSessionEnv();
+if (strippedEnv.length > 0) console.error(`session env: stripped ${strippedEnv.join(" ")}`);
 const requiredValue = requiredOption(fail, args.single);
 const absolute = absoluteOption(fail);
 const repo = absolute("repo", requiredValue("repo"));
@@ -128,8 +134,20 @@ const measuredDir = join(target, "versions", runId);
 // that cannot dispute anything, which is the wrong condition to replay a dispute rule under.
 const priorAdvice = readLatestRebuildAdvice(scratch, slug);
 
-const review = resolveSlots(repo, slug, loadRepoEnv(repo, Bun.env)).review;
-console.log(JSON.stringify({ review, staged: target }));
+const repoEnv = loadRepoEnv(repo, Bun.env);
+const review = resolveSlots(repo, slug, repoEnv).review;
+// The reviewer opens its session at the scratch root, which holds no `.env`, so its credential would
+// resolve from nothing: until 2026-09-29 a replay from a worktree ended on a missing token. `--repo`'s
+// resolved values stand in this process's environment, where the loader reads first; a value the
+// process already had is kept, as the loader keeps it. Nothing is written to disk.
+for (const [key, value] of Object.entries(repoEnv.env)) Bun.env[key] ??= value;
+const credential = review.enabled
+  ? credentialProvenance(review.kind, loadRepoEnv(scratch, Bun.env)).source
+  : null;
+if (review.enabled && credential === null) {
+  fail(`no ${review.kind} credential resolves from ${repo}'s env chain`);
+}
+console.log(JSON.stringify({ review, credential, staged: target }));
 const analysis = deriveIterationAnalysis(scratch, slug, runId, measuredDir);
 const contested = reviewerContested(
   Array.isArray(replayed)
@@ -143,8 +161,7 @@ console.log(
     cases: analysis.cases.length,
     treeRoot: analysis.treeRoot,
     contested: contestedPath ?? "recorded Judge",
-    vetoed: ids(contested.vetoed),
-    disputed: ids(contested.disputed),
+    settle: ids(contested.settle),
     otherContested: ids(contested.otherContested),
     issues: priorAdvice?.issues.length ?? 0,
   }),

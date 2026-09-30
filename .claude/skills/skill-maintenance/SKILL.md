@@ -41,8 +41,9 @@ Preserve useful decisions and safety boundaries, not obsolete wording, duplicate
 arbitrary old quotas. Extend the survivor's trigger and name the former owner in its relevant
 section. Update callers before removing the old directory; Git preserves the original body.
 Keep assessment separate from authority to act: folding a stop procedure into a review never
-authorises that review to kill or relaunch. Do not merge blinded pairs or retire review lanes
-through entry-point cleanup; `wri-lane-maintenance` owns that evidence-sensitive question.
+authorises that review to kill or relaunch. Do not merge or retire review lanes through
+entry-point cleanup; [lane maintenance](../whole-run-investigation/references/lane-maintenance.md)
+owns that evidence-sensitive question.
 
 ## Respect the two skill trees
 

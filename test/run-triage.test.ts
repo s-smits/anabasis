@@ -103,14 +103,13 @@ describe("judge review reader", () => {
         evidence: {
           judge: "unvalidated",
           offered: 6,
-          verdicts: 5,
+          verdicts: 4,
           abstentions: 1,
-          disagreementDenominator: 5,
         },
       },
       contested: [{ taskId: "t1" }, { taskId: "t2" }],
       coverage: { reviewable: 6, reviewed: 5 },
-      provisional: "the judge review is incomplete",
+      outcome: { kind: "absent", why: "the judge review is incomplete" },
     };
     writeFileSync(join(camp, "analysis", "r1-judges.json"), JSON.stringify(current));
     const earlier = {
@@ -126,7 +125,7 @@ describe("judge review reader", () => {
         abstained: null,
         reviewed: "—",
         contested: null,
-        provisional: null,
+        absent: null,
       },
       {
         name: "r1-judges",
@@ -134,7 +133,7 @@ describe("judge review reader", () => {
         abstained: 1,
         reviewed: "5/6",
         contested: 2,
-        provisional: "the judge review is incomplete",
+        absent: "the judge review is incomplete",
       },
     ]);
   });

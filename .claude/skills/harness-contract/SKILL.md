@@ -1,6 +1,6 @@
 ---
 name: harness-contract
-description: "Design, change or audit one Anabasis contract: adoption gates, verifier discrimination, artifact representation, model-visible text, or coding discipline including a small rule-changing fix. Load only the relevant area; source and AGENTS.md own current mechanisms and authority."
+description: "Design, change or audit one Anabasis contract: adoption gates, verifier discrimination, artifact representation and the tools over it (including whether a tool earns its place from recorded use), model-visible text, or coding discipline including a small rule-changing fix. Load only the relevant area; source and AGENTS.md own current mechanisms and authority."
 ---
 
 # Harness contract
@@ -13,7 +13,7 @@ reference the change touches; read two only when the change crosses their bounda
 |---|---|---|
 | what must be green before paid measurement: task conformance, control census, full-task solvability (F2), exact task count, fingerprint, protected-evidence projection | [references/adoption-gates.md](references/adoption-gates.md) | `src/run/census-gate.ts`, `src/run/candidate-promotion.ts` |
 | whether the verifier separates a correct artifact from a plausible wrong one: check semantics, grounding, safe issues, floors, accept/reject controls, `expectedCheckId`, hidden differentials | [references/discrimination-proof.md](references/discrimination-proof.md) | `src/correctness-bundle/`, `src/verify/` |
-| the artifact from editable draft to accepted bytes: DraftStore shape, public schema and writer parity, canonical equivalence, checkpoint and submit, hidden expectations | [references/representation-contract.md](references/representation-contract.md) | `src/solve/`, `src/author/adopted-candidate.ts` |
+| the artifact from editable draft to accepted bytes: DraftStore shape, public schema and writer parity, canonical equivalence, checkpoint and submit, hidden expectations; the tool interface, and judging a tool from recorded use | [references/representation-contract.md](references/representation-contract.md) | `src/solve/`, `src/author/adopted-candidate.ts`, `src/builder/tools.ts`, `tools/outcome/builder-tool-journeys.ts` |
 | text a model can see: session prompts, start framing, steering, follow-ups, Judge framing, before and after tool-call adapters, prompt digests | [references/prompt-and-hook-design.md](references/prompt-and-hook-design.md) | `src/author/`, `src/builder/`, `src/review/judge-framing.ts` |
 | a bounded code, type, test or evaluation change: source-first inspection, one-owner fixes, size ceilings, honest status, proportional proof | [references/coding-discipline.md](references/coding-discipline.md) | the changed file and its smallest owning test |
 

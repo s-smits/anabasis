@@ -91,7 +91,7 @@ export const choiceOf = (r: JevResult, id: string) =>
 export const scoreOf = (r: JevResult, id: string) =>
   r.answers[id] as { score: number; probabilities: Record<string, number>; confidence: number };
 
-/** Wilson interval at 95%: a scratch copy of wilsonInterval (src/claim/estimation.ts); import that inside a worktree. */
+/** Wilson interval at 95%: a scratch copy of wilsonInterval, z = REPORTING_Z (src/claim/estimation.ts); import both inside a worktree. */
 export function wilson(successes: number, n: number, z = 1.959963984540054) {
   if (n === 0) return { point: null, low: null, high: null };
   const p = successes / n;
@@ -276,7 +276,7 @@ proposer. First build the records, one row per submit, from the posture classifi
 
 ```ts
 // records-from-posture.ts: submit prose → records.jsonl for discover.ts, one row per submit.
-//   bun prose-classify.mjs <campaign-dir> --json > posture.json   (from the checkout, once per campaign)
+//   bun .claude/skills/whole-run-investigation/classifier/prose-classify.ts <campaign-dir> --json > posture.json   (from the checkout, once per campaign)
 //   bun records-from-posture.ts <campaign-name> posture.json >> records.jsonl
 const [group, path] = Bun.argv.slice(2);
 const posture = await Bun.file(path).json();

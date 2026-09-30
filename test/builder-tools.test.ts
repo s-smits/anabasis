@@ -32,6 +32,7 @@ import {
 } from "../src/meta/filesystem.ts";
 import type { JsonValue } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
+import { runtimeProcess } from "../src/meta/process.ts";
 import { join, relative } from "../src/meta/path.ts";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { afterAll, describe, expect, it } from "bun:test";
@@ -190,15 +191,18 @@ describe.if(osIsolationSupport().ok)("the seven capabilities through the isolati
     );
   });
 
+  // Darwin makes each call a directory under the run's temp root and removes it; the Linux cell lays
+  // a fresh tmpfs over /tmp for each call, so there $TMPDIR is /tmp and the host never sees it.
   it("bash: a file written under $TMPDIR is gone with the call and never reaches the run's temp root", async () => {
     const temp = (
       await run("bash", { command: 'echo probe > "$TMPDIR/probe"; printf "%s" "$TMPDIR"' })
     ).trim();
-    expect(temp.startsWith(join(tmpdir(), "ana-builder-bash-"))).toBe(true);
-    expect(existsSync(temp)).toBe(false);
+    if (runtimeProcess.platform === "linux") expect(temp).toBe("/tmp");
+    else expect(temp.startsWith(join(tmpdir(), "ana-builder-bash-"))).toBe(true);
+    expect(existsSync(join(temp, "probe"))).toBe(false);
     expect(existsSync(join(tmpdir(), "probe"))).toBe(false);
-    const again = (await run("bash", { command: 'printf "%s" "$TMPDIR"' })).trim();
-    expect(again).not.toBe(temp);
+    const again = await run("bash", { command: 'test -e "$TMPDIR/probe" && echo seen || echo gone' });
+    expect(again.trim()).toBe("gone");
   });
 
   // Safeguard 32 through the toolkit's own shell. A guard writing something that is not its hook

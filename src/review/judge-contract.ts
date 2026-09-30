@@ -56,11 +56,12 @@ export interface JudgeRequest extends JudgeInput {
 
 export type JudgeAttempt = {
   verdict: boolean | null;
-  /** Designed abstention is distinct from a null verdict caused by evaluator failure. */
+  /** An undecided verdict, distinct from a null verdict caused by evaluator failure. Only records
+   *  written before 2026-09-30 carry true: the verdict words are now pass and fail. */
   abstained: boolean;
   rationale: string | null;
-  /** The shown rules a fail cites verbatim, as many as it rests on: public validity assertions,
-   *  `artifactSchema` or `publicInput`. Empty for a pass, an abstention and an error. */
+  /** The shown rules cited verbatim — public validity assertions, `artifactSchema` or
+   *  `publicInput`: for a fail every rule it breaks. Empty for a pass and an error. */
   rules: string[];
   error: string | null;
   /** Structural classification of `error`, typed at the site that knows what failed: a turn the
@@ -92,10 +93,10 @@ type JudgeSubjectEvidenceCore = JudgeAttempt & {
   judgePin: string;
   verifierBlind: true;
   sanitizer: { version: string; modified: boolean; actions: string[] };
-  /** A second fresh sample, taken only when the first verdict contradicts the verifier's, so a
-   *  contradiction reaches the reviewer only when both samples agree. One sample does not settle
-   *  it: replaying the same subject can split two fail to one pass, so a single draw would decide
-   *  whether the reviewer had a case to settle at all. */
+  /** A second fresh sample, taken only when the Judge fails a verifier pass, so a veto reaches the
+   *  reviewer only when both samples fail. One sample does not settle it: replaying the same
+   *  subject can split two fail to one pass, so a single draw would decide whether the reviewer had
+   *  a case to settle at all. */
   confirmation?: JudgeAttempt;
 };
 
@@ -105,6 +106,9 @@ export type JudgeSubjectEvidence = JudgeSubjectEvidenceCore & {
   publicContextDigest: string;
   judgeInputDigest: string;
 };
+
+/** How one answered subject stands against the verifier's verdict (`judgeCaseKind`). */
+export type JudgeCaseKind = "agree" | "veto" | "unconfirmed-fail" | "disputed-pass";
 
 export interface JudgeObservation {
   evidence: JudgeSubjectEvidence;

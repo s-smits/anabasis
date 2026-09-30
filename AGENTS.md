@@ -86,7 +86,8 @@ Ten decisions are settled. Code that quietly moves one is a defect rather than a
 because moving it cost something.
 
 1. **Correctness has one owner.** The host verifier, running the declared checks and installed tools,
-   decides every pass. No model judge, review or Builder claim sets a score.
+   decides every pass. No model judge, review or Builder claim sets a score, and the Judge is not where
+   scores run lenient ("Open gaps").
 2. **The input is one line.** No hidden plan, custom driver or evaluator hint rescues a launch.
 3. **The Builder authors the whole bundle.** Nothing under `domains/` is hand-written or repaired. A
    defect seen across domains is fixed where it came from, which is the Builder prompt, the shared
@@ -110,14 +111,29 @@ because moving it cost something.
    outcome.
 10. **Bracket a witnessed capability boundary.** Every admitted task has a verifier-accepted witness,
     which proves it feasible (optimum ≤ reference ≤ limit) and never difficult: run 371f8f's solver beat
-    the Builder's own reference on 5 of 6 tasks. So seek tasks beyond the fixed solver's observed
-    capability, by whatever stronger witness the Builder chooses, and locate the transition by blind
-    measurement. A first battery authored above it, about 3 of 25, is a hypothesis rather than a
-    prerequisite; later batteries aim inside `climb.band` (below). An unbracketed boundary is reported
-    unlocated, never met with manufactured failures. **No course is prescribed.** Campaign 3fd52f9e-28
-    followed a prescribed three-stage course and moved only its published magnitudes for four consecutive
-    batteries, so the Builder is told what was measured and never a count to author towards, and the
-    route is the Builder's. Useful adopted work is retained.
+    the Builder's own reference on 5 of 6 tasks, and truss-26 and -29's solvers on 107 of 134. Nor has a
+    stronger witness yet been shown to make one difficult. On 2026-09-30 six truss-25 limits reset at
+    1.02× the best of a longer search passed 5 of 6 under the recorded 90-minute Opus solver (prediction
+    579d4990, refuted as frozen). Three of those searches ran 45 minutes and moved their limits by 0.2 to
+    2.3%; the three that ran 3.4 hours cut them by 12 to 59%, and one of the three failed, on strength
+    and member-loss resilience under the lighter limit rather than on mass. So a longer search stays an
+    optional method whose effect is measured on six tasks only, and a conformance domain such as firmware
+    has no optimum to search. Seek tasks beyond the fixed solver's observed capability in what they
+    demand, not only in where their limits sit, and locate the transition by blind measurement. The operator aims a first battery at very hard, about 3
+    of 25, so that it lands at least at hard (2026-09-30). That aim is a hypothesis rather than a
+    prerequisite, and it reaches the Builder as demand in the tasks, never as a count or an aim sentence,
+    since 29 of the 36 first batteries authored under "author above what you believe" passed whole.
+    Later batteries swing between 1/n and n−1/n and narrow into `climb.band` (below). An unbracketed
+    boundary is reported unlocated, never met with manufactured failures. **No course is
+    prescribed.** Campaign 3fd52f9e-28 followed a prescribed three-stage course and moved only its
+    published magnitudes for four consecutive batteries. So the Builder is told what was measured and
+    what a round is for, a battery that fails some of its cases, and never a count to author towards.
+    The one kind of demand the loop names is depth, more of the request's requirements acting together
+    on one answer under one shared limit, so that meeting one spends the margin another needs, because
+    it is the one recorded demand that dropped pass rates
+    while widening kept batteries whole ("Tried and taken out"). Whether naming it moves a Builder is not
+    yet measured ("Open gaps"), and which requirements, which limit and how far stay the Builder's (prior
+    5). Useful adopted work is retained.
 
 ### Owners and handoffs
 
@@ -178,7 +194,7 @@ secret keys you know about, because the key you did not know about goes out with
 | `case-record.jsonl` | every case: verified / unaccepted / non-result |
 | `claims/<battery>.json` | `claim.ok` and any refused clause names |
 | `promotions/<battery>.json` | `promoted` or `held`; a held version is **not** adopted |
-| `difficulty-decisions/` | each battery's `placement` (zone against `climb.band`) |
+| `difficulty-decisions/` | one record per round, placing the latest battery on `climb.band` |
 | `versions/<battery>/` | adopted bundle bytes: diff consecutive ones to see what changed |
 | `analysis/` | `IterationAnalysis`, `rebuild-advice-latest.json` |
 | `rehearsals/`, `safeguards/`, `observability/`, `verifier-lifetime/` | `harness_trial` solves, log-only sensors, lifetimes |
@@ -186,57 +202,423 @@ secret keys you know about, because the key you did not know about goes out with
 
 ## Goals and the climb
 
-**The standing goal is to optimise the climb toward really hard tasks** (operator, 2026-09-18). The
-product is worth something only where a fixed solver fails for reasons the evaluation can prove. Prefer
-the change that shortens the run of `too-easy` placements before a battery lands in the band; one that
-raises a score, adds tasks or renames levels without moving a placement has not served the goal. The
-public reference in the README is the yardstick. On the same 25 held-out hard tasks at cycles 1, 3, 5 and
-7, Anabasis verified 6, 8, 11 and 12 and Prime-agent 8, 9, 8 and 8, both on Claude Opus 5 at medium
-thinking with the same verifier, Anabasis at 120 minutes per task against 45. Widen that gap on harder
-tasks rather than inflating pass rates on easy ones.
+This section is the one home of the climb: what it is for, how a battery is read, which component
+hears which reading, what each one does with it, and what was tried and taken out. The working rules
+further down refer here rather than restating it, so change a climb mechanism here and in its source
+owner in the same commit.
 
-The band is `climb.band`, `[0.20, 0.50]` on the 95% Wilson interval, whose one z is `REPORTING_Z`
-(`src/claim/estimation.ts`). `placeOnBand` (`src/claim/battery-difficulty.ts`) decides the zone in two
-steps: the interval decides `too-easy` or `too-hard`, meaning significantly so, and the point count
-decides `under-aim`, `on-aim` or `over-aim`. For 25 tasks, 5–12 verified is on the aim (`aimCounts`) and
-18 or more is significantly too easy on the interval, so a 6/6 or 24/25 is a signal to
-climb rather than a win. On-aim means on the calibration target, not a proved limit, and a battery too
-small to hold a whole count inside the band (`aimCounts` empty) is refused a placement. The ceiling has
-moved four times: 0.50 → 0.75 (2026-08-10) → 0.60 (2026-08-19) → 0.40 (2026-09-15, when 34 of 41 scored
-openings since 2026-09-01 passed ≥22 of 25) → 0.50 (2026-09-16). That history lives beside `climb.band` in
-`thresholds.frozen.yaml`.
+### The goal
 
-The band, the aim and the placement stay with the controller and the Epoch Reviewer; the Builder is told
-no count to author towards (prior 10), because a count per size read as a target. `renderBatteryContract`
-(`src/run/climb-readout.ts`) states that only a battery passing some but not all of its cases can locate a
-limit, and only where the checks that failed it are right, beside the witness sentence and the publication
-boundary. The climb readout (`renderReadout`) states what was measured: the newest rows, whether the latest
-battery found a limit, the latest battery's families and where its passing
-artifacts are. The Epoch Reviewer alone reads the placement (`readingSentence`). The readout's wording is
-not a recorded condition, which is easy to misread given the history.
-`difficulty-decision/v9` dropped the frame revision v8 carried, and an epoch's `pass` hashes the readout's
-facts, so a reworded readout opens no new epoch. Each row's solve effort (median and most minutes against
-`solve_minutes`, median tool calls) is served through the context tool's history source and is never read
-as difficulty, since within a battery it does not separate passes from fails.
+**The goal is a healthy, ambitious climb** (operator, 2026-09-29, replacing "optimise the climb toward
+really hard tasks" of 2026-09-18). The product is worth something only where a fixed solver fails for
+reasons the evaluation can prove. So each battery asks more of the field than the one before it, for a
+reason the Builder can name, and every fail that locates where the solver stops is earned. Ambition
+without health manufactures a limit, and health without ambition measures a solved exam. The public
+yardstick is the README's. On the same 25 held-out hard tasks at cycles 1, 3, 5 and 7, Anabasis verified
+6, 8, 11 and 12 and Prime-agent 8, 9, 8 and 8. Both ran on Claude Opus 5 at medium thinking with the same
+verifier, Anabasis at 120 minutes per task against 45. Widen that gap on harder tasks, never by inflating
+pass rates on easy ones.
 
-Harder means a changed demand, not changed numbers (rule 11). New ids, longer lists of load cases and
-invented rules all look harder while measuring nothing. A solver tool that grades a candidate, however
-fully, is not a defect in itself, since knowing whether a candidate meets the rules is not knowing how to
-build one; whether it left a battery too easy is what blind measurement says.
+**A battery below n/n is what an ambitious round expects, and a run of n/n batteries is the failure to
+fix** (operator, 2026-09-30). A full pass measured nothing about where the solver stops. On source
+887c163ee, whose intent clause still named acceptance alone as good, six Sol runs passed every case of
+every battery with every round accepted, reserve 6a8ca0 thirteen times at 7/7 and bulk RNA-seq 36e268
+eleven times at n/n. By 2026-09-30, 236 of 298 recorded batteries across the local campaigns had passed
+every case.
 
-Read the climb before paying for it. This is an operator reading rather than a controller gate: run
-`bun .claude/skills/whole-run-investigation/scripts/wri.ts climb <campaign dir>` whenever a new
-`versions/<battery>/` appears. It classifies each battery edge as `restated`, `replaced`, `adjusted`,
-`narrowed`, `widened`, `eased` or `escalated`, and **only `escalated` changes what the solver has to
-reason about**. So if the last two edges are anything else, the campaign is not climbing, whatever its
-score. Three `too-easy` placements in a row mean the level moved but no battery found the limit, and the
-answer is to rebuild what the tasks demand. One campaign adopted four versions whose agent, brief and
-evaluator were byte-identical, which is four rounds spent on `tasks.json` alone. The verdicts live in
-`climb-velocity.ts` beside `wri.ts`, and three of them are worth knowing precisely. `replaced` means fewer
-than half the task ids carried over. `adjusted` means the same checks at the same tier with numbers moved,
-and cannot say which way. `escalated` reads the highest tier any check reaches, so more checks at an
-occupied tier are `widened`. `wri.ts` also runs `delta`, `yield`, `timeline`, `walls`, `handoff`, `gates`
-and `target` over the same target.
+### What one battery can say
+
+Every case ends in one of three outcomes, and they stay apart everywhere the climb is read. A
+*verified* case reached the host verifier and passed or failed there. An *unaccepted* attempt produced
+no accepted submission; it counts as a fail, because hard tasks may fail that way. A *non-result*
+failed in the environment and counts neither way. Only verified cases place a battery, and a battery
+whose every attempt was refused at submission is placed nowhere, because it would otherwise read as a
+battery of verified failures and could end a run as infeasible in one round.
+
+From those counts a battery says one of three things. A battery that passes some but not all of its
+cases can locate a limit, and only where the checks that failed it are right (`LIMIT`,
+`src/run/climb-readout.ts`); a checker refusing a valid answer leaves the same partial count as a task
+the solver could not do. One that passes every case found no limit. One that passes nothing usually
+found a defect, though truss-27's 0/6 was a real demand, followed by 1/7 and 3/10. A full pass that
+also lost cases to non-results found no limit among the cases it scored and did not measure the rest,
+so it asks for no harder demand.
+
+A miss the wall caused measures the wall rather than the task. The readout therefore names the
+unaccepted cases whose solve ran to within 0.95 of the harness's `solve_minutes`
+(`WALL_BOUND_SHARE`, `wallBound` in `src/run/climb-history.ts`) beside each battery's counts, as "(k ran
+to the N-minute solve wall)". They stay fails in the count, since the solver did not deliver, but a
+battery whose every miss is wall-bound has located the wall. truss cb274b's 54 misses were all
+unaccepted, at about two minutes a case, while all 54 designs it did submit passed.
+
+### The three parts of the climb
+
+All three are read on verified cases.
+
+- **The initial rung** brackets the solver: a probe of 5–10 tasks that passes some cases and fails some,
+  1/n to n−1/n. A probe at n/n found no limit and one at 0/n usually a defect, so neither is a rung. It
+  graduates to the requested size once its bracket also lands at or under the aim (`batterySizingGate`),
+  since every graduation from a near-full bracket (5/6, 5/6, 7/8) went straight back to a near-full
+  battery (25/25, 21/23, 24/25). The round it graduates in asks for the tasks it adds at the demand of
+  the probe's hardest families, not of those that passed (`renderProbeSizing`), because 12 of 13
+  recorded successors would still read too easy with every probe fail held. That does not isolate the
+  added tasks as the cause: 10 of the 11 former-limit tasks carried unchanged passed in the successor,
+  and 11 of the 13 transitions changed the scoring program. A case
+  settled against its check leaves the sample (`admittedClimbRow`); without that, f0fb83's 2/6 and the
+  3/6 of 2d7812 and 3e4693 graduated on one settled check and measured a full pass next.
+- **Curriculum filtering** is the climb after it, at full size, between 1/25 and 24/25. RL curriculum
+  filtering drops prompts every sample solves or none does, because they carry no signal. In the same way
+  a battery at 0/n or n/n says nothing about where the solver stops. The unit here is the battery, since
+  each task is solved once. A full pass is answered by asking more, and an empty battery by reading what
+  blocked every case.
+- **The band** is the target inside that region: `climb.band`, 5–12 verified of 25, where the limit is
+  located rather than only bracketed. Landing there is not the end, because the next requirement moves
+  the line again.
+
+### Its shape, and how progress is read
+
+**The climb is a line that moves** (operator, 2026-09-29, from the launch film). A raised requirement
+drops the pass rate, a repair or rebuild lifts it, and the next requirement drops it again. Over the 8 or
+12 rounds of a run the swings narrow into the band. The film draws 25, 6, 5, 24, 17, 21, 12, 19, 21, 9, 12
+and 11 of 25 as an illustration. Each swing is a battery answering what the Builder changed, so the
+fluctuation is the signal, and 8 of 11 after 10 of 11 is progress though both sit above the aim.
+truss-sol-cb274b alone had the shape on 2026-09-29, at 3/8, 10/25, 15/25 and 11/25.
+
+Progress is read on that line (`wri.ts climb`, `climb-velocity/v2`), with four numbers:
+
+- **signal**: the claimed batteries between 1/n and n−1/n, counted over the first 8 and the first 12;
+- **swing**: the mean move in pass rate per battery, which is 0 for a line of full passes at any size;
+- **flat**: the stall rule of `bun run runs pulse`, `STALL_BATTERIES` (3) in a row on one side of the
+  aim, none closer than the closest before them;
+- **carried**: the tasks measured again unchanged after a full pass.
+
+A zone cannot stand in for these, since 3/3 places `over-aim` and passes everything. The line ranks
+custom-sol-f0fb83 (3 of 14 with signal, a 13.8-point swing) above truss-sol-198d70 (2 of 13, 3.9) and
+6a8ca0 (0 of 13, flat). A change that raises a score, adds tasks or renames levels without moving the line
+has not served the goal.
+
+### The band and the placement
+
+The band is `climb.band`, `[0.20, 0.50]` on the Wilson interval at `climb.confidence` 0.95, whose one z
+is `REPORTING_Z` (`src/claim/estimation.ts`), the one owner of sample size. Its ceiling moved from 0.5 to 0.75, 0.60 and 0.40 before settling at 0.50
+on 2026-09-16, and that history lives beside the row in `thresholds.frozen.yaml`. `placeOnBand`
+(`src/claim/battery-difficulty.ts`) decides the zone in two steps. The interval decides `too-easy` or
+`too-hard`, meaning significantly so: the lower bound above 0.50, or the upper bound below 0.20. Inside
+them the point count decides `under-aim`, `on-aim` or `over-aim` against `aimCounts`, the pass counts
+whose rate lies inside the band. On-aim is the calibration target, not a proved limit, and a battery too
+small to hold a whole count inside the band is refused a placement rather than misplaced. A one-case
+battery's aim is the empty range [1, 0], which had read every count as off the aim in both directions,
+and campaign 3fd52f9e-28's last round measured one case.
+
+What that means at the sizes a run actually measures is worth having in front of you, because
+"significantly too easy" starts at a different share at each size, and a small probe reaches it only at a
+full pass:
+
+| tasks | aim | too easy from | share |
+| --- | --- | --- | --- |
+| 5, 6, 7 | 1–2, 2–3, 2–3 | n of n | 100% |
+| 8 | 2–4 | 7 | 88% |
+| 10 | 2–5 | 9 | 90% |
+| 12 | 3–6 | 10 | 83% |
+| 15 | 3–7 | 12 | 80% |
+| 20 | 4–10 | 15 | 75% |
+| 25 | 5–12 | 18 | 72% |
+
+`too-hard` is almost unreachable at these sizes: nothing below 20 tasks can read it, and at 25 only 0 or
+1 of 25 does.
+
+The decision reads one sample, `decidingSample`: the host-identified changed subset when one was
+recorded, otherwise the whole battery, so unchanged successes cannot dilute what the change did. A case
+the Epoch Reviewer settled against the check that decided it counts neither way, and a veto so settled
+is dropped rather than turned into a fail (`admittedClimbRow`, `difficulty-decision/v10`), because a
+flip is the one direction that lowers passes. custom-sol-2d7812's firmware battery read 4/6 on two fails
+of a check stricter than its published rule, and on the public rules it was an all-pass.
+
+`decideDifficulty` writes one record per round under `difficulty-decisions/`. It is named after the
+round it opened and places the latest battery in its `evidence`, so decision i12 places battery i11.
+Its `placement` is null when the battery holds no verified case or `placeOnBand` refused it. Three facts
+are stated beside the placement and never instead of it: a repeated failure set (at least two cases, and
+at least half the smaller failing set, failing in both of the last two batteries of one task set), a
+family conflict (one family significantly too easy beside one significantly too hard), and the censored
+families. Before `difficulty-decision/v7` the first two set the zone aside, so a battery whose same
+cases failed twice was placed nowhere however far above the aim it read.
+
+### Who hears the placement, and what it drives
+
+The placement is computed once and read by five parties, and only three of them act on it. Which
+component hears what is the part most often misremembered, so here it is in one place.
+
+| reader | what it receives | what it changes |
+| --- | --- | --- |
+| Builder | the readout: each of the newest 3 batteries' three counts, wall-bound misses, identity aliases, regrades and settled cases; the latest battery's families and where its passing artifacts are; the no-limit line on a full pass. Never a zone, aim, share or count to author towards (prior 10). | its next battery |
+| battery sizing | the latest landing's placement | the next round's task count |
+| Epoch Reviewer | the placement in words (`readingSentence`), as a reason to look | its findings, and through them the advice |
+| controller's next move | nothing | — |
+| operator | `runs pulse` (zone, "above the aim N in a row", the stall), `runs climb`, `terminal.json`'s `onAim` and `placed` | stopping or relaunching |
+
+So the prompt a too-easy battery gives the Builder is the no-limit line, and it fires on a full pass,
+not on the zone: the latest battery has at least one verified case, no unaccepted attempt, and every
+verified case passed (`noLimitLine`). A 9 of 10 reads significantly too easy, shrinks the next battery
+and orients the reviewer, and sends the Builder no line beyond its counts. The zone was kept from the
+Builder on purpose: a zone read back to the author decided nothing the counts beside it did not already
+say, and it read as a course (prior 10).
+
+The controller's next move (`decideNextMove`, `src/run/next-move.ts`) reads no placement at all. It
+builds when no product is adopted, stops on an environment fact that ends the session (`endsSession`),
+measures a condition that has not been measured, remeasures a battery the environment cut short on
+unchanged bytes, and otherwise opens a rebuild. `rebuild` is the retained name for authoring on the
+adopted product, not an order to redesign. The controller never stops on a reading of the tasks
+(`LoopState`), so stopping a flat run is the operator's call, which `bun run runs pulse` names when it
+arrives.
+
+**Battery sizing** has one owner, `POLICY.battery` in `src/critic/policy.ts` (`floor 5`, `default 25`,
+`ceiling 60`, `probe {min 5, max 10}`), which `src/run/battery-sizing.ts` re-exports and which owns the
+decisions. A fresh product measures Builder-sized probes of 5–10 tasks until one passes at least one
+scored case and lands at or under the aim, and only then the requested size. Past the probe, a landing
+that read too easy sizes the next round to the smallest battery that would still have read too easy at
+its rate (`smallestSizeHoldingTooEasy`), rounded down so that rounding never flatters the reading: a rate
+of 0.88 carries at 11 tasks, for 44% of the solves. Anything nearer the band keeps the requested size.
+The count reaches the Builder through `taskCountSentence` alone, and a probe round adds one sentence
+(`renderProbeSizing`) that names neither the aim nor its share. An out-of-range size fails rather than
+being clamped, since a silently changed size is a changed condition.
+
+### What the Builder is asked, round by round
+
+The demand side lives in five places, each saying its part once (rule 14), and a round meets them in
+this order.
+
+**The kickoff.** The request line of `src/run/direct-input.ts` asks the Builder to add no requirement
+the request does not name, and says that a stricter demand on one it does name is not an added
+requirement. Both 887c163ee Builders had declined every stricter route by quoting the first half alone,
+"Do not introduce an unrequested optimality objective" on a reserve design and "avoid arbitrary yield
+thresholds" on an expression analysis, which left them only size (primary lanes, 2026-09-30).
+Then comes the readout (`renderReadout`), with `LIMIT`, `WITNESS` (a passing artifact, like the
+reference, proves a task feasible and never difficult) and, after a full pass, the no-limit line. That
+line asks for a next battery that demands more of the field's own work within its tasks, by depth (prior
+10), in tasks the Builder expects the solver to fail. It says outright that
+more tasks, families, inputs or scenarios at the same demand measure the same reach again (a widening
+route was offered until 2026-09-30; "Tried and taken out"). It rules out carrying a task forward unchanged, says how much of the solve wall the slowest
+solve took, and asks for the changed requirement and its reasoning in the notes (rule 11). The wall
+share is there because 153 of 233 all-pass batteries from 2026-09-25 to 2026-09-30 finished inside a
+tenth of the 120-minute wall (median 5.9 minutes), sized to the Builder's own reference, while the round
+after read only that every case had passed. It ends with
+`MEASURE_SOLVES`, which sends the Builder to how the passing solves reached their answers, because a
+limit moved or an instance enlarged while the same steps would still find an answer asks nothing new.
+The rebuild advice packet sits beside it, and a finding that recurs says how many consecutive batteries
+have admitted it and since which.
+
+**Authoring.** Ambitious is what the Builder does:
+
+- It authors the next battery's tasks as ones it expects the solver to fail, on a changed public
+  requirement from the request's own field.
+- It builds depth into the first tasks, not only into a raise after they pass (`INTENT_CLAUSE`,
+  2026-09-30). Requirements side by side in one task are not yet depth: each of firmware 7a97af's five
+  first tasks combined several published requirements, such as a debounced button against light phases
+  or a peak hold against a bar level, over sound references and rejects, and all 10 of its solves
+  passed in 1.1 to 5.6 of 120 minutes, 9 with no edit-tool call after the first draft.
+- It raises what the checks hold together, not only how big the inputs are or where a limit sits: 6a8ca0
+  grew its inputs from 24 to 53 and its scenarios from 20 to 91 at unchanged check tiers and limits.
+  Tightening alone is not enough either, because 6a8ca0's limits sat at its reference's values and its
+  solver held the same optimiser, and limits reset at a longer search's best mostly still passed (prior
+  10). So the change has to be one the passing solves' own steps do not settle.
+- It carries no task unchanged across a full pass. 36e268 grew about one task a round, and 53 of the
+  tasks it measured after its full passes were bytes the solver had already passed; on 2026-09-30, 570
+  of the 1,465 tasks measured after a full pass in local campaigns were carried unchanged.
+- It records the changed requirement and its reasoning in its notes (rule 11), where a plan is carried.
+  In the Luna lanes of 2026-09-29 a plan written into the notes was carried and built, while the
+  standing push to "demand more" named nothing.
+
+The solver must not hold the grader, or no battery can fail. No tool, program or guide line analyses a
+candidate for the solver the way a check does, through the check's code or a copy of it, its instrument
+or a verdict (`NO_GRADER_IN_REACH` in `src/author/builder-start-prompt.ts`, which the Builder reads in
+`PUBLICATION_CLAUSE` and the Epoch Reviewer judges the tools against), because a solver that can ask
+the grader searches until it passes. Until 2026-09-30 such a tool counted as solving support, and every
+harness whose solver could run a check passed whole round after round: reserve 6a8ca0 (13 batteries at
+7/7) and a16848, buffer 3af96d (11 at n/n) and firmware 887c16 through an adviser importing a copy of
+the check's module, and truss 3e4693 (7 at 6/6) through the verifier's analyzer on the solver's PATH.
+The worry that had kept the ceiling off, that a solver without an analysis fails on arithmetic, did not
+show in cb274b, the one structural run whose tools left the analysis to the solver. Verified failures
+then stood at 32 in firmware, where the check observes behaviour the solver cannot fully run before
+submitting, 8 in truss, whose misses were mostly walls (79 unaccepted), and none in the reserve, buffer,
+RNA-seq or conformer batteries. Two readers enforce it without gating: the advisory
+`agent-copies-check-code` (`src/author/candidate-check.ts`) names an `agent/` file byte-identical to a
+`correctness-model/` one, and the brief's `checkOnlyTools` closes named `.toolchain` instruments to the
+Built shell and records `instrument:<toolId>` in the run condition (rule 14). The buffer 3af96d solver's
+`chem.ts` was the evaluator's own in 13 of 13 versions, and it passed 111 of 111.
+
+Controls calibrate the checks the climb rests on (rule 12). The advisory `accept-control-copies-reference`
+(`src/run/accept-control-independence.ts`) fires when at least 5 accepts are compared and between one and
+four of them are independent of the reference output, since an accept that is the reference byte for byte
+shows only that the check accepts its own answer. Buffer 3af96d copied exactly half its accepts in every
+epoch, one copy and one independent accept per task, so it stayed silent; conformer 5cc42c had one
+independent accept of six in five of six epochs, and the Builder carried it anyway.
+
+**Rehearsal and submit.** `harness_trial` solves one task blind with the measured Built solver (rule 14),
+so a passing rehearsal shows that task is within the solver's reach, and the task the Builder expects to
+be hardest is the one whose rehearsal says most. The round prompt (`src/author/builder-session.ts`) says
+that a battery whose every rehearsal passed is on course to pass every case, so before submitting it the
+Builder raises what its hardest tasks demand once, by depth (prior 10) rather than more tasks, families
+or inputs, and rehearses one of them again. The route is named there because the no-limit line
+reaches a Builder only after a full pass in its own readout: firmware 7a97af-i02 raised by five new device
+families, stopped at what its simulator could model, and passed 5 of 5. What stopped it was the board's
+pin inputs and further bus devices, which its emulator cannot drive ("Open gaps"), while the interactions
+depth asks for, such as one sensor trajectory driving several outputs that must agree, are observable
+there already. Once, and not until a
+rehearsal fails: nothing holds a submit on rehearsals, because the measured battery decides where it
+lands (`WITNESS`, in the battery contract), and a rehearsal hold of that kind cost whole rounds (96 of 99 predicted passes at ≤0.3 did pass;
+"What has cost whole rounds"). Across 241 batteries from 2026-09-25 on, the rehearsed task had sat at
+chance in its battery's solve-time order: in 111 single-rehearsal rounds it was the slowest in 18, at a
+mean rank of 0.48 against 0.50. The two Sol runs on 887c163ee each submitted on one rehearsal that passed
+in its first turn, citing "submit once a clear preview says it works" as the user's instruction with the
+sentence on a pass's reach already in front of them (primary lanes, 2026-09-30). Each `harness_trial`
+result also totals the round's graded rehearsals, because verdicts read one call at a time were never
+added up: three recorded campaigns rehearsed and shipped anyway with 12 of 16 verdicts passing.
+
+**Measurement.** Recorded solves are reused where the exam did not move (rule 10): an evaluation
+correction under the same solving condition regrades the recorded submissions, a battery the environment
+cut short is remeasured on unchanged bytes before any rebuild, and a repeat of an exam an at-or-above-aim
+battery already sat is measured afresh and recorded as `repeat`. The readout marks regraded cases, because
+a regrade is an earlier solve graded again and not a new solve.
+
+**Review.** The Epoch Reviewer reads the placement as a reason to look and never an obligation to find
+something (rule 9). A finding about easy tasks names the request obligation they leave undemanded, owned
+by `correctness-model/tasks.json`, with a `demandGap` where it has shown one. It settles a Judge
+disagreement only through a probe that shows the direction, and a settled case then leaves the climb's
+sample as described above.
+
+### Healthy
+
+Every step of the climb has to be true.
+
+- The demand comes from the field, never from a rule the Builder adds (rule 11). An invented duty,
+  deadline or report format measures the solver's reading of the author's wording.
+- A fail counts only where it is earned: the check that decided it holds the artifact to a rule the
+  public projection states. The Epoch Reviewer settles that per case (rule 9), quoting the public
+  sentence before it calls the Judge wrong.
+- An unbracketed boundary is reported unlocated, never met with manufactured failures (prior 10). The
+  three outcomes stay apart, and only verified cases place a battery.
+- The Builder is told what was measured and never a count, share or zone to author towards (prior 10).
+- Useful adopted work is retained, and a repaired check is a new condition, not a difficulty advance.
+
+### Reading the climb as the operator
+
+Read the climb before paying for it: run `bun run runs climb <run>` (or `wri.ts climb <campaign dir>`)
+whenever a new `versions/<battery>/` appears, hours before its battery scores. Each edge gets a
+structural label from check tiers and counts (`verdictOf`): `restated`, `replaced`, `adjusted`,
+`narrowed`, `widened`, `eased` or `escalated`. A label is a reading, not a forecast. In a census of 170
+edges on 2026-09-29, all three `escalated` edges and 16 of the 17 that widened on a new input or rule
+alone were followed by full passes. So name the changed public requirement from the task rows. Read each
+battery's `fails` line (held, settled against the check, unsettled) before counting a partial battery as
+a limit found, and read its wall-bound count before counting a miss as the task's. Two batteries off the
+band on the same side is a settled result ("While it runs"). The whole-run digest's 4b block lists each
+decision with the battery it reads, and its `OFF-AIM STREAK` line is a lead for review lane 10.
+
+### Open gaps: why batteries still pass whole
+
+On 2026-09-30, 265 of 299 recorded batteries had passed every case. The leniency is not in the grading.
+Since 2026-09-23 the Judge vetoed 5 of 1,411 verifier passes (firmware 2 of 901, truss 3 of 510), and
+counting all five would move no battery out of too-easy. Of the 22 verified fails that found a limit, 17
+were contested, and the check was the stricter side (the Judge passed 11; the review settled 6 against
+the check). It is not in the answers either, since every firmware reference passes F2, nor in the
+limits (prior 10). The gaps are on the task side. Delete a bullet in the commit that
+closes it.
+
+- **First tasks combine requirements that the solver still meets in minutes** (firmware 7a97af under
+  "Authoring"), and 7 of 29 firmware batteries passed with a harness that only compiled. Depth reached a
+  Builder only after a full pass or after every rehearsal passed. Owner: the last line of
+  `INTENT_CLAUSE`, which since 2026-09-30 defines depth as requirements that compete, "so that meeting
+  one spends the margin another needs", and is not yet measured. Change `SCOPE_CLAUSE` ("let the tasks
+  span them", "vary its stated conditions") only if that line does not carry it.
+- **Graduation may dilute a bracket.** A probe at 2/6 or 3/6 grows to 25 tasks and the ~19 added tasks
+  pass, in 10 of 13 recorded regresses, and with every probe fail held 12 of 13 would still read too
+  easy. The added tasks are not isolated as the cause: 10 of the 11 former-limit tasks carried unchanged
+  passed again, and 11 of the 13 transitions changed the scoring program. The Builder heard only "Task count: exactly N tasks". Owner:
+  `renderProbeSizing`, which now names the hardest families' demand at graduation, not yet measured.
+- **The worked example is a toy.** The one worked domain in `starter-pack/examples.md` is a duty
+  roster: one or two shifts, one public rule, a greedy reference, and families that differ in size. Its
+  list of targets the solver does not reliably meet leads with three limit-tightening routes and puts
+  demand last. At least 52 of 310 Builder sessions since 2026-09-23 read it (13 through the read tool,
+  39 in prose or compaction read-lists; reads through bash are unrecorded). Replace it with families
+  that differ by which requirements interact under one shared limit, an obvious answer that fails, and a
+  very hard family, which is where the operator's aim at very hard reaches the Builder, with no count
+  (prior 10).
+- **The Epoch Reviewer could not name requirements exercised one at a time.** `DEMAND_GAPS` now holds
+  `requirements-one-at-a-time`, not yet measured; its orientation still reads easy tasks as a result.
+- **The expected-output oracle is unmeasured.** The firmware `rules.ts` is both the check's expectation
+  and the solver's `expected_behaviour`, so the solver can compute every expected value before it
+  submits, which `PUBLICATION_CLAUSE` calls the field's own work.
+- **The firmware instrument cannot drive input.** Espressif QEMU 9.2.2 shows GPIO output through
+  `-trace memory_region_ops_write`, and `-icount shift=3,sleep=off` gives guest time; 5 of 11 Opus
+  versions rebuilt pins from that trace. It has no GPIO input, ADC, I2C devices beyond TMP105, or
+  RMT/PCNT, so it cannot check debounce, edge interrupts, analog input or deadlines at a pin. Owners:
+  the host toolchain (a GPIO-input patch, estimated at about 100 lines of C) or a `simulation-seed/v1`
+  runner seed (operator).
+
+All of these are model-visible, so the stack that closes them is one new condition. Freeze a prediction
+per change, simulate a fresh firmware first round, and launch only on the operator's word.
+
+### Tried and taken out
+
+Each of these was built, measured and removed, and the reason is the measurement. Do not bring one back
+without new evidence that answers it.
+
+- **Stopping on an off-aim streak.** It stopped nothing while 5/5, 6/6 and 6/6 batteries kept arriving,
+  since the route is the Builder's; `runs pulse` and the digest still count one for humans (rule 10).
+  No `climb.limitHoldRounds` exists either, by design.
+- **A zone, share or target count in the Builder's prompt.** It read as a course, and the counts beside it
+  already said what it said (prior 10).
+- **A fixed-harness difficulty session** that prescribed a level, a family composition and a lineage. It
+  never left the too-easy zone in 33 recorded rounds.
+- **Pre-registering a round in `EXPERIMENT.json`**, until 2026-09-29. By then it changed no score or byte
+  identity and graded a declaration rather than a result (rule 11).
+- **The `identical-exam-over-aim` submit refusal**, until 2026-09-29. It never fired in the recorded
+  corpus, and a repeat now measures whether a full pass was reliable (rule 10).
+- **Holding a submit on rehearsal predictions.** 96 of 99 predicted passes at ≤0.3 passed, and the wait
+  held rounds back for hours without moving a battery on the band.
+- **Counting rehearsal passes "inside a single turn"**, until 2026-09-30. On the pi backend every solve
+  records one turn, and 6a8ca0's i13 reserve-6 ran 75 minutes over 72 tool calls and still read one, so
+  the clause was always true while Builders' notes repeated it as a sign of an easy task. The round
+  tally now states the largest share of the solve wall and the most tool calls any pass took.
+- **A task-set finding forced out of every full pass** (`review-duties.ts`), until 2026-09-29. It graded
+  the review's wording and pressed the author to add rules the request never held.
+- **Pointing a full pass at each answer's distance from the reference**, until 2026-09-30. All five
+  all-pass rounds of 6a8ca0 answered it by moving limits toward the reference or enlarging instances,
+  which the solver's same method still settled in one turn; `MEASURE_SOLVES` now points at the method.
+- **Offering a widening route after a full pass** ("across what the request names and no task does
+  yet"), until 2026-09-30. Conformer 5cc42c and buffer 3af96d took it, adding conditions, families and
+  tasks, and kept passing whole; firmware 3e4693's widened edges were followed by 6/6 and 9/9, and across
+  the batteries of 2026-09-23 to 30, 71 of the 74 scored batteries after a widened edge from a full pass
+  passed whole. The one recorded demand that dropped pass rates was interaction: on the 2026-09-15 truss
+  pack series, one added interaction per task passed 22 of 23 (Sol high), while the same requirements
+  stacked inside one shared mass limit passed 7 of 20 (Sol high) and 2 of 23 (Opus 5). The intent
+  clause defines that depth, the round prompt's raise before submit and the no-limit line name it at
+  their moments, and no surface offers another route.
+- **Stating each passing solve's slack against every published limit in the opening** (`solverRecord`),
+  2026-09-29 to 30. It was added because Builders setting their next limits did not open the traces,
+  and so it pointed every round at limit distance: the twin of the reference-distance pointer above,
+  and the route the witness test did not show makes a task hard (prior 10). It was not measured on its
+  own. The same margins stay beside each passing artifact in the context tool's traces.
+- **Searching each reference as long as a solve may run** (`witness-budget`, one sentence in
+  `renderBatteryContract`), 2026-09-30, and twice before unmeasured (83a24567, d21f1a27). As a duty it
+  bound every task to one method: its truss prediction did not hold as frozen (prior 10), in firmware,
+  which has no optimum to search, the fork given it tied no limit to a solve's minutes and raised
+  difficulty by stacking requirements (prediction 62424ee4), and in a frame simulation an Opus Builder
+  started one 95-minute search with about 75 minutes of its wall left and never submitted. A longer
+  search stays an optional method in `examples.md`, "A search past the solver's wall".
+- **A second Wilson implementation** (`wilsonZ`) and the `minLevelN` floor, which discarded a placement
+  whenever fewer than four tasks changed, until 2026-09-18.
+- **The transplant census**, until 2026-09-25, which refused one deliverable passing every sibling task.
+  That is what a ladder of tightening limits looks like, and it made Builders invent constraints.
+
+### Ablated components
+
+An ablated component is switched off in source but kept there. Each removed line or block stays as a
+comment under `// ABLATED(<id>): <why>`, with its exact original text after the prefix. A line added in
+its place, or on its own, carries `ADDED(<id>)`. To restore a component, or drop an addition, work
+through the grep: remove the prefixes, delete the replacement lines, and flip back the test assertions
+under the same marker. Each entry below is a measured condition, not a settled rule. Once its run reads,
+it either moves to "Tried and taken out" or its comments are deleted.
+
+No component is ablated in source at present.
 
 ## Evidence and implementation status
 
@@ -363,10 +745,20 @@ bun run fullrun -- --prompt "<request>" --provider-turn-budget N [--project <id>
 
 `--provider-turn-budget` is required, and the run refuses to start without an explicit positive value.
 `--context` is the only repeatable flag, `--dcg` defaults to `true`, and `--expected-source` is
-`<40-hex commit>:<64-hex executable digest>`. `--withhold-instruments true` (default off, 2026-09-27)
-hides the checks' instrument programs from the Built shell, travels as
-`HARNESS_BUILT_WITHHOLD_INSTRUMENTS`, and records each one as `instrument:<toolId>` in `advisorsRemoved`,
-so a withheld battery is its own measured condition. Two retired flags are refused by name
+`<40-hex commit>:<64-hex executable digest>`. A Built shell withholds each program the brief's
+`checkOnlyTools` names (2026-09-30) where it resolves inside `.toolchain` by the path the verifier's
+inventory takes, never a host tool, and records it as `instrument:<toolId>` in `advisorsRemoved`, so a
+battery that withheld one is its own measured condition. The validator refuses an id no truth check
+requires, and an absent field withholds nothing. Withholding exists because a solver that could run a
+check's program passed every case round after round (truss 3e4693 ran `truss-analyze`, 7 x 6/6); its
+expected effect may be slower solves rather than verified fails, since truss cb274b, whose tools ran no
+check, missed only on walls (54 of 54 misses unaccepted at about two minutes a case, all 54 submitted
+designs passing). The declaration is the Builder's because no rule by name or file type separates the
+practitioner's compiler from a check's instrument: firmware 887c16's `arduino-cli` is an 873-byte
+Builder wrapper a check declares, like its bench simulator `firmware-sim`, and compiling with it was the
+solvers' only check before submitting in 8 verified fails. So `--withhold-instruments true` (added
+2026-09-27), the strict operator mode that withholds every check's required tool inside `.toolchain` and
+travels as `HARNESS_BUILT_WITHHOLD_INSTRUMENTS`, stays off by default. Two retired flags are refused by name
 (`src/run/launch-arguments.ts`): `--max-turns`, since the Built cap is `BUILT_DEFAULT_MAX_TURNS`, and
 `--turn-budget`, renamed `--iteration-budget`. `tools/fullrun-launchd.zsh` (macOS) and
 `tools/fullrun-systemd.sh` (Linux) detach a run through `env -i` from one frozen environment map with
@@ -607,8 +999,9 @@ the battery was paid for.
 
    A Judge fail must cite at least 1 verbatim line of the public rules, the schema or the input, and an
    uncited fail is a protocol non-result. A cited fail of a verifier pass is a **veto**, recorded on the
-   claim as `vetoed` and bounded by `verifierPassJudgeFail`, and a contradicting first verdict is
-   re-sampled once. Vetoes and disputed fails go to the Epoch Reviewer, and a settled veto projects only
+   claim as `vetoed` and bounded by its verdicts, and a Judge fail of a verifier pass is re-sampled once;
+   `judgeCaseKind` names how each answered case stands against the verifier, and every reader counts
+   by it. Vetoes and disputed fails go to the Epoch Reviewer, and a settled veto projects only
    its count and family. The Judge sets no score, acceptance or adoption; disagreement with the verifier
    is a reason to inspect it.
 
@@ -650,8 +1043,12 @@ the battery was paid for.
 
    A finding about easy tasks names the obligation of the request they leave undemanded, owned by
    `correctness-model/tasks.json`, and may carry a `demandGap` of capability-unexercised,
-   sibling-values-only, limit-cleared-widely or rule-outside-request; the reviewer records one when it
-   has shown the gap, not because the score was high. Until 2026-09-29 the host enforced more. It split
+   sibling-values-only, limit-cleared-widely, rule-outside-request or published-scenario-only; the
+   reviewer records one when it has shown the gap, not because the score was high. The fifth came on
+   2026-09-29, after two Opus firmware rounds each met three held submits over one finding, and one
+   of them spent about two hours on the wrong repairs: the checks ran only the published scenario, so a sketch replaying the published timeline without
+   reading its sensors passed, and the finding crossed as "a capability no task exercises", which
+   sent the Builder to widen scenarios instead. Until 2026-09-29 the host enforced more. It split
    the request at commas, semicolons and "and", asked for a `Clause N:` line per piece, and above the
    aim demanded either a `tasks.json` defect or a family-by-family account, which it checked by whether
    each family's name appeared in the report, re-asking once when either was missing. That graded
@@ -661,7 +1058,7 @@ the battery was paid for.
    set is not read as settled.
 
    The reviewer may also execute. `probe_check` takes one accept control, one rooted path already in its
-   artifact (`$.layout.members[0].area`, read through `jsonPathTokens`) and one change: either a replacement
+   artifact (`$.items[0].value`, read through `jsonPathTokens`) and one change: either a replacement
    value, or a `find` that occurs exactly once in a text leaf together with the `replace` that takes its
    place. A call sending both or neither is refused. The edit exists because a field holding a whole source
    file can exceed the `VALUE_MAX_CHARS` of 4,000. It runs the declared checks over the original and the
@@ -692,8 +1089,9 @@ the battery was paid for.
 
    A finding settles a Judge disagreement only by naming it: `record_finding` takes `settlesCases`, the task
    ids of listed vetoes and disputed fails the finding decides, and the host records one disposition per case,
-   `against-check` for a `correctness-model/` defect on the deciding check whose cited probe moved it the way
-   the case says, and `check-stands` for an observation backed by a probe that moved the check. It refuses a
+   `against-check` for a `correctness-model/` defect on the deciding check whose cited probe shows it the way
+   the case says (until 2026-09-29 the host took the reviewer's word for that direction and asked for no
+   probe), and `check-stands` for an observation backed by a probe that moved the check. It refuses a
    case that is not listed, not decided by the named check, not opened with `read_source`, already settled, or
    of the wrong kind for the probe's direction, since a false rejection cannot settle a veto, and the record
    keeps the ids still `unsettled`. Until 2026-09-29 opening a contested artifact was enough, so one settling
@@ -702,9 +1100,17 @@ the battery was paid for.
    ended incomplete or failed hands its findings on at advisory severity, with one sentence saying it did not
    finish, and it settles no case and disputes no issue; until 2026-09-29 it handed the Builder nothing,
    however much it had demonstrated before its provider dropped. Only a `correctness-model/` defect may
-   dispute an issue, and a dispute keeps the issue counted while withholding the agent advice. Public
-   candidate analysis and checks of published limits are legitimate solving support; a tool is an answer
-   shortcut only when it makes the solver's remaining decision. While the measured `.toolchain` digest still
+   dispute an issue, and a dispute keeps the issue counted while withholding the agent advice. A measured
+   review is offered the standing issues of the register its own battery advanced on host and Judge
+   evidence, each with the last diagnosis recorded for it, so an issue that battery raised first is
+   disputable in it; until 2026-09-29 it was offered the register before the battery, and a dispute on a
+   new issue landed a battery late, after a build had rebuilt around it. Reusable
+   algorithms, bounded search and the host's margin table on published limits are legitimate solving
+   support. A tool, program or guide line that analyses a candidate the way a check does, through the
+   check's code or a copy of it, its instrument or a verdict, is not: until 2026-09-30 it counted as
+   support, and 236 of 298 recorded batteries passed every case, every harness whose solver could run a
+   check among them; the misses without one were walls, not failed analyses (`PUBLICATION_CLAUSE` in
+   `src/author/builder-start-prompt.ts` records the measurement). While the measured `.toolchain` digest still
    matches a recorded tool, the reviewer may read any text file of that tree by name (`toolchain:<path>`,
    installed packages included, each at most 1 MiB) as long as the file still counts as the recorded tree
    digest took it, and a directory reads as its listing.
@@ -764,7 +1170,11 @@ the battery was paid for.
     The rebuild advice packet is deterministic (`analysis/<runId>-rebuild-advice.json` with
     `rebuild-advice-latest.json` beside it), bound by digest to the iteration that consumes it, and
     rendered once per rebuild kickoff from recorded rows, Judge reviews and admitted aggregate findings,
-    never per-case ones. It states each issue's owner, not what to rebuild. Each issue keeps a stable id
+    never per-case ones. A finding a bundle file holds reaches the kickoff as feedback to that file
+    instead, and one on the owner and subject (`namedSubject`) of a finding the previous battery admitted
+    says how many consecutive batteries have admitted it and since which. Until 2026-09-29 each
+    recurrence read as a fresh finding: 48 of the 171 routed findings then recorded repeated the battery
+    before, and one on `correctness-model/brief.json`'s `wiring-behavior` check ran twelve. It states each issue's owner, not what to rebuild. Each issue keeps a stable id
     and states its recorded facts rather than a verdict on them (`issueFacts`, `rebuild-advice/v11`):
     where it was first and last seen, how many complete rechecks have not observed it since, whether it
     was seen again after an absence, which condition moved when a recheck was not comparable, and
@@ -795,9 +1205,9 @@ the battery was paid for.
     together before a model call. A started call stays charged across interruption, cap changes and
     epochs, and only an unstarted reservation may be cancelled. `budget.json` binds the database identity,
     and missing or corrupt state refuses rather than resetting the spend. The loop ceilings live in
-    `src/critic/policy.ts`: `environmentBlockedRounds 3`, `buildFailedRounds 3` and `noopSubmitStrikes 3`. The off-aim streak is gone. It stopped nothing while 5/5, 6/6 and 6/6
-    batteries kept arriving, since the route is the Builder's; `runs pulse` and the whole-run digest still
-    count one for humans.
+    `src/critic/policy.ts`: `environmentBlockedRounds 3`, `buildFailedRounds 3` and
+    `noopSubmitStrikes 3`. None of them reads a placement; the off-aim streak that once stopped a run is
+    gone ("Tried and taken out", under "Goals and the climb").
 
 11. **Distinguish task demands from coverage and repair.** A level is an ordinal label, not an
     explanation. New hashes, ids, family names, longer descriptions or more scenarios prove no harder
@@ -810,32 +1220,22 @@ the battery was paid for.
     and report rules, so a failing battery measured the solver's reading of the author's wording. The
     truss Builders lengthened a listed set of load cases and called it a tier. And both shipped solver
     tools reporting every margin a check reads, so the solver could propose, read the failing state and
-    adjust. None of these, nor tightening a feasible limit toward a stronger witness (a legitimate route),
-    proves a task harder or easier by itself; blind measurement decides, which is why since 2026-09-29 no
-    prompt argues the third in advance. Each prompt says it once: the Builder system prompt owns the
-    clauses, `examples.md` the optional routes to a target the solver does not reliably meet, and
-    `roundPrompt` and `renderBatteryContract` when to submit and what a witness proves. The round prompt asks for a submit once a clear preview says the candidate works, because the
-    measured battery, not a rehearsal, decides where it lands, and nothing holds a submit on rehearsals
+    adjust. None of these, nor tightening a feasible limit toward a stronger witness, proves a task harder
+    or easier by itself; blind measurement decides, and its one reading of the third, six truss tasks, did
+    not show it (prior 10). Tightening stays legitimate, since a slack limit is a finding about its
+    reference, and a longer search stays an optional method; what the evidence does not support is
+    leading with it as the route to difficulty, as `examples.md`'s list still does ("Open gaps"). Each
+    prompt says it once: the Builder system prompt owns the clauses, publication and the definition of
+    depth among them, `examples.md` the optional routes to a target the solver does not reliably meet,
+    `roundPrompt` and `renderBatteryContract` when to submit and what a witness proves, and the climb
+    readout's no-limit line asks for the changed requirement and its reasoning in the notes.
+    `test/helpers/duty-overlap.ts` holds the kickoff, the round prompt, the contract, the full-pass
+    readout and the sizing sentences to that: none may restate a sentence the system prompt carries. The round prompt asks for a submit once a clear preview says the candidate works, because the
+    measured battery, not a rehearsal, decides where it lands (`WITNESS`), and nothing holds a submit on rehearsals
     (the 96-of-99 history is under "What has cost whole rounds").
 
-    Battery size has one owner, `POLICY.battery` in `src/critic/policy.ts` (`floor 5`, `default 25`,
-    `ceiling 60`, `probe {min 5, max 10}`), which `src/run/battery-sizing.ts` re-exports and which owns
-    the decisions. A fresh product measures Builder-sized probe batteries of 5–10 tasks until one passes
-    some but not all of its scored cases, and only then the requested size, or a smaller one only where
-    that probe's own landing already reads too easy (`placeOnBand`), since a smaller battery that would
-    hold the reading is the one worth paying for. An out-of-range size fails rather than being clamped,
-    since a silently changed size is a changed condition.
-
-    A difficulty decision carries `placement: BandPlacement | null`, null when it holds no verified case
-    or `placeOnBand` refused it, and states a repeated failure set, a family conflict or a censored family
-    as a fact beside it. Before `difficulty-decision/v7` the first two set the zone aside, so a battery
-    whose same cases failed twice was placed nowhere however far above the aim it read. The reading is
-    `placement.zone`, and all four off-aim zones get the same course with only the direction words
-    changed. Sample size has one owner, the Wilson interval at `climb.confidence` 0.95 (`REPORTING_Z`,
-    `src/claim/estimation.ts`), and a battery too small to hold a whole count inside the band is refused a
-    placement, not misplaced. `wilsonZ`, the duplicate Wilson implementation and the `minLevelN` floor,
-    which discarded a placement whenever <4 tasks changed, went on 2026-09-18. No `climb.limitHoldRounds`
-    exists, by design: after a battery at the limit the route is the Builder's.
+    Battery size and the difficulty decision are climb mechanisms, and "Goals and the climb" holds both:
+    the sizing gate, the placement, the facts stated beside it and who reads it.
 
     Declared variation proves coverage, not difficulty or verifier dependence. 18 firmware tasks varied a
     declared path while every one of them published the one display the request had named, which is why no
@@ -962,9 +1362,9 @@ the battery was paid for.
     silence, one model call plus one command at its ceiling. At the whole-solve wall the host submits the
     held draft through the solver's `submit` (`submitAtWall`, `src/backends/pi-built.ts`); an accepted one
     is graded, and otherwise a solve that called a tool is an unaccepted attempt with its traced calls,
-    not a non-result. `--withhold-instruments true` (default off) closes the checks' own `.toolchain`
-    instruments to the Built shell and records `instrument:<toolId>` in the run condition, so it is a
-    condition of its own.
+    not a non-result. The brief's `checkOnlyTools` (2026-09-30), or every check's tool under the strict
+    `--withhold-instruments true` (default off), closes those `.toolchain` instruments to the Built shell
+    and records `instrument:<toolId>` in the run condition, so it is a condition of its own.
 
     For generated tools, `text` is the whole model-visible result and `details` is host and trace
     evidence, so every promised value belongs in `text`. A result that drops bytes says where the rest is,
@@ -1033,7 +1433,10 @@ the battery was paid for.
     In F2, a controller deadline reached before the generated-tool worker is ready, while it waits on a
     request, or while it closes without an accepted submit is a host non-result, while a worker that
     answered its handshake and then broke protocol is a representation defect. A case the host broke gets
-    one fresh attempt on the same bytes in the census, and only a second host non-result stands. Once the
+    one fresh attempt on the same bytes in the census, and only a second host non-result stands. A census
+    whose only blocking fact is such cut-short reference solves keeps the session and the run
+    (`endsSession`): the refusal costs no strike, and the next submit of the same bytes runs the census
+    again, since a host at load cut them rather than a dead environment (887c16, 2026-09-30). Once the
     host holds what it needed (an accepted submit, or every conformance probe settled), the generated-tool
     worker's host-marked close-handshake timeout (`closeHandshakeTimeout`) is cleanup evidence, voiding no
     case and refusing no candidate, in a battery case, in F2 and in the probes alike; every other close
@@ -1121,8 +1524,10 @@ Builder shell call gets its own `ana-builder-bash-*` `TMPDIR`, removed when the 
 verifier scope removes every cell that no pending receipt holds.
 
 Builder access is stated once per backend, through the host-controlled file and command tools. It may read
-the workspace, the public inputs, prior traces, the host toolchain paths, compiler scratch, and the
-`src/solve` and `src/meta` authoring interfaces. It may not read controller evidence, including evidence
+the workspace, the public inputs, prior traces, the host toolchain paths, compiler scratch, the
+`src/solve` and `src/meta` authoring interfaces, `starters/`, `README.md` and this file
+(`src/builder/candidate-isolation.ts`). No prompt carries this file and no backend loads it as instructions,
+but a Builder can open it (2026-09-30). It may not read controller evidence, including evidence
 created after the session started, credentials, other accounts, or `src/correctness-bundle`, `src/verify`
 and `src/gate`. The Built Harness has a narrower file wall but outbound network, so that it can fetch a
 toolchain into its private home (2026-08-15, reaffirmed 2026-09-06). The controller brokers each
@@ -1216,10 +1621,12 @@ open PR listing another open PR's commits; one left listing old copies of its ba
 warning naming the `git rebase --onto` that repairs it. **There is no hook bypass by any spelling**,
 neither `--no-verify` nor `-c core.hooksPath=…`.
 
-CI does much less than its name suggests. `.github/workflows/gate.yml` runs the gate daily at 03:17 UTC,
-plus manual dispatch, on `main` only, on macOS (Seatbelt) and Linux (Bubblewrap), and it skips a day whose
-head it has already read. It is not a required check and never sees a PR head, so pre-push is the only
-full gate a pull request gets. Isolation code must pass on both platforms.
+CI does much less than its name suggests. `.github/workflows/gate.yml` runs the gate on macOS (Seatbelt)
+and Linux (Bubblewrap) on each stack merge (the merge commit `bun run land` puts on `main`), daily at 03:17
+UTC on `main`, and on manual dispatch, and it skips a head whose tree a completed run already read. The
+merge commit has the stack top's tree, so dispatching on the top before `land --merge` reads `main` after
+it. It is not a required check, so pre-push is the only full gate a pull request gets. Isolation code
+must pass on both platforms.
 
 Only Bun 1.4.2 runs any of this. `lint.ts` points oxlint at the native `tsgolint` binary, because the
 `node_modules/.bin` entry is a `node` shim. `bunfig.toml` sets `env = false`, so `.env` is never loaded
@@ -1634,7 +2041,8 @@ importing `parseJsonAs`. `tools/oxlint/anti-slop/**` turns off §4.40 and lets
 `vendor/pi-claude-bridge/**` keeps the taste of the upstream it was copied from, and so turns off
 §4.2–4.4, 4.6–4.13, 4.15–4.17, 4.19–4.22, 4.25, 4.26, 4.34, 4.35, 4.40, `no-else-return`,
 `prefer-nullish-coalescing`, `no-lonely-if`, `no-negated-condition`, `prefer-array-flat`, `prefer-at` and
-`prefer-string-raw`.
+`prefer-string-raw`. `vendor/harbor/**`, a TypeScript port of Python, keeps upstream's shape the same way
+and turns off §4.3, §4.5 and `no-runtime-typeof`, which Python's type dispatch needs.
 
 Every plugin rule still applies to tests, at raised floors (string 10, object 5), with in-rule test
 exemptions for §4.2, 4.5, 4.14, 4.32, 4.35–4.39. `.claude/**` may import `node:` modules (§4.32 exempts
@@ -1850,12 +2258,14 @@ and lint, because `setup` prepares only the root's, and an unprepared `@types/re
 findings no diff introduced. `bun run format` fixes the format step. Biome's ownership of line breaks (§2)
 is why the size ceilings are 800 and 115, and `tools/oxlint` came in on 2026-09-20 and cost 25 lint
 errors, mostly `curly` finding statements the formatter had just made multi-line. Also available are
-`bun run outcome` for read-only reports over recorded evidence, `bun run replay -- <campaign>/<runId>` to
-re-grade a recorded battery through this tree's verifier, `bun run triage` and `bun run secrets`. Run one
-gate at a time, because two overlapping gates each took twice as long as one alone. `bun run land --jobs N`
-is the exception, because its `--static` gates are small enough that overlapping them still pays: over
-#32–#46 on 2026-09-28, four at once finished a commit every 19 seconds against 36 for one, on a 12-core
-host held at a load near 50, and the top's whole gate still ran alone. When typecheck, lint,
+`bun run runs <verb> <run>`, the door to the run readers the skills own (`bun run runs --help` lists
+them), `bun run outcome` for read-only reports over recorded evidence, `bun run replay --
+<campaign>/<runId>` to re-grade a recorded battery through this tree's verifier, `bun run triage` and
+`bun run secrets`. Run one gate at a time, because two overlapping gates each took twice as long as one
+alone. `bun run land --jobs N` is the exception, because its `--static` gates are small enough that
+overlapping them still pays: over #32–#46 on 2026-09-28, four at once finished a commit every 19
+seconds against 36 for one, on a 12-core host held at a load near 50, and the top's whole gate still
+ran alone. When typecheck, lint,
 source-policy or complexity fails, pre-push lists each finding as `<rule> <location> <message>` and names
 the commit it failed on.
 
@@ -2212,7 +2622,7 @@ approach, before Bun's parse loop and messages were copied across (operator deci
 | | `run-triage/`, `secrets/`, `login/`, `vm/`, the fullrun launchd/systemd launchers |
 | `test/`, `test/helpers/` | the suite; `bun run test` discovers `test/` only |
 | `vendor/` | pinned upstream copies: `pi-agent-session`, `pi-built`, `pi-claude-bridge`, |
-| | `agent-bundle`, `correctness-model-bundle`, `correctness-model-prims` |
+| | `agent-bundle`, `correctness-model-bundle`, `correctness-model-prims`, `harbor` |
 | `starters/` | Builder-visible templates and `STARTER.md`; never imports `src/` |
 | `packages/ui/` | the UI, with its own lockfile (`bun run ui:deps`) |
 | `scripts/` | `worktree.sh` |

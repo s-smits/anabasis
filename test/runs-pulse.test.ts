@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { placeOnBand } from "../src/claim/battery-difficulty.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import type { Observation } from "../tools/runs/evidence.ts";
@@ -63,7 +64,15 @@ function round(extra: Partial<PulseRound> = {}): PulseRound {
 }
 
 function battery(passed: number, verified: number, zone: PulseBattery["zone"]): PulseBattery {
-  return { passed, verified, unaccepted: 0, nonResults: 0, zone, recorded: true };
+  const placedOn = zone === null ? null : { passes: passed, n: verified };
+  return { passed, verified, unaccepted: 0, nonResults: 0, zone, placedOn, recorded: true };
+}
+
+/** A battery placed on the climb band by the controller's own rule, on `placed` counts when a review
+ *  settled some of its cases against their check. */
+function placed(passes: number, n: number, settled = 0): PulseBattery {
+  const placement = placeOnBand(passes, n - settled, [0.2, 0.5]);
+  return { ...battery(passes, n, placement?.zone ?? null), placedOn: { passes, n: n - settled } };
 }
 
 const OPENING = [
@@ -95,6 +104,7 @@ function texts(before: PulseReading | undefined, after: PulseReading): string[] 
 describe("runs pulse", () => {
   it("drops the launch instant from the label and keeps what tells runs apart", () => {
     expect(pulseLabel(RUN_ID)).toBe("truss-opus-371f8f");
+    expect(pulseLabel("standard-opus-20260930T091500123Z-pr75-669de6c")).toBe("standard-opus-pr75-669de6c");
   });
 
   it("says nothing on the first look and nothing when no recorded byte moved", () => {
@@ -122,14 +132,62 @@ describe("runs pulse", () => {
   });
 
   it("counts a streak on one side only, and an on-aim battery ends it", () => {
-    expect(
-      offAimStreak([battery(1, 5, "too-hard"), battery(6, 6, "too-easy"), battery(7, 7, "over-aim")]),
-    ).toEqual({
+    expect(offAimStreak([placed(1, 7), placed(6, 6), placed(3, 3)])).toMatchObject({
       side: "above",
       rounds: 2,
+      flat: 1,
     });
-    expect(offAimStreak([battery(6, 6, "too-easy"), battery(3, 7, "on-aim")])).toBeNull();
+    expect(offAimStreak([placed(6, 6), placed(3, 7)])).toBeNull();
     expect(offAimStreak([battery(0, 0, null)])).toBeNull();
+  });
+
+  it("names a stall at three batteries in a row that came no closer to the aim, whatever their zone", () => {
+    const flat = [placed(5, 5), placed(5, 5), placed(3, 3), placed(5, 5)];
+    expect(flat[2]?.zone).toBe("over-aim");
+    expect(statusLine(reading(0, { batteries: flat }), 10)).toContain(
+      "above the aim 4 in a row; the 3 since 5/5 came no closer, a stall",
+    );
+    expect(statusLine(reading(0, { batteries: flat.slice(1) }), 10)).not.toContain("stall");
+  });
+
+  it("reads a battery that came closer as movement, though it stays too easy, and one that did not as flat", () => {
+    // truss-sol-198d70's line since its closest battery, 6/7, with each outcome its thirteenth could have.
+    const line = [placed(5, 5), placed(6, 7), placed(25, 25), placed(10, 11)];
+    const next = (passes: number) => statusLine(reading(0, { batteries: [...line, placed(passes, 11)] }), 10);
+    expect(placed(9, 11).zone).toBe("too-easy");
+    expect(next(8)).not.toContain("stall");
+    expect(next(9)).not.toContain("stall");
+    expect(next(10)).toContain("the 3 since 6/7 came no closer, a stall");
+    expect(next(11)).toContain("the 3 since 6/7 came no closer, a stall");
+  });
+
+  it("does not count a fail its review settled against the check as coming closer", () => {
+    const settled = placed(3, 6, 3);
+    expect(settled.passed).toBe(3);
+    expect(settled.verified).toBe(6);
+    const line = [placed(6, 6), placed(6, 6), settled, placed(6, 6)];
+    expect(statusLine(reading(0, { batteries: line }), 10)).toContain(
+      "the 3 since 6/6 came no closer, a stall",
+    );
+  });
+
+  it("reads a flat line below the aim as a stall too, and a rise as movement", () => {
+    const low = [placed(1, 25), placed(1, 25), placed(1, 25), placed(1, 25)];
+    expect(statusLine(reading(0, { batteries: low }), 10)).toContain(
+      "below the aim 4 in a row; the 3 since 1/25 came no closer, a stall",
+    );
+    const rising = [...low.slice(0, 3), placed(3, 25)];
+    expect(statusLine(reading(0, { batteries: rising }), 10)).not.toContain("stall");
+  });
+
+  it("never reads the launch film's twelve rounds as a stall", () => {
+    // master/launch.json in anabasis-launch-video: raise a requirement and the line drops, repair and
+    // it rises, and the swings narrow into the band.
+    const film = [25, 6, 5, 24, 17, 21, 12, 19, 21, 9, 12, 11];
+    for (let rounds = 1; rounds <= film.length; rounds++) {
+      const batteries = film.slice(0, rounds).map((passes) => placed(passes, 25));
+      expect(statusLine(reading(0, { batteries }), 10)).not.toContain("stall");
+    }
   });
 
   it("numbers a new round and carries the last battery into its line", () => {
@@ -257,6 +315,33 @@ describe("runs pulse", () => {
     expect(readInFlight(epoch, at(12))).toBeNull();
   });
 
+  it("reads a candidate check that has not written its census, and not one that has or predates the checkpoint", () => {
+    const epoch = mkdtempSync(join(tmpdir(), "pulse-check-"));
+    const opened = (condition: string, run: string, minutes: number) => {
+      mkdirSync(join(epoch, "trials", condition, run), { recursive: true });
+      utimesSync(join(epoch, "trials", condition), new Date(at(minutes)), new Date(at(minutes)));
+      return join(epoch, "trials", condition, run);
+    };
+    expect(readInFlight(epoch, null)).toBeNull();
+    writeFileSync(join(opened("a", "full-1", 10), "census.json"), "{}");
+    expect(readInFlight(epoch, null)).toBeNull();
+    // Left without a census by an earlier call the Builder has already checkpointed after.
+    opened("b", "full-1", 11);
+    expect(readInFlight(epoch, at(12))).toBeNull();
+    const run = opened("c", "full-1", 20);
+    writeFileSync(join(run, "solvability.json"), "{}");
+    expect(readInFlight(epoch, at(12))).toEqual({ taskId: null, stage: "checking", startedAt: at(20) });
+    writeFileSync(join(run, "census.json"), "{}");
+    expect(readInFlight(epoch, at(12))).toBeNull();
+    const checking = reading(40, {
+      round: round({
+        checkpointAt: at(15),
+        inFlight: { taskId: null, stage: "checking", startedAt: at(16) },
+      }),
+    });
+    expect(statusLine(checking, 18)).toContain("checkpoint 25m 0s ago · checking a candidate for 24m 0s");
+  });
+
   it("is not a quiet Builder while the run is measuring", () => {
     const measuring = [...OPENING, transition(5, "solve", "started")];
     const before = reading(30, { observations: measuring, round: round({ checkpointAt: at(4) }) });
@@ -285,6 +370,12 @@ describe("runs pulse", () => {
     const after = { ...before, state: "closed" as const, terminal: "completed" };
     expect(texts(before, after)).toEqual(["◆ ended: completed"]);
     expect(statusLine(after, 10)).toContain("ended: completed");
+  });
+
+  it("states a run whose process is gone by that, not by the stage its last round reached", () => {
+    const orphaned = reading(700, { state: "orphaned" });
+    expect(statusLine(orphaned, 10)).toContain("orphaned: the process is gone and no terminal is recorded");
+    expect(statusLine(orphaned, 10)).not.toContain("build");
   });
 
   it("states a round in its gate by the gate's phase, not the previous battery's solves", () => {

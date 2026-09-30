@@ -10,27 +10,27 @@
  * and never recorded, so rewording one changes no pass identity.
  *
  * A battery whose every attempt was refused at submission is placed nowhere, because it would
- * otherwise read as a battery of verified failures and can end a run as curriculum infeasibility in
- * a single round. Once any case is verified, refused attempts stay in `n` as fails, since hard tasks
- * may fail through refused submissions.
+ * otherwise read as a battery of verified failures. Once any case is verified, refused attempts stay
+ * in `n` as fails, since hard tasks may fail through refused submissions.
  *
- * Every other battery is placed on the band, and `placeOnBand` owns every comparison. The interval
- * owns sample size, so a thin sample lands in range rather than being discarded. Two shapes are
- * stated beside the placement and never instead of it, because a battery can show either and still
- * land in a zone: the same failing core in both of the last two batteries of one task set, and one
- * family significantly too easy beside another significantly too hard.
+ * Every other battery is placed by `placeOnBand`, which owns every comparison and whose interval
+ * owns sample size. Two shapes are stated beside the placement and never instead of it, because a
+ * battery can show either and still land in a zone: the same failing core in both of the last two
+ * batteries of one task set, and one family significantly too easy beside another significantly
+ * too hard.
  *
- * The placement is the controller's and the reviewer's. The author reads what was measured: each
- * battery's verified, unaccepted and non-result counts, the solves it regraded rather than solved,
- * the identities that say whether two batteries share a condition, and one sentence when the latest
- * passed every verified case, since that battery found no limit. A zone read back to the author
- * decided nothing the counts beside it did not already say, and it read as a course.
+ * The placement is battery sizing's and the reviewer's. The author reads what was measured: each
+ * battery's three counts, the solves it regraded rather than solved, the identities that say whether
+ * two batteries share a condition, and `noLimitLine` when the latest passed every verified case.
+ * Which party hears which reading, and why the author hears no zone, is AGENTS.md "Goals and the
+ * climb".
  */
 import { type BandPlacement, placeOnBand } from "../claim/battery-difficulty.ts";
 import { POLICY } from "../critic/policy.ts";
 import type { ContextDocument } from "../builder/context-tool.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { isString } from "../meta/json-shape.ts";
+import { keyIfDefined } from "../meta/optional-key.ts";
 import {
   type AdmittedClimbRow,
   type ClimbBattery,
@@ -80,6 +80,9 @@ type ReadoutRow = {
   verified: number;
   unaccepted: number;
   nonResults: number;
+  /** Verified cases a completed review settled against their check, in none of the counts above;
+   *  absent when there are none. */
+  settled?: number;
   /** The earlier battery whose recorded solves this one graded again, and how many; null when no
    *  case was regraded. */
   regrade: { of: string; reused: number } | null;
@@ -145,11 +148,12 @@ const HISTORY =
 const LIMIT =
   "Only a battery that passes some but not all of its cases can locate a limit, an unaccepted attempt counting as a fail and a non-result as neither, and only where the checks that failed it are right; one that passes every case found none.";
 
+/** What a full pass sends the Builder to read: how the passing solves reached their answers. The
+ *  method, not the margin, is what a harder battery has to defeat, because a limit moved toward the
+ *  reference or an instance enlarged is still settled by the same steps. Pointing at each answer's
+ *  distance from the reference was tried and taken out (AGENTS.md "Goals and the climb"). */
 const MEASURE_SOLVES =
-  "Before you set the next battery, measure what its passing solves submitted beside your own reference answer for the same task: where a limit sits well above your reference, answers worse than it passed, and where a solve matched or beat your reference, the search behind it is one the solver runs too.";
-
-const BOUNDARY =
-  "Publish every rule the verifier applies, including rounding and enforced fallback or tie-break rules. Keep solved task-specific fixtures, hidden expectations, reference answers and protected verifier information out of the public surface.";
+  "Before you set the next battery, read how its passing solves reached their answers, the tools they called and the search they ran: a limit moved or an instance enlarged while those same steps would still find an answer asks nothing new, so the change has to be one those steps do not settle.";
 
 /** The one difficulty decision. Pure: the latest battery decides, earlier ones are evidence. The
  *  band is already bounded where it is read: `climbThresholds` takes a manifest row only through
@@ -271,7 +275,8 @@ function readoutRow(
     operation: row.authoring.experimentAuthoring?.operation.operation ?? null,
     verified: row.battery.n - row.battery.unaccepted,
     unaccepted: row.battery.unaccepted,
-    nonResults: row.authoring.caseIds.length - row.battery.n,
+    nonResults: row.authoring.caseIds.length - row.battery.n - (row.battery.settledAgainst ?? 0),
+    ...keyIfDefined("settled", row.battery.settledAgainst),
     regrade: row.authoring.regrade,
     ...admitted,
     ...placed,
@@ -327,6 +332,9 @@ function batteryLine(row: ReadoutRow): string {
     row.claimRefusal === null
       ? `${String(row.passed)} passed of ${counts}`
       : `${row.claimRefusal}; ${counts}`,
+    row.settled === undefined
+      ? null
+      : `${row.settled} verified case${row.settled === 1 ? "" : "s"} settled against ${row.settled === 1 ? "its" : "their"} check, counted neither way`,
     row.deciding?.population === "changed-subset"
       ? `the changed tasks passed ${row.deciding.passes} of ${row.deciding.n} attempts`
       : null,
@@ -354,25 +362,50 @@ function familyLine(readout: ClimbReadout): string | null {
   return `Families of the latest admitted battery (passes of attempts): ${list}.`;
 }
 
+/** A full pass: some case verified, every verified case passed and no attempt went unaccepted. It is
+ *  the battery the no-limit line answers, and the operator readers ask the same question through it. */
+export function fullPass({
+  verified,
+  passed,
+  unaccepted,
+}: {
+  verified: number;
+  /** Null for a refused claim, whose passes are not evidence, so it is never a full pass. */
+  passed: number | null;
+  unaccepted: number;
+}): boolean {
+  return verified > 0 && unaccepted === 0 && passed === verified;
+}
+
 /** The one result sentence the author is given: a battery that passed every case it scored found no
  *  limit. An unaccepted attempt is a fail there, so a battery holding one is not that battery. A
  *  non-result scored nothing, so a battery holding one says what it left unmeasured and asks for no
- *  harder demand, since the cases it lost may have held the limit. Nothing is said of any other
- *  count, because the band and the aim are the controller's and a count to author towards read as a
- *  course; this one fact is what the next round must answer. A full pass also names the one
- *  measurement that says why: a Builder otherwise sets its next limits from its own reference alone,
- *  blind to where the passing solves landed, so a limit well above a strong reference and a limit
- *  just above a reference the solver beats both read as the same full pass. The solves it measures
- *  are already public, in the context tool's traces source. */
+ *  harder demand, since the cases it lost may have held the limit. No other count gets a sentence,
+ *  because the band and the aim are not the author's (AGENTS.md "Goals and the climb").
+ *
+ *  On a full pass the line asks for tasks the Builder expects the solver to fail and rules out
+ *  carrying one forward unchanged, since a bare push to "demand more" is answered by growth and by
+ *  passed tasks measured again. It names depth, which the intent clause defines, and offers no
+ *  widening route, because a wider battery at the same demand passed whole again while stacked
+ *  requirements were what dropped pass rates (AGENTS.md "Goals and the climb"). It asks for the changed requirement and its reasoning in the notes
+ *  (AGENTS.md rule 11), where a plan is carried. It states how much of the
+ *  solve wall the slowest solve took, because a battery sized to the Builder's own reference can
+ *  finish far inside it while the next round reads only that every case passed. It ends with
+ *  `MEASURE_SOLVES`, whose solves are already public in the context tool's traces source. */
 function noLimitLine(row: ReadoutRow): string | null {
-  const { runId, passed, verified, unaccepted, nonResults } = row;
-  if (verified === 0 || unaccepted > 0 || passed !== verified) return null;
+  const { runId, verified, nonResults } = row;
+  if (!fullPass(row)) return null;
   const all = verified === 1 ? "its one verified case" : `all ${String(verified)} of its verified cases`;
   if (nonResults > 0) {
     const lost = nonResults === 1 ? "one case" : `${String(nonResults)} cases`;
     return `Battery ${runId} passed ${all} and ${lost} ended as non-results that scored nothing, so it found no limit among the cases it scored and did not measure the rest.`;
   }
-  return `Battery ${runId} passed ${all}, so it found no limit: the next battery has to demand more of the field's own work than this one did. ${MEASURE_SOLVES}`;
+  const slowest = row.effort?.minutes ?? null;
+  const spent =
+    slowest === null || row.solveWallMinutes === null
+      ? ""
+      : ` Its slowest solve took ${String(slowest)} of the ${String(row.solveWallMinutes)} minutes a solve may run.`;
+  return `Battery ${runId} passed ${all}, so it found no limit. More tasks, families, inputs or scenarios at the same demand measure the same reach again, so the next battery has to demand more of the field's own work within its tasks: make more of the request's requirements act together in each task, in tasks you expect the solver to fail. Carry none of its tasks forward unchanged, since a task it passed measures the same pass again: raise what each one demands or replace it.${spent} Record in your notes which public requirement it changes and the reasoning that change adds. ${MEASURE_SOLVES}`;
 }
 
 /**
@@ -405,20 +438,14 @@ export function renderReadout(readout: ClimbReadout | null, reason: string): str
     .join("\n\n");
 }
 
-/** The battery contract a round opens with: what a battery's result says, the witness sentence and
- *  the publication boundary. A probe range leaves the result sentence to `renderProbeSizing`, which
- *  already says a probe runs until one passes some but not all of its scored cases. No count is
+/** The battery contract a round opens with: what a battery's result says and the witness sentence.
+ *  Publication is the system prompt's (`PUBLICATION_CLAUSE`), stated once there. A probe range leaves the result sentence to `renderProbeSizing`, which
+ *  already says what a probe must pass before the requested size. No count is
  *  stated at any size: a count per size read as a target to author towards, and how to reach a
  *  limit is the Builder's. */
 export function renderBatteryContract(n: number, min: number = n): string {
   const limit = min < n ? "" : `${LIMIT} `;
-  return `${limit}Every task must be valid and solved by your reference. ${WITNESS} ${BOUNDARY}`;
-}
-
-/** The probe sentence, when the round's size is a probe range below the requested count. */
-export function renderProbeSizing(tasks: { min: number; max: number }, requested: number): string | null {
-  if (tasks.min === tasks.max) return null;
-  return `Battery sizing: this product's batteries have ${tasks.min} to ${tasks.max} tasks until one passes some but not all of its scored cases, then ${requested}.`;
+  return `${limit}Every task must be valid and solved by your reference. ${WITNESS}`;
 }
 
 /**

@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { deriveIterationAnalysis } from "../src/analyse/iteration-analysis.ts";
-import { runJudgeReviews } from "../src/analyse/judge-reviews.ts";
+import { JUDGE_REVIEWS_SCHEMA, runJudgeReviews } from "../src/analyse/judge-reviews.ts";
 import { type JudgeEvidence, judgeDecision, validateJudgeEvidence } from "../src/claim/judge.ts";
 import type { JudgeAttempt, JudgeSession } from "../src/review/judge.ts";
 import { briefPublicResources } from "../src/correctness-bundle/public-resources.ts";
@@ -154,24 +154,21 @@ describe("the census Judge on a measured round", () => {
     expect(firstCaseJudge).toMatchObject({ schema: "judge-subject/v3" });
     expect(firstCaseJudge.publicContextDigest).toMatch(/^[0-9a-f]{64}$/);
     expect(firstCaseJudge.judgeInputDigest).toMatch(/^[0-9a-f]{64}$/);
-    expect(battery.judge).toMatchObject({ disagreements: 1, verifierPassJudgeFail: 1 });
+    expect(battery.judge).toMatchObject({ verdicts: 4 });
     // Analysis projects this recorded main-Judge census with no extra model call.
     const analysis = deriveIterationAnalysis(repo, "bridge-truss", "m6-census");
     expect(analysis.battery.claimCreated).toBe(true);
     const reviews = runJudgeReviews(analysis, { repoRoot: repo, judgePin: null });
-    expect(reviews.schema).toBe("judge-reviews/v12");
-    expect(reviews.provisional).toBeNull();
+    expect(reviews.schema).toBe(JUDGE_REVIEWS_SCHEMA);
+    expect(reviews.outcome).toEqual({ kind: "read" });
     expect(reviews.census?.runId).toBe("m6-census");
     expect(reviews.coverage).toMatchObject({ reviewable: 4, reviewed: 4 });
     expect(reviews.contested.map((entry) => entry.taskId)).toEqual(["t2"]);
     // One contested row is disclosed as an advisory disagreement; the Judge exit never blocks.
-    expect(reviews.exit).toMatchObject({
-      kind: "advisory",
-      verifierFailJudgePass: 0,
-      verifierPassJudgeFail: 1,
-      verified: 4,
-    });
-    expect(reviews.absent).toEqual([]);
+    expect(reviews.exit).toMatchObject({ kind: "advisory", verified: 4 });
+    expect(reviews.contested.map((entry) => entry.kind)).toEqual([
+      expect.stringMatching(/^(veto|unconfirmed-fail)$/),
+    ]);
   }, 240_000);
 
   it.concurrent("sends no control subject to the Judge after four disagreements, and blocks nothing", async () => {
@@ -221,7 +218,7 @@ describe("the census Judge on a measured round", () => {
     expect(battery.judge).toMatchObject({
       judge: "unvalidated",
       offered: battery.cases.length,
-      verifierPassJudgeFail: battery.cases.length,
+      verdicts: battery.cases.length,
     });
     // Every cited fail of a verifier pass bought exactly one confirming sample and no census file.
     expect(reviewedCases.toSorted()).toEqual(
@@ -240,12 +237,11 @@ describe("the census Judge on a measured round", () => {
     // All four verifier-pass/Judge-fail rows are complete advice; the exit cannot block.
     const analysis = deriveIterationAnalysis(repo, "bridge-truss", "m6-census-skip");
     const reviews = runJudgeReviews(analysis, { repoRoot: repo, judgePin: null });
-    expect(reviews.provisional).toBeNull();
+    expect(reviews.outcome).toEqual({ kind: "read" });
     expect(reviews.contested).toHaveLength(4);
     expect(reviews.exit).toMatchObject({
       kind: "advisory",
-      verifierFailJudgePass: 0,
-      verifierPassJudgeFail: 4,
+      cases: { veto: 4, "unconfirmed-fail": 0, "disputed-pass": 0 },
     });
   }, 240_000);
 });

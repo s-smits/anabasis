@@ -76,7 +76,7 @@ export class JudgeCensus {
 
   private observe(evidence: JudgeSubjectEvidence): void {
     this.attempted += 1;
-    const errored = evidence.verdict === null && !evidence.abstained;
+    const errored = evidence.verdict === null;
     this.streak = errored ? this.streak + 1 : 0;
     if (errored && evidence.error !== null) this.lastError = evidence.error;
   }

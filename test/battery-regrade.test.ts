@@ -1,9 +1,18 @@
 /**
  * A battery that grades recorded solves instead of paying the Built solver to write the same
- * artifacts again: an evaluation correction regrades all of them, wherever the battery sat, and a battery the environment cut short re-solves only its censored cases. Two rounds, no
- * provider: round one builds and measures, round two submits one change or remeasures. The solver
- * counts its calls per battery, so "no solve" is a count of zero rather than an inference from
- * timing.
+ * artifacts again.
+ *
+ * Hypothesis: one reading decides every reuse. A recorded solve is regraded exactly when it still
+ * poses this candidate's exam — the same agent bytes, the same solving condition, the same public
+ * task bytes and public rules — and did not end in an environment non-result; every other task is
+ * solved. The round's operation decides only whether reuse applies at all (an evaluation
+ * correction, a task probe or a remeasure, never a repeat), so a correction that also moves a task,
+ * and a probe over a battery holding an unaccepted attempt, reuse what they still pose instead of
+ * each paying for a full battery.
+ *
+ * Two rounds, no provider: round one builds and measures, round two submits one change or
+ * remeasures. The solver counts its calls per battery, so "no solve" is a count of zero rather than
+ * an inference from timing.
  */
 import { afterEach, describe, expect, it } from "bun:test";
 import {
@@ -301,9 +310,21 @@ describe("an evaluation correction regrades instead of re-solving", () => {
     ]);
   }, 180_000);
 
-  it("a task probe after a battery above the aim still measures a full battery", async () => {
+  it("a task probe solves only the task it changed and regrades the five it poses again", async () => {
     const inputs = [...UPPERCASE_TASK_INPUTS.slice(0, 5), "gh"];
-    const { batteries } = await twoRounds(flubbing(new Set(["t5"])), { inputs });
+    const { batteries, readout } = await twoRounds(flubbing(new Set(["t5"])), { inputs });
+    expect(batteries.map((row) => [row.solves, row.regrade])).toEqual([
+      [TASKS, null],
+      [1, { of: "rg", reused: 5, changedPasses: 0 }],
+    ]);
+    // The changed task alone decides the probe, and the solver still flubs it: the five regraded
+    // passes never enter its sample.
+    expect(readout?.rows[0]?.deciding).toEqual({ population: "changed-subset", passes: 0, n: 1 });
+  }, 180_000);
+
+  it("a task probe solves every task again once the Built effort the battery ran under moved", async () => {
+    const inputs = [...UPPERCASE_TASK_INPUTS.slice(0, 5), "gh"];
+    const { batteries } = await twoRounds(flubbing(new Set(["t5"])), { inputs }, { effort: "minimal" });
     expect(batteries.map((row) => [row.solves, row.regrade])).toEqual([
       [TASKS, null],
       [TASKS, null],
@@ -383,7 +404,7 @@ describe("an evaluation correction regrades instead of re-solving", () => {
     expect(reviews).toBeGreaterThan(0);
   }, 180_000);
 
-  it("a correction that also moves one task measures a full battery", async () => {
+  it("a correction that also moves one task solves that task and regrades the five it poses again", async () => {
     const inputs = [...UPPERCASE_TASK_INPUTS.slice(0, 5), "gh"];
     const { batteries } = await twoRounds(flubbing(new Set(["t5"])), {
       evaluator: CASE_BLIND_EVALUATOR,
@@ -391,8 +412,23 @@ describe("an evaluation correction regrades instead of re-solving", () => {
     });
     expect(batteries.map((row) => [row.solves, row.regrade])).toEqual([
       [TASKS, null],
-      [TASKS, null],
+      [1, { of: "rg", reused: 5, changedPasses: 0 }],
     ]);
+  }, 180_000);
+
+  it("a task probe regrades an unchanged task whose attempt was unaccepted rather than solving it again", async () => {
+    // An unaccepted attempt is a measured failure, not a censored case: solving it again would hand
+    // the task a second chance the rest of the battery never had.
+    const silentT2 = (runId: string, taskId: string): Answer =>
+      runId === "rg" && taskId === "t2" ? "silent" : taskId === "t5" ? "flub" : "right";
+    const inputs = [...UPPERCASE_TASK_INPUTS.slice(0, 5), "gh"];
+    const { batteries } = await twoRounds(silentT2, { inputs });
+    expect(batteries.map((row) => [row.solves, row.regrade])).toEqual([
+      [TASKS, null],
+      [1, { of: "rg", reused: 5, changedPasses: 0 }],
+    ]);
+    // An unaccepted attempt scores as a fail, fresh or regraded.
+    expect(batteries[1]?.passes).toEqual([true, true, false, true, true, false]);
   }, 180_000);
 });
 

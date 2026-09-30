@@ -32,15 +32,15 @@ const RULE_MAX = 600;
 const SCHEMA_RULE = "artifactSchema";
 const INPUT_RULE = "publicInput";
 
-const VERDICT_WORDS = ["pass", "fail", "abstain"] as const;
+const VERDICT_WORDS = ["pass", "fail"] as const;
 type VerdictWord = (typeof VERDICT_WORDS)[number];
 
 /** Read as a set of plain strings so a word arriving from the model can be tested before it is
  *  named, while the tuple above stays the one declaration the tool schema also enumerates. */
 const VERDICT_WORD_SET: ReadonlySet<string> = new Set<string>(VERDICT_WORDS);
 
-/** The one verdict representation, the schema tool's parameters. The three outcomes are mutually exclusive by construction: abstention is a first-class verdict word, so
- * no field combination can state both a decision and an abstention. */
+/** The one verdict representation, the schema tool's parameters. A pass leaves to the verifier what
+ *  it could not read, so it names that in its rationale and cites nothing. */
 const JUDGE_VERDICT_SCHEMA = {
   type: "object",
   properties: {
@@ -50,7 +50,7 @@ const JUDGE_VERDICT_SCHEMA = {
       type: "array",
       minItems: 1,
       items: { type: "string", minLength: 1, maxLength: RULE_MAX },
-      description: `Required for fail: every shown rule the output does not meet, each quoted verbatim from publicValidityRules or a public-rule-decisions statement, or "${SCHEMA_RULE}" when the output violates the shown artifact schema, or "${INPUT_RULE}" when it contradicts the shown public task input. Omit for pass and abstain.`,
+      description: `Required for fail: every shown rule the output breaks, each quoted verbatim from publicValidityRules or a public-rule-decisions statement, or "${SCHEMA_RULE}" when the output violates or cannot be read against the shown artifact schema, or "${INPUT_RULE}" when it contradicts the shown public task input. Omit for pass.`,
     },
   },
   required: ["verdict", "rationale"],
@@ -58,7 +58,7 @@ const JUDGE_VERDICT_SCHEMA = {
 };
 
 const VERDICT_SCHEMA_HINT =
-  'judge verdict must match {verdict:"pass"|"fail"|"abstain",rationale:string(1..400),rules?:string[]}; a fail must cite only shown rules, verbatim, at least one';
+  'judge verdict must match {verdict:"pass"|"fail",rationale:string(1..400),rules?:string[]}; a fail must cite only shown rules, verbatim, at least one';
 
 type Captured = { verdict: VerdictWord; rationale: string; rules: string[] };
 
@@ -71,8 +71,8 @@ function isVerdictWord(value: string): value is VerdictWord {
 }
 
 /** The rules a fail may cite for this subject: each shown validity assertion, each shown public
- *  rule-decision statement, and the two fixed citations. A fail that names anything else, or
- *  nothing, is a protocol non-result rather than a verdict. The set is checked here rather than
+ *  rule-decision statement, and the two fixed citations. One that names anything else,
+ *  or nothing, is a protocol non-result rather than a verdict. The set is checked here rather than
  *  asked for in the prompt, which does not stop a Judge holding an artifact against agent tool text
  *  that no rule states.
  *
@@ -105,36 +105,12 @@ function parseVerdict(raw: JsonValue, citable: ReadonlySet<string>): Captured | 
   ) {
     return null;
   }
-  if (verdict !== "fail") return { verdict, rationale, rules: [] };
+  if (verdict === "pass") return { verdict, rationale, rules: [] };
   const rules = Array.isArray(value?.rules)
     ? value.rules.map((rule) => (isString(rule) ? rule.trim() : ""))
     : [];
   if (rules.length === 0 || !rules.every((rule) => citable.has(rule))) return null;
   return { verdict, rationale, rules };
-}
-
-/** Map one captured verdict word to the tri-state attempt: pass/fail decide, abstain is the
- *  designed null with its reason. */
-function attemptOf(captured: Captured, turns: number): JudgeAttempt {
-  return captured.verdict === "abstain"
-    ? {
-        verdict: null,
-        abstained: true,
-        rationale: captured.rationale,
-        rules: [],
-        error: null,
-        errorKind: null,
-        turns,
-      }
-    : {
-        verdict: captured.verdict === "pass",
-        abstained: false,
-        rationale: captured.rationale,
-        rules: captured.rules,
-        error: null,
-        errorKind: null,
-        turns,
-      };
 }
 
 /** One subject's turn: one budgeted turn, typed error classification, one dispose, and the
@@ -188,7 +164,18 @@ async function runVerdictTurn(config: {
   // failure does not erase the result already captured. Only a
   // subject with zero valid captures becomes a typed operational non-result.
   const { captured } = config.output;
-  if (captured !== null) return attemptOf(captured, turns);
+  if (captured !== null) {
+    const { rationale, rules } = captured;
+    return {
+      verdict: captured.verdict === "pass",
+      abstained: false,
+      rationale,
+      rules,
+      error: null,
+      errorKind: null,
+      turns,
+    };
+  }
   return noVerdictAttempt(error ?? "judge produced no verdict", errorKind ?? "protocol", turns);
 }
 
@@ -223,7 +210,7 @@ export function sessionJudge(options: {
       name: "record_judge_verdict",
       label: "Record judge verdict",
       description:
-        "Record pass or fail with a short reason. Use abstain only when the public input does not support a decision.",
+        "Record fail or pass with a short reason. Fail only on a requirement the shown material shows broken; otherwise pass, and name what you left to the verifier.",
       parameters: JUDGE_VERDICT_SCHEMA,
       async execute(_id: string, raw: JsonValue) {
         output.calls += 1;
@@ -249,7 +236,7 @@ export function sessionJudge(options: {
     return retryAfterNamedReset(
       "judge",
       () => runVerdictTurn({ ...options, open: () => options.openSession(tool), input, context, output }),
-      (attempt) => (attempt.verdict === null && !attempt.abstained ? attempt.error : null),
+      (attempt) => (attempt.verdict === null ? attempt.error : null),
       { ...options.resetWait, ...keyIfDefined("providerBudget", options.providerBudget) },
     );
   };

@@ -13,7 +13,7 @@ import {
   climbThresholds,
   readClimbBatteries,
 } from "./climb-history.ts";
-import { readoutHistoryDocuments, renderProbeSizing, renderReadout } from "./climb-readout.ts";
+import { readoutHistoryDocuments, renderReadout } from "./climb-readout.ts";
 import { measuredSolverTraces } from "./solver-traces.ts";
 import { fingerprintSlug } from "../claim/fingerprint.ts";
 import { recordedVerifierEnvironmentHash } from "../claim/conformance-evidence.ts";
@@ -21,7 +21,12 @@ import { harnessBundleIdentity } from "./climb-battery-admission.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { hashJsonBytes } from "../meta/json-runtime.ts";
 import { selectedProductDir } from "./product-versions.ts";
-import { type ProbeLanding, adoptedTaskCount, batterySizingGate } from "./battery-sizing.ts";
+import {
+  type ProbeLanding,
+  adoptedTaskCount,
+  batterySizingGate,
+  renderProbeSizing,
+} from "./battery-sizing.ts";
 import { claimsDirFor } from "./claim-write.ts";
 import { fixedProductBoundary } from "./fixed-product-policy.ts";
 import type { BuildClause } from "./loop-terminal.ts";
@@ -188,7 +193,10 @@ function settleBuildOutcome(
  *  author reads what was recorded — whenever one exists, and a rebuild also reads the issue
  *  register's advice. A first build with nothing measured behind it reads neither: its reason
  *  states no measurement. The advice packet is families, kinds and counts by construction
- *  (rebuild-advice.ts), so nothing protected crosses. The same read supplies the sizing landing. The
+ *  (rebuild-advice.ts), so nothing protected crosses. Where the passing solves landed against each
+ *  published limit stays in the context tool's traces rather than the opening: stated unasked, it
+ *  pointed every round at limit distance, which the readout's `MEASURE_SOLVES` says asks nothing new
+ *  (AGENTS.md "Tried and taken out"). The same read supplies the sizing landing. The
  *  history pages read every recorded model pin and threshold manifest with its condition labels:
  *  another condition enters no placement, and its public tasks stay readable. */
 function composeAuthoringMemory(
@@ -242,13 +250,14 @@ export async function runBuildStep(
   const domainDir = selectedProductDir(repoRoot, manifest.slug);
   const memory = composeAuthoringMemory(input, decision, domainDir, difficulty);
   const { advice, band } = memory;
+  const adopted = adoptedTaskCount(domainDir);
   const tasks = batterySizingGate(
     manifest.expectedTasks,
-    adoptedTaskCount(domainDir),
+    adopted,
     () => adoptedProbeLanding(memory.read, domainDir),
     band,
   );
-  const advisory = [memory.advisoryNote, renderProbeSizing(tasks, manifest.expectedTasks) ?? ""]
+  const advisory = [memory.advisoryNote, renderProbeSizing(tasks, manifest.expectedTasks, adopted) ?? ""]
     .filter((part) => part !== "")
     .join("\n\n");
   const buildPhase = observer.phase({

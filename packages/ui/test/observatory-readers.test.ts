@@ -365,7 +365,7 @@ describe("controller metadata", () => {
   it("quotes the selector's own reason from the run's last round", () => {
     const root = storyFixture();
     write(root, `campaigns/${SLUG}/difficulty-decisions/${RUN}-aaaa1111.json`, {
-      schema: "difficulty-decision/v9",
+      schema: "difficulty-decision/v10",
       difficulty: {
         decision: { placement: null, rationale: "first round" },
         admitted: 1,
@@ -373,7 +373,7 @@ describe("controller metadata", () => {
       },
     });
     write(root, `campaigns/${SLUG}/difficulty-decisions/${RUN}-i02-bbbb2222.json`, {
-      schema: "difficulty-decision/v9",
+      schema: "difficulty-decision/v10",
       difficulty: {
         decision: {
           placement: { zone: "too-easy" },
@@ -392,7 +392,7 @@ describe("controller metadata", () => {
   it("reads the zone and the named exclusions of a placed record", () => {
     const root = storyFixture();
     write(root, `campaigns/${SLUG}/difficulty-decisions/${RUN}-cccc3333.json`, {
-      schema: "difficulty-decision/v9",
+      schema: "difficulty-decision/v10",
       difficulty: {
         decision: { rationale: "6/25 …: at the limit", placement: { zone: "on-aim" } },
         admitted: 3,
@@ -428,7 +428,7 @@ describe("controller metadata", () => {
     const issues: EvidenceIssue[] = [];
     expect(readDifficulty(root, SLUG, RUN, issues)).toBeNull();
     expect(issues.map((issue) => issue.message)).toEqual([
-      "difficulty decision is difficulty-decision/v3, not difficulty-decision/v9; refused",
+      "difficulty decision is difficulty-decision/v3, not difficulty-decision/v10; refused",
     ]);
   });
   it("separates a difficulty decision that was never recorded from one that held", () => {

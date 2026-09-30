@@ -232,6 +232,18 @@ interface BuiltStarterOptions {
   publishedMargins?: readonly PublishedMargin[];
 }
 
+/** The duty the Built system prompt opens with, stated to a Harbor agent as well (`harbor-export.ts`). */
+export const BUILT_SOLVE_DUTY =
+  "Complete the task with the available tools and submit one answer that meets every published requirement; the method is yours to choose. " +
+  "For source code or files, write complete working files, not fragments or descriptions.";
+
+export const solveTime = (solveMs: number): string =>
+  `The case has ${String(Math.round(solveMs / 60_000))} minutes of solve time`;
+
+/** Where the published requirements are, for an agent that reads them from `source`. */
+export const publishedRequirements = (source: string): string =>
+  `The published requirements are the public input together with ${source}; read both before you build.`;
+
 /**
  * The universal Built prompt states what the solver cannot find out for itself — what it must
  * deliver, the form of an answer, the solve wall and what the wall submits — and nothing about how
@@ -244,9 +256,7 @@ interface BuiltStarterOptions {
  * artifact-writer's margin table (`readMargins`) is host fact rather than instruction.
  */
 export const builtSystemPrompt = (solveMs: number): string =>
-  "Complete the task with the available tools and submit one answer that meets every published requirement; the method is yours to choose. " +
-  "For source code or files, write complete working files, not fragments or descriptions. " +
-  `The case has ${String(Math.round(solveMs / 60_000))} minutes of solve time, and at the end the last answer an artifact-writer prepared is submitted for you.`;
+  `${BUILT_SOLVE_DUTY} ${solveTime(solveMs)}, and at the end the last answer an artifact-writer prepared is submitted for you.`;
 
 export function builtFirstTurnPrompt(
   task: Pick<PublicTask<unknown>, "taskId" | "family" | "publicInput">,
@@ -265,7 +275,7 @@ function builtRosterLine(rows: readonly BuiltAgentInterfaceTool[]): string {
   // The first turn carries only the public input; the domain's published rules, schema and
   // constants arrive through this tool, which the prompt otherwise never names.
   return rows.some(({ name }) => name === BUILT_PUBLIC_RULES_TOOL)
-    ? `${roster} The published requirements are the public input together with what ${BUILT_PUBLIC_RULES_TOOL} returns; read both before you build.`
+    ? `${roster} ${publishedRequirements(`what ${BUILT_PUBLIC_RULES_TOOL} returns`)}`
     : roster;
 }
 

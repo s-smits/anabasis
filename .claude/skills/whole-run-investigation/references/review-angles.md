@@ -99,7 +99,7 @@ under a ledger decision `initial-<id>` with `initial-product/v1` evidence, and t
 and a clause contradicted by its own cited rows is a defect in the clause. Read `statement.n` and
 `statement.passed` rather than `claim.ok`: an `ok: true` claim with `passed: 0` is evidentially
 valid and is no capability result. What a claim discloses — a `modelIdentity` limit, a
-`judgeDecision` of `non-result` or `no-battery-verdicts` — is the contract working. Join across an
+`judgeDecision` of `non-result` or, before 2026-09-29, `no-battery-verdicts` — is the contract working. Join across an
 epoch boundary on the recorded bundle or `taskSetHash`, never on the epoch name.
 
 **C. workspace and Git.** Check that a fresh workspace committed the starter package and that each
@@ -354,9 +354,10 @@ discrimination claim; it routes to `correctness-model/evaluator.ts` for the chec
 
 **8. Public disclosure and one-recipe.**
 
-Starts from a battery where every case passed in one turn at a small share of the wall, from a
-trace telemetry whose call sequences are constant across cases, and from a placement over the aim
-with a rehearsal that `passedInOneTurn`.
+Starts from a battery where every case passed at a small share of the wall, from a trace
+telemetry whose call sequences are constant across cases, and from a placement over the aim whose
+round's rehearsals all passed at a small `longestPassWallPercent`. A turn count is no evidence on
+the pi backend, which records one turn for every solve, a 75-minute solve of 72 tool calls included.
 
 The question is whether the brief and the tools publish a sufficient construction algorithm, so
 that a careful reader transcribes the answer rather than searching for it. The shape is a recipe
@@ -400,24 +401,26 @@ families the plan is about; it routes to `controller-source`
 **10. Difficulty calibration loop.**
 
 Starts from block 4b's `OFF-AIM STREAK (lane 10)`, from the calibration table the `handoff` lane
-prints, and from the `climb` lane's edge labels.
+prints, and from the `climb` lane's `velocity`, `horizon`, `flat` and `carried` lines.
 
-The question is whether the batteries move towards the aim round over round, read as counts.
-Each battery's `difficulty-decisions/<runId>-<digest>.json` records the `ClimbReadout`:
-`placement.zone`, `aim`, `toAim` and the Wilson interval. So compare per round, in claim
-`createdAt` order, the placement the controller recorded, the operation the accepted bytes were
-attributed as, and the count it measured. The round states no plan of its own any more: a run whose
-source predates the removal of `EXPERIMENT.json` recorded one beside each accepted submit, and
-nothing reads it. The battery
-contract (`renderBatteryContract`, `src/run/climb-readout.ts`) states no count at any size: the
-Builder is told only that a partial battery can locate a limit where its failing checks are right,
-so no battery can be scored against a target the controller stated. An unchanged public task set
-predicts a repeat, not a harder battery, and a digest streak counts consecutive placements on one
-side of the aim, so say which side. Why a streak persisted — what, if anything, pressed the Builder
-to change the tasks — is lane 36's question, and how many tasks the next battery held is lane 37's.
-Do not prescribe the route, which is the Builder's. The decision it changes is the next round's
-move; it routes to the Builder prompt when the readout misstated what was measured and to
-`correctness-model/tasks.json` when the task set did not move.
+The question is whether the run draws the line the climb is meant to draw. Its shape and its four
+numbers are AGENTS.md "Goals and the climb", under "Its shape, and how progress is read", and
+neither a monotonic approach nor a zone is the test. So read, in claim `createdAt` order, each
+battery's count, the placement the controller recorded
+(`difficulty-decisions/<runId>-<digest>.json`: `placement.zone`, `aim`, `toAim`, the Wilson
+interval), the operation the accepted bytes were attributed as, and the `climb` lane's four numbers
+as [the climb reference](climb.md) reads them. A run of n/n batteries is the finding, whatever its
+zones read, and `carried` says whether the Builder measured the same passed tasks again. The digest
+streak counts consecutive placements on one side of the aim; say which side, and whether it meets
+the stall rule `flat` applies (`STALL_BATTERIES`). The Builder is told no count, share or zone at
+any size (AGENTS.md "Goals and the climb", under "Who hears the placement, and what it drives"), so
+no battery can be scored against a target the controller stated. A run whose source predates the
+removal of `EXPERIMENT.json` recorded a plan beside each accepted submit, and nothing reads it. Why
+a line stayed flat — what, if anything, pressed the Builder to change the tasks, and which sentence
+it cited when it declined — is lane 36's question, and how many tasks the next battery held is lane
+37's. Do not prescribe the route, which is the Builder's. The decision it changes is the next
+round's move; it routes to the Builder prompt when a surface misstated what was measured or what a
+round is for, and to `correctness-model/tasks.json` when the task set did not move.
 
 **11. Submit decision against rehearsal evidence.**
 
@@ -425,8 +428,8 @@ Starts from block 6's `SUBMITTED BYTES NEVER REHEARSED (lane 11)` and from the `
 `harness-trial` component.
 
 The question is what the Builder did with each rehearsal verdict before it submitted. Each
-`harness_trial` row's `semantic` carries `truthVerdict`, `turns`, `submitted` and `candidateId`,
-and the accepted submit's own `candidateId` is the join: a submit whose candidate no rehearsal
+`harness_trial` row's `semantic` carries `truthVerdict`, `submitted` and `candidateId`, and the
+accepted submit's own `candidateId` is the join: a submit whose candidate no rehearsal
 graded was calibrated from belief, and a Builder whose `MEMORY.md` says the battery is untested
 against the solver has said so itself. A `pass` on the submitted bytes of every rehearsed task says
 the battery was likely to land above the aim before it was paid for. Keep in mind what each reader
@@ -641,9 +644,11 @@ deliberately states no direction, because a moved limit is a climb only when it 
 round that re-posed the same public schemas under new values is the `adjusted` edge read round over
 round. Do not read a new hash, id, family name or longer description as a harder problem; the
 Builder names the public requirement that changed and the reasoning interaction it adds, or the
-change is coverage. The decision it changes is the attribution and the refusal of a repeated
-condition; it routes to `correctness-model/tasks.json`, `correctness-model/controls.json` or
-`correctness-model/evaluator.ts` by which bytes moved.
+change is coverage. Each edge's `carried` row counts the tasks held unchanged in id, public input
+and family checks; after a full pass every one of them measured a known pass again. The decision
+it changes is the attribution and the refusal of a repeated condition; it routes to
+`correctness-model/tasks.json`, `correctness-model/controls.json` or `correctness-model/evaluator.ts`
+by which bytes moved.
 
 **21. Source-delta reach.**
 
@@ -674,18 +679,21 @@ The question is how the solver spent its walls. `agent/config.yaml` owns `solve_
 `max_turns`, `shell_timeout_seconds` and `shell_timeout_max_seconds`
 (`src/correctness-bundle/harness-config.ts`), and a harness may set a solver wall anywhere from a
 tenth of its default to ten times it, so a short wall is a Builder choice and the first thing to
-check when cases time out. A turn is one outer prompt carrying an unbounded tool loop, so a turn
-count below `max_turns` is not room the solver could have used; the tool calls are the work. A case
+check when cases time out. A turn is one outer prompt carrying an unbounded tool loop, and the pi
+backend records one for every solve, so a turn count below `max_turns` is not room the solver could
+have used; the tool calls are the work. A case
 that reached a wall without passing is a truncated solve and not a settled capability failure, and
 a solve the whole-solve wall stopped after a tool call is an unaccepted attempt carrying its traced
 calls, not a non-result. Read each case's `built-runtime.json` and `final-submission.json`,
-`trace-telemetry.json` from the `challenge` lane (turn and call spread, tool census, distinct ordered
+`trace-telemetry.json` from the `challenge` lane (call spread, tool census, distinct ordered
 sequences per battery and per family, so one expensive family cannot disappear in the aggregate),
-and the wall shares `walls.ts` prints. A public candidate analysis or a check of a published limit
-is legitimate solving support, and a tool is an answer shortcut only when it supplies the remaining
-decision the solver was meant to make, which lane 23 settles alone and lane 34 reads from the tool
-side. Do not open the private packet. The decision it changes is whether a wall-bound case enters
-the difficulty denominator as a failure; it routes to `agent/config.yaml` for a wall the Builder
+and the wall shares `walls.ts` prints. Reusable algorithms, a bounded search and the host's margin
+table on published limits are legitimate solving support; a tool, program or guide line that
+analyses a candidate the way a check does is lane 34's finding, and lane 23 reads its use per case.
+Do not open the private packet. A wall-bound miss stays a fail in the count, and `wallBound` names
+the unaccepted cases that ran to within `WALL_BOUND_SHARE` of `solve_minutes` (AGENTS.md "Goals and
+the climb", under "What one battery can say"). The decision it changes is whether such a miss is
+read as the task's limit or as the wall's; it routes to `agent/config.yaml` for a wall the Builder
 set, `agent/BUILT_AGENTS.md` when the guide sends the solver into work the wall cannot hold, and
 `agent/tools-spec.json` when a tool's own timeout is the wall.
 
@@ -733,10 +741,15 @@ runs draining it together each record the same wait seconds apart, so compare th
 provenance the openings disclose rather than assuming separate accounts. A generic 429, a timeout,
 a crash or an unexplained refusal is not proof of exhaustion. Silence is often work: a gap filled by
 one long Builder tool call, a `harness_trial` solve, a Builder install or an authoring review that
-holds submit is the loop running, and only a gap with no call in flight is waiting. Do not
+holds submit is the loop running, and only a gap with no call in flight is waiting. The host is
+the other shared allowance: every run's checks compile on one machine, so count the runs live over
+a slow stretch from their openings and terminals, and split the Builder's wall into tool wait and
+model time from `builder-execution.json` before owning a slow round. On 2026-09-30 eight firmware
+runs shared 12 cores at load 35 to 200, six Opus firmware rounds waited on tools for 79 to 91% of
+their wall, and arms that are all tool-bound cannot be compared on round length. Do not
 reclassify a scored case because the identity claim was refused. The decision it changes is
 ownership — `environment` against the task author — and the launch condition, which is the slot
-pins and the account.
+pins, the account and how many runs share the host.
 
 **25. Failure mechanism and non-result honesty.**
 
@@ -964,8 +977,8 @@ when the brief also missed it, and a Judge whose citable set converges on the ch
 tests the Builder's reading twice. Agreement between the Judge and the verifier therefore does not
 test for a fault both miss, and the fails lane 16 reads are a sample of what the Judge noticed, not
 of false accepts. When a pass count looks low on decided rules, name the rival causes before
-choosing one — the prompt's not-decidable sentence, its instruction not to fail on a rule the
-material does not show, the verdict schema, whose only undecided word is `abstain`
+choosing one — the prompt's sentence on what is left to the verifier, its instruction not to fail
+on a rule the material does not show, the verdict schema, whose only words are pass and fail
 (`src/review/judge-drivers.ts`), and the pin — and say which recorded evidence separates them.
 Report counts and pass kinds; propose no counting semantics for a partial pass, which is an operator
 decision still open. The decision it changes is how much weight a Judge pass may carry in the
@@ -1002,26 +1015,27 @@ search, and to `correctness-model/controls.json` when the accepts are the refere
 **34. Check mirroring in solver tools.**
 
 Starts from every run at every tier as a standing lane, because the solver's tools are the
-Builder's too, and from block 1b's `CHECK TOOL IN SOLVER TRACE (lane 23)`.
+Builder's too, and from block 1b's `CHECK CODE IN SOLVER REACH (lane 34)` and `CHECK TOOL IN SOLVER
+TRACE (lane 23)`.
 
-The question is whether a Builder-written solver tool reports what the checks read, so that solving
-becomes propose, read the failing state, adjust. Keep two things apart first. The host's own margin
-table, `readMargins` (`src/solve/published-margin.ts`, called from `src/solve/built-starter.ts`),
-reads every complete published boundary against a prepared answer and returns it in the
-artifact-writer's text; its readings ride the trace as `details.margins`. That is controller code,
-the same for every domain, and a published limit checked is legitimate solving support under rule
-9. A Builder tool in `agent/tools.ts` that computes the quantity a declared check reads, over a
-proposed design, and returns it with its limit is a different thing, because it lets the solver
-find the check's boundary without reasoning about the field. So for each Builder tool, list which
-declared checks it mirrors — same operands, same computation — and which it leaves the solver to
-reason about. Then read the traces for the shape: a proposal, a reading showing a breach, an
-adjustment, repeated until clear, with no derivation between readings. The shape is a lead, not a
-verdict, because a capable practitioner also iterates against a calculator; the question is
-whether passing still demanded a decision the tool did not supply, which lane 23 settles from the
-private packet when a case needs it. Report tools, check ids and trace counts. The decision it
-changes is whether a pass rate measures synthesis or search against a mirror; it routes to
-`agent/tools.ts` and `agent/tools-spec.json` for a mirroring tool, and to `controller-source`
-(`src/solve/published-margin.ts`) only for the host's table.
+The question is whether anything in the solver's reach analyses a candidate the way a check does,
+so that solving becomes propose, read the failing state, adjust. Keep two things apart first. The
+host's own margin table, `readMargins` (`src/solve/published-margin.ts`, called from
+`src/solve/built-starter.ts`), reads every complete published boundary against a prepared answer
+and returns it in the artifact-writer's text; its readings ride the trace as `details.margins`.
+That is controller code, the same for every domain, and it stays legitimate, as do reusable
+algorithms and a bounded search. A tool in `agent/tools.ts`, a program on the solver's PATH or a
+guide line that computes what a declared check reads over a proposed candidate, whether through the
+check's code, a copy of it, its instrument or a verdict, is the finding, because the solver then
+searches against the grader instead of doing the field's work. So for each, list which declared
+checks it mirrors — same operands, same computation — and which it leaves the solver to reason
+about. Then read the traces for the shape: a proposal, a reading showing a breach, an adjustment,
+repeated until clear, with no derivation between readings. The shape says how much the mirror
+carried, not whether it is one. Report tools, check ids and trace counts. The decision it changes
+is whether a pass rate measures synthesis or search against a mirror; it routes to `agent/tools.ts`
+and `agent/tools-spec.json` for a mirroring tool, `agent/BUILT_AGENTS.md` for a guide line, and
+`controller-source` for a check program on the solver's PATH (`src/solve/built-bash.ts`) or the
+host's table (`src/solve/published-margin.ts`).
 
 **35. Independent recomputation of passes.**
 
@@ -1052,45 +1066,52 @@ Starts from block 4b's `OFF-AIM STREAK (lane 10)`, beside lane 10.
 
 The question is what, in this run, pressed the Builder to make the tasks harder, and whether
 anything did. Only the Builder raises difficulty, and only through the tasks it writes: the
-controller writes no task, and the off-aim streak is a readout fact that stops nothing, so
-a product can land above the aim round after round with no controller action. Read the channels
-that could have carried pressure and say what each carried: the climb readout and battery contract
-the round opened with, the authoring and battery reviews' findings owned by
-`correctness-model/tasks.json` with their severity, the advice packet, and the Builder's own plan
-and notes. Then read what the Builder did: the task ids and public-input digests that reappear
-unchanged across batteries, the families it named in the plan against the families whose bytes
-moved, and whether an advisory `tasks.json` finding was followed by a change to the obligation it
-named. Two framings may differ here — the reviewer's orientation states the battery's placement,
-while the Builder's text may not name a zone at all — so quote what each was served before
-comparing their responses. Whether staying easy costs a Builder anything, and whether an advisory
-finding is too weak to move one, are questions to answer from these recorded responses, not
-premises to start from. Do not prescribe the route, which is the Builder's. The decision it changes
-is which channel, if any, should carry the pressure; it routes to the Builder prompt or
-`starters/pi-built-harness/STARTER.md` for what the Builder is told, and to `controller-source`
-(`src/run/climb-readout.ts`, `src/review/epoch-review-public.ts`) for what the readout or the
-projection states.
+controller writes no task, and the off-aim streak is counted for the operator by the digest and
+`runs pulse` and stops nothing, so a product can land above the aim round after round with no
+controller action (AGENTS.md "Goals and the climb", under "Who hears the placement, and what it
+drives"). Read the channels that could have carried pressure and say what each carried: the
+kickoff, the system prompt's intent clause, the round prompt's submit sentence, the climb readout
+and battery contract the round opened with, `harness_trial`'s round clause, the authoring and
+battery reviews' findings owned by `correctness-model/tasks.json` with their severity, the advice
+packet, and the Builder's own plan and notes. Where a round meets each one is AGENTS.md "Goals and
+the climb", under "What the Builder is asked, round by round", with the 887c163ee Builders that
+declined every stricter demand on the kickoff's own words. Pressure can arrive and be declined on
+another surface's words, so quote the sentence the Builder cited when it declined, and name the
+surface that owns it. Then read what the Builder did: the task ids and public-input digests that
+reappear unchanged across batteries, the families it named in the plan
+against the families whose bytes moved, and whether an advisory `tasks.json` finding was followed
+by a change to the obligation it named. Two framings may differ here — the reviewer's
+orientation states the battery's placement, while the Builder's text may not name a zone at all —
+so quote what each was served before comparing their responses. Whether staying easy costs a Builder
+anything, and whether an advisory finding is too weak to move one, are questions to answer from
+these recorded responses, not premises to start from. Do not prescribe the route, which is the
+Builder's. The decision it changes is which channel, if any, should carry the pressure; it routes to
+the Builder prompt or `starters/pi-built-harness/STARTER.md` for what the Builder is told, and to
+`controller-source` (`src/run/climb-readout.ts`, `src/review/epoch-review-public.ts`) for what the
+readout or the projection states.
 
 **37. Battery size and probe graduation.**
 
 Starts from every standard and deep read as a standing lane, because the size of the next battery
 is decided by rules the digest does not print.
 
-The question is how each battery's task count was chosen, and whether the rule counted what it
-meant to. `batterySizingGate` (`src/run/battery-sizing.ts`) keeps a fresh product on probes of five
-to ten tasks until a probe passes some but not all of its scored cases, and then moves to the
-requested size — unless the last landing read high enough that a smaller battery would still read
-too easy, when `smallestSizeHoldingTooEasy` sizes it down. Three things follow that no recorded
-field states. The graduation rule counts scored cases, and an unaccepted case is scored, so a probe
-of all passes plus one unaccepted timeout graduates exactly as a probe with a verified fail does.
-The Builder sets `solve_minutes` in `agent/config.yaml`, anywhere down to a tenth of its default,
-and a short wall produces exactly those unaccepted timeouts. And the landing is read only when the
-adopted product fingerprints and its harness identity can be computed, which
-`harnessBundleIdentity` cannot do when the recorded verifier environment is unreadable, so a
-missing identity silently resizes the round to the requested count. Recompute each battery's size
-from the rule and its inputs, since the controller records the result and not the reason, and
-report each graduation with its verified passes, verified fails and unaccepted cases as three
-numbers. Say whether a graduation rested on an unaccepted case, and whether the wall that produced
-it was the Builder's choice. The decision it changes is how the synthesis reads the first
+The question is how each battery's task count was chosen, and whether the rule counted what it meant
+to. The rule is `batterySizingGate` (`src/run/battery-sizing.ts`) over `POLICY.battery`, and
+AGENTS.md "Goals and the climb", under "Who hears the placement, and what it drives", says what it
+decides and why; [the climb reference](climb.md) walks its branches. Its landing is
+`admittedClimbRow`'s count, so a case the Epoch Reviewer settled against its check counts neither
+way. Three things follow that no recorded field states. The graduation rule counts scored cases, and
+an unaccepted case is scored, so a probe whose unaccepted timeouts bring it down to the aim
+graduates exactly as one with verified fails does. The Builder sets `solve_minutes` in
+`agent/config.yaml`, anywhere down to a tenth of its default, and a short wall produces exactly
+those unaccepted timeouts. And the landing is read only when the adopted product fingerprints and
+its harness identity can be computed, which `harnessBundleIdentity` cannot do when the recorded
+verifier environment is unreadable, so a missing identity silently sizes the round as if nothing had
+landed: a graduated product gets the requested count, and one still on probes stays there. Recompute
+each battery's size from the rule and its inputs, since the controller records the result and not
+the reason, and report each graduation with its verified passes, verified fails and unaccepted cases
+as three numbers. Say whether a graduation rested on an unaccepted case, and whether the wall that
+produced it was the Builder's choice. The decision it changes is how the synthesis reads the first
 full-size battery; it routes to `agent/config.yaml` for the wall, and to `controller-source`
 (`src/run/battery-sizing.ts`, `src/run/full-run-build-step.ts`) for the rule and its record.
 
@@ -1128,7 +1149,7 @@ there is one authoring path; controller memory curation, since `MEMORY.md` is th
 the cap is a read cap; the cross-harness adapter and the weak-solver baseline, since a comparison
 runs on one shared pack or not at all; the `climb`, `hold-limit` and `ease` actions, since
 `placement.zone` already says where a battery landed; `rungPrediction`, the plan's target and its
-per-task `predictions[]`, the submit hold and the off-aim allowance, since no battery ever answered
-them; the saturation ledger, which read fields no difficulty decision carries; and the recurrence
+per-task `predictions[]`, the submit hold and the off-aim allowance, for the reasons AGENTS.md
+"Goals and the climb" gives under "Tried and taken out"; the saturation ledger, which read fields no difficulty decision carries; and the recurrence
 reader over the notes archive, since lane 14 reads recurrence from the recorded epoch reviews and
 admissions themselves.

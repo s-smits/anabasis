@@ -98,6 +98,16 @@ export function hashJsonValue(value: unknown): string {
   return sha256(stableJson(value));
 }
 
+/** `hashJsonValue` of a list of strings, fed to the hash item by item. A tool tree's rows run to
+ *  tens of megabytes, and hashing them as one JSON text holds them twice more: once as that text
+ *  and once as its UTF-8 bytes. */
+export function hashJsonStrings(items: readonly string[]): string {
+  const hasher = new Bun.CryptoHasher("sha256");
+  hasher.update("[");
+  items.forEach((item, index) => hasher.update(index === 0 ? stringify(item) : `,${stringify(item)}`));
+  return hasher.update("]").digest("hex");
+}
+
 /** Validate values received from vendor objects or untyped readers before recording them. A
  *  non-JSON value is refused explicitly rather than encoded: JSON.stringify drops a function or
  *  symbol property without a word, which changes what the snapshot records and leaves nothing to

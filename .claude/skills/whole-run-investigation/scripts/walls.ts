@@ -23,7 +23,7 @@
 import { existsSync } from "#src/meta/filesystem.ts";
 import { basename, dirname, join } from "#src/meta/path.ts";
 import { campaignTraceRoots } from "#src/claim/trace-read.ts";
-import { measuredProductDir } from "#src/run/product-versions.ts";
+import { measuredProductId, productVersionDir } from "#src/run/product-versions.ts";
 import { classifyCaseOutcome, readCaseRecord, type CaseRecordRow } from "#src/claim/case-record.ts";
 import {
   DEFAULT_HARNESS_SETTINGS,
@@ -133,12 +133,17 @@ function solverOf(roots: readonly string[], runId: string, taskId: string): Solv
 }
 
 /** The walls the product this battery measured declared, and how each compares with the seeded
- *  default. Which product that was is the controller ledger's binding (`measuredProductDir`), not
+ *  default. Which product that was is the controller ledger's binding (`measuredProductId`), not
  *  a directory named after the battery: a task probe measures the retained version an earlier
  *  round published under its own id. A battery the ledger binds to no product reads the defaults
- *  and says so, and a bound product without a config reads them too, because the host applies them. */
+ *  and says so, and a bound product without a config reads them too, because the host applies them.
+ *  The product is read where it lies, not through `readProductVersion`, which refuses a version
+ *  another source recorded so that no project continues on it: a reader of old evidence must still
+ *  read it, and 27 of 37 campaigns since 2026-09-26 carry the earlier schema. */
 function wallsOf(campaign: string, runId: string): WallsSource {
-  const product = measuredProductDir(dirname(dirname(campaign)), basename(campaign), runId);
+  const [root, slug] = [dirname(dirname(campaign)), basename(campaign)];
+  const id = measuredProductId(root, slug, runId);
+  const product = id === null ? null : productVersionDir(root, slug, id);
   const settings = product === null ? DEFAULT_HARNESS_SETTINGS : harnessSettings(product);
   const defaults = new Map<string, number>(Object.entries(DEFAULT_HARNESS_SETTINGS));
   const moved = Object.entries(settings)
@@ -245,7 +250,7 @@ export function buildWalls({ campaign, runId = null }: WallsInput) {
     batteries,
     limits: [
       "Elapsed time is the case's wall clock, including provider latency and every queue it waited in, not model work.",
-      "A turn is one outer prompt carrying an unbounded internal tool loop, so a solver that finishes without being nudged records one turn whatever it did inside it. Tool calls are that work; a turn count below the wall is not room the solver could have used.",
+      "A turn is one outer prompt carrying an unbounded internal tool loop, so a solver that finishes without being nudged records one turn whatever it did inside it, and on the pi backend every solve does. Tool calls are that work; a turn count below the wall is not room the solver could have used.",
       "A case that passed at a wall is not a defect. A case that reached a wall without passing is the one reading that supports more room, and its verdict is a truncated solve rather than a settled capability failure.",
     ],
   };

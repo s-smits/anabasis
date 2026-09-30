@@ -6,15 +6,11 @@
  * contract.
  */
 import { type SafeguardContext, safeguardTriggered } from "../meta/safeguard.ts";
-import type { BatteryCensus, JudgeReviewsResult } from "./judge-reviews.ts";
+import type { JudgeReviewsResult } from "./judge-reviews.ts";
 import type { RebuildAdvicePacket } from "../author/rebuild-advice.ts";
 
 /** The recorded review fields the sensors read; a test builds them without the rest of the record. */
-export type JudgeReviewFacts = Pick<JudgeReviewsResult, "runId" | "exit" | "provisional"> & {
-  /** The sensors read whether a census was revalidated and nothing inside it, so the field names
-   *  the one part of the record any of them could rely on — and a rename of it still fails here. */
-  census: Pick<BatteryCensus, "runId"> | null;
-};
+export type JudgeReviewFacts = Pick<JudgeReviewsResult, "runId" | "exit" | "outcome">;
 /** The packet fields the rebuild sensor reads. */
 export type JudgeAdviceFacts = Pick<RebuildAdvicePacket, "runId" | "judge">;
 
@@ -22,7 +18,7 @@ export type JudgeAdviceFacts = Pick<RebuildAdvicePacket, "runId" | "judge">;
  *  cases and at least a fifth of the verified battery. It is kept for one purpose, to count how
  *  often the shape it once blocked on actually occurs. */
 export function atFormerBlockThreshold(exit: JudgeReviewsResult["exit"]): boolean {
-  return exit.kind === "advisory" && exit.verifierFailJudgePass >= Math.max(3, Math.ceil(exit.verified / 5));
+  return exit.kind === "advisory" && exit.cases["disputed-pass"] >= Math.max(3, Math.ceil(exit.verified / 5));
 }
 
 /** A complete review in which the Judge passed every case the verifier failed and disputed none it
@@ -31,11 +27,10 @@ export function atFormerBlockThreshold(exit: JudgeReviewsResult["exit"]): boolea
 export function judgePassedEveryReviewedCase(judges: JudgeReviewFacts, verifiedFails: number): boolean {
   const { exit } = judges;
   return (
-    judges.census !== null &&
-    judges.provisional === null &&
+    judges.outcome.kind === "read" &&
     verifiedFails >= 1 &&
-    exit.verifierFailJudgePass === verifiedFails &&
-    exit.verifierPassJudgeFail === 0
+    exit.cases["disputed-pass"] === verifiedFails &&
+    exit.cases.veto + exit.cases["unconfirmed-fail"] === 0
   );
 }
 
@@ -50,7 +45,7 @@ export function safeguardJudgeReview(
   if (atFormerBlockThreshold(exit)) {
     safeguardTriggered(
       "48-judge-disagreement-at-former-block-threshold",
-      `${where}: the Judge passed ${exit.verifierFailJudgePass} of ${exit.verified} verified cases the verifier failed, at or above the max(3, 20%) floor that blocked before 2026-09-14; it is advice now and blocks nothing`,
+      `${where}: the Judge passed ${exit.cases["disputed-pass"]} verified cases the verifier failed, at or above max(3, 20%) of the ${exit.verified} verified cases, the floor that blocked before 2026-09-14; it is advice now and blocks nothing`,
       context,
     );
   }

@@ -44,14 +44,14 @@ The own conditions are ordinary `bun run fullrun` launches, one one-line prompt,
 `system-path-simulation` stager under its named condition (`opus`, `fable`, `sol`).
 
 A cross condition seeds the adopted bundle and battery, changing only the Built pin. Use
-`--product-policy fixed --max-iterations 1`: the policy permits measure or stop and refuses
-build, rebuild and climb before provider work. Keep the Builder pin equal to the seed's so no
-epoch is superseded.
-The climb readout admits batteries by backend pin, so the cross
-battery never enters its own condition's difficulty history and never pollutes a claim; it stays a recorded battery
-under `domains/<slug>/runs/<runId>` for this reader to join. When the stager cannot yet express
-per-slot pins for a seeded condition, say so and name that stager change before proposing another
-route; do not hand-edit `.harness/backends` inside a live condition.
+`--product-policy fixed --max-iterations 1`: the policy permits measure or stop and refuses build
+and rebuild, the moves that change the product or its battery, before provider work
+(`fixedProductBoundary`, `src/run/fixed-product-policy.ts`). Keep the Builder pin equal to the
+seed's so no epoch is superseded. The climb readout admits batteries by backend pin, so the cross
+battery never enters its own condition's difficulty history and never pollutes a claim; it stays a
+recorded battery under `domains/<slug>/runs/<runId>` for this reader to join. When the stager cannot
+yet express per-slot pins for a seeded condition, say so and name that stager change before
+proposing another route; do not hand-edit `.harness/backends` inside a live condition.
 
 Two rules from AGENTS.md hold unchanged: every condition reads its own condition from its controller
 opening before battery spend, and a mixed opening is its own condition, not either standard one.
@@ -82,9 +82,9 @@ more than one. The first condition is the reference. The script prints:
   bundle moved too, so a difference has two candidate causes) or `not-comparable`. These labels
   compare the recorded hashes this helper reads. Check source, isolation and resource conditions
   separately before claiming that only the model pin changed.
-- **Census per condition:** verified, passed, capability rate with its Wilson interval at the
-  registered reporting z, unaccepted, non-result with kinds, mean turns, mean tool calls and
-  solver errors. Capability rate is passed over verified. The difficulty denominator is verified
+- **Census per condition:** verified, passed, capability rate with its Wilson interval at
+  `REPORTING_Z` (`src/claim/estimation.ts`), unaccepted, non-result with kinds, mean turns, mean
+  tool calls and solver errors. Capability rate is passed over verified. The difficulty denominator is verified
   plus unaccepted once at least one case is verified; an entirely unaccepted battery has no
   difficulty evidence. Non-results leave both.
 - **Families:** passed over verified per family and condition, with unaccepted and non-result beside

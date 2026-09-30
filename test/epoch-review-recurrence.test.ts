@@ -16,13 +16,13 @@ import type { JsonValue } from "../src/meta/json-shape.ts";
 import { publicEpochReview } from "../src/review/epoch-review-public.ts";
 import {
   EPOCH_REVIEW_SCHEMA,
-  conditionAlreadyReviewed,
   measuredConditionOf,
   recordFindingTool,
+  reviewOfCondition,
 } from "../src/review/epoch-review-findings.ts";
 import type { MeasuredCondition } from "../src/review/epoch-review-findings.ts";
 
-type ReviewerIdentity = Parameters<typeof conditionAlreadyReviewed>[2];
+type ReviewerIdentity = Parameters<typeof reviewOfCondition>[2];
 
 /** What the finding tool answers when it records a defect at each admitted severity. */
 const ADVISORY = "recorded defect as advisory";
@@ -62,7 +62,7 @@ describe("a condition is reviewed once", () => {
   test("a completed review of the same condition, by the same reviewer, is not bought twice", () => {
     const root = dir();
     write(root, "r1", { status: "completed", condition: condition("t1") });
-    expect(conditionAlreadyReviewed(root, condition("t1"), REVIEW_IDENTITY)).toBe(true);
+    expect(reviewOfCondition(root, condition("t1"), REVIEW_IDENTITY)?.condition).toEqual(condition("t1"));
   });
 
   const unknownVerifier = measuredConditionOf({ ...condition("t1"), verifierIdentity: null });
@@ -113,11 +113,11 @@ describe("a condition is reviewed once", () => {
   ])("a completed review is not reused for %s", (_label, body, asked, identity) => {
     const root = dir();
     write(root, "r1", { status: "completed", condition: condition("t1"), ...body });
-    expect(conditionAlreadyReviewed(root, asked, identity)).toBe(false);
+    expect(reviewOfCondition(root, asked, identity)).toBeUndefined();
   });
 
   test("no analysis directory yet is not coverage", () => {
-    expect(conditionAlreadyReviewed(join(dir(), "absent"), condition("t1"), REVIEW_IDENTITY)).toBe(false);
+    expect(reviewOfCondition(join(dir(), "absent"), condition("t1"), REVIEW_IDENTITY)).toBeUndefined();
   });
 
   test("a review under another prompt or policy is not reused for the same measured condition", () => {
@@ -127,7 +127,7 @@ describe("a condition is reviewed once", () => {
       status: "completed",
       condition: { ...current, digest: "earlier-prompt-and-policy" },
     });
-    expect(conditionAlreadyReviewed(root, current, REVIEW_IDENTITY)).toBe(false);
+    expect(reviewOfCondition(root, current, REVIEW_IDENTITY)).toBeUndefined();
   });
 
   test("every owner is held to one demonstration rule, and an unrelated probe moves no severity", async () => {

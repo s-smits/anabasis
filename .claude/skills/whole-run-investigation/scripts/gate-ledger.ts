@@ -459,6 +459,7 @@ export const DELIBERATELY_UNLEDGERED = new Map<string, string>([
     "brief-artifact-field-unaddressable",
     "brief-check-artifact-root-undeclared",
     "brief-check-join-undeclared",
+    "brief-check-only-tool-unrequired",
     "brief-check-path-invalid",
     "brief-decision-undeclared-field",
     "brief-design-rule-constant-name-empty",
@@ -511,6 +512,10 @@ export const DELIBERATELY_UNLEDGERED = new Map<string, string>([
   ["generated-execution-unclassified", BOUNDARY],
   ["missing-bundle-file", "bundle assembly: a required file is absent, so nothing downstream can run"],
   ["vendor-shadowed", "census gate: a vendored path the toolchain shadows, a host-layout fact"],
+  [
+    "agent-copies-check-code",
+    "bundle advisory: a solver tool carries a check's own module byte for byte; shown in readiness and never refuses a candidate",
+  ],
   [
     "operating-guide-unreachable-path",
     "bundle advisory: shown in readiness and never refuses a candidate, so it holds nothing up",

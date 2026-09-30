@@ -25,6 +25,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from "../meta/filesystem.ts";
+import { dlopen, FFIType } from "bun:ffi";
 import { relocateToolLauncher } from "./toolchain-relocation.ts";
 import { type SafeguardContext, safeguardTriggered } from "../meta/safeguard.ts";
 import { hostTool } from "../meta/host-tool.ts";
@@ -62,6 +63,9 @@ export const WORKSPACE_BUN_LINK = `${WORKSPACE_TOOL_TREE}/bun`;
 
 const PI_STARTER_PACK = new URL("../../starters/pi-built-harness", import.meta.url);
 const COMMIT_ID = /^[0-9a-f]{40}$/;
+/** clonefile(2)'s flag that clones a link rather than what it names. */
+const CLONE_NOFOLLOW = 1;
+const CLONEFILE = { clonefile: { args: [FFIType.ptr, FFIType.ptr, FFIType.u32], returns: FFIType.i32 } };
 
 /** The head before and after a commit, and the paths it changed; empty when nothing changed. */
 export type WorkspaceChange = {
@@ -164,6 +168,19 @@ function seededToolsNote(
   return `seeding copied the adopted product's .toolchain into this workspace, where it is yours to edit (${moved}).${left}`;
 }
 
+/** One clonefile(2) clones a whole hierarchy in the kernel, links verbatim: 4 s for the 111,762
+ *  entries of a firmware toolchain whose per-file clone through cpSync took 37 s, and whose rebuild
+ *  copies recorded 61 to 704 s on a loaded host (2026-09-30). A refusal (another volume, another
+ *  platform) clears whatever it left under the fresh `copy` path and takes the per-file copy. */
+function cloneTree(source: string, copy: string): void {
+  // Buffers rather than `ptr` addresses, so each stays reachable until the call returns.
+  const path = (name: string) => Buffer.from(`${name}\0`);
+  const libc = runtimeProcess.platform === "darwin" ? dlopen("/usr/lib/libSystem.B.dylib", CLONEFILE) : null;
+  if (libc?.symbols.clonefile(path(source), path(copy), CLONE_NOFOLLOW) === 0) return;
+  rmSync(copy, { recursive: true, force: true });
+  cpSync(source, copy, { recursive: true, mode: constants.COPYFILE_FICLONE, verbatimSymlinks: true });
+}
+
 /** A repair owns its own tool installs and HOME caches, while the adopted tree it was seeded from
  *  stays read-only, so the linked seed tree is replaced by a writable copy. The copy is made before
  *  the link is replaced, which means a failed copy leaves the seed in place for a retry rather than
@@ -194,7 +211,7 @@ function copySeedToolTree(dir: string, safeguard?: SafeguardContext): string | n
     // reached through a linked ancestor (a run worktree's `campaigns` link, say) is denied inside
     // the wall and Python starts with no stdlib. `path` stays the handle for the file operations.
     const destination = join(realpathSync.native(dir), WORKSPACE_TOOL_TREE);
-    cpSync(source, copy, { recursive: true, mode: constants.COPYFILE_FICLONE, verbatimSymlinks: true });
+    cloneTree(source, copy);
     // Relative links already name the copied packages. Absolute internal links must move too,
     // while external runtime links keep their targets. A linked directory is never walked, because
     // walking one would lead straight back into the seed.

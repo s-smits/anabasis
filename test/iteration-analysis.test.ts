@@ -294,6 +294,36 @@ describe("controller admission", () => {
     expect(evidence.feedback.map((f) => [f.owner, f.severity])).toEqual([[TASKS_FILE, "advisory"]]);
   });
 
+  // A finding a bundle file holds reached the Builder as a new one every round it recurred: one on
+  // correctness-model/brief.json's wiring-behavior check was admitted twelve batteries running in
+  // firmware campaign 9c0c68b1-20, and 48 of 171 routed findings in the local admissions named the
+  // owner and subject of the battery before. The owner and the subject it names are the key.
+  it("counts a routed finding that recurs on the same owner and subject", () => {
+    const root = repo();
+    const brief = "correctness-model/brief.json";
+    const wiring = (claim: string) =>
+      finding({ owner: brief, defect: true }, { checkId: "wiring-behavior", claim });
+    const first = admitFindings(root, packet(), [wiring("the wiring rule is unpublished")]);
+    expect(first.feedback[0]?.repeated).toBeUndefined();
+    const other = finding({ owner: brief, defect: true }, { checkId: "pin-budget" });
+    const second = admitFindings(root, packet(), [wiring("reworded"), other], {
+      runId: "r1",
+      feedback: first.feedback,
+    });
+    expect(second.feedback.map((row) => row.repeated)).toEqual([{ count: 2, since: "r1" }, undefined]);
+    const third = admitFindings(root, packet(), [wiring("reworded again")], {
+      runId: "r2",
+      feedback: second.feedback,
+    });
+    expect(third.feedback[0]?.repeated).toEqual({ count: 3, since: "r1" });
+    // A finding naming no subject has no key, so two of them are not one finding recurring.
+    const bare = finding({ owner: brief, defect: true });
+    const before = admitFindings(root, packet(), [bare]);
+    expect(
+      admitFindings(root, packet(), [bare], { runId: "r3", feedback: before.feedback }).feedback[0]?.repeated,
+    ).toBeUndefined();
+  });
+
   it("carries a controller-marked findings packet the author prompt can render", () => {
     const root = repo();
     const evidence = admitFindings(root, packet(), [

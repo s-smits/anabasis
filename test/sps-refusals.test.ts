@@ -44,6 +44,17 @@ const settle = () => [
 
 /** [script, argv, the one-line refusal it must print]. */
 const ROWS: [string, () => string[], string][] = [
+  [
+    "condition-evidence",
+    () => ["--campaign", "campaigns/demo", "--out", scratch],
+    "--campaign must be an absolute path",
+  ],
+  [
+    "condition-evidence",
+    () => ["--campaign", scratch, "--out", join(scratch, "evidence"), "--follow", "0"],
+    "--follow takes a whole number of seconds, at least 1",
+  ],
+  ["credential-use", () => ["--root", "checkout"], "--root must be an absolute path"],
   ["difficulty-watch", () => ["--campaign", "campaigns/demo"], "--campaign must be an absolute path"],
   ["difficulty-watch", () => ["--campaign", join(scratch, "nope")], "does not exist"],
   [
@@ -110,8 +121,25 @@ const ROWS: [string, () => string[], string][] = [
     () => ["--from-root", scratch, "--slug", "s"],
     "--into-root (clone) or --as-slug (republish) is required",
   ],
+  [
+    "seed-campaign",
+    () => ["--from-root", scratch, "--slug", "s", "--as-slug", "t", "--tool-tree", join(scratch, "swept")],
+    "swept does not exist",
+  ],
+  [
+    "seed-campaign",
+    () => ["--from-root", scratch, "--slug", "s", "--into-root", join(scratch, "i"), "--tool-tree", scratch],
+    "--tool-tree needs --as-slug",
+  ],
   ["seed-kickoff", () => ["--prompt-file", "prompt.txt"], "--prompt-file must be an absolute path"],
   ["show-prompt-surfaces", () => [], "pass --surface system or built"],
+  ["tool-tree", () => ["--campaign", "campaigns/demo"], "--campaign must be an absolute path"],
+  ["tool-tree", () => ["--campaign", join(scratch, "campaigns", "absent")], "absent does not exist"],
+  [
+    "tool-tree",
+    () => ["--campaign", scratch, "--search", "campaigns"],
+    "--search must be an absolute path: campaigns",
+  ],
   ["workspace-changes", () => [], "expected 1 positional argument"],
 ];
 

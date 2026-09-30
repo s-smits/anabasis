@@ -52,21 +52,20 @@ it enforces as `citedDecisionIds` (an undeclared id, or only private ones, is re
   present task publishes the same number: it grades today's battery correctly and silently forbids
   the next one from varying that input. Declaring the path in `publicInputPaths` does not do it;
   the code that decides has to read it.
-- A check certifying behaviour on a named resource, such as a pin, a member or a channel, decides
-  from the values the answer produces for that resource: a simulated trace of that pin, the
-  register writes the build emits for it, the force computed in that member. A library symbol or a
-  constant found anywhere in the build proves the answer mentions the resource, not that it
-  behaves, and an answer driving the wrong pin carries the same symbols.
-- An identifier a check reads, such as a load case, a member or a pin, is bound to what it names
-  in the public input: the check finds that geometry or scenario in the task and matches the
-  answer's rows to it, so an answer that relabels its members or cases cannot pass on the labels.
+- A check certifying behaviour on a named resource decides from the values the answer produces for
+  that resource, observed or computed where it acts. A symbol or a constant found anywhere in the
+  answer proves the answer mentions the resource, not that it behaves, and an answer acting on the
+  wrong resource carries the same symbols.
+- An identifier a check reads is bound to what it names in the public input: the check finds that
+  entity or scenario in the task and matches the answer's rows to it, so an answer that relabels
+  its entities or cases cannot pass on the labels.
 - Where the request names several targets, observe that behaviour on each one an established public
   simulator runs, not only the first. A named target nothing can run is an omission: say so in a
   `decisions` row, because a build that merely compiles for it proves no behaviour there.
 - Each behavioural obligation names, in a `decisions` row, what observes it: the real compiler for
-  building, a simulator or model validated against the target for behaviour (for a microcontroller,
-  one the field already uses, such as avr8js or rp2040js, built and smoke-tested through
-  `verifier_workshop`), or "not established" where nothing does. An obligation a stand-in of your
+  building, a simulator or model the field already uses and validates against the target for
+  behaviour, built and smoke-tested through `verifier_workshop`, or "not established" where
+  nothing does. An obligation a stand-in of your
   own decides is observed by that stand-in, and the row says so.
 - A check comparing what the answer reports about itself with what it is, such as reported sizes
   against measured ones, enforces no rule of the field: an honest answer and a wrong one pass it
@@ -106,9 +105,9 @@ it. The host runs every reference answer through the same checks as controls and
   verification. `designRuleConstants` rows are `{name, value, unit?, authority, citation}`, and
   optional `designRuleSets` rows `{name, values, unit?, authority, citation}` publish a permitted
   list.
-- Where the schema carries values a check also computes, the tool preparing the answer fills them
-  from that same computation: a second one drifts from the model it describes, and the margin the
-  solver is shown is then measured on the wrong number.
+- Where the schema carries values a check also computes, the check recomputes them from the answer
+  and never reads the reported copy. The reported copy is the solver's own figure, which the writer
+  records as given, so the margin the solver is shown is measured on the number it computed.
 - The solver's `read_public_resources` returns check assertions with their public input paths,
   public `ruleDecisions`, the `artifactSchema` rows, `designRuleConstants` and `designRuleSets`.
   `decisions`, `gates`, `joins`, private rows and check ids never reach it: a rule stated only
@@ -168,10 +167,7 @@ there; one under TMPDIR is rebuilt on every run.
   answer with one identifier it declares renamed, and one value it writes out replaced by the name
   the target predefines for it: the real toolchain gives both the same verdict, so the stand-in
   must too. An answer the real toolchain builds and runs correctly that the stand-in cannot build
-  is the stand-in's defect. The recorded shape is a host double of the Arduino headers that fixed a
-  display's width at 128, left out `constrain`, declared `min` for one argument type only and
-  compiled the sketch's globals into its own driver's translation unit: each defect failed a sketch
-  the board's own toolchain builds and runs.
+  is the stand-in's defect.
 - Declare `hidden: "required"` to receive private cases; the host binds that row to this check
   and records its digest with the tool inputs. Private cases test the published rule within its
   public domain; a published finite answer table cannot establish an unrestricted behaviour rule.
@@ -181,9 +177,12 @@ there; one under TMPDIR is rebuilt on every run.
 Install every tool with its cores, packages and data under `.toolchain`, and make it find them
 there through a wrapper in `.toolchain/bin` or its config file: each solve case starts in a fresh
 private home, so data living only there is fetched again in every case. Programs in
-`.toolchain/bin` run by name in the solver's shell too, which lists them. Required tools may also
-resolve on the host PATH. Exercise the selected command with its real dependencies through
-`correctness_check`; an alternate interpreter proves another condition.
+`.toolchain/bin` run by name in the solver's shell too, which lists them. Name a `.toolchain`
+program that only a check runs in the brief's top-level `checkOnlyTools`, and the solver's shell can
+then neither run nor read it; what the solver builds or computes with stays on its shell by default,
+even when a check also runs it. Required tools may also resolve on the host PATH. Exercise the
+selected command with its real dependencies through `correctness_check`; an alternate interpreter
+proves another condition.
 
 Optional `numbersWithin`, `multisetMatches` and `relationalJoin` helpers come from
 `@ana/correctness-model-prims`; use public units and tolerances.
@@ -249,18 +248,24 @@ placeholder is missing evidence.
 - Every public requirement the agent must act on stays reachable through the public task, a
   reader, a public method or a draft-derived adviser, and the system prompt's rules on what a
   tool may claim, add and withhold bind every tool here.
-- An adviser computes what it returns by the rule its check applies, with every constant, iteration
-  count and procedure the public task determines. Approximating a rule you could compute is a
-  defect no disclaimer cures: the solver optimises against the number returned, so an adviser
-  answering a second-order limit to first order sends every solver over it. Where the public input
-  leaves an effect open, name it and its direction in the returned text. A fast screening adviser
-  beside a slow exact one is fine; generated tools cannot start processes.
+- An adviser computes what it returns exactly, with every constant, iteration count and procedure
+  the public task determines. Approximating a quantity you could compute is a defect no disclaimer
+  cures: the solver optimises against the number returned, so an adviser answering a second-order
+  effect to first order sends every solver over the limit. Where the public input leaves an effect
+  open, name it and its direction in the returned text. A fast screening adviser beside a slow exact
+  one is fine; generated tools cannot start processes.
+- An adviser never analyses a candidate the way a check does: it imports and copies nothing from
+  `correctness-model/`, and it returns neither a check's verdict nor the response a check decides
+  from. What a candidate is — its layout, its counts, its totals — an adviser may compute; how it
+  behaves under the task's loads, scenarios or data is the solver's analysis. The operating guide
+  holds the same line: it names no command that runs a check's instrument the way the check runs
+  it.
 
 ```json
 {
   "presets": ["shell"],
   "tools": [
-    {"name": "list_staff", "kind": "reader", "description": "Lists this task's staff and shifts with their qualifications."},
+    {"name": "list_staff", "kind": "reader", "description": "Lists this task's staff with qualifications, hourly rates and contract hours, its shifts with times, the minimum rest and the wage budget."},
     {"name": "record_assignments", "kind": "artifact-writer", "description": "Writes the chosen staff-to-shift assignments into the draft artifact."}
   ]
 }
@@ -289,15 +294,15 @@ import { type DomainHarnessFactory, defineDraftTool } from "@ana/agent-bundle";
 import { Type } from "@earendil-works/pi-ai";
 
 export const createDomainHarness: DomainHarnessFactory = (task) => {
-  const input = task.publicInput as { staff: Array<{ id: string; qualification: string }> };
+  const input = task.publicInput as { staff: unknown[]; shifts: unknown[]; minRestHours: number; wageBudget: number };
   return {
     tools: [
       defineDraftTool({
         name: "list_staff",
         label: "List staff",
-        description: "Lists this task's staff and shifts with their qualifications.",
+        description: "Lists this task's staff with qualifications, hourly rates and contract hours, its shifts with times, the minimum rest and the wage budget.",
         parameters: Type.Object({}),
-        run: () => ({ text: JSON.stringify(input.staff) }),
+        run: () => ({ text: JSON.stringify(input) }),
       }),
       defineDraftTool({
         name: "record_assignments",
@@ -338,9 +343,9 @@ libraries a search needs as a program in `.toolchain/bin`.
 
 ## Workflow
 
-Use `list_staff` for the staff and shift qualifications before assigning anyone.
-`record_assignments` writes the chosen assignments into the draft; it does not check that every
-shift is covered.
+Use `list_staff` for the staff, shifts, minimum rest and wage budget before assigning anyone.
+`record_assignments` writes the chosen assignments into the draft; it checks neither cover, rest,
+contract hours nor cost.
 
 ## Completion
 

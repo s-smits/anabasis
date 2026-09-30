@@ -2,6 +2,9 @@
 // generated source, including direct contracts.ts callers that do not enter through falsify.ts.
 import { join, relative } from "../meta/path.ts";
 import { sha256 } from "../meta/digest.ts";
+import { parseJsonAs } from "../meta/json-runtime.ts";
+import { capturedExecPath } from "../meta/process.ts";
+import { CAPTURE_MAX_BYTES, runTextSyncOrThrow } from "../meta/subprocess.ts";
 import { controllerValidatedFindings, type ContractFinding } from "./brief.ts";
 import * as ts from "typescript5";
 import { EVALUATOR_FILE, GENERATED_TOOLS_FILE } from "../meta/bundle-layout.ts";
@@ -49,14 +52,19 @@ const PROBE_COMPILER_OPTIONS: ts.CompilerOptions = {
 };
 
 /**
- * One shared parsed-SourceFile cache across probe programs. A cold ts.createProgram re-parses the
- * language libs and vendored-package typings on every call, which dominates the control probe's
- * wall time at roughly 2 to 3 seconds per program. Files inside the generated slug tree are
- * never cached: they are exactly the bytes an authoring attempt rewrites, so they always parse
- * fresh. Everything else (libs, vendored typings) is process-stable; the cache key carries size
- * and mtime so an edited dependency invalidates its own entry instead of serving stale syntax.
+ * The compiler runs in a process of its own (`generated-module-typecheck-child.ts`), which exits
+ * with every syntax tree and type it made. The agent program parses every declaration file the
+ * agent packages reach, and a controller that kept those trees for the next gate held them for the
+ * rest of the run, besides what each check allocates while it runs. A child parses them again on
+ * every check, which costs a second or two more than a warm cache.
  */
-const probeSourceCache = new Map<string, ts.SourceFile>();
+const CHILD_ENTRY = Bun.fileURLToPath(new URL("./generated-module-typecheck-child.ts", import.meta.url));
+/** A wedged compiler is the one thing this bounds; a loaded host has taken a minute over a check. */
+const CHILD_TIMEOUT_MS = 10 * 60_000;
+/** JavaScriptCore sizes its heap from the host's RAM, so on a large host the checker grows well
+ *  past what it holds live before it collects. Told 512 MB it stays near its live size at a small
+ *  cost in time; a lower figure saves nothing more, because the checker holds that much live. */
+const CHILD_ENV = { BUN_JSC_forceRAMSize: String(512 * 1024 * 1024) };
 
 /**
  * One answer the compiler host gave about a path inside the generated tree, keyed by the path
@@ -123,24 +131,13 @@ function createProbeCompilerHost(slugDir: string, probes: Map<string, Probe>): t
     };
   }
   host.getSourceFile = (fileName, languageVersionOrOptions, onError, shouldCreate) => {
-    if (shouldCreate === true) {
-      return base.getSourceFile(fileName, languageVersionOrOptions, onError, shouldCreate);
-    }
     const path = slash(fileName);
-    // Generated files are read through host.readFile above, which records their bytes.
-    if (path.startsWith(root) && !path.includes("/node_modules/")) {
-      return base.getSourceFile(fileName, languageVersionOrOptions, onError);
+    // Generated files are read through host.readFile above, which records their bytes; a package
+    // the tree carries is recorded by its size and time.
+    if (shouldCreate !== true && (!path.startsWith(root) || path.includes("/node_modules/"))) {
+      note("stable", fileName, stableAnswer(fileName));
     }
-    note("stable", fileName, stableAnswer(fileName));
-    const key = `${path}@${stableAnswer(fileName)}`;
-    const cached = probeSourceCache.get(key);
-    if (cached !== undefined) return cached;
-    const sourceFile = base.getSourceFile(fileName, languageVersionOrOptions, onError);
-    if (sourceFile !== undefined) {
-      if (probeSourceCache.size >= 5_000) probeSourceCache.clear();
-      probeSourceCache.set(key, sourceFile);
-    }
-    return sourceFile;
+    return base.getSourceFile(fileName, languageVersionOrOptions, onError, shouldCreate);
   };
   return host;
 }
@@ -196,13 +193,25 @@ export function typecheckGeneratedModule(
     verdict.probes.every((probe) => currentAnswer(probeHost, root, probe) === probe.answer),
   );
   if (cached !== undefined) return [...cached.findings];
-  const probes = new Map<string, Probe>();
-  const findings = typecheck(slugDir, bundle, createProbeCompilerHost(slugDir, probes));
+  const verdict = parseJsonAs<CachedVerdict>(
+    runTextSyncOrThrow([capturedExecPath, "--no-env-file", CHILD_ENTRY, slugDir, bundle], {
+      env: CHILD_ENV,
+      timeout: CHILD_TIMEOUT_MS,
+      maxBuffer: CAPTURE_MAX_BYTES,
+    }),
+  );
   const verdicts = VERDICTS_BY_BUNDLE.get(bundle) ?? [];
-  verdicts.unshift({ probes: [...probes.values()], findings });
+  verdicts.unshift(verdict);
   if (verdicts.length > CACHED_VERDICTS) verdicts.pop();
   VERDICTS_BY_BUNDLE.set(bundle, verdicts);
-  return [...findings];
+  return [...verdict.findings];
+}
+
+/** One typecheck with the answers its compiler host gave, as the child reports them. */
+export function probeTypecheck(slugDir: string, bundle: "agent" | "correctness-model"): CachedVerdict {
+  const probes = new Map<string, Probe>();
+  const findings = typecheck(slugDir, bundle, createProbeCompilerHost(slugDir, probes));
+  return { probes: [...probes.values()], findings };
 }
 
 function typecheck(

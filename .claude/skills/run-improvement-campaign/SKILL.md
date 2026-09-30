@@ -1,20 +1,31 @@
 ---
 name: run-improvement-campaign
-description: "Run the improvement loop: choose one change, prove its path, freeze a prediction, launch, read recorded bytes, decide the next move. Owns experiment selection and evidence reading; the product controller owns build, measure, climb, rebuild, claim and promotion. Also the Super Loop's Meta Agent: a second session that audits and steers the session driving the loop so it keeps moving (references/meta-agent.md)."
+description: "Run the improvement loop: find the one link holding the climb, choose one change against it, prove its path, freeze a prediction, launch, read recorded bytes, decide the next move. Owns experiment selection and evidence reading; the product controller owns build, measure, climb, rebuild, claim and promotion. Also the Super Loop's Meta Agent: a second session that audits and steers the session driving the loop so it keeps moving (references/meta-agent.md)."
 ---
 
 # Run improvement campaign
 
-The loop is **choose → prove → predict → launch → watch → assess → decide**. It exists to answer
-one question at a time about the product, and its only currency is recorded bytes. This skill
-selects experiments and reads their evidence. It never repairs controller output, never
-hand-writes a bundle, and never lets a model's prose stand in for a receipt.
+The loop is **diagnose → choose → prove → predict → launch → watch → assess → decide**. It exists to
+answer one question at a time about the product, and its only currency is recorded bytes. This skill
+selects experiments and reads their evidence. It never repairs controller output, never hand-writes
+a bundle, and never lets a model's prose stand in for a receipt.
+
+Its organising move is lifting the binding constraint. A flat climb is held at one link of the
+chain a round runs through, and there are always more faults in view than links holding the line.
+The Super Loop finds the one link holding the climb back, lifts it with one change, confirms from
+recorded bytes that the line moved, and goes to find the next. [The climb
+reference](../whole-run-investigation/references/climb.md#find-the-binding-constraint) finds the
+link; §1 to §4 aim one change and one prediction at it; §5 and §6 read whether the link moved and
+whether the line followed; §7 sends the loop back to walk again, and the constraint ledger (§6)
+carries each answer to the next pass. A pass that cannot name the constraint it attacked has not
+been a pass of the Super Loop.
 
 ## Resume the actual campaign
 
-Read the local `notes/current-state.md` (ignored, never published) and the handover it links. Recover the newest operator instruction,
-published heads, live controllers, frozen predictions and outstanding proof. The operator's latest
-domain, model and refactor choices override anything older, including this file.
+Read the local `notes/current-state.md` (ignored, never published) and the handover it links.
+Recover the newest operator instruction, published heads, live controllers, frozen predictions and
+outstanding proof. The operator's latest domain, model and refactor choices override anything
+older, including this file.
 
 A continuing instruction authorises replacements inside its scope; do not ask again each cycle.
 Buying credits, changing accounts, stopping live runs and adding components need their own
@@ -26,6 +37,21 @@ launching. Close a terminal and its owned processes before replacing that slot; 
 Paired replicas keep identical source, prompts, efforts and budgets, and each result is reported
 before any aggregate. Older runs finish on their frozen source; never rebase a live run tree.
 
+The operator's cadence is a pass every 4 to 6 hours with one firmware run kept going (2026-09-30).
+Firmware is the primary domain because a truss battery spends hours in solver time and so teaches
+slowly. The pass runs as a session cron over the local `notes/super-loop-pass.md`; a session cron
+dies with its session and expires after seven days, so the handover names the cron, its next
+firing and the file it runs.
+
+**Read from the newest tree.** Read this skill, and run every reader it names, from whichever of
+main and the published stack top contains the other's changes to what you are reading. A reader
+older than the records it reads refuses them or goes quiet. On 2026-09-18 the watch from a stack
+92 commits behind main printed no climb row for a campaign holding three. On 2026-09-30, with the
+stack ahead, main's `wri.ts` refused `diagnosis-reading/v5` and aborted seven of eight reads. **A
+reader that returns `null`, an empty list or a schema refusal is a missing producer in the tree
+you ran it from, not an absent signal**: re-run it from the other tree before concluding anything.
+The pulse is the operator's own look and runs in the main checkout (§5).
+
 Keep `notes/current-state.md` under 150 nonblank lines. Compress prose before deleting a fact, and
 delete the paragraph explaining why the file is long before anything that names a head or a count.
 
@@ -35,6 +61,27 @@ Choose from a recorded failure, wasted work or an unresolved decision — not fr
 what looks fragile. Name the owner and the falsifier before writing code. Read the producer, its
 consumers and the existing tests before adding a mechanism; most of the time the mechanism you
 need already exists with one caller hardcoded to the only case anyone needed so far.
+
+Start from the current row of `notes/binding-constraints.md` (§6). Every choice names the link it
+attacks, in the words of the climb reference's chain, and the owner of the bytes that would move
+it. After two batteries miss the band the same way, or a prediction comes back `refuted`, walk the
+chain again before choosing instead of trying the next idea on the old constraint. While a capping
+link holds, choose it first; the climb reference says which links cap the line, and a change whose
+effect has to pass a live cap is spent on nothing. Aiming at a link other than the ledger's current
+constraint needs a fresh walk, recorded in the ledger, that moved the constraint there.
+
+A constraint holds where its mechanism exists, so its ledger row names the domains it covers. The
+walk of 2026-09-30 found limits within about 2% of a reference the Builder had found in minutes.
+That witness ceiling looked like the link in the optimisation domains (truss, reserve, buffer),
+where a longer search finds a better answer, and its experiment came back held (AGENTS.md prior 10).
+Firmware and conformer are
+conformance domains with no numeric optimum to search, and the same day's six-domain read put their
+link at task demand and round length. So in every domain read that day the link is what the tasks
+demand, not where their limits sit.
+Behind both sits F2. A task is admitted only with a reference the Builder solved inside its own
+round, so no task is harder than that round can solve. The Judge never sees the reference
+(AGENTS.md, "Judges advise; the verifier decides"), so a reference's quality reaches the score only
+through the limits and checks set from it.
 
 Prefer, in order: delete the competing owner, reuse the existing one, then add the minimum. Apply
 `simplify` to each improvement in the same commit. A frozen size in `tools/loc/source-policy.json`
@@ -47,52 +94,55 @@ tested. Before settling a mechanism others have studied, such as a judge, an abs
 verifier split or a search budget, spend one bounded check of about twenty minutes. Quote what
 each opened source says, and list its alternatives as considered or as the next experiment. Reopen
 a citation carried forward from code or a note before relying on it. The Judge round-2 rewrite of
-2026-09-30 was right on its data. Yet it carried a comment citing a table for a claim the table
-does not make, and it left two published alternatives unrecorded: a reference answer the Judge
-generates in a separate call (MT-Bench, Table 4: 3 of 20 failures against 14 of 20 without one),
-and abstention decided by a calibrated external confidence rather than the Judge's own verdict
-(Trust or Escalate).
+2026-09-30 was right on its data, but it cited a table for a claim the table does not make. It
+also left two published alternatives unrecorded:
+- a reference answer the Judge generates in a separate call (MT-Bench, Table 4: 3 of 20 failures
+  against 14 of 20 without one);
+- abstention decided by a calibrated external confidence rather than the Judge's own verdict
+  (Trust or Escalate).
 
-Two failure shapes are worth naming because both have cost whole rounds here:
+When the experiment is a removal, it goes under the ablation convention (AGENTS.md "Ablated
+components"). The pass that reads its runs either strips it as if it was never there or restores
+it. It never stays marked without a date to read it again.
+
+Two failure shapes have each cost whole rounds:
 
 - **A gate that cannot fire before the thing it exists to cause.** `experiment-limit-held` refused
-  product changes while a product sat at a measured limit — reachable only after the Builder had
-  already gone harder. It appeared in no recorded campaign across 24 histories. Before adding a
-  refusal, replay it over recorded campaigns and count the rounds on which it would have fired.
-- **A schema bump inside a reader.** Changing the packet shape made `readLatestRebuildAdvice`
-  throw on all 47 recorded campaigns, so every `--project` continuation died in its first analyse
-  step. A reader that meets a foreign schema reports absence; only unreadable bytes throw.
+  product changes while a product sat at a measured limit. It fired on no recorded campaign across
+  24 histories. Before adding a refusal, replay it over recorded campaigns and count the rounds on
+  which it would have fired.
+- **A schema bump inside a reader.** A changed packet shape made `readLatestRebuildAdvice` throw on
+  all 47 recorded campaigns, and every `--project` continuation died in its first analyse step. A
+  reader that meets a foreign schema reports absence; only unreadable bytes throw.
 
-Before choosing, read what the last rounds actually moved. The adopted versions are on disk, so
-"did the product change, or only its battery" costs nothing to answer:
-diffing consecutive `campaigns/<campaign>/versions/` directories names the files that differed
-between consecutive harnesses. Campaign `3fd52f9e-28` adopted four versions
-whose agent bytes, brief and evaluator were byte-identical — four rounds spent on `tasks.json`
-alone, which is a diagnosis no battery score states. When the question is capability rather than
-movement, solve a fixed pack on each distinct harness and grade it through the real verifier, or
-probe a measured tree with `harness-query`. All of it reads a finished run: like any
-verifier detail it is protected from authoring, so a finding enters as your choice of the next
-change and never as text a Builder reads.
+Before choosing, read what the last rounds actually moved. Diffing consecutive
+`campaigns/<campaign>/versions/` directories names the files that changed between harnesses.
+Campaign `3fd52f9e-28` adopted four versions whose agent bytes, brief and evaluator were
+byte-identical: four rounds spent on `tasks.json` alone, which no battery score states. When the
+question is capability rather than movement, solve a fixed pack on each distinct harness through
+the real verifier, or probe a measured tree with `harness-query`. Both read verifier detail, so a
+finding enters as your choice of the next change and never as text a Builder reads.
 
-Batch related corrections under their owner. Repair an open PR **in that PR**; a distinct
-experiment gets its own child. A consolidated fix PR on the stack top hides which change repairs
-which PR. Surrounding files — `.claude/skills/**`, `README.md`, `AGENTS.md` — go
-to main once the operator approves the push, and `notes/**` stays local; a document coupled to unmerged source stays with that source. Skill *scripts*
-are not text-only: they need a focused check before the push.
+Batch related corrections under their owner, with one PR and one gate per batch. Repair an open PR
+**in that PR**; a distinct experiment gets its own child. Surrounding files (`.claude/skills/**`,
+`README.md`, `AGENTS.md`) go to main once the operator approves the push, `notes/**` stays local,
+and a document coupled to unmerged source stays with that source. Skill *scripts* are source: they
+need a focused check before the push. On 18 September eleven same-owner text corrections went out
+as eleven PRs and nineteen gates on a host already carrying a run's six solves, and the contention
+failures they caused had to be triaged apart from two real ones. Before triaging a failing gate,
+record the host load and what else is running.
 
-Batching is not a tidiness preference while a run is live. On 18 September eleven same-owner text
-corrections went out as eleven stacked pull requests and nineteen composed gates, on the host
-already carrying the run's six concurrent solves at load 9 to 26 — which then produced contention
-failures that had to be triaged apart from two real ones. One of the eleven changed a plural.
-Batch to one PR per owner and one gate per batch, and before triaging any failing gate record the
-host load and what else is running, so the tests that condition owns are named before the rest are
-read as defects.
+The pre-push hook takes a new branch only on the one top of the open stack. A peer PR left on an
+old head of its parent keeps the only top below the current stack, and every new PR is refused until
+it is restacked. Message its owner with the exact `git rebase --onto`; do not stack around it or
+rewrite a branch you do not own.
 
 Read the exact bytes you are about to overwrite, from the branch you are about to write to, in the
-same turn as the write. The primary checkout is often on a stale branch while the target is main:
-`git show origin/main:<path>` first. The same day, a survey of a stale tree authorised a rewrite
-that deleted a peer session's work from main along with its recorded reason, found eight minutes
-later by accident.
+same turn as the write, and check whether the other tree changed the same file. On 18 September a
+survey of a stale tree authorised a rewrite that deleted a peer's work from main. On 30 September
+this skill had diverged. Main carried a design-choice paragraph the stack's copy lacked, and the
+stack carried a rewrite main lacked, so a rewrite from either tree alone would have dropped the
+other's.
 
 ## 2. Prove the path before you spend
 
@@ -103,18 +153,31 @@ evidence or why existing evidence suffices. It is a proof choice, not a paid run
 
 The cheapest form has repeatedly been the strongest: a script in the worktree's gitignored
 `.scratch/` that imports the **exported production function** and replays it over every recorded
-campaign on disk. That is what found both failures above, at no provider cost, in minutes. Import
-only exported symbols; if a replay needs a module-private helper, the replay is asking the wrong
-question — find the exported reader whose answer you actually want.
+campaign on disk. That is what found both failure shapes above, at no provider cost, in minutes.
+Import only exported symbols; if a replay needs a module-private helper, it is asking the wrong
+question.
 
 For a defect in model-visible text, render the whole delivered surface from a recorded round's own
-bytes and read the composed result — never diagnose from one producer. The defect that matters is
-one fact stated by several owners, and it is invisible in every producer separately. On 18
-September, rendering `renderRebuildAdvice` over a campaign's own `analysis/rebuild-advice-latest.json`
-confirmed four defects and cleared four false leads that source-reading had suggested; the one fix
-written from source alone added a third owner of a sentence that already had one, passed a full
-composed gate, landed on main and was reverted six minutes later. Render before you gate: a render
-costs seconds and a composed gate costs minutes.
+bytes and read the composed result, never one producer. The defect that matters is one fact stated
+by several owners, invisible in each producer alone. On 18 September a render of
+`renderRebuildAdvice` over a campaign's own advice packet confirmed four defects and cleared four
+false leads from source-reading. The one fix written from source alone added a third owner of a
+sentence, landed on main and was reverted six minutes later. Render before you gate: a render costs
+seconds and a gate minutes.
+
+Then cost the literal reading, and ask three questions of any model-visible instruction: can the
+stack carry it, can a Builder afford it at the battery's size and walls, and does a Builder that
+follows it literally still submit inside its round?
+- **The case.** #89's witness-budget sentence asked for a search "at least as long as the solver
+  may spend solving it". That is 120 minutes a task, or about 50 hours for a 25-task battery,
+  against a median slowest solve of 5.9 minutes. It passed its tests, its gate and a layer walk
+  that asked only the first question.
+- **What it did.** In the simulation of 2026-09-30 the Opus Builder that carried it ran one
+  95-minute blocking search and ended its round with no reference and no submit. The arm without
+  it submitted at 44.9 minutes.
+- **The rule.** An instruction that asks for a search bounds it by the remaining wall and asks for
+  the best answer so far to be kept at each step. The three questions are the session's own check
+  before the push, not a separate review component.
 
 A test double proves only the interface it replaces. For authoring changes, exercise the
 production Builder entry and the current tool contract; for semantic verifier claims, push a
@@ -132,27 +195,31 @@ One row per moved mechanism, frozen **before** the opening:
 ```sh
 bun .claude/skills/run-improvement-campaign/scripts/prediction.ts freeze \
   --run <runId> --source <full-sha> \
-  --claim "<expected observation>" --moved-variable "<change>" \
+  --claim "<expected observation>" --moved-variable "<link>: <change>" \
   --direction up|down|none --falsifier "<recorded observation that refutes it>"
 ```
 
-`--run` names the ledger: `notes/predictions/<runId>.jsonl`, the one file `campaign.ts` reads back,
-and whose open rows hold a closure. Pass `--ledger <path>` only to point somewhere else on purpose.
-Until 2026-09-18 the two sides used different paths, so a run could close reporting no open
-predictions while its frozen rows sat unadjudicated; freeze and closure now resolve one location.
-Runs before that date left 79 rows, 20 of them unadjudicated, in `campaigns/<slug>/predictions.jsonl`
-instead. They stay there — the campaign tree is controller-owned and those runs are long closed.
-Read one with `list --ledger campaigns/<slug>/predictions.jsonl` when an old row matters.
+`--run` names the ledger `notes/predictions/<runId>.jsonl`, the one file `campaign.ts` reads back
+and whose open rows hold a closure. Runs before 2026-09-18 left their rows in
+`campaigns/<slug>/predictions.jsonl`, 20 of 79 unadjudicated; read one with
+`list --ledger <path>` when an old row matters.
 
-Choose the run id yourself (`<preset>-<condition>-<UTC stamp>-<6 hex>`), freeze under it, then
+Choose the run id yourself in the launcher's form (launch-run names it), freeze under it, then
 launch with `--run <id>`. A dry-run's generated ids are not the next invocation's ids. Verify every
 frozen timestamp precedes the actual opening; if that window was missed, say so rather than
 backdating. Include the likely failure boundary; do not invent an expected failure to fill a row.
 
 Write the claim so a recorded count settles it: "at least four iterations before any typed
-terminal", "the next battery's verified count falls by at least three of 25". "Improves" is not a
-prediction. Several changed mechanisms make a composed-system test: it can prove operation, while
-a causal claim needs a controlled replay or a matched comparison.
+terminal", "the next battery's verified count falls by at least three of 25", "at least three of
+the first 8 batteries land between 1/n and n−1/n". "Improves" is not a prediction. Several changed
+mechanisms make a composed-system test: it can prove operation, while a causal claim needs a
+controlled replay or a matched comparison.
+
+At least one row observes the constraint at its own link and not only in the pass rate: the next
+edge label, a `coupled` count, a rehearsal verdict or a placement, whichever that link produces. A
+pass rate can move for reasons the link never saw, and a link that moved under a flat pass rate is
+a result of its own (§6). `prediction.ts` has no field for the link, so name it at the start of
+`--moved-variable` in the climb reference's words.
 
 ## 4. Launch through one owner
 
@@ -164,16 +231,39 @@ Before the command: resolve the latest published stack and prove every child con
 published parent; restack stale edges. Surrounding-only main commits do **not** require a source
 restack — check with a name-only diff rather than assuming. Pass the resolved full SHA through
 `--source`; the omitted default is `origin/main` and does not resolve a stack. Check free disk
-against the floor and that no controller already owns the slot; a loaded launchd service with no
-pid is a finished run, not a live one.
+against the floor and that no controller already owns the slot.
+
+**Launch nothing while the host's one-minute load is above its core count** (`sysctl -n
+vm.loadavg hw.ncpu`). A Builder's checks compile in four or five lanes at once, so every run added
+stretches every run already there. On 2026-09-30 eight firmware runs shared 12 cores at load 35 to
+200, and six live Opus firmware rounds waited on their tools for 79 to 91% of their wall. One
+`correctness_check` took 137 minutes, and eleven firmware epoch reviews ended at their one-hour cap.
+The controller's own share of a check was 3 to 5 minutes; the rest was the checks' compiles, slowed
+by the load. Under that load every arm is tool-bound, ablated or not, so arms cannot be compared on
+round length.
 
 Two launch arguments decide whether the run can answer a climb question at all:
 
 - **`--project`**: omit it for a fresh project unless the operator asked to continue a named one.
 - **`--stop-after-ms`**: the boundary is elapsed wall time, so a multi-hour provider reset wait
-  counts against it in full. When the question needs several rounds, give a generous boundary or
-  omit it. The last two runs reached three and two iterations; a repeat refusal cannot fire before
-  round three.
+  counts against it in full. A climb is read over 8 or 12 rounds (AGENTS.md "Goals and the climb"),
+  so a climb question needs a boundary that holds that many, or none: truss-sol-198d70 took 17 hours
+  to measure twelve batteries. A boundary that ends a run at round three measures a bracket, never a
+  line.
+
+**Several arms from one recorded position.**
+- **Seed a copy per arm.** A campaign holds one `.controller.lock`, so two runs cannot continue one
+  project at once. Seed each arm with `seed-campaign.mts` republish
+  `--into-root <main checkout> --relocate`, then launch it with `--project <seeded slug>`. Each seed
+  takes about four minutes, and the product's tool tree is cloned rather than downloaded
+  ([system-path-simulation](../system-path-simulation/SKILL.md), "an active tool tree").
+- **Arms are stack levels, not sibling branches.** The landing candidate goes lowest. Above it sit
+  measurement-only levels, each with a head tree that is one condition, each closed once its run is
+  read. The ESP32 arms of 2026-09-30 were #90 to #92 on #89.
+- **Build each level as a new branch with ordinary commits.** Moving an existing branch is a
+  rewrite, and the guard refuses it.
+- **Count the arms against the load rule above.** Three concurrent arms of one domain are three
+  times its compile lanes.
 
 Credentials stay where they are. Point at the main checkout's `.env` with `--env-file`; never copy
 an env, campaign, domain or config file between checkouts to make a command start. Report a missing
@@ -184,15 +274,20 @@ model slots; a mismatch is a failed condition, not a relabelled one. Startup pro
 work. If the gate refuses, fix the finding at its owner and relaunch; a refusal before any provider
 call costs nothing but time.
 
+A stop is proved by the process, not by the command that asked for it. After any authorised stop,
+`ps` for the controller pid and read its lock. A loaded service with no pid is a finished run, and
+a removed service with a live pid is still a live run; on 2026-09-30 a controller outlived its
+removed service.
+
 ## 5. Watch quietly
 
 Two watchers exist, and who is reading decides between them. **When a reader is attending, the
-watch is `bun run runs pulse --once`** (`tools/runs/pulse.ts`, documented in
-[launch-run](../launch-run/SKILL.md#see-what-is-running)), run from main as the last action of each
-reply so the next look lands about 270 s later. It finds every open run itself and prints what moved
-since the previous look: a round opened, a preview or rehearsal, a battery, a quiet Builder, a
-non-result, the Builder's latest checkpoint line, the plan's target against the aim. Nobody has to
-name a run, and a run launched since the last look simply appears.
+watch is `bun run runs pulse --once`** (documented in
+[launch-run](../launch-run/SKILL.md#see-what-is-running)), run in the main checkout as the last
+action of each reply so the next look lands about 270 s later. It finds every open run itself and
+prints what moved since the previous look: a round opened, a preview or rehearsal, a battery, a
+quiet Builder, a non-result, the Builder's latest checkpoint line, and each recorded battery with
+its zone, the off-aim streak it extends and a stall once one arrives.
 
 When nobody is reading, one detached watcher covers all live runs and speaks only on a stop row:
 
@@ -204,45 +299,27 @@ bun .claude/skills/run-improvement-campaign/scripts/campaign.ts \
 ```
 
 Start it detached (Python `subprocess.Popen` with `start_new_session=True`, stdout to a literal
-`/private/tmp` log): a background Bash call ends at 600 s and takes the watcher with it. For a
-watch under thirty minutes, bounded polling every 290 s is cheaper than holding a monitor open.
-Add `--completion-only` when the operator wants nothing until a terminal exists.
-
-Dropping `--every` makes this command an attended tick too — each watched run's status, then every
-row it holds, info included, and exit 0 — and that is the look to take when the question is which
-move a row implies rather than what moved. It needs every run named, and a named run with no opening
-yet reads as a `stop [reserved]` row, so start it after the openings exist.
-Without `--state` the same command is the status report alone, with the per-file table when it
-names one run and `--json` for the whole reading. The detached `--every` watcher stays deviation-only and holds info rows for the next
-stop row, because nobody is reading it.
+`/private/tmp` log): a background Bash call ends at 600 s and takes the watcher with it. Add
+`--completion-only` when the operator wants nothing until a terminal exists. Dropping `--every`
+makes the same command an attended tick, printing each run's status and every row it holds, which
+is the look to take when the question is which move a row implies. Without `--state` it is the
+status report alone, with the per-file table when it names one run and `--json` for the whole
+reading. Start it after the openings exist: a named run with no opening reads as `stop [reserved]`.
 
 A watch is a process, so check for the process. On 2026-09-18 the last state file was written at
-08:31 and `pgrep -f` for the watcher was empty from then until 18:50: the i03 claim and the i04 climb
-decision both landed inside that window and neither was watched. A state file's mtime tells you when
-a watcher last ran, never that one is running now.
+08:31 and `pgrep -f` found no watcher until 18:50; a claim and a climb decision both landed unwatched
+inside that window. A state file's mtime says when a watcher last ran, never that one is running.
 
-The watchers above read runs. The session driving the loop needs a watcher of its own, because it
-can stall where no run shows it: on 2026-09-28 the main session held its launch question in a dialog
-for eight hours, and the two findings that made the question stale sat unread behind it.
-[meta-agent](references/meta-agent.md) is that watcher. It is a second session that audits the main
-one against a watch contract and steers it with bounded `CHECK` and `DIRECT` messages. It enforces
-this loop's launch, pin, prediction, order, stop and closure rules. It tells the operator at once
-when only the operator can unblock the main session.
-
-Run the watch, and every other reader here, from `origin/main`. They are operator tooling and belong
-to the current tree, not to the run's frozen source and not to an open stack that has not been
-rebased. The same 18 September evening, the watch run from the stack top printed no climb row at all
-for a campaign holding three `climb` decisions, because the status reader of the day only grew the `difficulty` field
-in `df7a28ee0` that morning and the stack was 92 commits behind it. Run from main against the same
-campaign it fired at once, naming three climbs in a row. **A reader that returns `null` or an empty
-list for a field is a missing producer in the tree you ran it from, not an absent signal**; re-run
-from main before concluding anything from a quiet reader.
+The session driving the loop needs a watcher of its own, because it can stall where no run shows
+it: on 2026-09-28 it held its launch question in a dialog for eight hours while two findings that
+made the question stale sat unread. [meta-agent](references/meta-agent.md) is that watcher, a second
+session that audits the main one against a watch contract and steers it with bounded `CHECK` and
+`DIRECT` messages.
 
 Every tick reports **increments, never totals**. A new case prints one row naming its task and
 family — `run-i02 mast-04 (splice): unaccepted, the agent produced no accepted submission` — and a
-case already reported is never reported again. A restated "12 of 25 verified" says nothing a reader
-can act on; a named task is something to open. The first tick over a run already in flight prints
-the battery's id, not its backlog: history is not news.
+case already reported is never reported again. The first tick over a run already in flight prints
+the battery's id, not its backlog.
 
 Every `stop` row carries the move it implies, printed in brackets before the run id:
 
@@ -252,256 +329,104 @@ Every `stop` row carries the move it implies, printed in brackets before the run
 | `reserved` | something is wrong but the evidence names no owner | hold the product bytes, read the evidence, decide |
 | `overhaul` | the measurement failed, not a detail inside it | rebuild the product or the battery; there is nothing inside to patch |
 
-`overhaul` fires on a battery whose scored cases are all unaccepted
-(a battery placed nowhere: no capability rate, no difficulty strike, nothing to patch
-against), and on five typed non-results in a row — rule 6's threshold for stopping the schedule.
-A completed run that verified cases carries no act at all.
+`overhaul` fires on a battery whose scored cases are all unaccepted, which places it nowhere, and on
+five typed non-results in a row (rule 6's threshold for stopping the schedule). A completed run
+that verified cases carries no act at all.
 
-### A battery mid-solve is silent, and that is not a stall
+### Silence under a wall is work, not a stall
 
-A Built solve writes nothing between the case starting and its verdict, so every mtime the watch
-can sample freezes at the second the battery opened. Run `c1d2a7` held three cases open for 38
-minutes on 2026-09-18 with `evidence 38 min ago, session wrote 38 min ago`, and the old rule would
-have called it stalled at 120. The watch reads the **cases the battery has open** — one directory
-per case under the retained version — against the harness's own `solve_minutes` from its accepted
-`agent/config.yaml`. Under that wall the silence is work and no row fires; past it the host stopped
-enforcing its own ceiling and the stall row is right. A `harness_trial` is the same silence one
-level up: the Builder's call holds every checkpoint until the rehearsal is graded, and truss-opus
-sat 57 minutes inside one on 2026-09-28 when the stall row fired on it. So the newest rehearsal, once it has
-written its public task and until it writes its `checks.json`, is work too, under the workspace's
-solve wall.
+A Built solve writes nothing between the case starting and its verdict, so a battery mid-solve
+freezes every campaign mtime. The watch reads the **cases the battery has open** against the
+harness's own `solve_minutes` from its accepted `agent/config.yaml`: under that wall the silence is
+work, and past it the host stopped enforcing its own ceiling. A `harness_trial` is the same silence
+one level up, since the Builder's call holds every checkpoint until the rehearsal is graded. The
+newest rehearsal, from its public task until its `checks.json`, is work under the workspace's solve
+wall. The watch also samples the Claude CLI store under the run's private TMPDIR
+(`/private/var/tmp/ana-quick-run-*`), which moves while a session works and records nothing else;
+until 2026-09-30 it looked under a name the launcher never made and sampled nothing.
 
-The status prints the same count, and beside it what the bundle is made of: files, nonblank lines,
-tasks, families, checks, accept and reject controls, tools and presets, from the frozen version once
-the gate accepted it and from the live epoch workspace before that. The counts come from the gate's
-own bundle validator, so a file it refuses prints `?` beside the finding code — a wrapped
-`{tasks: [...]}` reads as `? tasks` and `tasks-shape`, never as zero tasks. Size is not
-quality — a long evaluator with two checks is weaker than a short one with six — so read the
-declared counts, and read `presets` first: a bundle shipping `[]` beside an artifact-writer gave its
-solver no shell, and no gate catches it.
+The status prints the open-case count and what the bundle declares: files, nonblank lines, tasks,
+families, checks, accept and reject controls, tools and presets. They come from the frozen version
+once the gate accepted it, and from the live epoch workspace before that. The counts come from the
+gate's own bundle validator, so a file it refuses prints `?` beside the finding code, never zero.
+Size is not quality, so read the declared counts, and read `presets` first: a bundle shipping `[]`
+beside an artifact-writer gave its solver no shell, and no gate catches it.
 
 Beside it, `authoring N commits: R rehearsal(s), S submit attempt(s)`. The commits are the epoch
-workspace's reflog, because the Builder never commits and the host commits at each tool boundary.
-The rehearsals and submits are not, and they used to be: the host commits only when the tree
-changed, so a `correctness_check` or a resubmit over unchanged bytes wrote no reflog line and the
-count came out short. They now come from the Builder's own execution records, the
-`correctness_check` calls each session counted and the candidate submits the controller recorded,
-with a controller stop left out because it closes a session rather than submitting to the gate.
-The reflog reading once also counted "repair rounds" from the host's `(repair …)` commit messages,
-and that count is gone with the rest of that reading: a repair round over unchanged bytes wrote no
-line either, so it came out short for the same reason. Of the 210 epoch workspaces read that older way, the 167 whose submit was
-accepted rehearsed a median of 2 times against 0 for the 31 that never got a candidate in, so the
-shape to catch early is still rehearsals climbing while submits do not. An execution record under
-an older schema is refused by name rather than read as zero: the line says `rehearsals and submits
-unknown:` with the refusal, `--json` carries `session: null` beside it, and the watch stops once
-per epoch on it, because none of the Builder limits can be read.
+workspace's reflog; the rehearsals and submits come from the Builder's own execution records,
+because the host commits only when the tree changed. The shape to catch early is rehearsals
+climbing while submits do not: of 210 epoch workspaces, the 167 whose submit was accepted
+rehearsed a median of 2 times, against 0 for the 31 that never got a candidate in. A record under
+an older schema is refused by name, never read as zero, and the watch stops once per epoch on it.
+A bundle file is named only on the tick that wrote it (`wrote agent/tools.ts, 224 lines (was
+220)`); during a long authoring turn those rows are the only visible sign of work.
 
-The watch names a bundle file **only on the tick that wrote it** — `wrote agent/tools.ts, 224 lines
-(was 220)` — never on a first reading, where everything present is older than the watch, and never
-again once the bundle is frozen. During a 46-minute authoring turn those rows and the commit line
-are the only visible sign of what the Builder is doing.
+### Time goes to tools first
+
+Read a slow round as tool time before model time. The epoch's `builder-execution.json` splits the
+two after the round: the union of its custom calls' intervals is the wall the model spent waiting.
+During the round the Builder's transcript does the same. Its Claude CLI project sits under the
+run's TMPDIR at `ana-claude-cli-*/projects/<workspace path, / as ->/*.jsonl`, and each `tool_use` to
+its `tool_result` is a wait. The six firmware rounds of 2026-09-30 waited 79 to 91% of their wall
+that way (§4), so a slow firmware round is first a host-load and a check-length question. It is the
+model's or the prompt's only after those are ruled out.
 
 ### Read the climb, not only the score
 
-The watch also reads `difficulty-decisions/`, the controller's own placement per battery, and
-prints one row as each lands: `battery run-i02: 24/25 too-easy`. This is the half a score
-cannot show. A high score says the battery was easy; only the decision says whether the next one
-asks for more, and only a run of them says whether asking worked.
+The watch reads `difficulty-decisions/`, the controller's own placement per battery, and prints one
+row as each lands: `battery run-i02: 24/25 too-easy`. A decision stating **repeated failures** or a
+**family conflict** is `surgical`, and one placed nowhere is `overhaul`. Otherwise it moves by its
+zone: `too-hard` is `reserved`, and the other four zones are the band reading its own score,
+printed as `info`. A row says how one battery landed; only the run's line says whether the climb
+moved, and a stall the pulse names is the operator's to stop (§7).
 
-- **three batteries in a row placed `too-easy`** is one `overhaul` row: the level moved and no
-  battery found the limit. The streak reads the zone the band recorded, counted in batteries, since a
-  `--run` continuation can decide one battery twice. Campaign `3fd52f9e-28` recorded seven such
-  placements while its Builder moved only published magnitudes. Rebuild what the tasks demand, not
-  their numbers.
-- a decision stating **repeated failures** or a **family conflict** is `surgical`, and one placed
-  nowhere is `overhaul`. Otherwise it moves by its zone: `too-hard` is `reserved`, and the other
-  four zones are the band reading its own score, printed as `info`.
+A decision is filed under the round it opens and places the battery before it: decision `iN`
+places battery `i(N−1)`. The stack's readers print both (`iN (reads iM)`), but a WRI snapshot of an
+older run reads with that run's own source, which may print the bare round. Match them before
+calling a placement wrong. A lane finding on 2026-09-30 that 7 of 15 placements disagreed was this
+misreading; matched, all 16 agreed.
 
-The decision reads the score. `wri.ts climb` reads the other side of the same question — the
-task bytes — and unlike the decision it works on a battery that has not scored yet:
+Run `wri.ts climb` whenever a new `versions/<battery>/` directory appears, and at every read step on
+a campaign that has landed off its aim twice. The edge label exists the moment a candidate is
+adopted, hours before its battery scores (AGENTS.md "Goals and the climb", under "Reading the climb
+as the operator"), so that is the moment to write the next experiment. The round already in flight
+finishes and records.
 
 ```text
 bun .claude/skills/whole-run-investigation/scripts/wri.ts climb <campaign dir> [--json]
 ```
 
-Per battery it prints the check-tier histogram and a median structural row; per edge, one of
-`restated`, `adjusted`, `narrowed`, `widened`, `eased`, `escalated` or `replaced`. Only `escalated`
-changes what the solver has to reason about, and `replaced` is no reading at all: fewer than half
-the task ids carried over, so the published numbers could not be joined, and the task bytes need
-reading by hand. Run it whenever a new `versions/<battery>/` directory appears, and
-at every read step on a campaign that has landed off its aim twice. It is read-only, it costs
-nothing, and it is the only reader that answers "did anything get harder" before the battery it
-describes is paid for.
-
-Run `c1d2a7`, read this way on 18 September while its fourth battery was still measuring:
-
-| edge | verdict | what moved | outcome |
-| --- | --- | --- | --- |
-| i01 → i02 | `widened` | +3 inputs, +3 scenarios, 305 numbers moved by 8.33% median, novelty 0.0000 | 6/6 |
-| i02 → i03 | `adjusted` | +1 input, 12 numbers moved, novelty 0.0038 | 6/6 |
-| i03 → i04 | `escalated` | +2 checks, +1 limit, +1 tooled check, +2 rules, +36 inputs; frontier 0 → 2 | unobservable |
-
-The tier histogram held at `easy 0  medium 9  hard 6  frontier 0` for three batteries and moved only
-at the fourth. Those three — eighteen solver cases at roughly fifty minutes each — bought no
-difficulty evidence, and the score could not say so: all three read 6/6, which reads identically
-whether the tasks moved or not. A campaign whose last two edges are `restated`, `adjusted` or
-`widened` is not climbing, whatever its zone says. Read the edge before writing the round
-up, and do not describe a battery as adding a constraint class until this reader shows the checks
-that carry it.
-
-### The surface you steer with may not be in the measured tree
-
-A model-visible page — a starter file, a prompt section, a tool description — steers a run only if
-it is an ancestor of the run's own `source.commit`. `c1d2a7` opened at `e97f8e703`, and the
-starter's `difficulty-ladder.md` was on the open stack and on no ancestor of it: four rounds were
-read against a page the run could not see, and the reading would have blamed the Builder for
-ignoring it.
-
-So before attributing anything to the Builder, read `source.commit` out of `opening.json` and run
-`git show <commit>:<path>` for every surface your explanation depends on. Absent means the run
-measured a condition your reasoning does not describe. That is an unmeasured surface and a
-prediction for the next launch, never a Builder failure — and never a reason to patch the page
-again, since the page was never delivered.
-
-### Which reader answers which climb question
-
-| you want to know | read | not |
-| --- | --- | --- |
-| whether the next battery will be asked for more | `difficulty-decisions/`, the placement the watch prints | the score |
-| whether the tasks actually got harder | `wri.ts climb` edge verdicts and the tier histogram | the level label, new task ids, or a longer description |
-| whether a page could have steered the Builder at all | `git show <opening source.commit>:<path>` | the working tree or the stack head |
-| whether the Builder read a starter file | the bundle bytes and the Builder's notes | read counts in `builder-path-record.jsonl`; the Builder reads through bash, so zero proves nothing |
-| whether a battery is hard or merely unsolvable | `artifact.json` beside `public-task.json` in the settled cases | a reviewer finding, a published limit, or a zero score |
-| whether a slow solve is the wall | `solver.toolCalls` in `case-result.json` | `max_turns` or the solve wall, which no recorded truss case approached |
-
-Open [the climb reference](../whole-run-investigation/references/climb.md) on any of these: it owns the attribution, the goal
-these rows serve — a battery inside `climb.band`, 5 to 12 verified of 25, on a named changed public
-requirement — and the difference between a harder battery and a differently-labelled one.
-
-### A round the loop threw away looks exactly like a round that changed nothing
-
-The one row that decides whether a climb is stuck is the battery's score, and a battery can be
-measured, recorded, and then removed from the difficulty population without the decision saying so.
-Check that before concluding the Builder is repeating itself.
-
-On 18 September the truss run `…c1d2a7` scored 6/6 three rounds running, and its fourth battery
-scored 3 of 5 — the first failing cases of the run, against the Builder's own pre-registered
-`at-most 2`. The decision written for round 5 said `"6/6 … significantly too easy"` with
-`"admitted": 3` and `"excluded": []`, and its digest was byte-identical to round 4's. Battery i04
-was in neither list. Two readers had removed it, and the chain runs:
-
-1. the battery's claim was refused — here for one clause, `runtime-model-identity-unproven`, after
-   a transient provider disconnect lost one of five cases' identity records;
-2. a refused claim leaves the candidate's claim stage at `measured`, so promotion **held** it;
-3. a held version is not an adopted version, so `productHistoryDirs` did not offer its run
-   directory to `admitBattery`, which is where a battery earns its named exclusion;
-4. the next round therefore reseeded the Builder from the last **adopted** product — round 3 — so
-   the authored bundle of the one experiment that worked was rolled back as well.
-
-Steps 3 and the identity double-read are fixed in PR #804. **Step 2 is not**: a candidate whose
-claim was refused only for unproven model identity still loses its authored product, and the next
-rebuild starts from the round before it. That is an open decision for the operator, because the
-gate it would widen (`candidate-claim-refused`) exists for a real case — run a7f9ac, where a
-session limit cut a battery to 14 verified and 11 non-results and its refused-claim candidate
-replaced a product measured at 24/25.
-
-What to read, in order, when a decision's placement does not match the last battery you saw:
-
-- `campaigns/<slug>/claims/<battery>.json` — `claim.ok` and the clause names;
-- `campaigns/<slug>/promotions/<battery>.json` — `decision`, `promoted` or `held`;
-- the run's own `fullrun.log`, which names both in one line each;
-- the decision's `admitted`, `excluded` and `evidence[]`, and whether the battery is in any of them.
+[The climb reference](../whole-run-investigation/references/climb.md) owns the reading: the line
+and its four numbers, the edge labels, which reader answers which climb question, why a published
+limit, a reviewer finding or a zero score is a lead while the case bytes are the measurement, and
+the walk that finds the one link holding a flat line. Two rules stay here because they decide what
+this loop does next. Before attributing anything to the Builder, run `git show <opening
+source.commit>:<path>` for every surface your explanation depends on: a page absent there was never
+delivered, so it is a prediction for the next launch, never a Builder failure. And a reviewer
+finding cannot stop the battery that raises it, so when one contradicts a standing prompt
+instruction, one of the two owners has to move, and the recorded cases decide which.
 
 ### `[fullrun]` lines in your terminal during a gate are test fixtures
 
-`test/climb-loop.test.ts` and its siblings print the controller's own log lines, including a
-literal `api_error status 429: You've hit your session limit · resets 4pm (Europe/Amsterdam)` and a
-project id that looks like a campaign. A gate run will interleave them with whatever else is on the
-terminal. The live run's state is in its own log, which `lsof -p <pid>` names, and nowhere else.
-On 18 September those fixture lines read as a provider outage on a run that was working normally.
+`test/climb-loop.test.ts` and its siblings print the controller's own log lines, including a literal
+`api_error status 429: You've hit your session limit` and a project id that looks like a campaign.
+The live run's state is in its own log, which `lsof -p <pid>` names, and nowhere else. On 18
+September those fixture lines read as a provider outage on a run that was working normally.
 
-### Read the edge before you pay for the battery
+### On a deviation
 
-`wri.ts climb` reads its tier histogram and its structural row from the authored bytes under
-`versions/<battery>/`. Neither needs a case. So the newest edge verdict exists the moment a
-candidate is adopted, hours before the battery it describes has been measured, and the reader says
-so: on 18 September it read the still-unmeasured i04 as `undated, unclaimed, no verified case` and
-printed its complete row beside the settled three.
+Read `campaign.ts --campaigns <dir> --run <id> --json`, then the named evidence. The case ledger can
+be legitimately empty during a real battery. A live pid alone proves nothing, a stale timestamp is
+a lead, and unknown usage is `null`, never zero. The watch names a blocked Builder session once per
+epoch; [builder-blocking-loop](../builder-blocking-loop/SKILL.md) owns it. A disk-floor deviation
+suspends new launches until resolved. Do not poll unchanged runs.
 
-Run it when the version directory appears, not when the claim lands. Campaign 3fd52f9e-10's second
-and third rounds were `widened` and `adjusted` in their adopted bytes, and each then spent about
-four hours of solves to confirm a 6 of 6 that settled nothing. Novelty across those edges ran
-0.0000, 0.0038, 0.0884: the round that changed what the solver must reason about is an order of
-magnitude away from the two that did not, and it is legible before a single case runs.
-
-The verdict reads check tiers, and a tier is not a forecast. On 2026-09-28 one firmware run's
-edge read `escalated` with every structural count unchanged and then passed 6 of 6, and its next
-edge read `widened` with novelty 0.27 and two new families and scored 2 of 6. So read the task rows
-beside the verdict: new tasks and scenarios can ask more at an unchanged tier. It is a reading, not
-a stop order: the product owns its own round, and a round already in flight
-finishes and records. It is the moment to write the next experiment rather than to wait four hours
-for a score that cannot surprise you.
-
-### A limit read from the task file is not yet evidence
-
-Run `c1d2a7` published every task's `massLimitKg` to three decimals — the catalogue mass of its own
-stored reference design — and compared it "with a tolerance of 0 kg". Read that way it looks
-unreachable, and its Epoch Reviewer called it a `curriculum-defect` with 39 probes behind it. Five
-commits were written on that reading before the first cases settled and refuted it: all three
-passed, with accepted designs at 202.07 kg against the 253.192 kg limit, 213.166 against 336.197 and
-434.616 against 710.678, in 45 to 59 solver tool calls. The limits were 20 to 39 per cent loose.
-
-What that measured is the Builder's reference search, not the tasks: a bounded search lands well
-above what a capable solver with a shell reaches, so a limit at the author's own best clears
-easily. Headroom above it makes a loose limit looser, and F2 already refuses a limit the reference
-cannot meet. The gate wall does not bind that search either — `STARTER.md` tells the Builder to
-store the search's best artifact per task under `reference/` and replay it inside the wall, which
-`c1d2a7` did with a 17-line `index.ts` over 2351 lines of stored geometry. What binds is the
-authoring session, so the dial is method rather than effort: the solver spends a whole per-task
-wall searching while the Builder has one session for the whole battery. The lever a reviewing
-session holds is the authoring text, never the bundle.
-
-So wait for the case bytes. A published limit, a reviewer finding and a zero-pass score are each a
-lead; `artifact.json` beside `public-task.json` is the measurement. When a battery does pass
-nothing, read what blocked every case — an unpublished rule, a submission path a correct answer
-cannot use, a requirement no published tool can meet — before reading the battery as hard.
-
-A reviewer finding still cannot stop the battery that raises it, and its projection
-(`epoch-review-public.ts`) says what the review found and where without naming a repair, so what a
-`correctness-model/tasks.json` defect changes is the Builder's choice. When such a finding
-contradicts a standing prompt instruction, one of the two owners has to move, and which one is a
-question for the recorded cases, not for the finding.
-
-The walls are not what stops a solve, so do not reach for them. Across every recorded truss case,
-`solver.turns` and `solver.completedTurns` are 1: the pi loop spends one turn and calls tools inside
-it, so `max_turns` is never approached and a number of turns means nothing to the solver. The
-measure that moves is `solver.toolCalls` in `case-result.json`, and beside it the margin between
-each accepted value and its published limit. Those two decide what a ceiling battery means: `c1d2a7`
-scored 6 of 6 twice, and the per-case rows say every case settled in one turn with the tightest
-answer still 6.7% inside its limit and the loosest 30.8%. "Passed 6 of 6" invites a harder battery;
-"passed 6 of 6, first turn, a third under the limit" says the axis being moved is the wrong one. Campaign `3fd52f9e-28`, the most
-recent: median 24 calls and 11.5 minutes of a 120-minute wall, longest 68 calls and 43 minutes, and
-the cases it failed took 43 calls on average against 25 for the ones it passed. `846c029d-3` is the
-contrast, at exactly 4 calls and 0.4 minutes in all 460 accepted cases — the regime whose proposer
-tool was the reference solve. A solver using a tenth of its time is not held back by its budget.
-
-Freedom is recorded, so do not infer it. `builder-path-record.jsonl` carries one row per guard
-decision: `c1d2a7` took 85 with zero refusals, exposed 15 tools and used 7, and left every wall in
-`agent/config.yaml` at its seeded default though each is raisable tenfold. A thin bundle from a
-session like that is a choice the prompt shaped, not a session the host boxed in.
-
-On a deviation read `campaign.ts --campaigns <dir> --run <id> --json`, then the named evidence. The
-case ledger can be legitimately empty during a real battery. A live pid alone proves nothing, a
-stale timestamp is a lead, and unknown usage is `null`, never zero. The watch names a blocked
-Builder session once per epoch; [builder-blocking-loop](../builder-blocking-loop/SKILL.md) owns it.
-A disk-floor deviation suspends new launches until resolved. Do not poll unchanged runs.
-
-While a run is live, read nothing that opens its writable state — its sqlite ledger, its lock files,
-anything under its campaign the controller writes. `productHistoryDirs` opens the `ControllerLedger`
-on the live campaign's database, so rendering one advisory note costs a risk to a paid run. Defer it
-to the terminal and say that is what you did. There is
-no live provider-spend row: the controller records spend at the terminal, so a threshold on it
-could only fire after the run it was meant to interrupt.
+While a run is live, read nothing that opens its writable state: its sqlite ledger, its lock files,
+anything under its campaign the controller writes. `productHistoryDirs` opens the
+`ControllerLedger` on the live campaign's database, so rendering one advisory note risks a paid
+run. Defer it to the terminal and say so. There is no live provider-spend row: the controller
+records spend at the terminal, so a threshold on it could only fire after the run it was meant to
+interrupt.
 
 ## 6. Close and assess from recorded bytes
 
@@ -529,117 +454,114 @@ Evidence precedence:
 recorded run bytes > verified evidence reader > source and tests > terminal/log line > PR body > prose
 ```
 
-Weight the **latest two runs** unless the operator widens it. Older runs measured older source; a
-count from five runs ago describes a product that no longer exists. Compare runs of unequal length
-over the shorter one's elapsed window and name that window. Changed tasks, verifier or models
-change the measured condition, so a higher score alone proves no improvement. Fetch main and read
-the ledger before adjudicating: another session may have closed the rows, and the ledger is
-append-only. When a later PR retires the mechanism a row names, note the retirement beside the
-row's outcome instead of freezing a replacement.
+Weight the **latest two runs** unless the operator widens it; a count from five runs ago describes
+a product that no longer exists. Compare runs of unequal length over the shorter one's elapsed
+window and name that window. Changed tasks, verifier or models change the measured condition, so a
+higher score alone proves no improvement. Fetch main and read the ledger before adjudicating:
+another session may have closed the rows, and the ledger is append-only. When a later PR retires
+the mechanism a row names, note the retirement beside the row's outcome instead of freezing a
+replacement.
 
 Subagent and reviewer reports are model output, not authority. Check every finding against the
 source before acting on it.
 
 ### Track what the gate and the checks did, and backtrack a correction
 
-A score says what the verifier decided and nothing about what the gate cost to get there, and an
-evaluation correction changes the exam without saying what the old answers were worth under it. The
-whole-run investigation reads both as lanes 27 and 28, and this loop runs them every round rather
-than waiting for a suspicion, because neither shows up in a denominator.
-
-The `gates` lane walks every Builder session's `correctness_check` and submit receipts, groups
-consecutive refusals of one code into episodes, and prints each fired component's ledger prior from
-`gate-ledger.ts` (P(right), P(stall), P(move), keyed by finding code) beside what its episodes
-actually did: repaired by a byte change, cleared with no edit at all, or left unanswered. A refusal
-that clears on unchanged bytes was not refusing something wrong, so a component that keeps doing it
-is spending the Builder's rounds against the prior the audit gave it, and a code the ledger does not
-know is a component nobody has rated. The lane gives no verdict on a component. Carry its table to
-the gate audit, which decides whether the component goes, and read a stalled episode as a round lost
-to the gate rather than to the domain.
+A score says nothing about what the gate cost to reach it, and an evaluation correction changes the
+exam without saying what the old answers were worth under it. So every round, not only on a
+suspicion, read the `gates` lane and run every `replay --under` it lists. Nine consecutive firmware
+corrections once went by with none regraded.
 
 ```sh
 bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.ts gates <campaign dir> [--json]
 bun run replay -- <campaign>/<earlier runId> --under <campaign>/<corrected runId>
 ```
 
-Backtracking is the second half. An evaluation correction leaves its issues `unmeasured` (rule 10),
-because a fresh battery on the corrected evaluator solves new attempts and never says what the
-correction would have made of the artifacts already accepted. `replay --under` grades the earlier
-battery's recorded final submissions under the later battery's bundle snapshot and diffs every
-verdict against the recorded one. A pass that flips to a fail was a pass the old checks let through;
-a fail that flips to a pass was a check the correction repaired; no flip means the correction
-changed nothing the battery reached. A task whose public digest moved between the two batteries is
-refused as `public-task-drift` rather than graded against an exam it never sat. The `gates` lane
-reads every correction from the recorded batteries, names the bundle files it moved, and prints
-`EVALUATION CORRECTION REPLAY CANDIDATE` with the exact command wherever the scoring program moved, so
-regrade before judging a correction round: nine consecutive firmware corrections went by with none
-regraded. The candidate stays listed after the replay, because nothing records one, and nothing in
-the controller reads the replay's report either, so its flips inform the round's judgement while
-the advice still names the correction's issues `unmeasured`.
-
-In short, every round: read the gate's episodes against its priors, and regrade every correction
-under the evaluator that replaced it. The first says which checks cost rounds without catching
-anything; the second says whether a correction moved any verdict at all.
+What an episode's ending and a replay's flips mean is lanes 27 and 28 of
+[the catalogue](../whole-run-investigation/references/review-angles.md) and the `gates` lane in
+[the deterministic lanes](../whole-run-investigation/references/deterministic-lanes.md); whether a
+component keeps its place is [the gate audit](../whole-run-investigation/references/gate-audit.md).
+Read a stalled episode as a round lost to the gate rather than to the domain. Nothing records a
+replay or reads its report, so its flips inform this round's judgement while the advice still
+names the correction's issues `unmeasured`.
 
 ### When two batteries miss the band the same way, stop editing prose
 
-Two consecutive batteries of one product outside the band on the same side is a settled result, not
-an ambiguous signal needing more diagnosis. It says the authoring loop cannot yet author above this
-solver, and it says the binding constraint is not the wording of any instruction, because the
-instruction channel is exactly what the two batteries held fixed.
-
-On 18 September the second battery settled 6 of 6 at 08:26 with every case solved in one turn and
-the tightest margin 6.7% under its limit, against the author's own pre-registered "at most 2". The
-next two hours and fifty minutes went into eleven stacked pull requests, every one of them a
-sentence removed from model-visible text, and a containment check in the middle of them recorded
-that the live source predated the first of the stack. None of that work could reach the run it was
-reacting to.
+Two batteries of one product off the band on the same side are a settled result, not an ambiguous
+signal needing more diagnosis (AGENTS.md "While it runs"). They say the authoring loop cannot yet
+author above this solver under the surfaces the run was served, and those surfaces are frozen at
+its opening. A run of full passes is the common case (AGENTS.md "Goals and the climb", under "The
+goal").
 
 Before reacting to a live run at all, check containment: `git merge-base --is-ancestor <fix>
 <opening sha>`. A commit that is not an ancestor of the run's opening cannot change that run,
-whatever it fixes. Every patch written during a battery is work for the next launch, and calling it
-a response to this one misreads both.
+whatever it fixes. On 18 September the second battery settled 6 of 6, against the author's own
+pre-registered "at most 2". The next two hours and fifty minutes went into eleven PRs against
+model-visible text, none of them in the live source.
 
-So on the second one: stop opening pull requests against any authoring surface, and write the
-operator one message holding both batteries' verified counts, each case's turn count and margin to
-its governing limit, what the Builder changed between them as `wri.ts climb` reads it, and one
-named next experiment. Then wait. Work on an authoring surface after that point is work for the next
-launch, and it should be scheduled as such rather than presented as a response to this one.
+So on the second one: stop opening PRs against any authoring surface, and write the operator one
+message. It holds both batteries' verified counts, each case's turn count and margin to its
+governing limit, what the Builder changed between them as `wri.ts climb` reads it, and one named
+next experiment. Then wait. Authoring work after that point is work for the next launch and is
+scheduled as such. Why the line stayed flat is a reading for that launch:
+[the climb reference](../whole-run-investigation/references/climb.md) walks the chain to the one
+link that held it, and that constraint is where §1 starts.
 
-Read what the Builder said it set out to do, in its prose and notes, before judging the round. It
-states the gap the Builder saw, and a score cannot. The fourth round of 3fd52f9e-10 opens "every rule
-the harness enforced was a rule about members" and adds two public checks from a published joint
-standard, which no reading of the three flat rounds in front of it would have predicted. The round
-no longer writes that intent to a controller-read `EXPERIMENT.json`: the file graded whether a
-description matched a diff, and the accepted bytes already say what moved.
+### Lifted, held or unreached: the constraint ledger
+
+After adjudication, read the constraint at its own link first and on the line second. It is one of
+three:
+
+- **lifted**: the link moved and the line followed. Walk the chain again for the next constraint.
+- **held**: the link moved and the line did not, so the constraint was misnamed. Restart the walk
+  from that link, with this pass's rows as its evidence.
+- **unreached**: the link did not move, so the change never did what it was for. Fix its path
+  (§2), containment included, before naming another constraint.
+
+Each pass writes one row to the local `notes/binding-constraints.md`, which is never published: the
+date; the runs read; the constraint, as its link, its owner, the domains it covers and its evidence
+with denominators; its falsifier; the change, as PR and sha; the prediction ids frozen for it; and
+the outcome, once adjudicated. The next pass reads it first. The first row, written on 2026-09-30,
+named the witness ceiling, and it came back **held** the same evening, which moved the constraint
+to task demand. Record where a pass did not fit the row rather than bending the row to fit.
 
 ## 7. Decide the next move
 
-Choose one: retain and measure; fix the demonstrated owner; delete a mechanism with no consumer or
-no decision effect; investigate a consequential ambiguity; or stop because the authorised programme
-or the allowance ended. The product owns its own within-run climb and rebuild decisions. Whether a
-new wave of runs improved on the one it replaced is a [wave-audit](../wave-audit/SKILL.md), read
-at the first battery, the third round and the terminal.
+The constraint's outcome (§6) comes first: it says whether the next move is a walk for a new
+constraint, a walk from the same link, or a repair of the change's path. Then choose one: retain
+and measure; fix the demonstrated owner; delete a mechanism with no consumer or no decision effect;
+investigate a consequential ambiguity; or stop because the authorised programme or the allowance
+ended, or because a run's climb stalled. The product owns its own within-run climb and rebuild
+decisions, but never stops on one: a stall, as AGENTS.md "Goals and the climb" defines it and
+`bun run runs pulse` names it, is the operator's to stop. Whether a new wave of runs improved on the
+one it replaced is a [wave-audit](../wave-audit/SKILL.md), read at the first battery, the third
+round and the terminal.
 
-The standing goal for that choice, set by the operator on 2026-09-18, is to **optimise the climb
-towards really hard tasks**: prefer the change that shortens the run of `too-easy` placements before
-a battery lands inside the band. A change that raises a score, adds tasks or renames levels without
-moving a placement off `too-easy` has not served it. [the climb reference](../whole-run-investigation/references/climb.md)
-holds the two recorded numbers that say whether it moved.
+The goal that choice serves is the **healthy, ambitious climb** AGENTS.md "Goals and the climb"
+owns, and what fails it is listed there under "Healthy" and "Its shape, and how progress is read".
+Of two candidate moves, prefer the one that brings the next battery closer to the solver's limit on
+a changed public requirement, provided every fail it could produce is earned on a published rule.
+Weigh it against the run's line rather than its last zone: a move after which the line would sit at
+n/n where it sat has not served the goal. [The climb
+reference](../whole-run-investigation/references/climb.md) says how to read the four numbers that
+show whether the line moved.
 
-Four patterns from 2026-09-30 point at an owner before the evidence is complete:
+Five patterns from 2026-09-30 point at an owner before the evidence is complete:
 
-- **A limit is only as tight as the search behind its reference.** Forty minutes into a four-hour
-  search, the witness experiment found truss answers 11 to 59% lighter than the Builder's accepted
-  references on three tasks. A battery scored against a reference measures the reference search as
-  much as the solver. Before blaming the frame for a flat climb, measure how far a longer search
-  moves the reference.
+- **A limit is only as tight as the search behind its reference, and tightening it has not yet been
+  shown to make the solver fail** (the witness experiment, six truss tasks, AGENTS.md prior 10). A
+  slack limit is a finding about the reference; so far, difficulty has come from what the task
+  demands.
+- **A control that equals the reference proves nothing at the limit.** In the lane reads of
+  2026-09-30 the firmware and conformer accept controls sat on the reference and none probed a
+  boundary, so no check was exercised where a solver's answer lands. RNA-seq set its floors at
+  0.44 and 0.50 of the reference counts, far inside them. A control belongs on each side of the
+  limit it guards.
 - **A verdict channel earns its place by coverage.** The undecided Judge verdict came back on 656
   of 657 answered cases, so its precision settled nothing. Delete or fix a channel that covers
   nothing; a precise silence is not a result.
 - **Broaden a rule before specialising it.** Four domain clauses in the Judge prompt became one
-  reading rule, and it decided all 73 replayed cases across six domains. A product that builds a
-  harness per domain can still be judged by one rule the domains share.
+  reading rule, and it decided all 73 replayed cases across six domains.
 - **A hand step done twice becomes a helper.** Simulation stewards relocated tool trees, matched
   Built pins and stripped session variables by hand. PR #95 made each step a helper, and the next
   condition seeded four arms in two calls.
@@ -649,7 +571,7 @@ live-exercised, outcome-proved — and never let one stand in for the next. Keep
 their limits intact. A live run is not a reason to keep changing code without a demonstrated need.
 
 When you are choosing that move about the loop itself rather than the product,
-[superloop-completeness-review](references/superloop-completeness-review.md) holds five lenses to
+[superloop-completeness-review](references/superloop-completeness-review.md) holds seven lenses to
 hand independent sessions, each asking of one edge whether a producer's artifact reaches a consumer
 that changes a decision. Its findings are only useful as the moves above: fix the owner, delete the
 mechanism, or investigate. It schedules nothing and decides nothing.
@@ -664,11 +586,12 @@ recorded as `not triggered`, so a skipped skill is a decision rather than an omi
 
 | step | strict, every round | judgement, with its trigger |
 | --- | --- | --- |
-| read | `whole-run-investigation` rows A to I, then the safeguard census, then a diff of the campaign's adopted versions, then `wri.ts climb` once the campaign has two edges, then `wri.ts gates` and a `replay --under` for every correction it lists | its semantic lanes, the number the tier allows, when a recorded row stays unexplained; `whole-run-investigation`'s [climb reference](../whole-run-investigation/references/climb.md) on any climb row the watch printed, and whenever a transition needs attribution |
+| read | from the newest tree: `whole-run-investigation` rows A to I, then the safeguard census, then a diff of the campaign's adopted versions, then `wri.ts climb` once the campaign has two edges, then `wri.ts gates` and a `replay --under` for every correction it lists | its semantic lanes, the number the tier allows, when a recorded row stays unexplained; the [climb reference](../whole-run-investigation/references/climb.md) on any climb row the watch printed, and whenever a transition needs attribution; the tool and model time split (§5) on any round slower than its walls explain |
 | adjudicate | `prediction.ts adjudicate` for every row, ledger kept in the local `notes/predictions/` | `attribution-and-proof` before any sentence claims improvement |
-| patch | fix on the owning PR; `simplify` on each diff; record the `system-path-simulation` proof choice and its result | `safeguards` when a fix adds a decision no record observes; a fresh replay when existing evidence does not cover the changed consumer |
+| diagnose | read `notes/binding-constraints.md` first and write this pass's row (§6); whenever two batteries miss the band the same way, `wri.ts climb` prints `flat: yes` or an adjudication is `refuted`, walk the chain per the [climb reference](../whole-run-investigation/references/climb.md#find-the-binding-constraint) | Luna lanes through `codex-luna-swarm` for the cross-run count at one link; `bounded-investigation` when a link is disputed |
+| patch | fix on the owning PR; `simplify` on each diff; render and cost any model-visible text (§2) before its push; record the `system-path-simulation` proof choice and its result | `safeguards` when a fix adds a decision no record observes; a fresh replay when existing evidence does not cover the changed consumer |
 | compose | merge in the compose tree, prove every head an ancestor; let `launch-run` own its one gate | `stack-hop` and `intelligent-rebase` when PR order changes or two fixes touch one file |
-| launch | `launch-run`, freeze before the opening, detached watch, next wake | `whole-run-investigation`'s [outcome reference](../whole-run-investigation/references/outcome-review.md) assesses a suspected stall; a stop executes only under existing authority |
+| launch | the load under the core count (§4), `launch-run`, freeze before the opening, detached watch, next wake | `whole-run-investigation`'s [outcome reference](../whole-run-investigation/references/outcome-review.md) assesses a suspected stall; a stop executes only under existing authority and is proved by the process |
 | weekly | the first wake on or after Monday 00:00 UTC runs the `safeguards` removal review and `weekly-run-review`, and writes the date in the snapshot | |
 
 ## What has actually cost time here
@@ -679,17 +602,14 @@ Keep this list short and current; replace an entry when its lesson is absorbed e
   spinning step, not a slow suite: find the process holding the CPU first. Two blind retries cost
   two hours on 2026-09-07.
 - Asking a session for a cause without giving it a falsifier.
-- Naming a composed sha before the last head was pushed; it went stale within the hour.
-- Freezing predictions after the opening, leaving rows only Git history dates before the run.
-- Adding a mechanism whose trigger no recorded campaign reaches.
 - Treating a provider 429 as a harness defect, or a harness defect as a provider 429. Only an
   explicit exhaustion message is exhaustion; investigate everything else.
-- Running a reader from the run's tree or from an open stack, reading its empty field as an absent
-  signal, and missing an alarm that fires from main. Two hours on 2026-09-18.
-- Eleven pull requests against model-visible text after two batteries had shown that text is not the
-  lever, none of them in the live source. Two hours fifty on 2026-09-18.
-- Reading the climb only after a claim lands, when the adopted bytes carried the same verdict four
-  hours earlier.
+- Launching a model-visible change before its simulation. #89 went live at 12:18Z on 2026-09-30 and
+  its stewards started at 12:24Z. The defect that needed #90 was found by reading, after both paid
+  runs carried it.
+- Reading a tool-bound round as a slow model. The ESP32 arms of 2026-09-30 took up to five hours to
+  a first clear preview and waited on their checks for 79 to 91% of it, at several times the
+  host's core count.
 
 Upgrade this Skill when a cycle exposes duplicated work, missed closure or a wrong decision.
 Replace the obsolete rule at its owner. Do not accumulate a checklist, a runtime layer, a scheduler

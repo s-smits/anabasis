@@ -1,22 +1,33 @@
+/**
+ * How many tasks a round's battery has, decided from one placement.
+ *
+ * Hypothesis: sizing is one reading of one landing. `placeOnBand` over the adopted battery's scored
+ * cases says both whether a probe graduates — at least one pass, and a count at or under the aim —
+ * and how small a battery past the probe may be, the smallest size that still reads too easy. The
+ * sentence that tells the Builder about the probe belongs to the same owner and states its share
+ * from the same band, so a declared band moves the rule and its wording together.
+ */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
-import { join } from "../src/meta/path.ts";
+import { dirname, join } from "../src/meta/path.ts";
 import { describe, expect, it } from "bun:test";
 import {
   BATTERY_SIZE,
   adoptedTaskCount,
   batterySize,
   batterySizingGate,
+  renderProbeSizing,
   taskCountSentence,
 } from "../src/run/battery-sizing.ts";
 import { directManifest } from "../src/run/direct-input.ts";
-import { readClimbReadout, renderProbeSizing } from "../src/run/climb-readout.ts";
+import { readClimbReadout } from "../src/run/climb-readout.ts";
 import { EvidenceLog } from "../src/claim/evidence-log.ts";
 import { fingerprintSlug } from "../src/claim/fingerprint.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { EMPTY_USER_CONTEXT } from "../src/builder/user-context.ts";
 import { createRunObserver } from "../src/observe/run-observer.ts";
 import { claimsDirFor } from "../src/run/claim-write.ts";
+import { EPOCH_REVIEW_SCHEMA } from "../src/review/epoch-review-findings.ts";
 import type { RecordedDifficultyDecision } from "../src/run/difficulty-decision.ts";
 import { runBuildStep } from "../src/run/full-run-build-step.ts";
 import type { FullRunDeps } from "../src/run/full-run.ts";
@@ -30,97 +41,129 @@ import { fixtureThresholdDigest, writeFixtureThresholds } from "./helpers/thresh
 import { double, required } from "./helpers/doubles.ts";
 
 const PROBE = BATTERY_SIZE.probe;
+const exact = (n: number) => ({ min: n, max: n });
+const landed = (passes: number, n: number) => () => ({ passes, n });
+const none = () => null;
+const unread = () => {
+  throw new Error("sizing read a battery it did not need");
+};
 
-describe("batterySize", () => {
-  it("accepts every size inside the policy bounds and REFUSES outside them instead of clamping", () => {
+describe("the requested size", () => {
+  it("accepts every size inside the policy bounds and refuses outside them instead of clamping", () => {
     const { floor, ceiling } = BATTERY_SIZE;
     expect(batterySize(undefined)).toBe(BATTERY_SIZE.default);
     // The probe's own bounds are ordinary sizes, so a probe round needs no second path.
     for (const n of [floor, PROBE.min, PROBE.max, ceiling]) expect(batterySize(n)).toBe(n);
     // A silently altered operator condition is a silently dropped one: refuse, never clamp.
     const outside = `outside [${floor}, ${ceiling}]`;
-    expect(() => batterySize(floor - 1)).toThrow(outside);
-    expect(() => batterySize(ceiling + 1)).toThrow(outside);
-    expect(() => batterySize(double(25.5))).toThrow(outside);
+    for (const n of [floor - 1, ceiling + 1, double<number>(25.5)]) {
+      expect(() => batterySize(n)).toThrow(outside);
+    }
   });
-});
 
-describe("taskCountSentence", () => {
-  it("states one size, or the range the Builder chooses in", () => {
+  it("is stated once, as one size or as the range the Builder chooses in", () => {
     expect(taskCountSentence({ expectedTasks: 25 })).toBe("Task count: exactly 25 tasks.");
     expect(taskCountSentence({ expectedTasks: 10, minTasks: 5 })).toBe(
       "Task count: between 5 and 10 tasks — choose the size in that range yourself.",
     );
   });
+
+  it("creates the manifest from the slug alone, at the default battery size", () => {
+    expect(directManifest("bridge-truss")).toEqual({
+      slug: "bridge-truss",
+      domain: "bridge-truss",
+      expectedTasks: BATTERY_SIZE.default,
+    });
+  });
+
+  it("counts the adopted battery and reports none before adoption", () => {
+    const domain = mkdtempSync(join(tmpdir(), "battery-sizing-domain-"));
+    expect(adoptedTaskCount(domain)).toBeNull();
+    mkdirSync(join(domain, "correctness-model"));
+    writeFileSync(join(domain, "correctness-model", "tasks.json"), JSON.stringify([{}, {}, {}]));
+    expect(adoptedTaskCount(domain)).toBe(3);
+  });
 });
 
-describe("batterySizingGate", () => {
-  const none = () => null;
-  const landed = (passes: number, n: number) => () => ({ passes, n });
-  const unread = () => {
-    throw new Error("sizing read a battery it did not need");
-  };
-
-  it("measures a fresh product at the probe range first", () => {
+describe("a probe graduates on its placement", () => {
+  it("starts a fresh product on the probe range without reading a battery", () => {
     expect(batterySizingGate(25, null, unread)).toEqual(PROBE);
   });
 
-  it("keeps probing after a probe that passed none, all or scored nothing", () => {
-    for (const landing of [landed(0, 8), landed(8, 8), none]) {
+  it("leaves a request no larger than the probe alone, without reading a battery", () => {
+    expect(batterySizingGate(10, null, unread)).toEqual(exact(10));
+    expect(batterySizingGate(10, 25, unread)).toEqual(exact(10));
+  });
+
+  it("graduates once a probe passed at least one case and landed at or under the aim", () => {
+    // The aim at seven tasks is 2 to 3 passes; one pass is under it and still located something.
+    for (const passes of [1, 2, 3]) expect(batterySizingGate(25, 7, landed(passes, 7))).toEqual(exact(25));
+  });
+
+  it("keeps probing after nothing scored, nothing passed, or a count above the aim", () => {
+    // 5 of 6 and 7 of 8 are recorded graduations whose requested-size battery then passed 25 of 25
+    // and 24 of 25: one failed case among six says the probe held one hard task, not a limit.
+    for (const landing of [none, landed(0, 8), landed(8, 8), landed(4, 7), landed(5, 6), landed(7, 8)]) {
       expect(batterySizingGate(25, 8, landing)).toEqual(PROBE);
     }
   });
 
-  it("expands after a mixed probe", () => {
-    for (const passes of [3, 4]) {
-      expect(batterySizingGate(25, 7, landed(passes, 7))).toEqual({ min: 25, max: 25 });
+  it("reads the aim from the run's band, so a declared band moves graduation with the placement", () => {
+    // Under [0.2, 0.95] the aim at six tasks runs to 5 passes, so 5 of 6 graduates there.
+    expect(batterySizingGate(25, 6, landed(5, 6), [0.2, 0.95])).toEqual(exact(25));
+    expect(batterySizingGate(25, 6, landed(5, 6))).toEqual(PROBE);
+  });
+});
+
+describe("a product past the probe keeps the smallest size that still holds its reading", () => {
+  it("re-reads a too-easy battery for less, and never on a reading only its projection makes", () => {
+    // 9 of 11 still reads significantly too easy, so eleven buys the 22-of-25 reading for 44% of it.
+    expect(batterySizingGate(25, 25, landed(22, 25))).toEqual(exact(11));
+    expect(batterySizingGate(25, 25, landed(20, 25))).toEqual(exact(14));
+    // 6 of 6 is significantly too easy; 5 of 6 is not, though 9 of 11 at its rate would be.
+    expect(batterySizingGate(25, 25, landed(6, 6))).toEqual(exact(11));
+    expect(batterySizingGate(25, 25, landed(5, 6))).toEqual(exact(25));
+  });
+
+  it("keeps the requested size when no smaller battery holds the reading, or there is none to read", () => {
+    for (const landing of [landed(15, 25), landed(13, 25), landed(0, 25), landed(0, 0), none]) {
+      expect(batterySizingGate(25, 25, landing)).toEqual(exact(25));
     }
   });
 
-  it("leaves a request no larger than the probe alone, without reading a battery", () => {
-    expect(batterySizingGate(10, null, unread)).toEqual({ min: 10, max: 10 });
-    expect(batterySizingGate(10, 25, unread)).toEqual({ min: 10, max: 10 });
-  });
-
-  it("sizes a product past the probe to the smallest battery that still carries its last reading", () => {
-    // A battery that read too easy at 25 is re-read for less: nine of eleven still reads significantly too easy, so eleven buys the reading for 44% of it.
-    expect(batterySizingGate(25, 25, landed(22, 25))).toEqual({ min: 11, max: 11 });
-    expect(batterySizingGate(25, 25, landed(20, 25))).toEqual({ min: 14, max: 14 });
-  });
-
-  it("carries a too-easy reading the landing made, and never one only its projection makes", () => {
-    // 6 of 6 is significantly too easy, so eleven re-reads it; 5 of 6 is not, though 9 of 11 at the
-    // same rate would be, and shrinking on that would spend a round on a reading nobody observed.
-    expect(batterySizingGate(25, 25, landed(6, 6))).toEqual({ min: 11, max: 11 });
-    expect(batterySizingGate(25, 25, landed(5, 6))).toEqual({ min: 25, max: 25 });
-  });
-
-  it("keeps the requested size whenever no smaller battery holds the reading", () => {
-    // 0.6 and 0.52 sit too close to the band's upper edge for any size below 25 to exclude it.
-    expect(batterySizingGate(25, 25, landed(15, 25))).toEqual({ min: 25, max: 25 });
-    expect(batterySizingGate(25, 25, landed(13, 25))).toEqual({ min: 25, max: 25 });
-    // A battery the solver failed outright is the too-hard side, which no size below 25 reads either.
-    expect(batterySizingGate(25, 25, landed(0, 25))).toEqual({ min: 25, max: 25 });
-  });
-
-  it("keeps the requested size when the product past the probe has no landing to read", () => {
-    expect(batterySizingGate(25, 25, none)).toEqual({ min: 25, max: 25 });
-    expect(batterySizingGate(25, 25, landed(0, 0))).toEqual({ min: 25, max: 25 });
-  });
-
-  it("never sizes a product past the probe back down into the probe range", () => {
-    // Six reads too easy only at 6 of 6, and a rate under 1 floors below that, so a probe-sized
-    // round past the probe would buy no reading at all. The saving never buys the reading.
+  it("never sizes back down into the probe range", () => {
     for (const passes of [11, 15, 20, 22, 25]) {
-      expect(batterySizingGate(25, 25, landed(passes, 25)).min).toBeGreaterThan(BATTERY_SIZE.probe.max);
+      expect(batterySizingGate(25, 25, landed(passes, 25)).min).toBeGreaterThan(PROBE.max);
+    }
+  });
+});
+
+describe("the probe sentence", () => {
+  it("states the rule a probe graduates on without a share to author towards", () => {
+    expect(renderProbeSizing(PROBE, 25, null)).toBe(
+      "Battery sizing: this product's batteries stay at the task count above until one passes some of its scored cases and the controller reads it as hard enough, then 25.",
+    );
+  });
+
+  it("is absent past the probe, so nothing there anchors a score", () => {
+    for (const landing of [landed(22, 25), landed(15, 25), none]) {
+      expect(renderProbeSizing(batterySizingGate(25, 25, landing), 25, 25)).toBeNull();
     }
   });
 
-  it("tells the Builder nothing about the size it chose past the probe, so no note anchors a score", () => {
-    // The count reaches the author through taskCountSentence alone (rule 14, one owner per sentence).
-    for (const landing of [landed(22, 25), landed(15, 25), none]) {
-      expect(renderProbeSizing(batterySizingGate(25, 25, landing), 25)).toBeNull();
-    }
+  // Tasks added at the demand the probe's passing families met passed, and carried the graduated
+  // battery back above the aim, so the round a probe graduates in asks for the hardest families'.
+  it("asks a graduating round's added tasks for the demand of the hardest families, and no other round", () => {
+    const demand = "write the tasks you add at the demand of that battery's hardest families";
+    const graduation = required(
+      renderProbeSizing(batterySizingGate(25, 6, landed(2, 6)), 25, 6),
+      "a graduation sentence",
+    );
+    expect(graduation).toContain(demand);
+    // No count, share or score to author towards (prior 10).
+    expect(graduation).not.toMatch(/\d|aim/);
+    expect(renderProbeSizing(batterySizingGate(25, 6, landed(5, 6)), 25, 6)).not.toContain(demand);
+    expect(renderProbeSizing(batterySizingGate(25, 25, landed(15, 25)), 25, 25)).toBeNull();
   });
 });
 
@@ -234,78 +277,82 @@ describe("runBuildStep battery sizing", () => {
       : double<RecordedDifficultyDecision>({ path: "decision.json", evidence: { difficulty: readout } });
   }
 
-  it("expands after a mixed probe while the readout reads its changed subset", async () => {
+  it("expands after a probe on the aim while the readout reads its changed subset", async () => {
     const root = probeRoot(true);
     const round = await sizedRound(root, recordedReadout(root));
-    expect(round.expectedTasks).toBe(25);
+    expect(round).toMatchObject({ expectedTasks: 25 });
     expect(round.minTasks).toBeUndefined();
     // Sizing reads the whole probe, 4 of 8; the readout reads the changed subset, 0 of 4.
     expect(round.note).toContain("passed 0 of 4");
-    expect(round.note).not.toContain("Battery sizing");
+    expect(round.note).toContain(required(renderProbeSizing(exact(25), 25, 8), "a graduation sentence"));
+    expect(round.note).not.toContain("the controller reads it as hard enough");
   });
 
-  it("sizes a round past the probe to the size its last battery's reading survives at", async () => {
+  it("keeps a probe above the aim on probes and says what it must pass", async () => {
+    const round = await sizedRound(probeRoot(true, 8, 7), null);
+    expect(round).toMatchObject({ expectedTasks: 10, minTasks: 5 });
+    expect(round.note).toContain("the controller reads it as hard enough");
+    expect(round.note).not.toMatch(/\d+%/);
+  });
+
+  it("keeps probing when the fails that put a probe on the aim were settled against their check", async () => {
+    // 2 of 6 is on the aim and graduates; with its four fails settled against the one check that
+    // decided each, it reads 2 of 2, above the aim.
+    const root = probeRoot(true, 6, 2);
+    expect(await sizedRound(root, null)).toMatchObject({ expectedTasks: 25 });
+    const analysis = join(dirname(claimsDirFor(root, SLUG)), "analysis");
+    mkdirSync(analysis, { recursive: true });
+    const settled = ["probe-2", "probe-3", "probe-4", "probe-5"].map((taskId) => ({
+      taskId,
+      family: "matching",
+      kind: "disputed-pass",
+      checkIds: ["bench"],
+      checkId: "bench",
+      disposition: "against-check",
+      finding: 0,
+    }));
+    writeFileSync(
+      join(analysis, "probe-epoch-review.json"),
+      JSON.stringify({
+        schema: EPOCH_REVIEW_SCHEMA,
+        runId: "probe",
+        status: "completed",
+        findings: [],
+        dispositions: settled,
+      }),
+    );
+    expect(await sizedRound(root, null)).toMatchObject({ expectedTasks: 10, minTasks: 5 });
+  });
+
+  it("sizes a round past the probe by the whole battery, and adds no note", async () => {
     const round = await sizedRound(probeRoot(true, 25, 22), null);
-    // Sizing reads the whole battery, 22 of 25, not the changed subset the difficulty selector uses.
     expect(round.expectedTasks).toBe(11);
     expect(round.minTasks).toBeUndefined();
-    // No note: the count reaches the author through taskCountSentence alone, so nothing here tells
-    // a Builder what its next battery is expected to score.
     expect(round.note ?? "").not.toContain("Battery sizing");
   });
 
   it("keeps the requested size past the probe when the adopted product does not fingerprint", async () => {
-    // An unbindable tree has no landing this round may attribute to it. Sizing only ever buys a
-    // saving, so it gives the saving up rather than refusing the round over it.
+    // An unbindable tree has no landing this round may attribute to it; sizing only ever buys a
+    // saving, so it gives the saving up rather than refusing the round.
     const root = probeRoot(true, 25, 22);
     rmSync(join(root, "domains", SLUG, "agent", "tools-spec.json"));
     expect(await sizedRound(root, null)).toMatchObject({ expectedTasks: 25 });
   });
 
-  /** The counts a round is authored against have one owner, the battery contract in the start
-   *  prompt; a sizing note restating them would put a first-battery count beside a continuation. */
-  it("leaves the pass counts to the prompt that owns them, and adds no second owner", async () => {
+  it("gives a fresh build the range and its rule, and no pass count to author towards", async () => {
     const fresh = await sizedRound(probeRoot(false), null, "build");
     expect(fresh).toMatchObject({ expectedTasks: 10, minTasks: 5 });
     const note = required(fresh.note, "a sizing note");
-    expect(note).toContain(
-      "batteries have 5 to 10 tasks until one passes some but not all of its scored cases, then 25",
-    );
-    // The counts themselves are the battery contract's, which climb-decision and the campaign
-    // opening prove are delivered per size.
+    expect(note).toContain(renderProbeSizing(PROBE, 25, null) ?? "");
     for (const count of ["verified pass", "aim", "finds no limit"]) expect(note).not.toContain(count);
   });
 
-  /** One number, three owners: a declared `climb.band` must move the placement, the prompt
-   *  contract and the sizing gate together. [0.2, 0.95] makes each visible: at 25 cases no count is
-   *  significantly too easy under it, and 22 of 25 no longer holds "too easy" below 25 tasks. */
-  it("moves the sizing gate with a declared band, not only the placement", async () => {
+  it("moves the gate with a declared band, and states no share of it", async () => {
     const declared: [number, number] = [0.2, 0.95];
-    // Same battery, same 22 of 25: under the code-owned ceiling it holds too-easy at eleven tasks.
+    // 22 of 25 holds too-easy at eleven tasks under the code-owned ceiling and at no size under 0.95.
     expect(await sizedRound(probeRoot(true, 25, 22), null)).toMatchObject({ expectedTasks: 11 });
-    const round = await sizedRound(probeRoot(true, 25, 22, declared), null);
-    // Under the declared ceiling no smaller size holds the reading, so the round keeps its size.
-    expect(round.expectedTasks).toBe(25);
+    expect(await sizedRound(probeRoot(true, 25, 22, declared), null)).toMatchObject({ expectedTasks: 25 });
+    const fresh = await sizedRound(probeRoot(false, 8, 4, declared), null, "build");
+    expect(fresh.note).toBe(required(renderProbeSizing(PROBE, 25, null), "a probe sentence"));
   });
-});
-
-describe("adoptedTaskCount", () => {
-  it("counts the adopted battery and reports none before adoption", () => {
-    const domain = mkdtempSync(join(tmpdir(), "battery-sizing-domain-"));
-    expect(adoptedTaskCount(domain)).toBeNull();
-    mkdirSync(join(domain, "correctness-model"));
-    writeFileSync(join(domain, "correctness-model", "tasks.json"), JSON.stringify([{}, {}, {}]));
-    expect(adoptedTaskCount(domain)).toBe(3);
-  });
-});
-
-it("creates the manifest from the slug alone, at the default battery size", () => {
-  // The manifest carries routing only: the slug owns the campaign identity and the battery
-  // size, and the engines come from what the Builder declares in the candidate bundle.
-  expect(directManifest("bridge-truss")).toEqual({
-    slug: "bridge-truss",
-    domain: "bridge-truss",
-    expectedTasks: BATTERY_SIZE.default,
-  });
-  expect(directManifest("truss-w36-sol").slug).toBe("truss-w36-sol");
 });

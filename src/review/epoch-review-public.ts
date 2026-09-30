@@ -22,6 +22,10 @@ const DEMAND_GAP_SENTENCES: Record<DemandGap, string> = {
   "sibling-values-only": "Sibling tasks differ only in the values they publish.",
   "limit-cleared-widely": "The first reasonable candidate clears a published limit widely.",
   "rule-outside-request": "A rule stands that no practitioner of the request would hold.",
+  "published-scenario-only":
+    "The checks observe only the inputs the task publishes, so an answer that reproduces the published outputs without reading its inputs passes.",
+  "requirements-one-at-a-time":
+    "Each task asks for the request's requirements one at a time, so none asks for several acting together on one answer, where meeting one spends the margin another needs.",
 };
 
 /** Which way a probe-backed check is wrong, as the author reads it, or that the cited probes do not
@@ -88,12 +92,14 @@ function familiesOf(rows: readonly CaseDisposition[]): string {
 /** What one finding settled, as the author reads it: how many cases in which families, and which
  *  way. The Judge's reason, the case identities and the probe's values stay private. */
 function settlementLines(settled: readonly CaseDisposition[]): string[] {
-  const of = (disposition: CaseDisposition["disposition"], kind?: CaseDisposition["kind"]) =>
-    settled.filter((row) => row.disposition === disposition && (kind === undefined || row.kind === kind));
+  const of = (disposition: CaseDisposition["disposition"], veto?: boolean) =>
+    settled.filter(
+      (row) => row.disposition === disposition && (veto === undefined || (row.kind === "veto") === veto),
+    );
   const [stands, vetoes, disputes] = [
     of("check-stands"),
-    of("against-check", "vetoed"),
-    of("against-check", "disputed"),
+    of("against-check", true),
+    of("against-check", false),
   ];
   return [
     ...(stands.length === 0
@@ -109,7 +115,7 @@ function settlementLines(settled: readonly CaseDisposition[]): string[] {
     ...(disputes.length === 0
       ? []
       : [
-          `The Judge passed ${String(disputes.length)} verified fail(s) in ${familiesOf(disputes)} holding this obligation satisfied, and the review settled them against the check: it refuses an artifact the obligation admits.`,
+          `The Judge did not fail ${String(disputes.length)} verified fail(s) in ${familiesOf(disputes)} on this obligation, and the review settled them against the check: it refuses an artifact the obligation admits.`,
         ]),
   ];
 }
@@ -218,21 +224,23 @@ export function publicEpochReview(
   };
 }
 
+/** The Judge issue each settled kind counts towards. */
+const JUDGE_ISSUE = {
+  veto: "judge-failed-verifier-passed",
+  "disputed-pass": "judge-passed-verifier-failed",
+} as const;
+
 /** The Judge issue ids a completed review settled in the check's favour, one per settled case, in
  *  the id form the rebuild advice keys its Judge issues by: one per family and the side the Judge
  *  took. A case is settled at most once (`caseSettlement`), so the advice settles an issue once
  *  every case it counts appears here. */
 function settledJudgeIssues(settled: readonly CaseDisposition[]) {
+  // A review recorded before 2026-09-30 may have settled an undecided dispute, which counts towards
+  // no issue.
   return settled
     .flatMap((row) =>
-      row.disposition === "check-stands"
-        ? [
-            adviceIssueId(
-              row.kind === "disputed" ? "judge-passed-verifier-failed" : "judge-failed-verifier-passed",
-              row.family,
-              null,
-            ),
-          ]
+      row.disposition === "check-stands" && row.kind in JUDGE_ISSUE
+        ? [adviceIssueId(JUDGE_ISSUE[row.kind], row.family, null)]
         : [],
     )
     .sort();

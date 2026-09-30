@@ -15,6 +15,10 @@
  * already owns worktree creation, credential capture, the preflight probe, the composed gate and
  * detaching into the service manager, and `resume --yes` is that same launcher with a run's own
  * recorded arguments. A wrapper in front of it would pay no rent.
+ *
+ * A verb `RUN_VERBS` (`.claude/skills/main/verbs.ts`) names is dispatched before any parsing: the
+ * skill's script starts with the operator's remaining arguments untouched and its exit code is
+ * returned, so the script keeps its own options and output, and no registered reader may mutate.
  */
 import { join } from "../../src/meta/path.ts";
 import { parseArgs } from "../../src/meta/process.ts";
@@ -26,6 +30,9 @@ import { runPulse } from "./pulse.ts";
 import { PAUSE_FINDING, resumePlan } from "./resume.ts";
 import { stopRun } from "../../.claude/skills/launch-run/scripts/stop.ts";
 import { gitMaybe } from "../../.claude/skills/main/git.ts";
+import { RUN_VERBS } from "../../.claude/skills/main/verbs.ts";
+
+export const NATIVE_VERBS: readonly string[] = ["list", "show", "pulse", "stop", "resume", "pause"];
 
 const USAGE = `Usage: bun run runs [list] [--closed N]
        bun run runs show <runId>
@@ -47,7 +54,12 @@ const USAGE = `Usage: bun run runs [list] [--closed N]
   --grace-ms  milliseconds between SIGTERM and removing the service (default 15000)
   --every S   seconds between two looks for pulse (default 290)
   --once      one pulse look, then exit; what moved is read against the state file
-  --state F   where pulse keeps its readings between looks (default .scratch/runs-pulse.json)`;
+  --state F   where pulse keeps its readings between looks (default .scratch/runs-pulse.json)
+
+The readers the skills own, each passing its own options through:
+       bun run runs <verb> <runId|campaign dir> [options]
+
+${[...RUN_VERBS].map(([verb, row]) => `  ${verb.padEnd(9)} ${row.summary}`).join("\n")}`;
 
 const OPTIONS = {
   yes: { type: "boolean" },
@@ -117,7 +129,7 @@ async function stop(detail: RunDetail, intent: "send" | "print-only", graceMs: n
       `  service  ${plan.service}`,
       `  worktree ${shortPath(plan.dir)}`,
       `  state    ${detail.row.liveness.state} — ${detail.row.liveness.detail}`,
-      `  SIGTERM, then ${plan.grace} ms, then the service is removed; the controller records its own terminal`,
+      `  SIGTERM, then ${plan.grace} ms, then the service is removed; a process group that outlives it is killed`,
       "",
     ].join("\n"),
   );
@@ -126,8 +138,10 @@ async function stop(detail: RunDetail, intent: "send" | "print-only", graceMs: n
     return 0;
   }
   const result = await stopRun(plan);
-  process.stdout.write(`${result.outcome}: ${result.service}\n`);
-  return 0;
+  const killed =
+    "group" in result ? `; process group ${result.group} outlived removal, no terminal of its own` : "";
+  process.stdout.write(`${result.outcome}: ${result.service}${killed}\n`);
+  return killed === "" ? 0 : 1;
 }
 
 async function resume(detail: RunDetail, intent: "launch" | "print-only", repoRoot: string): Promise<number> {
@@ -152,12 +166,25 @@ async function resume(detail: RunDetail, intent: "launch" | "print-only", repoRo
 }
 
 async function main(argv: string[]): Promise<number> {
+  const [first = "", ...rest] = argv;
+  const verb = NATIVE_VERBS.includes(first) ? undefined : RUN_VERBS.get(first);
+  if (verb !== undefined) {
+    const script = join(import.meta.dir, "..", "..", ".claude", "skills", verb.script);
+    const child = Bun.spawn([process.execPath, "--no-env-file", script, ...verb.lead, ...rest], {
+      stdio: ["inherit", "inherit", "inherit"],
+    });
+    return await child.exited;
+  }
   const { values, positionals } = parseArgs({ args: argv, options: OPTIONS, allowPositionals: true });
   if (values.help === true) {
     process.stdout.write(`${USAGE}\n`);
     return 0;
   }
   const command = positionals[0] ?? "list";
+  if (!NATIVE_VERBS.includes(command)) {
+    process.stderr.write(`unknown command ${command}\n\n${USAGE}\n`);
+    return 1;
+  }
   const selector = positionals[1];
   const closedLimit = count(values.closed, 8, "--closed");
   const repoRoot = mainCheckout(process.cwd());
@@ -198,11 +225,7 @@ async function main(argv: string[]): Promise<number> {
       count(values["grace-ms"], 15_000, "--grace-ms"),
     );
   }
-  if (command === "resume") {
-    return await resume(detail, values.yes === true ? "launch" : "print-only", repoRoot);
-  }
-  process.stderr.write(`unknown command ${command}\n\n${USAGE}\n`);
-  return 1;
+  return await resume(detail, values.yes === true ? "launch" : "print-only", repoRoot);
 }
 
 if (import.meta.main) {

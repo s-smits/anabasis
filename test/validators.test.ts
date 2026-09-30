@@ -296,6 +296,11 @@ describe("brief and task contract", () => {
     ],
     ["an empty artifact schema", { artifactSchema: [] }, { code: "brief-no-artifact-schema" }],
     [
+      "a check-only tool no check requires",
+      { checkOnlyTools: ["checker"] },
+      { code: "brief-check-only-tool-unrequired", path: "checkOnlyTools[0]" },
+    ],
+    [
       "a duplicate artifact field",
       { artifactSchema: [field({ name: "good" }), field({ name: "good" })] },
       { code: "brief-duplicate-artifact-field" },

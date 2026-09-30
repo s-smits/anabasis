@@ -55,7 +55,7 @@ import { keyIfDefined, keysIf } from "../meta/optional-key.ts";
 import type { SafeguardContext } from "../meta/safeguard.ts";
 import { runtimeProcess } from "../meta/process.ts";
 import { containsPath } from "../meta/path-containment.ts";
-import { buildWorkerBundle } from "../meta/subprocess.ts";
+import { buildWorkerBundle } from "../solve/worker-bundle.ts";
 import { canonicalForms } from "../verify/wall-policy.ts";
 import type { ProviderResourceBudget } from "../run/provider-resource-budget.ts";
 

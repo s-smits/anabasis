@@ -20,7 +20,7 @@ import {
 import {
   composeInstructions,
   composeTasks,
-  publicOnlySession,
+  blindSession,
   publicReviewInstructions,
   resolveSessions,
   writeAndDispatch,
@@ -36,7 +36,7 @@ const USAGE = [
   "                     [--angles <file>] [--index <file>]",
   "                     [--revision <40-char commit>] [--live] [--title <text>] [--context <file>]",
   "                     [--shared-instructions <shared-instructions.json>] [--web-access]",
-  "                     [--transport luna|codex|native] [--effort high|xhigh|max] [--launch [--detach]]",
+  "                     [--transport luna|native] [--effort high|xhigh|max] [--launch [--detach] [--max-active <n>]]",
   `Lanes ${[...ISOLATED_ANGLES.keys()].join(", ")} are isolated: each launches only when its deterministic trigger fired in the snapshot.`,
 ].join("\n");
 
@@ -52,6 +52,7 @@ interface ManifestOptions {
   outDir: string | null;
   launch: boolean;
   detach: boolean;
+  maxActive: string | null;
   revision: string | null;
 }
 
@@ -62,14 +63,18 @@ interface Catalogue {
 
 function parseOptions(args: CommandArgs): ManifestOptions {
   const transport = args.value("transport") ?? "luna";
-  if (!["luna", "codex", "native"].includes(transport)) manifestFail(`invalid transport: ${transport}`);
+  if (!["luna", "native"].includes(transport)) manifestFail(`invalid transport: ${transport}`);
   const effort = args.value("effort") ?? "max";
   if (!["high", "xhigh", "max"].includes(effort)) manifestFail(`invalid effort: ${effort}`);
   if (args.flag("launch") && transport === "native") {
-    manifestFail("--launch is only valid with the luna or codex transport");
+    manifestFail("--launch is only valid with the luna transport");
   }
   if (args.flag("detach") && (!args.flag("launch") || transport !== "luna")) {
     manifestFail("--detach needs --launch with the luna transport");
+  }
+  const maxActive = args.value("max-active");
+  if (maxActive !== null && (transport !== "luna" || !/^[1-9]\d*$/.test(maxActive))) {
+    manifestFail(`--max-active takes a positive count of concurrent Luna sessions, got "${maxActive}"`);
   }
   const revision = args.value("revision");
   if (revision !== null && !GIT_SHA.test(revision)) {
@@ -97,6 +102,7 @@ function parseOptions(args: CommandArgs): ManifestOptions {
     outDir: args.value("out"),
     launch: args.flag("launch"),
     detach: args.flag("detach"),
+    maxActive,
     revision,
   };
 }
@@ -202,15 +208,15 @@ function main(args: CommandArgs): CommandResult {
     { campaign, runId, reviewMode },
     options.outDir,
   );
-  // All transports prepend one common instruction file. When the public-only lane is present,
-  // keep that common file public and attach the richer context only to the other tasks.
-  const publicOnly = sessionSet.sessions.some(publicOnlySession);
-  const commonInstructions = publicOnly ? publicReviewInstructions(instructionInput) : instructions;
-  if (publicOnly) {
+  // All transports prepend one common instruction file. When a blind lane is present, keep that
+  // common file free of outcomes and attach the richer context only to the other tasks.
+  const blind = sessionSet.sessions.some(blindSession);
+  const commonInstructions = blind ? publicReviewInstructions(instructionInput) : instructions;
+  if (blind) {
     for (const task of tasks) {
       const session = sessionSet.sessions.find((row) => row.name === task.name);
       // Every task is composed from one session, so `session` is found.
-      if (session !== undefined && !publicOnlySession(session)) task.task = `${instructions}\n\n${task.task}`;
+      if (session !== undefined && !blindSession(session)) task.task = `${instructions}\n\n${task.task}`;
     }
   }
   writeAndDispatch({
@@ -223,14 +229,6 @@ function main(args: CommandArgs): CommandResult {
     launcherPath:
       runtimeProcess.env.WRI_LUNA_LAUNCHER ??
       join(REPO_ROOT, ".agents", "skills", "codex-luna-swarm", "scripts", "luna-sessions.ts"),
-    codexLauncherPath: join(
-      REPO_ROOT,
-      ".claude",
-      "skills",
-      "codex-luna-swarm",
-      "scripts",
-      "codex-sessions.ts",
-    ),
   });
 }
 
@@ -259,6 +257,7 @@ if (import.meta.main) {
         "web-access": "flag",
         launch: "flag",
         detach: "flag",
+        "max-active": "text",
       },
     },
     main,

@@ -28,6 +28,7 @@ import { readJsonFileOrNull } from "#src/meta/completed-json.ts";
 import { authorSessionOwner } from "#src/analyse/finding-owner.ts";
 import type { AnalysisFinding } from "#src/analyse/iteration-analysis.ts";
 import { DIFFICULTY_DECISION_SCHEMA } from "#src/run/difficulty-decision.ts";
+import { fullPass } from "#src/run/climb-readout.ts";
 import { EPOCH_REVIEW_SCHEMA } from "#src/review/epoch-review-findings.ts";
 import { JUDGE_REVIEWS_SCHEMA } from "#src/analyse/judge-reviews.ts";
 import {
@@ -44,6 +45,8 @@ import { PROVIDER_ALLOWANCE } from "#src/correctness-bundle/runtime-blocker.ts";
 import { controllerRunOfBattery } from "#src/run/controller-battery-record-policy.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { openRecordedRun, type RecordedRun } from "../../main/run.ts";
+import { isBandZone } from "#tools/runs/evidence.ts";
+import { offAimStreak } from "#tools/runs/pulse.ts";
 import { jsonText, readJsonAsOrNull } from "./run-overview.ts";
 
 /** The placement a difficulty decision recorded, each field null where the record omits it. */
@@ -81,10 +84,8 @@ export interface DifficultyDecisions {
   refused: string[];
 }
 
-type Side = "above" | "below";
-
 interface OffAimStreak {
-  side: Side;
+  side: "above" | "below";
   runIds: string[];
 }
 
@@ -137,13 +138,13 @@ export interface ContestedRow {
 interface JudgeCensusEvidence {
   judge?: string | null;
   offered?: JsonValue;
-  disagreements?: JsonValue;
-  disagreementDenominator?: JsonValue;
+  verdicts?: JsonValue;
+  abstentions?: JsonValue;
 }
 
 interface JudgeExit {
   kind?: string | null;
-  vetoed?: JsonValue;
+  cases?: { veto?: JsonValue } | null;
 }
 
 /** `analysis/<runId>-judges.json` as its writer records it. */
@@ -330,16 +331,6 @@ export function readDifficultyDecisions(campaign: string): DifficultyDecisions {
   return { rows, refused };
 }
 
-/** Which side of the aim a placement sits on: `toAim` is the count the battery has to move by, so a
- *  negative reading is a battery above the aim. A placement without it falls back to the zone. */
-function sideOf(placement: RecordedPlacement | null): Side | null {
-  if (placement === null) return null;
-  if (placement.toAim !== null && placement.toAim !== 0) return placement.toAim < 0 ? "above" : "below";
-  if (placement.zone === "too-easy" || placement.zone === "over-aim") return "above";
-  if (placement.zone === "under-aim" || placement.zone === "too-hard") return "below";
-  return null;
-}
-
 function decisionLine(row: DecisionRow): string {
   const placement = row.placement;
   const placed =
@@ -348,23 +339,30 @@ function decisionLine(row: DecisionRow): string {
       : ` ${placement.zone ?? "?"} · ${placement.passes ?? "?"}/${placement.n ?? "?"}` +
         ` aim [${placement.aim === null ? "?" : placement.aim.join(",")}] toAim ${placement.toAim ?? "?"}`;
   const facts = `${row.repeated ? " · repeated failures" : ""}${row.conflict ? " · family conflict" : ""}`;
-  return `${row.runId}:${placed}${facts} · admitted ${row.admitted ?? "-"} excluded ${row.excluded}`;
+  // A decision is named after the round it opened, and it places the latest battery in its
+  // evidence: without that id two WRI lanes read an i12 decision as a battery recorded after T0.
+  const read = row.evidenceRunIds.at(-1);
+  const label = read === undefined ? row.runId : `${row.runId} (reads ${read})`;
+  return `${label}:${placed}${facts} · admitted ${row.admitted ?? "-"} excluded ${row.excluded}`;
 }
 
-/** The longest run of consecutive placements on one off-aim side, ending at its last member. */
+/** Every run of two or more placements on one side of the aim, each counted back from its last
+ *  member by the streak `runs pulse` reads (`offAimStreak`), which passes over a decision that
+ *  placed nothing. */
 function offAimStreaks(rows: readonly DecisionRow[]): OffAimStreak[] {
+  const placed = rows.flatMap(({ runId, placement: p }) =>
+    p !== null && isBandZone(p.zone) && p.passes !== null && p.n !== null
+      ? [{ runId, zone: p.zone, placedOn: { passes: p.passes, n: p.n } }]
+      : [],
+  );
   const streaks: OffAimStreak[] = [];
-  let current: OffAimStreak | null = null;
-  for (const row of rows) {
-    const side = sideOf(row.placement);
-    if (current !== null && side !== null && current.side === side) {
-      current.runIds.push(row.runId);
-      continue;
-    }
-    if (current !== null && current.runIds.length >= 2) streaks.push(current);
-    current = side === null ? null : { side, runIds: [row.runId] };
+  for (let end = placed.length; end > 0; ) {
+    const streak = offAimStreak(placed.slice(0, end));
+    const rounds = streak?.rounds ?? 1;
+    const runIds = placed.slice(end - rounds, end).map((row) => row.runId);
+    if (streak !== null && rounds >= 2) streaks.unshift({ side: streak.side, runIds });
+    end -= rounds;
   }
-  if (current !== null && current.runIds.length >= 2) streaks.push(current);
   return streaks;
 }
 
@@ -448,16 +446,14 @@ export function checkInformativenessLines({
       `REACH-ONLY CHECKS (lane 6): ${classes["reach-only"]} check(s) fire on controls and never on ${gradedOracleFiles} graded rows`,
     );
   }
-  // The decision that read this battery placed it over the aim, and the battery still came out
-  // perfect: a limit was not measured there, whichever of the two over-aim zones it landed in.
+  // A decision is named after the round it opened, so this is a full pass in a round opened on a
+  // battery placed above the aim: the round that answered an easy battery found no limit either.
   const overAim = new Set(
     decisions
       .filter((decision) => decision.zone === "too-easy" || decision.zone === "over-aim")
       .map((decision) => decision.runId),
   );
-  const perfect = tallies.filter(
-    (tally) => overAim.has(tally.runId) && tally.verified > 0 && tally.passed === tally.verified,
-  );
+  const perfect = tallies.filter((tally) => overAim.has(tally.runId) && fullPass(tally));
   if (perfect.length > 0) {
     lines.push(
       `PERFECT BATTERY OVER AIM (lane 5): ${perfect.map((tally) => `${tally.runId} ${tally.passed}/${tally.verified}`).join(", ")}`,
@@ -474,7 +470,9 @@ export function checkInformativenessLines({
  * The run's recorded Judge reviews, one per `analysis/<runId>-judges.json`, in name order. The
  * writer (`runJudgeReviews`) records `JUDGE_REVIEWS_SCHEMA` and nothing else, so a record under any
  * other schema is refused by name rather than read field by field: it predates the census and
- * `contested` shapes both readers of this function take as written.
+ * `contested` shapes both readers of this function take as written. v13 and v14 are the exception:
+ * their census, `contested` rows and exit read as the current ones, which moved only how a review
+ * states its outcome (v14) and dropped the undecided kinds (v15).
  */
 export function readJudgeReviews(campaign: string): JudgeReviews {
   const rows: JudgeReviewRow[] = [];
@@ -486,7 +484,9 @@ export function readJudgeReviews(campaign: string): JudgeReviews {
     .sort()) {
     const record = readJsonAsOrNull<JudgeReviewFile | null>(join(dir, name));
     if (
-      record?.schema !== JUDGE_REVIEWS_SCHEMA ||
+      (record?.schema !== JUDGE_REVIEWS_SCHEMA &&
+        record?.schema !== "judge-reviews/v14" &&
+        record?.schema !== "judge-reviews/v13") ||
       !isString(record.runId) ||
       !Array.isArray(record.contested)
     ) {
@@ -501,8 +501,8 @@ export function readJudgeReviews(campaign: string): JudgeReviews {
   return { rows, refused };
 }
 
-/** Judge/verifier disagreement per battery, from the census each review records, with the vetoes
- *  the review's exit counted. The census holds no controls by construction — `src/review/judge.ts`
+/** Judge/verifier disagreement per battery: the review's contested rows over the census's answers,
+ *  an older record's undecided included, with the vetoes the review's exit counted. The census holds no controls by construction — `src/review/judge.ts`
  *  records no control count — so this block reads the battery subjects offered alone. */
 export function judgeCensusLines({ judgeReviews }: JudgeCensusInput): string[] {
   const lines = ["", "## 2b judge census (analysis/*-judges.json)"];
@@ -516,18 +516,21 @@ export function judgeCensusLines({ judgeReviews }: JudgeCensusInput): string[] {
     // `census` is null when the battery recorded none; the review still records its exit.
     const evidence = judges.census?.evidence ?? null;
     const exit: JudgeExit = judges.exit ?? {};
-    const vetoes = isNumber(exit.vetoed) ? ` · vetoes ${exit.vetoed}` : "";
+    const vetoes = isNumber(exit.cases?.veto) ? ` · vetoes ${exit.cases.veto}` : "";
     if (evidence === null) {
       lines.push(`${judges.runId}: no census recorded · exit ${exit.kind ?? "?"}${vetoes}`);
       continue;
     }
     const battery = isNumber(evidence.offered) ? evidence.offered : null;
-    const disagreements = isNumber(evidence.disagreements) ? evidence.disagreements : null;
-    const denominator = isNumber(evidence.disagreementDenominator) ? evidence.disagreementDenominator : null;
-    if ((disagreements ?? 0) > 0) withDisagreement += 1;
+    const disagreements = judges.contested.length;
+    const denominator =
+      isNumber(evidence.verdicts) && isNumber(evidence.abstentions)
+        ? evidence.verdicts + evidence.abstentions
+        : null;
+    if (disagreements > 0) withDisagreement += 1;
     lines.push(
       `${judges.runId}: judge ${evidence.judge ?? "?"} · census battery ${battery ?? "?"}` +
-        ` · disagreements ${disagreements ?? "?"}/${denominator ?? "?"} · exit ${exit.kind ?? "?"}${vetoes}`,
+        ` · disagreements ${disagreements}/${denominator ?? "?"} · exit ${exit.kind ?? "?"}${vetoes}`,
     );
   }
   for (const line of refused) lines.push(`refused, not ${JUDGE_REVIEWS_SCHEMA} — ${line}`);

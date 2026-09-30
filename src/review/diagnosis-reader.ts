@@ -63,13 +63,13 @@ import { keyIfDefined } from "../meta/optional-key.ts";
 import type { ReviewChoice } from "../backends/resolve.ts";
 import type { RunObserver } from "../observe/run-observer.ts";
 import type { ProviderResourceBudget } from "../run/provider-resource-budget.ts";
-import { type ReaderTool, runReaderTurn } from "./review-reader.ts";
+import { type ReaderTool, type ReviewOutcome, readerPhase, runReaderTurn } from "./review-reader.ts";
 import { redactProviderDiagnostic } from "../backends/diagnostic-redaction.ts";
 import { type CompiledSolve, type SolveWalls, batteryCensus, compileSolve } from "./solve-steps.ts";
 import { DIAGNOSIS_SYSTEM_PROMPT, recordDiagnosisTool } from "./diagnosis-tool.ts";
 import { boundText } from "../meta/bounded-text.ts";
 
-export const DIAGNOSIS_READING_SCHEMA = "diagnosis-reading/v4";
+export const DIAGNOSIS_READING_SCHEMA = "diagnosis-reading/v5";
 
 /** Issues offered per reading, worst share first. */
 const MAX_ISSUES = 6;
@@ -119,7 +119,8 @@ export type DiagnosisReaderEvidence = {
   /** Explicitly declined issues; an offered issue neither diagnosed nor declined is silence. */
   abstentions: Array<{ issueIds: string[]; reason: string }>;
   refused: number;
-  error: string | null;
+  /** Skipped when no issue stands or the slot is off; absent when the turn failed. */
+  outcome: ReviewOutcome;
   /** Null means no successful turn; an empty string records a completed turn with no closing
    *  text. Reader self-report, never diagnosis authority. */
   readerText: string | null;
@@ -368,11 +369,11 @@ export async function readDiagnoses(input: DiagnosisReaderInput): Promise<Diagno
     diagnoses: [],
     abstentions: [],
     refused: 0,
-    error: null,
+    outcome: { kind: "read" },
     readerText: null,
   };
-  if (issues.length === 0) return { ...evidence, error: "no-standing-issue" };
-  if (!input.review.enabled) return { ...evidence, error: "review-slot-off" };
+  if (issues.length === 0) return { ...evidence, outcome: { kind: "skipped", reason: "no-standing-issue" } };
+  if (!input.review.enabled) return { ...evidence, outcome: { kind: "skipped", reason: "review-slot-off" } };
   const packet = diagnosisPacket(input, issues);
   evidence.offered = packet.offers.map((offer) => offer.issue.id);
   evidence.withheld = diagnosable.length - packet.offers.length;
@@ -384,6 +385,7 @@ export async function readDiagnoses(input: DiagnosisReaderInput): Promise<Diagno
   ].join("\n");
   evidence.promptDigest = sha256(`${DIAGNOSIS_SYSTEM_PROMPT}\n\n${prompt}`);
   const taskIds = analysis.cases.map((row) => row.taskId);
+  const closePhase = readerPhase("diagnosis-reader", input.observer);
   const turn = await (input.readerTurn ?? runReaderTurn)({
     review: input.review,
     repoRoot,
@@ -391,13 +393,15 @@ export async function readDiagnoses(input: DiagnosisReaderInput): Promise<Diagno
     tools: [recordDiagnosisTool(packet.offers, taskIds, evidence) satisfies ReaderTool],
     systemPrompt: DIAGNOSIS_SYSTEM_PROMPT,
     prompt,
-    ...keyIfDefined("observer", input.observer),
     ...keyIfDefined("providerBudget", input.providerBudget),
   });
   evidence.readerPin = turn.pin;
-  evidence.error = turn.error;
   // Tool calls from a failed turn already updated the sink; discard that incomplete reading.
-  if (turn.error !== null) return { ...evidence, diagnoses: [], abstentions: [] };
-  evidence.readerText = redactProviderDiagnostic(turn.text, 0);
-  return evidence;
+  const why = turn.error === null ? null : `failed — ${turn.error}`;
+  const read: DiagnosisReaderEvidence =
+    why === null
+      ? { ...evidence, readerText: redactProviderDiagnostic(turn.text, 0) }
+      : { ...evidence, outcome: { kind: "absent", why }, diagnoses: [], abstentions: [] };
+  closePhase(read.outcome);
+  return read;
 }

@@ -14,10 +14,24 @@
 import { DCG_RULES } from "../solve/dcg-rules.ts";
 
 /** What the Builder is making, what "good" means and how the product improves, before the duties.
- *  It names no step of the loop: the round's shape, submit included, is STARTER.md's. */
+ *  It names no step of the loop: the round's shape, submit included, is STARTER.md's.
+ *
+ *  "Good" names more than acceptance, because a round can be accepted every time while its battery
+ *  passes whole and locates nothing. So the clause also says what an accepted round is for: a
+ *  battery that fails some of its cases on the rules it publishes (AGENTS.md "Goals and the
+ *  climb"). It states no count, share or zone.
+ *
+ *  The last line puts depth in the first tasks and is the one place it is defined; the round
+ *  prompt's raise and the no-limit line name it at their moments without defining it again. Its
+ *  clause is the no-limit line's, because requirements side by side are not yet depth: each of
+ *  firmware 7a97af's five first tasks combined several and all 10 solves passed in minutes, while
+ *  on the truss pack series the same requirements passed 22 of 23 one interaction at a time and 7 of
+ *  20 inside one shared limit (AGENTS.md prior 10, "Tried and taken out"). */
 export const INTENT_CLAUSE = [
   "You are the Builder. From the one-line request you build a product the controller adopts and measures: a Built Harness in agent/ with which a separate solving model answers each task, and a correctness model in correctness-model/ that decides, without the solver's help, whether an answer is right. Useful computation belongs in the solver's tools; the host verifier owns correctness and the controller owns acceptance, scores and claims.",
   "A round succeeds when the controller accepts a candidate whose checks separate a correct answer from a convincing wrong one in every family. A sound candidate measured now teaches more than a better one measured later; after measurement, choose the next experiment the recorded evidence supports.",
+  "An ambitious round expects its battery to fail some cases on the rules it publishes: a battery the solver passes whole says nothing about where it stops.",
+  "Build that demand into the first tasks, not later: make several of the request's requirements act together on a single answer, so that meeting one spends the margin another needs.",
 ] as const;
 
 /** Where the tools are rooted and what is submitted. The pack is the whole standing channel into an
@@ -46,6 +60,11 @@ export const SCOPE_CLAUSE = [
   "A limit, state or duty the field does not hold measures your wording rather than the solver, so add none.",
 ] as const;
 
+/** The ceiling on what a solver's analysis may report, held once for both readers: the Builder hears
+ *  it as a publication rule and the Epoch Reviewer judges the tools against it. */
+export const NO_GRADER_IN_REACH =
+  "No tool, program or guide line analyses a candidate for the solver the way a check does, whether through the check's code or a copy of it, its instrument, or a verdict: a solver that can ask the grader searches until it passes, and its battery then measures that search rather than the field's work.";
+
 /** What the solver may read, what it must never read, and what its tools may do for it.
  *
  *  A proposer tool that is the reference solve passes every task in one call each while proving
@@ -54,16 +73,17 @@ export const SCOPE_CLAUSE = [
  *  reference recipe private and then write that same recipe into BUILT_AGENTS.md as guidance, in its
  *  own words, where no literal comparison of the two texts would see it.
  *
- *  The tools sentence sets no ceiling on what an analysis may report. Knowing whether a candidate
- *  meets the rules is not knowing how to build one, a solver without an analysis fails on
- *  arithmetic, which measures nothing, and whether a rich tool left a battery too easy is for blind
- *  measurement to say rather than for a rule written in advance. The program sentence answers
- *  harnesses that published an exact call sequence and graded a call trace, which turned writing
- *  the program into transcribing it. */
+ *  The last sentence sets the ceiling on what an analysis may report. A solver whose tools run a
+ *  check, a copy of its module or its instrument searches against the grader until it passes, so
+ *  its battery measures that search rather than the field's work. The real toolchain and a bounded
+ *  search stay, and computing the response a check decides with is the field's own work (AGENTS.md
+ *  "Goals and the climb"). The program sentence answers harnesses that published an exact call
+ *  sequence and graded a call trace, which turned writing the program into transcribing it. */
 export const PUBLICATION_CLAUSE = [
-  "Publish everything the verifier requires of an answer wherever the solver reads it: constants with their authority, units, precision and rounding, comparison direction and tolerance, canonical form, required paths and entry points, and the assumptions an installed tool applies. A solver that follows every published rule must never fail on a rule it could not read; where a practitioner could read a rule two ways, the brief states the verified reading.",
-  "Withhold hidden expectations, private controls and decisions, reference answers and protected verifier information from everything the solver reads, in any wording, tool results included. For a program, publish the behaviour it must show, not the calls or steps that produce it: a published sequence turns writing the program into transcribing it.",
-  "Give the solver a practitioner's tools — the real toolchain, an analysis of a candidate computed by the rule its check applies, a bounded search — and leave it the decision the task asks for; a tool that grades a candidate, however fully, still leaves it that decision.",
+  "Publish everything the verifier requires of an answer wherever the solver reads it: constants with their authority, units, precision and rounding, comparison direction and tolerance, canonical form, tie-break and fallback rules, required paths and entry points, and the assumptions an installed tool applies. A solver that follows every published rule must never fail on a rule it could not read; where a practitioner could read a rule two ways, the brief states the verified reading.",
+  "Withhold hidden expectations, private controls and decisions, reference answers, solved task-specific fixtures and protected verifier information from everything the solver reads, in any wording, tool results included. For a program, publish the behaviour it must show, not the calls or steps that produce it: a published sequence turns writing the program into transcribing it.",
+  "Give the solver a practitioner's tools — the real toolchain it builds with, readers, writers, a bounded search — and leave it the analysis and the decision the task asks for.",
+  NO_GRADER_IN_REACH,
 ] as const;
 
 /** Verification that means something, and the real installed tools it rests on. The first sentence

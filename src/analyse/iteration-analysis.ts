@@ -179,14 +179,24 @@ type FindingBody = {
 };
 
 /** The shapes a demand finding takes: a capability no task exercises, sibling tasks differing only
- *  in published values, a limit the first reasonable candidate clears widely, and a rule no
- *  practitioner of the request would hold. A solver tool that reports every margin a check reads is
- *  not one: it still leaves the solver the decision, and whether it made a battery easy is measured. */
+ *  in published values, a limit the first reasonable candidate clears widely, a rule no practitioner
+ *  of the request would hold, and checks that observe only the published inputs, so an answer that
+ *  replays the published outputs without reading its inputs passes. That last shape is one leaf of
+ *  a source-file artifact, where no path the review may name locates it, so without its own
+ *  sentence it crosses as one of the others and the author repairs the wrong thing. A solver tool that reports every margin a check reads is
+ *  not one: it still leaves the solver the decision, and whether it made a battery easy is measured.
+ *  The sixth shape is a battery whose tasks ask for the request's requirements one at a time, so none
+ *  asks for several acting together on one answer, where meeting one spends the margin another needs:
+ *  the demand the no-limit line names, and the one recorded demand that dropped pass rates (AGENTS.md
+ *  "Tried and taken out"). Easy tasks are not by themselves a defect, so it is recorded as an
+ *  observation unless a request obligation is left undemanded. */
 export const DEMAND_GAPS = [
   "capability-unexercised",
   "sibling-values-only",
   "limit-cleared-widely",
   "rule-outside-request",
+  "published-scenario-only",
+  "requirements-one-at-a-time",
 ] as const;
 export type DemandGap = (typeof DEMAND_GAPS)[number];
 
@@ -436,6 +446,23 @@ export function hostFindings(repoRoot: string, analysis: IterationAnalysis): Ana
   return findings;
 }
 
+/** A routed finding's subject, and how many consecutive batteries have admitted one on the same
+ *  owner and subject, read off the previous battery's own feedback the way `recurrence` in
+ *  `rebuild-advice.ts` reads unplaced findings. A gap leaves the chain, so it restarts at one. */
+function recurrenceOf(
+  previous: { runId: string; feedback: readonly CampaignFeedback[] } | null,
+  owner: FeedbackOwner,
+  subject: string | null,
+): Pick<CampaignFeedback, "subject" | "repeated"> {
+  if (subject === null) return {};
+  const prior = previous?.feedback.find((row) => row.owner === owner && row.subject === subject);
+  if (previous === null || prior === undefined) return { subject };
+  return {
+    subject,
+    repeated: { count: (prior.repeated?.count ?? 1) + 1, since: prior.repeated?.since ?? previous.runId },
+  };
+}
+
 /** Controller admission: the shape is typed, the citations must exist on disk, and only findings
  *  that route to an author session become campaign feedback. Everything else stays disclosed in the
  *  recorded packet with a null route rather than disappearing at the partition, and an
@@ -444,6 +471,7 @@ export function admitFindings(
   repoRoot: string,
   analysis: IterationAnalysis,
   findings: AnalysisFinding[],
+  previous: { runId: string; feedback: readonly CampaignFeedback[] } | null = null,
 ): AdmittedEvidence {
   const admitted: AnalysisFinding[] = [];
   const refused: AdmittedEvidence["refused"] = [];
@@ -468,6 +496,7 @@ export function admitFindings(
     severity: findingSeverity(finding),
     claim: finding.claim,
     evidence: `${finding.evidence} (analysis ${digest.slice(0, 12)})`,
+    ...recurrenceOf(previous, owner, namedSubject(finding)),
     // This array is what the author input renders into the reopened prompt, so it is
     // controller-marked for the author isolation to admit it; an unmarked packet is refused there.
     findings: controllerValidatedFindings([

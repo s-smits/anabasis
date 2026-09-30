@@ -379,6 +379,20 @@ describe("watch", () => {
     expect(stops(status(f))[0]?.detail).toContain("no new evidence for 60 min");
   });
 
+  it("samples the session store in the run's own ana-quick-run TMPDIR and no other run's", () => {
+    const f = fixture("live");
+    const store = (tmp: string, runId: string): void => {
+      const project = join(f.repo, tmp, "ana-claude-cli-1", "projects", `-Users-ana-run-${runId}`);
+      mkdirSync(project, { recursive: true });
+      writeFileSync(join(project, "session.jsonl"), "{}\n");
+    };
+    expect(status(f).sessionAgeMinutes).toBeNull();
+    store("ana-quick-run-other", "fullrun-20260923-b");
+    expect(status(f).sessionAgeMinutes).toBeNull();
+    store("ana-quick-run-own", RUN);
+    expect(status(f).sessionAgeMinutes).toBe(0);
+  });
+
   it("holds info rows unattended until a stop carries them, and fires the disk row once until recovery", () => {
     const f = fixture("live");
     const fresh = (): RunStatus => ({ ...status(f), evidenceAgeMinutes: 0 });
@@ -411,6 +425,7 @@ describe("watch", () => {
 });
 
 describe("watch rows over one reading", () => {
+  /** A decision filed under the round it opens, placing the battery before it. */
   const decision = (runId: string, zone: "too-easy" | "too-hard" | "on-aim" | null, conflict = false) => ({
     runId,
     rationale: "",
@@ -418,11 +433,11 @@ describe("watch rows over one reading", () => {
     repeated: false,
     conflict,
     admitted: 1,
-    evidenceRunIds: [runId],
+    evidenceRunIds: [`${runId.slice(0, -1)}${Number(runId.slice(-1)) - 1}`],
     frame: "f",
   });
 
-  it("reads the newest climb decision alone on a first pass, and each new one by its move", () => {
+  it("reads the newest climb decision alone on a first pass, each new one by its move, under the battery it placed", () => {
     const base = { ...status(fixture("live")), evidenceAgeMinutes: 0 };
     const first = {
       ...base,
@@ -432,7 +447,7 @@ describe("watch rows over one reading", () => {
       },
     };
     expect(deviations(null, first).filter((row) => row.detail.startsWith("battery b"))).toEqual([
-      { runId: RUN, level: "stop", act: "surgical", detail: "battery b2: 1/25 too-easy, family conflict" },
+      { runId: RUN, level: "stop", act: "surgical", detail: "battery b1: 1/25 too-easy, family conflict" },
     ]);
     const next = {
       ...first,
@@ -443,7 +458,7 @@ describe("watch rows over one reading", () => {
       runId: RUN,
       level: "stop",
       act: "reserved",
-      detail: "battery b3: 1/25 too-hard",
+      detail: "battery b2: 1/25 too-hard",
     });
     expect(rows.map((row) => row.detail)).toContain(
       "1 climb decision(s) recorded under a schema this reader does not open",

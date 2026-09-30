@@ -20,6 +20,7 @@ import { portableToolTreeDigest } from "../src/verify/tool-inventory.ts";
 import type { ToolEntry } from "../src/verify/verifier-port.ts";
 import {
   PROBE_BUDGET,
+  PROBE_WALL_MS,
   type ReviewProbeRow,
   editedPassage,
   emptyProbeState,
@@ -492,6 +493,27 @@ describe("probe_check — the candidate's own checks over one changed field", ()
     }
   }, 120_000);
 
+  it("refuses a probe once the review's probes have spent their share of its deadline", async () => {
+    const dir = candidateTree();
+    const state = emptyProbeState();
+    const probe = probeTool(dir, join(dir, "probe-lifetime"), state, {});
+    try {
+      // a2d0f7's ESP32 reviews spent 50 and 63 of their 60 minutes compiling probes before their
+      // deadline; what a probe spends is counted, and past the share the reader keeps its own time.
+      expect(
+        text(await run(probe.tool, "1", { controlId: "accept-a", path: ANSWER, value: '"x"' })),
+      ).toContain("probe 1: accept control accept-a");
+      expect(state.spentMs).toBeGreaterThan(0);
+      state.spentMs = PROBE_WALL_MS;
+      expect(
+        text(await run(probe.tool, "2", { controlId: "accept-a", path: ANSWER, value: '"y"' })),
+      ).toContain(`a review spends at most ${PROBE_WALL_MS / 60_000} minutes executing probes`);
+      expect(state.rows.map((row) => row.id)).toEqual([1]);
+    } finally {
+      await probe.close(false);
+    }
+  }, 120_000);
+
   it("runs overlapping probes one at a time, so ids stay distinct and the budget holds", async () => {
     const dir = candidateTree();
     const state = emptyProbeState();
@@ -674,7 +696,7 @@ describe("probe_check — the candidate's own checks over one changed field", ()
     expect(moved.reply).toContain(
       "refused: the candidate's .toolchain is not the tool tree its measured battery ran",
     );
-    expect(moved.state).toEqual({ rows: [], refused: 1 });
+    expect(moved.state).toEqual({ rows: [], refused: 1, spentMs: 0 });
   }, 120_000);
 
   it("records a candidate it cannot load as a refused row rather than throwing the review away", async () => {

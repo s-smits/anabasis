@@ -6,7 +6,10 @@ import { readExecutionEvidence } from "../outcome/builder-execution-facts.ts";
 import { readEpochRecord } from "../../src/author/campaign-epoch.ts";
 import type { BuilderCustomToolCall } from "../../src/author/builder-custom-tool-call.ts";
 import { PUBLIC_TASK_FILE } from "../../src/correctness-bundle/recorded-solve.ts";
-import { placeOnBand, type BandZone } from "../../src/claim/battery-difficulty.ts";
+import { CENSUS_FILE } from "../../src/run/census-gate.ts";
+import type { BandZone, MeasuredDifficulty } from "../../src/claim/battery-difficulty.ts";
+import type { ClimbBattery } from "../../src/run/climb-history.ts";
+import { decideDifficulty } from "../../src/run/climb-readout.ts";
 import { existsSync, lstatSync, readFileSync, readdirSync } from "../../src/meta/filesystem.ts";
 import { parseJsonAs } from "../../src/meta/json-runtime.ts";
 import { isRecord, isString, type JsonValue } from "../../src/meta/json-shape.ts";
@@ -30,9 +33,11 @@ export interface PulseRehearsal {
 /** A `harness_trial` the Builder is inside now: one tool call that can hold the session for the
  *  whole solve wall while no checkpoint lands. */
 interface PulseInFlight {
-  taskId: string;
-  /** `solving` until the Built solver's trace is written, then `grading` until its checks are. */
-  stage: "solving" | "grading";
+  /** The rehearsed task; null for a candidate check, which runs every task. */
+  taskId: string | null;
+  /** `solving` until the Built solver's trace is written, then `grading` until its checks are;
+   *  `checking` while a candidate check has not written its census. */
+  stage: "solving" | "grading" | "checking";
   startedAt: string;
 }
 
@@ -73,6 +78,9 @@ export interface PulseBattery {
   unaccepted: number;
   nonResults: number;
   zone: BandZone | null;
+  /** The counts that zone was placed on: the recorded decision's, which leave out a case its review
+   *  settled against the check, or this battery's own tally. */
+  placedOn: { passes: number; n: number } | null;
   /** The zone came from a recorded difficulty decision; otherwise it is placed here, provisionally. */
   recorded: boolean;
   /** Its Epoch Review once recorded; undefined in a reading kept before pulse read reviews. */
@@ -152,6 +160,32 @@ function readRehearsals(calls: readonly BuilderCustomToolCall[]): PulseRehearsal
  *  rehearsal never writes its checks, so only the newest directory counts, and only when it started
  *  after the round's last checkpoint, which every live tool call does. */
 export function readInFlight(epochDir: string, checkpointAt: string | null): PulseInFlight | null {
+  return readRehearsal(epochDir, checkpointAt) ?? readCheck(epochDir, checkpointAt);
+}
+
+/** A `correctness_check` (or a submit's gate) runs in `trials/<condition>/<label>-<n>`, which it
+ *  opens as it starts and seals with its census last; a Builder call is only recorded once it
+ *  returns, so custom-sol-3e4693's 23-minute check read as a long model turn. The condition
+ *  directory changes only as a run opens inside it, so its time is the newest run's start. */
+function readCheck(epochDir: string, checkpointAt: string | null): PulseInFlight | null {
+  const dir = join(epochDir, "trials");
+  try {
+    const newest = readdirSync(dir)
+      .map((name) => ({ name, at: lstatSync(join(dir, name)).mtimeMs }))
+      .toSorted((left, right) => left.at - right.at)
+      .at(-1);
+    if (newest === undefined) return null;
+    const startedAt = new Date(newest.at).toISOString();
+    if (checkpointAt !== null && startedAt < checkpointAt) return null;
+    const runs = readdirSync(join(dir, newest.name));
+    if (runs.every((run) => existsSync(join(dir, newest.name, run, CENSUS_FILE)))) return null;
+    return { taskId: null, stage: "checking", startedAt };
+  } catch {
+    return null;
+  }
+}
+
+function readRehearsal(epochDir: string, checkpointAt: string | null): PulseInFlight | null {
   const dir = join(epochDir, "rehearsals");
   const ordinal = (name: string) => Number(name.slice("rehearsal-".length));
   try {
@@ -259,15 +293,19 @@ function readBatteries(row: RunRow, band: readonly [number, number]): PulseBatte
   const decisions = readDifficultyDecisions(row.location).rows;
   return row.cases.batteries.map(({ runId, tally }) => {
     const decided = decisions.find((decision) => decision.evidenceRunIds.at(-1) === runId)?.placement ?? null;
-    // The difficulty denominator keeps unaccepted attempts as fails once any case is verified.
-    const scored = tally.verified === 0 ? 0 : tally.verified + tally.unaccepted;
-    const placed = decided?.zone ?? placeOnBand(tally.passed, scored, band)?.zone ?? null;
+    // Until the decision is recorded, placed as it will place the whole battery.
+    const { passed, verified, unaccepted } = tally;
+    const measured: MeasuredDifficulty = { items: [] };
+    // SAFETY: `decideDifficulty` reads runId and batterySha256 only into the evidence it returns.
+    const whole = { passed, unaccepted, measured, n: verified + unaccepted } as ClimbBattery;
+    const placed = decided ?? decideDifficulty([whole], [...band]).placement;
     return {
-      passed: tally.passed,
-      verified: tally.verified,
-      unaccepted: tally.unaccepted,
+      passed,
+      verified,
+      unaccepted,
       nonResults: tally.nonResults,
-      zone: placed,
+      zone: placed?.zone ?? null,
+      placedOn: placed === null ? null : { passes: placed.passes, n: placed.n },
       recorded: decided !== null,
       review: readReview(row.location.campaignDir, runId),
     };

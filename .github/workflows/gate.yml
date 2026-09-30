@@ -2,12 +2,15 @@
 # boundary as the pre-push hook in .githooks/pre-push. The hook is what gates a change; this is not
 # a required check, so a pull request merges without it.
 #
-# It runs once a day against main rather than on every push or pull request, because the pre-push
-# hook already runs this gate on every source push, which catches nearly everything first. What only
-# CI shows is the Linux isolation (below) and a clean-runner install, and a daily reading of main
-# covers both. A day with no new commits on main costs nothing: the `changed` job compares main's
-# head with the last completed run's and skips both runners when they match. A manual dispatch
-# always runs, which is how to re-check a head whose daily run failed without a new commit.
+# It runs on each stack merge and once a day against main, not on every push or pull request, because
+# the pre-push hook already runs this gate on every source push, which catches nearly everything
+# first. What only CI shows is the Linux isolation (below) and a clean-runner install. A stack merge
+# is the one merge commit `bun run land` puts on main; a direct commit there (documentation or a
+# hotfix) has one parent and waits for the daily run. Nothing is read twice: the `changed` job skips
+# both runners when a completed run on any branch already read the head's tree. Land's merge commit
+# has the stack top's tree, so a dispatch on the top before `land --merge` has already read main after
+# it. A manual dispatch always runs, which is how to re-check a head whose run failed without a new
+# commit.
 #
 # Both jobs use the stable release in .bun-version, shared with local setup and launch.
 #
@@ -21,6 +24,8 @@
 # repository, and `assertSupportedHostRuntime` accepts Linux — it pins the runtime, not the OS.
 name: gate
 on:
+  push:
+    branches: [main]
   schedule:
     # 03:17 UTC, off the top of the hour, where scheduled runs queue longest. A scheduled run always
     # checks out the default branch, so this is main as it stands that day.
@@ -45,25 +50,33 @@ jobs:
           EVENT: ${{ github.event_name }}
           HEAD_SHA: ${{ github.sha }}
           REPO: ${{ github.repository }}
-        # The last completed run on main, failed or passed: a failed head is not retried daily,
-        # since nothing about it changed. A cancelled run read nothing, so it is passed over, and
-        # the run in progress is not completed, so it is never its own comparison.
+        # A run of any branch counts, failed or passed, when its head had this tree: a failed tree is
+        # not retried, since nothing about it changed. A cancelled run read nothing, so it is passed
+        # over, and the run in progress is not completed, so it is never its own comparison. A head
+        # GitHub no longer serves reads as no tree.
         run: |
           set -euo pipefail
           if [ "$EVENT" = "workflow_dispatch" ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          last=$(gh run list --repo "$REPO" --workflow gate.yml --branch main --status completed \
-            --limit 20 --json headSha,conclusion \
-            --jq '[.[] | select(.conclusion != "cancelled")][0].headSha // ""')
-          if [ "$last" = "$HEAD_SHA" ]; then
-            echo "main is still at $HEAD_SHA, which the last completed run already read"
+          if [ "$EVENT" = "push" ] && [ "$(gh api "repos/$REPO/commits/$HEAD_SHA" --jq '.parents | length')" -lt 2 ]; then
+            echo "$HEAD_SHA is a direct commit on main, not a stack merge; the daily run reads it"
             echo "run=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "main moved from ${last:-no earlier run} to $HEAD_SHA"
-            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          tree=$(gh api "repos/$REPO/commits/$HEAD_SHA" --jq .commit.tree.sha)
+          tree_of() { gh api "repos/$REPO/commits/$1" --jq .commit.tree.sha 2>/dev/null || true; }
+          for sha in $(gh run list --repo "$REPO" --workflow gate.yml --status completed --limit 20 \
+            --json headSha,conclusion --jq '[.[] | select(.conclusion != "cancelled") | .headSha] | unique | .[]'); do
+            if [ "$(tree_of "$sha")" = "$tree" ]; then
+              echo "the completed run on $sha already read tree $tree"
+              echo "run=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+          echo "no completed run read tree $tree yet"
+          echo "run=true" >> "$GITHUB_OUTPUT"
 
   darwin:
     needs: changed

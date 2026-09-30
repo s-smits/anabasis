@@ -24,6 +24,9 @@
 import { mkdirSync } from "../meta/filesystem.ts";
 import { campaignDir } from "../meta/campaign-root.ts";
 import { join } from "../meta/path.ts";
+import { readJsonFileOrNull } from "../meta/completed-json.ts";
+import { isRecord } from "../meta/json-shape.ts";
+import type { CampaignFeedback } from "../author/campaign-types.ts";
 import {
   type AdmittedEvidence,
   type AnalysisFinding,
@@ -36,9 +39,11 @@ import { type JudgeReviewsResult, runJudgeReviews } from "../analyse/judge-revie
 import { reviewerContested } from "../analyse/judge-contested.ts";
 import { writeCompleted } from "../author/campaign-epoch.ts";
 import {
+  type AdviceIssue,
   type RebuildAdvicePacket,
   attachIssueReadings,
   deriveRebuildAdvice,
+  isStanding,
   latestRebuildAdvicePath,
   readLatestRebuildAdvice,
   rebuildAdvicePath,
@@ -48,12 +53,13 @@ import { keyIfDefined } from "../meta/optional-key.ts";
 import { loadRepoEnv } from "../backends/env.ts";
 import { type ResolvedSlots, resolveSlots } from "../backends/resolve.ts";
 import type { RunObserver } from "../observe/run-observer.ts";
-import { readDiagnoses } from "../review/diagnosis-reader.ts";
+import { type DiagnosisReaderEvidence, readDiagnoses } from "../review/diagnosis-reader.ts";
 import { runEpochReview } from "../review/epoch-reviewer.ts";
-import type { EpochReviewEvidence } from "../review/epoch-review-findings.ts";
+import { type EpochReviewEvidence, epochReviewOutcome } from "../review/epoch-review-findings.ts";
 import { publicEpochReview } from "../review/epoch-review-public.ts";
 import { readValidatedBrief } from "../correctness-bundle/public-resources.ts";
 import { reviewSlotPin } from "../review/review-session.ts";
+import { type ReviewOutcome, absentLines } from "../review/review-reader.ts";
 import type { ProviderResourceBudget } from "./provider-resource-budget.ts";
 import type { SafeguardContext } from "../meta/safeguard.ts";
 import { type ReviewResetWait, retryAfterNamedReset } from "../correctness-bundle/provider-reset.ts";
@@ -66,16 +72,13 @@ export interface AnalyseStepResult {
    *  two readers attached to it. Their own records stay on disk beside the analysis: nothing in the
    *  round reads them back, so returning them here would be a field with no consumer. */
   advice: RebuildAdvicePacket;
-  /** Reader turns that did not complete, one line each, for the controller terminal's absent
-   *  steps. A skipped or locally refused reading (slot off, no standing issue, already reviewed)
-   *  is not absent work; a provider or protocol failure inside the turn is. Without these lines a
-   *  round that lost both readers to the transport reads as one where the review had nothing to
-   *  say. */
+  /** The Judge census and the two readings whose outcome was absent, one line each, and the
+   *  contested cases the epoch review left unsettled, for the controller terminal's absent steps.
+   *  A skip (slot off, no standing issue, an earlier review standing in) is not absent work. Without
+   *  these lines a round that lost its readers to the transport, or read half a census, reads as one
+   *  where the review had nothing to say. */
   absent: string[];
 }
-
-/** Reader results decided locally, before or without a model turn. */
-const LOCAL_READER_REASONS = new Set(["no-standing-issue", "review-slot-off"]);
 
 interface AnalyseStepOptions {
   safeguardContext?: SafeguardContext;
@@ -91,9 +94,31 @@ interface AnalyseStepOptions {
   resetWait?: Omit<ReviewResetWait, "providerBudget">;
 }
 
-/** A review's failure text, which `retryAfterNamedReset` reads for a reset the provider named. */
-const failedReason = (review: EpochReviewEvidence): string | null =>
-  review.status === "failed" ? review.reason : null;
+/** Why a reading was absent, which `retryAfterNamedReset` reads for a reset the provider named. */
+const absentWhy = (outcome: ReviewOutcome): string | null => (outcome.kind === "absent" ? outcome.why : null);
+const epochReviewWhy = (review: EpochReviewEvidence) => absentWhy(epochReviewOutcome(review));
+const readingWhy = (reading: DiagnosisReaderEvidence) => absentWhy(reading.outcome);
+
+/** The feedback the battery before this one admitted, which a recurring finding counts back through.
+ *  Absent or unreadable reads as none, so the count restarts at one: it says less, never more. */
+function admittedBefore(dir: string, runId: string | undefined) {
+  if (runId === undefined) return null;
+  const recorded = readJsonFileOrNull(join(dir, `${runId}-admission.json`));
+  // SAFETY: this file is written only by `publish` below, from `admitFindings`, whose `feedback` is
+  // `CampaignFeedback[]`; a row it cannot match on owner and subject counts nothing.
+  return isRecord(recorded) && Array.isArray(recorded.feedback)
+    ? { runId, feedback: recorded.feedback as CampaignFeedback[] }
+    : null;
+}
+
+/** The advanced register's standing issues, each shown with the last reading recorded for it: a
+ *  re-seen issue carries no diagnosis until this battery's reader runs. */
+function disputableIn(advanced: RebuildAdvicePacket, prior: RebuildAdvicePacket | null): AdviceIssue[] {
+  const lastReading = new Map((prior?.issues ?? []).map((issue) => [issue.id, issue.diagnosis] as const));
+  return advanced.issues
+    .filter(isStanding)
+    .map((issue) => ({ ...issue, diagnosis: issue.diagnosis ?? lastReading.get(issue.id) ?? null }));
+}
 
 export async function analyseStep(
   repoRoot: string,
@@ -117,8 +142,7 @@ export async function analyseStep(
   // evidence to exist on disk.
   writeCompleted(join(dir, `${runId}-judges.json`), judges);
   providerBudget?.throwIfDenied();
-  // The register as it stands before this battery: the epoch reviewer is offered the issues that
-  // are still standing so it can dispute one, and the derived packet below re-reads the same file.
+  // The register as it stood before this battery, which every publish below advances again.
   const standing = readLatestRebuildAdvice(repoRoot, slug);
   const condition = batteryCondition(analysis, measuredDir);
   // Per-run admission records the analysis. The latest admission for the next build is
@@ -135,10 +159,8 @@ export async function analyseStep(
     disputes: ReadonlyArray<{ issueId: string; reason: string }>,
     settled: readonly string[] = [],
   ) => {
-    const admission = admitFindings(repoRoot, analysis, [
-      ...hostFindings(repoRoot, analysis),
-      ...reviewFindings,
-    ]);
+    const findings = [...hostFindings(repoRoot, analysis), ...reviewFindings];
+    const admission = admitFindings(repoRoot, analysis, findings, admittedBefore(dir, standing?.runId));
     writeCompleted(join(dir, `${runId}-admission.json`), { runId, policy: FEEDBACK_POLICY, ...admission });
     const derived = attachIssueReadings(
       deriveRebuildAdvice(analysis, judges, admission, standing, condition),
@@ -148,7 +170,9 @@ export async function analyseStep(
     writeCompleted(latestRebuildAdvicePath(repoRoot, slug), derived);
     return { admission, derived };
   };
-  publish([], []);
+  // The reviewer disputes against the register this battery advanced, so an issue the battery raised
+  // for the first time is disputable now, not a battery later after a build rebuilt around it.
+  const disputable = disputableIn(publish([], []).derived, standing);
   const contested = reviewerContested(judges.contested);
   // A measured battery is reviewed once, so a reader a session limit refused runs again after the
   // reset the provider named, here, before the next Builder round reads what the step publishes.
@@ -161,6 +185,7 @@ export async function analyseStep(
       treeRoot: analysis.treeRoot,
       analysis,
       priorAdvice: standing ?? null,
+      disputable,
       ...contested,
       review,
       publicRequest: options.publicRequest ?? null,
@@ -168,7 +193,7 @@ export async function analyseStep(
       ...keyIfDefined("observer", observer),
       ...keyIfDefined("providerBudget", providerBudget),
     });
-  const epochReview = await retryAfterNamedReset("epoch-reviewer", reviewEpoch, failedReason, reset);
+  const epochReview = await retryAfterNamedReset("epoch-reviewer", reviewEpoch, epochReviewWhy, reset);
   const brief = epochReview.status === "completed" ? readValidatedBrief(measuredDir) : null;
   const publicReview = publicEpochReview(epochReview, { brief });
   providerBudget?.throwIfDenied();
@@ -187,7 +212,7 @@ export async function analyseStep(
       ...keyIfDefined("observer", observer),
       ...keyIfDefined("providerBudget", providerBudget),
     });
-  const reading = await retryAfterNamedReset("diagnosis-reader", diagnose, (read) => read.error, reset);
+  const reading = await retryAfterNamedReset("diagnosis-reader", diagnose, readingWhy, reset);
   writeCompleted(join(dir, `${runId}-diagnoses.json`), reading);
   const advice = attachIssueReadings(derived, { diagnoses: reading.diagnoses });
   if (advice !== derived) {
@@ -195,15 +220,14 @@ export async function analyseStep(
     writeCompleted(latestRebuildAdvicePath(repoRoot, slug), advice);
   }
   const absent = [
-    ...(epochReview.status === "failed" || epochReview.status === "incomplete"
-      ? [`epoch review: ${epochReview.status} — ${epochReview.reason}`]
-      : []),
+    ...absentLines({
+      "main-judge census": judges.outcome,
+      "epoch review": epochReviewOutcome(epochReview),
+      "diagnosis reader": reading.outcome,
+    }),
     ...(epochReview.unsettled.length === 0
       ? []
       : [`epoch review: ${String(epochReview.unsettled.length)} contested case(s) left unsettled`]),
-    ...(reading.error !== null && !LOCAL_READER_REASONS.has(reading.error)
-      ? [`diagnosis reader: failed — ${reading.error}`]
-      : []),
   ];
   return { judges, admission, advice, absent };
 }

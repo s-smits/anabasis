@@ -17,6 +17,7 @@ import { fingerprintSlug } from "../src/claim/fingerprint.ts";
 import { EvidenceLog } from "../src/claim/evidence-log.ts";
 import { FEEDBACK_POLICY } from "../src/analyse/iteration-analysis.ts";
 import { claimsDirFor } from "../src/run/claim-write.ts";
+import { selectCampaignEpoch } from "../src/author/campaign-epoch.ts";
 import { readClimbBatteries } from "../src/run/climb-history.ts";
 import { ControllerLedger, controllerLedgerPath } from "../src/run/controller-ledger.ts";
 import { Database } from "bun:sqlite";
@@ -40,6 +41,8 @@ import { required } from "./helpers/doubles.ts";
 const SHARED_PIN = `claude/${defaultModelOf("claude")}`;
 
 const SLUG = "uppercase";
+/** The tool tree's name inside a workspace, a seed and a retained version. */
+const TOOL_TREE = ".toolchain";
 const ADMISSION = JSON.stringify({
   runId: "b1",
   policy: FEEDBACK_POLICY,
@@ -72,10 +75,13 @@ interface SeedManifest {
     absoluteRefs: AbsoluteRef[];
     toolTreeLinks: { resolved: string }[];
     aliases: unknown[];
+    unscanned: { path: string; bytes: number }[];
     relocated: boolean;
   };
   fingerprintBefore: SeedFingerprint;
   fingerprintAfter: SeedFingerprint;
+  toolTreeSource: { recorded: string | null; present: boolean; staged: string | null } | null;
+  notesNotCarried: { epoch: string; files: { file: string; bytes: number }[] } | null;
   carried: unknown;
 }
 
@@ -198,7 +204,7 @@ describe("seed-campaign clone", () => {
     expect(manifest.audit.escapes).toEqual([]);
     expect(manifest.audit.absoluteRefs).toEqual([]);
     expect(manifest.audit.toolTreeLinks.map((row) => row.resolved)).toEqual([
-      realpathSync(join(campaignDir(source, SLUG), "epoch-1", "workspace", ".toolchain")),
+      realpathSync(join(campaignDir(source, SLUG), "epoch-1", "workspace", TOOL_TREE)),
     ]);
     expect(manifest.fingerprintAfter).toEqual(manifest.fingerprintBefore);
     expect(manifest.carried).toEqual({
@@ -240,7 +246,7 @@ describe("seed-campaign clone", () => {
     expect(manifest.audit.aliases).toEqual([{ from: real, to: campaignDir(into, SLUG) }]);
     expect(manifest.audit.absoluteRefs).toEqual([]);
     expect(manifest.audit.toolTreeLinks.map((row) => row.resolved)).toEqual([
-      join(real, "epoch-1", "workspace", ".toolchain"),
+      join(real, "epoch-1", "workspace", TOOL_TREE),
     ]);
 
     writeFileSync(
@@ -363,6 +369,23 @@ describe("seed-campaign clone", () => {
     expect(result.stderr).toContain(join("versions", "v1", "correctness-model", "brief.json"));
   });
 
+  it("lists a long refusal by directory with counts and names the flags that answer it", () => {
+    const workspace = recordedCampaign(source);
+    for (let sketch = 0; sketch < 25; sketch += 1) {
+      mkdirSync(join(workspace, "cache", "sketches", `s${sketch}`), { recursive: true });
+      writeFileSync(join(workspace, "cache", "sketches", `s${sketch}`, "main.d"), `${source}/core.h\n`);
+    }
+    const into = join(scratch, "condition");
+    const result = run("--from-root", source, "--slug", SLUG, "--into-root", into);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("absolute references in 25 files (25 occurrences), by directory:");
+    expect(result.stderr).toContain(
+      `${join(campaignDir(into, SLUG), "epoch-1", "workspace", "cache", "sketches")}/ files 25 refs 25`,
+    );
+    expect(result.stderr).toContain("--relocate rewrites the mutable references");
+    expect(result.stderr).not.toContain("main.d");
+  });
+
   it("refuses an existing destination before any write", () => {
     recordedCampaign(source);
     const into = join(scratch, "condition");
@@ -409,8 +432,8 @@ describe("seed-campaign republish", () => {
     });
     const version = readProductVersion(into, "sim-uppercase", "seed-v1");
     expect(selectedProductDir(into, "sim-uppercase")).toBe(version);
-    expect(realpathSync(join(version, ".toolchain")).startsWith(`${into}/`)).toBe(true);
-    expect(existsSync(join(version, ".toolchain", "bin", "uppercase-fixture"))).toBe(true);
+    expect(realpathSync(join(version, TOOL_TREE)).startsWith(`${into}/`)).toBe(true);
+    expect(existsSync(join(version, TOOL_TREE, "bin", "uppercase-fixture"))).toBe(true);
     const history = readClimbBatteries(version, null, claimsDirFor(into, "sim-uppercase"));
     expect(history.history).toHaveLength(1);
     expect(readAdmission(into, "sim-uppercase")).toBe(ADMISSION);
@@ -503,5 +526,134 @@ describe("seed-campaign republish", () => {
       readFileSync(join(version, "correctness-model", "brief.json"), "utf8"),
     );
     expect(brief.domain).toBe(`uppercase letters from ${into}/reference`);
+  });
+
+  it("relocates the owned tool tree by rule under both spellings of the source, scanning text above the old 4 MiB limit and listing what it cannot scan", () => {
+    const store = join(scratch, "store", "campaigns");
+    mkdirSync(store, { recursive: true });
+    mkdirSync(source, { recursive: true });
+    symlinkSync(store, join(source, "campaigns"));
+    const workspace = recordedCampaign(source);
+    const logical = join(workspace, TOOL_TREE);
+    const real = join(store, SLUG, "epoch-1", "workspace", TOOL_TREE);
+    const cache = join(logical, "home", ".cache", "build");
+    mkdirSync(cache, { recursive: true });
+    const stale = `${campaignDir(source, SLUG)}/epoch-0/workspace/.toolchain/c.h`;
+    writeFileSync(join(cache, "includes.cache"), `${logical}/a.h\n${real}/b.h\n${stale}\n`);
+    writeFileSync(join(cache, "sketch.map"), `${"x".repeat(5 * 1024 * 1024)}\n${logical}/lib.a\n`);
+    writeFileSync(join(cache, "huge.map"), "y".repeat(65 * 1024 * 1024));
+    const into = join(scratch, "tree");
+    const result = run(
+      "--from-root",
+      source,
+      "--slug",
+      SLUG,
+      "--as-slug",
+      "sim-uppercase",
+      "--into-root",
+      into,
+    );
+    expect(result.exitCode).toBe(0);
+    const campaign = campaignDir(into, "sim-uppercase");
+    const own = realpathSync(join(campaign, "seed", TOOL_TREE));
+    const seeded = join(campaign, "seed", TOOL_TREE, "home", ".cache", "build");
+    expect(readFileSync(join(seeded, "includes.cache"), "utf8")).toBe(
+      `${own}/a.h\n${own}/b.h\n${campaign}/epoch-0/workspace/.toolchain/c.h\n`,
+    );
+    expect(readFileSync(join(seeded, "sketch.map"), "utf8").endsWith(`\n${own}/lib.a\n`)).toBe(true);
+    expect(readFileSync(join(cache, "includes.cache"), "utf8")).toContain(`${real}/b.h`);
+    const manifest = manifestOf(into, "sim-uppercase");
+    expect(manifest.audit.relocated).toBe(false);
+    expect(manifest.audit.absoluteRefs.map((row) => row.sha256After === null)).toEqual([false, false]);
+    expect(manifest.audit.unscanned).toEqual([
+      { path: join(own, "home", ".cache", "build", "huge.map"), bytes: 65 * 1024 * 1024 },
+    ]);
+    expect(manifest.fingerprintAfter.correctnessModelHash).toBe(
+      manifest.fingerprintBefore.correctnessModelHash,
+    );
+  });
+
+  it("seeds one arm per slug from the same recorded position, each with its own tool tree", () => {
+    recordedCampaign(source);
+    const into = join(scratch, "tree");
+    const result = run(
+      "--from-root",
+      source,
+      "--slug",
+      SLUG,
+      "--as-slug",
+      "sim-a,sim-b",
+      "--into-root",
+      into,
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("seeded republish uppercase as sim-a");
+    expect(result.stdout).toContain("seeded republish uppercase as sim-b");
+    for (const arm of ["sim-a", "sim-b"]) {
+      const version = readProductVersion(into, arm, "seed-v1");
+      expect(realpathSync(join(version, TOOL_TREE))).toBe(
+        realpathSync(join(campaignDir(into, arm), "seed", TOOL_TREE)),
+      );
+      expect(readAdmission(into, arm)).toBe(ADMISSION);
+    }
+  });
+
+  it("says what a republish could not seed: a swept tool tree and the current epoch's notes", () => {
+    const workspace = recordedCampaign(source);
+    const epoch = selectCampaignEpoch(campaignDir(source, SLUG), { kickoff: "uppercase letters" });
+    mkdirSync(join(epoch.dir, "workspace"), { recursive: true });
+    writeFileSync(join(epoch.dir, "workspace", "MEMORY.md"), "the sweep costs a reinstall\n");
+    const recorded = realpathSync(join(workspace, TOOL_TREE));
+    rmSync(recorded, { recursive: true });
+    const into = join(scratch, "tree");
+    const result = run(
+      "--from-root",
+      source,
+      "--slug",
+      SLUG,
+      "--as-slug",
+      "sim-uppercase",
+      "--into-root",
+      into,
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(
+      `warning: the recorded tool tree ${recorded} is gone, so the seed has none`,
+    );
+    expect(result.stdout).toContain(`note: ${epoch.key}'s MEMORY.md 28 B are not carried`);
+    const manifest = manifestOf(into, "sim-uppercase");
+    expect(manifest.toolTreeSource).toEqual({ recorded, present: false, staged: null });
+    expect(manifest.notesNotCarried).toEqual({ epoch: epoch.key, files: [{ file: "MEMORY.md", bytes: 28 }] });
+
+    const family = join(scratch, "family-tree");
+    mkdirSync(join(family, "bin"), { recursive: true });
+    writeFileSync(join(family, "bin", "tool"), "#!/bin/sh\n");
+    const again = join(scratch, "again");
+    const replaced = run(
+      "--from-root",
+      source,
+      "--slug",
+      SLUG,
+      "--as-slug",
+      "sim-uppercase",
+      "--into-root",
+      again,
+      "--tool-tree",
+      family,
+    );
+    expect(replaced.exitCode).toBe(0);
+    expect(replaced.stdout).toContain(
+      `note: the recorded tool tree ${recorded} is gone; seeded ${realpathSync(family)} instead`,
+    );
+    const own = join(campaignDir(again, "sim-uppercase"), "seed", TOOL_TREE);
+    expect(readFileSync(join(own, "bin", "tool"), "utf8")).toBe("#!/bin/sh\n");
+    expect(realpathSync(join(readProductVersion(again, "sim-uppercase", "seed-v1"), TOOL_TREE))).toBe(
+      realpathSync(own),
+    );
+    expect(manifestOf(again, "sim-uppercase").toolTreeSource).toEqual({
+      recorded,
+      present: false,
+      staged: realpathSync(family),
+    });
   });
 });

@@ -103,7 +103,7 @@ export interface AnalysisEvidence {
     abstained: number | null;
     reviewed: string;
     contested: number | null;
-    provisional: string | null;
+    absent: string | null;
   }>;
 }
 
@@ -276,7 +276,7 @@ function readJudgeReview(path: string): AnalysisEvidence["judges"][number] {
   const name = basename(path, ".json");
   if (d.schema !== JUDGE_REVIEWS_SCHEMA) {
     const decision = `not read: schema ${String(d.schema)} is not ${JUDGE_REVIEWS_SCHEMA}`;
-    return { name, decision, abstained: null, reviewed: "—", contested: null, provisional: null };
+    return { name, decision, abstained: null, reviewed: "—", contested: null, absent: null };
   }
   const evidence = d.census?.evidence ?? null;
   return {
@@ -285,7 +285,7 @@ function readJudgeReview(path: string): AnalysisEvidence["judges"][number] {
     abstained: evidence?.abstentions ?? null,
     reviewed: `${d.coverage?.reviewed ?? 0}/${d.coverage?.reviewable ?? 0}`,
     contested: d.contested?.length ?? 0,
-    provisional: d.provisional ?? null,
+    absent: d.outcome?.kind === "absent" ? d.outcome.why : null,
   };
 }
 

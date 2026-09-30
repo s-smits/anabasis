@@ -9,8 +9,9 @@
  *
  * The recorded failures: four conditions finished with their predictions unresolved; the sha256 was
  * computed by hand in a shell whose policy then blocked the append, so the resolution went through
- * a throwaway Python script. A row id is any `X<n> —` at the start of a line in the pre-registered
- * part; a resolution is a line starting with `- X<n>` (or `- X<n>–X<m>`) below `## Resolutions`.
+ * a throwaway Python script. A row id is any `X<n> —` or `X<n>:` at the start of a line in the
+ * pre-registered part (`prediction-note.mts`, the reading the runners share); a resolution is a
+ * line starting with `- X<n>` (or `- X<n>–X<m>`) below `## Resolutions`.
  * The checksum is an integrity check for this simulation's advisory projection. The campaign's
  * frozen prediction/event ledger remains the only authority for launch, consumption and adjudication;
  * this helper cannot create or replace that ledger. Every read, including the close-like
@@ -26,11 +27,12 @@ import { existsSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts
 import { sha256 } from "#src/meta/digest.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { absoluteOption, type ExitWith, exitWith, parseOrDie, requiredOption } from "#skills/main/cli.ts";
+import { declaredRows, RESOLUTIONS_HEADING, splitNote } from "./prediction-note.mts";
 
 const die: ExitWith = exitWith("predictions");
 
-const RESOLUTIONS_HEADING = /^## Resolutions\b.*$/m;
-const ROW_ID = /^([A-Z]\d+) —/gm;
+const ROW_FORM = 'a row starts its line as "P1 — <prediction>" or "P1: <prediction>"';
+
 const RESOLVED_ID = /^- ([A-Z])(\d+)(?:[–-]([A-Z])?(\d+))?\b/gm;
 const RESOLUTION_HEAD =
   /^- ([A-Z]\d+)(?:[–-][A-Z]?\d+)?:\s*(sufficed|partial|refuted|untriggered|inconclusive)\b/;
@@ -39,11 +41,6 @@ const parsed = parseOrDie(die, {
   values: ["file", "resolve"],
   flags: ["hash", "verify", "unresolved"],
 });
-
-interface SplitNote {
-  preRegistered: string;
-  resolutions: string | null;
-}
 
 const file = absoluteOption(die)("file", requiredOption(die, parsed.single)("file"));
 if (!existsSync(file)) die(`${file} does not exist`);
@@ -60,22 +57,6 @@ const modes = [
 ].filter((mode): mode is string => mode !== null);
 if (modes.length !== 1) die("pass exactly one of --hash, --verify, --unresolved or --resolve <row>");
 const mode = modes[0];
-
-/** Everything above the `## Resolutions` heading is the frozen part (digested without trailing
- *  whitespace, so the blank line before an appended heading changes nothing); below is appendable. */
-function splitNote(text: string): SplitNote {
-  const match = RESOLUTIONS_HEADING.exec(text);
-  if (match === null) return { preRegistered: text, resolutions: null };
-  return { preRegistered: text.slice(0, match.index), resolutions: text.slice(match.index) };
-}
-
-function declaredRows(preRegistered: string): string[] {
-  return preRegistered
-    .matchAll(ROW_ID)
-    .map((row) => row[1] ?? "")
-    .filter((id) => id !== "")
-    .toArray();
-}
 
 function resolvedRows(resolutions: string | null): Set<string> {
   const ids = new Set<string>();
@@ -161,9 +142,19 @@ function readChecksum(): string {
 function checksumMismatch(text: string): string | null {
   const checksum = readChecksum();
   const part = splitNote(text).preRegistered;
-  // A checksum computed by hand before this script existed may cover the trailing newline.
+  // A checksum computed by hand before this script existed may cover the trailing newline, or the
+  // whole note frozen with its empty heading. That is the digest run-condition records as
+  // predictions.sha256; on 2026-09-30 a byte-identical note was refused because only this was missing.
+  // Resolutions are appended below the heading, so the note through its heading line never changes.
+  // The first append also puts a blank line before the heading it adds, so a whole-file checksum of
+  // a note frozen without a heading is read against the part with one final newline.
   const actual = sha256(part.trimEnd());
-  if (actual === checksum || sha256(part) === checksum) return null;
+  const heading = RESOLUTIONS_HEADING.exec(text);
+  const partDigests = [actual, sha256(part), sha256(`${part.trimEnd()}\n`)];
+  if (partDigests.includes(checksum)) return null;
+  if (heading !== null && sha256(`${text.slice(0, heading.index + heading[0].length)}\n`) === checksum) {
+    return null;
+  }
   return `the pre-registered part changed after its checksum was recorded (recorded ${checksum.slice(0, 12)}, now ${actual.slice(0, 12)})`;
 }
 
@@ -190,7 +181,7 @@ if (mode === "hash") {
     const rows = declaredRows(note.preRegistered);
     // A note with no parsable row binds no predictions. On 2026-09-06 five rows written as "- P1: …"
     // were hashed, and the first --resolve found the declared list empty after the conditions ran.
-    if (rows.length === 0) die('no declared row; a row starts its line as "P1 — <prediction>"');
+    if (rows.length === 0) die(`no declared row; ${ROW_FORM}`);
     const digest = sha256(note.preRegistered.trimEnd());
     writeFileSync(checksumPath, `${digest}  ${file}\n`);
     console.log(`${digest}  ${rows.length} row(s): ${rows.join(" ")} (projection checksum)`);
@@ -204,8 +195,12 @@ if (mode === "hash") {
   // was requested.
   verify(text);
   const note = splitNote(text);
+  const declared = declaredRows(note.preRegistered);
+  // An empty list would print "none" and exit 0, which reads as a clean close. On 2026-09-30 it did,
+  // for an addendum whose one row this helper could not read.
+  if (declared.length === 0) die(`no declared row, so none can be listed as open; ${ROW_FORM}`);
   const resolved = resolvedRows(note.resolutions);
-  const open = declaredRows(note.preRegistered).filter((id) => !resolved.has(id));
+  const open = declared.filter((id) => !resolved.has(id));
   console.log(open.length === 0 ? "UNRESOLVED: none" : `UNRESOLVED: ${open.join(" ")}`);
   runtimeProcess.exit(open.length === 0 ? 0 : 1);
 } else {

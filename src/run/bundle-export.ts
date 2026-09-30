@@ -2,7 +2,8 @@
  * Write one Built Harness bundle as a directory that runs on its own: the bundle's `agent/` and
  * `correctness-model/`, the source tree those files import (`src/`, `vendor/`, `starters/`), the
  * pinned lock, and `tools/harness/cli.ts` behind two package scripts — `solve` runs one task,
- * `check` checks one artifact. The export runs the same command file and the same solve and
+ * `check` checks one artifact, and `harbor/`, the same tasks in Harbor's task format for Bun
+ * (`harbor-export.ts`). The export runs the same command file and the same solve and
  * verifier implementation from the exporting checkout. This is a fresh invocation, not a replay
  * of an earlier run's source and environment.
  */
@@ -26,6 +27,7 @@ import { bundleSlug, loadContract } from "./bundle-entry.ts";
 import { externalChecksOf } from "../correctness-bundle/brief.ts";
 import { relocateToolLauncher } from "../author/toolchain-relocation.ts";
 import { readJsonFile, writeJsonFile } from "../meta/completed-json.ts";
+import { writeHarborTasks } from "./harbor-export.ts";
 
 /** Repository parts an exported bundle imports at runtime. `bun.lock` carries every version pin;
  *  `tsconfig.json` only serves an editor. */
@@ -107,9 +109,8 @@ export function exportBundle(repoRoot: string, bundleDirInput: string, outDirInp
     throw new Error(`${outDir}: exists and is not empty`);
   }
   // The tools its checks run, read before copying so an invalid brief refuses before gigabytes move.
-  const needs = [
-    ...new Set(externalChecksOf(loadContract(bundleDir).brief).map((check) => check.adapterId)),
-  ].sort();
+  const { brief } = loadContract(bundleDir);
+  const needs = [...new Set(externalChecksOf(brief).map((check) => check.adapterId))].sort();
   mkdirSync(outDir, { recursive: true });
   for (const part of REPO_PARTS) cpSync(join(repoRoot, part), join(outDir, part), { recursive: true });
   for (const part of BUNDLE_PARTS) cpSync(join(bundleDir, part), join(outDir, part), { recursive: true });
@@ -151,6 +152,7 @@ export function exportBundle(repoRoot: string, bundleDirInput: string, outDirInp
     exportedFrom: bundleDir,
     exportedAt: new Date().toISOString(),
   });
+  writeHarborTasks(bundleDir, join(outDir, "harbor"), slug, brief);
   writeFileSync(join(outDir, "README.md"), readme(repoRoot, slug, toolTree, leftOut, needs));
   // An export solves and checks; it runs no reviewer, so it says so rather than warn on every solve.
   mkdirSync(join(outDir, OPERATOR_BACKENDS_DIR), { recursive: true });

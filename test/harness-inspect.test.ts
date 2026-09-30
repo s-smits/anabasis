@@ -101,10 +101,11 @@ describe("harness_inspect", () => {
     expect(blocked.staticStatus).toBe("blocked");
     expect(blocked.missing).toEqual(["correctness-model/evaluator.ts", "agent/tools.ts"]);
     expect(blocked.modules.every((module) => !module.present)).toBe(true);
-    expect(blocked.tasks).toMatchObject({ count: 4, familiesTotal: 2 });
+    expect(blocked.tasks).toMatchObject({ count: 5, familiesTotal: 3 });
     expect(blocked.suggestedTrials).toEqual([
-      { family: "single-shift", taskId: "single-shift-01" },
-      { family: "two-shift", taskId: "two-shift-01" },
+      { family: "guaranteed-hours", taskId: "guaranteed-hours-01" },
+      { family: "open-cover", taskId: "open-cover-01" },
+      { family: "skill-rest", taskId: "skill-rest-01" },
     ]);
 
     writeFileSync(join(dir, "agent/tools.ts"), "export const tools: string[] = [];\n");
@@ -149,37 +150,78 @@ describe("harness_inspect", () => {
     expect(first.basis).toBe("declarations-only");
     const coverage = JSON.parse(first.coverageText);
     expect(coverage.rules[0]).toMatchObject({
-      id: "qualification-rule",
-      families: ["single-shift", "two-shift"],
+      id: "cover-rule",
+      families: null,
       checks: ["assignments-match"],
     });
-    expect(coverage.checks[0]).toMatchObject({
-      id: "assignments-match",
-      publicInputPaths: ["$.staff", "$.shifts"],
-      artifactPaths: ["$.assignments"],
-      applicableTasks: 4,
-      accepts: 3,
-      rejects: [
-        { id: "reject-alias-swap", taskId: "single-shift-01", mutationClass: "alias-swap" },
-        { id: "reject-wrong-shift-two-shift", taskId: "two-shift-01", mutationClass: "wrong-shift" },
-      ],
-    });
+    expect(coverage.checks).toMatchObject([
+      {
+        id: "assignments-match",
+        publicInputPaths: ["$.staff", "$.shifts"],
+        artifactPaths: ["$.assignments"],
+        applicableTasks: 5,
+        accepts: 6,
+        rejects: [
+          { id: "reject-alias-swap", taskId: "skill-rest-01", mutationClass: "alias-swap" },
+          { id: "reject-shift-uncovered", taskId: "open-cover-01", mutationClass: "shift-uncovered" },
+          { id: "reject-shift-twice", taskId: "open-cover-01", mutationClass: "shift-covered-twice" },
+          { id: "reject-ghost-staff", taskId: "open-cover-01", mutationClass: "ghost-staff" },
+        ],
+      },
+      {
+        id: "rest-respected",
+        rules: ["rest-rule"],
+        applicableTasks: 5,
+        accepts: 6,
+        rejects: [
+          { id: "reject-late-then-early", taskId: "skill-rest-01", mutationClass: "late-then-early" },
+        ],
+      },
+      {
+        id: "hours-within-contract",
+        rules: ["contract-hours-rule"],
+        applicableTasks: 5,
+        accepts: 6,
+        rejects: [
+          {
+            id: "reject-first-legal-greedy",
+            taskId: "guaranteed-hours-01",
+            mutationClass: "first-legal-greedy",
+          },
+          { id: "reject-over-contract", taskId: "skill-rest-02", mutationClass: "over-contract" },
+        ],
+      },
+      {
+        id: "wage-budget",
+        rules: ["wage-budget-rule"],
+        publicInputPaths: ["$.staff", "$.shifts", "$.wageBudget"],
+        applicableTasks: 5,
+        accepts: 6,
+        rejects: [
+          { id: "reject-agency-over-budget", taskId: "guaranteed-hours-01", mutationClass: "agency-cover" },
+        ],
+      },
+    ]);
     expect(first.more).toBe(false);
     expect(coverage).not.toHaveProperty("passed");
-    expect(first.coverageText).not.toContain("scan-order");
+    expect(first.coverageText).not.toContain("search-order");
     expect(first.coverageText).not.toContain("staffId");
-    const family = await inspect<typeof first>(dir, "coverage", undefined, { family: "two-shift" });
+    const family = await inspect<typeof first>(dir, "coverage", undefined, { family: "skill-rest" });
     expect(JSON.parse(family.coverageText).checks[0]).toMatchObject({
       applicableTasks: 2,
-      accepts: 2,
-      rejects: [{ id: "reject-wrong-shift-two-shift", taskId: "two-shift-01", mutationClass: "wrong-shift" }],
+      accepts: 3,
+      rejects: [{ id: "reject-alias-swap", taskId: "skill-rest-01", mutationClass: "alias-swap" }],
     });
     await expect(inspect(dir, "coverage", undefined, { family: "missing" })).rejects.toThrow(
       "unknown task family",
     );
     const briefPath = join(dir, "correctness-model/brief.json");
     const brief = JSON.parse(readFileSync(briefPath, "utf8"));
-    brief.ruleDecisions[1].statement = "private-recipe-changed";
+    const privateRule = brief.ruleDecisions.find(
+      (rule: { visibility: string }) => rule.visibility === "private",
+    );
+    if (privateRule === undefined) throw new Error("the worked brief lost its private rule decision");
+    privateRule.statement = "private-recipe-changed";
     writeFileSync(briefPath, JSON.stringify(brief));
     expect(await inspect<typeof first>(dir, "coverage")).toEqual(first);
     brief.ruleDecisions.push({ id: "uncited", visibility: "public", statement: "A separate public rule." });
@@ -233,15 +275,26 @@ describe("harness_inspect", () => {
     expect(body.staticStatus).toBe("blocked");
     expect(body.findings.totalFindings).toBe(0);
     expect(body.tasks).toMatchObject({
-      count: 4,
+      count: 5,
       families: [
         {
-          family: "single-shift",
+          family: "guaranteed-hours",
           tasks: 2,
           publicInputPaths: expect.any(Number),
-          sampleTaskId: "single-shift-01",
+          sampleTaskId: "guaranteed-hours-01",
         },
-        { family: "two-shift", tasks: 2, publicInputPaths: expect.any(Number), sampleTaskId: "two-shift-01" },
+        {
+          family: "open-cover",
+          tasks: 1,
+          publicInputPaths: expect.any(Number),
+          sampleTaskId: "open-cover-01",
+        },
+        {
+          family: "skill-rest",
+          tasks: 2,
+          publicInputPaths: expect.any(Number),
+          sampleTaskId: "skill-rest-01",
+        },
       ],
     });
     // Check ids and counts only: how often each declared check is exercised, never what it expects.
@@ -254,10 +307,10 @@ describe("harness_inspect", () => {
       "readiness",
       undefined,
       {
-        family: "two-shift",
+        family: "skill-rest",
       },
     );
-    expect(family.taskIds).toEqual(["two-shift-01", "two-shift-02"]);
+    expect(family.taskIds).toEqual(["skill-rest-01", "skill-rest-02"]);
     expect(family.publicInputPaths).toEqual(expect.arrayContaining(["$.staff[]", "$.shifts[]"]));
   }, 60_000);
 
@@ -320,10 +373,10 @@ describe("harness_inspect", () => {
       publicTask: Record<string, JsonValue>;
       hiddenChecks: number;
       publicTaskDigest: string;
-    }>(dir, "task", "two-shift-01");
+    }>(dir, "task", "skill-rest-01");
     const { publicTask } = body;
     expect(Object.keys(publicTask).sort()).toEqual(["family", "publicInput", "taskId"]);
-    expect(publicTask.taskId).toBe("two-shift-01");
+    expect(publicTask.taskId).toBe("skill-rest-01");
     // The projection PICKS public fields, so the answer key cannot ride along even though the
     // task the inspection read carries it. The count is reported; the value never is.
     expect(JSON.stringify(publicTask)).not.toContain("assignments-match");
@@ -335,11 +388,11 @@ describe("harness_inspect", () => {
   it.concurrent("selects a task from the requested family and refuses conflicting selectors", async () => {
     const dir = workspace();
     const selected = await inspect<{ taskId: string; family: string }>(dir, "task", undefined, {
-      family: "two-shift",
+      family: "skill-rest",
     });
-    expect(selected).toMatchObject({ taskId: "two-shift-01", family: "two-shift" });
-    await expect(inspect(dir, "task", "single-shift-01", { family: "two-shift" })).rejects.toThrow(
-      'taskId "single-shift-01" belongs to family "single-shift", not "two-shift"',
+    expect(selected).toMatchObject({ taskId: "skill-rest-01", family: "skill-rest" });
+    await expect(inspect(dir, "task", "open-cover-01", { family: "skill-rest" })).rejects.toThrow(
+      'taskId "open-cover-01" belongs to family "open-cover", not "skill-rest"',
     );
     await expect(inspect(dir, "task", undefined, { family: "missing" })).rejects.toThrow(
       "unknown task family: missing",
@@ -421,7 +474,7 @@ describe("harness_inspect", () => {
       publicTaskText: string;
       to: number;
       more: boolean;
-    }>(dir, "task", "single-shift-01");
+    }>(dir, "task", "open-cover-01");
     expect(body).not.toHaveProperty("publicTask");
     expect(body.publicTaskDigest).toMatch(/^[0-9a-f]{64}$/);
     expect(body.publicTaskBytes).toBeGreaterThan(60_000);
@@ -433,7 +486,7 @@ describe("harness_inspect", () => {
     const pages = [body.publicTaskText];
     let page = body;
     while (page.more) {
-      page = await inspect(dir, "task", "single-shift-01", { offset: page.to + 1 });
+      page = await inspect(dir, "task", "open-cover-01", { offset: page.to + 1 });
       pages.push(page.publicTaskText);
     }
     const loaded = loadValidatedBundle(dir, CONTEXT).battery?.tasks[0];

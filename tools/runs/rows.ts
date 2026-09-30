@@ -7,7 +7,7 @@
  * Each one is answered from a recorded fact or reported unknown; none is guessed from a mtime.
  */
 import { existsSync } from "../../src/meta/filesystem.ts";
-import { launchRecords, recordedRuns, type LaunchRecord, type RunLocation } from "./discover.ts";
+import { chooseRun, launchRecords, recordedRuns, type LaunchRecord, type RunLocation } from "./discover.ts";
 import {
   lastRecordedWrite,
   readCaseCounts,
@@ -218,35 +218,6 @@ export function collectRows(repoRoot: string, options: ListOptions): RunRow[] {
     kept.push(row);
   }
   return kept;
-}
-
-/** The candidates a selector reaches, exact first, and never two answers to one question. */
-function chooseRun(
-  locations: readonly RunLocation[],
-  selector: string,
-): { location: RunLocation; refusal?: undefined } | { refusal: string; location?: undefined } {
-  // An exact run id first, then an exact project name, then the ids the selector is the head or the
-  // tail of. The tail is the launcher's hex suffix, which is how a run is named everywhere else.
-  // The project before a partial id: otherwise a slug that is also the head of its own runs' ids
-  // — which is how the launcher names them — could never select the project. An exact id used to
-  // take the first location holding it, and a run id is unique inside one campaign rather than
-  // across them, so two campaigns recording one id sent `stop --yes` to whichever was walked
-  // first. Each group refuses the same way when it holds more than one.
-  const exact = locations.filter((location) => location.runId === selector);
-  const named = locations.filter((location) => location.slug === selector);
-  const partial = locations.filter(
-    (location) => location.runId.startsWith(selector) || location.runId.endsWith(selector),
-  );
-  const candidates = [exact, named, partial].find((group) => group.length > 0) ?? [];
-  const [only] = candidates;
-  if (only === undefined) {
-    return { refusal: `no recorded run matches ${selector}; "bun run runs list" shows the run ids` };
-  }
-  if (candidates.length === 1) return { location: only };
-  const ids = candidates.map((location) => `${location.runId} in ${location.slug}`).sort();
-  return {
-    refusal: `${selector} names ${String(ids.length)} recorded runs, and this cannot tell which one you meant:\n  ${ids.join("\n  ")}`,
-  };
 }
 
 /** One run in full: its row, its recorded evidence and the launcher receipt behind it. */

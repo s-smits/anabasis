@@ -12,9 +12,10 @@ bun .claude/skills/whole-run-investigation/scripts/wri.ts <lane> <campaign>/<run
 The lanes are `snapshot`, `challenge`, `delta` and `overview`, which collect; `climb`, `yield`,
 `posture`, `timeline`, `walls`, `handoff`, `gates` and `target`, which read the campaign; and `archive`,
 which writes the record. `brief.ts` runs the eight campaign lanes as `CAMPAIGN_LANES` and renders
-their trigger lines into the sweep brief, reading an in-process lane's triggers from the
-`<lane>.triggers.json` it writes beside its capture, so a trigger below is the same bytes whether it was read from
-a lane's own output or from the brief.
+their trigger lines into the sweep brief, reading an in-process lane's triggers from the report it
+records at `<review>/<lane>.json`, so a trigger below is the same bytes whether it was read from a
+lane's own output or from the brief. Inside a review every lane runs from the run's measured
+checkout, so an older run is read by the readers of the source that wrote it.
 
 ## The digest
 
@@ -29,11 +30,13 @@ that decided it, and prints `in-process` where no installed tool did, which star
 `UNTRIPPED IN SHIPPING` counts reject controls whose declared check never fired on a shipping
 case; it carries no suffix because the brief maps it to lanes 5 and 6. Block 1b, solver process,
 reads the solve traces for the tools the solver called, and `CHECK TOOL IN SOLVER TRACE (lane 23)`
-says a verifier-side tool appeared in a solve, which lane 22 reads as a lead and lane 23 settles
-alone. Block 1c, check informativeness, sets the reach of the controls against what shipping
+says a verifier-side tool appeared in a solve, as a declared tool or named in a call's recorded text,
+which lane 22 reads as a lead and lane 23 settles alone. `CHECK CODE IN SOLVER REACH (lane 34)` is
+the static half: a check program the claim resolved in the Builder's tool tree, which the solver's
+shell searches, or agent code byte-identical to correctness-model code. Block 1c, check informativeness, sets the reach of the controls against what shipping
 tripped: `REACH-ONLY CHECKS (lane 6)` names checks the controls reach and no shipping case ever
-failed, and `PERFECT BATTERY OVER AIM (lane 5)` says every scored case passed on a battery the
-band placed over its aim.
+failed, and `PERFECT BATTERY OVER AIM (lane 5)` names a full pass measured in a round that opened on a
+battery the band had placed above its aim, the decision and the battery joining on the round's id.
 
 Block 2, the submit and refusal ledger, reads each `builder-execution*.json` for its submits,
 refusals and strikes, which lane 3 reads for a refusal after a clear preview and lane 25 for the
@@ -48,7 +51,7 @@ nothing; block 3c, the repeated-condition census, prints `REPEATED CONDITION (la
 public condition recurs on a fixed product.
 
 Block 4, workshop and spend, reads the tool installs and the ledger. Block 4b, band placement,
-reads `difficulty-decisions/<runId>-<digest>.json` (`difficulty-decision/v9`) for the
+reads `difficulty-decisions/<runId>-<digest>.json` (`difficulty-decision/v10`) for the
 `placement.zone`: `OFF-AIM STREAK (lane 10)` where two or more consecutive placements sit on one
 side of the aim; an over-aim zone with no trigger of its own is
 read by lanes 5 and 12. Block 4c, role spend and censoring, reads `providerResourceBudget.byRole`
@@ -89,10 +92,14 @@ lane suffix it carries, so the brief can say which lanes have something to read.
 
 ## The campaign lanes
 
-`climb` runs `climb-velocity.ts` over consecutive versions and labels every edge `restated`,
-`adjusted`, `narrowed`, `widened`, `eased`, `escalated` or `replaced`; `adjusted` deliberately
-states no direction, `replaced` means fewer than half the task ids carried over so the numbers
-could not be compared, and every label starts lanes 10 and 20.
+`climb` runs `climb-velocity.ts` (`climb-velocity/v2`) over consecutive versions and labels every
+edge `restated`, `adjusted`, `narrowed`, `widened`, `eased`, `escalated` or `replaced`; `adjusted`
+deliberately states no direction, and `replaced` means fewer than half the task ids carried over so
+the numbers could not be compared. Each edge also counts the tasks `carried` unchanged, which after a
+full pass re-measure a known pass. The lane closes on the line the claimed batteries draw:
+`velocity` (the batteries between 1/n and n−1/n and the mean swing), `horizon` (that count over the
+first 8 and 12), `flat` (the pulse's stall rule) and `carried`. Every label and line starts lanes 10
+and 20.
 
 `yield` runs `review-yield.ts` and gives each review component a status per finding —
 `consumed`, `unobservable`, `advisory-only` or `not-consumed`. The `epoch-reviewer` component is
@@ -105,6 +112,19 @@ which lane 26 reads as a statement about the writer or the reader rather than th
 `timeline` reads `observability/<runId>.jsonl` and prints the `STALLS` longest gaps; a gap over
 thirty minutes starts lane 24, and `--classify` labels each stretch `adrift` or `unreadable`
 through `classifier/run-narrative.ts`, where `adrift` starts lane 25.
+
+`timeline` shows phases and gaps. It does not show how much of a round the Builder spent waiting on
+its tools, and that share decides whether a long round is the model's or the host's. Read it from
+`builder-execution.json`. Each `customCalls` row, including bash, read, write and edit, carries
+`startedAtMs` and `durationMs` counted from the execution's start. Take the union of those intervals
+against `durationMs`: calls sent together overlap, so a plain sum counts one wait twice. On
+2026-09-30 six live Opus firmware rounds waited on tools for 79–91% of their wall this way (fork-a
+275 of 304 min, -36 336 of 423). One `correctness_check` ran 137 min, and a `harness_inspect`
+readiness call ran 31–35 min, on a host at load 57–200 with 12 cores. The record keeps no bash
+command (`target: {}`). What a slow call ran is only in the Builder CLI transcript, under
+`ana-claude-cli-*/projects/<workspace slug>/*.jsonl` inside the run's `ana-quick-run-*` temp root,
+and `pi-session.ts` removes that directory when the session closes. So read it while the run is live:
+pair each `tool_use` with its `tool_result` and take the longest of the calls in one message.
 
 `walls` runs `walls.ts`, whose `boundOf` labels every case `unrecorded`, `time-bound`,
 `turn-bound`, `unstarted`, `submitted` or `no-submit`, and prints each bound's share against

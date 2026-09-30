@@ -30,6 +30,12 @@ export type CampaignFeedback = {
   claim: string;
   evidence: string;
   findings?: ContractFinding[];
+  /** The subject the finding named (`namedSubject`), which with the owner keys its recurrence;
+   *  absent when it named none, because two findings naming nothing are not one finding recurring. */
+  subject?: string;
+  /** Set from the second consecutive battery admitting a finding on this owner and subject, so the
+   *  author reads a recurrence and not what looks like a fresh finding each round. */
+  repeated?: { count: number; since: string };
 };
 
 export interface PriorEvidence {

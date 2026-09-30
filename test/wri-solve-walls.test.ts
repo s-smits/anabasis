@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { mkdirSync, readFileSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 import { afterAll, describe, expect, it } from "bun:test";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
@@ -34,6 +34,8 @@ interface Spec {
   errors?: string[];
 }
 
+const QUICK: Spec = { taskId: "quick", minutes: 6, turns: 1, pass: true };
+
 const PRESSED: Spec[] = [
   {
     taskId: "at-wall",
@@ -43,7 +45,7 @@ const PRESSED: Spec[] = [
     errors: ["Pi Built worker exceeded its bounded solve time"],
   },
   { taskId: "passed-at-wall", minutes: 59, turns: 1, pass: true },
-  { taskId: "quick", minutes: 6, turns: 1, pass: true },
+  QUICK,
   { taskId: "gave-up", minutes: 9, turns: 1, accepted: false },
   { taskId: "turns", minutes: 20, turns: 4, accepted: false },
   { taskId: "never", minutes: 0, seconds: 5, turns: 0, nonResult: "provider" },
@@ -181,9 +183,7 @@ describe("solve budget against the declared walls", () => {
   });
 
   it("states plainly when no case came near a wall, and reads the seeded walls when the bundle is gone", () => {
-    const dir = campaign([
-      { runId: RUN, config: null, cases: [{ taskId: "quick", minutes: 6, turns: 1, pass: true }] },
-    ]);
+    const dir = campaign([{ runId: RUN, config: null, cases: [QUICK] }]);
     const report: Report = buildWalls({ campaign: dir });
     const battery = required(report.batteries[0], "the battery");
     expect(battery.walls.moved).toEqual([]);
@@ -194,7 +194,7 @@ describe("solve budget against the declared walls", () => {
 
   it("reads a task probe's walls from the product the ledger says it measured, not a directory named after it", () => {
     const dir = campaign([
-      { runId: RUN, config: CONFIG, cases: [{ taskId: "quick", minutes: 6, turns: 1, pass: true }] },
+      { runId: RUN, config: CONFIG, cases: [QUICK] },
       { runId: OTHER, config: null, product: RUN, cases: [{ taskId: "probe", minutes: 30, turns: 4 }] },
     ]);
     const probe: Battery = required(
@@ -206,10 +206,22 @@ describe("solve budget against the declared walls", () => {
     expect(probe.rows.map((row) => [row.taskId, row.bound, row.turns])).toEqual([["probe", "turn-bound", 4]]);
   });
 
+  it("reads the walls of a product an earlier source recorded, which the controller would not continue", () => {
+    const dir = campaign([{ runId: RUN, config: CONFIG, cases: [QUICK] }]);
+    const manifest = join(dir, "versions", RUN, "version.json");
+    writeFileSync(
+      manifest,
+      readFileSync(manifest, "utf8").replace("product-version/v2", "product-version/v1"),
+    );
+    const battery: Battery = required(buildWalls({ campaign: dir, runId: RUN }).batteries[0], "the battery");
+    expect(battery.walls.settings).toMatchObject({ solveMs: 3_600_000, maxTurns: 4 });
+    expect(battery.walls.source).toBe("the measured product's agent/config.yaml");
+  });
+
   it("selects one battery of several and reports no case row rather than an empty campaign", () => {
     const dir = campaign([
       { runId: RUN, config: CONFIG, cases: PRESSED },
-      { runId: OTHER, config: CONFIG, cases: [{ taskId: "quick", minutes: 6, turns: 1, pass: true }] },
+      { runId: OTHER, config: CONFIG, cases: [QUICK] },
     ]);
     expect(buildWalls({ campaign: dir }).batteries.map((battery: Battery) => battery.runId)).toEqual([
       RUN,

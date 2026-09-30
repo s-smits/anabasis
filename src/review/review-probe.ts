@@ -60,7 +60,13 @@ import { parseJsonAs } from "../meta/json-runtime.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { jsonPathTokens, plainRecord } from "../meta/json-evidence.ts";
 import { type JsonValue, isNumber, isString } from "../meta/json-shape.ts";
-import { type ReaderTool, type ReaderToolResult, readerParameters, readerToolText } from "./review-reader.ts";
+import {
+  READER_DEADLINE_MS,
+  type ReaderTool,
+  type ReaderToolResult,
+  readerParameters,
+  readerToolText,
+} from "./review-reader.ts";
 import { toolchainReach } from "./review-sources.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { boundText } from "../meta/bounded-text.ts";
@@ -73,6 +79,11 @@ import { PROBE_DIRECTIONS, type ProbeDirection } from "../analyse/iteration-anal
  *  settle the artifact roots a single review can argue about, and small enough that a review cannot
  *  turn into a second census. */
 export const PROBE_BUDGET = 8;
+/** Probe execution per review. The reader's deadline counts the probes' verifier children as well as
+ *  its own turns, and a probe on a compiling domain under host load runs minutes, not seconds: two
+ *  ESP32 reviews of a2d0f7 (2026-09-30) spent 50 and 63 of their 60 minutes inside probes and hit
+ *  the deadline, the first before it had read `agent/tools.ts`. The other half stays the reader's. */
+export const PROBE_WALL_MS = READER_DEADLINE_MS / 2;
 /** A replacement value is one field, not a redesigned artifact, and each half of an edit is one
  *  passage. A whole file past this ceiling is still reachable, by an edit of the passage that
  *  matters rather than a retyped file. */
@@ -118,7 +129,7 @@ export type ReviewProbeRow = {
 
 type ProbeSide = { outcome: ControlReceiptOutcome; blockingCheckIds: string[] };
 
-export type ProbeState = { rows: ReviewProbeRow[]; refused: number };
+export type ProbeState = { rows: ReviewProbeRow[]; refused: number; spentMs: number };
 
 type ProbeRequest = { controlId: string; path: string; change: ProbeChange };
 
@@ -142,7 +153,7 @@ const baselineId = (probe: number) => `review-probe-${probe}-baseline`;
 const mutatedId = (probe: number) => `review-probe-${probe}-mutated`;
 
 export function emptyProbeState(): ProbeState {
-  return { rows: [], refused: 0 };
+  return { rows: [], refused: 0, spentMs: 0 };
 }
 
 /** Both sides answered, so the comparison carries information. `runControls` does not throw when an
@@ -243,7 +254,7 @@ function stepInto(value: JsonValue | undefined, token: string): JsonValue | unde
  * everything else. Null when the path does not resolve: a probe that added a field would answer
  * "no declared check reads it" about a field the artifact never carried, which is true and useless.
  *
- * The path is the rooted spelling the candidate's own checks declare — `$.layout.members[0].area`,
+ * The path is the rooted spelling the candidate's own checks declare — `$.items[0].value`,
  * read through `jsonPathTokens`, the one grammar a reviewer copying a path out of those
  * declarations can use.
  */
@@ -307,7 +318,7 @@ function quotedSpelling(at: JsonValue, prefix: string, rest: readonly string[]):
 export function missingFieldRefusal(artifact: JsonValue, path: string, controlId: string): string {
   const tokens = jsonPathTokens(path);
   if (tokens === null || tokens.length === 0) {
-    return `${path} is not a rooted path; spell it as the declared checks do, \`$.layout.members[0].area\`, with a key holding a dot or a slash quoted: \`$.files['src/main.cpp']\``;
+    return `${path} is not a rooted path; spell it as the declared checks do, \`$.items[0].value\`, with a key holding a dot or a slash quoted: \`$.files['src/main.cpp']\``;
   }
   let at = artifact;
   let depth = 0;
@@ -413,6 +424,9 @@ function renderRow(row: ReviewProbeRow): string {
  */
 function probeRequest(args: Record<string, JsonValue>, state: ProbeState): ProbeRequest | string {
   if (state.rows.length >= PROBE_BUDGET) return `a review runs at most ${PROBE_BUDGET} probes`;
+  if (state.spentMs >= PROBE_WALL_MS) {
+    return `a review spends at most ${PROBE_WALL_MS / 60_000} minutes executing probes and this one has, so the rest of its time is for reading; finish reading and record what the probes already run show`;
+  }
   const text = (key: string) => (isString(args[key]) ? args[key] : "");
   const [controlId, path, value] = [text("controlId").trim(), text("path").trim(), text("value").trim()];
   const [find, replace] = [text("find"), text("replace")];
@@ -446,12 +460,12 @@ const PROBE_CHECK_CONTRACT = {
       path: {
         type: "string",
         description:
-          "A rooted path to an existing leaf of that control's artifact, spelled as the declared checks spell theirs: `$.layout.members[0].area`. Array positions are bracketed; a key holding a dot or a slash is quoted: `$.firmware['main.cpp']`.",
+          "A rooted path to an existing leaf of that control's artifact, spelled as the declared checks spell theirs: `$.items[0].value`. Array positions are bracketed; a key holding a dot or a slash is quoted: `$.files['src/main.cpp']`.",
       },
       value: {
         type: "string",
         description:
-          'The replacement value as JSON text, e.g. `0.0001`, `"bolted"` or `null`. One field only. Omit it when you send `find` and `replace`.',
+          'The replacement value as JSON text, e.g. `0.0001`, `"high"` or `null`. One field only. Omit it when you send `find` and `replace`.',
       },
       find: {
         type: "string",
@@ -548,6 +562,7 @@ export function probeTool(
       );
     }
     let receipts: ControlReceipt[];
+    const started = performance.now();
     try {
       receipts = await runPair(candidate, id, control.taskId, control.artifact, mutated);
     } catch (cause: unknown) {
@@ -555,6 +570,8 @@ export function probeTool(
         control.taskId,
         boundText(`the checks did not settle: ${errorMessage(cause)}`, 300).shown,
       );
+    } finally {
+      state.spentMs += performance.now() - started;
     }
     const task = candidate.tasks.find((row) => row.taskId === control.taskId);
     return record({

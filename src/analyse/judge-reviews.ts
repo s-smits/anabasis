@@ -14,18 +14,24 @@ import {
   CASE_ARTIFACT_FILE,
   CASE_JUDGE_FILE,
 } from "../correctness-bundle/battery-record.ts";
-import { type JudgeEvidence, judgeDecision, validateJudgeEvidence } from "../claim/judge.ts";
+import { type JudgeEvidence, judgeAnswered, judgeDecision, validateJudgeEvidence } from "../claim/judge.ts";
 import { type EvidenceLogViolation, recordedEvidence, verifyRunDir } from "../claim/evidence-log.ts";
 import { ACTIVE_JUDGE_PROMPT_DIGESTS } from "../review/judge-prompt-policy.ts";
 import type { JudgeSubjectEvidence } from "../review/judge.ts";
 import type { IterationAnalysis } from "./iteration-analysis.ts";
-import { type ContestedCase, type ContestedSubject, contestedCases, isVetoed } from "./judge-contested.ts";
+import {
+  type ContestedCase,
+  type ContestedKind,
+  type ContestedSubject,
+  contestedCases,
+} from "./judge-contested.ts";
 import { readValidatedBrief } from "../correctness-bundle/public-resources.ts";
 import { parseJsonAs, capturedJsonParse, hashJsonBytes } from "../meta/json-runtime.ts";
 import { isBoolean, isRecord, isString } from "../meta/json-shape.ts";
 import type { SafeguardContext } from "../meta/safeguard.ts";
 import { safeguardJudgeReview } from "./judge-safeguards.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
+import type { ReviewOutcome } from "../review/review-reader.ts";
 
 interface JudgeReviewDeps {
   repoRoot: string;
@@ -48,16 +54,14 @@ export type BatteryCensus = {
  */
 export type JudgeExit = {
   kind: "none" | "advisory";
-  /** Verified cases the verifier failed and the Judge passed. */
-  verifierFailJudgePass: number;
-  /** Verified cases the verifier passed and the Judge failed. */
-  verifierPassJudgeFail: number;
+  /** The contested rows counted by `ContestedKind`, every kind present. */
+  cases: Record<ContestedKind, number>;
   /** Verified cases in the battery. */
   verified: number;
   reason: string;
 };
 
-export const JUDGE_REVIEWS_SCHEMA = "judge-reviews/v12";
+export const JUDGE_REVIEWS_SCHEMA = "judge-reviews/v15";
 
 export type JudgeReviewsResult = {
   schema: typeof JUDGE_REVIEWS_SCHEMA;
@@ -73,13 +77,15 @@ export type JudgeReviewsResult = {
   /** Every verified case where the Judge's verdict disagreed with the verifier's, no threshold. */
   contested: ContestedCase[];
   coverage: { reviewable: number; reviewed: number };
-  /** Why the review is incomplete; null when every offered battery verdict returned. */
-  provisional: string | null;
+  /** Absent, with why, when there is no census or it is incomplete; skipped when the slot is off. */
+  outcome: ReviewOutcome;
   exit: JudgeExit;
-  absent: string[];
 };
 
 type CensusAttempt = { census: BatteryCensus | null; reason: string | null };
+
+/** The one missing census that is no gap: the review slot was off, so no Judge ran. */
+const JUDGE_OFF = 'the evidence says judge:"off", so this battery had no judge';
 
 /** One `verifyRunDir` for the whole review: every case shares the battery's run directory. */
 function runDirVerifier(): (runDir: string) => EvidenceLogViolation[] {
@@ -170,7 +176,7 @@ function batteryCensus(analysis: IterationAnalysis, repoRoot: string): CensusAtt
     return { census: null, reason: `${rel}: ${errorMessage(error)}` };
   }
   if (judgeEvidence.judge === "off") {
-    return { census: null, reason: 'the evidence says judge:"off", so this battery had no judge' };
+    return { census: null, reason: JUDGE_OFF };
   }
   return { census: { runId, evidence: judgeEvidence }, reason: null };
 }
@@ -178,21 +184,22 @@ function batteryCensus(analysis: IterationAnalysis, repoRoot: string): CensusAtt
 /** Why the review does not cover every offered case; null when it does. Disclosure only: complete
  *  disagreements are advice either way. */
 function censusHold(attempt: CensusAttempt, subjects: readonly ContestedSubject[]): string | null {
-  if (subjects.length === 0) return null;
-  if (attempt.census === null) return `the battery has no census: ${attempt.reason}`;
+  if (attempt.census === null) return `no census to read (${attempt.reason})`;
   const { evidence } = attempt.census;
-  if (evidence.verdicts !== evidence.offered) {
-    return `the judge review is incomplete (${judgeDecision(evidence)}): ${evidence.verdicts}/${evidence.offered} battery verdicts returned`;
+  const answered = judgeAnswered(evidence);
+  if (answered !== evidence.offered) {
+    return `the judge review is incomplete (${judgeDecision(evidence)}): ${answered}/${evidence.offered} battery verdicts returned`;
   }
-  // A contradicting verdict whose resample returned none is neither confirmed nor withdrawn, so the
-  // census counting its first verdict would let a standing Judge issue age towards a fix on it.
-  const unresampled = subjects.filter(({ judgeEvidence, truthOk }) =>
-    isBoolean(judgeEvidence?.verdict) && isBoolean(truthOk) && judgeEvidence.verdict !== truthOk
-      ? !isBoolean(judgeEvidence.confirmation?.verdict)
-      : false,
+  // A Judge fail of a verifier pass whose resample returned none is neither confirmed nor withdrawn,
+  // so the census counting its first verdict would let a standing Judge issue age towards a fix on
+  // it. No other verdict is resampled. `judgeCaseKind` reads this case and a withdrawn fail alike as
+  // "unconfirmed-fail", which is right for every other reader and why this one reads the resample.
+  const unresampled = subjects.filter(
+    ({ judgeEvidence, truthOk }) =>
+      judgeEvidence?.verdict === false && truthOk === true && !isBoolean(judgeEvidence.confirmation?.verdict),
   ).length;
   if (unresampled === 0) return null;
-  return `the judge review is incomplete: ${unresampled} contradicting verdicts returned no resample verdict`;
+  return `the judge review is incomplete: ${unresampled} Judge fails of a verifier pass returned no resample verdict`;
 }
 
 /** Why the Judge returned no verdict on any case: the census it could not read, or the count of
@@ -206,23 +213,20 @@ function unreviewedReason(attempt: CensusAttempt): string {
 }
 
 function judgeExit(contested: readonly ContestedCase[], verified: number, attempt: CensusAttempt): JudgeExit {
-  const verifierFailJudgePass = contested.filter(
-    (row) => row.verifier === false && row.judge === true,
-  ).length;
-  const verifierPassJudgeFail = contested.length - verifierFailJudgePass;
-  const vetoed = contested.filter(isVetoed).length;
-  const base = { verifierFailJudgePass, verifierPassJudgeFail, verified };
+  const cases = { veto: 0, "unconfirmed-fail": 0, "disputed-pass": 0 };
+  for (const row of contested) cases[row.kind] += 1;
+  const base = { cases, verified };
   if (contested.length === 0) {
-    // Agreement is claimed over the cases the Judge returned a verdict on, so with none there is
-    // nothing it agreed on, and the reason says why nothing was reviewed instead.
-    const reviewed = attempt.census?.evidence.verdicts ?? 0;
+    // No contradiction is claimed over the cases the Judge answered, so with none
+    // there is nothing it was compared on, and the reason says why nothing was reviewed instead.
+    const reviewed = attempt.census === null ? 0 : judgeAnswered(attempt.census.evidence);
     return {
       ...base,
       kind: "none",
       reason:
         reviewed === 0
           ? `the Judge reviewed no verified case: ${unreviewedReason(attempt)}`
-          : "the Judge and the verifier agreed on every reviewed verified case",
+          : "the Judge contradicted the verifier on no reviewed verified case",
     };
   }
   return {
@@ -232,7 +236,7 @@ function judgeExit(contested: readonly ContestedCase[], verified: number, attemp
     // "N citing shown rules", which counts a different thing and reads as zero for a fail that did
     // cite a rule and simply was not repeated on the re-sample. The author reads this sentence to
     // decide whether the disagreement deserves their attention, so it names both halves.
-    reason: `the Judge disagreed with the verifier on ${contested.length} of ${verified} verified cases (${verifierFailJudgePass} verifier-fail/Judge-pass, ${verifierPassJudgeFail} verifier-pass/Judge-fail); ${vetoed} were vetoes, a cited fail of a verifier pass that a second sample repeated, which is what the epoch reviewer settles; the verifier decides every pass`,
+    reason: `the Judge disagreed with the verifier on ${contested.length} of ${verified} verified cases (${cases["disputed-pass"]} verifier-fail/Judge-pass, ${cases.veto + cases["unconfirmed-fail"]} verifier-pass/Judge-fail); ${cases.veto} were vetoes, a cited fail of a verifier pass that a second sample repeated, which is what the epoch reviewer settles; the verifier decides every pass`,
   };
 }
 
@@ -241,15 +245,13 @@ function judgeExit(contested: readonly ContestedCase[], verified: number, attemp
 export function runJudgeReviews(analysis: IterationAnalysis, deps: JudgeReviewDeps): JudgeReviewsResult {
   const subjects = caseSubjects(analysis, deps.repoRoot);
   const attempt = batteryCensus(analysis, deps.repoRoot);
-  const provisional = censusHold(attempt, subjects);
+  const hold = censusHold(attempt, subjects);
   // Each declared check's assertion joined to its id, so a citation names the check that passed it.
   const brief = readValidatedBrief(join(deps.repoRoot, analysis.treeRoot));
   const byAssertion = new Map(brief?.truthChecks.map((check) => [check.assertion, check.id] as const) ?? []);
   const contested = attempt.census === null ? [] : contestedCases(subjects, byAssertion);
   const verified = analysis.cases.filter((row) => row.truthOk !== null).length;
   const exit = judgeExit(contested, verified, attempt);
-  const absent: string[] = [];
-  if (attempt.census === null) absent.push(`main-judge census: no census to read (${attempt.reason})`);
   const result: JudgeReviewsResult = {
     schema: JUDGE_REVIEWS_SCHEMA,
     slug: analysis.slug,
@@ -261,11 +263,15 @@ export function runJudgeReviews(analysis: IterationAnalysis, deps: JudgeReviewDe
     contested,
     coverage: {
       reviewable: attempt.census?.evidence.offered ?? 0,
-      reviewed: attempt.census?.evidence.verdicts ?? 0,
+      reviewed: attempt.census === null ? 0 : judgeAnswered(attempt.census.evidence),
     },
-    provisional,
+    outcome:
+      attempt.reason === JUDGE_OFF
+        ? { kind: "skipped", reason: "review-slot-off" }
+        : hold === null
+          ? { kind: "read" }
+          : { kind: "absent", why: hold },
     exit,
-    absent,
   };
   safeguardJudgeReview(
     result,

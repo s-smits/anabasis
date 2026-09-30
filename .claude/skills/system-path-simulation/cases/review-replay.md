@@ -29,8 +29,8 @@ rules, the check ids they join to, the rationale and `digestMatch` (the request 
 recording's when the brief and artifact still read the same). `contested.json` holds every
 ContestedCase row the replay produced, in both directions, over the subject the controller's own
 Judge review reads: a veto (a verifier pass failed with a citation, and failed again in the
-confirming sample production takes) and a disputed fail (a verifier fail passed twice, naming the
-checks the verifier failed) are the two the reviewer settles. The summary line counts each. A run
+confirming sample production takes) and a disputed fail (a verifier fail the Judge passed on its
+one sample, naming the checks the verifier failed) are the two the reviewer settles. The summary line counts each. A run
 whose brief no longer validates under the current reader refuses; move to a run that does.
 
 At Opus medium the same artifact went 2 fail / 1 pass across three samples on 2026-09-15; that
@@ -87,8 +87,10 @@ severity now reads each finding's own evidence, so both would be admitted as rec
   reads no prior occurrence and can dispute nothing. That is the weaker condition, not a refusal.
 - An old run's `.toolchain` link may point at an epoch workspace that no longer holds the tools;
   the review then ends `incomplete` with the three verifier entries missing, and still settles the
-  veto. That is the recorded position's property, not a staging fault.
+  veto. That is the recorded position's property, not a staging fault. `tool-tree.mts --campaign`
+  says so before the replay and lists the family's trees that still exist.
 - The review slot is the one in `--repo`'s `.env` chain unless the process environment names
   another; a drained account returns 429 as a transport error on every sample. Read
   `.accounts/usage` first. When the account is not the plain one, run the script as
-  `bun --env-file=.accounts/claudeN.env …`, following SKILL.md's steward rule.
+  `bun --env-file=.accounts/claudeN.env …`, following SKILL.md's steward rule. Both scripts strip
+  the launching session's `CLAUDE*` variables before the slot opens and print the names.

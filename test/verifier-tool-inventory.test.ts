@@ -20,7 +20,10 @@ import {
   TOOL_ID_RE,
   portableFileCount,
   portableToolTreeCounts,
+  portableToolTreeDigest,
   resolveToolInventory,
+  toolTreeDigest,
+  yieldingPortableToolTreeDigest,
 } from "../src/verify/tool-inventory.ts";
 import { commandSearchPath, toolTreeSearchDirs } from "../src/verify/solve-command-isolation.ts";
 import { prepareVerifierReads } from "../src/verify/darwin-seatbelt.ts";
@@ -434,6 +437,48 @@ describe("resolving the tool inventory", () => {
       expect(portableFileCount(fs.readFileSync(path), root), rel).toBe(count);
       expect(count === sha256OfFile(path), rel).toBe(rel === "bin/plain");
     }
+  });
+
+  it("counts a tree the same whether its walk yields to the event loop or not", async () => {
+    // The verifier host re-counts the tree through the yielding walk, and a snapshot records it
+    // through the plain one. The pinned digest is what this tree counted before the walk could
+    // yield, so a tree digest already on record still matches.
+    const ws = workspace();
+    const root = fs.realpathSync.native(ws.toolTree);
+    const files = {
+      "bin/tool": `#!/bin/sh\nexec "${root}/libexec/decide.sh" "$@"\n`,
+      "libexec/decide.sh": "#!/bin/sh\necho pass\n",
+      "arduino/data/inventory.yaml":
+        "installation:\n    id: a\nbuild_cache:\n    compilation_count_since_last_purge: 7\n",
+      "etc/inventory.yaml": "all:\n    hosts: [field]\n",
+      "home/.cache/pip/entry": "cached",
+    };
+    for (const [rel, body] of Object.entries(files)) {
+      mkdirSync(join(ws.toolTree, rel, ".."), { recursive: true });
+      writeFileSync(join(ws.toolTree, rel), body);
+    }
+    writeFileSync(join(ws.dir, "outside.txt"), "outside\n");
+    fs.symlinkSync("../libexec/decide.sh", join(ws.toolTree, "bin/relative"));
+    fs.symlinkSync(join(ws.toolTree, "libexec/decide.sh"), join(ws.toolTree, "bin/absolute"));
+    fs.symlinkSync(join(ws.dir, "outside.txt"), join(ws.toolTree, "bin/external"));
+    // No file passes 1 MiB, so this host's local count reads every byte too and agrees.
+    const pinned = "f2d04aa256631729b761b4c10caa3f7b6b31055185aaf5e76b084083588024e0";
+    expect(portableToolTreeDigest(ws.toolTree)).toBe(pinned);
+    expect(toolTreeDigest(ws.toolTree)).toBe(pinned);
+    expect(await yieldingPortableToolTreeDigest(ws.toolTree)).toBe(pinned);
+  });
+
+  it("lets a count join a walk of its tree that has not begun, and never one already walked", async () => {
+    const ws = workspace();
+    script(join(ws.toolTree, "bin"), "tool", ["echo pass"]);
+    const first = yieldingPortableToolTreeDigest(ws.toolTree);
+    expect(yieldingPortableToolTreeDigest(ws.toolTree)).toBe(first);
+    const before = await first;
+    script(join(ws.toolTree, "bin"), "tool", ["echo fail"]);
+    const after = yieldingPortableToolTreeDigest(ws.toolTree);
+    expect(after).not.toBe(first);
+    expect(await after).not.toBe(before);
+    expect(await after).toBe(portableToolTreeDigest(ws.toolTree));
   });
 
   it("admits a plain command name and refuses anything that can address a file", () => {

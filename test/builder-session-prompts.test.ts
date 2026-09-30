@@ -38,6 +38,7 @@ import { BuilderAuthorFeedback } from "../src/builder/author-feedback.ts";
 import { createRunObserver } from "../src/observe/run-observer.ts";
 import { controllerValidatedFinding, controllerValidatedFindings } from "../src/correctness-bundle/brief.ts";
 import { required } from "./helpers/doubles.ts";
+import { expectNoRestatedDuty } from "./helpers/duty-overlap.ts";
 import {
   ACCEPTED,
   INPUT,
@@ -109,15 +110,40 @@ const refused = (commit: string, findings: Array<{ code: string; path: string; d
   ({ ...REFUSED, commit, findings: controllerValidatedFindings(findings) }) satisfies CandidateCheckOutcome;
 
 describe("what the round prompt says a rehearsal is", () => {
-  // A pass is a blind solve the solver finished, so it is stated as such; nothing waits on it, and
-  // the battery stays the one measurement of where the round lands.
-  it("calls a passing rehearsal a blind solve within reach, and holds the submit on nothing", async () => {
+  // A pass is a blind solve the solver finished, so it is stated as such, and the battery stays the
+  // one measurement of where the round lands. Which task to rehearse is named, because a pass only
+  // speaks for its own task: over 111 rounds that rehearsed one task, the rehearsed task sat at
+  // chance in its battery's solve-time order (2026-09-30). A battery whose rehearsals all passed
+  // changes its demand once before submit, and the submit waits on no rehearsal verdict: asking
+  // rehearsals to agree with a prediction held rounds back for hours.
+  it("calls a passing rehearsal a blind solve within reach, and asks once for more when all passed", async () => {
     const text = (await freshPrompt({ workspace: workspace("rehearsal") })).replace(/\s+/g, " ");
+    expect(text).toContain("A passing rehearsal is a blind solve of its task");
+    expect(text).toContain("the task you expect to be hardest is the one whose rehearsal says most");
     expect(text).toContain(
-      "The measured battery, not a rehearsal, decides where it lands, but a passing rehearsal is a blind solve of its task, so it shows that task is within the solver's reach; further polish belongs to the next round.",
+      "A battery whose every rehearsal passed is on course to pass every case, so before you submit it, raise what its hardest tasks demand",
+    );
+    expect(text).toContain(
+      "rehearse one of them again, then submit: further polish belongs to the next round.",
     );
     expect(text).toContain("submit once a clear preview says it works.");
+    // Where a battery lands and what a full pass finds are the battery contract's, stated once there.
+    expect(text).not.toContain("decides where it lands");
+    expect(text).not.toContain("find no limit");
     expect(text).not.toContain("agree with");
+    expect(text).not.toContain("until a rehearsal fails");
+  });
+
+  // The raise before submit names depth, which the intent clause defines, because a raise otherwise
+  // widens: firmware 7a97af-i02's round raised by five new device families instead and stopped at what
+  // its simulator could model; all five cases passed.
+  it("names depth, not widening, as the raise when every rehearsal passed", async () => {
+    const text = (await freshPrompt({ workspace: workspace("rehearsal-depth") })).replace(/\s+/g, " ");
+    expect(text).toContain(
+      "raise what its hardest tasks demand by making more of the request's requirements act together, not by adding tasks, families or inputs at the same demand",
+    );
+    expect(text).not.toContain("change what its hardest tasks demand and rehearse");
+    expectNoRestatedDuty(text);
   });
 });
 

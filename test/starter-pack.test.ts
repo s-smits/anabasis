@@ -157,7 +157,7 @@ describe("pi starter pack brief vocabulary", () => {
     const text = STARTER_DOC.replace(/\s+/g, " ");
     expect(text).toContain("decides from the values the answer produces for that resource");
     expect(text).toContain(
-      "A library symbol or a constant found anywhere in the build proves the answer mentions the resource, not that it behaves",
+      "A symbol or a constant found anywhere in the answer proves the answer mentions the resource, not that it behaves",
     );
     const mebibytes = STDOUT_MAX_BYTES / 2 ** 20;
     expect(Number.isInteger(mebibytes)).toBe(true);
@@ -186,10 +186,21 @@ describe("pi starter pack brief vocabulary", () => {
   it.concurrent("contract.md names what observes each obligation and calibrates checks both ways", () => {
     const text = STARTER_DOC.replace(/\s+/g, " ");
     expect(text).toContain('or "not established" where nothing does');
-    expect(text).toContain("so an answer that relabels its members or cases cannot pass on the labels");
+    expect(text).toContain("so an answer that relabels its entities or cases cannot pass on the labels");
     expect(text).toContain("A reject that differs from its accept in several facts proves nothing");
     expect(text).toContain("Calibrate every check in both directions.");
-    expect(text).toContain("fixed a display's width at 128, left out `constrain`");
+    expect(text).toContain(
+      "An answer the real toolchain builds and runs correctly that the stand-in cannot build is the stand-in's defect.",
+    );
+  });
+
+  // The Builder reads this whole, whatever the request, so an example drawn from a domain the
+  // product was measured on (a truss member, a firmware pin, a board simulator) anchors a new
+  // domain's plan to the old one (operator, 2026-09-29, before the chemistry and biology runs).
+  it.concurrent("the starter pack draws no example from a domain the product was measured on", () => {
+    expect(STARTER_DOC).not.toMatch(
+      /\b(?:truss\w*|firmware|gpio|arduino|esp32|rp2040\w*|avr8js|load case|microcontroller)\b/i,
+    );
   });
 
   // A replayed witness is already normal and the solver reaches it, so the worked routes are to a
@@ -205,6 +216,20 @@ describe("pi starter pack brief vocabulary", () => {
     expect(text).toContain("**The solver's own answers.**");
     expect(text).toContain("so the limit belongs nearer the stored answer");
     expect(text).toContain("start the next search from the best solve and keep the better incumbent");
+    // Every route above sets where a limit or a stored answer sits. The streaks of 2026-09-29 moved
+    // only that, so a route changes what the task asks, from the field, with the change noted.
+    expect(text).toContain("**A demand the battery does not yet make.**");
+    expect(text).toContain("It fails when the answer that met the old task still meets the new one");
+    // A small copy of the work passes in minutes of a two-hour wall, and a Builder-written stand-in
+    // for the field's tool makes a pass say nothing, so the full-size work in the real environment is
+    // a route of its own, with the changes that only look harder named beside it.
+    expect(text).toContain("**The work at the size and in the environment the field works in.**");
+    expect(text).toContain("a fail your harness's defect");
+    expect(text).toContain("Some changes look harder and are not.");
+    // The very-hard aim reaches the Builder as a family's property, never as an aim sentence (prior 10).
+    expect(text).not.toContain("aimed at hard lands");
+    // A count of solves reads as a share to author towards (prior 10).
+    expect(text).not.toContain("3 of 6 blind solves");
     expect(text).toContain(
       "`harness_trial` estimates how reliably the solver meets a task; it does not veto one.",
     );

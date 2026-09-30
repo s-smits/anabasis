@@ -16,7 +16,8 @@ Four narrower reads need no lane at all. A question about one run or one case �
 a non-result's owner, whether a live run is still worth its spend — is answered from the recorded
 rows by [the outcome reference](references/outcome-review.md). A climb question starts at
 [the climb reference](references/climb.md), which reads the recorded difficulty decision and the
-task bytes and says whether a battery got harder or only different. A question about whether a
+task bytes, says whether a battery got harder or only different, and finds the one link that holds
+a flat line. A question about whether a
 refusal or a declared check earns its place starts at [the gate audit](references/gate-audit.md),
 whose `wri.ts census` prices every component and check across all recorded runs at once. And a
 question about whether a new wave of runs is better than the one it replaced starts at
@@ -96,8 +97,16 @@ bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.ts read <ru
   --out <absolute review dir> [--all | --lanes 5,yield] [--run <runId>] [--repo <abs>]
 ```
 
-A target is a campaign folder, its `controller/<runId>` folder or a bare run id, which `wri.ts`
-looks up in the main checkout's campaign tree. `scope` sizes the run from its own recorded bytes,
+A target is a campaign folder, its `controller/<runId>` folder or any selector `bun run runs show`
+takes (a run id, a project, or the head or hex tail of an id), which `wri.ts` looks up in the main
+checkout's campaign tree and refuses when it names more than one run. A run's records are read by
+the source that wrote them, so `read` first resolves the checkout at the opening's `source.commit`:
+`--repo` when it is clean there with its own dependencies installed, else such a registered
+worktree (the review worktree `ana-wri-<sha8>` first, the run's own worktree last, another run's
+never), else `ana-wri-<sha8>` created beside the main checkout and prepared from its own lock. Every
+lane that reads the run's records then runs as that checkout's own script, and the brief's
+`readers` line names it with every checkout passed over. A run no checkout can read is refused as
+`source-unresolved` with exit 2 before any lane. `scope` sizes the run from its own recorded bytes,
 and `read` with no `--lanes` reads what that size earns. Every lane's output is captured to
 `<review>/<lane>.txt`, the read is recorded in `<review>/wri-review.json`, and the command prints
 one bounded brief instead of the captures: the run's size and terminal, each lane quoted whole or
@@ -190,8 +199,8 @@ against a row of the brief: the trigger, the question it settles and the decisio
 | the `handoff` same-task table | 18 |
 | 3c `REPEATED CONDITION`; a `climb` edge label | 20 |
 | source-delta `UNREACHED CHANGED SAFEGUARDS` or `MODEL-VISIBLE SURFACE CHANGED` | 21 |
-| a `walls` case `time-bound` or `turn-bound`, or a pass at a wall; one-turn solves at a tiny share of the solve wall | 22 |
-| 1b `CHECK TOOL IN SOLVER TRACE`; verified cases with lane 1, 4, 8, 22 or 34 suspecting a shortcut | 23, isolated |
+| a `walls` case `time-bound` or `turn-bound`, or a pass at a wall; passes at a tiny share of the solve wall | 22 |
+| 1b `CHECK TOOL IN SOLVER TRACE` or `CHECK CODE IN SOLVER REACH`; verified cases with lane 1, 4, 8, 22 or 34 suspecting a shortcut | 23, isolated |
 | a `timeline` gap over thirty minutes; 4c `REVIEW TURNS EXCEED SOLVER TURNS`, `EXPLICIT ALLOWANCE WAIT` or `DECISION ON CENSORED BATTERY` | 24 |
 | any unaccepted case; any non-result; a terminal other than `completed`; submit strikes | 25 |
 | a `posture` stretch `adrift` or `unreadable`; 4e `MEMORY OVER READ CAP` | 26 |
@@ -201,7 +210,7 @@ against a row of the brief: the trigger, the question it settles and the decisio
 | standing at every tier; lane 1 or 29 reporting an obligation of the request no check observes | 31 |
 | 2b `CENSUS WITH DISAGREEMENT`, beside lane 16; standing at `deep` | 32 |
 | standing at `standard` and `deep`; row F's F2 completion | 33 |
-| standing at every tier; read beside lane 23 when 1b `CHECK TOOL IN SOLVER TRACE` fires | 34 |
+| standing at every tier; 1b `CHECK CODE IN SOLVER REACH`; read beside lane 23 when 1b `CHECK TOOL IN SOLVER TRACE` fires | 34 |
 | 6b `VERSION TOOLCHAIN DANGLING`; 1c `PERFECT BATTERY OVER AIM` | 35 |
 | 4b `OFF-AIM STREAK`, beside lane 10 | 36 |
 | standing at `standard` and `deep` | 37 |
@@ -297,11 +306,20 @@ orientation as facts a lane can check, never as the conclusion you expect it to 
 snapshot lane is `trace-review.ts`, also reachable as `bun run review:collect`; it makes no model
 calls, reports a missing view inside `snapshot-status.json` rather than failing, and a new
 deterministic question belongs there as another view rather than in a further collection script.
-Require `complete: true` in that status before treating the snapshot as complete.
+Require `complete: true` in that status before treating the snapshot as complete. A `read`,
+`collect` or `review` whose snapshot left a required view unproduced still runs every other lane,
+names each such view under `== SNAPSHOT INCOMPLETE` at the head of the brief, prints
+`digest: skipped: snapshot view <view> <status>` where those leads would be, and only then exits
+1, so `review` launches nothing over a partial snapshot.
 
 `launch` opens exactly the named lanes and nothing else. `--sessions 5,11,25` names lanes;
 `--lanes N` asks `build-manifest.ts --auto N` to group every lane into N sessions without crossing
-an isolated seat; `--effort`, `--title`, `--notes` and `--context` pass through. The manifest
+an isolated seat; `--effort`, `--title`, `--notes` and `--context` pass through. Every session
+starts at once unless `--max-active N` queues the rest behind N; eighteen lanes on each of two runs
+took the host from load 8 to 16 beside six paid runs on 2026-09-30. Up to 30 concurrent Luna lanes
+are allowed, and 53 at once met no rate limit. A hardware lane (29 or 30) runs in its own scratch
+under `--out`, which may sit outside every Git work tree: the launcher lets Codex start there for a
+session that owns everything it can write. The manifest
 writes the shared instructions, the WRI `tasks.json` and the transport `luna-tasks.json`, and each
 leaf receives its exact lane body inline — never the whole catalogue, never a scope expansion,
 never authority to change controller output. Its reporting rules tell every lane to keep the three
@@ -320,7 +338,10 @@ and `### Not established`, each once, in that order and non-empty, and every fin
 `owner:` from `FINDING_OWNERS` in `manifest-reporting.ts`: one of the nine bundle files, such as
 `correctness-model/evaluator.ts`, or `environment`, plus `controller-source` and `judge`. A report
 that breaks that shape is refused with the exact section named; a failed or absent report is
-missing work, and one retry is permitted within the authorised cap.
+missing work. The launcher has already given each session one further attempt; one rerun of the
+sessions still missing is permitted within the authorised cap, with
+`bun .agents/skills/codex-luna-swarm/scripts/luna-sessions.ts --retry <review>/lanes/luna-output`,
+and `finish` then reads the summary it writes.
 
 `finish` then scaffolds `<review>/archive/` from recorded bytes: `luna_syntheses.md` and
 `digest.md` from the reports and the snapshot, `review.json` from those plus `verdicts.json`, and
@@ -333,20 +354,23 @@ is unavailable, never zero, and a count proves a firing rather than that its own
 ## The lanes that read one thing each
 
 Eight lanes run in-process and are subcommands of their own, printing the view, its JSON under
-`--json`, and recording the JSON at `--out`; `posture` and `archive` run inside `read`.
+`--json`, and recording the JSON at `--out`; `posture` and `archive` run inside `read`. Each is
+also a verb of `bun run runs`, which starts `wri.ts <lane>` with the options untouched
+(`RUN_VERBS`, `.claude/skills/main/verbs.ts`), so that is the spelling to use.
 
 ```text
-bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.ts \
-  delta | climb | yield | timeline | walls | handoff | gates | target  <target> \
+bun run runs delta | climb | yield | timeline | walls | handoff | gates | target  <target> \
   [--run <runId>] [--json] [--out <abs file>]
 ```
 
 [The deterministic lanes reference](references/deterministic-lanes.md) owns what each prints. What
 matters here is what each can and cannot say. `delta` prints paths and counts between the measured
 source and its predecessor, never source text, so it says a surface moved and not that the move
-reached anything. `climb` labels every edge between adopted versions from the task bytes alone, and
-only `escalated` says a solver has more to reason about; `adjusted` states no direction, and
-`replaced` says the edge could not be read. `walls` classes each case against the walls the Builder
+reached anything. `climb` labels every edge between adopted versions from the task bytes alone. A
+label is structural and not a forecast: `escalated` says the checks reached a higher tier, a new
+input, rule or limit reads `widened`, which says the battery holds more and not that it asks more,
+`adjusted` moves numbers at unchanged counts and states no direction, and `replaced` says the
+edge could not be read. `walls` classes each case against the walls the Builder
 wrote in `agent/config.yaml`, which is the one file nothing inspects again after the gate, and its
 usual decision-changing reading is the negative one: no case reached a wall, so room explains
 nothing. `timeline` says where the clock went, and its `unreadable` and `adrift` labels are
@@ -466,3 +490,4 @@ is still a finding, and its mechanism is what to carry forward, under whichever 
 lanes owns the question today. The `--consumer-hardware` flag that once asked for a hardware
 comparison by hand is retired too: the `target` lane's `HARDWARE TARGET NAMED` trigger fires from
 the recorded request and brief, and starts lanes 29 and 30.
+Whether a current lane should join them is [lane maintenance](references/lane-maintenance.md).

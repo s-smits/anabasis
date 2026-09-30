@@ -10,7 +10,7 @@ import {
   type JudgeSession,
   type JudgeObservation,
   type JudgeRequest,
-  confirmedDisagreement,
+  judgeCaseKind,
   judgeSubject,
   sessionJudge,
   summarizeJudge,
@@ -50,7 +50,7 @@ const REQUEST: JudgeRequest = {
  *  scripted judge pin. */
 const EVALUATED_PIN = "codex/gpt-5.5";
 
-/** One tri-state attempt, stated by the fields that differ. Every judge answer carries all seven,
+/** One attempt, stated by the fields that differ. Every judge answer carries all seven,
  *  and writing the six unchanged ones at each site hid which one the test was about. */
 const attempt = (states: Partial<JudgeAttempt>): JudgeAttempt => ({
   verdict: null,
@@ -120,22 +120,6 @@ describe("Judge verdict schema", () => {
     expect(opened).toBe(1);
   });
 
-  it("records abstention with its reason and no error", async () => {
-    const judge = toolJudge(async (tool) => {
-      await tool.execute(
-        "call-1",
-        double({
-          verdict: "abstain",
-          rationale: "public context lacks the binding table",
-        }),
-      );
-      return { status: "completed" };
-    });
-    await expect(judge(REQUEST)).resolves.toEqual(
-      attempt({ abstained: true, rationale: "public context lacks the binding table" }),
-    );
-  });
-
   it("a judge error is null, never a fail verdict", async () => {
     let inputKeys: string[] = [];
     const evidence = await subjectOf(async (input) => {
@@ -171,10 +155,10 @@ describe("Judge verdict schema", () => {
     ).rejects.toBe(stopped);
   });
 
-  it("a non-abstention null without an error string is a malformed attempt, not silence", async () => {
+  it("a null without an error string is a malformed attempt, not silence", async () => {
     const evidence = await subjectOf(async () => attempt({}));
     expect(evidence).toMatchObject(
-      attempt({ error: "judge returned a malformed tri-state attempt", errorKind: "transport", turns: 0 }),
+      attempt({ error: "judge returned a malformed attempt", errorKind: "transport", turns: 0 }),
     );
   });
 
@@ -182,7 +166,7 @@ describe("Judge verdict schema", () => {
     const evidence = await subjectOf(async () => attempt({ error: "untyped failure" }));
     expect(evidence).toMatchObject({
       verdict: null,
-      error: "judge returned a malformed tri-state attempt",
+      error: "judge returned a malformed attempt",
       errorKind: "transport",
     });
   });
@@ -402,7 +386,7 @@ describe("the schema-tool verdict: budget, task disclosure, hint and cited rules
     const judge = toolJudge(async (tool) => {
       await expect(tool.execute("call-1", double({ verdict: "maybe", rationale: "" }))).rejects.toThrow(
         // The hint states the rationale bound the schema enforces, so the retry can meet it.
-        `judge verdict must match {verdict:"pass"|"fail"|"abstain",rationale:string(1..${String(RATIONALE_MAX)}),rules?:string[]}; a fail must cite only shown rules, verbatim, at least one`,
+        `judge verdict must match {verdict:"pass"|"fail",rationale:string(1..${String(RATIONALE_MAX)}),rules?:string[]}; a fail must cite only shown rules, verbatim, at least one`,
       );
       return { status: "completed" };
     });
@@ -459,6 +443,14 @@ describe("the schema-tool verdict: budget, task disclosure, hint and cited rules
       verdict: null,
       errorKind: "protocol",
     });
+    // Undecided is no verdict: what only a run could show is left to the verifier by a pass.
+    await expect(
+      judgeWith({
+        verdict: "undecided",
+        rationale: "the visit order needs the route run",
+        rules: [EVERY_STOP_IS_VISITED_ONCE],
+      })(shown),
+    ).resolves.toMatchObject({ verdict: null, abstained: false, errorKind: "protocol" });
     // A pass never carries a rule, whatever the model sent.
     await expect(
       judgeWith({ verdict: "pass", rationale: "complete", rules: [EVERY_STOP_IS_VISITED_ONCE] })(shown),
@@ -506,7 +498,7 @@ describe("the judge battery review", () => {
       verdict: null,
       abstained: true,
       rationale: "public facts are insufficient",
-      rules: [],
+      rules: [EVERY_STOP_IS_VISITED_ONCE],
       error: null,
       errorKind: null,
       turns: 1,
@@ -548,14 +540,12 @@ describe("the judge battery review", () => {
         written.push(path);
       },
     });
-    const valid = first.error === null && (first.verdict === null || !first.abstained);
+    // An attempt that claims to abstain is malformed now that undecided is no verdict.
     expect(calls).toEqual(["first", "later"]);
     expect(written).toEqual(["cases/first/judge.json", "cases/later/judge.json"]);
-    expect(result.map((row) => row.evidence.verdict)).toEqual([valid ? first.verdict : null, true]);
-    expect(result[0]?.evidence.abstained).toBe(first.verdict === null && first.abstained);
-    expect(result[0]?.evidence.errorKind).toBe(
-      first.verdict === true && first.abstained ? "transport" : first.errorKind,
-    );
+    expect(result.map((row) => row.evidence.verdict)).toEqual([first.abstained ? null : first.verdict, true]);
+    expect(result[0]?.evidence.abstained).toBe(false);
+    expect(result[0]?.evidence.errorKind).toBe(first.abstained ? "transport" : first.errorKind);
   });
 
   it("buys nothing after a disagreement: only the battery subjects reach the session", async () => {
@@ -579,8 +569,9 @@ describe("the judge battery review", () => {
     expect(written).toEqual(["cases/t1/judge.json", "cases/t2/judge.json"]);
   });
 
-  it("samples a verdict that contradicts the verifier once more and records the second verdict beside the first", async () => {
-    // Task 12-low-side-lamp split 2 fail / 1 pass over three replays on 2026-09-15.
+  it("samples a fail of a verifier pass once more and records the second verdict beside the first", async () => {
+    // Task 12-low-side-lamp split 2 fail / 1 pass over three replays on 2026-09-15. A pass of a
+    // verifier fail is not resampled: that second sample confirmed 20 of 20 and changed nothing.
     const calls: string[] = [];
     const verdicts = new Map<string, Array<boolean | null>>([
       ["c1", [false, false]],
@@ -607,7 +598,7 @@ describe("the judge battery review", () => {
       () => {},
     );
     const result = await census.run([...subjects(3), ...subjects(5, false).slice(3)]);
-    expect(calls.sort()).toEqual(["c1", "c1", "c2", "c2", "c3", "c4", "c5", "c5"]);
+    expect(calls.sort()).toEqual(["c1", "c1", "c2", "c2", "c3", "c4", "c5"]);
     const byId = new Map(result.observations.map((row) => [row.evidence.subjectId, row.evidence]));
     expect(byId.get("c1")).toMatchObject({
       verdict: false,
@@ -616,12 +607,12 @@ describe("the judge battery review", () => {
     expect(byId.get("c2")).toMatchObject({ verdict: false, confirmation: { verdict: true } });
     expect("confirmation" in (byId.get("c3") ?? {})).toBe(false);
     expect("confirmation" in (byId.get("c4") ?? {})).toBe(false);
-    expect(byId.get("c5")).toMatchObject({ verdict: true, confirmation: { verdict: true, rules: [] } });
+    expect("confirmation" in (byId.get("c5") ?? {})).toBe(false);
     expect(
       result.observations
-        .filter((row) => confirmedDisagreement(row.evidence))
+        .filter((row) => judgeCaseKind(row.evidence, "pass") === "veto")
         .map((row) => row.evidence.subjectId),
-    ).toEqual(["c1", "c5"]);
+    ).toEqual(["c1"]);
   });
 
   it("without a declared width the census keeps the shared batch stop, so the sixth subject is never spent", async () => {
@@ -674,20 +665,17 @@ describe("the judge battery review", () => {
   });
 
   it("settles each paid wave and stops after five consecutive failed attempts", async () => {
-    // Four failures, one pass, four failures, one abstention, then five failures: the streak
-    // resets on each answered subject and only the last run of five stops the census.
-    const answered = new Map([
-      [5, "pass"],
-      [10, "abstain"],
-    ]);
+    // Four failures, one pass, four failures, one pass, then five failures: the streak resets on
+    // each answered subject and only the last run of five stops the census.
+    const answered = new Set([5, 10]);
     const written = new Map<string, unknown>();
     const census = new JudgeCensus(
       {
         pin: "scripted/judge",
         invoke: async (_input, context) => {
-          const outcome = answered.get(Number(context?.subjectId.slice(1)));
-          if (outcome === "pass") return attempt({ verdict: true, rationale: "valid" });
-          if (outcome === "abstain") return attempt({ abstained: true, rationale: "insufficient" });
+          if (answered.has(Number(context?.subjectId.slice(1)))) {
+            return attempt({ verdict: true, rationale: "valid" });
+          }
           return attempt({ error: "provider degraded turn", errorKind: "provider" });
         },
       },
@@ -765,12 +753,7 @@ describe("judge battery aggregation", () => {
 
   it("records no control census: the evidence is unvalidated and still an advisory comparison", () => {
     const evidence = summarize([observation("t1", false, { verifier: true })]);
-    expect(evidence).toMatchObject({
-      judge: "unvalidated",
-      offered: 1,
-      disagreements: 1,
-      disagreementDenominator: 1,
-    });
+    expect(evidence).toMatchObject({ judge: "unvalidated", offered: 1, verdicts: 1 });
     expect(judgeDecision(evidence)).toBe("advisory-comparison");
     expect("controlValidity" in evidence).toBe(false);
     expect("calibration" in evidence).toBe(false);
@@ -790,14 +773,10 @@ describe("judge battery aggregation", () => {
       observation("t5", false, { verifier: true, rules: [EVERY_STOP_IS_VISITED_ONCE], confirmation: true }),
       observation("t6", false, { verifier: true, rules: [EVERY_STOP_IS_VISITED_ONCE] }),
     ]);
-    expect(evidence).toMatchObject({
-      disagreements: 5,
-      verifierPassJudgeFail: 4,
-      vetoed: 1,
-    });
+    expect(evidence).toMatchObject({ verdicts: 6, vetoed: 1 });
     expect(() => validateJudgeEvidence(evidence)).not.toThrow();
     if (evidence.judge === "off") throw new Error("the census ran");
-    expect(() => validateJudgeEvidence({ ...evidence, vetoed: 5 })).toThrow(/vetoed/);
+    expect(() => validateJudgeEvidence({ ...evidence, vetoed: 7 })).toThrow(/vetoed/);
   });
 
   it("a review in which every attempt failed reads as a non-result, not a comparison", () => {
@@ -819,27 +798,35 @@ describe("judge battery aggregation", () => {
       observation("null-1", null, { verifier: true }),
       observation("verifier-null", false, { verifier: null }),
     ]);
-    expect(evidence).toMatchObject({
-      disagreementDenominator: 1,
-      disagreements: 1,
-      offered: 3,
-      verdicts: 2,
-    });
+    expect(evidence).toMatchObject({ offered: 3, verdicts: 2 });
     expect(judgeDecision(evidence)).toBe("incomplete-census");
     expect(() => validateJudgeEvidence(evidence)).not.toThrow();
   });
 
-  it("complete reviews retain raw disagreement counts without a materiality threshold", () => {
+  it("names every answered case's kind once: only a repeated fail vetoes, and a pass of a verifier fail is disputed", () => {
+    const kind = (verdict: boolean | null, verifier: "pass" | "fail", confirmation?: boolean) =>
+      judgeCaseKind(
+        confirmation === undefined
+          ? { verdict }
+          : { verdict, confirmation: attempt({ verdict: confirmation }) },
+        verifier,
+      );
+    expect(kind(true, "pass")).toBe("agree");
+    expect(kind(false, "fail")).toBe("agree");
+    expect(kind(true, "fail")).toBe("disputed-pass");
+    expect(kind(false, "pass", false)).toBe("veto");
+    expect(kind(false, "pass", true)).toBe("unconfirmed-fail");
+    expect(kind(false, "pass")).toBe("unconfirmed-fail");
+    // A transport error, and an undecided recorded before 2026-09-30, answered neither way, so
+    // neither is a case at all.
+    expect(kind(null, "pass")).toBeNull();
+    expect(kind(null, "fail")).toBeNull();
+    // A complete census over a fail, a pass and an agreement reads as a comparison.
     const evidence = summarize([
       observation("strict-verifier", false, { verifier: true }),
       observation("lax-verifier", true, { verifier: false }),
       observation("agree", true, { verifier: true }),
     ]);
-    expect(evidence).toMatchObject({
-      disagreements: 2,
-      disagreementDenominator: 3,
-      verifierPassJudgeFail: 1,
-    });
     expect(judgeDecision(evidence)).toBe("advisory-comparison");
     expect(() => validateJudgeEvidence(evidence)).not.toThrow();
   });

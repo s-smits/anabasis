@@ -9,6 +9,7 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
+import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import { double } from "./helpers/doubles.ts";
 import type { Brief } from "../src/correctness-bundle/brief.ts";
@@ -35,10 +36,14 @@ import {
 import type { AdviceIssue } from "../src/author/rebuild-advice.ts";
 import { EPOCH_REVIEW_PROMPT } from "../src/review/epoch-review-prompt.ts";
 import { publicEpochReview } from "../src/review/epoch-review-public.ts";
-import { briefIdentities, recordFindingTool } from "../src/review/epoch-review-findings.ts";
+import {
+  type SettlementCase,
+  briefIdentities,
+  recordFindingTool,
+} from "../src/review/epoch-review-findings.ts";
 import { PROBE_BUDGET } from "../src/review/review-probe.ts";
 import { BUNDLE_FILES } from "../src/author/feedback-routing.ts";
-import { TASKS_FILE } from "../src/meta/bundle-layout.ts";
+import { EVALUATOR_FILE, TASKS_FILE } from "../src/meta/bundle-layout.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 
 const NUMBER_WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
@@ -555,7 +560,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
     const listed = (
       taskId: string,
       family: string,
-      kind: "vetoed" | "disputed",
+      kind: SettlementCase["kind"],
       checkId = "gpio-exit-code",
     ) => ({
       taskId,
@@ -565,14 +570,34 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
       path: at(taskId),
     });
     const cases = [
-      listed("t1", "uno", "vetoed"),
-      listed("t2", "roof", "vetoed"),
-      listed("t3", "uno", "vetoed", "other-check"),
-      listed("t4", "uno", "vetoed"),
-      listed("d1", "uno", "disputed"),
+      listed("t1", "uno", "veto"),
+      listed("t2", "roof", "veto"),
+      listed("t3", "uno", "veto", "other-check"),
+      listed("t4", "uno", "veto"),
+      listed("d1", "uno", "disputed-pass"),
     ];
+    // Probe 1 wrote an invalid variant the check still passed; probe 2 a valid one it refused.
+    const probe = (id: number, direction: "accepts-invalid" | "rejects-valid") => {
+      const moved = direction === "rejects-valid" ? ["gpio-exit-code"] : [];
+      return {
+        id,
+        controlId: "accept-1",
+        taskId: "t1",
+        path: "$.pins",
+        change: { value: "1" },
+        baseline: { outcome: "pass" as const, blockingCheckIds: [] },
+        mutated: {
+          outcome: moved.length === 0 ? ("pass" as const) : ("fail" as const),
+          blockingCheckIds: moved,
+        },
+        applicableCheckIds: ["gpio-exit-code", "other-check"],
+        movedCheckIds: moved,
+        refused: null,
+      };
+    };
     const settling = () => {
       const state = reviewState();
+      state.probes.rows.push(probe(1, "accepts-invalid"), probe(2, "rejects-valid"));
       state.reads.push(at("t1"), at("t2"), at("t3"), at("d1"));
       const tool = recordFindingTool([], ["t1", "t2", "t3", "t4", "d1"], evidence, state, {
         identities: { ...identities, checkIds: ["gpio-exit-code", "other-check"] },
@@ -580,7 +605,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
       });
       return { state, tool };
     };
-    const named = { ...defect, claim: "private prose", checkId: "gpio-exit-code" };
+    const named = { ...defect, claim: "private prose", checkId: "gpio-exit-code", probeIds: [1] };
 
     test("a defect settles exactly the listed cases it names, against the check, as counts and families", async () => {
       const { state, tool } = settling();
@@ -611,6 +636,11 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
         [{ settlesCases: ["t4"] }, "read t4's artifact with read_source before settling it"],
         [{ settlesCases: ["t9"] }, "t9 is not a listed veto or disputed fail"],
         [{ settlesCases: ["t1"] }, "t1 is already settled by an earlier finding"],
+        // A defect with no probe of the check behind it settles nothing, whatever it says.
+        [
+          { settlesCases: ["t2"], probeIds: [] },
+          "t2 is a veto case, which only a cited probe showing accepts-invalid on gpio-exit-code settles",
+        ],
         [
           { settlesCases: ["t2"], owner: "agent/tools.ts" },
           "settlesCases is for a finding naming the deciding checkId",
@@ -628,14 +658,18 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
 
     test("a false rejection settles disputed fails and cannot touch a veto", async () => {
       const { state, tool } = settling();
-      const rejects = { ...named, probeDirection: "rejects-valid" };
+      const rejects = { ...named, probeIds: [2], probeDirection: "rejects-valid" };
       expect(await call(tool, { ...rejects, settlesCases: ["t1"] })).toContain(
-        "t1 is a vetoed case, which a rejects-valid finding does not settle",
+        "t1 is a veto case, which only a cited probe showing accepts-invalid on gpio-exit-code settles against the check",
+      );
+      // The direction is the probe's, not the finding's: claiming rejects-valid over probe 1 settles no dispute.
+      expect(await call(tool, { ...named, probeDirection: "rejects-valid", settlesCases: ["d1"] })).toContain(
+        "d1 is a disputed-pass case, which only a cited probe showing rejects-valid",
       );
       expect(await call(tool, { ...rejects, settlesCases: ["d1"] })).toBe("recorded defect as blocking");
       const projected = publicEpochReview({ status: "completed", ...state }).findings[0]?.claim ?? "";
       expect(projected).toContain(
-        "The Judge passed 1 verified fail(s) in uno holding this obligation satisfied, and the review settled them against the check: it refuses an artifact the obligation admits.",
+        "The Judge did not fail 1 verified fail(s) in uno on this obligation, and the review settled them against the check: it refuses an artifact the obligation admits.",
       );
       expect(projected).not.toContain("The Judge failed");
     });
@@ -833,6 +867,14 @@ describe("what a finding's typed fields carry to authoring", () => {
         "Epoch review (correctness-model/tasks.json): no check or path named; a defect.\nThe request names a capability no task in the battery exercises.",
       ],
       [
+        { owner: EVALUATOR_FILE, demandGap: "published-scenario-only" },
+        `Epoch review (${EVALUATOR_FILE}): no check or path named; a defect.\nThe checks observe only the inputs the task publishes, so an answer that reproduces the published outputs without reading its inputs passes.`,
+      ],
+      [
+        { owner: TASKS_FILE, demandGap: "requirements-one-at-a-time", defect: false },
+        "Epoch review (correctness-model/tasks.json): no check or path named; an observation, not a demonstrated defect.\nEach task asks for the request's requirements one at a time, so none asks for several acting together on one answer, where meeting one spends the margin another needs.",
+      ],
+      [
         { owner: "agent/tools.ts", demandGap: "rule-outside-request" },
         "Epoch review (agent/tools.ts): no check or path named; a defect.\nA rule stands that no practitioner of the request would hold.",
       ],
@@ -895,7 +937,7 @@ describe("what a finding's typed fields carry to authoring", () => {
   const vetoedCase = (taskId: string, family: string) => ({
     taskId,
     family,
-    kind: "vetoed" as const,
+    kind: "veto" as const,
     checkIds: ["deflection"],
     path: `runs/r/cases/${taskId}/artifact.json`,
   });
@@ -931,7 +973,8 @@ describe("what a finding's typed fields carry to authoring", () => {
       {
         taskId: "t1",
         family: "roof",
-        kind: "vetoed",
+        kind: "veto",
+        checkIds: ["deflection"],
         checkId: "deflection",
         disposition: "check-stands",
         finding: 0,
@@ -1011,6 +1054,37 @@ describe("what a finding's typed fields carry to authoring", () => {
     expect(await standing(["t1"])).toEqual([true, true]);
     expect(await standing(["t1", "t3"])).toEqual([false, true]);
     expect(await standing(["t1", "t2", "t3"])).toEqual([false, false]);
+  });
+
+  // Settlement counts cases against an issue's count, so a case the issue does not count must not
+  // reach it. A review recorded before 2026-09-30 may have settled an undecided dispute, on which
+  // the advice raised no issue: read back beside one settled pass, it must not mark two settled.
+  test("a stored undecided settlement settles no Judge pass issue", async () => {
+    const disputed = (taskId: string) => ({ ...vetoedCase(taskId, "roof"), kind: "disputed-pass" as const });
+    const cases = [disputed("p1"), disputed("p2")];
+    const state = reviewState();
+    state.reads.push(...cases.map((row) => row.path));
+    state.probes.rows.push(probeRow(1, ["deflection"]));
+    await call(recordFindingTool([], [], evidence, state, { identities, cases }), {
+      defect: false,
+      claim: "the Judge misread span/250",
+      severity: "advisory",
+      checkId: "deflection",
+      settlesCases: ["p1"],
+      citations: CITATIONS,
+      probeIds: [1],
+    });
+    const stored = JSON.stringify({ ...state.dispositions[0], taskId: "u1", kind: "disputed-undecided" });
+    state.dispositions.push(parseJsonAs<(typeof state.dispositions)[number]>(stored));
+    const projected = publicEpochReview({ status: "completed", ...state }, { brief });
+    const passIssue = adviceIssueId("judge-passed-verifier-failed", "roof", null);
+    expect(projected.settledJudge).toEqual([passIssue]);
+    const packet = advicePacket([
+      issue({ id: passIssue, kind: "judge-passed-verifier-failed", family: "roof", count: 2 }),
+    ]);
+    expect(attachIssueReadings(packet, { settled: projected.settledJudge }).issues.map(isStanding)).toEqual([
+      true,
+    ]);
   });
 
   // A probe that wrote a valid variant the check refused, and one that wrote an invalid variant the

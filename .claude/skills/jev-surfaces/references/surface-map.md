@@ -26,9 +26,9 @@ the check on both. And `copied-block` asks about two places at once, which is th
 jev-1.13 reads worst, so expect it to trail the single-site shapes such as `unread-field` and
 `compatibility-path`. `shadow-judge.ts` in `examples.md` is this experiment.
 
-**2. The prose posture classifier.** `prose-classify.mjs` labels every Builder and solver prose
+**2. The prose posture classifier.** `prose-classify.ts` labels every Builder and solver prose
 row with the nearest of a fixed anchor set (`CLASSES`,
-`.claude/skills/whole-run-investigation/classifier/prose-classify.mjs:44`), flags rows below a
+`.claude/skills/whole-run-investigation/classifier/prose-classify.ts:192`), flags rows below a
 0.5 margin, and joins the labels to each submit's outcome and each case's kind. A Choice whose
 criteria are the class descriptions returns a calibrated distribution where the embedding
 returns a nearest anchor and a margin, and the outcome join is already built, so the comparison
@@ -36,27 +36,27 @@ is direct: does Jev's posture in the rows before a submit separate accepted from
 submits better than the embedding's? The obstacle is not quality. The file's header says no
 provider is called and no row text leaves the process, and that was a choice. Replacing it
 sends Builder prose to TypeSafe, which is the operator's decision to make before the first
-live call. The labels are advisory leads (`ADRIFT`, `:157`), never a score input, so the
+live call. The labels are advisory leads (`ADRIFT`, `:305`), never a score input, so the
 authority filter passes.
 
-**3. The family tier reader.** `query-complexity.mjs` places each family's rule decisions and
+**3. The family tier reader.** `query-complexity.ts` places each family's rule decisions and
 check descriptions on four tiers, easy to frontier, by embedding against anchors (`TIERS`,
-`.claude/skills/whole-run-investigation/classifier/query-complexity.mjs:56`), and
-`climb-velocity.mjs` reads the tiers across batteries. That is a Score with four described
+`.claude/skills/whole-run-investigation/classifier/query-complexity.ts:145`), and
+`climb-velocity.ts` reads the tiers across batteries. That is a Score with four described
 levels, and the anchor sentences are already level descriptions. The same local-only choice
 applies. Two cautions matter more here. There are no labels, only anchors, so there is nothing
 to measure agreement against until someone labels families. And a tier describes what the
 bundle says it asks; rule 11 of `AGENTS.md` keeps difficulty with blind measurement, so a tier
 from Jev is no more evidence of difficulty than the embedding's.
 
-**4. The prompt-surface audience.** `extract-prompt-surface.mjs` guesses whether a string holder
-is model-visible from name regexes (`STRONG`, `:217`; `VOCAB`, `:226`), a deny list
-(`DEFAULT_DENY_TOKENS`, `:59`) and longest-prefix paths, and the operator then classifies
+**4. The prompt-surface audience.** `extract-prompt-surface.ts` guesses whether a string holder
+is model-visible from name regexes (`STRONG`, `:297`; `VOCAB`, `:306`), a deny list
+(`DEFAULT_DENY_TOKENS`, `:102`) and longest-prefix paths, and the operator then classifies
 groups by hand into five audiences. A Choice over those five, with the holder's name, owner
 path and string as state, fits well. The skill does not record the operator's hand labels,
 though, so this surface needs a labelled sample before it can be measured.
 
-**5. Feature discovery over submit prose.** The posture output (`prose-classify.mjs --json`)
+**5. Feature discovery over submit prose.** The posture output (`prose-classify.ts --json`)
 carries, for each submit, its `outcome` and the `recent` rows before it with excerpts. That is
 (text, outcome) data, which is what the autoresearch loop needs, and `discover.ts` runs it. It
 is thin, though: the firmware campaign read while writing this map had one submit. So pool

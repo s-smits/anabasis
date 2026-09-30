@@ -37,7 +37,7 @@ import {
   type AnalysisFinding,
   type IterationAnalysis,
 } from "../src/analyse/iteration-analysis.ts";
-import type { JudgeReviewsResult } from "../src/analyse/judge-reviews.ts";
+import { JUDGE_REVIEWS_SCHEMA, type JudgeReviewsResult } from "../src/analyse/judge-reviews.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import { double, required } from "./helpers/doubles.ts";
 import { EvidenceLog } from "../src/claim/evidence-log.ts";
@@ -144,9 +144,12 @@ function analysis(
   };
 }
 
-function judges(overrides?: Partial<JudgeReviewsResult>): JudgeReviewsResult {
+/** A census is read when the fixture supplies one, and absent otherwise, as `runJudgeReviews` reads it. */
+function judges(overrides: Partial<JudgeReviewsResult> = {}): JudgeReviewsResult {
   return {
-    schema: "judge-reviews/v12",
+    outcome:
+      (overrides.census ?? null) === null ? { kind: "absent", why: "no census to read" } : { kind: "read" },
+    schema: JUDGE_REVIEWS_SCHEMA,
     slug: SLUG,
     runId: RUN,
     judgePin: null,
@@ -155,15 +158,12 @@ function judges(overrides?: Partial<JudgeReviewsResult>): JudgeReviewsResult {
     census: null,
     contested: [],
     coverage: { reviewable: 0, reviewed: 0 },
-    provisional: null,
     exit: {
       kind: "none",
-      verifierFailJudgePass: 0,
-      verifierPassJudgeFail: 0,
+      cases: { veto: 0, "unconfirmed-fail": 0, "disputed-pass": 0 },
       verified: 0,
       reason: "no disagreement",
     },
-    absent: [],
     ...overrides,
   };
 }
@@ -244,41 +244,36 @@ describe("what one battery observes", () => {
     expect(result.issues.every(isStanding)).toBe(true);
   });
 
-  it("reads confirmed Judge disagreements in both directions as advisory rows, and drops unconfirmed ones", () => {
+  it("reads Judge disagreements in both directions as advisory rows, dropping an unrepeated fail", () => {
     const contested = [
       {
         taskId: "t2",
         family: "beams",
-        judge: true,
-        verifier: false,
+        // A pass of a verifier fail draws one sample and counts on it.
+        kind: "disputed-pass" as const,
         evidence: "e.json",
         rules: [],
         rationale: null,
-        confirmed: true,
         checkIds: [],
         artifact: "a.json",
       },
       {
         taskId: "t1",
         family: "joints",
-        judge: false,
-        verifier: true,
+        kind: "veto" as const,
         evidence: "e.json",
         rules: [],
         rationale: null,
-        confirmed: true,
         checkIds: [],
         artifact: "a.json",
       },
       {
         taskId: "t3",
         family: "trusses",
-        judge: false,
-        verifier: true,
+        kind: "unconfirmed-fail" as const,
         evidence: "e.json",
         rules: ["mass within the cap"],
         rationale: null,
-        confirmed: false,
         checkIds: [],
         artifact: "a.json",
       },
@@ -290,7 +285,12 @@ describe("what one battery observes", () => {
       judges({
         census: reviewCensus(),
         contested,
-        exit: { kind: "advisory", verifierFailJudgePass: 1, verifierPassJudgeFail: 1, verified: 2, reason },
+        exit: {
+          kind: "advisory",
+          cases: { veto: 1, "unconfirmed-fail": 1, "disputed-pass": 1 },
+          verified: 2,
+          reason,
+        },
       }),
       admission(),
       null,
@@ -301,7 +301,7 @@ describe("what one battery observes", () => {
         ["judge-failed-verifier-passed", "joints"],
       ]),
     );
-    // An unconfirmed disagreement stays in the Judge census line but raises no issue.
+    // An unrepeated fail stays in the Judge census line but raises no issue.
     expect(reviewed.issues.some((row) => row.family === "trusses")).toBe(false);
     expect(reviewed.judge).toEqual({
       exit: "advisory",
@@ -762,17 +762,20 @@ describe("the issue register and its projection", () => {
         {
           taskId: "t7",
           family: "joints",
-          judge: true,
-          verifier: false,
+          kind: "disputed-pass",
           rules: [],
           rationale: null,
-          confirmed: false,
           checkIds: [],
           evidence: "campaigns/bridge-truss/analysis/base-judge/t7.json",
           artifact: null,
         },
       ],
-      exit: { kind: "advisory", verifierFailJudgePass: 3, verifierPassJudgeFail: 0, verified: 10, reason },
+      exit: {
+        kind: "advisory",
+        cases: { veto: 0, "unconfirmed-fail": 0, "disputed-pass": 3 },
+        verified: 10,
+        reason,
+      },
     });
     const finding: AnalysisFinding = {
       defect: false,

@@ -46,7 +46,10 @@ interface PiBuiltWorkerResult {
   modelWorker: BuiltRuntimeBoundaryEvidence["modelWorker"];
 }
 
-const READY_TIMEOUT_MS = 30_000;
+/** Raised from 30 s with the generated-tool worker's host wait, for the same reason: seven firmware
+ *  cases lost their solve to this wait with no model turn taken, on a swapping host, and this
+ *  startup loads no candidate code, so a slow one is never the Builder's. */
+const READY_TIMEOUT_MS = 120_000;
 const CLOSE_TIMEOUT_MS = 2_000;
 const TURN_TIMEOUT_MS = 300_000;
 const SOLVE_WALL_MESSAGE = "Pi Built worker exceeded its bounded solve time";

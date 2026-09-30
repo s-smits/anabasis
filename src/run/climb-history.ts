@@ -9,14 +9,14 @@
  * them come from there, so a fact absent from a row here is a fact no Builder can act on.
  */
 import { existsSync, readdirSync } from "../meta/filesystem.ts";
-import { join } from "../meta/path.ts";
+import { dirname, join } from "../meta/path.ts";
 import type { MeasuredDifficulty } from "../claim/battery-difficulty.ts";
 import { classifyCaseOutcome } from "../claim/case-record.ts";
 import { wilsonInterval } from "../claim/estimation.ts";
 import { POLICY } from "../critic/policy.ts";
 import { band01, policyRow } from "../critic/manifest.ts";
 import { sha256 } from "../meta/digest.ts";
-import { keyIfDefined } from "../meta/optional-key.ts";
+import { keyIfDefined, keyIfTruthy } from "../meta/optional-key.ts";
 import { isBoolean, isNumber, isRecord, isString } from "../meta/json-shape.ts";
 import { canonicalJson } from "../meta/stable-json.ts";
 import { parseJsonAs } from "../meta/json-runtime.ts";
@@ -31,6 +31,7 @@ import {
 import type { ExperimentAuthoring } from "./experiment-freeze.ts";
 import { productHistoryDirs } from "./product-versions.ts";
 import { HarnessConfigError, harnessSettings } from "../correctness-bundle/harness-config.ts";
+import { settledAgainstCheck } from "../review/epoch-review-findings.ts";
 
 /** Named where the refusals are decided and re-exported here, because this module is the face
  *  every reader of climb evidence goes through. */
@@ -53,7 +54,8 @@ export interface ClimbBattery {
   /** sha256 of the recorded battery bytes these numbers came from: the binding between a decision
    *  and the evidence it was made on. */
   batterySha256: string;
-  /** The difficulty denominator: scored rows, with runtime non-results already excluded upstream. */
+  /** The difficulty denominator: scored rows, with runtime non-results already excluded upstream and
+   *  `settledAgainst` cases left out here. */
   n: number;
   passed: number;
   /** Of `n`, the attempts that produced no accepted submission, which truth therefore never
@@ -70,6 +72,9 @@ export interface ClimbBattery {
    *  reads as "unknown" and never as "nothing failed". Controller-only: it feeds the repeated-core
    *  comparison and is never rendered to an author. */
   failedTaskIds?: readonly string[];
+  /** Verified cases the battery's completed Epoch Review settled against the one check that decided
+   *  them, left out of `n`, `passed`, `measured` and `failedTaskIds`. Absent when there are none. */
+  settledAgainst?: number;
   /** Families every one of whose cases ended in a runtime non-result, so the placement holds none
    *  of their tasks. Absent when there are none. */
   censoredFamilies?: readonly string[];
@@ -304,12 +309,45 @@ function censoredFamilies(rows: CaseRows): string[] | undefined {
   return censored.length === 0 ? undefined : censored;
 }
 
+/** `measured` without the settled cases, by family and in the changed subset. A subset whose
+ *  members the record does not name cannot lose one honestly, so it gives way to the whole battery. */
+function unsettledMeasure(
+  measured: MeasuredDifficulty,
+  settled: CaseRows,
+  changed: readonly string[] | null | undefined,
+): MeasuredDifficulty {
+  if (settled.length === 0) return measured;
+  const less = (tally: { attempts: number; passes: number }, of: (row: CaseRows[number]) => boolean) => {
+    const rows = settled.filter(of);
+    return {
+      attempts: tally.attempts - rows.length,
+      passes: tally.passes - rows.filter((row) => row.pass === true).length,
+    };
+  };
+  const { items, changedSubset } = measured;
+  const inChanged = (row: CaseRows[number]) => isString(row.taskId) && changed?.includes(row.taskId) === true;
+  return {
+    items: items.map((item) => ({ item: item.item, ...less(item, (row) => row.family === item.item) })),
+    ...keyIfDefined(
+      "changedSubset",
+      changedSubset && Array.isArray(changed) ? less(changedSubset, inChanged) : undefined,
+    ),
+  };
+}
+
 function admittedClimbRow(
   admitted: Extract<BatteryAdmission, { ok: true }>,
   wallMinutes: number | null,
+  analysisDir: string,
 ): AdmittedClimbRow {
-  const { evidence, measured } = admitted;
-  const scored = (evidence.cases ?? []).filter((row) => isBoolean(row.pass));
+  const { evidence } = admitted;
+  const settledIds = settledAgainstCheck(analysisDir, admitted.runId);
+  // A veto settled against its check is dropped rather than turned into a fail: a flip is the one
+  // direction that lowers passes, so it would let a model's reading manufacture a limit.
+  const all = (evidence.cases ?? []).filter((row) => isBoolean(row.pass));
+  const settled = all.filter((row) => isString(row.taskId) && settledIds.has(row.taskId));
+  const scored = all.filter((row) => !settled.includes(row));
+  const measured = unsettledMeasure(admitted.measured, settled, evidence.experimentAuthoring?.changedTaskIds);
   // Which cases failed, not only how many; one id-less row makes the set unknown, not smaller.
   const failed = scored.filter((row) => row.pass !== true);
   const failedIds = failed.map((row) => (isString(row.taskId) ? row.taskId : null));
@@ -337,7 +375,7 @@ function admittedClimbRow(
       familySummary: familySummary(measured),
       effort: solveEffort(evidence.cases ?? []),
       familyEffort: familyEffort(evidence.cases ?? []),
-      passedTaskIds: scored.flatMap((row) => (row.pass === true && isString(row.taskId) ? [row.taskId] : [])),
+      passedTaskIds: all.flatMap((row) => (row.pass === true && isString(row.taskId) ? [row.taskId] : [])),
       solveWallMinutes: wallMinutes,
       wallBound: wallBoundCount(scored, wallMinutes),
       ...keyIfDefined("experimentAuthoring", evidence.experimentAuthoring),
@@ -353,6 +391,7 @@ function admittedClimbRow(
         failedIds.every((id): id is string => id !== null) ? failedIds : undefined,
       ),
       ...keyIfDefined("censoredFamilies", censoredFamilies(evidence.cases ?? [])),
+      ...keyIfTruthy("settledAgainst", settled.length),
       // Refused rows stay in `n` as fails; `ClimbBattery.unaccepted` says why.
       unaccepted: countUnaccepted(scored),
       measured,
@@ -383,6 +422,7 @@ export function readClimbBatteries(
   const thresholdDigest = currentThresholdDigest(manifestPath);
   const excluded: ExcludedBattery[] = [];
   const history: AdmittedClimbRow[] = [];
+  const analysisDir = join(dirname(claimsDir), "analysis");
   for (const dir of productHistoryDirs(domainDir)) {
     const root = join(dir, "runs");
     if (!existsSync(root)) continue;
@@ -391,7 +431,7 @@ export function readClimbBatteries(
       const admission = admitBattery(join(root, name), name, runPin, thresholdDigest, claimsDir);
       if (admission === null) continue;
       if (admission.excluded !== null) excluded.push(admission.excluded);
-      if (admission.ok) history.push(admittedClimbRow(admission, wall));
+      if (admission.ok) history.push(admittedClimbRow(admission, wall, analysisDir));
     }
   }
   history.sort(

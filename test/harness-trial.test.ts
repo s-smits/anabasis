@@ -45,6 +45,7 @@ import { RehearsalTraces } from "../src/builder/context-tool.ts";
 import { createBuiltStarter } from "../src/solve/built-starter.ts";
 import { defineDraftTool } from "../src/solve/draft-tool.ts";
 import { type Solver, withSolverBuiltStarterFactory } from "../src/correctness-bundle/solve.ts";
+import type { CaseTrace } from "../src/backends/trace-capture.ts";
 import { createVerifierLifetime } from "../src/verify/verifier-lifetime.ts";
 import {
   MATCHING_BRIEF,
@@ -169,7 +170,8 @@ const PERMITTED_KEY_PATHS: readonly string[] = [
   "validation.truthVerdict",
   "validation.round.graded",
   "validation.round.passed",
-  "validation.round.passedInOneTurn",
+  "validation.round.longestPassWallPercent",
+  "validation.round.mostPassToolCalls",
   "nextAction",
 ];
 
@@ -198,8 +200,9 @@ const VERDICT_KEY_PATHS: readonly string[] = [
   "truth.verdict",
   "validation.outcome",
   "validation.round.graded",
+  "validation.round.longestPassWallPercent",
+  "validation.round.mostPassToolCalls",
   "validation.round.passed",
-  "validation.round.passedInOneTurn",
   "validation.submitted",
   "validation.truthVerdict",
   "verifier.status",
@@ -260,9 +263,15 @@ function assigningSolver(
   submitting = true,
   onSolve?: () => void,
   errors: string[] = [],
+  /** The minutes each successive solve's trace records, in call order; a solve past the list
+   *  records none, as a runtime with no turn timing does. */
+  minutes: readonly number[] = [],
 ): Solver {
+  let solves = 0;
   const solver: Solver = async (_task, toolset) => {
     onSolve?.();
+    const spent = minutes[solves];
+    solves += 1;
     const byName = new Map(toolset.tools.map((tool) => [tool.name, tool]));
     const call = async (name: string, params: JsonObject) => {
       const tool = required(byName.get(name), `a registered "${name}" tool`);
@@ -270,7 +279,16 @@ function assigningSolver(
     };
     if (slot !== null) await call(WRITER, { assignments: [{ part: SOLE_PART, slot }] });
     if (submitting) await call(SUBMIT, {});
-    return { turns: 1, completedTurns: 1, errors, toolCalls: 2, startedToolCalls: 2 };
+    const trace =
+      spent === undefined
+        ? {}
+        : {
+            trace: double<CaseTrace>({
+              turns: [double<CaseTrace["turns"][number]>({ turn: 1, timingMs: spent * 60_000 })],
+              toolCalls: [],
+            }),
+          };
+    return { turns: 1, completedTurns: 1, errors, toolCalls: 2, startedToolCalls: 2, ...trace };
   };
   return withSolverBuiltStarterFactory(solver, async (_slugDir, task, submission, schema) =>
     createBuiltStarter(
@@ -676,20 +694,41 @@ describe("what one round of rehearsals costs", () => {
     const second = round(dir, assigningSolver(RIGHT_SLOT));
     const body = modelVisible(await rehearse(second.tool));
 
-    expect(asRecord(body.validation)?.round).toEqual({ graded: 1, passed: 1, passedInOneTurn: 1 });
+    expect(asRecord(body.validation)?.round).toEqual({
+      graded: 1,
+      passed: 1,
+      longestPassWallPercent: null,
+      mostPassToolCalls: 2,
+    });
   }, 60_000);
 
+  // A turn count said nothing here: on the pi backend every solve records one turn, a 75-minute
+  // solve of 72 tool calls included. So the round's record says how hard its passes worked instead,
+  // as the largest wall share and the most tool calls any pass took, and only once two are graded.
   it("adds the round's own record to a result once two rehearsals have been graded", async () => {
     const dir = workspace();
-    const { tool } = round(dir, assigningSolver(RIGHT_SLOT));
+    const { tool } = round(dir, assigningSolver(RIGHT_SLOT, true, undefined, [], [6, 30.6]));
     const first = modelVisible(await rehearse(tool));
     const second = modelVisible(await rehearse(tool));
 
     expect(isString(first.nextAction) ? first.nextAction : "").not.toContain("Across this round");
-    expect(isString(second.nextAction) ? second.nextAction : "").toContain(
-      "Across this round your solver has now passed 2 of 2 graded rehearsals",
+    expect(asRecord(first.validation)?.round).toEqual({
+      graded: 1,
+      passed: 1,
+      longestPassWallPercent: 5,
+      mostPassToolCalls: 2,
+    });
+    const said = isString(second.nextAction) ? second.nextAction : "";
+    expect(said).toContain(
+      "Across this round your solver has now passed 2 of 2 graded rehearsals; no pass took more than 26% of the solve wall or made more than 2 tool calls.",
     );
-    expect(asRecord(second.validation)?.round).toEqual({ graded: 2, passed: 2, passedInOneTurn: 2 });
+    expect(said).not.toContain("turn");
+    expect(asRecord(second.validation)?.round).toEqual({
+      graded: 2,
+      passed: 2,
+      longestPassWallPercent: 26,
+      mostPassToolCalls: 2,
+    });
   }, 60_000);
 });
 

@@ -62,6 +62,8 @@ const UNREACHABLE_GUIDE_PATH = /(?:~\/)?\.toolchain\/[^\s`'"()<>[\]]+|\bcorrectn
  *  contract tells the Builder to install one, so the guide naming it that way still names the program. */
 const TOOLCHAIN_PROGRAM = /^\.toolchain\/bin\/[^/]+$/;
 const LISTED_GUIDE_PATHS = 5;
+/** Module files a copy between the two bundles could carry a check's computation in. */
+const CODE_FILE = /\.(ts|tsx|mts|cts|js|mjs|cjs)$/;
 
 export interface CandidateCheckContext {
   slug: string;
@@ -358,6 +360,36 @@ export function fingerprintRefusal(
   return findings.map((f) => controllerValidatedFinding({ code: f.code, path: f.file, detail: f.detail }));
 }
 
+/** Agent code byte-identical to correctness-model code, as `[agent path, correctness-model path]`
+ *  pairs. A solver tool running a check's own module analyses a candidate the way the check does,
+ *  which the tools contract (`PUBLICATION_CLAUSE`) rules out, since a solver that can ask the grader
+ *  passes its batteries whole (AGENTS.md "Goals and the climb"). */
+export function agentCheckCodeCopies(
+  fingerprint: Pick<FingerprintEvidence, "agentFiles" | "correctnessModelFiles">,
+): Array<[string, string]> {
+  const checkCode = new Map(
+    fingerprint.correctnessModelFiles
+      .filter(({ path }) => CODE_FILE.test(path))
+      .map(({ path, sha256 }) => [sha256, path]),
+  );
+  return fingerprint.agentFiles.flatMap(({ path, sha256 }): Array<[string, string]> => {
+    const original = checkCode.get(sha256);
+    return original === undefined || !CODE_FILE.test(path) ? [] : [[path, original]];
+  });
+}
+
+/** Each copy as an advisory, never a refusal (operator, 2026-09-30: "simplicity and leniency"): the
+ *  Builder reads it in readiness and decides; a paraphrase is review's. */
+function agentCopiesOfCheckCode(fingerprint: FingerprintEvidence): ContractFinding[] {
+  return agentCheckCodeCopies(fingerprint).map(([path, original]) =>
+    controllerValidatedFinding({
+      code: "agent-copies-check-code",
+      path: `agent/${path}`,
+      detail: `agent/${path} is byte-identical to correctness-model/${original}: a solver tool running a check's own code analyses a candidate the way the check does. Leave the solver that analysis, and give it only what a candidate is`,
+    }),
+  );
+}
+
 /** Bundle loading and validation shared by `checkCandidate` and `loadHarnessSnapshot`. Candidate
  *  admission needs the findings and the declared tools; loading an adopted harness needs the parsed
  *  values instead. Each returned value is non-null only when its own file passed validation, which
@@ -535,6 +567,6 @@ export function checkCandidate(
     snapshotId: snapshot.id,
     bundle: validatedBundle(snapshot.dir, loaded),
     ...toolCondition,
-    advisories: loaded.advisories,
+    advisories: [...loaded.advisories, ...agentCopiesOfCheckCode(fingerprint)],
   };
 }

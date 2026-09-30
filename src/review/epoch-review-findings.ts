@@ -31,7 +31,7 @@ import { plainRecord } from "../meta/json-evidence.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { type JsonValue, isBoolean, isString } from "../meta/json-shape.ts";
 import { keyIfNotNull, keysIf } from "../meta/optional-key.ts";
-import { type ReaderTool, readerParameters, readerToolText } from "./review-reader.ts";
+import { type ReaderTool, type ReviewOutcome, readerParameters, readerToolText } from "./review-reader.ts";
 import {
   PROBE_DIRECTION_PARAMETER,
   type ProbeState,
@@ -42,6 +42,7 @@ import {
 } from "./review-probe.ts";
 import { type ReviewVerifierEvidence, type SourceReadState, deliveredSource } from "./review-sources.ts";
 import { contractDefect } from "../analyse/finding-owner.ts";
+import type { ContestedKind } from "../analyse/judge-contested.ts";
 import { BRIEF_FILE, TASKS_FILE } from "../meta/bundle-layout.ts";
 import { readJsonFile } from "../meta/completed-json.ts";
 import { boundText } from "../meta/bounded-text.ts";
@@ -133,7 +134,7 @@ type ReviewAdmission = {
 export type SettlementCase = {
   taskId: string;
   family: string;
-  kind: "vetoed" | "disputed";
+  kind: Exclude<ContestedKind, "unconfirmed-fail">;
   checkIds: readonly string[];
   path: string | null;
 };
@@ -141,12 +142,17 @@ export type SettlementCase = {
  *  check's favour, by an observation whose cited probe moved that check. `finding` indexes the
  *  review's `findings`, whose citations and probes are the evidence. */
 export type CaseDisposition = Omit<SettlementCase, "checkIds" | "path"> & {
+  /** Every check that decided the case; absent on a record written before 2026-09-29. */
+  checkIds?: readonly string[];
   checkId: string;
   disposition: "against-check" | "check-stands";
   finding: number;
 };
 /** The direction a defect settling each kind of case against its check must show, when it names one. */
-const AGAINST_CHECK = { vetoed: "accepts-invalid", disputed: "rejects-valid" } as const;
+const AGAINST_CHECK = {
+  veto: "accepts-invalid",
+  "disputed-pass": "rejects-valid",
+} as const;
 const MAX_FINDINGS = 6;
 export type ReviewState = SourceReadState & {
   probes: ProbeState;
@@ -221,55 +227,73 @@ export function measuredConditionOf({
   };
 }
 
-/** The completed reviews recorded for this campaign. An unreadable review proves nothing either
+/** One recorded review when it completed, else null. An unreadable review proves nothing either
  *  way, so it is left out here and each caller decides without it: that means a corrupt file never
- *  suppresses a fresh review and never contributes an earlier finding or advisory defect. */
+ *  suppresses a fresh review and never contributes an earlier finding, advisory defect or settled case. */
+function completedReview(file: string): EpochReviewEvidence | null {
+  try {
+    const review = readCompleted<EpochReviewEvidence>(
+      file,
+      EPOCH_REVIEW_SCHEMA,
+      "findings",
+      "delete nothing; an unreadable review is inspected, not skipped over",
+    );
+    return review?.status === "completed" ? review : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The completed reviews recorded for this campaign. */
 function completedReviews(analysisDir: string): EpochReviewEvidence[] {
   if (!existsSync(analysisDir)) return [];
   return readdirSync(analysisDir)
     .filter((name) => name.endsWith("-epoch-review.json"))
-    .flatMap((name) => {
-      try {
-        const review = readCompleted<EpochReviewEvidence>(
-          join(analysisDir, name),
-          EPOCH_REVIEW_SCHEMA,
-          "findings",
-          "delete nothing; an unreadable review is inspected, not skipped over",
-        );
-        return review?.status === "completed" ? [review] : [];
-      } catch {
-        return [];
-      }
-    });
+    .flatMap((name) => completedReview(join(analysisDir, name)) ?? []);
 }
 
-/** Whether a completed review, the one status meaning a finished turn over full coverage and whose
- *  findings route, already covered this condition, this reviewer and these obligations. All three
- *  must match: a new contested artifact or a newly standing issue under an unchanged product is new
- *  work, and skipping it would leave the one component that reads the measured tree against the
- *  original request silent about what changed. An unreadable review proves no coverage. */
-export function conditionAlreadyReviewed(
+/** The cases the completed review of battery `runId` settled against the one check that decided
+ *  each. A case another check also decided stays, since the settlement cleared one check and not
+ *  the verdict, and so does a disposition recorded before it named its case's checks. */
+export function settledAgainstCheck(analysisDir: string, runId: string): ReadonlySet<string> {
+  const review = completedReview(join(analysisDir, `${runId}-epoch-review.json`));
+  const settled = (review?.runId === runId ? review.dispositions : []).filter(
+    (row) =>
+      row.disposition === "against-check" && row.checkIds?.length === 1 && row.checkIds[0] === row.checkId,
+  );
+  return new Set(settled.map((row) => row.taskId));
+}
+
+/** The completed review, the one status meaning a finished turn over full coverage and whose
+ *  findings route, that already covered this condition, this reviewer and these obligations. All
+ *  three must match: a new contested artifact or a newly standing issue under an unchanged product
+ *  is new work, and reusing a review for it would leave the one component that reads the measured
+ *  tree against the original request silent about what changed. An unreadable review covers none. */
+export function reviewOfCondition(
   analysisDir: string,
   condition: MeasuredCondition,
   expected: Pick<
     EpochReviewEvidence,
     "reviewerPin" | "reviewerEffort" | "requestDigest" | "obligationsDigest"
   >,
-): boolean {
-  return (
-    condition.digest !== null &&
-    expected.reviewerPin !== null &&
-    isString(expected.reviewerEffort) &&
-    expected.reviewerEffort.trim() !== "" &&
-    completedReviews(analysisDir).some(
-      (review) =>
-        review.condition?.digest === condition.digest &&
-        review.reviewerPin === expected.reviewerPin &&
-        review.reviewerEffort === expected.reviewerEffort &&
-        review.requestDigest === expected.requestDigest &&
-        review.obligationsDigest === expected.obligationsDigest,
-    )
+): EpochReviewEvidence | undefined {
+  if (condition.digest === null || expected.reviewerPin === null) return undefined;
+  if (!isString(expected.reviewerEffort) || expected.reviewerEffort.trim() === "") return undefined;
+  return completedReviews(analysisDir).find(
+    (review) =>
+      review.condition?.digest === condition.digest &&
+      review.reviewerPin === expected.reviewerPin &&
+      review.reviewerEffort === expected.reviewerEffort &&
+      review.requestDigest === expected.requestDigest &&
+      review.obligationsDigest === expected.obligationsDigest,
   );
+}
+
+/** A recorded review as the outcome its readers switch on: a failed or incomplete one is absent. */
+export function epochReviewOutcome({ status, reason }: EpochReviewEvidence): ReviewOutcome {
+  if (status === "completed") return { kind: "read" };
+  if (status === "skipped") return { kind: "skipped", reason: reason ?? "" };
+  return { kind: "absent", why: `${status} — ${reason}` };
 }
 
 /** The task-set findings earlier complete reviews recorded over the task set now under review. A
@@ -432,10 +456,11 @@ const caseSettlement: FindingRule = ({ parsed, args, owner, state, cases }) => {
   if (checkId === null || (parsed.defect === true && !against)) {
     return "settlesCases is for a finding naming the deciding checkId: a defect owned under correctness-model/ other than tasks.json, or an observation";
   }
-  if (
-    !against &&
-    !probeBackedRows(state.probes, args.probeIds).some((row) => row.movedCheckIds.includes(checkId))
-  ) {
+  // Either way a settlement rests on an executed probe of the deciding check, never on reading alone.
+  // Until 2026-09-29 a defect settled against the check with no probe, and the direction it claimed
+  // was the reviewer's word rather than the probe's.
+  const cited = probeBackedRows(state.probes, args.probeIds);
+  if (!against && !cited.some((row) => row.movedCheckIds.includes(checkId))) {
     return "settling a case in the check's favour requires a cited probe in which writing the Judge's reading into an accept control moved that check";
   }
   for (const taskId of settlesCases) {
@@ -445,8 +470,8 @@ const caseSettlement: FindingRule = ({ parsed, args, owner, state, cases }) => {
     if (row.path === null || !state.reads.includes(row.path)) {
       return `settlesCases: read ${taskId}'s artifact with read_source before settling it`;
     }
-    if (against && parsed.probeDirection !== null && parsed.probeDirection !== AGAINST_CHECK[row.kind]) {
-      return `settlesCases: ${taskId} is a ${row.kind} case, which a ${parsed.probeDirection} finding does not settle`;
+    if (against && !cited.some((probe) => probeShows(probe, checkId) === AGAINST_CHECK[row.kind])) {
+      return `settlesCases: ${taskId} is a ${row.kind} case, which only a cited probe showing ${AGAINST_CHECK[row.kind]} on ${checkId} settles against the check`;
     }
     if (state.dispositions.some((settled) => settled.taskId === taskId)) {
       return `settlesCases: ${taskId} is already settled by an earlier finding`;
@@ -615,7 +640,7 @@ function findingParameters(disputable: readonly string[]) {
       },
       artifactSchemaPath: {
         type: "string",
-        description: "A dotted path under one declared artifactSchema root, e.g. `pins.gpio`.",
+        description: "A dotted path under one declared artifactSchema root, e.g. `items.value`.",
       },
       unobserved: {
         type: "boolean",
@@ -637,19 +662,19 @@ function findingParameters(disputable: readonly string[]) {
       secondPublicInputPath: {
         type: "string",
         description:
-          "A second `$.`-prefixed public input path, when the obligation relates two inputs — for instance a load and the limit it must be held to. It crosses to authoring beside the first.",
+          "A second `$.`-prefixed public input path, when the obligation relates two inputs — for instance a quantity and the limit it must be held to. It crosses to authoring beside the first.",
       },
       demandGap: {
         type: "string",
         enum: [...DEMAND_GAPS],
         description:
-          "For a finding about what the tasks fail to demand, which shape it takes: capability-unexercised (the request names a capability no task exercises), sibling-values-only (sibling tasks differ only in published values), limit-cleared-widely (the first reasonable candidate clears a published limit widely), rule-outside-request (a rule no practitioner of the request would hold). It crosses to authoring; the claim does not.",
+          "For a finding about what the tasks fail to demand, which shape it takes: capability-unexercised (the request names a capability no task exercises), sibling-values-only (sibling tasks differ only in published values), limit-cleared-widely (the first reasonable candidate clears a published limit widely), rule-outside-request (a rule no practitioner of the request would hold), published-scenario-only (the checks observe only the published inputs, so an answer replaying the published outputs without reading its inputs passes), requirements-one-at-a-time (each task asks for the request's requirements one at a time, so none asks for several acting together on one answer; easy tasks are not by themselves a defect). It crosses to authoring; the claim does not.",
       },
       settlesCases: {
         type: "array",
         items: { type: "string" },
         description:
-          "The task ids of the listed vetoes and disputed fails this finding settles, each decided by its checkId and read with read_source first; a case you name nowhere stays unsettled. A defect owned under correctness-model/ settles them against the check. An observation settles them in the check's favour, as the Judge's error, citing in probeIds the probe that wrote the Judge's reading into an accept control and moved that check; the Judge issue stops standing once every case it counts is settled. Private: the Builder reads only how many cases in which families.",
+          "The task ids of the listed vetoes and disputed fails this finding settles, each decided by its checkId and read with read_source first; a case you name nowhere stays unsettled. A defect owned under correctness-model/ settles them against the check, citing in probeIds a probe of that check showing the way the case says: accepts-invalid for a veto, rejects-valid for a disputed fail. An observation settles them in the check's favour, as the Judge's error, citing in probeIds the probe that wrote the Judge's reading into an accept control and moved that check; the Judge issue stops standing once every case it counts is settled. Private: the Builder reads only how many cases in which families.",
       },
     },
   };
@@ -702,11 +727,12 @@ export function recordFindingTool(
       state.findings.push(recordedFinding(subject, verdict.placement, admitted, probes, evidencePath));
       const disposition = subject.parsed.defect === true ? "against-check" : "check-stands";
       for (const row of subject.cases.filter((listed) => parsed.settlesCases.includes(listed.taskId))) {
-        const { taskId, family, kind } = row;
+        const { taskId, family, kind, checkIds } = row;
         state.dispositions.push({
           taskId,
           family,
           kind,
+          checkIds,
           checkId: parsed.checkId ?? "",
           disposition,
           finding: state.findings.length - 1,

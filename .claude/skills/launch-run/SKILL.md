@@ -26,7 +26,7 @@ driver is needed. A launch request authorises the command.
 bun .claude/skills/launch-run/scripts/launch.ts truss --model astra --source <resolved-full-sha>
 bun .claude/skills/launch-run/scripts/launch.ts truss --model sol,opus --source <resolved-full-sha>
 bun .claude/skills/launch-run/scripts/launch.ts truss truss --model sol,astra --source <resolved-full-sha> --stop-after-ms 14400000
-bun .claude/skills/launch-run/scripts/launch.ts custom --prompt "<the user's exact one-line prompt>" --source <resolved-full-sha>
+bun .claude/skills/launch-run/scripts/launch.ts --prompt "<the user's exact one-line prompt>" --source <resolved-full-sha>
 ```
 
 To continue a named run's project when the user asks for it ("continue from the truss run
@@ -35,7 +35,11 @@ or prompt. The controller then continues from the recorded campaign evidence on 
 the launcher refuses an opening that created a fresh project instead. There is no steering text:
 the Builder chooses the next experiment from evidence.
 
-Use one or two lines through `custom --prompt`, or the `truss` preset in `scripts/options.ts` (`--list` prints it).
+Use one or two lines through `--prompt`, or the `truss` preset in `scripts/options.ts` (`--list` prints it).
+A `--prompt` run is named `standard`; name `standard` again for replicas, and `custom`, its name
+before 2026-09-30, still parses. A run id reads `<preset>-<model>-<instant>-pr<N>-<sha7>`: the pull
+request that carried the source commit, or `main-<sha7>` on main's head, and the commit's first
+seven hex. `runs pulse` drops the instant.
 Public files enter through `fullrun --context`; do not create `asks/`, verifier manifests or a second domain brief.
 Put the requested pair in one invocation. It prepares each worktree once, runs one TypeScript
 probe per run, settles the shared source's gate once, then starts the runs in quick succession.
@@ -91,6 +95,14 @@ Claude uses `CLAUDE_CODE_OAUTH_TOKEN` from the main checkout's `.env`, or explic
 and carries it into the run's frozen env. Codex conditions use the selected `CODEX_HOME/auth.json`, defaulting to the current account.
 Capture each selected credential once per batch; keep snapshots private and secrets out of
 arguments and reports. Report a missing credential; do not search other accounts or substitute keys.
+
+Before any launch, compare the host's one-minute load with its cores (`sysctl -n vm.loadavg
+hw.ncpu`) and count the open runs in `bun run runs`, firmware runs above all: each firmware Builder
+compiles in 4–5 lanes of its own, and the Epoch Reviewer's probes run the same compilers. Do not
+launch while load is above the core count. A launch into that load slows every sibling as well as
+itself, and it confounds any comparison of round length, because every arm is then bound by its
+tools. [The Super Loop's launch step](../run-improvement-campaign/SKILL.md#4-launch-through-one-owner)
+records what 2026-09-30 measured under it.
 
 Before a Claude-backed launch, read `.accounts/usage` in the main checkout, where it exists. It is
 local and untracked, prints each numbered account's 5-hour and weekly windows, marks the plain
@@ -161,6 +173,17 @@ Verify the controller terminal through the measured tree's evidence reader, the 
 lock holder and any captured child processes. Service absence alone does not prove that every
 descendant was reaped. Preserve verified, unaccepted and non-result counts and all receipts;
 never repair controller evidence or delete its lock to manufacture closure.
+
+`launchctl bootout` ends the service's own process, which is the `bun run fullrun` wrapper. The
+controller under it can outlive the wrapper with PPID 1 and keep its campaign lock (2026-09-30).
+`stop.ts`, which both `runs stop` and the timer run, therefore reads the service's pid before
+removal, and once the service is gone it SIGKILLs a process group of that id that still exists. The
+outcome is then `controller-killed`, naming the group, and `runs stop` exits 1 because the
+controller wrote no terminal. A stop made by hand with `launchctl` has no such check. So after any
+stop, run `bun run runs` again. A run that still reads `live` from "campaign lock held by a live
+holder" has a controller running without its service, and the pid beside it is that controller.
+The stop is observed only when the run reads `closed`, or reads `orphaned` because the lock holder
+proved dead. Until then, report the stop as unobserved, with that pid.
 
 For an immediate authorised stop, read the launch receipt and invoke `scripts/stop.ts` in this
 skill with

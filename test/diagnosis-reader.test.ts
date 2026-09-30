@@ -469,8 +469,35 @@ describe("what a reading records", () => {
       { issueIds: [BEAMS], reason: "the shown steps cannot separate the writer from the guide" },
     ]);
   });
+});
 
-  test("a failed turn keeps its error and discards what its tool calls recorded", async () => {
+describe("a reading that did not happen", () => {
+  // `error` used to carry "no-standing-issue" and "review-slot-off" beside real failures, and the
+  // analyse step told them apart through a set of strings. The outcome is one of three kinds.
+  test("no standing issue and a slot switched off are skips with their reason, and open no turn", async () => {
+    const fixture = battery();
+    const reading = (advice: typeof fixture.advice, review: Parameters<typeof readDiagnoses>[0]["review"]) =>
+      readDiagnoses({
+        repoRoot: fixture.root,
+        analysis: fixture.analysis,
+        measuredDir: fixture.measuredDir,
+        advice,
+        review,
+        readerTurn: () => {
+          throw new Error("a skipped reading opens no turn");
+        },
+      });
+    expect((await reading(advicePacket([]), REVIEW)).outcome).toEqual({
+      kind: "skipped",
+      reason: "no-standing-issue",
+    });
+    expect((await reading(fixture.advice, { enabled: false, source: "operator" })).outcome).toEqual({
+      kind: "skipped",
+      reason: "review-slot-off",
+    });
+  });
+
+  test("a failed turn is absent with its error and discards what its tool calls recorded", async () => {
     const fixture = battery();
     const evidence = await readDiagnoses({
       repoRoot: fixture.root,
@@ -483,9 +510,10 @@ describe("what a reading records", () => {
         return { pin: "review-pin", text: "partial", error: "diagnosis-reader turn aborted" };
       },
     });
-    expect(evidence.error).toBe("diagnosis-reader turn aborted");
+    expect(evidence.outcome).toEqual({ kind: "absent", why: "failed — diagnosis-reader turn aborted" });
     expect(evidence.diagnoses).toEqual([]);
     expect(evidence.readerText).toBeNull();
+    expect((await read(battery())).evidence.outcome).toEqual({ kind: "read" });
   });
 });
 
@@ -613,7 +641,7 @@ describe("the tool alone", () => {
       [issue({ count: 3, denominator: 4 })],
     );
     const sink: DiagnosisReaderEvidence = {
-      schema: "diagnosis-reading/v4",
+      schema: "diagnosis-reading/v5",
       slug: "truss",
       runId: "r2",
       readerPin: null,
@@ -623,7 +651,7 @@ describe("the tool alone", () => {
       diagnoses: [],
       abstentions: [],
       refused: 0,
-      error: null,
+      outcome: { kind: "read" },
       readerText: null,
     };
     const tool = recordDiagnosisTool(offers, [], sink);

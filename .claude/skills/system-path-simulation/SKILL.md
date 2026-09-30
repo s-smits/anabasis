@@ -25,11 +25,15 @@ what they show and delete the settled entries.
   Builder in the same minute; a fresh token on the same account died the same way at 13:49. The
   launcher now runs one minimal Builder-slot turn before the gate and refuses with the provider's
   reset clause (main 69ed55b5b).
-  Stewards are gone; the launching session runs its own conditions. Seeded rounds default the
+  Stewards went; the launching session ran its own conditions. Seeded rounds default the
   Built slot to scripted, so the Builder → Built Harness handover stays unexercised until a real
   battery; when the question is the measure stage, run `--built live`. Still open: one runner for
   a seeded round (`run-condition.mts`) with gate questions no longer routed through
   `run-segment.mts`, and a SKILL.md near one page.
+- 2026-09-29, stewards return on an account of their own. The 2026-09-15 death was one account
+  carrying the steward's condition, the run's Builder and the parent at once. The operator's
+  numbered accounts in `.accounts/` separate them: a steward's condition spends an account no live
+  run and no parent is spending, so its 429 ends only itself. The rule is below.
 
 ## Standing triggers
 
@@ -54,11 +58,42 @@ bind the join the condition proved, or the next change reopens the question. The
 two tests that each hand-roll the same record — the watchdog readiness file on 2026-09-01 — so
 neither runs the real writer against the real reader. `cases/layer-walk.md` names the method.
 
-**The launching session runs its conditions.** No steward subagent (operator decision
-2026-09-15): a subagent shares the account's session limit, and its death loses the condition's
-trail. The actor under test keeps the run's own condition — for the standard Opus 5 run that is
-`claude-opus-5` at medium through the production backend — and the session never stands in for it
-(operator decision 2026-09-01).
+**A steward runs its condition on an account of its own.** A steward subagent may own one
+condition again (operator decision 2026-09-29), but only when that condition's model calls go
+through a numbered account that no live run and not the launching session is spending. Without
+such an account, the launching session runs its own conditions, as it did from 2026-09-15.
+
+- **Choose from `.accounts/usage`.** Run it from the main checkout. It prints each numbered
+  account's 5-hour and weekly windows and prints no token. It marks the account behind the plain
+  `CLAUDE_CODE_OAUTH_TOKEN`, which is the one `launch-run` hands to live Claude runs by default.
+  Pick an account that is:
+  - not the plain one, and not the one a live run was launched on with `.accounts/launch claudeN`;
+  - not the one the launching session runs on;
+  - showing neither `rejected` nor a window near full.
+
+  The reading on 2026-09-29: claude1 at 3 % (5-hour) and 6 % (week), claude2 as the plain token
+  at 88 % of its week, claude4 `rejected`.
+- **Pass the account as an env file.** Run every model-calling script as
+  `bun --env-file=.accounts/claudeN.env .claude/skills/system-path-simulation/scripts/<script>.mts …`.
+  Every slot resolves its credential through `loadRepoEnv(repoRoot, Bun.env)`, and there the
+  process environment wins over the checkout's `.env`. So this one flag moves the Builder, Built,
+  Judge and review slots together. A shell that already exports `CLAUDE_CODE_OAUTH_TOKEN` beats
+  the file, so check that it is unset.
+- **Treat the files as secrets.** `.accounts/` is local and untracked (`.git/info/exclude`). Each
+  `claudeN.env` holds that account's token under `CLAUDE_CODE_OAUTH_TOKEN`, the one name the
+  launcher reads, and is written by `.accounts/launch claudeN`.
+  - Never print, copy or `cat` these files, and never put a token on a command line.
+  - If a file is missing, report it. Do not rebuild it from `.env` by hand or look for another.
+- **The steward's own session still spends the parent's account.** Only the condition moves, so
+  keep the steward's reasoning short and let the condition's calls carry the spend.
+- **The steward's shape.** One steward per condition, at most four in parallel, and none spawns
+  further agents. Each writes its trail to the report path it was given, so a dead steward loses
+  nothing the parent cannot read. The steward briefs the parent with the account it used and that
+  account's `.accounts/usage` line before and after.
+
+The actor under test keeps the run's own condition — for the standard Opus 5 run that is
+`claude-opus-5` at medium through the production backend — and neither the session nor a steward
+ever stands in for it (operator decision 2026-09-01).
 
 ## Rules that hold for every case
 
@@ -85,6 +120,33 @@ Copy the required recorded source bytes into an owned fixture before invoking a 
 production helper. Inspect linked runtime and tool trees too: a copied workspace can still write
 through `.toolchain` into the original run, outside its fingerprint. Use owned tool fixtures for
 startup and resume probes; keep real recorded trees read-only.
+
+**Optional: give the condition an active tool tree.** Do this when the actor will compile, run or
+rehearse through the product's tools. Without a tree it spends its wall reinstalling, and the
+condition ends up measuring installation instead of the question. Skip it when the question is
+prose or planning, or when a reinstall is cheap. On 2026-09-30 a truss Builder with no recorded
+tree reinstalled OpenSeesPy from the uv cache in 6 seconds, while an esp32 tree is 12 GB of
+arduino cores.
+
+- **Seeding already clones the tree.** `seed-campaign.mts` republish clones the selected product's
+  tool tree into the owned seed with APFS clonefile (`cpSync` with `COPYFILE_FICLONE`). It
+  downloads nothing and uses almost no disk.
+  - A firmware tree's arduino build cache names the source run's root, so the audit refuses the
+    seed until you pass `--relocate`. On 2026-09-30 that was 3,466 references, all relocated.
+- **Check the tree exists before relying on it.** Take the realpath of `toolTree` in
+  `versions/<id>/version.json`. A recorded tree can be swept: every epoch workspace of the truss
+  campaign `…-3fd52f9e-29` lost its `.toolchain` on 2026-09-30.
+  - When it is gone, clone another recorded tree of the same product with
+    `cp -c -R <tree> <seed>/.toolchain`, into the owned seed only.
+  - Or let the actor reinstall, and record that it did.
+- **Clone anything the actor may write; do not link it.** A symlink into a recorded run lets the
+  condition write through to that run, and the audit refuses it as an escape. Link only to a host
+  file that no recorded run owns and the condition cannot change, such as `~/.bun/bin/bun`.
+- **Give each parallel condition its own seed.** A campaign holds one `.controller.lock`, so two
+  conditions from one recorded position each need their own seed. The same goes for two live
+  arms. The esp32 ablation arms of 2026-09-30 were three seeds of one campaign.
+- **Write it in the trail.** Record the tree's source path and size, and whether the actor
+  reinstalled anyway. A reinstall over a seeded tree is a finding about the seed, not the product.
 
 **Choose the production owner before the helper.** A session measures authoring, a Builder campaign
 also measures continuation and admission, and a full run adds measurement and routing. Read the

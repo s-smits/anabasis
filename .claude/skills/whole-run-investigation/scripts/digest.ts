@@ -914,9 +914,9 @@ export function buildDigest(input: DigestInput): string {
     ...repeatedConditionLines({ caseRows, batteryOf }),
     ...workshopSpendLines(epochDirs, executions),
     ...roleSpendLines({ campaign, tallies, batteryOf, decisions, executions }),
-    // One line per recorded difficulty decision: the action the controller selected and, where it
-    // placed a battery, where on the band it landed and what target it was measured against. The
-    // record owns the placement, so the digest reports it and never re-derives one.
+    // One line per recorded difficulty decision: the battery it read and, where it placed one, the
+    // zone, counts and aim. The record owns the placement, so the digest reports it and never
+    // re-derives one.
     ...bandPlacementLines(difficulty),
     ...admissionLedgerLines({ campaign }),
     ...builderMemoryLines({ epochDirs }),

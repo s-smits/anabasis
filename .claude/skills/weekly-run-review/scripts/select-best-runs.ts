@@ -41,9 +41,8 @@ export const AXES = [
 ] as const;
 type Axis = (typeof AXES)[number];
 
-/** The zones `placeOnBand` reads as in range: off the aim perhaps, but not significantly off the band.
- *  Only a battery that passed some cases and failed some is counted in them, since a small perfect or
- *  all-fail battery also places in range (3 of 3 reads `over-aim`) while locating no limit. */
+/** The zones `placeOnBand` places inside the band's interval test. Only a battery that passed some
+ *  cases and failed some is counted in them: the signal of AGENTS.md "Goals and the climb". */
 const IN_RANGE: ReadonlySet<BandZone> = new Set(["under-aim", "on-aim", "over-aim"]);
 
 export interface RunFacts {

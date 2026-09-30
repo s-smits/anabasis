@@ -12,11 +12,8 @@
  * errors than successes", "cost rose while the pass rate held". A rule that needed a constant to
  * be interesting was left out.
  *
- * Worked example: run 15 passed 25/25 with advisers. Run 16 passed 25/25 both with and
- * without advisers. `POLICY.climb.band` was [0.20, 0.50] at the time — the pass-rate window
- * a difficulty level is supposed to land in (the ceiling moved to 0.75 on 2026-08-10) — so all
- * three batteries sat far above the band's upper bound and no report said so. The comparison
- * number had been fixed before the runs; the review had not used it.
+ * The pass-rate rule reads the band from `climbThresholds`, the frozen row the controller reads, so
+ * a battery significantly off the band is named in the report that measured it.
  *
  * What it cannot see: whether a finding matters. `tools-never-called` on a fresh domain is
  * expected; on a mature one it may reveal unused functionality. The scan cannot tell. Findings
@@ -47,12 +44,10 @@ interface ScanReport {
 
 const f2 = (n: number): string => n.toFixed(2);
 
-/** Pass rate against the frozen climb band, read the way the difficulty selector reads it: through
- *  `placeOnBand`, not the point rate. Run 51 showed why the two disagree — 18/25 = 0.72 sits above
- *  a [0.20, 0.60] band while its interval [0.524, 0.857] overlaps it, so the scan called "too easy"
- *  a battery the selector held at the limit. The confidence interval changes with battery size; the
- *  point rate alone misses that, and a battery too thin to separate reports nothing here because
- *  its interval already spans the band. */
+/** Pass rate against the frozen climb band, placed as the difficulty selector places it: through
+ *  `placeOnBand` on the Wilson interval, not the point rate (AGENTS.md "Goals and the climb"). A
+ *  point rate above the band can have an interval that overlaps it, and a battery too thin to
+ *  separate reports nothing here because its interval already spans the band. */
 function rateFindings(m: OutcomeMetrics, t: ClimbThresholds): ScanFinding[] {
   const { rate, n, successes } = m.passRate;
   const out: ScanFinding[] = [];

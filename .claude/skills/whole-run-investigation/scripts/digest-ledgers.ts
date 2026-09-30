@@ -446,8 +446,8 @@ export function checkInformativenessLines({
       `REACH-ONLY CHECKS (lane 6): ${classes["reach-only"]} check(s) fire on controls and never on ${gradedOracleFiles} graded rows`,
     );
   }
-  // The decision that read this battery placed it over the aim, and the battery still came out
-  // perfect: a limit was not measured there, whichever of the two over-aim zones it landed in.
+  // A decision is named after the round it opened, so this is a full pass in a round opened on a
+  // battery placed above the aim: the round that answered an easy battery found no limit either.
   const overAim = new Set(
     decisions
       .filter((decision) => decision.zone === "too-easy" || decision.zone === "over-aim")

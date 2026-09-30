@@ -7,15 +7,10 @@
 //
 //   bun wri.ts climb <target> [--json]
 //
-// The velocity is the line's (AGENTS.md "Goals and the climb"): how many claimed batteries landed
-// between 1/n and n-1/n, the only ones that can locate a limit, how far the pass rate swings from
-// one battery to the next, how many of the first 8 and 12 carried that signal, and whether the line
-// has gone flat by the stall rule `runs pulse` names. A full pass at any size found no limit and
-// counts as no signal, whatever zone a small one places in. Until 2026-09-30 the velocity was the
-// slope from the first placed battery to the last, extrapolated to the band: it read 13 batteries of
-// 7/7 and truss-sol-198d70's 6/7 and 10/11 alike, "the measured rate has not fallen", and gave
-// custom-sol-f0fb83, whose 2/6, 9/11 and 10/11 were the most any run had drawn, "50 more at this rate
-// to reach the band", because its first battery was 6/6 and its last 10/11.
+// The line and its four numbers are AGENTS.md "Goals and the climb". `lineOf` reads signal, swing
+// and flat from each claimed battery's placement counts, flat through `offAimStreak` so that it
+// is the stall `runs pulse` names, and each edge's `carried` row counts the tasks measured again
+// unchanged (`carriedOf`) and whether the battery before them was a full pass (`fullPass`).
 //
 // Each battery carries two placements. `placement` is computed here from the case rows through
 // `decideDifficulty`; `recorded` is what the controller wrote in its difficulty decision, read through
@@ -36,11 +31,9 @@
 // Every verdict but `adjusted` names its direction. `adjusted` does not: `numericDriftOf` measures
 // distance and not direction, because a boundary states which way is tighter and most declare none.
 // Moving a limit is a real climb when it moves inward, and this reader cannot tell you that it did.
-// A battery that dropped checks or fell down the tier order once read as `adjusted`, which
-// named a retreat with the one word that says nothing. So did growth in the other structural counts
-// until 2026-09-29: truss-sol-2d7812 added load sites and a forbidden volume, two inputs more at the
-// same checks, and its edge read `adjusted`. A new input, rule or limit is a structural move and is
-// named as one; whether it is a new demand is read from the task rows beside it.
+// So `adjusted` is kept for moved numbers alone: dropped checks, a fall down the tier order and a
+// change in any structural count are each named as their own move, and whether a new input, rule or
+// limit is a new demand is read from the task rows beside it.
 // `escalated` reads the highest tier a battery's checks reach, so adding two more checks at a tier
 // it already occupies is `widened`. That top tier is the one reading immune to the count: a
 // rank-weighted total rises whenever a battery simply holds more checks, and the mean that replaced
@@ -103,9 +96,7 @@ export interface OutcomeCounts {
  *  earned; a fail settled against its check measured the check, not the solver; a verifier pass
  *  settled against its check (a veto) was never earned. Both leave the earned sample, and a veto is
  *  not turned into a fail: a flip is the one move that lowers passes, so it could make a limit out
- *  of model readings alone, which the controller's placement refuses too. The 2d7812 firmware battery read 4/6, over
- *  the aim, on two fails of one check holding the sketch to a status label no public rule stated,
- *  and nothing in this reader said the placement rested on them. */
+ *  of model readings alone, which the controller's placement refuses too. */
 export interface Settlement {
   failsHeld: number;
   failsAgainst: number;
@@ -157,7 +148,7 @@ export interface NumericDrift {
 }
 
 /** The later battery's tasks that carry the same id, public input and family checks as the one
- *  before it, of `tasks` in all, and whether that earlier battery passed every case it verified. */
+ *  before it, of `tasks` in all, and whether that earlier battery was a full pass (`fullPass`). */
 interface Carried {
   unchanged: number;
   tasks: number;
@@ -410,12 +401,11 @@ function familyChecks(brief: Bundle["brief"], family: string): string {
 }
 
 /** How many of the later battery's tasks the solver meets exactly as before: the same id, public
- *  input and family checks. After a full pass such a task measures a known pass again. Bulk RNA-seq
- *  run 36e268 passed every case of eleven batteries while growing by about one task a round, and 53
- *  of the tasks after those full passes were carried this way; a verdict cannot show it, and neither
- *  can the numeric drift, which reads zero for a carried task and for a task whose one new input
- *  carries no number. The correctness-model source can still ask more of an unchanged task, and the
- *  digest row beside this one names the file when it moved. */
+ *  input and family checks. After a full pass such a task measures a known pass again (AGENTS.md
+ *  "Goals and the climb", carried). A verdict cannot show it, and neither can the numeric drift,
+ *  which reads zero for a carried task and for a task whose one new input carries no number. The
+ *  correctness-model source can still ask more of an unchanged task, and the digest row beside this
+ *  one names the file when it moved. */
 function carriedOf(before: Bundle, after: Bundle): Omit<Carried, "afterFullPass"> {
   const earlier = new Map(before.tasks.map((task) => [task.taskId, task]));
   const unchanged = after.tasks.filter((task) => {
@@ -515,7 +505,7 @@ function earnedOf(counts: OutcomeCounts, settlement: Settlement | null): ClimbPl
 
 /** Claimed batteries with no version directory of their own: a round that measured again without
  *  adopting anything. They have no task bytes to read an edge from, and they are still points on
- *  the line: custom-sol-f0fb83's i11 and i13 measured 11/11 each and left no version. */
+ *  the line. */
 function unadoptedOf(campaign: string, outcomes: Map<string, OutcomeCounts>, adopted: ReadonlySet<string>) {
   const rows = [...outcomes].flatMap(([runId, counts]) => {
     const claimPath = join(campaign, "claims", `${runId}.json`);
@@ -596,16 +586,11 @@ export async function readCampaign(campaign: string, options: Parameters<typeof 
 }
 
 /**
- * The line the claimed batteries draw, adopted or not, in claim order (AGENTS.md "Goals and the
- * climb"). A battery still measuring has not landed on it. Each point is read on the counts the
- * controller places, earned where a completed review settled a case against its check.
- *
- * Signal is a battery between 1/n and n-1/n, as in RL curriculum filtering: one at n/n or 0/n says
- * nothing about where the solver stops, whatever zone it places in, and 3/3 places over the aim.
- * The swing is the mean distance the pass rate moved per battery, so a line of full passes reads 0
- * however many tasks each held, and the launch film's 25, 6, 5, 24, 17, 21, 12, 19, 21, 9, 12 and 11
- * of 25 reads high. Neither rewards a line for falling: a repair that lifts a battery a defect sank
- * is as much a move as a raised requirement that drops one.
+ * The line the claimed batteries draw, adopted or not, in claim order, read as AGENTS.md "Goals and
+ * the climb" defines it. A battery still measuring has not landed on it. Each point is read on the
+ * counts the controller places, earned where a completed review settled a case against its check.
+ * Signal counts the points strictly between 0 and n passes whatever their zone, and swing is the
+ * mean absolute move in pass rate between consecutive points, so neither rewards a line for falling.
  */
 export function lineOf(report: {
   readonly batteries: readonly LineBattery[];

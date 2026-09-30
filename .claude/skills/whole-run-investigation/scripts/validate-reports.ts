@@ -299,9 +299,12 @@ function sectionIssues(heading: string, sectionText: string): string[] {
   }
   const findings = found.get("Findings")?.[0];
   if (findings !== undefined && findings.length > 0 && findings !== "none") {
-    const owners = [...findings.matchAll(/^\s*(?:[-*]\s*)?owner:\s*(.+?)\s*$/gm)].map(
-      (match) => match[1] ?? "",
-    );
+    // Luna wraps the line or its value in code or bold marks and may gloss it, so the owner is the
+    // first word after the label once those marks are gone; that word is still checked below.
+    const owners = findings.split("\n").flatMap((line) => {
+      const owner = /^\s*(?:-\s*)?owner:\s*(\S+)/i.exec(line.replaceAll(/[`*]/g, ""))?.[1];
+      return owner === undefined ? [] : [owner.replace(/[;,:]+$/, "")];
+    });
     if (owners.length === 0) issues.push(`${heading}: findings name no owner`);
     for (const owner of owners) {
       if (!FINDING_OWNERS.includes(owner)) {

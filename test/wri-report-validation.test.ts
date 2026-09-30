@@ -452,6 +452,26 @@ console.log(JSON.stringify({ type: "thread.started", thread_id: "thread_test_123
     expect(receiptOf(f).rows[0].issues).toEqual([]);
   });
 
+  it("reads the owner through the Markdown a Luna report wraps it in, and still checks the word", () => {
+    // Seven of 36 lane reports on 2026-09-30 were refused for these wrappers alone, each naming a
+    // listed owner: the whole line in a code span, a bold label, a backticked value, a gloss after it.
+    const f = fixture();
+    const wrapped = [
+      "- The oracle accepts a wrong answer.\n  `owner: correctness-model/evaluator.ts`  ",
+      "- The judge cited no rule.\n- **Owner:** `judge`",
+      "- The gate refused a host fault.\n  owner: controller-source (`src/correctness-bundle/solvability.ts`; gate F2-5)",
+      "- The wall was shared.\n  **owner:** environment  ",
+    ].join("\n");
+    writeFileSync(f.report, laneReport(LANE, wrapped));
+    expect(run(f.tasks, f.summary).status).toBe(0);
+    expect(receiptOf(f).rows[0].issues).toEqual([]);
+    writeFileSync(f.report, laneReport(LANE, "- The oracle accepts a wrong answer.\n  `owner: evaluator`"));
+    expect(run(f.tasks, f.summary).status).toBe(1);
+    expect(receiptOf(f).rows[0].issues).toContain(
+      `## lane_05: finding owner \`evaluator\` is not one of ${FINDING_OWNERS.join(", ")}`,
+    );
+  });
+
   it("rejects a failed session and a report outside the launcher output", () => {
     const f = fixture();
     const outside = join(f.dir, "outside.md");

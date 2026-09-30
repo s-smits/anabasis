@@ -317,6 +317,28 @@ it("reads a repair behind an unchanged wrapper, and a package installed under ho
   expect(key()).not.toBe(before);
 });
 
+/** A solver tool running a check's own module is the shape every whole-passing harness of
+ *  2026-09-29/30 shared, so a byte copy refuses at the bundle; one byte apart is review's. */
+/** A solver tool running a check's own module is the shape every whole-passing harness of
+ *  2026-09-29/30 shared, so a byte copy is named beside readiness; one byte apart is review's. The
+ *  note never refuses: whether to keep the copy is the Builder's call. */
+it("names agent code byte-identical to correctness-model code as an advisory, and only that", () => {
+  const metrics =
+    "export function total(values: number[]): number {\n  return values.reduce((sum, value) => sum + value, 0);\n}\n";
+  const dir = workspace("agent-copy");
+  writeFileSync(join(dir, "correctness-model/metrics.ts"), metrics);
+  writeFileSync(join(dir, "agent/metrics.ts"), metrics);
+  const copies = () => {
+    const candidate = checkCandidate(dir, { slug: "matching", exactTasks: 4 });
+    if (!candidate.ok) throw new Error("fixture candidate refused");
+    return candidate.advisories.filter((finding) => finding.code === "agent-copies-check-code");
+  };
+  expect(copies()).toMatchObject([{ path: "agent/metrics.ts" }]);
+
+  writeFileSync(join(dir, "agent/metrics.ts"), `${metrics}\n`);
+  expect(copies()).toEqual([]);
+});
+
 it("keeps the condition when running the tool only wrote its own caches into the tree", () => {
   const { write, key } = wrapperCondition("tool-tree-run");
   const before = key();

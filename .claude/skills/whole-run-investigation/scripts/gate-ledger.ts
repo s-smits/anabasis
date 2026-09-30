@@ -512,6 +512,10 @@ export const DELIBERATELY_UNLEDGERED = new Map<string, string>([
   ["missing-bundle-file", "bundle assembly: a required file is absent, so nothing downstream can run"],
   ["vendor-shadowed", "census gate: a vendored path the toolchain shadows, a host-layout fact"],
   [
+    "agent-copies-check-code",
+    "bundle advisory: a solver tool carries a check's own module byte for byte; shown in readiness and never refuses a candidate",
+  ],
+  [
     "operating-guide-unreachable-path",
     "bundle advisory: shown in readiness and never refuses a candidate, so it holds nothing up",
   ],

@@ -146,9 +146,12 @@ function checksumMismatch(text: string): string | null {
   // whole note frozen with its empty heading. That is the digest run-condition records as
   // predictions.sha256; on 2026-09-30 a byte-identical note was refused because only this was missing.
   // Resolutions are appended below the heading, so the note through its heading line never changes.
+  // The first append also puts a blank line before the heading it adds, so a whole-file checksum of
+  // a note frozen without a heading is read against the part with one final newline.
   const actual = sha256(part.trimEnd());
   const heading = RESOLUTIONS_HEADING.exec(text);
-  if (actual === checksum || sha256(part) === checksum) return null;
+  const partDigests = [actual, sha256(part), sha256(`${part.trimEnd()}\n`)];
+  if (partDigests.includes(checksum)) return null;
   if (heading !== null && sha256(`${text.slice(0, heading.index + heading[0].length)}\n`) === checksum) {
     return null;
   }

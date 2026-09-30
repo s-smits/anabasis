@@ -130,6 +130,17 @@ describe("predictions", () => {
     expect(run("--verify").stderr).toContain("changed after its checksum was recorded");
   });
 
+  // The P6 addendum of 2026-09-30 had no Resolutions heading and a checksum taken over the whole
+  // file. --verify passed and --resolve appended P6, then every later read refused the note: the
+  // blank line the append puts before its heading had joined the pre-registered part.
+  it("still verifies a whole-file checksum after the first resolution adds the heading", () => {
+    writeFileSync(`${note}.sha256`, `${sha256(NOTE)}  ${note}\n`);
+    expect(run("--verify").exitCode).toBe(0);
+    expect(run("--resolve", "P1: sufficed — opening.json names deadbeef").exitCode).toBe(0);
+    expect(run("--verify").exitCode).toBe(0);
+    expect(run("--unresolved").stdout).toBe("UNRESOLVED: P2 R3\n");
+  });
+
   it("allows honest inconclusive and untriggered closures but not pending", () => {
     run("--hash");
     expect(run("--resolve", "P1: inconclusive — provider returned no deciding evidence").exitCode).toBe(0);

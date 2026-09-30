@@ -5,9 +5,10 @@
  * isolated command inherits.
  */
 import { afterAll, expect, it } from "bun:test";
-import { realpathSync } from "../src/meta/filesystem.ts";
+import { existsSync, readFileSync, realpathSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
+import { processGroupExists } from "../src/meta/subprocess.ts";
 import { spawnCollected, stopIsolatedCommands } from "../src/builder/candidate-isolation-runtime.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 
@@ -49,29 +50,52 @@ it("drains output while writing input and reaps a child that rejects its stdin",
   expect(() => runtimeProcess.kill(pid, 0)).toThrow(/ESRCH/);
 });
 
-it("stops a live isolated command when the controller closes", async () => {
-  const started = Date.now();
-  const running = spawnCollected("/bin/sleep", ["30"], SCRATCH, Bun.env);
-  await Bun.sleep(50);
-  stopIsolatedCommands();
-  const outcome = await running;
-  expect(outcome.signal).toBe("SIGKILL");
-  expect(outcome.timedOut).toBe(false);
-  expect(Date.now() - started).toBeLessThan(5_000);
+// GNU `timeout` without `--foreground` and `setsid` leave the command's process group, so a kill of
+// that group misses them while they still hold its output pipes and the runner waits on them. Perl
+// does the same with `setpgrp` and then writes its pid, so the stop comes only after the escape.
+const stops: Array<[string, (controller: AbortController) => void]> = [
+  ["the controller closes", () => stopIsolatedCommands()],
+  ["its caller aborts", (controller) => controller.abort()],
+];
+it.each(stops)("stops a live isolated command and what left its group when %s", async (label, stop) => {
+  const marker = join(SCRATCH, `escaped-${label.replaceAll(" ", "-")}`);
+  const controller = new AbortController();
+  const running = spawnCollected(
+    "/bin/sh",
+    [
+      "-c",
+      `perl -e 'setpgrp(0, 0); open(my $f, ">", $ARGV[0]); print $f $$; close($f); sleep 20' ${marker}; true`,
+    ],
+    SCRATCH,
+    Bun.env,
+    { signal: controller.signal },
+  );
+  let escaped = 0;
+  for (let waited = 0; waited < 400 && escaped <= 1; waited += 1) {
+    await Bun.sleep(25);
+    escaped = existsSync(marker) ? Number(readFileSync(marker, "utf8")) : 0;
+  }
+  const alive = () => processGroupExists(escaped);
+  try {
+    expect(escaped).toBeGreaterThan(1);
+    const stopped = Date.now();
+    stop(controller);
+    const outcome = await running;
+    expect(Date.now() - stopped).toBeLessThan(5_000);
+    expect(outcome.signal).toBe("SIGKILL");
+    expect(outcome.timedOut).toBe(false);
+    for (let waited = 0; waited < 40 && alive(); waited += 1) await Bun.sleep(50);
+    expect(alive()).toBe(false);
+  } finally {
+    if (alive()) runtimeProcess.kill(escaped, "SIGKILL");
+  }
 });
 
-it("stops a live isolated command when its caller aborts", async () => {
-  const started = Date.now();
+it("kills a command whose caller aborted before it started", async () => {
   const controller = new AbortController();
-  const running = spawnCollected("/bin/sleep", ["30"], SCRATCH, Bun.env, { signal: controller.signal });
-  await Bun.sleep(50);
   controller.abort();
-  const outcome = await running;
-  expect(outcome.signal).toBe("SIGKILL");
-  expect(outcome.timedOut).toBe(false);
-  expect(Date.now() - started).toBeLessThan(5_000);
-
-  // Aborted before it starts, the command never runs to completion either.
+  const started = Date.now();
   const early = await spawnCollected("/bin/sleep", ["30"], SCRATCH, Bun.env, { signal: controller.signal });
   expect(early.signal).toBe("SIGKILL");
+  expect(Date.now() - started).toBeLessThan(5_000);
 });

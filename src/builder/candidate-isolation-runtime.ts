@@ -38,7 +38,7 @@ import {
 import { candidateIsolationProfile } from "./candidate-isolation-profile.ts";
 import type { PathRecord } from "./path-record.ts";
 import type { OptionalEnvValues } from "../backends/scrub-env.ts";
-import { killProcessGroup } from "../meta/subprocess.ts";
+import { decodeOutput, killProcessGroup, killProcessGroupId, runSync } from "../meta/subprocess.ts";
 
 export { type PathRecord, type PathRecordRow, openPathRecord, readPathRecordRows } from "./path-record.ts";
 
@@ -192,7 +192,17 @@ const liveCommands = new Set<Bun.Subprocess>();
  *  means a stop signal delivered to the controller never reaches any of them. The controller's
  *  closure in full-run.ts calls this instead, so a stopped run leaves no confined command behind. */
 export function stopIsolatedCommands(): void {
-  for (const child of liveCommands) killProcessGroup(child, "SIGKILL");
+  for (const child of liveCommands) killCommandTree(child.pid);
+}
+
+/** Kills the group and each member's descendants, listed by parent pid before a kill orphans any, as Bun's
+ *  `--no-orphans` does: GNU `timeout` and `setsid` leave the group yet hold the pipes `collect` waits on. */
+function killCommandTree(leader: number): void {
+  const ps = decodeOutput(runSync(["ps", "-Ao", "pid=,ppid=,pgid="]).stdout);
+  const rows = [...ps.matchAll(/(\d+) +(\d+) +(\d+)/g)].map((row) => row.slice(1).map(Number));
+  const tree = new Set([leader, ...rows.flatMap((row) => (row[2] === leader ? [row[0] ?? 0] : []))]);
+  for (const member of tree) for (const [pid = 0, ppid] of rows) if (ppid === member) tree.add(pid);
+  for (const pid of tree) killProcessGroupId(pid, "SIGKILL");
 }
 
 /** Spawns a command with capped capture and a group-kill deadline. It is exported for the microvm
@@ -209,8 +219,6 @@ export async function spawnCollected(
 ): Promise<IsolatedOutcome> {
   const { stdin, signal } = run;
   const timeoutMs = run.timeoutMs ?? ISOLATED_TIMEOUT_MS;
-  // Detached into its own process group: an isolated command can fork grandchildren, and
-  // signalling the group on timeout kills the tree rather than orphaning it under the controller.
   const child = Bun.spawn({
     cmd: [command, ...args],
     cwd,
@@ -236,9 +244,9 @@ export async function spawnCollected(
   let timedOut = false;
   const timer = setTimeout(() => {
     timedOut = true;
-    killProcessGroup(child, "SIGKILL");
+    killCommandTree(child.pid);
   }, timeoutMs);
-  const abort = () => killProcessGroup(child, "SIGKILL");
+  const abort = () => killCommandTree(child.pid);
   signal?.addEventListener("abort", abort, { once: true });
   if (signal?.aborted === true) abort();
   const input = async () => {

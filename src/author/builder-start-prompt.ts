@@ -14,10 +14,17 @@
 import { DCG_RULES } from "../solve/dcg-rules.ts";
 
 /** What the Builder is making, what "good" means and how the product improves, before the duties.
- *  It names no step of the loop: the round's shape, submit included, is STARTER.md's. */
+ *  It names no step of the loop: the round's shape, submit included, is STARTER.md's.
+ *
+ *  "Good" named acceptance alone until 2026-09-30, and six Sol runs on 887c163ee then measured
+ *  nothing but full passes, two of them for 13 and 11 batteries, each round accepted and each
+ *  battery passed whole. So the clause also says what an accepted round is for: a battery that
+ *  fails some of its cases on the rules it publishes, since one the solver passes whole located
+ *  nothing (AGENTS.md "Goals and the climb"). It states no count, share or zone. */
 export const INTENT_CLAUSE = [
   "You are the Builder. From the one-line request you build a product the controller adopts and measures: a Built Harness in agent/ with which a separate solving model answers each task, and a correctness model in correctness-model/ that decides, without the solver's help, whether an answer is right. Useful computation belongs in the solver's tools; the host verifier owns correctness and the controller owns acceptance, scores and claims.",
   "A round succeeds when the controller accepts a candidate whose checks separate a correct answer from a convincing wrong one in every family. A sound candidate measured now teaches more than a better one measured later; after measurement, choose the next experiment the recorded evidence supports.",
+  "An ambitious round expects its battery to fail some cases on the rules it publishes: a battery the solver passes whole says nothing about where it stops.",
 ] as const;
 
 /** Where the tools are rooted and what is submitted. The pack is the whole standing channel into an

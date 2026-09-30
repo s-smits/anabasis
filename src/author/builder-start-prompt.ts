@@ -19,11 +19,17 @@ import { DCG_RULES } from "../solve/dcg-rules.ts";
  *  "Good" names more than acceptance, because a round can be accepted every time while its battery
  *  passes whole and locates nothing. So the clause also says what an accepted round is for: a
  *  battery that fails some of its cases on the rules it publishes (AGENTS.md "Goals and the
- *  climb"). It states no count, share or zone. */
+ *  climb"). It states no count, share or zone.
+ *
+ *  The last line puts depth in the first tasks. The round prompt names it only as the route of a
+ *  raise before submit, and a first round authored without it wrote one published behaviour per
+ *  task: all 10 solves of firmware 7a97af passed in a few minutes of their wall, 9 of them with the
+ *  first draft unedited. */
 export const INTENT_CLAUSE = [
   "You are the Builder. From the one-line request you build a product the controller adopts and measures: a Built Harness in agent/ with which a separate solving model answers each task, and a correctness model in correctness-model/ that decides, without the solver's help, whether an answer is right. Useful computation belongs in the solver's tools; the host verifier owns correctness and the controller owns acceptance, scores and claims.",
   "A round succeeds when the controller accepts a candidate whose checks separate a correct answer from a convincing wrong one in every family. A sound candidate measured now teaches more than a better one measured later; after measurement, choose the next experiment the recorded evidence supports.",
   "An ambitious round expects its battery to fail some cases on the rules it publishes: a battery the solver passes whole says nothing about where it stops.",
+  "Build that demand into the first tasks, not later: a task asking for one published behaviour is transcription for a strong solver, while one where several of the request's requirements act together on a single answer makes it derive what they require together.",
 ] as const;
 
 /** Where the tools are rooted and what is submitted. The pack is the whole standing channel into an

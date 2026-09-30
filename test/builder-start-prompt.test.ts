@@ -200,6 +200,13 @@ describe("Builder start prompt", () => {
    *  the one surface that points at it, so the prompt carries neither that pointer nor a recipe. The
    *  counts stay with the authoring context that knows this run's battery size (AGENTS.md prior 10:
    *  no course is prescribed). */
+  /** Firmware 7a97af's first round wrote one published behaviour per task, and every solve passed in
+   *  minutes with the first draft; the round prompt named depth only for a raise before submit. */
+  it("asks for depth in the first tasks, not only in a later raise", () => {
+    expect(flat(INTENT_CLAUSE.join(" "))).toContain("Build that demand into the first tasks, not later:");
+    expect(PROMPT).toContain("several of the request's requirements act together on a single answer");
+  });
+
   it("points at measurement for difficulty and prescribes no course", () => {
     for (const recipe of [
       "run the independent per-task searches concurrently",

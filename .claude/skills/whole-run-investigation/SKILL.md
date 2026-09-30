@@ -490,3 +490,4 @@ is still a finding, and its mechanism is what to carry forward, under whichever 
 lanes owns the question today. The `--consumer-hardware` flag that once asked for a hardware
 comparison by hand is retired too: the `target` lane's `HARDWARE TARGET NAMED` trigger fires from
 the recorded request and brief, and starts lanes 29 and 30.
+Whether a current lane should join them is [lane maintenance](references/lane-maintenance.md).

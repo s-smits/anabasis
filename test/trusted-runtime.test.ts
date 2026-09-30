@@ -179,3 +179,25 @@ describe("a capture that returns no output", () => {
     expect(unstarted).toMatch(/^not-a-command could not start: .+/);
   });
 });
+
+describe("an asynchronous capture that is bounded", () => {
+  /**
+   * The worker bundler runs its child through the asynchronous spawn, which Bun documents with no
+   * bounds; 1.4.2 honours `timeout` and `killSignal` there as it does for `spawnSync`. Its default
+   * kill is SIGTERM and is never escalated, so a child that ignores SIGTERM outlives the timeout
+   * unless the kill signal is SIGKILL.
+   */
+  it("stops a child that ignores SIGTERM at the timeout when the kill signal is SIGKILL", async () => {
+    const started = performance.now();
+    const child = Bun.spawn({
+      cmd: ["/bin/sh", "-c", "trap '' TERM; sleep 5"],
+      stdout: "ignore",
+      stderr: "ignore",
+      timeout: 200,
+      killSignal: "SIGKILL",
+    });
+    await child.exited;
+    expect(child.signalCode).toBe("SIGKILL");
+    expect(performance.now() - started).toBeLessThan(4000);
+  });
+});

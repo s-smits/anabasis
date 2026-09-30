@@ -6,13 +6,10 @@ import { dirname, join, relative, resolve } from "../meta/path.ts";
 import { sha256, sha256OfFile } from "../meta/digest.ts";
 import { runtimeProcess } from "../meta/process.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
-import { buildWorkerBundle } from "../meta/subprocess.ts";
 import { hashBundle } from "../claim/bundle-hash.ts";
 import { VERIFIER_PUBLIC_PACKAGES } from "../claim/scoring-closure.ts";
-import {
-  assertGeneratedSourceLoaders,
-  generatedBuiltinRefusal,
-} from "../solve/generated-tool-source-policy.ts";
+import { assertGeneratedSourceLoaders } from "../solve/generated-tool-source-policy.ts";
+import { buildWorkerBundle } from "../solve/worker-bundle.ts";
 
 /** `digest` names the exact bundle file; `portableDigest` names the same bytes with the snapshot
  *  and temporary locations removed from its module path comments, so a stage key can match
@@ -37,6 +34,57 @@ function inside(root: string, path: string): boolean {
   const rel = relative(root, path);
   return rel === "" || (rel !== ".." && !rel.startsWith("../") && !rel.startsWith("/"));
 }
+
+/**
+ * The bundler plugin that keeps an evaluator's bundle to its own package and the public contract.
+ * The process that bundles (`worker-bundle-child.ts`) makes it from these arguments.
+ */
+export function evaluatorRuntimeSource(root: string, role: Role): Bun.BunPlugin {
+  const publicRoot = join(root, "reference");
+  const sourceRoot = role === "reference" ? publicRoot : root;
+  return {
+    name: "evaluator-runtime-source",
+    setup(plugin) {
+      // OS isolation cannot hide a private file already embedded in the bundle.
+      plugin.onResolve({ filter: /.*/ }, (args) => {
+        if (!inside(root, args.importer)) return undefined;
+        // Resolved from this module's directory, not the candidate's, so a candidate tsconfig `paths`
+        // alias or workspace node_modules cannot put candidate bytes behind a public name the
+        // scoring closure skips.
+        if (VERIFIER_PUBLIC_PACKAGES.has(args.path)) {
+          return { path: Bun.resolveSync(args.path, import.meta.dir) };
+        }
+        // A public helper must stay public even when imported by the evaluator: the reference
+        // solve must be able to load it without also loading private dependencies.
+        const boundary = inside(publicRoot, args.importer) ? publicRoot : sourceRoot;
+        if (args.path.startsWith(".") && inside(boundary, resolve(dirname(args.importer), args.path))) {
+          return undefined;
+        }
+        throw new Error(`evaluator import outside its bundle or public contract: ${args.path}`);
+      });
+      // Inspect only modules the runtime actually loads. An unimported evaluator.test.ts
+      // may legitimately import bun:test and is not part of the execution closure.
+      plugin.onLoad({ filter: /.*/ }, (args) => {
+        const path = relative(root, args.path);
+        if (inside(root, args.path)) {
+          const physical = realpathSync(args.path);
+          if (!inside(sourceRoot, physical)) {
+            throw new Error(`generated source escapes its ${role} package: ${path}`);
+          }
+          const program = /\.[cm]?[jt]sx?$/.test(physical);
+          if (!program && !inside(publicRoot, physical)) {
+            throw new Error(
+              `evaluator cannot import private operand data: ${path}; use the check request, or put public support data in reference/`,
+            );
+          }
+          if (program) assertGeneratedSourceLoaders(root, [{ path }]);
+        }
+        return undefined;
+      });
+    },
+  };
+}
+
 runtimeProcess.once("exit", () => {
   for (const dir of directories) rmSync(dir, { recursive: true, force: true });
 });
@@ -104,7 +152,6 @@ async function portableDigest(file: string, root: string): Promise<string> {
 
 async function build(root: string, role: Role): Promise<EvaluatorBundle> {
   const publicRoot = join(root, "reference");
-  const sourceRoot = role === "reference" ? publicRoot : root;
   const dir = mkdtempSync(join(tmpdir(), `ana-${role}-`));
   const entry = join(dir, "entry.ts");
   const child = Bun.fileURLToPath(
@@ -122,47 +169,8 @@ async function build(root: string, role: Role): Promise<EvaluatorBundle> {
         `await ${run}(() => import(${capturedJsonStringify(generatedEntry)}));\n`,
     );
     const output = await buildWorkerBundle("evaluator bundle failed", entry, dir, [
-      generatedBuiltinRefusal(root),
-      {
-        name: "evaluator-runtime-source",
-        setup(plugin) {
-          // OS isolation cannot hide a private file already embedded in the bundle.
-          plugin.onResolve({ filter: /.*/ }, (args) => {
-            if (!inside(root, args.importer)) return undefined;
-            // Resolved from the controller, so a candidate tsconfig `paths` alias or workspace
-            // node_modules cannot put candidate bytes behind a public name the scoring closure skips.
-            if (VERIFIER_PUBLIC_PACKAGES.has(args.path)) {
-              return { path: Bun.resolveSync(args.path, import.meta.dir) };
-            }
-            // A public helper must stay public even when imported by the evaluator: the reference
-            // solve must be able to load it without also loading private dependencies.
-            const boundary = inside(publicRoot, args.importer) ? publicRoot : sourceRoot;
-            if (args.path.startsWith(".") && inside(boundary, resolve(dirname(args.importer), args.path))) {
-              return undefined;
-            }
-            throw new Error(`evaluator import outside its bundle or public contract: ${args.path}`);
-          });
-          // Inspect only modules the runtime actually loads. An unimported evaluator.test.ts
-          // may legitimately import bun:test and is not part of the execution closure.
-          plugin.onLoad({ filter: /.*/ }, (args) => {
-            const path = relative(root, args.path);
-            if (inside(root, args.path)) {
-              const physical = realpathSync(args.path);
-              if (!inside(sourceRoot, physical)) {
-                throw new Error(`generated source escapes its ${role} package: ${path}`);
-              }
-              const program = /\.[cm]?[jt]sx?$/.test(physical);
-              if (!program && !inside(publicRoot, physical)) {
-                throw new Error(
-                  `evaluator cannot import private operand data: ${path}; use the check request, or put public support data in reference/`,
-                );
-              }
-              if (program) assertGeneratedSourceLoaders(root, [{ path }]);
-            }
-            return undefined;
-          });
-        },
-      },
+      { name: "generated-builtin-refusal", dir: root },
+      { name: "evaluator-runtime-source", root, role },
     ]);
     rmSync(entry, { force: true });
     const file = realpathSync(output);

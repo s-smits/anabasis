@@ -31,7 +31,6 @@ import {
   type GeneratedWorkerPolicy,
   assertGeneratedSourceLoaders,
   assertGeneratedWorkerPolicyUnchanged,
-  generatedBuiltinRefusal,
   generatedWorkerPolicy,
 } from "./generated-tool-source-policy.ts";
 import { probeProvesBoundary } from "./built-starter.ts";
@@ -46,7 +45,8 @@ import {
 } from "./generated-tool-worker-protocol.ts";
 import { runtimeProcess } from "../meta/process.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
-import { buildWorkerBundle, killProcessGroup } from "../meta/subprocess.ts";
+import { killProcessGroup } from "../meta/subprocess.ts";
+import { buildWorkerBundle } from "./worker-bundle.ts";
 export type WorkerBundle = { dir: string; file: string; digest: string; sourceDigest: string };
 
 type ReadyMessage = Extract<GeneratedToolChildMessage, { type: "ready" }>;
@@ -107,7 +107,7 @@ export async function bundleGeneratedWorker(slugDir: string): Promise<WorkerBund
           `runGeneratedToolWorker(async () => (await import(${capturedJsonStringify(toolsFile)})).createDomainHarness);`,
       );
       const output = await buildWorkerBundle("generated worker bundle failed", entry, temporaryDir, [
-        generatedBuiltinRefusal(agentDir),
+        { name: "generated-builtin-refusal", dir: agentDir },
       ]);
       rmSync(entry, { force: true });
       const file = realpathSync(output);

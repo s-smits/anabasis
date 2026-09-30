@@ -45,6 +45,7 @@ import {
 import { reportingLines, snapshotLines } from "./manifest-reporting.ts";
 import { renderSharedInstructions, type SharedInstructions } from "./shared-instructions.ts";
 import { writeJsonFile } from "#src/meta/completed-json.ts";
+import { LAUNCH_FILE, SUMMARY_FILE } from "#skills/codex-luna-swarm/scripts/luna-receipts.ts";
 import { readJsonAs } from "./run-overview.ts";
 
 const LAUNCH_RECORD_WAIT_MS = 30_000;
@@ -745,9 +746,9 @@ export function writeAndDispatch(input: DispatchInput): void {
   }
   try {
     console.log(runTextSyncOrThrow(args).trimEnd());
-    if (existsSync(join(outputDir, "launch.json"))) writeLaunchInput(identity, input);
+    if (existsSync(join(outputDir, LAUNCH_FILE))) writeLaunchInput(identity, input);
   } catch (error) {
-    if (existsSync(join(outputDir, "launch.json"))) {
+    if (existsSync(join(outputDir, LAUNCH_FILE))) {
       // The launcher may have opened its immutable record before a provider failure. Keep the
       // source/input identity sidecar for an explicit incomplete collection rather than guessing.
       writeJsonFile(join(outputDir, "wri-launch-input.json"), {
@@ -811,7 +812,7 @@ function detachLauncher(args: string[], outPath: string, outputDir: string): voi
     closeSync(fd);
   }
   writeFileSync(join(outPath, "launcher.pid"), `${child.pid}\n`);
-  const launchPath = join(outputDir, "launch.json");
+  const launchPath = join(outputDir, LAUNCH_FILE);
   const deadline = Date.now() + LAUNCH_RECORD_WAIT_MS;
   while (!existsSync(launchPath)) {
     if (child.exitCode !== null || Date.now() > deadline) {
@@ -823,6 +824,6 @@ function detachLauncher(args: string[], outPath: string, outputDir: string): voi
   }
   console.log(`\ndetached launcher pid ${child.pid}; log ${logPath}`);
   console.log(
-    `sessions finish as luna_session.finished lines; luna_sessions.completed writes ${join(outputDir, "summary.json")}`,
+    `sessions finish as luna_session.finished lines; luna_sessions.completed writes ${join(outputDir, SUMMARY_FILE)}`,
   );
 }

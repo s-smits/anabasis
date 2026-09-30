@@ -35,14 +35,18 @@ import { errorMessage } from "#src/meta/runtime-values.ts";
 import {
   type AttemptEnd,
   drain,
+  LAUNCH_FILE,
   LAUNCH_TYPE,
   type LaunchRecord,
   readLaunch,
   readResult,
+  recordResult,
   type SessionRecord,
   type SessionResult,
   sessionPaths,
   settle,
+  SUMMARY_FILE,
+  SUMMARY_TYPE,
   threadIdOf,
   writeRecord,
   writeSummary,
@@ -349,7 +353,7 @@ async function stopHook(): Promise<HookDecision> {
   const record = path === null ? null : asRecord(readJsonFileOrNull(path));
   const outputDir = record?.outputDir;
   if (path === null || !isString(outputDir)) return {};
-  const finished = existsSync(join(outputDir, "summary.json"));
+  const finished = existsSync(join(outputDir, SUMMARY_FILE));
   if (!finished && processExists(record?.pid)) {
     return {
       decision: "block",
@@ -402,6 +406,8 @@ async function attempt(session: Session, run: Execution, threadId: string | null
   rmSync(paths.reportPath, { force: true });
   const eventFd = openSync(paths.eventPath, "a", 0o600);
   const stderrFd = openSync(paths.stderrPath, "a", 0o600);
+  // Every attempt appends to the same logs; its outcome is read from where its own output begins.
+  const from = { events: statSync(paths.eventPath).size, stderr: statSync(paths.stderrPath).size };
   try {
     const child = Bun.spawn({
       cmd: [run.codex, ...codexArgs(session, run.launch, paths.reportPath, threadId)],
@@ -412,9 +418,9 @@ async function attempt(session: Session, run: Execution, threadId: string | null
       stderr: stderrFd,
     });
     await child.exited;
-    return { exitCode: child.exitCode, signal: child.signalCode ?? null, spawnError: null };
+    return { exitCode: child.exitCode, signal: child.signalCode ?? null, spawnError: null, from };
   } catch (error) {
-    return { exitCode: null, signal: null, spawnError: errorMessage(error) };
+    return { exitCode: null, signal: null, spawnError: errorMessage(error), from };
   } finally {
     closeSync(eventFd);
     closeSync(stderrFd);
@@ -444,7 +450,7 @@ async function runQueue(run: Execution, onSettled: (result: SessionResult) => vo
         const end = await attempt(session, run, threadId);
         result = settle(session.name, run.launch.outputDir, end, { attempts, startedAt });
       } while (result.status !== "completed" && attempts <= run.policy.retries);
-      writeRecord(sessionPaths(run.launch.outputDir, session.name).resultPath, result);
+      recordResult(run.launch.outputDir, result);
       onSettled(result);
     }
   };
@@ -488,9 +494,9 @@ async function execute(run: Execution): Promise<number> {
   const completedCount = summary.sessions.filter((row) => row.status === "completed").length;
   console.log(
     capturedJsonStringify({
-      type: "luna_sessions.completed",
+      type: SUMMARY_TYPE,
       outputDir,
-      summaryPath: join(outputDir, "summary.json"),
+      summaryPath: join(outputDir, SUMMARY_FILE),
       completedCount,
       failedCount: summary.sessions.length - completedCount,
       rateLimitedCount: summary.sessions.filter((row) => row.failureKind === "rate-limit").length,
@@ -533,7 +539,7 @@ async function launchSessions(mode: string, source: string, args: CommandArgs): 
     for (const { name, prompt } of sessions) {
       writeAtomic(sessionPaths(outputDir, name).promptPath, prompt);
     }
-    writeRecord(join(outputDir, "launch.json"), record);
+    writeRecord(join(outputDir, LAUNCH_FILE), record);
     return await execute({
       launch: record,
       sessions,
@@ -571,7 +577,7 @@ async function retry(outputDir: string, args: CommandArgs): Promise<number> {
       .map((row) => recordedSession(outputDir, row));
     const policy = policyOf(args, sessions.length);
     const codex = codexBinary(args.value("codex-bin"));
-    rmSync(join(outputDir, "summary.json"), { force: true });
+    rmSync(join(outputDir, SUMMARY_FILE), { force: true });
     return await execute({
       launch: record,
       sessions,

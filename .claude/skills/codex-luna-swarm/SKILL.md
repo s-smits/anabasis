@@ -145,9 +145,10 @@ nohup bun --no-env-file .claude/skills/codex-luna-swarm/scripts/luna-sessions.ts
 Tail `luna.log` with the Monitor tool: each session prints one `luna_session.finished` line and the
 launch ends with `luna_sessions.completed`. Drain while it runs, not only at the end, with
 `--drain /private/tmp/<session>/luna`, which prints each finished report once; sixty lanes of one
-2026-09-29 batch sat unread because nothing drained them. The task file and the rest of the launch
-are as described under the direct launcher below. Reports are research: check every load-bearing
-finding against the source before acting on it.
+2026-09-29 batch sat unread because nothing drained them. `reports.md` in the output directory gains
+each report as its session settles, so it holds every settled report even if the launcher dies. The
+task file and the rest of the launch are as described under the direct launcher below. Reports are
+research: check every load-bearing finding against the source before acting on it.
 
 A single short session may still use the companion directly with the Bash tool's
 `run_in_background`, whose stdout returns as a task notification when the process exits:
@@ -321,16 +322,17 @@ killed after about two minutes, all 24 children gone, no reports written). Start
 the launcher's `--stop-hook` mode. Confirm that the current host loads that hook before relying
 on it; check the launcher pid and its children before each drain.
 
-Each completion prints one compact `luna_session.finished` event. Print every newly finished report
-once with:
+Each completion prints one compact `luna_session.finished` event and appends the session's report
+to `reports.md`. Print what `reports.md` gained since the last drain with:
 
 ```sh
 bun .claude/skills/codex-luna-swarm/scripts/luna-sessions.ts --drain /absolute/outputDir
 ```
 
-Call `--drain` again after `luna_sessions.completed`. Then read `summary.json`, require one result per
-requested session, and report non-zero sessions as missing work. Keep transport warnings separate from
-session failure; a WebSocket-to-HTTPS fallback may still complete successfully.
+Call `--drain` again after `luna_sessions.completed`, and after a `--retry`, which appends the rerun
+sessions' reports. Then read `summary.json`, require one result per requested session, and report
+non-zero sessions as missing work. Keep transport warnings separate from session failure; a
+WebSocket-to-HTTPS fallback may still complete successfully.
 
 The start evidence proves requested configuration, not the model actually bound by a remote
 session. When identity is load-bearing, verify the session records before making the claim. Return

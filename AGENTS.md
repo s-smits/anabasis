@@ -645,7 +645,12 @@ to 80. Each prediction is frozen before its arm launches.
 Arms are compared on a discovery seed first. A confirmation seed, from another campaign, is launched
 only after every arm's source is fixed, and nothing read from it revises an arm.
 
-No component is ablated in source at present.
+- **`competing-margin` (arm, 2026-10-01).** The intent clause's first-task sentence "make several of the
+  request's requirements act together on a single answer, so that meeting one spends the margin another
+  needs". The round prompt's raise-before-submit line, the no-limit line, the reviewer's interaction
+  finding and `examples.md` still name the interaction, so the arm tests this sentence, not the concept.
+  After the depth prescriptions, 83 of 85 recorded batteries passed whole, 77 of them one model on new
+  domains. Grep: `rg "ABLATED\(competing-margin\)"`. Prediction and run: filled when this arm launches.
 
 ## Evidence and implementation status
 

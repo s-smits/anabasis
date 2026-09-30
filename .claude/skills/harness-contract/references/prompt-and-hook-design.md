@@ -75,6 +75,15 @@ refuses to cooperate. For each changed duty, find its existing home, remove cont
 copies and state only what affects the recipient's decision. Explain a tool's useful result
 when that helps the model choose it; omit controller bookkeeping the model cannot act on.
 
+An instruction that asks for long work must bind that work to the time the recipient has left, and
+ask it to save its best result as it goes. Otherwise the requested time competes with the wall it
+runs under, and the wall wins. On 2026-09-30 a simulated truss round tested a trial sentence (#89,
+not on main) asking the Builder to search for its reference witness "at least as long as the solver
+may spend". The Opus Builder had about 75 minutes of its 90-minute wall left. It launched twelve
+95-minute searches in one blocking command, and the wall killed them after 4,491 s. The round
+wrote no reference and submitted nothing, and its best designs were left in scratch. The arm
+without the sentence submitted at 44.9 minutes.
+
 Check a claimed prompt failure against the recorded input before accepting the diagnosis.
 Use the smallest public-data counterexample that can refute it. Keep useful requirements
 when shortening prose, and update construction assertions when their wording changes.

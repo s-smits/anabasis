@@ -254,12 +254,14 @@ placeholder is missing evidence.
   effect to first order sends every solver over the limit. Where the public input leaves an effect
   open, name it and its direction in the returned text. A fast screening adviser beside a slow exact
   one is fine; generated tools cannot start processes.
-- An adviser never analyses a candidate the way a check does: it imports and copies nothing from
-  `correctness-model/`, and it returns neither a check's verdict nor the response a check decides
-  from. What a candidate is — its layout, its counts, its totals — an adviser may compute; how it
-  behaves under the task's loads, scenarios or data is the solver's analysis. The operating guide
-  holds the same line: it names no command that runs a check's instrument the way the check runs
-  it.
+- An adviser never does a check's work: it returns neither a check's verdict, nor the response a
+  check decides from, nor what a check expects for a scenario the solver chooses. What a candidate
+  is — its layout, its counts, its totals — an adviser may compute; how it behaves under the task's
+  loads, scenarios or data, and how the task requires it to behave there, are the solver's
+  analysis. Code the correctness model also runs may serve an adviser when it holds only
+  published rules, constants and standard computation. The operating guide holds the same line: it
+  may say how the solver's shell runs an installed compiler or simulator, and names no command that
+  returns a check's verdict or its expected result.
 
 ```json
 {

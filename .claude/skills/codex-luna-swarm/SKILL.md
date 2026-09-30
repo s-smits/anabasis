@@ -92,7 +92,7 @@ The operator's batch policy (2026-09-04) decides the model before these transpor
 
 | independent questions | model and effort | launch |
 | --- | --- | --- |
-| 2 to 5 | `gpt-5.6-sol` at `medium` | native `gpt-5.6-sol` sessions, or one companion call per session from Claude Code |
+| 2 to 5 | `gpt-5.6-sol` at `medium` | native `gpt-5.6-sol` sessions, or the direct launcher with `--model gpt-5.6-sol` from Claude Code |
 | 6 or more | `gpt-6-luna` at `xhigh` | all sessions in one batch; native `luna_worker` cannot represent `xhigh`, so use the direct launcher |
 
 An explicit operator choice for the current batch replaces the table; recover it from
@@ -117,9 +117,9 @@ the same rejected native call for every session and never substitute Terra or a 
 
 ## Launch from Claude Code
 
-From Claude Code the parent session is the only Claude model in the chain: it calls the Codex
-plugin's companion script itself and Codex is the subagent. Do not use the `codex:rescue` skill or
-the `codex:codex-rescue` agent type; both add a Sonnet session whose single action is the same call.
+From Claude Code the parent session is the only Claude model in the chain: it runs the direct
+launcher itself and Codex is the subagent. Do not use the `codex:rescue` skill or the
+`codex:codex-rescue` agent type; both add a Sonnet session whose single action is the same call.
 At most two Claude subagents run at once (operator decision 2026-09-04); Codex sessions do not count
 against that ceiling.
 
@@ -130,32 +130,25 @@ Batch policy when the operator names no model and effort (operator decision 2026
 | 1-5 | `gpt-5.6-sol` | `medium` |
 | 6 or more | `gpt-6-luna` | `xhigh` |
 
-Start every session of a batch together. `scripts/codex-sessions.ts` applies the policy, writes
-one prompt file per session and detaches one companion per task, so the Bash tool's 600 s timeout
-(exit 144) cannot end them:
+Start every session of a batch in one detached launcher, so the Bash tool's 600 s timeout (exit
+144) cannot end it. Write the task file with the Write tool, never a heredoc, and keep the log
+outside the output directory, which must not exist yet:
 
 ```sh
-bun .claude/skills/codex-luna-swarm/scripts/codex-sessions.ts launch \
-  --tasks-file /private/tmp/<session>/tasks.json --out-dir /private/tmp/<session>/codex \
-  --workdir /absolute/worktree [--model gpt-6-luna --effort xhigh] [--write] [--plan-only]
-bun .claude/skills/codex-luna-swarm/scripts/codex-sessions.ts status --out-dir /private/tmp/<session>/codex
-bun .claude/skills/codex-luna-swarm/scripts/codex-sessions.ts drain  --out-dir /private/tmp/<session>/codex
+nohup bun --no-env-file .claude/skills/codex-luna-swarm/scripts/luna-sessions.ts \
+  --tasks-file /private/tmp/<session>/tasks.json --workdir /absolute/worktree \
+  --output-dir /private/tmp/<session>/luna \
+  --model gpt-5.6-sol --reasoning-effort medium --launch-only \
+  > /private/tmp/<session>/luna.log 2>&1 &
 ```
 
-`launch` also detaches a watcher that drains every `--drain-every` seconds (300 by default; `0`
-turns it off) into `<out-dir>/drained.md`, each report once, and writes one
-`codex_sessions.drained` line per pass to `<out-dir>/watch.log`, exiting once nothing is running.
-Tail `watch.log` with the Monitor tool; `watch --out-dir <dir> [--every S]` starts one by hand for a
-batch launched without it. Sixty lanes of one 2026-09-29 batch sat unread because nothing drained
-them.
-
-`tasks.json` is an array of `{ "name", "task", "model"?, "effort"?, "write"? }`; names match
-`^[a-z][a-z0-9_]*$` and are unique, paths are absolute, and a used `--out-dir` is refused. Write
-both files with the Write tool, never a heredoc. Wait on `<name>.exit.json` with the Monitor tool
-or a Bash `until` loop, then `drain` prints each finished log once and a
-`codex_sessions.drained` summary with `finished`, `failed`, `running` and `missing` counts; a
-`missing` session (no exit record, pid gone) exits 2 and is missing work. Reports are research:
-check every load-bearing finding against the source before acting on it.
+Tail `luna.log` with the Monitor tool: each session prints one `luna_session.finished` line and the
+launch ends with `luna_sessions.completed`. Drain while it runs, not only at the end, with
+`--drain /private/tmp/<session>/luna`, which prints each finished report once; sixty lanes of one
+2026-09-29 batch sat unread because nothing drained them. `reports.md` in the output directory gains
+each report as its session settles, so it holds every settled report even if the launcher dies. The
+task file and the rest of the launch are as described under the direct launcher below. Reports are
+research: check every load-bearing finding against the source before acting on it.
 
 A single short session may still use the companion directly with the Bash tool's
 `run_in_background`, whose stdout returns as a task notification when the process exits:
@@ -169,8 +162,8 @@ Omit `--write` for a read-only session. Do not pass the companion's `--backgroun
 detaches the job and returns only a job id that nothing reports back. `task` has no `--help`; any
 text after the flags is sent to Codex as the prompt and spends a turn.
 Use the marketplace path shown above; do not replace it with a versioned cache copy. For a
-long single session, use a detached launcher that writes its report to an explicit path and
-wait for its exit record. The remaining sections describe the native and direct Codex routes.
+long single session, use the detached direct launcher above with one task. The remaining sections
+describe the native and direct Codex routes.
 
 ## Define bounded sessions
 
@@ -229,13 +222,13 @@ Do not use this route for an explicit `high` or `xhigh` request.
 After the first native session is accepted, submit the remaining prepared sessions without waiting for
 that session to finish. For launch-only work, return the accepted task IDs and stop.
 
-## Use the fallback launcher
+## Use the direct launcher
 
 Resolve `scripts/luna-sessions.ts` relative to this `SKILL.md`. Do not read, copy, or reimplement it in
-the main session. It starts one independent `codex exec` process per session, pins `gpt-6-luna`, the
-selected `high`, `xhigh`, or `max` reasoning effort, and priority service, sends prompts over stdin
-without a shell, and writes per-session evidence. Do not substitute a global or previously copied
-launcher for this repo-scoped script.
+the main session. It starts one independent `codex exec` process per session, pins the model
+(`gpt-6-luna`, or `gpt-5.6-sol` with `--model gpt-5.6-sol`), the selected reasoning effort and
+priority service, sends prompts over stdin without a shell, and writes per-session evidence. Do not
+substitute a global or previously copied launcher for this repo-scoped script.
 
 Use the repository-pinned Bun release. Resolve its executable from the active worktree and pass
 `--no-env-file`; do not select a second JavaScript runtime through a version manager. Do not run
@@ -279,18 +272,30 @@ task scratch or the evidence owner. The system temporary default is only for dis
 a long session is not recoverable from a path the host may clean before its report is drained.
 
 Pass `--reasoning-effort high`, `--reasoning-effort xhigh`, or `--reasoning-effort max` to state the
-launch condition. The flag defaults to `max` for old commands. An unsupported value is a launch
-error, not a reason to choose another effort.
+launch condition. The flag defaults to `max` for old commands. Sol takes `low`, `medium`, `high` or
+`xhigh` and defaults to `medium`. An unsupported value is a launch error, not a reason to choose
+another effort.
 
-`--max-active N` queues excess work in the same launch. Sessions start one second apart by default;
-`--start-interval-ms N` makes the pace explicit. After a typed HTTP 429 non-result, reduce the
-active count or pace and retry only missing sessions after the current launcher settles.
+`--max-active N` queues excess work in the same launch; a cap above the session count runs them all.
+Sessions start one second apart by default; `--start-interval-ms N` makes the pace explicit.
+
+Codex retries a request, reconnects a stream and falls back from WebSocket to HTTPS inside a session.
+A session that still ends without a report gets one further attempt from the launcher (`--retries
+N`, default 1, at most 5): `codex exec resume` of its thread when Codex named one, a fresh start from
+its prompt otherwise. Each result records its `attempts`. After a typed HTTP 429 non-result, let
+the launcher settle, then rerun only the missing sessions at a lower cap or a slower pace:
+
+```sh
+bun .claude/skills/codex-luna-swarm/scripts/luna-sessions.ts --retry /absolute/outputDir \
+  --max-active 4 --start-interval-ms 5000
+```
+
+`--retry` runs the recorded model, effort and prompts again, leaves `launch.json` and every
+completed result untouched, and writes `summary.json` over all the sessions once they settle. It
+refuses while that directory's launcher still runs.
 
 The launcher needs access to active Codex state. If the parent shell is sandboxed, request access
 once for the launcher command; individual read-only session sandboxes remain read-only.
-
-Use `--count N` only for a genuine concurrency test or when the shared packet maps each rank to a
-distinct assignment. Investigations normally use named task objects.
 
 Use a manifest for write sessions or per-session worktrees:
 
@@ -304,8 +309,12 @@ Use a manifest for write sessions or per-session worktrees:
 }
 ```
 
-A manifest contains one or more sessions. The top-level worktree and sandbox apply to every session
-unless overridden; a `workspace-write` session requires non-empty `ownedPaths`.
+A manifest contains one or more sessions, each with a distinct task. The top-level worktree and
+sandbox apply to every session unless overridden; a `workspace-write` session requires non-empty
+`ownedPaths`. A session row takes only `name`, `task`, `workdir`, `sandbox` and `ownedPaths`. Codex
+starts only inside a Git work tree unless told `--skip-git-repo-check`; the launcher tells it so
+for a read-only session and for one that owns its whole workdir, and any other write session needs
+a work tree.
 
 ## Collect only when requested
 
@@ -316,16 +325,17 @@ killed after about two minutes, all 24 children gone, no reports written). Start
 the launcher's `--stop-hook` mode. Confirm that the current host loads that hook before relying
 on it; check the launcher pid and its children before each drain.
 
-Each completion prints one compact `luna_session.finished` event. Print every newly finished report
-once with:
+Each completion prints one compact `luna_session.finished` event and appends the session's report
+to `reports.md`. Print what `reports.md` gained since the last drain with:
 
 ```sh
 bun .claude/skills/codex-luna-swarm/scripts/luna-sessions.ts --drain /absolute/outputDir
 ```
 
-Call `--drain` again after `luna_sessions.completed`. Then read `summary.json`, require one result per
-requested session, and report non-zero sessions as missing work. Keep transport warnings separate from
-session failure; a WebSocket-to-HTTPS fallback may still complete successfully.
+Call `--drain` again after `luna_sessions.completed`, and after a `--retry`, which appends the rerun
+sessions' reports. Then read `summary.json`, require one result per requested session, and report
+non-zero sessions as missing work. Keep transport warnings separate from session failure; a
+WebSocket-to-HTTPS fallback may still complete successfully.
 
 The start evidence proves requested configuration, not the model actually bound by a remote
 session. When identity is load-bearing, verify the session records before making the claim. Return

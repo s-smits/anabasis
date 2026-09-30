@@ -17,6 +17,7 @@ import { errorMessage } from "#src/meta/runtime-values.ts";
 import { sha256, sha256OfFile } from "#src/meta/digest.ts";
 import { gitText } from "#skills/main/git.ts";
 import { writeJsonFile } from "#src/meta/completed-json.ts";
+import { LAUNCH_FILE, SUMMARY_FILE } from "#skills/codex-luna-swarm/scripts/luna-receipts.ts";
 import { SAFEGUARD_STDERR_PREFIX, parseSafeguardLog, safeguardLogFile } from "#src/meta/safeguard.ts";
 import {
   ADJUDICATED_ROUTES,
@@ -303,8 +304,8 @@ function loadInputs(reviewDir: string) {
     evolution: readJson<Evolution>(join(snapshotDir, "harness-evolution.json")),
     overview: readJson<JsonValue>(join(reviewDir, "overview.json")),
     tasks: readJson<LaneTask[]>(join(lanesDir, "tasks.json")) ?? [],
-    launch: readJson<LaunchFile>(join(outputDir, "launch.json")),
-    summary: readJson<SummaryFile>(join(outputDir, "summary.json")),
+    launch: readJson<LaunchFile>(join(outputDir, LAUNCH_FILE)),
+    summary: readJson<SummaryFile>(join(outputDir, SUMMARY_FILE)),
   };
 }
 
@@ -353,7 +354,7 @@ function collectionTable(lanes: readonly LaneRow[], inputs: Inputs): string[] {
   const lines = [
     "## Collection",
     "",
-    `Launch: \`${inputs.launch ? join(inputs.outputDir, "launch.json") : "absent"}\`; model ${inputs.launch?.model ?? "unknown"} at ${inputs.launch?.reasoningEffort ?? "unknown"}; tasks \`${join(inputs.lanesDir, "tasks.json")}\`.`,
+    `Launch: \`${inputs.launch ? join(inputs.outputDir, LAUNCH_FILE) : "absent"}\`; model ${inputs.launch?.model ?? "unknown"} at ${inputs.launch?.reasoningEffort ?? "unknown"}; tasks \`${join(inputs.lanesDir, "tasks.json")}\`.`,
     "",
     "| session | angles | status | thread | duration s | report sha256 |",
     "|---|---|---|---|---|---|",

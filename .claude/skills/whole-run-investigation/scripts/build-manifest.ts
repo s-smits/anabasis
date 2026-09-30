@@ -36,7 +36,7 @@ const USAGE = [
   "                     [--angles <file>] [--index <file>]",
   "                     [--revision <40-char commit>] [--live] [--title <text>] [--context <file>]",
   "                     [--shared-instructions <shared-instructions.json>] [--web-access]",
-  "                     [--transport luna|codex|native] [--effort high|xhigh|max] [--launch [--detach] [--max-active <n>]]",
+  "                     [--transport luna|native] [--effort high|xhigh|max] [--launch [--detach] [--max-active <n>]]",
   `Lanes ${[...ISOLATED_ANGLES.keys()].join(", ")} are isolated: each launches only when its deterministic trigger fired in the snapshot.`,
 ].join("\n");
 
@@ -63,11 +63,11 @@ interface Catalogue {
 
 function parseOptions(args: CommandArgs): ManifestOptions {
   const transport = args.value("transport") ?? "luna";
-  if (!["luna", "codex", "native"].includes(transport)) manifestFail(`invalid transport: ${transport}`);
+  if (!["luna", "native"].includes(transport)) manifestFail(`invalid transport: ${transport}`);
   const effort = args.value("effort") ?? "max";
   if (!["high", "xhigh", "max"].includes(effort)) manifestFail(`invalid effort: ${effort}`);
   if (args.flag("launch") && transport === "native") {
-    manifestFail("--launch is only valid with the luna or codex transport");
+    manifestFail("--launch is only valid with the luna transport");
   }
   if (args.flag("detach") && (!args.flag("launch") || transport !== "luna")) {
     manifestFail("--detach needs --launch with the luna transport");
@@ -229,14 +229,6 @@ function main(args: CommandArgs): CommandResult {
     launcherPath:
       runtimeProcess.env.WRI_LUNA_LAUNCHER ??
       join(REPO_ROOT, ".agents", "skills", "codex-luna-swarm", "scripts", "luna-sessions.ts"),
-    codexLauncherPath: join(
-      REPO_ROOT,
-      ".claude",
-      "skills",
-      "codex-luna-swarm",
-      "scripts",
-      "codex-sessions.ts",
-    ),
   });
 }
 

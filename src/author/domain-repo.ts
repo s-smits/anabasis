@@ -98,15 +98,11 @@ function git(dir: string, args: string[]): string {
  * every iteration open with a salvage commit of thousands of insertions of snapshot bytes.
  */
 const EXCLUDE = `${["/*", ...CANDIDATE_INTERFACE.map((entry) => `!/${entry}`), "node_modules/", ".bundle-snapshots/"].join("\n")}\n`;
-/** The workspace contract as the pack ships it, refreshed from the pack on every resume so the
- *  bytes a session reads are fixed by the recorded source commit rather than by whatever an earlier
- *  session left behind. It stays on disk for reading and out of tracking. */
-const STARTER_REFERENCES = [
-  "STARTER.md",
-  "starter-pack/contract.md",
-  "starter-pack/examples.md",
-  "starter-pack/add-ons.json",
-] as const;
+/** The workspace contract and the tools the pack ships beside it (starter-pack/fwsim), refreshed
+ *  from the pack on every resume so the bytes a session reads or installs are fixed by the recorded
+ *  source commit rather than by whatever an earlier session left behind. They stay on disk for
+ *  reading and out of tracking. */
+const STARTER_REFERENCES = ["STARTER.md", "starter-pack"] as const;
 
 /** Point the workspace's runtime link at this controller's interpreter, resolved rather than as
  *  named: a version manager's `bun` may be a per-shell shim that outlives no session, while the
@@ -328,7 +324,7 @@ export function initWorkspace(dir: string, seedFrom?: string, safeguard?: Safegu
   } else {
     for (const path of STARTER_REFERENCES) {
       mkdirSync(dirname(join(dir, path)), { recursive: true });
-      cpSync(new URL(`${PI_STARTER_PACK.href}/${path}`), join(dir, path));
+      cpSync(new URL(`${PI_STARTER_PACK.href}/${path}`), join(dir, path), { recursive: true });
     }
     settleTrackedInterface(dir);
     // Safeguard 56: a resumed repair keeps its in-flight edits by design. Name how many it carried,

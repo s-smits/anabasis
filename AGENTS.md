@@ -546,12 +546,12 @@ closes it.
 - **The expected-output oracle is unmeasured.** The firmware `rules.ts` is both the check's expectation
   and the solver's `expected_behaviour`, so the solver can compute every expected value before it
   submits, which `PUBLICATION_CLAUSE` calls the field's own work.
-- **The firmware instrument cannot drive input.** Espressif QEMU 9.2.2 shows GPIO output through
-  `-trace memory_region_ops_write`, and `-icount shift=3,sleep=off` gives guest time; 5 of 11 Opus
-  versions rebuilt pins from that trace. It has no GPIO input, ADC, I2C devices beyond TMP105, or
-  RMT/PCNT, so it cannot check debounce, edge interrupts, analog input or deadlines at a pin. Owners:
-  the host toolchain (a GPIO-input patch, estimated at about 100 lines of C) or a `simulation-seed/v1`
-  runner seed (operator).
+- **The firmware instrument drives input through `starter-pack/fwsim`, unmeasured.** It runs a compiled
+  image on avr8js (Uno), rp2040js (Pico) or Espressif QEMU 9.2.2 (ESP32) with pin, analog and serial
+  input scripted at virtual times, and prints a time-stamped trace; checks and the solver's shell both
+  run it. ESP32 input needs the pack's `esp32-input.patch`, built into `.toolchain/qemu` by
+  `build-qemu.sh`; stock QEMU gives untimed output only. Not simulated: I2C devices beyond TMP105, RMT,
+  PCNT, LEDC and ESP32 serial input. No recorded run has installed it yet.
 
 All of these are model-visible, so the stack that closes them is one new condition. Freeze a prediction
 per change, simulate a fresh firmware first round, and launch only on the operator's word.

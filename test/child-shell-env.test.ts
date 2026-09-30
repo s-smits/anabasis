@@ -124,7 +124,8 @@ describe("the Builder bash cell's environment", () => {
     expect(env.XDG_CONFIG_HOME).toBe(join(home, ".config"));
     expect(env.XDG_DATA_HOME).toBe(join(home, ".local", "share"));
     expect(env.PATH).toContain(join(home, ".local", "bin"));
-    expect(env.PATH?.split(":").slice(0, 3)).toEqual([
+    expect(env.PATH?.split(":").slice(0, 4)).toEqual([
+      join(workDir, ".toolchain", "bin"),
       join(home, ".local", "bin"),
       join(home, ".cargo", "bin"),
       dirname(runtimeProcess.execPath),

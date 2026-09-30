@@ -2,8 +2,9 @@
  * Shell environment for a Builder authoring session. HOME points into the workspace's `.toolchain`
  * directory, the tree tool admission reads later, so HOME-based installers and tools — Arduino's
  * `~/Library/Arduino15`, Cargo, Go, PlatformIO, pip — write inside the workspace and leave files
- * admission can reuse. Two conventional user bin directories join PATH so Python, Rust and similar
- * installs run without extra flags.
+ * admission can reuse. `.toolchain/bin`, which the candidate's checks and the solver's shell search
+ * first, leads PATH, so a tool installed there answers to its name here too; two conventional user bin
+ * directories follow, so Python, Rust and similar installs run without extra flags.
  *
  * The redirect used to depend on the network policy, on the reasoning that only an installer writes
  * to HOME. An offline session writes there too: a bare `arduino-cli version` answers `open
@@ -52,7 +53,15 @@ function builderHomeEnvironment(workDir: string, inheritedPath = Bun.env.PATH) {
     NODE_PRESERVE_SYMLINKS: "1",
     // Use this run's admitted Bun before ambient wrappers (the operator's ~/.local/bin/bun
     // may sit outside the authoring wall). Workspace tool installs retain their usual precedence.
-    PATH: [localBin, cargoBin, dirname(runtimeProcess.execPath), inheritedPath].filter(Boolean).join(":"),
+    PATH: [
+      join(workDir, ".toolchain", "bin"),
+      localBin,
+      cargoBin,
+      dirname(runtimeProcess.execPath),
+      inheritedPath,
+    ]
+      .filter(Boolean)
+      .join(":"),
   };
 }
 

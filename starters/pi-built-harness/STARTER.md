@@ -7,6 +7,7 @@ in `correctness-model/sources/`. Exact shapes are in
 [`starter-pack/contract.md`](starter-pack/contract.md);
 [`starter-pack/examples.md`](starter-pack/examples.md) holds optional worked examples whose
 domain and method are not requirements. Presets are in `starter-pack/add-ons.json`.
+Each directory under `starter-pack/` is a ready tool, described in its own README.
 You may change the harness's runtime settings in `agent/config.yaml`.
 
 ## Loop

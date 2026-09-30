@@ -1,0 +1,316 @@
+diff --git a/hw/gpio/esp32_gpio.c b/hw/gpio/esp32_gpio.c
+index 4fea1f5..710a8a6 100644
+--- a/hw/gpio/esp32_gpio.c
++++ b/hw/gpio/esp32_gpio.c
+@@ -18,41 +18,224 @@
+ #include "hw/irq.h"
+ #include "hw/qdev-properties.h"
+ #include "hw/gpio/esp32_gpio.h"
++#include "qemu/timer.h"
++#include "qemu/host-utils.h"
++#include "sysemu/runstate.h"
++#include "trace.h"
+
++/*
++ * Without the "stimulus" property the model is the stock one: every register reads 0 except
++ * GPIO_STRAP and writes are dropped. With it, registers hold their values, GPIO_IN/GPIO_IN1 follow
++ * the stimulus on QEMU_CLOCK_VIRTUAL (deterministic under -icount), GPIO_PINn_INT_TYPE edges and
++ * levels set GPIO_STATUS and raise ETS_GPIO_INTR_SOURCE, and SENS_SAR_MEAS_START1 answers ADC1
++ * oneshot reads with the stimulus value of the selected channel. "<virtual_ns> quit" ends the run.
++ * Events apply on a fixed grid of stimulus-tick-ns: under -icount the round-robin vCPU timeslice
++ * is cut at the next virtual timer deadline, so a grid that does not depend on the event times
++ * keeps the guest's own timing independent of the stimulus schedule.
++ */
++typedef struct Esp32GpioEvent {
++    int64_t ns;
++    char kind; /* 'g'pio, 'a'dc1, 'q'uit */
++    uint32_t index, value;
++} Esp32GpioEvent;
++
++#define GPIO_REG(a) (s->regs[(a) >> 2])
++#define GPIO_BANK(pin, lo, hi) GPIO_REG((pin) < 32 ? (lo) : (hi))
++
++/* Pins of bank `hi` whose GPIO_PINn_INT_ENA field (bits 13..17) shares a bit with `ena`. */
++static uint32_t esp32_gpio_ena_mask(Esp32GpioState *s, int hi, uint32_t ena)
++{
++    uint32_t m = 0;
++    for (int i = 0; i < (hi ? 8 : 32); i++) {
++        if ((GPIO_REG(A_GPIO_PIN0 + 4 * (32 * hi + i)) >> 13) & ena) {
++            m |= 1u << i;
++        }
++    }
++    return m;
++}
++
++static void esp32_gpio_update(Esp32GpioState *s)
++{
++    for (int pin = 0; pin < 40; pin++) {
++        uint32_t type = extract32(GPIO_REG(A_GPIO_PIN0 + 4 * pin), 7, 3);
++        uint32_t level = extract32(GPIO_BANK(pin, A_GPIO_IN, A_GPIO_IN1), pin & 31, 1);
++        if (type == 4 + level) { /* 4: low level, 5: high level */
++            GPIO_BANK(pin, A_GPIO_STATUS, A_GPIO_STATUS1) |= 1u << (pin & 31);
++        }
++    }
++    /* APP CPU (bit 0) and PRO CPU (bit 2) maskable enables share ETS_GPIO_INTR_SOURCE */
++    qemu_set_irq(s->irq, (GPIO_REG(A_GPIO_STATUS) & esp32_gpio_ena_mask(s, 0, 5)) ||
++                         (GPIO_REG(A_GPIO_STATUS1) & esp32_gpio_ena_mask(s, 1, 5)));
++}
++
++static void esp32_gpio_set_input(Esp32GpioState *s, uint32_t pin, uint32_t level)
++{
++    uint32_t bit = 1u << (pin & 31), *in = &GPIO_BANK(pin, A_GPIO_IN, A_GPIO_IN1);
++    uint32_t type = extract32(GPIO_REG(A_GPIO_PIN0 + 4 * pin), 7, 3);
++    bool rose = level && !(*in & bit), fell = !level && (*in & bit);
++    *in = level ? *in | bit : *in & ~bit;
++    if ((rose && (type == 1 || type == 3)) || (fell && (type == 2 || type == 3))) {
++        GPIO_BANK(pin, A_GPIO_STATUS, A_GPIO_STATUS1) |= bit;
++    }
++    esp32_gpio_update(s);
++}
+
++static void esp32_gpio_stimulus_tick(void *opaque)
++{
++    Esp32GpioState *s = ESP32_GPIO(opaque);
++    int64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
++    while (s->next_event < s->n_events && s->events[s->next_event].ns <= now) {
++        Esp32GpioEvent *e = &s->events[s->next_event++];
++        trace_esp32_gpio_stimulus(now, e->kind, e->index, e->value);
++        if (e->kind == 'a') {
++            s->adc1[e->index] = e->value;
++        } else if (e->kind == 'g') {
++            esp32_gpio_set_input(s, e->index, e->value);
++        } else {
++            qemu_system_shutdown_request(SHUTDOWN_CAUSE_GUEST_SHUTDOWN);
++        }
++    }
++    timer_mod(s->timer, (now / s->tick_ns + 1) * s->tick_ns);
++}
+
+ static uint64_t esp32_gpio_read(void *opaque, hwaddr addr, unsigned int size)
+ {
+     Esp32GpioState *s = ESP32_GPIO(opaque);
+-    uint64_t r = 0;
++    if (addr == A_GPIO_STRAP) {
++        return s->strap_mode;
++    }
++    if (!s->stimulus) {
++        return 0;
++    }
++    if (addr >= A_GPIO_ACPU_INT && addr <= A_GPIO_CPUSDIO_INT1) {
++        /* per-CPU views of the status: APP, APP NMI, PRO, PRO NMI, SDIO for each bank */
++        int hi = addr >= A_GPIO_ACPU_INT + 0x14;
++        return GPIO_REG(hi ? A_GPIO_STATUS1 : A_GPIO_STATUS) &
++               esp32_gpio_ena_mask(s, hi, 1u << ((addr - A_GPIO_ACPU_INT) / 4 % 5));
++    }
++    if (addr == A_GPIO_IN || addr == A_GPIO_IN1) {
++        /* an output-enabled pad reads back its driven level (Arduino's OUTPUT also enables input) */
++        uint32_t out = GPIO_REG(addr == A_GPIO_IN ? 0x04 : 0x10), ena = GPIO_REG(addr == A_GPIO_IN ? 0x20 : 0x2c);
++        return (GPIO_REG(addr) & ~ena) | (out & ena);
++    }
++    return GPIO_REG(addr);
++}
++
++static void esp32_gpio_write(void *opaque, hwaddr addr,
++                       uint64_t value, unsigned int size)
++{
++    Esp32GpioState *s = ESP32_GPIO(opaque);
++    uint32_t out = GPIO_REG(0x04), out1 = GPIO_REG(0x10);
++    if (!s->stimulus || addr == A_GPIO_STRAP || addr == A_GPIO_IN || addr == A_GPIO_IN1) {
++        return;
++    }
+     switch (addr) {
+-    case A_GPIO_STRAP:
+-        r = s->strap_mode;
++    case 0x08: case 0x14: case 0x24: case 0x30: case 0x48: case 0x54: /* *_W1TS */
++        GPIO_REG(addr - 4) |= value;
+         break;
+-
+-    default:
++    case 0x0c: case 0x18: case 0x28: case 0x34: case 0x4c: case 0x58: /* *_W1TC */
++        GPIO_REG(addr - 8) &= ~value;
+         break;
++    default:
++        GPIO_REG(addr) = value;
+     }
+-    return r;
++    if (out != GPIO_REG(0x04) || out1 != GPIO_REG(0x10)) {
++        trace_esp32_gpio_out(qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL), GPIO_REG(0x04), GPIO_REG(0x10));
++    }
++    esp32_gpio_update(s);
+ }
+
+-static void esp32_gpio_write(void *opaque, hwaddr addr,
+-                       uint64_t value, unsigned int size)
++static uint64_t esp32_sens_read(void *opaque, hwaddr addr, unsigned int size)
++{
++    Esp32GpioState *s = ESP32_GPIO(opaque);
++    uint32_t pads = extract32(s->sens_start1, 19, 12), ch = pads ? ctz32(pads) : 0;
++    if (addr != A_SENS_SAR_MEAS_START1) {
++        return 0; /* as the unimplemented SENS device this region overlays */
++    }
++    /* a oneshot conversion is done at once: MEAS1_DONE_SAR set, MEAS1_DATA_SAR from the stimulus */
++    return (s->sens_start1 & ~0x1ffffu) | (1u << 16) | (ch < 8 ? s->adc1[ch] : 0);
++}
++
++static void esp32_sens_write(void *opaque, hwaddr addr, uint64_t value, unsigned int size)
+ {
++    Esp32GpioState *s = ESP32_GPIO(opaque);
++    if (addr == A_SENS_SAR_MEAS_START1) {
++        s->sens_start1 = value;
++    }
+ }
+
++static const MemoryRegionOps sens_ops = {
++    .read = esp32_sens_read,
++    .write = esp32_sens_write,
++    .endianness = DEVICE_LITTLE_ENDIAN,
++    .impl.min_access_size = 4,
++};
++
+ static const MemoryRegionOps uart_ops = {
+     .read =  esp32_gpio_read,
+     .write = esp32_gpio_write,
+     .endianness = DEVICE_LITTLE_ENDIAN,
++    .impl.min_access_size = 4, /* narrow guest accesses become read-modify-write of the word */
+ };
+
+ static void esp32_gpio_reset_hold(Object *obj, ResetType type)
+ {
++    Esp32GpioState *s = ESP32_GPIO(obj);
++    uint32_t in = GPIO_REG(A_GPIO_IN), in1 = GPIO_REG(A_GPIO_IN1);
++    memset(s->regs, 0, sizeof(s->regs));
++    GPIO_REG(A_GPIO_IN) = in; /* pin levels come from outside the chip */
++    GPIO_REG(A_GPIO_IN1) = in1;
++    qemu_set_irq(s->irq, 0);
+ }
+
+ static void esp32_gpio_realize(DeviceState *dev, Error **errp)
+ {
++    Esp32GpioState *s = ESP32_GPIO(dev);
++    g_autofree char *text = NULL;
++    g_auto(GStrv) lines = NULL;
++    if (!s->stimulus) {
++        return;
++    }
++    if (strcmp(object_get_typename(OBJECT(dev)), TYPE_ESP32_GPIO) != 0) {
++        error_setg(errp, "%s: stimulus is modelled for the ESP32 only", object_get_typename(OBJECT(dev)));
++        return;
++    }
++    if (!g_file_get_contents(s->stimulus, &text, NULL, NULL)) {
++        error_setg(errp, "esp32.gpio: cannot read stimulus file %s", s->stimulus);
++        return;
++    }
++    lines = g_strsplit(text, "\n", -1);
++    s->events = g_new0(Esp32GpioEvent, g_strv_length(lines));
++    for (int i = 0; lines[i]; i++) {
++        Esp32GpioEvent *e = &s->events[s->n_events];
++        char kind[8];
++        int64_t ns;
++        uint32_t index = 0, value = 0;
++        int n;
++        g_strstrip(lines[i]);
++        if (!lines[i][0] || lines[i][0] == '#') {
++            continue;
++        }
++        n = sscanf(lines[i], "%" SCNd64 " %7s %" SCNu32 " %" SCNu32, &ns, kind, &index, &value);
++        if (!(n == 2 && strcmp(kind, "quit") == 0) &&
++            !(n == 4 && strcmp(kind, "gpio") == 0 && index < 40 && value < 2) &&
++            !(n == 4 && strcmp(kind, "adc1") == 0 && index < 8 && value < 4096)) {
++            n = -1;
++        }
++        if (n < 0 || ns < 0 || (s->n_events && ns < e[-1].ns)) {
++            error_setg(errp, "esp32.gpio: stimulus line %d is not '<ns> gpio <0-39> <0|1>', "
++                       "'<ns> adc1 <0-7> <0-4095>' or '<ns> quit' in time order: %s", i + 1, lines[i]);
++            return;
++        }
++        *e = (Esp32GpioEvent){ .ns = ns, .kind = kind[0], .index = index, .value = value };
++        s->n_events++;
++    }
++    if (!s->tick_ns) {
++        error_setg(errp, "esp32.gpio: stimulus-tick-ns must be positive");
++        return;
++    }
++    s->timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, esp32_gpio_stimulus_tick, s);
++    timer_mod(s->timer, 0);
+ }
+
+ static void esp32_gpio_init(Object *obj)
+@@ -67,12 +250,15 @@ static void esp32_gpio_init(Object *obj)
+                           TYPE_ESP32_GPIO, 0x1000);
+     sysbus_init_mmio(sbd, &s->iomem);
+     sysbus_init_irq(sbd, &s->irq);
++    memory_region_init_io(&s->sens, obj, &sens_ops, s, "esp32.sens.adc1", 0x400);
+ }
+
+ static Property esp32_gpio_properties[] = {
+     /* The strap_mode needs to be explicitly set in the instance init, thus, set
+      * the default value to 0. */
+     DEFINE_PROP_UINT32("strap_mode", Esp32GpioState, strap_mode, 0),
++    DEFINE_PROP_STRING("stimulus", Esp32GpioState, stimulus),
++    DEFINE_PROP_UINT32("stimulus-tick-ns", Esp32GpioState, tick_ns, 10000),
+     DEFINE_PROP_END_OF_LIST(),
+ };
+
+diff --git a/hw/gpio/trace-events b/hw/gpio/trace-events
+index b91cc7e..34dd773 100644
+--- a/hw/gpio/trace-events
++++ b/hw/gpio/trace-events
+@@ -41,3 +41,7 @@ stm32l4x5_gpio_read(char *gpio, uint64_t addr) "GPIO%s addr: 0x%" PRIx64 " "
+ stm32l4x5_gpio_write(char *gpio, uint64_t addr, uint64_t data) "GPIO%s addr: 0x%" PRIx64 " val: 0x%" PRIx64 ""
+ stm32l4x5_gpio_update_idr(char *gpio, uint32_t old_idr, uint32_t new_idr) "GPIO%s from: 0x%x to: 0x%x"
+ stm32l4x5_gpio_pins(char *gpio, uint16_t disconnected, uint16_t high) "GPIO%s disconnected pins: 0x%x levels: 0x%x"
++
++# esp32_gpio.c
++esp32_gpio_stimulus(int64_t ns, char kind, uint32_t index, uint32_t value) "ns=%" PRId64 " %c %u %u"
++esp32_gpio_out(int64_t ns, uint32_t out, uint32_t out1) "ns=%" PRId64 " out=0x%08x out1=0x%02x"
+diff --git a/hw/xtensa/esp32.c b/hw/xtensa/esp32.c
+index e000470..4886e26 100644
+--- a/hw/xtensa/esp32.c
++++ b/hw/xtensa/esp32.c
+@@ -414,6 +414,10 @@ static void esp32_soc_realize(DeviceState *dev, Error **errp)
+
+     qdev_realize(DEVICE(&s->gpio), &s->periph_bus, &error_fatal);
+     esp32_soc_add_periph_device(sys_mem, &s->gpio, DR_REG_GPIO_BASE);
++    sysbus_connect_irq(SYS_BUS_DEVICE(&s->gpio), 0, qdev_get_gpio_in(intmatrix_dev, ETS_GPIO_INTR_SOURCE));
++    if (s->gpio.stimulus) {
++        memory_region_add_subregion_overlap(sys_mem, DR_REG_SENS_BASE, &s->gpio.sens, 0);
++    }
+
+     for (int i = 0; i < ESP32_UART_COUNT; ++i) {
+         const hwaddr uart_base[] = {DR_REG_UART_BASE, DR_REG_UART1_BASE, DR_REG_UART2_BASE};
+diff --git a/include/hw/gpio/esp32_gpio.h b/include/hw/gpio/esp32_gpio.h
+index 163b41a..87813a2 100644
+--- a/include/hw/gpio/esp32_gpio.h
++++ b/include/hw/gpio/esp32_gpio.h
+@@ -10,6 +10,14 @@
+ #define ESP32_GPIO_CLASS(klass)     OBJECT_CLASS_CHECK(Esp32GpioClass, klass, TYPE_ESP32_GPIO)
+
+ REG32(GPIO_STRAP, 0x0038)
++REG32(GPIO_IN, 0x003c)
++REG32(GPIO_IN1, 0x0040)
++REG32(GPIO_STATUS, 0x0044)
++REG32(GPIO_STATUS1, 0x0050)
++REG32(GPIO_ACPU_INT, 0x0060)
++REG32(GPIO_CPUSDIO_INT1, 0x0084)
++REG32(GPIO_PIN0, 0x0088)
++REG32(SENS_SAR_MEAS_START1, 0x0054)
+
+ #define ESP32_STRAP_MODE_FLASH_BOOT 0x12
+ #define ESP32_STRAP_MODE_UART_BOOT  0x0f
+@@ -20,6 +28,16 @@ typedef struct Esp32GpioState {
+     MemoryRegion iomem;
+     qemu_irq irq;
+     uint32_t strap_mode;
++    /* Input stimulus: "<virtual_ns> gpio <pin> <level>" / "<virtual_ns> adc1 <ch> <raw>" lines */
++    char *stimulus;
++    uint32_t tick_ns;
++    struct Esp32GpioEvent *events;
++    size_t n_events, next_event;
++    QEMUTimer *timer;
++    uint32_t regs[0x1000 / 4];
++    MemoryRegion sens;          /* SENS (SAR ADC1 oneshot), mapped only with a stimulus */
++    uint32_t sens_start1;
++    uint16_t adc1[8];
+ } Esp32GpioState;
+
+ typedef struct Esp32GpioClass {

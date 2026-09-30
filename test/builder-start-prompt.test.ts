@@ -10,7 +10,8 @@
  * another surface owns, says each duty once, carries no measured domain, and fits the turn budget.
  * Inside that envelope the wording is the author's. Where a clause exists for a recorded reason,
  * that reason lives in the producer's comment, which is what a reader has open when the clause is
- * being changed.
+ * being changed. The anchors that remain are the publication boundary's, because a boundary is a
+ * claim about what text names, and a property cannot say which route it closes.
  */
 import { describe, expect, it } from "bun:test";
 
@@ -22,6 +23,7 @@ import { SYSTEM_SENTENCES, expectNoRestatedDuty, flat, overlap } from "./helpers
 // the barrel says the session owns the prompt text.
 import {
   INTENT_CLAUSE,
+  NO_GRADER_IN_REACH,
   PUBLICATION_CLAUSE,
   SCOPE_CLAUSE,
   VERIFICATION_CLAUSE,
@@ -29,6 +31,7 @@ import {
 } from "../src/author/builder-start-prompt.ts";
 import { MEMORY_FILE, SCRATCHPAD_FILE } from "../src/author/builder-memory.ts";
 import { SUBMIT_DESCRIPTION } from "../src/gate/submit-tool.ts";
+import { EPOCH_REVIEW_PROMPT } from "../src/review/epoch-review-prompt.ts";
 import { renderBatteryContract } from "../src/run/climb-readout.ts";
 import { renderProbeSizing } from "../src/run/battery-sizing.ts";
 import { directKickoff } from "../src/run/direct-input.ts";
@@ -48,6 +51,15 @@ const SOURCE_TEXT = [...new Bun.Glob("**/*.ts").scanSync(SRC_DIR)]
 
 const PROMPT = builderSystemPrompt(true);
 
+/** The adviser bullet of the tools contract, which the Builder reads beside the system prompt when
+ *  it writes a tool. */
+const ADVISER_FENCE = flat(
+  readFileSync(join(STARTER_DIR, "starter-pack/contract.md"), "utf8")
+    .split("\n- ")
+    .find((bullet) => bullet.startsWith("An adviser never"))
+    ?.split("\n\n")[0] ?? "",
+);
+
 describe("Builder start prompt", () => {
   /** The prompt is paid on every turn of every authoring session; STARTER.md is paid once. So the
    *  loop, the gates and the walls live there and intent and safety live here (tenet 14), and the
@@ -59,7 +71,7 @@ describe("Builder start prompt", () => {
    *  authored task with the measured solver and returns a verdict, so that judgement has an
    *  instrument and the prose that substituted for it is gone. */
   it("fits the turn budget with the slack the rehearsal bought", () => {
-    expect(bytes(`${PROMPT}\n`)).toBeLessThanOrEqual(6_100);
+    expect(bytes(`${PROMPT}\n`)).toBeLessThanOrEqual(7_000);
   });
 
   it("delivers every clause exactly once, intent first and shell rules last", () => {
@@ -75,16 +87,6 @@ describe("Builder start prompt", () => {
     expect(at(INTENT_CLAUSE[0])).toBe(0);
     expect(at(SCOPE_CLAUSE[0])).toBeGreaterThan(at(INTENT_CLAUSE[1]));
     expect(at(DCG_RULES.join("\n"))).toBeGreaterThan(at(VERIFICATION_CLAUSE[0]));
-  });
-
-  /** A Builder can declare its reference's sizing recipe private and then write that same recipe
-   *  into BUILT_AGENTS.md as guidance, in its own words, where no literal comparison of the two
-   *  texts can see it. So the withheld list holds decisions beside controls, and "in any wording"
-   *  sits on the surface rather than on one item: what is withheld is the decision, and a
-   *  paraphrase of it publishes it as surely as its row. */
-  it("withholds a private decision from every wording, not only from its row", () => {
-    expect(PROMPT).toContain("private controls and decisions");
-    expect(PROMPT).toContain("from everything the solver reads, in any wording, tool results included");
   });
 
   /** Every number a Builder may act on has an owner elsewhere: the walls are its own
@@ -169,7 +171,8 @@ describe("Builder start prompt", () => {
   });
 
   /** The kickoff sits beside the request on the first turn, which makes it the natural place to
-   *  restate a duty the system prompt already carries; the same measure holds it to one owner. */
+   *  restate a duty the system prompt already carries; the same measure holds it to one owner. Its
+   *  short sentences are measured too, since the overlap is over the shorter sentence's words. */
   it("leaves the kickoff no duty the system prompt already states", () => {
     const kickoff = directKickoff("designs steel roof trusses to Eurocode 3", {
       files: [],
@@ -185,24 +188,9 @@ describe("Builder start prompt", () => {
     }
   });
 
-  /** The difficulty judgement has an instrument, and the battery contract every round carries is
-   *  the one surface that points at it, so the prompt carries neither that pointer nor a recipe. The
-   *  counts stay with the authoring context that knows this run's battery size (AGENTS.md prior 10:
-   *  no course is prescribed). */
-  /** Firmware 7a97af's first tasks each combined several requirements and every solve still passed in
-   *  minutes, so the intent clause defines depth by requirements that compete for one margin, and it
-   *  is the one surface that defines it. */
-  it("asks for depth in the first tasks, as requirements that compete", () => {
-    expect(flat(INTENT_CLAUSE.join(" "))).toContain("Build that demand into the first tasks, not later:");
-    expect(PROMPT).toContain(
-      "several of the request's requirements act together on a single answer, so that meeting one spends the margin another needs.",
-    );
-    expect(PROMPT).not.toContain("transcription");
-  });
-
   /** The contract, the sizing sentences and the trial tool are read at their own moments, beside the
    *  system prompt; each names its trigger and leaves the duty to the clause that owns it. */
-  it("leaves the contract, the sizing sentences and the trial tool no duty the system prompt states", () => {
+  it("leaves the contract and the sizing sentences no duty the system prompt states", () => {
     for (const text of [
       renderBatteryContract(25),
       renderBatteryContract(10, 5),
@@ -213,12 +201,15 @@ describe("Builder start prompt", () => {
     }
   });
 
-  /** The contract once restated the publication clause in its own words every round; the system
-   *  prompt owns it, including the tie-break and fallback rules only the restatement named. */
-  it("owns publication, which the battery contract no longer restates", () => {
-    expect(PROMPT).toContain("tie-break and fallback rules");
-    expect(PROMPT).toContain("solved task-specific fixtures");
-    expect(flat(renderBatteryContract(25))).not.toContain("Publish");
+  /** Firmware 7a97af's first tasks each combined several requirements and every solve still passed in
+   *  minutes, so the intent clause defines depth by requirements that compete for one margin, and it
+   *  is the one surface that defines it. */
+  it("asks for depth in the first tasks, as requirements that compete", () => {
+    expect(flat(INTENT_CLAUSE.join(" "))).toContain("Build that demand into the first tasks, not later:");
+    expect(PROMPT).toContain(
+      "several of the request's requirements act together on a single answer, so that meeting one spends the margin another needs.",
+    );
+    expect(PROMPT).not.toContain("transcription");
   });
 
   it("points at measurement for difficulty and prescribes no course", () => {
@@ -240,9 +231,10 @@ describe("Builder start prompt", () => {
 
   /** A Builder told that "verifier-required" is an available answer reaches for it: it settles
    *  minutes in, resubmits the same tree when refused, and the run ends with no battery at all. So
-   *  no Builder surface names it. The literal has two segments, so the code sweep above — which reads kebab literals of three or more — does not
-   *  see it. The submit description is held too, because a tool description is in front of the
-   *  Builder on every turn and is where a retry rule is most naturally read. */
+   *  no Builder surface names it. The literal has two segments, so the code sweep above — which reads
+   *  kebab literals of three or more — does not see it. The submit description is held too, because a
+   *  tool description is in front of the Builder on every turn and is where a retry rule is most
+   *  naturally read. */
   it("names no settlement the controller alone may declare", () => {
     for (const surface of [PROMPT, STARTER_DOC, STARTER_ENTRY, SUBMIT_DESCRIPTION]) {
       expect(surface).not.toContain("verifier-required");
@@ -257,6 +249,68 @@ describe("Builder start prompt", () => {
   it("announces public web search only when the transport carries it", () => {
     expect(builderSystemPrompt(true)).toContain("You can search the web.");
     expect(builderSystemPrompt(false)).not.toContain("You can search the web.");
+  });
+});
+
+/** Publication is the system prompt's, stated once there, and the tools contract and the Epoch
+ *  Reviewer read the same line from it. Firmware 7a97af's accepted versions carried
+ *  `agent/rules.ts` byte-identical to `correctness-model/rules.ts`: its `expected_behaviour` tool
+ *  took a scenario the solver chose, never the candidate, and returned what the checks expected
+ *  there, and nine of ten measured traces called it. A ceiling that names only analysis of a
+ *  candidate leaves that route open, so the one ceiling names both. Shared public computation stays
+ *  the solver's, and nothing refuses a byte copy: the copy is a lead, never a verdict. */
+describe("the publication boundary", () => {
+  /** A Builder can declare its reference's sizing recipe private and then write that same recipe
+   *  into BUILT_AGENTS.md as guidance, in its own words, where no literal comparison of the two
+   *  texts can see it. So the withheld list holds decisions beside controls, and "in any wording"
+   *  sits on the surface rather than on one item. The contract once restated the clause in its own
+   *  words every round; the prompt owns it, including the tie-break and fallback rules only the
+   *  restatement named. */
+  it("withholds every private decision in any wording, and the battery contract restates none of it", () => {
+    for (const anchor of [
+      "private controls and decisions",
+      "from everything the solver reads, in any wording, tool results included",
+      "tie-break and fallback rules",
+      "solved task-specific fixtures",
+    ]) {
+      expect(PROMPT, anchor).toContain(anchor);
+    }
+    expect(flat(renderBatteryContract(25))).not.toContain("Publish");
+  });
+
+  it("closes both routes to the grader in one ceiling: analysing a candidate and computing a check's expected result", () => {
+    expect(NO_GRADER_IN_REACH).toMatch(/analyses a candidate the way a check does/);
+    expect(NO_GRADER_IN_REACH).toMatch(/computes what a check expects for a case the solver names/);
+    // The practitioner's own toolchain and a bounded search stay in the solver's hands.
+    expect(PROMPT).toContain("the real toolchain it builds with");
+    // So do the field's instruments and the solver's own tests, though a check runs the same tool:
+    // sharing an operation is not access to the grader.
+    expect(NO_GRADER_IN_REACH).toContain(
+      "Running the field's own compiler or simulator on the solver's candidate",
+    );
+    expect(NO_GRADER_IN_REACH).toContain("nor is a test the solver writes");
+  });
+
+  it("gives the Epoch Reviewer the Builder's ceiling verbatim, so both judge a tool by one line", () => {
+    expect(EPOCH_REVIEW_PROMPT.split(NO_GRADER_IN_REACH).length - 1).toBe(1);
+    // A live reviewer cleared a tool returning a check's expected trace from the published rule as
+    // "a restatement of published constants" (2026-10-01): the second route needs no protected data.
+    expect(EPOCH_REVIEW_PROMPT).toContain(
+      "even when it computes only from published rules and never reads the candidate",
+    );
+  });
+
+  it("fences an adviser from a check's expected result in the tools contract, without restating the ceiling", () => {
+    expect(ADVISER_FENCE).toContain("what a check expects for a scenario the solver chooses");
+    // Leniency: code the correctness model also runs may serve an adviser when it is public
+    // computation, so a copy is a question for the reader, not a refusal.
+    expect(ADVISER_FENCE).toContain("published rules, constants and standard computation");
+    // The guide may say how the solver's shell runs an installed instrument; what stays out of reach
+    // is a check's verdict and its expected result.
+    expect(ADVISER_FENCE).toContain("may say how the solver's shell runs an installed compiler or simulator");
+    expect(ADVISER_FENCE).toContain("names no command that returns a check's verdict or its expected result");
+    expect(ADVISER_FENCE).not.toContain("the way the check runs it");
+    expectNoRestatedDuty(ADVISER_FENCE);
   });
 });
 

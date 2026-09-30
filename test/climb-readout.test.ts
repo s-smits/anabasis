@@ -258,7 +258,7 @@ describe("the measured facts the author reads", () => {
     expect(lines).toEqual([
       "- r1 (P1, T1, S1): 0 passed of 6 verified, 0 unaccepted, 0 non-results.",
       "- r1 (P1, T1, S1): 0 passed of 0 verified, 6 unaccepted, 0 non-results.",
-      "- r1 (P1, T1, S1): 0 passed of 0 verified, 6 unaccepted (4 ran to the 120-minute solve wall), 0 non-results.",
+      "- r1 (P1, T1, S1): 0 passed of 0 verified, 6 unaccepted, 0 non-results (4 ran to the 120-minute solve wall).",
       "- r1 (P1, T1, S1): 0 passed of 0 verified, 0 unaccepted, 6 non-results.",
     ]);
   });

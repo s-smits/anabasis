@@ -140,15 +140,30 @@ describe("a product past the probe keeps the smallest size that still holds its 
 
 describe("the probe sentence", () => {
   it("states the rule a probe graduates on without a share to author towards", () => {
-    expect(renderProbeSizing(PROBE, 25)).toBe(
+    expect(renderProbeSizing(PROBE, 25, null)).toBe(
       "Battery sizing: this product's batteries have 5 to 10 tasks until one passes some of its scored cases and the controller reads it as hard enough, then 25.",
     );
   });
 
-  it("is absent at an exact size, so nothing past the probe anchors a score", () => {
+  it("is absent past the probe, so nothing there anchors a score", () => {
     for (const landing of [landed(22, 25), landed(15, 25), none]) {
-      expect(renderProbeSizing(batterySizingGate(25, 25, landing), 25)).toBeNull();
+      expect(renderProbeSizing(batterySizingGate(25, 25, landing), 25, 25)).toBeNull();
     }
+  });
+
+  // Tasks added at the demand the probe's passing families met passed, and carried the graduated
+  // battery back above the aim, so the round a probe graduates in asks for the hardest families'.
+  it("asks a graduating round's added tasks for the demand of the hardest families, and no other round", () => {
+    const demand = "write the tasks you add at the demand of that battery's hardest families";
+    const graduation = required(
+      renderProbeSizing(batterySizingGate(25, 6, landed(2, 6)), 25, 6),
+      "a graduation sentence",
+    );
+    expect(graduation).toContain(demand);
+    // No count, share or score to author towards (prior 10).
+    expect(graduation).not.toMatch(/\d|aim/);
+    expect(renderProbeSizing(batterySizingGate(25, 6, landed(5, 6)), 25, 6)).not.toContain(demand);
+    expect(renderProbeSizing(batterySizingGate(25, 25, landed(15, 25)), 25, 25)).toBeNull();
   });
 });
 
@@ -269,7 +284,8 @@ describe("runBuildStep battery sizing", () => {
     expect(round.minTasks).toBeUndefined();
     // Sizing reads the whole probe, 4 of 8; the readout reads the changed subset, 0 of 4.
     expect(round.note).toContain("passed 0 of 4");
-    expect(round.note).not.toContain("Battery sizing");
+    expect(round.note).toContain(required(renderProbeSizing(exact(25), 25, 8), "a graduation sentence"));
+    expect(round.note).not.toContain("the controller reads it as hard enough");
   });
 
   it("keeps a probe above the aim on probes and says what it must pass", async () => {
@@ -327,7 +343,7 @@ describe("runBuildStep battery sizing", () => {
     const fresh = await sizedRound(probeRoot(false), null, "build");
     expect(fresh).toMatchObject({ expectedTasks: 10, minTasks: 5 });
     const note = required(fresh.note, "a sizing note");
-    expect(note).toContain(renderProbeSizing(PROBE, 25) ?? "");
+    expect(note).toContain(renderProbeSizing(PROBE, 25, null) ?? "");
     for (const count of ["verified pass", "aim", "finds no limit"]) expect(note).not.toContain(count);
   });
 
@@ -337,6 +353,6 @@ describe("runBuildStep battery sizing", () => {
     expect(await sizedRound(probeRoot(true, 25, 22), null)).toMatchObject({ expectedTasks: 11 });
     expect(await sizedRound(probeRoot(true, 25, 22, declared), null)).toMatchObject({ expectedTasks: 25 });
     const fresh = await sizedRound(probeRoot(false, 8, 4, declared), null, "build");
-    expect(fresh.note).toBe(required(renderProbeSizing(PROBE, 25), "a probe sentence"));
+    expect(fresh.note).toBe(required(renderProbeSizing(PROBE, 25, null), "a probe sentence"));
   });
 });

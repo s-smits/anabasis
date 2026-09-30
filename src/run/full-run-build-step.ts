@@ -250,13 +250,14 @@ export async function runBuildStep(
   const domainDir = selectedProductDir(repoRoot, manifest.slug);
   const memory = composeAuthoringMemory(input, decision, domainDir, difficulty);
   const { advice, band } = memory;
+  const adopted = adoptedTaskCount(domainDir);
   const tasks = batterySizingGate(
     manifest.expectedTasks,
-    adoptedTaskCount(domainDir),
+    adopted,
     () => adoptedProbeLanding(memory.read, domainDir),
     band,
   );
-  const advisory = [memory.advisoryNote, renderProbeSizing(tasks, manifest.expectedTasks) ?? ""]
+  const advisory = [memory.advisoryNote, renderProbeSizing(tasks, manifest.expectedTasks, adopted) ?? ""]
     .filter((part) => part !== "")
     .join("\n\n");
   const buildPhase = observer.phase({

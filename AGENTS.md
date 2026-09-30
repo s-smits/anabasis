@@ -243,9 +243,11 @@ All three are read on verified cases.
   1/n to n−1/n. A probe at n/n found no limit and one at 0/n usually a defect, so neither is a rung. It
   graduates to the requested size once its bracket also lands at or under the aim (`batterySizingGate`),
   since every graduation from a near-full bracket (5/6, 5/6, 7/8) went straight back to a near-full
-  battery (25/25, 21/23, 24/25). A case settled against its check leaves the sample (`admittedClimbRow`);
-  without that, f0fb83's 2/6 and the 3/6 of 2d7812 and 3e4693 graduated on one settled check and
-  measured a full pass next.
+  battery (25/25, 21/23, 24/25). The round it graduates in asks for the tasks it adds at the demand of
+  the probe's hardest families, not of those that passed (`renderProbeSizing`), because tasks added at
+  the passing demand read 12 of 13 recorded successors too easy even with every probe fail held. A case
+  settled against its check leaves the sample (`admittedClimbRow`); without that, f0fb83's 2/6 and the
+  3/6 of 2d7812 and 3e4693 graduated on one settled check and measured a full pass next.
 - **Curriculum filtering** is the climb after it, at full size, between 1/25 and 24/25. RL curriculum
   filtering drops prompts every sample solves or none does, because they carry no signal. In the same way
   a battery at 0/n or n/n says nothing about where the solver stops. The unit here is the battery, since
@@ -506,7 +508,7 @@ closes it.
 - **Graduation dilutes a bracket.** A probe at 2/6 or 3/6 grows to 25 tasks and the ~19 added tasks
   pass. That happened in 10 of 13 recorded regresses, and with every probe fail held, 12 of 13 would
   still read too easy. The Builder heard only "Task count: exactly N tasks". Owner:
-  `renderProbeSizing`; the sentence naming the hardest families' demand is on claude/graduation-demand.
+  `renderProbeSizing`, which now names the hardest families' demand at graduation, not yet measured.
 - **The worked example is a toy.** The one worked domain in `starter-pack/examples.md` is a duty
   roster: one or two shifts, one public rule, a greedy reference, and families that differ in size. Its
   list of targets the solver does not reliably meet leads with three limit-tightening routes and puts

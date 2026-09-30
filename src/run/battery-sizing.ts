@@ -29,8 +29,8 @@
  * reading is never traded for the saving, and the size stays a condition code owns, which is why
  * the count reaches the author through `taskCountSentence` alone and nothing here tells a Builder
  * what its next battery is expected to score. The gate returns a count and no note restating the
- * landing. The one sentence a probe-sized round adds is `renderProbeSizing`, which lives here beside
- * the rule it states.
+ * landing. The one sentence a probe-sized or graduating round adds is `renderProbeSizing`, which
+ * lives here beside the rule it states.
  */
 import { existsSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
@@ -128,12 +128,22 @@ export function batterySizingGate(
     : { ...BATTERY_SIZE.probe };
 }
 
-/** The probe sentence, when the round's size is a probe range below the requested count. It names
- *  neither the aim nor its share: both are the controller's, and a share stated here was a count to
- *  author towards (AGENTS.md prior 10). */
-export function renderProbeSizing(tasks: TaskCount, requested: number): string | null {
-  if (tasks.min === tasks.max) return null;
-  return `Battery sizing: this product's batteries have ${tasks.min} to ${tasks.max} tasks until one passes some of its scored cases and the controller reads it as hard enough, then ${requested}.`;
+/** The probe sentence, when the round's size is a probe range below the requested count, and the
+ *  graduation sentence, when a probe-sized adopted battery grows past the probe, which asks for the
+ *  added tasks at the demand of the hardest families (AGENTS.md "The three parts of the climb").
+ *  Neither names a family, the aim or its share: the aim is the controller's, and a share stated
+ *  here was a count to author towards (AGENTS.md prior 10). */
+export function renderProbeSizing(
+  tasks: TaskCount,
+  requested: number,
+  adoptedTasks: number | null,
+): string | null {
+  const probeMax = BATTERY_SIZE.probe.max;
+  if (tasks.min < tasks.max) {
+    return `Battery sizing: this product's batteries have ${tasks.min} to ${tasks.max} tasks until one passes some of its scored cases and the controller reads it as hard enough, then ${requested}.`;
+  }
+  if (adoptedTasks === null || adoptedTasks > probeMax || tasks.min <= probeMax) return null;
+  return "Battery sizing: this battery is larger than the latest admitted one, so write the tasks you add at the demand of that battery's hardest families rather than that of the families that passed, since tasks at a demand the solver already meets only dilute what this battery can say about where the solver stops.";
 }
 
 /** The adopted battery's task count, or null before a product is adopted. Measurement validates the

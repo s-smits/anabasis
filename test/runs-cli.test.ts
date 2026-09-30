@@ -485,7 +485,6 @@ describe("resume", () => {
     expect(plan.plan.command).toEqual([
       "bun",
       ".claude/skills/launch-run/scripts/launch.ts",
-      "custom",
       "--model",
       "opus",
       "--budget",
@@ -544,12 +543,12 @@ describe("resume", () => {
     expect(differing.plan.command).toContain("1320");
   });
 
-  it("continues a custom run from the recorded prompt when the receipt names no preset", () => {
+  it("continues a standard run from the recorded prompt when the receipt names no preset", () => {
     const root = checkout();
     writeOpening(root, "slug-aaaaaaaa-1", "run-1", OPENED_AT);
     const evidence = readRunEvidence(onlyRun(root));
     // The prompt is the whole input, so a receipt without a preset name withholds nothing a
-    // continuation needs. `presetOf` returning null already says the launcher is told `custom`.
+    // continuation needs, and `--prompt` alone tells the launcher the run is a standard one.
     const dir = writeLaunch(root, "run-1", "writes shell completions for a CLI", {
       project: "slug-aaaaaaaa-1",
       preset: null,
@@ -560,7 +559,7 @@ describe("resume", () => {
     expect(plan.plan.command.slice(0, 3)).toEqual([
       "bun",
       ".claude/skills/launch-run/scripts/launch.ts",
-      "custom",
+      "--model",
     ]);
     expect(plan.plan.command.slice(-4)).toEqual([
       "--prompt",

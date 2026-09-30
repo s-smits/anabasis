@@ -139,7 +139,7 @@ export function resumePlan(opening: OpeningFacts | null, launch: LaunchRecord | 
   const command = [
     "bun",
     LAUNCHER,
-    preset ?? "custom",
+    ...(preset === null ? [] : [preset]),
     "--model",
     condition,
     "--budget",

@@ -18,6 +18,11 @@ export const PRESETS = {
     "Design lightweight 3D steel trusses around irregular supports and forbidden volumes, choosing joint positions, connectivity and catalogue sections within strict mass limits.\nMeet strength, buckling and deflection requirements under self-weight, reversing wind and asymmetric live loads, including geometric nonlinearity and specified single-member-loss scenarios.",
 };
 const PRESET_PROMPTS: ReadonlyMap<string, string> = new Map(Object.entries(PRESETS));
+/**
+ * What a run launched from `--prompt` is called, in its id and receipt. `--prompt` alone asks for one;
+ * naming it again asks for replicas. Launches before 2026-09-30 called it `custom`, which still parses.
+ */
+export const STANDARD = "standard";
 export const SLOTS = ["builder", "built", "review"] as const;
 /** The model one `--model` name selects, and its effort on each slot in `SLOTS` order. */
 export const CONDITIONS = {
@@ -116,8 +121,8 @@ export type LaunchOptions = Partial<Record<(typeof OPTIONAL_VALUES)[number], str
   conditions: Condition[];
 };
 
-const PRESET_NAMES = [...PRESET_PROMPTS.keys(), "custom"].join("|");
-export const HELP = `Usage: bun .claude/skills/launch-run/scripts/launch.ts <${PRESET_NAMES}>... [options]
+const PRESET_NAMES = [...PRESET_PROMPTS.keys(), STANDARD].join("|");
+export const HELP = `Usage: bun .claude/skills/launch-run/scripts/launch.ts [${PRESET_NAMES}]... [options]
   --model sol,luna,astra,opus,fable Standard model presets; default opus (legacy alias: --condition)
   --source <ref|sha|pr:number>     Default current origin/main
   --budget N --tasks N            Defaults 1320 provider turns and 25 tasks per run
@@ -128,7 +133,7 @@ export const HELP = `Usage: bun .claude/skills/launch-run/scripts/launch.ts <${P
   --kill-after-ms N               Operator SIGTERM at N ms after launch begins; 30 s grace then service removal
   --run ID                       One preset and condition only
   --project ID                   Continue this existing project; one preset and condition only
-  --prompt TEXT                  Verbatim prompt of one or two lines, with custom only
+  --prompt TEXT                  Verbatim prompt of one or two lines; its runs are named standard
   --env-file /path                Claude token; default main checkout/.env
   --codex-home /path              Codex auth; default current CODEX_HOME or ~/.codex
   --output-dir /path              Parent of fresh worktrees; default beside main checkout
@@ -176,9 +181,11 @@ function refuseValues(options: LaunchOptions, refuse: ExitWith): void {
  * `refuseValues` checks.
  */
 export function launchOptions(parsed: ReturnType<typeof parseCliArgs>, refuse: ExitWith): LaunchOptions {
-  const { single, flags, positionals: names } = parsed;
+  const { single, flags, positionals } = parsed;
   if (single.has("model") && single.has("condition")) refuse("--model and --condition are one option");
   const condition = single.get("model") ?? single.get("condition") ?? "opus";
+  const names = positionals.map((name) => (name === "custom" ? STANDARD : name));
+  if (names.length === 0 && single.has("prompt")) names.push(STANDARD);
   const gate = single.get("gate") ?? "auto";
   const options: LaunchOptions = {
     ...Object.fromEntries(
@@ -196,13 +203,13 @@ export function launchOptions(parsed: ReturnType<typeof parseCliArgs>, refuse: E
     conditions: condition.split(",").map((name) => conditionName(name, refuse)),
   };
   if (options.help || options.list) return options;
-  if (names.length === 0) refuse(`name a preset: ${PRESET_NAMES.replaceAll("|", ", ")}`);
+  if (names.length === 0) refuse(`give --prompt or name a preset: ${PRESET_NAMES.replaceAll("|", ", ")}`);
   for (const name of names) {
-    if (!PRESET_PROMPTS.has(name) && name !== "custom") refuse(`unknown preset ${name}; use --list`);
+    if (!PRESET_PROMPTS.has(name) && name !== STANDARD) refuse(`unknown preset ${name}; use --list`);
   }
   if (new Set(options.conditions).size !== options.conditions.length) refuse("name each condition once");
-  if (names.includes("custom") !== (options.prompt !== undefined)) {
-    refuse("custom and --prompt must be supplied together");
+  if (names.includes(STANDARD) !== (options.prompt !== undefined)) {
+    refuse(`${STANDARD} runs the --prompt text, so each needs the other`);
   }
   refuseValues(options, refuse);
   return options;
@@ -228,7 +235,7 @@ export function planRuns(options: LaunchOptions, parent: string, suffix: string)
           : `-r${names.slice(0, index + 1).filter((item) => item === name).length}`;
       const runId = options.run ?? `${name}-${condition}${replica}-${suffix}`;
       const dir = join(parent, `ana-run-${runId}`);
-      const prompt = name === "custom" ? options.prompt : PRESET_PROMPTS.get(name);
+      const prompt = name === STANDARD ? options.prompt : PRESET_PROMPTS.get(name);
       if (prompt === undefined) throw new Error(`missing prompt for ${name}`);
       return {
         runId,

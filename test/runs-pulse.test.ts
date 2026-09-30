@@ -104,7 +104,7 @@ function texts(before: PulseReading | undefined, after: PulseReading): string[] 
 describe("runs pulse", () => {
   it("drops the launch instant from the label and keeps what tells runs apart", () => {
     expect(pulseLabel(RUN_ID)).toBe("truss-opus-371f8f");
-    expect(pulseLabel("custom-opus-20260930T091500123Z-pr75-669de6c")).toBe("custom-opus-pr75-669de6c");
+    expect(pulseLabel("standard-opus-20260930T091500123Z-pr75-669de6c")).toBe("standard-opus-pr75-669de6c");
   });
 
   it("says nothing on the first look and nothing when no recorded byte moved", () => {

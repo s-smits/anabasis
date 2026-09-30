@@ -26,7 +26,7 @@ driver is needed. A launch request authorises the command.
 bun .claude/skills/launch-run/scripts/launch.ts truss --model astra --source <resolved-full-sha>
 bun .claude/skills/launch-run/scripts/launch.ts truss --model sol,opus --source <resolved-full-sha>
 bun .claude/skills/launch-run/scripts/launch.ts truss truss --model sol,astra --source <resolved-full-sha> --stop-after-ms 14400000
-bun .claude/skills/launch-run/scripts/launch.ts custom --prompt "<the user's exact one-line prompt>" --source <resolved-full-sha>
+bun .claude/skills/launch-run/scripts/launch.ts --prompt "<the user's exact one-line prompt>" --source <resolved-full-sha>
 ```
 
 To continue a named run's project when the user asks for it ("continue from the truss run
@@ -35,7 +35,11 @@ or prompt. The controller then continues from the recorded campaign evidence on 
 the launcher refuses an opening that created a fresh project instead. There is no steering text:
 the Builder chooses the next experiment from evidence.
 
-Use one or two lines through `custom --prompt`, or the `truss` preset in `scripts/options.ts` (`--list` prints it).
+Use one or two lines through `--prompt`, or the `truss` preset in `scripts/options.ts` (`--list` prints it).
+A `--prompt` run is named `standard`; name `standard` again for replicas, and `custom`, its name
+before 2026-09-30, still parses. A run id reads `<preset>-<model>-<instant>-pr<N>-<sha7>`: the pull
+request that carried the source commit, or `main-<sha7>` on main's head, and the commit's first
+seven hex. `runs pulse` drops the instant.
 Public files enter through `fullrun --context`; do not create `asks/`, verifier manifests or a second domain brief.
 Put the requested pair in one invocation. It prepares each worktree once, runs one TypeScript
 probe per run, settles the shared source's gate once, then starts the runs in quick succession.

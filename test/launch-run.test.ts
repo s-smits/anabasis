@@ -59,8 +59,8 @@ interface ModelSlot {
   enabled?: boolean;
 }
 
-// A custom one-liner beside the truss preset gives a batch two distinct presets and projects.
-const CUSTOM = ["custom", "--prompt", "Design steel roof trusses to Eurocode 3."] as const;
+// A standard one-liner beside the truss preset gives a batch two distinct presets and projects.
+const CUSTOM = ["standard", "--prompt", "Design steel roof trusses to Eurocode 3."] as const;
 const dirs: string[] = [];
 const source = { commit: "a".repeat(40), sourceDigest: "b".repeat(64), dirty: false };
 const manager = serviceManager();
@@ -443,23 +443,26 @@ describe("one-command run launcher", () => {
     });
   });
 
-  it("preserves custom prompt punctuation as one argument and forwards a time cap", () => {
+  it("names a --prompt run standard, whether it is named standard, custom or not at all", () => {
+    for (const names of [[], ["standard"], ["custom"]]) {
+      const plans = planRuns(parseOptions([...names, "--prompt", "Write a CLI."]), "/tmp/launch", "at");
+      expect(plans.map((plan) => [plan.preset, plan.runId, plan.prompt])).toEqual([
+        ["standard", "standard-opus-at", "Write a CLI."],
+      ]);
+    }
+    const replicas = planRuns(parseOptions(["standard", "custom", "--prompt", "Write a CLI."]), "/tmp", "at");
+    expect(replicas.map((plan) => plan.runId)).toEqual(["standard-opus-r1-at", "standard-opus-r2-at"]);
+  });
+
+  it("preserves prompt punctuation as one argument and forwards a time cap", () => {
     const prompt =
       "Build $(touch /tmp/never) with `literal` and 'quotes'.\nPreserve the second line verbatim.";
-    const options = parseOptions(["custom", "--prompt", prompt, "--run", "one-run"]);
+    const options = parseOptions(["--prompt", prompt, "--run", "one-run"]);
     const plan = required(planRuns(options, "/tmp/launch", "unused")[0], "plan");
     expect(parseFullRunArgs(fullrunArgs(plan, options, source)).prompt).toBe(prompt);
     // A time cap ends a run at a round boundary instead of a kill; the launched tree's own parser
     // reads the forwarded flag, so it is only forwarded here.
-    const bounded = parseOptions([
-      "custom",
-      "--prompt",
-      prompt,
-      "--run",
-      "one-run",
-      "--stop-after-ms",
-      "14400000",
-    ]);
+    const bounded = parseOptions(["--prompt", prompt, "--run", "one-run", "--stop-after-ms", "14400000"]);
     expect(fullrunArgs(plan, bounded, source).join(" ")).toContain("--stop-after-ms 14400000");
   });
 
@@ -475,11 +478,13 @@ describe("one-command run launcher", () => {
     [["truss", "--run", "../old"], RUN_REFUSAL],
     [["truss", "--condition", "sol,opus", "--run", "one-id"], RUN_REFUSAL],
     [["unknown"], "unknown preset unknown; use --list"],
-    [["truss", "--prompt", "replacement"], "custom and --prompt must be supplied together"],
-    [["custom", "--prompt", "three\nprompt\nlines"], PROMPT_REFUSAL],
-    [["custom", "--prompt", "\nblank"], PROMPT_REFUSAL],
-    [["custom", "--prompt", "text\0"], PROMPT_REFUSAL],
-    [["custom", "--prompt", "text\r"], PROMPT_REFUSAL],
+    [["truss", "--prompt", "replacement"], "standard runs the --prompt text, so each needs the other"],
+    [["standard"], "standard runs the --prompt text, so each needs the other"],
+    [[], "give --prompt or name a preset: truss, standard"],
+    [["--prompt", "three\nprompt\nlines"], PROMPT_REFUSAL],
+    [["--prompt", "\nblank"], PROMPT_REFUSAL],
+    [["--prompt", "text\0"], PROMPT_REFUSAL],
+    [["--prompt", "text\r"], PROMPT_REFUSAL],
     [["truss", "--env-file", "relative"], "--env-file must be absolute"],
     [["truss", "--claim", "unsupported"], 'unknown option "--claim"'],
     [["truss", "truss", "--project", "old-project"], PROJECT_REFUSAL],
@@ -577,7 +582,7 @@ describe("one-command run launcher", () => {
     const fixture = batchFixture();
     const result = await launchBatch(fixture.plans, fixture.options, fixture.context, fixture.command);
     expect(result).toHaveLength(2);
-    expect(result.map((item) => launched(item).project)).toEqual(["custom-project", "truss-project"]);
+    expect(result.map((item) => launched(item).project)).toEqual(["standard-project", "truss-project"]);
     expect(result.every((item) => !hasText(launched(item).error))).toBe(true);
     const gates = fixture.calls.filter((args) => args.at(-1) === "gate");
     const launches = fixture.calls.filter((args) => isLauncher(args));
@@ -632,7 +637,7 @@ describe("one-command run launcher", () => {
     const fixture = batchFixture({ args: [...CUSTOM, "truss", "--gate", policy] });
     writeFileSync(fixture.context.passRecord, lines.map((line) => `${line}\n`).join(""));
     const result = await launchBatch(fixture.plans, fixture.options, fixture.context, fixture.command);
-    expect(result.map((item) => launched(item).project)).toEqual(["custom-project", "truss-project"]);
+    expect(result.map((item) => launched(item).project)).toEqual(["standard-project", "truss-project"]);
     // Only a whole-gate pass of this exact commit stands in for the gate; a static pass does not.
     expect(fixture.calls.filter((args) => args.at(-1) === "gate")).toHaveLength(decision === "ran" ? 1 : 0);
     for (const plan of fixture.plans) {
@@ -717,7 +722,7 @@ describe("one-command run launcher", () => {
     }
   });
 
-  it("launches two truss replicas and one custom prompt per Codex model with six distinct identities", async () => {
+  it("launches two truss replicas and one standard prompt per Codex model with six distinct identities", async () => {
     const fixture = batchFixture({
       args: ["truss", "truss", ...CUSTOM, "--condition", "sol,astra", "--stop-after-ms", "14400000"],
     });
@@ -726,8 +731,8 @@ describe("one-command run launcher", () => {
       "truss-astra-r1-fixture",
       "truss-sol-r2-fixture",
       "truss-astra-r2-fixture",
-      "custom-sol-fixture",
-      "custom-astra-fixture",
+      "standard-sol-fixture",
+      "standard-astra-fixture",
     ]);
     const result = await launchBatch(fixture.plans, fixture.options, fixture.context, fixture.command);
     expect(result).toHaveLength(6);

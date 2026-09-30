@@ -206,9 +206,10 @@ pass rates on easy ones.
 
 **A battery below n/n is what an ambitious round expects, and a run of n/n batteries is the failure to
 fix** (operator, 2026-09-30). A full pass measured nothing about where the solver stops. On source
-887c163ee six Sol runs passed every case of every battery, reserve 6a8ca0 thirteen times at 7/7 and bulk
-RNA-seq 36e268 eleven times at n/n. By 2026-09-30, 236 of 298 recorded batteries across the local
-campaigns had passed every case.
+887c163ee, whose intent clause still named acceptance alone as good, six Sol runs passed every case of
+every battery with every round accepted, reserve 6a8ca0 thirteen times at 7/7 and bulk RNA-seq 36e268
+eleven times at n/n. By 2026-09-30, 236 of 298 recorded batteries across the local campaigns had passed
+every case.
 
 ### What one battery can say
 
@@ -285,7 +286,9 @@ on 2026-09-16, and that history lives beside the row in `thresholds.frozen.yaml`
 `too-hard`, meaning significantly so: the lower bound above 0.50, or the upper bound below 0.20. Inside
 them the point count decides `under-aim`, `on-aim` or `over-aim` against `aimCounts`, the pass counts
 whose rate lies inside the band. On-aim is the calibration target, not a proved limit, and a battery too
-small to hold a whole count inside the band is refused a placement rather than misplaced.
+small to hold a whole count inside the band is refused a placement rather than misplaced. A one-case
+battery's aim is the empty range [1, 0], which had read every count as off the aim in both directions,
+and campaign 3fd52f9e-28's last round measured one case.
 
 What that means at the sizes a run actually measures is worth having in front of you, because
 "significantly too easy" starts at a different share at each size, and a small probe reaches it only at a
@@ -366,13 +369,18 @@ this order.
 
 **The kickoff.** The request line of `src/run/direct-input.ts` asks the Builder to add no requirement
 the request does not name, and says that a stricter demand on one it does name is not an added
-requirement. Both 887c163ee Builders had declined every stricter route by quoting the first half alone.
+requirement. Both 887c163ee Builders had declined every stricter route by quoting the first half alone,
+"Do not introduce an unrequested optimality objective" on a reserve design and "avoid arbitrary yield
+thresholds" on an expression analysis, which left them only size (primary lanes, 2026-09-30).
 Then comes the readout (`renderReadout`), with `LIMIT`, `WITNESS` (a passing artifact, like the
 reference, proves a task feasible and never difficult) and, after a full pass, the no-limit line. That
 line asks for a next battery that demands more of the field's own work, deeper in what its tasks already
 exercise or across what the request names and no task does yet, in tasks the Builder expects the solver
 to fail. It rules out carrying a task forward unchanged, says how much of the solve wall the slowest
-solve took, and asks for the changed requirement and its reasoning in the notes (rule 11). It ends with
+solve took, and asks for the changed requirement and its reasoning in the notes (rule 11). The wall
+share is there because 153 of 233 all-pass batteries from 2026-09-25 to 2026-09-30 finished inside a
+tenth of the 120-minute wall (median 5.9 minutes), sized to the Builder's own reference, while the round
+after read only that every case had passed. It ends with
 `MEASURE_SOLVES`, which sends the Builder to how the passing solves reached their answers, because a
 limit moved or an instance enlarged while the same steps would still find an answer asks nothing new.
 The rebuild advice packet sits beside it, and a finding that recurs says how many consecutive batteries
@@ -386,15 +394,25 @@ have admitted it and since which.
   its inputs from 24 to 53 and its scenarios from 20 to 91 at unchanged check tiers and limits. Tightening
   alone is not enough either, because 6a8ca0's limits sat at its reference's values and its solver held
   the same optimiser. So the change has to be one the passing solves' own steps do not settle.
-- It carries no task unchanged across a full pass. 36e268 grew about one task a round, and on 2026-09-30,
-  570 of the 1,465 tasks measured after a full pass in local campaigns were carried unchanged.
+- It carries no task unchanged across a full pass. 36e268 grew about one task a round, and 53 of the
+  tasks it measured after its full passes were bytes the solver had already passed; on 2026-09-30, 570
+  of the 1,465 tasks measured after a full pass in local campaigns were carried unchanged.
 - It records the changed requirement and its reasoning in its notes (rule 11), where a plan is carried.
+  In the Luna lanes of 2026-09-29 a plan written into the notes was carried and built, while the
+  standing push to "demand more" named nothing.
 
 The solver must not hold the grader, or no battery can fail. No tool, program or guide line analyses a
 candidate for the solver the way a check does, through the check's code or a copy of it, its instrument
 or a verdict (`PUBLICATION_CLAUSE`, `src/author/builder-start-prompt.ts`), because a solver that can ask
 the grader searches until it passes. Until 2026-09-30 such a tool counted as solving support, and every
-harness whose solver could run a check passed whole. Two readers enforce it without gating: the advisory
+harness whose solver could run a check passed whole round after round: reserve 6a8ca0 (13 batteries at
+7/7) and a16848, buffer 3af96d (11 at n/n) and firmware 887c16 through an adviser importing a copy of
+the check's module, and truss 3e4693 (7 at 6/6) through the verifier's analyzer on the solver's PATH.
+The worry that had kept the ceiling off, that a solver without an analysis fails on arithmetic, did not
+show in cb274b, the one structural run whose tools left the analysis to the solver. Verified failures
+then stood at 32 in firmware, where the check observes behaviour the solver cannot fully run before
+submitting, 8 in truss, whose misses were mostly walls (79 unaccepted), and none in the reserve, buffer,
+RNA-seq or conformer batteries. Two readers enforce it without gating: the advisory
 `agent-copies-check-code` (`src/author/candidate-check.ts`) names an `agent/` file byte-identical to a
 `correctness-model/` one, and the brief's `checkOnlyTools` closes named `.toolchain` instruments to the
 Built shell and records `instrument:<toolId>` in the run condition (rule 14). The buffer 3af96d solver's
@@ -414,9 +432,13 @@ that a battery whose every rehearsal passed is on course to find no limit, so be
 Builder changes what its hardest tasks demand once and rehearses one of them again. Once, and not until a
 rehearsal fails: nothing holds a submit on rehearsals, because the measured battery decides where it
 lands, and a rehearsal hold of that kind cost whole rounds (96 of 99 predicted passes at ≤0.3 did pass;
-"What has cost whole rounds"). Across 241 batteries the rehearsed task had sat at chance in its battery's
-solve-time order, and the two Sol runs on 887c163ee each submitted on one rehearsal that passed in its
-first turn.
+"What has cost whole rounds"). Across 241 batteries from 2026-09-25 on, the rehearsed task had sat at
+chance in its battery's solve-time order: in 111 single-rehearsal rounds it was the slowest in 18, at a
+mean rank of 0.48 against 0.50. The two Sol runs on 887c163ee each submitted on one rehearsal that passed
+in its first turn, citing "submit once a clear preview says it works" as the user's instruction with the
+sentence on a pass's reach already in front of them (primary lanes, 2026-09-30). Each `harness_trial`
+result also totals the round's graded rehearsals, because verdicts read one call at a time were never
+added up: three recorded campaigns rehearsed and shipped anyway with 12 of 16 verdicts passing.
 
 **Measurement.** Recorded solves are reused where the exam did not move (rule 10): an evaluation
 correction under the same solving condition regrades the recorded submissions, a battery the environment
@@ -475,6 +497,10 @@ without new evidence that answers it.
   corpus, and a repeat now measures whether a full pass was reliable (rule 10).
 - **Holding a submit on rehearsal predictions.** 96 of 99 predicted passes at ≤0.3 passed, and the wait
   held rounds back for hours without moving a battery on the band.
+- **Counting rehearsal passes "inside a single turn"**, until 2026-09-30. On the pi backend every solve
+  records one turn, and 6a8ca0's i13 reserve-6 ran 75 minutes over 72 tool calls and still read one, so
+  the clause was always true while Builders' notes repeated it as a sign of an easy task. The round
+  tally now states the largest share of the solve wall and the most tool calls any pass took.
 - **A task-set finding forced out of every full pass** (`review-duties.ts`), until 2026-09-29. It graded
   the review's wording and pressed the author to add rules the request never held.
 - **Pointing a full pass at each answer's distance from the reference**, until 2026-09-30. All five

@@ -65,8 +65,8 @@ oneOwnerPerDecision:
     home for a class of logic and then rewards putting more logic there.
 
 # --- Recorded difficulty policy -------------------------------------------------------------
-# Where a battery lands on the band, and how long the product then stays fixed. They prescribe no
-# next experiment or stop: the Builder chooses task variance and product changes.
+# Where a battery lands on the band (`placeOnBand`, src/claim/battery-difficulty.ts). The row
+# prescribes no next experiment or stop; what reads a placement is AGENTS.md "Goals and the climb".
 climb:
   band: [0.2, 0.50]            # Wilson interval band used by difficulty evidence and family conflict.
                                # Ceiling: 0.5 → 0.75 (2026-08-10) → 0.60 (operator, 2026-08-19)

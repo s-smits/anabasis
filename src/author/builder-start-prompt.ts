@@ -16,11 +16,10 @@ import { DCG_RULES } from "../solve/dcg-rules.ts";
 /** What the Builder is making, what "good" means and how the product improves, before the duties.
  *  It names no step of the loop: the round's shape, submit included, is STARTER.md's.
  *
- *  "Good" named acceptance alone until 2026-09-30, and six Sol runs on 887c163ee then measured
- *  nothing but full passes, two of them for 13 and 11 batteries, each round accepted and each
- *  battery passed whole. So the clause also says what an accepted round is for: a battery that
- *  fails some of its cases on the rules it publishes, since one the solver passes whole located
- *  nothing (AGENTS.md "Goals and the climb"). It states no count, share or zone. */
+ *  "Good" names more than acceptance, because a round can be accepted every time while its battery
+ *  passes whole and locates nothing. So the clause also says what an accepted round is for: a
+ *  battery that fails some of its cases on the rules it publishes (AGENTS.md "Goals and the
+ *  climb"). It states no count, share or zone. */
 export const INTENT_CLAUSE = [
   "You are the Builder. From the one-line request you build a product the controller adopts and measures: a Built Harness in agent/ with which a separate solving model answers each task, and a correctness model in correctness-model/ that decides, without the solver's help, whether an answer is right. Useful computation belongs in the solver's tools; the host verifier owns correctness and the controller owns acceptance, scores and claims.",
   "A round succeeds when the controller accepts a candidate whose checks separate a correct answer from a convincing wrong one in every family. A sound candidate measured now teaches more than a better one measured later; after measurement, choose the next experiment the recorded evidence supports.",
@@ -61,25 +60,12 @@ export const SCOPE_CLAUSE = [
  *  reference recipe private and then write that same recipe into BUILT_AGENTS.md as guidance, in its
  *  own words, where no literal comparison of the two texts would see it.
  *
- *  The tools sentences used to set no ceiling on what an analysis may report, leaving it to blind
- *  measurement whether a rich tool left a battery too easy. Measurement answered on 2026-09-30: of
- *  298 recorded batteries, 236 passed every case. Every harness that let the solver run a check
- *  passed whole round after round, whether by an adviser importing a byte-identical copy of the
- *  check's module (reserve 6a8ca0, 13 × 7/7; buffer 3af96d, 11 × n/n), or by the verifier's analyzer
- *  on the solver's PATH with the guide giving the check's own stdin (truss 3e4693, 7 × 6/6). A
- *  solver that can ask the grader searches until it passes, so the battery measures that search.
- *  The worry that kept the ceiling off was that a solver without an analysis fails on arithmetic.
- *  The one structural run whose tools left the analysis to the solver (cb274b, a geometry-only
- *  screener) showed neither that nor a failure on the field's work: its 54 misses were all walls at
- *  about two minutes a case, and all 54 designs it submitted passed. Verified failures are 32 in
- *  firmware, where the check observes behaviour the solver cannot fully run before submitting, 8 in
- *  truss and none in reserve, buffer, RNA-seq or conformer batteries; truss misses are mostly walls
- *  (79 unaccepted). The real toolchain and a bounded search stay, and computing the response a check
- *  decides with is the field's own work; whether leaving it to the solver brings verified failures
- *  or only slower solves is for the next measured battery to say (a new condition from this
- *  commit). The program sentence answers harnesses
- *  that published an exact call sequence and graded a call trace, which turned writing the program
- *  into transcribing it. */
+ *  The last sentence sets the ceiling on what an analysis may report. A solver whose tools run a
+ *  check, a copy of its module or its instrument searches against the grader until it passes, so
+ *  its battery measures that search rather than the field's work. The real toolchain and a bounded
+ *  search stay, and computing the response a check decides with is the field's own work (AGENTS.md
+ *  "Goals and the climb"). The program sentence answers harnesses that published an exact call
+ *  sequence and graded a call trace, which turned writing the program into transcribing it. */
 export const PUBLICATION_CLAUSE = [
   "Publish everything the verifier requires of an answer wherever the solver reads it: constants with their authority, units, precision and rounding, comparison direction and tolerance, canonical form, required paths and entry points, and the assumptions an installed tool applies. A solver that follows every published rule must never fail on a rule it could not read; where a practitioner could read a rule two ways, the brief states the verified reading.",
   "Withhold hidden expectations, private controls and decisions, reference answers and protected verifier information from everything the solver reads, in any wording, tool results included. For a program, publish the behaviour it must show, not the calls or steps that produce it: a published sequence turns writing the program into transcribing it.",

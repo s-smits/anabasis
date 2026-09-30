@@ -18,15 +18,13 @@ const CLIMB_BAND: [number, number] = [0.2, 0.5];
 
 export const POLICY = {
   climb: {
-    /** Manifest row `climb.band`. The pass-rate window a battery is measured against: below it the
-     *  tasks are too hard to read, above it no limit was found. Read through the manifest by
-     *  `climbThresholds` (src/run/climb-history.ts), which is the value's one owner; every other
-     *  consumer receives it. The Builder's battery contract and src/run/battery-sizing.ts take the
-     *  band as a parameter and the controller passes `climbThresholds(...).band`; the default they
-     *  declare is this row, for a caller with no manifest. Reading this constant directly instead
-     *  gives one number three owners, which agree until a manifest override moves the recorded
-     *  placement while the Builder's prompt still quotes these counts and the sizing gate still
-     *  holds the code-owned ceiling. */
+    /** Manifest row `climb.band`, the pass-rate window `placeOnBand` places a battery against
+     *  (AGENTS.md "Goals and the climb"; its history is beside the row in thresholds.frozen.yaml).
+     *  `climbThresholds` (src/run/climb-history.ts) is its one reader; every other consumer takes the
+     *  band as a parameter, and the default it declares is this row, for a caller with no manifest.
+     *  Reading this constant directly gives one number several owners, which agree until a manifest
+     *  override moves the recorded placement while the sizing gate still holds the code-owned
+     *  ceiling. */
     band: CLIMB_BAND,
   },
   loop: {
@@ -62,8 +60,8 @@ export const POLICY = {
     ceiling: 60,
     /** The size an operator who names none gets. */
     default: 25,
-    /** The task counts a fresh product's batteries stay between until one passes at least one of its
-     *  scored cases and lands at or under the aim; the Builder picks the size inside that range. */
+    /** The task counts a fresh product's probe batteries stay between, until `batterySizingGate`
+     *  (src/run/battery-sizing.ts) graduates the product; the Builder picks the size inside. */
     probe: { min: 5, max: 10 },
   },
 };

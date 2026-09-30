@@ -10,21 +10,20 @@
  * and never recorded, so rewording one changes no pass identity.
  *
  * A battery whose every attempt was refused at submission is placed nowhere, because it would
- * otherwise read as a battery of verified failures and can end a run as curriculum infeasibility in
- * a single round. Once any case is verified, refused attempts stay in `n` as fails, since hard tasks
- * may fail through refused submissions.
+ * otherwise read as a battery of verified failures. Once any case is verified, refused attempts stay
+ * in `n` as fails, since hard tasks may fail through refused submissions.
  *
- * Every other battery is placed on the band, and `placeOnBand` owns every comparison. The interval
- * owns sample size, so a thin sample lands in range rather than being discarded. Two shapes are
- * stated beside the placement and never instead of it, because a battery can show either and still
- * land in a zone: the same failing core in both of the last two batteries of one task set, and one
- * family significantly too easy beside another significantly too hard.
+ * Every other battery is placed by `placeOnBand`, which owns every comparison and whose interval
+ * owns sample size. Two shapes are stated beside the placement and never instead of it, because a
+ * battery can show either and still land in a zone: the same failing core in both of the last two
+ * batteries of one task set, and one family significantly too easy beside another significantly
+ * too hard.
  *
- * The placement is the controller's and the reviewer's. The author reads what was measured: each
- * battery's verified, unaccepted and non-result counts, the solves it regraded rather than solved,
- * the identities that say whether two batteries share a condition, and one sentence when the latest
- * passed every verified case, since that battery found no limit. A zone read back to the author
- * decided nothing the counts beside it did not already say, and it read as a course.
+ * The placement is battery sizing's and the reviewer's. The author reads what was measured: each
+ * battery's three counts, the solves it regraded rather than solved, the identities that say whether
+ * two batteries share a condition, and `noLimitLine` when the latest passed every verified case.
+ * Which party hears which reading, and why the author hears no zone, is AGENTS.md "Goals and the
+ * climb".
  */
 import { type BandPlacement, placeOnBand } from "../claim/battery-difficulty.ts";
 import { POLICY } from "../critic/policy.ts";
@@ -149,11 +148,10 @@ const HISTORY =
 const LIMIT =
   "Only a battery that passes some but not all of its cases can locate a limit, an unaccepted attempt counting as a fail and a non-result as neither, and only where the checks that failed it are right; one that passes every case found none.";
 
-/** What a full pass sends the Builder to read. It named the distance from each passing answer to the
- *  reference until 2026-09-30, and all five all-pass rounds of run 6a8ca0 answered that distance: they
- *  moved limits toward the reference or enlarged instances, which the solver's same enumeration and
- *  published-rule checker still settled in one turn. The method, not the margin, is what a harder
- *  battery has to defeat. */
+/** What a full pass sends the Builder to read: how the passing solves reached their answers. The
+ *  method, not the margin, is what a harder battery has to defeat, because a limit moved toward the
+ *  reference or an instance enlarged is still settled by the same steps. Pointing at each answer's
+ *  distance from the reference was tried and taken out (AGENTS.md "Goals and the climb"). */
 const MEASURE_SOLVES =
   "Before you set the next battery, read how its passing solves reached their answers, the tools they called and the search they ran: a limit moved or an instance enlarged while those same steps would still find an answer asks nothing new, so the change has to be one those steps do not settle.";
 
@@ -370,25 +368,16 @@ function familyLine(readout: ClimbReadout): string | null {
 /** The one result sentence the author is given: a battery that passed every case it scored found no
  *  limit. An unaccepted attempt is a fail there, so a battery holding one is not that battery. A
  *  non-result scored nothing, so a battery holding one says what it left unmeasured and asks for no
- *  harder demand, since the cases it lost may have held the limit. Nothing is said of any other
- *  count, because the band and the aim are the controller's and a count to author towards read as a
- *  course; this one fact is what the next round must answer. A full pass also names the one
- *  measurement that says why: a Builder otherwise sets its next limits from its own reference alone,
- *  blind to where the passing solves landed, so a limit well above a strong reference and a limit
- *  just above a reference the solver beats both read as the same full pass. The solves it measures
- *  are already public, in the context tool's traces source. It asks the Builder to write down the
- *  requirement the next battery changes (AGENTS.md rule 11), and argues for no route: an all-pass
- *  streak's only standing push used to be "demand more", which named nothing, while a plan written
- *  into the notes was carried and built (Luna lanes, 2026-09-29). It also says how much of the solve
- *  wall the slowest solve took: of 233 all-pass batteries from 2026-09-25 to 09-30, 153 finished
- *  theirs inside a tenth of the 120-minute wall (median 5.9 minutes), sized to the Builder's own
- *  reference, and the round that set the next one read only that every case had passed.
+ *  harder demand, since the cases it lost may have held the limit. No other count gets a sentence,
+ *  because the band and the aim are not the author's (AGENTS.md "Goals and the climb").
  *
- *  It names the tasks as ones the Builder expects the solver to fail, and rules out carrying one
- *  through unchanged, because the push to "demand more" was answered by growth: bulk RNA-seq run
- *  36e268 passed every case of eleven batteries while adding about one task a round, and 53 of the
- *  tasks measured after those full passes were the same bytes the solver had already passed; across
- *  the local campaigns on 2026-09-30, 570 of the 1,465 tasks measured after a full pass were. */
+ *  On a full pass the line asks for tasks the Builder expects the solver to fail and rules out
+ *  carrying one forward unchanged, since a bare push to "demand more" is answered by growth and by
+ *  passed tasks measured again. It asks for the changed requirement and its reasoning in the notes
+ *  (AGENTS.md rule 11), where a plan is carried, and argues for no route. It states how much of the
+ *  solve wall the slowest solve took, because a battery sized to the Builder's own reference can
+ *  finish far inside it while the next round reads only that every case passed. It ends with
+ *  `MEASURE_SOLVES`, whose solves are already public in the context tool's traces source. */
 function noLimitLine(row: ReadoutRow): string | null {
   const { runId, passed, verified, unaccepted, nonResults } = row;
   if (verified === 0 || unaccepted > 0 || passed !== verified) return null;

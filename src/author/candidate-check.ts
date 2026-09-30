@@ -362,8 +362,8 @@ export function fingerprintRefusal(
 
 /** Agent code byte-identical to correctness-model code, as `[agent path, correctness-model path]`
  *  pairs. A solver tool running a check's own module analyses a candidate the way the check does,
- *  which the tools contract rules out: every harness built that way on 2026-09-29/30 (reserve
- *  6a8ca0 and a16848, buffer 3af96d, firmware 887c16) passed every battery whole. */
+ *  which the tools contract (`PUBLICATION_CLAUSE`) rules out, since a solver that can ask the grader
+ *  passes its batteries whole (AGENTS.md "Goals and the climb"). */
 export function agentCheckCodeCopies(
   fingerprint: Pick<FingerprintEvidence, "agentFiles" | "correctnessModelFiles">,
 ): Array<[string, string]> {

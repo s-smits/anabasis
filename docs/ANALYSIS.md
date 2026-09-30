@@ -41,10 +41,11 @@ task streams instead of a fixed one-shot benchmark. ([1][1])
   adoption stays code-owned. That separation is stricter than the usual design in which a model
   judge supplies the reward. A Judge disagreement enters only through a finding and cannot modify
   a score or an adoption.
-- **Evaluation saturation is attacked explicitly.** When the solver keeps succeeding, the
-  difficulty machinery climbs, can detect a saturated unchanged harness, and eventually reopens the
-  evaluation or the harness. The saturation rule exists for the orthogonal failure: a high score
-  may mean the generated evaluation narrowed around what the harness already does. Failure-driven
+- **Evaluation saturation is attacked explicitly.** A battery the solver passes whole is read as
+  having found no limit, and the Builder is asked for a next battery that demands more of the
+  field's own work. A high placement also sends the Epoch Reviewer to ask which obligation of the
+  request the tasks leave undemanded, since a high score may mean the generated evaluation narrowed
+  around what the harness already does (`AGENTS.md`, "Goals and the climb"). Failure-driven
   optimisers are common; treating success itself as evidence that the exam may be inadequate is
   not.
 - **Adoption is a governed experiment rather than a rewritten prompt.** Current and candidate

@@ -1,38 +1,36 @@
 /**
  * How many tasks a battery has: the one owner of the requested size and of each round's choice.
  *
- * A round's size is a `TaskCount`, the same shape whether it is exact (`min === max`, the operator's
- * 25) or a range the Builder picks inside (the probe's 5 to 10). Validation, the authoring prompt and
- * the census evidence all read that one pair, so a probe battery is the ordinary battery with
- * different bounds rather than a second sizing system.
+ * A round's size is a `TaskCount`, the same shape whether it is exact (`min === max`, the requested
+ * size) or a range the Builder picks inside (`POLICY.battery.probe`). Validation, the authoring
+ * prompt and the census evidence all read that one pair, so a probe battery is the ordinary battery
+ * with different bounds rather than a second sizing system.
  *
- * `batterySize` bounds every size the controller asks for (operator decision: one climbing system
- * between 5 and 60 queries an iteration). An out-of-range size fails rather than being clamped,
- * because the size is part of the measurement condition, so a request quietly rounded into range
- * would be measured under a condition nobody chose and read back as though it had been.
+ * `batterySize` bounds every size the controller asks for between `POLICY.battery`'s floor and
+ * ceiling (operator decision: one climbing system). An out-of-range size fails rather than being
+ * clamped, because the size is part of the measurement condition, so a request quietly rounded into
+ * range would be measured under a condition nobody chose and read back as though it had been.
  *
  * `batterySizingGate` picks the round's count (operator decision). A product measures probe
  * batteries until one passes at least one scored case and lands at or under the aim, and only then
- * the requested size, because eight or so tasks already say as much about a battery that is far too
- * easy or far too hard as twenty-five do — a first battery heading for 25 of 25 otherwise spends
- * hours of solves to say it. The probe leaves its own size to the Builder, so the tasks rather than
- * a count decide what the probe measures.
+ * the requested size, because a probe already says as much about a battery that is far too easy or
+ * far too hard as a full-size one does, which would otherwise spend hours of solves to say it. The
+ * probe leaves its own size to the Builder, so the tasks rather than a count decide what the probe
+ * measures.
  *
  * A probe that passes some but not all of its cases while still reading above the aim is not
- * enough. Every recorded graduation of that kind — 5 of 6, 5 of 6 and 7 of 8 — was followed by a
- * requested-size battery passing 25 of 25, 21 of 23 and 24 of 25: one failed case among six says
- * the probe held one hard task, and the twenty-five the Builder wrote next were mostly new ones.
+ * enough: one failed case among six says the probe held one hard task, and the requested-size
+ * battery the Builder writes next is mostly new tasks (AGENTS.md "Goals and the climb").
  *
  * Past the probe the round is sized to the smallest battery that still carries the last reading
  * (`smallestSizeHoldingTooEasy`). Holding the adopted size as the state instead, and reading no
  * later landing, lets one weak probe fix the cost of every round after it: a product that graduates
- * on a 3-of-6 then pays 25 solves a round to re-read "significantly too easy". The reading is never
- * traded for the saving, and the size stays a condition code owns, which is why the count reaches
- * the author through `taskCountSentence` alone and nothing here tells a Builder what its next
- * battery is expected to score. The gate returns a count and nothing else — a note beside it
- * restating the landing would repeat what the measurement note in the same prompt already says. The
- * one sentence a probe-sized round adds is `renderProbeSizing`, which lives here beside the rule it
- * states.
+ * on a 3-of-6 then pays the requested size every round to re-read "significantly too easy". The
+ * reading is never traded for the saving, and the size stays a condition code owns, which is why
+ * the count reaches the author through `taskCountSentence` alone and nothing here tells a Builder
+ * what its next battery is expected to score. The gate returns a count and no note restating the
+ * landing. The one sentence a probe-sized round adds is `renderProbeSizing`, which lives here beside
+ * the rule it states.
  */
 import { existsSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
@@ -80,9 +78,6 @@ export function batterySize(requested: number | undefined): number {
  * already read as too easy, or `requested` when no smaller one does. It preserves a too-easy
  * reading the landing made and never extrapolates one it did not: 5 of 6 is not significantly too
  * easy, though 9 of 11 at its rate is.
- * A battery read significantly too easy spends its whole size to say one thing, and a gate that
- * reads no landing past the probe makes the adopted size the state, so one weak probe commits the
- * product to the requested size for every later round.
  *
  * The saving never buys the reading, so the rate is realised with `Math.floor`, the least
  * favourable count at each size, and a size is never chosen because rounding flattered it. A rate
@@ -105,10 +100,8 @@ function smallestSizeHoldingTooEasy(rate: number, requested: number, band: [numb
 
 /** `requested` is a `batterySize` result; `landing` reads the selected product's latest admitted
  *  battery and is called only when that decides the size. `band` is the run's band, which the
- *  caller reads from the manifest through `climbThresholds`: this gate used to read
- *  `POLICY.climb.band` directly, so a manifest override moved the placement while the size that
- *  would have held it stayed on the code-owned ceiling. The default is that code-owned row, for a
- *  caller with no manifest. */
+ *  caller reads through `climbThresholds`; the default is the code-owned row, for a caller with no
+ *  manifest, and `POLICY.climb.band` says why no consumer reads that row directly. */
 export function batterySizingGate(
   requested: number,
   adoptedTasks: number | null,

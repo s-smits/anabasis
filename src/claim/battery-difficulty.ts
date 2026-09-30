@@ -1,18 +1,17 @@
 /**
  * How hard a measured battery was, read from one statistic.
  *
- * - `placeOnBand` says where k passes of n sit against the target band. It is the one owner of
- *   "too easy", "too hard" and "on aim": the selector acts on its zone, the evidence note words
- *   it, and the per-family rows read it rather than re-deriving the comparison.
+ * - `placeOnBand` says where k passes of n sit against the band. It is the one owner of "too easy",
+ *   "too hard" and "on aim": `decideDifficulty` records its zone, battery sizing acts on it,
+ *   `readingSentence` words it for the reviewer, and the per-family rows read it rather than
+ *   re-deriving the comparison.
  * - `measureDifficulty` tallies the verified cases per item into the recorded battery.
  *
  * Sample size has a single owner, the interval. A thin sample widens it until neither outer zone
- * can be reached, which is what a confidence interval is for. A second case-count floor beside it
- * only discards placements the interval would have made honestly, and the round then reaches the
- * author with no measurement note at all. A sample that was never
- * measured, or whose counts are malformed, has no placement: `placeOnBand` returns the same null
- * `wilsonInterval` does, and the selector turns that one null into its one "no difficulty
- * evidence" answer.
+ * can be reached, which is what a confidence interval is for, so a second case-count floor beside it
+ * would only discard placements the interval makes honestly. A sample that was never measured, or
+ * whose counts are malformed, has no placement: `placeOnBand` returns the same null
+ * `wilsonInterval` does, and `decideDifficulty` records that one null as a battery it cannot place.
  */
 import { wilsonInterval } from "./estimation.ts";
 
@@ -61,7 +60,7 @@ export function aimCounts(n: number, [floor, ceiling]: readonly [number, number]
  * Place k of n on the band, or null when there is no sample to place. The interval alone decides
  * the outer zones, so a battery is called too easy or too hard only when it is significantly so.
  * Between them the point count decides: 16 of 25 is not significantly too easy, yet sits above the
- * 5 to 12 aim, and the note says so.
+ * aim, and the zone says so.
  */
 export function placeOnBand(
   passes: number,
@@ -74,7 +73,7 @@ export function placeOnBand(
   // A battery so small that no whole pass count lands inside the band has no aim to be measured
   // against. aimCounts(1, [0.2, 0.5]) is [1, 0], an empty range that read 0 of 1 as under-aim by
   // one and 1 of 1 as over-aim by one: every count of a one-case battery was off the aim in both
-  // directions and none could be on it. Campaign 3fd52f9e-28's last round measured one case.
+  // directions and none could be on it.
   if (aim[1] < aim[0]) return null;
   const toAim = passes < aim[0] ? aim[0] - passes : passes > aim[1] ? aim[1] - passes : 0;
   const zone = bandZone(interval, band, toAim);

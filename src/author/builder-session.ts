@@ -263,26 +263,17 @@ function roundPrompt(input: BuilderSessionInput, previous: PreviousRound | null)
     // A bound the model cannot observe cannot steer it, so an operator cap is stated rather than
     // merely enforced. A Claude session can run as a single turn, which makes a turn reserve
     // meaningless as a pace signal; left with one, a session authors for hours past its first clear
-    // preview without submitting. So the pace is stated as an action instead. It names no rehearsal
-    // condition: rehearsals pass far more often than a Builder predicts, so asking them to agree with
-    // a predicted count held rounds back for hours without changing where the battery landed. It
-    // does say what a passing rehearsal is, a blind solve the solver finished, because a round whose
-    // rehearsals all pass has been submitted as though a pass said nothing about the battery, and a
-    // battery measured after such a round passes every case it scores far more often than not.
-    // A pass speaks only for its own task, so the sentence names which task's pass says most: across
-    // 241 batteries from 2026-09-25 on, the rehearsed task sat at chance in its battery's solve-time
-    // order (111 single-rehearsal rounds: slowest in 18, mean rank 0.48 against 0.50), so a round
-    // submitted on one pass had measured an ordinary task, not its hardest.
+    // preview without submitting. So the pace is stated as an action instead.
     // The cap counts replies, not tool calls, and says so: read as a count of steps, fifteen turns
     // looked nearly spent a dozen calls into the first, and a Builder dropped a change it had
     // judged right for want of turns it still had.
-    // Saying what a pass is did not change the action. The two Sol runs on 887c163ee that passed
-    // every case of 13 and 11 batteries each submitted on one rehearsal that passed in its first
-    // turn, citing "submit once a clear preview says it works" as the user's instruction, with the
-    // reach sentence in front of them (primary lanes, 2026-09-30). So a battery whose rehearsals all
-    // passed is named as one on course to find no limit, and its demand changes once before submit.
-    // Once, and not until a rehearsal fails: a condition a rehearsal has to meet held rounds back for
-    // hours without moving where the battery landed.
+    // The rehearsal sentences say what a passing rehearsal is, a blind solve the solver finished;
+    // which task's pass says most, since a pass speaks only for its own task and the task a Builder
+    // happens to rehearse is an ordinary one; and that a battery whose every rehearsal passed is on
+    // course to find no limit, because saying what a pass is did not by itself stop a Builder
+    // submitting on one first-turn pass. The demand changes once, and not until a rehearsal fails:
+    // a condition a rehearsal has to meet held rounds back without moving where the battery landed.
+    // The measurements behind each clause are in AGENTS.md "Goals and the climb".
     `${roundLimit(input.maxTurns)}Build, check and rehearse the candidate, and submit` +
       ` once a clear preview says it works. A passing rehearsal is a blind solve of its task, so it shows that task` +
       ` is within the solver's reach, and the task you expect to be hardest is the one whose rehearsal says most about` +

@@ -10,7 +10,7 @@
  *
  * This is the only instrument in the authoring loop that can observe a battery being easier than
  * its stated target, which is why no prompt has to exhort the Builder about difficulty: a round
- * that wants tasks its solver misses can measure one before paying for twenty-five. The solve is
+ * that wants tasks its solver misses can measure one before paying for a battery. The solve is
  * the measured solver's own, not a call sequence the Builder supplies, which would be the author
  * playing solver while holding the answer key. A round that rehearses nothing tends to declare a
  * pass count far under what it then measures.
@@ -492,15 +492,13 @@ function notePassEffort(tally: RoundRehearsals, row: RehearsalRow): void {
  * It is here because a per-call sentence is the wrong unit for the decision it feeds. A battery's
  * result is a count over the whole battery, and a Builder holding six separate sentences has to
  * add them up itself, from a conversation pi compacts as it goes, whose oldest turns are the first
- * to be cut. Three recorded campaigns rehearsed and shipped anyway: of 16 rehearsals carrying a
- * verdict, 12 passed and 3 failed. Each of those twelve results said, correctly, that a battery of
- * tasks like this one scores near its size. None of them said it twelve times.
+ * to be cut. Each pass says, correctly, that a battery of tasks like this one scores near its size,
+ * and a round that ships on several such passes has heard it once per call and never as a total.
  *
  * Beside the count it states how hard the passes worked: the largest share of the solve wall any
- * pass took, and the most tool calls any pass made. It counted passes "inside a single turn" until
- * 2026-09-30, and on the pi backend every solve records one turn whatever it does: reserve run
- * 6a8ca0's i13 reserve-6 ran 75 minutes over 72 tool calls and still read one turn, so the clause
- * was always true and said nothing, while Builders' notes repeated it as a sign of an easy task.
+ * pass took, and the most tool calls any pass made. It does not count turns, because on the pi
+ * backend every solve records one turn whatever it does, so a turn count is always one and says
+ * nothing (AGENTS.md "Goals and the climb").
  */
 function roundClause(tally: RoundRehearsals): string {
   if (tally.graded < 2) return "";

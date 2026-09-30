@@ -30,18 +30,15 @@
  * replaces costs the session a round, so the orientation sentence says a seed placeholder
  * is unwritten work, while the parts already authored are still read.
  *
- * The curriculum sentence once asked for "a perfect or near-perfect battery" while the campaign it
- * reviews aims at a band well below that. Every score between the two readings — the whole
- * `over-aim` zone, whose own name says the limit was not measured — was a battery the reviewer had
- * no stated reason to inspect. The orientation now states where the battery landed, and that
- * placement is the whole of what a high score adds: a reason to look. It is not an obligation to
- * find something. A finding required by the score, or a family-by-family account the host checks
+ * The curriculum sentence once asked for "a perfect or near-perfect battery", which left every
+ * score above the aim and below that a battery the reviewer had no stated reason to inspect. The
+ * orientation now states where the battery landed (`aimLine`), and that placement is the whole of
+ * what a high score adds: a reason to look, not an obligation to find something (AGENTS.md "Goals
+ * and the climb"). A finding required by the score, or a family-by-family account the host checks
  * by whether each family's name appears, rewards naming the right things rather than examining
- * them, and a task-set finding forced out of a full pass presses the author to add rules the
- * request never held. So the last paragraph lets a review at any placement end with nothing
- * demonstrated and the tasks simply easy. Where the first probe goes below the aim belongs to the
- * orientation's placement lead, which is rendered only on that side, so this static paragraph does
- * not repeat it.
+ * them. So the last paragraph lets a review at any placement end with nothing demonstrated and the
+ * tasks simply easy. Where the first probe goes below the aim belongs to the orientation's
+ * placement lead, which is rendered only on that side, so this static paragraph does not repeat it.
  *
  * The probe paragraph names a closed value set as the replacement to reach for, because that is the
  * shape one probe settles outright: a public input publishing a closed set, a declared check

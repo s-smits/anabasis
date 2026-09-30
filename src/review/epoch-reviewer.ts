@@ -456,13 +456,12 @@ function checkpointLines(input: EpochReviewInput): string[] {
  * Where a battery landed against the band the campaign climbs towards.
  *
  * The reviewer is the only component that reads the measured tree against the original request, so
- * it has to be told what a battery aims for. A raw "20 of 25 verified cases passed" does not say
- * that this is eight passing cases above the top of the aim, which is the shape design prior 10
- * exists to catch. `placeOnBand` already placed each row of the climb readout, so the review takes
- * the readout's own row for the battery and words it through `readingSentence`, the one sentence
- * that states a placement to a model; the author is shown no placement and no count to aim at.
- * Placing it again here would be a second standard, and the sizing decision and this review could
- * then read one battery two ways.
+ * it has to be told what a battery aims for: a raw pass count does not say how far above the aim it
+ * sits, which is the shape design prior 10 exists to catch. `placeOnBand` already placed each row of
+ * the climb readout, so the review takes the readout's own row for the battery and words it through
+ * `readingSentence`, the one sentence that states a placement to a model (who hears it is AGENTS.md
+ * "Goals and the climb"). Placing it again here would be a second standard, and the sizing decision
+ * and this review could then read one battery two ways.
  *
  * The readout is read once, under the pin the battery was measured with, which the caller already
  * holds. It is public: every sentence it sends is stated to the Builder, so nothing protected

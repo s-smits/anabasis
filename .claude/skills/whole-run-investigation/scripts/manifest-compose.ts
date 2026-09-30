@@ -16,6 +16,7 @@ import { CommandFailure } from "#skills/main/cli.ts";
 import { gitMaybe } from "#skills/main/git.ts";
 import {
   DIGEST_VERDICTS,
+  GROUND_TRUTH_LANE,
   ISOLATED_ANGLES,
   HARDWARE_LANES,
   hardwareScratch,
@@ -450,20 +451,23 @@ export function composeInstructions(input: InstructionInput): string {
   return lines.filter((line) => line !== null).join("\n");
 }
 
-/** The public-only lane freezes its judgement before joining outcomes. Shared orientation, scan and
- *  even aggregate verdicts are evidence from the other side of that boundary. */
-export function publicOnlySession(session: LaunchSession): boolean {
-  return session.lanes.some((lane) => lane.number === PUBLIC_ONLY_LANE);
+/** The public-only and ground-truth lanes each freeze a result before joining outcomes. Shared
+ *  orientation, scan and even aggregate verdicts are evidence from the other side of that boundary:
+ *  given the run overview, the ground-truth lane of custom-opus 198d70 froze its compiler verdicts
+ *  already knowing all 21 cases had passed, and had to call its comparison post-exposure
+ *  (2026-09-30). */
+export function blindSession(session: LaunchSession): boolean {
+  return session.lanes.some((lane) => lane.number === PUBLIC_ONLY_LANE || lane.number === GROUND_TRUTH_LANE);
 }
 
 export function publicReviewInstructions(input: InstructionInput): string {
   return [
-    "# Independent public-only review",
-    `This evidence boundary applies to lane ${PUBLIC_ONLY_LANE}; other assignments use their own context below.`,
+    "# Independent blind review",
+    `This evidence boundary applies to lanes ${PUBLIC_ONLY_LANE} and ${GROUND_TRUTH_LANE}; other assignments use their own context below.`,
     `Measured source: \`${input.revision}\` in \`${input.worktree}\`.`,
     `Campaign: \`${input.campaign}\`; run: \`${input.runId}\`.`,
     `Capture: \`${input.snapshot.status.capturedAt}\`.`,
-    "Authority: read-only, no delegation or product launches. Never change recorded evidence or controller locks.",
+    "No delegation or product launches. Never change recorded evidence or controller locks; your task's last line says what you may write.",
     "Before freezing your result, read only the original request and configured model identities from opening.json,",
     "public rules and public task inputs, public agent tools, and accepted artifact bytes selected independently",
     "of their verdicts. Select all available artifacts or a public-family sample fixed before reading outcomes.",
@@ -471,6 +475,7 @@ export function publicReviewInstructions(input: InstructionInput): string {
     "hidden expectations, evaluator/reference implementation, private traces or another reviewer's reports.",
     "Inspect only public fields when a storage file also contains protected fields; prefer recorded public-task.json.",
     "Freeze the public corpus of valid alternatives and plausibly wrong artifacts, with its identities, before any permitted later join.",
+    `Lane ${GROUND_TRUTH_LANE} also runs the recorded toolchain over those artifacts and the control artifacts, and records its verdict file's digest before reading any recorded verdict.`,
     "If forbidden information was already exposed, disclose contamination and do not claim a blinded result.",
     `Runtime: Bun ${input.bunPin}, \`${input.bun}\`. Web access: ${input.webAccess ? "available" : "unavailable"}.`,
     "Report only your assigned headings, method, frozen input identities, denominators, findings and limits.",
@@ -626,7 +631,7 @@ export function composeTasks(
         : verifiedTraceChallenge(challengeDir, challengeIdentity);
   const admissionMode = challengeIdentity?.reviewMode ?? "targeted";
   return sessions.map((session) => {
-    const parts = taskParts(publicOnlySession(session) ? { ...session, direction: "" } : session);
+    const parts = taskParts(blindSession(session) ? { ...session, direction: "" } : session);
     parts.push(...isolationLines(session, challenge));
     const hardware = outDir !== null && session.lanes.some((lane) => HARDWARE_LANES.has(lane.number));
     const scratch = hardware ? hardwareScratch(resolve(outDir), session.name) : null;

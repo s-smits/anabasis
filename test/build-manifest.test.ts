@@ -568,7 +568,7 @@ describe("what a launch composes", () => {
     expect(result.status).toBe(0);
     const task = tasks.find((row) => row.name === publicLane);
     for (const prompt of [result.prompt(publicLane), `${common}\n${task?.task}`]) {
-      expect(prompt).toContain("Independent public-only review");
+      expect(prompt).toContain("Independent blind review");
       expect(prompt).toContain("original request");
       expect(prompt).toContain("accepted artifact bytes");
       expect(prompt).toContain(`Lane ${PUBLIC_ONLY_LANE} freezes its public-only corpus`);
@@ -587,6 +587,30 @@ describe("what a launch composes", () => {
     const open = tasks.find((row) => row.name === "lane_02")?.task;
     expect(open).toContain("usb-pd 0/6");
     expect(open).not.toContain("You are an isolated lane");
+  });
+
+  // A ground-truth lane given the run overview froze its compiler verdicts already knowing every case
+  // had passed (custom-opus 198d70, 2026-09-30), so it gets the blind file the public-only lane gets.
+  it("keeps outcome context out of the ground-truth lane, which may still write its scratch", () => {
+    const truthLane = laneName(GROUND_TRUTH_LANE);
+    const result = launch(
+      snapshot(),
+      "--sessions",
+      `2,${GROUND_TRUTH_LANE}`,
+      "--notes",
+      notes(`## ${truthLane}\nFORBIDDEN_DIRECTION: all passed.\n`),
+    );
+    const task = result.task(truthLane);
+    const prompt = leafPrompt(result.instructions(), task?.task ?? "", task?.scratch ?? null);
+
+    expect(result.status).toBe(0);
+    expect(prompt).toContain("Independent blind review");
+    expect(prompt).toContain(`Lane ${GROUND_TRUTH_LANE} also runs the recorded toolchain`);
+    for (const forbidden of ["FORBIDDEN_DIRECTION", "usb-pd 0/6", "Wilson [0.524", "## Controller facts"]) {
+      expect(prompt).not.toContain(forbidden);
+    }
+    expect(prompt.endsWith(scratchAuthority(task?.scratch ?? ""))).toBe(true);
+    expect(result.task("lane_02")?.task).toContain("usb-pd 0/6");
   });
 
   it("groups a contiguous range under one heading and adds direction to it", () => {

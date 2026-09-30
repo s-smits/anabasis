@@ -20,7 +20,7 @@ import {
 import {
   composeInstructions,
   composeTasks,
-  publicOnlySession,
+  blindSession,
   publicReviewInstructions,
   resolveSessions,
   writeAndDispatch,
@@ -208,15 +208,15 @@ function main(args: CommandArgs): CommandResult {
     { campaign, runId, reviewMode },
     options.outDir,
   );
-  // All transports prepend one common instruction file. When the public-only lane is present,
-  // keep that common file public and attach the richer context only to the other tasks.
-  const publicOnly = sessionSet.sessions.some(publicOnlySession);
-  const commonInstructions = publicOnly ? publicReviewInstructions(instructionInput) : instructions;
-  if (publicOnly) {
+  // All transports prepend one common instruction file. When a blind lane is present, keep that
+  // common file free of outcomes and attach the richer context only to the other tasks.
+  const blind = sessionSet.sessions.some(blindSession);
+  const commonInstructions = blind ? publicReviewInstructions(instructionInput) : instructions;
+  if (blind) {
     for (const task of tasks) {
       const session = sessionSet.sessions.find((row) => row.name === task.name);
       // Every task is composed from one session, so `session` is found.
-      if (session !== undefined && !publicOnlySession(session)) task.task = `${instructions}\n\n${task.task}`;
+      if (session !== undefined && !blindSession(session)) task.task = `${instructions}\n\n${task.task}`;
     }
   }
   writeAndDispatch({

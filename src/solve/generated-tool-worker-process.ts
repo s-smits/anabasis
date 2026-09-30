@@ -60,6 +60,10 @@ const REQUEST_REPLY = {
 type Termination = GeneratedToolWorkerEvidence["termination"];
 
 const TIMEOUT_MS = 30_000;
+/** The host's own wait for a child to install its walls. It was TIMEOUT_MS, and 25 firmware cases
+ *  lost their solve to it with no model turn taken, on a 12-core host at load 12 with its swap
+ *  nearly full (2026-09-26 to 09-30, none among the truss runs sharing that host). */
+const HOST_READY_TIMEOUT_MS = 120_000;
 const CLOSE_TIMEOUT_MS = 1_000;
 const STDERR_MAX = 64 * 1024;
 const bundleDirs = new Set<string>();
@@ -138,7 +142,7 @@ export class WorkerClient {
       timer: ReturnType<typeof setTimeout>;
     }
   >();
-  private readonly readyTimer: ReturnType<typeof setTimeout>;
+  private readyTimer: ReturnType<typeof setTimeout>;
   private readonly readyState = Promise.withResolvers<WorkerReady>();
   /** Whether the child reported its isolation installed. Before that frame, startup belongs to the
    *  host and a ready timeout is the host's own wait; afterwards the worker is loading the
@@ -216,10 +220,7 @@ export class WorkerClient {
       stdoutPipe.cancel(reason);
       stderrPipe.cancel(reason);
     };
-    this.readyTimer = setTimeout(
-      () => this.fail(raise(readyTimeoutCause(this.walls, this.readyTimeoutMs))),
-      this.readyTimeoutMs,
-    );
+    this.readyTimer = this.readyWall(HOST_READY_TIMEOUT_MS);
     let stderr = "";
     const stderrDecoder = new TextDecoder();
     const stderrDone = (async () => {
@@ -341,8 +342,14 @@ export class WorkerClient {
     // repeat or a foreign instance id is a protocol defect rather than a free phase change.
     if (message.type === "wall_ready") {
       const admitted = message.workerInstanceId === start.workerInstanceId && this.walls === "pending";
-      if (admitted) this.walls = "installed";
-      else this.fail(this.nonResult("protocol", "wall_ready identities do not match the controller start"));
+      if (!admitted) {
+        this.fail(this.nonResult("protocol", "wall_ready identities do not match the controller start"));
+        return;
+      }
+      // The candidate's load wall starts here, as its message says, so host startup never spends it.
+      this.walls = "installed";
+      clearTimeout(this.readyTimer);
+      this.readyTimer = this.readyWall(this.readyTimeoutMs);
       return;
     }
     if (message.type === "ready") {
@@ -376,6 +383,10 @@ export class WorkerClient {
       return;
     }
     request.resolve(verdict.result);
+  }
+
+  private readyWall(ms: number): ReturnType<typeof setTimeout> {
+    return setTimeout(() => this.fail(raise(readyTimeoutCause(this.walls, this.readyTimeoutMs))), ms);
   }
 
   private fail(error: GeneratedToolWorkerNonResult): void {

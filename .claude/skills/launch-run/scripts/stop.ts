@@ -2,6 +2,7 @@
 /** Operator timer only. Controller evidence remains owned by fullrun. */
 import { existsSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { isAbsolute, join } from "#src/meta/path.ts";
+import { killProcessGroupId, processGroupExists } from "#src/meta/subprocess.ts";
 import { type CommandArgs, runCommand } from "../../main/cli.ts";
 import { serviceManager, type ServiceManager } from "./service.ts";
 
@@ -70,6 +71,7 @@ export async function stopRun(
   if (ownedService(before, plan, manager) === "absent") {
     return { outcome: "already-absent", service: plan.service };
   }
+  const group = manager.pid(before.out);
   const signal = manager.stopped(before.out)
     ? { code: 0, out: "" }
     : await command(manager.terminate(plan.service));
@@ -80,12 +82,23 @@ export async function stopRun(
   if ((await owned()) === "owned") {
     await command(manager.remove(plan.service));
     for (let attempt = 0; attempt < 50; attempt++) {
-      if ((await owned()) === "absent") return { outcome: "service-absent", service: plan.service };
+      if ((await owned()) === "absent") return endServiceGroup(group, plan.service, sleep);
       await sleep(100);
     }
     throw new Error("stop failed: controller service is still present after removal");
   }
-  return { outcome: "service-absent", service: plan.service };
+  return endServiceGroup(group, plan.service, sleep);
+}
+
+/** Removal ends the service's own process, which leads its group; on 2026-09-30 launchd's bootout
+ *  killed the `bun run` wrapper and left the controller below it running in that group under
+ *  launchd. The group is this service's own, so what outlives removal is killed and said so. */
+async function endServiceGroup(group: number | null, service: string, sleep: (ms: number) => Promise<void>) {
+  if (group === null || !processGroupExists(group)) return { outcome: "service-absent", service };
+  killProcessGroupId(group, "SIGKILL");
+  for (let attempt = 0; attempt < 50 && processGroupExists(group); attempt++) await sleep(100);
+  if (processGroupExists(group)) throw new Error(`stop failed: process group ${group} outlived SIGKILL`);
+  return { outcome: "controller-killed", service, group };
 }
 
 /** Wait for the deadline, stop the run's service, and record the outcome beside the worktree. The

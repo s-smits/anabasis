@@ -313,7 +313,7 @@ describe("one-command run launcher", () => {
       "launchd",
       {
         service: "gui/501/ana.fullrun.test-run",
-        running: "path = /tmp/owned-run/.launchd/ana.fullrun.test-run.plist\nstate = running",
+        running: "path = /tmp/owned-run/.launchd/ana.fullrun.test-run.plist\n\tpid = {pid}\nstate = running",
         notRunning: "path = /tmp/owned-run/.launchd/ana.fullrun.test-run.plist\nstate = not running",
         absent: { code: 1, out: "Could not find service" },
         foreign: "path = /tmp/foreign.plist",
@@ -323,19 +323,25 @@ describe("one-command run launcher", () => {
       "linux",
       {
         service: "ana.fullrun.test-run.service",
-        running: "LoadState=loaded\nActiveState=active\nMainPID=4242\nWorkingDirectory=/tmp/owned-run",
+        running: "LoadState=loaded\nActiveState=active\nMainPID={pid}\nWorkingDirectory=/tmp/owned-run",
         notRunning: "LoadState=loaded\nActiveState=inactive\nMainPID=0\nWorkingDirectory=/tmp/owned-run",
         absent: { code: 0, out: "LoadState=not-found\nActiveState=inactive\nMainPID=0\nWorkingDirectory=" },
         foreign: "LoadState=loaded\nActiveState=active\nMainPID=7\nWorkingDirectory=/tmp/foreign",
       },
     ],
   ])(
-    "stops only the exact loaded run service under %s and checks absence after removal",
+    "stops only the exact loaded run service under %s and kills the group that outlives its removal",
     async (platform, fixture) => {
       const { service, running, notRunning, absent, foreign } = fixture;
       const own = serviceManager(platform === "launchd" ? "darwin" : "linux");
       const plan = { dir: "/tmp/owned-run", runId: "test-run", service, deadline: 180000, grace: 30 };
-      const state = { code: 0, out: running };
+      // On 2026-09-30 bootout ended the launchd job's `bun run` wrapper and left the controller in
+      // its process group, alive under launchd; the stop printed `service-absent` regardless.
+      const controller = Bun.spawn(["sleep", "30"], {
+        detached: true,
+        stdio: ["ignore", "ignore", "ignore"],
+      });
+      const state = { code: 0, out: running.replace("{pid}", String(controller.pid)) };
       const calls: string[][] = [];
       let removed = false;
       const command = async (args: string[]) => {
@@ -344,7 +350,16 @@ describe("one-command run launcher", () => {
         const queried = removed ? absent : state;
         return args.join(" ") === own.query(service).join(" ") ? queried : { code: 0, out: "" };
       };
-      expect(await stopRun(plan, command, async () => {}, own)).toMatchObject({ outcome: "service-absent" });
+      try {
+        expect(await stopRun(plan, command, Bun.sleep, own)).toMatchObject({
+          outcome: "controller-killed",
+          group: controller.pid,
+        });
+        expect(await controller.exited).not.toBe(0);
+        expect(controller.signalCode).toBe("SIGKILL");
+      } finally {
+        controller.kill("SIGKILL");
+      }
       expect(calls).toContainEqual(own.terminate(service));
       expect(calls).toContainEqual(own.remove(service));
       removed = false;

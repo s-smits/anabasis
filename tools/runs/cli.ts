@@ -129,7 +129,7 @@ async function stop(detail: RunDetail, intent: "send" | "print-only", graceMs: n
       `  service  ${plan.service}`,
       `  worktree ${shortPath(plan.dir)}`,
       `  state    ${detail.row.liveness.state} — ${detail.row.liveness.detail}`,
-      `  SIGTERM, then ${plan.grace} ms, then the service is removed; the controller records its own terminal`,
+      `  SIGTERM, then ${plan.grace} ms, then the service is removed; a process group that outlives it is killed`,
       "",
     ].join("\n"),
   );
@@ -138,8 +138,10 @@ async function stop(detail: RunDetail, intent: "send" | "print-only", graceMs: n
     return 0;
   }
   const result = await stopRun(plan);
-  process.stdout.write(`${result.outcome}: ${result.service}\n`);
-  return 0;
+  const killed =
+    "group" in result ? `; process group ${result.group} outlived removal, no terminal of its own` : "";
+  process.stdout.write(`${result.outcome}: ${result.service}${killed}\n`);
+  return killed === "" ? 0 : 1;
 }
 
 async function resume(detail: RunDetail, intent: "launch" | "print-only", repoRoot: string): Promise<number> {

@@ -165,15 +165,15 @@ descendant was reaped. Preserve verified, unaccepted and non-result counts and a
 never repair controller evidence or delete its lock to manufacture closure.
 
 `launchctl bootout` ends the service's own process, which is the `bun run fullrun` wrapper. The
-controller under it can outlive the wrapper with PPID 1 and keep its campaign lock, and `stop.ts`
-reports `service-absent` without looking for it. A controller inside a synchronous walk on its
-main thread runs no SIGTERM handler until the walk returns. The per-scope tool-tree digest is such
-a walk (`toolTreeCounts` in `src/verify/tool-inventory.ts`): about 96k files and 8.7 GB for
-firmware, 3–7 min per tool run under load 200 (2026-09-30). So after `runs stop` or a timer's
-`stop.json`, run `bun run runs` again. A run that still reads `live` from "campaign lock held by a
-live holder" has a controller running without its service, and the pid beside it is that
-controller. The stop is observed only when the run reads `closed`, or reads `orphaned` because the
-lock holder proved dead. Until then, report the stop as unobserved, with that pid.
+controller under it can outlive the wrapper with PPID 1 and keep its campaign lock (2026-09-30).
+`stop.ts`, which both `runs stop` and the timer run, therefore reads the service's pid before
+removal, and once the service is gone it SIGKILLs a process group of that id that still exists. The
+outcome is then `controller-killed`, naming the group, and `runs stop` exits 1 because the
+controller wrote no terminal. A stop made by hand with `launchctl` has no such check. So after any
+stop, run `bun run runs` again. A run that still reads `live` from "campaign lock held by a live
+holder" has a controller running without its service, and the pid beside it is that controller.
+The stop is observed only when the run reads `closed`, or reads `orphaned` because the lock holder
+proved dead. Until then, report the stop as unobserved, with that pid.
 
 For an immediate authorised stop, read the launch receipt and invoke `scripts/stop.ts` in this
 skill with

@@ -230,6 +230,33 @@ test("publication preserves accepted file bytes and tool reference without impor
   expect(() => readProductVersion(root, slug, "first")).toThrow("tool-tree reference changed");
 });
 
+/** The contract offers `correctness-model/sources/` for the passage a rule rests on, and says the
+ *  host hashes each file into the version it publishes. That receipt is the fingerprint already in
+ *  the manifest: no second record, and no scoring change, since an excerpt is outside the
+ *  evaluator's closure and a task-only climb stays task-only. */
+test("a retained source excerpt is bound into the published version and stays outside the scoring program", () => {
+  const { root, source } = fixture();
+  const input = source("first");
+  const excerpt = join(input.acceptedSnapshot, "correctness-model", "sources", "timing.txt");
+  mkdirSync(join(excerpt, ".."));
+  writeFileSync(excerpt, "origin: vendor datasheet rev 3, section 4.2\nhold time is at least 10 us\n");
+  const fingerprint = fingerprintSlug(input.acceptedSnapshot, { slug });
+  if (!fingerprint.ok) throw new Error(JSON.stringify(fingerprint.findings));
+  expect(fingerprint.scoringHash).toBe(input.fingerprint.scoringHash);
+  expect(fingerprint.correctnessModelHash).not.toBe(input.fingerprint.correctnessModelHash);
+  const version = publishProductVersion({ ...input, fingerprint });
+  const manifest = JSON.parse(readFileSync(join(version, "version.json"), "utf8"));
+  expect(manifest.fingerprint.correctnessModelFiles).toContainEqual({
+    path: "sources/timing.txt",
+    sha256: new Bun.CryptoHasher("sha256").update(readFileSync(excerpt)).digest("hex"),
+  });
+  rmSync(join(version, "correctness-model", "sources", "timing.txt"));
+  writeFileSync(join(version, "correctness-model", "sources", "timing.txt"), "hold time is at least 1 us\n");
+  expect(() => readProductVersion(root, slug, "first")).toThrow(
+    "retained product version correctnessModel bundle hashes",
+  );
+});
+
 test("a battery binds a retained version only while its tool tree holds the bytes it was published with", () => {
   const { root, source } = fixture();
   const input = source("first");

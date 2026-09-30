@@ -187,6 +187,15 @@ proves another condition.
 Optional `numbersWithin`, `multisetMatches` and `relationalJoin` helpers come from
 `@ana/correctness-model-prims`; use public units and tolerances.
 
+### Where a rule comes from
+
+A rule, constant or scenario taken from a datasheet, a standard, vendor reference code or a pinned
+upstream revision can keep the passage it rests on under `correctness-model/sources/`: a short
+quoted excerpt in a text file, not the whole document, whose first lines name where it came from
+(a URL, or a repository and revision), the obligation it grounds and the check ids that enforce
+it. The solver never reads this directory. The host hashes each file into the version it
+publishes, and the reviewer reads it beside the tasks. A rule you set yourself needs no source.
+
 ## Task battery and controls
 
 `tasks.json` is an array of `{taskId, family, publicInput, hidden}` with unique task ids that are

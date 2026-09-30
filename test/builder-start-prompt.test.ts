@@ -32,6 +32,7 @@ import {
 import { MEMORY_FILE, SCRATCHPAD_FILE } from "../src/author/builder-memory.ts";
 import { SUBMIT_DESCRIPTION } from "../src/gate/submit-tool.ts";
 import { EPOCH_REVIEW_PROMPT } from "../src/review/epoch-review-prompt.ts";
+import { BUNDLE_FILES } from "../src/author/feedback-routing.ts";
 import { renderBatteryContract } from "../src/run/climb-readout.ts";
 import { renderProbeSizing } from "../src/run/battery-sizing.ts";
 import { directKickoff } from "../src/run/direct-input.ts";
@@ -311,6 +312,28 @@ describe("the publication boundary", () => {
     expect(ADVISER_FENCE).toContain("names no command that returns a check's verdict or its expected result");
     expect(ADVISER_FENCE).not.toContain("the way the check runs it");
     expectNoRestatedDuty(ADVISER_FENCE);
+  });
+
+  /** A rule's source excerpt stays behind the boundary, where the Epoch Reviewer reads it against
+   *  the rule; the offer and the reading name one directory, so neither can move alone. */
+  it("offers retained sources in the one private directory the Epoch Reviewer reads them from", () => {
+    const contract = flat(readFileSync(join(STARTER_DIR, "starter-pack/contract.md"), "utf8"));
+    for (const surface of [contract, flat(STARTER_ENTRY), EPOCH_REVIEW_PROMPT]) {
+      expect(surface).toContain("`correctness-model/sources/`");
+    }
+    expect(contract).toContain("The solver never reads this directory");
+    // The excerpt is evidence to inspect, and a disagreement is owned where the wrong statement is.
+    expect(EPOCH_REVIEW_PROMPT).toContain("the excerpt is evidence the Builder chose, not authority");
+    for (const [file, owns] of [
+      ["correctness-model/brief.json", "for the declared rule"],
+      ["correctness-model/evaluator.ts", "for its implementation"],
+    ] as const) {
+      expect(EPOCH_REVIEW_PROMPT).toContain(`${file} ${owns}`);
+      // The finding tool takes only a bundle file as owner, so each one named must be one.
+      expect(BUNDLE_FILES).toContain(file);
+    }
+    expect(EPOCH_REVIEW_PROMPT).toContain("names a wrong origin is an observation with no owner");
+    expect(EPOCH_REVIEW_PROMPT).not.toContain("the excerpt's own file");
   });
 });
 

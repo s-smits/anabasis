@@ -372,6 +372,12 @@ describe("runs pulse", () => {
     expect(statusLine(after, 10)).toContain("ended: completed");
   });
 
+  it("states a run whose process is gone by that, not by the stage its last round reached", () => {
+    const orphaned = reading(700, { state: "orphaned" });
+    expect(statusLine(orphaned, 10)).toContain("orphaned: the process is gone and no terminal is recorded");
+    expect(statusLine(orphaned, 10)).not.toContain("build");
+  });
+
   it("states a round in its gate by the gate's phase, not the previous battery's solves", () => {
     const earlier = [...OPENING, transition(5, "solve", "started"), transition(6, "measure-on", "started")];
     const gating = [...earlier, transition(40, "build", "started"), transition(90, "controls", "started")];

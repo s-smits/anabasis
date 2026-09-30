@@ -89,14 +89,22 @@ interface PulseEvent {
   look: string[];
 }
 
-type Stage = "opening" | "build" | "measuring" | "reviewing" | "ended";
+type Stage = "opening" | "build" | "measuring" | "reviewing" | "gone" | "ended";
 
+/** A run whose process is gone with no terminal stays in `bun run runs` until the operator closes
+ *  it. On 2026-09-30 the pulse went on printing orphaned custom-sol-3e4693 as "r7 build 6h 19m",
+ *  its last round's stage, hours after its controller was killed. */
 function stageOf(reading: PulseReading): Stage {
   if (reading.terminal !== null) return "ended";
+  if (isGone(reading)) return "gone";
   const last = topLevel(reading.observations).at(-1)?.phase ?? null;
   if (last === null) return "opening";
   if (MEASURING.has(last)) return "measuring";
   return REVIEWING.has(last) ? "reviewing" : "build";
+}
+
+function isGone(reading: PulseReading): boolean {
+  return reading.state === "orphaned" || reading.state === "service-stopped";
 }
 
 function sideOf(zone: BandZone | null): "above" | "below" | "on" | null {
@@ -290,8 +298,7 @@ function heldEvents(before: PulseReading, after: PulseReading): PulseEvent[] {
       look: [CASE_RECORD_FILE],
     });
   }
-  const gone = after.state === "orphaned" || after.state === "service-stopped";
-  if (gone && before.state !== after.state && after.terminal === null) {
+  if (isGone(after) && before.state !== after.state && after.terminal === null) {
     events.push({
       mark: "⚠",
       label,
@@ -431,6 +438,7 @@ export function statusLine(reading: PulseReading, width: number): string {
     measuring: () => measureStatus(reading),
     reviewing: () =>
       `reviewing: ${last?.summary ?? "?"}${last === undefined ? "" : ` ${duration(reading.now - Date.parse(last.at))}`}`,
+    gone: () => `${reading.state}: the process is gone and no terminal is recorded`,
     ended: () => `ended: ${reading.terminal ?? "?"}`,
   }[stage]();
   const batteries = reading.batteries.map(batteryText).join(" ");

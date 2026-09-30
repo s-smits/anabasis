@@ -269,13 +269,18 @@ function roundPrompt(input: BuilderSessionInput, previous: PreviousRound | null)
     // does say what a passing rehearsal is, a blind solve the solver finished, because a round whose
     // rehearsals all pass has been submitted as though a pass said nothing about the battery, and a
     // battery measured after such a round passes every case it scores far more often than not.
+    // A pass speaks only for its own task, so the sentence names which task's pass says most: across
+    // 241 batteries from 2026-09-25 on, the rehearsed task sat at chance in its battery's solve-time
+    // order (111 single-rehearsal rounds: slowest in 18, mean rank 0.48 against 0.50), so a round
+    // submitted on one pass had measured an ordinary task, not its hardest.
     // The cap counts replies, not tool calls, and says so: read as a count of steps, fifteen turns
     // looked nearly spent a dozen calls into the first, and a Builder dropped a change it had
     // judged right for want of turns it still had.
     `${roundLimit(input.maxTurns)}Build, check and rehearse the candidate, and submit` +
       ` once a clear preview says it works. The measured battery, not a rehearsal, decides where it lands, but a passing` +
-      ` rehearsal is a blind solve of its task, so it shows that task is within the solver's reach; further polish` +
-      ` belongs to the next round.`,
+      ` rehearsal is a blind solve of its task, so it shows that task is within the solver's reach, and the task you` +
+      ` expect to be hardest is the one whose rehearsal says most about the battery; further polish belongs to the` +
+      ` next round.`,
     HANDOVER,
   ];
   const context = [input.advisory ?? "", previous === null ? (input.freshContext ?? "") : ""]

@@ -18,7 +18,9 @@ trail and workspace, and append the resolution. Its prompt must say that the pro
 the measured actor and its own prose is research only. Keep each steward in its assigned scratch
 directory, read-only outside it unless the operator separately authorised a source change. For a
 batch, use one steward per independent condition; do not ask one steward to coordinate several conditions or
-let stewards spawn further agents.
+let stewards spawn further agents. The steward runs `run-segment.mts` under
+`bun --env-file=.accounts/claudeN.env`, on the account SKILL.md's steward rule chose from
+`.accounts/usage`, never the live runs' or the parent's.
 
 The unit is a **segment**: one seeded start, the production toolkit, and the contiguous stretch of
 checkpoints your question covers — three of the twenty rather than all of them. It is not a turn;

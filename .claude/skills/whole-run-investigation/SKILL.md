@@ -304,9 +304,10 @@ Require `complete: true` in that status before treating the snapshot as complete
 `--lanes N` asks `build-manifest.ts --auto N` to group every lane into N sessions without crossing
 an isolated seat; `--effort`, `--title`, `--notes` and `--context` pass through. Every session
 starts at once unless `--max-active N` queues the rest behind N; eighteen lanes on each of two runs
-took the host from load 8 to 16 beside six paid runs on 2026-09-30. A hardware lane (29 or 30) runs
-in its own scratch under `--out`, and `codex exec` refuses a directory outside every Git work tree,
-so keep a review that opens one under `notes/wri/`; the launch refuses anywhere else. The manifest
+took the host from load 8 to 16 beside six paid runs on 2026-09-30. Up to 30 concurrent Luna lanes
+are allowed, and 53 at once met no rate limit. A hardware lane (29 or 30) runs in its own scratch
+under `--out`, which may sit outside every Git work tree: the launcher lets Codex start there for a
+session that owns everything it can write. The manifest
 writes the shared instructions, the WRI `tasks.json` and the transport `luna-tasks.json`, and each
 leaf receives its exact lane body inline — never the whole catalogue, never a scope expansion,
 never authority to change controller output. Its reporting rules tell every lane to keep the three
@@ -325,7 +326,10 @@ and `### Not established`, each once, in that order and non-empty, and every fin
 `owner:` from `FINDING_OWNERS` in `manifest-reporting.ts`: one of the nine bundle files, such as
 `correctness-model/evaluator.ts`, or `environment`, plus `controller-source` and `judge`. A report
 that breaks that shape is refused with the exact section named; a failed or absent report is
-missing work, and one retry is permitted within the authorised cap.
+missing work. The launcher has already given each session one further attempt; one rerun of the
+sessions still missing is permitted within the authorised cap, with
+`bun .agents/skills/codex-luna-swarm/scripts/luna-sessions.ts --retry <review>/lanes/luna-output`,
+and `finish` then reads the summary it writes.
 
 `finish` then scaffolds `<review>/archive/` from recorded bytes: `luna_syntheses.md` and
 `digest.md` from the reports and the snapshot, `review.json` from those plus `verdicts.json`, and

@@ -147,6 +147,11 @@ function receiptOf(f: { result: string }) {
   return JSON.parse(readFileSync(f.result, "utf8"));
 }
 
+/** The refusal a finding owner outside the closed set earns. */
+function unlistedOwner(owner: string): string {
+  return `## ${LANE}: finding owner \`${owner}\` is not one of ${FINDING_OWNERS.join(", ")}`;
+}
+
 /** Rewrite the fixture's summary so one report stands under the given session name. */
 function renameSession(f: ReturnType<typeof fixture>, name: string, report = f.report) {
   writeFileSync(
@@ -408,7 +413,7 @@ console.log(JSON.stringify({ type: "thread.started", thread_id: "thread_test_123
     expect(receipt.rows[0].issues).toContain("assigned lane headings missing or repeated: 05");
   });
 
-  it("requires each owed report section once, in order, with an owner on every finding", () => {
+  it("requires each owed report section once, in order and non-empty", () => {
     const f = fixture();
     const refused: [string, string][] = [
       [
@@ -430,33 +435,20 @@ console.log(JSON.stringify({ type: "thread.started", thread_id: "thread_test_123
         ),
         "## lane_05: report sections are out of order",
       ],
-      [laneReport(LANE, "- The oracle accepts a wrong answer."), "## lane_05: findings name no owner"],
-      [
-        laneReport(LANE, "- The oracle accepts a wrong answer.\n  owner: evaluator"),
-        `## lane_05: finding owner \`evaluator\` is not one of ${FINDING_OWNERS.join(", ")}`,
-      ],
     ];
     for (const [report, issue] of refused) {
       writeFileSync(f.report, report);
       expect(run(f.tasks, f.summary).status).toBe(1);
       expect(receiptOf(f).rows[0].issues).toContain(issue);
     }
-    writeFileSync(
-      f.report,
-      laneReport(
-        LANE,
-        "- The oracle accepts a wrong answer.\n  owner: correctness-model/evaluator.ts\n- The judge cited no rule.\n  owner: judge",
-      ),
-    );
-    expect(run(f.tasks, f.summary).status).toBe(0);
-    expect(receiptOf(f).rows[0].issues).toEqual([]);
   });
 
-  it("reads the owner through the Markdown a Luna report wraps it in, and still checks the word", () => {
+  it("reads each finding's owner through the Markdown a report wraps it in, and checks the word", () => {
     // Seven of 36 lane reports on 2026-09-30 were refused for these wrappers alone, each naming a
     // listed owner: the whole line in a code span, a bold label, a backticked value, a gloss after it.
     const f = fixture();
     const wrapped = [
+      "- The oracle accepts a wrong answer.\n  owner: correctness-model/evaluator.ts",
       "- The oracle accepts a wrong answer.\n  `owner: correctness-model/evaluator.ts`  ",
       "- The judge cited no rule.\n- **Owner:** `judge`",
       "- The gate refused a host fault.\n  owner: controller-source (`src/correctness-bundle/solvability.ts`; gate F2-5)",
@@ -465,11 +457,37 @@ console.log(JSON.stringify({ type: "thread.started", thread_id: "thread_test_123
     writeFileSync(f.report, laneReport(LANE, wrapped));
     expect(run(f.tasks, f.summary).status).toBe(0);
     expect(receiptOf(f).rows[0].issues).toEqual([]);
-    writeFileSync(f.report, laneReport(LANE, "- The oracle accepts a wrong answer.\n  `owner: evaluator`"));
-    expect(run(f.tasks, f.summary).status).toBe(1);
-    expect(receiptOf(f).rows[0].issues).toContain(
-      `## lane_05: finding owner \`evaluator\` is not one of ${FINDING_OWNERS.join(", ")}`,
+    const refused: [string, string][] = [
+      ["- The oracle accepts a wrong answer.", "## lane_05: findings name no owner"],
+      ["- The oracle accepts a wrong answer.\n  owner: evaluator", unlistedOwner("evaluator")],
+      ["- The oracle accepts a wrong answer.\n  `owner: evaluator`", unlistedOwner("evaluator")],
+    ];
+    for (const [findings, issue] of refused) {
+      writeFileSync(f.report, laneReport(LANE, findings));
+      expect(run(f.tasks, f.summary).status).toBe(1);
+      expect(receiptOf(f).rows[0].issues).toContain(issue);
+    }
+  });
+
+  it("reads an owner labelled inside the finding's own line", () => {
+    // lane_30 of custom-opus-198d70-hw (2026-09-30) led each finding with its verdict and owner in
+    // one bold span, and was refused as naming no owner.
+    const f = fixture();
+    const inline = [
+      "- **Risk — owner: `controller-source`.** **Denominator:** 21 verified cases. **Observation:** the context stated the outcomes.",
+      "- **Fine — owner: `correctness-model/evaluator.ts`.** **Denominator:** 21 verified cases.",
+      "- The wall was shared (owner: environment).",
+      "- The judge cited no rule.\n  owner: judge.",
+    ].join("\n");
+    writeFileSync(f.report, laneReport(LANE, inline));
+    expect(run(f.tasks, f.summary).status).toBe(0);
+    expect(receiptOf(f).rows[0].issues).toEqual([]);
+    writeFileSync(
+      f.report,
+      laneReport(LANE, "- **Risk — owner: `evaluator`.** The oracle accepts a wrong answer."),
     );
+    expect(run(f.tasks, f.summary).status).toBe(1);
+    expect(receiptOf(f).rows[0].issues).toContain(unlistedOwner("evaluator"));
   });
 
   it("rejects a failed session and a report outside the launcher output", () => {

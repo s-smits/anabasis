@@ -1866,10 +1866,10 @@ commit settles it:
 | site | inline | at module scope | a casing rule reaches | comment added |
 | --- | --- | --- | --- | --- |
 | `path-record.ts` | `strings` | `REQUIRED_STRINGS` | `STRINGS` | yes |
-| `luna-sessions.mjs` | `quickOptionNames` | `QUICK_OPTION_NAMES` | `QUICK_OPTION_NAMES` | yes |
+| `luna-sessions.ts` (table removed 2026-09-30) | `quickOptionNames` | `QUICK_OPTION_NAMES` | `QUICK_OPTION_NAMES` | yes |
 | `wall-policy.ts` | `runData` | `RUN_DATA_NAMES` | `RUN_DATA` | yes |
-| `prose-classify.mjs` | `outcomes` | `CASE_OUTCOMES` | `OUTCOMES` | yes |
-| `archive-scaffold.mjs` | `stateOf` | `LANE_STATES` | `STATE_OF` | no |
+| `prose-classify.ts` | `outcomes` | `CASE_OUTCOMES` | `OUTCOMES` | yes |
+| `archive-scaffold.ts` | `stateOf` | `LANE_STATES` | `STATE_OF` | no |
 
 One name in five, and four sentences no fixer can write. It is not a near miss: the rename is the
 hoist. A name that reads well beside the one function using it — `strings`, `outcomes`, `stateOf`

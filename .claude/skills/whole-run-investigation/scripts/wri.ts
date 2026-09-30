@@ -48,6 +48,7 @@ import { buildSharedInstructions } from "./shared-instructions.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { exitWith, parseCommandOrDie } from "#skills/main/cli.ts";
 import { writeJsonFile } from "#src/meta/completed-json.ts";
+import { LAUNCH_FILE, SUMMARY_FILE } from "#skills/codex-luna-swarm/scripts/luna-receipts.ts";
 import { isRecord } from "#src/meta/json-shape.ts";
 import { emitReport } from "#skills/main/output.ts";
 import {
@@ -605,7 +606,7 @@ async function collect(args: WriArgs, positional: string | null): Promise<WriRev
 
 function launch(args: WriArgs, state: WriReviewState = loadState(absolute(args, "out"))): void {
   const lanesDir = join(state.reviewDir, "lanes");
-  if (existsSync(join(lanesDir, "luna-output", "launch.json"))) {
+  if (existsSync(join(lanesDir, "luna-output", LAUNCH_FILE))) {
     throw new Error(`${lanesDir} already holds a launch; use a fresh --out or trash the lanes directory`);
   }
   // `--sessions` names lanes from the catalogue; `--lanes` asks the manifest to pick that many, and
@@ -653,9 +654,9 @@ function launch(args: WriArgs, state: WriReviewState = loadState(absolute(args, 
  *  launch without its summary is still running, and a review neither transport has reported to
  *  has nothing to validate. */
 function lunaSummary(lanesDir: string): string | null {
-  const summary = join(lanesDir, "luna-output", "summary.json");
+  const summary = join(lanesDir, "luna-output", SUMMARY_FILE);
   if (existsSync(summary)) return summary;
-  if (existsSync(join(lanesDir, "luna-output", "launch.json"))) {
+  if (existsSync(join(lanesDir, "luna-output", LAUNCH_FILE))) {
     throw new Error(
       `${summary} is absent: the Luna lanes have not finished (see ${join(lanesDir, "launcher.log")})`,
     );

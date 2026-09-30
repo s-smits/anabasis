@@ -1,5 +1,6 @@
 // A real generated-tool worker with a tool that never answers, run against a short request wall.
-// And one whose candidate module is slow to load, run against a short load wall.
+// And one whose candidate module is slow to load, run against a short load wall. And one the host
+// stops mid-solve, where only trusted code is answering.
 //
 // The termination module decides what a request timeout means; this file proves the worker's own
 // timer is the thing that says it. F2 reads `deadline` to tell the host's clock from a writer that
@@ -9,6 +10,7 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import { mkdirSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
+import { runtimeProcess } from "../src/meta/process.ts";
 import { WorkerClient, bundleGeneratedWorker } from "../src/solve/generated-tool-worker-process.ts";
 import { GENERATED_TOOL_PROTOCOL } from "../src/solve/generated-tool-worker-protocol.ts";
 import { compilePublicArtifactSchema } from "../src/solve/public-artifact-schema.ts";
@@ -119,5 +121,49 @@ describe("a candidate module slow to load", () => {
     );
     await expect(client.ready).rejects.toThrow("did not finish loading the candidate harness within 1ms");
     expect(await client.close()).toMatchObject({ status: "non-result", kind: "protocol" });
+  }, 120_000);
+});
+
+describe("a trusted request on a host that stops the worker", () => {
+  // The request wall was 30 s for every request, and the three recorded losses to it were all trusted
+  // code: a preset edit, materialize_files and the shell's file exchange, on a swapping host, where
+  // one edit replied after 86 s. A stopped child is that host at its worst: the materialization waits
+  // for it on the host's wall, while a candidate tool still answers inside its own.
+  it("waits for a stopped worker on the host's wall, while a candidate tool keeps its own", async () => {
+    const slugDir = scratchDir(".ana-scratch-request-", import.meta.dir);
+    mkdirSync(join(slugDir, "agent"), { recursive: true });
+    writeFileSync(join(slugDir, "agent", "tools.ts"), TOOLS);
+    const bundle = await bundleGeneratedWorker(slugDir);
+    const client = new WorkerClient(
+      bundle,
+      {
+        type: "start",
+        protocol: GENERATED_TOOL_PROTOCOL,
+        task: { taskId: "t1", family: "wide", publicInput: {} },
+        presets: [],
+        domainToolAuthorities: [
+          { name: "write_answer", authority: "artifact-writer" },
+          { name: "look_up", authority: "reader" },
+        ],
+        publishedMargins: [],
+        publicArtifactSchema: compilePublicArtifactSchema([{ name: "massKg" }], [{ massKg: 1 }]),
+        workerInstanceId: crypto.randomUUID(),
+        bundleDigest: bundle.digest,
+        deniedReadPath: join(slugDir, "agent", "tools.ts"),
+        deniedWritePath: join(bundle.dir, "forbidden-write"),
+        traceTaskAccess: false,
+      },
+      undefined,
+      200,
+    );
+    const { pid } = await client.ready;
+    runtimeProcess.kill(pid, "SIGSTOP");
+    const materialized = client.materialization();
+    // A real clock: the child stays stopped five times longer than the candidate's wall.
+    await Bun.sleep(1_000);
+    runtimeProcess.kill(pid, "SIGCONT");
+    await expect(materialized).resolves.toBeDefined();
+    await expect(client.execute("c1", "look_up", {})).rejects.toThrow("request timed out after 200ms");
+    expect(await client.close()).toMatchObject({ status: "non-result", kind: "protocol", deadline: true });
   }, 120_000);
 });

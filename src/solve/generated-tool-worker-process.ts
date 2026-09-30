@@ -1,4 +1,5 @@
 import type { JsonValue } from "../meta/json-shape.ts";
+import { presetOwningTool } from "../correctness-bundle/built-presets.ts";
 import { mkdtempSync, realpathSync, rmSync } from "../meta/filesystem.ts";
 import { tmpdir } from "../meta/os.ts";
 import { dirname, join } from "../meta/path.ts";
@@ -60,10 +61,13 @@ const REQUEST_REPLY = {
 type Termination = GeneratedToolWorkerEvidence["termination"];
 
 const TIMEOUT_MS = 30_000;
-/** The host's own wait for a child to install its walls. It was TIMEOUT_MS, and 25 firmware cases
- *  lost their solve to it with no model turn taken, on a 12-core host at load 12 with its swap
- *  nearly full (2026-09-26 to 09-30, none among the truss runs sharing that host). */
-const HOST_READY_TIMEOUT_MS = 120_000;
+/** The host's own wait for a child that runs no candidate code: installing its walls, or answering a
+ *  request only trusted code serves. It was TIMEOUT_MS. 25 firmware cases lost their solve to it
+ *  before any model turn (2026-09-26 to 09-30, none among the truss runs sharing that host). Three
+ *  more lost it mid-solve on a preset edit, materialize_files or the shell's file exchange, and never
+ *  on a candidate tool, one edit replying after 86 s. That host was 12 cores at load 12 to 40, with
+ *  18 GiB of memory, 50 GB compressed and its swap nearly full. */
+const HOST_WALL_MS = 120_000;
 const CLOSE_TIMEOUT_MS = 1_000;
 const STDERR_MAX = 64 * 1024;
 const bundleDirs = new Set<string>();
@@ -129,6 +133,7 @@ export class WorkerClient {
   private readonly child: Bun.Subprocess<"pipe", "pipe", "pipe">;
   private readonly networkCanary: Bun.TCPSocketListener<undefined>;
   private readonly policy: GeneratedWorkerPolicy;
+  private readonly presets: GeneratedToolStart["presets"];
   private readonly processExited: Promise<{ code: number | null; signal: RuntimeSignal | null }>;
   private readonly exited: Promise<{ code: number | null; signal: RuntimeSignal | null }>;
   private readonly endInput: () => number | Promise<number>;
@@ -180,6 +185,7 @@ export class WorkerClient {
     // The real child proves the boundary: it installs the execution wall, runs the isolation probes
     // and only then loads generated code, and its `ready` frame carries the probe this client checks.
     this.policy = generatedWorkerPolicy(bundle, support);
+    this.presets = start.presets;
     this.networkCanary = Bun.listen({
       hostname: "127.0.0.1",
       port: 0,
@@ -220,7 +226,7 @@ export class WorkerClient {
       stdoutPipe.cancel(reason);
       stderrPipe.cancel(reason);
     };
-    this.readyTimer = this.readyWall(HOST_READY_TIMEOUT_MS);
+    this.readyTimer = this.readyWall(HOST_WALL_MS);
     let stderr = "";
     const stderrDecoder = new TextDecoder();
     const stderrDone = (async () => {
@@ -436,10 +442,10 @@ export class WorkerClient {
       const requestId = crypto.randomUUID();
       const frame = serializeGeneratedToolParentFrame({ ...message, requestId });
       const result = Promise.withResolvers<AcceptedResult>();
-      const timer = setTimeout(
-        () => this.fail(raise(requestTimeoutCause(this.requestTimeoutMs))),
-        this.requestTimeoutMs,
-      );
+      const trusted =
+        message.type !== "execute" || presetOwningTool(this.presets, message.name) !== undefined;
+      const wallMs = trusted ? HOST_WALL_MS : this.requestTimeoutMs;
+      const timer = setTimeout(() => this.fail(raise(requestTimeoutCause(wallMs))), wallMs);
       this.pending.set(requestId, { expected: REQUEST_REPLY[message.type], timer, ...result });
       // oxlint-disable-next-line typescript/no-floating-promises -- writeFrame records stdin failures through this.fail.
       void this.writeFrame(frame);

@@ -138,10 +138,10 @@ frozen timestamp precedes the actual opening; if that window was missed, say so 
 backdating. Include the likely failure boundary; do not invent an expected failure to fill a row.
 
 Write the claim so a recorded count settles it: "at least four iterations before any typed
-terminal", "the next battery's verified count falls by at least three of 25", "the next battery
-comes closer to the aim than 6/7, the run's closest so far". "Improves" is not a
-prediction. Several changed mechanisms make a composed-system test: it can prove operation, while
-a causal claim needs a controlled replay or a matched comparison.
+terminal", "the next battery's verified count falls by at least three of 25", "at least three of
+the first 8 batteries land between 1/n and n−1/n", "no task is carried unchanged after a full
+pass". "Improves" is not a prediction. Several changed mechanisms make a composed-system test: it
+can prove operation, while a causal claim needs a controlled replay or a matched comparison.
 
 ## 4. Launch through one owner
 
@@ -300,12 +300,15 @@ asks for more, and only a run of them says whether asking worked.
 
 - **read the line, not the zone.** The climb's shape is a line that moves: a raised requirement
   drops the pass rate, a repair or rebuild lifts it, and over 8 or 12 rounds the swings narrow into
-  the band. So read each placement against the run's closest battery so far: 8 of 11 after 10 of 11
-  would come closer though both read above the aim, and 3/3 reads `over-aim` while passing everything. A
-  stall is the line gone flat, three batteries in a row no closer than the closest before them.
-  `bun run runs pulse` names it and this watcher does not; stopping it is the operator's (§7).
-  Campaign `3fd52f9e-28` placed seven too-easy batteries while its Builder moved only published
-  magnitudes. Rebuild what the tasks demand, not their numbers.
+  the band. A battery below n/n is what an ambitious round expects, and a run of n/n batteries is
+  the failure, whatever its zones read: 3/3 reads `over-aim` while passing everything. `wri.ts climb`
+  prints the line as `velocity` (batteries between 1/n and n−1/n, and the swing), `horizon` (that
+  count over the first 8 and 12), `flat` and `carried` (tasks measured again unchanged after a full
+  pass). A stall is the line gone flat, three batteries in a row no closer than the closest before
+  them; `bun run runs pulse` names it and this watcher does not, and stopping it is the operator's
+  (§7). Reserve 6a8ca0 read 7/7 thirteen times while it grew inputs at unchanged checks, and bulk
+  RNA-seq 36e268 read n/n eleven times while carrying 53 passed tasks forward. Rebuild what the tasks
+  demand, not their numbers or their count.
 - a decision stating **repeated failures** or a **family conflict** is `surgical`, and one placed
   nowhere is `overhaul`. Otherwise it moves by its zone: `too-hard` is `reserved`, and the other
   four zones are the band reading its own score, printed as `info`.
@@ -362,6 +365,7 @@ again, since the page was never delivered.
 
 | you want to know | read | not |
 | --- | --- | --- |
+| whether the run is climbing | `wri.ts climb` `velocity`, `horizon`, `flat` and `carried` lines | the zone, the score, or a monotonic approach to the aim |
 | whether the next battery will be asked for more | `difficulty-decisions/`, the placement the watch prints | the score |
 | whether the tasks actually got harder | `wri.ts climb` edge verdicts and the tier histogram | the level label, new task ids, or a longer description |
 | whether a page could have steered the Builder at all | `git show <opening source.commit>:<path>` | the working tree or the stack head |
@@ -370,8 +374,9 @@ again, since the page was never delivered.
 | whether a slow solve is the wall | `solver.toolCalls` in `case-result.json` | `max_turns` or the solve wall, which no recorded truss case approached |
 
 Open [the climb reference](../whole-run-investigation/references/climb.md) on any of these: it owns the attribution, the goal
-these rows serve — a battery inside `climb.band`, 5 to 12 verified of 25, on a named changed public
-requirement — and the difference between a harder battery and a differently-labelled one.
+these rows serve — a line that swings between 1/n and n−1/n on named changed public requirements and
+narrows into `climb.band` over 8 or 12 rounds — and the difference between a harder battery and a
+differently-labelled one.
 
 ### A round the loop threw away looks exactly like a round that changed nothing
 
@@ -578,10 +583,12 @@ anything; the second says whether a correction moved any verdict at all.
 
 ### When the line goes flat, stop editing prose
 
-Two consecutive batteries of one product on the same side of the band, the second no closer to the
-aim than the first, are a settled result, not an ambiguous signal needing more diagnosis. It says the authoring loop cannot yet author above this
-solver, and it says the binding constraint is not the wording of any instruction, because the
-instruction channel is exactly what the two batteries held fixed.
+A flat line — three batteries of one product in a row on one side of the aim, none closer than the
+closest before them, which `bun run runs pulse` names — is a settled result, not an ambiguous signal
+needing more diagnosis. It says the authoring loop cannot yet author above this solver under the
+surfaces the run was served, and those surfaces are frozen at its opening. A run of full passes is
+the common case: on 2026-09-30, 251 of the 277 batteries placed in local runs with two or more were
+full passes.
 
 On 18 September the second battery settled 6 of 6 at 08:26 with every case solved in one turn and
 the tightest margin 6.7% under its limit, against the author's own pre-registered "at most 2". The
@@ -600,6 +607,12 @@ operator one message holding both batteries' verified counts, each case's turn c
 its governing limit, what the Builder changed between them as `wri.ts climb` reads it, and one
 named next experiment. Then wait. Work on an authoring surface after that point is work for the next
 launch, and it should be scheduled as such rather than presented as a response to this one.
+
+Then read which sentence the Builder cited when it declined to raise the demand (lane 36), because
+that is the surface the next launch changes. Both 887c163ee Builders that read n/n for 13 and 11
+batteries measured the solver's reach correctly and declined on the kickoff's "add no requirement it
+does not name", then submitted on one passing rehearsal citing "submit once a clear preview says it
+works". The wording was the binding constraint there, and it changed for the next launch.
 
 Read what the Builder said it set out to do, in its prose and notes, before judging the round. It
 states the gap the Builder saw, and a score cannot. The fourth round of 3fd52f9e-10 opens "every rule
@@ -623,11 +636,11 @@ owns (operator, 2026-09-29). Of two candidate moves, prefer the one that brings 
 closer to the solver's limit on a changed public requirement, provided every fail it could produce is
 earned on a published rule. A move that buys a placement with an invented rule, a check the public
 projection does not support or a count told to the Builder has failed the goal however the zone reads,
-and so has one that raises a score, adds tasks or renames levels without moving a placement. Weigh
-the choice against the run's line over 8 or 12 rounds, not its last zone: a move whose next battery
-would swing, a raised requirement that drops the rate or a repair that lifts a battery a defect sank,
-serves the goal, and one after which the line would sit where it sat does not.
-[The climb reference](../whole-run-investigation/references/climb.md) holds the two recorded numbers
+and so has one that raises a score, adds tasks or renames levels without moving the line. Weigh the
+choice against the run's line over 8 or 12 rounds, not its last zone: a move whose next battery would
+swing, a raised requirement that drops the rate or a repair that lifts a battery a defect sank, serves
+the goal, and one after which the line would sit at n/n where it sat does not.
+[The climb reference](../whole-run-investigation/references/climb.md) holds the line's four numbers
 that say whether it moved.
 
 Track the four evidence levels separately — present in source, deterministically proved,

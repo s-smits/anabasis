@@ -186,8 +186,11 @@ plus `unplaced` when no verified case or `placeOnBand` refused it. The band is `
   (its runEnd section reads the newest difficulty decision). `bun run runs show <runId>` gives the
   Batteries table (BATTERY, CLAIMED, PASSED, CLIMB, RATIONALE), and `difficulty-decisions/*.json`
   gives the full record.
-- **Better is** fewer `too-easy` batteries before the first battery inside the band, and any
-  `under-aim`, `on-aim` or `over-aim` placement.
+- **Better is** more batteries between 1/n and n−1/n in the first 8 and 12, a larger swing, fewer
+  tasks carried unchanged after a full pass, and a line that is not flat (`wri.ts climb`: `velocity`,
+  `horizon`, `flat`, `carried`). A zone is read beside these, never instead of them: 3/3 places
+  `over-aim` and passes every case, so an `over-aim` or `on-aim` placement counts only when it passed
+  some cases and failed some.
 - **Traps.**
   - Placement is taken over *verified* cases, so a battery that lost cases to non-results is placed
     on a smaller n with a wider interval. 6 of 6 verified places `too-easy`, while 4 of 4 verified

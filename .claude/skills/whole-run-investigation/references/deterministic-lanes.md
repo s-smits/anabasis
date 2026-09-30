@@ -89,10 +89,14 @@ lane suffix it carries, so the brief can say which lanes have something to read.
 
 ## The campaign lanes
 
-`climb` runs `climb-velocity.ts` over consecutive versions and labels every edge `restated`,
-`adjusted`, `narrowed`, `widened`, `eased`, `escalated` or `replaced`; `adjusted` deliberately
-states no direction, `replaced` means fewer than half the task ids carried over so the numbers
-could not be compared, and every label starts lanes 10 and 20.
+`climb` runs `climb-velocity.ts` (`climb-velocity/v2`) over consecutive versions and labels every
+edge `restated`, `adjusted`, `narrowed`, `widened`, `eased`, `escalated` or `replaced`; `adjusted`
+deliberately states no direction, and `replaced` means fewer than half the task ids carried over so
+the numbers could not be compared. Each edge also counts the tasks `carried` unchanged, which after a
+full pass re-measure a known pass. The lane closes on the line the claimed batteries draw:
+`velocity` (the batteries between 1/n and n−1/n and the mean swing), `horizon` (that count over the
+first 8 and 12), `flat` (the pulse's stall rule) and `carried`. Every label and line starts lanes 10
+and 20.
 
 `yield` runs `review-yield.ts` and gives each review component a status per finding —
 `consumed`, `unobservable`, `advisory-only` or `not-consumed`. The `epoch-reviewer` component is

@@ -401,24 +401,27 @@ families the plan is about; it routes to `controller-source`
 **10. Difficulty calibration loop.**
 
 Starts from block 4b's `OFF-AIM STREAK (lane 10)`, from the calibration table the `handoff` lane
-prints, and from the `climb` lane's edge labels.
+prints, and from the `climb` lane's `velocity`, `horizon`, `flat` and `carried` lines.
 
-The question is whether the batteries move towards the aim round over round, read as counts.
-Each battery's `difficulty-decisions/<runId>-<digest>.json` records the `ClimbReadout`:
-`placement.zone`, `aim`, `toAim` and the Wilson interval. So compare per round, in claim
-`createdAt` order, the placement the controller recorded, the operation the accepted bytes were
-attributed as, and the count it measured. The round states no plan of its own any more: a run whose
-source predates the removal of `EXPERIMENT.json` recorded one beside each accepted submit, and
-nothing reads it. The battery
-contract (`renderBatteryContract`, `src/run/climb-readout.ts`) states no count at any size: the
-Builder is told only that a partial battery can locate a limit where its failing checks are right,
-so no battery can be scored against a target the controller stated. An unchanged public task set
-predicts a repeat, not a harder battery, and a digest streak counts consecutive placements on one
-side of the aim, so say which side. Why a streak persisted — what, if anything, pressed the Builder
-to change the tasks — is lane 36's question, and how many tasks the next battery held is lane 37's.
-Do not prescribe the route, which is the Builder's. The decision it changes is the next round's
-move; it routes to the Builder prompt when the readout misstated what was measured and to
-`correctness-model/tasks.json` when the task set did not move.
+The question is whether the run draws the line the climb is meant to draw (AGENTS.md "Goals and the
+climb"): batteries between 1/n and n−1/n that swing as the Builder raises a requirement and repairs
+what it sank, narrowing into the band over 8 or 12 rounds. A monotonic approach is not the test, and
+neither is a zone: 8 of 11 after 10 of 11 is progress above the aim, and 3/3 places `over-aim` while
+locating nothing. So read, in claim `createdAt` order, each battery's count, the placement the
+controller recorded (`difficulty-decisions/<runId>-<digest>.json`: `placement.zone`, `aim`, `toAim`,
+the Wilson interval), the operation the accepted bytes were attributed as, and the `climb` lane's four
+numbers. A run of n/n batteries is the finding, whatever its zones read, and `carried` says whether
+the Builder measured the same passed tasks again. The digest streak counts consecutive placements on
+one side of the aim; say which side, and whether it meets the stall rule `flat` applies. What the
+Builder was told is fixed: the kickoff, the system prompt's intent clause, the round prompt and the
+readout name no count at any size, so no battery can be scored against a target the controller
+stated. A run whose source predates the removal of `EXPERIMENT.json` recorded a plan beside each
+accepted submit, and nothing reads it. Why a line stayed flat — what, if anything, pressed the Builder
+to change the tasks, and which sentence it cited when it declined — is lane 36's question, and how
+many tasks the next battery held is lane 37's. Do not prescribe the route, which is the Builder's. The
+decision it changes is the next round's move; it routes to the Builder prompt when a surface
+misstated what was measured or what a round is for, and to `correctness-model/tasks.json` when the
+task set did not move.
 
 **11. Submit decision against rehearsal evidence.**
 
@@ -642,9 +645,11 @@ deliberately states no direction, because a moved limit is a climb only when it 
 round that re-posed the same public schemas under new values is the `adjusted` edge read round over
 round. Do not read a new hash, id, family name or longer description as a harder problem; the
 Builder names the public requirement that changed and the reasoning interaction it adds, or the
-change is coverage. The decision it changes is the attribution and the refusal of a repeated
-condition; it routes to `correctness-model/tasks.json`, `correctness-model/controls.json` or
-`correctness-model/evaluator.ts` by which bytes moved.
+change is coverage. Each edge's `carried` row counts the tasks held unchanged in id, public input
+and family checks; after a full pass every one of them measured a known pass again. The decision
+it changes is the attribution and the refusal of a repeated condition; it routes to
+`correctness-model/tasks.json`, `correctness-model/controls.json` or `correctness-model/evaluator.ts`
+by which bytes moved.
 
 **21. Source-delta reach.**
 
@@ -1055,21 +1060,26 @@ The question is what, in this run, pressed the Builder to make the tasks harder,
 anything did. Only the Builder raises difficulty, and only through the tasks it writes: the
 controller writes no task, and the off-aim streak is a readout fact that stops nothing, so
 a product can land above the aim round after round with no controller action. Read the channels
-that could have carried pressure and say what each carried: the climb readout and battery contract
-the round opened with, the authoring and battery reviews' findings owned by
+that could have carried pressure and say what each carried: the kickoff, the system prompt's intent
+clause, the round prompt's submit sentence, the climb readout and battery contract the round opened
+with, `harness_trial`'s round clause, the authoring and battery reviews' findings owned by
 `correctness-model/tasks.json` with their severity, the advice packet, and the Builder's own plan
-and notes. Then read what the Builder did: the task ids and public-input digests that reappear
-unchanged across batteries, the families it named in the plan against the families whose bytes
-moved, and whether an advisory `tasks.json` finding was followed by a change to the obligation it
-named. Two framings may differ here — the reviewer's orientation states the battery's placement,
-while the Builder's text may not name a zone at all — so quote what each was served before
-comparing their responses. Whether staying easy costs a Builder anything, and whether an advisory
-finding is too weak to move one, are questions to answer from these recorded responses, not
-premises to start from. Do not prescribe the route, which is the Builder's. The decision it changes
-is which channel, if any, should carry the pressure; it routes to the Builder prompt or
-`starters/pi-built-harness/STARTER.md` for what the Builder is told, and to `controller-source`
-(`src/run/climb-readout.ts`, `src/review/epoch-review-public.ts`) for what the readout or the
-projection states.
+and notes. Pressure can arrive and be declined on another surface's words: both 887c163ee Builders
+whose lines stayed at n/n measured the solver's reach correctly, then cited the kickoff's "add no
+requirement it does not name" against every stricter demand and the round prompt's "submit once a
+clear preview says it works" as the user's instruction. So quote the sentence the Builder cited when
+it declined, and name the surface that owns it. Then read what the Builder did: the task ids and
+public-input digests that reappear unchanged across batteries, the families it named in the plan
+against the families whose bytes moved, and whether an advisory `tasks.json` finding was followed
+by a change to the obligation it named. Two framings may differ here — the reviewer's
+orientation states the battery's placement, while the Builder's text may not name a zone at all —
+so quote what each was served before comparing their responses. Whether staying easy costs a Builder
+anything, and whether an advisory finding is too weak to move one, are questions to answer from
+these recorded responses, not premises to start from. Do not prescribe the route, which is the
+Builder's. The decision it changes is which channel, if any, should carry the pressure; it routes to
+the Builder prompt or `starters/pi-built-harness/STARTER.md` for what the Builder is told, and to
+`controller-source` (`src/run/climb-readout.ts`, `src/review/epoch-review-public.ts`) for what the
+readout or the projection states.
 
 **37. Battery size and probe graduation.**
 

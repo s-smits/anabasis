@@ -7,18 +7,33 @@ battery got harder or only different, and proposes the one change worth making. 
 investigation it is the `climb` lane's ground and the reading behind lanes 5, 6, 9, 10, 11 and 20,
 and behind the authorship lanes 33 to 38 wherever a climb depends on what the Builder wrote.
 
-## The goal and its two numbers
+## The goal and the line it is read on
 
-A campaign has reached the operator's goal when one battery lands inside `climb.band` — `[0.2,
-0.50]` in `thresholds.frozen.yaml`, read through `climbThresholds`, which is 5 to 12 verified of 25
-— on tasks whose changed public requirement can be named, and whose fails the published rules
-earn (AGENTS.md "Goals and the climb": a healthy, ambitious climb). Two counts from `difficulty-decisions/`
-say whether a change moved towards that: how many batteries came before the first in-band
-placement, and what share of placements were `on-aim` rather than `too-easy` or `over-aim`. Neither
-moves by touching a threshold, because the band, the Wilson owner and the battery sizes are frozen
-policy. On 2026-09-29, 4 of the 51 local runs with a placement had ever placed on the aim, the latest
-first doing so at its fifth battery, and three of the four did it on a probe whose fails the Epoch
-Reviewer settled against the check. Only truss cb274b's 3/8 then 10/25 held.
+The goal is a healthy, ambitious climb (AGENTS.md "Goals and the climb"). Its shape is a line that
+moves: a raised requirement drops the pass rate, a repair lifts it, and over 8 or 12 rounds the
+swings narrow into `climb.band`, `[0.2, 0.50]` in `thresholds.frozen.yaml` (5 to 12 verified of
+25). A battery below n/n is what an ambitious round expects, and a run of n/n batteries is the
+failure to fix. Landing on the aim is not the end either, because the next requirement moves the
+line again.
+
+`wri.ts climb` reads the line from the claimed batteries, adopted or not, in claim order and on the
+counts the controller places (earned, where a review settled a case against its check). It prints
+four numbers:
+
+| line | what it counts | why |
+| --- | --- | --- |
+| `velocity` | the batteries between 1/n and n−1/n, which ones, and the mean swing in points a battery | as in RL curriculum filtering, a battery at 0/n or n/n carries no signal about where the solver stops, whatever zone a small one places in |
+| `horizon` | the same count over the first 8 and the first 12 batteries | the climb is read over those rounds |
+| `flat` | the stall rule `runs pulse` applies: `STALL_BATTERIES` in a row on one side of the aim, none closer than the closest before them | a zone cannot say it: 3/3 places `over-aim` while passing everything |
+| `carried` | the tasks measured again unchanged in id, public input and family checks after a full pass | a task the solver passed measures the same pass again |
+
+On 2026-09-30 the line ranked custom-sol-f0fb83 (3 of 14 with signal, a 13.8-point swing) above
+truss-sol-198d70 (2 of 13, 3.9) and reserve 6a8ca0 (0 of 13, flat since its first 7/7). The
+endpoint slope it replaced read 198d70 and 6a8ca0 identically, and gave f0fb83 "50 more at this
+rate". Across the 50 local runs with two or more claimed batteries, 26 of 277 placed batteries
+carried signal and 251 were full passes, and 570 of the 1,465 tasks measured after a full pass were
+carried unchanged. None of these numbers moves by touching a threshold, because the band, the
+Wilson owner and the battery sizes are frozen policy.
 
 ## Who can move difficulty
 
@@ -72,16 +87,26 @@ was told.
 
 ## What the round was told
 
-`renderBatteryContract` opens each round with the limit sentence, the witness sentence and the
-publication boundary, and states no count at any size, because a count per size reads as something
-to author towards. The limit sentence says that only a battery passing some but not all of its
-cases can locate a limit, and only where the checks that failed it are right; the readout adds a
-no-limit line when the latest battery passed every verified case. A run measured before that change
-opened with the calibration target — the aim and the no-limit count at the round's size — so read
-the sentence from the measured tree. `renderProbeSizing` states the probe range. The witness sentence tells the Builder that a passing artifact, like its
-reference, proves a task feasible and never difficult, and that only a blind measured battery shows
-where it lands. Read these as the words that were served, from the measured tree, before deciding
-what the Builder ignored.
+Four surfaces carry the climb to the Builder, and each is a condition identity, so read them from
+the measured tree:
+
+- the **kickoff**'s closing line: add no requirement the request does not name, and, from
+  2026-09-30, a stricter demand on one it does name is not an added requirement. Both 887c163ee
+  Builders that passed every case of 13 and 11 batteries quoted the first half to decline stricter
+  demands;
+- the **system prompt**'s intent clause: from 2026-09-30, an ambitious round expects its battery to
+  fail some cases on the rules it publishes;
+- the **round prompt**: submit once a clear preview says it works; a passing rehearsal is a blind
+  solve within the solver's reach; from 2026-09-30, a battery whose every rehearsal passed has its
+  hardest tasks' demand changed once before submit. `harness_trial` states the round's passes with
+  the largest wall share and tool-call count any pass took; before 2026-09-30 it counted one-turn
+  passes, which every pi solve is;
+- the **readout** and `renderBatteryContract`: the limit sentence, the witness sentence and the
+  publication boundary, with no count at any size, and a no-limit line when the latest battery
+  passed every verified case. From 2026-09-30 that line names the next tasks as ones the Builder
+  expects the solver to fail and says to carry none of the passed tasks forward unchanged. A run
+  measured before an earlier change opened with the calibration target, the aim and the no-limit
+  count at the round's size. `renderProbeSizing` states the probe range.
 
 The round states no plan. What it set out to do is in the Builder's prose and notes, and what it
 did is in the accepted bytes, which alone decide the operation it is attributed as. A run whose
@@ -116,6 +141,7 @@ reads too hard at a twelve-minute wall has measured the wall the Builder chose.
 
 | situation | first read | what it usually is |
 |---|---|---|
+| every battery passes every case | `wri.ts climb` `velocity`, `flat` and `carried` lines, then the edges | a flat line: tasks carried unchanged, or inputs grown at unchanged checks and limits |
 | score stays high, task ids and hashes keep changing | `wri.ts climb` edges | `adjusted` or `widened`: numbers moved, demand did not |
 | score high but an edge already reads `escalated` | that edge's changed checks, limits and tier histogram | a real move whose cases have not landed; wait for them |
 | some cases failed, placement over or on the aim | the battery's `fails` line in `wri.ts climb` | fails held by the review are a limit; fails settled against their check, or all on one check across families, are a check the public rules do not support |
@@ -136,7 +162,12 @@ variation proves coverage only. So a transition is `harder` only when a changed 
 and the reasoning interaction it adds can be named from the recorded inputs; otherwise it is
 `unknown`. Moving a published magnitude is the cheapest edit and the easiest to mistake for a
 climb, and tightening a feasible limit towards a stronger witness is legitimate, but neither proves
-a task harder by itself; blind measurement decides.
+a task harder by itself; blind measurement decides. Reserve 6a8ca0 set its limits at its reference's
+values and gave the solver the same optimiser, and from i03 the solver submitted the reference's own
+answer on 3 to 7 of each battery's 7 tasks: a limit binds only where the solver's search falls short
+of the witness. Growing
+inputs and scenarios at unchanged checks is the other flat route, 24 to 53 inputs over thirteen 7/7
+batteries.
 
 Read difficulty on the changed public-input subset, so unchanged successes cannot dilute its
 failures; order batteries by claim `createdAt`, and refuse a before-and-after reading that lacks

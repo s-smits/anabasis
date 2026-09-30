@@ -28,6 +28,7 @@ export interface ProcessCensusSnapshot {
 }
 
 const PS_ROW = /^(\d+)\s+(\d+)\s+(\S+\s+\S+\s+\d+\s+\S+\s+\d+)\s+(.*)$/;
+const PS_ARGV = ["ps", "-axo", "pid,ppid,lstart,command"];
 
 export interface ProcessCensus {
   snapshot(): ProcessCensusSnapshot;
@@ -62,9 +63,13 @@ export function descendantsOf(rows: readonly ObservedProcess[], rootPid: number)
   return rows.filter((row) => row.pid !== rootPid && parents.has(row.pid));
 }
 
+/** The table without its own probe: `ps` is this process's child while it runs, so left in, every
+ *  sample adds one descendant, and the one from the closing sample reads as still present. */
 export function sampleProcessTable(): ObservedProcess[] {
-  const result = runSync(["ps", "-axo", "pid,ppid,lstart,command"], { env: Bun.env });
-  return parseProcessTable(decodeOutput(result.stdout));
+  const result = runSync(PS_ARGV, { env: Bun.env });
+  const probe = (row: ObservedProcess) =>
+    row.ppid === runtimeProcess.pid && row.command === PS_ARGV.join(" ");
+  return parseProcessTable(decodeOutput(result.stdout)).filter((row) => !probe(row));
 }
 
 /** Start sampling descendants of `rootPid` every `intervalMs`; `stop()` takes a final sample. */

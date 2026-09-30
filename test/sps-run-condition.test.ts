@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   descendantsOf,
   parseProcessTable,
+  sampleProcessTable,
 } from "../.claude/skills/system-path-simulation/scripts/process-census.mts";
 import {
   REPO_ROOT,
@@ -319,5 +320,10 @@ describe("process census", () => {
     expect(rows).toHaveLength(5);
     expect(descendantsOf(rows, 100).map((row) => row.pid)).toEqual([101, 102]);
     expect(descendantsOf(rows, 200)).toEqual([]);
+  });
+
+  it("leaves its own ps probe out of a sample, so a closing sample reports no false survivor", () => {
+    const own = descendantsOf(sampleProcessTable(), process.pid);
+    expect(own.filter((row) => row.command.startsWith("ps -axo"))).toEqual([]);
   });
 });

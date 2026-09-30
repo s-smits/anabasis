@@ -61,16 +61,26 @@ export const SCOPE_CLAUSE = [
  *  reference recipe private and then write that same recipe into BUILT_AGENTS.md as guidance, in its
  *  own words, where no literal comparison of the two texts would see it.
  *
- *  The tools sentence sets no ceiling on what an analysis may report. Knowing whether a candidate
- *  meets the rules is not knowing how to build one, a solver without an analysis fails on
- *  arithmetic, which measures nothing, and whether a rich tool left a battery too easy is for blind
- *  measurement to say rather than for a rule written in advance. The program sentence answers
- *  harnesses that published an exact call sequence and graded a call trace, which turned writing
- *  the program into transcribing it. */
+ *  The tools sentences used to set no ceiling on what an analysis may report, leaving it to blind
+ *  measurement whether a rich tool left a battery too easy. Measurement answered on 2026-09-30: of
+ *  297 scored batteries, 266 passed whole and 6 sat in the difficulty band. Every harness that let
+ *  the solver run a check passed whole round after round, whether by an adviser importing a
+ *  byte-identical copy of the check's module (reserve 6a8ca0, 13 × 7/7; buffer 3af96d, 11 × n/n), or by
+ *  the verifier's analyzer on the solver's PATH with the guide giving the check's own stdin (truss
+ *  3e4693, 7 × 6/6). The one structural run whose tools left the analysis to the solver (cb274b, a
+ *  geometry-only screener) placed 3/8, 10/25, 15/25, 11/25 and 15/25. A solver that can ask the
+ *  grader searches until it passes, so the battery measures that search. The worry that kept the
+ *  ceiling off was that a solver without an analysis fails on arithmetic, which measures nothing.
+ *  The real toolchain and a bounded search stay, and computing the response a check decides with
+ *  is the field's own work; whether solves now fail on that work or on arithmetic is for the next
+ *  measured battery to say (a new condition from this commit). The program sentence answers harnesses
+ *  that published an exact call sequence and graded a call trace, which turned writing the program
+ *  into transcribing it. */
 export const PUBLICATION_CLAUSE = [
   "Publish everything the verifier requires of an answer wherever the solver reads it: constants with their authority, units, precision and rounding, comparison direction and tolerance, canonical form, required paths and entry points, and the assumptions an installed tool applies. A solver that follows every published rule must never fail on a rule it could not read; where a practitioner could read a rule two ways, the brief states the verified reading.",
   "Withhold hidden expectations, private controls and decisions, reference answers and protected verifier information from everything the solver reads, in any wording, tool results included. For a program, publish the behaviour it must show, not the calls or steps that produce it: a published sequence turns writing the program into transcribing it.",
-  "Give the solver a practitioner's tools — the real toolchain, an analysis of a candidate computed by the rule its check applies, a bounded search — and leave it the decision the task asks for; a tool that grades a candidate, however fully, still leaves it that decision.",
+  "Give the solver a practitioner's tools — the real toolchain it builds with, readers, writers, a bounded search — and leave it the analysis and the decision the task asks for.",
+  "No tool, program or guide line analyses a candidate for the solver the way a check does, whether through the check's code or a copy of it, its instrument, or a verdict: a solver that can ask the grader searches until it passes, and its battery then measures that search rather than the field's work.",
 ] as const;
 
 /** Verification that means something, and the real installed tools it rests on. The first sentence

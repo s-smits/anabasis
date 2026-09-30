@@ -105,9 +105,9 @@ it. The host runs every reference answer through the same checks as controls and
   verification. `designRuleConstants` rows are `{name, value, unit?, authority, citation}`, and
   optional `designRuleSets` rows `{name, values, unit?, authority, citation}` publish a permitted
   list.
-- Where the schema carries values a check also computes, the tool preparing the answer fills them
-  from that same computation: a second one drifts from the model it describes, and the margin the
-  solver is shown is then measured on the wrong number.
+- Where the schema carries values a check also computes, the check recomputes them from the answer
+  and never reads the reported copy. The reported copy is the solver's own figure, which the writer
+  records as given, so the margin the solver is shown is measured on the number it computed.
 - The solver's `read_public_resources` returns check assertions with their public input paths,
   public `ruleDecisions`, the `artifactSchema` rows, `designRuleConstants` and `designRuleSets`.
   `decisions`, `gates`, `joins`, private rows and check ids never reach it: a rule stated only
@@ -245,12 +245,18 @@ placeholder is missing evidence.
 - Every public requirement the agent must act on stays reachable through the public task, a
   reader, a public method or a draft-derived adviser, and the system prompt's rules on what a
   tool may claim, add and withhold bind every tool here.
-- An adviser computes what it returns by the rule its check applies, with every constant, iteration
-  count and procedure the public task determines. Approximating a rule you could compute is a
-  defect no disclaimer cures: the solver optimises against the number returned, so an adviser
-  answering a second-order limit to first order sends every solver over it. Where the public input
-  leaves an effect open, name it and its direction in the returned text. A fast screening adviser
-  beside a slow exact one is fine; generated tools cannot start processes.
+- An adviser computes what it returns exactly, with every constant, iteration count and procedure
+  the public task determines. Approximating a quantity you could compute is a defect no disclaimer
+  cures: the solver optimises against the number returned, so an adviser answering a second-order
+  effect to first order sends every solver over the limit. Where the public input leaves an effect
+  open, name it and its direction in the returned text. A fast screening adviser beside a slow exact
+  one is fine; generated tools cannot start processes.
+- An adviser never analyses a candidate the way a check does: it imports and copies nothing from
+  `correctness-model/`, and it returns neither a check's verdict nor the response a check decides
+  from. What a candidate is — its layout, its counts, its totals — an adviser may compute; how it
+  behaves under the task's loads, scenarios or data is the solver's analysis. The operating guide
+  holds the same line: it names no command that runs a check's instrument the way the check runs
+  it.
 
 ```json
 {

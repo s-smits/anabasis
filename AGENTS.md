@@ -770,9 +770,12 @@ the battery was paid for.
    review is offered the standing issues of the register its own battery advanced on host and Judge
    evidence, each with the last diagnosis recorded for it, so an issue that battery raised first is
    disputable in it; until 2026-09-29 it was offered the register before the battery, and a dispute on a
-   new issue landed a battery late, after a build had rebuilt around it. Public
-   candidate analysis and checks of published limits are legitimate solving support; a tool is an answer
-   shortcut only when it makes the solver's remaining decision. While the measured `.toolchain` digest still
+   new issue landed a battery late, after a build had rebuilt around it. Reusable
+   algorithms, bounded search and the host's margin table on published limits are legitimate solving
+   support. A tool, program or guide line that analyses a candidate the way a check does, through the
+   check's code or a copy of it, its instrument or a verdict, is not: until 2026-09-30 it counted as
+   support, and 266 of 297 scored batteries passed whole, every harness whose solver could run a check
+   among them (`PUBLICATION_CLAUSE` in `src/author/builder-start-prompt.ts` records the measurement). While the measured `.toolchain` digest still
    matches a recorded tool, the reviewer may read any text file of that tree by name (`toolchain:<path>`,
    installed packages included, each at most 1 MiB) as long as the file still counts as the recorded tree
    digest took it, and a directory reads as its listing.

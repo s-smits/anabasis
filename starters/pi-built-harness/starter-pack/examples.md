@@ -27,8 +27,7 @@ Accepts    one table-driven decoder and one switch-based decoder for the same ta
 Reject     the driver prints a fixed output sequence off a call counter and ignores stdin;
            mutationClass "output-replays-call-counter", expectedCheckId decode-behaviour
 Tools      presets ["files"]; reader describe_frame_contract (layout, scenarios, error codes);
-           adviser lay_out_frame (lays one supplied frame's bytes against the published field
-           table and returns each field's value)
+           the shell's cc builds the solver's own test drivers on frames it writes itself
 Published  entrypoint, standard, signatures, byte order, output format, error codes, scenarios
 Withheld   parsing strategy, table layout, buffer management order
 ```
@@ -62,9 +61,9 @@ Accepts    the minimal compliant sizing, and one conductor size up still inside 
 Reject     one line endpoint renamed to a bus no bus row declares, everything else identical;
            mutationClass "ghost-bus", targetsJoin lines-to-buses, decoyClass "ghost-bus",
            expectedCheckId catalogue-conformance
-Tools      presets [shell];
-           reader list_feeder_inputs; adviser analyse_supplied_network (solves a supplied bus
-           and line candidate and returns its currents and voltages); artifact-writer record_network
+Tools      presets [shell] with an interpreter carrying the field's numerical libraries;
+           reader list_feeder_inputs; adviser total_network (a candidate's line lengths and cost);
+           artifact-writer record_network. The load flow the limit checks run is the solver's
 Published  catalogue, derating table, reference ambient, voltage limit and its inclusivity,
            rounding, budget, load cases
 Withheld   sizing search order, sequence of conductor changes, tie-break at equal cost
@@ -72,7 +71,8 @@ Withheld   sizing search order, sequence of conductor changes, tie-break at equa
 
 Examples of invalid designs: a `report` or `summary` root no check reads; a rule stated only in
 `decisions` and then enforced; a check that only compiles, parses or greps submitted source; a
-tool that reports the installed toolchain; an adviser that returns a complete valid answer.
+tool that reports the installed toolchain; an adviser that returns a complete valid answer; an
+adviser, program or guide line that runs a check's analysis for the solver.
 
 ## A target the solver does not reliably meet
 

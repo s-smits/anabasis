@@ -535,8 +535,6 @@ closes it.
   that differ by which requirements interact under one shared limit, an obvious answer that fails, and a
   very hard family, which is where the operator's aim at very hard reaches the Builder, with no count
   (prior 10).
-- **`WITNESS_BUDGET` rests on the refuted mechanism** and binds nothing in firmware, where no search
-  sets a limit (`src/run/climb-readout.ts`; `witness-budget` under "Ablated components").
 - **The Epoch Reviewer cannot name requirements exercised one at a time.** No `demandGap` value
   (`src/review/epoch-review-findings.ts`) covers it, and its orientation reads easy tasks as a result.
 - **The expected-output oracle is unmeasured.** The firmware `rules.ts` is both the check's expectation
@@ -588,6 +586,13 @@ without new evidence that answers it.
   stacked inside one shared mass limit passed 7 of 20 (Sol high) and 2 of 23 (Opus 5). The no-limit
   line, the round prompt's raise before submit and the intent clause now name that depth and no other
   route.
+- **Searching each reference as long as a solve may run** (`witness-budget`, one sentence in
+  `renderBatteryContract`), 2026-09-30, and twice before unmeasured (83a24567, d21f1a27). Its mechanism
+  was refuted in truss (prior 10), and in firmware, which has no optimum to search, the fork given it
+  tied no limit to a solve's minutes and raised difficulty by stacking requirements (prediction
+  62424ee4). In a frame simulation an Opus Builder started one 95-minute search with about 75 minutes
+  of its wall left and never submitted. `examples.md` still offers the route, "A search past the
+  solver's wall" ("Open gaps").
 - **A second Wilson implementation** (`wilsonZ`) and the `minLevelN` floor, which discarded a placement
   whenever fewer than four tasks changed, until 2026-09-18.
 - **The transplant census**, until 2026-09-25, which refused one deliverable passing every sibling task.
@@ -602,25 +607,7 @@ through the grep: remove the prefixes, delete the replacement lines, and flip ba
 under the same marker. Each entry below is a measured condition, not a settled rule. Once its run reads,
 it either moves to "Tried and taken out" or its comments are deleted.
 
-- **`witness-budget` (added 2026-09-30).** One sentence in `renderBatteryContract`: search each
-  task's reference at least as long as the solver may spend solving it, and set the limit from the best
-  answer found. The same idea was stated twice before, and neither time was it measured:
-  - 83a24567 stated it, and it left on 2026-09-28 when `difficulty-ladder.md` was cut as a whole;
-  - an earlier start-prompt sentence was removed on overlap grounds (d21f1a27).
-
-  It remains an optional route in `examples.md`, "A search past the solver's wall". The controlled test
-  has read, and it refuted the mechanism the sentence rests on: six truss-25 acef98-i03 tasks re-limited
-  at 1.02× the best of a 45-minute to 3.4-hour search passed 5 of 6 (prediction 579d4990, prior 10).
-  The one truss run carrying the sentence, truss-sol-4ec6db (with the early-accept cues also ablated), set
-  its first battery's limits at its own best after a search of about 12 minutes and measured 5/5 twice.
-  In a frame simulation the Opus Builder given the sentence started one 95-minute search with about 75
-  minutes of its wall left and never submitted, because the sentence ties the search to no wall the
-  round has. Firmware has no optimum for it to search: the firmware fork given the sentence tied no
-  limit to a solve's minutes in its first round and raised difficulty by stacking requirements instead
-  (prediction 62424ee4, refuted). So the sentence is to come out, and this entry moves to "Tried and
-  taken out" when its source does. Grep: `rg "witness-budget"`. Measured by:
-  probe-2026-09-30T16-30-15-681Z, truss-sol-20260930T121837318Z-4ec6db and
-  custom-opus-20260930T124451370Z-350009.
+No component is ablated in source at present.
 
 ## Evidence and implementation status
 
@@ -1225,8 +1212,7 @@ the battery was paid for.
     adjust. None of these, nor tightening a feasible limit toward a stronger witness, proves a task harder
     or easier by itself; blind measurement decides, and it has read the third (prior 10). Tightening stays
     legitimate, since a slack limit is a finding about its reference, but it is no route to difficulty,
-    which the ablated
-    `witness-budget` sentence and `examples.md`'s search route still argue ("Ablated components"). Each
+    which `examples.md`'s search route still argues ("Open gaps"). Each
     prompt says it once: the Builder system prompt owns the clauses, `examples.md` the optional routes
     to a target the solver does not reliably meet, and
     `roundPrompt` and `renderBatteryContract` when to submit and what a witness proves, and the climb

@@ -216,6 +216,9 @@ describe("Builder start prompt", () => {
     ]) {
       expect(PROMPT, recipe).not.toContain(recipe);
     }
+    // The contract once tied the reference search to the solve wall; the mechanism behind it was
+    // refuted (AGENTS.md "Tried and taken out").
+    expect(flat(renderBatteryContract(25))).not.toContain("as long as the solver may spend");
     expect(flat(renderBatteryContract(25))).toContain(
       "only a blind measured battery shows where a battery lands",
     );

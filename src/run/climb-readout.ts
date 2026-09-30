@@ -365,6 +365,21 @@ function familyLine(readout: ClimbReadout): string | null {
   return `Families of the latest admitted battery (passes of attempts): ${list}.`;
 }
 
+/** A full pass: some case verified, every verified case passed and no attempt went unaccepted. It is
+ *  the battery the no-limit line answers, and the operator readers ask the same question through it. */
+export function fullPass({
+  verified,
+  passed,
+  unaccepted,
+}: {
+  verified: number;
+  /** Null for a refused claim, whose passes are not evidence, so it is never a full pass. */
+  passed: number | null;
+  unaccepted: number;
+}): boolean {
+  return verified > 0 && unaccepted === 0 && passed === verified;
+}
+
 /** The one result sentence the author is given: a battery that passed every case it scored found no
  *  limit. An unaccepted attempt is a fail there, so a battery holding one is not that battery. A
  *  non-result scored nothing, so a battery holding one says what it left unmeasured and asks for no
@@ -379,8 +394,8 @@ function familyLine(readout: ClimbReadout): string | null {
  *  finish far inside it while the next round reads only that every case passed. It ends with
  *  `MEASURE_SOLVES`, whose solves are already public in the context tool's traces source. */
 function noLimitLine(row: ReadoutRow): string | null {
-  const { runId, passed, verified, unaccepted, nonResults } = row;
-  if (verified === 0 || unaccepted > 0 || passed !== verified) return null;
+  const { runId, verified, nonResults } = row;
+  if (!fullPass(row)) return null;
   const all = verified === 1 ? "its one verified case" : `all ${String(verified)} of its verified cases`;
   if (nonResults > 0) {
     const lost = nonResults === 1 ? "one case" : `${String(nonResults)} cases`;

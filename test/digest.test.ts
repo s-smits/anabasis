@@ -932,21 +932,22 @@ describe("digest", () => {
     const paths = fixture();
     const dir = join(paths.campaign, "difficulty-decisions");
     mkdirSync(dir);
-    const decision = (name: string, runId: string, toAim: number, rows: unknown[]) =>
+    const over = { passes: 5, zone: "over-aim", toAim: -2 };
+    const decision = (name: string, runId: string, placed: typeof over | null, rows: unknown[]) =>
       writeFileSync(
         join(dir, `${name}.json`),
         JSON.stringify({
           schema: "difficulty-decision/v10",
           runId,
           difficulty: {
-            decision: { placement: { passes: 5, n: 6, zone: "over-aim", aim: [2, 3], toAim } },
+            decision: { placement: placed === null ? null : { ...placed, n: 6, aim: [2, 3] } },
             admitted: 1,
             excluded: [],
             rows,
           },
         }),
       );
-    decision("0", "d1", -2, [
+    decision("0", "d1", over, [
       {
         runId: "run-1",
         passed: 5,
@@ -957,12 +958,14 @@ describe("digest", () => {
     const one = digestOf(paths);
     expect(one).not.toContain("TARGET MISSED");
     expect(one).not.toContain("OFF-AIM STREAK");
-    decision("1", "d2", -2, []);
-    expect(digestOf(paths)).toContain(
-      "OFF-AIM STREAK (lane 10): 2 consecutive placements above the aim (d1, d2)",
-    );
+    decision("1", "d2", over, []);
+    const streak = "OFF-AIM STREAK (lane 10): 2 consecutive placements above the aim (d1, d2)";
+    expect(digestOf(paths)).toContain(streak);
+    // A decision that placed nothing between them passes the streak on, as `runs pulse` counts it.
+    decision("0a", "d1a", null, []);
+    expect(digestOf(paths)).toContain(streak);
     // A placement that crossed the aim ends the streak, and one placement on a side is no streak.
-    decision("1", "d2", 1, []);
+    decision("1", "d2", { passes: 1, zone: "under-aim", toAim: 1 }, []);
     expect(digestOf(paths)).not.toContain("OFF-AIM STREAK");
   });
 

@@ -28,6 +28,7 @@ import { readJsonFileOrNull } from "#src/meta/completed-json.ts";
 import { authorSessionOwner } from "#src/analyse/finding-owner.ts";
 import type { AnalysisFinding } from "#src/analyse/iteration-analysis.ts";
 import { DIFFICULTY_DECISION_SCHEMA } from "#src/run/difficulty-decision.ts";
+import { fullPass } from "#src/run/climb-readout.ts";
 import { EPOCH_REVIEW_SCHEMA } from "#src/review/epoch-review-findings.ts";
 import { JUDGE_REVIEWS_SCHEMA } from "#src/analyse/judge-reviews.ts";
 import {
@@ -44,6 +45,8 @@ import { PROVIDER_ALLOWANCE } from "#src/correctness-bundle/runtime-blocker.ts";
 import { controllerRunOfBattery } from "#src/run/controller-battery-record-policy.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { openRecordedRun, type RecordedRun } from "../../main/run.ts";
+import { isBandZone } from "#tools/runs/evidence.ts";
+import { offAimStreak } from "#tools/runs/pulse.ts";
 import { jsonText, readJsonAsOrNull } from "./run-overview.ts";
 
 /** The placement a difficulty decision recorded, each field null where the record omits it. */
@@ -81,10 +84,8 @@ export interface DifficultyDecisions {
   refused: string[];
 }
 
-type Side = "above" | "below";
-
 interface OffAimStreak {
-  side: Side;
+  side: "above" | "below";
   runIds: string[];
 }
 
@@ -330,16 +331,6 @@ export function readDifficultyDecisions(campaign: string): DifficultyDecisions {
   return { rows, refused };
 }
 
-/** Which side of the aim a placement sits on: `toAim` is the count the battery has to move by, so a
- *  negative reading is a battery above the aim. A placement without it falls back to the zone. */
-function sideOf(placement: RecordedPlacement | null): Side | null {
-  if (placement === null) return null;
-  if (placement.toAim !== null && placement.toAim !== 0) return placement.toAim < 0 ? "above" : "below";
-  if (placement.zone === "too-easy" || placement.zone === "over-aim") return "above";
-  if (placement.zone === "under-aim" || placement.zone === "too-hard") return "below";
-  return null;
-}
-
 function decisionLine(row: DecisionRow): string {
   const placement = row.placement;
   const placed =
@@ -355,20 +346,23 @@ function decisionLine(row: DecisionRow): string {
   return `${label}:${placed}${facts} · admitted ${row.admitted ?? "-"} excluded ${row.excluded}`;
 }
 
-/** The longest run of consecutive placements on one off-aim side, ending at its last member. */
+/** Every run of two or more placements on one side of the aim, each counted back from its last
+ *  member by the streak `runs pulse` reads (`offAimStreak`), which passes over a decision that
+ *  placed nothing. */
 function offAimStreaks(rows: readonly DecisionRow[]): OffAimStreak[] {
+  const placed = rows.flatMap(({ runId, placement: p }) =>
+    p !== null && isBandZone(p.zone) && p.passes !== null && p.n !== null
+      ? [{ runId, zone: p.zone, placedOn: { passes: p.passes, n: p.n } }]
+      : [],
+  );
   const streaks: OffAimStreak[] = [];
-  let current: OffAimStreak | null = null;
-  for (const row of rows) {
-    const side = sideOf(row.placement);
-    if (current !== null && side !== null && current.side === side) {
-      current.runIds.push(row.runId);
-      continue;
-    }
-    if (current !== null && current.runIds.length >= 2) streaks.push(current);
-    current = side === null ? null : { side, runIds: [row.runId] };
+  for (let end = placed.length; end > 0; ) {
+    const streak = offAimStreak(placed.slice(0, end));
+    const rounds = streak?.rounds ?? 1;
+    const runIds = placed.slice(end - rounds, end).map((row) => row.runId);
+    if (streak !== null && rounds >= 2) streaks.unshift({ side: streak.side, runIds });
+    end -= rounds;
   }
-  if (current !== null && current.runIds.length >= 2) streaks.push(current);
   return streaks;
 }
 
@@ -459,9 +453,7 @@ export function checkInformativenessLines({
       .filter((decision) => decision.zone === "too-easy" || decision.zone === "over-aim")
       .map((decision) => decision.runId),
   );
-  const perfect = tallies.filter(
-    (tally) => overAim.has(tally.runId) && tally.verified > 0 && tally.passed === tally.verified,
-  );
+  const perfect = tallies.filter((tally) => overAim.has(tally.runId) && fullPass(tally));
   if (perfect.length > 0) {
     lines.push(
       `PERFECT BATTERY OVER AIM (lane 5): ${perfect.map((tally) => `${tally.runId} ${tally.passed}/${tally.verified}`).join(", ")}`,

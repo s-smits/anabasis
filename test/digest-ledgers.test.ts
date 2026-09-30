@@ -37,6 +37,31 @@ test("join targets are declared IDs, not Boolean flags", () => {
   expect(lines).toMatch(/geometry\s+reach-only\s+6\s+0\s+3\s+0/);
 });
 
+test("a perfect battery is a full pass, so a battery with an unaccepted attempt is not one", () => {
+  const lead = (refused: number) =>
+    checkInformativenessLines({
+      checks: [{ id: "geometry" }],
+      rejectRows: [],
+      perCheck: new Map(),
+      gradedOracleFiles: 0,
+      tallies: [
+        {
+          runId: "i2",
+          verified: 5,
+          passed: 5,
+          failed: 0,
+          unaccepted: refused,
+          nonResults: 0,
+          providerNonResult: 0,
+          families: new Map(),
+        },
+      ],
+      decisions: [{ runId: "i2", zone: "too-easy" }],
+    }).join("\n");
+  expect(lead(0)).toContain("PERFECT BATTERY OVER AIM (lane 5): i2 5/5");
+  expect(lead(3)).not.toContain("PERFECT BATTERY");
+});
+
 test("family coverage retains partially and entirely unmeasured batteries", () => {
   const tallies = batteryTallies([
     caseRecordRow("t1", "measured", { runId: "partial" }),

@@ -35,8 +35,8 @@ which lane 22 reads as a lead and lane 23 settles alone. `CHECK CODE IN SOLVER R
 the static half: a check program the claim resolved in the Builder's tool tree, which the solver's
 shell searches, or agent code byte-identical to correctness-model code. Block 1c, check informativeness, sets the reach of the controls against what shipping
 tripped: `REACH-ONLY CHECKS (lane 6)` names checks the controls reach and no shipping case ever
-failed, and `PERFECT BATTERY OVER AIM (lane 5)` says every scored case passed on a battery the
-band placed over its aim.
+failed, and `PERFECT BATTERY OVER AIM (lane 5)` names a full pass measured in a round that opened on a
+battery the band had placed above its aim, the decision and the battery joining on the round's id.
 
 Block 2, the submit and refusal ledger, reads each `builder-execution*.json` for its submits,
 refusals and strikes, which lane 3 reads for a refusal after a clear preview and lane 25 for the

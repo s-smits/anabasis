@@ -18,7 +18,7 @@
 // to reach the band", because its first battery was 6/6 and its last 10/11.
 //
 // Each battery carries two placements. `placement` is computed here from the case rows through
-// `placeOnBand`; `recorded` is what the controller wrote in its difficulty decision, read through
+// `decideDifficulty`; `recorded` is what the controller wrote in its difficulty decision, read through
 // the digest's schema-refusing reader, so the two can be compared and a decision under another
 // schema is named rather than read.
 //
@@ -58,15 +58,10 @@
 import { existsSync, readdirSync } from "#src/meta/filesystem.ts";
 import { sha256OfFile } from "#src/meta/digest.ts";
 import { classifyCaseOutcome, outcomeTally, readCaseRecord } from "#src/claim/case-record.ts";
-import {
-  placeOnBand,
-  type BandPlacement,
-  type BandZone,
-  type MeasuredDifficulty,
-} from "#src/claim/battery-difficulty.ts";
-import { POLICY } from "#src/critic/policy.ts";
+import { type BandPlacement, type BandZone, type MeasuredDifficulty } from "#src/claim/battery-difficulty.ts";
 import { join } from "#src/meta/path.ts";
-import { decidingSample, type ClimbBattery } from "#src/run/climb-history.ts";
+import { climbThresholds, decidingSample, type ClimbBattery } from "#src/run/climb-history.ts";
+import { decideDifficulty, fullPass } from "#src/run/climb-readout.ts";
 import { readRecordedBatteryRecord } from "#src/correctness-bundle/battery-record.ts";
 import {
   type Bundle,
@@ -225,26 +220,21 @@ type LineBattery = Pick<
   "runId" | "createdAt" | "claimed" | "settlement" | "placement" | "earned"
 >;
 
-/** The controller's own placement of one battery, so this reader and the decision it sets out to
- *  explain cannot disagree: `decidingSample` picks the changed subset when the host recorded one
- *  and the whole battery otherwise, and `placeOnBand` reads it. Once any case is verified, an
- *  unaccepted attempt stays in the denominator as a failure, which is the controller's difficulty
- *  denominator; reading passed over verified instead put a battery of 5 passes and 20 refused
- *  submits at a rate of 1 where the controller placed it at 0.2. A battery that verified nothing
- *  has no placement at all rather than a zero one. */
+/** The controller's own placement of one battery, made by `decideDifficulty` so that this reader
+ *  and the decision it sets out to explain cannot disagree. The battery's difficulty denominator
+ *  keeps an unaccepted attempt as a fail, and one that verified nothing is placed nowhere; reading
+ *  passed over verified instead places 5 passes beside 20 refused submits at a rate of 1. */
 export function placementOf(
-  counts: Pick<OutcomeCounts, "passed" | "verified" | "unaccepted">,
+  { passed, verified, unaccepted }: Pick<OutcomeCounts, "passed" | "verified" | "unaccepted">,
   measured: MeasuredDifficulty = { items: [] },
-  band: readonly [number, number] = POLICY.climb.band,
+  band: [number, number] = climbThresholds().band,
 ): ClimbPlacement | null {
-  if (counts.verified === 0) return null;
-  // SAFETY: `decidingSample` destructures only `measured`, `passed` and `n`, which this object carries.
-  const battery = { measured, passed: counts.passed, n: counts.verified + counts.unaccepted } as ClimbBattery;
-  const sample = decidingSample(battery);
-  const placement = placeOnBand(sample.passes, sample.n, band);
+  // SAFETY: `decideDifficulty` reads runId and batterySha256 only into the evidence it returns.
+  const battery = { measured, passed, unaccepted, n: verified + unaccepted } as ClimbBattery;
+  const { placement } = decideDifficulty([battery], band);
   return placement === null
     ? null
-    : { ...placement, rate: placement.passes / placement.n, population: sample.population };
+    : { ...placement, rate: placement.passes / placement.n, population: decidingSample(battery).population };
 }
 
 /** The recorded measured difficulty of the run a version directory holds, or the empty one when
@@ -586,11 +576,7 @@ export async function readCampaign(campaign: string, options: Parameters<typeof 
       source: sourceMovesOf(before.dir, after.dir),
       carried: {
         ...carriedOf(loadBundle(before.dir), loadBundle(after.dir)),
-        // A full pass: every case it verified passed, and no attempt went unaccepted.
-        afterFullPass:
-          before.counts.verified > 0 &&
-          before.counts.unaccepted === 0 &&
-          before.counts.passed === before.counts.verified,
+        afterFullPass: fullPass(before.counts),
       },
       outcome:
         after.counts.verified === 0

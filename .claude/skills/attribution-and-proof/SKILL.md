@@ -1,6 +1,6 @@
 ---
 name: attribution-and-proof
-description: "Use after an Anabasis run, comparison, or system change and before claiming improvement. Attributes movement to one owner, reports identities and censored denominators, separates deterministic proof from model judgement, and states what remains unrun or provisional."
+description: "Use after an Anabasis run, comparison, or system change and before claiming improvement. Attributes movement to one owner, reports identities and censored denominators, separates deterministic proof from model judgement, keeps measurement validity apart from observed exploitation, and states what remains unrun or provisional."
 ---
 
 # Attribution and Proof
@@ -9,7 +9,7 @@ Ask one question: what may we claim? State the owner first, then the number. Say
 proves, what it does not prove, and the denominator. Do not let a summary outrun its evidence.
 
 `run-improvement-campaign` chooses the next experiment (its decide step). `system-path-simulation` tests a change or uncertain path before
-spend. This skill starts after the run: attribution, evidence strength, and permitted wording. Whether a
+spend. This skill starts after the run: attribution, evidence strength, validity, and permitted wording. Whether a
 whole new wave of runs beat the wave it replaced is [wave-audit](../wave-audit/SKILL.md), which
 uses this skill's rules for each movement it reads.
 
@@ -29,15 +29,32 @@ separately. A more permissive verifier changes evaluation, not the solving agent
 
 ## Evidence strength
 
-| Evidence | Safe statement |
-|---|---|
-| present in source | the producer and live consumer exist on the named tree |
-| deterministically proved | the positive and hostile cases exercise that consumer |
-| live-exercised | a recorded run from that exact source reaches the branch |
-| outcome-proved | recorded outcomes support the named capability under the measured condition |
+The four levels a claim can reach (present in source, deterministically proved, live-exercised and
+outcome-proved), what each one proves and the evidence precedence are AGENTS.md "Evidence and
+implementation status". Report the levels independently. A correct packet replay can establish
+delivery and containment while better model behaviour remains unrun. A safeguard firing establishes
+its predicate only.
 
-Report the levels independently. A correct packet replay can establish delivery and containment
-while better model behaviour remains unrun. A safeguard firing establishes its predicate only.
+## Validity versus exploitation
+
+A score says nothing by itself about whether the evaluation can be passed without the work, or
+whether a solver passed it that way. Report the two as separate statuses, each with the executed
+checks and reviewed traces it rests on:
+
+- **Measurement validity:** `demonstrated gap`, `no gap found in named executed checks`, or
+  `unassessed` / `inconclusive`.
+- **Exploitation:** `observed`, `not observed in reviewed traces`, or `unobservable`.
+
+Never shorten the scoped negative to "no reward hacking". One accepted wrong artifact proves that
+gap and not that every scored case used it. `observed` needs the trace to join a public input or
+tool to the accepted bytes through the gap, so keep four things apart: an ordinary efficient
+solution, a vulnerable evaluator, a bypass an investigator built, and a bypass the solver used. A
+perfect score or a repetitive tool sequence is none of them, and a clean scan, control census, F2
+pass, agreeing Judge, zero safeguard firings or 25/25 battery never proves the evaluation
+unexploitable. Keep historical scores and add the validity qualification beside them. The checks
+that decide each status are the wrong-artifact, valid-alternative, product-execution and
+solver-process rows of the [whole-run checklist](../whole-run-investigation/CHECKLIST.md), and
+their lanes.
 
 ## Was the intended mechanism live in run X?
 
@@ -78,6 +95,7 @@ Censored denominator and non-result census:
 Changed owner:
 Attribution confidence:
 Deterministic proof:
+Validity and exploitation status, with coverage:
 Judge / diagnosis findings (advisory):
 Unrun or provisional:
 Source evidence:

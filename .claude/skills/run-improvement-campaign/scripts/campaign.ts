@@ -698,7 +698,9 @@ function decisionText(row: DifficultyDecisions["rows"][number]): string {
   const placement =
     row.placement === null ? "unplaced" : `${row.placement.passes}/${row.placement.n} ${row.placement.zone}`;
   const facts = [row.repeated && "repeated failures", row.conflict && "family conflict"];
-  return [`battery ${row.runId}: ${placement}`, ...facts.filter((fact) => fact !== false)].join(", ");
+  // A decision is filed under the round it opens and places the battery its evidence ends on.
+  const placed = row.evidenceRunIds.at(-1) ?? row.runId;
+  return [`battery ${placed}: ${placement}`, ...facts.filter((fact) => fact !== false)].join(", ");
 }
 
 function caseLine(battery: string, row: Case): string {

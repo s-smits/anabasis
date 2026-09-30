@@ -836,6 +836,6 @@ describe("the verbs the skills own", () => {
     const cli = join(import.meta.dir, "..", "tools", "runs", "cli.ts");
     const run = Bun.spawnSync([runtimeProcess.execPath, cli, "climb", campaignDir, "--json"]);
     expect(run.exitCode).toBe(0);
-    expect(run.stdout.toString()).toContain('"schema": "climb-velocity/v1"');
+    expect(run.stdout.toString()).toContain('"schema": "climb-velocity/v2"');
   });
 });

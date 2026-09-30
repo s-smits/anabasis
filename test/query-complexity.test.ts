@@ -27,7 +27,7 @@ import {
   render,
   sourceMovesOf,
   topTierOf,
-  velocityOf,
+  lineOf,
   placementOf,
   verdictOf,
 } from "../.claude/skills/whole-run-investigation/scripts/climb-velocity.ts";
@@ -326,17 +326,74 @@ describe("climb velocity", () => {
     });
   });
 
-  it.concurrent("refuses a rate change it cannot draw from two verified batteries", () => {
-    const one = { batteries: [{ counts: { verified: 25 }, placement: placementOf(counts(24, 25)) }] };
-    expect(velocityOf(one)).toMatchObject({ reason: "one verified battery: a rate change needs two" });
-    const none = { batteries: [{ counts: { verified: 0 }, placement: null }] };
-    expect(velocityOf(none)).toMatchObject({
-      reason: "no battery verified a case",
+  /** A line of claimed batteries, one per pair of passed and verified counts, in that order. */
+  const line = (...batteries: (readonly [number, number])[]) =>
+    lineOf({
+      batteries: batteries.map(([passed, verified], at) => ({
+        runId: `i${String(at + 1).padStart(2, "0")}`,
+        createdAt: `2026-09-01T${String(at).padStart(2, "0")}:00:00Z`,
+        claimed: true,
+        settlement: null,
+        placement: placementOf(counts(passed, verified)),
+        earned: null,
+      })),
     });
+  const repeat = (times: number, passed: number, verified: number) =>
+    Array.from({ length: times }, () => [passed, verified] as const);
+
+  // The velocity is the line's. It once was the slope from the first placed battery to the last,
+  // which read a line of thirteen 7/7 batteries and one holding a 6/7 and a 10/11 alike ("the rate
+  // has not fallen"), and gave the line with the most partial batteries a projection to the band
+  // from its endpoints alone. Only a battery between 1/n and n-1/n can locate a limit, so that count
+  // orders the lines, and a full pass adds nothing to it however it places.
+  it.concurrent("orders lines by the batteries that landed between 1/n and n-1/n, not by their endpoints", () => {
+    const located = line(
+      ...repeat(4, 6, 6),
+      [2, 6],
+      [25, 25],
+      ...repeat(2, 11, 11),
+      [9, 11],
+      [10, 10],
+      [11, 11],
+      [10, 10],
+      [11, 11],
+      [10, 11],
+    );
+    const fewer = line(...repeat(7, 5, 5), ...repeat(2, 7, 7), [6, 7], [25, 25], [10, 11], [11, 11]);
+    const flat = line(...repeat(13, 7, 7));
+    expect(
+      [located, fewer, flat].map(({ signal }) => signal.map(({ passes, n }) => `${passes}/${n}`)),
+    ).toEqual([["2/6", "9/11", "10/11"], ["6/7", "10/11"], []]);
+    expect(located.horizons).toEqual([
+      { rounds: 8, signal: 1 },
+      { rounds: 12, signal: 2 },
+    ]);
+    expect(flat).toMatchObject({ fullPasses: 13, swing: 0, streak: { side: "above", flat: 12 } });
+    expect(located.swing).toBeGreaterThan(fewer.swing ?? Number.POSITIVE_INFINITY);
   });
 
-  // The reading the velocity line cannot give. A rate needs two measured batteries; the newest edge
-  // needs none, because both task-side rows come from the authored bytes under `versions/`. Campaign
+  // The launch film's illustration: a raised requirement drops the rate, a repair lifts it, and over
+  // twelve rounds the swings settle into the band. It rises as often as it falls, and it is the shape
+  // the goal describes, so it reads as signal on every battery but the full pass and never as flat.
+  // A small full pass places over the aim and is still no signal.
+  it.concurrent("reads a line that swings through the band as moving, and a full pass as no signal at any size", () => {
+    const film = line(
+      ...[25, 6, 5, 24, 17, 21, 12, 19, 21, 9, 12, 11].map((passed) => [passed, 25] as const),
+    );
+    expect(film).toMatchObject({ fullPasses: 1, onAim: 6, streak: null });
+    expect(film.signal).toHaveLength(11);
+    expect(film.horizons).toEqual([
+      { rounds: 8, signal: 7 },
+      { rounds: 12, signal: 11 },
+    ]);
+    expect(film.swing).toBeCloseTo(30.5, 1);
+    const small = line([3, 3]);
+    expect(small.points[0]?.zone).toBe("over-aim");
+    expect(small).toMatchObject({ signal: [], fullPasses: 1, swing: null, horizons: [] });
+  });
+
+  // The newest edge needs no measured battery, because both task-side rows come from the authored
+  // bytes under `versions/`. Campaign
   // 3fd52f9e-10 read `widened` then `adjusted` on its second and third rounds and paid about four
   // hours of solves each to confirm a 6 of 6 that settled nothing, with both verdicts already in the
   // adopted bytes.
@@ -376,6 +433,7 @@ describe("climb velocity", () => {
         campaign: "/c",
         model: {},
         batteries: [battery("i03"), battery("i04")],
+        unadopted: [],
         // `source` is required on an Edge, and null is its own reading: the two bundles were not read.
         edges: [
           {
@@ -403,18 +461,9 @@ describe("climb velocity", () => {
     expect(render({ ...report("escalated"), edges: [] })).toContain(
       "latest edge: none, because an edge needs two batteries",
     );
-  });
-
-  it.concurrent("says a flat rate is flat rather than projecting a climb", () => {
-    const flat = {
-      batteries: [
-        { counts: { verified: 25 }, placement: placementOf(counts(24, 25)) },
-        { counts: { verified: 14 }, placement: placementOf(counts(14, 14)) },
-      ],
-    };
-    expect(velocityOf(flat)).toMatchObject({
-      reason: "the measured rate has not fallen across the verified batteries",
-    });
+    expect(render(report("widened"))).toContain(
+      "velocity: no claimed battery verified a case, so there is no line yet",
+    );
   });
 
   // An unaccepted attempt is recorded with pass=false, so a reader that asks only about `pass`
@@ -554,7 +603,7 @@ describe("climb velocity", () => {
       verdict: "restated",
       source: { changed: ["rules.ts"], added: [], removed: [], unchanged: 2, read: 3 },
     });
-    expect(render(report, [0.2, 0.5])).toContain(
+    expect(render(report)).toContain(
       "correctness-model source, digests only, unread by the two rows above: rules.ts moved, 2 of 3 unchanged",
     );
   });
@@ -572,7 +621,7 @@ describe("climb velocity", () => {
         caseRecordRow(task, "f", { runId: "run-b", ...(index < 2 && { truthOk: false, pass: false }) }),
       ),
     );
-    const unread = render(await readCampaign(dir, { embed: fakeEmbed }), [0.2, 0.5]);
+    const unread = render(await readCampaign(dir, { embed: fakeEmbed }));
     expect(unread).toContain("fails 2: no completed review settled any, so none is known earned");
     const settled = (task: string, disposition: CaseDisposition["disposition"]): CaseDisposition => ({
       taskId: task,
@@ -592,6 +641,7 @@ describe("climb velocity", () => {
     review([settled("a", "check-stands"), settled("b", "check-stands")]);
     const held = await readCampaign(dir, { embed: fakeEmbed });
     expect(held.batteries[1]?.earned).toBeNull();
+    expect(lineOf(held).signal).toMatchObject([{ runId: "run-b", passes: 4, n: 6 }]);
     expect(render(held)).toContain(
       "fails 2: 2 held by the review, 0 settled against the check, 0 unsettled; checks bench-wiring",
     );
@@ -600,6 +650,33 @@ describe("climb velocity", () => {
     expect(against.batteries[1]?.earned).toMatchObject({ passes: 4, n: 4 });
     expect(render(against)).toContain(
       `earned ${String(against.batteries[1]?.earned?.zone)} at 4/4 over the whole battery`,
+    );
+    // Fails settled against their check located nothing, so the line reads the battery as a full pass.
+    expect(lineOf(against)).toMatchObject({ signal: [], fullPasses: 1, points: [{ passes: 4, n: 4 }] });
+  });
+
+  // A round can measure again without adopting a version, and its battery is still a point on the
+  // line though no edge can be read into it. A reader keyed on version directories left two of
+  // fourteen claimed batteries off one run's line.
+  it.concurrent("puts a claimed battery with no version of its own on the line and on no edge", async () => {
+    const dir = twoVersions("ana-climb-unadopted-", [brief, brief]);
+    const rows = (runId: string, fails: number) =>
+      ["a", "b", "c"].map((task, index) =>
+        caseRecordRow(task, "f", { runId, ...(index < fails && { truthOk: false, pass: false }) }),
+      );
+    writeCaseRecord(dir, [
+      ...rows("run-a", 0),
+      ...rows("run-b", 0),
+      ...rows("run-c", 1),
+      ...rows("run-d", 0),
+    ]);
+    write(join(dir, "claims", "run-c.json"), { createdAt: "2026-09-03T00:00:00Z" });
+    const report = await readCampaign(dir, { embed: fakeEmbed });
+    expect(report.edges).toHaveLength(1);
+    expect(report.unadopted.map(({ runId }) => runId)).toEqual(["run-c"]);
+    expect(lineOf(report)).toMatchObject({ fullPasses: 2, signal: [{ runId: "run-c", passes: 2, n: 3 }] });
+    expect(render(report)).toContain(
+      "run-c: 2/3 passed, 0 unaccepted, 0 non-result; claimed with no version of its own, so on the line and on no edge",
     );
   });
 

@@ -54,8 +54,9 @@ const FAILED_BURST = 3;
  *  in a row on one side of the aim that came no closer to it than the closest before them. Counted
  *  on the zone's own side, not by zone: truss-sol-198d70's over-aim batteries were 3/3, 2/2 and 2/2,
  *  which pass everything, and its 6/7 the one that came closer. The controller deliberately never
- *  stops on a reading of the tasks (`LoopState`), so the stall is the operator's to call. */
-const STALL_BATTERIES = 3;
+ *  stops on a reading of the tasks (`LoopState`), so the stall is the operator's to call. The climb
+ *  reader's `flat` line (`climb-velocity.ts`) applies this same rule to a campaign's whole line. */
+export const STALL_BATTERIES = 3;
 const MEASURING = new Set(["adopt", "controls", "solve", "measure-on", "grade"]);
 const REVIEWING = new Set(["judge", "claim", "analyse", "admission", "next"]);
 /** Top-level transitions that are the loop's ordinary machinery and would bury the rest. */
@@ -109,7 +110,7 @@ function sideOf(zone: BandZone | null): "above" | "below" | "on" | null {
 /** Consecutive batteries on one side of the aim, counted back from the latest placed one, and how
  *  many of them came after the one closest to the aim, which a tie does not replace. Above the aim a
  *  lower pass rate is closer, below it a higher one. */
-export function offAimStreak(batteries: readonly PulseBattery[]): {
+export function offAimStreak(batteries: readonly Pick<PulseBattery, "zone" | "placedOn">[]): {
   side: "above" | "below";
   rounds: number;
   flat: number;

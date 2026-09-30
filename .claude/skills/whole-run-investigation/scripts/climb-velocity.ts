@@ -1,11 +1,21 @@
-// How fast a campaign's batteries are actually getting harder, read from the task bytes rather
-// than from the score. The controller can only steer on a measured pass rate, so a battery the
+// How a campaign climbs, read two ways: the line its measured batteries draw, and whether the tasks
+// behind each edge moved. The controller can only steer on a measured pass rate, so a battery the
 // provider wrecked tells it nothing and it re-decides on the last battery that scored, and a run
 // can record the same "significantly too easy" placement round after round, every one citing one
-// battery. This reads the other channel: whether the tasks moved, by how much, and in which of
-// the two ways a battery can move. Lane 10 reads the placements and lane 20 the edges.
+// battery. This reads the other channel too: whether the tasks moved, by how much, and in which of
+// the two ways a battery can move. Lane 10 reads the line and lane 20 the edges.
 //
 //   bun wri.ts climb <target> [--json]
+//
+// The velocity is the line's (AGENTS.md "Goals and the climb"): how many claimed batteries landed
+// between 1/n and n-1/n, the only ones that can locate a limit, how far the pass rate swings from
+// one battery to the next, how many of the first 8 and 12 carried that signal, and whether the line
+// has gone flat by the stall rule `runs pulse` names. A full pass at any size found no limit and
+// counts as no signal, whatever zone a small one places in. Until 2026-09-30 the velocity was the
+// slope from the first placed battery to the last, extrapolated to the band: it read 13 batteries of
+// 7/7 and truss-sol-198d70's 6/7 and 10/11 alike, "the measured rate has not fallen", and gave
+// custom-sol-f0fb83, whose 2/6, 9/11 and 10/11 were the most any run had drawn, "50 more at this rate
+// to reach the band", because its first battery was 6/6 and its last 10/11.
 //
 // Each battery carries two placements. `placement` is computed here from the case rows through
 // `placeOnBand`; `recorded` is what the controller wrote in its difficulty decision, read through
@@ -48,7 +58,12 @@
 import { existsSync, readdirSync } from "#src/meta/filesystem.ts";
 import { sha256OfFile } from "#src/meta/digest.ts";
 import { classifyCaseOutcome, outcomeTally, readCaseRecord } from "#src/claim/case-record.ts";
-import { placeOnBand, type BandPlacement, type MeasuredDifficulty } from "#src/claim/battery-difficulty.ts";
+import {
+  placeOnBand,
+  type BandPlacement,
+  type BandZone,
+  type MeasuredDifficulty,
+} from "#src/claim/battery-difficulty.ts";
 import { POLICY } from "#src/critic/policy.ts";
 import { join } from "#src/meta/path.ts";
 import { decidingSample, type ClimbBattery } from "#src/run/climb-history.ts";
@@ -65,8 +80,12 @@ import { compareCodeUnits } from "#src/meta/stable-json.ts";
 import { readDifficultyDecisions } from "./digest-ledgers.ts";
 import { readJsonAs, readJsonAsOrNull } from "./run-overview.ts";
 import type { CaseDisposition, EpochReviewEvidence } from "#src/review/epoch-review-findings.ts";
+import { offAimStreak, STALL_BATTERIES } from "#tools/runs/pulse.ts";
 
-export const VELOCITY_SCHEMA = "climb-velocity/v1";
+/** v2 replaced the endpoint slope (`velocity`) with the line (`line`). */
+export const VELOCITY_SCHEMA = "climb-velocity/v2";
+/** AGENTS.md "Goals and the climb": a run's climb is read over 8 or 12 rounds. */
+const HORIZONS = [8, 12] as const;
 /** Cosine at or above this between a family's prose and its nearest predecessor reads as the same
  *  problem restated. bge-small puts genuinely reworded-but-equivalent prose well above this. */
 export const RESTATED_COSINE = 0.98;
@@ -161,14 +180,39 @@ interface RecordedPlacements {
   refused: string[];
 }
 
-/** Batteries still needed to reach the aim, or the reason there is no such number. */
-export type Velocity =
-  | { reason: string; rate?: number; toBand?: number; perBattery?: number; batteriesToBand?: undefined }
-  | { perBattery: number; rate: number; batteriesToBand: number; reason?: undefined };
+/** One claimed battery on the line, on the counts it is read on. */
+interface LinePoint {
+  runId: string;
+  passes: number;
+  n: number;
+  zone: BandZone;
+}
+
+/** The climb as the line its claimed batteries draw, in measurement order. */
+interface ClimbLine {
+  points: LinePoint[];
+  /** The points between 1/n and n-1/n: the batteries that can locate a limit. */
+  signal: LinePoint[];
+  onAim: number;
+  fullPasses: number;
+  empty: number;
+  /** Mean absolute change in pass rate between consecutive points, in points of 100; null under two. */
+  swing: number | null;
+  /** The signal among the first `rounds` points, for each horizon the line has reached. */
+  horizons: { rounds: number; signal: number }[];
+  /** The stall rule `runs pulse` names, over the same points. */
+  streak: ReturnType<typeof offAimStreak>;
+}
 
 export type ClimbReport = Awaited<ReturnType<typeof readCampaign>>;
 
 type ClimbBatteryRow = ClimbReport["batteries"][number];
+
+/** What the line reads of a battery, adopted or not. */
+type LineBattery = Pick<
+  ClimbBatteryRow,
+  "runId" | "createdAt" | "claimed" | "settlement" | "placement" | "earned"
+>;
 
 /** The controller's own placement of one battery, so this reader and the decision it sets out to
  *  explain cannot disagree: `decidingSample` picks the changed subset when the host recorded one
@@ -426,6 +470,48 @@ function recordedPlacements(campaign: string): RecordedPlacements {
   return { byRun, refused: decisions.refused };
 }
 
+/** Whether a completed review settled any case against its check, so the battery is read earned. */
+function settledAgainst(settlement: Settlement | null): settlement is Settlement {
+  return settlement !== null && settlement.failsAgainst + settlement.passesAgainst > 0;
+}
+
+/** The placement over the whole battery once the cases settled against their check leave it, or
+ *  null when none was. A changed subset records no per-case membership to settle against. */
+function earnedOf(counts: OutcomeCounts, settlement: Settlement | null): ClimbPlacement | null {
+  return settledAgainst(settlement)
+    ? placementOf({
+        ...counts,
+        passed: counts.passed - settlement.passesAgainst,
+        verified: counts.verified - settlement.failsAgainst - settlement.passesAgainst,
+      })
+    : null;
+}
+
+/** Claimed batteries with no version directory of their own: a round that measured again without
+ *  adopting anything. They have no task bytes to read an edge from, and they are still points on
+ *  the line: custom-sol-f0fb83's i11 and i13 measured 11/11 each and left no version. */
+function unadoptedOf(campaign: string, outcomes: Map<string, OutcomeCounts>, adopted: ReadonlySet<string>) {
+  const rows = [...outcomes].flatMap(([runId, counts]) => {
+    const claimPath = join(campaign, "claims", `${runId}.json`);
+    if (adopted.has(runId) || !existsSync(claimPath)) return [];
+    const settlement = settlementOf(campaign, runId);
+    return [
+      {
+        runId,
+        createdAt: readJsonAs<{ createdAt?: string | null }>(claimPath).createdAt,
+        claimed: true,
+        counts,
+        settlement,
+        placement: placementOf(counts),
+        earned: earnedOf(counts, settlement),
+      },
+    ];
+  });
+  return rows.sort(
+    (a, b) => String(a.createdAt).localeCompare(String(b.createdAt)) || a.runId.localeCompare(b.runId),
+  );
+}
+
 export async function readCampaign(campaign: string, options: Parameters<typeof readVersionDir>[1] = {}) {
   const outcomes = outcomesOf(campaign);
   const recorded = recordedPlacements(campaign);
@@ -440,15 +526,7 @@ export async function readCampaign(campaign: string, options: Parameters<typeof 
       counts,
       settlement,
       placement: placementOf(counts, measuredOf(battery)),
-      // Over the whole battery: a changed subset records no per-case membership to settle against.
-      earned:
-        settlement === null || settlement.failsAgainst + settlement.passesAgainst === 0
-          ? null
-          : placementOf({
-              ...counts,
-              passed: counts.passed - settlement.passesAgainst,
-              verified: counts.verified - settlement.failsAgainst - settlement.passesAgainst,
-            }),
+      earned: earnedOf(counts, settlement),
       recorded: recorded.byRun.get(battery.runId) ?? null,
     });
   }
@@ -481,52 +559,57 @@ export async function readCampaign(campaign: string, options: Parameters<typeof 
     campaign,
     model: MODEL_IDENTITY,
     batteries,
+    unadopted: unadoptedOf(campaign, outcomes, new Set(batteries.map((battery) => battery.runId))),
     edges,
     refusedDecisions: recorded.refused,
   };
 }
 
-/** Batteries still needed to reach the aim, from the measured rate change per edge. Returns a
- *  reason instead of a number whenever two verified batteries do not exist to draw a rate from —
- *  which is the usual case, and saying so is the honest answer. */
-export function velocityOf(
-  report: { readonly batteries: readonly { readonly placement: ClimbPlacement | null }[] },
-  band: readonly [number, number] = POLICY.climb.band,
-): Velocity {
-  const placed = report.batteries.flatMap((battery) =>
-    battery.placement === null ? [] : [battery.placement],
-  );
-  const latest = placed.at(-1);
-  if (latest === undefined) return { reason: "no battery verified a case" };
-  if (latest.rate <= band[1]) {
-    return { reason: "the latest verified battery is inside or below the band", rate: latest.rate };
-  }
-  if (placed.length === 1) {
-    return {
-      reason: "one verified battery: a rate change needs two",
-      rate: latest.rate,
-      toBand: latest.rate - band[1],
-    };
-  }
-  const first = placed[0] ?? latest;
-  const perBattery = (latest.rate - first.rate) / (placed.length - 1);
-  if (perBattery >= 0) {
-    return {
-      reason: "the measured rate has not fallen across the verified batteries",
-      perBattery,
-      rate: latest.rate,
-    };
-  }
+/**
+ * The line the claimed batteries draw, adopted or not, in claim order (AGENTS.md "Goals and the
+ * climb"). A battery still measuring has not landed on it. Each point is read on the counts the
+ * controller places, earned where a completed review settled a case against its check.
+ *
+ * Signal is a battery between 1/n and n-1/n, as in RL curriculum filtering: one at n/n or 0/n says
+ * nothing about where the solver stops, whatever zone it places in, and 3/3 places over the aim.
+ * The swing is the mean distance the pass rate moved per battery, so a line of full passes reads 0
+ * however many tasks each held, and the launch film's 25, 6, 5, 24, 17, 21, 12, 19, 21, 9, 12 and 11
+ * of 25 reads high. Neither rewards a line for falling: a repair that lifts a battery a defect sank
+ * is as much a move as a raised requirement that drops one.
+ */
+export function lineOf(report: {
+  readonly batteries: readonly LineBattery[];
+  readonly unadopted?: readonly LineBattery[];
+}): ClimbLine {
+  const points = [...report.batteries, ...(report.unadopted ?? [])]
+    .filter((battery) => battery.claimed)
+    .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)) || a.runId.localeCompare(b.runId))
+    .flatMap(({ runId, settlement, placement, earned }) => {
+      const read = settledAgainst(settlement) ? earned : placement;
+      return read === null ? [] : [{ runId, passes: read.passes, n: read.n, zone: read.zone }];
+    });
+  const signal = points.filter(({ passes, n }) => passes > 0 && passes < n);
+  const rate = ({ passes, n }: LinePoint) => passes / n;
+  const moves = points.slice(1).map((point, at) => Math.abs(rate(point) - rate(points[at] ?? point)));
   return {
-    perBattery,
-    rate: latest.rate,
-    batteriesToBand: Math.ceil((latest.rate - band[1]) / -perBattery),
+    points,
+    signal,
+    onAim: points.filter(({ zone }) => zone === "on-aim").length,
+    fullPasses: points.filter(({ passes, n }) => passes === n).length,
+    empty: points.filter(({ passes }) => passes === 0).length,
+    swing: moves.length === 0 ? null : (100 * moves.reduce((sum, move) => sum + move, 0)) / moves.length,
+    horizons: HORIZONS.flatMap((rounds) =>
+      points.length < rounds
+        ? []
+        : [{ rounds, signal: signal.filter((point) => points.indexOf(point) < rounds).length }],
+    ),
+    streak: offAimStreak(points.map(({ zone, passes, n }) => ({ zone, placedOn: { passes, n } }))),
   };
 }
 
 /** The newest edge as the sentence a reader opened this for. The rows above it are the evidence;
- *  this is the reading, and it is the one the velocity line cannot give, because a rate needs two
- *  measured batteries and this needs none.
+ *  this is the reading, and it is the one the line cannot give, because the line needs measured
+ *  batteries and this needs none.
  *
  *  Both task-side rows come from the authored bytes under `versions/`, so the newest edge is
  *  readable the moment a candidate is adopted and before its first solve is paid for: a round
@@ -571,7 +654,33 @@ function settledLine({ counts, settlement, earned }: ClimbBatteryRow): string | 
     : `${line}\n      earned ${earned.zone} at ${earned.passes}/${earned.n} over the whole battery, with the cases settled against their check counted neither way`;
 }
 
-export function render(report: ClimbReport, band?: readonly [number, number]): string {
+/** The line as three sentences: its signal and swing, its horizons, and whether it has gone flat. */
+function lineLines(line: ClimbLine): string[] {
+  const placed = line.points.length;
+  if (placed === 0) return ["  velocity: no claimed battery verified a case, so there is no line yet"];
+  const at = (point: LinePoint) => `${point.passes}/${point.n} #${line.points.indexOf(point) + 1}`;
+  const named = line.signal.length === 0 ? "" : ` (${line.signal.map(at).join(", ")})`;
+  const swing =
+    line.swing === null ? "one battery, so no swing yet" : `swing ${line.swing.toFixed(1)} points a battery`;
+  const horizon =
+    line.horizons.length === 0
+      ? `${line.signal.length} in ${placed} so far; the climb is read over ${HORIZONS.join(" or ")} rounds`
+      : line.horizons.map(({ rounds, signal }) => `${signal} in the first ${rounds}`).join(", ");
+  const { streak } = line;
+  const flat =
+    streak === null
+      ? "no: the latest battery is on the aim"
+      : streak.flat >= STALL_BATTERIES
+        ? `yes: ${streak.side} the aim ${streak.rounds} in a row, and the ${streak.flat} since ${streak.closest.passes}/${streak.closest.n} came no closer`
+        : `no: ${streak.side} the aim ${streak.rounds} in a row, ${streak.flat} since the closest, ${streak.closest.passes}/${streak.closest.n}`;
+  return [
+    `  velocity: ${line.signal.length} of ${placed} claimed batteries between 1/n and n-1/n${named}; ${line.onAim} on the aim, ${line.fullPasses} full passes and ${line.empty} empty, which locate nothing; ${swing}`,
+    `  horizon: between 1/n and n-1/n, ${horizon}`,
+    `  flat: ${flat}`,
+  ];
+}
+
+export function render(report: ClimbReport): string {
   const lines = [`${report.batteries.length} batteries in ${report.campaign}`];
   for (const refusal of report.refusedDecisions ?? []) {
     lines.push(`  difficulty decision refused: ${refusal}`);
@@ -622,12 +731,11 @@ export function render(report: ClimbReport, band?: readonly [number, number]): s
       `      outcome ${edge.outcome === "unobservable" ? "unobservable" : `${edge.outcome.passed}/${edge.outcome.verified}`}`,
     );
   }
-  const velocity = velocityOf(report, band);
-  lines.push(
-    velocity.batteriesToBand === undefined
-      ? `  velocity: ${velocity.reason}`
-      : `  velocity: ${(velocity.perBattery * 100).toFixed(1)} points per battery; ${velocity.batteriesToBand} more at this rate to reach the band`,
-  );
-  lines.push(latestEdgeLine(report));
+  for (const battery of report.unadopted) {
+    lines.push(
+      `  ${battery.createdAt ?? "undated"}  ${battery.runId}: ${battery.counts.passed}/${battery.counts.verified} passed, ${battery.counts.unaccepted} unaccepted, ${battery.counts.nonResult} non-result; claimed with no version of its own, so on the line and on no edge`,
+    );
+  }
+  lines.push(...lineLines(lineOf(report)), latestEdgeLine(report));
   return lines.join("\n");
 }

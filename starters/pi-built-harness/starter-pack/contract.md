@@ -265,7 +265,7 @@ placeholder is missing evidence.
 {
   "presets": ["shell"],
   "tools": [
-    {"name": "list_staff", "kind": "reader", "description": "Lists this task's staff and shifts with their qualifications."},
+    {"name": "list_staff", "kind": "reader", "description": "Lists this task's staff with qualifications, hourly rates and contract hours, its shifts with times, the minimum rest and the wage budget."},
     {"name": "record_assignments", "kind": "artifact-writer", "description": "Writes the chosen staff-to-shift assignments into the draft artifact."}
   ]
 }
@@ -294,15 +294,15 @@ import { type DomainHarnessFactory, defineDraftTool } from "@ana/agent-bundle";
 import { Type } from "@earendil-works/pi-ai";
 
 export const createDomainHarness: DomainHarnessFactory = (task) => {
-  const input = task.publicInput as { staff: Array<{ id: string; qualification: string }> };
+  const input = task.publicInput as { staff: unknown[]; shifts: unknown[]; minRestHours: number; wageBudget: number };
   return {
     tools: [
       defineDraftTool({
         name: "list_staff",
         label: "List staff",
-        description: "Lists this task's staff and shifts with their qualifications.",
+        description: "Lists this task's staff with qualifications, hourly rates and contract hours, its shifts with times, the minimum rest and the wage budget.",
         parameters: Type.Object({}),
-        run: () => ({ text: JSON.stringify(input.staff) }),
+        run: () => ({ text: JSON.stringify(input) }),
       }),
       defineDraftTool({
         name: "record_assignments",
@@ -343,9 +343,9 @@ libraries a search needs as a program in `.toolchain/bin`.
 
 ## Workflow
 
-Use `list_staff` for the staff and shift qualifications before assigning anyone.
-`record_assignments` writes the chosen assignments into the draft; it does not check that every
-shift is covered.
+Use `list_staff` for the staff, shifts, minimum rest and wage budget before assigning anyone.
+`record_assignments` writes the chosen assignments into the draft; it checks neither cover, rest,
+contract hours nor cost.
 
 ## Completion
 

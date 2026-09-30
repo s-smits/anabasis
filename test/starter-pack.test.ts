@@ -220,6 +220,14 @@ describe("pi starter pack brief vocabulary", () => {
     // only that, so a route changes what the task asks, from the field, with the change noted.
     expect(text).toContain("**A demand the battery does not yet make.**");
     expect(text).toContain("It fails when the answer that met the old task still meets the new one");
+    // A small copy of the work passes in minutes of a two-hour wall, and a Builder-written stand-in
+    // for the field's tool makes a pass say nothing, so the full-size work in the real environment is
+    // a route of its own, with the changes that only look harder named beside it.
+    expect(text).toContain("**The work at the size and in the environment the field works in.**");
+    expect(text).toContain("a fail your harness's defect");
+    expect(text).toContain("Some changes look harder and are not.");
+    // The very-hard aim reaches the Builder as a family's property, never as an aim sentence (prior 10).
+    expect(text).not.toContain("aimed at hard lands");
     // A count of solves reads as a share to author towards (prior 10).
     expect(text).not.toContain("3 of 6 blind solves");
     expect(text).toContain(

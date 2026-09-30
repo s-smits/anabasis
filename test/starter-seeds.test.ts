@@ -115,7 +115,10 @@ describe("starter seed tests on the documented worked harness", () => {
     // The public rule permits another qualified staff member; a hidden answer cannot forbid it.
     const input = otherQualified.publicInput;
     if (!isRecord(input) || !Array.isArray(input.staff)) throw new Error("worked task has no staff array");
-    input.staff = [...input.staff, { id: "alternate", qualification: "night" }];
+    input.staff = [
+      ...input.staff,
+      { id: "alternate", qualifications: ["ward"], hourlyRate: 26, minHours: 0, maxHours: 16 },
+    ];
     expect(
       (
         await evaluate({
@@ -140,16 +143,20 @@ describe("starter seed tests on the documented worked harness", () => {
     ]) {
       expect((await verdict({ assignments })).ok).toBe(false);
     }
+    // Both shifts need one qualification and overlap, so a reference that looks staff up by
+    // qualification alone gives them to one person and fails rest.
     const repeatedQualification = {
       ...publicTask,
       publicInput: {
+        minRestHours: 11,
+        wageBudget: 320,
         staff: [
-          { id: "one", qualification: "night" },
-          { id: "two", qualification: "night" },
+          { id: "one", qualifications: ["night"], hourlyRate: 20, minHours: 0, maxHours: 8 },
+          { id: "two", qualifications: ["night"], hourlyRate: 20, minHours: 0, maxHours: 8 },
         ],
         shifts: [
-          { id: "first", qualification: "night" },
-          { id: "second", qualification: "night" },
+          { id: "first", qualification: "night", start: 0, end: 8 },
+          { id: "second", qualification: "night", start: 0, end: 8 },
         ],
       },
     };
@@ -323,7 +330,7 @@ describe("starter evaluation uses the production public-input contract", () => {
       writeFileSync(
         join(model, "evaluator.ts"),
         `${evaluator}
-export const checks = {"assignments-match": (request: Request) => {
+export const checks = {...originalChecks, "assignments-match": (request: Request) => {
   const input = request.publicTask.publicInput as {profile?: string; optional?: string};
   if(input.profile !== ${required ? '"hold"' : "undefined"}) throw new Error("evaluation selector differs from the production contract");
   if(input.optional !== undefined) throw new Error("absent optional input was invented");

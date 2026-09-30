@@ -348,7 +348,11 @@ function decisionLine(row: DecisionRow): string {
       : ` ${placement.zone ?? "?"} · ${placement.passes ?? "?"}/${placement.n ?? "?"}` +
         ` aim [${placement.aim === null ? "?" : placement.aim.join(",")}] toAim ${placement.toAim ?? "?"}`;
   const facts = `${row.repeated ? " · repeated failures" : ""}${row.conflict ? " · family conflict" : ""}`;
-  return `${row.runId}:${placed}${facts} · admitted ${row.admitted ?? "-"} excluded ${row.excluded}`;
+  // A decision is named after the round it opened, and it places the latest battery in its
+  // evidence: without that id two WRI lanes read an i12 decision as a battery recorded after T0.
+  const read = row.evidenceRunIds.at(-1);
+  const label = read === undefined ? row.runId : `${row.runId} (reads ${read})`;
+  return `${label}:${placed}${facts} · admitted ${row.admitted ?? "-"} excluded ${row.excluded}`;
 }
 
 /** The longest run of consecutive placements on one off-aim side, ending at its last member. */

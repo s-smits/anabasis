@@ -235,6 +235,7 @@ describe("digest", () => {
           decision: {
             rationale: "5/6 against band [0.2, 0.5]: over-aim",
             placement: { passes: 5, n: 6, zone: "over-aim", aim: [2, 3], toAim: -2 },
+            evidence: [{ runId: "battery-i01" }, { runId: "battery-i02" }],
           },
           admitted: 1,
           excluded: [{ runId: "r2", reason: "claim refused" }],
@@ -255,7 +256,10 @@ describe("digest", () => {
       }),
     );
     const digest = digestOf(paths);
-    expect(digest).toContain("placed-0: over-aim · 5/6 aim [2,3] toAim -2 · admitted 1 excluded 1");
+    // The placed battery is the latest one the decision read, not the round the decision is named after.
+    expect(digest).toContain(
+      "placed-0 (reads battery-i02): over-aim · 5/6 aim [2,3] toAim -2 · admitted 1 excluded 1",
+    );
     expect(digest).toContain("unplaced-1: unplaced · admitted 0 excluded 0");
     expect(digest).not.toMatch(/(?:STOP|BROADEN|REBUILD) DUE/);
   });

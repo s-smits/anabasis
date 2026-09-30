@@ -6,6 +6,7 @@ import {
   rmSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
+import { sha256 } from "../src/meta/digest.ts";
 import { join } from "../src/meta/path.ts";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { REPO_ROOT, runTypeScript } from "../.claude/skills/system-path-simulation/scripts/test-support.ts";
@@ -99,6 +100,18 @@ describe("predictions", () => {
     expect(refused.exitCode).toBe(2);
     expect(refused.stderr).toContain('"P1 — <prediction>"');
     expect(existsSync(`${note}.sha256`)).toBe(false);
+  });
+
+  // On 2026-09-30 the P6 addendum carried a checksum written by hand. Its one row was not read, and
+  // --unresolved answered "UNRESOLVED: none" with exit 0, as if P6 were closed.
+  it("refuses to list open rows of a note whose rows the parser cannot read", () => {
+    const unread = NOTE.replace(/^([A-Z]\d) — /gm, "- $1: ");
+    writeFileSync(note, unread);
+    writeFileSync(`${note}.sha256`, `${sha256(unread.trimEnd())}  ${note}\n`);
+    const refused = run("--unresolved");
+    expect(refused.exitCode).toBe(2);
+    expect(refused.stdout).toBe("");
+    expect(refused.stderr).toContain('"P1 — <prediction>"');
   });
 
   it("allows honest inconclusive and untriggered closures but not pending", () => {

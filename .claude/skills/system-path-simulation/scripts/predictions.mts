@@ -31,6 +31,8 @@ import { declaredRows, splitNote } from "./prediction-note.mts";
 
 const die: ExitWith = exitWith("predictions");
 
+const ROW_FORM = 'a row starts its line as "P1 — <prediction>" or "P1: <prediction>"';
+
 const RESOLVED_ID = /^- ([A-Z])(\d+)(?:[–-]([A-Z])?(\d+))?\b/gm;
 const RESOLUTION_HEAD =
   /^- ([A-Z]\d+)(?:[–-][A-Z]?\d+)?:\s*(sufficed|partial|refuted|untriggered|inconclusive)\b/;
@@ -169,9 +171,7 @@ if (mode === "hash") {
     const rows = declaredRows(note.preRegistered);
     // A note with no parsable row binds no predictions. On 2026-09-06 five rows written as "- P1: …"
     // were hashed, and the first --resolve found the declared list empty after the conditions ran.
-    if (rows.length === 0) {
-      die('no declared row; a row starts its line as "P1 — <prediction>" or "P1: <prediction>"');
-    }
+    if (rows.length === 0) die(`no declared row; ${ROW_FORM}`);
     const digest = sha256(note.preRegistered.trimEnd());
     writeFileSync(checksumPath, `${digest}  ${file}\n`);
     console.log(`${digest}  ${rows.length} row(s): ${rows.join(" ")} (projection checksum)`);
@@ -185,8 +185,12 @@ if (mode === "hash") {
   // was requested.
   verify(text);
   const note = splitNote(text);
+  const declared = declaredRows(note.preRegistered);
+  // An empty list would print "none" and exit 0, which reads as a clean close. On 2026-09-30 it did,
+  // for an addendum whose one row this helper could not read.
+  if (declared.length === 0) die(`no declared row, so none can be listed as open; ${ROW_FORM}`);
   const resolved = resolvedRows(note.resolutions);
-  const open = declaredRows(note.preRegistered).filter((id) => !resolved.has(id));
+  const open = declared.filter((id) => !resolved.has(id));
   console.log(open.length === 0 ? "UNRESOLVED: none" : `UNRESOLVED: ${open.join(" ")}`);
   runtimeProcess.exit(open.length === 0 ? 0 : 1);
 } else {

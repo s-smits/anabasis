@@ -87,7 +87,7 @@ export function hardwareScratch(outDir: string, session: string): string {
 }
 
 /** The authority the Luna launcher appends for a session that owns `scratch`, spelled as
- *  `luna-sessions-runtime.ts` spells a workspace-write session's. */
+ *  `codex-luna-swarm/scripts/luna-sessions.ts` spells a workspace-write session's. */
 export function scratchAuthority(scratch: string): string {
   return [
     `Authority: workspace-write. You own only: ${scratch}.`,

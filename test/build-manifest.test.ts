@@ -13,7 +13,7 @@
  */
 import { spawnTextSync as spawnSync } from "./helpers/bun-spawn-sync.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "../src/meta/filesystem.ts";
-import { join, resolve } from "../src/meta/path.ts";
+import { dirname, join, resolve } from "../src/meta/path.ts";
 import { afterEach, describe, expect, it } from "bun:test";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { PINNED_BUN_VERSION } from "../src/run/host-runtime-policy.ts";
@@ -715,38 +715,6 @@ describe("what a launch composes", () => {
     expect(noBoard.stderr).toContain("names a hardware target");
   });
 
-  it("composes one self-contained prompt per session for the codex transport and prints its launch", () => {
-    const result = launch(
-      snapshot(),
-      "--auto",
-      String(FULL_SWEEP.length),
-      "--effort",
-      "max",
-      "--transport",
-      "codex",
-    );
-    const rows = parseJsonAs<(LunaRow & { write?: boolean })[]>(
-      readFileSync(join(result.out, "codex-tasks.json"), "utf8"),
-    );
-    const instructions = result.instructions().trim();
-
-    expect(result.status).toBe(0);
-    expect(rows.map((row) => row.name)).toEqual(FULL_SWEEP);
-    for (const row of rows) {
-      expect(row.task.startsWith(instructions)).toBe(true);
-      // Only a session holding a hardware lane runs in, and may write, its own scratch.
-      const scratch = result.task(row.name)?.scratch ?? null;
-      expect(row.task.endsWith(scratch === null ? READ_ONLY_AUTHORITY : scratchAuthority(scratch))).toBe(
-        true,
-      );
-      expect(row.workdir).toBe(scratch ?? undefined);
-      expect(row.write).toBe(scratch === null ? undefined : true);
-    }
-    expect(rows.filter((row) => row.write === true)).toHaveLength(2);
-    expect(result.stdout).toContain("codex-sessions.ts launch --tasks-file");
-    expect(result.stdout).toContain("--model gpt-6-luna --effort max");
-  });
-
   // Lane 30 must build an adapter and freeze its verdicts to a file of its own before it reads any
   // verdict, and a read-only session can do neither.
   it("gives each hardware session one writable scratch its prompt names, and keeps every other read-only", () => {
@@ -786,61 +754,67 @@ describe("what a launch composes", () => {
     expect(leafPrompt(instructions, open?.task ?? "", null).endsWith(READ_ONLY_AUTHORITY)).toBe(true);
   });
 
-  it("hands the Luna launcher the concurrency cap it was given, and only the Luna launcher", () => {
+  it("hands the Luna launcher the concurrency cap it was given, and refuses one to the native transport", () => {
     const capped = launch(snapshot(), "--sessions", "5,6", "--notes", notes(""), "--max-active", "4");
     expect(capped.status).toBe(0);
     expect(capped.stdout).toContain("--reasoning-effort max --max-active 4");
-    const codex = launch(
-      snapshot(),
-      "--sessions",
-      "5",
-      "--notes",
-      notes(""),
-      "--transport",
-      "codex",
-      "--max-active",
-      "4",
-    );
-    expect(codex.status).not.toBe(0);
-    expect(codex.stderr).toContain("--max-active takes a positive count of concurrent Luna sessions");
+    const refused = [
+      ["--max-active", "0"],
+      ["--transport", "native", "--max-active", "4"],
+    ];
+    for (const args of refused) {
+      const result = launch(snapshot(), "--sessions", "5", "--notes", notes(""), ...args);
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("--max-active takes a positive count of concurrent Luna sessions");
+    }
   });
 
-  // `codex exec` refuses a workdir outside every Git work tree, and a hardware session's workdir is
-  // its scratch under --out; from a session scratchpad both lanes died in 38 ms on 2026-09-30.
-  it("refuses to launch a hardware session whose scratch no Git work tree holds, before writing it", () => {
+  // Both hardware lanes died in 38 ms on 2026-09-30 when --out sat outside every Git work tree,
+  // because Codex starts only inside one. The Luna launcher now tells Codex to start anyway for a
+  // session that owns all it can write, so where --out sits is no longer the launch's question.
+  it("launches a hardware session from an --out outside every Git work tree", () => {
     const snap = snapshot();
-    const repo = scratchDir("ana-build-review-repo-");
-    expect(spawnSync("git", ["-C", repo, "init", "-q"]).status).toBe(0);
-    // Both launches name a launcher that does not exist, so a guard that let one through could
-    // start nothing but the refusal below.
-    const absent = join(repo, "absent-launcher.ts");
-    const launchInto = (out: string) =>
-      spawnSync(
-        Bun.argv[0]!,
-        [
-          SCRIPT,
-          "--snapshot",
-          snap.dir,
-          "--worktree",
-          snap.status.worktree.path,
-          "--out",
-          out,
-          ...references(),
-          "--sessions",
-          `5,${HARDWARE_TARGET_LANE},${GROUND_TRUTH_LANE}`,
-          "--notes",
-          notes(""),
-          "--launch",
-        ],
-        { env: { ...Bun.env, WRI_LUNA_LAUNCHER: absent } },
-      );
-    const outsideOut = join(scratchDir("ana-build-out-"), "lanes");
-    const outside = launchInto(outsideOut);
-    expect(outside.status).not.toBe(0);
-    expect(outside.stderr).toContain("outside any Git work tree");
-    expect(existsSync(outsideOut)).toBe(false);
-    // Past the work-tree guard, the launch stops only at the absent launcher.
-    expect(launchInto(join(repo, "notes", "wri", "lanes")).stderr).toContain(`no Luna launcher at ${absent}`);
+    const root = scratchDir("ana-build-outside-git-");
+    const recorded = join(root, "launcher-args.json");
+    const launcher = join(root, "fake-launcher.ts");
+    writeFileSync(
+      launcher,
+      `await Bun.write(${JSON.stringify(recorded)}, JSON.stringify(Bun.argv.slice(2)));\n`,
+    );
+    const out = join(root, "lanes");
+    const result = spawnSync(
+      Bun.argv[0]!,
+      [
+        SCRIPT,
+        "--snapshot",
+        snap.dir,
+        "--worktree",
+        snap.status.worktree.path,
+        "--out",
+        out,
+        ...references(),
+        "--sessions",
+        `5,${HARDWARE_TARGET_LANE},${GROUND_TRUTH_LANE}`,
+        "--notes",
+        notes(""),
+        "--launch",
+      ],
+      // Git looks no higher than the scratch root, so no work tree holds --out wherever tests run.
+      { env: { ...Bun.env, WRI_LUNA_LAUNCHER: launcher, GIT_CEILING_DIRECTORIES: dirname(root) } },
+    );
+    expect(result.stderr).not.toContain("outside any Git work tree");
+    expect(result.status).toBe(0);
+    const args = parseJsonAs<string[]>(readFileSync(recorded, "utf8"));
+    expect(args[args.indexOf("--tasks-file") + 1]).toBe(join(out, "luna-tasks.json"));
+    expect(args[args.indexOf("--output-dir") + 1]).toBe(join(out, "luna-output"));
+    const luna = parseJsonAs<LunaRow[]>(readFileSync(join(out, "luna-tasks.json"), "utf8"));
+    const scratch = join(out, "hw-scratch", laneName(HARDWARE_TARGET_LANE));
+    expect(luna.find((row) => row.name === laneName(HARDWARE_TARGET_LANE))).toMatchObject({
+      workdir: scratch,
+      sandbox: "workspace-write",
+      ownedPaths: [scratch],
+    });
+    expect(existsSync(scratch)).toBe(true);
   });
 
   it("launches from an incomplete snapshot and names each failed view with its captured error", () => {

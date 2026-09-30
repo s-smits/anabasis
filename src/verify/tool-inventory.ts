@@ -272,19 +272,18 @@ function interpreterPackages(path: string, toolTree: string | null): string[] {
  * that path is the one thing a copy of the tree is meant to change: a reseed copies `.toolchain`
  * into the next workspace and rewrites every launcher, activation script and wrapper to name it.
  */
-function toolTreeCounts(toolTree: string, side: TreeSide): Array<[string, string]> {
+function* toolTreeCounts(toolTree: string, side: TreeSide): Generator<[string, string]> {
   const root = realpathSync.native(toolTree);
-  return readdirSync(toolTree, { recursive: true, withFileTypes: true }).flatMap(
-    (entry): Array<[string, string]> => {
-      const path = join(entry.parentPath, entry.name);
-      const rel = relative(toolTree, path);
-      if (entry.isDirectory() || RUN_WRITTEN.test(rel)) return [];
-      if (entry.isSymbolicLink()) return [[rel, linkCount(path, toolTree, root)]];
-      if (!entry.isFile()) return [[rel, "special"]];
-      if (entry.name === "inventory.yaml" && ARDUINO_INVENTORY.test(readFileSync(path, "utf8"))) return [];
-      return [[rel, fileCount(path, side, root)]];
-    },
-  );
+  for (const entry of readdirSync(toolTree, { recursive: true, withFileTypes: true })) {
+    const path = join(entry.parentPath, entry.name);
+    const rel = relative(toolTree, path);
+    if (entry.isDirectory() || RUN_WRITTEN.test(rel)) continue;
+    if (entry.isSymbolicLink()) yield [rel, linkCount(path, toolTree, root)];
+    else if (!entry.isFile()) yield [rel, "special"];
+    else if (entry.name !== "inventory.yaml" || !ARDUINO_INVENTORY.test(readFileSync(path, "utf8"))) {
+      yield [rel, fileCount(path, side, root)];
+    }
+  }
 }
 
 function fileCount(path: string, side: TreeSide, root: string): string {
@@ -386,6 +385,41 @@ export function portableFileCount(bytes: Buffer, toolTree: string): string {
     taken += copied;
     return copied;
   }, realpathSync.native(toolTree));
+}
+
+/** The walk each tree has queued and not yet begun, and the end of the queue. */
+const queuedTreeWalks = new Map<string, Promise<string>>();
+let treeWalksTail: Promise<unknown> = Promise.resolve();
+
+/**
+ * `portableToolTreeDigest` for a caller on the event loop: the same walk, handing the loop back
+ * whenever it has held it for 20 ms, so a signal handler, a timer and another scope's run still get
+ * their turn while a firmware tree is counted. A file's bytes are still read in one piece. On
+ * 2026-09-30 a controller stopped by `runs stop` was sampled inside this walk nine minutes after its
+ * last tool input, and never ran its SIGTERM handler.
+ *
+ * Walks go one at a time, and a caller joins a walk of the same tree that is queued but has not
+ * begun, since that walk still starts after it asked. Four census lanes counting at once held four
+ * listings, 126 MB against 34 MB for one, and each got a count no later than the one it now shares.
+ */
+export function yieldingPortableToolTreeDigest(toolTree: string): Promise<string> {
+  const queued = queuedTreeWalks.get(toolTree);
+  if (queued !== undefined) return queued;
+  const walk = treeWalksTail.then(async () => {
+    queuedTreeWalks.delete(toolTree);
+    const counts: Array<[string, string]> = [];
+    let held = performance.now();
+    for (const count of toolTreeCounts(toolTree, "portable")) {
+      counts.push(count);
+      if (performance.now() - held < 20) continue;
+      await new Promise((turn) => setImmediate(turn));
+      held = performance.now();
+    }
+    return toolTreeCountsDigest(counts);
+  });
+  queuedTreeWalks.set(toolTree, walk);
+  treeWalksTail = walk.catch(() => {});
+  return walk;
 }
 
 /** The tree digest this host's session keys its gate cache and no-op strikes on. */

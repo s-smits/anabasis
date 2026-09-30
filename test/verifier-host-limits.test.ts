@@ -191,6 +191,22 @@ describe("execution limits and sandbox requirements", () => {
     expect(recordedVerifierHash(recorded)).toBe(required(recorded.verifierEnvironmentHash, "hash"));
   });
 
+  it("keeps the event loop turning while it counts a large tool tree before a run", async () => {
+    // On 2026-09-30 a controller was sampled inside this count nine minutes after its last tool
+    // input, and a SIGTERM and two SIGINTs never reached their handlers. The engines added after the
+    // snapshot make the tree drift, so it is counted whole and the run is refused without a spawn:
+    // the only turns the loop gets before the answer are the count's own.
+    const fx = hostFixture({ shim: ["echo pass"] });
+    for (let index = 0; index < 8; index += 1) {
+      writeFileSync(join(fx.toolTree, `engine-${index}.bin`), new Uint8Array(16 << 20).fill(index));
+    }
+    let turned = false;
+    setTimeout(() => (turned = true), 0);
+    const moved = await runOnce(fx.host, subject({}), { toolId: "shim", checkId: "c" });
+    expect(moved.nonResult?.message).toContain("toolchain tree changed or could not be read since the");
+    expect(turned).toBe(true);
+  });
+
   it("refuses a script whose interpreter was unresolvable at snapshot and resolves by the time it runs", async () => {
     // The drift check used to read an absent snapshot digest as "nothing moved" and skip the live
     // re-read entirely, so an interpreter that vanished was refused while one that appeared was

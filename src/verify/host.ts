@@ -35,7 +35,7 @@ import { sha256, sha256OfFile } from "../meta/digest.ts";
 import { cancellableByteStream } from "../meta/cancellable-stream.ts";
 import { isString } from "../meta/json-shape.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
-import { interpreterDigest, portableToolTreeDigest, toolProvenance } from "./tool-inventory.ts";
+import { interpreterDigest, toolProvenance, yieldingPortableToolTreeDigest } from "./tool-inventory.ts";
 import type { VerifierExecutionNonResultKind } from "./correctness-model-result.ts";
 import type { ExactReadDrift } from "./exact-read-attestation.ts";
 import { LINUX_BWRAP_ID, bwrapWrappedSignal } from "./linux-bwrap.ts";
@@ -152,9 +152,9 @@ interface Scope {
   tail: Promise<void>;
   pendingAtClose: number;
   closed: boolean;
-  /** The live `.toolchain` tree digest, walked at this scope's first workspace-tool run rather
-   *  than at every run, because a large install takes a noticeable fraction of a second to walk;
-   *  null when the walk could not complete. */
+  /** The live `.toolchain` tree digest, counted at this scope's first run rather than at every
+   *  run, because a firmware install of 100,000 files takes seconds to count with every file
+   *  already read and up to a minute without; null when the count could not complete. */
   treeDigest?: string | null;
   /** Stops for this scope's live children and for its waits on another scope's identical run. */
   children: Set<() => Promise<VerifierProcessSettlement | null>>;
@@ -233,7 +233,7 @@ function movedSinceSnapshot(
   entry: ToolEntry,
   liveDigest: string,
   toolTree: string | null,
-  liveTree: () => string | null,
+  liveTree: string | null,
 ): string | null {
   if (liveDigest !== entry.digest) return "bytes changed";
   const live = entry.kind === "binary" ? undefined : interpreterDigest(entry.path, toolTree);
@@ -243,7 +243,7 @@ function movedSinceSnapshot(
       : `resolves a different ${entry.interpreter ?? "interpreter"}`;
   }
   // Last, so an interpreter installed in the tree is still named as the interpreter that moved.
-  return entry.treeDigest === undefined || liveTree() === entry.treeDigest
+  return entry.treeDigest === undefined || liveTree === entry.treeDigest
     ? null
     : "toolchain tree changed or could not be read";
 }
@@ -616,16 +616,6 @@ class VerifierHost implements VerifierHostHandle {
     for (const stop of scope.children) void stop().catch(() => {});
   }
 
-  private liveTree(scope: Scope): string | null {
-    if (scope.treeDigest !== undefined || this.toolTree === null) return scope.treeDigest ?? null;
-    try {
-      scope.treeDigest = portableToolTreeDigest(this.toolTree);
-    } catch {
-      scope.treeDigest = null;
-    }
-    return scope.treeDigest;
-  }
-
   private checkCell(scope: Scope, checkId: string): ToolCell {
     const prior = scope.cells.get(checkId);
     if (prior !== undefined) return prior;
@@ -735,24 +725,27 @@ class VerifierHost implements VerifierHostHandle {
     return { args: [...args], files, stdin, inputPaths: sorted, artifactInput };
   }
 
+  /** A run that arrived after its scope closed, refused without looking at the tool. */
+  private arrivedClosed(scope: Scope, request: ToolRunRequest): ToolRunResult {
+    const base = this.evidenceBase(
+      scope,
+      {
+        toolId: isString(request?.toolId) ? request.toolId : "",
+        checkId: isString(request?.checkId) ? request.checkId : "",
+      },
+      { args: [], files: {}, stdin: null, inputPaths: [], artifactInput: false },
+      null,
+    );
+    return nonResult(
+      unspawned(base),
+      "sandbox",
+      `tool run for check "${base.checkId}" arrived after its evaluate scope closed — a fire-and-forget run grounds nothing; failing closed without spawning`,
+    );
+  }
+
   private async run(scope: Scope, request: ToolRunRequest): Promise<ToolRunResult> {
     const { subject } = scope;
-    if (scope.closed) {
-      const base = this.evidenceBase(
-        scope,
-        {
-          toolId: isString(request?.toolId) ? request.toolId : "",
-          checkId: isString(request?.checkId) ? request.checkId : "",
-        },
-        { args: [], files: {}, stdin: null, inputPaths: [], artifactInput: false },
-        null,
-      );
-      return nonResult(
-        unspawned(base),
-        "sandbox",
-        `tool run for check "${base.checkId}" arrived after its evaluate scope closed — a fire-and-forget run grounds nothing; failing closed without spawning`,
-      );
-    }
+    if (scope.closed) return this.arrivedClosed(scope, request);
     const cell = this.checkCell(scope, request.checkId);
     const { entry, source } = this.resolveTool(cell, request);
     const inputs = this.validateInputs(cell, request);
@@ -779,6 +772,13 @@ class VerifierHost implements VerifierHostHandle {
       }
     }
     for (const [rel, content] of Object.entries(files)) writeCellInput(cell.path, rel, content);
+    // The tree is counted once per scope, by a walk that hands the event loop back as it goes, so a
+    // signal handler still runs during a long count. It is awaited only when a count is due: a yield
+    // with nothing to count would let a scope its evaluator abandoned close before its child is
+    // tracked.
+    if (this.toolTree !== null && scope.treeDigest === undefined) {
+      scope.treeDigest = await yieldingPortableToolTreeDigest(this.toolTree).catch(() => null);
+    }
     // Re-hash the executable immediately before spawning. The inventory digest was taken at
     // snapshot time, and a tool whose bytes have moved since is no longer the measured condition,
     // whatever the inventory still says about it.
@@ -796,7 +796,7 @@ class VerifierHost implements VerifierHostHandle {
     const moved =
       source === "cell"
         ? null
-        : movedSinceSnapshot(entry, liveDigest, this.toolTree, () => this.liveTree(scope));
+        : movedSinceSnapshot(entry, liveDigest, this.toolTree, scope.treeDigest ?? null);
     if (moved !== null) {
       return nonResult(
         unspawned(base),
@@ -853,7 +853,7 @@ class VerifierHost implements VerifierHostHandle {
       // By content rather than by path: a copy of the tree reuses its cache, and a tree rewritten in
       // place does not.
       const tool = {
-        tree: this.liveTree(scope),
+        tree: scope.treeDigest ?? null,
         digest: liveDigest,
         portableDigest: entry.portableDigest,
         interpreterDigest: entry.interpreterDigest,

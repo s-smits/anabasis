@@ -551,19 +551,6 @@ it either moves to "Tried and taken out" or its comments are deleted.
   by the round's turn cap and by `MOVE_TO_AUTHORING`, which still fires for a round with no clear
   preview. Grep: `rg "ABLATED\(early-accept\)"`. Measured by: the run launched from this commit (filled at
   launch).
-- **`witness-budget` (added 2026-09-30).** One sentence in `renderBatteryContract`: a limit set
-  from a search shorter than a blind solve of that task is one the solver can meet, and rehearsals and
-  the last battery's solves record how long a blind solve takes. A first wording asked for a search as
-  long as the solver may spend, which is the two-hour wall and about fifty hours for a 25-task battery;
-  the blind solve is the comparator the Builder can read, and the sentence states the fact rather than
-  the route. The same idea was stated twice before, and neither time was it measured:
-  - 83a24567 stated it, and it left on 2026-09-28 when `difficulty-ladder.md` was cut as a whole;
-  - an earlier start-prompt sentence was removed on overlap grounds (d21f1a27).
-
-  It remains an optional route in `examples.md`, "A search past the solver's wall". A controlled test
-  that answers whether a longer witness search opens a gap the solver cannot close is running on
-  truss-25 acef98-i03, prediction 579d4990. Grep: `rg "witness-budget"`. Measured by: the run launched
-  from this commit (filled at launch).
 
 ## Evidence and implementation status
 

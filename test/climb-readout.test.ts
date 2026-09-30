@@ -337,14 +337,6 @@ describe("rendering", () => {
     expect(render(readoutOf(row("r1", 0, { passed: 0, n: 6 })))).not.toContain("traces/r1");
   });
 
-  /** ADDED(witness-budget): the witness is compared with a blind solve, which the Builder can read,
-   *  and never with the solver's wall, which prices a battery's search at hours per task. */
-  it("compares the reference search with a blind solve, not with the solver's wall", () => {
-    const contract = renderBatteryContract(25).replace(/\s+/g, " ");
-    expect(contract).toContain("a search shorter than a blind solve of that task is one the solver can meet");
-    expect(contract).not.toMatch(/as long as the solver may spend|solve wall|two-hour/);
-  });
-
   it("states no course: no streak, target, prediction, ladder or move", () => {
     for (const passed of [0, 2, 5]) {
       const text = [render(readoutOf(row("r1", 0, { passed, n: 5, probe: true }))), renderBatteryContract(5)]

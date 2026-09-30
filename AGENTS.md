@@ -651,6 +651,12 @@ only after every arm's source is fixed, and nothing read from it revises an arm.
   finding and `examples.md` still name the interaction, so the arm tests this sentence, not the concept.
   After the depth prescriptions, 83 of 85 recorded batteries passed whole, 77 of them one model on new
   domains. Grep: `rg "ABLATED\(competing-margin\)"`. Prediction and run: filled when this arm launches.
+- **`trial-forecast` (arm, 2026-10-01).** The harness_trial result's "so a battery of tasks like it
+  scores near its size" and "near zero", and the description's "A task your solver passes on its first
+  attempt will most likely pass in the battery too". The verdict, effort, round tally and examples
+  pointer stay. The rehearsed task sat at chance in its battery's solve-time order (mean rank 0.48
+  against 0.50), and 945 of 994 graded rehearsals passed. Grep: `rg "ABLATED\(trial-forecast\)"`.
+  Prediction and run: filled when this arm launches.
 
 ## Evidence and implementation status
 

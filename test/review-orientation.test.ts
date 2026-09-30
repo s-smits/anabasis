@@ -186,6 +186,9 @@ describe("the epoch reviewer's orientation", () => {
     expect(prompt).toContain("aim 5 to 12 of 25): significantly too easy.");
     // The placement opens the question; it is not the finding.
     expect(prompt).toContain("A placement above the aim is a lead, not a finding on its own");
+    // Requirements asked for one at a time are an undemanded obligation too, so that gap is reachable
+    // from the lead rather than only the capability no task exercises.
+    expect(prompt).toContain("do not demand, or demand only one at a time");
     expect(prompt).not.toContain("hardness is the last of its readings");
     // The first-probe pointer belongs to the side below the aim, and the static prompt no longer
     // carries it to every review.

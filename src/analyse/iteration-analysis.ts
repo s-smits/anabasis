@@ -184,13 +184,19 @@ type FindingBody = {
  *  replays the published outputs without reading its inputs passes. That last shape is one leaf of
  *  a source-file artifact, where no path the review may name locates it, so without its own
  *  sentence it crosses as one of the others and the author repairs the wrong thing. A solver tool that reports every margin a check reads is
- *  not one: it still leaves the solver the decision, and whether it made a battery easy is measured. */
+ *  not one: it still leaves the solver the decision, and whether it made a battery easy is measured.
+ *  The sixth shape is a battery whose tasks ask for the request's requirements one at a time, so none
+ *  asks for several acting together on one answer, where meeting one spends the margin another needs:
+ *  the demand the no-limit line names, and the one recorded demand that dropped pass rates (AGENTS.md
+ *  "Tried and taken out"). Easy tasks are not by themselves a defect, so it is recorded as an
+ *  observation unless a request obligation is left undemanded. */
 export const DEMAND_GAPS = [
   "capability-unexercised",
   "sibling-values-only",
   "limit-cleared-widely",
   "rule-outside-request",
   "published-scenario-only",
+  "requirements-one-at-a-time",
 ] as const;
 export type DemandGap = (typeof DEMAND_GAPS)[number];
 

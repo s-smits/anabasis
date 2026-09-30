@@ -668,7 +668,7 @@ function findingParameters(disputable: readonly string[]) {
         type: "string",
         enum: [...DEMAND_GAPS],
         description:
-          "For a finding about what the tasks fail to demand, which shape it takes: capability-unexercised (the request names a capability no task exercises), sibling-values-only (sibling tasks differ only in published values), limit-cleared-widely (the first reasonable candidate clears a published limit widely), rule-outside-request (a rule no practitioner of the request would hold), published-scenario-only (the checks observe only the published inputs, so an answer replaying the published outputs without reading its inputs passes). It crosses to authoring; the claim does not.",
+          "For a finding about what the tasks fail to demand, which shape it takes: capability-unexercised (the request names a capability no task exercises), sibling-values-only (sibling tasks differ only in published values), limit-cleared-widely (the first reasonable candidate clears a published limit widely), rule-outside-request (a rule no practitioner of the request would hold), published-scenario-only (the checks observe only the published inputs, so an answer replaying the published outputs without reading its inputs passes), requirements-one-at-a-time (each task asks for the request's requirements one at a time, so none asks for several acting together on one answer; easy tasks are not by themselves a defect). It crosses to authoring; the claim does not.",
       },
       settlesCases: {
         type: "array",

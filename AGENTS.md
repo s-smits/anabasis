@@ -540,8 +540,8 @@ closes it.
   that differ by which requirements interact under one shared limit, an obvious answer that fails, and a
   very hard family, which is where the operator's aim at very hard reaches the Builder, with no count
   (prior 10).
-- **The Epoch Reviewer cannot name requirements exercised one at a time.** No `demandGap` value
-  (`src/review/epoch-review-findings.ts`) covers it, and its orientation reads easy tasks as a result.
+- **The Epoch Reviewer could not name requirements exercised one at a time.** `DEMAND_GAPS` now holds
+  `requirements-one-at-a-time`, not yet measured; its orientation still reads easy tasks as a result.
 - **The expected-output oracle is unmeasured.** The firmware `rules.ts` is both the check's expectation
   and the solver's `expected_behaviour`, so the solver can compute every expected value before it
   submits, which `PUBLICATION_CLAUSE` calls the field's own work.

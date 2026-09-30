@@ -24,6 +24,8 @@ const DEMAND_GAP_SENTENCES: Record<DemandGap, string> = {
   "rule-outside-request": "A rule stands that no practitioner of the request would hold.",
   "published-scenario-only":
     "The checks observe only the inputs the task publishes, so an answer that reproduces the published outputs without reading its inputs passes.",
+  "requirements-one-at-a-time":
+    "Each task asks for the request's requirements one at a time, so none asks for several acting together on one answer, where meeting one spends the margin another needs.",
 };
 
 /** Which way a probe-backed check is wrong, as the author reads it, or that the cited probes do not

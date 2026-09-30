@@ -871,6 +871,10 @@ describe("what a finding's typed fields carry to authoring", () => {
         `Epoch review (${EVALUATOR_FILE}): no check or path named; a defect.\nThe checks observe only the inputs the task publishes, so an answer that reproduces the published outputs without reading its inputs passes.`,
       ],
       [
+        { owner: TASKS_FILE, demandGap: "requirements-one-at-a-time", defect: false },
+        "Epoch review (correctness-model/tasks.json): no check or path named; an observation, not a demonstrated defect.\nEach task asks for the request's requirements one at a time, so none asks for several acting together on one answer, where meeting one spends the margin another needs.",
+      ],
+      [
         { owner: "agent/tools.ts", demandGap: "rule-outside-request" },
         "Epoch review (agent/tools.ts): no check or path named; a defect.\nA rule stands that no practitioner of the request would hold.",
       ],

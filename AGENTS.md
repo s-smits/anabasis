@@ -635,6 +635,16 @@ through the grep: remove the prefixes, delete the replacement lines, and flip ba
 under the same marker. Each entry below is a measured condition, not a settled rule. Once its run reads,
 it either moves to "Tried and taken out" or its comments are deleted.
 
+Each arm is one commit that comments its component out, and it lands like any other change (#89). The
+control is the tree before the arm commits. To run one arm alone, revert the other arm commits, so that
+it differs from the control in one component only. All of them are seeded from one recorded product
+(`seed-campaign.mts republish --as-slug a,b,c`) and launched with the same model, provider budget and
+expected-task count. Run them one at a time, or record the machine load beside each: the three forks of
+2026-09-30 ran at once, and each spent 123 to 247 minutes in gate calls where the seed's rounds spent 26
+to 80. Each prediction is frozen before its arm launches.
+Arms are compared on a discovery seed first. A confirmation seed, from another campaign, is launched
+only after every arm's source is fixed, and nothing read from it revises an arm.
+
 No component is ablated in source at present.
 
 ## Evidence and implementation status

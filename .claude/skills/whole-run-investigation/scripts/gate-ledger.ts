@@ -459,6 +459,7 @@ export const DELIBERATELY_UNLEDGERED = new Map<string, string>([
     "brief-artifact-field-unaddressable",
     "brief-check-artifact-root-undeclared",
     "brief-check-join-undeclared",
+    "brief-check-only-tool-unrequired",
     "brief-check-path-invalid",
     "brief-decision-undeclared-field",
     "brief-design-rule-constant-name-empty",

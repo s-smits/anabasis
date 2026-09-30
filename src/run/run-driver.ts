@@ -295,14 +295,14 @@ export function loadRecordedTasks(slugDir: string): BuildTask[] {
  *  over offered tool names (the tree's tools-spec names plus preset tools). Read from the
  *  spec the runtime registers from, so the hash and the offered roster share one source. A tree
  *  without a tools-spec, which submit refuses and only fixtures carry, has no roster to digest:
- *  toolInterfaceHash null states that, never a hash over guessed names. `advisorsRemoved` is empty
- *  unless the operator withheld the checks' instruments, when it names each one the shell closed as
- *  `instrument:<toolId>`; it enters `measuredConditionDigest`, so such a battery is its own
- *  condition and an issue it lacks is unmeasured rather than fixed. */
+ *  toolInterfaceHash null states that, never a hash over guessed names. `advisorsRemoved` names
+ *  each program the shell closed as `instrument:<toolId>`: the brief's `checkOnlyTools`, or every
+ *  check's tool when the operator withheld them all, and empty when neither applies. It enters
+ *  `measuredConditionDigest`, so such a battery is its own condition and an issue it lacks is
+ *  unmeasured rather than fixed. */
 export function batteryCondition(slugDir: string, withholdInstruments = false): RunCondition {
-  const advisorsRemoved = withholdInstruments
-    ? checkInstrumentIds(slugDir).map((id) => `instrument:${id}`)
-    : [];
+  const scope = withholdInstruments ? "every-check-tool" : "check-only";
+  const advisorsRemoved = checkInstrumentIds(slugDir, scope).map((id) => `instrument:${id}`);
   const builtProcedure = builtProcedureDigest();
   const file = join(slugDir, TOOLS_SPEC_FILE);
   if (!existsSync(file)) {

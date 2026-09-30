@@ -13,7 +13,9 @@ import {
   fieldFinding,
   jsonPathFinding,
   recordView,
+  requiredToolsOf,
 } from "./brief.ts";
+import { TOOL_ID_RE } from "../verify/tool-inventory.ts";
 import { jsonPathTokens } from "../meta/json-evidence.ts";
 import {
   citedDecisionIdFindings,
@@ -154,6 +156,11 @@ function briefFieldFindings(value: JsonObject): ContractFinding[] {
   }
   if (value.ruleDecisions !== undefined && !Array.isArray(value.ruleDecisions)) {
     findings.push(fieldFinding("ruleDecisions", "an array (optional)", value.ruleDecisions));
+  }
+  if (value.checkOnlyTools !== undefined && !distinctStrings(value.checkOnlyTools, "may-be-empty")) {
+    findings.push(
+      fieldFinding("checkOnlyTools", "a list of distinct tool ids (optional)", value.checkOnlyTools),
+    );
   }
   if (findings.length > 0) return findings;
   // SAFETY: the loops above found every BriefRecord field present with the right container kind.
@@ -472,6 +479,23 @@ function designRuleConstantFindings(brief: Brief): ContractFinding[] {
   return findings;
 }
 
+/** A check-only tool is a valid tool id some truth check requires, so the declaration can withhold
+ *  only a program a check runs. */
+function checkOnlyToolFindings(brief: Brief): ContractFinding[] {
+  const required = new Set(brief.truthChecks.flatMap((check) => requiredToolsOf(check.execution)));
+  return (brief.checkOnlyTools ?? []).flatMap((id, i) =>
+    TOOL_ID_RE.test(id) && required.has(id)
+      ? []
+      : [
+          finding(
+            "brief-check-only-tool-unrequired",
+            `checkOnlyTools[${i}]`,
+            `${capturedJsonStringify(id)} is not a tool id any truth check requires`,
+          ),
+        ],
+  );
+}
+
 export function validateBrief(value: unknown): ValidationResult {
   const fieldFindings = isRecord(value)
     ? briefFieldFindings(value)
@@ -505,6 +529,7 @@ export function validateBrief(value: unknown): ValidationResult {
     ...unreadRootFindings(brief, checks.readRoots),
     ...withheldCitationFindings(brief),
     ...designRuleConstantFindings(brief),
+    ...checkOnlyToolFindings(brief),
   );
   return { ok: findings.length === 0, findings };
 }

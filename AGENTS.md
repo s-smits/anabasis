@@ -421,10 +421,20 @@ bun run fullrun -- --prompt "<request>" --provider-turn-budget N [--project <id>
 
 `--provider-turn-budget` is required, and the run refuses to start without an explicit positive value.
 `--context` is the only repeatable flag, `--dcg` defaults to `true`, and `--expected-source` is
-`<40-hex commit>:<64-hex executable digest>`. `--withhold-instruments true` (default off, 2026-09-27)
-hides the checks' instrument programs from the Built shell, travels as
-`HARNESS_BUILT_WITHHOLD_INSTRUMENTS`, and records each one as `instrument:<toolId>` in `advisorsRemoved`,
-so a withheld battery is its own measured condition. Two retired flags are refused by name
+`<40-hex commit>:<64-hex executable digest>`. A Built shell withholds each program the brief's
+`checkOnlyTools` names (2026-09-30) where it resolves inside `.toolchain` by the path the verifier's
+inventory takes, never a host tool, and records it as `instrument:<toolId>` in `advisorsRemoved`, so a
+battery that withheld one is its own measured condition. The validator refuses an id no truth check
+requires, and an absent field withholds nothing. Withholding exists because a solver that could run a
+check's program passed every case round after round (truss 3e4693 ran `truss-analyze`, 7 x 6/6); its
+expected effect may be slower solves rather than verified fails, since truss cb274b, whose tools ran no
+check, missed only on walls (54 of 54 misses unaccepted at about two minutes a case, all 54 submitted
+designs passing). The declaration is the Builder's because no rule by name or file type separates the
+practitioner's compiler from a check's instrument: firmware 887c16's `arduino-cli` is an 873-byte
+Builder wrapper a check declares, like its bench simulator `firmware-sim`, and compiling with it was the
+solvers' only check before submitting in 8 verified fails. So `--withhold-instruments true` (added
+2026-09-27), the strict operator mode that withholds every check's required tool inside `.toolchain` and
+travels as `HARNESS_BUILT_WITHHOLD_INSTRUMENTS`, stays off by default. Two retired flags are refused by name
 (`src/run/launch-arguments.ts`): `--max-turns`, since the Built cap is `BUILT_DEFAULT_MAX_TURNS`, and
 `--turn-budget`, renamed `--iteration-budget`. `tools/fullrun-launchd.zsh` (macOS) and
 `tools/fullrun-systemd.sh` (Linux) detach a run through `env -i` from one frozen environment map with
@@ -1039,9 +1049,9 @@ the battery was paid for.
     silence, one model call plus one command at its ceiling. At the whole-solve wall the host submits the
     held draft through the solver's `submit` (`submitAtWall`, `src/backends/pi-built.ts`); an accepted one
     is graded, and otherwise a solve that called a tool is an unaccepted attempt with its traced calls,
-    not a non-result. `--withhold-instruments true` (default off) closes the checks' own `.toolchain`
-    instruments to the Built shell and records `instrument:<toolId>` in the run condition, so it is a
-    condition of its own.
+    not a non-result. The brief's `checkOnlyTools` (2026-09-30), or every check's tool under the strict
+    `--withhold-instruments true` (default off), closes those `.toolchain` instruments to the Built shell
+    and records `instrument:<toolId>` in the run condition, so it is a condition of its own.
 
     For generated tools, `text` is the whole model-visible result and `details` is host and trace
     evidence, so every promised value belongs in `text`. A result that drops bytes says where the rest is,
@@ -1110,7 +1120,10 @@ the battery was paid for.
     In F2, a controller deadline reached before the generated-tool worker is ready, while it waits on a
     request, or while it closes without an accepted submit is a host non-result, while a worker that
     answered its handshake and then broke protocol is a representation defect. A case the host broke gets
-    one fresh attempt on the same bytes in the census, and only a second host non-result stands. Once the
+    one fresh attempt on the same bytes in the census, and only a second host non-result stands. A census
+    whose only blocking fact is such cut-short reference solves keeps the session and the run
+    (`endsSession`): the refusal costs no strike, and the next submit of the same bytes runs the census
+    again, since a host at load cut them rather than a dead environment (887c16, 2026-09-30). Once the
     host holds what it needed (an accepted submit, or every conformance probe settled), the generated-tool
     worker's host-marked close-handshake timeout (`closeHandshakeTimeout`) is cleanup evidence, voiding no
     case and refusing no candidate, in a battery case, in F2 and in the probes alike; every other close

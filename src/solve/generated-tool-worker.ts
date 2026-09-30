@@ -91,8 +91,9 @@ export interface GeneratedToolStarterOptions {
   traceTaskAccess?: boolean;
   /** The measuring run, carried for the shell's own safeguard; absent outside a resolved run. */
   safeguardContext?: SafeguardContext;
-  /** The operator's launch condition: the shell may not run a check's required tool that resolves
-   *  from the bundle's `.toolchain`. Absent or false leaves the shell exactly as it was. */
+  /** The operator's strict launch condition: the shell may not run any check's required tool that
+   *  resolves from the bundle's `.toolchain`. Absent or false withholds only the brief's
+   *  `checkOnlyTools`. */
   withholdInstruments?: boolean;
 }
 /** One shared projection for the build-time and production worker identity checks. */
@@ -381,7 +382,10 @@ export async function createGeneratedToolStarter(
               home,
               publicResourceFiles: seedSessionHome(home, options.task, readPublicResources(options.slugDir)),
               toolTree: bundleSnapshotToolTree(options.slugDir),
-              withheld: options.withholdInstruments === true ? checkInstrumentPaths(options.slugDir) : [],
+              withheld: checkInstrumentPaths(
+                options.slugDir,
+                options.withholdInstruments === true ? "every-check-tool" : "check-only",
+              ),
               timeouts: settings,
               ...keyIfDefined("safeguardContext", options.safeguardContext),
             }),

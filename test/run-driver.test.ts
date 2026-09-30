@@ -191,28 +191,37 @@ describe("the battery driver", () => {
     expect(withPreset).not.toBe(withoutPreset);
   });
 
-  // The operator's withheld-instruments condition: off records exactly what a battery recorded
-  // before it existed; on names each check tool the bundle's own tree resolves, and not a host one,
-  // so the measured-condition digest separates the two batteries.
-  it("records withheld check instruments as removed, and nothing when the condition is off", () => {
+  // Without a declaration and without the operator's strict condition a battery records exactly
+  // what it recorded before either existed. The brief's `checkOnlyTools` withholds just the tools it
+  // names, leaving a check's tool the solver builds with; the strict condition withholds every check
+  // tool the bundle's own tree resolves. Neither takes a host tool, and the measured-condition digest
+  // separates each from the battery that withheld nothing.
+  it("records the declared or, when strict, every check instrument as removed, and nothing otherwise", () => {
     const { slugDir } = slug("withheld-condition");
     const [first, second] = MATCHING_BRIEF.truthChecks;
-    const brief = {
+    const brief = (checkOnlyTools?: string[]) => ({
       ...MATCHING_BRIEF,
       truthChecks: [
         { ...first, execution: { ...first?.execution, requiredToolIds: ["own-check"] } },
-        { ...second, execution: { ...second?.execution, requiredToolIds: ["sh"] } },
+        { ...second, execution: { ...second?.execution, requiredToolIds: ["sh", "compiler"] } },
       ],
-    };
-    writeFileSync(join(slugDir, "correctness-model/brief.json"), JSON.stringify(brief));
+      ...keyIfDefined("checkOnlyTools", checkOnlyTools),
+    });
+    const briefFile = join(slugDir, "correctness-model/brief.json");
+    writeFileSync(briefFile, JSON.stringify(brief()));
     mkdirSync(join(slugDir, ".toolchain/bin"), { recursive: true });
-    writeFileSync(join(slugDir, ".toolchain/bin/own-check"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+    for (const tool of ["own-check", "compiler"]) {
+      writeFileSync(join(slugDir, ".toolchain/bin", tool), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+    }
     const off = batteryCondition(slugDir);
     const on = batteryCondition(slugDir, true);
     expect(off.advisorsRemoved).toEqual([]);
     expect(batteryCondition(slugDir, false)).toEqual(off);
-    expect(on.advisorsRemoved).toEqual(["instrument:own-check"]);
+    expect(on.advisorsRemoved).toEqual(["instrument:compiler", "instrument:own-check"]);
     expect(on.toolInterfaceHash).toBe(off.toolInterfaceHash);
+    writeFileSync(briefFile, JSON.stringify(brief(["own-check", "sh"])));
+    expect(batteryCondition(slugDir).advisorsRemoved).toEqual(["instrument:own-check"]);
+    expect(batteryCondition(slugDir, true).advisorsRemoved).toEqual(on.advisorsRemoved);
     const digest = (runCondition: typeof off) =>
       measuredConditionDigest({
         runId: "r",

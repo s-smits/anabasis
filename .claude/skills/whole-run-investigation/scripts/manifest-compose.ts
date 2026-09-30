@@ -7,13 +7,12 @@ import {
   readFileSync,
   writeFileSync,
 } from "#src/meta/filesystem.ts";
-import { dirname, join, resolve } from "#src/meta/path.ts";
+import { join, resolve } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { hasText } from "#src/meta/text.ts";
 import { CommandFailure } from "#skills/main/cli.ts";
-import { gitMaybe } from "#skills/main/git.ts";
 import {
   DIGEST_VERDICTS,
   GROUND_TRUTH_LANE,
@@ -45,6 +44,7 @@ import {
 import { reportingLines, snapshotLines } from "./manifest-reporting.ts";
 import { renderSharedInstructions, type SharedInstructions } from "./shared-instructions.ts";
 import { writeJsonFile } from "#src/meta/completed-json.ts";
+import { LAUNCH_FILE, SUMMARY_FILE } from "#skills/codex-luna-swarm/scripts/luna-receipts.ts";
 import { readJsonAs } from "./run-overview.ts";
 
 const LAUNCH_RECORD_WAIT_MS = 30_000;
@@ -132,7 +132,6 @@ export interface DispatchInput extends SessionSet {
   detach: boolean;
   maxActive: string | null;
   launcherPath: string;
-  codexLauncherPath: string;
 }
 
 /** The trace-challenge identity a launch binds the packet to. */
@@ -692,28 +691,8 @@ function lunaArgs({
   ];
 }
 
-/** Codex transport from Claude Code: one self-contained prompt per lane, detached past the Bash
- *  tool's 600 s wall by codex-sessions.ts, so the reviewer writes no instruction packet by hand. */
-function writeCodexTasks(outPath: string, instructions: string, tasks: readonly ManifestTask[]): string {
-  const codexTasksPath = join(outPath, "codex-tasks.json");
-  const rows = tasks.map(({ name, task, scratch }) => {
-    const prompt = leafPrompt(instructions, task, scratch);
-    // A hardware session runs in, and writes, its own scratch; every other one reads.
-    return scratch === null ? { name, task: prompt } : { name, task: prompt, write: true, workdir: scratch };
-  });
-  writeJsonFile(codexTasksPath, rows);
-  return codexTasksPath;
-}
-
 export function writeAndDispatch(input: DispatchInput): void {
   const outPath = resolve(input.outDir);
-  // `codex exec` starts only inside a Git work tree, and a hardware session's workdir is its own
-  // scratch under --out: from a session scratchpad both hardware lanes died in 38 ms (2026-09-30).
-  if (input.launch && input.tasks.some(({ scratch }) => scratch !== null) && !insideWorkTree(outPath)) {
-    manifestFail(
-      `--out ${outPath} is outside any Git work tree, where codex exec refuses a hardware session; put the review under notes/wri/`,
-    );
-  }
   mkdirSync(outPath, { recursive: true });
   const instructionsPath = join(outPath, "instructions.md");
   const tasksPath = join(outPath, "tasks.json");
@@ -746,31 +725,6 @@ export function writeAndDispatch(input: DispatchInput): void {
     writeNativePrompts(outPath, input.instructions, input.tasks);
     return;
   }
-  if (input.transport === "codex") {
-    const codexTasksPath = writeCodexTasks(outPath, input.instructions, input.tasks);
-    const outputDir = join(outPath, "codex-output");
-    const args = [
-      input.bun,
-      "--no-env-file",
-      input.codexLauncherPath,
-      "launch",
-      "--tasks-file",
-      codexTasksPath,
-      "--out-dir",
-      outputDir,
-      "--workdir",
-      input.worktree,
-      "--model",
-      "gpt-6-luna",
-      "--effort",
-      input.effort,
-    ];
-    console.log(`\nlaunch:\n${args.join(" ")}`);
-    if (!input.launch) return;
-    if (!existsSync(input.codexLauncherPath)) manifestFail(`no codex launcher at ${input.codexLauncherPath}`);
-    console.log(runTextSyncOrThrow(args).trimEnd());
-    return;
-  }
   const outputDir = join(outPath, "luna-output");
   const args = lunaArgs({ ...input, tasksPath: launcherTasksPath, instructionsPath, outputDir });
   console.log(`\nlaunch:\n${args.slice(0, 3).join(" ")} ${args.slice(3).join(" ")}`);
@@ -784,9 +738,9 @@ export function writeAndDispatch(input: DispatchInput): void {
   }
   try {
     console.log(runTextSyncOrThrow(args).trimEnd());
-    if (existsSync(join(outputDir, "launch.json"))) writeLaunchInput(identity, input);
+    if (existsSync(join(outputDir, LAUNCH_FILE))) writeLaunchInput(identity, input);
   } catch (error) {
-    if (existsSync(join(outputDir, "launch.json"))) {
+    if (existsSync(join(outputDir, LAUNCH_FILE))) {
       // The launcher may have opened its immutable record before a provider failure. Keep the
       // source/input identity sidecar for an explicit incomplete collection rather than guessing.
       writeJsonFile(join(outputDir, "wri-launch-input.json"), {
@@ -796,12 +750,6 @@ export function writeAndDispatch(input: DispatchInput): void {
     }
     throw new CommandFailure(`launcher failed: ${errorMessage(error)}`);
   }
-}
-
-function insideWorkTree(path: string): boolean {
-  let dir = path;
-  while (!existsSync(dir)) dir = dirname(dir);
-  return gitMaybe(dir, "rev-parse", "--is-inside-work-tree") === "true";
 }
 
 /** Bind the launched prompts to the manifest bytes once the launcher has opened its record. */
@@ -850,7 +798,7 @@ function detachLauncher(args: string[], outPath: string, outputDir: string): voi
     closeSync(fd);
   }
   writeFileSync(join(outPath, "launcher.pid"), `${child.pid}\n`);
-  const launchPath = join(outputDir, "launch.json");
+  const launchPath = join(outputDir, LAUNCH_FILE);
   const deadline = Date.now() + LAUNCH_RECORD_WAIT_MS;
   while (!existsSync(launchPath)) {
     if (child.exitCode !== null || Date.now() > deadline) {
@@ -862,6 +810,6 @@ function detachLauncher(args: string[], outPath: string, outputDir: string): voi
   }
   console.log(`\ndetached launcher pid ${child.pid}; log ${logPath}`);
   console.log(
-    `sessions finish as luna_session.finished lines; luna_sessions.completed writes ${join(outputDir, "summary.json")}`,
+    `sessions finish as luna_session.finished lines; luna_sessions.completed writes ${join(outputDir, SUMMARY_FILE)}`,
   );
 }

@@ -5,8 +5,6 @@ import fs from "#src/meta/filesystem.ts";
 import { type ExitWith, exitWith, parseOrDie } from "#skills/main/cli.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { hasText } from "#src/meta/text.ts";
-import { capturedJsonParse } from "#src/meta/json-runtime.ts";
-import { asRecord } from "#src/meta/json-shape.ts";
 
 type Options = {
   inspect: boolean;
@@ -208,9 +206,6 @@ const tasks = taskHeadings.map((heading, index) => {
   const nextOffset = taskHeadings[index + 1]?.offset ?? markdown.length;
   const rawSection = markdown.slice(heading.offset, nextOffset);
   const task = options.keepSeparators ? rawSection.trim() : stripInterSectionRule(rawSection);
-  if (!task.startsWith(`${"#".repeat(heading.level)} `)) {
-    fail(`Task ${index + 1} lost its heading`);
-  }
   return {
     name: taskName(heading.nameTitle, `task_${index + 1}`, usedNames),
     task,
@@ -223,14 +218,6 @@ if (numbered.length > 0 && !numbered.every((heading, index) => heading.number ==
 }
 
 const encoded = `${JSON.stringify(tasks, null, 2)}\n`;
-const decoded = capturedJsonParse(encoded);
-if (
-  !Array.isArray(decoded) ||
-  decoded.length !== tasks.length ||
-  decoded.some((row, index) => asRecord(row)?.task !== tasks[index]?.task)
-) {
-  fail("JSON round-trip changed a task value");
-}
 // `parseArgs` refused a run without --output unless it inspected, and an inspection exited above.
 fs.writeFileSync(options.output ?? fail("--output is required unless --inspect is used"), encoded);
 

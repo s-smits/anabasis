@@ -11,6 +11,7 @@ import { capturedJsonParse } from "#src/meta/json-runtime.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { dirname, isAbsolute, join, relative } from "#src/meta/path.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
+import { LAUNCH_FILE, LAUNCH_TYPE, SUMMARY_TYPE } from "#skills/codex-luna-swarm/scripts/luna-receipts.ts";
 import { CommandFailure, runCommand, type CommandArgs } from "#skills/main/cli.ts";
 import { emitReport } from "#skills/main/output.ts";
 import {
@@ -28,9 +29,6 @@ import { hasText } from "#src/meta/text.ts";
 import { readJsonFile, writeJsonFile } from "#src/meta/completed-json.ts";
 import { jsonText } from "./run-overview.ts";
 
-/** The record types luna-sessions.ts writes when it opens and when it drains a collection. */
-const SUMMARY_TYPE = "luna_sessions.completed";
-const LAUNCH_TYPE = "luna_sessions.launch";
 const ADMISSION_SCHEMA = "wri-progressive-admission/v2";
 const RECEIPT_SCHEMA = "wri-report-validation/v3";
 
@@ -299,11 +297,12 @@ function sectionIssues(heading: string, sectionText: string): string[] {
   }
   const findings = found.get("Findings")?.[0];
   if (findings !== undefined && findings.length > 0 && findings !== "none") {
-    // Luna wraps the line or its value in code or bold marks and may gloss it, so the owner is the
-    // first word after the label once those marks are gone; that word is still checked below.
+    // A report wraps the label or its value in code or bold marks, glosses the value, or leads a
+    // finding's own line with it, so the owner is the first word after `owner:` anywhere on a line
+    // once those marks and any closing punctuation are gone. That word is still checked below.
     const owners = findings.split("\n").flatMap((line) => {
-      const owner = /^\s*(?:-\s*)?owner:\s*(\S+)/i.exec(line.replaceAll(/[`*]/g, ""))?.[1];
-      return owner === undefined ? [] : [owner.replace(/[;,:]+$/, "")];
+      const owner = /\bowner:\s*(\S+)/i.exec(line.replaceAll(/[`*]/g, ""))?.[1];
+      return owner === undefined ? [] : [owner.replace(/[.;,:)]+$/, "")];
     });
     if (owners.length === 0) issues.push(`${heading}: findings name no owner`);
     for (const owner of owners) {
@@ -502,7 +501,7 @@ function launchBinding(
   summary: JsonObject,
   tasksPath: string,
 ): LaunchBinding {
-  const launchPath = join(outputDir, "launch.json");
+  const launchPath = join(outputDir, LAUNCH_FILE);
   if (!existsSync(launchPath) || !statSync(launchPath).isFile()) {
     return {
       state: "invalid",

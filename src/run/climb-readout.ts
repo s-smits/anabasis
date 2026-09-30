@@ -139,6 +139,11 @@ const LEGEND =
   "Rows are newest first. The product, task-set and scoring aliases (P1, T1, S1, ... in order of first appearance) stand for recorded identities, so a changed alias is a changed condition. Passes are out of verified cases; unaccepted attempts produced no accepted submission; non-results failed in the environment and count neither way. A regraded case is an earlier battery's recorded solve graded again, not a new solve.";
 const WITNESS =
   "A passing artifact, like your reference, is a witness: it proves a task feasible, never difficult, and only a blind measured battery shows where a battery lands.";
+/** ADDED(witness-budget): a limit is set at the Builder's witness, and on truss-26 and -29 112 of 134
+ *  limits sat within 2% of one found in minutes, while the solver has a two-hour wall and landed just
+ *  inside every one of them (AGENTS.md "Ablated components"). */
+const WITNESS_BUDGET =
+  "A limit demands no more than the best answer found for it, so search for each task's reference at least as long as the solver may spend solving it, and set the limit from the best answer that search finds.";
 const HISTORY =
   "The context tool's history source holds every row and each battery's public tasks, and its traces source holds every passing case's solve and submitted artifact.";
 
@@ -449,7 +454,9 @@ export function renderReadout(readout: ClimbReadout | null, reason: string): str
  *  limit is the Builder's. */
 export function renderBatteryContract(n: number, min: number = n): string {
   const limit = min < n ? "" : `${LIMIT} `;
-  return `${limit}Every task must be valid and solved by your reference. ${WITNESS} ${BOUNDARY}`;
+  // ADDED(witness-budget): `WITNESS_BUDGET` joins the contract (AGENTS.md "Ablated components").
+  // return `${limit}Every task must be valid and solved by your reference. ${WITNESS} ${BOUNDARY}`;
+  return `${limit}Every task must be valid and solved by your reference. ${WITNESS_BUDGET} ${WITNESS} ${BOUNDARY}`;
 }
 
 /**

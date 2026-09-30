@@ -64,25 +64,20 @@ export function sessionClock(
     if (clearPreview) clear = { at, submits: submits() };
     const elapsed = at - opened;
     const minutes = Math.floor(elapsed / 60_000);
-    // ABLATED(early-accept): the clear-preview nudge, a speed cue on a candidate whose witness caps the
-    // battery. A Builder holding a clear preview is now told only the round clock (AGENTS.md "Ablated
-    // components").
-    // const since =
-    //   clear === null || submits() > clear.submits
-    //     ? null
-    //     : `The last clear correctness_check was ${String(Math.floor((at - clear.at) / 60_000))} min ago, and no candidate has been submitted since.`;
+    const since =
+      clear === null || submits() > clear.submits
+        ? null
+        : `The last clear correctness_check was ${String(Math.floor((at - clear.at) / 60_000))} min ago, and no candidate has been submitted since.`;
     const lines: string[] = [];
     if (Math.floor(minutes / 30) > marks) {
       marks = Math.floor(minutes / 30);
       lines.push(`Round clock: ${String(minutes)} min since this round opened; ${load()}.`);
-      // ABLATED(early-accept): if (since !== null) lines.push(since);
+      if (since !== null) lines.push(since);
     }
     if (!asked && elapsed >= NO_SUBMIT_REMINDER_MS && submits() === 0) {
       asked = true;
-      // ABLATED(early-accept): the clear-preview branch of the two-hour ask.
-      // if (since === null) lines.push(`No candidate has been submitted yet. ${MOVE_TO_AUTHORING}`);
-      // else if (!lines.includes(since)) lines.push(since);
-      if (clear === null) lines.push(`No candidate has been submitted yet. ${MOVE_TO_AUTHORING}`);
+      if (since === null) lines.push(`No candidate has been submitted yet. ${MOVE_TO_AUTHORING}`);
+      else if (!lines.includes(since)) lines.push(since);
     }
     return lines.length === 0 ? null : lines.join("\n");
   };

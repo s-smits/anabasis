@@ -276,20 +276,12 @@ function roundPrompt(input: BuilderSessionInput, previous: PreviousRound | null)
     // What a full pass finds and where a battery lands are the battery contract's (`LIMIT`, `WITNESS`
     // in climb-readout.ts), stated once there. The measurements behind each clause are in AGENTS.md
     // "Goals and the climb".
-    // ABLATED(early-accept): two speed cues, "once a clear preview says it works" and "further polish
-    // belongs to the next round". Each pushed a submit on the weak witness that caps the battery
-    // (AGENTS.md "Ablated components").
-    // `${roundLimit(input.maxTurns)}Build, check and rehearse the candidate, and submit` +
-    //   ` once a clear preview says it works. A passing rehearsal is a blind solve of its task, so it shows that task` +
-    //   ` is within the solver's reach, and the task you expect to be hardest is the one whose rehearsal says most about` +
-    //   ` the battery. A battery whose every rehearsal passed is on course to pass every case, so before you submit` +
-    //   ` it, change what its hardest tasks demand and rehearse one of them again, then submit: further polish` +
-    //   ` belongs to the next round.`,
-    `${roundLimit(input.maxTurns)}Build, check and rehearse the candidate, and submit it.` +
-      ` A passing rehearsal is a blind solve of its task, so it shows that task` +
+    `${roundLimit(input.maxTurns)}Build, check and rehearse the candidate, and submit` +
+      ` once a clear preview says it works. A passing rehearsal is a blind solve of its task, so it shows that task` +
       ` is within the solver's reach, and the task you expect to be hardest is the one whose rehearsal says most about` +
       ` the battery. A battery whose every rehearsal passed is on course to pass every case, so before you submit` +
-      ` it, change what its hardest tasks demand and rehearse one of them again, then submit.`,
+      ` it, change what its hardest tasks demand and rehearse one of them again, then submit: further polish` +
+      ` belongs to the next round.`,
     HANDOVER,
   ];
   const context = [input.advisory ?? "", previous === null ? (input.freshContext ?? "") : ""]

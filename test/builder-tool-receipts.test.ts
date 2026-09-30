@@ -239,10 +239,7 @@ it("asks once inside a running turn for authoring when two hours pass without a 
   expect(await later.text()).not.toContain("No candidate");
 });
 
-// ABLATED(early-accept): was "states the last clear preview in place of the authoring ask, and only for
-// a clear correctness_check". The clear-preview nudge is ablated, so a clear preview now silences the
-// authoring ask and states nothing in its place.
-it("asks nothing of a round holding a clear preview, and only a clear correctness_check counts", async () => {
+it("states the last clear preview in place of the authoring ask, and only for a clear correctness_check", async () => {
   let now = 0;
   let submits = 0;
   let status = "clear";
@@ -276,15 +273,12 @@ it("asks nothing of a round holding a clear preview, and only a clear correctnes
   now = 45 * 60_000;
   await call(0);
   now = 61 * 60_000;
-  // ABLATED(early-accept):
-  // expect(await call(1)).toContain(
-  //   "The last clear correctness_check was 16 min ago, and no candidate has been submitted since.",
-  // );
-  expect(await call(1)).not.toContain("clear correctness_check");
+  expect(await call(1)).toContain(
+    "The last clear correctness_check was 16 min ago, and no candidate has been submitted since.",
+  );
   now = 121 * 60_000;
   const late = await call(1);
-  // ABLATED(early-accept): expect(late).toContain("The last clear correctness_check was 76 min ago");
-  expect(late).not.toContain("clear correctness_check");
+  expect(late).toContain("The last clear correctness_check was 76 min ago");
   expect(late).not.toContain("move to authoring");
   submits = 1;
   now = 151 * 60_000;
@@ -295,9 +289,7 @@ it("asks nothing of a round holding a clear preview, and only a clear correctnes
 
 // A round usually submits, is refused, reworks and previews clear again; the clear preview that
 // follows a refusal is the one a round then sits on, so an earlier submit must not silence it.
-// ABLATED(early-accept): was "states a clear preview that came after a refused submit, until the next
-// submit". The clear-preview line is ablated, so the clock states only the round's minutes.
-it("states only the round clock after a refused submit and a clear preview", () => {
+it("states a clear preview that came after a refused submit, until the next submit", () => {
   let now = 0;
   let submits = 1;
   const clock = sessionClock(
@@ -308,11 +300,9 @@ it("states only the round clock after a refused submit and a clear preview", () 
   now = 20 * 60_000;
   expect(clock(true)).toBeNull();
   now = 31 * 60_000;
-  // ABLATED(early-accept):
-  // expect(clock(false)).toContain(
-  //   "The last clear correctness_check was 11 min ago, and no candidate has been submitted since.",
-  // );
-  expect(clock(false)).toContain("Round clock: 31 min");
+  expect(clock(false)).toContain(
+    "The last clear correctness_check was 11 min ago, and no candidate has been submitted since.",
+  );
   submits = 2;
   now = 61 * 60_000;
   const after = clock(false);

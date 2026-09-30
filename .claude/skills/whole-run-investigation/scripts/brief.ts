@@ -27,6 +27,9 @@ export const BRIEF_SCHEMA = "wri-brief/v1";
  *  path. Every lane but `snapshot` came in under 60 lines across the recorded campaigns. */
 export const LANE_LINES = 60;
 
+/** What the snapshot lane records of its own views, under `<review>/snapshot/`. */
+const STATUS_FILE = "snapshot-status.json";
+
 export type Tier = "probe" | "standard" | "deep";
 
 /** What sizes a run: its elapsed hours, its epochs, its batteries and whether any case scored. */
@@ -93,6 +96,19 @@ export interface BriefStep {
   exitCode?: number | null;
   skipped?: string;
   wrote?: string;
+}
+
+/** A view this read's snapshot needed and did not produce: the view with its recorded status, the
+ *  status file itself when the snapshot left none readable, or the snapshot's exit when it failed
+ *  with every view in place. */
+export interface SnapshotGap {
+  label: string;
+  status: string;
+}
+
+/** `snapshot-status.json` as the brief reads it: each view, and whether the snapshot needs it. */
+interface SnapshotViews {
+  views?: { label?: JsonValue; status?: JsonValue; required?: JsonValue }[];
 }
 
 /** The overview as the brief reads it. */
@@ -346,10 +362,66 @@ export function laneSuggestions(triggers: readonly DigestTrigger[], tier: Tier):
   };
 }
 
+/**
+ * What the snapshot lane this review recorded failed to produce, in the order it lists its views:
+ * every view it needs that did not come out `ok`, or its status file when that is absent or torn,
+ * or its exit when it failed with every view in place. Empty when the review read no snapshot, or
+ * read it whole. A view the snapshot marks `required: false` is the overview's to list, and no gap.
+ */
+export function snapshotGaps(reviewDir: string, steps: readonly BriefStep[]): SnapshotGap[] {
+  const snapshot = steps.find((row) => row.label === "snapshot");
+  if (snapshot === undefined || snapshot.skipped !== undefined) return [];
+  const path = join(reviewDir, "snapshot", STATUS_FILE);
+  if (!existsSync(path)) return [{ label: STATUS_FILE, status: "absent" }];
+  const views = readJsonAsOrNull<SnapshotViews | null>(path)?.views;
+  if (!Array.isArray(views)) return [{ label: STATUS_FILE, status: "unreadable" }];
+  const gaps = views
+    .filter((view) => view.status !== "ok" && view.required !== false)
+    .map((view) => ({ label: jsonText(view.label ?? null), status: jsonText(view.status ?? null) }));
+  if (gaps.length > 0 || snapshot.ok === true) return gaps;
+  return [{ label: "snapshot", status: `exit ${snapshot.exitCode ?? "?"}` }];
+}
+
+/** The gap that keeps `view`'s leads out of this brief: the view's own, or the status file's. */
+const gapOf = (gaps: readonly SnapshotGap[], view: string): SnapshotGap | undefined =>
+  gaps.find((gap) => gap.label === view || gap.label === STATUS_FILE);
+
+/** The leads by name and count. A lead whose snapshot view is missing says so in place of its rows,
+ *  so a failed digest never reads as a digest that raised nothing. */
+function flagged(
+  triggers: readonly DigestTrigger[],
+  findings: readonly ScanFinding[],
+  missing: { digest: SnapshotGap | undefined; scan: SnapshotGap | undefined },
+): string {
+  const rules = new Map<JsonValue | undefined, number>();
+  for (const finding of findings) rules.set(finding.rule, (rules.get(finding.rule) ?? 0) + 1);
+  const skipped = (name: string, gap: SnapshotGap | undefined): string[] =>
+    gap === undefined ? [] : [`  ${name}: skipped: snapshot view ${gap.label} ${gap.status}`];
+  const quiet =
+    triggers.length + rules.size === 0 && missing.digest === undefined && missing.scan === undefined;
+  return [
+    "== flagged by the deterministic lanes",
+    ...skipped("digest", missing.digest),
+    ...triggers.map(
+      (row) =>
+        `  digest ${row.name} x${row.rows}${row.examples[0] === undefined ? "" : `: ${row.examples[0]}`}`,
+    ),
+    ...skipped("scan", missing.scan),
+    ...[...rules].map(([rule, count]) => `  scan ${rule === undefined ? rule : jsonText(rule)} x${count}`),
+    ...(quiet ? ["  no digest trigger or scan finding"] : []),
+  ].join("\n");
+}
+
 /** The digest's own capitalised trigger rows, the in-process lanes' trigger rows and the scan
  *  findings, by name and count, then the lanes those triggers start. All are leads a deterministic
- *  lane already produced; the brief repeats none of its reasoning. */
-function pressing(reviewDir: string, tier: Tier, steps: readonly BriefStep[]): string[] {
+ *  lane already produced; the brief repeats none of its reasoning. A snapshot view this read did
+ *  not produce contributes no stale rows from an earlier read, only the line that says it failed. */
+function pressing(
+  reviewDir: string,
+  scope: RunScope,
+  steps: readonly BriefStep[],
+  gaps: readonly SnapshotGap[],
+): string[] {
   const overview = readJsonAsOrNull<OverviewFile | null>(join(reviewDir, "overview.json"));
   // The trigger rows of the in-process lanes' reports (`<lane>.json`), in lane order, so a lead a
   // campaign-only read raises reaches the brief without a snapshot. A lane that failed this read
@@ -361,25 +433,20 @@ function pressing(reviewDir: string, tier: Tier, steps: readonly BriefStep[]): s
     );
     return Array.isArray(rows?.triggers) ? rows.triggers : [];
   });
-  if (overview === null && fromLanes.length === 0) return [];
+  if (overview === null && fromLanes.length === 0 && gaps.length === 0) return [];
+  const missing = { digest: gapOf(gaps, "digest"), scan: gapOf(gaps, `${scope.runId}-scan`) };
   const triggers = [
-    ...(Array.isArray(overview?.digestTriggers) ? overview.digestTriggers : []),
+    ...(missing.digest === undefined && Array.isArray(overview?.digestTriggers)
+      ? overview.digestTriggers
+      : []),
     ...fromLanes,
   ];
-  const findings = Array.isArray(overview?.scanFindings) ? overview.scanFindings : [];
-  const rules = new Map<JsonValue | undefined, number>();
-  for (const finding of findings) rules.set(finding.rule, (rules.get(finding.rule) ?? 0) + 1);
+  const findings =
+    missing.scan === undefined && Array.isArray(overview?.scanFindings) ? overview.scanFindings : [];
+  const { tier } = scope;
   const suggested = laneSuggestions(triggers, tier);
   return [
-    [
-      "== flagged by the deterministic lanes",
-      ...triggers.map(
-        (row) =>
-          `  digest ${row.name} x${row.rows}${row.examples[0] === undefined ? "" : `: ${row.examples[0]}`}`,
-      ),
-      ...[...rules].map(([rule, count]) => `  scan ${rule === undefined ? rule : jsonText(rule)} x${count}`),
-      ...(triggers.length + rules.size === 0 ? ["  no digest trigger or scan finding"] : []),
-    ].join("\n"),
+    flagged(triggers, findings, missing),
     [
       "== lanes the triggers start",
       ...suggested.lanes.map((row) => `  lane ${row.lane}: ${row.triggers.join("; ")}`),
@@ -410,7 +477,8 @@ function laneBlocks(reviewDir: string, steps: readonly BriefStep[]): string[] {
       continue;
     }
     const lines = readFileSync(capture, "utf8").replace(/\n+$/, "").split("\n");
-    const head = step.ok === true ? "" : `  (exit ${step.exitCode}; read below as far as it got)\n`;
+    const failed = (step.exitCode ?? null) === null ? "failed" : `exit ${step.exitCode}`;
+    const head = step.ok === true ? "" : `  (${failed}; read below as far as it got)\n`;
     const body =
       lines.length <= LANE_LINES
         ? lines.join("\n")
@@ -431,11 +499,25 @@ export function renderBrief(reviewDir: string): string {
           `  readers ${state.repo} (${state.chosen ?? "--repo"})`,
           ...(state.passed ?? []).map((reason) => `    passed over ${reason}`),
         ];
+  const steps = state.steps ?? [];
+  const gaps = snapshotGaps(reviewDir, steps);
+  // A failed view heads the brief, before any lane, so no reader takes a partial read for a whole one.
+  const incomplete =
+    gaps.length === 0
+      ? []
+      : [
+          [
+            "== SNAPSHOT INCOMPLETE",
+            ...gaps.map((gap) => `  ${gap.label}: ${gap.status}`),
+            "  every lane that does not read these views was read; the ones that do say so below",
+          ].join("\n"),
+        ];
   return [
     [renderScope(scope), ...readers].join("\n"),
+    ...incomplete,
     "",
-    ...laneBlocks(reviewDir, state.steps ?? []),
+    ...laneBlocks(reviewDir, steps),
     "",
-    ...pressing(reviewDir, scope.tier, state.steps ?? []),
+    ...pressing(reviewDir, scope, steps, gaps),
   ].join("\n\n");
 }

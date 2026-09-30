@@ -24,10 +24,11 @@
 // run's size earns (brief.ts owns the sizing and the digest). Every lane's output is captured to
 // `<review>/<lane>.txt`, an in-process lane's report to `<review>/<lane>.json`, whose `triggers` the
 // brief reads, and the command prints one bounded brief instead, because the whole read is the size
-// of a paid lane's context. `review` reads every lane, prints the brief and then launches the semantic lanes the
-// run's tier names; the ordinary path is `read`, then `launch --sessions` with the lanes the brief
-// argues for, each a number from the catalogue. `brief` re-renders that digest from a finished
-// review directory. Use `collect` and `launch` separately only to edit `shared-instructions.json`
+// of a paid lane's context. A snapshot view that fails heads the brief and stops no other lane; the
+// read exits 1 once every lane has run. `review` reads every lane, prints the brief and then
+// launches the semantic lanes the run's tier names, unless that snapshot is incomplete; the
+// ordinary path is `read`, then `launch --sessions` with the lanes the brief argues for, each a
+// number from the catalogue. `brief` re-renders that digest from a finished review directory. Use `collect` and `launch` separately only to edit `shared-instructions.json`
 // between them. `finish` validates the lane reports, Luna and native alike, scaffolds the archive
 // from recorded bytes and `verdicts.json`, then runs the archive validator; the investigation itself
 // ends in one adjudicated note the primary writes by hand.
@@ -40,7 +41,7 @@ import { existsSync, mkdirSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { dirname, isAbsolute, join, resolve } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { scaffoldArchive } from "./archive-scaffold.ts";
-import { renderBrief, renderScope, type RunScope, runScope, SEMANTIC_LANES } from "./brief.ts";
+import { renderBrief, renderScope, type RunScope, runScope, SEMANTIC_LANES, snapshotGaps } from "./brief.ts";
 import { ANGLE_COUNT, NATIVE_OUTPUT } from "./catalogue-shape.ts";
 import { buildOverview, readJsonAs } from "./run-overview.ts";
 import { openRecordedRun, resolveSourceCheckout, sourceUnresolved } from "#skills/main/run.ts";
@@ -103,7 +104,6 @@ export interface Lane {
   name: string;
   label: string;
   collect?: boolean;
-  fatal?: boolean;
   options?: readonly LaneOption[];
   flags?: readonly "classify"[];
   cmd?: (c: LaneContext) => string[];
@@ -161,7 +161,6 @@ export const LANES: readonly Lane[] = [
     name: "snapshot",
     label: "cases and traces",
     collect: true,
-    fatal: true,
     cmd: (c) => [
       BUN,
       "--no-env-file",
@@ -202,7 +201,9 @@ export const LANES: readonly Lane[] = [
     label: "shared brief",
     collect: true,
     needs: (c) =>
-      existsSync(c.snapshot) ? null : `no snapshot under ${c.snapshot}; run the snapshot lane first`,
+      existsSync(join(c.snapshot, "snapshot-status.json"))
+        ? null
+        : `no snapshot-status.json under ${c.snapshot}; the snapshot lane recorded none`,
     write: (c) => writeOverview(c),
   },
   {
@@ -464,10 +465,18 @@ function runLane(state: WriReviewState, lane: Lane, ctx: LaneContext): void {
   }
   console.log(`   ${lane.name}`);
   if (lane.write !== undefined) {
-    return record(state, { label: lane.name, ok: true, exitCode: 0, wrote: lane.write(ctx) });
+    let wrote: string;
+    try {
+      wrote = lane.write(ctx);
+    } catch (error) {
+      writeFileSync(join(ctx.reviewDir, `${lane.name}.txt`), `${errorMessage(error)}\n`);
+      console.log(`   (${lane.name} failed; recorded, continuing)`);
+      return record(state, { label: lane.name, ok: false, exitCode: null });
+    }
+    return record(state, { label: lane.name, ok: true, exitCode: 0, wrote });
   }
   step(state, lane.name, laneCommand(lane, ctx), {
-    fatal: lane.fatal === true,
+    fatal: false,
     cwd: ctx.repo,
     capture: join(ctx.reviewDir, `${lane.name}.txt`),
   });
@@ -600,6 +609,13 @@ async function runRead(
   const ctx = context(state, reference);
   for (const lane of lanes) runLane(state, lane, ctx);
   console.log(`\n${renderBrief(reviewDir)}\n\nrecorded: ${statePath(reviewDir)}`);
+  // Only once every lane has run, and only over this read's own snapshot, so nothing launches or
+  // collects on a partial read that its caller could take for a whole one.
+  const gaps = lanes.some((lane) => lane.name === "snapshot") ? snapshotGaps(reviewDir, state.steps) : [];
+  if (gaps.length > 0) {
+    const named = gaps.map((gap) => `${gap.label}: ${gap.status}`).join(", ");
+    throw new CommandFailure(`snapshot incomplete: ${named}; every other lane was read`, 1);
+  }
   return state;
 }
 

@@ -305,7 +305,11 @@ orientation as facts a lane can check, never as the conclusion you expect it to 
 snapshot lane is `trace-review.ts`, also reachable as `bun run review:collect`; it makes no model
 calls, reports a missing view inside `snapshot-status.json` rather than failing, and a new
 deterministic question belongs there as another view rather than in a further collection script.
-Require `complete: true` in that status before treating the snapshot as complete.
+Require `complete: true` in that status before treating the snapshot as complete. A `read`,
+`collect` or `review` whose snapshot left a required view unproduced still runs every other lane,
+names each such view under `== SNAPSHOT INCOMPLETE` at the head of the brief, prints
+`digest: skipped: snapshot view <view> <status>` where those leads would be, and only then exits
+1, so `review` launches nothing over a partial snapshot.
 
 `launch` opens exactly the named lanes and nothing else. `--sessions 5,11,25` names lanes;
 `--lanes N` asks `build-manifest.ts --auto N` to group every lane into N sessions without crossing

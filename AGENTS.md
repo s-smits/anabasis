@@ -551,9 +551,12 @@ it either moves to "Tried and taken out" or its comments are deleted.
   by the round's turn cap and by `MOVE_TO_AUTHORING`, which still fires for a round with no clear
   preview. Grep: `rg "ABLATED\(early-accept\)"`. Measured by: the run launched from this commit (filled at
   launch).
-- **`witness-budget` (added 2026-09-30).** One sentence in `renderBatteryContract`: search each
-  task's reference at least as long as the solver may spend solving it, and set the limit from the best
-  answer found. The same idea was stated twice before, and neither time was it measured:
+- **`witness-budget` (added 2026-09-30).** One sentence in `renderBatteryContract`: a limit set
+  from a search shorter than a blind solve of that task is one the solver can meet, and rehearsals and
+  the last battery's solves record how long a blind solve takes. A first wording asked for a search as
+  long as the solver may spend, which is the two-hour wall and about fifty hours for a 25-task battery;
+  the blind solve is the comparator the Builder can read, and the sentence states the fact rather than
+  the route. The same idea was stated twice before, and neither time was it measured:
   - 83a24567 stated it, and it left on 2026-09-28 when `difficulty-ladder.md` was cut as a whole;
   - an earlier start-prompt sentence was removed on overlap grounds (d21f1a27).
 

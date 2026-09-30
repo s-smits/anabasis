@@ -140,10 +140,13 @@ const LEGEND =
 const WITNESS =
   "A passing artifact, like your reference, is a witness: it proves a task feasible, never difficult, and only a blind measured battery shows where a battery lands.";
 /** ADDED(witness-budget): a limit is set at the Builder's witness, and on truss-26 and -29 112 of 134
- *  limits sat within 2% of one found in minutes, while the solver has a two-hour wall and landed just
- *  inside every one of them (AGENTS.md "Ablated components"). */
+ *  limits sat within 2% of one found in minutes, while the solver landed just inside every one of them
+ *  (AGENTS.md "Ablated components"). The comparator is the blind solve, which rehearsals and the
+ *  readout's slowest-solve line record, not the solver's wall: a wall-long search per task is about
+ *  fifty hours for a 25-task battery, while the slowest solve took a median 5.9 minutes in 153 of 233
+ *  all-pass batteries. It states the fact and leaves the search to the Builder (prior 10). */
 const WITNESS_BUDGET =
-  "A limit demands no more than the best answer found for it, so search for each task's reference at least as long as the solver may spend solving it, and set the limit from the best answer that search finds.";
+  "A limit demands no more than the best answer found for it, so a limit set from a search shorter than a blind solve of that task is one the solver can meet; your rehearsals and the last battery's solves record how long a blind solve takes.";
 const HISTORY =
   "The context tool's history source holds every row and each battery's public tasks, and its traces source holds every passing case's solve and submitted artifact.";
 

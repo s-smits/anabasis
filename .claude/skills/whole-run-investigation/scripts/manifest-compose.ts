@@ -7,12 +7,13 @@ import {
   readFileSync,
   writeFileSync,
 } from "#src/meta/filesystem.ts";
-import { join, resolve } from "#src/meta/path.ts";
+import { dirname, join, resolve } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { hasText } from "#src/meta/text.ts";
 import { CommandFailure } from "#skills/main/cli.ts";
+import { gitMaybe } from "#skills/main/git.ts";
 import {
   DIGEST_VERDICTS,
   ISOLATED_ANGLES,
@@ -128,6 +129,7 @@ export interface DispatchInput extends SessionSet {
   bun: string;
   launch: boolean;
   detach: boolean;
+  maxActive: string | null;
   launcherPath: string;
   codexLauncherPath: string;
 }
@@ -665,6 +667,7 @@ function lunaArgs({
   worktree,
   effort,
   outputDir,
+  maxActive,
 }: DispatchInput & { tasksPath: string; instructionsPath: string; outputDir: string }): string[] {
   return [
     bun,
@@ -680,6 +683,7 @@ function lunaArgs({
     outputDir,
     "--reasoning-effort",
     effort,
+    ...(maxActive === null ? [] : ["--max-active", maxActive]),
   ];
 }
 
@@ -698,6 +702,13 @@ function writeCodexTasks(outPath: string, instructions: string, tasks: readonly 
 
 export function writeAndDispatch(input: DispatchInput): void {
   const outPath = resolve(input.outDir);
+  // `codex exec` starts only inside a Git work tree, and a hardware session's workdir is its own
+  // scratch under --out: from a session scratchpad both hardware lanes died in 38 ms (2026-09-30).
+  if (input.launch && input.tasks.some(({ scratch }) => scratch !== null) && !insideWorkTree(outPath)) {
+    manifestFail(
+      `--out ${outPath} is outside any Git work tree, where codex exec refuses a hardware session; put the review under notes/wri/`,
+    );
+  }
   mkdirSync(outPath, { recursive: true });
   const instructionsPath = join(outPath, "instructions.md");
   const tasksPath = join(outPath, "tasks.json");
@@ -780,6 +791,12 @@ export function writeAndDispatch(input: DispatchInput): void {
     }
     throw new CommandFailure(`launcher failed: ${errorMessage(error)}`);
   }
+}
+
+function insideWorkTree(path: string): boolean {
+  let dir = path;
+  while (!existsSync(dir)) dir = dirname(dir);
+  return gitMaybe(dir, "rev-parse", "--is-inside-work-tree") === "true";
 }
 
 /** Bind the launched prompts to the manifest bytes once the launcher has opened its record. */

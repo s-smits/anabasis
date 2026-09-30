@@ -36,7 +36,7 @@ const USAGE = [
   "                     [--angles <file>] [--index <file>]",
   "                     [--revision <40-char commit>] [--live] [--title <text>] [--context <file>]",
   "                     [--shared-instructions <shared-instructions.json>] [--web-access]",
-  "                     [--transport luna|codex|native] [--effort high|xhigh|max] [--launch [--detach]]",
+  "                     [--transport luna|codex|native] [--effort high|xhigh|max] [--launch [--detach] [--max-active <n>]]",
   `Lanes ${[...ISOLATED_ANGLES.keys()].join(", ")} are isolated: each launches only when its deterministic trigger fired in the snapshot.`,
 ].join("\n");
 
@@ -52,6 +52,7 @@ interface ManifestOptions {
   outDir: string | null;
   launch: boolean;
   detach: boolean;
+  maxActive: string | null;
   revision: string | null;
 }
 
@@ -70,6 +71,10 @@ function parseOptions(args: CommandArgs): ManifestOptions {
   }
   if (args.flag("detach") && (!args.flag("launch") || transport !== "luna")) {
     manifestFail("--detach needs --launch with the luna transport");
+  }
+  const maxActive = args.value("max-active");
+  if (maxActive !== null && (transport !== "luna" || !/^[1-9]\d*$/.test(maxActive))) {
+    manifestFail(`--max-active takes a positive count of concurrent Luna sessions, got "${maxActive}"`);
   }
   const revision = args.value("revision");
   if (revision !== null && !GIT_SHA.test(revision)) {
@@ -97,6 +102,7 @@ function parseOptions(args: CommandArgs): ManifestOptions {
     outDir: args.value("out"),
     launch: args.flag("launch"),
     detach: args.flag("detach"),
+    maxActive,
     revision,
   };
 }
@@ -259,6 +265,7 @@ if (import.meta.main) {
         "web-access": "flag",
         launch: "flag",
         detach: "flag",
+        "max-active": "text",
       },
     },
     main,

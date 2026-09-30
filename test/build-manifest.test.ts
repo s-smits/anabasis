@@ -762,6 +762,63 @@ describe("what a launch composes", () => {
     expect(leafPrompt(instructions, open?.task ?? "", null).endsWith(READ_ONLY_AUTHORITY)).toBe(true);
   });
 
+  it("hands the Luna launcher the concurrency cap it was given, and only the Luna launcher", () => {
+    const capped = launch(snapshot(), "--sessions", "5,6", "--notes", notes(""), "--max-active", "4");
+    expect(capped.status).toBe(0);
+    expect(capped.stdout).toContain("--reasoning-effort max --max-active 4");
+    const codex = launch(
+      snapshot(),
+      "--sessions",
+      "5",
+      "--notes",
+      notes(""),
+      "--transport",
+      "codex",
+      "--max-active",
+      "4",
+    );
+    expect(codex.status).not.toBe(0);
+    expect(codex.stderr).toContain("--max-active takes a positive count of concurrent Luna sessions");
+  });
+
+  // `codex exec` refuses a workdir outside every Git work tree, and a hardware session's workdir is
+  // its scratch under --out; from a session scratchpad both lanes died in 38 ms on 2026-09-30.
+  it("refuses to launch a hardware session whose scratch no Git work tree holds, before writing it", () => {
+    const snap = snapshot();
+    const repo = scratchDir("ana-build-review-repo-");
+    expect(spawnSync("git", ["-C", repo, "init", "-q"]).status).toBe(0);
+    // Both launches name a launcher that does not exist, so a guard that let one through could
+    // start nothing but the refusal below.
+    const absent = join(repo, "absent-launcher.ts");
+    const launchInto = (out: string) =>
+      spawnSync(
+        Bun.argv[0]!,
+        [
+          SCRIPT,
+          "--snapshot",
+          snap.dir,
+          "--worktree",
+          snap.status.worktree.path,
+          "--out",
+          out,
+          ...references(),
+          "--sessions",
+          `5,${HARDWARE_TARGET_LANE},${GROUND_TRUTH_LANE}`,
+          "--notes",
+          notes(""),
+          "--launch",
+        ],
+        { env: { ...Bun.env, WRI_LUNA_LAUNCHER: absent } },
+      );
+    const outsideOut = join(scratchDir("ana-build-out-"), "lanes");
+    const outside = launchInto(outsideOut);
+    expect(outside.status).not.toBe(0);
+    expect(outside.stderr).toContain("outside any Git work tree");
+    expect(existsSync(outsideOut)).toBe(false);
+    // Past the work-tree guard, the launch stops only at the absent launcher.
+    expect(launchInto(join(repo, "notes", "wri", "lanes")).stderr).toContain(`no Luna launcher at ${absent}`);
+  });
+
   it("launches from an incomplete snapshot and names each failed view with its captured error", () => {
     // A failed view is not a fact, and hiding the whole review behind it made the reviewer write
     // the instruction packet by hand. The sessions are told which view failed and why.

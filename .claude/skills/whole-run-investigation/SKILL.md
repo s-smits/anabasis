@@ -302,7 +302,11 @@ Require `complete: true` in that status before treating the snapshot as complete
 
 `launch` opens exactly the named lanes and nothing else. `--sessions 5,11,25` names lanes;
 `--lanes N` asks `build-manifest.ts --auto N` to group every lane into N sessions without crossing
-an isolated seat; `--effort`, `--title`, `--notes` and `--context` pass through. The manifest
+an isolated seat; `--effort`, `--title`, `--notes` and `--context` pass through. Every session
+starts at once unless `--max-active N` queues the rest behind N; eighteen lanes on each of two runs
+took the host from load 8 to 16 beside six paid runs on 2026-09-30. A hardware lane (29 or 30) runs
+in its own scratch under `--out`, and `codex exec` refuses a directory outside every Git work tree,
+so keep a review that opens one under `notes/wri/`; the launch refuses anywhere else. The manifest
 writes the shared instructions, the WRI `tasks.json` and the transport `luna-tasks.json`, and each
 leaf receives its exact lane body inline — never the whole catalogue, never a scope expansion,
 never authority to change controller output. Its reporting rules tell every lane to keep the three

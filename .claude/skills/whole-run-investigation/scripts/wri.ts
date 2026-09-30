@@ -291,7 +291,7 @@ export const LANES: readonly Lane[] = [
 ];
 
 const TARGET = ["out", "campaign", "run", "repo", "reference"];
-const LAUNCH = ["out", "lanes", "sessions", "effort", "title", "notes", "context"];
+const LAUNCH = ["out", "lanes", "sessions", "effort", "title", "notes", "context", "max-active"];
 /** Each subcommand's own options, so one a subcommand does not take is refused there. */
 const COMMANDS: Record<
   string,
@@ -638,7 +638,7 @@ function launch(args: WriArgs, state: WriReviewState = loadState(absolute(args, 
     "--launch",
     "--detach",
   ];
-  for (const name of ["title", "notes", "context"]) {
+  for (const name of ["title", "notes", "context", "max-active"]) {
     const given = args.value(name);
     if (given !== null && given !== "") cmd.push(`--${name}`, given);
   }

@@ -1,0 +1,11 @@
+{
+  "name": "fwsim",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Run firmware images on simulated boards against scripted input and trace the output in virtual time.",
+  "dependencies": {
+    "avr8js": "0.21.1",
+    "rp2040js": "1.4.0"
+  }
+}

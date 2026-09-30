@@ -455,6 +455,26 @@ describe("BuilderConversation", () => {
     expect(recorded.configured).toEqual([]);
   });
 
+  // The run's one conversation keeps its session across rounds, so a line a session is told once
+  // (the worked-examples pointer) belongs to the session, not to a round's tools.
+  it("tells a line once per session: a continued session keeps it, a fresh session starts again", async () => {
+    const recorded = recordingOpener();
+    const conversation = new BuilderConversation();
+    const first = await conversation.begin(FIRST, "framing", "/runs/one", recorded.open);
+    expect([conversation.tellOnce("examples"), conversation.tellOnce("examples")]).toEqual([true, false]);
+    await first.end("accepted");
+
+    const second = await conversation.begin(SECOND, "framing", "/runs/two", recorded.open);
+    expect(second.session).toBe(first.session);
+    expect(conversation.tellOnce("examples")).toBe(false);
+    expect(conversation.tellOnce("other")).toBe(true);
+    await second.end(null);
+
+    const third = await conversation.begin(FIRST, "framing", "/runs/three", recorded.open);
+    expect(third.session).not.toBe(first.session);
+    expect(conversation.tellOnce("examples")).toBe(true);
+  });
+
   it("closes without throwing when disposing the waiting session fails", async () => {
     const recorded = recordingOpener(true);
     const conversation = new BuilderConversation();

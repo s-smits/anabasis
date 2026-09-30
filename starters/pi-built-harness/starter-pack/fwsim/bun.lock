@@ -1,0 +1,18 @@
+{
+  "lockfileVersion": 2,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "fwsim",
+      "dependencies": {
+        "avr8js": "0.21.1",
+        "rp2040js": "1.4.0",
+      },
+    },
+  },
+  "packages": {
+    "avr8js": ["avr8js@0.21.1", "", {}, "sha512-lS1vPaB0gB2GXoPrHFQOUG/5CRORjvnmjbs8SiPZdJpt4HkV0+v6HnNeXxo/X9lPqumqphls2Qyql8zsw9rBaw=="],
+
+    "rp2040js": ["rp2040js@1.4.0", "", {}, "sha512-knEMw0SRP9JPVLvhhYB3rjP4gLQhcWs9UOXKvxFU9Rn5eWvmlPzObMhEjfeLZ6H8FGepd6ZtMAYzGEtCaB9qYg=="],
+  }
+}

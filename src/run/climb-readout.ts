@@ -326,7 +326,7 @@ function batteryLine(row: ReadoutRow): string {
     (row.wallBound ?? 0) > 0 && row.solveWallMinutes !== null
       ? ` (${String(row.wallBound)} ran to the ${String(row.solveWallMinutes)}-minute solve wall)`
       : "";
-  const counts = `${row.verified} verified, ${row.unaccepted} unaccepted${wall}, ${row.nonResults} non-result${row.nonResults === 1 ? "" : "s"}`;
+  const counts = `${row.verified} verified, ${row.unaccepted} unaccepted, ${row.nonResults} non-result${row.nonResults === 1 ? "" : "s"}${wall}`;
   const cases = row.verified + row.unaccepted + row.nonResults;
   const facts = [
     row.claimRefusal === null

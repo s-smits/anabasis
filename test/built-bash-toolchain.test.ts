@@ -26,16 +26,22 @@ const repoRoot = mkdtempSync(join(tmpdir(), "ana-bash-repo-"));
  *  would refuse the `rm -r` and dynamic-path redirects below first (built-bash.test.ts proves the
  *  guard); they ask with no guard on the path. */
 const NO_GUARD = { PATH: "" };
+/** What a retained source excerpt carries, so a leak of its bytes has one string to be found by. */
+const EXCERPT_MARKER = "ANA-SOURCE-EXCERPT-4e7b";
 
 writeFileSync(join(repoRoot, "hidden-tasks.json"), '{"answer":"leaked"}\n');
 // A candidate workspace where the run-data pattern denies by name: `/campaigns/` in the path.
 const workspace = join(mkdtempSync(join(tmpdir(), "ana-bash-campaigns-")), "campaigns", "slug", "workspace");
 mkdirSync(join(workspace, ".toolchain", "bin"), { recursive: true });
-mkdirSync(join(workspace, "correctness-model"), { recursive: true });
+mkdirSync(join(workspace, "correctness-model", "sources"), { recursive: true });
 writeFileSync(join(workspace, ".toolchain", "bin", "own-tool"), "#!/bin/sh\necho own-tool ran\n", {
   mode: 0o755,
 });
 writeFileSync(join(workspace, "correctness-model", "tasks.json"), '{"answer":"leaked"}\n');
+// The passage a rule rests on, kept where contract.md offers it: hashed with the correctness model and
+// read by review, never by the solver. Its name is what a listing would show.
+const EXCERPT = join(workspace, "correctness-model", "sources", "vendor-datasheet.txt");
+writeFileSync(EXCERPT, `Origin: https://vendor.example/datasheet rev C, table 4\n${EXCERPT_MARKER}\n`);
 const sessionHome = mkdtempSync(join(tmpdir(), "ana-bash-home-"));
 afterAll(() => {
   for (const dir of [repoRoot, workspace, sessionHome]) rmSync(dir, { recursive: true, force: true });
@@ -119,6 +125,31 @@ describe("the harness's own tool tree", () => {
     const without = await run("own-tool");
     expect(without.threw).toBe(true);
     expect(without.text).toContain("not found");
+  });
+
+  // The shell is the solver tool that reads the disk. A command starts in a fresh folder holding only
+  // the draft, its home holds only the public task, and the tree beside the one it is given by name
+  // stays closed whichever way the excerpt's path is spelt: from the root, or back up from the tool.
+  it("keeps a retained source excerpt out of the command's folder, its home and its reach", async () => {
+    const listed = await run('find . "$HOME"', toolTree);
+    expect(listed.threw).toBe(false);
+    expect(listed.text).not.toContain("correctness-model");
+    expect(listed.text).not.toContain("vendor-datasheet");
+    // Spelt so the command's own text cannot match the marker it searches for.
+    const pattern = `${EXCERPT_MARKER.slice(0, -1)}[${EXCERPT_MARKER.slice(-1)}]`;
+    const read = await run(
+      `own-tool; grep -rs '${pattern}' . "$HOME"; cat ${EXCERPT}; ` +
+        'cat "$(dirname "$(command -v own-tool)")/../../correctness-model/sources/vendor-datasheet.txt"',
+      toolTree,
+    );
+    expect(read.text).toContain("own-tool ran");
+    expect(read.text).not.toContain(EXCERPT_MARKER);
+    // Both reads reach the excerpt's path and are refused there, rather than missing a mistyped one.
+    const refused =
+      runtimeProcess.platform === "darwin"
+        ? /Operation not permitted/g
+        : /Operation not permitted|No such file or directory/g;
+    expect(read.text.match(refused)).toHaveLength(2);
   });
 
   // Truss run 298967: the description named a `.toolchain` directory the command cannot see, so

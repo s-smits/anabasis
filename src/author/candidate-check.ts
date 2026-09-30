@@ -361,9 +361,11 @@ export function fingerprintRefusal(
 }
 
 /** Agent code byte-identical to correctness-model code, as `[agent path, correctness-model path]`
- *  pairs. A solver tool running a check's own module analyses a candidate the way the check does,
- *  which the tools contract (`PUBLICATION_CLAUSE`) rules out, since a solver that can ask the grader
- *  passes its batteries whole (AGENTS.md "Goals and the climb"). */
+ *  pairs. A solver tool running a check's own module can do the check's work, analysing a candidate
+ *  or computing what the check expects, which `NO_GRADER_IN_REACH` rules out, since a solver that
+ *  can ask the grader passes its batteries whole (AGENTS.md "Goals and the climb"). Equal bytes
+ *  are a lead, not the finding: published constants and standard routines are shared legitimately,
+ *  and a rewritten expectation model matches no bytes. */
 export function agentCheckCodeCopies(
   fingerprint: Pick<FingerprintEvidence, "agentFiles" | "correctnessModelFiles">,
 ): Array<[string, string]> {
@@ -385,7 +387,7 @@ function agentCopiesOfCheckCode(fingerprint: FingerprintEvidence): ContractFindi
     controllerValidatedFinding({
       code: "agent-copies-check-code",
       path: `agent/${path}`,
-      detail: `agent/${path} is byte-identical to correctness-model/${original}: a solver tool running a check's own code analyses a candidate the way the check does. Leave the solver that analysis, and give it only what a candidate is`,
+      detail: `agent/${path} is byte-identical to correctness-model/${original}; read it against the publication rule on what the solver's tools may do. Shared published rules, constants and standard computation may stay`,
     }),
   );
 }

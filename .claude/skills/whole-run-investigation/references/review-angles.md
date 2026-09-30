@@ -689,7 +689,7 @@ calls, not a non-result. Read each case's `built-runtime.json` and `final-submis
 sequences per battery and per family, so one expensive family cannot disappear in the aggregate),
 and the wall shares `walls.ts` prints. Reusable algorithms, a bounded search and the host's margin
 table on published limits are legitimate solving support; a tool, program or guide line that
-analyses a candidate the way a check does is lane 34's finding, and lane 23 reads its use per case.
+does a check's work is lane 34's finding, and lane 23 reads its use per case.
 Do not open the private packet. A wall-bound miss stays a fail in the count, and `wallBound` names
 the unaccepted cases that ran to within `WALL_BOUND_SHARE` of `solve_minutes` (AGENTS.md "Goals and
 the climb", under "What one battery can say"). The decision it changes is whether such a miss is
@@ -1018,16 +1018,22 @@ Starts from every run at every tier as a standing lane, because the solver's too
 Builder's too, and from block 1b's `CHECK CODE IN SOLVER REACH (lane 34)` and `CHECK TOOL IN SOLVER
 TRACE (lane 23)`.
 
-The question is whether anything in the solver's reach analyses a candidate the way a check does,
-so that solving becomes propose, read the failing state, adjust. Keep two things apart first. The
+The question is whether anything in the solver's reach does a check's work: it analyses a candidate
+the way a check does, so that solving becomes propose, read the failing state, adjust, or it
+computes what a check expects for a scenario the solver chooses, which needs no candidate at all.
+Firmware 7a97af's `expected_behaviour` was the second kind, a byte copy of
+`correctness-model/rules.ts` called in nine of ten traces. Keep two things apart first. The
 host's own margin table, `readMargins` (`src/solve/published-margin.ts`, called from
 `src/solve/built-starter.ts`), reads every complete published boundary against a prepared answer
 and returns it in the artifact-writer's text; its readings ride the trace as `details.margins`.
 That is controller code, the same for every domain, and it stays legitimate, as do reusable
 algorithms and a bounded search. A tool in `agent/tools.ts`, a program on the solver's PATH or a
 guide line that computes what a declared check reads over a proposed candidate, whether through the
-check's code, a copy of it, its instrument or a verdict, is the finding, because the solver then
-searches against the grader instead of doing the field's work. So for each, list which declared
+check's code, a copy of it, its instrument or a verdict, or that returns what a check expects for a
+case, is the finding, because the solver then searches against the grader instead of doing the
+field's work. Equal bytes between `agent/` and `correctness-model/` are a lead, not the finding:
+published constants and standard routines are shared legitimately, and a rewritten expectation
+model matches no bytes. So for each, list which declared
 checks it mirrors — same operands, same computation — and which it leaves the solver to reason
 about. Then read the traces for the shape: a proposal, a reading showing a breach, an adjustment,
 repeated until clear, with no derivation between readings. The shape says how much the mirror

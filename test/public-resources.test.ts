@@ -353,6 +353,11 @@ describe("public brief resources", () => {
 
   it("returns the same JSON from the brief, saved workspace, and solver tool", async () => {
     const dir = workspaceWithBrief(BRIEF, "shared");
+    // A passage a rule rests on, kept beside the brief where contract.md offers it, is review's to
+    // read and never the solver's: the workspace publishes exactly what the brief alone does.
+    const marker = "ANA-SOURCE-EXCERPT-9d2a";
+    mkdirSync(join(dir, "correctness-model", "sources"));
+    writeFileSync(join(dir, "correctness-model", "sources", "vendor-datasheet.txt"), `${marker}\n`);
     const fromBrief = briefPublicResources(BRIEF);
     expect(JSON.stringify(readPublicResources(dir))).toBe(JSON.stringify(fromBrief));
     const tool = publicResourcesTool(readPublicResources(dir));
@@ -360,6 +365,8 @@ describe("public brief resources", () => {
     expect(tool.name).toBe(PUBLIC_RESOURCES_TOOL);
     const result = await tool.execute("call-1", double({}));
     expect(JSON.stringify(result.details)).toBe(JSON.stringify({ resources: fromBrief }));
+    const told = JSON.stringify([tool.description, result.content]);
+    for (const leaked of [marker, "vendor-datasheet"]) expect(told).not.toContain(leaked);
   });
 
   it("shows the solver no evaluator vocabulary", () => {

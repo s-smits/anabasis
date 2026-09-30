@@ -62,8 +62,10 @@
     "@oxlint/plugins": "1.83.0",
     "@types/bun": "1.4.2",
     "@types/diff": "^8.0.0",
+    "avr8js": "0.21.1",
     "oxlint": "1.83.0",
     "oxlint-tsgolint": "7.0.2001",
+    "rp2040js": "1.4.0",
     "typescript": "^7.0.2"
   }
 }

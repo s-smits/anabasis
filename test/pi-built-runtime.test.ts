@@ -10,6 +10,7 @@
  */
 
 import {
+  cpSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -35,12 +36,14 @@ import { BUILT_SHELL_RULES } from "../src/solve/dcg-rules.ts";
 import { createSubmissionAuthority, submissionPortOf } from "../src/solve/final-submission.ts";
 import { compilePublicArtifactSchema } from "../src/solve/public-artifact-schema.ts";
 import { DEFAULT_HARNESS_SETTINGS } from "../src/correctness-bundle/harness-config.ts";
+import { PUBLIC_RESOURCES_TOOL } from "../src/correctness-bundle/public-resources.ts";
 import { solverNonResultReason } from "../src/correctness-bundle/runtime-blocker.ts";
 import { TURN_PERMIT_REFUSED_PREFIX, builtStarterFactoryForSolver } from "../src/correctness-bundle/solve.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { double } from "./helpers/doubles.ts";
+import { MATCHING_BRIEF } from "./helpers/matching-fixture.ts";
 import { ProviderResourceBudget } from "../src/run/provider-resource-budget.ts";
 import { createRunObserver, type RunObserver } from "../src/observe/run-observer.ts";
 
@@ -246,6 +249,30 @@ describe("the Built harness instructions", () => {
       expect(BUILT_NUDGE.toLowerCase()).not.toContain(forbidden);
     }
     expect(BUILT_NUDGE).toBe("Finish the task with the available tools, then submit your answer.");
+  });
+
+  // contract.md offers correctness-model/sources/ for the passage a rule rests on and says the
+  // solver never reads it. The host reads the brief's public rules out of that same directory, so
+  // one solve through the production starter shows what it carries across: the public-rules tool,
+  // and nothing of the excerpt in the prompt, the guide, a tool row or the trace.
+  it("carries the brief's public rules and nothing of a retained source excerpt", async () => {
+    const slug = mkdtempSync(join(import.meta.dir, ".ana-scratch-pi-built-sources-"));
+    try {
+      cpSync(join(SLUG, "agent"), join(slug, "agent"), { recursive: true });
+      mkdirSync(join(slug, "correctness-model", "sources"), { recursive: true });
+      writeFileSync(join(slug, "correctness-model", "brief.json"), JSON.stringify(MATCHING_BRIEF));
+      const marker = "ANA-SOURCE-EXCERPT-51c8";
+      writeFileSync(join(slug, "correctness-model", "sources", "vendor-datasheet.txt"), `${marker}\n`);
+      const { outcome, accepted } = await solve([WRITE, SUBMIT, SUBMIT_AGAIN], { slug });
+      expect(accepted).toBe(true);
+      const condition = outcome.runtimeBoundary?.contractCondition;
+      expect(condition?.tools.map(({ name }) => name)).toContain(PUBLIC_RESOURCES_TOOL);
+      expect(condition?.systemPrompt).toContain("Write the answer, then prepare it.");
+      const told = JSON.stringify(outcome);
+      for (const leaked of [marker, "vendor-datasheet"]) expect(told).not.toContain(leaked);
+    } finally {
+      rmSync(slug, { recursive: true, force: true });
+    }
   });
 });
 

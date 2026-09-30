@@ -531,6 +531,16 @@ describe("the records the selector reads", () => {
     });
   });
 
+  it("counts no small perfect or all-fail battery as in band, though its interval reaches the band", async () => {
+    const { outcome, scorecard } = await recordedFacts({
+      projectId: "small",
+      runId: "small-run",
+      cases: ["pass", "pass", "pass", "fail", "fail", "fail"],
+      batteries: [battery("small-run", 3, 0), battery("small-run-i02", 0, 3)],
+    });
+    expect(seatFacts(outcome, scorecard).batteries).toMatchObject({ total: 2, inBand: 0, saturated: 2 });
+  });
+
   it("counts a battery above the aim but not significantly too easy as in band", async () => {
     // 13 of 25 sits one pass over the 5-to-12 aim, and its interval still reaches into the band, so
     // the owner reads it "in range, above the aim". Counting on-aim alone read it as out of band.

@@ -41,7 +41,9 @@ export const AXES = [
 ] as const;
 type Axis = (typeof AXES)[number];
 
-/** The zones `placeOnBand` reads as in range: off the aim perhaps, but not significantly off the band. */
+/** The zones `placeOnBand` reads as in range: off the aim perhaps, but not significantly off the band.
+ *  Only a battery that passed some cases and failed some is counted in them, since a small perfect or
+ *  all-fail battery also places in range (3 of 3 reads `over-aim`) while locating no limit. */
 const IN_RANGE: ReadonlySet<BandZone> = new Set(["under-aim", "on-aim", "over-aim"]);
 
 export interface RunFacts {
@@ -180,7 +182,7 @@ export function seatFacts(
     batteries: {
       total: batteries.length,
       verified: batteries.filter((row) => row.verified > 0).length,
-      inBand: batteries.filter((row) => row.zone !== null && IN_RANGE.has(row.zone)).length,
+      inBand: open.filter((row) => row.zone !== null && IN_RANGE.has(row.zone)).length,
       saturated: saturated.length,
       nonSaturated: open.length,
       nonSaturatedVerified: sum(open),

@@ -1,0 +1,40 @@
+{
+  "schema": "operator-ablation-preparation/v1",
+  "status": "draft-not-frozen",
+  "preparedFrom": "318b97cc199918c154b65403b889b4aa9e7267ed",
+  "frozenPostOverhaulBaseline": null,
+  "paidRunsAuthorized": false,
+  "blockers": [
+    "PR #111 remains open and explicitly growing; final instrument/pointer not yet in this head.",
+    "Rebase or regenerate the patches after final overhaul; freeze the shared baseline before constructing sibling arm commits.",
+    "Pinned Bun 1.4.2 and a complete checkout are unavailable in this environment; owning tests and full gate have not run."
+  ],
+  "expectedGitBlobs": {
+    "src/author/builder-start-prompt.ts": "31c6ae006779a933f9138eacf25f8cc564607daf",
+    "test/builder-start-prompt.test.ts": "bb628cc9c2dd72fd5b0686358d368c9f1a67f752",
+    "src/builder/harness-trial.ts": "cc9b6540fe79f6dc824247df8819ca9d5185df18",
+    "test/harness-trial.test.ts": "7629a94e9c9acecadb7f1215f75cb0b71e81dc7b"
+  },
+  "arms": [
+    {
+      "file": "arms/A-no-competing-margin.patch",
+      "sha256": "010db8d9c14dd7fd9068cf42236f5fda483fc7e9bc670d82ba0cfa3f844c481d",
+      "numstat": [
+        "3\t1\tsrc/author/builder-start-prompt.ts",
+        "6\t5\ttest/builder-start-prompt.test.ts"
+      ],
+      "comparison": "final common baseline + this patch only",
+      "measuredOutcome": null
+    },
+    {
+      "file": "arms/B-no-trial-extrapolation.patch",
+      "sha256": "8a1a7d8ee471054b4a38994ad9353e25a2ff3c3b09feb78b2930daf2ce12aef4",
+      "numstat": [
+        "9\t6\tsrc/builder/harness-trial.ts",
+        "13\t3\ttest/harness-trial.test.ts"
+      ],
+      "comparison": "final common baseline + this patch only",
+      "measuredOutcome": null
+    }
+  ]
+}

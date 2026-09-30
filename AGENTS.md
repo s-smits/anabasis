@@ -516,12 +516,29 @@ decision with the battery it reads, and its `OFF-AIM STREAK` line is a lead for 
 
 On 2026-09-30, 265 of 299 recorded batteries had passed every case. The leniency is not in the grading.
 Since 2026-09-23 the Judge vetoed 5 of 1,411 verifier passes (firmware 2 of 901, truss 3 of 510), and
-counting all five would move no battery out of too-easy. Of the 22 verified fails that found a limit, 17
+counting all five would move no battery out of too-easy. Of the 22 verified fails counted as limits, 17
 were contested, and the check was the stricter side (the Judge passed 11; the review settled 6 against
 the check). It is not in the answers either, since every firmware reference passes F2, nor in the
 limits (prior 10). The gaps are on the task side. Delete a bullet in the commit that
 closes it.
 
+- **No firmware fail has yet been a limit, and the climb still counts them.** All 32 firmware verified
+  fails since 2026-09-23 were classified, 29 by replay against their own evaluators and 3 from the
+  record. 24 were a Builder-written host stand-in rejecting valid code (a missing `min`, `constrain`,
+  `A0` or core macro, a redefinition, a display double). 5 were one unpublished status mapping. 3 were
+  auto-accepted drafts at a one-minute solve wall the Builder set in its own `agent/config.yaml`. None
+  is a confirmed valid-demand fail. All 32 ran on stand-in batteries, 32 of 816 verified cases against
+  0 of 283 on every other substrate, and Sol Builders wrote 89 of the 92 stand-in batteries.
+  `VERIFICATION_CLAUSE` has called a stand-in the last route since 2026-09-22 and it held throughout, so
+  prose did not prevent it. The reviewers read these fails as defects: the Judge contested 23 of the 24
+  stand-in fails, each on exactly one deciding check, and every review filed a correctness-model
+  defect. None of the 8 firmware case dispositions on record carries `checkIds`, though, 6 of them
+  against the check, so `settledAgainstCheck` has never dropped a case: all 8 came from two runs whose
+  source predates 7643780b, which writes `checkIds`. A review replay on main (2026-10-01) settled the
+  recorded `esp32-display` false rejection end to end under the current Judge and reviewer, and the
+  climb then dropped it, so no link is broken; no firmware run since has had a disposition to exercise
+  it live. Owner of the stand-ins themselves: the firmware instrument (the last bullet). Evidence: the
+  ignored `notes/firmware-fails-20260930/`.
 - **First tasks combine requirements that the solver still meets in minutes** (firmware 7a97af under
   "Authoring"), and 7 of 29 firmware batteries passed with a harness that only compiled. Depth reached a
   Builder only after a full pass or after every rehearsal passed. Owner: the last line of

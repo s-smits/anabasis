@@ -311,7 +311,10 @@ Use a manifest for write sessions or per-session worktrees:
 
 A manifest contains one or more sessions, each with a distinct task. The top-level worktree and
 sandbox apply to every session unless overridden; a `workspace-write` session requires non-empty
-`ownedPaths`. A session row takes only `name`, `task`, `workdir`, `sandbox` and `ownedPaths`.
+`ownedPaths`. A session row takes only `name`, `task`, `workdir`, `sandbox` and `ownedPaths`. Codex
+starts only inside a Git work tree unless told `--skip-git-repo-check`; the launcher tells it so
+for a read-only session and for one that owns its whole workdir, and any other write session needs
+a work tree.
 
 ## Collect only when requested
 

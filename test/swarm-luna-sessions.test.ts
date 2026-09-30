@@ -4,7 +4,14 @@
 // session; what it cannot do is start a session that stopped, which is the launcher's part.
 import assert from "../src/meta/assert.ts";
 import { sha256 } from "../src/meta/digest.ts";
-import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "../src/meta/filesystem.ts";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  symlinkSync,
+  writeFileSync,
+} from "../src/meta/filesystem.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { decodeOutput, runSync } from "../src/meta/subprocess.ts";
@@ -612,4 +619,62 @@ test("runs Sol at Sol's own efforts, and refuses a model or effort the launcher 
   assert.equal(call?.args.includes('model_reasoning_effort="medium"'), true);
   const launch = rig.read<LaunchReceipt>("launch.json");
   assert.deepEqual([launch.model, launch.reasoningEffort], ["gpt-5.6-sol", "medium"]);
+});
+
+// Codex starts only inside a Git work tree, where Git can undo what a session wrote: from a session
+// scratchpad both WRI hardware lanes died in 38 ms on 2026-09-30, "Not inside a trusted directory".
+test("lets Codex start outside a Git work tree only for a session that owns all it can write", () => {
+  const rig = lunaRig("luna-git-check-");
+  const scratch = join(rig.root, "scratch");
+  const shared = join(rig.root, "shared");
+  mkdirSync(scratch);
+  mkdirSync(shared);
+  // The owned path may name the workdir through a link, as a temp path under /var names /private/var.
+  const linked = join(rig.root, "scratch-link");
+  symlinkSync(scratch, linked);
+  rig.plan({ scratch: [{ thread: "thread_scratch_0001", exit: 1 }, done("scratch")] });
+  const result = rig.run([
+    "--manifest",
+    rig.manifest([
+      { name: "reader", task: "Read only." },
+      {
+        name: "scratch",
+        task: "Write your scratch.",
+        workdir: scratch,
+        sandbox: "workspace-write",
+        ownedPaths: [linked],
+      },
+      {
+        name: "shared",
+        task: "Write one directory of a shared tree.",
+        workdir: shared,
+        sandbox: "workspace-write",
+        ownedPaths: [join(shared, "out")],
+      },
+    ]),
+    "--codex-bin",
+    rig.codex,
+    "--output-dir",
+    rig.out,
+    "--start-interval-ms",
+    "0",
+    "--launch-only",
+  ]);
+  assert.equal(result.exitCode, 0, result.stderr);
+  const waived = rig
+    .calls()
+    .map((call) => [
+      call.name,
+      call.args[1] === "resume" ? "resume" : "exec",
+      call.args.includes("--skip-git-repo-check"),
+    ]);
+  assert.deepEqual(
+    waived.toSorted((a, b) => String(a).localeCompare(String(b))),
+    [
+      ["reader", "exec", true],
+      ["scratch", "exec", true],
+      ["scratch", "resume", true],
+      ["shared", "exec", false],
+    ],
+  );
 });

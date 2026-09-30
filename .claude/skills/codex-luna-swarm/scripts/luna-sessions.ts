@@ -29,7 +29,7 @@ import {
 import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { asRecord, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { tmpdir } from "#src/meta/os.ts";
-import { basename, delimiter, dirname, isAbsolute, join } from "#src/meta/path.ts";
+import { basename, delimiter, dirname, isAbsolute, join, resolve } from "#src/meta/path.ts";
 import { capturedExecPath, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import {
@@ -369,6 +369,19 @@ async function stopHook(): Promise<HookDecision> {
   };
 }
 
+/** Whether a session can write only what it owns: it is read-only, or an owned path is its workdir.
+ *  Codex starts only inside a Git work tree, where Git can undo what a session wrote, and such a
+ *  session has nothing of anyone else's to undo. WRI's hardware lanes run in their own scratch,
+ *  which may sit outside every work tree: from a session scratchpad both died in 38 ms on
+ *  2026-09-30, "Not inside a trusted directory". */
+function ownsAllItCanWrite({ sandbox, workdir, ownedPaths }: Session): boolean {
+  if (sandbox === "read-only") return true;
+  return ownedPaths.some((path) => {
+    const owned = resolve(workdir, path);
+    return existsSync(owned) && realpathSync(owned) === workdir;
+  });
+}
+
 /** The Codex call for one attempt: a fresh `exec` from the prompt, or `exec resume` of the thread
  *  Codex named. `exec resume` takes no `--sandbox`, so the sandbox travels as configuration. */
 function codexArgs(
@@ -384,6 +397,7 @@ function codexArgs(
     `model_reasoning_effort="${launch.reasoningEffort}"`,
     "--config",
     `service_tier="${launch.serviceTier}"`,
+    ...(ownsAllItCanWrite(session) ? ["--skip-git-repo-check"] : []),
   ];
   const output = ["--json", "--output-last-message", reportPath];
   return threadId === null

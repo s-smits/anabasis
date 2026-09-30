@@ -149,8 +149,13 @@ const HISTORY =
 const LIMIT =
   "Only a battery that passes some but not all of its cases can locate a limit, an unaccepted attempt counting as a fail and a non-result as neither, and only where the checks that failed it are right; one that passes every case found none.";
 
+/** What a full pass sends the Builder to read. It named the distance from each passing answer to the
+ *  reference until 2026-09-30, and all five all-pass rounds of run 6a8ca0 answered that distance: they
+ *  moved limits toward the reference or enlarged instances, which the solver's same enumeration and
+ *  published-rule checker still settled in one turn. The method, not the margin, is what a harder
+ *  battery has to defeat. */
 const MEASURE_SOLVES =
-  "Before you set the next battery, measure what its passing solves submitted beside your own reference answer for the same task: where a limit sits well above your reference, answers worse than it passed, and where a solve matched or beat your reference, the search behind it is one the solver runs too.";
+  "Before you set the next battery, read how its passing solves reached their answers, the tools they called and the search they ran: a limit moved or an instance enlarged while those same steps would still find an answer asks nothing new, so the change has to be one those steps do not settle.";
 
 const BOUNDARY =
   "Publish every rule the verifier applies, including rounding and enforced fallback or tie-break rules. Keep solved task-specific fixtures, hidden expectations, reference answers and protected verifier information out of the public surface.";

@@ -381,9 +381,12 @@ describe("rendering", () => {
   });
 
   it("says the latest battery found no limit only when it passed every case it scored", () => {
-    // A full pass also names the measurement that says why: the passing solves beside the reference.
+    // A full pass also names what to read before the next battery: how the passing solves won, not how
+    // far their answers sat from the reference. Pointed at that distance, every round of the five
+    // all-pass batteries of run 6a8ca0 (2026-09-30) moved limits or enlarged instances that the solver's
+    // same enumeration still settled in one turn.
     expect(render(readoutOf(row("r1", 0, { passed: 6, n: 6 })))).toContain(
-      "Battery r1 passed all 6 of its verified cases, so it found no limit: the next battery has to demand more of the field's own work than this one did, deeper in what its tasks already exercise or across what the request names and no task does yet. Record in your notes which public requirement it changes and the reasoning that change adds. Before you set the next battery, measure what its passing solves submitted beside your own reference answer for the same task: where a limit sits well above your reference, answers worse than it passed, and where a solve matched or beat your reference, the search behind it is one the solver runs too.",
+      "Battery r1 passed all 6 of its verified cases, so it found no limit: the next battery has to demand more of the field's own work than this one did, deeper in what its tasks already exercise or across what the request names and no task does yet. Record in your notes which public requirement it changes and the reasoning that change adds. Before you set the next battery, read how its passing solves reached their answers, the tools they called and the search they ran: a limit moved or an instance enlarged while those same steps would still find an answer asks nothing new, so the change has to be one those steps do not settle.",
     );
     expect(render(readoutOf(row("r1", 0, { passed: 1, n: 1 })))).toContain(
       "Battery r1 passed its one verified case, so it found no limit",
@@ -394,7 +397,7 @@ describe("rendering", () => {
       "Battery r1 passed its one verified case and 5 cases ended as non-results that scored nothing, so it found no limit among the cases it scored and did not measure the rest.",
     );
     expect(censored).not.toContain("demand more");
-    expect(censored).not.toContain("measure what its passing solves submitted");
+    expect(censored).not.toContain("read how its passing solves reached their answers");
     // An unaccepted attempt is a fail, and a battery with no pass or a partial one says nothing more.
     const silent = [
       row("r1", 0, { passed: 5, n: 6, unaccepted: 1 }),

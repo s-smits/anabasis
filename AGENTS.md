@@ -86,9 +86,8 @@ Ten decisions are settled. Code that quietly moves one is a defect rather than a
 because moving it cost something.
 
 1. **Correctness has one owner.** The host verifier, running the declared checks and installed tools,
-   decides every pass. No model judge, review or Builder claim sets a score. Nor is the Judge where
-   scores run lenient: from 2026-09-23 to 30 it vetoed 5 of 1,411 verifier passes, and on the 17
-   contested fails of the 22 that located a limit the check was the stricter side ("Open gaps").
+   decides every pass. No model judge, review or Builder claim sets a score, and the Judge is not where
+   scores run lenient ("Open gaps").
 2. **The input is one line.** No hidden plan, custom driver or evaluator hint rescues a launch.
 3. **The Builder authors the whole bundle.** Nothing under `domains/` is hand-written or repaired. A
    defect seen across domains is fixed where it came from, which is the Builder prompt, the shared
@@ -130,7 +129,8 @@ because moving it cost something.
     published magnitudes for four consecutive batteries. So the Builder is told what was measured and
     what a round is for, a battery that fails some of its cases, and never a count to author towards.
     The one kind of demand the loop names is depth, more of the request's requirements acting together
-    on one answer under one shared limit, because it is the one recorded demand that dropped pass rates
+    on one answer under one shared limit, so that meeting one spends the margin another needs, because
+    it is the one recorded demand that dropped pass rates
     while widening kept batteries whole ("Tried and taken out"); which requirements, which limit and how
     far stay the Builder's (prior 5). Useful adopted work is retained.
 
@@ -390,9 +390,8 @@ requirement. Both 887c163ee Builders had declined every stricter route by quotin
 thresholds" on an expression analysis, which left them only size (primary lanes, 2026-09-30).
 Then comes the readout (`renderReadout`), with `LIMIT`, `WITNESS` (a passing artifact, like the
 reference, proves a task feasible and never difficult) and, after a full pass, the no-limit line. That
-line asks for a next battery that demands more of the field's own work within its tasks: more of the
-requirements the request names acting together on one answer under one shared limit, so that meeting one
-spends the margin another needs, in tasks the Builder expects the solver to fail. It says outright that
+line asks for a next battery that demands more of the field's own work within its tasks, by depth (prior
+10), in tasks the Builder expects the solver to fail. It says outright that
 more tasks, families, inputs or scenarios at the same demand measure the same reach again (a widening
 route was offered until 2026-09-30; "Tried and taken out"). It rules out carrying a task forward unchanged, says how much of the solve wall the slowest
 solve took, and asks for the changed requirement and its reasoning in the notes (rule 11). The wall
@@ -411,12 +410,12 @@ have admitted it and since which.
 - It builds depth into the first tasks, not only into a raise after they pass (`INTENT_CLAUSE`,
   2026-09-30), because a task asking for one published behaviour is transcription for a strong solver:
   firmware 7a97af's tasks each asked for one, over sound references and rejects, and all 10 of its
-  solves passed within 5.6 of 120 minutes ("Open gaps").
+  solves passed in 1.1 to 5.6 of 120 minutes, 9 with the first draft unedited.
 - It raises what the checks hold together, not only how big the inputs are or where a limit sits: 6a8ca0
   grew its inputs from 24 to 53 and its scenarios from 20 to 91 at unchanged check tiers and limits.
   Tightening alone is not enough either, because 6a8ca0's limits sat at its reference's values and its
-  solver held the same optimiser, and truss limits reset at 1.02× a search of up to 3.4 hours still
-  passed 5 of 6 (prior 10). So the change has to be one the passing solves' own steps do not settle.
+  solver held the same optimiser, and limits reset at a far longer search's best still passed (prior
+  10). So the change has to be one the passing solves' own steps do not settle.
 - It carries no task unchanged across a full pass. 36e268 grew about one task a round, and 53 of the
   tasks it measured after its full passes were bytes the solver had already passed; on 2026-09-30, 570
   of the 1,465 tasks measured after a full pass in local campaigns were carried unchanged.
@@ -453,9 +452,8 @@ independent accept of six in five of six epochs, and the Builder carried it anyw
 so a passing rehearsal shows that task is within the solver's reach, and the task the Builder expects to
 be hardest is the one whose rehearsal says most. The round prompt (`src/author/builder-session.ts`) says
 that a battery whose every rehearsal passed is on course to pass every case, so before submitting it the
-Builder raises what its hardest tasks demand once, by the no-limit line's depth route (more of the
-requirements the request names acting together on one answer under one shared limit, not more tasks,
-families or inputs), and rehearses one of them again. The route is named there because the no-limit line
+Builder raises what its hardest tasks demand once, by depth (prior 10) rather than more tasks, families
+or inputs, and rehearses one of them again. The route is named there because the no-limit line
 reaches a Builder only after a full pass in its own readout: firmware 7a97af-i02 raised by five new device
 families, stopped at what its simulator could model, and passed 5 of 5. What stopped it was the board's
 pin inputs and further bus devices, which its emulator cannot drive ("Open gaps"), while the interactions
@@ -517,14 +515,12 @@ Since 2026-09-23 the Judge vetoed 5 of 1,411 verifier passes (firmware 2 of 901,
 counting all five would move no battery out of too-easy. Of the 22 verified fails that found a limit, 17
 were contested, and the check was the stricter side (the Judge passed 11; the review settled 6 against
 the check). It is not in the answers either, since every firmware reference passes F2, nor in the
-limits: truss acef98-i03 set limits at 1.02 times a search of 45 minutes to 3.4 hours and still passed 5
-of 6, refuting prediction 579d4990. The gaps are on the task side. Delete a bullet in the commit that
+limits (prior 10). The gaps are on the task side. Delete a bullet in the commit that
 closes it.
 
-- **First tasks ask for one published behaviour each.** All 10 solves of firmware 7a97af passed in 1.1
-  to 5.6 of 120 minutes, 9 with the first draft unedited, and 7 of 29 firmware batteries passed with a
-  harness that only compiled. Depth reached a Builder only after a full pass or after every rehearsal
-  passed. Owner: the last line of `INTENT_CLAUSE` (818bee65), which is not yet measured. Change
+- **First tasks ask for one published behaviour each** (firmware 7a97af under "Authoring"), and 7 of 29
+  firmware batteries passed with a harness that only compiled. Depth reached a Builder only after a full
+  pass or after every rehearsal passed. Owner: the last line of `INTENT_CLAUSE` (818bee65), which is not yet measured. Change
   `SCOPE_CLAUSE` ("let the tasks span them", "vary its stated conditions") only if that line does not
   carry it.
 - **Graduation dilutes a bracket.** A probe at 2/6 or 3/6 grows to 25 tasks and the ~19 added tasks
@@ -537,10 +533,8 @@ closes it.
   demand last. At least 52 of 310 Builder sessions since 2026-09-23 read it (13 through the read tool,
   39 in prose or compaction read-lists; reads through bash are unrecorded). Replace it with families
   that differ by which requirements interact under one shared limit, an obvious answer that fails, and a
-  very hard family.
-- **Aim at very hard to land at hard** (operator, 2026-09-30). 36 of 39 first batteries were authored
-  under "author above what you believe", and 29 passed whole, so an aim sentence alone does not move the
-  line. The worked example and the depth line carry it, with no count (prior 10).
+  very hard family, which is where the operator's aim at very hard reaches the Builder, with no count
+  (prior 10).
 - **`WITNESS_BUDGET` rests on the refuted mechanism** and binds nothing in firmware, where no search
   sets a limit (`src/run/climb-readout.ts`; `witness-budget` under "Ablated components").
 - **The Epoch Reviewer cannot name requirements exercised one at a time.** No `demandGap` value
@@ -1229,9 +1223,9 @@ the battery was paid for.
     truss Builders lengthened a listed set of load cases and called it a tier. And both shipped solver
     tools reporting every margin a check reads, so the solver could propose, read the failing state and
     adjust. None of these, nor tightening a feasible limit toward a stronger witness, proves a task harder
-    or easier by itself; blind measurement decides, and on 2026-09-30 it read the third: truss limits at
-    1.02× a search of up to 3.4 hours still passed 5 of 6 (prior 10). Tightening stays legitimate, since
-    a slack limit is a finding about its reference, but it is no route to difficulty, which the ablated
+    or easier by itself; blind measurement decides, and it has read the third (prior 10). Tightening stays
+    legitimate, since a slack limit is a finding about its reference, but it is no route to difficulty,
+    which the ablated
     `witness-budget` sentence and `examples.md`'s search route still argue ("Ablated components"). Each
     prompt says it once: the Builder system prompt owns the clauses, `examples.md` the optional routes
     to a target the solver does not reliably meet, and

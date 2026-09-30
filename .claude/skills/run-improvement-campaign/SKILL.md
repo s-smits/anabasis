@@ -73,8 +73,8 @@ constraint needs a fresh walk, recorded in the ledger, that moved the constraint
 A constraint holds where its mechanism exists, so its ledger row names the domains it covers. The
 walk of 2026-09-30 found limits within about 2% of a reference the Builder had found in minutes.
 That witness ceiling looked like the link in the optimisation domains (truss, reserve, buffer),
-where a longer search finds a better answer, and its experiment came back held: at 1.02× the best of
-a search up to 3.4 hours long, 5 of 6 truss tasks still passed (§7). Firmware and conformer are
+where a longer search finds a better answer, and its experiment came back held (AGENTS.md prior 10).
+Firmware and conformer are
 conformance domains with no numeric optimum to search, and the same day's six-domain read put their
 link at task demand and round length. So in every domain read that day the link is what the tasks
 demand, not where their limits sit.
@@ -549,13 +549,9 @@ show whether the line moved.
 Five patterns from 2026-09-30 point at an owner before the evidence is complete:
 
 - **A limit is only as tight as the search behind its reference, and tightening it does not make
-  the solver fail.** The witness experiment's searches, of 45 minutes to 3.4 hours, found truss
-  answers up to 59% lighter than the Builder's accepted references. Re-limited at 1.02× those, six
-  tasks measured once with the recorded Opus solver passed 5 of 6. The one fail was decided by
-  strength, not mass. On every task it passed, the 90-minute solver came within 1.3% of the search's
-  best, and it beat that best on three (prediction 579d4990, refuted). In an optimisation domain
-  the solver is itself the better search, so a slack limit is a finding about the reference;
-  difficulty has to come from what the task demands.
+  the solver fail** (the witness experiment, AGENTS.md prior 10). In an optimisation domain the
+  solver is itself the better search, so a slack limit is a finding about the reference; difficulty
+  has to come from what the task demands.
 - **A control that equals the reference proves nothing at the limit.** In the lane reads of
   2026-09-30 the firmware and conformer accept controls sat on the reference and none probed a
   boundary, so no check was exercised where a solver's answer lands. RNA-seq set its floors at

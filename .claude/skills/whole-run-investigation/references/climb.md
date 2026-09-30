@@ -107,8 +107,8 @@ the gate) rather than re-deriving each reading by hand. Count distinct runs and 
 reports, since two notes about one run are one observation, and a run whose round never reached the
 link is no opportunity, neither a break nor a hold. Count within one kind of domain before claiming
 a transfer. A limit at the reference's value is slack where a longer search finds a better answer,
-in the optimisation domains (truss, reserve, buffer), but that slack is not what holds the line:
-on 2026-09-30 six truss limits tightened to 1.02× a search of up to 3.4 hours still passed 5 of 6.
+in the optimisation domains (truss, reserve, buffer), but that slack is not what holds the line
+(AGENTS.md prior 10).
 A conformance domain such as firmware has no optimum to search, and its flat line read at the tasks'
 demand and the round's length.
 

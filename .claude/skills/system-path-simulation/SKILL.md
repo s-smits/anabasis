@@ -153,6 +153,33 @@ tree reinstalled OpenSeesPy from the uv cache in 6 seconds; an esp32 tree is 12 
 - **Write it in the trail.** `seed.json` records the tree's source (`toolTreeSource`); add its size
   and whether the actor reinstalled anyway, which is a finding about the seed, not the product.
 
+**Optional: give the condition an active tool tree.** Do this when the actor will compile, run or
+rehearse through the product's tools. Without a tree it spends its wall reinstalling, and the
+condition ends up measuring installation instead of the question. Skip it when the question is
+prose or planning, or when a reinstall is cheap. On 2026-09-30 a truss Builder with no recorded
+tree reinstalled OpenSeesPy from the uv cache in 6 seconds, while an esp32 tree is 12 GB of
+arduino cores.
+
+- **Seeding already clones the tree.** `seed-campaign.mts` republish clones the selected product's
+  tool tree into the owned seed with APFS clonefile (`cpSync` with `COPYFILE_FICLONE`). It
+  downloads nothing and uses almost no disk.
+  - A firmware tree's arduino build cache names the source run's root, so the audit refuses the
+    seed until you pass `--relocate`. On 2026-09-30 that was 3,466 references, all relocated.
+- **Check the tree exists before relying on it.** Take the realpath of `toolTree` in
+  `versions/<id>/version.json`. A recorded tree can be swept: every epoch workspace of the truss
+  campaign `…-3fd52f9e-29` lost its `.toolchain` on 2026-09-30.
+  - When it is gone, clone another recorded tree of the same product with
+    `cp -c -R <tree> <seed>/.toolchain`, into the owned seed only.
+  - Or let the actor reinstall, and record that it did.
+- **Clone anything the actor may write; do not link it.** A symlink into a recorded run lets the
+  condition write through to that run, and the audit refuses it as an escape. Link only to a host
+  file that no recorded run owns and the condition cannot change, such as `~/.bun/bin/bun`.
+- **Give each parallel condition its own seed.** A campaign holds one `.controller.lock`, so two
+  conditions from one recorded position each need their own seed. The same goes for two live
+  arms. The esp32 ablation arms of 2026-09-30 were three seeds of one campaign.
+- **Write it in the trail.** Record the tree's source path and size, and whether the actor
+  reinstalled anyway. A reinstall over a seeded tree is a finding about the seed, not the product.
+
 **Choose the production owner before the helper.** A session measures authoring, a Builder campaign
 also measures continuation and admission, and a full run adds measurement and routing. Read the
 actual exports and helper flags at the measured revision; a familiar script name does not prove

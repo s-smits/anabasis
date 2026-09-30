@@ -273,13 +273,15 @@ function roundPrompt(input: BuilderSessionInput, previous: PreviousRound | null)
     // course to find no limit, because saying what a pass is did not by itself stop a Builder
     // submitting on one first-turn pass. The demand changes once, and not until a rehearsal fails:
     // a condition a rehearsal has to meet held rounds back without moving where the battery landed.
-    // The measurements behind each clause are in AGENTS.md "Goals and the climb".
+    // What a full pass finds and where a battery lands are the battery contract's (`LIMIT`, `WITNESS`
+    // in climb-readout.ts), stated once there. The measurements behind each clause are in AGENTS.md
+    // "Goals and the climb".
     `${roundLimit(input.maxTurns)}Build, check and rehearse the candidate, and submit` +
       ` once a clear preview says it works. A passing rehearsal is a blind solve of its task, so it shows that task` +
       ` is within the solver's reach, and the task you expect to be hardest is the one whose rehearsal says most about` +
-      ` the battery. A battery whose every rehearsal passed is on course to pass every case and find no limit, so` +
-      ` before you submit it, change what its hardest tasks demand and rehearse one of them again. The measured` +
-      ` battery, not a rehearsal, decides where it lands; further polish belongs to the next round.`,
+      ` the battery. A battery whose every rehearsal passed is on course to pass every case, so before you submit` +
+      ` it, change what its hardest tasks demand and rehearse one of them again, then submit: further polish` +
+      ` belongs to the next round.`,
     HANDOVER,
   ];
   const context = [input.advisory ?? "", previous === null ? (input.freshContext ?? "") : ""]

@@ -52,6 +52,11 @@ export const SCOPE_CLAUSE = [
   "A limit, state or duty the field does not hold measures your wording rather than the solver, so add none.",
 ] as const;
 
+/** The ceiling on what a solver's analysis may report, held once for both readers: the Builder hears
+ *  it as a publication rule and the Epoch Reviewer judges the tools against it. */
+export const NO_GRADER_IN_REACH =
+  "No tool, program or guide line analyses a candidate for the solver the way a check does, whether through the check's code or a copy of it, its instrument, or a verdict: a solver that can ask the grader searches until it passes, and its battery then measures that search rather than the field's work.";
+
 /** What the solver may read, what it must never read, and what its tools may do for it.
  *
  *  A proposer tool that is the reference solve passes every task in one call each while proving
@@ -70,7 +75,7 @@ export const PUBLICATION_CLAUSE = [
   "Publish everything the verifier requires of an answer wherever the solver reads it: constants with their authority, units, precision and rounding, comparison direction and tolerance, canonical form, required paths and entry points, and the assumptions an installed tool applies. A solver that follows every published rule must never fail on a rule it could not read; where a practitioner could read a rule two ways, the brief states the verified reading.",
   "Withhold hidden expectations, private controls and decisions, reference answers and protected verifier information from everything the solver reads, in any wording, tool results included. For a program, publish the behaviour it must show, not the calls or steps that produce it: a published sequence turns writing the program into transcribing it.",
   "Give the solver a practitioner's tools — the real toolchain it builds with, readers, writers, a bounded search — and leave it the analysis and the decision the task asks for.",
-  "No tool, program or guide line analyses a candidate for the solver the way a check does, whether through the check's code or a copy of it, its instrument, or a verdict: a solver that can ask the grader searches until it passes, and its battery then measures that search rather than the field's work.",
+  NO_GRADER_IN_REACH,
 ] as const;
 
 /** Verification that means something, and the real installed tools it rests on. The first sentence

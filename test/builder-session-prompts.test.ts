@@ -120,10 +120,12 @@ describe("what the round prompt says a rehearsal is", () => {
     expect(text).toContain("A passing rehearsal is a blind solve of its task");
     expect(text).toContain("the task you expect to be hardest is the one whose rehearsal says most");
     expect(text).toContain(
-      "A battery whose every rehearsal passed is on course to pass every case and find no limit, so before you submit it, change what its hardest tasks demand and rehearse one of them again.",
+      "A battery whose every rehearsal passed is on course to pass every case, so before you submit it, change what its hardest tasks demand and rehearse one of them again, then submit: further polish belongs to the next round.",
     );
     expect(text).toContain("submit once a clear preview says it works.");
-    expect(text).toContain("The measured battery, not a rehearsal, decides where it lands");
+    // Where a battery lands and what a full pass finds are the battery contract's, stated once there.
+    expect(text).not.toContain("decides where it lands");
+    expect(text).not.toContain("find no limit");
     expect(text).not.toContain("agree with");
     expect(text).not.toContain("until a rehearsal fails");
   });

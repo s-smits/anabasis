@@ -374,9 +374,11 @@ requirement. Both 887c163ee Builders had declined every stricter route by quotin
 thresholds" on an expression analysis, which left them only size (primary lanes, 2026-09-30).
 Then comes the readout (`renderReadout`), with `LIMIT`, `WITNESS` (a passing artifact, like the
 reference, proves a task feasible and never difficult) and, after a full pass, the no-limit line. That
-line asks for a next battery that demands more of the field's own work, deeper in what its tasks already
-exercise or across what the request names and no task does yet, in tasks the Builder expects the solver
-to fail. It rules out carrying a task forward unchanged, says how much of the solve wall the slowest
+line asks for a next battery that demands more of the field's own work within its tasks: more of the
+requirements the request names acting together on one answer under one shared limit, so that meeting one
+spends the margin another needs, in tasks the Builder expects the solver to fail. It says outright that
+more tasks, families, inputs or scenarios at the same demand measure the same reach again (a widening
+route was offered until 2026-09-30; "Tried and taken out"). It rules out carrying a task forward unchanged, says how much of the solve wall the slowest
 solve took, and asks for the changed requirement and its reasoning in the notes (rule 11). The wall
 share is there because 153 of 233 all-pass batteries from 2026-09-25 to 2026-09-30 finished inside a
 tenth of the 120-minute wall (median 5.9 minutes), sized to the Builder's own reference, while the round
@@ -403,7 +405,8 @@ have admitted it and since which.
 
 The solver must not hold the grader, or no battery can fail. No tool, program or guide line analyses a
 candidate for the solver the way a check does, through the check's code or a copy of it, its instrument
-or a verdict (`PUBLICATION_CLAUSE`, `src/author/builder-start-prompt.ts`), because a solver that can ask
+or a verdict (`NO_GRADER_IN_REACH` in `src/author/builder-start-prompt.ts`, which the Builder reads in
+`PUBLICATION_CLAUSE` and the Epoch Reviewer judges the tools against), because a solver that can ask
 the grader searches until it passes. Until 2026-09-30 such a tool counted as solving support, and every
 harness whose solver could run a check passed whole round after round: reserve 6a8ca0 (13 batteries at
 7/7) and a16848, buffer 3af96d (11 at n/n) and firmware 887c16 through an adviser importing a copy of
@@ -428,10 +431,10 @@ independent accept of six in five of six epochs, and the Builder carried it anyw
 **Rehearsal and submit.** `harness_trial` solves one task blind with the measured Built solver (rule 14),
 so a passing rehearsal shows that task is within the solver's reach, and the task the Builder expects to
 be hardest is the one whose rehearsal says most. The round prompt (`src/author/builder-session.ts`) says
-that a battery whose every rehearsal passed is on course to find no limit, so before submitting it the
+that a battery whose every rehearsal passed is on course to pass every case, so before submitting it the
 Builder changes what its hardest tasks demand once and rehearses one of them again. Once, and not until a
 rehearsal fails: nothing holds a submit on rehearsals, because the measured battery decides where it
-lands, and a rehearsal hold of that kind cost whole rounds (96 of 99 predicted passes at ≤0.3 did pass;
+lands (`WITNESS`, in the battery contract), and a rehearsal hold of that kind cost whole rounds (96 of 99 predicted passes at ≤0.3 did pass;
 "What has cost whole rounds"). Across 241 batteries from 2026-09-25 on, the rehearsed task had sat at
 chance in its battery's solve-time order: in 111 single-rehearsal rounds it was the slowest in 18, at a
 mean rank of 0.48 against 0.50. The two Sol runs on 887c163ee each submitted on one rehearsal that passed
@@ -506,6 +509,13 @@ without new evidence that answers it.
 - **Pointing a full pass at each answer's distance from the reference**, until 2026-09-30. All five
   all-pass rounds of 6a8ca0 answered it by moving limits toward the reference or enlarging instances,
   which the solver's same method still settled in one turn; `MEASURE_SOLVES` now points at the method.
+- **Offering a widening route after a full pass** ("across what the request names and no task does
+  yet"), until 2026-09-30. Conformer 5cc42c and buffer 3af96d took it, adding conditions, families and
+  tasks, and kept passing whole; firmware 3e4693's widened edges were followed by 6/6 and 9/9. The one
+  recorded demand that dropped pass rates was interaction: on the 2026-09-15 truss pack series, one
+  added interaction per task passed 22 of 23 (Sol high), while the same requirements stacked inside one
+  shared mass limit passed 7 of 20 (Sol high) and 2 of 23 (Opus 5). The no-limit line now names that
+  depth and no other route.
 - **A second Wilson implementation** (`wilsonZ`) and the `minLevelN` floor, which discarded a placement
   whenever fewer than four tasks changed, until 2026-09-18.
 - **The transplant census**, until 2026-09-25, which refused one deliverable passing every sibling task.
@@ -1117,7 +1127,7 @@ the battery was paid for.
     clauses, `examples.md` the optional routes to a target the solver does not reliably meet, and
     `roundPrompt` and `renderBatteryContract` when to submit and what a witness proves, and the climb
     readout's no-limit line asks for the changed requirement and its reasoning in the notes. The round prompt asks for a submit once a clear preview says the candidate works, because the
-    measured battery, not a rehearsal, decides where it lands, and nothing holds a submit on rehearsals
+    measured battery, not a rehearsal, decides where it lands (`WITNESS`), and nothing holds a submit on rehearsals
     (the 96-of-99 history is under "What has cost whole rounds").
 
     Battery size and the difficulty decision are climb mechanisms, and "Goals and the climb" holds both:

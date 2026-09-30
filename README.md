@@ -107,6 +107,13 @@ bun run solve -- task-id ./output
 bun run check -- task-id ./output/cases/task-id/artifact.json
 ```
 
+The same tasks are in `harbor/` in [Harbor](https://harborframework.com)'s task format, and they run on Bun as well: each task's `environment/task.json` is a task file for `solve` and `check`:
+
+```sh
+bun run solve -- harbor/task-id/environment/task.json ./output
+bun run check -- harbor/task-id/environment/task.json ./output/cases/task-id/artifact.json
+```
+
 - **Tasks.** A task is a `taskId` from `correctness-model/tasks.json`, or a JSON file with `taskId`, `family` and `publicInput`. A file inherits the recorded hidden expectations only when all three match; checking a new or changed task needs its own `hidden` array, and an empty one runs only the public checks.
 - **Solve** runs the agent once, confined, prints the case as JSON and exits 0 when a submit was accepted. The artifact goes to `<out-dir>/cases/<taskId>/artifact.json`; the default out-dir is `runs-local/<timestamp>`. The solve never reads `correctness-model/`, and its shell cannot read the export.
 - **Check** runs the Correctness Model, prints the public verdict (`truthOk`, `pass`, a non-result kind, failed check ids, the digest of every tool that ran) and exits 0 on a pass. The artifact must pass the submission schema a solve's submit does. The full verdict, with the issue text and the reason for a non-result such as a missing tool, goes to the printed `evidencePath`: `<out-dir>/<taskId>-verdict.json`, by default in `checks-local/`. It is a local evaluation, not a capability claim.
@@ -114,6 +121,7 @@ bun run check -- task-id ./output/cases/task-id/artifact.json
 - **Host.** Bun 1.4.2 and the wall a run uses: Seatbelt on macOS, `bubblewrap` on Linux. Without the wall a case is a typed non-result, never an unconfined run.
 - **Tools.** `.toolchain/` holds the tools the Builder installed, built for the operating system and architecture that installed them, and is copied in full: an export whose checks run a cross-compiler has reached about 11 GB. The export's README header names the tools its checks run. A Python launcher or Mach-O install name that names the adopted tree is moved to the export's own. A link in it to a host file, or to nothing, and a file that still names the adopted tree are left out and named at the top of the export's README; such a tool resolves from the host `PATH`.
 - **Code.** The export runs this checkout's solve and verifier code over the adopted bundle: a fresh solve, not a replay of the measured run.
+- **Harbor.** Each `harbor/<taskId>/` is written by a TypeScript port of Harbor's `harbor task init`, so `task.toml`, `README.md`, `.gitignore` and the canary strings are the bytes Harbor writes. The task is named `<package>/<taskId>` after the export's `package.json` name, with its family under `[metadata]` and the solve time as `[agent] timeout_sec`. `instruction.md` and `environment/` hold the public task and the published requirements, nothing from `correctness-model/`, and `task.json` matches the recorded task, so `check` grades it with the recorded expectations. There is no Dockerfile and no `tests/`: Harbor's container runners are not supported, and `check` is the grade.
 
 The [export](src/run/bundle-export.ts) copies this section into `my-harness/README.md`.
 

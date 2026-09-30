@@ -37,6 +37,16 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+## harbor
+
+- Source: https://github.com/harbor-framework/harbor, at commit 7b022f7
+- Ports: `vendor/harbor/init.ts` (`_init_task` in `src/harbor/cli/init.py`) and
+  `vendor/harbor/config.ts` (`src/harbor/models/task/config.py` and `src/harbor/constants.py`),
+  changed as each file's header states
+- Copy: `vendor/harbor/template-task/.gitignore`
+- Licence: Apache License 2.0, whose full text is under sandbox-runtime below. Harbor ships no
+  NOTICE file.
+
 ## pi-claude-bridge
 
 - Source: https://github.com/elidickinson/pi-claude-bridge, v0.6.3 at commit 2bc9a7e
@@ -338,6 +348,41 @@ SOFTWARE.
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
+```
+
+## toml
+
+- Source: https://github.com/uiri/toml, v0.10.2
+- Port: `vendor/harbor/toml-encoder.ts` (`toml/encoder.py`), changed as that file's header states
+
+```text
+The MIT License
+
+Copyright 2013-2019 William Pearson
+Copyright 2015-2016 Julien Enselme
+Copyright 2016 Google Inc.
+Copyright 2017 Samuel Vasko
+Copyright 2017 Nate Prewitt
+Copyright 2017 Jack Evans
+Copyright 2019 Filippo Broggini
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
 ```
 
 ## Fonts in the README chart

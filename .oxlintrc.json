@@ -109,6 +109,14 @@
       }
     },
     {
+      "files": ["vendor/harbor/**"],
+      "rules": {
+        "ana/no-deep-nesting": "off",
+        "ana/no-single-caller-helper": "off",
+        "anti-slop/no-runtime-typeof": "off"
+      }
+    },
+    {
       "files": ["packages/ui/**"],
       "rules": {
         "typescript/no-unsafe-argument": "off",

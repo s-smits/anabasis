@@ -3,6 +3,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -14,6 +15,8 @@ import { join, resolve } from "../src/meta/path.ts";
 import type { JsonValue } from "../src/meta/json-shape.ts";
 import { type PublicVerdict, bundleSlug, resolveTask } from "../src/run/bundle-entry.ts";
 import { exportBundle } from "../src/run/bundle-export.ts";
+import { loadRecordedTasks } from "../src/run/run-driver.ts";
+import { harnessSettings } from "../src/correctness-bundle/harness-config.ts";
 import { WORKSPACE_TOOL_TREE } from "../src/verify/wall-policy.ts";
 import { MATCHING_ACCEPTS, writeMatchingBuildFixture } from "./helpers/matching-fixture.ts";
 
@@ -31,18 +34,10 @@ function bunIn(cwd: string, args: string[]) {
   return { code: result.exitCode, stdout: result.stdout.toString(), stderr: result.stderr.toString() };
 }
 
-function check(taskId: string, artifact: JsonValue) {
+function check(taskId: string, artifact: JsonValue, task = taskId) {
   const artifactPath = join(scratch, `${taskId}-${Math.random().toString(16).slice(2)}.json`);
   writeFileSync(artifactPath, JSON.stringify(artifact));
-  const run = bunIn(outDir, [
-    "run",
-    "--silent",
-    "check",
-    "--",
-    taskId,
-    artifactPath,
-    join(scratch, "checks"),
-  ]);
+  const run = bunIn(outDir, ["run", "--silent", "check", "--", task, artifactPath, join(scratch, "checks")]);
   const verdict =
     /* SAFETY: the check script prints exactly one JSON document, the PublicVerdict it computed; a non-JSON stdout fails this parse and the test with it. */ JSON.parse(
       run.stdout,
@@ -86,6 +81,7 @@ describe("an exported Built Harness bundle", () => {
       "package.json",
       "README.md",
       "harness.json",
+      "harbor",
     ]) {
       expect(exported.entries).toContain(entry);
     }
@@ -105,6 +101,36 @@ describe("an exported Built Harness bundle", () => {
     expect(readFileSync(join(outDir, ".harness", "backends", "default.json"), "utf8")).toContain(
       '"disabled": true',
     );
+  });
+
+  it("writes each recorded task as a Harbor task whose environment holds the public projection alone", () => {
+    const tasks = loadRecordedTasks(slugDir);
+    expect(readdirSync(join(outDir, "harbor")).toSorted()).toEqual(
+      tasks.map(({ taskId }) => taskId).toSorted(),
+    );
+    for (const { taskId, family, publicInput } of tasks) {
+      const dir = join(outDir, "harbor", taskId);
+      const config =
+        /* SAFETY: read field by field below; a missing one fails its expectation. */ Bun.TOML.parse(
+          readFileSync(join(dir, "task.toml"), "utf8"),
+        ) as { task: { name: string }; metadata: { family: string }; agent: { timeout_sec: number } };
+      expect(config.task.name).toBe(`matching/${taskId}`);
+      expect(config.metadata.family).toBe(family);
+      expect(config.agent.timeout_sec * 1000).toBe(harnessSettings(slugDir).solveMs);
+      expect(readdirSync(join(dir, "environment")).toSorted()).toEqual([
+        "public-resources.json",
+        "task.json",
+      ]);
+      expect(JSON.parse(readFileSync(join(dir, "environment", "task.json"), "utf8"))).toEqual({
+        taskId,
+        family,
+        publicInput,
+      });
+      const named =
+        readFileSync(join(dir, "instruction.md"), "utf8").match(/environment\/[\w.-]+\.json/g) ?? [];
+      expect(named.length).toBeGreaterThan(0);
+      for (const file of named) expect(existsSync(join(dir, file))).toBe(true);
+    }
   });
 
   it("refuses a non-bundle and a non-empty target", () => {
@@ -210,6 +236,13 @@ describe("an exported Built Harness bundle", () => {
       code: 0,
     });
     expect(existsSync(good.evidencePath)).toBe(true);
+    // A Harbor task file is the recorded task, so it is graded with the recorded expectations.
+    const harbor = check(
+      accept.taskId,
+      accept.artifact,
+      join("harbor", accept.taskId, "environment", "task.json"),
+    );
+    expect({ pass: harbor.pass, code: harbor.code }).toEqual({ pass: true, code: 0 });
     // The evaluator ignores extra fields, but ordinary public submission admission refuses them.
     const outsideSchema = check(accept.taskId, { ...accept.artifact, extra: true });
     expect(outsideSchema.pass).toBe(false);

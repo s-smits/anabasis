@@ -1953,7 +1953,8 @@ importing `parseJsonAs`. `tools/oxlint/anti-slop/**` turns off §4.40 and lets
 `vendor/pi-claude-bridge/**` keeps the taste of the upstream it was copied from, and so turns off
 §4.2–4.4, 4.6–4.13, 4.15–4.17, 4.19–4.22, 4.25, 4.26, 4.34, 4.35, 4.40, `no-else-return`,
 `prefer-nullish-coalescing`, `no-lonely-if`, `no-negated-condition`, `prefer-array-flat`, `prefer-at` and
-`prefer-string-raw`.
+`prefer-string-raw`. `vendor/harbor/**`, a TypeScript port of Python, keeps upstream's shape the same way
+and turns off §4.3, §4.5 and `no-runtime-typeof`, which Python's type dispatch needs.
 
 Every plugin rule still applies to tests, at raised floors (string 10, object 5), with in-rule test
 exemptions for §4.2, 4.5, 4.14, 4.32, 4.35–4.39. `.claude/**` may import `node:` modules (§4.32 exempts
@@ -2533,7 +2534,7 @@ approach, before Bun's parse loop and messages were copied across (operator deci
 | | `run-triage/`, `secrets/`, `login/`, `vm/`, the fullrun launchd/systemd launchers |
 | `test/`, `test/helpers/` | the suite; `bun run test` discovers `test/` only |
 | `vendor/` | pinned upstream copies: `pi-agent-session`, `pi-built`, `pi-claude-bridge`, |
-| | `agent-bundle`, `correctness-model-bundle`, `correctness-model-prims` |
+| | `agent-bundle`, `correctness-model-bundle`, `correctness-model-prims`, `harbor` |
 | `starters/` | Builder-visible templates and `STARTER.md`; never imports `src/` |
 | `packages/ui/` | the UI, with its own lockfile (`bun run ui:deps`) |
 | `scripts/` | `worktree.sh` |

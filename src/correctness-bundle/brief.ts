@@ -129,6 +129,10 @@ export type Brief = {
   designRuleConstants: DesignRuleConstant[];
   /** Optional declared sets of permitted values, published alongside design-rule constants. */
   designRuleSets?: DesignRuleSet[];
+  /** Required tool ids that only checks run, which the Built shell withholds when they resolve in
+   *  the bundle's `.toolchain` (`checkInstrumentPaths`). Absent withholds nothing: only the Builder
+   *  knows which of its programs is a check's instrument and which the solver builds with. */
+  checkOnlyTools?: string[];
 };
 
 /** What a generated solve did instead of returning a result. The reference solve narrows to

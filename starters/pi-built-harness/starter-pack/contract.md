@@ -177,9 +177,12 @@ there; one under TMPDIR is rebuilt on every run.
 Install every tool with its cores, packages and data under `.toolchain`, and make it find them
 there through a wrapper in `.toolchain/bin` or its config file: each solve case starts in a fresh
 private home, so data living only there is fetched again in every case. Programs in
-`.toolchain/bin` run by name in the solver's shell too, which lists them. Required tools may also
-resolve on the host PATH. Exercise the selected command with its real dependencies through
-`correctness_check`; an alternate interpreter proves another condition.
+`.toolchain/bin` run by name in the solver's shell too, which lists them. Name a `.toolchain`
+program that only a check runs in the brief's top-level `checkOnlyTools`, and the solver's shell can
+then neither run nor read it; what the solver builds or computes with stays on its shell by default,
+even when a check also runs it. Required tools may also resolve on the host PATH. Exercise the
+selected command with its real dependencies through `correctness_check`; an alternate interpreter
+proves another condition.
 
 Optional `numbersWithin`, `multisetMatches` and `relationalJoin` helpers come from
 `@ana/correctness-model-prims`; use public units and tolerances.

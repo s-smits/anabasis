@@ -1,14 +1,24 @@
 ---
 name: run-improvement-campaign
-description: "Run the improvement loop: choose one change, prove its path, freeze a prediction, launch, read recorded bytes, decide the next move. Owns experiment selection and evidence reading; the product controller owns build, measure, climb, rebuild, claim and promotion. Also the Super Loop's Meta Agent: a second session that audits and steers the session driving the loop so it keeps moving (references/meta-agent.md)."
+description: "Run the improvement loop: find the one link holding the climb, choose one change against it, prove its path, freeze a prediction, launch, read recorded bytes, decide the next move. Owns experiment selection and evidence reading; the product controller owns build, measure, climb, rebuild, claim and promotion. Also the Super Loop's Meta Agent: a second session that audits and steers the session driving the loop so it keeps moving (references/meta-agent.md)."
 ---
 
 # Run improvement campaign
 
-The loop is **choose → prove → predict → launch → watch → assess → decide**. It exists to answer
-one question at a time about the product, and its only currency is recorded bytes. This skill
-selects experiments and reads their evidence. It never repairs controller output, never
-hand-writes a bundle, and never lets a model's prose stand in for a receipt.
+The loop is **diagnose → choose → prove → predict → launch → watch → assess → decide**. It exists to
+answer one question at a time about the product, and its only currency is recorded bytes. This skill
+selects experiments and reads their evidence. It never repairs controller output, never hand-writes
+a bundle, and never lets a model's prose stand in for a receipt.
+
+Its organising move is lifting the binding constraint. A flat climb is held at one link of the
+chain a round runs through, and there are always more faults in view than links holding the line.
+The Super Loop finds the one link holding the climb back, lifts it with one change, confirms from
+recorded bytes that the line moved, and goes to find the next. [The climb
+reference](../whole-run-investigation/references/climb.md#find-the-binding-constraint) finds the
+link; §1 to §4 aim one change and one prediction at it; §5 and §6 read whether the link moved and
+whether the line followed; §7 sends the loop back to walk again, and the constraint ledger (§6)
+carries each answer to the next pass. A pass that cannot name the constraint it attacked has not
+been a pass of the Super Loop.
 
 ## Resume the actual campaign
 
@@ -35,6 +45,14 @@ Choose from a recorded failure, wasted work or an unresolved decision — not fr
 what looks fragile. Name the owner and the falsifier before writing code. Read the producer, its
 consumers and the existing tests before adding a mechanism; most of the time the mechanism you
 need already exists with one caller hardcoded to the only case anyone needed so far.
+
+Start from the current row of `notes/binding-constraints.md` (§6). Every choice names the link it
+attacks, in the words of the climb reference's chain, and the owner of the bytes that would move
+it. After two batteries miss the band the same way, or a prediction comes back `refuted`, walk the
+chain again before choosing instead of trying the next idea on the old constraint. While a capping
+link holds, choose it first; the climb reference says which links cap the line, and a change whose
+effect has to pass a live cap is spent on nothing. Aiming at a link other than the ledger's current
+constraint needs a fresh walk, recorded in the ledger, that moved the constraint there.
 
 Prefer, in order: delete the competing owner, reuse the existing one, then add the minimum. Apply
 `simplify` to each improvement in the same commit. A frozen size in `tools/loc/source-policy.json`
@@ -142,6 +160,12 @@ terminal", "the next battery's verified count falls by at least three of 25", "a
 the first 8 batteries land between 1/n and n−1/n", "no task is carried unchanged after a full
 pass". "Improves" is not a prediction. Several changed mechanisms make a composed-system test: it
 can prove operation, while a causal claim needs a controlled replay or a matched comparison.
+
+At least one row observes the constraint at its own link and not only in the pass rate: the next
+edge label, a `coupled` count, a rehearsal verdict or a placement, whichever that link produces. A
+pass rate can move for reasons the link never saw, and a link that moved under a flat pass rate is
+a result of its own (§6). `prediction.ts` has no field for the link, so name it at the start of
+`--moved-variable` in the climb reference's words, as in `--moved-variable "the solver: <change>"`.
 
 ## 4. Launch through one owner
 
@@ -436,9 +460,30 @@ link that held it, including which sentence the Builder cited when it declined a
 (lane 36) and what its prose and notes say each round set out to do. That constraint is where §1
 starts.
 
+### Lifted, held or unreached: the constraint ledger
+
+After adjudication, read the constraint at its own link first and on the line second. It is one of
+three:
+
+- **lifted**: the link moved and the line followed. Walk the chain again for the next constraint.
+- **held**: the link moved and the line did not, so the constraint was misnamed. Restart the walk
+  from that link, with this pass's rows as its evidence.
+- **unreached**: the link did not move, so the change never did what it was for. Fix its path
+  (§2), containment included, before naming another constraint.
+
+Each pass writes one row to the local `notes/binding-constraints.md`, which is never published: the
+date; the runs read; the constraint, as its link, its owner and its evidence with denominators; its
+falsifier; the change, as PR and sha; the prediction ids frozen for it; and the outcome, once
+adjudicated. The next pass reads it first. The ledger, these three outcomes and the Meta Agent's
+`constraint` row were added on 2026-09-30 and have not yet been exercised on a recorded pass, so
+the first passes that write it test the rule as well as the product; record where a pass did not
+fit the row rather than bending the row to fit.
+
 ## 7. Decide the next move
 
-Choose one: retain and measure; fix the demonstrated owner; delete a mechanism with no consumer or
+The constraint's outcome (§6) comes first: it says whether the next move is a walk for a new
+constraint, a walk from the same link, or a repair of the change's path. Then choose one: retain
+and measure; fix the demonstrated owner; delete a mechanism with no consumer or
 no decision effect; investigate a consequential ambiguity; or stop because the authorised programme
 or the allowance ended, or because a run's climb stalled. The product owns its own within-run climb
 and rebuild decisions, but never stops on one: a stall, as AGENTS.md "Goals and the climb" defines it
@@ -477,6 +522,7 @@ recorded as `not triggered`, so a skipped skill is a decision rather than an omi
 | --- | --- | --- |
 | read | `whole-run-investigation` rows A to I, then the safeguard census, then a diff of the campaign's adopted versions, then `wri.ts climb` once the campaign has two edges, then `wri.ts gates` and a `replay --under` for every correction it lists | its semantic lanes, the number the tier allows, when a recorded row stays unexplained; `whole-run-investigation`'s [climb reference](../whole-run-investigation/references/climb.md) on any climb row the watch printed, and whenever a transition needs attribution |
 | adjudicate | `prediction.ts adjudicate` for every row, ledger kept in the local `notes/predictions/` | `attribution-and-proof` before any sentence claims improvement |
+| diagnose | read `notes/binding-constraints.md` first and write this pass's row (§6); whenever two batteries miss the band the same way, `wri.ts climb` prints `flat: yes` or an adjudication is `refuted`, walk the chain per the [climb reference](../whole-run-investigation/references/climb.md#find-the-binding-constraint) | Luna lanes through `codex-luna-swarm` for the cross-run count at one link; `bounded-investigation` when a link is disputed |
 | patch | fix on the owning PR; `simplify` on each diff; record the `system-path-simulation` proof choice and its result | `safeguards` when a fix adds a decision no record observes; a fresh replay when existing evidence does not cover the changed consumer |
 | compose | merge in the compose tree, prove every head an ancestor; let `launch-run` own its one gate | `stack-hop` and `intelligent-rebase` when PR order changes or two fixes touch one file |
 | launch | `launch-run`, freeze before the opening, detached watch, next wake | `whole-run-investigation`'s [outcome reference](../whole-run-investigation/references/outcome-review.md) assesses a suspected stall; a stop executes only under existing authority |

@@ -1,9 +1,10 @@
 # Super Loop completeness review
 
 Independent lenses for one question: **does the Super Loop close?** The loop is the campaign cycle
-this skill owns — choose an experiment, prove the changed path, freeze a prediction, launch, watch,
-read the recorded bytes, adjudicate, patch the owner, restack, launch again. A stage that runs but
-whose output reaches no next stage is an open edge: work that costs money and changes nothing.
+this skill owns — find the binding constraint, choose an experiment, prove the changed path, freeze
+a prediction, launch, watch, read the recorded bytes, adjudicate, patch the owner, restack, launch
+again. A stage that runs but whose output reaches no next stage is an open edge: work that costs
+money and changes nothing.
 
 Completeness is not "does the code exist". An edge is **closed** only when all four hold:
 
@@ -33,12 +34,14 @@ text, counterexamples, reference artifacts, per-task failure locations), and do 
 modify a live run. Cite every claim as `path:line`. Name one innocent explanation for each open
 edge. Where an edge's status turns on a fact you cannot read, return it as a falsifier, not a guess.
 
-Loop inventory, as of 18 September 2026:
+Loop inventory, as of 18 September 2026, with the diagnose and constraint-ledger rows added on 30
+September:
 
 | stage | owner | scripts |
 | --- | --- | --- |
 | choose, patch, compose | `run-improvement-campaign/SKILL.md`, `simplify`, `stack-hop` | — |
 | prove the changed path | `system-path-simulation` | `run-condition.mts`, `judge-replay.mts`, `review-settle.mts`, `seed-campaign.mts` |
+| diagnose | `whole-run-investigation`, `references/climb.md` "Find the binding constraint" | `wri.ts climb`, `wri.ts census`; `readClimbBatteries`, `readClimbReadout` |
 | predict | `run-improvement-campaign` | `prediction.ts` |
 | launch | `launch-run` | `launch.ts`, `probe.ts`, `options.ts`, `service.ts`, `stop.ts` |
 | watch | `run-improvement-campaign` | `campaign.ts` |
@@ -46,7 +49,14 @@ Loop inventory, as of 18 September 2026:
 | attribute a climb | `whole-run-investigation` | `references/climb.md` |
 | independent evaluation | `harness-query` | `harness-query.mts` |
 | close | `run-improvement-campaign` | `campaign.ts`, `prediction.ts adjudicate`, `notes/current-state.md` |
+| constraint ledger | `run-improvement-campaign` | `notes/binding-constraints.md` |
 | weekly | `weekly-run-review`, `safeguards` | `select-best-runs.ts`, `bun run outcome -- --safeguards` |
+
+Two edges run through the constraint ledger, and the four-part test holds them like any other:
+**diagnose → choose**, where the named constraint is what the next change is chosen against, and
+**adjudicate → ledger → next diagnose**, where a pass's outcome (lifted, held or unreached) is what
+the next walk reads first. Lens 3 owns the first and lens 6 the second. Neither has been exercised
+on a recorded pass yet, so a lens that finds one open or decorative reports it so.
 
 Required output, one table plus the notes below it:
 

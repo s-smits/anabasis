@@ -190,7 +190,12 @@ exception covers it:
 | batching | pull requests against authoring text after two off-band batteries | SKILL.md, "When two batteries miss the band the same way, stop editing prose" |
 | closure | a terminal with no `campaign.ts` closure or adjudication | `terminal.json` against the closure output and the ledger |
 | climb | a new `versions/<battery>/` read without `wri.ts climb` | the directory's mtime against the reader call |
+| constraint | a launch whose frozen predictions name no link, or a change aimed at a link other than the ledger's current constraint with no fresh walk recorded | the `movedVariable` text in `notes/predictions/<runId>.jsonl` against the latest row of `notes/binding-constraints.md` |
 | watch | a live run with nothing watching it, such as a target turn that ended on a question while its runs had only launch monitors | `ps` for `campaign.ts --every` or a pulse loop; the target's armed monitors, crons and their timeouts |
+
+The `constraint` row and the ledger it reads were added on 2026-09-30 and have not yet been
+exercised on a recorded pass (SKILL.md, "Lifted, held or unreached: the constraint ledger"), so its
+first `DIRECT`s test the rule as well as the target.
 
 Credit exhaustion is the environment's, and only an explicit message proves it, so read the run's
 `terminal.json` before calling a stop exhaustion.

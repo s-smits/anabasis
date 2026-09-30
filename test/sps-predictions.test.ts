@@ -82,6 +82,17 @@ describe("predictions", () => {
     },
   );
 
+  // The frame × model note of 2026-09-30 declared "P1: …". Both runners listed its rows as open;
+  // this helper read none, so it refused the hash and could not resolve a single row.
+  it('reads rows declared as "P1: …" as the runners do', () => {
+    writeFileSync(note, NOTE.replace(/^([A-Z]\d) — /gm, "$1: "));
+    const hashed = run("--hash");
+    expect(hashed.exitCode).toBe(0);
+    expect(hashed.stdout).toContain("3 row(s): P1 P2 R3");
+    expect(run("--resolve", "P2: refuted — 25 of 25 rows carry no instant").exitCode).toBe(0);
+    expect(run("--unresolved").stdout).toBe("UNRESOLVED: P1 R3\n");
+  });
+
   it("refuses to hash a note whose rows the parser cannot read", () => {
     writeFileSync(note, NOTE.replace(/^([A-Z]\d) — /gm, "- $1: "));
     const refused = run("--hash");

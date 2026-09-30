@@ -94,6 +94,7 @@ import {
 } from "#src/backends/resolve.ts";
 import { CONDITIONS, type Condition, SLOTS, slotEnvironment } from "#skills/launch-run/scripts/options.ts";
 import { scrubSessionEnv } from "./session-env.mts";
+import { declaredRows, splitNote } from "./prediction-note.mts";
 import { credentialFileOf, openRunsOn } from "./credential-use.mts";
 
 const die: ExitWith = exitWith("run-condition");
@@ -724,8 +725,10 @@ else {
   note(`descendants ${descendants.present.length} of ${descendants.observed.length} sampled still present`);
   note(`report      ${join(out, REPORT_FILE)}`);
   if (predictions !== null) {
-    const ids = [...predictions.text.matchAll(/^(P\d+)\b/gm)].map((m) => m[1]);
-    note(`UNRESOLVED  ${ids.length === 0 ? "(no P-numbered lines found)" : ids.join(", ")}`);
+    const ids = declaredRows(splitNote(predictions.text).preRegistered);
+    note(
+      `UNRESOLVED  ${ids.length === 0 ? "(no declared row predictions.mts can resolve)" : ids.join(", ")}`,
+    );
   }
 }
 runtimeProcess.exitCode = captured

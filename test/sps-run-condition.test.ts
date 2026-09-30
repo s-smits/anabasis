@@ -302,6 +302,24 @@ describe("run-condition through the real controller", () => {
     expect(battery.cases.map((row) => row.pass)).toEqual(Array.from({ length: TASKS }, () => null));
     expect(result.stderr).toContain("typed non-results recorded");
   });
+
+  // The closing list is the work the resolver will ask for. On 2026-09-30 this runner listed P1–P5
+  // of a note declared as "P1: …", and predictions.mts could resolve none of them.
+  it("closes by naming the rows predictions.mts resolves", () => {
+    for (const dir of ["vendor", "src"]) symlinkSync(join(REPO_ROOT, dir), join(scratch, dir));
+    const note = join(scratch, "predictions.md");
+    writeFileSync(
+      note,
+      "# Frame\n\nP1: the frame changes nothing.\nR2 — the selector rebuilds.\n\n## Resolutions\n",
+    );
+    const result = run(base({ "--builder": "capture", "--predictions": note }));
+    expect(result.exitCode).toBe(0);
+    expect(runTypeScript("predictions.mts", ["--file", note, "--hash"]).exitCode).toBe(0);
+    expect(runTypeScript("predictions.mts", ["--file", note, "--unresolved"]).stdout).toBe(
+      "UNRESOLVED: P1 R2\n",
+    );
+    expect(result.stderr).toContain("UNRESOLVED  P1, R2\n");
+  });
 });
 
 describe("process census", () => {

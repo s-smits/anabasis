@@ -93,6 +93,7 @@ import type { OpenRecord } from "#src/meta/json-shape.ts";
 import { keyIfDefined, keyIfNotNull } from "#src/meta/optional-key.ts";
 import { hasText } from "#src/meta/text.ts";
 import { scrubSessionEnv } from "./session-env.mts";
+import { declaredRows, splitNote } from "./prediction-note.mts";
 
 const die: ExitWith = exitWith("run-segment");
 
@@ -739,9 +740,11 @@ if (asJson) {
    *  2026-08-17 and their pre-registered predictions sat unresolved while the session moved on. Print
    *  the open list by name so the last thing on the terminal is the work that remains. */
   if (predictions !== null) {
-    const ids = [...predictions.text.matchAll(/^(P\d+)\b/gm)].map((m) => m[1]);
+    const ids = declaredRows(splitNote(predictions.text).preRegistered);
     note("");
-    note(`UNRESOLVED  ${ids.length === 0 ? "(no P-numbered lines found)" : ids.join(", ")}`);
+    note(
+      `UNRESOLVED  ${ids.length === 0 ? "(no declared row predictions.mts can resolve)" : ids.join(", ")}`,
+    );
     note(`            resolve each against the trail and the workspace, then append the resolution to`);
     note(`            ${predictions.path}. The recorded segment still needs its predictions reviewed.`);
   }

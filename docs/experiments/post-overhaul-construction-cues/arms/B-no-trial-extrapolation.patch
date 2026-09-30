@@ -1,0 +1,49 @@
+diff --git a/src/builder/harness-trial.ts b/src/builder/harness-trial.ts
+--- a/src/builder/harness-trial.ts
++++ b/src/builder/harness-trial.ts
+@@ -545,8 +545,9 @@
+   if (verdict === "pass") {
+-    return `Your solver passed this task on its first unaided attempt, so a battery of tasks like it scores near its size.${roundClause(tally, tellOnce)}`;
++    // ABLATED(trial-extrapolation): keep the observed outcome, not a forecast for unmeasured tasks.
++    // return `Your solver passed this task on its first unaided attempt, so a battery of tasks like it scores near its size.${roundClause(tally, tellOnce)}`;
++    return `Your solver passed this task on its first unaided attempt.${roundClause(tally, tellOnce)}`;
+   }
+-  // Stated as the mirror of the pass sentence, and with no next task: a battery locates a limit only
+-  // through its misses, so a sentence steering towards an easier task would choose the course for
+-  // the Builder.
+-  return `Your solver missed this task on its first unaided attempt, so a battery of tasks like it scores near zero.${roundClause(tally, tellOnce)}`;
++  // ABLATED(trial-extrapolation): the miss remains a miss and chooses no next task.
++  // return `Your solver missed this task on its first unaided attempt, so a battery of tasks like it scores near zero.${roundClause(tally, tellOnce)}`;
++  return `Your solver missed this task on its first unaided attempt.${roundClause(tally, tellOnce)}`;
+ }
+@@ -604,4 +605,6 @@
+     name: "harness_trial",
+     label: "Harness trial",
+-    description: `Measure one of your own tasks against your own solver. The Built Harness you wrote solves the named task blind — public input and your registered tools only, no hidden expectations, no reference solve, under the same turn cap, solve wall and confinement a measured battery uses — and the real check program then grades the bytes it submitted. You get one aggregate truth.verdict of pass, fail or not-run, whether it submitted at all, how many turns it took and what the solve spent (minutes against the solve wall, tool calls, cost): never which check decided, a counterexample, a failure location, the artifact or any verifier output. This is the only evidence in the round about how hard your battery actually is. A task your solver passes on its first attempt will most likely pass in the battery too. Each rehearsal costs one measured case from the run's provider budget, and the accepted bytes are graded under the same per-check wall your agent/config.yaml sets for the battery. Use harness_inspect readiness to choose taskId; full battery and control coverage, candidate gates and adoption stay with submit.`,
++    // ABLATED(trial-extrapolation): remove the same predictive cue from the standing description.
++    // Original cue: A task your solver passes on its first attempt will most likely pass in the battery too.
++    description: `Measure one of your own tasks against your own solver. The Built Harness you wrote solves the named task blind — public input and your registered tools only, no hidden expectations, no reference solve, under the same turn cap, solve wall and confinement a measured battery uses — and the real check program then grades the bytes it submitted. You get one aggregate truth.verdict of pass, fail or not-run, whether it submitted at all, how many turns it took and what the solve spent (minutes against the solve wall, tool calls, cost): never which check decided, a counterexample, a failure location, the artifact or any verifier output. This is the only evidence in the round about how hard your battery actually is. Each rehearsal costs one measured case from the run's provider budget, and the accepted bytes are graded under the same per-check wall your agent/config.yaml sets for the battery. Use harness_inspect readiness to choose taskId; full battery and control coverage, candidate gates and adoption stay with submit.`,
+     parameters: Params,
+diff --git a/test/harness-trial.test.ts b/test/harness-trial.test.ts
+--- a/test/harness-trial.test.ts
++++ b/test/harness-trial.test.ts
+@@ -544,6 +544,16 @@
+-    // A miss is stated as the mirror of a pass and names no next task: a first battery is authored to
+-    // be missed, so steering towards an easier rehearsal would choose the Builder's course for it.
++    // ABLATED(trial-extrapolation): observed verdicts and their schemas stay; forecasts leave.
+     const missed = isString(failing.nextAction) ? failing.nextAction : "";
+-    expect(missed).toContain("a battery of tasks like it scores near zero");
++    expect(missed).toContain("Your solver missed this task on its first unaided attempt.");
+     expect(missed).not.toMatch(/easier|rehearse a/);
++    expect(passing.nextAction).toContain("Your solver passed this task on its first unaided attempt.");
++    for (const body of [passing, failing]) {
++      expect(body.nextAction).not.toMatch(/scores near|most likely pass/);
++      expect(asRecord(body.validation)?.truthVerdict).toBe(asRecord(body.truth)?.verdict);
++      expectNoProtectedDetail(JSON.stringify(body));
++    }
++    const { tool } = round(dir, assigningSolver(RIGHT_SLOT));
++    expect(tool.description).not.toContain("most likely pass in the battery");
++    expect(tool.description).toContain(
++      "full battery and control coverage, candidate gates and adoption stay with submit",
++    );
+     expect(passing.solve).toEqual({

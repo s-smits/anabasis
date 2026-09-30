@@ -73,8 +73,9 @@ call sequences, say whether the brief and tools publish a sufficient constructio
 **9. Rehearsal instrument reach.** From `REHEARSAL NOT-RUN`, say which families the rehearsal
 verifier deadline lets the instrument grade at all.
 
-**10. Difficulty calibration loop.** From `OFF-AIM STREAK`, the calibration table and the climb
-edges, say whether the batteries move towards the aim round over round.
+**10. Difficulty calibration loop.** From `OFF-AIM STREAK`, the calibration table and the `climb`
+lane's line, say whether the batteries draw the line AGENTS.md "Goals and the climb" reads progress
+on, rather than whether they approach the aim.
 
 **11. Submit decision against rehearsal evidence.** From `SUBMITTED BYTES NEVER REHEARSED`, say
 what the Builder did with each verdict before submitting.
@@ -111,7 +112,7 @@ moved between rounds and whether the accepted bytes match the declared scope.
 CHANGED`, say which changed source executed on this run.
 
 **22. Solver process and walls.** From the wall shares and the tool-in-trace lead, say how the
-solver spent its walls and whether a wall-bound case is a failure.
+solver spent its walls and whether a wall-bound miss measured the task or the wall.
 
 **23. Trace challenge.** Only when verified cases exceed zero and lane 1, 4, 8, 22 or 34 suspects a
 shortcut: open the private packet alone and show from the trace where the deciding value came

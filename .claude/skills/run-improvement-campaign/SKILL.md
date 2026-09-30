@@ -181,8 +181,9 @@ watch is `bun run runs pulse --once`** (`tools/runs/pulse.ts`, documented in
 [launch-run](../launch-run/SKILL.md#see-what-is-running)), run from main as the last action of each
 reply so the next look lands about 270 s later. It finds every open run itself and prints what moved
 since the previous look: a round opened, a preview or rehearsal, a battery, a quiet Builder, a
-non-result, the Builder's latest checkpoint line, the plan's target against the aim. Nobody has to
-name a run, and a run launched since the last look simply appears.
+non-result, the Builder's latest checkpoint line, and each recorded battery with its zone, the
+off-aim streak it extends and a stall once one arrives. Nobody has to name a run, and a run
+launched since the last look simply appears.
 
 When nobody is reading, one detached watcher covers all live runs and speaks only on a stop row:
 
@@ -294,20 +295,19 @@ are the only visible sign of what the Builder is doing.
 ### Read the climb, not only the score
 
 The watch also reads `difficulty-decisions/`, the controller's own placement per battery, and
-prints one row as each lands: `battery run-i02: 24/25 too-easy`. This is the half a score
-cannot show. A high score says the battery was easy; only the decision says whether the next one
-asks for more, and only a run of them says whether asking worked.
+prints one row as each lands: `battery run-i02: 24/25 too-easy`. The placement sizes the next
+battery and orients the Epoch Reviewer, and the Builder never hears it; what asks the Builder for
+more is the no-limit line a full pass sends (AGENTS.md "Goals and the climb", under "Who hears the
+placement, and what it drives"). So a row says how the battery landed, and only a run of them says
+whether asking worked.
 
-- **read the line, not the zone.** The climb's shape is a line that moves: a raised requirement
-  drops the pass rate, a repair or rebuild lifts it, and over 8 or 12 rounds the swings narrow into
-  the band. A battery below n/n is what an ambitious round expects, and a run of n/n batteries is
-  the failure, whatever its zones read: 3/3 reads `over-aim` while passing everything. `wri.ts climb`
-  prints the line as `velocity` (batteries between 1/n and n−1/n, and the swing), `horizon` (that
-  count over the first 8 and 12), `flat` and `carried` (tasks measured again unchanged after a full
-  pass). A stall is the line gone flat, three batteries in a row no closer than the closest before
-  them; `bun run runs pulse` names it and this watcher does not, and stopping it is the operator's
-  (§7). Reserve 6a8ca0 read 7/7 thirteen times while it grew inputs at unchanged checks, and bulk
-  RNA-seq 36e268 read n/n eleven times while carrying 53 passed tasks forward. Rebuild what the tasks
+- **read the line, not the zone.** Progress is read on the run's line of batteries, and a run of
+  full passes is the failure whatever its zones read (AGENTS.md "Goals and the climb", under "Its
+  shape, and how progress is read"). `wri.ts climb` prints that line as its `velocity`, `horizon`,
+  `flat` and `carried` lines, which
+  [the climb reference](../whole-run-investigation/references/climb.md) explains. `bun run runs
+  pulse` names a stall and this watcher does not, and stopping one is the operator's (§7). Bulk
+  RNA-seq 36e268 carried 53 passed tasks forward across its full passes, so rebuild what the tasks
   demand, not their numbers or their count.
 - a decision stating **repeated failures** or a **family conflict** is `surgical`, and one placed
   nowhere is `overhaul`. Otherwise it moves by its zone: `too-hard` is `reserved`, and the other
@@ -320,16 +320,14 @@ task bytes — and unlike the decision it works on a battery that has not scored
 bun .claude/skills/whole-run-investigation/scripts/wri.ts climb <campaign dir> [--json]
 ```
 
-Per battery it prints the check-tier histogram and a median structural row; per edge, one of
-`restated`, `adjusted`, `narrowed`, `widened`, `eased`, `escalated` or `replaced`. The label is
-structural, so name the changed public requirement from the task rows beside it: truss-sol-2d7812's
-new load sites and forbidden volume read `widened`, two inputs more, and 16 of the 17 edges that
-widened on an input or rule alone were followed by full passes. `replaced` is no reading
-at all: fewer than half the task ids carried over, so the published numbers could not be joined, and
-the task bytes need reading by hand. Run it whenever a new `versions/<battery>/` directory appears, and
-at every read step on a campaign that has landed off its aim twice. It is read-only, it costs
-nothing, and it is the only reader that answers "did anything get harder" before the battery it
-describes is paid for.
+Per battery it prints the check-tier histogram and a median structural row, and per edge one
+structural label, which [the climb reference](../whole-run-investigation/references/climb.md)
+explains. A label is a reading and not a forecast (AGENTS.md "Goals and the climb", under "Reading
+the climb as the operator"), so name the changed public requirement from the task rows beside it:
+truss-sol-2d7812's new load sites and forbidden volume read `widened`, two inputs more. Run it
+whenever a new `versions/<battery>/` directory appears, and at every read step on a campaign that
+has landed off its aim twice. It is read-only, it costs nothing, and it is the only reader that
+answers "did anything get harder" before the battery it describes is paid for.
 
 Run `c1d2a7`, read this way on 18 September while its fourth battery was still measuring:
 
@@ -366,17 +364,17 @@ again, since the page was never delivered.
 | you want to know | read | not |
 | --- | --- | --- |
 | whether the run is climbing | `wri.ts climb` `velocity`, `horizon`, `flat` and `carried` lines | the zone, the score, or a monotonic approach to the aim |
-| whether the next battery will be asked for more | `difficulty-decisions/`, the placement the watch prints | the score |
+| whether the Builder was asked for more | whether the latest battery passed every verified case, which sends the no-limit line (`noLimitLine`) | the zone, which the Builder never hears |
+| how the next battery is sized | `difficulty-decisions/`, the placement the watch prints | the score |
 | whether the tasks actually got harder | `wri.ts climb` edge verdicts and the tier histogram | the level label, new task ids, or a longer description |
 | whether a page could have steered the Builder at all | `git show <opening source.commit>:<path>` | the working tree or the stack head |
 | whether the Builder read a starter file | the bundle bytes and the Builder's notes | read counts in `builder-path-record.jsonl`; the Builder reads through bash, so zero proves nothing |
 | whether a battery is hard or merely unsolvable | `artifact.json` beside `public-task.json` in the settled cases | a reviewer finding, a published limit, or a zero score |
 | whether a slow solve is the wall | `solver.toolCalls` in `case-result.json` | `max_turns` or the solve wall, which no recorded truss case approached |
 
-Open [the climb reference](../whole-run-investigation/references/climb.md) on any of these: it owns the attribution, the goal
-these rows serve — a line that swings between 1/n and n−1/n on named changed public requirements and
-narrows into `climb.band` over 8 or 12 rounds — and the difference between a harder battery and a
-differently-labelled one.
+Open [the climb reference](../whole-run-investigation/references/climb.md) on any of these: it owns
+how to read them, the attribution, and the difference between a harder battery and a
+differently-labelled one. The goal these rows serve is AGENTS.md "Goals and the climb".
 
 ### A round the loop threw away looks exactly like a round that changed nothing
 
@@ -581,14 +579,14 @@ In short, every round: read the gate's episodes against its priors, and regrade 
 under the evaluator that replaced it. The first says which checks cost rounds without catching
 anything; the second says whether a correction moved any verdict at all.
 
-### When the line goes flat, stop editing prose
+### When two batteries miss the band the same way, stop editing prose
 
-A flat line — three batteries of one product in a row on one side of the aim, none closer than the
-closest before them, which `bun run runs pulse` names — is a settled result, not an ambiguous signal
-needing more diagnosis. It says the authoring loop cannot yet author above this solver under the
-surfaces the run was served, and those surfaces are frozen at its opening. A run of full passes is
-the common case: on 2026-09-30, 251 of the 277 batteries placed in local runs with two or more were
-full passes.
+Two batteries of one product off the band on the same side are a settled result, not an ambiguous
+signal needing more diagnosis (AGENTS.md "While it runs"). They say the authoring loop cannot yet
+author above this solver under the surfaces the run was served, and those surfaces are frozen at
+its opening. A run of full passes is the common case (AGENTS.md "Goals and the climb", under "The
+goal"). The stall `bun run runs pulse` names is a later point on the same line, and stopping there
+is the operator's (§7).
 
 On 18 September the second battery settled 6 of 6 at 08:26 with every case solved in one turn and
 the tightest margin 6.7% under its limit, against the author's own pre-registered "at most 2". The
@@ -609,10 +607,10 @@ named next experiment. Then wait. Work on an authoring surface after that point 
 launch, and it should be scheduled as such rather than presented as a response to this one.
 
 Then read which sentence the Builder cited when it declined to raise the demand (lane 36), because
-that is the surface the next launch changes. Both 887c163ee Builders that read n/n for 13 and 11
-batteries measured the solver's reach correctly and declined on the kickoff's "add no requirement it
-does not name", then submitted on one passing rehearsal citing "submit once a clear preview says it
-works". The wording was the binding constraint there, and it changed for the next launch.
+that is the surface the next launch changes. AGENTS.md "Goals and the climb", under "What the
+Builder is asked, round by round", records the two 887c163ee Builders that declined on the kickoff's
+wording; they then submitted on one passing rehearsal citing the round prompt's "submit once a clear
+preview says it works", so the wording was the binding constraint there.
 
 Read what the Builder said it set out to do, in its prose and notes, before judging the round. It
 states the gap the Builder saw, and a score cannot. The fourth round of 3fd52f9e-10 opens "every rule
@@ -631,17 +629,14 @@ and `bun run runs pulse` names it, is the operator's to stop. Whether a
 new wave of runs improved on the one it replaced is a [wave-audit](../wave-audit/SKILL.md), read
 at the first battery, the third round and the terminal.
 
-The goal that choice serves is a **healthy, ambitious climb**, which AGENTS.md "Goals and the climb"
-owns (operator, 2026-09-29). Of two candidate moves, prefer the one that brings the next battery
-closer to the solver's limit on a changed public requirement, provided every fail it could produce is
-earned on a published rule. A move that buys a placement with an invented rule, a check the public
-projection does not support or a count told to the Builder has failed the goal however the zone reads,
-and so has one that raises a score, adds tasks or renames levels without moving the line. Weigh the
-choice against the run's line over 8 or 12 rounds, not its last zone: a move whose next battery would
-swing, a raised requirement that drops the rate or a repair that lifts a battery a defect sank, serves
-the goal, and one after which the line would sit at n/n where it sat does not.
-[The climb reference](../whole-run-investigation/references/climb.md) holds the line's four numbers
-that say whether it moved.
+The goal that choice serves is the **healthy, ambitious climb** AGENTS.md "Goals and the climb"
+owns, and what fails it is listed there under "Healthy" and "Its shape, and how progress is read".
+Of two candidate moves, prefer the one that brings the next battery closer to the solver's limit on
+a changed public requirement, provided every fail it could produce is earned on a published rule, and
+weigh it against the run's line rather than its last zone: a move after which the line would sit at
+n/n where it sat has not served the goal.
+[The climb reference](../whole-run-investigation/references/climb.md) says how to read the four
+numbers that show whether the line moved.
 
 Track the four evidence levels separately — present in source, deterministically proved,
 live-exercised, outcome-proved — and never let one stand in for the next. Keep negative results and

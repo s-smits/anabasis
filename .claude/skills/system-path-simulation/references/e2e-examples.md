@@ -11,6 +11,10 @@ Whole mechanisms moved too. The repair experiment, the Repair Engineer, the Prog
 paired candidate-versus-current contest were removed on 2026-09-04. An example below that selects a
 `repair` move, spends a repair packet or reads a `-repair-on`/`-repair-off` variant records a run
 measured before that date. Later source changed the selector again. Check the measured revision for its available moves.
+The same holds for the climb examples 1, 3b and 4 exercise: the `climb` move, the pinned level and
+the selector's difficulty contract are gone. The controller's next move now reads no placement, and
+every change in difficulty is the Builder's (AGENTS.md "Goals and the climb", under "Who hears the
+placement, and what it drives").
 
 Since 2026-09-11 the one stub of example 1 has an owner in source: `HarnessBuildOptions.builderRuntime`
 binds a scripted session into the real build stage, `test/full-run-scripted-loop.test.ts` runs the
@@ -280,7 +284,8 @@ the decisive fact.
 
 When a scenario skips ahead instead of opening from scratch, the seed text is a model-visible
 surface and has to be written like one. The shape below mirrors `directKickoff` plus the stage
-contract a climb round appends, with the completed stages stated as fact and the skip disclosed.
+contract a climb round appended then, with the completed stages stated as fact and the skip
+disclosed. What a round's opening adds on current source is in [the live segment case](../cases/live-segment.md).
 
 ```text
 USER REQUEST (verbatim)

@@ -3,7 +3,8 @@
 This catalogue records the checklist's migration and source checks at the revisions named below.
 Those checks must be repeated before treating a row as current. In particular, the present
 Builder-led experiment and check-program contract supersede parts of the older climb and engine
-descriptions. Preserve the historical rows as evidence of that review, not as today's requirements.
+descriptions, and the climb as it stands is AGENTS.md "Goals and the climb". Preserve the
+historical rows as evidence of that review, not as today's requirements.
 This is not a campaign score. The campaign record in `run-improvement-campaign/SKILL.md` applies these facts
 to one campaign, repeating candidate, battery and event blocks under exact identities. The
 whole-run review sessions in `whole-run-investigation` review an active or completed run and consume
@@ -145,7 +146,7 @@ today, and a `Lane` cell below names that lane by its current number.
 | M5 | correct only when triggered | keep | M4 | Judge 1 has typed valid/invalid/incomplete/off/unavailable states; only complete control-valid evidence can pass. | lane 16 |
 | M6 | obsolete | obsolete | — | The component was the Repair Engineer, removed on 2026-09-04 with the repair experiment. Its replacement, the deterministic rebuild advice packet, is derived from recorded case rows and has no diagnosis-coverage denominator to record. | lane 25 |
 | M7 | partly correct | split | M6; M7; C8; promotion event; X1 | Claim/refusal, readiness, adoption, promotion and terminal each have an independent trigger and owner. | lanes 24, 25 |
-| M8 | partly correct | split | rebuild event; climb event | A rebuild reopens the harness and is measured as a build; climb freezes the harness and changes only the task difficulty level. `census.json` does not directly join the task-set identity. | lanes 14, 20 |
+| M8 | partly correct | split | rebuild event; climb event | A rebuild reopens the harness and is measured as a build. The climb move that froze the harness and changed only the task difficulty level is gone: `decideNextMove` (`src/run/next-move.ts`) builds, measures, rebuilds or stops, and every change in difficulty is the Builder's. `census.json` does not directly join the task-set identity. | lanes 14, 20 |
 | M9 | partly correct | keep | M2; M3; typed non-result event | Host case evidence owns truth and denominators. Reject an unknown non-result kind at review because the JSON parser alone does not. | lane 25 |
 | X1 | partly correct | split | X1; X2 | Typed closure and cross-projection identity agreement are separate. Snapshot command completion does not prove semantic schema/digest agreement. | A, lane 25 |
 | X2 | unobservable | procedure-only | P1-P3; X3 | Frozen prediction resolution remains operator-maintained; current run evidence has no complete lineage join. | lanes 25, 10 |

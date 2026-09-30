@@ -5,15 +5,16 @@ ceiling, or a check the Builder wrote — earns its place, and what to change wh
 
 ## Why this belongs beside the climb
 
-A refusal and the climb pull on the same round. Every refusal a Builder has to answer spends
-minutes the round could have spent making the battery harder, and every check that fails a correct
-answer moves a battery's pass count as surely as a harder task would. So a check can hold the
-climb back two ways: a gate that refuses correct candidates stalls the round, and a declared check
-that fails correct answers makes an over-aim battery read as on the band. The triage of 28 recorded
-runs on 2026-09-27 found both at once. Of 25 control-census episodes, 21 were slow but correct
-tools, 813 minutes in all. And 10 of the 15 verified shipping failures were two Builder-written
-firmware checks failing correct sketches, which made three batteries that were really 6/6, 23/23
-and 11/11 read 4/6, 19/23 and 9/11 — and made two plans read as met that had missed.
+A refusal and the climb pull on the same round. Every refusal a Builder has to answer spends minutes
+the round could have spent making the battery harder, and every check that fails a correct answer
+moves a battery's pass count as surely as a harder task would (AGENTS.md "Goals and the climb",
+under "What one battery can say"). So a check can hold the climb back two ways: a gate that refuses
+correct candidates stalls the round, and a declared check that fails correct answers makes an
+over-aim battery read as on the band. The triage of 28 recorded runs on 2026-09-27 found both at
+once. Of 25 control-census episodes, 21 were slow but correct tools, 813 minutes in all. And 10 of
+the 15 verified shipping failures were two Builder-written firmware checks failing correct sketches,
+which made three batteries that were really 6/6, 23/23 and 11/11 read 4/6, 19/23 and 9/11 — and made
+two plans read as met that had missed.
 
 The same evidence also says what a check is for: the loop found real defects, 7 of 8 accept-control
 refusals among them, and a battery that scored a real defect is a battery the climb could read. So

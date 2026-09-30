@@ -21,9 +21,10 @@ bun run fullrun -- --prompt "<request>" [--context <path>]...
 ```
 
 Do not build a one-off driver around a test. Unknown flags refuse. The loop is unbounded by default;
-its budget, repeated-no-progress and typed operational stops still apply. Difficulty statistics
-inform the Builder's next experiment; they do not impose a too-hard stop. `--max-iterations` is
-an operator cap.
+its budget, repeated-no-progress and typed operational stops still apply. The controller never
+stops on a reading of the tasks; which component hears a battery's placement is AGENTS.md "Goals
+and the climb", under "Who hears the placement, and what it drives". `--max-iterations` is an
+operator cap.
 
 ## Input contract
 
@@ -90,10 +91,11 @@ it does not restrict a product experiment to one file. Environment blockers rema
 6. Adoption: conformance, census, F2, task count, fingerprint. See `harness-contract` (adoption gates).
 7. Measurement: recorded bundle, one battery, case record, censored denominators, claim.
 8. Learning: `IterationAnalysis`, judge reviews, the rebuild advice packet, admission.
-9. Decision: `src/run/next-move.ts` builds, measures, reopens the adopted product or stops.
-   The retained `climb` mode serves explicit fixed-product callers. Adoption remains a separate
-   decision. A candidate whose battery verified no case is held as `candidate-zero-verified`;
-   one with no measurement at all is held as `candidate-unmeasured`.
+9. Decision: `src/run/next-move.ts` builds, measures, reopens the adopted product or stops, and
+   reads no placement. `--product-policy fixed` permits only measure or stop
+   (`src/run/fixed-product-policy.ts`). Adoption remains a separate decision. A candidate whose
+   battery verified no case is held as `candidate-zero-verified`; one with no measurement at all is
+   held as `candidate-unmeasured`.
 
 Validate every handoff before downstream evidence depends on it.
 

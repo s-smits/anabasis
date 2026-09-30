@@ -100,12 +100,12 @@ actually reach one:
 grep -rnE '\$\{[^{}]*(count|length|total|passes|cases|findings|lines|attempts)[^{}]*\} +[a-z]+s\b' src --include='*.ts'
 ```
 
-Most hits are safe by construction — a battery floor of five, a constant, a branch only entered
-above one — so the scan is a lead list, not a defect list. Three questions settle each one: can the
-count be one, is the sentence model-visible, and does a fixture already reach it. A hedged
-`finding(s)` spelling is the same defect wearing a disguise and hides a live singular; so does a
-verb, as in "1 character **remains**". Pin each fix with a case that reaches exactly one, in the
-test file that already covers that renderer.
+Most hits are safe by construction — the battery floor `POLICY.battery.floor`, a constant, a branch
+only entered above one — so the scan is a lead list, not a defect list. Three questions settle each
+one: can the count be one, is the sentence model-visible, and does a fixture already reach it. A
+hedged `finding(s)` spelling is the same defect wearing a disguise and hides a live singular; so
+does a verb, as in "1 character **remains**". Pin each fix with a case that reaches exactly one, in
+the test file that already covers that renderer.
 
 Save earned tuning in `.prompt-surface.json` only within repository-edit authority:
 

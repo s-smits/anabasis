@@ -182,7 +182,7 @@ where the predictions are written: a finding is as strong as the weakest part th
 depended on.
 
 Usually no run stood exactly here, and then the quantity is the **delta to the nearest real
-position**: one level lower, eight tasks instead of 25, a rebuild advice packet the real run had
+position**: one battery earlier, eight tasks instead of 25, a rebuild advice packet the real run had
 settled.
 A delta you cannot state in one line means the position was decorated rather than derived. The
 condition is part of it — four conditions on 2026-08-17 ran at `--effort medium` and `low` against a run

@@ -7,51 +7,55 @@ battery got harder or only different, and proposes the one change worth making. 
 investigation it is the `climb` lane's ground and the reading behind lanes 5, 6, 9, 10, 11 and 20,
 and behind the authorship lanes 33 to 38 wherever a climb depends on what the Builder wrote.
 
-## The goal and the line it is read on
+What the climb is for, the band and its zones, who hears the placement, what the Builder is asked
+and the incidents behind each of those rules live in AGENTS.md "Goals and the climb", and this
+reference does not restate them. It says how to read a recorded run against that section: which
+command, which rows, and what each row can and cannot say.
 
-The goal is a healthy, ambitious climb (AGENTS.md "Goals and the climb"). Its shape is a line that
-moves: a raised requirement drops the pass rate, a repair lifts it, and over 8 or 12 rounds the
-swings narrow into `climb.band`, `[0.2, 0.50]` in `thresholds.frozen.yaml` (5 to 12 verified of
-25). A battery below n/n is what an ambitious round expects, and a run of n/n batteries is the
-failure to fix. Landing on the aim is not the end either, because the next requirement moves the
-line again.
+## The line
 
-`wri.ts climb` reads the line from the claimed batteries, adopted or not, in claim order and on the
-counts the controller places (earned, where a review settled a case against its check). It prints
-four numbers:
+Progress is read on a line rather than a zone (AGENTS.md "Goals and the climb", under "Its shape,
+and how progress is read"). `wri.ts climb` draws it from the claimed batteries, adopted or not, in
+claim order and on the counts the controller placed, so a case a review settled against its check
+counts neither way. Below the batteries and edges it prints four lines:
 
-| line | what it counts | why |
-| --- | --- | --- |
-| `velocity` | the batteries between 1/n and n−1/n, which ones, and the mean swing in points a battery | as in RL curriculum filtering, a battery at 0/n or n/n carries no signal about where the solver stops, whatever zone a small one places in |
-| `horizon` | the same count over the first 8 and the first 12 batteries | the climb is read over those rounds |
-| `flat` | the stall rule `runs pulse` applies: `STALL_BATTERIES` in a row on one side of the aim, none closer than the closest before them | a zone cannot say it: 3/3 places `over-aim` while passing everything |
-| `carried` | the tasks measured again unchanged in id, public input and family checks after a full pass | a task the solver passed measures the same pass again |
+| line | what it counts |
+| --- | --- |
+| `velocity` | the batteries between 1/n and n−1/n and which ones, how many sat on the aim, passed whole or passed nothing, and the mean swing in points a battery: AGENTS.md's *signal* and *swing* |
+| `horizon` | the same signal count over the first 8 and the first 12 batteries |
+| `flat` | whether the latest batteries meet the stall `runs pulse` names, `STALL_BATTERIES` (`tools/runs/pulse.ts`) in a row on one side of the aim with none closer than the closest before them |
+| `carried` | the tasks measured again unchanged in id, public input and family checks after a full pass |
 
-On 2026-09-30 the line ranked custom-sol-f0fb83 (3 of 14 with signal, a 13.8-point swing) above
-truss-sol-198d70 (2 of 13, 3.9) and reserve 6a8ca0 (0 of 13, flat since its first 7/7). The
-endpoint slope it replaced read 198d70 and 6a8ca0 identically, and gave f0fb83 "50 more at this
-rate". Across the 50 local runs with two or more claimed batteries, 26 of 277 placed batteries
-carried signal and 251 were full passes, and 570 of the 1,465 tasks measured after a full pass were
-carried unchanged. None of these numbers moves by touching a threshold, because the band, the
-Wilson owner and the battery sizes are frozen policy.
+Read these before any zone. `--json` carries the same line as `climb-velocity/v2`; a `v1` reading in
+an older archive holds an endpoint slope under `velocity` instead, which read truss-sol-198d70 and
+reserve 6a8ca0 identically and gave custom-sol-f0fb83 "50 more at this rate", so do not compare the
+two. Across the 50 local runs with two or more claimed batteries on 2026-09-30, 26 of 277 placed
+batteries carried signal and 251 were full passes.
+
+Each edge between consecutive adopted versions gets one structural label from the check tiers and
+counts in `brief.json` and `tasks.json` (`verdictOf`, whose meanings the header of
+`scripts/climb-velocity.ts` lists): `restated`, `adjusted`, `narrowed`, `widened`, `eased`,
+`escalated` or `replaced`. The label needs no case, so it exists the moment a version is adopted,
+hours before its battery scores. It is a reading and not a forecast (AGENTS.md "Goals and the
+climb", under "Reading the climb as the operator"), so name the changed public requirement from the
+task rows beside it, and read the edge's novelty, numbers moved, delta and `carried` rows with it.
+`adjusted` names no direction, because a moved limit is a climb only when it moves inward, and
+`replaced` is no reading at all: fewer than half the task ids carried over, so the task bytes need
+reading by hand. A rule published in another `correctness-model/` file moves neither task-side row;
+the source row names which of those files changed digest.
 
 ## Who can move difficulty
 
-The controller writes no task. It sizes the battery, measures it, places it on the band and hands
-the Builder a readout of the counts, and from there every change in difficulty is the Builder's
-choice: which families to change, which limits to tighten, which requirement to add. So a climb
-that stalls is a question about what the Builder was shown and what it chose, and never about a
-controller course, since there is none to read. Lane 36 asks what pressure the round text put on
-the Builder towards harder tasks, and lane 10 whether its calibration improved round over round.
-
-The pressure is weaker than it looks from outside, and it helps to know exactly how. The placement
-zone, the aim, the distance to the aim and the Wilson interval are the controller's and the
-reviewer's: the `ReadoutRow` comment in `src/run/climb-readout.ts` says so, and
-`readoutHistoryDocuments` strips all four before the Builder's history source is built. The Builder
-reads its measured counts, the limit sentence and the witness sentence, and is shown no count to
-aim at. The off-aim streak is not a controller fact at all in the current source: the
-WRI digest computes it from the recorded placements (`offAimStreaks` in
-`scripts/digest-ledgers.ts`), and nothing in the run stops or changes on it.
+The controller writes no task and states no course, so every change in difficulty is the Builder's
+choice, and a climb that stalls is a question about what the Builder was shown and what it chose.
+Which component hears which reading is AGENTS.md "Goals and the climb", under "Who hears the
+placement, and what it drives". Check it in the measured tree rather than from memory: the
+`ReadoutRow` comment in `src/run/climb-readout.ts` names the fields that are the controller's and the
+reviewer's, and `readoutHistoryDocuments` strips the zone, aim, `toAim` and Wilson interval from every
+row before the Builder's history source is built. The off-aim streak the digest prints is
+`offAimStreaks` in `scripts/digest-ledgers.ts`, computed from the recorded placements, and nothing in
+the run reads it. Lane 36 asks what pressure the round text put on the Builder towards harder tasks,
+and lane 10 whether its calibration improved round over round.
 
 ## The record the controller wrote
 
@@ -74,9 +78,9 @@ Inside the readout, read these fields and nothing looser:
 | `decision.conflict` | one family significantly too easy beside one significantly too hard, named as `easy` and `hard` |
 | `decision.censored` | families the environment censored whole, about which the placement says nothing |
 | `decision.evidence` | every battery the decision derives from, by `runId` and `batterySha256` |
-| a row's `zone`, `aim`, `toAim`, `wilson` | `too-hard`, `under-aim`, `on-aim`, `over-aim` or `too-easy`; the outer two are Wilson-significant at `REPORTING_Z` (`src/claim/estimation.ts`), the inner three the point count against the aim; `toAim` is the signed distance in verified passes, negative above the aim |
+| a row's `zone`, `aim`, `toAim`, `wilson` | the zone `placeOnBand` gave, as AGENTS.md "Goals and the climb" defines the five under "The band and the placement"; `aim` the pass counts inside `band` at the row's size; `toAim` the signed distance in verified passes, negative above the aim; `wilson` the interval at `REPORTING_Z` (`src/claim/estimation.ts`) |
 | a row's `passed`, `verified`, `unaccepted`, `nonResults` | passes out of verified cases, with the other two kinds beside them; `passed` is null when the claim was refused |
-| a row's `effort`, `familyEffort`, `solveWallMinutes`, `wallBound` | solve effort against the Builder's own `solve_minutes`, and how many unaccepted cases ran to that wall |
+| a row's `effort`, `familyEffort`, `solveWallMinutes`, `wallBound` | solve effort against the Builder's own `solve_minutes`, and how many unaccepted cases ran to within `WALL_BOUND_SHARE` (`src/run/climb-history.ts`) of that wall |
 | a row's `regrade` | the earlier battery whose recorded solves this one graded again |
 
 There is no climb, hold or ease verb, no level label and no ladder to read, and a note naming one
@@ -87,26 +91,24 @@ was told.
 
 ## What the round was told
 
-Four surfaces carry the climb to the Builder, and each is a condition identity, so read them from
-the measured tree:
+What each surface says today is AGENTS.md "Goals and the climb", under "What the Builder is asked,
+round by round". Each one is a condition identity, so read it from the measured tree with
+`git show <opening source.commit>:<path>`, and date a run against the changes below before
+explaining its Builder by today's wording:
 
-- the **kickoff**'s closing line: add no requirement the request does not name, and, from
-  2026-09-30, a stricter demand on one it does name is not an added requirement. Both 887c163ee
-  Builders that passed every case of 13 and 11 batteries quoted the first half to decline stricter
-  demands;
-- the **system prompt**'s intent clause: from 2026-09-30, an ambitious round expects its battery to
-  fail some cases on the rules it publishes;
-- the **round prompt**: submit once a clear preview says it works; a passing rehearsal is a blind
-  solve within the solver's reach; from 2026-09-30, a battery whose every rehearsal passed has its
-  hardest tasks' demand changed once before submit. `harness_trial` states the round's passes with
-  the largest wall share and tool-call count any pass took; before 2026-09-30 it counted one-turn
-  passes, which every pi solve is;
-- the **readout** and `renderBatteryContract`: the limit sentence, the witness sentence and the
-  publication boundary, with no count at any size, and a no-limit line when the latest battery
-  passed every verified case. From 2026-09-30 that line names the next tasks as ones the Builder
-  expects the solver to fail and says to carry none of the passed tasks forward unchanged. A run
-  measured before an earlier change opened with the calibration target, the aim and the no-limit
-  count at the round's size. `renderProbeSizing` states the probe range.
+- the **kickoff**'s request line (`src/run/direct-input.ts`): from 2026-09-30 it says that a
+  stricter demand on a requirement the request names is not an added requirement;
+- the **system prompt**'s intent clause (`src/author/builder-start-prompt.ts`): from 2026-09-30, an
+  ambitious round expects its battery to fail some cases on the rules it publishes;
+- the **round prompt** (`src/author/builder-session.ts`): from 2026-09-30, a battery whose every
+  rehearsal passed has its hardest tasks' demand changed once before submit. `harness_trial`
+  (`src/builder/harness-trial.ts`) states the round's passes with the largest wall share and
+  tool-call count any pass took; before 2026-09-30 it counted one-turn passes, which every pi solve is;
+- the **readout** and `renderBatteryContract` (`src/run/climb-readout.ts`): from 2026-09-30 the
+  no-limit line names the next tasks as ones the Builder expects the solver to fail and says to
+  carry none of the passed tasks forward unchanged. A run measured before an earlier change opened
+  with the calibration target, the aim and the no-limit count at the round's size.
+  `renderProbeSizing` (`src/run/battery-sizing.ts`) states the probe range.
 
 The round states no plan. What it set out to do is in the Builder's prose and notes, and what it
 did is in the accepted bytes, which alone decide the operation it is attributed as. A run whose
@@ -117,18 +119,18 @@ have.
 
 ## Battery size and graduation
 
-`batterySizingGate` in `src/run/battery-sizing.ts` decides the size from `POLICY.battery`, and its
-branches are worth reading exactly, because lane 37 reads a battery's size against the evidence it
-could have produced. A requested size at or below the probe ceiling is used as it stands. With no
-adopted product, the round gets the probe range. A product that already graduated to more than
-probe-ceiling tasks gets `smallestSizeHoldingTooEasy` over its last landing: the smallest size
-above the probe ceiling at which the last pass rate, floored, would still read `too-easy`, or the
-requested size when nothing smaller holds or the landing cannot be read, so a missing identity
-leaves the requested size in place. Otherwise the product graduates only when its last battery
-passed at least one scored case and landed at or under the aim, and until then it stays on probes.
-The landing is `admittedClimbRow`'s count, so a case the Epoch Reviewer settled against its check
-counts neither way. That is the probe's graduation guard too: 2d7812's and 3e4693's 3/6 probes
-graduated on source without it, every fail on one settled check, and measured 25/25 and 24/24 next.
+Lane 37 reads a battery's size against the evidence it could have produced, so recompute the size
+from `batterySizingGate` (`src/run/battery-sizing.ts`) over `POLICY.battery` rather than from the
+rule as remembered. The rule and the reason a probe graduates only at or under the aim are AGENTS.md
+"Goals and the climb", under "The three parts of the climb" and "Who hears the placement, and what
+it drives". The gate's branches run in this order. A requested size at or below the probe ceiling
+is used as it stands. With no adopted product, the round gets the probe range. A product already
+past the probe ceiling gets `smallestSizeHoldingTooEasy` over its last landing, or the requested
+size when nothing smaller holds or the landing cannot be read, so a missing identity leaves the
+requested size in place. Otherwise the product graduates only when its last battery passed at least
+one scored case and landed at or under the aim, and until then it stays on probes. The landing is
+`admittedClimbRow`'s count, so a case the Epoch Reviewer settled against its check counts neither
+way.
 
 Two consequences are easy to miss. A scored case includes an unaccepted one, so a probe whose
 solver submitted nothing on half its tasks and passed the rest has graduated, although it measured
@@ -137,13 +139,13 @@ a door rather than a limit. And the solver's time is the Builder's own setting: 
 times it (`HOST_LIMIT_FACTOR` in `src/correctness-bundle/harness-config.ts`), so a battery that
 reads too hard at a twelve-minute wall has measured the wall the Builder chose.
 
-## Five situations, and what to read first
+## Six situations, and what to read first
 
 | situation | first read | what it usually is |
 |---|---|---|
 | every battery passes every case | `wri.ts climb` `velocity`, `flat` and `carried` lines, then the edges | a flat line: tasks carried unchanged, or inputs grown at unchanged checks and limits |
 | score stays high, task ids and hashes keep changing | `wri.ts climb` edges | `adjusted` or `widened`: numbers moved, demand did not |
-| score high but an edge already reads `escalated` | that edge's changed checks, limits and tier histogram | a real move whose cases have not landed; wait for them |
+| score high but an edge already reads `escalated` | that edge's changed checks, limits and tier histogram, then the task rows | a move in the checks whose cases have not landed; name the changed public requirement before expecting fails, since a label is a reading and not a forecast |
 | some cases failed, placement over or on the aim | the battery's `fails` line in `wri.ts climb` | fails held by the review are a limit; fails settled against their check, or all on one check across families, are a check the public rules do not support |
 | every case failed | accepted artifacts beside their public tasks, then lane 38 | an unpublished rule, an unusable submission path, or checks refusing right answers |
 | the Builder ignored a page you wrote | `git show <opening source.commit>:<path>` | the page was not in the measured tree |
@@ -162,12 +164,11 @@ variation proves coverage only. So a transition is `harder` only when a changed 
 and the reasoning interaction it adds can be named from the recorded inputs; otherwise it is
 `unknown`. Moving a published magnitude is the cheapest edit and the easiest to mistake for a
 climb, and tightening a feasible limit towards a stronger witness is legitimate, but neither proves
-a task harder by itself; blind measurement decides. Reserve 6a8ca0 set its limits at its reference's
-values and gave the solver the same optimiser, and from i03 the solver submitted the reference's own
-answer on 3 to 7 of each battery's 7 tasks: a limit binds only where the solver's search falls short
-of the witness. Growing
-inputs and scenarios at unchanged checks is the other flat route, 24 to 53 inputs over thirteen 7/7
-batteries.
+a task harder by itself; blind measurement decides. The two flat routes reserve 6a8ca0 took, limits
+at its reference's values and inputs grown at unchanged checks, are in AGENTS.md "Goals and the
+climb", under "What the Builder is asked, round by round". What they add to a reading is that from
+i03 its solver submitted the reference's own answer on 3 to 7 of each battery's 7 tasks, so a limit
+binds only where the solver's search falls short of the witness.
 
 Read difficulty on the changed public-input subset, so unchanged successes cannot dilute its
 failures; order batteries by claim `createdAt`, and refuse a before-and-after reading that lacks
@@ -201,8 +202,8 @@ reached anything is lane 21's. At the other end, a battery that fails everything
 Each row states the solve effort — median and longest minutes against `solve_minutes`, median tool
 calls — by battery and by family. Within one battery, effort does not separate the passes from the
 fails, so it cannot stand in for difficulty. What it can do is expose a wall: a family whose
-unaccepted cases all ran to `solve_minutes` was stopped by the Builder's own setting, and
-`wallBound` counts them.
+unaccepted cases all ran to the wall was stopped by the Builder's own setting, and `wallBound`
+counts them.
 
 ## A task that demands a decision
 
@@ -222,6 +223,6 @@ Name the owner, the live consumer, the decision changed and the falsifier, then 
 mechanism over recorded campaigns and count the rounds it would have engaged; a refusal reachable
 only after the behaviour it exists to cause is decoration. Prefer deleting a competing owner to
 adding one. Return the recorded decision and its placement, the admitted and excluded batteries,
-whether the public condition grew and how, the three denominators, the plan's scored range, the
-change with its falsifier, and the next question. Paid work stays with `run-improvement-campaign`
-and `launch-run`.
+whether the public condition grew and how, the three denominators, what the Builder's notes say
+the round set out to change, the change with its falsifier, and the next question. Paid work stays
+with `run-improvement-campaign` and `launch-run`.

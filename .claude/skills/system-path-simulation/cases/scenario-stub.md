@@ -7,8 +7,8 @@ walks it", which one exported call cannot answer.
 
 **Take the situation from a real run where one exists**, by the position section of `SKILL.md`; write it only where
 none does. Either way it goes down first, in one or two sentences, in the actor's own voice: what
-already happened, where the actor stands, what it is reaching for — "I adopted a 25-task harness at
-level 0 and scored 23/25, and the selector now wants a climb against my own frozen bundle." A
+already happened, where the actor stands, what it is reaching for — "I adopted a 25-task harness
+that passed 25 of 25, and the next round opens a rebuild whose readout says it found no limit." A
 scenario written this way names its own steps; "does `admitVerifierProposal` work" does not, and
 produces a one-call check that proves nothing about the path.
 
@@ -16,7 +16,8 @@ produces a one-call check that proves nothing about the path.
 have caught lived *between* two steps. Run 67's climb break — a repair round inheriting the climb's
 pinned difficulty contract — was visible only because the decision, the kickoff and the task
 validator ran in sequence on one tree. That run predates 2026-09-04, when the repair experiment was
-removed; the shape transfers, the move does not.
+removed, and the source has no `climb` move or pinned level either now; the shape transfers, the
+moves do not.
 
 **Stub exactly one thing, and say which.** The usual stub is the model turn, and it has one interface:
 `HarnessBuildOptions.builderRuntime` binds a scripted session (`test/helpers/scripted-builder-runtime.ts`)
@@ -40,7 +41,7 @@ a history entry rather than an instruction.
 ## Read the interior decision, not the exit
 
 A scenario that prints only the top-level result proves reachability, not intent. Pre-register the
-branch or value you expect — "the selector proposes climb" — and when the run answers, print the
+branch or value you expect — "the next move is `rebuild`" — and when the run answers, print the
 deciding reader's own rows through the same exports the decision used: what it admitted, what it
 excluded, and each exclusion's own sentence. Agreement without the rows is still unverified: the
 right exit reached for the wrong interior reason will fail on the next state that separates them.

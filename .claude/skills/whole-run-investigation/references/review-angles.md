@@ -403,25 +403,24 @@ families the plan is about; it routes to `controller-source`
 Starts from block 4b's `OFF-AIM STREAK (lane 10)`, from the calibration table the `handoff` lane
 prints, and from the `climb` lane's `velocity`, `horizon`, `flat` and `carried` lines.
 
-The question is whether the run draws the line the climb is meant to draw (AGENTS.md "Goals and the
-climb"): batteries between 1/n and n−1/n that swing as the Builder raises a requirement and repairs
-what it sank, narrowing into the band over 8 or 12 rounds. A monotonic approach is not the test, and
-neither is a zone: 8 of 11 after 10 of 11 is progress above the aim, and 3/3 places `over-aim` while
-locating nothing. So read, in claim `createdAt` order, each battery's count, the placement the
-controller recorded (`difficulty-decisions/<runId>-<digest>.json`: `placement.zone`, `aim`, `toAim`,
-the Wilson interval), the operation the accepted bytes were attributed as, and the `climb` lane's four
-numbers. A run of n/n batteries is the finding, whatever its zones read, and `carried` says whether
-the Builder measured the same passed tasks again. The digest streak counts consecutive placements on
-one side of the aim; say which side, and whether it meets the stall rule `flat` applies. What the
-Builder was told is fixed: the kickoff, the system prompt's intent clause, the round prompt and the
-readout name no count at any size, so no battery can be scored against a target the controller
-stated. A run whose source predates the removal of `EXPERIMENT.json` recorded a plan beside each
-accepted submit, and nothing reads it. Why a line stayed flat — what, if anything, pressed the Builder
-to change the tasks, and which sentence it cited when it declined — is lane 36's question, and how
-many tasks the next battery held is lane 37's. Do not prescribe the route, which is the Builder's. The
-decision it changes is the next round's move; it routes to the Builder prompt when a surface
-misstated what was measured or what a round is for, and to `correctness-model/tasks.json` when the
-task set did not move.
+The question is whether the run draws the line the climb is meant to draw. Its shape and its four
+numbers are AGENTS.md "Goals and the climb", under "Its shape, and how progress is read", and
+neither a monotonic approach nor a zone is the test. So read, in claim `createdAt` order, each
+battery's count, the placement the controller recorded
+(`difficulty-decisions/<runId>-<digest>.json`: `placement.zone`, `aim`, `toAim`, the Wilson
+interval), the operation the accepted bytes were attributed as, and the `climb` lane's four numbers
+as [the climb reference](climb.md) reads them. A run of n/n batteries is the finding, whatever its
+zones read, and `carried` says whether the Builder measured the same passed tasks again. The digest
+streak counts consecutive placements on one side of the aim; say which side, and whether it meets
+the stall rule `flat` applies (`STALL_BATTERIES`). The Builder is told no count, share or zone at
+any size (AGENTS.md "Goals and the climb", under "Who hears the placement, and what it drives"), so
+no battery can be scored against a target the controller stated. A run whose source predates the
+removal of `EXPERIMENT.json` recorded a plan beside each accepted submit, and nothing reads it. Why
+a line stayed flat — what, if anything, pressed the Builder to change the tasks, and which sentence
+it cited when it declined — is lane 36's question, and how many tasks the next battery held is lane
+37's. Do not prescribe the route, which is the Builder's. The decision it changes is the next
+round's move; it routes to the Builder prompt when a surface misstated what was measured or what a
+round is for, and to `correctness-model/tasks.json` when the task set did not move.
 
 **11. Submit decision against rehearsal evidence.**
 
@@ -691,8 +690,10 @@ sequences per battery and per family, so one expensive family cannot disappear i
 and the wall shares `walls.ts` prints. Reusable algorithms, a bounded search and the host's margin
 table on published limits are legitimate solving support; a tool, program or guide line that
 analyses a candidate the way a check does is lane 34's finding, and lane 23 reads its use per case.
-Do not open the private packet. The decision it changes is whether a wall-bound case enters
-the difficulty denominator as a failure; it routes to `agent/config.yaml` for a wall the Builder
+Do not open the private packet. A wall-bound miss stays a fail in the count, and `wallBound` names
+the unaccepted cases that ran to within `WALL_BOUND_SHARE` of `solve_minutes` (AGENTS.md "Goals and
+the climb", under "What one battery can say"). The decision it changes is whether such a miss is
+read as the task's limit or as the wall's; it routes to `agent/config.yaml` for a wall the Builder
 set, `agent/BUILT_AGENTS.md` when the guide sends the solver into work the wall cannot hold, and
 `agent/tools-spec.json` when a tool's own timeout is the wall.
 
@@ -1060,18 +1061,19 @@ Starts from block 4b's `OFF-AIM STREAK (lane 10)`, beside lane 10.
 
 The question is what, in this run, pressed the Builder to make the tasks harder, and whether
 anything did. Only the Builder raises difficulty, and only through the tasks it writes: the
-controller writes no task, and the off-aim streak is a readout fact that stops nothing, so
-a product can land above the aim round after round with no controller action. Read the channels
-that could have carried pressure and say what each carried: the kickoff, the system prompt's intent
-clause, the round prompt's submit sentence, the climb readout and battery contract the round opened
-with, `harness_trial`'s round clause, the authoring and battery reviews' findings owned by
-`correctness-model/tasks.json` with their severity, the advice packet, and the Builder's own plan
-and notes. Pressure can arrive and be declined on another surface's words: both 887c163ee Builders
-whose lines stayed at n/n measured the solver's reach correctly, then cited the kickoff's "add no
-requirement it does not name" against every stricter demand and the round prompt's "submit once a
-clear preview says it works" as the user's instruction. So quote the sentence the Builder cited when
-it declined, and name the surface that owns it. Then read what the Builder did: the task ids and
-public-input digests that reappear unchanged across batteries, the families it named in the plan
+controller writes no task, and the off-aim streak is counted for the operator by the digest and
+`runs pulse` and stops nothing, so a product can land above the aim round after round with no
+controller action (AGENTS.md "Goals and the climb", under "Who hears the placement, and what it
+drives"). Read the channels that could have carried pressure and say what each carried: the
+kickoff, the system prompt's intent clause, the round prompt's submit sentence, the climb readout
+and battery contract the round opened with, `harness_trial`'s round clause, the authoring and
+battery reviews' findings owned by `correctness-model/tasks.json` with their severity, the advice
+packet, and the Builder's own plan and notes. Where a round meets each one is AGENTS.md "Goals and
+the climb", under "What the Builder is asked, round by round", with the 887c163ee Builders that
+declined every stricter demand on the kickoff's own words. Pressure can arrive and be declined on
+another surface's words, so quote the sentence the Builder cited when it declined, and name the
+surface that owns it. Then read what the Builder did: the task ids and public-input digests that
+reappear unchanged across batteries, the families it named in the plan
 against the families whose bytes moved, and whether an advisory `tasks.json` finding was followed
 by a change to the obligation it named. Two framings may differ here — the reviewer's
 orientation states the battery's placement, while the Builder's text may not name a zone at all —
@@ -1088,22 +1090,23 @@ readout or the projection states.
 Starts from every standard and deep read as a standing lane, because the size of the next battery
 is decided by rules the digest does not print.
 
-The question is how each battery's task count was chosen, and whether the rule counted what it
-meant to. `batterySizingGate` (`src/run/battery-sizing.ts`) keeps a fresh product on probes of five
-to ten tasks until a probe passes at least one scored case and lands at or under the aim, and then moves to the
-requested size — unless the last landing read high enough that a smaller battery would still read
-too easy, when `smallestSizeHoldingTooEasy` sizes it down. Three things follow that no recorded
-field states. The graduation rule counts scored cases, and an unaccepted case is scored, so a probe
-whose unaccepted timeouts bring it down to the aim graduates exactly as one with verified fails does.
-The Builder sets `solve_minutes` in `agent/config.yaml`, anywhere down to a tenth of its default,
-and a short wall produces exactly those unaccepted timeouts. And the landing is read only when the
-adopted product fingerprints and its harness identity can be computed, which
-`harnessBundleIdentity` cannot do when the recorded verifier environment is unreadable, so a
-missing identity silently resizes the round to the requested count. Recompute each battery's size
-from the rule and its inputs, since the controller records the result and not the reason, and
-report each graduation with its verified passes, verified fails and unaccepted cases as three
-numbers. Say whether a graduation rested on an unaccepted case, and whether the wall that produced
-it was the Builder's choice. The decision it changes is how the synthesis reads the first
+The question is how each battery's task count was chosen, and whether the rule counted what it meant
+to. The rule is `batterySizingGate` (`src/run/battery-sizing.ts`) over `POLICY.battery`, and
+AGENTS.md "Goals and the climb", under "Who hears the placement, and what it drives", says what it
+decides and why; [the climb reference](climb.md) walks its branches. Its landing is
+`admittedClimbRow`'s count, so a case the Epoch Reviewer settled against its check counts neither
+way. Three things follow that no recorded field states. The graduation rule counts scored cases, and
+an unaccepted case is scored, so a probe whose unaccepted timeouts bring it down to the aim
+graduates exactly as one with verified fails does. The Builder sets `solve_minutes` in
+`agent/config.yaml`, anywhere down to a tenth of its default, and a short wall produces exactly
+those unaccepted timeouts. And the landing is read only when the adopted product fingerprints and
+its harness identity can be computed, which `harnessBundleIdentity` cannot do when the recorded
+verifier environment is unreadable, so a missing identity silently sizes the round as if nothing had
+landed: a graduated product gets the requested count, and one still on probes stays there. Recompute
+each battery's size from the rule and its inputs, since the controller records the result and not
+the reason, and report each graduation with its verified passes, verified fails and unaccepted cases
+as three numbers. Say whether a graduation rested on an unaccepted case, and whether the wall that
+produced it was the Builder's choice. The decision it changes is how the synthesis reads the first
 full-size battery; it routes to `agent/config.yaml` for the wall, and to `controller-source`
 (`src/run/battery-sizing.ts`, `src/run/full-run-build-step.ts`) for the rule and its record.
 
@@ -1141,7 +1144,7 @@ there is one authoring path; controller memory curation, since `MEMORY.md` is th
 the cap is a read cap; the cross-harness adapter and the weak-solver baseline, since a comparison
 runs on one shared pack or not at all; the `climb`, `hold-limit` and `ease` actions, since
 `placement.zone` already says where a battery landed; `rungPrediction`, the plan's target and its
-per-task `predictions[]`, the submit hold and the off-aim allowance, since no battery ever answered
-them; the saturation ledger, which read fields no difficulty decision carries; and the recurrence
+per-task `predictions[]`, the submit hold and the off-aim allowance, for the reasons AGENTS.md
+"Goals and the climb" gives under "Tried and taken out"; the saturation ledger, which read fields no difficulty decision carries; and the recurrence
 reader over the notes archive, since lane 14 reads recurrence from the recorded epoch reviews and
 admissions themselves.

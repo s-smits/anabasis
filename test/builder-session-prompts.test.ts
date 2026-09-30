@@ -119,10 +119,17 @@ describe("what the round prompt says a rehearsal is", () => {
     const text = (await freshPrompt({ workspace: workspace("rehearsal") })).replace(/\s+/g, " ");
     expect(text).toContain("A passing rehearsal is a blind solve of its task");
     expect(text).toContain("the task you expect to be hardest is the one whose rehearsal says most");
+    // ABLATED(early-accept): the two speed cues left the round prompt.
+    // expect(text).toContain(
+    //   "A battery whose every rehearsal passed is on course to pass every case, so before you submit it, change what its hardest tasks demand and rehearse one of them again, then submit: further polish belongs to the next round.",
+    // );
+    // expect(text).toContain("submit once a clear preview says it works.");
     expect(text).toContain(
-      "A battery whose every rehearsal passed is on course to pass every case, so before you submit it, change what its hardest tasks demand and rehearse one of them again, then submit: further polish belongs to the next round.",
+      "A battery whose every rehearsal passed is on course to pass every case, so before you submit it, change what its hardest tasks demand and rehearse one of them again, then submit.",
     );
-    expect(text).toContain("submit once a clear preview says it works.");
+    expect(text).toContain("Build, check and rehearse the candidate, and submit it.");
+    expect(text).not.toContain("further polish");
+    expect(text).not.toContain("clear preview says it works");
     // Where a battery lands and what a full pass finds are the battery contract's, stated once there.
     expect(text).not.toContain("decides where it lands");
     expect(text).not.toContain("find no limit");

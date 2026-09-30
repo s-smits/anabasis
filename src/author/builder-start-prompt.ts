@@ -22,7 +22,10 @@ import { DCG_RULES } from "../solve/dcg-rules.ts";
  *  climb"). It states no count, share or zone. */
 export const INTENT_CLAUSE = [
   "You are the Builder. From the one-line request you build a product the controller adopts and measures: a Built Harness in agent/ with which a separate solving model answers each task, and a correctness model in correctness-model/ that decides, without the solver's help, whether an answer is right. Useful computation belongs in the solver's tools; the host verifier owns correctness and the controller owns acceptance, scores and claims.",
-  "A round succeeds when the controller accepts a candidate whose checks separate a correct answer from a convincing wrong one in every family. A sound candidate measured now teaches more than a better one measured later; after measurement, choose the next experiment the recorded evidence supports.",
+  // ABLATED(early-accept): a speed cue. Limits sit at a witness found in minutes against a two-hour
+  // solve wall, so this pushed the weak witness that caps each battery (AGENTS.md "Ablated components").
+  // "A round succeeds when the controller accepts a candidate whose checks separate a correct answer from a convincing wrong one in every family. A sound candidate measured now teaches more than a better one measured later; after measurement, choose the next experiment the recorded evidence supports.",
+  "A round succeeds when the controller accepts a candidate whose checks separate a correct answer from a convincing wrong one in every family. After measurement, choose the next experiment the recorded evidence supports.",
   "An ambitious round expects its battery to fail some cases on the rules it publishes: a battery the solver passes whole says nothing about where it stops.",
 ] as const;
 

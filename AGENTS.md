@@ -521,6 +521,47 @@ without new evidence that answers it.
 - **The transplant census**, until 2026-09-25, which refused one deliverable passing every sibling task.
   That is what a ladder of tightening limits looks like, and it made Builders invent constraints.
 
+### Ablated components
+
+An ablated component is switched off in source but kept there. Each removed line or block stays as a
+comment under `// ABLATED(<id>): <why>`, with its exact original text after the prefix. A line added in
+its place, or on its own, carries `ADDED(<id>)`. To restore a component, or drop an addition, work
+through the grep: remove the prefixes, delete the replacement lines, and flip back the test assertions
+under the same marker. Each entry below is a measured condition, not a settled rule. Once its run reads,
+it either moves to "Tried and taken out" or its comments are deleted.
+
+- **`early-accept` (ablated 2026-09-30).** The cues that ask for a submit as soon as a candidate
+  clears:
+  - the intent clause's "A sound candidate measured now teaches more than a better one measured
+    later";
+  - the round prompt's "submit once a clear preview says it works" and "further polish belongs to the
+    next round";
+  - the session clock's "The last clear correctness_check was N min ago, and no candidate has been
+    submitted since".
+
+  The binding-constraint walk of 300 batteries (267 n/n, none 0/n; `notes/binding-constraints.md`,
+  kept locally) found the limit sitting on the Builder's own witness:
+  - On truss-26 and -29, 112 of 134 limits lay within 2% of the witness, and 132 of 134 cases passed.
+  - The solver landed a median 0.986 and 0.956 of the limit on those two runs.
+  - The Builder reached acceptance in 2.4 to 9.7 minutes per task, while the solver's wall is 120
+    minutes.
+
+  These cues priced the witness at whatever the first clear preview held. They were added because a
+  Claude session otherwise authored for hours past its first clear preview. That cost is now bounded
+  by the round's turn cap and by `MOVE_TO_AUTHORING`, which still fires for a round with no clear
+  preview. Grep: `rg "ABLATED\(early-accept\)"`. Measured by: the run launched from this commit (filled at
+  launch).
+- **`witness-budget` (added 2026-09-30).** One sentence in `renderBatteryContract`: search each
+  task's reference at least as long as the solver may spend solving it, and set the limit from the best
+  answer found. The same idea was stated twice before, and neither time was it measured:
+  - 83a24567 stated it, and it left on 2026-09-28 when `difficulty-ladder.md` was cut as a whole;
+  - an earlier start-prompt sentence was removed on overlap grounds (d21f1a27).
+
+  It remains an optional route in `examples.md`, "A search past the solver's wall". A controlled test
+  that answers whether a longer witness search opens a gap the solver cannot close is running on
+  truss-25 acef98-i03, prediction 579d4990. Grep: `rg "witness-budget"`. Measured by: the run launched
+  from this commit (filled at launch).
+
 ## Evidence and implementation status
 
 "Done" hides four states, so name the one that is true. A thing is present in source when the named tree
@@ -1126,8 +1167,8 @@ the battery was paid for.
     prompt argues the third in advance. Each prompt says it once: the Builder system prompt owns the
     clauses, `examples.md` the optional routes to a target the solver does not reliably meet, and
     `roundPrompt` and `renderBatteryContract` when to submit and what a witness proves, and the climb
-    readout's no-limit line asks for the changed requirement and its reasoning in the notes. The round prompt asks for a submit once a clear preview says the candidate works, because the
-    measured battery, not a rehearsal, decides where it lands (`WITNESS`), and nothing holds a submit on rehearsals
+    readout's no-limit line asks for the changed requirement and its reasoning in the notes. The round prompt asks for a submit without waiting on rehearsals, because the
+    measured battery, not a rehearsal, decides where it lands (`WITNESS`), and nothing holds a submit on rehearsals; its "once a clear preview says it works" is ablated (see "Ablated components")
     (the 96-of-99 history is under "What has cost whole rounds").
 
     Battery size and the difficulty decision are climb mechanisms, and "Goals and the climb" holds both:

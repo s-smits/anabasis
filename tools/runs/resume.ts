@@ -147,6 +147,14 @@ export function resumePlan(opening: OpeningFacts | null, launch: LaunchRecord | 
     "--project",
     project,
   ];
+  // `--source` falls back to origin/main, which is not the measured source of a run launched from a
+  // stacked PR head, so the recorded commit is carried like any other pin (a16848, 2026-09-30).
+  const { commit } = inputs.opening;
+  if (commit === null) {
+    warnings.push("opening.json records no source.commit, so the launcher's default source applies");
+  } else {
+    command.push("--source", commit);
+  }
   if (preset === null) command.push("--prompt", prompt);
   // The launcher's own defaults are not the stopped run's condition. `--tasks` falls back to 25
   // and neither boundary has a default at all, so a continuation of a 60-task run stopped at a
@@ -173,6 +181,7 @@ export function resumePlan(opening: OpeningFacts | null, launch: LaunchRecord | 
         `slots: opening.json modelSlots${fromOpening === null ? " (unmatched)" : ` = ${condition}`}`,
         `provider turns: opening.json providerResourceBudget.cap = ${cap}`,
         `project: opening.json project.id = ${project}`,
+        `source: opening.json source.commit = ${commit ?? "none"}`,
         `battery and boundary: ${carried.length === 0 ? "launch.json argv recorded none, so the launcher's defaults apply" : carried.join(", ")}`,
       ],
       warnings,

@@ -492,13 +492,35 @@ describe("resume", () => {
       "1320",
       "--project",
       "slug-aaaaaaaa-1",
+      "--source",
+      "a".repeat(40),
       "--prompt",
       "designs steel roof trusses to Eurocode 3",
       "--tasks",
       "25",
     ]);
     expect(plan.plan.warnings).toEqual([]);
+    expect(plan.plan.provenance).toContain(`source: opening.json source.commit = ${"a".repeat(40)}`);
     expect(recordedCondition(evidence.opening?.slots ?? [])).toBe("opus");
+  });
+
+  it("pins the measured source, because the launcher's default is origin/main", () => {
+    // A continuation of a run launched from a stacked PR head would otherwise run main's code, a
+    // changed condition the printed command did not show (a16848, 2026-09-30).
+    const root = checkout();
+    writeOpening(root, "slug-aaaaaaaa-1", "run-1", OPENED_AT);
+    const dir = writeLaunch(root, "run-1", "designs steel roof trusses to Eurocode 3", {
+      project: "slug-aaaaaaaa-1",
+    });
+    const opening = readRunEvidence(onlyRun(root)).opening;
+    if (opening === null) throw new Error("the fixture wrote no opening");
+    const unpinned = resumePlan({ ...opening, commit: null }, readLaunchRecord(dir));
+    expect(unpinned.ok).toBe(true);
+    if (!unpinned.ok) return;
+    expect(unpinned.plan.command).not.toContain("--source");
+    expect(unpinned.plan.warnings).toEqual([
+      "opening.json records no source.commit, so the launcher's default source applies",
+    ]);
   });
 
   it("refuses rather than inventing a prompt, and warns when the receipt and the opening disagree", () => {

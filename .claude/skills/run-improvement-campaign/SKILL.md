@@ -361,20 +361,11 @@ again, since the page was never delivered.
 
 ### Which reader answers which climb question
 
-| you want to know | read | not |
-| --- | --- | --- |
-| whether the run is climbing | `wri.ts climb` `velocity`, `horizon`, `flat` and `carried` lines | the zone, the score, or a monotonic approach to the aim |
-| whether the Builder was asked for more | whether the latest battery passed every verified case, which sends the no-limit line (`noLimitLine`) | the zone, which the Builder never hears |
-| how the next battery is sized | `difficulty-decisions/`, the placement the watch prints | the score |
-| whether the tasks actually got harder | `wri.ts climb` edge verdicts and the tier histogram | the level label, new task ids, or a longer description |
-| whether a page could have steered the Builder at all | `git show <opening source.commit>:<path>` | the working tree or the stack head |
-| whether the Builder read a starter file | the bundle bytes and the Builder's notes | read counts in `builder-path-record.jsonl`; the Builder reads through bash, so zero proves nothing |
-| whether a battery is hard or merely unsolvable | `artifact.json` beside `public-task.json` in the settled cases | a reviewer finding, a published limit, or a zero score |
-| whether a slow solve is the wall | `solver.toolCalls` in `case-result.json` | `max_turns` or the solve wall, which no recorded truss case approached |
-
-Open [the climb reference](../whole-run-investigation/references/climb.md) on any of these: it owns
-how to read them, the attribution, and the difference between a harder battery and a
-differently-labelled one. The goal these rows serve is AGENTS.md "Goals and the climb".
+The table of which reader answers each climb question, and which tempting reader does not, is in
+[the climb reference](../whole-run-investigation/references/climb.md), under "Six situations, and
+what to read first". That reference owns how to read them, the attribution, the difference between
+a harder battery and a differently-labelled one, and the walk that finds the link holding a flat
+line. The goal these readings serve is AGENTS.md "Goals and the climb".
 
 ### A round the loop threw away looks exactly like a round that changed nothing
 

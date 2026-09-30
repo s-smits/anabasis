@@ -3,7 +3,8 @@
 One question sits under every climb reading: when the product scores well, does the next battery
 get harder for a reason you can name? The verifier owns correctness and the controller records a
 placement, but neither writes a task. This reference reads what they recorded, says whether a
-battery got harder or only different, and proposes the one change worth making. Inside a whole-run
+battery got harder or only different, finds the link that holds a flat line, and proposes the one
+change worth making. Inside a whole-run
 investigation it is the `climb` lane's ground and the reading behind lanes 5, 6, 9, 10, 11 and 20,
 and behind the authorship lanes 33 to 38 wherever a climb depends on what the Builder wrote.
 
@@ -43,6 +44,65 @@ task rows beside it, and read the edge's novelty, numbers moved, delta and `carr
 `replaced` is no reading at all: fewer than half the task ids carried over, so the task bytes need
 reading by hand. A rule published in another `correctness-model/` file moves neither task-side row;
 the source row names which of those files changed digest.
+
+## Find the binding constraint
+
+A flat line is held by one link of the chain a round runs through, and the useful reading names
+that link rather than every fault on the way. This section is a method and holds no findings: a
+constraint an earlier note named enters here as a hypothesis to test on this run's bytes.
+
+The chain, in the order a round runs it, and what tests each link:
+
+| link | what can hold the line there | tested by |
+| --- | --- | --- |
+| what the Builder is told | a surface that asks for less than the round needs, or gives a reason to decline ("What the round was told") | lane 36; lane 17 on the `handoff` census table |
+| the tasks, limits and checks it writes | a demand that did not move, or moved only in size | the edge label and `carried` row of `wri.ts climb`; lane 20 on 3c `REPEATED CONDITION`; lane 31 |
+| the reference and witness solve | limits at the reference's values; a reference that replays stored answers | lanes 33 and 5, on 1c `PERFECT BATTERY OVER AIM` and block 1 `UNTRIPPED IN SHIPPING` |
+| rehearsal and submit | bytes submitted untested, or on one passing rehearsal | lane 11 on 6 `SUBMITTED BYTES NEVER REHEARSED`; lane 9 on 6 `REHEARSAL NOT-RUN` |
+| the solver | a wall the Builder set; a tool or program that grades a candidate | the `walls` lane and lane 22; lane 34 on 1b `CHECK CODE IN SOLVER REACH`; lane 23, isolated, on 1b `CHECK TOOL IN SOLVER TRACE`, with lane 34 beside it |
+| the checks | a check that observes too little, or refuses right answers | lane 6 on 1c `REACH-ONLY CHECKS`; lane 35; lane 38 on 3b `FAMILY UNMOVED all-fail` |
+| admission and placement | a refusal that cost the round, a battery held or excluded, a size set on unaccepted cases | lane 27 on the `gates` triggers; row B and the readout's `admitted` and `excluded`; row G; lane 24 on 4c `DECISION ON CENSORED BATTERY`; lane 37 |
+| the readout back to the Builder | a reading that never reached the next round, or reached it and was declined | the `handoff` tables and lane 17; lane 10 on 4b `OFF-AIM STREAK`, with lane 36 beside it |
+
+**Test the capping links first.** A grader the solver can reach, a wall that stops the solve before
+the task does, and limits set at the reference's values each cap the line whatever the demand says,
+so read lanes 34 and 23, the `walls` lane and lanes 5 and 33 before any link upstream of them. A
+change aimed at the demand while one of these holds is spent on nothing. The mirror case is a check
+that refuses right answers (lane 38): it makes a battery read partial, so a line that seems to have
+moved may be held by a check rather than lifted by a task.
+
+**Walk back from the flat battery.** Start at the latest full pass and step back one link at a time,
+asking whether this link explains every symptom after it. The constraint is the earliest link that
+does. A later link showing some of the symptoms is contributing, and an earlier one that explains
+nothing downstream is not the constraint however wrong it looks. Keep an original defect apart from
+a failure to diagnose or repair it: a reviewer finding the Builder declined is a readout link, and
+the defect it named sits at its own link. Where two links bind only together, name the pair. Limits
+at the reference's values and a solver holding the reference's method were one such pair on reserve
+6a8ca0 (AGENTS.md "Goals and the climb", under "What the Builder is asked, round by round"), where
+tightening alone was met by the same optimiser. At each link, ask what the round's incentives made
+sensible: a sentence, a tool description or a gate can make the locally reasonable choice the one
+that keeps the line flat, as the kickoff's wording did for the Builders on 887c163ee that declined
+every stricter demand (same section).
+
+**Name a rival that predicts a different observation.** For the leading link, state its strongest
+innocent explanation, such as a solver that really is that capable or a request whose field has no
+harder requirement, and the recorded observation that separates the two. Where no recorded
+observation does, say so and choose the smallest discriminator rather than a confident story.
+
+**Look across runs.** A constraint read on one run is a hypothesis about the product. Count how many
+recorded runs broke at the same link by replaying the exported reader over every campaign on disk
+(`readClimbBatteries` and `readClimbReadout`, `wri.ts climb --json` per campaign, `wri.ts census` for
+the gate) rather than re-deriving each reading by hand. Count distinct runs and conditions, not
+reports, since two notes about one run are one observation, and a run whose round never reached the
+link is no opportunity, neither a break nor a hold.
+
+**Hand over one constraint.** The output is the link, the owner of the bytes that would move it (a
+bundle file, `environment`, `controller-source` with the file named, or `judge`, as the catalogue
+names owners), the observation that would disprove it, and the cheapest test that separates it from
+its rival: an existing receipt or a deterministic replay before a live probe, and a live probe at the
+smallest layer `system-path-simulation` can decide before any paid run. That goes to
+`run-improvement-campaign`, whose experiment choice turns it into one change and one frozen
+prediction.
 
 ## Who can move difficulty
 
@@ -156,6 +216,19 @@ surface against the working tree, so resolve every model-visible surface against
 Three flat edges and then one `escalated` are one observation, and the three before it are its
 cost.
 
+Some climb questions have a tempting wrong reader. Each row names the reader that answers and the
+one that does not:
+
+| you want to know | read | not |
+| --- | --- | --- |
+| whether the run is climbing | the `velocity`, `horizon`, `flat` and `carried` lines | the zone, the score, or a monotonic approach to the aim |
+| whether the Builder was asked for more | whether the latest battery passed every verified case, which sends the no-limit line (`noLimitLine`) | the zone, which the Builder never hears |
+| how the next battery is sized | the placement in `difficulty-decisions/` | the score |
+| whether the tasks got harder | the edge labels and the tier histogram, with the task rows beside them | new task ids or a longer description |
+| whether the Builder read a starter file | the bundle bytes and the Builder's notes | read counts in `builder-path-record.jsonl`: the Builder reads through `bash`, so zero proves nothing |
+| whether a battery is hard or merely unsolvable | `artifact.json` beside `public-task.json` in the settled cases | a reviewer finding, a published limit or a zero score |
+| whether a slow solve met the wall | `solver.toolCalls` in `case-result.json`, and the row's `wallBound` | `max_turns` or the turn count, since every pi solve records one turn |
+
 ## Harder, or only different
 
 Family names, more scenarios, longer text and fresh hashes prove membership, not difficulty.
@@ -219,10 +292,11 @@ against the adopted predecessor rather than the latest held candidate.
 
 ## Choosing one change
 
-Name the owner, the live consumer, the decision changed and the falsifier, then replay the
-mechanism over recorded campaigns and count the rounds it would have engaged; a refusal reachable
-only after the behaviour it exists to cause is decoration. Prefer deleting a competing owner to
-adding one. Return the recorded decision and its placement, the admitted and excluded batteries,
-whether the public condition grew and how, the three denominators, what the Builder's notes say
-the round set out to change, the change with its falsifier, and the next question. Paid work stays
-with `run-improvement-campaign` and `launch-run`.
+Start from the constraint the walk in "Find the binding constraint" named. Name the owner, the live
+consumer, the decision changed and the falsifier, then replay the mechanism over recorded campaigns
+and count the rounds it would have engaged; a refusal reachable only after the behaviour it exists
+to cause is decoration. Prefer deleting a competing owner to adding one. Return the recorded
+decision and its placement, the admitted and excluded batteries, whether the public condition grew
+and how, the three denominators, what the Builder's notes say the round set out to change, the
+binding constraint with its falsifier, the change, and the next question. Paid work stays with
+`run-improvement-campaign` and `launch-run`.

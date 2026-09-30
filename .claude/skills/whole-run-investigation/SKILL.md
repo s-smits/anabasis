@@ -16,7 +16,8 @@ Four narrower reads need no lane at all. A question about one run or one case â€
 a non-result's owner, whether a live run is still worth its spend â€” is answered from the recorded
 rows by [the outcome reference](references/outcome-review.md). A climb question starts at
 [the climb reference](references/climb.md), which reads the recorded difficulty decision and the
-task bytes and says whether a battery got harder or only different. A question about whether a
+task bytes, says whether a battery got harder or only different, and finds the one link that holds
+a flat line. A question about whether a
 refusal or a declared check earns its place starts at [the gate audit](references/gate-audit.md),
 whose `wri.ts census` prices every component and check across all recorded runs at once. And a
 question about whether a new wave of runs is better than the one it replaced starts at

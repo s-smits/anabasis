@@ -518,7 +518,14 @@ function notePassEffort(tally: RoundRehearsals, row: RehearsalRow): void {
  * alone was read in 52 of 310 recorded sessions. It points at the file and asks nothing.
  */
 function roundClause(tally: RoundRehearsals, tellOnce: (key: string) => boolean): string {
-  if (tally.graded === 1) return tellOnce("examples") ? EXAMPLES_POINTER : "";
+  // ABLATED(examples-reminder): the once-per-session pointer at the first graded rehearsal. The file,
+  // the starter's link and the session bookkeeping stay (AGENTS.md "Ablated components").
+  // if (tally.graded === 1) return tellOnce("examples") ? EXAMPLES_POINTER : "";
+  // ADDED(examples-reminder), to its closing brace: the first graded rehearsal still spends the once.
+  if (tally.graded === 1) {
+    tellOnce("examples");
+    return "";
+  }
   if (tally.graded < 2) return "";
   const { longestPassWallPercent: percent, mostPassToolCalls: calls } = tally;
   const wall = percent === null ? null : `took more than ${String(percent)}% of the solve wall`;

@@ -727,7 +727,9 @@ describe("what one round of rehearsals costs", () => {
     const second = modelVisible(await rehearse(tool));
 
     expect(isString(first.nextAction) ? first.nextAction : "").not.toContain("Across this round");
-    expect(first.nextAction).toContain(EXAMPLES_POINTER.trim());
+    // ABLATED(examples-reminder): expect(first.nextAction).toContain(EXAMPLES_POINTER.trim());
+    // ADDED(examples-reminder): the first graded rehearsal names no file.
+    expect(first.nextAction).not.toContain(EXAMPLES_POINTER.trim());
     expect(second.nextAction).not.toContain("examples.md");
     expect(asRecord(first.validation)?.round).toEqual({
       graded: 1,
@@ -762,7 +764,10 @@ describe("the worked-examples pointer", () => {
     const next = round(dir, assigningSolver(RIGHT_SLOT), true, { tellOnce });
     const continued = modelVisible(await rehearse(next.tool));
 
-    expect(opened.nextAction).toContain(EXAMPLES_POINTER.trim());
+    // ABLATED(examples-reminder): expect(opened.nextAction).toContain(EXAMPLES_POINTER.trim());
+    // ADDED(examples-reminder): nor at a session's first, which still spends the once.
+    expect(opened.nextAction).not.toContain(EXAMPLES_POINTER.trim());
+    expect(told.has("examples")).toBe(true);
     expect(continued.nextAction).not.toContain("examples.md");
     expect(asRecord(continued.validation)?.round).toMatchObject({ graded: 1, passed: 1 });
   }, 60_000);

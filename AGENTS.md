@@ -657,6 +657,12 @@ only after every arm's source is fixed, and nothing read from it revises an arm.
   pointer stay. The rehearsed task sat at chance in its battery's solve-time order (mean rank 0.48
   against 0.50), and 945 of 994 graded rehearsals passed. Grep: `rg "ABLATED\(trial-forecast\)"`.
   Prediction and run: filled when this arm launches.
+- **`examples-reminder` (arm, 2026-10-01).** The one-time pointer to the worked examples at a session's
+  first graded rehearsal (`roundClause`). The examples file, the starter's link and the session
+  bookkeeping stay, so this isolates the reminder from the file's availability. It follows #116's
+  examples-reminder arm. Its reading needs a matched control, since the recorded 52 of 310 reads have
+  unmatched eligibility. Grep: `rg "ABLATED\(examples-reminder\)"`. Prediction and run: filled when this
+  arm launches.
 
 ## Evidence and implementation status
 

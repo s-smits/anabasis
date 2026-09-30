@@ -32,7 +32,7 @@ interface LaunchReceipt {
 
 interface SessionSummary {
   reasoningEffort: string;
-  sessions: { status: string; exitCode: number }[];
+  sessions: { name: string; status: string; exitCode: number; failureKind: string | null }[];
 }
 
 const BUN = required(Bun.argv[0], "the running bun");
@@ -206,6 +206,70 @@ console.log(JSON.stringify({ type: "thread.started", thread_id: "thread_test_123
     assert.equal(summary.sessions[0]?.status, "completed");
     assert.equal(summary.sessions[0]?.exitCode, 0);
     assert.ok(args.includes('model_reasoning_effort="xhigh"'));
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+  }
+});
+
+test("labels a session rate limited from what Codex reported, not from what a command printed", () => {
+  const root = mkdtempSync(join(tmpdir(), "luna-sessions-rate-limit-test-"));
+  try {
+    const workdir = join(root, "workdir");
+    const outputDir = join(root, "output");
+    const fakeCodex = join(root, "fake-codex");
+    const manifestPath = join(root, "manifest.json");
+    mkdirSync(workdir);
+    // Both sessions fail on "429 Too Many Requests". One read it in a file, which Codex records as a
+    // command's output; the other received it from the provider, which Codex records as an error.
+    writeFileSync(
+      fakeCodex,
+      `#!/usr/bin/env bun
+const prompt = await Bun.stdin.text();
+const text = "429 Too Many Requests";
+console.log(JSON.stringify({ type: "thread.started", thread_id: "thread_test_429" }));
+console.log(
+  JSON.stringify(
+    prompt.includes("THROTTLED")
+      ? { type: "error", message: text }
+      : { type: "item.completed", item: { type: "command_execution", aggregated_output: text } },
+  ),
+);
+process.exit(1);
+`,
+      { mode: 0o700 },
+    );
+    chmodSync(fakeCodex, 0o700);
+    writeFileSync(
+      manifestPath,
+      JSON.stringify({
+        workdir,
+        sessions: [
+          { name: "reader", task: "Read a file that quotes a status." },
+          { name: "throttled", task: "THROTTLED: meet the refusal." },
+        ],
+      }),
+    );
+
+    const result = runText([
+      BUN,
+      launcherPath,
+      "--manifest",
+      manifestPath,
+      "--codex-bin",
+      fakeCodex,
+      "--output-dir",
+      outputDir,
+      "--launch-only",
+    ]);
+    // A failed session fails the launch; the completion line counts only the one Codex refused.
+    assert.equal(result.exitCode, 1, result.stderr);
+    assert.match(result.stdout, /"rateLimitedCount":1/);
+
+    const summary = parseJsonAs<SessionSummary>(readFileSync(join(outputDir, "summary.json"), "utf8"));
+    const kinds = Object.fromEntries(
+      summary.sessions.map((row) => [row.name, [row.status, row.failureKind]]),
+    );
+    assert.deepEqual(kinds, { reader: ["failed", null], throttled: ["failed", "rate-limit"] });
   } finally {
     rmSync(root, { force: true, recursive: true });
   }

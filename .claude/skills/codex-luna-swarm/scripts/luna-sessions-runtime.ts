@@ -268,6 +268,18 @@ function regularFileExists(path: string): boolean {
   return existsSync(path) && lstatSync(path).isFile();
 }
 
+/** What Codex itself reported going wrong: its stderr and the event log's own `error` and
+ *  `turn.failed` events. A command's output is what the session read, not what Codex said, so a
+ *  lane that opened a file about rate limits is not rate limited: the 2026-09-25 lanes stopped by
+ *  SIGTERM were all labelled so from their command output, with nothing in stderr. */
+function codexErrorText(stderrPath: string, eventPath: string): string {
+  const read = (path: string) => (regularFileExists(path) ? readFileSync(path, "utf8") : "");
+  const events = read(eventPath)
+    .split("\n")
+    .filter((line) => line.startsWith('{"type":"error"') || line.startsWith('{"type":"turn.failed"'));
+  return [read(stderrPath), ...events].join("\n");
+}
+
 function threadIdFromEvents(path: string): string | null {
   if (!regularFileExists(path)) return null;
   const length = Math.min(statSync(path).size, MAX_EVENT_PREFIX_BYTES);
@@ -364,12 +376,7 @@ async function runSession(session: LunaSession, options: SessionRunOptions): Pro
   const reportExists = regularFileExists(reportPath);
   const completed = completion.exitCode === 0 && reportExists;
   const classifiedFailure =
-    !completed &&
-    /(?:\b429\b|too many requests|rate.?limit)/i.test(
-      [stderrPath, eventPath]
-        .flatMap((path) => (regularFileExists(path) ? [readFileSync(path, "utf8")] : []))
-        .join("\n"),
-    )
+    !completed && /(?:\b429\b|too many requests|rate.?limit)/i.test(codexErrorText(stderrPath, eventPath))
       ? "rate-limit"
       : null;
   return {

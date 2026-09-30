@@ -94,8 +94,9 @@ counterfactual) and six cross-run challenges (comparability, full vertical, diff
 improvement, decision yield, and blind best-run/action review). Do not pad the count. Do not launch the
 manifest unless the selection's `luna.launchAllowed` is true; a blocked manifest contains no sessions. Drain
 completed reports with the launcher's
-`--drain` mode while it runs, then once after exit. A typed 429 permits one retry of missing sessions only,
-at lower concurrency and slower pacing. Treat any remaining transport failure as missing research.
+`--drain` mode while it runs, then once after exit. The launcher gives each session one further attempt
+itself. After a typed 429, rerun the missing sessions once with the launcher's `--retry <outputDir>` at
+lower concurrency and slower pacing. Treat any remaining transport failure as missing research.
 
 Each leaf is read-only and independent. It must state a rival explanation and falsifier, keep exact
 denominators, and return `unobservable` rather than guess.

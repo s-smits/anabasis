@@ -715,38 +715,6 @@ describe("what a launch composes", () => {
     expect(noBoard.stderr).toContain("names a hardware target");
   });
 
-  it("composes one self-contained prompt per session for the codex transport and prints its launch", () => {
-    const result = launch(
-      snapshot(),
-      "--auto",
-      String(FULL_SWEEP.length),
-      "--effort",
-      "max",
-      "--transport",
-      "codex",
-    );
-    const rows = parseJsonAs<(LunaRow & { write?: boolean })[]>(
-      readFileSync(join(result.out, "codex-tasks.json"), "utf8"),
-    );
-    const instructions = result.instructions().trim();
-
-    expect(result.status).toBe(0);
-    expect(rows.map((row) => row.name)).toEqual(FULL_SWEEP);
-    for (const row of rows) {
-      expect(row.task.startsWith(instructions)).toBe(true);
-      // Only a session holding a hardware lane runs in, and may write, its own scratch.
-      const scratch = result.task(row.name)?.scratch ?? null;
-      expect(row.task.endsWith(scratch === null ? READ_ONLY_AUTHORITY : scratchAuthority(scratch))).toBe(
-        true,
-      );
-      expect(row.workdir).toBe(scratch ?? undefined);
-      expect(row.write).toBe(scratch === null ? undefined : true);
-    }
-    expect(rows.filter((row) => row.write === true)).toHaveLength(2);
-    expect(result.stdout).toContain("codex-sessions.ts launch --tasks-file");
-    expect(result.stdout).toContain("--model gpt-6-luna --effort max");
-  });
-
   // Lane 30 must build an adapter and freeze its verdicts to a file of its own before it reads any
   // verdict, and a read-only session can do neither.
   it("gives each hardware session one writable scratch its prompt names, and keeps every other read-only", () => {
@@ -790,19 +758,19 @@ describe("what a launch composes", () => {
     const capped = launch(snapshot(), "--sessions", "5,6", "--notes", notes(""), "--max-active", "4");
     expect(capped.status).toBe(0);
     expect(capped.stdout).toContain("--reasoning-effort max --max-active 4");
-    const codex = launch(
+    const native = launch(
       snapshot(),
       "--sessions",
       "5",
       "--notes",
       notes(""),
       "--transport",
-      "codex",
+      "native",
       "--max-active",
       "4",
     );
-    expect(codex.status).not.toBe(0);
-    expect(codex.stderr).toContain("--max-active takes a positive count of concurrent Luna sessions");
+    expect(native.status).not.toBe(0);
+    expect(native.stderr).toContain("--max-active takes a positive count of concurrent Luna sessions");
   });
 
   // `codex exec` refuses a workdir outside every Git work tree, and a hardware session's workdir is

@@ -132,7 +132,6 @@ export interface DispatchInput extends SessionSet {
   detach: boolean;
   maxActive: string | null;
   launcherPath: string;
-  codexLauncherPath: string;
 }
 
 /** The trace-challenge identity a launch binds the packet to. */
@@ -692,19 +691,6 @@ function lunaArgs({
   ];
 }
 
-/** Codex transport from Claude Code: one self-contained prompt per lane, detached past the Bash
- *  tool's 600 s wall by codex-sessions.ts, so the reviewer writes no instruction packet by hand. */
-function writeCodexTasks(outPath: string, instructions: string, tasks: readonly ManifestTask[]): string {
-  const codexTasksPath = join(outPath, "codex-tasks.json");
-  const rows = tasks.map(({ name, task, scratch }) => {
-    const prompt = leafPrompt(instructions, task, scratch);
-    // A hardware session runs in, and writes, its own scratch; every other one reads.
-    return scratch === null ? { name, task: prompt } : { name, task: prompt, write: true, workdir: scratch };
-  });
-  writeJsonFile(codexTasksPath, rows);
-  return codexTasksPath;
-}
-
 export function writeAndDispatch(input: DispatchInput): void {
   const outPath = resolve(input.outDir);
   // `codex exec` starts only inside a Git work tree, and a hardware session's workdir is its own
@@ -744,31 +730,6 @@ export function writeAndDispatch(input: DispatchInput): void {
   );
   if (input.transport === "native") {
     writeNativePrompts(outPath, input.instructions, input.tasks);
-    return;
-  }
-  if (input.transport === "codex") {
-    const codexTasksPath = writeCodexTasks(outPath, input.instructions, input.tasks);
-    const outputDir = join(outPath, "codex-output");
-    const args = [
-      input.bun,
-      "--no-env-file",
-      input.codexLauncherPath,
-      "launch",
-      "--tasks-file",
-      codexTasksPath,
-      "--out-dir",
-      outputDir,
-      "--workdir",
-      input.worktree,
-      "--model",
-      "gpt-6-luna",
-      "--effort",
-      input.effort,
-    ];
-    console.log(`\nlaunch:\n${args.join(" ")}`);
-    if (!input.launch) return;
-    if (!existsSync(input.codexLauncherPath)) manifestFail(`no codex launcher at ${input.codexLauncherPath}`);
-    console.log(runTextSyncOrThrow(args).trimEnd());
     return;
   }
   const outputDir = join(outPath, "luna-output");

@@ -325,7 +325,10 @@ and `### Not established`, each once, in that order and non-empty, and every fin
 `owner:` from `FINDING_OWNERS` in `manifest-reporting.ts`: one of the nine bundle files, such as
 `correctness-model/evaluator.ts`, or `environment`, plus `controller-source` and `judge`. A report
 that breaks that shape is refused with the exact section named; a failed or absent report is
-missing work, and one retry is permitted within the authorised cap.
+missing work. The launcher has already given each session one further attempt; one rerun of the
+sessions still missing is permitted within the authorised cap, with
+`bun .agents/skills/codex-luna-swarm/scripts/luna-sessions.ts --retry <review>/lanes/luna-output`,
+and `finish` then reads the summary it writes.
 
 `finish` then scaffolds `<review>/archive/` from recorded bytes: `luna_syntheses.md` and
 `digest.md` from the reports and the snapshot, `review.json` from those plus `verdicts.json`, and

@@ -360,29 +360,34 @@ export function fingerprintRefusal(
   return findings.map((f) => controllerValidatedFinding({ code: f.code, path: f.file, detail: f.detail }));
 }
 
-/** Agent code byte-identical to correctness-model code. A solver tool running a check's own module
- *  analyses a candidate the way the check does, which the tools contract rules out: every harness
- *  built that way on 2026-09-29/30 (reserve 6a8ca0 and a16848, buffer 3af96d, firmware 887c16)
- *  passed every battery whole. Advisory, never a refusal (operator, 2026-09-30: "simplicity and
- *  leniency"): the Builder reads it in readiness and decides; a paraphrase is review's. */
-function agentCopiesOfCheckCode(fingerprint: FingerprintEvidence): ContractFinding[] {
+/** Agent code byte-identical to correctness-model code, as `[agent path, correctness-model path]`
+ *  pairs. A solver tool running a check's own module analyses a candidate the way the check does,
+ *  which the tools contract rules out: every harness built that way on 2026-09-29/30 (reserve
+ *  6a8ca0 and a16848, buffer 3af96d, firmware 887c16) passed every battery whole. */
+export function agentCheckCodeCopies(
+  fingerprint: Pick<FingerprintEvidence, "agentFiles" | "correctnessModelFiles">,
+): Array<[string, string]> {
   const checkCode = new Map(
     fingerprint.correctnessModelFiles
       .filter(({ path }) => CODE_FILE.test(path))
       .map(({ path, sha256 }) => [sha256, path]),
   );
-  return fingerprint.agentFiles.flatMap(({ path, sha256 }) => {
+  return fingerprint.agentFiles.flatMap(({ path, sha256 }): Array<[string, string]> => {
     const original = checkCode.get(sha256);
-    return original === undefined || !CODE_FILE.test(path)
-      ? []
-      : [
-          controllerValidatedFinding({
-            code: "agent-copies-check-code",
-            path: `agent/${path}`,
-            detail: `agent/${path} is byte-identical to correctness-model/${original}: a solver tool running a check's own code analyses a candidate the way the check does. Leave the solver that analysis, and give it only what a candidate is`,
-          }),
-        ];
+    return original === undefined || !CODE_FILE.test(path) ? [] : [[path, original]];
   });
+}
+
+/** Each copy as an advisory, never a refusal (operator, 2026-09-30: "simplicity and leniency"): the
+ *  Builder reads it in readiness and decides; a paraphrase is review's. */
+function agentCopiesOfCheckCode(fingerprint: FingerprintEvidence): ContractFinding[] {
+  return agentCheckCodeCopies(fingerprint).map(([path, original]) =>
+    controllerValidatedFinding({
+      code: "agent-copies-check-code",
+      path: `agent/${path}`,
+      detail: `agent/${path} is byte-identical to correctness-model/${original}: a solver tool running a check's own code analyses a candidate the way the check does. Leave the solver that analysis, and give it only what a candidate is`,
+    }),
+  );
 }
 
 /** Bundle loading and validation shared by `checkCandidate` and `loadHarnessSnapshot`. Candidate

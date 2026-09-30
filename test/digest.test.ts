@@ -336,6 +336,58 @@ describe("digest", () => {
     expect(digest).not.toContain("missing token");
   });
 
+  it("names check code within the solver's reach, and a check program a shell call's text names", () => {
+    const paths = fixture();
+    const domain = join(paths.domainsRoot, "demo-slug");
+    // beta-engine resolved in the Builder's tool tree, which the solver's shell searches; the
+    // battery withheld alpha-engine, and cc came from the host.
+    writeFileSync(
+      join(paths.campaign, "claims", "run-1.json"),
+      JSON.stringify({
+        condition: { advisorsRemoved: ["instrument:alpha-engine"] },
+        claim: {
+          statement: {
+            verifierTools: [
+              { toolId: "beta-engine", source: "workspace-toolchain" },
+              { toolId: "alpha-engine", source: "workspace-toolchain" },
+              { toolId: "cc", source: "host" },
+            ],
+          },
+        },
+      }),
+    );
+    writeFileSync(join(domain, "correctness-model", "metrics.ts"), "export const limit = 3;\n");
+    writeFileSync(join(domain, "agent", "metrics.ts"), "export const limit = 3;\n");
+    // The solver ran it through bash, whose arguments the trace keeps only as a digest: the
+    // clipped preview is the one place the program's name survives.
+    const bound = (runId: string, toolCalls: JsonValue[]) => {
+      const path = `runs/${runId}/cases/t1/trace.json`;
+      const trace = JSON.stringify({ schema: "case-trace/v4", turns: [], toolCalls, truncated: false });
+      writeFileSync(join(domain, path), trace);
+      return [{ path, sha256: new Bun.CryptoHasher("sha256").update(trace).digest("hex") }];
+    };
+    writeLedger(paths.campaign, [
+      gradedRow("run-1", true, {
+        traces: bound("run-1", [
+          { toolName: "bash", resultPreview: "$ beta-engine < design.json RESULT PASS" },
+        ]),
+      }),
+      gradedRow("run-4", true, { traces: bound("run-4", [{ toolName: "bash", resultPreview: "ok" }]) }),
+    ]);
+    recordDigestBattery(domain, ["run-1", "run-4"]);
+    const digest = digestOf(paths);
+    expect(digest).toContain(
+      "CHECK CODE IN SOLVER REACH (lane 34): beta-engine on the solver's PATH, from the Builder's tool tree",
+    );
+    expect(digest).toContain(
+      "CHECK CODE IN SOLVER REACH (lane 34): agent/metrics.ts is byte-identical to correctness-model/metrics.ts",
+    );
+    expect(digest).toContain(
+      "CHECK TOOL IN SOLVER TRACE (lane 23): beta-engine named in the recorded call text of 1 of 2 traces",
+    );
+    expect(digest).not.toMatch(/(alpha-engine|cc) on the solver's PATH/);
+  });
+
   it("counts every issue naming a check, as the verdict binding blocks on each", () => {
     const paths = fixture();
     const verdict = join(paths.domainsRoot, "demo-slug", "runs", "run-1", "cases", "t1", "verifier.json");

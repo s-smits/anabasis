@@ -29,8 +29,10 @@ that decided it, and prints `in-process` where no installed tool did, which star
 `UNTRIPPED IN SHIPPING` counts reject controls whose declared check never fired on a shipping
 case; it carries no suffix because the brief maps it to lanes 5 and 6. Block 1b, solver process,
 reads the solve traces for the tools the solver called, and `CHECK TOOL IN SOLVER TRACE (lane 23)`
-says a verifier-side tool appeared in a solve, which lane 22 reads as a lead and lane 23 settles
-alone. Block 1c, check informativeness, sets the reach of the controls against what shipping
+says a verifier-side tool appeared in a solve, as a declared tool or named in a call's recorded text,
+which lane 22 reads as a lead and lane 23 settles alone. `CHECK CODE IN SOLVER REACH (lane 34)` is
+the static half: a check program the claim resolved in the Builder's tool tree, which the solver's
+shell searches, or agent code byte-identical to correctness-model code. Block 1c, check informativeness, sets the reach of the controls against what shipping
 tripped: `REACH-ONLY CHECKS (lane 6)` names checks the controls reach and no shipping case ever
 failed, and `PERFECT BATTERY OVER AIM (lane 5)` says every scored case passed on a battery the
 band placed over its aim.

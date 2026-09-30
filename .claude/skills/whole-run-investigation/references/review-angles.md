@@ -1009,7 +1009,8 @@ search, and to `correctness-model/controls.json` when the accepts are the refere
 **34. Check mirroring in solver tools.**
 
 Starts from every run at every tier as a standing lane, because the solver's tools are the
-Builder's too, and from block 1b's `CHECK TOOL IN SOLVER TRACE (lane 23)`.
+Builder's too, and from block 1b's `CHECK CODE IN SOLVER REACH (lane 34)` and `CHECK TOOL IN SOLVER
+TRACE (lane 23)`.
 
 The question is whether a Builder-written solver tool reports what the checks read, so that solving
 becomes propose, read the failing state, adjust. Keep two things apart first. The host's own margin

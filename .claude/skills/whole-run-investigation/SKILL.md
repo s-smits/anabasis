@@ -192,7 +192,7 @@ against a row of the brief: the trigger, the question it settles and the decisio
 | 3c `REPEATED CONDITION`; a `climb` edge label | 20 |
 | source-delta `UNREACHED CHANGED SAFEGUARDS` or `MODEL-VISIBLE SURFACE CHANGED` | 21 |
 | a `walls` case `time-bound` or `turn-bound`, or a pass at a wall; passes at a tiny share of the solve wall | 22 |
-| 1b `CHECK TOOL IN SOLVER TRACE`; verified cases with lane 1, 4, 8, 22 or 34 suspecting a shortcut | 23, isolated |
+| 1b `CHECK TOOL IN SOLVER TRACE` or `CHECK CODE IN SOLVER REACH`; verified cases with lane 1, 4, 8, 22 or 34 suspecting a shortcut | 23, isolated |
 | a `timeline` gap over thirty minutes; 4c `REVIEW TURNS EXCEED SOLVER TURNS`, `EXPLICIT ALLOWANCE WAIT` or `DECISION ON CENSORED BATTERY` | 24 |
 | any unaccepted case; any non-result; a terminal other than `completed`; submit strikes | 25 |
 | a `posture` stretch `adrift` or `unreadable`; 4e `MEMORY OVER READ CAP` | 26 |
@@ -202,7 +202,7 @@ against a row of the brief: the trigger, the question it settles and the decisio
 | standing at every tier; lane 1 or 29 reporting an obligation of the request no check observes | 31 |
 | 2b `CENSUS WITH DISAGREEMENT`, beside lane 16; standing at `deep` | 32 |
 | standing at `standard` and `deep`; row F's F2 completion | 33 |
-| standing at every tier; read beside lane 23 when 1b `CHECK TOOL IN SOLVER TRACE` fires | 34 |
+| standing at every tier; 1b `CHECK CODE IN SOLVER REACH`; read beside lane 23 when 1b `CHECK TOOL IN SOLVER TRACE` fires | 34 |
 | 6b `VERSION TOOLCHAIN DANGLING`; 1c `PERFECT BATTERY OVER AIM` | 35 |
 | 4b `OFF-AIM STREAK`, beside lane 10 | 36 |
 | standing at `standard` and `deep` | 37 |

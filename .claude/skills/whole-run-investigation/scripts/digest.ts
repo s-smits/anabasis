@@ -28,6 +28,8 @@ import { isControllerBatteryRunId } from "#src/run/controller-battery-record-pol
 import { recordedEvidence } from "#src/claim/evidence-log.ts";
 import { type BatteryRecord, readRecordedBatteryRecord } from "#src/correctness-bundle/battery-record.ts";
 import { bundleSnapshotIdOf } from "#src/claim/bundle-snapshot.ts";
+import { hashBundle } from "#src/claim/bundle-hash.ts";
+import { agentCheckCodeCopies } from "#src/author/candidate-check.ts";
 import { verifyTree } from "#src/claim/bundle-snapshot-verify.ts";
 import { CASE_TRACE_SCHEMA } from "#src/backends/trace-capture.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
@@ -258,6 +260,21 @@ function claimGroundings(claims: readonly JsonValue[]): ClaimGroundings {
   return { groundingByCheck, groundingSources };
 }
 
+/** The check programs these claims resolved inside the Builder's tool tree, which the solver's shell
+ *  searches before the host's, less any the withheld-instruments condition closed for the battery. */
+function checkProgramsOnPath(claims: readonly JsonValue[]): string[] {
+  const ids = claims.flatMap((claim) => {
+    const withheld = asRecord(asRecord(claim)?.condition)?.advisorsRemoved;
+    const tools = asRecord(asRecord(asRecord(claim)?.claim)?.statement)?.verifierTools;
+    return (Array.isArray(tools) ? tools : []).flatMap((entry) => {
+      const tool = asRecord(entry);
+      const id = tool?.source === "workspace-toolchain" ? tool.toolId : null;
+      return isString(id) && !(Array.isArray(withheld) && withheld.includes(`instrument:${id}`)) ? [id] : [];
+    });
+  });
+  return [...new Set(ids)].sort();
+}
+
 /** One check's sources in one claim: each tool the host launched for it, a cell-built program when
  *  one ran, and `in-process` when neither did. */
 function launchSources(ran: readonly JsonObject[]): string[] {
@@ -467,6 +484,7 @@ function processCensus(
   caseRootOf: CaseRoots,
   bundleDir: string | null,
   bundleProvenance: string,
+  onPath: readonly string[],
 ): string[] {
   // --- block 1b: solver process census and oracle-preview suspects ----------------------------
   // How uniform is the solve, and does any public tool look like a verdict previewer? A tool
@@ -475,19 +493,32 @@ function processCensus(
   // battery by construction. The flag is a suspect, not a verdict: the trace-challenge lane owns
   // the disclosure judgement. Each row's trace is read from the digest-intact root the check table used, and
   // counted by the same census the trace-challenge telemetry reports.
+  // Static evidence first: the check's own program on the solver's PATH, or its own module copied
+  // into agent/, hands the solver the check's analysis whether or not a trace shows it used. The
+  // measured product's trees hashed cleanly when it was verified, so hashing them here cannot refuse.
   const lines = ["", `## 1b solver process (${CASE_TRACE_SCHEMA})`];
-  const census = traceCensus(
-    caseRows.map((row) => {
-      const root = caseRootOf.get(row) ?? null;
-      return {
-        runId: row.runId,
-        taskId: row.taskId,
-        family: row.family,
-        outcome: classifyCaseOutcome(row),
-        trace: root === null ? null : readVerifiedTrace(row, root).trace,
-      };
-    }),
-  );
+  const files = (tree: string) => (bundleDir === null ? [] : hashBundle(join(bundleDir, tree)).files);
+  const copies = agentCheckCodeCopies({
+    agentFiles: files("agent"),
+    correctnessModelFiles: files("correctness-model"),
+  });
+  for (const reach of [
+    ...onPath.map((id) => `${id} on the solver's PATH, from the Builder's tool tree`),
+    ...copies.map(([copy, original]) => `agent/${copy} is byte-identical to correctness-model/${original}`),
+  ]) {
+    lines.push(`CHECK CODE IN SOLVER REACH (lane 34): ${reach}`);
+  }
+  const records = caseRows.map((row) => {
+    const root = caseRootOf.get(row) ?? null;
+    return {
+      runId: row.runId,
+      taskId: row.taskId,
+      family: row.family,
+      outcome: classifyCaseOutcome(row),
+      trace: root === null ? null : readVerifiedTrace(row, root).trace,
+    };
+  });
+  const census = traceCensus(records);
   if (census.cases.recorded === 0) return [...lines, "no readable case traces"];
   const errors = census.tools.reduce((sum, tool) => sum + tool.errors, 0);
   // Tool calls, not turns: the pi backend records one turn for every solve, whatever it did.
@@ -497,6 +528,18 @@ function processCensus(
       (calls === null ? "" : ` · tool calls/case min ${calls.min} median ${calls.median} max ${calls.max}`),
   );
   lines.push(...toolRosterLines(census.tools, bundleDir, bundleProvenance));
+  // A shell call keeps its arguments only as a digest and clipped text, so a check program run
+  // through bash shows in a trace only where the text of some call names it.
+  for (const id of onPath) {
+    const named = records.filter(
+      ({ trace }) => trace?.toolCalls.some((call) => JSON.stringify(call).includes(id)) === true,
+    );
+    if (named.length > 0) {
+      lines.push(
+        `CHECK TOOL IN SOLVER TRACE (lane 23): ${id} named in the recorded call text of ${named.length} of ${census.cases.recorded} traces`,
+      );
+    }
+  }
   return lines;
 }
 
@@ -569,7 +612,9 @@ export function productEvidenceLines({
     }),
   );
 
-  lines.push(...processCensus(caseRows, caseRootOf, bundleDir, bundleProvenance));
+  lines.push(
+    ...processCensus(caseRows, caseRootOf, bundleDir, bundleProvenance, checkProgramsOnPath(claims)),
+  );
 
   lines.push(
     ...checkInformativenessLines({ checks, rejectRows, perCheck, gradedOracleFiles, tallies, decisions }),

@@ -276,11 +276,19 @@ function roundPrompt(input: BuilderSessionInput, previous: PreviousRound | null)
     // The cap counts replies, not tool calls, and says so: read as a count of steps, fifteen turns
     // looked nearly spent a dozen calls into the first, and a Builder dropped a change it had
     // judged right for want of turns it still had.
+    // Saying what a pass is did not change the action. The two Sol runs on 887c163ee that passed
+    // every case of 13 and 11 batteries each submitted on one rehearsal that passed in its first
+    // turn, citing "submit once a clear preview says it works" as the user's instruction, with the
+    // reach sentence in front of them (primary lanes, 2026-09-30). So a battery whose rehearsals all
+    // passed is named as one on course to find no limit, and its demand changes once before submit.
+    // Once, and not until a rehearsal fails: a condition a rehearsal has to meet held rounds back for
+    // hours without moving where the battery landed.
     `${roundLimit(input.maxTurns)}Build, check and rehearse the candidate, and submit` +
-      ` once a clear preview says it works. The measured battery, not a rehearsal, decides where it lands, but a passing` +
-      ` rehearsal is a blind solve of its task, so it shows that task is within the solver's reach, and the task you` +
-      ` expect to be hardest is the one whose rehearsal says most about the battery; further polish belongs to the` +
-      ` next round.`,
+      ` once a clear preview says it works. A passing rehearsal is a blind solve of its task, so it shows that task` +
+      ` is within the solver's reach, and the task you expect to be hardest is the one whose rehearsal says most about` +
+      ` the battery. A battery whose every rehearsal passed is on course to pass every case and find no limit, so` +
+      ` before you submit it, change what its hardest tasks demand and rehearse one of them again. The measured` +
+      ` battery, not a rehearsal, decides where it lands; further polish belongs to the next round.`,
     HANDOVER,
   ];
   const context = [input.advisory ?? "", previous === null ? (input.freshContext ?? "") : ""]

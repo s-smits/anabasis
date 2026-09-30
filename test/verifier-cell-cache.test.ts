@@ -18,9 +18,11 @@ import { spawnTextSync as spawnSync } from "./helpers/bun-spawn-sync.ts";
 import {
   existsSync,
   mkdirSync,
+  readFileSync,
   realpathSync,
   renameSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
@@ -56,6 +58,14 @@ const CACHE_TOOL = [
   'echo "home=$HOME"',
   'echo "tmp=$TMPDIR"',
   'if [ "$1" = slow ]; then sleep 30; fi',
+];
+
+/** A tool that stores its argument on its first run, and on a later one prints its stored entry's
+ *  modification time to the nanosecond and then overwrites the entry. */
+const STAMP_TOOL = [
+  'entry="$XDG_CACHE_HOME/cache-tool/entry"',
+  'if [ -f "$entry" ]; then /usr/bin/stat -f %Fm "$entry" && echo overwritten > "$entry"',
+  'else mkdir -p "$XDG_CACHE_HOME/cache-tool" && printf %s "$1" > "$entry" && echo cold; fi',
 ];
 
 afterAll(cleanupScratch);
@@ -235,6 +245,29 @@ describe("the verifier tool cache", () => {
     expect(answer(measured)).toBe("warm gate");
     expect(cacheOf(measured)).toMatchObject({ start: "warm", published: false });
   });
+
+  it.if(runtimeProcess.platform === "darwin")(
+    "restores every stored file time to the nanosecond, into a tree the cell writes alone",
+    async () => {
+      // A build cache compares an object's time with its source's, so a restored time that moved
+      // can make a fresh object read as stale. A copy that sets the times afterwards keeps them
+      // only to the millisecond.
+      const fx = hostFixture({ "stamp-tool": STAMP_TOOL });
+      const stamp = (arg: string, phase: "discrimination" | "battery") =>
+        runOnce(fx.host, subject({}, { phase }), { toolId: "stamp-tool", checkId: "c-cache", args: [arg] });
+      const stored = await stamp("one", "discrimination");
+      expect(cacheOf(stored).published).toBe(true);
+      const entry = join(cacheOf(stored).path, "cache-tool", "entry");
+      const { mtimeNs } = statSync(entry, { bigint: true });
+      const seconds = `${mtimeNs / 1_000_000_000n}.${String(mtimeNs % 1_000_000_000n).padStart(9, "0")}`;
+
+      const restored = await stamp("two", "battery");
+      expect(cacheOf(restored).start).toBe("warm");
+      expect(answer(restored)).toBe(seconds);
+      // The run overwrote its entry, and the store still holds what the first run stored.
+      expect(readFileSync(entry, "utf8")).toBe("one");
+    },
+  );
 
   it("publishes nothing from a run that did not execute", async () => {
     const fx = hostFixture({ "cache-tool": CACHE_TOOL });

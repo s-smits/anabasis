@@ -125,7 +125,13 @@ function restore(path: string, key: string, target: string): CellToolCache {
   try {
     const stored = newestFileMs(path);
     if ("refused" in stored) return cold(`the stored cache ${stored.refused}`);
-    cpSync(path, target, { recursive: true, preserveTimestamps: true });
+    // On Darwin Bun clones a tree into a new path with one clonefile(2), which keeps every file
+    // time to the nanosecond; asking it to keep them sends it file by file, setting each time to
+    // the millisecond afterwards, 2.2 s against 0.2 s for a 1 GB firmware store. Elsewhere, or
+    // over an entry already there, even a dangling link, only the per-file copy keeps the times.
+    const cloned =
+      runtimeProcess.platform === "darwin" && lstatSync(target, { throwIfNoEntry: false }) === undefined;
+    cpSync(path, target, { recursive: true, preserveTimestamps: !cloned });
     return { row: { key, path, start: "warm" }, syncedAt: Date.now() };
   } catch (error) {
     // A copy that stopped part way would leave the tool half a cache.

@@ -1440,8 +1440,10 @@ Builder shell call gets its own `ana-builder-bash-*` `TMPDIR`, removed when the 
 verifier scope removes every cell that no pending receipt holds.
 
 Builder access is stated once per backend, through the host-controlled file and command tools. It may read
-the workspace, the public inputs, prior traces, the host toolchain paths, compiler scratch, and the
-`src/solve` and `src/meta` authoring interfaces. It may not read controller evidence, including evidence
+the workspace, the public inputs, prior traces, the host toolchain paths, compiler scratch, the
+`src/solve` and `src/meta` authoring interfaces, `starters/`, `README.md` and this file
+(`src/builder/candidate-isolation.ts`). No prompt carries this file and no backend loads it as instructions,
+but a Builder can open it (2026-09-30). It may not read controller evidence, including evidence
 created after the session started, credentials, other accounts, or `src/correctness-bundle`, `src/verify`
 and `src/gate`. The Built Harness has a narrower file wall but outbound network, so that it can fetch a
 toolchain into its private home (2026-08-15, reaffirmed 2026-09-06). The controller brokers each

@@ -113,6 +113,19 @@ which lane 26 reads as a statement about the writer or the reader rather than th
 thirty minutes starts lane 24, and `--classify` labels each stretch `adrift` or `unreadable`
 through `classifier/run-narrative.ts`, where `adrift` starts lane 25.
 
+`timeline` shows phases and gaps. It does not show how much of a round the Builder spent waiting on
+its tools, and that share decides whether a long round is the model's or the host's. Read it from
+`builder-execution.json`. Each `customCalls` row, including bash, read, write and edit, carries
+`startedAtMs` and `durationMs` counted from the execution's start. Take the union of those intervals
+against `durationMs`: calls sent together overlap, so a plain sum counts one wait twice. On
+2026-09-30 six live Opus firmware rounds waited on tools for 79–91% of their wall this way (fork-a
+275 of 304 min, -36 336 of 423). One `correctness_check` ran 137 min, and a `harness_inspect`
+readiness call ran 31–35 min, on a host at load 57–200 with 12 cores. The record keeps no bash
+command (`target: {}`). What a slow call ran is only in the Builder CLI transcript, under
+`ana-claude-cli-*/projects/<workspace slug>/*.jsonl` inside the run's `ana-quick-run-*` temp root,
+and `pi-session.ts` removes that directory when the session closes. So read it while the run is live:
+pair each `tool_use` with its `tool_result` and take the longest of the calls in one message.
+
 `walls` runs `walls.ts`, whose `boundOf` labels every case `unrecorded`, `time-bound`,
 `turn-bound`, `unstarted`, `submitted` or `no-submit`, and prints each bound's share against
 `BOUND_SHARE`; a battery whose solves sit at a bound starts lane 22, and one whose solves all sit

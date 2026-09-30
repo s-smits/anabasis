@@ -96,6 +96,14 @@ and carries it into the run's frozen env. Codex conditions use the selected `COD
 Capture each selected credential once per batch; keep snapshots private and secrets out of
 arguments and reports. Report a missing credential; do not search other accounts or substitute keys.
 
+Before any launch, compare the host's one-minute load with its cores (`sysctl -n vm.loadavg
+hw.ncpu`) and count the open runs in `bun run runs`, firmware runs above all: each firmware Builder
+compiles in 4–5 lanes of its own, and the Epoch Reviewer's probes run the same compilers. Do not
+launch while load is above the core count. A launch into that load slows every sibling as well as
+itself, and it confounds any comparison of round length, because every arm is then bound by its
+tools. [The Super Loop's launch step](../run-improvement-campaign/SKILL.md#4-launch-through-one-owner)
+records what 2026-09-30 measured under it.
+
 Use `--help` for limits and paths; `--dry-run` plans without setup, secrets or launch.
 Experiment predictions belong to the campaign workflow, outside this launch helper.
 
@@ -155,6 +163,17 @@ Verify the controller terminal through the measured tree's evidence reader, the 
 lock holder and any captured child processes. Service absence alone does not prove that every
 descendant was reaped. Preserve verified, unaccepted and non-result counts and all receipts;
 never repair controller evidence or delete its lock to manufacture closure.
+
+`launchctl bootout` ends the service's own process, which is the `bun run fullrun` wrapper. The
+controller under it can outlive the wrapper with PPID 1 and keep its campaign lock, and `stop.ts`
+reports `service-absent` without looking for it. A controller inside a synchronous walk on its
+main thread runs no SIGTERM handler until the walk returns. The per-scope tool-tree digest is such
+a walk (`toolTreeCounts` in `src/verify/tool-inventory.ts`): about 96k files and 8.7 GB for
+firmware, 3–7 min per tool run under load 200 (2026-09-30). So after `runs stop` or a timer's
+`stop.json`, run `bun run runs` again. A run that still reads `live` from "campaign lock held by a
+live holder" has a controller running without its service, and the pid beside it is that
+controller. The stop is observed only when the run reads `closed`, or reads `orphaned` because the
+lock holder proved dead. Until then, report the stop as unobserved, with that pid.
 
 For an immediate authorised stop, read the launch receipt and invoke `scripts/stop.ts` in this
 skill with

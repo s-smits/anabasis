@@ -1600,7 +1600,7 @@ the battery was paid for.
     | --- | --- | --- |
     | solver | `solve_minutes 120`, `max_turns 24`, `shell_timeout_seconds 300`, `shell_timeout_max_seconds 900` | ≤10×, ≥0.1× |
     | gate | `reference_solve_seconds 120`, `census_minutes 30`, `check_seconds 600`, `tool_run_seconds 300` | none |
-    | battery | `solve_concurrency 3` | ≤10× |
+    | battery | `solve_concurrency 5`, the one variable `BUILT_SOLVE_CONCURRENCY` | ≤10× |
 
     The solve wall is part of the measured condition. Below a tenth of the default the solver never sees a
     command return, so the battery would grade the wall's submit of a first draft. The floor

@@ -20,6 +20,11 @@ import { errorMessage } from "../meta/runtime-values.ts";
 
 export const HARNESS_CONFIG_FILE = "agent/config.yaml";
 
+/** Built Harness cases solved at once in a measured battery: the one place the width is set
+ *  (operator, 2026-10-02). It seeds `battery.solve_concurrency`, which the starter's config.yaml must
+ *  match, a harness may change and `ANA_BUILT_CONCURRENCY` overrides. */
+export const BUILT_SOLVE_CONCURRENCY = 5;
+
 /** Section, key and default of every setting, in the unit the key names.
  *
  *  `solver.max_turns` is the Built solver's per-case turn cap when the harness sets none. Four turns
@@ -31,7 +36,7 @@ export const HARNESS_CONFIG_FILE = "agent/config.yaml";
 const SETTINGS = {
   solver: { solve_minutes: 120, max_turns: 24, shell_timeout_seconds: 300, shell_timeout_max_seconds: 900 },
   gate: { reference_solve_seconds: 120, census_minutes: 30, check_seconds: 600, tool_run_seconds: 300 },
-  battery: { solve_concurrency: 3 },
+  battery: { solve_concurrency: BUILT_SOLVE_CONCURRENCY },
 } as const;
 
 /** How far above its default the host accepts a solver or battery setting, and how far below it a solver wall. */

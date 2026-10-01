@@ -16,7 +16,6 @@ import { verifyRunDir } from "../src/claim/evidence-log.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { SAFEGUARDS_LOG_FILE } from "../src/meta/safeguard.ts";
 import { createRunObserver } from "../src/observe/run-observer.ts";
-import { BUILT_SOLVE_MAX_CONCURRENCY } from "../src/run/session-pool.ts";
 import {
   BATTERY_PROVIDER_STOP_CONSECUTIVE,
   TURN_REFUSED_STOP_PREFIX,
@@ -28,6 +27,7 @@ import {
   TURN_PERMIT_REFUSED_PREFIX,
   nonResultOutcome,
 } from "../src/correctness-bundle/solve.ts";
+import { BUILT_SOLVE_CONCURRENCY } from "../src/correctness-bundle/harness-config.ts";
 import type { BuildTask } from "../src/correctness-bundle/tasks.ts";
 import { commitPublicTask } from "../src/correctness-bundle/task-split.ts";
 import { createVerifierLifetime } from "../src/verify/verifier-lifetime.ts";
@@ -59,8 +59,14 @@ const batteryOf = (slugDir: string, runId: string) =>
 describe("the solve pool", () => {
   it.concurrent("holds its width, grades a settled case before the pool drains, and keeps task order", async () => {
     const slugDir = bundleSlug();
-    // Six cases against a width of three, so the pool must queue rather than start them all.
-    const tasks = [...TASKS.tasks, ...TASKS.tasks.map((task) => ({ ...task, taskId: `${task.taskId}b` }))];
+    // Twice the width in cases, so the pool must queue rather than start them all.
+    const width = BUILT_SOLVE_CONCURRENCY;
+    const copies = Math.ceil((2 * width) / TASKS.tasks.length);
+    const tasks = Array.from({ length: copies }, (_, copy) =>
+      TASKS.tasks.map((task) => (copy === 0 ? task : { ...task, taskId: `${task.taskId}-${copy}` })),
+    )
+      .flat()
+      .slice(0, 2 * width);
     const order = tasks.map((task) => task.taskId);
     const scripted = scriptedSolver();
     const waveFull = Promise.withResolvers<void>();
@@ -69,9 +75,9 @@ describe("the solve pool", () => {
     let peak = 0;
     const solver: Solver = async (task, toolset, submitted) => {
       peak = Math.max(peak, ++active);
-      // The first case may finish once the other two have started; the rest stay live until the
-      // assertion below has seen its verifier evidence.
-      if (task.taskId !== order[0] && active === 3) waveFull.resolve();
+      // The first case may finish once the pool is full; the rest stay live until the assertion
+      // below has seen its verifier evidence.
+      if (task.taskId !== order[0] && active === width) waveFull.resolve();
       await (task.taskId === order[0] ? waveFull.promise : held.promise);
       const outcome = await scripted(task, toolset, submitted);
       active -= 1;
@@ -87,11 +93,11 @@ describe("the solve pool", () => {
     await verification;
 
     const battery = batteryOf(slugDir, runId);
-    expect([peak, active, gradedWhileSolving]).toEqual([3, 0, true]);
+    expect([peak, active, gradedWhileSolving]).toEqual([width, 0, true]);
     // Grading begins while later solves are live, but the evidence keeps authored task order.
     expect(battery.cases).toEqual(order.map((taskId) => expect.objectContaining({ taskId, pass: true })));
     // The width a reader needs to compare two variants honestly.
-    expect(battery.solveExecution).toEqual({ maxConcurrency: 3, scheduling: "bounded-worker-pool" });
+    expect(battery.solveExecution).toEqual({ maxConcurrency: width, scheduling: "bounded-worker-pool" });
     expect(verifyRunDir(join(slugDir, "runs", runId))).toEqual([]);
   }, 60_000);
 
@@ -214,7 +220,7 @@ describe("the battery stops scheduling after consecutive provider non-results", 
           acceptedSubmit: false,
           instants: { startedAt: "2026-08-23T00:00:00.000Z", endedAt: "2026-08-23T00:00:01.000Z" },
         }),
-      BUILT_SOLVE_MAX_CONCURRENCY,
+      BUILT_SOLVE_CONCURRENCY,
     );
     const skipped = solved.filter((row) =>
       (row.solved.nonResult?.message ?? "").includes("stopped scheduling"),
@@ -228,7 +234,7 @@ describe("the battery stops scheduling after consecutive provider non-results", 
     // The stop fills after five consecutive failures; only cases the pool had already pulled when
     // it filled may add attempts beyond that.
     expect(attempted).toBeGreaterThanOrEqual(BATTERY_PROVIDER_STOP_CONSECUTIVE);
-    expect(attempted).toBeLessThanOrEqual(BATTERY_PROVIDER_STOP_CONSECUTIVE + BUILT_SOLVE_MAX_CONCURRENCY);
+    expect(attempted).toBeLessThanOrEqual(BATTERY_PROVIDER_STOP_CONSECUTIVE + BUILT_SOLVE_CONCURRENCY);
     expect(skipped).toHaveLength(12 - attempted);
     for (const row of skipped) {
       expect(row).toMatchObject({ solved: { nonResult: { kind: "provider" } }, acceptedSubmit: false });
@@ -251,7 +257,7 @@ describe("the battery stops scheduling after consecutive provider non-results", 
       message: `${TURN_PERMIT_REFUSED_PREFIX} provider resource budget exhausted`,
     });
     const { attempted, solved, skipped } = await run(() => refused);
-    expect(attempted).toBeLessThanOrEqual(1 + BUILT_SOLVE_MAX_CONCURRENCY);
+    expect(attempted).toBeLessThanOrEqual(1 + BUILT_SOLVE_CONCURRENCY);
     expect(skipped).toHaveLength(12 - attempted);
     for (const row of solved) expect(row.solved.nonResult?.kind).toBe("runtime");
     for (const row of skipped) expect(row.solved.nonResult?.message).toStartWith(TURN_REFUSED_STOP_PREFIX);

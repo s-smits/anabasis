@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
+import { BUILT_SOLVE_CONCURRENCY } from "../src/correctness-bundle/harness-config.ts";
 import {
-  BUILT_SOLVE_MAX_CONCURRENCY,
   builtSolveConcurrency,
   JUDGE_MAX_CONCURRENCY,
   mapWithConcurrencyLimit,
@@ -55,21 +55,21 @@ describe("session pool", () => {
   it("never runs more than the width at once, and still runs that many", async () => {
     let active = 0;
     let peak = 0;
-    await mapWithConcurrencyLimit([1, 2, 3, 4, 5, 6, 7, 8], BUILT_SOLVE_MAX_CONCURRENCY, async () => {
+    await mapWithConcurrencyLimit([1, 2, 3, 4, 5, 6, 7, 8], BUILT_SOLVE_CONCURRENCY, async () => {
       active += 1;
       peak = Math.max(peak, active);
       await ticks(2);
       active -= 1;
       return null;
     });
-    expect(peak).toBe(BUILT_SOLVE_MAX_CONCURRENCY);
+    expect(peak).toBe(BUILT_SOLVE_CONCURRENCY);
     expect(active).toBe(0);
   });
 
   // The harness declares the Built width and the operator may bound it; a malformed value refuses
   // rather than falling back, because a silently changed width is a changed measurement condition.
   it("takes the Built width from the harness, lets ANA_BUILT_CONCURRENCY override it, and refuses a malformed one", () => {
-    expect(builtSolveConcurrency(undefined, {})).toBe(BUILT_SOLVE_MAX_CONCURRENCY);
+    expect(builtSolveConcurrency(undefined, {})).toBe(BUILT_SOLVE_CONCURRENCY);
     expect(builtSolveConcurrency(8, {})).toBe(8);
     expect(builtSolveConcurrency(8, { ANA_BUILT_CONCURRENCY: "" })).toBe(8);
     // The operator's bound wins in both directions: it is the provider session limit being spent.
@@ -106,8 +106,10 @@ describe("session pool", () => {
   it("awaits the calls already running before it raises the first failure", async () => {
     const started: number[] = [];
     const completed: number[] = [];
+    const width = BUILT_SOLVE_CONCURRENCY;
+    const inputs = Array.from({ length: 2 * width }, (_, index) => index);
     await expect(
-      mapWithConcurrencyLimit([0, 1, 2, 3, 4, 5], BUILT_SOLVE_MAX_CONCURRENCY, async (input: number) => {
+      mapWithConcurrencyLimit(inputs, width, async (input: number) => {
         started.push(input);
         if (input === 0) {
           await ticks(1);
@@ -118,12 +120,12 @@ describe("session pool", () => {
         return input;
       }),
     ).rejects.toThrow("case 0 failed");
-    // Both siblings ran to completion. Raising at the first rejection would return here with two
-    // paid model sessions still open, still writing into their case directories, and with their
+    // Every sibling ran to completion. Raising at the first rejection would return here with paid
+    // model sessions still open, still writing into their case directories, and with their
     // children unreaped — nothing else closes them, because a worker settles only when they do.
-    expect(completed).toEqual([1, 2]);
+    expect(completed).toEqual(inputs.slice(1, width));
     // The failure also stops the pool taking work it would only have to abandon.
-    expect(started).toEqual([0, 1, 2]);
+    expect(started).toEqual(inputs.slice(0, width));
   });
 
   it("raises the earliest input's failure, not whichever failed first in time", async () => {
@@ -132,7 +134,7 @@ describe("session pool", () => {
     // of the same battery has to name the same case rather than the fastest child.
     const started: number[] = [];
     await expect(
-      mapWithConcurrencyLimit([0, 1, 2, 3, 4, 5], BUILT_SOLVE_MAX_CONCURRENCY, async (input: number) => {
+      mapWithConcurrencyLimit([0, 1, 2, 3, 4, 5], BUILT_SOLVE_CONCURRENCY, async (input: number) => {
         started.push(input);
         if (input === 2) throw new Error("case 2 failed");
         if (input === 0) {

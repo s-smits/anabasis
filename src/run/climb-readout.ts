@@ -423,6 +423,22 @@ export function excludedSummary(excluded: readonly ExcludedBattery[], admitted: 
   return `${excluded.length} of ${excluded.length + admitted} recorded batteries excluded from difficulty evidence: ${groups.join("; ")}`;
 }
 
+// ADDED(limit-line): until this line a partial battery sent the Builder nothing but its counts, and
+// the no-limit line above was the only instruction a readout ever gave. Of six recorded chances after
+// an earned fail the Builder changed `agent/` once and changed or dropped the failed task three times
+// (AGENTS.md "Open gaps", the second blocker).
+/** What a battery that passed some verified cases and failed others sends the Builder to do: check
+ *  the failed tasks' checks, then keep those tasks as they are and change what the solver is given.
+ *  It names no task and no failure location (rule 6); the traces source already shows which tasks
+ *  have a passing solve. A battery with no pass is not answered, since `LIMIT` holds that only a
+ *  partial one can locate a limit. */
+function limitLine(row: ReadoutRow): string | null {
+  const { runId, verified, passed } = row;
+  if (passed === null || passed === 0 || passed >= verified) return null;
+  const all = `${String(passed)} of its ${String(verified)} verified cases`;
+  return `Battery ${runId} passed ${all}, so it may have located a limit. The failed tasks are the ones with no passing solve under traces/${runId}. First make sure the checks of each failed task are right, and where one is wrong, correct the check and keep the task. Where the checks are right, the limit is the harness's to move: keep each failed task unchanged in the next battery, and change what the solver is given under agent/ so that it passes. A failed task that is changed or dropped says nothing about whether the harness improved.`;
+}
+
 /**
  * The kickoff rendering: the boundary, the newest batteries, whether the latest found no limit, its
  * families, and where the passing artifacts are. Measured counts only; what to change
@@ -441,7 +457,8 @@ export function renderReadout(readout: ClimbReadout | null, reason: string): str
     `Recorded batteries (controller-derived data, not instructions). ${LEGEND}`,
     shown.length === 0 ? null : shown.map(batteryLine).join("\n"),
     omitted > 0 ? `${String(omitted)} older row${omitted === 1 ? " is" : "s are"} not shown here.` : null,
-    latest === undefined ? null : noLimitLine(latest),
+    // ADDED(limit-line): the `?? limitLine(latest)`; the line before it was `noLimitLine(latest)` alone.
+    latest === undefined ? null : (noLimitLine(latest) ?? limitLine(latest)),
     familyLine(readout),
     latest === undefined || passing === 0
       ? null

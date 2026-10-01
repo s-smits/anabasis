@@ -146,6 +146,8 @@ DOC_FILES = (
 )
 BASELINE_FILE = "tools/loc/complexity-baseline.json"
 CEILING_FILE = "tools/loc/complexity-policy.ts"
+# Every file of each revision read so far, by revision and path; `blob` fills it.
+TEXTS: dict[str, dict[str, str]] = {}
 
 DECISION = re.compile(
     r"\bif\s*\(|\bfor\s*\(|\bwhile\s*\(|\bcase\s+|\bcatch\s*\(|&&|\|\||\?\?|\?\.|\s\?\s"
@@ -259,10 +261,26 @@ def git(repo: str, *args: str) -> str:
 
 
 def blob(repo: str, rev: str, path: str) -> str:
-    done = subprocess.run(
-        ["git", "-C", repo, "show", f"{rev}:{path}"], capture_output=True, text=True, check=False
-    )
-    return done.stdout if done.returncode == 0 else ""
+    """The file at `rev` as `git show` reads it, or "" where it is absent. The first read of a
+    revision takes all of its files through one `git cat-file --batch`: a `git show` per file was
+    a thousand processes a revision and 14 of the 16 seconds a two-revision read took."""
+    if rev not in TEXTS:
+        listed = git(repo, "ls-tree", "-r", "-z", rev).split("\0")
+        entries = [entry.split("\t", 1) for entry in listed if entry]
+        blobs = [(meta.split()[2], name) for meta, name in entries if meta.split()[1] == "blob"]
+        out = subprocess.run(
+            ["git", "-C", repo, "cat-file", "--batch"],
+            input="".join(f"{sha}\n" for sha, _ in blobs).encode(), capture_output=True, check=True,
+        ).stdout
+        TEXTS[rev], at = {}, 0
+        for _, name in blobs:
+            start = out.index(b"\n", at) + 1
+            end = start + int(out[at : start - 1].rsplit(b" ", 1)[1])
+            # The newline translation that `text=True` applied to what `git show` printed.
+            text = out[start:end].decode(errors="replace")
+            TEXTS[rev][name] = text.replace("\r\n", "\n").replace("\r", "\n")
+            at = end + 1
+    return TEXTS[rev].get(path, "")
 
 
 def is_source(path: str) -> bool:
@@ -436,7 +454,7 @@ def main() -> int:
             path: head_files.get(path, 0) - base_files.get(path, 0)
             for path in set(base_files) | set(head_files)
         }
-        rows = sorted((d for d in moved.items() if d[1]), key=lambda kv: -abs(kv[1]))[:15]
+        rows = sorted((d for d in moved.items() if d[1]), key=lambda kv: (-abs(kv[1]), kv[0]))[:15]
         if rows:
             print("\nlargest per-file line moves")
             for path, count in rows:

@@ -1,455 +1,400 @@
 ---
 name: wave-audit
-description: "Audit whether a new wave of Anabasis runs improved on the wave it replaced. Pairs each run with its baseline of the same condition, proves the source commit is the one variable that moved, dates the prediction, reads the same measures on both sides over equal windows (band placements, climb edges, rehearsal use, gate rent, evaluation corrections, denominators, pace), ties every movement to a fix whose branch fired, and gives a verdict per pair, per wave and per prediction at three checkpoints. Use when asked 'is there an improvement at the runs', 'did the fixes work', 'is this wave better than the last', 'compare the new runs with the old ones', or before relaunching on a new source."
+description: "Compare one or several recorded source states to see whether changes improved Anabasis's climb. Build a state-by-condition census first; compare adjacent states only when prompt, model, command, project lineage, budget and runtime identities support it; read equal windows, earned failures and the mechanisms that fired. Use for 'did the fixes work', 'is this wave better', or before relaunching on a new source."
 ---
 
-# Wave audit: did the new source improve the runs
+# Wave audit: did the source improve the runs
 
-A **wave** is the set of runs launched together on one source commit, one run per condition. A wave
-audit compares a candidate wave with the baseline wave it replaced and answers one question: did
-moving the source make the loop do better at what it is for? The loop is for a healthy, ambitious
-climb (AGENTS.md "Goals and the climb"), so "better" means a line that locates the solver's limit
-sooner on fails that were earned, and fewer rounds wasted on the way there. It does not mean scoring
-higher.
+The goal is a healthier, more ambitious climb: successive batteries move towards the solver's limit
+on failures the verifier can earn. Read AGENTS.md "Goals and the climb" for the target, and [the
+climb reference](../whole-run-investigation/references/climb.md) for velocity, horizon, flat,
+carried and edge labels. Per run, compare the Super Loop's scoreboard: signal of the first 8, hours
+to first signal, held fails. This audit reads recorded runs; it launches and stops nothing.
 
-The audit reads recorded bytes. It launches nothing, stops nothing and changes no score. What it
-concludes goes back to [run-improvement-campaign](../run-improvement-campaign/SKILL.md) as the
-next move.
+What it concludes goes to [run-improvement-campaign](../run-improvement-campaign/SKILL.md) as the
+next move, and its scoreboard (`scripts/scoreboard.ts` there) prints those numbers per run.
 
 ## When this skill applies, and when a neighbour does
 
 | The question | Owner |
-| --- | --- |
-| Is the new wave better than the old one? Did the fixes work? | this skill |
+|---|---|
+| Did source changes improve the runs? | this skill |
 | What happened inside one run, and what limited it? | [whole-run-investigation](../whole-run-investigation/SKILL.md) |
-| Which model is better, on one source and one prompt? | [model-condition-comparison](../model-condition-comparison/SKILL.md) (the mirror of this skill: it moves the model and holds the source) |
-| May this one movement be claimed, and in which words? | [attribution-and-proof](../attribution-and-proof/SKILL.md), which this skill applies to every row |
-| How does the adopted harness do on a fixed pack? | [harness-query](../harness-query/SKILL.md) (paid; see §9) |
+| Which model is better, on one source and one prompt? | [model-condition-comparison](../model-condition-comparison/SKILL.md) |
+| May this movement be claimed, and in which words? | [attribution-and-proof](../attribution-and-proof/SKILL.md), applied to every row |
+| How does the adopted harness do on a fixed pack? | [harness-query](../harness-query/SKILL.md), paid; see §9 |
 | Which runs of the week were strongest? | [weekly-run-review](../weekly-run-review/SKILL.md) |
-| What to launch next? | [run-improvement-campaign](../run-improvement-campaign/SKILL.md), taking this audit's verdict as input |
+| What should launch next? | [run-improvement-campaign](../run-improvement-campaign/SKILL.md) |
 
 ## The trap this skill exists for
 
-The obvious reading of a new wave is wrong. Each run's Builder authors its own battery, so "6 of 6"
-in the baseline and "4 of 6" in the candidate are two different exams. The lower score may mean a
-harder battery, a broken evaluator or a weaker product, and the pass count alone cannot tell those
-apart.
+Each run's Builder authors its own battery, so "6 of 6" in one source state and "4 of 6" in another
+are different exams. The lower score may mean a harder battery, a broken evaluator, or a weaker
+product. A pass count alone cannot tell those apart.
 
-The corpus shows how badly a raw rate misleads:
+Raw pass rates compare only on a shared pack. `compare-conditions.mts` refuses a join whose task-set
+hashes differ, and `harness-query` solves one fixed pack on each harness. Without a shared pack,
+report what the loop did with its batteries, not what they scored. A perfect battery is the base
+rate here, as AGENTS.md "Goals and the climb" says, and it is not news. A battery with both passes
+and verified fails is a useful signal only after the fails survive review.
 
-- Truss `0aad0d` passed 75 of 75 on its own batteries, while the same agent passed 2 of 23 verified
-  hard tasks under a Sol solver on a shared pack.
-- On 2026-09-27 the recorded terminals of both projects (`design-lightweight-steel-trusses-3fd52f9e-*`
-  and `writes-firmware-esp32-raspberry-9c0c68b1-*`) held 98 placed batteries: 79 `too-easy`, 16
-  `over-aim`, 3 `on-aim`, and none below the aim.
+## Study, state, condition and pair
 
-So a perfect battery is the base rate here, as AGENTS.md "Goals and the climb" counts for the whole
-corpus, and it is not news. A first battery that passes some of its cases and fails some, on fails
-its review holds, would be news.
+A **wave** is a launch batch. A **study** may compare several source states, each with multiple
+source commits, conditions and repeated runs. Build the state-by-condition matrix before pairing.
+Keep a pair whose prompt/domain or model moved labelled *mixed-condition*; report what happened
+descriptively, but leave it out of any source verdict.
 
-Raw pass rates compare only on a shared pack. `compare-conditions.mts` refuses a join whose
-task-set hashes differ, and `harness-query` solves one fixed pack on each harness. Without a shared
-pack, the audit reads what the loop did with its batteries, not what they scored.
+A **condition cell** groups runs by exact `project.requestDigest` and the three model slots (`kind`,
+`model`, `reasoningEffort`, `enabled`); retain slot `source` as a separate identity check. The
+digest names the request, so it is the domain and prompt check. Show the number of runs and distinct
+source commits in every state-cell, including cells with no counterpart. Do not compare authored
+task packs as if they were shared tasks.
 
-## Vocabulary
+A **candidate pair** is a cross-state comparison within the same request and model-slot cell. Check
+the whole cross-product when either side has replicates. Do not choose one baseline for several
+candidates or force a unique pair when the samples are many-to-many. If a narrative comparison
+changes request or model, keep it on a separate mixed-condition line.
 
-- **Condition:** the three model slots (kind, model, effort) plus the prompt, the task count and the
-  budget: everything in `opening.json` except the source. Examples: `truss-sol`, `custom-opus`.
-- **Pair:** one baseline run and one candidate run of the same condition. The pair is the unit of
-  evidence, and the wave is only a count of pairs.
-- **Moved variable:** the source commit, `baseline sha..candidate sha`. Anything else that differs
-  makes the pair a *mixed condition*.
-- **Checkpoint:** the point at which a reading is taken on both sides. There are three: the first
-  placed battery, the third round, and the terminal (§6).
-- **Window:** the stretch compared on both sides. Round r against round r, or the shorter side's
-  elapsed time applied to both.
+The source commit is the variable under study. Before calling a candidate pair source-only, compare
+these fields in both `controller/<runId>/opening.json` records:
 
-## 1. Identify both waves
+| field | source-only comparison requires | record |
+|---|---|---|
+| `project.requestDigest` | equal | `opening.json` |
+| `modelSlots.{builder,built,review}` | equal kind, model, effort, enabled and slot source | `opening.json` |
+| `command.digest` | equal for openings written after the digest change in #118 | `opening.json` |
+| legacy launch command | normalized arguments equal; remove `--run`, `--expected-source` and `--project` with their values | each run's `.scratch/quick-run/launch.json` |
+| project lineage | both created, or both continued from the same seed/product state | opening plus `seed.json` when present |
+| budgets | equal configured turn budget and provider resource cap | `opening.json` |
+| runtime | equal Bun name, version, platform, architecture and executable identity | `opening.json` |
+| operator backend | same backend identity; equal file paths alone do not prove equal contents | `modelSlots.operatorConfig` and the referenced non-secret identity |
+| source | commit differs; neither opening is dirty | `opening.json` |
 
-1. **Find the runs.** `bun run runs` lists every run on the machine, open ones first. For a stopped
-   wave, each launch worktree keeps `<worktree>/.scratch/quick-run/launch.json`, which records the
-   service, opening and source. The run id carries the wave: every run launched in one batch shares
-   its timestamp and six-hex suffix, for example `*-20260927T145744429Z-7e43c0`.
-2. **Find the campaign of each run.** It is the directory under `campaigns/` whose `controller/`
-   holds that run id. The same condition gets a new numbered campaign on every fresh launch, so
-   `…-3fd52f9e-19` (baseline truss-sol) and `…-3fd52f9e-22` (candidate truss-sol) are a pair while
-   `-20` and `-21` belong to other conditions. Never pair by neighbouring suffix; pair by the
-   condition prefix of the run id and by `modelSlots`.
-3. **Read both `controller/<runId>/opening.json`** and fill in this table per pair:
+The #118 change leaves run id, source and project out of `command.digest`, so the same condition
+should have the same digest. Before #118, the digest included those fields, and a difference did not
+show a changed command. For those openings, parse each saved `launch.json` argv and compare after
+removing the three flags and their values. Treat `--run=x`, `--expected-source=x` and `--project=x`
+the same way. Do not print raw argv or backend configuration. If the launch record or backend
+identity is missing, mark the pair's identity unresolved and exclude it from source attribution.
 
-| field | must match within a pair | where |
-| --- | --- | --- |
-| `project.requestDigest` | yes (same prompt) | `opening.json` |
-| `modelSlots.{builder,built,review}` kind, model, `reasoningEffort`, `enabled` | yes | `opening.json` |
-| `command.digest` (the fullrun arguments) | yes, unless a flag was the tested variable | `opening.json` |
-| `project.origin` and `continuation` | both `created` and `null`, or both continued from the same state | `opening.json` |
-| `budget`, `providerResourceBudget` | yes, or the difference is named | `opening.json` |
-| `runtime` (Bun) | yes | `opening.json` |
-| `source.commit`, `source.dirty` | **this is the variable**; `dirty: true` on either side is a caveat | `opening.json` |
-| `framingDigest` | expected to differ when the range changed a model-visible text | `epoch-*/builder-session.json` |
-| operator backend file (`modelSlots.operatorConfig`) | yes | `.harness/backends/` |
+Matching prompt and slots finds candidate pairs, not source-only pairs. A field that differs makes
+the pair mixed; an unknown field stays unknown. Report that movement and the mismatch beside the
+candidate, then state how many eligible pairs remain. Zero eligible pairs means the source effect is
+undetermined, not unchanged.
 
-A pair that differs anywhere except the source and its consequences is a mixed condition. Report
-it on its own line and leave it out of the wave verdict. Replicas (`r1`, `r2` in the run id) are
-separate samples of one condition: pair them r1 with r1, or state that they were pooled.
+## 1. Census before comparison
 
-4. **Record host conditions on both sides.** How many runs shared the host, and the load and free
-   disk (the pulse header prints both). Note provider waits, credit exhaustion and 429s (the
-   `timeline` lane), and whether the two waves overlapped in time on one account. The two sides
-   often did not share these. Six concurrent runs at a load of 32 is a different pace condition
-   from two runs on an idle host.
+Use the maintained read-only reader from the main checkout:
 
-## 2. List what the source moved
+```sh
+bun --no-env-file .claude/skills/wave-audit/scripts/census.ts [--states <abs census-states.json>]
+```
 
-`git log --oneline <baseline sha>..<candidate sha>` in the main checkout, plus the pull requests
-that range spans. Each commit is a candidate cause, and nothing outside the range is. Classify each
-commit by where it can act, because that decides what can show its effect:
+It finds and reads runs as `runs pulse` does, plus each seeded campaign's `seed.json`. With a
+census-state file a run's state is that file's `rows[].state`; without one, its source commit. It
+prints one row per state and condition, then every adjacent-state pair of one condition with each
+identity that differs (same source, dirty, origin, seed, cap, command). It calls no network and
+prints no prompt, argv, credential or backend content. For openings before #118, a command digest
+differs in every pair; resolve the command with the saved launch argv rule above.
 
-| reach | shows up in | example evidence |
-| --- | --- | --- |
-| model-visible Builder text (prompt, battery contract, starter, tool descriptions) | `framingDigest` changes; Builder behaviour | rehearsal use, the Builder's notes and prose |
-| Builder tool or gate behaviour | gate receipts, `correctness_check` rows | finding codes, episode endings in `gates` |
-| controller routing and readouts | observations, difficulty decisions, advice packets | `difficulty-decisions/*.json`, `analysis/*-rebuild-advice.json` |
-| verifier and host execution | case records, `verifier.json` | case kinds, non-result types |
-| review slot | reviewer records, findings | the `yield` lane, admissions |
-| documentation and skills only | nothing in the run | not a cause; list it and exclude it |
+Use the source-at-launch to define states, not campaign suffixes or launch time alone. A state can
+contain several source commits, and a PR boundary can have no matching condition. The script's
+output is the join map, not the audit: report missing openings, unmatched cells, mixed pairs and
+eligible pairs before reading any outcome.
 
-Then run the deterministic reach check for the range:
+State labels that name PRs come from a mapping file; do not rebuild one from the network to
+reproduce its labels. Use an existing mapping or group by source SHA, then name the range being
+compared. Never infer source from adjacent campaign numbers. `runs show` and the campaign root still
+provide the recorded outcomes for each run.
+
+## 2. Read what the source range could change
+
+For each eligible pair, list the commits between its baseline and candidate source SHAs and classify
+where each can act. A study with multiple source commits in one state needs a separate range per
+pair or named source boundary.
+
+| reach | recorded evidence |
+|---|---|
+| model-visible Builder text, task contract or tool descriptions | `framingDigest`, recorded prompt, rehearsal use, Builder plan and notes |
+| Builder tool or gate | gate receipts, `correctness_check` rows, finding codes and episode endings |
+| controller routing or readout | observations, difficulty decisions and advice packets |
+| verifier or host execution | case records, verifier results and typed non-results |
+| review slot | review records, findings and admissions |
+| documentation or skills only | no run effect; list separately |
+
+Reach counts are an inventory, not proof that a path affected a run. A model-visible path change
+does not prove the selected run received changed text; read its `framingDigest` and recorded prompt.
+A changed `framingDigest` is necessary context for a text-behaviour claim, not proof that one
+sentence caused the Builder's choice.
+
+For the deterministic reach read, pin both the prior SHA and the run so the campaign cannot select
+another condition:
 
 ```sh
 bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.ts delta <candidate campaign> \
-  --repo <main checkout> --previous <baseline campaign dir or sha>
+  --repo <main checkout> --previous <baseline SHA> --run <candidate runId> --json
 ```
 
-Always pass `--previous`. Without it, `delta` picks the newest earlier sibling campaign with the
-same name minus its numeric suffix. Every condition of a wave shares that prefix, so it can pick
-another condition's campaign and diff the wrong pair. The output lists changed files, the safeguard
-ids declared in them with their recorded firings, and whether a model-visible surface changed.
-Lane 21 of WRI reads the semantic half.
+## 3. Find the prediction and date it
 
-## 3. Find the prediction, and date it honestly
+Test what was predicted before each candidate opened, not what looks good afterwards. Read
+`notes/predictions/<runId>.jsonl` or the wave ledger with `bun
+.claude/skills/run-improvement-campaign/scripts/prediction.ts list --run <runId>` or `--ledger
+<path>`. Compare each prediction's `at` with every paired opening's `writtenAt`; one ledger can
+predate one run and postdate another.
 
-The audit tests what was predicted before the candidate opened, not what looks good afterwards.
+A plan or scratch note counts only if it predates the opening, and say that file time does not
+freeze it. A post-opening note may guide the reading but cannot confirm it. No prediction leaves the
+audit descriptive; freeze a falsifiable direction and refuting observation for the next study.
 
-- **Frozen in the ledger:** `notes/predictions/<runId>.jsonl`, or a wave ledger named with
-  `--ledger`. Read it with
-  `bun .claude/skills/run-improvement-campaign/scripts/prediction.ts list --run <runId>`, or
-  `--ledger <path>`. A per-run ledger cannot exist before its run id does, so a prediction for a
-  wave is frozen into `--ledger notes/predictions/wave-<candidate sha9>.jsonl` before the launch.
-  Compare each row's `at` with every `opening.json` `writtenAt`: a row later than an opening is post
-  hoc for that run.
-- **Written only in a plan or scratch file:** counts only if the file predates the opening. Say that
-  it is dated by file time, which anyone could have touched, and not frozen.
-- **Written after the opening:** post hoc. It may guide the reading, but it cannot confirm anything.
-- **No prediction:** the audit still runs, but its verdict is descriptive. Say so, and freeze one
-  for the next wave.
+## 4. Checkpoints and equal windows
 
-A usable prediction names the moved variable, a direction on one measure from §5, and the reading
-that would refute it. "Fewer 6/6 batteries" is falsifiable. "Better runs" is not.
+Read the first battery, the third round, and the terminal when both sides reach them. Before a
+candidate has a battery, its verdict is `undetermined`; after the first battery but before two
+edges, report calibration only. For a large corpus, also show the first eight batteries per run and
+the first three edges per run, with denominators and schema coverage. Do not let long runs dominate
+by contributing every later round to an early comparison.
 
-## 4. Pick the checkpoint and cut equal windows
-
-Read at three checkpoints, append each reading to the audit, and keep the earlier rows rather than
-overwriting them:
-
-| checkpoint | reached when | what it can show |
-| --- | --- | --- |
-| first battery | both runs of the pair have a claimed battery (`runs show` Batteries, or `claims/`) | the Builder's opening calibration: rehearsal use, first placement |
-| third round | both have three placed batteries or three rounds recorded | the climb: edge verdicts, streaks, correction loops |
-| terminal | both have `terminal.json` | the whole run: the terminal code, `runEnd`, denominators, pace |
-
-Before the first battery, the only honest verdict is `undetermined`. Between the first battery and
-the second edge, a pair can show calibration but no climb.
-
-Equal windows are rule, not courtesy:
-
-- Compare round r with round r, ordered by claim `createdAt`, never by directory order or mtime.
-- When one side is shorter, cut the other to the shorter side's elapsed window and name that
-  window, for example "first 3h 10m on both sides".
-- A run the environment or the operator cut short keeps every level it measured before the cut.
-  Its terminal code (`signal-terminated`, `environment-blocked`) is a caveat, not a verdict on the
-  product. Do not compare a stopped run's round count with a completed run's.
+Equal windows are rule, not courtesy. Compare round r with round r, ordered by claim `createdAt`,
+and cap the terminal comparison at the shorter measured window. A run cut by the environment or
+operator keeps every level it measured before the cut; the terminal reason is a caveat, not a
+product verdict. Report which runs reached each checkpoint. Missing or live terminal records are
+censored, not zero.
 
 ## 5. Read the same measures on both sides
 
-Run each reader on both campaigns and set the rows side by side. **Direction** says which way is
-better for the standing goal, a healthy, ambitious climb (AGENTS.md "Goals and the climb"). It does
-not say which way is bigger.
+Run a measure reader only after checking what schemas it accepted. A reader that refuses old records
+has not measured zero. Report its coverage and the schema versions refused, then use compatible
+saved records (`terminal.json`, difficulty decisions, `runs show`, claims, case records or execution
+records) where they exist. If no compatible record remains, mark the measure unavailable.
 
-### 5a. Where the batteries landed
+### 5a. Battery placement and the climb line
 
-Band placement, per battery in claim order: one of the five `BandZone` values
-(`src/claim/battery-difficulty.ts`), or `unplaced` when no verified case or `placeOnBand` refused
-it. AGENTS.md "Goals and the climb", under "The band and the placement", owns what each zone means
-and the band, `climb.band`, it is read against.
+For each battery, report placement beside `passed`, `verified`, `unaccepted` and `nonResults`. A
+**partial** battery has `0 < passed < verified`. Read the placement from `terminal.json` →
+`runEnd.climb.batteries[]`, a supported difficulty-decision record, or the `runs show` Batteries
+table. Do not infer it from `claims[].claim.ok`: a claim can be refused while the difficulty record
+still places the battery. When the decision reader refuses an older schema, report the refused
+version and use a saved placement only if its fields still have that meaning.
 
-- **Readers.** For a finished run, `terminal.json` → `runEnd.climb.batteries[]`: zone, passed,
-  verified, trials. For a live run, `bun run outcome <campaign> <runId> --scorecard`
-  (its runEnd section reads the newest difficulty decision). `bun run runs show <runId>` gives the
-  Batteries table (BATTERY, CLAIMED, PASSED, CLIMB, RATIONALE), and `difficulty-decisions/*.json`
-  gives the full record.
-- **Better is** more batteries between 1/n and n−1/n in the first 8 and 12, a larger swing, fewer
-  tasks carried unchanged after a full pass, and a line that is not flat (`wri.ts climb`: `velocity`,
-  `horizon`, `flat`, `carried`). A zone is read beside these, never instead of them (AGENTS.md
-  "Goals and the climb", under "Its shape, and how progress is read"), so an `over-aim` or `on-aim`
-  placement counts only when it passed some cases and failed some.
-- **Traps.**
-  - Placement is taken over *verified* cases, so a battery that lost cases to non-results is placed
-    on a smaller n with a wider interval. On current source 6 of 6 and 4 of 4 place `too-easy` while
-    3 of 3 places `over-aim`; the truss-astra baseline below recorded `over-aim` at 4 of 4 under its
-    own source. A softer zone bought by fewer verified cases is not progress, so read `verified`
-    beside every zone.
-  - `too-hard` is not automatically progress. Check the denominators (§5f) and the evaluation
-    corrections (§5e): a broken evaluator or a dead solver also lands there.
-  - A battery whose claim was refused is `unplaced`.
+Run `wri.ts climb` for supported records and read velocity, horizon, flat, carried and edge labels
+as [the climb reference](../whole-run-investigation/references/climb.md) defines them. A placement
+zone sits beside that line, never instead of it. An `on-aim` or `over-aim` result counts as located
+only where at least one verified fail remains valid after review. Read V/U/N beside each placement:
+a softer zone bought by fewer verified cases is not progress, and a full battery found no limit.
 
-### 5b. What each edge asked of the solver
+The climb reader needs adopted versions and may refuse older `difficulty-decision` schemas. Its raw
+JSON can be very large. Bound the output to the equal window; if an older record is refused, use
+recorded task and battery rows only where available, and mark the missing placement or edge as
+unavailable rather than dropping the run. A `too-hard` zone is not automatically progress: a broken
+evaluator or dead solver can land there too, so check the denominator and correction record.
 
-The climb edge verdicts come from the `climb` reader (it needs an adopted version under
-`versions/`):
+### 5b. What each edge asked
 
-```sh
-bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.ts climb <campaign> [--json]
-```
+The `climb` reader assigns structural labels (`restated`, `replaced`, `adjusted`, `narrowed`,
+`widened`, `eased`, `escalated`). A label is a reading, not a forecast, and more `escalated` edges
+are not automatically better. Name the changed public requirement from consecutive
+`public-task.json` rows beside the label; classify identical tasks, field changes, ID-only changes
+and missing artifacts separately. After a full pass, report unchanged carried tasks and the share of
+restated or adjusted edges within the same window, with counts because a short run has fewer edges.
 
-Each edge between consecutive batteries gets one of seven structural labels (`restated`,
-`replaced`, `adjusted`, `narrowed`, `widened`, `eased`, `escalated`), defined at the head of
-`climb-velocity.ts` and read as [the climb reference](../whole-run-investigation/references/climb.md)
-says. A label is a reading, not a forecast (AGENTS.md "Goals and the climb", under "Reading the
-climb as the operator"), so a higher share of `escalated` is not better by itself.
+### 5c. Calibration and rehearsal
 
-- **Better is** more edges whose changed public requirement you can name from the task rows, and
-  fewer `restated` or `adjusted` edges after a full pass.
-- **Trap:** a candidate with fewer batteries has fewer edges. Compare shares within the equal
-  window, and name the counts.
+For older runs, `runEnd.climb.batteries[].plan` carries the plan score; if a later source removed
+it, call it absent, not missed. To read rehearsal use, join each `harness_trial` in
+`epoch-*/builder-execution.json` to the accepted submit's `candidateId`. Count trials, passes,
+passing trials acted on before submit, accepted candidates rehearsed on the same ID, and accepted
+submissions never rehearsed.
 
-### 5c. Calibration: did the Builder know how hard its exam was?
+The reader is `wri.ts handoff <campaign>`. It may refuse older execution or difficulty-decision
+versions. If so, parse the recorded v5-v7 execution calls directly or report schema-unavailable
+coverage; never turn a reader refusal into zero trials. A pass on changed bytes is acted on; a pass
+on submitted bytes is not. More passing rehearsals acted on and more accepted submissions rehearsed
+on the same candidate ID support calibration.
 
-- **The plan's score.** Gone with `EXPERIMENT.json`. A run whose source predates its removal records
-  one score line per battery (`runEnd.climb.batteries[].plan`), and a pair spanning the removal
-  reads it as absent on the newer side, not as missed.
-- **Rehearsals.** Read the `harness_trial` calls in `epoch-*/builder-execution.json`: each carries
-  its task, its verdict and the `candidateId` it solved. The question is whether a rehearsal pass
-  was acted on before submit, so join those rows to the accepted submit's `candidateId`: a pass on
-  bytes that were then changed was acted on, and one on the bytes submitted unchanged was not.
-  Better is passes acted on, and submitted bytes that were rehearsed at all.
-- **Readers.** WRI's `handoff` lane has a calibration table, and lanes 10 and 11 read the semantic
-  side:
+### 5d. Gate rent
 
-```sh
-bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.ts handoff <campaign>
-```
+`wri.ts gates <campaign> [--json]` and `wri.ts census [--json]` report refusal episodes and endings:
+`repaired`, `repaired-tool-condition`, `cleared-without-edit`, `bundle-unchanged-condition-unknown`,
+`answered-identity-unrecorded` and `unanswered`. Map campaign rows back to run IDs before
+aggregating. Report each ending's denominator, held rounds and submits, submit strikes and stalled
+ends, plus episodes per Builder round. State reader coverage; older `builder-execution` versions may
+be unavailable rather than zero.
 
-### 5d. What the gate cost
+Better is fewer held rounds, cleared-without-edit and unanswered episodes, submit strikes and
+stalled ends. First-clear and first-adoption times are context. Name the sample count and how
+adoption was identified; a first-clear time is not an adoption time.
 
-The `gates` reader (`gate-rent.ts`) lists each refusal episode and how it ended:
+### 5e. Evaluation corrections and review
 
-- `repaired`
-- `repaired-tool-condition`
-- `cleared-without-edit`
-- `bundle-unchanged-condition-unknown`
-- `answered-identity-unrecorded`
-- `unanswered`
+Count correction rounds and whether each flipped a verdict. A correction on byte-identical public
+tasks that moves nothing is a loop, not a repair. Replay uses this syntax:
 
 ```sh
-bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.ts gates <campaign> [--json]
-bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.ts census [--json]   # every campaign at once
+bun --no-env-file run replay -- <campaign>/<runId before> --under <campaign>/<runId after>
 ```
 
-- **Better is** fewer rounds held by the gate, fewer `cleared-without-edit` episodes (a refusal that
-  cleared with no change refused nothing real), fewer `unanswered` episodes, and fewer submit strikes
-  and `authoring-stalled` ends.
-- **Pace facts:** time from the opening to the first clear preview, and to the first adoption. These
-  are context, read with §5g.
+Do not use `replay --help`; it parses the flag as a candidate path. If the stored battery or bundle
+snapshot is missing, report replay unavailable and stop retrying equivalent pairs. Better is fewer
+corrections, with each one moving a verdict. A correction that leaves an issue `unmeasured` has not
+shown a fix.
 
-### 5e. Evaluation corrections
+`wri.ts yield <campaign>` reports Epoch Reviewer findings and their routes;
+`analysis/<runId>-rebuild-advice.json` reports issue states. Count snapshot occurrences separately
+from unique issues and give the join key. Better is findings that name a real owner and change a
+later round, more `absentBatteries` in complete rechecks, and fewer `returned`. `retired` and
+`unmeasured` prove no fix. If Judge coverage is included, state the subject identity and
+deduplication rule, and reconcile offered, verdict and abstention counts before comparing rates. A
+schema refusal is unavailable evidence, not zero findings.
 
-Count the evaluation-correction rounds, and for each one, whether it flipped any verdict. A
-correction over byte-identical public tasks that moved nothing is a loop, not a repair.
+### 5f. Case outcomes and terminal
 
-```sh
-bun run replay -- <campaign>/<runId before> --under <campaign>/<runId after>
-```
+Classify each case in this order: a typed environment or runtime non-result, including `truthOk:
+null`; an unaccepted attempt with no environment failure; then a submitted artifact that reached the
+host verifier, which is verified pass or fail. Keep verified, unaccepted and non-result denominators
+separate, with provider, runtime, sandbox, protocol, verifier and operator causes split where the
+record permits. Do not classify `acceptedSubmit: false` before checking for a non-result.
 
-This re-grades the earlier battery's accepted artifacts under the later bundle's evaluator, so it
-shows exactly which verdicts the correction moved. Better is fewer corrections, each one moving a
-verdict. An issue left `unmeasured` by a correction is not a fix (AGENTS rule 10).
+Read terminal `outcome` and `terminalReason` only when their schema is supported. A battery made
+only of non-results or unaccepted attempts locates no verified boundary. Missing `case-record.jsonl`
+rows, verifier files or terminal denominators are coverage gaps, not evidence of no failures.
 
-### 5f. Denominators and the terminal
+### 5g. Pace, host and provider
 
-Per battery, count verified, unaccepted and non-result cases separately (the CASES column of `bun
-run runs`; `bun run outcome <campaign> <runId>`). Then take the terminal code from `terminal.json` → `outcome` and
-`terminalReason`, which is one of the closed set of eight.
+Use `wri.ts timeline <campaign> --run <runId> --json` and `wri.ts walls <campaign> --battery <runId>
+--json`, then report reader coverage. Compare minutes to first adoption and first claim, claim
+intervals, provider turns per battery, rounds per hour, retries, provider waits, 429s,
+credit/session limits and wall-bound attempts. A wall-bound unaccepted case is a miss by the solver
+at that wall, not a verified task failure.
 
-- **Better is** no rise in unaccepted cases or non-results, and a terminal of `completed` or an
-  operator stop, rather than `build-failed`, `candidate-held` or `environment-blocked`.
-- **Environment non-results** (provider, credential, sandbox) belong to the environment, not to
-  either source. If one side had them and the other did not, that is a caveat, never a product
-  difference.
-- A battery made only of non-results or unaccepted cases is placed nowhere. It is neither a pass
-  nor a fail.
+Faster is better only when §5a to §5f did not get worse. Host load and concurrency decide pace as
+much as source does. State the measured load and whether timestamps show only interval overlap;
+opening/terminal intervals cannot prove process-level concurrency, current load or account identity.
+Keep unknown host facts unknown.
 
-### 5g. Pace
+### 5h. Context only: solver effort and margin
 
-Read these from `runs show` and the claim `createdAt` times:
+`case-result.json` `solver.toolCalls`, elapsed time against `solve_minutes`, and accepted-artifact
+margin against the task limit describe the exam, not the product. Report them beside a placement
+when useful, never as a verdict row. A longer solve on a harder exam is not a regression.
 
-- minutes to first adoption
-- minutes per round
-- provider turns per battery
-- rounds per hour of wall clock
+## 6. Tie movement to a mechanism that fired
 
-Faster is better only when §5a to §5f did not get worse. Host load and concurrency (§1) decide pace
-as much as source does, so a pace difference under different host conditions is a caveat, not a
-finding.
+For every commit classified in §2, record its trigger, whether the trigger occurred, the recorded
+output and the measure it should move. Evidence can be a gate finding, advice line, saved evidence
+field, delivered battery-contract sentence or safeguard firing (`bun run outcome --safeguards
+<campaign>` or `campaigns/<project>/safeguards/<runId>/SAFEGUARDS_LOG.txt`).
 
-### 5h. Review loop
+If one mechanism fired and the predicted measure moved, attribution can be `proven`; if several
+fired, `likely`. A fired mechanism with no movement did not suffice. A trigger that never occurred
+is `untriggered`, not failed. Movement without a fired mechanism remains noise or a confound until
+shown otherwise. A changed path or digest is not itself a fired mechanism.
 
-The `yield` lane gives Epoch Reviewer findings per review, blocking and advisory, and what each one
-routed to. The rebuild advice packets (`analysis/<runId>-rebuild-advice.json`) give issue states.
+## 7. Confounds to test before a verdict
 
-- **Better is** findings that name a real owner and change a later round; more issues not observed
-  in complete rechecks (`absentBatteries`); fewer `returned`.
-- **Trap:** `retired` and `unmeasured` prove no fix.
+- **Builder resampling:** one Builder can author a different first plan. A single matched pair says
+  what happened, not what repeats.
+- **Model, prompt or domain movement:** keep changed request digests or model slots mixed-condition.
+  Raw pack scores do not cross that boundary.
+- **Project lineage:** compare continued projects only with the same seed/product state. Read
+  `seed.json` fingerprints as well as `opening.json.continuation`; an opening may say `null` while a
+  seed carries the inherited product.
+- **Host and provider:** load, concurrency, 429s, credit exhaustion and session limits can change
+  pace or censor a run.
+- **Different stop points:** operator stop, timeout or budget cap; cut both sides to an equal
+  window.
+- **Protected-detail parity:** check the recorded prompt and `framingDigest` against model-visible
+  changes. Do not expose verifier output or hidden task details.
+- **Missing or refused records:** schema coverage differs by reader and state. Name absent
+  terminals, case rows, tool trees, evaluator files and review records.
 
-### 5i. Context only: solver effort and margin
+## 8. Verdict per pair, transition, state and prediction
 
-`case-result.json` `solver.toolCalls` and the minutes against `solve_minutes`, and the margin of
-each accepted `artifact.json` against its `public-task.json` limit. These describe the exam, not
-the product. A longer solve on a harder exam is not a regression. Report them beside a placement
-and never as a verdict row.
+At each checkpoint, give each candidate pair one verdict:
 
-## 6. Tie each movement to a mechanism that fired
-
-A row that moved counts towards a fix only if that fix's branch actually executed in the candidate
-run. For every commit classified in §2, fill in:
-
-| commit | trigger condition | did it occur? | recorded output | measure it should move |
-| --- | --- | --- | --- | --- |
-
-The recorded output is a finding code in a gate receipt, an advice line, an evidence field, a
-battery-contract sentence in the recorded prompt, or a safeguard firing (`bun run outcome --safeguards
-<campaign>`, or `campaigns/<project>/safeguards/<runId>/SAFEGUARDS_LOG.txt`). This is
-[attribution-and-proof](../attribution-and-proof/SKILL.md)'s "was the intended mechanism live",
-applied commit by commit. Read each result like this:
-
-- **Fired and the measure moved the predicted way:** `proven` if one mechanism fired alone, `likely`
-  if several fired together.
-- **Fired and nothing moved:** the fix did not suffice. That is a finding.
-- **Trigger never occurred:** `untriggered`, not failed.
-- **Moved with no fired mechanism behind it:** noise or a confound (host, provider, Builder
-  sampling) until shown otherwise.
-
-A changed `framingDigest` means every Builder action ran under the new text. That makes the text
-necessary context for any behaviour change, not proof of one: attribute a behaviour to a prompt
-sentence only when the Builder's own plan, notes or prose cite what that sentence asked.
-
-## 7. Confounds to rule out before a verdict
-
-- **One sample per condition.** A Builder that samples a different first plan can move every row.
-  A single pair shows what happened, not what will repeat.
-- **Host and provider:** load, concurrency, 429s, credit exhaustion, a shared account's session limit
-  (§1).
-- **Different stop points:** an operator SIGTERM, a timed stop, a budget cap. Cut to equal windows
-  (§4).
-- **Continued projects:** a candidate continued from the baseline's adopted product starts from a
-  product, not from nothing. Compare it only with a baseline that was also continued.
-- **Mixed slots:** a pin that changed silently. An unpinned codex slot resolves to the default model
-  (AGENTS "Run configuration"), so compare `modelSlots`, not launch intent.
-- **Protected-detail parity:** a candidate whose prompts now carry something the baseline's did not
-  may be rewarded for leakage. Check `framingDigest` against the range's model-visible changes.
-
-## 8. Give a verdict per pair, per wave and per prediction
-
-**Per pair**, at each checkpoint, give one verdict:
-
-- `improved`: at least one of §5a to §5e moved the better way, no row in §5a to §5f moved the worse
-  way, and the confounds of §7 are ruled out or named.
+- `improved`: at least one climb measure moved the better way, no measure moved the worse way, and
+  confounds are ruled out or named.
 - `regressed`: the mirror of `improved`.
-- `unchanged`: the rows sit within what one Builder resample plausibly moves. For example, both sides
-  pass every case of every battery, rehearsals passed at similar rates, and the edge mix is the same.
-- `undetermined`: before the checkpoint, or when rows disagree in direction, or when a confound can
-  explain the difference.
+- `unchanged`: complete comparable rows sit within what Builder resampling plausibly moves.
+- `undetermined`: rows disagree, evidence is censored, or an unresolved confound could explain the
+  movement.
+- `mixed-condition`: prompt/domain, model or another tested condition moved with source; describe
+  the outcome, but do not count it as a source verdict.
 
-Name the one or two rows that decided each verdict, and give an attribution of `proven`, `likely`,
-`mixed` or `unproven` from §6.
+Name the one or two rows that decided the verdict and give attribution `proven`, `likely`, `mixed`
+or `unproven` from §6. Per transition, count eligible condition cells by direction and list mixed
+and unpaired cells separately. Per state, report eligible comparisons and whether their samples are
+independent. Zero eligible pairs is `undetermined`, never `unchanged`. Do not average pass rates
+across conditions. Repeated cross-products can share a run, so do not use a sign test unless the
+pairs were independently selected.
 
-**Per wave**, count pairs by direction and never average pass rates across conditions. For scale,
-a one-sided sign test over independent pairs gives these probabilities under "no effect":
-
-| pairs improved | probability |
-| --- | --- |
-| 6 of 6 | 0.016 |
-| 5 of 6 | 0.109 |
-| 5 of 5 | 0.031 |
-| 4 of 4 | 0.0625 |
-
-So five of six improving is suggestive and six of six is a result. Mixed conditions and
-`undetermined` pairs leave the count, and the verdict names how many pairs it rests on.
-
-**Per prediction**, adjudicate each frozen row once its checkpoint is reached:
+Adjudicate each frozen prediction when its checkpoint is reached:
 
 ```sh
 bun .claude/skills/run-improvement-campaign/scripts/prediction.ts adjudicate --ledger <path> \
   --id <id> --outcome sufficed|partial|refuted|untriggered --evidence "<file or reading>"
 ```
 
-Use `--run <runId>` in place of `--ledger` for a per-run row. `untriggered` means the run never
-tested the variable, for example a prediction about the second edge in a run that ended at one
-battery.
+Use `--run <runId>` instead of `--ledger` for a per-run row. `untriggered` means the run never
+tested the variable, such as a prediction about an edge after a run that ended at one battery.
 
 ## 9. When the question needs a capability number
 
 Placement and calibration show whether the loop improved. They cannot show whether the product
-solves more. If the operator asks that, it needs a shared pack, which has three routes:
+solves more. For that, use a shared pack:
 
 - Solve one fixed task set on both adopted bundles through
   [harness-query](../harness-query/SKILL.md). This is paid: one measured case per task per side.
-- Re-grade artifacts under another evaluator with `bun run replay -- … --under …`, which is free.
-- Join two recorded batteries that already share a task-set hash with `compare-conditions.mts`,
-  which is free and refuses otherwise.
+- Re-grade artifacts under another evaluator with `bun --no-env-file run replay --
+  <campaign>/<runId> --under <bundle>`, if recorded artifacts and bundles exist.
+- Join recorded batteries only when they share a task-set hash; `compare-conditions.mts` refuses
+  otherwise.
 
-Name the pack, the model pins and the walls, and report verified, unaccepted and non-result cases
-separately. Ask before spending on the first route: it is a new measurement, not part of the audit.
+Name the pack, model pins and walls, and report verified, unaccepted and non-result cases
+separately. Do not launch a new paid measurement as part of this audit; ask before spending.
 
-## 10. Write it down
+## 10. Write the audit down
 
-Write the audit at `notes/wave-audits/<candidate sha9>.md`, or beside the review it came from, and
-append one block per checkpoint:
+Write it at `notes/wave-audits/<candidate sha9>.md`, or beside the review it came from. Put the
+state-by-condition table and unmatched cells first, then one block per adjacent transition and
+checkpoint. This replaces the single-wave template; include only measures that were read, with
+schema coverage and denominators.
 
 ```text
-Checkpoint:          first battery | third round | terminal — read at <UTC time>
-Waves:               baseline <sha9> (<runId suffix>, n runs) → candidate <sha9> (<suffix>, n runs)
-Moved variable:      source; <n> commits across PRs <#…>; reach: <prompt | gate | controller | verifier | review>
-Mixed pairs:         <condition: field that differs> — excluded
-Host:                baseline <runs/load/overlap>; candidate <…>
-Predictions:         <id or plan line> — frozen <ledger | file time | post hoc>
-Window:              <round r | elapsed hh:mm> on both sides
-
-Per pair:
-  <condition>  line <signal, swing, flat, carried: b → c>  zones <b: too-easy×4> → <c: over-aim, too-easy>  edges <…>
-               rehearsal passes acted on <0/1 → 1/1>  gate <…>  corrections <…>
-               denominators <v/u/nr → v/u/nr>  pace <…>
-               verdict <improved | …> on <deciding rows>; attribution <level>; mechanisms fired <commit: output>
-Wave:                <k of n> improved, <…> unchanged, <…> regressed, <…> undetermined (sign-test p ≈ <…>)
-Prediction outcomes: <id>: <outcome> — <evidence path>
-Caveats:             <confounds from §7 that remain>
-Next move:           one experiment, one owner — handed to run-improvement-campaign
+Checkpoint:          first battery | third round | terminal; read at <UTC time>
+States:              <baseline state and source SHAs> → <candidate state and source SHAs>
+Condition cell:      <request digest, domain, model slots; baseline n> → <candidate n>
+Pair identity:       request/slots <match>; command <digest | normalized legacy argv | unknown>;
+                     lineage <same seed | fresh | mixed | unknown>; budget/runtime/backend <...>
+Source range:        <baseline SHA>..<candidate SHA>; <n> commits; reach <...>; framing <...>
+Prediction:          <id> — frozen <ledger/file time/post hoc>; outcome <...>
+Window:              <round r or elapsed window>; reached by <n>/<N> runs each side
+Movement:            climb <velocity, horizon, flat, carried>; placement <zone, passed/verified>;
+                     edges <label and changed public requirement>; rehearsal <...>; gate <...>
+                     corrections/review <...>; cases <verified/unaccepted/non-result>; pace <...>
+Verdict:             <pair verdict>; attribution <level>; deciding rows <...>
+Transition:          <k improved, ...>; eligible pairs <n>; mixed <n>; unpaired <n>
+State verdict:       <verdict>; rests on <n> eligible comparisons
+Caveats:             <host, provider, stop, schema, lineage or evaluator gaps>
+Next move:           one experiment and owner — hand to run-improvement-campaign
 Settles at:          <next checkpoint and what it could change>
 ```
 
-An audit that ends without a next move or an adjudicated prediction was only a report. Say so, and
-say which checkpoint will settle it.
+An audit without a next move or an adjudicated prediction was only a report. Say which checkpoint
+will settle it.
 
 ## Worked baseline, 2026-09-27
 
 This is the baseline wave on source `4ec0615bf`, with run ids `*-20260927T052020405Z-1408e8`
 (truss) and `*-20260927T052323252Z-b445f0` (custom). Every run ended `signal-terminated` when the
 operator stopped the wave for the relaunch on `6e96003d` (`*-20260927T145744429Z-7e43c0`). Its
-`runEnd.climb` rows, read from each `terminal.json`, show what the candidate is measured against. The
+`runEnd.climb` rows, read from each `terminal.json`, show what the candidate is measured against.
+The
 target column is the plan's, which sources before `EXPERIMENT.json`'s removal still wrote:
 
 | condition | campaign | batteries (zone, passed of verified, target) |
-| --- | --- | --- |
+|---|---|---|
 | truss-sol | `…-3fd52f9e-19` | 4 batteries, all `too-easy` at 6 of 6; the first missed an `at-most 3` target by 3, with a Brier score of 0.40 |
 | truss-opus | `…-3fd52f9e-17` | 1 battery, `too-easy` at 6 of 6; an `at-least 1` target met, which only a battery with no pass could miss |
 | truss-astra | `…-3fd52f9e-18` | 1 battery, `over-aim` at 4 of 4 verified; an `at-most 3` target missed |

@@ -72,6 +72,11 @@ export interface OpeningFacts {
   dirty: boolean | null;
   sourceDigest: string | null;
   projectId: string | null;
+  /** The request the project was created from, and whether it was created or continued. */
+  requestDigest: string | null;
+  origin: string | null;
+  /** From #118 on, equal for two runs of one condition; before, it hashed the run id and source. */
+  commandDigest: string | null;
   epochKey: string | null;
   slots: SlotFacts[];
   /** The provider-turn cap the run opened with; the counter beside it is always 0 at open. */
@@ -215,6 +220,9 @@ function openingFacts(opening: JsonObject): OpeningFacts {
     dirty: isBoolean(dirty) ? dirty : null,
     sourceDigest: stringOr(source?.sourceDigest),
     projectId: stringOr(nested(opening, "project")?.id),
+    requestDigest: stringOr(nested(opening, "project")?.requestDigest),
+    origin: stringOr(nested(opening, "project")?.origin),
+    commandDigest: stringOr(nested(opening, "command")?.digest),
     epochKey: stringOr(nested(opening, "epoch")?.key),
     slots: roles,
     cap: numberOr(nested(opening, "providerResourceBudget")?.cap),

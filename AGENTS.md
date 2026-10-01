@@ -742,7 +742,15 @@ to 80. Each prediction is frozen before its arm launches.
 Arms are compared on a discovery seed first. A confirmation seed, from another campaign, is launched
 only after every arm's source is fixed, and nothing read from it revises an arm.
 
-No component is ablated in source at present.
+- **`limit-restated` (arm, 2026-10-01).** Two clauses of the battery contract's `LIMIT`
+  (`src/run/climb-readout.ts`): "and a non-result as neither" and "one that passes every case found
+  none". Once a battery is measured, the readout beside `LIMIT` has a legend that says a non-result
+  counts neither way, and the intent clause and, after a full pass, the no-limit line say that a full
+  pass locates nothing, so an opening turn after a full pass said it three times. A first round of 10
+  tasks or fewer, which states `LIMIT` with no readout, keeps only the intent clause's form. The claim
+  that only a partial battery can locate a limit, and only where its checks are right, stays.
+  Grep: `rg "ABLATED\(limit-restated\)|ADDED\(limit-restated\)"`. Prediction and run: filled when this
+  arm launches.
 
 ## Evidence and implementation status
 

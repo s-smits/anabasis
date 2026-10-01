@@ -585,7 +585,10 @@ function decisionFacts(raw: JsonObject): DifficultyFacts | null {
  * because it cannot tell whose run the file belonged to and will not claim another run's damage for
  * this one; the campaign's reader owns every file, so it refuses the file by name.
  */
-export function readDifficultyDecisions(scope: { campaignDir: string; runId?: string }): DifficultyDecisions {
+export function readDifficultyDecisions(scope: {
+  campaignDir: string;
+  runId: string | null;
+}): DifficultyDecisions {
   const rows: DifficultyFacts[] = [];
   const refused: DifficultyDecisions["refused"] = [];
   const dir = join(scope.campaignDir, "difficulty-decisions");
@@ -597,11 +600,11 @@ export function readDifficultyDecisions(scope: { campaignDir: string; runId?: st
     try {
       raw = readJson(join(dir, file)) ?? {};
     } catch {
-      if (run === undefined) refused.push({ file, reason: "unreadable" });
+      if (run === null) refused.push({ file, reason: "unreadable" });
       continue;
     }
     const runId = stringOr(raw.runId);
-    if (run !== undefined && (runId === null || !isControllerBatteryRunId(run, runId))) continue;
+    if (run !== null && (runId === null || !isControllerBatteryRunId(run, runId))) continue;
     const schema = stringOr(raw.schema);
     if (schema !== DIFFICULTY_DECISION_SCHEMA) {
       refused.push({ file, reason: schema ?? "no schema" });
@@ -615,7 +618,7 @@ export function readDifficultyDecisions(scope: { campaignDir: string; runId?: st
   // round itself is the order, and the filename breaks a tie between two records of one round, or
   // keeps a campaign's records in file order.
   const round = (runId: string): number =>
-    run === undefined || runId === run ? 1 : Number(runId.slice(run.length + 2));
+    run === null || runId === run ? 1 : Number(runId.slice(run.length + 2));
   rows.sort((left, right) => round(left.runId) - round(right.runId));
   return { rows, refused };
 }

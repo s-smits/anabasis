@@ -904,7 +904,7 @@ export function buildDigest(input: DigestInput): string {
   const { campaign, campaignName, epochDirs, domainDir, selection, traceRoots } = campaignCases(input);
   const caseRows = selection.rows;
   const tallies = batteryTallies(caseRows);
-  const difficulty = readDifficultyDecisions({ campaignDir: campaign });
+  const difficulty = readDifficultyDecisions({ campaignDir: campaign, runId: null });
   const decisions = difficulty.rows;
   const judgeReviews = readJudgeReviews(campaign);
   const executions = readExecutions(epochDirs);

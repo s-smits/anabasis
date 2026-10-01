@@ -534,7 +534,7 @@ export function verdictOf(
 /** The controller's own placement of each battery, from the last difficulty decision that carried
  *  its readout row: the zone and the distance to the aim. */
 function recordedPlacements(campaign: string): RecordedPlacements {
-  const decisions = readDifficultyDecisions({ campaignDir: campaign });
+  const decisions = readDifficultyDecisions({ campaignDir: campaign, runId: null });
   const byRun = new Map<string, RecordedPlacement>();
   for (const decision of decisions.rows) {
     for (const row of decision.rows) {

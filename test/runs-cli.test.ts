@@ -799,7 +799,7 @@ describe("the climb decisions recorded for a run", () => {
     expect(readDifficultyDecisions(onlyRun(root)).refused).toEqual([
       { file: "run-1-i03.json", reason: `${CURRENT_SCHEMA} incomplete` },
     ]);
-    const campaign = readDifficultyDecisions({ campaignDir });
+    const campaign = readDifficultyDecisions({ campaignDir, runId: null });
     expect(campaign.rows.map((row) => row.runId)).toEqual(["run-1-i02"]);
     expect(campaign.refused).toEqual([
       { file: "run-1-i03.json", reason: `${CURRENT_SCHEMA} incomplete` },

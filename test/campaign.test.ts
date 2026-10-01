@@ -28,11 +28,10 @@ import { mkdirSync, mkdtempSync, unlinkSync, writeFileSync } from "../src/meta/f
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
-import { fingerprintSlug } from "../src/claim/fingerprint.ts";
-import { bindProductMeasurement, publishProductVersion } from "../src/run/product-versions.ts";
+import { bindProductMeasurement } from "../src/run/product-versions.ts";
 import { caseRecordRow } from "./helpers/case-record-row.ts";
 import { execTextSync } from "./helpers/bun-spawn-sync.ts";
-import { recordDigestBattery, solveRow } from "./helpers/digest-battery.ts";
+import { publishProduct, recordDigestBattery, solveRow } from "./helpers/digest-battery.ts";
 import { MATCHING_OPERATING_GUIDE } from "./helpers/matching-fixture.ts";
 import { recordedController } from "./helpers/recorded-controller.ts";
 import { writeSettledReview } from "./helpers/review-fixtures.ts";
@@ -565,23 +564,15 @@ describe("scoreboard", () => {
     const rows: ReturnType<typeof caseRecordRow>[] = [];
     mkdirSync(join(f.campaign, "claims"));
     for (const [hour, [battery, minutes, fails]] of batteries.entries()) {
-      const snapshot = join(f.repo, "accepted", battery);
-      mkdirSync(join(snapshot, "agent"), { recursive: true });
-      mkdirSync(join(snapshot, "correctness-model"));
-      writeFileSync(join(snapshot, "agent", "config.yaml"), "solver:\n  solve_minutes: 60\n");
-      writeFileSync(join(snapshot, "agent", "AGENTS.md"), battery);
-      writeFileSync(join(snapshot, "correctness-model", "evaluator.ts"), "export const rule = 1;\n");
-      writeFileSync(join(snapshot, "correctness-model", "brief.json"), "{}");
       const tasks = Object.keys(minutes).map((taskId) => ({ taskId, family: "family", publicInput: {} }));
-      writeFileSync(join(snapshot, "correctness-model", "tasks.json"), JSON.stringify(tasks));
-      const fingerprint = fingerprintSlug(snapshot, { slug: "truss" });
-      if (!fingerprint.ok) throw new Error(JSON.stringify(fingerprint.findings));
-      const product = publishProductVersion({
-        repoRoot: f.repo,
-        slug: "truss",
-        id: battery,
-        acceptedSnapshot: snapshot,
-        fingerprint,
+      const acceptedSnapshot = join(f.repo, "accepted", battery);
+      const source = { repoRoot: f.repo, slug: "truss", id: battery, acceptedSnapshot };
+      const product = publishProduct(source, {
+        "agent/config.yaml": "solver:\n  solve_minutes: 60\n",
+        "agent/AGENTS.md": battery,
+        "correctness-model/evaluator.ts": "export const rule = 1;\n",
+        "correctness-model/brief.json": "{}",
+        "correctness-model/tasks.json": JSON.stringify(tasks),
       });
       bindProductMeasurement(f.repo, "truss", battery, product);
       const solved = tasks.map(({ taskId }) => solveRow({ taskId }, battery, !fails.includes(taskId)));

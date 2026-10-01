@@ -183,7 +183,12 @@ type OpenSession =
  */
 const PLACEMENT_LEADS = {
   above:
-    " A placement above the aim is a lead, not a finding on its own: it asks which obligation of the request those tasks do not demand, or demand only one at a time, and tasks that were easy while leaving none undemanded are a result to report, not a defect to record.",
+    // ABLATED(easy-result): the clause that reads easy tasks as a result to report. A battery that passes
+    // whole found no limit, and the guard against a finding on the score alone stays in "a lead, not a
+    // finding on its own" (AGENTS.md "Ablated components").
+    // " A placement above the aim is a lead, not a finding on its own: it asks which obligation of the request those tasks do not demand, or demand only one at a time, and tasks that were easy while leaving none undemanded are a result to report, not a defect to record.",
+    // ADDED(easy-result): the same lead without that clause.
+    " A placement above the aim is a lead, not a finding on its own: it asks which obligation of the request those tasks do not demand, or demand only one at a time.",
   below:
     " A placement on or below the aim is a lead, not a finding on its own, and hardness is the last of its readings rather than the first. A rule the checks apply that the brief does not publish fails every task: probe an accept control at a field the public contract leaves free, and a check that moves on it is that rule, owned by `correctness-model/brief.json`. Where the verified failures are listed by declared check, start from the first one listed: probe at a path it reads, with a value a practitioner of the request would accept and the published rules allow, and say whether it reads narrower than its rule, wider, or as stated. An answer a correct solver cannot write through the tools it was given fails every task too, owned by `agent/tools-spec.json`; the accept controls are the shapes the writer is known to produce. Record an observation of hardness, owned by correctness-model/tasks.json, once you have read the brief and the writer schema against the artifact and neither holds.",
 };
@@ -257,7 +262,9 @@ function openSession(input: EpochReviewInput): OpenSession {
     reviewerEffort: input.review.enabled ? (input.review.reasoningEffort ?? null) : null,
     requestDigest: hashJsonValue({
       publicRequest: input.publicRequest,
-      policy: "review-probing-findings/v14",
+      // ABLATED(easy-result): policy: "review-probing-findings/v14",
+      // ADDED(easy-result): a review under this arm's text is not reused for the control's.
+      policy: "review-probing-findings/v14+easy-result",
       prompt: EPOCH_REVIEW_PROMPT,
     }),
     obligationsDigest: obligationsDigest(input, disputableIssues(input)),

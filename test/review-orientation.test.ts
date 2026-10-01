@@ -189,6 +189,8 @@ describe("the epoch reviewer's orientation", () => {
     // Requirements asked for one at a time are an undemanded obligation too, so that gap is reachable
     // from the lead rather than only the capability no task exercises.
     expect(prompt).toContain("do not demand, or demand only one at a time");
+    // ADDED(easy-result): easy tasks are not offered as a result that closes the lead.
+    expect(prompt).not.toMatch(/a result to report|easy while leaving none undemanded/);
     expect(prompt).not.toContain("hardness is the last of its readings");
     // The first-probe pointer belongs to the side below the aim, and the static prompt no longer
     // carries it to every review.

@@ -57,8 +57,7 @@ const JUDGE_VERDICT_SCHEMA = {
   additionalProperties: false,
 };
 
-const VERDICT_SCHEMA_HINT =
-  'judge verdict must match {verdict:"pass"|"fail",rationale:string(1..400),rules?:string[]}; a fail must cite only shown rules, verbatim, at least one';
+const VERDICT_SCHEMA_HINT = `judge verdict must match {verdict:"pass"|"fail",rationale:string(1..${RATIONALE_MAX}),rules?:string[]}; a fail must cite only shown rules, verbatim, at least one`;
 
 /** The follow-up a subject gets when its first turn ended without a recorded verdict. */
 const VERDICT_REASK =

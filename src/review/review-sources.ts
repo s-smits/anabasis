@@ -470,7 +470,7 @@ export function readSourceTool(
         skipped.push(candidate);
       }
       return refuse(
-        `no unread entry could be delivered; ${skipped.length} remain unreadable (${skipped.slice(0, 3).join(", ")}${skipped.length > 3 ? ", …" : ""}). Weigh the evidence you have and finish your synthesis.`,
+        `no unread entry could be delivered; ${skipped.length} ${skipped.length === 1 ? "remains" : "remain"} unreadable (${skipped.slice(0, 3).join(", ")}${skipped.length > 3 ? ", …" : ""}). Weigh the evidence you have and finish your synthesis.`,
       );
     },
   };

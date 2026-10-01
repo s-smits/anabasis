@@ -292,7 +292,7 @@ function issueOffer(issue: AdviceIssue, compiled: readonly Compiled[], read: Rec
   const detail = issue.detail === null ? "" : ` (${issue.detail})`;
   const block = [
     `ISSUE ${key} — family ${issue.family}, kind ${issue.kind}${detail}: ${issue.count} of ${issue.denominator}, ${issueFacts(issue)}.`,
-    `Showing ${shown.length} of ${matching.length} failing solves; ${contrasts.length === 0 ? "no passing solve of this family to contrast" : `${contrasts.length} passing solve(s) of this family to contrast`}.`,
+    `Showing ${shown.length} of ${matching.length} failing solve${matching.length === 1 ? "" : "s"}; ${contrasts.length === 0 ? "no passing solve of this family to contrast" : `${contrasts.length} passing solve${contrasts.length === 1 ? "" : "s"} of this family to contrast`}.`,
     ...(firstShown === undefined
       ? []
       : [`${firstShown.solve.label} ${publicTask(read, firstShown.trace, firstShown.row.taskId)}`]),
@@ -378,7 +378,7 @@ export async function readDiagnoses(input: DiagnosisReaderInput): Promise<Diagno
   evidence.offered = packet.offers.map((offer) => offer.issue.id);
   evidence.withheld = diagnosable.length - packet.offers.length;
   const prompt = [
-    `Campaign ${analysis.slug}, battery ${analysis.runId}. ${packet.offers.length} issue(s) are offered below, each with sampled solves compiled into numbered steps.`,
+    `Campaign ${analysis.slug}, battery ${analysis.runId}. ${packet.offers.length} issue${packet.offers.length === 1 ? " is" : "s are"} offered below, each with sampled solves compiled into numbered steps.`,
     "Call record_diagnosis once per flaw, naming every offered issue it covers, or abstain for the issues you cannot read.",
     "",
     packet.body,

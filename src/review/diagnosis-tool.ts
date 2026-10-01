@@ -232,7 +232,9 @@ export function recordDiagnosisTool(
         if (reason === "") return refuse("an abstention needs a reason");
         if (namesTask(reason)) return refuse("an abstention may not name an individual task");
         sink.abstentions.push({ issueIds: resolved.ids, reason });
-        return Promise.resolve(readerToolText(`abstained for ${resolved.ids.length} issue(s)`));
+        return Promise.resolve(
+          readerToolText(`abstained for ${resolved.ids.length} issue${resolved.ids.length === 1 ? "" : "s"}`),
+        );
       }
       const fields = readingFields(args);
       if ("why" in fields) return refuse(fields.why);
@@ -261,7 +263,7 @@ export function recordDiagnosisTool(
       });
       return Promise.resolve(
         readerToolText(
-          `recorded for ${resolved.ids.length} issue(s): holds for ${support.cases} of ${support.shown} shown, ${support.contrasts} contrast(s)`,
+          `recorded for ${resolved.ids.length} issue${resolved.ids.length === 1 ? "" : "s"}: holds for ${support.cases} of ${support.shown} shown, ${support.contrasts} contrast${support.contrasts === 1 ? "" : "s"}`,
         ),
       );
     },

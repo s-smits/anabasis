@@ -410,7 +410,7 @@ function renderRow(row: ReviewProbeRow): string {
     side("changed", row.mutated),
     row.movedCheckIds.length === 0
       ? `  no declared check changed its verdict for this replacement. That alone does not show ${row.path} is unobserved: a check that reads it may simply accept the new value too. To record unobserved, say which public obligation the changed artifact breaks while the checks still accept it`
-      : `  ${row.movedCheckIds.length} declared check(s) moved: ${row.movedCheckIds.join(", ")}`,
+      : `  ${row.movedCheckIds.length} declared check${row.movedCheckIds.length === 1 ? "" : "s"} moved: ${row.movedCheckIds.join(", ")}`,
     ...(conclusive(row)
       ? []
       : [

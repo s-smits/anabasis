@@ -827,7 +827,7 @@ describe("what the reviewer may open", () => {
     expect(state.refused).toBe(0);
     // With nothing left it can deliver, the scan says so once rather than pretending more remains.
     const exhausted = await call(reader, {});
-    expect(exhausted).toContain("no unread entry could be delivered; 1 remain unreadable (broken.json)");
+    expect(exhausted).toContain("no unread entry could be delivered; 1 remains unreadable (broken.json)");
     expect(state.refused).toBe(1);
     // The unreadable entry is still missing coverage, and naming it still returns its reason.
     expect(await call(reader, { path: "broken.json" })).toContain("path escapes the measured tree");

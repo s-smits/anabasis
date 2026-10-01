@@ -543,6 +543,7 @@ class BuilderCampaignController {
     const trial = createHarnessTrialTool({
       workspace: this.workspace,
       context: toolContext,
+      feedback, // ADDED(held-findings)
       rehearsalDir: join(input.campaignDir, "rehearsals"),
       rehearsals: this.rehearsals,
       onRehearsal: (row, submitted) => this.reviews?.rehearsed(row, submitted),

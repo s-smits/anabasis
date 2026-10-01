@@ -37,7 +37,8 @@ import { commitPublicTask } from "../correctness-bundle/task-split.ts";
 import { publishedMargins } from "../correctness-bundle/numeric-boundary.ts";
 import { builtStarterFactoryForSolver } from "../correctness-bundle/solve.ts";
 import type { Solver } from "../correctness-bundle/solve.ts";
-import { authorFindingOverview } from "./author-feedback.ts";
+// ADDED(held-findings): the `type BuilderAuthorFeedback`; the import was `authorFindingOverview` alone.
+import { type BuilderAuthorFeedback, authorFindingOverview } from "./author-feedback.ts";
 import { visibleError } from "./read-window.ts";
 import type { VerifierLifetime } from "../verify/verifier-lifetime.ts";
 import {
@@ -75,6 +76,9 @@ interface HarnessTrialBinding {
   /** Where each rehearsal's solve evidence is written, one directory per call. Absent in tests. */
   rehearsalDir?: string;
   verifierLifetime?: VerifierLifetime;
+  // ADDED(held-findings): the session's check and submit store, which `harness_inspect` pages.
+  /** The round's latest check or submit result, read before a solve starts. */
+  feedback: BuilderAuthorFeedback;
   /** This round's passing rehearsals, which the context tool offers as traces. */
   rehearsals?: RehearsalTraces;
   /** Hands each rehearsal that reached a solve to the authoring review: the aggregate verdict, the
@@ -335,6 +339,17 @@ async function runTrial(
         status: "blocked",
         stage: "candidate",
         findings: authorFindingOverview(fingerprintRefusal(fingerprint.findings)),
+      };
+    }
+    // ADDED(held-findings): until this block a rehearsal ran on bytes whose own controls the last
+    // correctness_check had refused. Of 32 such recorded rehearsals, 5 were instrument-defect misses
+    // that read as difficulty and none shipped; 23 came in the same tool batch as that check.
+    if (binding.feedback.heldFindings(bundleSnapshotIdOf(fingerprint))) {
+      return {
+        status: "blocked",
+        stage: "candidate",
+        nextAction:
+          "correctness_check reported findings on these bytes; repair them and check again before trial.",
       };
     }
     binding = { ...binding, workspace: ensureBundleSnapshot(binding.workspace, fingerprint).dir };

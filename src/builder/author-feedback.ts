@@ -270,6 +270,15 @@ export class BuilderAuthorFeedback {
     );
   }
 
+  // ADDED(held-findings): read by `harness_trial` before it starts a solve.
+  /** Whether the latest result is a correctness_check that found blocking rows on these bytes. */
+  heldFindings(snapshotId: string): boolean {
+    const { latest } = this;
+    return (
+      latest?.source === "correctness_check" && latest.snapshotId === snapshotId && latest.findings.length > 0
+    );
+  }
+
   page(query: AuthorFeedbackQuery = {}) {
     const { latest } = this;
     if (latest === null) {

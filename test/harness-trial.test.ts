@@ -47,6 +47,11 @@ import {
   verifierView,
 } from "../src/builder/harness-trial.ts";
 import { RehearsalTraces } from "../src/builder/context-tool.ts";
+// ADDED(held-findings): the next four imports.
+import { BuilderAuthorFeedback } from "../src/builder/author-feedback.ts";
+import { controllerValidatedFinding } from "../src/correctness-bundle/brief.ts";
+import { fingerprintSlug } from "../src/claim/fingerprint.ts";
+import { bundleSnapshotIdOf } from "../src/claim/bundle-snapshot.ts";
 import { createBuiltStarter } from "../src/solve/built-starter.ts";
 import { defineDraftTool } from "../src/solve/draft-tool.ts";
 import { type Solver, withSolverBuiltStarterFactory } from "../src/correctness-bundle/solve.ts";
@@ -329,13 +334,17 @@ function round(
   dir: string,
   solver: Solver | null,
   verifying = true,
-  plan: Pick<Parameters<typeof createHarnessTrialTool>[0], "rehearsals" | "onRehearsal" | "tellOnce"> = {},
+  // ADDED(held-findings): the `Partial` and `"feedback"` in the Pick, and the `feedback` default below.
+  plan: Partial<
+    Pick<Parameters<typeof createHarnessTrialTool>[0], "rehearsals" | "onRehearsal" | "tellOnce" | "feedback">
+  > = {},
 ) {
   const rehearsalDir = join(dir, "rehearsals");
   const tool = createHarnessTrialTool({
     workspace: dir,
     context: { slug: "matching" },
     rehearsalDir,
+    feedback: new BuilderAuthorFeedback(),
     ...plan,
     ...keyIfNotNull("builtSolver", solver === null ? null : () => solver),
     ...keysIf(verifying, () => ({
@@ -743,6 +752,69 @@ describe("what one round of rehearsals costs", () => {
   }, 60_000);
 });
 
+// ADDED(held-findings): the whole case. Dropping the addition deletes it.
+describe("a rehearsal on bytes the last correctness_check refused", () => {
+  const FINDING = controllerValidatedFinding({
+    code: "held-code-marker",
+    path: "correctness-model/evaluator.ts",
+    detail: "held-detail-marker",
+  });
+
+  /** A round whose session store the case writes into, the id of its bytes, and a solve counter. */
+  function checkedRound() {
+    const dir = workspace();
+    const feedback = new BuilderAuthorFeedback();
+    const solved = { count: 0 };
+    const solver = assigningSolver(RIGHT_SLOT, true, () => {
+      solved.count += 1;
+    });
+    const fingerprint = fingerprintSlug(dir, { slug: "matching" });
+    if (!fingerprint.ok) throw new Error("the matching fixture does not fingerprint");
+    return {
+      dir,
+      feedback,
+      solved,
+      bytes: bundleSnapshotIdOf(fingerprint),
+      ...round(dir, solver, true, { feedback }),
+    };
+  }
+
+  it("starts no solve and repeats none of the findings", async () => {
+    const { feedback, solved, bytes, rehearsalDir, tool } = checkedRound();
+    feedback.recordCheck("gates", [FINDING], bytes);
+    const body = modelVisible(await rehearse(tool));
+
+    expect(body).toMatchObject({ status: "blocked", stage: "candidate" });
+    expect(body.nextAction).toBe(
+      "correctness_check reported findings on these bytes; repair them and check again before trial.",
+    );
+    expect(JSON.stringify(body)).not.toMatch(/held-code-marker|held-detail-marker|evaluator\.ts/);
+    expectWithinCensus(body);
+    expect(solved.count).toBe(0);
+    expect(existsSync(rehearsalDir)).toBe(false);
+  }, 60_000);
+
+  it("solves once a check of the same bytes is clear", async () => {
+    const { feedback, solved, bytes, tool } = checkedRound();
+    feedback.recordCheck("gates", [FINDING], bytes);
+    feedback.recordCheck("gates", [], bytes);
+
+    expect(modelVisible(await rehearse(tool)).truth).toEqual({ verdict: "pass" });
+    expect(solved.count).toBe(1);
+  }, 60_000);
+
+  // Bytes changed since the check have no check of their own, and the narrow form holds only bytes
+  // a check refused.
+  it("solves when the bytes changed after the check that refused them", async () => {
+    const { dir, feedback, solved, bytes, tool } = checkedRound();
+    feedback.recordCheck("gates", [FINDING], bytes);
+    writeFileSync(join(dir, GUIDE_FILE), `${MATCHING_OPERATING_GUIDE}\nedited after the check\n`);
+
+    expect(modelVisible(await rehearse(tool)).truth).toEqual({ verdict: "pass" });
+    expect(solved.count).toBe(1);
+  }, 60_000);
+});
+
 describe("the worked-examples pointer", () => {
   // A run's one Builder conversation continues its session across rounds, and each round builds a
   // new tool. So the pointer is told once per session, which the conversation answers; a round
@@ -860,6 +932,7 @@ describe("where a rehearsal's solve evidence is kept", () => {
     const tool = createHarnessTrialTool({
       workspace: dir,
       context: { slug: "matching" },
+      feedback: new BuilderAuthorFeedback(), // ADDED(held-findings)
       builtSolver: () => assigningSolver(RIGHT_SLOT),
       verifierLifetime: createVerifierLifetime({ root: join(dir, ".verifier") }),
     });

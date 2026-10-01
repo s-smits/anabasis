@@ -96,9 +96,11 @@ interface HarnessInspectBinding {
   context: CandidateCheckContext;
   /** Same-session submit feedback. Optional only for isolated inspection tests. */
   feedback?: BuilderAuthorFeedback;
-  /** This round's task count and battery contract, the same bytes the round opened with. Absent
-   *  only for isolated inspection tests. */
-  contract?: string;
+  // ABLATED(readiness-contract): the round's contract on every readiness result. The same bytes open
+  // the round and are the context tool's round source (AGENTS.md "Ablated components").
+  // /** This round's task count and battery contract, the same bytes the round opened with. Absent
+  //  *  only for isolated inspection tests. */
+  // contract?: string;
 }
 
 type Bundle = ReturnType<typeof loadValidatedBundle>;
@@ -488,11 +490,14 @@ function readinessResult(binding: HarnessInspectBinding, params: InspectParams) 
   }
   const bundle = loadValidatedBundle(workspace, context, "admission");
   const view = readinessView(bundle, workspace, params, rehearsal);
-  const body =
-    "files" in view && binding.contract !== undefined ? { ...view, contract: binding.contract } : view;
+  // ABLATED(readiness-contract): the contract served beside the static view.
+  // const body =
+  //   "files" in view && binding.contract !== undefined ? { ...view, contract: binding.contract } : view;
   const count = view.findings.totalFindings;
   return {
-    text: capturedJsonStringify({ action: params.action, ...body }),
+    // ABLATED(readiness-contract): text: capturedJsonStringify({ action: params.action, ...body }),
+    // ADDED(readiness-contract): the static view alone.
+    text: capturedJsonStringify({ action: params.action, ...view }),
     details: {
       action: params.action,
       findings: count,

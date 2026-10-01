@@ -46,12 +46,12 @@ async function inspect<T = Record<string, JsonValue>>(
   action: "readiness" | "task" | "feedback" | "coverage",
   taskId?: string,
   options: Record<string, JsonValue> = {},
-  contract?: string,
+  // ABLATED(readiness-contract): contract?: string,
 ): Promise<T> {
   const tool = createHarnessInspectTool({
     workspace: dir,
     context: CONTEXT,
-    ...keyIfDefined("contract", contract),
+    // ABLATED(readiness-contract): ...keyIfDefined("contract", contract),
   });
   const result = await tool.execute("inspect-1", {
     action,
@@ -94,10 +94,15 @@ describe("harness_inspect", () => {
       };
       suggestedTrials: Array<{ family: string; taskId: string }>;
       contract?: string;
-    }>(dir, "readiness", undefined, {}, "Task count: exactly 25 tasks.");
+      // ABLATED(readiness-contract): }>(dir, "readiness", undefined, {}, "Task count: exactly 25 tasks.");
+      // ADDED(readiness-contract): the tool binds no contract.
+    }>(dir, "readiness");
     // The round's ask is served back whatever the bundle's state: a session that lost its opening
     // turn to compaction needs the count before it has anything that would pass readiness.
-    expect(blocked.contract).toBe("Task count: exactly 25 tasks.");
+    // ABLATED(readiness-contract): expect(blocked.contract).toBe("Task count: exactly 25 tasks.");
+    // ADDED(readiness-contract): readiness serves no contract; the round opening and the context
+    // tool's round source carry it.
+    expect(blocked.contract).toBeUndefined();
     expect(blocked.staticStatus).toBe("blocked");
     expect(blocked.missing).toEqual(["correctness-model/evaluator.ts", "agent/tools.ts"]);
     expect(blocked.modules.every((module) => !module.present)).toBe(true);

@@ -129,10 +129,14 @@ describe("the opening a round composes", () => {
         },
       ),
     ).rejects.toThrow(/stop after prompt proof/);
-    const contract: string = JSON.parse(served).contract ?? "";
-    expect(contract).toContain("Task count: exactly 4 tasks.");
-    expect(contract).toContain(renderBatteryContract(4));
-    expect(delivered).toContain(contract);
+    // ABLATED(readiness-contract): const contract: string = JSON.parse(served).contract ?? "";
+    // ABLATED(readiness-contract): expect(contract).toContain("Task count: exactly 4 tasks.");
+    // ABLATED(readiness-contract): expect(contract).toContain(renderBatteryContract(4));
+    // ABLATED(readiness-contract): expect(delivered).toContain(contract);
+    // ADDED(readiness-contract): readiness serves no contract, and the opening still states it.
+    expect(JSON.parse(served).contract).toBeUndefined();
+    expect(delivered).toContain("Task count: exactly 4 tasks.");
+    expect(delivered).toContain(renderBatteryContract(4));
     // The task count sentence carries the size; the battery contract states no count at any size.
     expect(renderBatteryContract(4)).toBe(renderBatteryContract(25));
     expect(delivered.indexOf("Task count: exactly 4 tasks.")).toBeLessThan(delivered.indexOf(note));

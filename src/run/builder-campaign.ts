@@ -180,13 +180,15 @@ function preSessionClause(
   return budget === "budget_limited" ? "budget-limited" : null;
 }
 
-/** What the controller asks of this round: how many tasks, and the contract those tasks are
- *  written under. The round states it once, and `harness_inspect readiness` serves these same
- *  bytes, so a session whose opening turn compaction cut recovers the ask without a gate call.
- *  One owner rather than two: a second author would drift. */
-function roundContract(input: BuilderCampaignInput): string {
-  return [taskCountSentence(input), renderBatteryContract(input.expectedTasks, input.minTasks)].join("\n\n");
-}
+// ABLATED(readiness-contract): the contract's owner for two readers. With readiness serving none, the
+// opening is its one caller and holds the lines (AGENTS.md "Ablated components").
+// /** What the controller asks of this round: how many tasks, and the contract those tasks are
+//  *  written under. The round states it once, and `harness_inspect readiness` serves these same
+//  *  bytes, so a session whose opening turn compaction cut recovers the ask without a gate call.
+//  *  One owner rather than two: a second author would drift. */
+// function roundContract(input: BuilderCampaignInput): string {
+//   return [taskCountSentence(input), renderBatteryContract(input.expectedTasks, input.minTasks)].join("\n\n");
+// }
 
 /** One authoring round's submit, preview and review handling over the Builder workspace. */
 class BuilderCampaignController {
@@ -235,7 +237,13 @@ class BuilderCampaignController {
    *  then what the measured evidence advises without choosing its repair scope. */
   openingContext(): string {
     return [
-      roundContract(this.input),
+      // ABLATED(readiness-contract): roundContract(this.input),
+      // ADDED(readiness-contract): what the round asks, stated here alone; the context tool's round
+      // source serves it again after compaction.
+      [
+        taskCountSentence(this.input),
+        renderBatteryContract(this.input.expectedTasks, this.input.minTasks),
+      ].join("\n\n"),
       this.input.advisoryNote,
       advisory(this.input.priorEvidence?.feedback ?? []),
     ]
@@ -526,7 +534,7 @@ class BuilderCampaignController {
       workspace: this.workspace,
       context: toolContext,
       feedback,
-      contract: roundContract(input),
+      // ABLATED(readiness-contract): contract: roundContract(input),
     });
     // The round's own opening is the context tool's round source, so a session whose opening turn
     // compaction cut asks for it rather than guessing. It holds the fresh-session block too, which

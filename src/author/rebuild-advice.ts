@@ -725,13 +725,22 @@ export function blockingLine(
   // A recorded zero, never an absent row: "no verified case posed it" is a measurement, and the
   // packet may state it only where the battery measured it.
   const unposed = untripped.filter((checkId) => applicableByCheck[checkId] === 0);
+  // ABLATED(one-check-question): the question put to a battery whose failures all sit on one check. It
+  // met a located limit by pointing at the Builder's own public contract, which the publication clause
+  // already asks about, and 11 of 47 rehearsal misses came back with public text changed (AGENTS.md
+  // "Ablated components"). The comment that follows describes the control.
   // The sentence is appended only when one check really does carry every failure; beside a single
   // failed case and six checks it would say nothing.
-  const alone = blocked.length === 1 && blocked[0]?.[1] === verified - passed;
+  // const alone = blocked.length === 1 && blocked[0]?.[1] === verified - passed;
   const lines = [
+    // ABLATED(one-check-question): the failures line with that question appended.
+    // blocked.length === 0
+    //   ? null
+    //   : `Verified failures by declared check (${verified - passed} failed; a case may block on several): ${blocked.map(([checkId, count]) => `${checkId} ${count}`).join(", ")}.${alone ? " One check carrying every failure asks whether its rule is stated in the public contract before the count reads as solver capability." : ""}`,
+    // ADDED(one-check-question): the same line without the question.
     blocked.length === 0
       ? null
-      : `Verified failures by declared check (${verified - passed} failed; a case may block on several): ${blocked.map(([checkId, count]) => `${checkId} ${count}`).join(", ")}.${alone ? " One check carrying every failure asks whether its rule is stated in the public contract before the count reads as solver capability." : ""}`,
+      : `Verified failures by declared check (${verified - passed} failed; a case may block on several): ${blocked.map(([checkId, count]) => `${checkId} ${count}`).join(", ")}.`,
     applied.length === 0
       ? null
       : `Declared checks that blocked no shipping artifact, with the verified cases each applied to (of ${verified}): ${applied.map((checkId) => `${checkId} ${applicableByCheck[checkId]}`).join(", ")}.`,

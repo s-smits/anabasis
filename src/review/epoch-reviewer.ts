@@ -257,7 +257,9 @@ function openSession(input: EpochReviewInput): OpenSession {
     reviewerEffort: input.review.enabled ? (input.review.reasoningEffort ?? null) : null,
     requestDigest: hashJsonValue({
       publicRequest: input.publicRequest,
-      policy: "review-probing-findings/v14",
+      // ABLATED(one-check-question): policy: "review-probing-findings/v14",
+      // ADDED(one-check-question): a review under this arm's text is not reused for the control's.
+      policy: "review-probing-findings/v14+one-check-question",
       prompt: EPOCH_REVIEW_PROMPT,
     }),
     obligationsDigest: obligationsDigest(input, disputableIssues(input)),

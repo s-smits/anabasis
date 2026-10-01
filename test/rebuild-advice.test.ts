@@ -848,7 +848,12 @@ describe("the issue register and its projection", () => {
     const alone = renderRebuildAdvice(
       derive(analysis(rows, RUN, { "member-forces": 0, deflection: 2 }), judges(), admission(), null),
     );
-    expect(alone).toContain("deflection 2. One check carrying every failure asks whether its rule is stated");
+    // ABLATED(one-check-question): expect(alone).toContain("deflection 2. One check carrying every failure asks whether its rule is stated");
+    // ADDED(one-check-question): one check carrying every failure is stated as its count alone.
+    expect(alone).toContain(
+      "Verified failures by declared check (2 failed; a case may block on several): deflection 2.",
+    );
+    expect(alone).not.toContain("One check carrying every failure");
     // A battery that declared no check records an empty map, and the packet says nothing.
     const empty = renderRebuildAdvice(derive(analysis(rows, RUN, {}), judges(), admission(), null));
     expect(empty).not.toContain("Verified failures by declared check");

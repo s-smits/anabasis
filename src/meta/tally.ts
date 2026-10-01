@@ -15,3 +15,13 @@ export function countBy<T>(values: readonly T[], key: (value: T) => string) {
   }
   return out;
 }
+
+/** The middle value, or null when there is none. An even count averages its two middle values, so a
+ *  battery of six is not read at its fourth case. Each reader rounds the result its own way. */
+export function median(values: readonly number[]): number | null {
+  if (values.length === 0) return null;
+  const sorted = values.toSorted((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  const upper = sorted[middle] ?? 0;
+  return sorted.length % 2 === 1 ? upper : ((sorted[middle - 1] ?? 0) + upper) / 2;
+}

@@ -40,6 +40,7 @@ import { writeJsonFile } from "../meta/completed-json.ts";
 import { existsSync, mkdirSync, readFileSync } from "../meta/filesystem.ts";
 import { parseJsonAs } from "../meta/json-runtime.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
+import { median } from "../meta/tally.ts";
 import type { SolvabilityCaseEvidence, SolvabilityEvidence } from "../claim/readiness.ts";
 import { type Brief, applicableTruthChecks } from "../correctness-bundle/brief.ts";
 import { publishedMargins } from "../correctness-bundle/numeric-boundary.ts";
@@ -100,14 +101,6 @@ function numericLeaves(value: unknown): number[] {
   if (Array.isArray(value)) return value.flatMap(numericLeaves);
   if (isRecord(value)) return Object.values(value).flatMap(numericLeaves);
   return [];
-}
-
-function median(values: readonly number[]): number | null {
-  if (values.length === 0) return null;
-  const sorted = values.toSorted((a, b) => a - b);
-  const middle = Math.floor(sorted.length / 2);
-  const upper = sorted[middle] ?? 0;
-  return sorted.length % 2 === 1 ? upper : ((sorted[middle - 1] ?? 0) + upper) / 2;
 }
 
 const relativeDistance = (limit: number, value: number): number =>

@@ -29,6 +29,7 @@ import type { Embed, Prototype } from "./prose-classify.ts";
 import { isNumber, isRecord, isString } from "#src/meta/json-shape.ts";
 import type { JsonObject, JsonValue } from "#src/meta/json-shape.ts";
 import { readJsonFile } from "#src/meta/completed-json.ts";
+import { median } from "#src/meta/tally.ts";
 import { exitWith, parseOrDie } from "#skills/main/cli.ts";
 import { emitReport } from "#skills/main/output.ts";
 import { readJsonAs } from "../scripts/run-overview.ts";
@@ -226,14 +227,6 @@ export const MODEL_IDENTITY = {
   anchors: ANCHOR_SHA256,
 };
 
-const median = (values: readonly number[]): number => {
-  if (values.length === 0) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  const middle = Math.floor(sorted.length / 2);
-  const at = (index: number): number => sorted[index] ?? Number.NaN;
-  return sorted.length % 2 === 1 ? at(middle) : (at(middle - 1) + at(middle)) / 2;
-};
-
 const entriesOf = (value: JsonObject | JsonValue[]): [string | number, JsonValue][] =>
   Array.isArray(value) ? value.map((entry, index) => [index, entry]) : Object.entries(value);
 const isNode = (value: JsonValue | undefined): value is JsonObject | JsonValue[] =>
@@ -403,7 +396,7 @@ export async function readBattery(
     ]),
   );
   const medians = Object.fromEntries(
-    STRUCTURE_KEYS.map((key) => [key, median(rows.map((row) => row.structure[key]))]),
+    STRUCTURE_KEYS.map((key) => [key, median(rows.map((row) => row.structure[key])) ?? 0]),
   );
   return {
     schema: COMPLEXITY_SCHEMA,

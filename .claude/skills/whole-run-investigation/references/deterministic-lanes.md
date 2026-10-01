@@ -126,8 +126,8 @@ pair each `tool_use` with its `tool_result` and take the longest of the calls in
 
 `walls` runs `walls.ts`, whose `boundOf` labels every case `unrecorded`, `time-bound`,
 `turn-bound`, `unstarted`, `submitted` or `no-submit`, and prints each bound's share against
-`BOUND_SHARE`; a battery whose solves sit at a bound starts lane 22, and one whose solves all sit
-at a tiny share of it starts lane 8.
+`WALL_BOUND_SHARE`; a battery whose solves sit at a bound starts lane 22, and one whose solves
+all sit at a tiny share of it starts lane 8.
 
 `handoff` runs `handoffs.ts` and prints four tables, each labelled with the lane it starts: the
 census per channel (present, served, read, acted) for lane 17, the calibration table for lane 10,

@@ -16,6 +16,7 @@ import { wilsonInterval } from "../claim/estimation.ts";
 import { POLICY } from "../critic/policy.ts";
 import { band01, frozenManifestPath, policyRow } from "../critic/manifest.ts";
 import { keyIfDefined, keyIfTruthy, keysIf } from "../meta/optional-key.ts";
+import { median } from "../meta/tally.ts";
 import { isBoolean, isNumber, isRecord, isString } from "../meta/json-shape.ts";
 import { parseJsonAs } from "../meta/json-runtime.ts";
 import { recordedEvidence, verifyRunDir } from "../claim/evidence-log.ts";
@@ -186,7 +187,7 @@ export interface ClimbBatteriesRead {
 
 /** How close to the wall a solve must end to count as cut by it. A solve's recorded span starts
  *  after the wall's own clock does, so a solve the wall stopped can read a little short of it. */
-const WALL_BOUND_SHARE = 0.95;
+export const WALL_BOUND_SHARE = 0.95;
 
 /** The sample a battery is read over: the host-identified changed subset when one was recorded,
  *  even at zero attempts, and otherwise the whole battery. Unchanged successes cannot be allowed
@@ -244,13 +245,10 @@ function caseSpend(cases: CaseRows) {
   });
 }
 
-function median(values: readonly number[]): number | null {
-  const sorted = values.toSorted((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  if (sorted.length === 0) return null;
-  const value = sorted.length % 2 === 1 ? sorted[mid] : ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2;
-  return value === undefined ? null : Number(value.toFixed(1));
-}
+const medianToTenth = (values: readonly number[]) => {
+  const value = median(values);
+  return value === null ? null : Number(value.toFixed(1));
+};
 
 function familyEffort(cases: CaseRows): FamilyEffort[] {
   const byFamily = Map.groupBy(
@@ -263,9 +261,9 @@ function familyEffort(cases: CaseRows): FamilyEffort[] {
       return {
         family,
         cases: rows.length,
-        medianMinutes: median(minutes),
+        medianMinutes: medianToTenth(minutes),
         maxMinutes: minutes.length === 0 ? null : Math.max(...minutes),
-        medianToolCalls: median(rows.map((row) => row.toolCalls).filter(isNumber)),
+        medianToolCalls: medianToTenth(rows.map((row) => row.toolCalls).filter(isNumber)),
       };
     })
     .sort((a, b) => a.family.localeCompare(b.family));

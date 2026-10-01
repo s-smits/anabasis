@@ -23,6 +23,7 @@
 import { type CommandArgs, runCommand } from "../../main/cli.ts";
 import { existsSync } from "#src/meta/filesystem.ts";
 import { join } from "#src/meta/path.ts";
+import { median } from "#src/meta/tally.ts";
 import {
   followUpCounts,
   followUpOf,
@@ -84,13 +85,6 @@ export interface GroupScore {
 
 const fixed = (value: number | null) => (value === null ? "-" : value.toFixed(1));
 const percent = (value: number | null) => (value === null ? "-" : `${(value * 100).toFixed(1)}%`);
-
-function median(values: readonly number[]): number | null {
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  if (sorted.length === 0) return null;
-  return sorted.length % 2 === 1 ? (sorted[mid] ?? null) : ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2;
-}
 
 function scoreCampaign(campaignDir: string, runs: readonly RunLocation[]): RunScore[] {
   // A campaign that never adopted a version has no line yet; its runs still get a row.

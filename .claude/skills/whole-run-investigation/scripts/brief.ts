@@ -189,7 +189,7 @@ export const LANE_FOR_TRIGGER = new Map([
   ["PERFECT BATTERY OVER AIM (lane 5)", [5, 35]],
   ["REACH-ONLY CHECKS (lane 6)", [6]],
   ["REHEARSAL NOT-RUN (lane 9)", [9]],
-  ["OFF-AIM STREAK (lane 10)", [10, 36]],
+  ["CLIMB FLAT (lane 10)", [10, 36]],
   ["SUBMITTED BYTES NEVER REHEARSED (lane 11)", [11]],
   ["FINDINGS WITHOUT OWNER (lane 14)", [14]],
   ["ADVISORY FINDING RECURS UNROUTED (lane 14)", [14]],

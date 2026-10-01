@@ -526,7 +526,7 @@ alone were followed by full passes. So name the changed public requirement from 
 battery's `fails` line (held, settled against the check, unsettled) before counting a partial battery as
 a limit found, and read its wall-bound count before counting a miss as the task's. Two batteries off the
 band on the same side is a settled result ("While it runs"). The whole-run digest's 4b block lists each
-decision with the battery it reads, and its `OFF-AIM STREAK` line is a lead for review lane 10.
+decision with the battery it reads, and the climb's `flat` line is the lead for review lanes 10 and 36.
 
 A run that has just measured an earned fail is the one worth keeping. Five of the 11 batteries with an
 uncontested fail since 2026-09-23 were the last their run measured, all four of Opus 5's among them, so
@@ -674,7 +674,7 @@ Each of these was built, measured and removed, and the reason is the measurement
 without new evidence that answers it.
 
 - **Stopping on an off-aim streak.** It stopped nothing while 5/5, 6/6 and 6/6 batteries kept arriving,
-  since the route is the Builder's; `runs pulse` and the digest still count one for humans (rule 10).
+  since the route is the Builder's; `runs pulse` and the climb's `flat` still count one for humans (rule 10).
   No `climb.limitHoldRounds` exists either, by design.
 - **A zone, share or target count in the Builder's prompt.** It read as a course, and the counts beside it
   already said what it said (prior 10).

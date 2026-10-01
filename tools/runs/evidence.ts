@@ -522,7 +522,7 @@ export function readClaims(location: RunLocation): ClaimFacts[] {
   return claims;
 }
 
-export function isBandZone(value: string | null): value is BandZone {
+function isBandZone(value: string | null): value is BandZone {
   return value !== null && BAND_ZONES.has(value);
 }
 

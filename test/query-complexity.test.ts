@@ -29,6 +29,7 @@ import {
   render,
   sourceMovesOf,
   topTierOf,
+  flatTriggers,
   lineOf,
   placementOf,
   verdictOf,
@@ -372,6 +373,16 @@ describe("climb velocity", () => {
     ]);
     expect(flat).toMatchObject({ fullPasses: 13, swing: 0, streak: { side: "above", flat: 12 } });
     expect(located.swing).toBeGreaterThan(fewer.swing ?? Number.POSITIVE_INFINITY);
+  });
+
+  // The stall rule `runs pulse` names is the one lead lanes 10 and 36 start from: three batteries
+  // after the closest that came no closer, so the line flat by two starts nothing.
+  it.concurrent("starts lanes 10 and 36 from a line flat by the stall rule, and not from one a battery short", () => {
+    expect(flatTriggers(line(...repeat(4, 7, 7)))).toEqual([
+      { name: "CLIMB FLAT (lane 10)", rows: 1, examples: [] },
+    ]);
+    expect(flatTriggers(line(...repeat(3, 7, 7)))).toEqual([]);
+    expect(flatTriggers(line([2, 6]))).toEqual([]);
   });
 
   // The launch film's illustration: a raised requirement drops the rate, a repair lifts it, and over

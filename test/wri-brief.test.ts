@@ -366,7 +366,7 @@ describe("what the read said", () => {
 
   it("maps each digest trigger to the lanes the catalogue starts from it, and names the launch spec", () => {
     // A suffixed trigger starts its own lane first, then the lane the catalogue added beside it.
-    expect(lanesForTrigger("OFF-AIM STREAK (lane 10)")).toEqual([10, 36]);
+    expect(lanesForTrigger("CLIMB FLAT (lane 10)")).toEqual([10, 36]);
     expect(lanesForTrigger("CENSUS WITH DISAGREEMENT (lane 16)")).toEqual([16, 32]);
     // The plan declares no target, so no target trigger maps anywhere.
     expect(lanesForTrigger("TARGET MISSED (lane 10)")).toEqual([]);
@@ -388,7 +388,7 @@ describe("what the read said", () => {
     const suggested = laneSuggestions(
       [
         { name: "EXPLICIT ALLOWANCE WAIT (lane 24)", rows: 1, examples: [] },
-        { name: "OFF-AIM STREAK (lane 10)", rows: 2, examples: [] },
+        { name: "CLIMB FLAT (lane 10)", rows: 2, examples: [] },
         { name: "UNTRIPPED IN SHIPPING", rows: 1, examples: [] },
         { name: "AGGREGATE HIDES FAMILY", rows: 1, examples: [] },
       ],
@@ -398,11 +398,11 @@ describe("what the read said", () => {
       lanes: [
         { lane: 5, triggers: ["UNTRIPPED IN SHIPPING"] },
         { lane: 6, triggers: ["UNTRIPPED IN SHIPPING"] },
-        { lane: 10, triggers: ["OFF-AIM STREAK (lane 10)"] },
+        { lane: 10, triggers: ["CLIMB FLAT (lane 10)"] },
         { lane: 24, triggers: ["EXPLICIT ALLOWANCE WAIT (lane 24)"] },
         { lane: 31, triggers: ["standing (probe)"] },
         { lane: 34, triggers: ["standing (probe)"] },
-        { lane: 36, triggers: ["OFF-AIM STREAK (lane 10)"] },
+        { lane: 36, triggers: ["CLIMB FLAT (lane 10)"] },
       ],
       defaulted: false,
       sessions: "5,6,10,24,31,34,36",
@@ -424,28 +424,29 @@ describe("what the read said", () => {
   });
 
   it("prints the lanes the triggers start under their own heading in the brief", () => {
-    const reviewDir = reviewWith([], {});
+    const reviewDir = reviewWith([{ label: "climb", ok: true, exitCode: 0 }], { climb: "4 batteries\n" });
     writeFileSync(
       join(reviewDir, "overview.json"),
       json({
         schema: "wri-run-overview/v1",
-        digestTriggers: [
-          { name: "OFF-AIM STREAK (lane 10)", rows: 3, examples: ["OFF-AIM STREAK (lane 10): 3 under aim"] },
-          { name: "EXPLICIT ALLOWANCE WAIT (lane 24)", rows: 1, examples: [] },
-        ],
+        digestTriggers: [{ name: "EXPLICIT ALLOWANCE WAIT (lane 24)", rows: 1, examples: [] }],
         scanFindings: [],
       }),
+    );
+    writeFileSync(
+      join(reviewDir, "climb.json"),
+      json({ triggers: [{ name: "CLIMB FLAT (lane 10)", rows: 1, examples: [] }] }),
     );
     const brief = renderBrief(reviewDir);
     expect(brief).toContain(
       [
         "== lanes the triggers start",
-        "  lane 10: OFF-AIM STREAK (lane 10)",
+        "  lane 10: CLIMB FLAT (lane 10)",
         "  lane 24: EXPLICIT ALLOWANCE WAIT (lane 24)",
         "  lane 31: standing (standard)",
         "  lane 33: standing (standard)",
         "  lane 34: standing (standard)",
-        "  lane 36: OFF-AIM STREAK (lane 10)",
+        "  lane 36: CLIMB FLAT (lane 10)",
         "  lane 37: standing (standard)",
         "  launch --sessions 10,24,31,33,34,36,37",
       ].join("\n"),

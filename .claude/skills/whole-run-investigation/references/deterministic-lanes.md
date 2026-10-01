@@ -52,9 +52,8 @@ public condition recurs on a fixed product.
 
 Block 4, workshop and spend, reads the tool installs and the ledger. Block 4b, band placement,
 reads `difficulty-decisions/<runId>-<digest>.json` (`difficulty-decision/v10`) for the
-`placement.zone`: `OFF-AIM STREAK (lane 10)` where two or more consecutive placements sit on one
-side of the aim; an over-aim zone with no trigger of its own is
-read by lanes 5 and 12. Block 4c, role spend and censoring, reads `providerResourceBudget.byRole`
+`placement.zone` and prints no trigger of its own: an over-aim zone is read by lanes 5 and 12, and a
+run of placements on one side of the aim by the `climb` lane's `flat`. Block 4c, role spend and censoring, reads `providerResourceBudget.byRole`
 and the retry rows: `REVIEW TURNS EXCEED SOLVER TURNS (lane 24)`, `DECISION ON CENSORED BATTERY
 (lane 24)` where a decision was taken on a battery the environment cut short, and `EXPLICIT
 ALLOWANCE WAIT (lane 24)` where a `turnRetries[]` reason names an allowance reset clock. Block 4d,
@@ -97,7 +96,8 @@ edge `restated`, `adjusted`, `narrowed`, `widened`, `eased`, `escalated` or `rep
 deliberately states no direction, and `replaced` means fewer than half the task ids carried over so
 the numbers could not be compared. Each edge also counts the tasks `carried` unchanged, which after a
 full pass re-measure a known pass. The lane closes on the line the claimed batteries draw, whose
-rows [the climb reference](climb.md#the-line) lists. Every label and line starts lanes 10 and 20.
+rows [the climb reference](climb.md#the-line) lists. Every label and line starts lanes 10 and 20, and
+`CLIMB FLAT (lane 10)`, where `flat` meets the stall rule, starts lanes 10 and 36.
 
 `yield` runs `review-yield.ts` and gives each review component a status per finding —
 `consumed`, `unobservable`, `advisory-only` or `not-consumed`. The `epoch-reviewer` component is

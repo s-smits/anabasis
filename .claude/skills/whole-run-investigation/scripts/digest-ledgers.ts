@@ -45,8 +45,6 @@ import { PROVIDER_ALLOWANCE } from "#src/correctness-bundle/runtime-blocker.ts";
 import { controllerRunOfBattery } from "#src/run/controller-battery-record-policy.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { openRecordedRun, type RecordedRun } from "../../main/run.ts";
-import { isBandZone } from "#tools/runs/evidence.ts";
-import { offAimStreak } from "#tools/runs/pulse.ts";
 import { jsonText, readJsonAsOrNull } from "./run-overview.ts";
 
 /** The placement a difficulty decision recorded, each field null where the record omits it. */
@@ -82,11 +80,6 @@ export interface DecisionRow {
 export interface DifficultyDecisions {
   rows: DecisionRow[];
   refused: string[];
-}
-
-interface OffAimStreak {
-  side: "above" | "below";
-  runIds: string[];
 }
 
 /** One battery's outcome counts, overall and per family. */
@@ -346,31 +339,10 @@ function decisionLine(row: DecisionRow): string {
   return `${label}:${placed}${facts} · admitted ${row.admitted ?? "-"} excluded ${row.excluded}`;
 }
 
-/** Every run of two or more placements on one side of the aim, each counted back from its last
- *  member by the streak `runs pulse` reads (`offAimStreak`), which passes over a decision that
- *  placed nothing. */
-function offAimStreaks(rows: readonly DecisionRow[]): OffAimStreak[] {
-  const placed = rows.flatMap(({ runId, placement: p }) =>
-    p !== null && isBandZone(p.zone) && p.passes !== null && p.n !== null
-      ? [{ runId, zone: p.zone, placedOn: { passes: p.passes, n: p.n } }]
-      : [],
-  );
-  const streaks: OffAimStreak[] = [];
-  for (let end = placed.length; end > 0; ) {
-    const streak = offAimStreak(placed.slice(0, end));
-    const rounds = streak?.rounds ?? 1;
-    const runIds = placed.slice(end - rounds, end).map((row) => row.runId);
-    if (streak !== null && rounds >= 2) streaks.unshift({ side: streak.side, runIds });
-    end -= rounds;
-  }
-  return streaks;
-}
-
 /**
- * Section 4b: one line per decision this reader opened, any run of placements on one side of the
- * aim, then one line per record it refused. The section reads the
- * placement the controller recorded and never re-derives one, so a lead here disagrees with the
- * controller only when the record does.
+ * Section 4b: one line per decision this reader opened, then one line per record it refused. The
+ * section reads the placement the controller recorded and never re-derives one, and leaves a run of
+ * placements on one side of the aim to the climb's `flat` (`climb-velocity.ts`).
  */
 export function bandPlacementLines({ rows, refused }: DifficultyDecisions): string[] {
   const lines = ["", "## 4b band placement (difficulty decisions)"];
@@ -383,11 +355,6 @@ export function bandPlacementLines({ rows, refused }: DifficultyDecisions): stri
     );
   }
   for (const row of rows) lines.push(decisionLine(row));
-  for (const streak of offAimStreaks(rows)) {
-    lines.push(
-      `OFF-AIM STREAK (lane 10): ${streak.runIds.length} consecutive placements ${streak.side} the aim (${streak.runIds.join(", ")})`,
-    );
-  }
   for (const line of refused) lines.push(`refused, not ${DIFFICULTY_DECISION_SCHEMA} — ${line}`);
   return lines;
 }

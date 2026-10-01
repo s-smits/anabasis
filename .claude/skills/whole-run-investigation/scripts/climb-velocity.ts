@@ -77,7 +77,7 @@ import { batteryTallies, readDifficultyDecisions } from "./digest-ledgers.ts";
 import { readJsonAs, readJsonAsOrNull } from "./run-overview.ts";
 import type { CaseDisposition, EpochReviewEvidence } from "#src/review/epoch-review-findings.ts";
 import { settledAgainstCheck } from "#src/review/epoch-review-findings.ts";
-import { offAimStreak, STALL_BATTERIES } from "#tools/runs/pulse.ts";
+import { offAimStreak } from "#tools/runs/pulse.ts";
 
 /** v2 replaced the endpoint slope (`velocity`) with the line (`line`). */
 export const VELOCITY_SCHEMA = "climb-velocity/v2";
@@ -816,7 +816,7 @@ function lineLines(line: ClimbLine): string[] {
   const flat =
     streak === null
       ? "no: the latest battery is on the aim"
-      : streak.flat >= STALL_BATTERIES
+      : streak.stalled
         ? `yes: ${streak.side} the aim ${streak.rounds} in a row, and the ${streak.flat} since ${streak.closest.passes}/${streak.closest.n} came no closer`
         : `no: ${streak.side} the aim ${streak.rounds} in a row, ${streak.flat} since the closest, ${streak.closest.passes}/${streak.closest.n}`;
   return [
@@ -824,6 +824,11 @@ function lineLines(line: ClimbLine): string[] {
     `  horizon: between 1/n and n-1/n, ${horizon}`,
     `  flat: ${flat}`,
   ];
+}
+
+/** A line gone flat as the trigger the brief starts lanes 10 and 36 from (`LANE_FOR_TRIGGER`). */
+export function flatTriggers({ streak }: ClimbLine): { name: string; rows: number; examples: string[] }[] {
+  return streak?.stalled === true ? [{ name: "CLIMB FLAT (lane 10)", rows: 1, examples: [] }] : [];
 }
 
 /** How many solves the run spent measuring again what a full pass had already answered. */

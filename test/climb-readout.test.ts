@@ -417,6 +417,27 @@ describe("rendering", () => {
     expect(text).not.toContain("found no limit");
   });
 
+  it("summarises no exclusion, names each excluded battery, and states one shared reason once", () => {
+    const excludedLine = (reasons: string[], admitted: number) => {
+      const excluded = reasons.map((reason, i) => ({ runId: `r${String(i)}`, reason, claimRefused: false }));
+      const text = render({ ...readoutOf(), excluded, admitted });
+      return text.split("\n").find((line) => line.includes("excluded from difficulty evidence")) ?? "absent";
+    };
+    expect(excludedLine([], 3)).toBe("absent");
+    expect(excludedLine(["not comparable", "claim refused"], 1)).toBe(
+      "2 of 3 recorded batteries excluded from difficulty evidence: not comparable — r0; claim refused — r1.",
+    );
+    // A whole campaign read at another pin shares one reason: it is stated once, not per run.
+    expect(
+      excludedLine(
+        Array.from({ length: 6 }, () => "not comparable"),
+        0,
+      ),
+    ).toBe(
+      "6 of 6 recorded batteries excluded from difficulty evidence: not comparable — r0, r1, r2, r3 and 2 more.",
+    );
+  });
+
   it("says how much of the solve wall a full pass's slowest solve took", () => {
     // Of 233 all-pass batteries from 2026-09-25 to 09-30, 153 finished their slowest solve inside a
     // tenth of the 120-minute wall, and the round that authored the next one was never told so.
@@ -434,37 +455,6 @@ describe("rendering", () => {
       row("r1", 0, { passed: 1, n: 1, slots: 6, effort }),
     ];
     for (const battery of silent) expect(render(readoutOf(battery))).not.toContain("slowest solve");
-  });
-});
-
-describe("the refusals, summarised for the author", () => {
-  const excludedLine = (excluded: ClimbReadout["excluded"], admitted: number) =>
-    render({ ...readoutOf(), excluded, admitted })
-      .split("\n")
-      .find((line) => line.includes("excluded from difficulty evidence")) ?? "absent";
-
-  it("says nothing without exclusions, names each battery, and groups one shared reason", () => {
-    expect(excludedLine([], 3)).toBe("absent");
-    expect(
-      excludedLine(
-        [
-          { runId: "r1", reason: "not comparable", claimRefused: false },
-          { runId: "r2", reason: "claim refused", claimRefused: true },
-        ],
-        1,
-      ),
-    ).toBe(
-      "2 of 3 recorded batteries excluded from difficulty evidence: not comparable — r1; claim refused — r2.",
-    );
-    // A whole campaign read at another pin shares one reason: it is stated once, not per run.
-    const shared = Array.from({ length: 6 }, (_, i) => ({
-      runId: `r${String(i)}`,
-      reason: "not comparable",
-      claimRefused: false,
-    }));
-    const summary = excludedLine(shared, 0);
-    expect(summary).toContain("not comparable — r0, r1, r2, r3 and 2 more");
-    expect(summary.match(/not comparable/g)).toHaveLength(1);
   });
 });
 

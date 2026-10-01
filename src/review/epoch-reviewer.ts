@@ -436,7 +436,7 @@ function checkpointLines(input: EpochReviewInput): string[] {
   const total = adviceTotals(advice.families);
   const families =
     advice.families.map((row) => `${row.family} ${row.passed}/${row.verified}`).join(", ") || "none";
-  const counts = `measured ${total.passed} of ${total.verified} verified cases passed, ${total.unaccepted} unaccepted at submission, ${total.nonResults} runtime non-results; per family (passed/verified): ${families}`;
+  const counts = `measured ${total.passed} of ${total.verified} verified cases passed, ${total.unaccepted} unaccepted at submission, ${total.nonResults} runtime non-result${total.nonResults === 1 ? "" : "s"}; per family (passed/verified): ${families}`;
   return [
     head,
     whoseBattery(advice.runId, counts, input.priorAdviceOnSeededTree ?? null),
@@ -531,7 +531,7 @@ function orientation(
     ...(analysis === null
       ? checkpointLines(input)
       : [
-          `Battery: ${analysis.battery.summary.passed} of ${analysis.battery.summary.verified} verified cases passed; ${analysis.battery.summary.unaccepted} unaccepted at submission; ${analysis.battery.summary.nonResults} runtime non-results.`,
+          `Battery: ${analysis.battery.summary.passed} of ${analysis.battery.summary.verified} verified cases passed; ${analysis.battery.summary.unaccepted} unaccepted at submission; ${analysis.battery.summary.nonResults} runtime non-result${analysis.battery.summary.nonResults === 1 ? "" : "s"}.`,
           `Per family (passed/verified): ${familyLine(analysis)}.`,
           blockingLine(
             analysis.battery.blockingByCheck,

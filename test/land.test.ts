@@ -4,7 +4,9 @@
  * reads and the merge from the environment and logs every call, so a test reads which statuses were
  * posted, on what, and in which order against the merge request; the fake `bun` logs each gate it
  * was asked for. The Actions gate on the top's head has passed unless ANA_FAKE_CI says otherwise, or
- * ANA_FAKE_CI_AFTER names a file only its dispatch creates. Nothing here reaches GitHub.
+ * ANA_FAKE_CI_AFTER names a file only its dispatch creates. ANA_FAKE_CI_STATES instead names a file
+ * whose lines answer successive run reads, the last one repeating: `none` lists no run and `down`
+ * fails as a 502 would. Nothing here reaches GitHub.
  */
 import {
   chmodSync,
@@ -45,7 +47,11 @@ mkdirSync(fakeBin);
 writeFileSync(
   join(fakeBin, "gh"),
   '#!/bin/sh\nprintf \'%s\\n\' "$*" >> "$ANA_GH_LOG"\ncase "$*" in\n' +
-    '"run list"*) if [ -z "${ANA_FAKE_CI_AFTER:-}" ] || [ -e "$ANA_FAKE_CI_AFTER" ]; then\n' +
+    '"run list"*) if [ -n "${ANA_FAKE_CI_STATES:-}" ]; then\n' +
+    '  row=$(head -n 1 "$ANA_FAKE_CI_STATES")\n' +
+    '  [ "$(wc -l < "$ANA_FAKE_CI_STATES")" -le 1 ] || { tail -n +2 "$ANA_FAKE_CI_STATES" > "$ANA_FAKE_CI_STATES.n"; mv "$ANA_FAKE_CI_STATES.n" "$ANA_FAKE_CI_STATES"; }\n' +
+    '  case "$row" in down) echo "gh: Bad Gateway (HTTP 502)" >&2; exit 1 ;; none) ;; *) printf \'%s\\n\' "$row" ;; esac\n' +
+    'elif [ -z "${ANA_FAKE_CI_AFTER:-}" ] || [ -e "$ANA_FAKE_CI_AFTER" ]; then\n' +
     "  printf '%s\\n' \"${ANA_FAKE_CI-completed\tsuccess\t1\thttps://ci/1}\"\nfi ;;\n" +
     '"workflow run"*) [ -z "${ANA_FAKE_CI_AFTER:-}" ] || touch "$ANA_FAKE_CI_AFTER" ;;\n' +
     // With ANA_FAKE_POLL_DOWN naming a file not yet there, the first poll fails as a 502 would.
@@ -368,6 +374,66 @@ describe("bun run land", () => {
       logged(ghLog).some((line) => line.startsWith("workflow run") || line.includes("merge-async")),
     ).toBe(false);
     expect(statuses("ana/stack-gate")).toEqual([]);
+  });
+
+  const ciStates = (...rows: string[]): string => {
+    const file = join(fixture, "ci-states");
+    writeFileSync(file, `${rows.join("\n")}\n`);
+    return file;
+  };
+
+  it("waits through a queued and a running Actions gate, one dispatch, until it passes", () => {
+    forgetPasses();
+    const result = runLand(["12", "--sanitize"], {
+      ANA_FAKE_CI_STATES: ciStates(
+        "none",
+        "queued\t\t17\thttps://ci/17",
+        "in_progress\t\t17\thttps://ci/17",
+        "down",
+        "completed\tsuccess\t17\thttps://ci/17",
+      ),
+      ANA_CI_POLL_MS: "1",
+    });
+    expect(result.status).toBe(0);
+    const calls = logged(ghLog);
+    expect(calls.filter((line) => line.startsWith("workflow run"))).toEqual([
+      "workflow run gate.yml --ref b",
+    ]);
+    expect(calls.filter((line) => line.startsWith("run list"))).toHaveLength(5);
+    expect(result.stdout).toContain(
+      `the Actions gate passed on #12's head ${upper.slice(0, 9)}: https://ci/17`,
+    );
+  });
+
+  it("refuses to merge when a running Actions gate ends in failure, naming the run", () => {
+    const result = runLand(["12", "--merge"], {
+      ANA_FAKE_CI_STATES: ciStates(
+        "in_progress\t\t18\thttps://ci/18",
+        "down",
+        "completed\tfailure\t18\thttps://ci/18",
+      ),
+      ANA_CI_POLL_MS: "1",
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      `the Actions gate ended failure on #12's head ${upper.slice(0, 9)}: https://ci/18.`,
+    );
+    expect(
+      logged(ghLog).some((line) => line.startsWith("workflow run") || line.includes("merge-async")),
+    ).toBe(false);
+  });
+
+  it("refuses before gating when GitHub does not list the Actions gate's runs, and dispatches none", () => {
+    // A run follows, so code that read the failed list as "none" dispatches, passes and fails here fast.
+    const result = runLand(["12", "--sanitize"], {
+      ANA_FAKE_CI_STATES: ciStates("down", "completed\tsuccess\t19\thttps://ci/19"),
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      `GitHub did not list the Actions gate's runs on ${upper.slice(0, 9)}. Land again.`,
+    );
+    expect(logged(ghLog).some((line) => line.startsWith("workflow run"))).toBe(false);
+    expect(logged(gateLog)).toEqual([]);
   });
 
   it("takes the required status back when GitHub does not merge", () => {

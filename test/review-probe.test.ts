@@ -735,15 +735,15 @@ describe("what the reviewer is told a probe can reach", () => {
   // readings from source alone: "the probe I wanted — the reference sketch with only the hold
   // anchor changed — was refused", because the one field was the whole sketch. Every accept control
   // followed the reference reading, so no control could separate the two either.
-  it("the prompt names the edit, and where a second reading is worth a probe", () => {
-    expect(EPOCH_REVIEW_PROMPT).toContain("send `find` and `replace` in place of `value`");
+  it("the prompt says where a second reading is worth a probe, and leaves the edit to the tool", () => {
     expect(EPOCH_REVIEW_PROMPT).toContain(
       "a public rule that states a boundary or an anchor — a threshold, a tolerance, a hold, the instant a duration counts from",
     );
     expect(EPOCH_REVIEW_PROMPT).toContain("the control census cannot tell a second reading from the first");
     // Stated once, in the probe paragraph, which already owns the two-readings duty.
     expect(EPOCH_REVIEW_PROMPT.split("two readings of a requirement").length - 1).toBe(1);
-    expect(EPOCH_REVIEW_PROMPT.split("`find`").length - 1).toBe(2);
+    // The probe_check description the same reviewer reads states the edit, so the prompt does not.
+    expect(EPOCH_REVIEW_PROMPT).not.toContain("`find`");
   });
 
   // A host double that rejects equivalent code fails valid answers while every accept control, all

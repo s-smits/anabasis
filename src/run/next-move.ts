@@ -86,7 +86,6 @@ export function decideNextMove(
     preAdoption
       ? "pre-adoption continuation: finish or revise the in-flight proposal"
       : "the measured condition is ready for the Builder's next experiment",
-    "start from the adopted product; choose task redesign or product repair, and submit the corresponding bytes",
     // Named, not required: an open campaign admits a candidate that leaves these owners alone, so
     // promising otherwise here tells the Builder its own experiment will be refused when it will not.
     blocking.length === 0 ? null : `blocking feedback stands against ${blocking.join(", ")}`,

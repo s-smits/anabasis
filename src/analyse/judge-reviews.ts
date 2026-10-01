@@ -236,7 +236,7 @@ function judgeExit(contested: readonly ContestedCase[], verified: number, attemp
     // "N citing shown rules", which counts a different thing and reads as zero for a fail that did
     // cite a rule and simply was not repeated on the re-sample. The author reads this sentence to
     // decide whether the disagreement deserves their attention, so it names both halves.
-    reason: `the Judge disagreed with the verifier on ${contested.length} of ${verified} verified cases (${cases["disputed-pass"]} verifier-fail/Judge-pass, ${cases.veto + cases["unconfirmed-fail"]} verifier-pass/Judge-fail); ${cases.veto} were vetoes, a cited fail of a verifier pass that a second sample repeated, which is what the epoch reviewer settles; the verifier decides every pass`,
+    reason: `the Judge disagreed with the verifier on ${contested.length} of ${verified} verified cases (${cases["disputed-pass"]} verifier-fail/Judge-pass, ${cases.veto + cases["unconfirmed-fail"]} verifier-pass/Judge-fail); ${cases.veto} ${cases.veto === 1 ? "was a veto" : "were vetoes"}, a cited fail of a verifier pass that a second sample repeated; the verifier decides every pass`,
   };
 }
 

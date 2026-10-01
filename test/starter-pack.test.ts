@@ -224,11 +224,11 @@ describe("pi starter pack brief vocabulary", () => {
     expect(text).toContain("## A target the solver does not reliably meet");
     expect(text).toContain("**A search past the solver's wall.**");
     expect(text).toContain("**A planted design.**");
-    // A reference the solver beats, or a limit well above a reference it does not, reads as the same
-    // full pass, so the solver's own passing answers are named as the measurement that tells them apart.
-    expect(text).toContain("**The solver's own answers.**");
-    expect(text).toContain("so the limit belongs nearer the stored answer");
-    expect(text).toContain("start the next search from the best solve and keep the better incumbent");
+    // Pointing a full pass at each answer's distance from the reference moved limits toward it, which
+    // the solver's same method still settled (AGENTS.md "Tried and taken out"), so no route asks it.
+    expect(text).not.toContain("**The solver's own answers.**");
+    expect(text).not.toContain("so the limit belongs nearer the stored answer");
+    expect(text).not.toContain("start the next search from the best solve and keep the better incumbent");
     // Every route above sets where a limit or a stored answer sits. The streaks of 2026-09-29 moved
     // only that, so a route changes what the task asks, from the field, with the change noted.
     expect(text).toContain("**A demand the battery does not yet make.**");

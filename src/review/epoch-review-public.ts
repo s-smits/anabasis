@@ -105,17 +105,17 @@ function settlementLines(settled: readonly CaseDisposition[]): string[] {
     ...(stands.length === 0
       ? []
       : [
-          `The review settled the Judge's disagreement on ${String(stands.length)} case(s) in ${familiesOf(stands)} in the check's favour: the check stands as declared.`,
+          `The Judge's disagreement was settled on ${String(stands.length)} case${stands.length === 1 ? "" : "s"} in ${familiesOf(stands)} in the check's favour: the check stands as declared.`,
         ]),
     ...(vetoes.length === 0
       ? []
       : [
-          `The Judge failed ${String(vetoes.length)} verified pass(es) in ${familiesOf(vetoes)} citing this obligation, and the review settled them against the check: it passes an artifact the obligation refuses.`,
+          `The Judge failed ${String(vetoes.length)} verified pass${vetoes.length === 1 ? "" : "es"} in ${familiesOf(vetoes)} citing this obligation, and ${vetoes.length === 1 ? "it was" : "they were"} settled against the check: it passes an artifact the obligation refuses.`,
         ]),
     ...(disputes.length === 0
       ? []
       : [
-          `The Judge did not fail ${String(disputes.length)} verified fail(s) in ${familiesOf(disputes)} on this obligation, and the review settled them against the check: it refuses an artifact the obligation admits.`,
+          `The Judge did not fail ${String(disputes.length)} verified fail${disputes.length === 1 ? "" : "s"} in ${familiesOf(disputes)} on this obligation, and ${disputes.length === 1 ? "it was" : "they were"} settled against the check: it refuses an artifact the obligation admits.`,
         ]),
   ];
 }

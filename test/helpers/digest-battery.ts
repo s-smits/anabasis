@@ -37,3 +37,16 @@ export function recordDigestBattery(
     );
   }
 }
+
+/** One battery case row as the battery record keeps it: an accepted submit that passed or failed,
+ *  solved from `startedAt`, with the solver's errors. */
+export function solveRow(task: { taskId: string }, startedAt: string, pass: boolean, errors: string[] = []) {
+  return {
+    taskId: task.taskId,
+    acceptedSubmit: true,
+    truthOk: pass,
+    pass,
+    runtimeNonResult: null,
+    solver: { errors, startedAt },
+  };
+}

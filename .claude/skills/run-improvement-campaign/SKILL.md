@@ -60,7 +60,9 @@ arm. Two readings move on every battery and carry the comparison until a fail do
 
 - **The share of the solve wall** (`wri.ts walls`). Truss batteries that went on to fail a case used
   a median of 18.6% of the wall against 6.6% for full passes. A change that raises demand shows here
-  first.
+  first. The scoreboard prints it per run (median and latest battery) and per source and Builder,
+  beside the earned fails (`wri.ts climb`'s follow-up), how many the next battery carried unchanged,
+  and how many of those passed there after the agent changed.
 - **One fixed pack.** Solve the same recorded hard tasks with both products through `harness-query`,
   as AGENTS.md "Evidence and implementation status" asks. An in-run battery scores each Builder's
   own tasks and cannot rank two products.

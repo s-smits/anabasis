@@ -839,19 +839,28 @@ function followUpLines({ runId, followUp }: ClimbBatteryRow): string[] {
   });
 }
 
-/** How many earned fails the next battery measured again unchanged, and how many of those passed
- *  after the agent changed: the harness change and the same task passing, the middle of a climb
- *  step. A changed agent means a new solve, since a regrade needs the same agent bytes. */
-function followUpLine(report: ClimbReport): string {
-  const fails = report.batteries.flatMap(({ followUp }) =>
+/** The earned fails `followUpOf` read, those with no battery after them, those the next battery
+ *  carried unchanged, those that passed there, and those that passed after the agent changed: a
+ *  climb step answered. A changed agent means a new solve, since a regrade needs the same agent bytes. */
+export function followUpCounts(followUps: readonly (FollowUps | null)[]) {
+  const fails = followUps.flatMap((followUp) =>
     followUp === null ? [] : followUp.fails.map((fail) => ({ ...fail, agentChanged: followUp.agentChanged })),
   );
-  if (fails.length === 0) return "  follow-up: no adopted battery recorded an earned fail";
   const carried = fails.filter(({ task }) => task === "carried");
   const passed = carried.filter(({ outcome }) => outcome === "pass");
-  const answered = passed.filter(({ agentChanged }) => agentChanged === true).length;
-  const last = fails.filter(({ task }) => task === null).length;
-  return `  follow-up: ${fails.length} earned fail${fails.length === 1 ? "" : "s"}, ${last} with no battery after it; ${carried.length} carried unchanged into the next battery, ${passed.length} of them passed there and ${answered} of those after the agent changed`;
+  return {
+    earned: fails.length,
+    last: fails.filter(({ task }) => task === null).length,
+    carried: carried.length,
+    passed: passed.length,
+    answered: passed.filter(({ agentChanged }) => agentChanged === true).length,
+  };
+}
+
+function followUpLine(report: ClimbReport): string {
+  const count = followUpCounts(report.batteries.map(({ followUp }) => followUp));
+  if (count.earned === 0) return "  follow-up: no adopted battery recorded an earned fail";
+  return `  follow-up: ${count.earned} earned fail${count.earned === 1 ? "" : "s"}, ${count.last} with no battery after it; ${count.carried} carried unchanged into the next battery, ${count.passed} of them passed there and ${count.answered} of those after the agent changed`;
 }
 
 export function render(report: ClimbReport): string {

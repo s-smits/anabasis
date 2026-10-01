@@ -6,7 +6,7 @@ import type { CaseRecordRow } from "../src/claim/case-record.ts";
 import { type CaseDisposition, EPOCH_REVIEW_SCHEMA } from "../src/review/epoch-review-findings.ts";
 import { SOLVE_WALL_MESSAGE } from "../src/backends/backend-types.ts";
 import { caseRecordRow } from "./helpers/case-record-row.ts";
-import { recordDigestBattery } from "./helpers/digest-battery.ts";
+import { recordDigestBattery, solveRow } from "./helpers/digest-battery.ts";
 import { double } from "./helpers/doubles.ts";
 import {
   ANCHOR_SHA256,
@@ -750,18 +750,10 @@ describe("climb velocity", () => {
   // after it says whether it kept the task, how the task came out and whether a changed agent solved
   // it anew or the earlier solve was only graded again.
   it.concurrent("follows each earned fail into the battery measured after it", async () => {
-    const solve = (task: Task, startedAt: string, pass: boolean, errors: string[] = []) => ({
-      taskId: task.taskId,
-      acceptedSubmit: true,
-      truthOk: pass,
-      pass,
-      runtimeNonResult: null,
-      solver: { errors, startedAt },
-    });
-    const first = [solve(heavy, "t1", false), solve(light, "t1", false, [SOLVE_WALL_MESSAGE])];
+    const first = [solveRow(heavy, "t1", false), solveRow(light, "t1", false, [SOLVE_WALL_MESSAGE])];
     const follow = async (
       agents: [string, string],
-      later: ReturnType<typeof solve>[],
+      later: ReturnType<typeof solveRow>[],
       tasks = [heavy, light],
     ) => {
       const dir = twoVersions("ana-climb-follow-", [brief, brief], (model, index) => {
@@ -774,7 +766,7 @@ describe("climb velocity", () => {
       const report = await readCampaign(dir, { embed: fakeEmbed });
       return { dir, report, text: render(report) };
     };
-    const answered = await follow(["a", "b"], [solve(heavy, "t2", true), solve(light, "t2", true)]);
+    const answered = await follow(["a", "b"], [solveRow(heavy, "t2", true), solveRow(light, "t2", true)]);
     expect(answered.report.batteries.map(({ followUp }) => followUp)).toEqual([
       {
         next: "run-b",
@@ -789,12 +781,12 @@ describe("climb velocity", () => {
     expect(answered.text).toContain(
       "follow-up: 1 earned fail, 0 with no battery after it; 1 carried unchanged into the next battery, 1 of them passed there and 1 of those after the agent changed",
     );
-    const regraded = await follow(["a", "a"], [solve(heavy, "t1", false), solve(light, "t2", true)]);
+    const regraded = await follow(["a", "a"], [solveRow(heavy, "t1", false), solveRow(light, "t2", true)]);
     expect(regraded.text).toContain(
       "earned fail heavy-01 in run-a: carried unchanged into run-b, failed there on its earlier solve graded again; agent unchanged between them",
     );
     expect(regraded.text).toContain("earned fail heavy-01 in run-b: no battery measured after it");
-    const dropped = await follow(["a", "b"], [solve(light, "t2", true)], [light]);
+    const dropped = await follow(["a", "b"], [solveRow(light, "t2", true)], [light]);
     expect(dropped.text).toContain(
       "earned fail heavy-01 in run-a: dropped from run-b; agent changed between them",
     );

@@ -96,7 +96,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
     for (let attempt = 0; attempt < NUMBER_WORDS.length; attempt += 1) {
       if ((await call(tool, hardness)).includes("records at most")) break;
     }
-    expect(EPOCH_REVIEW_PROMPT).toContain(`one of your ${NUMBER_WORDS[state.findings.length]} slots`);
+    expect(tool.description).toContain(`a review records at most ${state.findings.length}.`);
   });
 
   // The publication paragraph once required a decision a passing answer needs to stay private,

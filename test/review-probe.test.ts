@@ -316,7 +316,7 @@ describe("probe_check — the candidate's own checks over one changed field", ()
       const moved = await run(probe.tool, "1", { controlId: "accept-a", path: ANSWER, value: '"a"' });
       expect(text(moved)).toContain("original: pass");
       expect(text(moved)).toContain("changed: fail");
-      expect(text(moved)).toContain("1 declared check(s) moved: answer");
+      expect(text(moved)).toContain("1 declared check moved: answer");
 
       const silent = await run(probe.tool, "2", {
         controlId: "accept-a",
@@ -366,7 +366,7 @@ describe("probe_check — the candidate's own checks over one changed field", ()
         replace: "b",
       });
       expect(text(moved)).toContain("$.answer edited");
-      expect(text(moved)).toContain("1 declared check(s) moved: answer");
+      expect(text(moved)).toContain("1 declared check moved: answer");
 
       // Past the ceiling a whole replacement value may reach, which is where the edit is needed.
       const silent = await run(probe.tool, "2", {

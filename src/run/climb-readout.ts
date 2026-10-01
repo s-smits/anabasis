@@ -143,11 +143,8 @@ const LEGEND =
   "Rows are newest first. The product, task-set and scoring aliases (P1, T1, S1, ... in order of first appearance) stand for recorded identities, so a changed alias is a changed condition. Passes are out of verified cases; unaccepted attempts produced no accepted submission; non-results failed in the environment and count neither way. A regraded case is an earlier battery's recorded solve graded again, not a new solve.";
 const WITNESS =
   "A passing artifact, like your reference, is a witness: it proves a task feasible, never difficult, and only a blind measured battery shows where a battery lands.";
-// ABLATED(history-pointer): the context tool's own description names both sources and what they
-// hold, and the readout's traces line gives the latest battery's artifact path (AGENTS.md "Ablated
-// components").
-// const HISTORY =
-//   "The context tool's history source holds every row and each battery's public tasks, and its traces source holds every passing case's solve and submitted artifact.";
+const HISTORY =
+  "The context tool's history source holds every row and each battery's public tasks, and its traces source holds every passing case's solve and submitted artifact.";
 
 /** A necessary condition and never a sufficient one: a checker that refuses a valid answer leaves the
  *  same partial count as a task the solver could not do, so a partial battery is not by that alone a
@@ -461,7 +458,7 @@ export function renderReadout(readout: ClimbReadout | null, reason: string): str
       ? null
       : `Battery ${latest.runId} passed ${String(passing)} case${passing === 1 ? "" : "s"}; each passing solve and the artifact it submitted is at traces/${latest.runId}/<taskId>/artifact.`,
     summary === null ? null : `${summary}.`,
-    // ABLATED(history-pointer):     HISTORY,
+    HISTORY,
   ]
     .filter((part) => part !== null)
     .join("\n\n");

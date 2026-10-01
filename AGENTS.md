@@ -762,14 +762,6 @@ only after every arm's source is fixed, and nothing read from it revises an arm.
   of 85 recorded batteries passed whole ("competing-margin" in #117). Grep:
   `rg "ABLATED\(no-limit-depth\)|ADDED\(no-limit-depth\)"`. Prediction and run: filled when this arm
   launches.
-- **`history-pointer` (arm, 2026-10-01).** The readout's closing sentence, "The context tool's history
-  source holds every row and each battery's public tasks, and its traces source holds every passing
-  case's solve and submitted artifact" (`HISTORY` in `src/run/climb-readout.ts`). The context tool's
-  description, which the Builder has on every turn, names both sources and what they hold, and after a
-  battery with a pass the readout's traces line gives that battery's artifact path, so the passing
-  artifacts' location was stated three times in one opening. Grep:
-  `rg "ABLATED\(history-pointer\)|ADDED\(history-pointer\)"`. Prediction and run: filled when this arm
-  launches.
 
 ## Evidence and implementation status
 

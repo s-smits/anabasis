@@ -283,13 +283,15 @@ and 11 of 25 as an illustration. Each swing is a battery answering what the Buil
 fluctuation is the signal, and 8 of 11 after 10 of 11 is progress though both sit above the aim.
 truss-sol-cb274b alone had the shape on 2026-09-29, at 3/8, 10/25, 15/25 and 11/25.
 
-Progress is read on that line (`wri.ts climb`, `climb-velocity/v2`), with four numbers:
+Progress is read on that line (`wri.ts climb`, `climb-velocity/v2`), with five numbers:
 
 - **signal**: the claimed batteries between 1/n and n−1/n, counted over the first 8 and the first 12;
 - **swing**: the mean move in pass rate per battery, which is 0 for a line of full passes at any size;
 - **flat**: the stall rule of `bun run runs pulse`, `STALL_BATTERIES` (3) in a row on one side of the
   aim, none closer than the closest before them;
-- **carried**: the tasks measured again unchanged after a full pass.
+- **carried**: the tasks measured again unchanged after a full pass;
+- **follow-up**: each earned fail read into the battery after it: carried unchanged, changed or
+  dropped, how it came out there, and whether the agent changed between the two (`followUpOf`).
 
 A zone cannot stand in for these, since 3/3 places `over-aim` and passes everything. The line ranks
 custom-sol-f0fb83 (3 of 14 with signal, a 13.8-point swing) above truss-sol-198d70 (2 of 13, 3.9) and
@@ -573,7 +575,8 @@ and has not been re-derived here.
    one, but not where or why, which is protected (rule 6): after a partial battery `renderReadout`
    gives it the counts, the families and the passing artifacts, and the no-limit line speaks only
    after a full pass. Nothing asks it to keep that task, and the controller does not measure it again
-   (`decideNextMove` measures again only the cases the environment cut short). Owner:
+   (`decideNextMove` measures again only the cases the environment cut short). The climb reader's
+   follow-up line now shows what each run did with its earned fails. Owner:
    `src/run/next-move.ts` and the battery the next round measures, and the operator's stop ("Reading
    the climb as the operator").
 3. **The measure cannot show a change at the size we run.** An uncontested fail arrives in 3.4% of

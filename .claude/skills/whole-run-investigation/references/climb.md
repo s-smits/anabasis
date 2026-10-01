@@ -18,7 +18,7 @@ command, which rows, and what each row can and cannot say.
 Progress is read on a line rather than a zone (AGENTS.md "Goals and the climb", under "Its shape,
 and how progress is read"). `wri.ts climb` draws it from the claimed batteries, adopted or not, in
 claim order and on the counts the controller placed, so a case a review settled against its check
-counts neither way. Below the batteries and edges it prints four lines:
+counts neither way. Below the batteries and edges it prints five lines:
 
 | line | what it counts |
 | --- | --- |
@@ -26,6 +26,7 @@ counts neither way. Below the batteries and edges it prints four lines:
 | `horizon` | the same signal count over the first 8 and the first 12 batteries |
 | `flat` | whether the latest batteries meet the stall `runs pulse` names, `STALL_BATTERIES` (`tools/runs/pulse.ts`) in a row on one side of the aim with none closer than the closest before them |
 | `carried` | the tasks measured again unchanged in id, public input and family checks after a full pass |
+| `follow-up` | the earned fails (verified, not settled against their check, not stopped by the solve wall), how many the next battery carried unchanged, how many of those passed there, and how many of those after the agent changed. Under each battery, one line per earned fail says the same of that task |
 
 Read these before any zone. `--json` carries the same line as `climb-velocity/v2`; a `v1` reading in
 an older archive holds an endpoint slope under `velocity` instead, which read truss-sol-198d70 and

@@ -11,6 +11,9 @@
 // and flat from each claimed battery's placement counts, flat through `offAimStreak` so that it
 // is the stall `runs pulse` names, and each edge's `carried` row counts the tasks measured again
 // unchanged (`carriedOf`) and whether the battery before them was a full pass (`fullPass`).
+// Each battery's `followUp` reads the climb step from the other side: every earned fail it held,
+// whether the next battery carried that task unchanged, changed or dropped it, how the task came
+// out there and whether the agent changed between them (`followUpOf`).
 //
 // Each battery carries two placements. `placement` is computed here from the case rows through
 // `decideDifficulty`; `recorded` is what the controller wrote in its difficulty decision, read through
@@ -57,6 +60,7 @@ import { BRIEF_FILE, TASKS_FILE } from "#src/meta/bundle-layout.ts";
 import { climbThresholds, decidingSample, type ClimbBattery } from "#src/run/climb-history.ts";
 import { decideDifficulty, fullPass } from "#src/run/climb-readout.ts";
 import { BATTERY_FILE, readRecordedBatteryRecord } from "#src/correctness-bundle/battery-record.ts";
+import { SOLVE_WALL_MESSAGE } from "#src/backends/backend-types.ts";
 import {
   type Bundle,
   MODEL_IDENTITY,
@@ -72,6 +76,7 @@ import { compareCodeUnits, stableJson } from "#src/meta/stable-json.ts";
 import { readDifficultyDecisions } from "./digest-ledgers.ts";
 import { readJsonAs, readJsonAsOrNull } from "./run-overview.ts";
 import type { CaseDisposition, EpochReviewEvidence } from "#src/review/epoch-review-findings.ts";
+import { settledAgainstCheck } from "#src/review/epoch-review-findings.ts";
 import { offAimStreak, STALL_BATTERIES } from "#tools/runs/pulse.ts";
 
 /** v2 replaced the endpoint slope (`velocity`) with the line (`line`). */
@@ -156,6 +161,31 @@ interface Carried {
   afterFullPass: boolean;
 }
 
+/** What the battery measured next did with one earned fail: a verified fail that no completed
+ *  review settled against its check (`settledAgainstCheck`, the cases the controller's climb sample
+ *  drops) and that the solve wall did not stop. A climb step needs that same task passing after a
+ *  harness change (AGENTS.md "Its shape, and how progress is read"), and this is that link. */
+interface FollowUp {
+  taskId: string;
+  /** `carried` is the same id, public input and family checks; `changed` the same id with one of
+   *  them moved; `dropped` no task of that id. Null when no battery was measured after it. */
+  task: "carried" | "changed" | "dropped" | null;
+  /** The next battery's outcome for that task id; null when it holds no case of it or has not
+   *  recorded its battery yet. */
+  outcome: ReturnType<typeof classifyCaseOutcome> | null;
+  /** The next battery graded the earlier solve again, as its recorded solve instants show, rather
+   *  than solving the task anew. */
+  regraded: boolean;
+}
+
+/** One battery's earned fails and the battery measured after it. */
+interface FollowUps {
+  next: string | null;
+  /** Whether `agentHash` moved between the two recorded batteries; null when the next is unrecorded. */
+  agentChanged: boolean | null;
+  fails: FollowUp[];
+}
+
 export type EdgeVerdict =
   | "escalated"
   | "eased"
@@ -211,6 +241,14 @@ type LineBattery = Pick<
   ClimbBatteryRow,
   "runId" | "createdAt" | "claimed" | "settlement" | "placement" | "earned"
 >;
+
+/** How a followed-up task came out in the battery after its earned fail. */
+const OUTCOME_WORDS: Readonly<Record<NonNullable<FollowUp["outcome"]>, string>> = {
+  pass: "passed",
+  fail: "failed",
+  unaccepted: "went unaccepted",
+  "non-result": "ended in a non-result",
+};
 
 /** The controller's own placement of one battery, made by `decideDifficulty` so that this reader
  *  and the decision it sets out to explain cannot disagree. The battery's difficulty denominator
@@ -429,6 +467,63 @@ function carriedOf(before: Bundle, after: Bundle): Omit<Carried, "afterFullPass"
   return { unchanged, tasks: after.tasks.length };
 }
 
+/** Whether the later battery poses the earlier one's task `taskId` exactly as before, read by
+ *  `carriedOf` over that one task. */
+function taskMove(before: Bundle, after: Bundle, taskId: string): NonNullable<FollowUp["task"]> {
+  const tasks = after.tasks.filter((task) => task.taskId === taskId);
+  if (tasks.length === 0) return "dropped";
+  return carriedOf(before, { ...after, tasks }).unchanged === tasks.length ? "carried" : "changed";
+}
+
+/** The battery a version directory recorded of its own run, or null when it recorded none. */
+function recordedBatteryOf({
+  dir,
+  runId,
+}: Pick<VersionBattery, "dir" | "runId">): ReturnType<typeof readRecordedBatteryRecord> | null {
+  const runDir = join(dir, "runs", runId);
+  return existsSync(join(runDir, BATTERY_FILE)) ? readRecordedBatteryRecord(runDir, runId) : null;
+}
+
+/** What `next`, the battery measured after `battery`, did with each of `battery`'s earned fails,
+ *  or null when `battery` recorded no battery of its own. A regrade keeps the recorded solve's own
+ *  instants, so a case starting when the earlier one did is that solve graded again, not a new one.
+ *  The settlement is the controller's own (`settledAgainstCheck`), so a fail it drops from the climb
+ *  sample is not followed here either. */
+export function followUpOf(
+  campaign: string,
+  battery: Pick<VersionBattery, "dir" | "runId">,
+  next: Pick<VersionBattery, "dir" | "runId"> | undefined,
+): FollowUps | null {
+  const record = recordedBatteryOf(battery);
+  if (record === null) return null;
+  const settled = settledAgainstCheck(join(campaign, "analysis"), battery.runId);
+  const earned = record.cases.filter(
+    (row) =>
+      classifyCaseOutcome(row) === "fail" &&
+      !settled.has(row.taskId) &&
+      !row.solver.errors.includes(SOLVE_WALL_MESSAGE),
+  );
+  const later = next === undefined ? null : recordedBatteryOf(next);
+  // Two bundles are loaded only for a battery that holds an earned fail, which few do.
+  const bundles =
+    next === undefined || earned.length === 0
+      ? null
+      : { before: loadBundle(battery.dir), after: loadBundle(next.dir) };
+  return {
+    next: next?.runId ?? null,
+    agentChanged: later === null ? null : later.bundleSnapshot.agentHash !== record.bundleSnapshot.agentHash,
+    fails: earned.map(({ taskId, solver }) => {
+      const row = later?.cases.find((each) => each.taskId === taskId);
+      return {
+        taskId,
+        task: bundles === null ? null : taskMove(bundles.before, bundles.after, taskId),
+        outcome: row === undefined ? null : classifyCaseOutcome(row),
+        regraded: row?.solver.startedAt === solver.startedAt,
+      };
+    }),
+  };
+}
+
 /** The rank of the highest tier a battery's checks reach. Adding or dropping checks at tiers it
  *  already occupies leaves it where it was, which is the whole point: the count is read by the
  *  structural deltas, and the tier order by this. Null when a battery declares no check. */
@@ -566,9 +661,10 @@ export function outcomeRowsOf(campaign: string) {
 export async function readCampaign(campaign: string, options: Parameters<typeof readVersionDir>[1] = {}) {
   const rows = outcomeRowsOf(campaign);
   const batteries = [];
-  for (const { runId, dir, createdAt, claimed, ...outcome } of rows.batteries) {
+  for (const [at, { runId, dir, createdAt, claimed, ...outcome }] of rows.batteries.entries()) {
     const reading = await readVersionDir(dir, options);
-    batteries.push({ runId, dir, createdAt, claimed, reading, ...outcome });
+    const followUp = followUpOf(campaign, { dir, runId }, rows.batteries[at + 1]);
+    batteries.push({ runId, dir, createdAt, claimed, reading, ...outcome, followUp });
   }
   const edges = [];
   for (const [at, after] of batteries.entries()) {
@@ -727,6 +823,37 @@ function carriedLine(report: ClimbReport): string {
   return `  carried: ${tasks} tasks measured again unchanged over the ${after.length} edge${after.length === 1 ? "" : "s"} after a full pass; a task that passed changes or leaves`;
 }
 
+/** Each earned fail of one battery as a climb step's evidence: the task, what the next battery did
+ *  with it, how it came out there and whether the agent changed between the two. */
+function followUpLines({ runId, followUp }: ClimbBatteryRow): string[] {
+  if (followUp === null) return [];
+  const { next, agentChanged } = followUp;
+  const agent = agentChanged === null ? "" : `; agent ${agentChanged ? "changed" : "unchanged"} between them`;
+  return followUp.fails.map(({ taskId, task, outcome, regraded }) => {
+    const head = `earned fail ${taskId} in ${runId}`;
+    if (next === null || task === null) return `${head}: no battery measured after it`;
+    if (task === "dropped") return `${head}: dropped from ${next}${agent}`;
+    const solve = regraded ? "its earlier solve graded again" : "a new solve";
+    const result = outcome === null ? "not yet measured" : `${OUTCOME_WORDS[outcome]} there on ${solve}`;
+    return `${head}: ${task === "carried" ? "carried unchanged" : "changed"} into ${next}, ${result}${agent}`;
+  });
+}
+
+/** How many earned fails the next battery measured again unchanged, and how many of those passed
+ *  after the agent changed: the harness change and the same task passing, the middle of a climb
+ *  step. A changed agent means a new solve, since a regrade needs the same agent bytes. */
+function followUpLine(report: ClimbReport): string {
+  const fails = report.batteries.flatMap(({ followUp }) =>
+    followUp === null ? [] : followUp.fails.map((fail) => ({ ...fail, agentChanged: followUp.agentChanged })),
+  );
+  if (fails.length === 0) return "  follow-up: no adopted battery recorded an earned fail";
+  const carried = fails.filter(({ task }) => task === "carried");
+  const passed = carried.filter(({ outcome }) => outcome === "pass");
+  const answered = passed.filter(({ agentChanged }) => agentChanged === true).length;
+  const last = fails.filter(({ task }) => task === null).length;
+  return `  follow-up: ${fails.length} earned fail${fails.length === 1 ? "" : "s"}, ${last} with no battery after it; ${carried.length} carried unchanged into the next battery, ${passed.length} of them passed there and ${answered} of those after the agent changed`;
+}
+
 export function render(report: ClimbReport): string {
   const lines = [`${report.batteries.length} batteries in ${report.campaign}`];
   for (const refusal of report.refusedDecisions ?? []) {
@@ -744,6 +871,7 @@ export function render(report: ClimbReport): string {
     lines.push(`      ${recordedLine(battery)}`);
     const fails = settledLine(battery);
     if (fails !== null) lines.push(`      ${fails}`);
+    lines.push(...followUpLines(battery).map((line) => `      ${line}`));
     // The whole battery reading, rendered by the module that produced it: this block carried its own
     // copy of the check and median lines and dropped the family histogram, which was the only thing
     // a second lane over the same campaign still added.
@@ -787,6 +915,7 @@ export function render(report: ClimbReport): string {
       `  ${battery.createdAt ?? "undated"}  ${battery.runId}: ${battery.counts.passed}/${battery.counts.verified} passed, ${battery.counts.unaccepted} unaccepted, ${battery.counts.nonResult} non-result; claimed with no version of its own, so on the line and on no edge`,
     );
   }
+  lines.push(followUpLine(report));
   lines.push(...lineLines(lineOf(report)), carriedLine(report), latestEdgeLine(report));
   return lines.join("\n");
 }

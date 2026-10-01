@@ -3,8 +3,10 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { afterEach, describe, expect, it } from "bun:test";
 import type { CaseRecordRow } from "../src/claim/case-record.ts";
-import type { CaseDisposition } from "../src/review/epoch-review-findings.ts";
+import { type CaseDisposition, EPOCH_REVIEW_SCHEMA } from "../src/review/epoch-review-findings.ts";
+import { SOLVE_WALL_MESSAGE } from "../src/backends/backend-types.ts";
 import { caseRecordRow } from "./helpers/case-record-row.ts";
+import { recordDigestBattery } from "./helpers/digest-battery.ts";
 import { double } from "./helpers/doubles.ts";
 import {
   ANCHOR_SHA256,
@@ -426,6 +428,7 @@ describe("climb velocity", () => {
       counts: { passed: 0, verified: 0, unaccepted: 0, nonResult: 0 },
       placement: null,
       recorded: null,
+      followUp: null,
     });
     const report = (verdict: ReturnType<typeof verdictOf>) =>
       double<ClimbReport>({
@@ -740,6 +743,87 @@ describe("climb velocity", () => {
     const partial = await edgeOf([brief, brief], false, 1);
     expect(partial.carried).toEqual({ unchanged: 2, tasks: 2, afterFullPass: false });
     expect(partial.text).toContain("carried: no edge follows a full pass");
+  });
+
+  // A climb step is an earned fail, a harness change that answers it and the same task passing. The
+  // fail is earned through the controller's own settlement and the wall's receipt, and the battery
+  // after it says whether it kept the task, how the task came out and whether a changed agent solved
+  // it anew or the earlier solve was only graded again.
+  it.concurrent("follows each earned fail into the battery measured after it", async () => {
+    const solve = (task: Task, startedAt: string, pass: boolean, errors: string[] = []) => ({
+      taskId: task.taskId,
+      acceptedSubmit: true,
+      truthOk: pass,
+      pass,
+      runtimeNonResult: null,
+      solver: { errors, startedAt },
+    });
+    const first = [solve(heavy, "t1", false), solve(light, "t1", false, [SOLVE_WALL_MESSAGE])];
+    const follow = async (
+      agents: [string, string],
+      later: ReturnType<typeof solve>[],
+      tasks = [heavy, light],
+    ) => {
+      const dir = twoVersions("ana-climb-follow-", [brief, brief], (model, index) => {
+        mkdirSync(join(model, "..", "agent"), { recursive: true });
+        writeFileSync(join(model, "..", "agent", "BUILT_AGENTS.md"), agents[index] ?? "", "utf8");
+        if (index === 1) write(join(model, "tasks.json"), tasks);
+      });
+      recordDigestBattery(join(dir, "versions", "run-a"), ["run-a"], { "run-a": first });
+      recordDigestBattery(join(dir, "versions", "run-b"), ["run-b"], { "run-b": later });
+      const report = await readCampaign(dir, { embed: fakeEmbed });
+      return { dir, report, text: render(report) };
+    };
+    const answered = await follow(["a", "b"], [solve(heavy, "t2", true), solve(light, "t2", true)]);
+    expect(answered.report.batteries.map(({ followUp }) => followUp)).toEqual([
+      {
+        next: "run-b",
+        agentChanged: true,
+        fails: [{ taskId: "heavy-01", task: "carried", outcome: "pass", regraded: false }],
+      },
+      { next: null, agentChanged: null, fails: [] },
+    ]);
+    expect(answered.text).toContain(
+      "earned fail heavy-01 in run-a: carried unchanged into run-b, passed there on a new solve; agent changed between them",
+    );
+    expect(answered.text).toContain(
+      "follow-up: 1 earned fail, 0 with no battery after it; 1 carried unchanged into the next battery, 1 of them passed there and 1 of those after the agent changed",
+    );
+    const regraded = await follow(["a", "a"], [solve(heavy, "t1", false), solve(light, "t2", true)]);
+    expect(regraded.text).toContain(
+      "earned fail heavy-01 in run-a: carried unchanged into run-b, failed there on its earlier solve graded again; agent unchanged between them",
+    );
+    expect(regraded.text).toContain("earned fail heavy-01 in run-b: no battery measured after it");
+    const dropped = await follow(["a", "b"], [solve(light, "t2", true)], [light]);
+    expect(dropped.text).toContain(
+      "earned fail heavy-01 in run-a: dropped from run-b; agent changed between them",
+    );
+    // A fail the review settled against the one check that decided it measured the check, and the
+    // climb sample already drops it, so there is nothing to follow.
+    const settled: CaseDisposition = {
+      taskId: "heavy-01",
+      family: "heavy",
+      kind: "disputed-pass",
+      checkId: "loss",
+      checkIds: ["loss"],
+      disposition: "against-check",
+      finding: 0,
+    };
+    mkdirSync(join(dropped.dir, "analysis"), { recursive: true });
+    writeFileSync(
+      join(dropped.dir, "analysis", "run-a-epoch-review.json"),
+      JSON.stringify({
+        schema: EPOCH_REVIEW_SCHEMA,
+        status: "completed",
+        runId: "run-a",
+        findings: [],
+        dispositions: [settled],
+      }),
+      "utf8",
+    );
+    expect(render(await readCampaign(dropped.dir, { embed: fakeEmbed }))).toContain(
+      "follow-up: no adopted battery recorded an earned fail",
+    );
   });
 
   // The hostile half: two identical bundles must not read as a moved correctness model.

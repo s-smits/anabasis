@@ -1,6 +1,6 @@
 ---
 name: run-improvement-campaign
-description: "Run the improvement loop, judged on one scoreboard (signal of the first 8 batteries, hours to the first, held fails): find the one link holding the climb, choose one simple domain-agnostic change against it, measure it as a matched arm, freeze a prediction, launch, read recorded bytes, decide the next move. Owns experiment selection and evidence reading; the product controller owns build, measure, climb, rebuild, claim and promotion. Also the Super Loop's Meta Agent: a second session that audits and steers the session driving the loop so it keeps moving (references/meta-agent.md)."
+description: "Run the improvement loop, led by the solve-wall share and the follow-up of each earned fail, with signal a rare confirming event: find the one link holding the climb, choose one simple domain-agnostic change against it, measure it as a matched arm, freeze a prediction, launch, read recorded bytes, decide the next move. Owns experiment selection and evidence reading; the product controller owns build, measure, climb, rebuild, claim and promotion. Also the Super Loop's Meta Agent: a second session that audits and steers the session driving the loop so it keeps moving (references/meta-agent.md)."
 ---
 
 # Run improvement campaign
@@ -22,9 +22,10 @@ been a pass of the Super Loop.
 
 ## The scoreboard
 
-The goal is AGENTS.md's healthy, ambitious climb: batteries that leave n/n for the region between
-1/n and n−1/n (1/25 to 24/25 at full size) on fails the review holds, and get there fast. A pass is
-judged on three numbers per run, all read from recorded bytes:
+The goal is AGENTS.md's healthy, ambitious climb ("Goals and the climb"). A pass leads with the share
+of the solve wall, which moves on every battery, and with what the next battery did with each earned
+fail (both below); signal is the rare event that confirms a step. The scoreboard prints three numbers
+per run, all read from recorded bytes:
 
 1. **Signal of the first 8**: the batteries between 1/n and n−1/n among the first eight on the run's
    line, on the counts the controller placed, so a case the review settled against its check counts
@@ -50,13 +51,10 @@ never published, and the review settled both against the check one battery later
 The wave audit of the same day found no source-attributed improvement across 87 runs in five source
 states. A pass rate, a zone, a preview count or a merged PR is not on the scoreboard.
 
-**What the scoreboard cannot show, and what to read beside it.** The goal is a climb, and since
-2026-09-23 no run has completed one step of it: an earned fail, a harness change that answers it,
-the task passing, and a harder battery that is partial again. AGENTS.md "Open gaps" ranks the four
-blockers, and a pass names the one it attacks. Signal counts only the first link of a step and is
-rare. An uncontested fail arrived in 11 of 322 batteries, so an arm of eight sees one with a
-probability near 0.24, and showing that a change doubled the rate would take about 650 batteries an
-arm. Two readings move on every battery and carry the comparison until a fail does:
+**What the scoreboard cannot show, and what to read beside it.** AGENTS.md "Its shape, and how
+progress is read" defines the climb step and why signal, its first link, is too rare to compare arms;
+"Open gaps" ranks the four blockers, and a pass names the one it attacks. Two readings carry a
+comparison that signal cannot:
 
 - **The share of the solve wall** (`wri.ts walls`). Truss batteries that went on to fail a case used
   a median of 18.6% of the wall against 6.6% for full passes. A change that raises demand shows here
@@ -64,12 +62,12 @@ arm. Two readings move on every battery and carry the comparison until a fail do
   beside the earned fails (`wri.ts climb`'s follow-up), how many the next battery carried unchanged,
   and how many of those passed there after the agent changed.
 - **One fixed pack.** Solve the same recorded hard tasks with both products through `harness-query`,
-  as AGENTS.md "Evidence and implementation status" asks. An in-run battery scores each Builder's
-  own tasks and cannot rank two products.
+  but only for rounds of one campaign or a seeded continuation: a pack task is graded by its
+  authoring product's correctness bundle, so it cannot compare two fresh campaigns (AGENTS.md "Open
+  gaps", the third blocker).
 
-When a battery does hold an earned fail, the run that measured it is the experiment. Keep it going
-for at least two more batteries and read whether `agent/` changed between them; five of the 11 were
-the last battery their run measured.
+When a battery does hold an earned fail, read what the next battery did with it (`wri.ts climb`, its
+`follow-up` line), and keep the run going as AGENTS.md "Reading the climb as the operator" says.
 
 Every link of the chain has a deterministic reader already in the tree. Read the one for the link a
 change aims at beside the scoreboard, from the newest tree:
@@ -97,9 +95,8 @@ signal battery, 3e4693 none in seven). So a climb change is measured as an arm:
 - **Two runs an arm** when the claim is on the share of the solve wall or on a fixed pack. On
   signal of the first 8, two runs an arm cannot separate anything (above), so a signal difference at
   that size is a lead. One run an arm is a lead on any reading.
-- **One change at a time.** From 2026-09-23 to 2026-10-01 a model-visible commit waited a median of
-  6.4 hours for its first battery and another such commit landed first in 276 of 287 cases. Hold the
-  tree still while an arm runs.
+- **One change at a time.** Hold the tree still while an arm runs: almost no battery of the last week
+  measured one change (AGENTS.md "What has cost whole rounds here").
 - **Long enough to answer.** Eight batteries, or a prediction on the first three that says so.
   `--max-iterations 1` measures one battery and no line.
 - **Launched together**, under the load rule (§4), so host load cannot separate the arms.
@@ -139,15 +136,15 @@ delete the paragraph explaining why the file is long before anything that names 
 
 ## 1. Choose one change
 
-**Simple, domain-agnostic, and aimed at a scoreboard number.** The change is the smallest one that
-could move signal of the first 8 or hours to first signal, on a surface every domain's round passes
-through: the round prompt, the battery contract and readout, the rehearsal, the check host, the
-gate. A change to one domain's tasks or tools is a finding about that domain, never a pass of this
-loop. Name the number, the arm and the size of the move before writing code. A **climb change** aims
-at the scoreboard; an **instrument change** makes a number readable or two arms comparable, and is
-worth a pass only when an arm cannot be read without it. When two passes' arms have left the
-scoreboard where it was, the next change goes at another link, not the next sentence on the same
-one. "No change" is a pass only while an arm is measuring.
+**Simple, domain-agnostic, and aimed at a reading that moves.** The change is the smallest one that
+could move the share of the solve wall or what a run does with its earned fails, on a surface every
+domain's round passes through: the round prompt, the battery contract and readout, the rehearsal,
+the check host, the gate. A change to one domain's tasks or tools is a finding about that domain,
+never a pass of this loop. Name the number, the arm and the size of the move before writing code. A
+**climb change** aims at the scoreboard; an **instrument change** makes a number readable or two
+arms comparable, and is worth a pass only when an arm cannot be read without it. When two passes'
+arms have left the scoreboard where it was, the next change goes at another link, not the next
+sentence on the same one. "No change" is a pass only while an arm is measuring.
 
 Choose from a recorded failure, wasted work or an unresolved decision — not from a hunch about
 what looks fragile. Name the owner and the falsifier before writing code. Read the producer, its
@@ -275,14 +272,15 @@ frozen timestamp precedes the actual opening; if that window was missed, say so 
 backdating. Include the likely failure boundary; do not invent an expected failure to fill a row.
 
 Write the claim so a recorded count settles it: "at least four iterations before any typed
-terminal", "the next battery's verified count falls by at least three of 25", "at least three of
-the first 8 batteries land between 1/n and n−1/n". "Improves" is not a prediction. Several changed
-mechanisms make a composed-system test: it can prove operation, while a causal claim needs a
-controlled replay or a matched comparison.
+terminal", "the next battery uses a median share of the solve wall at least 10 points above this
+one's", "the battery after each earned fail carries that task unchanged". "Improves" is not a
+prediction. Several changed mechanisms make a composed-system test: it can prove operation, while a
+causal claim needs a controlled replay or a matched comparison.
 
-Every pass freezes at least one row on a scoreboard number against a named arm: "arm B places at
-least 2 of its first 8 batteries between 1/n and n−1/n where arm A places at most 1", or "arm B's
-first signal battery is claimed within 3 hours of its opening". Name the arm in `--moved-variable`.
+Every pass freezes at least one row on the wall share or the follow-up against a named arm: "arm B's
+median share of the solve wall over its first 8 batteries is at least 5 points above arm A's", or
+"arm B carries at least 2 earned fails unchanged into the battery after them where arm A carries at
+most 1". Name the arm in `--moved-variable`.
 
 At least one row also observes the constraint at its own link and not only in the pass rate: the next
 edge label, a `coupled` count, a rehearsal verdict or a placement, whichever that link produces. A
@@ -309,9 +307,8 @@ or five lanes at once, so every run added stretches every run already there. On 
 `correctness_check` took 137 minutes, and eleven firmware epoch reviews ended at their one-hour cap.
 The controller's own share of a check was 3 to 5 minutes; the rest was the checks' compiles, slowed
 by the load. Under that load every arm is tool-bound, ablated or not, so arms cannot be compared on
-round length. The launcher refuses such a launch, and one that would take the live runs past six,
-before it prepares a tree; `--over-capacity "<reason>"` is the operator's override, kept in each
-receipt.
+round length. [launch-run](../launch-run/SKILL.md) owns the rule, its hold at six live runs and
+the override.
 
 Two launch arguments decide whether the run can answer a climb question at all:
 
@@ -584,11 +581,11 @@ decisions, but never stops on one: a stall, as AGENTS.md "Goals and the climb" d
 one it replaced is a [wave-audit](../wave-audit/SKILL.md), read at the first battery, the third
 round and the terminal.
 
-The goal that choice serves is the scoreboard: more signal in the first 8, sooner, on held fails
-(AGENTS.md "Goals and the climb" owns the healthy, ambitious climb it reads). Of two candidate
-moves, prefer the one that brings the next battery closer to the solver's limit on a changed public
-requirement, provided every fail it could produce is earned on a published rule. A move after which
-the line would sit at n/n where it sat has not served the goal.
+The goal that choice serves is AGENTS.md's healthy, ambitious climb ("Goals and the climb"), read
+first on the solve-wall share and the follow-up of each earned fail. Of two candidate moves, prefer
+the one that brings the next battery closer to the solver's limit on a changed public requirement,
+provided every fail it could produce is earned on a published rule. A move after which the line
+would sit at n/n where it sat has not served the goal.
 
 Four lessons point at an owner before the evidence is complete. A limit is only as tight as the
 search behind its reference, and tightening one has not yet made a solver fail (AGENTS.md prior

@@ -101,21 +101,20 @@ and carries it into the run's frozen env. Codex conditions use the selected `COD
 Capture each selected credential once per batch; keep snapshots private and secrets out of
 arguments and reports. Report a missing credential; do not search other accounts or substitute keys.
 
-Before any launch, compare the host's one-minute load with its cores (`sysctl -n vm.loadavg
-hw.ncpu`) and count the open runs in `bun run runs`, firmware runs above all: each firmware Builder
-compiles in 4–5 lanes of its own, and the Epoch Reviewer's probes run the same compilers. Do not
-launch while the one-minute load is above 25 (operator, 2026-10-01), and do not launch a new arm
-while the latest runs are still placing their batteries. A launch into that load slows every sibling
-as well as itself, and it confounds any comparison of round length, because every arm is then bound
-by its tools. The load is not the whole count: from 2026-09-23 to 2026-10-01 an Opus run yielded
-0.160 batteries per run-hour at about two live runs, 0.094 at about six and 0.067 at about nine, so
-count the live runs too, and hold at six. The launcher enforces both before it prepares a tree or
-asks a provider anything: it refuses while the load is above `MAX_LAUNCH_LOAD` (25), or when the
-batch, counting every run it would start, would take the runs `bun run runs` reads as live past
-`MAX_LIVE_RUNS` (6), and the refusal prints the load, the live count and each live run's id. When that
-reader fails, the launcher prints what it could not read and the load alone decides.
-`--over-capacity "<reason>"` launches anyway, and each receipt keeps the reason, the load and the
-live count as `gate.overCapacity`.
+Before any launch, read the host's one-minute load (`sysctl -n vm.loadavg`) and count the open runs
+in `bun run runs`, firmware runs above all: each firmware Builder compiles in 4–5 lanes of its own,
+and the Epoch Reviewer's probes run the same compilers. Do not launch while the one-minute load is
+above 25 (operator, 2026-10-01), and do not launch a new arm while the latest runs are still placing
+their batteries. A launch into that load slows every sibling as well as itself, and it confounds any
+comparison of round length, because every arm is then bound by its tools. The load is not the whole
+count: each Opus run yields fewer batteries an hour as live runs are added (AGENTS.md "Open gaps",
+the fourth blocker), so count the live runs too, and hold at six. The launcher enforces both before
+it prepares a tree or asks a provider anything: it refuses while the load is above
+`MAX_LAUNCH_LOAD` (25), or when the batch, counting every run it would start, would take the runs
+`bun run runs` reads as live past `MAX_LIVE_RUNS` (6), and the refusal prints the load, the live
+count and each live run's id. When that reader fails, the launcher prints what it could not read and
+the load alone decides. `--over-capacity "<reason>"` launches anyway, and each receipt keeps the
+reason, the load and the live count as `gate.overCapacity`.
 [The Super Loop's launch step](../run-improvement-campaign/SKILL.md#4-launch-through-one-owner)
 records what 2026-09-30 measured under it.
 

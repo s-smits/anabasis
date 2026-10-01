@@ -289,25 +289,28 @@ Progress is read on that line (`wri.ts climb`, `climb-velocity/v2`), with five n
 - **swing**: the mean move in pass rate per battery, which is 0 for a line of full passes at any size;
 - **flat**: the stall rule of `bun run runs pulse`, `STALL_BATTERIES` (3) in a row on one side of the
   aim, none closer than the closest before them;
-- **carried**: the tasks measured again unchanged after a full pass;
+- **carried**: on each edge, the later battery's tasks with the same id, public input and family checks
+  as the battery before it (`carriedOf`). The summary line sums them over the edges whose earlier
+  battery passed every verified case with no unaccepted attempt (`fullPass`), which are the solves
+  spent re-measuring a known pass;
 - **follow-up**: each earned fail read into the battery after it: carried unchanged, changed or
   dropped, how it came out there, and whether the agent changed between the two (`followUpOf`).
 
-A zone cannot stand in for these, since 3/3 places `over-aim` and passes everything. The line ranks
-custom-sol-f0fb83 (3 of 14 with signal, a 13.8-point swing) above truss-sol-198d70 (2 of 13, 3.9) and
-6a8ca0 (0 of 13, flat). A change that raises a score, adds tasks or renames levels without moving the line
-has not served the goal.
+A zone cannot stand in for these, since 3/3 places `over-aim` and passes everything. A change that raises
+a score, adds tasks or renames levels without moving the line has not served the goal.
 
-One swing of that line is a **climb step**: a battery with an earned fail, a harness change that answers
-it, the same task passing, a battery that asks more, and a partial battery again. No run completed one
-between 2026-09-23 and 2026-10-01 ("Open gaps"). Signal counts only the first of those links, and it is too
-rare to settle a comparison at the size we run. Of the 322 batteries scored in that window, 11 held a fail
-nobody contested, so an arm of eight batteries sees one with a probability near 0.24, and showing that a
-change doubled the rate would take about 650 batteries an arm. So read the share of the solve wall beside
-it (`wri.ts walls`), which moves on every battery. In truss it rises before a fail does: batteries that
-went on to fail a case used a median of 18.6% of the wall against 6.6% for full passes, and the failing
-cases ran to 68% of it. In firmware it says the opposite, that the fails were not the solver's, because
-they came at 1.5% of the wall.
+An **earned fail** is a verified fail that the review did not settle against its check and that the solve
+wall did not stop (`followUpOf`); the Judge sets no score and is not part of it. One swing of the line is a
+**climb step**: a battery with an earned fail, a harness change that answers it, the same task passing, a
+battery that asks more, and a partial battery again. No run completed one between 2026-09-23 and
+2026-10-01 ("Open gaps"). Signal counts only the first of those links, and it is too rare to settle a
+comparison at the size we run. Of the 322 batteries scored in that window, 11 held a fail nobody contested,
+in a census that counted contests by the Judge as well, so an arm of eight batteries sees one with a
+probability near 0.24, and showing that a change doubled the rate would take about 650 batteries an arm.
+So read the share of the solve wall beside it (`wri.ts walls`), which moves on every battery. In truss it
+rises before a fail does: batteries that went on to fail a case used a median of 18.6% of the wall against
+6.6% for full passes, and the failing cases ran to 68% of it. In firmware it says the opposite, that the
+fails were not the solver's, because they came at 1.5% of the wall.
 
 ### The band and the placement
 
@@ -532,12 +535,12 @@ stopping it, and read whether the harness changed between them (the adopted fing
 
 ### Open gaps: the four blockers to a climb
 
-On 2026-09-30, 265 of 299 recorded batteries had passed every case. The leniency is not in the grading.
-Since 2026-09-23 the Judge vetoed 5 of 1,411 verifier passes (firmware 2 of 901, truss 3 of 510), and
-counting all five would move no battery out of too-easy. Of the 22 verified fails counted as limits, 17
-were contested, and the check was the stricter side (the Judge passed 11; the review settled 6 against
-the check). It is not in the answers either, since every firmware reference passes F2, nor in the
-limits (prior 10).
+Most recorded batteries pass every case ("The goal"), and the leniency is not in the grading. Since
+2026-09-23 the Judge vetoed 5 of 1,411 verifier passes (firmware 2 of 901, truss 3 of 510), and counting
+all five would move no battery out of too-easy. Of the 22 verified fails counted as limits, 17 were
+contested, and the check was the stricter side (the Judge passed 11; the review settled 6 against the
+check). It is not in the answers either, since every firmware reference passes F2, nor in the limits
+(prior 10).
 
 **A climb is the goal, and none has been measured** (operator, 2026-10-01). The fixes of the last week
 made runs more reliable, and no run from 2026-09-23 to 2026-10-01 completed one climb step ("Its shape,
@@ -566,7 +569,7 @@ and has not been re-derived here.
    enumeration on a recorded product and re-solve them once through `harness-query`.
 2. **An earned fail is not followed up.** Of the 322 batteries, 33 were partial and 11 held a fail
    nobody contested, 8 in truss and 3 in firmware (those three are the one-minute-wall drafts below).
-   None became a step. Five of the 11 were the last battery their run measured. Where the run went on,
+   None became a step, and some ended their run ("Reading the climb as the operator"). Where it went on,
    the task changed more often than the harness: in six chances the Builder changed `agent/` once,
    dropped or eased the failing task three times, and twice the task passed unchanged, which reads as
    variance. A one-fail partial is read as too easy and raised, and the next battery then passed whole 5
@@ -579,28 +582,27 @@ and has not been re-derived here.
    follow-up line now shows what each run did with its earned fails. Owner:
    `src/run/next-move.ts` and the battery the next round measures, and the operator's stop ("Reading
    the climb as the operator").
-3. **The measure cannot show a change at the size we run.** An uncontested fail arrives in 3.4% of
-   batteries, so eight batteries an arm cannot separate two arms on signal ("Its shape, and how progress
-   is read"). All 14 resolved predictions that a change would move a battery were refuted, all 13 that
-   one would stay whole came true, and 100 of the 122 left unresolved never had their measurement. Two
-   instruments with more power exist and neither is on the scoreboard. The share of the solve wall moves
-   on every battery (`wri.ts walls`), up by about 8% a battery step over 253 steps. And a fixed pack
-   compares two products on the same tasks, which "Evidence and implementation status" already asks
-   for and the README's yardstick used; no pack has been cut from the recorded hard tasks, and no solver
-   outside the loop has measured a battery. Owner: `scoreboard.ts`, and a pack solved through
-   `harness-query`.
+3. **The measure cannot show a change at the size we run.** Eight batteries an arm cannot separate two
+   arms on signal ("Its shape, and how progress is read"). All 14 resolved predictions that a change
+   would move a battery were refuted, all 13 that one would stay whole came true, and 100 of the 122
+   left unresolved never had their measurement. The instrument that works across fresh campaigns is the
+   share of the solve wall, which moves on every battery (`wri.ts walls`), up by about 8% a battery step
+   over 253 steps. The scoreboard now prints it for each run and for each source and Builder, beside what
+   the next battery did with each earned fail. A fixed pack does not work across them: a pack task is
+   graded by its authoring product's correctness bundle, so a pack compares rounds of one campaign or a
+   seeded continuation, and two fresh campaigns represent their artifacts differently. Comparing them
+   would need a representation fixed before either Builder starts (a shared public input, artifact
+   schema and verifier), which nothing in the loop provides. Owner: `scoreboard.ts`.
 4. **Changes outrun measurements, and runs end before they climb.** In the window, 299 commits changed
    text a model reads and 88 runs opened on 37 sources ("What has cost whole rounds here"). 58 of the 88
    were stopped by hand at a median age of 11.2 hours and none ended by finishing. Only 15 runs reached
    eight batteries, all of them Sol. No Opus run placed more than three, because an Opus Builder takes a
    median of 6.4 hours to its first battery at any number of live runs, where a Sol Builder takes 0.2 to
    1.5 depending on the domain. Each Opus run also yields less as runs are added: 0.160 batteries per
-   run-hour at about two live runs, 0.094 at about six and 0.067 at about nine. The launcher now refuses
-   a launch while the one-minute load is above 25, or when its batch would take the live runs past six
-   (`MAX_LAUNCH_LOAD` and `MAX_LIVE_RUNS` in `launch-run/scripts/options.ts`), before it prepares a
-   tree; `--over-capacity "<reason>"` launches anyway and each receipt keeps the reason. The rate of
-   change has no such guard. Owner: the Super Loop's pace (`run-improvement-campaign`), one measured
-   change at a time on a tree that holds still.
+   run-hour at about two live runs, 0.094 at about six and 0.067 at about nine. The launcher now holds
+   the load and the live runs (`launch-run`, "Launch a run"); the rate of change has no such guard.
+   Owner: the Super Loop's pace (`run-improvement-campaign`), one measured change at a time on a tree
+   that holds still.
 
 The first is model-visible where it changes `examples.md` or opens a split build. The second, third
 and fourth are the controller's, the readers' and the operator's, and move no prompt.
@@ -839,11 +841,9 @@ select product bytes and nothing else.
    Builder discovers and installs tools in-session, so require neither a pre-measured tool catalogue nor a
    scripted native call before authoring.
 5. **Freeze a falsifiable prediction against the resolved composed SHA, before the opening**, one row per
-   moved mechanism, each with a claim a recorded count can settle ("the next battery's verified count
-   falls by ≥3 of 25"), through
-   `bun .claude/skills/run-improvement-campaign/scripts/prediction.ts freeze …`. "Improves" is not a
-   prediction, and neither is a row Git merely dates. For a task-only experiment, name the fixed harness,
-   the changed families, the prior pass count, the expected direction and what is left untested.
+   moved mechanism (`run-improvement-campaign`, "3. Freeze a falsifiable prediction"). A row Git merely
+   dates is not one. For a task-only experiment, name the fixed harness, the changed families, the prior
+   pass count, the expected direction and what is left untested.
 6. Launch the one operator-supplied prompt through `launch-run`, with the resolved full SHA as source,
    running the deterministic preflight and the launcher in the same turn:
    `bun .claude/skills/launch-run/scripts/launch.ts truss --model astra|sol|opus --source <sha>`. A pair
@@ -940,11 +940,11 @@ Eleven PRs went in against model-visible text after two batteries had already sh
 lever, and none of them was in the source the next run measured. Another round went on a schema bump
 inside a reader, which made every recorded campaign throw on continuation.
 
-That pattern held for the whole window from 2026-09-23 to 2026-10-01. A commit that changed text a model
-reads waited a median of 6.4 hours for the first battery that contained it, and in 276 of 287 cases
-another such commit landed first, so almost no battery measured one change. The host measures one or two
-attributable changes a day, and the changes came ten to thirty-five times faster. A change made past that
-rate is unmeasured however carefully its prediction was frozen ("Open gaps", the fourth blocker).
+That pattern held for the whole window from 2026-09-23 to 2026-10-01. Of the 299 commits that changed text
+a model reads, 287 reached a battery, after a median of 6.4 hours, and for 276 of those 287 another such
+commit landed first, so almost no battery measured one change. The host measures one or two attributable
+changes a day, and the changes came ten to thirty-five times faster. A change made past that rate is
+unmeasured however carefully its prediction was frozen ("Open gaps", the fourth blocker).
 
 Until 2026-09-28 the round prompt asked the Builder to hold its submit until `harness_trial` agreed with
 the aim. Rehearsals passed 96 of the 99 times the Builder had predicted a pass at ≤0.3, so the wait held
@@ -1237,9 +1237,9 @@ the battery was paid for.
    algorithms, bounded search and the host's margin table on published limits are legitimate solving
    support. A tool, program or guide line that analyses a candidate the way a check does, through the
    check's code or a copy of it, its instrument or a verdict, is not: until 2026-09-30 it counted as
-   support, and 236 of 298 recorded batteries passed every case, every harness whose solver could run a
-   check among them; the misses without one were walls, not failed analyses (`PUBLICATION_CLAUSE` in
-   `src/author/builder-start-prompt.ts` records the measurement). While the measured `.toolchain` digest still
+   support, and every harness whose solver could run a check passed every case ("The goal" counts the
+   full passes); the misses without one were walls, not failed analyses (`NO_GRADER_IN_REACH`,
+   `src/author/builder-start-prompt.ts`). While the measured `.toolchain` digest still
    matches a recorded tool, the reviewer may read any text file of that tree by name (`toolchain:<path>`,
    installed packages included, each at most 1 MiB) as long as the file still counts as the recorded tree
    digest took it, and a directory reads as its listing.
@@ -2488,11 +2488,8 @@ status, so a `| tail -8` in front of it makes every code you report the tail's.
 
 Foreground waits are at most 60 s. For longer work, start one background monitor that exits on the real
 condition and poll it in bounded intervals, rather than stacking sleep-and-tail calls; when the watch is
-under 30 minutes, checking every 290 s is cheaper than holding a monitor open. Watch a paid run with
-`bun run runs pulse --once` from main, as the last action of each reply: it finds every open run and
-prints what moved since the last look, each with the file that holds it. When nobody is reading, start
-`run-improvement-campaign`'s `campaign.ts --state <file> --every 290` detached instead; it speaks only
-when a stop row names a move.
+under 30 minutes, checking every 290 s is cheaper than holding a monitor open. Watch a paid run as
+"While it runs" says.
 
 Use ponytail while authoring, and run `bun run lint -- --strict` and `bun run simplify` (the deterministic
 census, `tools/oxlint/simplify-census.ts`) during the work rather than only at the end; then run

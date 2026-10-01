@@ -195,7 +195,7 @@ exception covers it:
 | climb | a new `versions/<battery>/` read without `wri.ts climb` | the directory's mtime against the reader call |
 | constraint | a launch whose frozen predictions name no link, or a change aimed at a link other than the ledger's current constraint with no fresh walk recorded | the `movedVariable` text in `notes/predictions/<runId>.jsonl` against the latest row of `notes/binding-constraints.md` |
 | watch | a live run with nothing watching it, such as a target turn that ended on a question while its runs had only launch monitors | `ps` for `campaign.ts --every` or a pulse loop; the target's armed monitors, crons and their timeouts |
-| load | a launch while the host's one-minute load is above its core count (SKILL.md §4) | a load reading in the target's transcript before its launch command, or none |
+| load | a launch while the host's one-minute load is above 25, or one that takes the live runs past six (SKILL.md §4) | a load reading in the target's transcript before its launch command, or none |
 
 The ledger the `constraint` row reads got its first row on 2026-09-30, and that row has no outcome
 yet (SKILL.md, "Lifted, held or unreached: the constraint ledger"), so the row's first `DIRECT`s

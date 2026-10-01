@@ -186,9 +186,9 @@ describe.if(osIsolationSupport().ok)("the seven capabilities through the isolati
     // A tool installed where the checks and the solver look first answers to its name here as well.
     await run("bash", {
       command:
-        "mkdir -p .toolchain/bin && printf '#!/bin/sh\\necho by-name\\n' > .toolchain/bin/fwsim-probe && chmod 755 .toolchain/bin/fwsim-probe",
+        "mkdir -p .toolchain/bin && printf '#!/bin/sh\\necho by-name\\n' > .toolchain/bin/tool-probe && chmod 755 .toolchain/bin/tool-probe",
     });
-    expect(await run("bash", { command: "fwsim-probe" })).toContain("by-name");
+    expect(await run("bash", { command: "tool-probe" })).toContain("by-name");
     const refusal = await rejectionOf(run("bash", { command: `cat ${join(repoRoot, ".env")}` }));
     expect(refusal.message).toContain("exited with code");
     expect(refusal.message).not.toContain("hunter2");

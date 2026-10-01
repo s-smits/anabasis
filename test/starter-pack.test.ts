@@ -197,10 +197,23 @@ describe("pi starter pack brief vocabulary", () => {
   // The Builder reads this whole, whatever the request, so an example drawn from a domain the
   // product was measured on (a truss member, a firmware pin, a board simulator) anchors a new
   // domain's plan to the old one (operator, 2026-09-29, before the chemistry and biology runs).
-  it.concurrent("the starter pack draws no example from a domain the product was measured on", () => {
-    expect(STARTER_DOC).not.toMatch(
-      /\b(?:truss\w*|firmware|gpio|arduino|esp32|rp2040\w*|avr8js|load case|microcontroller)\b/i,
-    );
+  // Every file the pack ships is read, since each one is copied into every workspace.
+  it.concurrent("the starter pack draws no example from a domain the product was measured on", async () => {
+    const root = new URL("../starters/pi-built-harness/", import.meta.url).pathname;
+    const paths = [
+      "STARTER.md",
+      ...new Bun.Glob("starter-pack/**/*").scanSync({ cwd: root, onlyFiles: true }),
+    ];
+    const named: string[] = [];
+    for (const path of paths) {
+      const text = await Bun.file(join(root, path)).text();
+      if (
+        /\b(?:truss\w*|firmware|gpio|arduino|esp32|rp2040\w*|avr8js|load case|microcontroller)\b/i.test(text)
+      ) {
+        named.push(path);
+      }
+    }
+    expect(named).toEqual([]);
   });
 
   // A replayed witness is already normal and the solver reaches it, so the worked routes are to a

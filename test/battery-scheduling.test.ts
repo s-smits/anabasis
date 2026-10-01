@@ -43,9 +43,12 @@ import {
 
 afterAll(removeScratchRoot);
 
-/** Waits, bounded, for a condition another worker makes true; a lost event fails the test rather than hanging it. */
+/** Waits, bounded, for a condition another worker makes true; a lost event fails the test rather than hanging it.
+ *  The bound is half the test's timeout: two seconds failed both pool tests on a loaded host, where
+ *  the first case's verifier was still bundling (2026-10-02). */
 async function until(done: () => boolean): Promise<void> {
-  for (let attempt = 0; attempt < 400 && !done(); attempt += 1) await Bun.sleep(5);
+  const deadline = performance.now() + 30_000;
+  while (!done() && performance.now() < deadline) await Bun.sleep(5);
 }
 
 const batteryOf = (slugDir: string, runId: string) =>

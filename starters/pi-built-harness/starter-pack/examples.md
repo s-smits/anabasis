@@ -91,9 +91,8 @@ as welcome.
   rule at a time fails, published scenarios under which a different answer works, outputs or states
   that must agree after the same step, or a trade-off no direct formula settles, so candidates have
   to be searched. Publish every requirement and withhold only how your reference meets them
-  together. Take each from what the request's field already holds, and note in `MEMORY.md` which
-  public requirement changed and the reasoning it adds. It fails when the answer that met the old
-  task still meets the new one, or when the requirement is one the field would not hold.
+  together. Take each from what the request's field already holds. It fails when the answer that
+  met the old task still meets the new one, or when the requirement is one the field would not hold.
 - **The work at the size and in the environment the field works in.** A small copy of the field's
   work can be easy because its difficulty lives in what the copy left out: the full-size instance,
   the real library, device or dataset, the rest of the system the piece runs inside. Author the task

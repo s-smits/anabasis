@@ -230,7 +230,7 @@ describe("pi starter pack brief vocabulary", () => {
     expect(text).not.toContain("so the limit belongs nearer the stored answer");
     expect(text).not.toContain("start the next search from the best solve and keep the better incumbent");
     // Every route above sets where a limit or a stored answer sits. The streaks of 2026-09-29 moved
-    // only that, so a route changes what the task asks, from the field, with the change noted.
+    // only that, so a route changes what the task asks, from the field.
     expect(text).toContain("**A demand the battery does not yet make.**");
     expect(text).toContain("It fails when the answer that met the old task still meets the new one");
     // A small copy of the work passes in minutes of a two-hour wall, and a Builder-written stand-in
@@ -379,9 +379,10 @@ describe("pi starter pack seed tests", () => {
   // The seed suite ships inside the candidate interface and runs in generated workspaces under the
   // pinned Bun test runner. This is the repo-side proof that the pristine starter passes, with its
   // declared skips, and never reports a false pass over unauthored placeholder files; the command
-  // the contract tells the Builder to run names the same files.
-  it.concurrent("run green on the pristine starter under Bun, through the command the contract states", async () => {
-    expect(STARTER_DOC).toContain(`--no-env-file test ${SEED_TESTS.join(" ")}`);
+  // STARTER.md tells the Builder to run names the same files, and the contract points at it.
+  it.concurrent("run green on the pristine starter under Bun, through the command the starter states", async () => {
+    expect(STARTER_ENTRY).toContain(`--no-env-file test ${SEED_TESTS.join(" ")}`);
+    expect(STARTER_DOC.replace(/\s+/g, " ")).toContain("run them with the command in STARTER.md");
     const child = Bun.spawn([Bun.argv[0]!, "--no-env-file", "test", ...SEED_TESTS], {
       cwd: join(import.meta.dir, "../starters/pi-built-harness"),
       env: Bun.env,

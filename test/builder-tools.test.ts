@@ -180,6 +180,8 @@ describe.if(osIsolationSupport().ok)("the seven capabilities through the isolati
     expect(installEnv).toContain(`${join(binding.iterationDir, ".toolchain", "home")}\n`);
     expect(installEnv).toContain(join(binding.iterationDir, ".toolchain", "home", ".local", "bin"));
     expect(installEnv).toContain(join(binding.iterationDir, ".toolchain", "home", ".cargo", "bin"));
+    // Per-tool configuration is left to the tool that needs it, so the cell sets none of its own.
+    expect(await run("bash", { command: "env" })).not.toMatch(/^ARDUINO_/m);
     // A tool installed where the checks and the solver look first answers to its name here as well.
     await run("bash", {
       command:

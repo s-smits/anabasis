@@ -465,6 +465,12 @@ describe("one-command run launcher", () => {
       CLAUDE_BUILT_REASONING_EFFORT: "medium",
       CLAUDE_REVIEW_REASONING_EFFORT: "medium",
     });
+    expect(slotEnvironment("haiku")).toMatchObject({
+      CLAUDE_BUILDER_MODEL: "claude-haiku-4-5-20251001",
+      CLAUDE_BUILT_MODEL: "claude-haiku-4-5-20251001",
+      CLAUDE_REVIEW_MODEL: "claude-haiku-4-5-20251001",
+      CLAUDE_BUILDER_REASONING_EFFORT: "medium",
+    });
   });
 
   it("names an effort variant in its run id and probes it as its model's standard row", () => {

@@ -64,7 +64,8 @@ default remains `origin/main` and does not resolve the stack. Let the launcher f
 into a fresh isolated run worktree. Keep the source checkout and existing runs untouched.
 
 Model and budget defaults are Opus 5.5 medium/medium/medium, 25 tasks and 1,320 provider
-turns per run. Sol uses high/high/medium; Astra uses medium/low/low; Fable 5.1 uses medium/medium/medium.
+turns per run. Sol uses high/high/medium; Astra uses medium/low/low; Fable 5.1 uses medium/medium/medium;
+`haiku` puts Haiku 4.5 at medium on every slot, a floor condition for whether a weak model can use the harness at all.
 A variant of a model's row is named for its slot efforts, one letter each (l, m, h, x): `opushmm` is
 Opus 5.5 with the Builder at high. The launched tree's probe sees it as `opus`, so an older source
 launches it too.

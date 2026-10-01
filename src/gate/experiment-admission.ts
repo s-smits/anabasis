@@ -22,11 +22,6 @@ import { compilePublicArtifactSchema } from "../solve/public-artifact-schema.ts"
 import { isControlCorpus } from "../correctness-bundle/controls.ts";
 import { CONTROLS_FILE } from "../meta/bundle-layout.ts";
 
-export interface AdmissionInput {
-  /** The adopted tree a continuation moves away from; absent on an initial build. */
-  adoptedDir?: string;
-}
-
 /** Whether the candidate keeps the adopted installed verifier and compiled submission schema.
  *  Unproven is neither preserved nor moved, and the three answers stay apart because a missing
  *  baseline proof certifies neither reading: treating it as preserved would let an unmeasurable

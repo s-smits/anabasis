@@ -50,7 +50,7 @@ import { keyIfDefined, keysIf } from "../meta/optional-key.ts";
 import { type ReviewChoice, backendConditionPin } from "../backends/resolve.ts";
 import type { RunObserver } from "../observe/run-observer.ts";
 import type { ProviderResourceBudget } from "../run/provider-resource-budget.ts";
-import { readerPhase, runReaderTurn } from "./review-reader.ts";
+import { type ReaderTurn, readerPhase, runReaderTurn } from "./review-reader.ts";
 import { emptyProbeState, probeTool } from "./review-probe.ts";
 import { type AdvisoryDefect, type Demonstrations, NOTHING_CARRIED, advisoryRecord } from "./review-carry.ts";
 import { EPOCH_REVIEW_PROMPT } from "./epoch-review-prompt.ts";
@@ -143,7 +143,6 @@ export interface RehearsalCase {
   current: boolean;
 }
 
-type ReaderTurn = Awaited<ReturnType<typeof runReaderTurn>>;
 type ReviewCoverage = ReturnType<typeof reviewCoverage>;
 
 /** A session that may read, carrying everything the read depends on, or one that may not and
@@ -731,7 +730,6 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
   // held to, and not among the pages the unread prompt resumes the reader for, so the automatic
   // scan reads none of it: every tree file is read by name.
   const toolchain = toolchainReach(root, verifier.tools);
-  const readable = new Set(sourcePaths);
   // The task ids a finding may not name, since a finding is about a family and a claim pinned to
   // one task cannot direct an authoring pass. A measured battery supplies them; at an authoring
   // checkpoint they come from the draft's own task file, and a partial draft still gets a reading.
@@ -757,7 +755,7 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
       repoRoot: input.repoRoot,
       role: "epoch-reviewer",
       tools: [
-        readSourceTool(root, readable, state, verifier.tools, namedTexts(rehearsed, toolchain)),
+        readSourceTool(root, sourcePaths, state, verifier.tools, namedTexts(rehearsed, toolchain)),
         probe.tool,
         recordFindingTool(
           issues,

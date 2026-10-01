@@ -245,14 +245,7 @@ function measuredDifficulty(stored: BatteryEvidence["measured"]): MeasuredDiffic
  *  that no chronology admits cannot sit in the difficulty history at all. */
 function claimAdmission(
   claim: ClaimFacts,
-  row: {
-    evidence: BatteryEvidence;
-    measured: MeasuredDifficulty;
-    harnessId: string | null;
-    condition: { thresholdManifestDigest: string; variant: string };
-    runId: string;
-    batterySha256: string;
-  },
+  row: Omit<Extract<BatteryAdmission, { ok: true }>, "ok" | "excluded" | "createdAt">,
 ): BatteryAdmission {
   if (claim.refusal === null) return { ok: true, excluded: null, ...row, createdAt: claim.createdAt };
   const excluded = {

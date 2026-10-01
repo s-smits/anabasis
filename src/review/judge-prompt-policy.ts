@@ -8,9 +8,6 @@
 import { sha256 } from "../meta/digest.ts";
 import { canonicalJson } from "../meta/stable-json.ts";
 
-const JUDGE_PROMPT_TARGETS = ["census"] as const;
-type JudgePromptTarget = (typeof JUDGE_PROMPT_TARGETS)[number];
-
 /**
  * The census prompt: one reading rule for every domain, and two verdicts. Every clause answers a
  * measured failure, so removing one drops a defence rather than tidying the text.
@@ -43,10 +40,10 @@ export const ACTIVE_JUDGE_PROMPTS = {
     "A failure rests on a rule the material states and a fact you can point to: a rule, convention, binding or tolerance the material does not state grounds none, and a failure citing anything not shown is not recorded.",
     "Keep the rationale short: for a fail, the broken requirement, the output's value or statement, and the stated limit; for a pass, what you read and found met, and what you left to the verifier.",
   ].join(" "),
-} satisfies Readonly<Record<JudgePromptTarget, string>>;
+};
 
 export const ACTIVE_JUDGE_PROMPT_DIGESTS = {
   census: sha256(
     canonicalJson({ schema: "judge-prompt-policy/v1", target: "census", text: ACTIVE_JUDGE_PROMPTS.census }),
   ),
-} satisfies Readonly<Record<JudgePromptTarget, string>>;
+};

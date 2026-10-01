@@ -213,13 +213,7 @@ export type RebuildAdvicePacket = {
   findings: AdviceFinding[];
 };
 
-type Observed = {
-  kind: AdviceIssueKind;
-  family: string;
-  detail: string | null;
-  count: number;
-  denominator: number;
-};
+type Observed = Pick<AdviceIssue, "kind" | "family" | "detail" | "count" | "denominator">;
 
 /** The battery an advance reads: the families it ran, with the scoring program, the check tools and
  *  the Built condition every one of them ran under. */
@@ -409,11 +403,7 @@ export function advanceIssues(
     const same = prior !== undefined && conditionGaps(prior.observedUnder, now).length === 0;
     next.push({
       id,
-      kind: entry.kind,
-      family: entry.family,
-      detail: entry.detail,
-      count: entry.count,
-      denominator: entry.denominator,
+      ...entry,
       firstSeenRunId: prior?.firstSeenRunId ?? runId,
       lastSeenRunId: runId,
       absentBatteries: 0,
@@ -554,12 +544,7 @@ export function deriveRebuildAdvice(
       previous?.issues ?? [],
       observed,
       analysis.runId,
-      {
-        families,
-        scoringHash: condition.scoringHash,
-        checkTools: condition.checkTools,
-        measuredCondition: condition.measuredCondition,
-      },
+      { families, ...condition },
       judgeReview,
     ),
     // Advice only: counts and families, never task ids.

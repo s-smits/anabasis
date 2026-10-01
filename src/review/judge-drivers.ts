@@ -66,9 +66,9 @@ const VERDICT_REASK =
 
 type Captured = { verdict: VerdictWord; rationale: string; rules: string[] };
 
-/** What one subject's session captures: the single verdict the tool recorded, and how many times
- *  it was called. Named so the binding below keeps inference instead of an open annotation. */
-type VerdictCapture = { captured: Captured | null; calls: number };
+/** What one subject's session captures: the single verdict the tool recorded. Named so the binding
+ *  below keeps inference instead of an open annotation. */
+type VerdictCapture = { captured: Captured | null };
 
 function isVerdictWord(value: string): value is VerdictWord {
   return VERDICT_WORD_SET.has(value);
@@ -217,7 +217,7 @@ export function sessionJudge(options: {
   resetWait?: Omit<ReviewResetWait, "providerBudget">;
 }): Judge {
   return async (input, context) => {
-    const output: VerdictCapture = { captured: null, calls: 0 };
+    const output: VerdictCapture = { captured: null };
     // SAFETY: `AgentTool<never>` makes parameters opaque; execute validates every raw field with
     // `parseVerdict`, which alone decides whether the call counted.
     const tool = {
@@ -227,7 +227,6 @@ export function sessionJudge(options: {
         "Record fail or pass with a short reason. Fail only on a requirement the shown material shows broken; otherwise pass, and name what you left to the verifier.",
       parameters: JUDGE_VERDICT_SCHEMA,
       async execute(_id: string, raw: JsonValue) {
-        output.calls += 1;
         // The first valid verdict wins; duplicates cannot erase it. A malformed first call returns
         // the schema hint so the model may retry within the turn.
         if (output.captured !== null) {

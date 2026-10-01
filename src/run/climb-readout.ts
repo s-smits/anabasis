@@ -413,7 +413,12 @@ function noLimitLine(row: ReadoutRow): string | null {
     slowest === null || row.solveWallMinutes === null
       ? ""
       : ` Its slowest solve took ${String(slowest)} of the ${String(row.solveWallMinutes)} minutes a solve may run.`;
-  return `Battery ${runId} passed ${all}, so it found no limit. More tasks, families, inputs or scenarios at the same demand measure the same reach again, so the next battery has to demand more of the field's own work within its tasks: make more of the request's requirements act together in each task, in tasks you expect the solver to fail. Carry none of its tasks forward unchanged, since a task it passed measures the same pass again: raise what each one demands or replace it.${spent} Record in your notes which public requirement it changes and the reasoning that change adds. ${MEASURE_SOLVES}`;
+  // ABLATED(no-limit-depth): the depth route, which the same opening already states twice: the intent
+  // clause defines it and the round prompt's raise names it with the same "not by adding tasks,
+  // families or inputs at the same demand" (AGENTS.md "Ablated components").
+  // return `Battery ${runId} passed ${all}, so it found no limit. More tasks, families, inputs or scenarios at the same demand measure the same reach again, so the next battery has to demand more of the field's own work within its tasks: make more of the request's requirements act together in each task, in tasks you expect the solver to fail. Carry none of its tasks forward unchanged, since a task it passed measures the same pass again: raise what each one demands or replace it.${spent} Record in your notes which public requirement it changes and the reasoning that change adds. ${MEASURE_SOLVES}`;
+  // ADDED(no-limit-depth): the same line without that sentence.
+  return `Battery ${runId} passed ${all}, so it found no limit. Carry none of its tasks forward unchanged, since a task it passed measures the same pass again: raise what each one demands or replace it.${spent} Record in your notes which public requirement it changes and the reasoning that change adds. ${MEASURE_SOLVES}`;
 }
 
 function excludedSummary(excluded: readonly ExcludedBattery[], admitted: number): string | null {

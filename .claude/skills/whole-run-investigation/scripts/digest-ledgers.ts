@@ -925,12 +925,15 @@ export function builderMemoryLines({ epochDirs }: MemoryInput): string[] {
 
 // --- 5b: served-model attestation -------------------------------------------------------------
 /** `runtime-model-identity/v2` is the only identity `pi-session.ts` writes, and the claim's own
- *  census (`inspectIdentity`) reads any other shape as incomplete, so this reader does the same. */
+ *  census (`inspectIdentity`) reads any other shape as incomplete, so this reader does the same.
+ *  The provider's `resultId` is the receipt. The Codex route reports no served model and still
+ *  carries one, so its model is unreported, which contradicts no pin: the truss rows read as "no
+ *  provider receipt" each carried a resultId (2026-10-01). */
 function identityAttestation(identity: RuntimeModelIdentity | null | undefined): Attestation {
   if (identity?.schema !== "runtime-model-identity/v2") return { attested: false, model: null };
   const model = identity.provider?.model ?? null;
   const resultId = identity.provider?.resultId ?? null;
-  return { attested: isString(model) && isString(resultId), model };
+  return { attested: isString(resultId), model };
 }
 
 export function servedModelLines({ campaign, tallies, batteryOf }: ServedModelInput): string[] {
@@ -968,11 +971,14 @@ export function servedModelLines({ campaign, tallies, batteryOf }: ServedModelIn
       attested += 1;
       for (const reading of readings) served.set(reading.model, (served.get(reading.model) ?? 0) + 1);
     }
-    const servedText = [...served.entries()].map(([model, count]) => `${model} ×${count}`).join(", ") || "-";
+    const servedText =
+      [...served.entries()].map(([model, count]) => `${model ?? "unreported"} ×${count}`).join(", ") || "-";
     lines.push(
       `${tally.runId}: attested ${attested} · unattested ${unattested} · no completed turn ${noTurn} · configured ${configured ?? "?"} · served {${servedText}}`,
     );
-    const foreign = [...served.keys()].filter((model) => configured !== null && model !== configured);
+    const foreign = [...served.keys()].filter(
+      (model) => model !== null && configured !== null && model !== configured,
+    );
     if (foreign.length > 0) {
       lines.push(
         `  SERVED MODEL MISMATCH: provider attested ${foreign.join(", ")} against configured ${configured}`,

@@ -28,7 +28,7 @@
     "login": "bun tools/login/cli.ts",
     "harness": "bun tools/harness/cli.ts",
     "outcome": "bun tools/outcome/cli.ts",
-    "review:collect": "bun --no-env-file .claude/skills/whole-run-investigation/scripts/trace-review.ts",
+    "review:collect": "bun .claude/skills/whole-run-investigation/scripts/trace-review.ts",
     "ui:dev": "cd packages/ui && bun run dev",
     "ui:build": "cd packages/ui && bun run build",
     "ui:deps": "bun install --frozen-lockfile --cwd packages/ui",
@@ -46,8 +46,8 @@
     "@ana/agent-bundle": "0.0.0",
     "@ana/correctness-model-bundle": "0.0.0",
     "@ana/correctness-model-prims": "0.0.0",
-    "@earendil-works/pi-agent-core": "0.87.1",
-    "@earendil-works/pi-ai": "0.87.1",
+    "@earendil-works/pi-agent-core": "0.99.2",
+    "@earendil-works/pi-ai": "0.99.2",
     "@huggingface/transformers": "4.2.0",
     "@modelcontextprotocol/sdk": "1.30.0",
     "cc-session-io": "0.4.0",
@@ -62,10 +62,8 @@
     "@oxlint/plugins": "1.83.0",
     "@types/bun": "1.4.2",
     "@types/diff": "^8.0.0",
-    "avr8js": "0.21.1",
     "oxlint": "1.83.0",
     "oxlint-tsgolint": "7.0.2001",
-    "rp2040js": "1.4.0",
     "typescript": "^7.0.2"
   }
 }

@@ -280,8 +280,14 @@ export function settlementOf(campaign: string, runId: string): Settlement | null
 
 /** Batteries in the order they were measured. A claim's `createdAt` owns chronology; a version with
  *  no claim keeps its directory's recorded time and is marked, because an unclaimed battery is
- *  exactly the case this reader exists for. */
+ *  exactly the case this reader exists for. The version a forked campaign was seeded from (its
+ *  `seed.json` `selectedProductId`) comes first whatever its time: every battery the fork measured
+ *  derives from it, and an undated seed sorted last read each fork edge backwards (2026-10-01). */
 export function batteriesOf(campaign: string): VersionBattery[] {
+  const seedPath = `${campaign}/seed.json`;
+  const seed = existsSync(seedPath)
+    ? readJsonAs<{ selectedProductId?: string | null }>(seedPath).selectedProductId
+    : null;
   const versions = readdirSync(`${campaign}/versions`, { withFileTypes: true });
   const rows: VersionBattery[] = [];
   for (const entry of versions) {
@@ -298,7 +304,10 @@ export function batteriesOf(campaign: string): VersionBattery[] {
     rows.push({ runId: entry.name, dir, createdAt, claimed });
   }
   rows.sort(
-    (a, b) => String(a.createdAt).localeCompare(String(b.createdAt)) || a.runId.localeCompare(b.runId),
+    (a, b) =>
+      Number(b.runId === seed) - Number(a.runId === seed) ||
+      String(a.createdAt).localeCompare(String(b.createdAt)) ||
+      a.runId.localeCompare(b.runId),
   );
   return rows;
 }
@@ -528,23 +537,37 @@ function unadoptedOf(campaign: string, outcomes: Map<string, OutcomeCounts>, ado
   );
 }
 
-export async function readCampaign(campaign: string, options: Parameters<typeof readVersionDir>[1] = {}) {
+/** The outcome side of every battery: its counts, its settlement and both placements. It opens no
+ *  task bytes and loads no model, so a reader of the line alone (the Super Loop's scoreboard) pays
+ *  for a directory walk; `readCampaign` adds the task side to these rows. */
+export function outcomeRowsOf(campaign: string) {
   const outcomes = outcomesOf(campaign);
   const recorded = recordedPlacements(campaign);
-  const batteries = [];
-  for (const battery of batteriesOf(campaign)) {
-    const reading = await readVersionDir(battery.dir, options);
+  const batteries = batteriesOf(campaign).map((battery) => {
     const counts = outcomes.get(battery.runId) ?? { passed: 0, verified: 0, unaccepted: 0, nonResult: 0 };
     const settlement = settlementOf(campaign, battery.runId);
-    batteries.push({
+    return {
       ...battery,
-      reading,
       counts,
       settlement,
       placement: placementOf(counts, measuredOf(battery)),
       earned: earnedOf(counts, settlement),
       recorded: recorded.byRun.get(battery.runId) ?? null,
-    });
+    };
+  });
+  return {
+    batteries,
+    unadopted: unadoptedOf(campaign, outcomes, new Set(batteries.map((battery) => battery.runId))),
+    refusedDecisions: recorded.refused,
+  };
+}
+
+export async function readCampaign(campaign: string, options: Parameters<typeof readVersionDir>[1] = {}) {
+  const rows = outcomeRowsOf(campaign);
+  const batteries = [];
+  for (const { runId, dir, createdAt, claimed, ...outcome } of rows.batteries) {
+    const reading = await readVersionDir(dir, options);
+    batteries.push({ runId, dir, createdAt, claimed, reading, ...outcome });
   }
   const edges = [];
   for (const [at, after] of batteries.entries()) {
@@ -579,9 +602,9 @@ export async function readCampaign(campaign: string, options: Parameters<typeof 
     campaign,
     model: MODEL_IDENTITY,
     batteries,
-    unadopted: unadoptedOf(campaign, outcomes, new Set(batteries.map((battery) => battery.runId))),
+    unadopted: rows.unadopted,
     edges,
-    refusedDecisions: recorded.refused,
+    refusedDecisions: rows.refusedDecisions,
   };
 }
 

@@ -656,6 +656,19 @@ describe("climb velocity", () => {
     expect(lineOf(against)).toMatchObject({ signal: [], fullPasses: 1, points: [{ passes: 4, n: 4 }] });
   });
 
+  // A forked campaign's seed version carries no claim of its own and so no time, and sorted after the
+  // batteries derived from it, every fork edge read backwards (350009 -> seed, 2026-10-01). A version
+  // still measuring is also unclaimed, and stays last.
+  it.concurrent("reads a fork's edges from the version it was seeded from", async () => {
+    const dir = twoVersions("ana-climb-seed-", [brief, wider]);
+    rmSync(join(dir, "claims", "run-a.json"));
+    const unseeded = await readCampaign(dir, { embed: fakeEmbed });
+    expect(unseeded.edges).toMatchObject([{ from: "run-b", to: "run-a" }]);
+    writeFileSync(join(dir, "seed.json"), JSON.stringify({ selectedProductId: "run-a" }), "utf8");
+    const seeded = await readCampaign(dir, { embed: fakeEmbed });
+    expect(seeded.edges).toMatchObject([{ from: "run-a", to: "run-b", verdict: "widened" }]);
+  });
+
   // A round can measure again without adopting a version, and its battery is still a point on the
   // line though no edge can be read into it. A reader keyed on version directories left two of
   // fourteen claimed batteries off one run's line.

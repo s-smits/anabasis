@@ -59,12 +59,15 @@ describe("adjudicate", () => {
     expect(() => adjudicatePrediction(path, id, "sufficed", "second thoughts", "t")).toThrow("append-only");
   });
 
-  it("refuses an unknown id and an outcome outside the four AGENTS.md names", () => {
+  it("refuses an unknown id and an outcome outside the five AGENTS.md names", () => {
     const path = ledger();
     const { id } = freezePrediction(path, CORE, "2026-08-27T10:00:00Z");
     expect(() => adjudicatePrediction(path, "feedfeedfeedfeed", "refuted", "e", "t")).toThrow(
       "no frozen prediction",
     );
     expect(() => adjudicatePrediction(path, id, "inconclusive", "e", "t")).toThrow("outcome");
+    // A run that launched and stopped before its outcome is censored, not untriggered.
+    adjudicatePrediction(path, id, "censored", "stopped in round 1", "t");
+    expect(ledgerView(path)[0]).toMatchObject({ outcome: "censored" });
   });
 });

@@ -39,10 +39,11 @@ export type ReviewOutcome =
   | { kind: "skipped"; reason: string }
   | { kind: "absent"; why: string };
 
-/** One reader session's deadline, continuations included. A review settles in a few minutes, so
- *  the bound is not a throughput limit; it exists for the tail, where a review still working runs
- *  into the Judge's 30-minute turn wall and loses its findings to it. An hour is the session's own
- *  turn ceiling, so nothing below this cuts a review that is still working. */
+/** One reader session's deadline, continuations included. Of 857 reviews since 2026-09-27 the
+ *  median took 3 min 50 s, p90 23 min and p99 69 min, so the bound is not a throughput limit; it
+ *  exists for the tail, where a review still working runs into the Judge's 30-minute turn wall and
+ *  loses its findings to it. An hour is the session's own turn ceiling, so nothing below this cuts
+ *  a review that is still working. Findings recorded before the deadline stay in the review. */
 export const READER_DEADLINE_MS = 60 * 60_000;
 
 interface ReaderTurnInput {

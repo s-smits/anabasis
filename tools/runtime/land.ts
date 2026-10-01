@@ -54,7 +54,8 @@ const PROVED: Record<Mode, string> = {
 const POLL_MS = 2000;
 const MERGE_WAIT_MS = 15 * 60_000;
 const CI_WORKFLOW = "gate.yml";
-const CI_POLL_MS = 20_000;
+/** ANA_CI_POLL_MS shortens it for the tests that walk a run from queued to completed. */
+const CI_POLL_MS = Number(runtimeProcess.env.ANA_CI_POLL_MS) || 20_000;
 /** The gate's jobs stop at 45 minutes; the rest is the macOS runner's queue. */
 const CI_WAIT_MS = 75 * 60_000;
 const FIELDS = String.raw`map(tostring) | join("\t")`;
@@ -361,10 +362,10 @@ async function firstFailure(
 }
 
 /** The newest Actions gate run on `sha` that a later dispatch did not cancel, as its status,
- *  conclusion, id and link, or null when there is none or GitHub did not answer: land then dispatches
- *  one, or polls again. A dispatched run always runs both jobs, and the gate runs on no other event for
- *  a pull request's head. */
-function ciRun(root: string, sha: string): string[] | null {
+ *  conclusion, id and link; null when there is none, so land dispatches one; undefined when GitHub
+ *  did not answer, which is never read as "none". A dispatched run always runs both jobs, and the gate
+ *  runs on no other event for a pull request's head. */
+function ciRun(root: string, sha: string): string[] | null | undefined {
   const read = run(root, [
     "gh",
     "run",
@@ -378,7 +379,21 @@ function ciRun(root: string, sha: string): string[] | null {
     "--jq",
     `[.[] | select(.conclusion != "cancelled")] | first // empty | [.status, .conclusion, .databaseId, .url] | ${FIELDS}`,
   ]);
-  return read.ok && read.out !== "" ? read.out.split("\t") : null;
+  if (!read.ok) return undefined;
+  return read.out === "" ? null : read.out.split("\t");
+}
+
+/** Dispatches the Actions gate on the top's head unless a run is already there. */
+function startCi(root: string, top: Pull): void {
+  const ci = ciRun(root, top.sha);
+  if (ci === undefined) {
+    throw new Refusal(`GitHub did not list the Actions gate's runs on ${short(top.sha)}. Land again.`);
+  }
+  if (ci !== null) return;
+  must(root, ["gh", "workflow", "run", CI_WORKFLOW, "--ref", top.ref]);
+  say(
+    `dispatched the Actions gate on #${top.number}'s head ${short(top.sha)}; it runs while the commits are gated here.`,
+  );
 }
 
 function awaitCi(root: string, top: Pull): void {
@@ -386,7 +401,8 @@ function awaitCi(root: string, top: Pull): void {
   let ci = ciRun(root, top.sha);
   while (ci?.[0] !== "completed" && Date.now() < deadline) {
     Bun.sleepSync(CI_POLL_MS);
-    ci = ciRun(root, top.sha);
+    const next = ciRun(root, top.sha);
+    if (next !== undefined) ci = next;
   }
   const [status, conclusion, id, url] = ci ?? [];
   const head = `#${top.number}'s head ${short(top.sha)}`;
@@ -521,12 +537,7 @@ async function main(argv: readonly string[]): Promise<number> {
     );
     // SAFETY: readLanding refuses a landing whose last pull request is not the one named.
     const top = landing.pulls.at(-1) as Pull;
-    if (reach === "github" && ciRun(root, top.sha) === null) {
-      must(root, ["gh", "workflow", "run", CI_WORKFLOW, "--ref", top.ref]);
-      say(
-        `dispatched the Actions gate on #${top.number}'s head ${short(top.sha)}; it runs while the commits are gated here.`,
-      );
-    }
+    if (reach === "github") startCi(root, top);
     const failed = await firstFailure(root, steps, reach, jobs);
     if (failed !== null) {
       const at = short(failed);

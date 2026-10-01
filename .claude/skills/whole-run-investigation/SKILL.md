@@ -91,9 +91,9 @@ into a trigger. So the read runs first, always, and its triggers choose most of 
 and which lane each trigger starts.
 
 ```text
-bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.ts lanes
-bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.ts scope <runId | campaign dir>
-bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.ts read <runId | campaign dir> \
+bun .claude/skills/whole-run-investigation/scripts/wri.ts lanes
+bun .claude/skills/whole-run-investigation/scripts/wri.ts scope <runId | campaign dir>
+bun .claude/skills/whole-run-investigation/scripts/wri.ts read <runId | campaign dir> \
   --out <absolute review dir> [--all | --lanes 5,yield] [--run <runId>] [--repo <abs>]
 ```
 
@@ -286,11 +286,11 @@ default.
 direction; `review` is the "all" path, for a run the operator asked to sweep whole.
 
 ```text
-bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.ts collect <target> --out <review>
-bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.ts launch \
+bun .claude/skills/whole-run-investigation/scripts/wri.ts collect <target> --out <review>
+bun .claude/skills/whole-run-investigation/scripts/wri.ts launch \
   --out <review> --sessions 5,11,25,31,34 --effort max --title <t> [--notes <f>] [--context <f>]
-bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.ts finish --out <review>
-bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.ts review <target> \
+bun .claude/skills/whole-run-investigation/scripts/wri.ts finish --out <review>
+bun .claude/skills/whole-run-investigation/scripts/wri.ts review <target> \
   --out <review> --repo <measured-source checkout> [launch options]
 ```
 
@@ -470,7 +470,7 @@ adjudications: WRI can propose a refutation or an experiment, but creates no cam
 promotion or closure.
 
 ```text
-bun --no-env-file .claude/skills/whole-run-investigation/scripts/validate-archive.ts \
+bun .claude/skills/whole-run-investigation/scripts/validate-archive.ts \
   --archive <absolute archive dir>
 ```
 

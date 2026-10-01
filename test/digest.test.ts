@@ -979,23 +979,29 @@ describe("digest", () => {
       openedAt: "2026-09-08T00:00:00.000Z",
       builtModel: "claude-opus-5",
     });
-    const identity = (model: string, resultId: string | null) => ({
+    const identity = (model: string | null, resultId: string | null, id = "anthropic") => ({
       schema: "runtime-model-identity/v2",
-      provider: { id: "anthropic", model, resultId },
+      provider: { id, model, resultId },
     });
+    // The Codex route reports no served model, and its resultId is still the provider's receipt: the
+    // truss rows of 2026-10-01 were each read as carrying none.
     const battery = (model: string) =>
       recordDigestBattery(domain, ["run-1"], {
         "run-1": [
           { taskId: "t1", solver: { completedTurns: 3, runtimeIdentities: [identity(model, "msg_1")] } },
           { taskId: "t2", solver: { completedTurns: 2, runtimeIdentities: [identity(model, null)] } },
           { taskId: "t3", solver: { completedTurns: 0, runtimeIdentities: [] } },
+          {
+            taskId: "t4",
+            solver: { completedTurns: 1, runtimeIdentities: [identity(null, "resp_1", "openai-codex")] },
+          },
         ],
       });
     battery("claude-opus-5");
     rmSync(join(domain, "runs", "run-4", "battery.json"));
     const digest = digestOf(paths);
     expect(digest).toContain(
-      "run-1: attested 1 · unattested 1 · no completed turn 1 · configured claude-opus-5 · served {claude-opus-5 ×1}",
+      "run-1: attested 2 · unattested 1 · no completed turn 1 · configured claude-opus-5 · served {claude-opus-5 ×1, unreported ×1}",
     );
     expect(digest).toContain("UNATTESTED ROWS: 1 case(s) carry no provider receipt");
     expect(digest).not.toContain("SERVED MODEL MISMATCH");

@@ -277,6 +277,8 @@ export interface CensusCell {
 
 export interface UnreadChannel {
   name: string;
+  /** False when no tool re-serves the channel, so an unread one is structural, not a choice. */
+  readRoute: boolean;
   alternative: string;
 }
 
@@ -287,6 +289,8 @@ export interface CensusRow {
   bashCalls: number | null;
   channels: CensusCell[];
   servedNotRead: UnreadChannel[];
+  /** The round's battery review's disposition of each defect the earlier review left advisory. */
+  carriedDispositions: string[];
 }
 
 export interface BeforeAuthoring {
@@ -651,6 +655,21 @@ function actedOf(round: Round, name: string): boolean | null {
   return null;
 }
 
+/** What the round's own battery review records of the earlier review's advisory defects
+ *  (src/review/review-carry.ts). `absent` means the finding did not recur, not that the Builder
+ *  acted on it, so it is reported as the successor's disposition and never as an acted mark. */
+function carriedDispositionsOf(campaign: string, round: Round): string[] {
+  if (round.battery === null) return [];
+  const review = analysis<{ earlierAdvisory?: { subject?: string | null; disposition?: string }[] }>(
+    campaign,
+    round.battery,
+    "epoch-review",
+  );
+  return records(recordOf(review)?.earlierAdvisory).map(
+    (row) => `${row.subject ?? "(no subject)"} ${row.disposition}`,
+  );
+}
+
 /** Lane 17: one row per round, one cell per channel. */
 function census(campaign: string, rounds: readonly Round[]): CensusRow[] {
   return rounds.map((round) => {
@@ -673,6 +692,7 @@ function census(campaign: string, rounds: readonly Round[]): CensusRow[] {
         ? [
             {
               name: cell.name,
+              readRoute: cell.read !== null,
               // Every cell is named after a channel, so the lookup always finds one.
               alternative: CHANNELS.find((c) => c.name === cell.name)?.alternative ?? "",
             },
@@ -687,6 +707,7 @@ function census(campaign: string, rounds: readonly Round[]): CensusRow[] {
       bashCalls: bash.length === 0 ? null : bash.reduce((a, b) => a + b, 0),
       channels,
       servedNotRead: unread,
+      carriedDispositions: carriedDispositionsOf(campaign, round),
     };
   });
 }
@@ -981,11 +1002,20 @@ function renderCensus(report: ReadHandoffs): string[] {
     );
   }
   for (const round of report.census) {
-    const unread = round.servedNotRead.map((u) => `${u.name} (${u.alternative})`).join("; ");
+    const unread = (route: boolean) =>
+      round.servedNotRead
+        .filter((u) => u.readRoute === route)
+        .map((u) => `${u.name} (${u.alternative})`)
+        .join("; ");
     lines.push(
       `  r${round.round} ${round.epoch}: bash ${shown(round.bashCalls)} (reads through it unobservable)${round.promptFound ? "" : "; kickoff prompt not found"}`,
     );
-    if (unread !== "") lines.push(`    served, never read: ${unread}`);
+    if (unread(true) !== "") lines.push(`    served, never read: ${unread(true)}`);
+    if (unread(false) !== "") lines.push(`    served, no read route: ${unread(false)}`);
+    const carried = round.carriedDispositions.join("; ");
+    if (carried !== "") {
+      lines.push(`    earlier review's advisory defects in this battery's review: ${carried}`);
+    }
   }
   return lines;
 }

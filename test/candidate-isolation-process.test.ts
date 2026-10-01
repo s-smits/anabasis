@@ -91,6 +91,31 @@ it.each(stops)("stops a live isolated command and what left its group when %s", 
   }
 });
 
+// The shell backgrounds perl and exits, so perl leads its own group under launchd by the time the
+// controller closes, as run -35's QEMU did: no live command's tree reaches it any more.
+it("stops an orphan that names the closing run's campaign and leaves another run's alone", async () => {
+  const orphan = async (campaign: string) => {
+    const marker = join(campaign, "orphan-pid");
+    Bun.spawnSync(["/bin/mkdir", "-p", campaign]);
+    Bun.spawnSync([
+      "/bin/sh",
+      "-c",
+      `perl -e 'setpgrp(0, 0); sleep 20' ${marker} </dev/null >/dev/null 2>&1 & echo $! > ${marker}`,
+    ]);
+    return Number(readFileSync(marker, "utf8"));
+  };
+  const closing = await orphan(join(SCRATCH, "campaigns", "closing"));
+  const other = await orphan(join(SCRATCH, "campaigns", "closing-2"));
+  try {
+    stopIsolatedCommands(join(SCRATCH, "campaigns", "closing"));
+    for (let waited = 0; waited < 40 && processGroupExists(closing); waited += 1) await Bun.sleep(50);
+    expect(processGroupExists(closing)).toBe(false);
+    expect(processGroupExists(other)).toBe(true);
+  } finally {
+    for (const pid of [closing, other]) if (processGroupExists(pid)) runtimeProcess.kill(pid, "SIGKILL");
+  }
+});
+
 it("kills a command whose caller aborted before it started", async () => {
   const controller = new AbortController();
   controller.abort();

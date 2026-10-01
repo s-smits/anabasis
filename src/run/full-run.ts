@@ -181,7 +181,7 @@ export async function runFullRun(
     state.providerBudget,
     (cause) => closeControllerRun(repoRoot, launch, state, cause),
     async () => {
-      stopIsolatedCommands();
+      stopIsolatedCommands(campaignDir(repoRoot, launch.project.id));
       await builderConversation.close();
       const pending = await state.verifierLifetime?.close();
       state.verifierSettled = true;

@@ -1,8 +1,18 @@
 # Construction ablations
 
-Status: in source, unrun. Three construction cues are commented out in this tree, each under its own
-`ABLATED(<arm>)` marker and in its own commit, the way #89 switched off the early-accept cues. The
-control is the tree before those three commits. No run is launched from here.
+Status: only the control has run. Each of three construction cues is commented out by its own commit
+on #117, under its own `ABLATED(<arm>)` marker, the way #89 switched off the early-accept cues. #118
+reverts each of them, so the tree that lands is the control the live runs measured. To run one arm,
+revert its revert on #118. No arm is launched from here.
+
+**The control reading (2026-10-01).** Two live runs, firmware -40 and buffer bbc47705-3, used 1177503:
+314bb790 with the three arm commits reverted, so every cue was live. Their first batteries passed 7/7
+and 5/5, and the buffer's second passed 5/5. Every first task in both joined several requirements.
+The tool description's forecast reached both Builders in every round. The result sentences and the
+examples pointer reached the buffer at 03:05:45Z and -40 at 09:50:15Z, and neither has read
+`examples.md` since in any recorded read. This reading is the control for this source only: it
+cannot say what any arm does, and a later source needs a control of its own. The three removals
+together are an unmeasured composed condition, not a result of this study.
 
 The question is which construction cues create valid demand and which add cost or narrow a Builder's task
 design. No arm is expected to make tasks harder, and a null result is an answer.
@@ -26,8 +36,9 @@ that replaces it carries `ADDED(<arm>)`. The owning test's flipped assertions si
 To restore an arm, revert its commit, or work through `rg "ABLATED\(<arm>\)|ADDED\(<arm>\)"`: remove the
 `ABLATED` prefixes, delete the `ADDED` lines and flip the tests back.
 
-To run one arm alone, check out this tree and revert the other two arm commits. Every arm changes text
-a Builder reads, so each is a new condition and moves the prompt digest.
+To run one arm alone, revert that arm's revert on #118, so the tree differs from the control in that
+component only. Every arm changes text a Builder reads, so each is a new condition and moves the
+prompt digest.
 
 ## The first batch
 
@@ -49,12 +60,14 @@ arm's tree and the control.
 
 | Arm | Prediction | Falsifier | Reader |
 |---|---|---|---|
-| `competing-margin` | The median count of independently supported request obligations per first battery does not fall, and no more validity gaps appear | Fewer supported obligations, or a first task's requirements interact less without the sentence | A blinded classification of each first battery (the readers gap below) |
-| `trial-forecast` | Rounds rehearse again after a pass no less often; limits are not looser; the pass-whole rate is unchanged | Any change in rehearsal behaviour, or easier tasks adopted | Rehearsal rows and the battery's limits: existing readers |
+| `competing-margin` | The median count of independently supported request obligations per first battery does not fall, and no more validity gaps appear | Fewer supported obligations, fewer valid-demand fails, or more validity gaps. How much a task's requirements interact is reported, not scored, since the arm removes the sentence that asks for it | A blinded classification of each first battery (the readers gap below) |
+| `trial-forecast` | Limits are not looser and the pass-whole rate is unchanged | Easier tasks adopted, or a higher pass-whole rate. How often a round rehearses again after a pass is the mechanism, reported beside the outcome | Rehearsal rows and the battery's limits: existing readers |
 | `examples-reminder` | No loss of supported obligations or valid-demand fails; construction cost or example-derived task overlap falls | Loses supported obligations, or gains neither diversity nor cost | Reads of the file are mechanism evidence only; overlap needs the classification |
 
 Every arm reports validity, supported behavioural coverage, valid-demand fails, solve effort,
-construction cost and completed batteries, separately and never as one score. Instrument defects,
+construction cost and completed batteries, separately and never as one score. A null shows a cue is
+dispensable only against a sample size and non-inferiority margin frozen with the prediction;
+without them it is inconclusive. Instrument defects,
 publication gaps, wall stops and unresolved cases are counted beside the fails, not inside them.
 
 ## Review
@@ -81,8 +94,12 @@ Checked on this tree; nothing is run live.
 - **`trial-forecast`: agree.** Its three carriers are the only ones in source and the arm switches off all
   three. The doc comment above `notePassEffort` still describes the forecast and carries an `ADDED` note
   saying so.
-- **`examples-reminder`: agree.** No recorded round postdates the pointer, so the unablated control run is
-  the whole comparison, and a null on file reads is likely and uninformative.
+- **`examples-reminder`: agree.** The control's two runs each received the pointer once, and neither
+  re-read the file after it, so a null on file reads is likely and uninformative.
+- **When the carriers fire.** `harness_trial` is registered in every round, so the tool description's
+  forecast reaches every Builder. The trial-result sentences and the examples pointer come only with a
+  graded `harness_trial`: -40's first round made none in 263 calls. An arm reads those two carriers only
+  where its Builder rehearses, and its predictions name that condition.
 
 ### The readers gap
 

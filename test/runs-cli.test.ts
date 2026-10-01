@@ -79,13 +79,19 @@ function writeOpening(root: string, slug: string, runId: string, writtenAt: stri
   return campaignDir;
 }
 
-function writeTerminal(campaignDir: string, runId: string, writtenAt: string, used: number): void {
+function writeTerminal(
+  campaignDir: string,
+  runId: string,
+  writtenAt: string,
+  used: number,
+  iteration: JsonObject = { runId, measured: true },
+): void {
   writeJson(join(campaignDir, "controller", runId, "terminal.json"), {
     writtenAt,
     outcome: "aborted",
     abortClause: "signal-terminated",
     terminalReason: "signal-terminated: fullrun received SIGTERM",
-    iterations: [{ runId, measured: true }],
+    iterations: [iteration],
     providerResourceBudget: { cap: 1320, used, byRole: { builder: 1, built: 8, review: 8 } },
   });
 }
@@ -226,6 +232,27 @@ describe("runs list", () => {
     if (detail.detail === undefined) throw new Error(detail.refusal);
     expect(renderShow(detail.detail, [])).toContain(
       "denominator: 3 cases — 1 verified, 1 unaccepted, 1 non-result",
+    );
+  });
+
+  // A terminal written before `measured` existed lists each round's batteries instead.
+  it("counts an older terminal's round by the batteries it lists", () => {
+    const root = checkout();
+    const dir = writeOpening(root, "slug-aaaaaaaa-1", "old-run", OPENED_AT);
+    writeTerminal(dir, "old-run", "2026-09-19T02:00:00.000Z", 10, {
+      runId: "old-run",
+      batteryRunIds: ["old-run"],
+    });
+    writeCases(dir, [caseLine(1, "old-run", "pass"), caseLine(2, "old-run", "pass")]);
+    const detail = collectDetail(root, "old-run", {
+      closedLimit: 8,
+      manager,
+      now: Date.parse("2026-09-20T03:00:00.000Z"),
+      query: () => answer("Could not find service", 1),
+    });
+    if (detail.detail === undefined) throw new Error(detail.refusal);
+    expect(renderShow(detail.detail, [])).toContain(
+      "denominator: 2 cases — 2 verified, 0 unaccepted, 0 non-result",
     );
   });
 

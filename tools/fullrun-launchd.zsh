@@ -15,7 +15,7 @@
 #     --worktree "$(pwd -P)" --log "$(pwd -P)/fullrun-run45.log" --label ana.fullrun.run45 \
 #     --env "HOME=/absolute/private-home" --env "CODEX_HOME=/absolute/private-codex-home" \
 #     --env "TMPDIR=/absolute/private-tmp" --env "PATH=/absolute/pinned-bun:/usr/bin:/bin" \
-#     --env "CODEX_BUILDER_MODEL=gpt-5.6-sol" --env "CODEX_BUILT_MODEL=gpt-5.6-sol" --env "CODEX_REVIEW_MODEL=gpt-5.6-sol" \
+#     --env "CODEX_BUILDER_MODEL=gpt-6.1-sol" --env "CODEX_BUILT_MODEL=gpt-6.1-sol" --env "CODEX_REVIEW_MODEL=gpt-6.1-sol" \
 #     --env "CODEX_BUILDER_REASONING_EFFORT=high" --env "CODEX_BUILT_REASONING_EFFORT=high" --env "CODEX_REVIEW_REASONING_EFFORT=medium" \
 #     -- bun run fullrun -- --run run45 --prompt "the exact user request"
 #

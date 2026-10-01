@@ -12,9 +12,8 @@ import {
 } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 import { tmpdir } from "../src/meta/os.ts";
-import { parseFullRunArgs } from "../src/run/launch-arguments.ts";
+import { commandDigest, parseFullRunArgs } from "../src/run/launch-arguments.ts";
 import { hashJsonBytes } from "../src/meta/json-runtime.ts";
-import { hashJsonValue } from "../src/meta/stable-json.ts";
 import {
   CONDITIONS,
   type OpeningPlan,
@@ -25,6 +24,7 @@ import {
   openingProblems,
   parseOptions,
   planRuns,
+  probeArgs,
   slotEnvironment,
 } from "../.claude/skills/launch-run/scripts/options.ts";
 import {
@@ -124,7 +124,7 @@ function requestIdentity(argv: string[]) {
   const requestDigest = hashJsonBytes({ prompt: args.prompt, contextDigest });
   return {
     requestDigest,
-    commandDigest: hashJsonValue({ ...args, prompt: null, contextPaths: null, requestDigest }),
+    commandDigest: commandDigest(args, requestDigest),
   };
 }
 
@@ -420,11 +420,11 @@ describe("one-command run launcher", () => {
   });
 
   it("uses the exact presets and lets the product parse their full launch arguments", () => {
-    const options = parseOptions([...CUSTOM, "truss"]);
+    const options = parseOptions([...CUSTOM, "truss", "buffer"]);
     const plans = planRuns(options, "/tmp/launch", "unique");
     expect(options).toMatchObject({ source: "origin/main", condition: "opus", tasks: "25", budget: "1320" });
-    expect(plans.map((plan) => plan.prompt)).toEqual([CUSTOM[2], PRESETS.truss]);
-    expect(new Set(plans.map((plan) => plan.dir)).size).toBe(2);
+    expect(plans.map((plan) => plan.prompt)).toEqual([CUSTOM[2], PRESETS.truss, PRESETS.buffer]);
+    expect(new Set(plans.map((plan) => plan.dir)).size).toBe(3);
     for (const plan of plans) {
       const parsed = parseFullRunArgs(fullrunArgs(plan, options, source));
       expect(parsed).toMatchObject({
@@ -437,7 +437,7 @@ describe("one-command run launcher", () => {
       expect(parsed.backendSelections).toEqual({ builder: "claude", built: "claude", review: "claude" });
     }
     expect(slotEnvironment("sol")).toMatchObject({
-      CODEX_BUILDER_MODEL: "gpt-6-sol",
+      CODEX_BUILDER_MODEL: "gpt-6.1-sol",
       CODEX_BUILT_REASONING_EFFORT: "high",
       CODEX_REVIEW_REASONING_EFFORT: "medium",
     });
@@ -456,6 +456,20 @@ describe("one-command run launcher", () => {
       CLAUDE_BUILT_REASONING_EFFORT: "medium",
       CLAUDE_REVIEW_REASONING_EFFORT: "medium",
     });
+    expect(slotEnvironment("opushmm")).toMatchObject({
+      CLAUDE_BUILDER_MODEL: "claude-opus-5-5",
+      CLAUDE_BUILDER_REASONING_EFFORT: "high",
+      CLAUDE_BUILT_REASONING_EFFORT: "medium",
+      CLAUDE_REVIEW_REASONING_EFFORT: "medium",
+    });
+  });
+
+  it("names an effort variant in its run id and probes it as its model's standard row", () => {
+    const options = parseOptions(["--prompt", "Write a CLI.", "--model", "opushmm"]);
+    const [plan] = planRuns(options, "/tmp/launch", "at");
+    expect(plan?.runId).toBe("standard-opushmm-at");
+    const args = plan === undefined ? [] : probeArgs(plan, options);
+    expect(args[args.indexOf("--condition") + 1]).toBe("opus");
   });
 
   it("names a --prompt run standard, whether it is named standard, custom or not at all", () => {
@@ -495,7 +509,7 @@ describe("one-command run launcher", () => {
     [["unknown"], "unknown preset unknown; use --list"],
     [["truss", "--prompt", "replacement"], "standard runs the --prompt text, so each needs the other"],
     [["standard"], "standard runs the --prompt text, so each needs the other"],
-    [[], "give --prompt or name a preset: truss, standard"],
+    [[], "give --prompt or name a preset: truss, buffer, standard"],
     [["--prompt", "three\nprompt\nlines"], PROMPT_REFUSAL],
     [["--prompt", "\nblank"], PROMPT_REFUSAL],
     [["--prompt", "text\0"], PROMPT_REFUSAL],
@@ -759,7 +773,9 @@ describe("one-command run launcher", () => {
     for (const planned of fixture.plans) {
       const { environment, argv } = launchOf(fixture.calls, planned);
       expect(parseFullRunArgs(argv).stopAfterMs).toBe(14400000);
-      expect(environment.CODEX_BUILT_MODEL).toBe(planned.condition === "astra" ? "gpt-6-astra" : "gpt-6-sol");
+      expect(environment.CODEX_BUILT_MODEL).toBe(
+        planned.condition === "astra" ? "gpt-6-astra" : "gpt-6.1-sol",
+      );
       const plan = opened(planned, argv);
       const wrong = openingFor(plan);
       wrong.modelSlots.built.model = "unrequested-model";
@@ -881,7 +897,7 @@ describe("one-command run launcher", () => {
       [{ ...valid, project: { ...valid.project, requestDigest: "wrong" } }, "prompt/request digest"],
       [{ ...valid, providerResourceBudget: { cap: 25 } }, "provider budget"],
       [
-        { ...valid, modelSlots: { ...valid.modelSlots, built: { kind: "codex", model: "gpt-5.6-sol" } } },
+        { ...valid, modelSlots: { ...valid.modelSlots, built: { kind: "codex", model: "gpt-6.1-sol" } } },
         "built model slot",
       ],
     ];

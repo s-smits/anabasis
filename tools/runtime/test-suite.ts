@@ -17,7 +17,7 @@
  * one-minute load average, so a runner already carrying four jobs of its own is not asked for
  * three times itself, while a laptop that merely looks busy keeps its workers. Then, when the
  * first process fails, the run is attributed before it is believed: if a clock ended every
- * failure, or the host passed twice its cores in load while they ran, the failed files run again
+ * failure, or the host passed its cores in load while they ran, the failed files run again
  * alone, beside any whose worker crashed or that Bun never finished, and that verdict is the
  * suite's. A failure on a quiet host, more of those files than a busy host explains, and a run
  * that bailed before reaching the rest all stand as they were printed.
@@ -216,7 +216,7 @@ function hostLoad(): number {
 /** The silence a starved host earns. Work on a machine carrying more runnable threads than it
  *  has cores takes proportionally longer to print its first line, and a suite waiting for a core
  *  looks exactly like one that is wedged. Scaling by the same reading `workerCount` uses keeps
- *  the wall at its flat value on a quiet machine and doubles it at the load above which
+ *  the wall at its flat value on a quiet machine and widens it from the load above which
  *  `attribute` already stops blaming the branch.
  *
  *  The suite's own workers cannot reach the multiplier: two of them spinning on a twelve-core
@@ -544,7 +544,7 @@ async function runWalled(
 
 /** Every rule that decides whose verdict the suite reports, in one place and away from the
  *  spawning. They are all attribution rather than execution -- a clock decided rather than an
- *  assertion, the host was carrying more runnable work than it has cores twice over, too many
+ *  assertion, the host was carrying more runnable work than it has cores, too many
  *  files failed for a busy host to explain, a file printed no result at all -- so deciding them
  *  here costs a plain call where deciding them inside `main` cost a real sub-suite each. `cores`
  *  is a parameter so a test can state the host it is reasoning about. */
@@ -592,7 +592,7 @@ export function attribute(
   // Two failures the branch did not cause: every one of them ended by a clock, and any of them on
   // a host carrying more work than the suite asked of it. Either way the machine decided.
   const because: Reason | null =
-    first.clockEnded === first.failures ? "clock-only" : first.peakLoad > cores * 2 ? "crowded-host" : null;
+    first.clockEnded === first.failures ? "clock-only" : first.peakLoad > cores ? "crowded-host" : null;
   if (because === null) return { rerun: null, exitCode: first.exitCode, because: "stands", subject: [] };
   // A bailed run never ran the files after the failure that stopped it, and names none of them, so
   // a passing rerun of the failed files alone would clear an invocation nothing has yet tested.

@@ -9,6 +9,7 @@
 
 import { admitBackendSelection } from "../backends/project-backends.ts";
 import type { BackendSlot, ProjectBackendSelection } from "../backends/resolve.ts";
+import { hashJsonValue } from "../meta/stable-json.ts";
 import { builtSolveConcurrency, reviewConcurrency } from "./session-pool.ts";
 
 /** The one policy an invocation may fix: measure and stop only. */
@@ -202,4 +203,20 @@ export function parseFullRunArgs(argv: string[]): FullRunArgs {
   builtSolveConcurrency();
   reviewConcurrency();
   return args;
+}
+
+/** The condition's digest, which the opening records as `command.digest` and the launcher's probe
+ *  predicts. It leaves out the request text, which `requestDigest` stands for, and the run's own
+ *  identity (its id, source and project), which the opening records beside it, so two runs of one
+ *  condition share it and a pair that differs in it moved a flag. */
+export function commandDigest(args: FullRunArgs, requestDigest: string): string {
+  return hashJsonValue({
+    ...args,
+    prompt: null,
+    contextPaths: null,
+    runId: null,
+    expectedSource: null,
+    project: null,
+    requestDigest,
+  });
 }

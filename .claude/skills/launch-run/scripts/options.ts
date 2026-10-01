@@ -16,6 +16,8 @@ import type { JsonObject, JsonValue } from "#src/meta/json-shape.ts";
 export const PRESETS = {
   truss:
     "Design lightweight 3D steel trusses around irregular supports and forbidden volumes, choosing joint positions, connectivity and catalogue sections within strict mass limits.\nMeet strength, buckling and deflection requirements under self-weight, reversing wind and asymmetric live loads, including geometric nonlinearity and specified single-member-loss scenarios.",
+  buffer:
+    "Design aqueous buffer formulations from a published reagent catalogue, choosing components and concentrations within strict ionic-strength, osmolality and cost limits.\nMeet pH, buffer-capacity and precipitation-free requirements across temperature shifts, tenfold dilution and CO2 uptake, including activity corrections and specified single-reagent-substitution scenarios.",
 };
 const PRESET_PROMPTS: ReadonlyMap<string, string> = new Map(Object.entries(PRESETS));
 /**
@@ -24,13 +26,18 @@ const PRESET_PROMPTS: ReadonlyMap<string, string> = new Map(Object.entries(PRESE
  */
 export const STANDARD = "standard";
 export const SLOTS = ["builder", "built", "review"] as const;
-/** The model one `--model` name selects, and its effort on each slot in `SLOTS` order. */
+/**
+ * The model one `--model` name selects, and its effort on each slot in `SLOTS` order. A variant of a
+ * model's standard row is named for its efforts, one letter per slot (l, m, h, x for low to xhigh):
+ * `opushmm` is Opus 5.5 with only the Builder at high, and the Builder at xhigh would be `opusxmm`.
+ */
 export const CONDITIONS = {
-  sol: { kind: "codex", model: "gpt-6-sol", efforts: ["high", "high", "medium"] },
+  sol: { kind: "codex", model: "gpt-6.1-sol", efforts: ["high", "high", "medium"] },
   luna: { kind: "codex", model: "gpt-5.6-luna", efforts: ["max", "max", "max"] },
   astra: { kind: "codex", model: "gpt-6-astra", efforts: ["medium", "low", "low"] },
   opus: { kind: "claude", model: "claude-opus-5-5", efforts: ["medium", "medium", "medium"] },
   fable: { kind: "claude", model: "claude-fable-5-1", efforts: ["medium", "medium", "medium"] },
+  opushmm: { kind: "claude", model: "claude-opus-5-5", efforts: ["high", "medium", "medium"] },
 } as const;
 export const DEFAULT_DISK_MIN_GIB = 20;
 /** Where a launch keeps its receipts, logs and frozen environment, relative to the run tree. */
@@ -123,7 +130,7 @@ export type LaunchOptions = Partial<Record<(typeof OPTIONAL_VALUES)[number], str
 
 const PRESET_NAMES = [...PRESET_PROMPTS.keys(), STANDARD].join("|");
 export const HELP = `Usage: bun .claude/skills/launch-run/scripts/launch.ts [${PRESET_NAMES}]... [options]
-  --model sol,luna,astra,opus,fable Standard model presets; default opus (legacy alias: --condition)
+  --model sol,luna,astra,opus,fable,opushmm Model presets; default opus (legacy alias: --condition)
   --source <ref|sha|pr:number>     Default current origin/main
   --budget N --tasks N            Defaults 1320 provider turns and 25 tasks per run
   --gate auto|run|skip            Default auto: skip bun run gate when the pre-push hook recorded a
@@ -307,7 +314,11 @@ export function probeArgs(plan: RunPlan, options: LaunchOptions): string[] {
     "--run",
     plan.runId,
     "--condition",
-    plan.condition,
+    // A variant probes as its model's standard row: the probe reads each slot's effort from the
+    // frozen env, and an older tree's table has no variants.
+    Object.entries(CONDITIONS).find(
+      ([base, row]) => plan.condition.startsWith(base) && row.model === CONDITIONS[plan.condition].model,
+    )?.[0] ?? plan.condition,
     "--budget",
     options.budget,
     "--tasks",

@@ -169,6 +169,12 @@ function campaign(options: { toolCalls?: boolean } = {}): string {
     probes: [{ baseline: { outcome: "pass" }, movedCheckIds: [], refused: null }],
     disputes: [{ issueId: disputed.id, reason: "unpublished rule" }],
   });
+  // The second battery's review no longer finds the first review's advisory defect.
+  write(join(dir, "analysis", `${SECOND}-epoch-review.json`), {
+    status: "completed",
+    findings: [],
+    earlierAdvisory: [{ owner: "correctness-model/tasks.json", subject: "span", disposition: "absent" }],
+  });
   // An authoring review at 02:40, after round 2's preview (02:30) and before its submit (02:59).
   write(join(dir, "analysis", "authoring-01a0b788-f000-7000-8000-000000000000-epoch-review.json"), {});
   const cases = (battery: string, family: string, inputs: number[]) =>
@@ -209,7 +215,14 @@ describe("round hand-offs", () => {
     // Both traces were opened through the context tool, and neither counts as reading the user's files.
     expect(cell("traces")).toMatchObject({ read: 2 });
     expect(cell("context")).toMatchObject({ read: 0 });
-    expect(second.servedNotRead.map((u: { name: string }) => u.name)).toContain("rebuild-advice");
+    expect(second.servedNotRead).toContainEqual(
+      expect.objectContaining({ name: "rebuild-advice", readRoute: false }),
+    );
+    // The round's own battery review no longer finds the earlier review's defect. That is the
+    // successor's disposition, reported as such; it is not an acted mark.
+    expect(cell("epoch-review")).toMatchObject({ read: null, acted: null });
+    expect(second.carriedDispositions).toEqual(["span absent"]);
+    expect(census[0]?.carriedDispositions).toEqual([]);
     // The first round's prompt carries no readout, and its memory note was written, not handed on.
     expect(census[0]?.channels.find((c: { name: string }) => c.name === "climb-readout")?.served).toBe(false);
     expect(second.bashCalls).toBe(6);
@@ -267,6 +280,10 @@ describe("round hand-offs", () => {
     ]);
     expect(sameTask.producer).toEqual({ issues: 2, familyKeyed: 2 });
     expect(renderHandoffs(report)).toContain("2 tasks reappear under another family name");
+    expect(renderHandoffs(report)).toMatch(/served, no read route: round-facts .*; rebuild-advice/);
+    expect(renderHandoffs(report)).toContain(
+      "earlier review's advisory defects in this battery's review: span absent",
+    );
   });
 
   it("reads an absent field as unobservable, never as zero", () => {

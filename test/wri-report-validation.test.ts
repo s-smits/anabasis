@@ -508,6 +508,25 @@ console.log(JSON.stringify({ type: "thread.started", thread_id: "thread_test_123
     expect(receiptOf(f).rows[0].issues).toContain(unlistedOwner("evaluator"));
   });
 
+  it("reads no owner from a record field a finding quotes", () => {
+    // lane_14 of custom-opus 350009 (2026-10-01) counted admitted rows "with `owner:null`" in its
+    // denominator line, and was refused for naming the owner `null`.
+    const f = fixture();
+    writeFileSync(
+      f.report,
+      laneReport(
+        LANE,
+        [
+          "- Recurrence never matches an unrouted finding.",
+          "owner: controller-source",
+          "denominator: the 4 admission records contain 13 admitted rows, 3 with `owner:null`.",
+        ].join("\n"),
+      ),
+    );
+    expect(run(f.tasks, f.summary).status).toBe(0);
+    expect(receiptOf(f).rows[0].issues).toEqual([]);
+  });
+
   it("rejects a failed session and a report outside the launcher output", () => {
     const f = fixture();
     const outside = join(f.dir, "outside.md");

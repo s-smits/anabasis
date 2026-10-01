@@ -299,10 +299,12 @@ function sectionIssues(heading: string, sectionText: string): string[] {
   const findings = found.get("Findings")?.[0];
   if (findings !== undefined && findings.length > 0 && findings !== "none") {
     // A report wraps the label or its value in code or bold marks, glosses the value, or leads a
-    // finding's own line with it, so the owner is the first word after `owner:` anywhere on a line
-    // once those marks and any closing punctuation are gone. That word is still checked below.
+    // finding's own line with it, so the owner is the first word after an `owner: ` label anywhere
+    // on a line once those marks and any closing punctuation are gone. That word is still checked
+    // below. The label is the instructed `owner: <owner>`, with the space: a finding that quotes a
+    // record field, as 350009's lane 14 quoted `owner:null`, is prose and names no owner.
     const owners = findings.split("\n").flatMap((line) => {
-      const owner = /\bowner:\s*(\S+)/i.exec(line.replaceAll(/[`*]/g, ""))?.[1];
+      const owner = /\bowner:\s+(\S+)/i.exec(line.replaceAll(/[`*]/g, ""))?.[1];
       return owner === undefined ? [] : [owner.replace(/[.;,:)]+$/, "")];
     });
     if (owners.length === 0) issues.push(`${heading}: findings name no owner`);

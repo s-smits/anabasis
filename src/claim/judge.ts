@@ -17,10 +17,10 @@ export type JudgeEvidence =
       judgePin: string;
       /** Content policy identity used by the census, when the session names one. */
       promptPolicyDigest?: string;
-      /** The Built Harness backend pin. Independence is derived from it and judgePin by
-       *  `evaluatorIndependence` wherever it is needed, so the evidence stores the basis rather than
-       *  a classification that could disagree with it. Consumers assessing target or plateau
-       *  decisions must also compare this pin with the battery record's backendPin. */
+      /** The Built Harness backend pin, recorded beside judgePin so a reader can compare the two
+       *  models: the evidence stores the basis rather than a classification that could disagree with
+       *  it. Consumers assessing target or plateau decisions must also compare this pin with the
+       *  battery record's backendPin. */
       evaluatedPin: string;
       /** The exact correctnessModel version whose battery this Judge reviewed. */
       correctnessModelId: string;

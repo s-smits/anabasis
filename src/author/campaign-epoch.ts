@@ -18,7 +18,6 @@ import type { BackendKind } from "../backends/resolve.ts";
 import { readCompleted, writeCompleted } from "../meta/completed-json.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
-export { readCompleted, writeCompleted } from "../meta/completed-json.ts";
 
 export type CampaignBuilderCondition = {
   kind: BackendKind;

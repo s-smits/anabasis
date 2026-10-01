@@ -34,7 +34,8 @@ import {
 } from "../claim/case-record.ts";
 import { hashJsonBytes, parseJsonAs } from "../meta/json-runtime.ts";
 import { claimsDirFor, executedBundleSnapshotFact } from "../run/claim-write.ts";
-import { type RunSummary, assertRunIdSafe, summarizeRun } from "../run/run-driver.ts";
+import { type RunSummary, summarizeRun } from "../run/run-driver.ts";
+import { assertPathSegment } from "../meta/path-segment.ts";
 import { controllerValidatedFindings } from "../correctness-bundle/brief.ts";
 import { type BundleSnapshotFact, batteryPath } from "../correctness-bundle/battery-record.ts";
 import { isNumber, isRecord, isString } from "../meta/json-shape.ts";
@@ -356,7 +357,7 @@ export function deriveIterationAnalysis(
   runId: string,
   measuredDir = selectedProductDir(repoRoot, slug),
 ): IterationAnalysis {
-  assertRunIdSafe(runId);
+  assertPathSegment("runId", runId);
   const treeRoot = relative(repoRoot, measuredDir);
   if (treeRoot === "" || treeRoot.startsWith("..") || isAbsolute(treeRoot)) {
     throw new Error(`${measuredDir}: measured tree must stay inside the repository`);

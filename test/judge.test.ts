@@ -1,7 +1,6 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { describe, expect, it } from "bun:test";
 import type { AgentSession } from "../src/backends/backend-types.ts";
-import { evaluatorIndependence } from "../src/claim/calibration.ts";
 import { judgeDecision, validateJudgeEvidence } from "../src/claim/judge.ts";
 import { JudgeCensus, type JudgeCensusSubject } from "../src/review/judge-census.ts";
 import { runJudgePhase } from "../src/review/judge-phase.ts";
@@ -871,12 +870,9 @@ describe("judge battery aggregation", () => {
     ).toThrow(/cannot be below/);
   });
 
-  it("records both pins, from which independence derives", () => {
+  it("records both pins", () => {
     const crossFamily = summarize([observation("t1", true, { verifier: true })]);
-    // The label compares model names; it does not prove independent errors or reasoning.
     expect(crossFamily).toMatchObject({ judgePin: session.pin, evaluatedPin: EVALUATED_PIN });
-    expect(evaluatorIndependence("scripted/judge", EVALUATED_PIN)).toBe("different-family");
-    expect(evaluatorIndependence(EVALUATED_PIN, EVALUATED_PIN)).toBe("same-model");
   });
 
   it("rejects contradictory observations before aggregation", () => {

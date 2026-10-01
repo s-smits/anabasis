@@ -18,7 +18,8 @@ import {
   bashTimeoutMs,
   workspaceSolverBudgetNotice,
 } from "./bash-install-env.ts";
-import { type PathRecord, guardAndRecord, runIsolated } from "./candidate-isolation-runtime.ts";
+import { guardAndRecord, runIsolated } from "./candidate-isolation-runtime.ts";
+import type { PathRecord } from "./path-record.ts";
 import { moreRowsNote } from "./read-window.ts";
 import type { CandidateAccessPolicy } from "./candidate-isolation.ts";
 import {
@@ -30,7 +31,6 @@ import {
 } from "./pi-coding/edit-core.ts";
 import { refuseDestructiveCommand } from "./command-guard.ts";
 import type { SafeguardContext } from "../meta/safeguard.ts";
-export { BUILDER_CAPABILITY_MODES } from "./capability-modes.ts";
 import { withFileMutationQueue } from "./pi-coding/file-mutation-queue.ts";
 import { truncateHead, truncateLine, truncateTail } from "../meta/truncate.ts";
 import { cutOutputNotice, spillWholeOutput, stageAndCopy } from "./tool-write.ts";

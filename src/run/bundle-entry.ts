@@ -30,7 +30,7 @@ import { type Brief, externalChecksOf, throwIfInvalid } from "../correctness-bun
 import { validateBrief } from "../correctness-bundle/brief-validator.ts";
 import { loadCorrectnessModel } from "../correctness-bundle/contracts.ts";
 import { type ControlCorpus, isControlCorpus } from "../correctness-bundle/controls.ts";
-import { evaluateCheckProgram } from "../correctness-bundle/predicate.ts";
+import { evaluateCheckProgram } from "../../vendor/correctness-model-bundle/evaluate.ts";
 import { createVerifierLifetime, VerifierOperationalStop } from "../verify/verifier-lifetime.ts";
 import { applicableCheckIds } from "../correctness-bundle/run-controls.ts";
 import { builtStarterFactoryForSolver } from "../correctness-bundle/solve.ts";

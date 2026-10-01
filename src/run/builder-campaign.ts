@@ -15,7 +15,7 @@ import {
   type WorkspaceSeed,
   runBuilderSession,
 } from "../author/builder-session.ts";
-import { writeCompleted } from "../author/campaign-epoch.ts";
+import { writeCompleted } from "../meta/completed-json.ts";
 import { type CampaignMemory, nextOrdinal, resumeCampaignMemory } from "../author/campaign-memory.ts";
 import { safeguardRepeatedRefusalCode } from "../correctness-bundle/run-safeguards.ts";
 import { renderBatteryContract } from "./climb-readout.ts";

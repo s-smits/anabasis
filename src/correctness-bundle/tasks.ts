@@ -21,7 +21,7 @@ import {
   fieldFinding,
 } from "./brief.ts";
 import type { HiddenExpectation } from "./hidden-expectation.ts";
-import { resolvePredicatePath } from "./predicate.ts";
+import { resolveJsonPath } from "../meta/json-evidence.ts";
 import { unstatedLimitFindings } from "./numeric-boundary.ts";
 import type { GeneratedTask } from "./task-split.ts";
 import { isRecord, isString, type JsonValue } from "../meta/json-shape.ts";
@@ -223,7 +223,7 @@ function declaredPathFindings(rows: readonly TaskRow[]): ContractFinding[] {
   );
   for (const { task, check, path } of declared) {
     const key = `${check.id}\u0000${path}`;
-    if (resolvePredicatePath(task.publicInput, path).found) {
+    if (resolveJsonPath(task.publicInput, path).found) {
       provided.add(key);
       unmet.delete(key);
     } else if (!provided.has(key)) unmet.set(key, { assertion: check.assertion, path });

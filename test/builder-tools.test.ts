@@ -36,11 +36,8 @@ import { runtimeProcess } from "../src/meta/process.ts";
 import { join, relative } from "../src/meta/path.ts";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { afterAll, describe, expect, it } from "bun:test";
-import {
-  CandidateIsolationRefusal,
-  openPathRecord,
-  readPathRecordRows,
-} from "../src/builder/candidate-isolation-runtime.ts";
+import { CandidateIsolationRefusal } from "../src/builder/candidate-isolation-runtime.ts";
+import { openPathRecord, readPathRecordRows } from "../src/builder/path-record.ts";
 import {
   type CandidateIsolationBinding,
   deriveCandidateIsolation,

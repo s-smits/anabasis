@@ -6,7 +6,7 @@ import {
   type BuilderToolInterfaceInput,
   reconcileBuilderInterface,
 } from "./builder-tool-interface.ts";
-import type { PathRecord } from "./candidate-isolation-runtime.ts";
+import type { PathRecord } from "./path-record.ts";
 import type { CandidateAccessPolicy, IsolationMode } from "./candidate-isolation.ts";
 import { BUILDER_CAPABILITY_MODES } from "./capability-modes.ts";
 import type { BuilderShellWall } from "../run/builder-backend.ts";

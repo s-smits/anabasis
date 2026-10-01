@@ -11,7 +11,7 @@ import {
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { afterEach, describe, expect, it, setDefaultTimeout } from "bun:test";
-import { openPathRecord, readPathRecordRows } from "../src/builder/candidate-isolation-runtime.ts";
+import { openPathRecord, readPathRecordRows } from "../src/builder/path-record.ts";
 import { deriveCandidateIsolation } from "../src/builder/candidate-isolation.ts";
 import {
   type VmWorkshopCell,

@@ -15,7 +15,8 @@ import {
 import { homedir, tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { afterAll, describe, expect, it } from "bun:test";
-import { CandidateIsolationUnavailable, openPathRecord } from "../src/builder/candidate-isolation-runtime.ts";
+import { CandidateIsolationUnavailable } from "../src/builder/candidate-isolation-runtime.ts";
+import { openPathRecord } from "../src/builder/path-record.ts";
 import { deriveCandidateIsolation } from "../src/builder/candidate-isolation.ts";
 import { createPublicSourceTool } from "../src/builder/public-source-tool.ts";
 import {

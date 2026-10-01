@@ -12,9 +12,9 @@ import { runtimeProcess } from "../src/meta/process.ts";
 import {
   CandidateIsolationRefusal,
   linuxCandidatePlan,
-  openPathRecord,
   runIsolated,
 } from "../src/builder/candidate-isolation-runtime.ts";
+import { openPathRecord } from "../src/builder/path-record.ts";
 import { deriveCandidateIsolation } from "../src/builder/candidate-isolation.ts";
 import { networkResolverReadPaths, presentSystemReadRoots } from "../src/verify/linux-bwrap.ts";
 import { LINUX_BWRAP_ID, osIsolationSupport } from "../src/verify/os-isolation.ts";

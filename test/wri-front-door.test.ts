@@ -7,7 +7,6 @@ import {
   OVERVIEW_SCHEMA,
   buildOverview,
   digestTriggers,
-  readOverview,
 } from "../.claude/skills/whole-run-investigation/scripts/run-overview.ts";
 import {
   buildSharedInstructions,
@@ -197,10 +196,8 @@ describe("run overview", () => {
     expect(() => renderSharedInstructions(shared)).toThrow("{missing}");
   });
 
-  it("refuses an overview file of another schema", () => {
-    const path = join(scratchDir("ana-wri-overview-"), "overview.json");
-    writeFileSync(path, json({ schema: "something-else/v1" }));
-    expect(() => readOverview(path)).toThrow("wri-run-overview/v1");
+  it("refuses an overview of another schema", () => {
+    expect(() => buildSharedInstructions({ schema: "something-else/v1" })).toThrow("wri-run-overview/v1");
   });
 });
 

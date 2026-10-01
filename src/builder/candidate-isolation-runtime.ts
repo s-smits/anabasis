@@ -40,8 +40,6 @@ import type { PathRecord } from "./path-record.ts";
 import type { OptionalEnvValues } from "../backends/scrub-env.ts";
 import { decodeOutput, killProcessGroup, killProcessGroupId, runSync } from "../meta/subprocess.ts";
 
-export { type PathRecord, type PathRecordRow, openPathRecord, readPathRecordRows } from "./path-record.ts";
-
 export interface IsolatedRequest {
   capability: string;
   mode: IsolationMode;

@@ -48,7 +48,7 @@ import { type Brief, externalChecksOf } from "../../src/correctness-bundle/brief
 import { validateBrief } from "../../src/correctness-bundle/brief-validator.ts";
 import { loadCorrectnessModel } from "../../src/correctness-bundle/contracts.ts";
 import { type GradeCaseDeps, gradeCase } from "../../src/correctness-bundle/solve-case.ts";
-import { evaluateCheckProgram } from "../../src/correctness-bundle/predicate.ts";
+import { evaluateCheckProgram } from "../../vendor/correctness-model-bundle/evaluate.ts";
 import { applicableCheckIds } from "../../src/correctness-bundle/run-controls.ts";
 import { commitPublicTask } from "../../src/correctness-bundle/task-split.ts";
 import { type BuildTask, type TaskBattery, validateTasks } from "../../src/correctness-bundle/tasks.ts";

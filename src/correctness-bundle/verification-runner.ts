@@ -56,7 +56,7 @@ import {
   writeJudgePublicContext,
 } from "../review/judge-phase.ts";
 import { type JudgeObservation, type JudgeSession, summarizeJudge } from "../review/judge.ts";
-import { evaluateCheckProgram } from "./predicate.ts";
+import { evaluateCheckProgram } from "../../vendor/correctness-model-bundle/evaluate.ts";
 import {
   withVerifierLifetime,
   createVerifierLifetime,

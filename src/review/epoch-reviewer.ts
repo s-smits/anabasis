@@ -43,7 +43,7 @@ import { familyTally } from "../claim/case-record.ts";
 import { FROZEN_MANIFEST_PATH } from "../critic/manifest.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { boundText } from "../meta/bounded-text.ts";
-import { writeCompleted } from "../author/campaign-epoch.ts";
+import { writeCompleted } from "../meta/completed-json.ts";
 import { claimsDirFor } from "../run/claim-write.ts";
 import { type ClimbReadout, readClimbReadout, readingSentence } from "../run/climb-readout.ts";
 import { selectedProductDir } from "../run/product-versions.ts";

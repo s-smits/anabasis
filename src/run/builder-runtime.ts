@@ -9,7 +9,7 @@ import type { CampaignBuilderCondition } from "../author/campaign-epoch.ts";
 import { piBuiltReadAllowRoots, piBuiltSolver, resolvePiBuiltRuntime } from "../backends/pi-built.ts";
 import type { PiTool } from "../backends/pi-session.ts";
 import type { BackendKind, ResolvedSlots } from "../backends/resolve.ts";
-import { openPathRecord } from "../builder/candidate-isolation-runtime.ts";
+import { openPathRecord } from "../builder/path-record.ts";
 import { deriveCandidateIsolation, policyReadGrant } from "../builder/candidate-isolation.ts";
 import { createPublicSourceTool } from "../builder/public-source-tool.ts";
 import { writeBuilderSessionEvidence } from "../builder/session-evidence.ts";

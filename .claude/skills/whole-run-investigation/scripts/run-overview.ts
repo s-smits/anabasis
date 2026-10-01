@@ -10,9 +10,8 @@ import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
 import { asRecord, isRecord, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
-import { isAbsolute, join, resolve } from "#src/meta/path.ts";
-import { absoluteOption, exitWith, parseOrDie, requiredOption } from "#skills/main/cli.ts";
-import { readJsonFileOrNull, writeJsonFile } from "#src/meta/completed-json.ts";
+import { join, resolve } from "#src/meta/path.ts";
+import { readJsonFileOrNull } from "#src/meta/completed-json.ts";
 
 export const OVERVIEW_SCHEMA = "wri-run-overview/v1";
 const TRIGGER_ROW = /^[A-Z][A-Z0-9 /()-]{5,}[A-Z)]:?\s/;
@@ -230,37 +229,4 @@ export function buildOverview(snapshotDir: string) {
     orientation: "",
     movedVariable: "",
   };
-}
-
-export function readOverview(path: string): RunOverview {
-  if (!isAbsolute(path)) throw new Error("--overview must be an absolute path");
-  const overview = readJsonAsOrNull<RunOverview>(path);
-  if (!asRecord(overview) || overview?.schema !== OVERVIEW_SCHEMA) {
-    throw new Error(`${path} is not a ${OVERVIEW_SCHEMA} file`);
-  }
-  return overview;
-}
-
-/**
- * A one-input script's command line: the absolute path after `--<input>`, then the JSON `build`
- * makes of it, written to the absolute `--out` path and announced as `<label> written to <path>`,
- * or printed when `--out` is absent.
- */
-export function runJsonScript<T>(
-  script: string,
-  input: string,
-  build: (path: string) => T,
-  label: string,
-): void {
-  const die = exitWith(script);
-  const { single } = parseOrDie(die, { values: [input, "out"] });
-  const absolute = absoluteOption(die);
-  const result = build(absolute(input, requiredOption(die, single)(input)));
-  const out = single.get("out");
-  if (out === undefined) {
-    console.log(JSON.stringify(result, null, 2));
-    return;
-  }
-  writeJsonFile(absolute("out", out), result);
-  console.log(`${label} written to ${out}`);
 }

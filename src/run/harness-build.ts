@@ -5,7 +5,8 @@ import { campaignDir } from "../meta/campaign-root.ts";
 import { join, relative } from "../meta/path.ts";
 import type { BuilderConversation } from "../author/builder-conversation.ts";
 import { carryMemoryForward } from "../author/builder-memory.ts";
-import { type CampaignEpochEvidence, selectCampaignEpoch, writeCompleted } from "../author/campaign-epoch.ts";
+import { type CampaignEpochEvidence, selectCampaignEpoch } from "../author/campaign-epoch.ts";
+import { writeCompleted } from "../meta/completed-json.ts";
 import {
   attachIssueReadings,
   latestRebuildAdvicePath,

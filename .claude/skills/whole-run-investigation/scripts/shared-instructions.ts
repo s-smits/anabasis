@@ -6,8 +6,6 @@
 // or fill the two authored values `orientation` and `movedVariable`, all before `launch`.
 // `renderSharedInstructions` substitutes the tokens; a token without a value refuses the render
 // and a line whose value is empty is dropped, so an unfilled authored field leaves no trace.
-//
-//   bun shared-instructions.ts --overview <absolute overview.json> [--out <absolute file>]
 
 import { asRecord, isString, type JsonValue } from "#src/meta/json-shape.ts";
 import { isAbsolute } from "#src/meta/path.ts";

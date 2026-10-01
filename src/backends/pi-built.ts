@@ -99,14 +99,6 @@ type BuiltCaseEvidence = BuiltTurnRecord & {
   readonly contractCondition: SolveInterfaceCondition;
 };
 
-/** Per-case turn cap of the Built solver when the harness's agent/config.yaml sets none. Four turns
- *  fit one write, one preview and one submit and nothing else; twelve leave room to build or run the
- *  draft, read the result and repair it; twenty-four leave room for a search or optimisation loop
- *  over several candidates (operator decision). The harness's own `solver.max_turns` sets the cap
- *  and this is only the default behind it, which is why `thresholds.frozen.yaml` holds no Built turn
- *  limit to disagree with. */
-export const BUILT_DEFAULT_MAX_TURNS = DEFAULT_HARNESS_SETTINGS.maxTurns;
-
 /** What a Built solver is opened with beyond its runtime: the turn cap a test or the export path
  *  overrides, the observer and phase its cases are recorded under, the provider budget each turn is
  *  reserved against, and the safeguard context its shell reports to. */

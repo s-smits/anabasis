@@ -517,15 +517,17 @@ const fullRunArgv = [
 ];
 
 /** Keep the production controller graph behind every provider-free refusal above. */
-const [fullRun, harnessBuild, harnessMeasure, analyse, evidence, loopTerminal] = await Promise.all([
-  import("#src/run/full-run.ts"),
-  import("#src/run/harness-build.ts"),
-  import("#src/run/harness-measure.ts"),
-  import("#src/run/analyse-step.ts"),
-  import("#src/run/controller-evidence.ts"),
-  import("#src/run/loop-terminal.ts"),
-]);
-const args = fullRun.parseFullRunArgs(fullRunArgv);
+const [fullRun, launchArguments, harnessBuild, harnessMeasure, analyse, evidence, loopTerminal] =
+  await Promise.all([
+    import("#src/run/full-run.ts"),
+    import("#src/run/launch-arguments.ts"),
+    import("#src/run/harness-build.ts"),
+    import("#src/run/harness-measure.ts"),
+    import("#src/run/analyse-step.ts"),
+    import("#src/run/controller-evidence.ts"),
+    import("#src/run/loop-terminal.ts"),
+  ]);
+const args = launchArguments.parseFullRunArgs(fullRunArgv);
 mkdirSync(out, { recursive: true });
 
 const recordPrompt = promptRecorder((record) => {

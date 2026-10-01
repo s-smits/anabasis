@@ -12,9 +12,7 @@ import type {
 } from "./judge-contract.ts";
 import { isNonResultKind } from "../claim/record-events.ts";
 export type {
-  Judge,
   JudgeAttempt,
-  JudgeCallContext,
   JudgeCaseKind,
   JudgeInput,
   JudgeObservation,

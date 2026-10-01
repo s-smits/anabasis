@@ -36,9 +36,6 @@ import type { NextMove } from "./next-move.ts";
 import { SOURCE_IDENTITY } from "./source-identity.ts";
 import { keyIfDefined, keysIf } from "../meta/optional-key.ts";
 
-export { directKickoff } from "./direct-input.ts";
-export { selectProject, slugForDirectInput } from "./launch-project.ts";
-
 import {
   type IterationResult,
   type UnresolvedAuthoringStall,
@@ -62,8 +59,6 @@ import { FullRunClosure } from "./full-run-deadline.ts";
 import { campaignVerifierLifetime } from "./verifier-lifetime.ts";
 import { VerifierOperationalStop } from "../verify/verifier-lifetime.ts";
 
-export { type FullRunArgs, parseFullRunArgs } from "./launch-arguments.ts";
-
 export interface FullRunDeps {
   build: typeof buildHarness;
   drive: typeof measureHarness;
@@ -71,7 +66,6 @@ export interface FullRunDeps {
   ensureDcg?: () => BuilderCommandGuardResult;
 }
 
-export { readAdmission } from "./admission.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 
 type ControllerIteration = ControllerRunState["iterations"][number];

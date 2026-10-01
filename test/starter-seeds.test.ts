@@ -31,7 +31,7 @@ import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { afterAll, describe, expect, it } from "bun:test";
 import { execTextSync } from "./helpers/bun-spawn-sync.ts";
 import { WORKSPACE_BUN_LINK, initWorkspace } from "../src/author/domain-repo.ts";
-import { openPathRecord } from "../src/builder/candidate-isolation-runtime.ts";
+import { openPathRecord } from "../src/builder/path-record.ts";
 import { deriveBundleContract, deriveCandidateIsolation } from "../src/builder/candidate-isolation.ts";
 import { type BuilderIsolation, createBuilderTools } from "../src/builder/tools.ts";
 import { isRecord, type JsonValue } from "../src/meta/json-shape.ts";

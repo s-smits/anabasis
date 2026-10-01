@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync } from "../meta/filesystem.ts";
 import { campaignDir } from "../meta/campaign-root.ts";
 import { basename, join, normalize } from "../meta/path.ts";
-import { writeCompleted } from "../author/campaign-epoch.ts";
+import { writeCompleted } from "../meta/completed-json.ts";
 import { type FingerprintEvidence, fingerprintSlug, taskSetDigest } from "../claim/fingerprint.ts";
 import type { HarnessExperiment } from "../critic/types.ts";
 import type { BundleSnapshotFact } from "../correctness-bundle/battery-record.ts";

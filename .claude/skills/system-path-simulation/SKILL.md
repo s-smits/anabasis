@@ -44,6 +44,17 @@ what they show and delete the settled entries.
   answers a battery needs a position recorded after that cut whose seed measure is reproduced (a scripted
   solver over the recorded artifacts) or solved live; every esp32 campaign after the cut is an Opus full
   pass, so the arm's trigger has not yet existed for Opus 5.5 there. `pick-run.mts` should say the cut.
+  The same evening, three live segments from that position (`run-segment.mts`, Opus 5.5 medium, 12
+  turns, 30-minute turn wall, the readout rendered from the recorded counts and labelled authored):
+  the arm's limit line, the control without it, and B′ with i14 authored as a full pass. The arm and
+  the control did the same thing: kept the failed task byte for byte, named its stand-in check wrong
+  and widened it (`probe.ts`), and added 14 tasks to reach the 25 the task-count line asks; the
+  control read the fail from the families line (`esp32-oled 0/1`) and the traces. B′ removed all 11
+  tasks and authored 25 new ones over a new host stand-in. So at this position the line changes
+  nothing: the Builder's branch follows the readout's reading of the record, and the arm adds no
+  second reading. The seed's cost: `run-segment.mts` copies no `.toolchain`, so each Builder rebuilt
+  a 10 GB arduino tree and lost its first 30-minute turn to the wall, two of three a second; a
+  segment whose actor compiles needs a cloned tree or a wall above the install.
 
 ## Standing triggers
 

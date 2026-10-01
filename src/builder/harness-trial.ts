@@ -504,6 +504,8 @@ function notePassEffort(tally: RoundRehearsals, row: RehearsalRow): void {
  * add them up itself, from a conversation pi compacts as it goes, whose oldest turns are the first
  * to be cut. Each pass says, correctly, that a battery of tasks like this one scores near its size,
  * and a round that ships on several such passes has heard it once per call and never as a total.
+ * ADDED(trial-forecast): under this arm a pass states its verdict only, so the sentence above
+ * describes the control.
  *
  * Beside the count it states how hard the passes worked: the largest share of the solve wall any
  * pass took, and the most tool calls any pass made. It does not count turns, because on the pi
@@ -516,7 +518,14 @@ function notePassEffort(tally: RoundRehearsals, row: RehearsalRow): void {
  * alone was read in 52 of 310 recorded sessions. It points at the file and asks nothing.
  */
 function roundClause(tally: RoundRehearsals, tellOnce: (key: string) => boolean): string {
-  if (tally.graded === 1) return tellOnce("examples") ? EXAMPLES_POINTER : "";
+  // ABLATED(examples-reminder): the once-per-session pointer at the first graded rehearsal. The file,
+  // the starter's link and the session bookkeeping stay (AGENTS.md "Ablated components").
+  // if (tally.graded === 1) return tellOnce("examples") ? EXAMPLES_POINTER : "";
+  // ADDED(examples-reminder), to its closing brace: the first graded rehearsal still spends the once.
+  if (tally.graded === 1) {
+    tellOnce("examples");
+    return "";
+  }
   if (tally.graded < 2) return "";
   const { longestPassWallPercent: percent, mostPassToolCalls: calls } = tally;
   const wall = percent === null ? null : `took more than ${String(percent)}% of the solve wall`;
@@ -544,12 +553,18 @@ function trialNextAction(
     return `The solver ran and submitted no accepted artifact. That is a solver miss, not a check failure: it counts towards difficulty only if a correct answer is reachable from the public task with the tools you published. Read your own tool roster and brief before treating it as a hard task.${roundClause(tally, tellOnce)}`;
   }
   if (verdict === "pass") {
-    return `Your solver passed this task on its first unaided attempt, so a battery of tasks like it scores near its size.${roundClause(tally, tellOnce)}`;
+    // ABLATED(trial-forecast): the forecast of a whole battery from one rehearsed task. The rehearsed task
+    // sat at chance in its battery's solve-time order (AGENTS.md "Ablated components").
+    // return `Your solver passed this task on its first unaided attempt, so a battery of tasks like it scores near its size.${roundClause(tally, tellOnce)}`;
+    // ADDED(trial-forecast): the pass sentence without the forecast.
+    return `Your solver passed this task on its first unaided attempt.${roundClause(tally, tellOnce)}`;
   }
   // Stated as the mirror of the pass sentence, and with no next task: a battery locates a limit only
   // through its misses, so a sentence steering towards an easier task would choose the course for
   // the Builder.
-  return `Your solver missed this task on its first unaided attempt, so a battery of tasks like it scores near zero.${roundClause(tally, tellOnce)}`;
+  // ABLATED(trial-forecast): return `Your solver missed this task on its first unaided attempt, so a battery of tasks like it scores near zero.${roundClause(tally, tellOnce)}`;
+  // ADDED(trial-forecast): the miss sentence without the forecast.
+  return `Your solver missed this task on its first unaided attempt.${roundClause(tally, tellOnce)}`;
 }
 
 /** Counts this call into the round before it reads the round back, so a result speaks for every
@@ -604,7 +619,11 @@ export function createHarnessTrialTool(binding: HarnessTrialBinding): AgentTool<
   return defineTool({
     name: "harness_trial",
     label: "Harness trial",
-    description: `Measure one of your own tasks against your own solver. The Built Harness you wrote solves the named task blind — public input and your registered tools only, no hidden expectations, no reference solve, under the same turn cap, solve wall and confinement a measured battery uses — and the real check program then grades the bytes it submitted. You get one aggregate truth.verdict of pass, fail or not-run, whether it submitted at all, how many turns it took and what the solve spent (minutes against the solve wall, tool calls, cost): never which check decided, a counterexample, a failure location, the artifact or any verifier output. This is the only evidence in the round about how hard your battery actually is. A task your solver passes on its first attempt will most likely pass in the battery too. Each rehearsal costs one measured case from the run's provider budget, and the accepted bytes are graded under the same per-check wall your agent/config.yaml sets for the battery. Use harness_inspect readiness to choose taskId; full battery and control coverage, candidate gates and adoption stay with submit.`,
+    // ABLATED(trial-forecast): the description with its forecast, "A task your solver passes on its first
+    // attempt will most likely pass in the battery too." (AGENTS.md "Ablated components").
+    // description: `Measure one of your own tasks against your own solver. The Built Harness you wrote solves the named task blind — public input and your registered tools only, no hidden expectations, no reference solve, under the same turn cap, solve wall and confinement a measured battery uses — and the real check program then grades the bytes it submitted. You get one aggregate truth.verdict of pass, fail or not-run, whether it submitted at all, how many turns it took and what the solve spent (minutes against the solve wall, tool calls, cost): never which check decided, a counterexample, a failure location, the artifact or any verifier output. This is the only evidence in the round about how hard your battery actually is. A task your solver passes on its first attempt will most likely pass in the battery too. Each rehearsal costs one measured case from the run's provider budget, and the accepted bytes are graded under the same per-check wall your agent/config.yaml sets for the battery. Use harness_inspect readiness to choose taskId; full battery and control coverage, candidate gates and adoption stay with submit.`,
+    // ADDED(trial-forecast): the same description without that sentence.
+    description: `Measure one of your own tasks against your own solver. The Built Harness you wrote solves the named task blind — public input and your registered tools only, no hidden expectations, no reference solve, under the same turn cap, solve wall and confinement a measured battery uses — and the real check program then grades the bytes it submitted. You get one aggregate truth.verdict of pass, fail or not-run, whether it submitted at all, how many turns it took and what the solve spent (minutes against the solve wall, tool calls, cost): never which check decided, a counterexample, a failure location, the artifact or any verifier output. This is the only evidence in the round about how hard your battery actually is. Each rehearsal costs one measured case from the run's provider budget, and the accepted bytes are graded under the same per-check wall your agent/config.yaml sets for the battery. Use harness_inspect readiness to choose taskId; full battery and control coverage, candidate gates and adoption stay with submit.`,
     parameters: Params,
     executionMode: "sequential",
     run: async (params, signal) => {

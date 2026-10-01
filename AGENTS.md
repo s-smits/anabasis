@@ -635,7 +635,34 @@ through the grep: remove the prefixes, delete the replacement lines, and flip ba
 under the same marker. Each entry below is a measured condition, not a settled rule. Once its run reads,
 it either moves to "Tried and taken out" or its comments are deleted.
 
-No component is ablated in source at present.
+Each arm is one commit that comments its component out, and it lands like any other change (#89). The
+control is the tree before the arm commits. To run one arm alone, revert the other arm commits, so that
+it differs from the control in one component only. All of them are seeded from one recorded product
+(`seed-campaign.mts republish --as-slug a,b,c`) and launched with the same model, provider budget and
+expected-task count. Run them one at a time, or record the machine load beside each: the three forks of
+2026-09-30 ran at once, and each spent 123 to 247 minutes in gate calls where the seed's rounds spent 26
+to 80. Each prediction is frozen before its arm launches.
+Arms are compared on a discovery seed first. A confirmation seed, from another campaign, is launched
+only after every arm's source is fixed, and nothing read from it revises an arm.
+
+- **`competing-margin` (arm, 2026-10-01).** The intent clause's first-task sentence "make several of the
+  request's requirements act together on a single answer, so that meeting one spends the margin another
+  needs". The round prompt's raise-before-submit line, the no-limit line, the reviewer's interaction
+  finding and `examples.md` still name the interaction, so the arm tests this sentence, not the concept.
+  After the depth prescriptions, 83 of 85 recorded batteries passed whole, 77 of them one model on new
+  domains. Grep: `rg "ABLATED\(competing-margin\)"`. Prediction and run: filled when this arm launches.
+- **`trial-forecast` (arm, 2026-10-01).** The harness_trial result's "so a battery of tasks like it
+  scores near its size" and "near zero", and the description's "A task your solver passes on its first
+  attempt will most likely pass in the battery too". The verdict, effort, round tally and examples
+  pointer stay. The rehearsed task sat at chance in its battery's solve-time order (mean rank 0.48
+  against 0.50), and 945 of 994 graded rehearsals passed. Grep: `rg "ABLATED\(trial-forecast\)"`.
+  Prediction and run: filled when this arm launches.
+- **`examples-reminder` (arm, 2026-10-01).** The one-time pointer to the worked examples at a session's
+  first graded rehearsal (`roundClause`). The examples file, the starter's link and the session
+  bookkeeping stay, so this isolates the reminder from the file's availability. It follows #116's
+  examples-reminder arm. Its reading needs a matched control, since the recorded 52 of 310 reads have
+  unmatched eligibility. Grep: `rg "ABLATED\(examples-reminder\)"`. Prediction and run: filled when this
+  arm launches.
 
 ## Evidence and implementation status
 

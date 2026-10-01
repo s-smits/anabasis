@@ -742,13 +742,7 @@ to 80. Each prediction is frozen before its arm launches.
 Arms are compared on a discovery seed first. A confirmation seed, from another campaign, is launched
 only after every arm's source is fixed, and nothing read from it revises an arm.
 
-- **`limit-line` (arm, added, 2026-10-01).** After a battery that passed some of its verified cases and
-  failed others, the readout asks the Builder to check the failed tasks' checks, then keep those tasks
-  unchanged and change what the solver is given under `agent/` (`limitLine` in
-  `src/run/climb-readout.ts`). It names no task and no failure location. The control says nothing after
-  a partial battery, and on record the Builder changed `agent/` after one earned fail in six. The arm is
-  read on the follow-up line of `wri.ts climb`. Grep: `rg "ADDED\(limit-line\)"`. Prediction and run:
-  filled when this arm launches.
+No component is ablated in source at present.
 
 ## Evidence and implementation status
 

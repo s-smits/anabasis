@@ -418,30 +418,6 @@ describe("rendering", () => {
     expect(text).not.toContain("found no limit");
   });
 
-  // ADDED(limit-line): the whole case. Dropping the addition deletes it.
-  it("asks for the failed tasks kept and the harness changed after a battery that passed only some", () => {
-    const partial = render(readoutOf(row("r1", 0, { passed: 3, n: 6 })));
-    expect(partial).toContain(
-      "Battery r1 passed 3 of its 6 verified cases, so it may have located a limit. The failed tasks are the ones with no passing solve under traces/r1. First make sure the checks of each failed task are right, and where one is wrong, correct the check and keep the task. Where the checks are right, the limit is the harness's to move: keep each failed task unchanged in the next battery, and change what the solver is given under agent/ so that it passes. A failed task that is changed or dropped says nothing about whether the harness improved.",
-    );
-    // An unaccepted attempt was never verified, so the line counts the verified cases alone.
-    expect(render(readoutOf(row("r1", 0, { passed: 4, n: 6, unaccepted: 1 })))).toContain(
-      "Battery r1 passed 4 of its 5 verified cases, so it may have located a limit.",
-    );
-    // A full pass keeps its own line, and a battery with no pass or no verified fail gets neither.
-    const silent = [
-      row("r1", 0, { passed: 6, n: 6 }),
-      row("r1", 0, { passed: 0, n: 6 }),
-      row("r1", 0, { passed: 5, n: 6, unaccepted: 1 }),
-    ];
-    for (const battery of silent) {
-      expect(render(readoutOf(battery))).not.toContain("may have located a limit");
-    }
-    // Only the latest battery speaks.
-    const later = render(readoutOf(row("r1", 0, { passed: 3, n: 6 }), row("r2", 1, { passed: 6, n: 6 })));
-    expect(later).not.toContain("may have located a limit");
-  });
-
   it("says how much of the solve wall a full pass's slowest solve took", () => {
     // Of 233 all-pass batteries from 2026-09-25 to 09-30, 153 finished their slowest solve inside a
     // tenth of the 120-minute wall, and the round that authored the next one was never told so.

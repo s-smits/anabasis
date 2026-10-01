@@ -1640,10 +1640,10 @@ neither `--no-verify` nor `-c core.hooksPath=…`.
 
 CI does much less than its name suggests. `.github/workflows/gate.yml` runs the gate on macOS (Seatbelt)
 and Linux (Bubblewrap) on each stack merge (the merge commit `bun run land` puts on `main`), daily at 03:17
-UTC on `main`, and on manual dispatch, and it skips a head whose tree a completed run already read. The
-merge commit has the stack top's tree, so dispatching on the top before `land --merge` reads `main` after
-it. It is not a required check, so pre-push is the only full gate a pull request gets. Isolation code
-must pass on both platforms.
+UTC on `main`, and on dispatch, and it skips a head whose tree a completed run already read. `bun run
+land --sanitize` and `--merge` dispatch it on the stack top's head unless a run there exists, and wait for
+it: a stack lands only after it passed. The merge commit has the top's tree, so the merge's own run
+skips. Isolation code must pass on both platforms.
 
 Only Bun 1.4.2 runs any of this. `lint.ts` points oxlint at the native `tsgolint` binary, because the
 `node_modules/.bin` entry is a `node` shim. `bunfig.toml` sets `env = false`, so `.env` is never loaded
@@ -2485,7 +2485,9 @@ fix recipe it prints rebases with `--update-refs` behind a sequence editor that 
 so the commits below the fix keep their ids and their recorded passes, every `land/` branch above it moves
 with it, and a branch someone else made at a pull request's head stays where it was. Fixes wait there,
 gated, until the one leased push it prints publishes them; `--sanitize` and `--merge` refuse a `land/`
-branch GitHub does not have yet. Only then does it post `ana/stack-gate` on each head and ask GitHub's stack merge for one merge commit at
+branch GitHub does not have yet. With either flag it also dispatches the Actions gate on the top's head
+before gating (unless a run there exists) and waits for it after, refusing on a failed run. Only then does
+it post `ana/stack-gate` on each head and ask GitHub's stack merge for one merge commit at
 exactly the gated top, taking the statuses back when GitHub does not merge. `--sanitize` runs the same
 proof and posts each commit's `ana/commit` verdict without merging, which is how a stack shows it is ready;
 with neither flag the script writes nothing to GitHub. A local `--no-ff` merge pushed to `main` leaves

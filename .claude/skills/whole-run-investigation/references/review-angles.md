@@ -577,8 +577,11 @@ rehearsals it offers. Read the full Builder kickoff in `observability/<runId>.js
 Read-back means a tool call that opened or queried the channel; prompt text in context is served,
 not read. The round facts, the advice packet, the diagnosis and the review projection have no
 re-query channel, so an unread one is structural rather than a Builder choice, and a file opened
-through `bash` records only its working directory. The Builder keeps one conversation across rounds
-and compaction cuts its oldest turns first, so a channel served once at the opening may be gone by
+through `bash` records only its working directory; the census prints those as "no read route". Acted
+is read only where a record holds it: memory writes and rehearsals. For the review, the census prints
+the next battery review's `earlierAdvisory` dispositions as they are; `absent` means the finding did
+not recur, not that the Builder acted on it. The
+Builder keeps one conversation across rounds and compaction cuts its oldest turns first, so a channel served once at the opening may be gone by
 the time the decision it feeds is taken; say when a channel was served relative to the last
 compaction. For every channel served and never read, name the cheapest alternative — drop it, move
 it to a `harness_inspect` mode, or state it where the decision is taken — and the observation that

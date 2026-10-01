@@ -11,6 +11,7 @@ import {
   ANGLE_COUNT,
   FIX_AUTHORITY,
   ISOLATED_ANGLES,
+  leafPrompt,
 } from "../.claude/skills/whole-run-investigation/scripts/catalogue-shape.ts";
 import {
   FINDING_OWNERS,
@@ -23,6 +24,7 @@ const script = join(root, ".claude/skills/whole-run-investigation/scripts/valida
 const launcher = join(root, ".claude/skills/codex-luna-swarm/scripts/luna-sessions.ts");
 
 const LANE = "lane_05";
+const TRUTH = "lane_30";
 const TRIGGER = "Starts from block 1's product validity chain.";
 
 /** One lane section with every owed subsection, either with no finding or with the given ones. */
@@ -53,6 +55,16 @@ function admission(name: string, lanes: number[], mode = "targeted") {
     identityKey: name,
     lanes,
     triggers: lanes.map(() => TRIGGER),
+  };
+}
+
+/** The ground-truth hardware task, which may write only its own scratch under the review. */
+function hardwareTask(dir: string) {
+  return {
+    name: TRUTH,
+    task: `assignedSession: ${TRUTH}\nassignedLanes: 30\n\nRun the ground truth.`,
+    admission: admission(TRUTH, [30]),
+    scratch: join(dir, "hw-scratch", TRUTH),
   };
 }
 
@@ -202,50 +214,60 @@ describe("WRI report validation", () => {
     });
   });
 
-  it("binds a current Luna collection and refuses the retired luna_lanes record names", () => {
+  // Four of five reviews on 2026-10-01 read launchBinding invalid for one cause: the launcher runs a
+  // hardware lane inside its own scratch, and the validator projected every task to {name, task}
+  // under the one launch workdir.
+  it("binds a current Luna collection with a hardware lane in its own scratch, and refuses the retired luna_lanes record names", () => {
     const f = fixture();
     const instructions = join(f.dir, "instructions.md");
     writeFileSync(instructions, "shared instructions\n");
+    const hardware = hardwareTask(f.dir);
+    const { scratch } = hardware;
+    mkdirSync(scratch, { recursive: true });
+    const open = JSON.parse(readFileSync(f.tasks, "utf8"))[0];
+    writeFileSync(f.tasks, JSON.stringify([open, hardware]));
     const taskBytes = readFileSync(f.tasks);
     const instructionBytes = readFileSync(instructions);
     const hash = (bytes: Uint8Array) => new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
-    const taskRow = JSON.parse(taskBytes.toString("utf8"))[0];
-    const { task } = taskRow;
     const workdir = realpathSync(f.dir);
-    const promptSha256 = hash(
-      new TextEncoder().encode(
-        `shared instructions\n\n${task.trim()}\n\nAuthority: read-only. Do not edit files or change external state.`,
-      ),
-    );
     const launcherTasks = join(f.dir, "luna-tasks.json");
-    writeFileSync(launcherTasks, JSON.stringify([{ name: LANE, task }]));
-    const reportBody = join(f.dir, "report-body.md");
-    writeFileSync(reportBody, laneReport(LANE));
+    writeFileSync(
+      launcherTasks,
+      JSON.stringify([
+        { name: LANE, task: open.task },
+        {
+          name: hardware.name,
+          task: hardware.task,
+          workdir: scratch,
+          sandbox: "workspace-write",
+          ownedPaths: [scratch],
+        },
+      ]),
+    );
+    for (const name of [LANE, TRUTH]) writeFileSync(join(f.dir, `report-${name}.md`), laneReport(name));
     const fakeCodex = join(f.dir, "fake-codex");
     writeFileSync(
       fakeCodex,
       `#!/usr/bin/env bun
 const args = Bun.argv.slice(2);
-await Bun.write(args[args.indexOf("--output-last-message") + 1], Bun.file(${JSON.stringify(reportBody)}));
+const out = args[args.indexOf("--output-last-message") + 1];
+await Bun.write(out, Bun.file(${JSON.stringify(`${f.dir}/report-`)} + out.split("/").pop()));
 console.log(JSON.stringify({ type: "thread.started", thread_id: "thread_test_123" }));
 `,
       { mode: 0o700 },
     );
-    const manifest = join(f.dir, "manifest.json");
-    writeFileSync(
-      manifest,
-      JSON.stringify({
-        workdir,
-        instructions: "shared instructions",
-        sessions: [{ name: LANE, task }],
-      }),
-    );
     rmSync(f.output, { recursive: true });
+    // The launch manifest-compose dispatches: the launcher tasks file, the instructions file and the
+    // measured worktree.
     expect(
       spawnTextSync(Bun.argv[0]!, [
         launcher,
-        "--manifest",
-        manifest,
+        "--tasks-file",
+        launcherTasks,
+        "--instructions-file",
+        instructions,
+        "--workdir",
+        workdir,
         "--codex-bin",
         fakeCodex,
         "--output-dir",
@@ -266,18 +288,19 @@ console.log(JSON.stringify({ type: "thread.started", thread_id: "thread_test_123
         launcherTasksSha256: hash(readFileSync(launcherTasks)),
         instructionsPath: instructions,
         instructionsSha256: hash(instructionBytes),
-        tasks: [
-          {
-            name: LANE,
-            taskSha256: hash(new TextEncoder().encode(task)),
-            admissionSha256: hash(new TextEncoder().encode(JSON.stringify(taskRow.admission))),
-            promptSha256,
-          },
-        ],
+        tasks: [open, hardware].map((row) => ({
+          name: row.name,
+          taskSha256: hash(new TextEncoder().encode(row.task)),
+          admissionSha256: hash(new TextEncoder().encode(JSON.stringify(row.admission))),
+          promptSha256: hash(
+            new TextEncoder().encode(leafPrompt("shared instructions", row.task, row.scratch ?? null)),
+          ),
+        })),
       }),
     );
     const result = run(f.tasks, f.summary);
     const receipt = receiptOf(f);
+    expect(receipt.launchBinding.issues).toEqual([]);
     expect(result.status).toBe(0);
     expect(receipt.complete).toBe(true);
     expect(receipt.launchBinding.state).toBe("bound");
@@ -321,17 +344,12 @@ console.log(JSON.stringify({ type: "thread.started", thread_id: "thread_test_123
 
   it("lets a hardware session write its own scratch and no read-only session write anything", () => {
     const f = fixture({ launch: false });
-    const scratch = join(f.dir, "hw-scratch", "lane_30");
-    const hardware = {
-      name: "lane_30",
-      task: "assignedSession: lane_30\nassignedLanes: 30\n\nRun the ground truth.",
-      admission: admission("lane_30", [30]),
-      scratch,
-    };
+    const hardware = hardwareTask(f.dir);
+    const { scratch } = hardware;
     const open = JSON.parse(readFileSync(f.tasks, "utf8"))[0];
     writeFileSync(f.tasks, JSON.stringify([open, hardware]));
     const hardwareReport = join(f.output, "lane_30.md");
-    writeFileSync(hardwareReport, laneReport("lane_30"));
+    writeFileSync(hardwareReport, laneReport(TRUTH));
     writeFileSync(
       f.summary,
       JSON.stringify({
@@ -340,7 +358,7 @@ console.log(JSON.stringify({ type: "thread.started", thread_id: "thread_test_123
         outputDir: f.output,
         sessions: [
           { name: LANE, status: "completed", exitCode: 0, reportPath: f.report },
-          { name: "lane_30", status: "completed", exitCode: 0, reportPath: hardwareReport },
+          { name: TRUTH, status: "completed", exitCode: 0, reportPath: hardwareReport },
         ],
       }),
     );
@@ -350,7 +368,7 @@ console.log(JSON.stringify({ type: "thread.started", thread_id: "thread_test_123
         JSON.stringify({
           type: "luna_sessions.launch",
           outputDir: f.output,
-          sessions: [LANE, "lane_30"].map((name, at) => ({
+          sessions: [LANE, TRUTH].map((name, at) => ({
             name,
             workdir: f.dir,
             promptSha256: "0".repeat(64),
@@ -488,6 +506,25 @@ console.log(JSON.stringify({ type: "thread.started", thread_id: "thread_test_123
     );
     expect(run(f.tasks, f.summary).status).toBe(1);
     expect(receiptOf(f).rows[0].issues).toContain(unlistedOwner("evaluator"));
+  });
+
+  it("reads no owner from a record field a finding quotes", () => {
+    // lane_14 of custom-opus 350009 (2026-10-01) counted admitted rows "with `owner:null`" in its
+    // denominator line, and was refused for naming the owner `null`.
+    const f = fixture();
+    writeFileSync(
+      f.report,
+      laneReport(
+        LANE,
+        [
+          "- Recurrence never matches an unrouted finding.",
+          "owner: controller-source",
+          "denominator: the 4 admission records contain 13 admitted rows, 3 with `owner:null`.",
+        ].join("\n"),
+      ),
+    );
+    expect(run(f.tasks, f.summary).status).toBe(0);
+    expect(receiptOf(f).rows[0].issues).toEqual([]);
   });
 
   it("rejects a failed session and a report outside the launcher output", () => {

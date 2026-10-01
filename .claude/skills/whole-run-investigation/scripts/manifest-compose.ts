@@ -19,6 +19,7 @@ import {
   ISOLATED_ANGLES,
   HARDWARE_LANES,
   hardwareScratch,
+  launcherTask,
   leafPrompt,
   NATIVE_OUTPUT,
   nativePrompt,
@@ -450,19 +451,20 @@ export function composeInstructions(input: InstructionInput): string {
   return lines.filter((line) => line !== null).join("\n");
 }
 
-/** The public-only and ground-truth lanes each freeze a result before joining outcomes. Shared
- *  orientation, scan and even aggregate verdicts are evidence from the other side of that boundary:
- *  given the run overview, the ground-truth lane of custom-opus 198d70 froze its compiler verdicts
- *  already knowing all 21 cases had passed, and had to call its comparison post-exposure
- *  (2026-09-30). */
+/** Each isolated lane keeps its own evidence boundary (`ISOLATED_ANGLES`), and shared orientation,
+ *  scan and even aggregate verdicts are evidence from the other side of it: given the run overview,
+ *  the ground-truth lane of custom-opus 198d70 froze its compiler verdicts already knowing all 21
+ *  cases had passed, and had to call its comparison post-exposure (2026-09-30), and the trace
+ *  challenge lane of 350009 received the orientation and called its own review contaminated
+ *  (2026-10-01). */
 export function blindSession(session: LaunchSession): boolean {
-  return session.lanes.some((lane) => lane.number === PUBLIC_ONLY_LANE || lane.number === GROUND_TRUTH_LANE);
+  return session.lanes.some((lane) => ISOLATED_ANGLES.has(lane.number));
 }
 
 export function publicReviewInstructions(input: InstructionInput): string {
   return [
     "# Independent blind review",
-    `This evidence boundary applies to lanes ${PUBLIC_ONLY_LANE} and ${GROUND_TRUTH_LANE}; other assignments use their own context below.`,
+    `This evidence boundary applies to lanes ${[...ISOLATED_ANGLES.keys()].join(", ")}; other assignments use their own context below.`,
     `Measured source: \`${input.revision}\` in \`${input.worktree}\`.`,
     `Campaign: \`${input.campaign}\`; run: \`${input.runId}\`.`,
     `Capture: \`${input.snapshot.status.capturedAt}\`.`,
@@ -475,6 +477,7 @@ export function publicReviewInstructions(input: InstructionInput): string {
     "Inspect only public fields when a storage file also contains protected fields; prefer recorded public-task.json.",
     "Freeze the public corpus of valid alternatives and plausibly wrong artifacts, with its identities, before any permitted later join.",
     `Lane ${GROUND_TRUTH_LANE} also runs the recorded toolchain over those artifacts and the control artifacts, and records its verdict file's digest before reading any recorded verdict.`,
+    `Lane ${TRACE_CHALLENGE_LANE} reads the trace telemetry and private packet its task names in place of that corpus; they are the one private trace it may read.`,
     "If forbidden information was already exposed, disclose contamination and do not claim a blinded result.",
     `Runtime: Bun ${input.bunPin}, \`${input.bun}\`. Web access: ${input.webAccess ? "available" : "unavailable"}.`,
     "Report only your assigned headings, method, frozen input identities, denominators, findings and limits.",
@@ -705,14 +708,7 @@ export function writeAndDispatch(input: DispatchInput): void {
   // metadata.
   // A hardware session runs inside its own scratch, the one root its workspace-write sandbox opens.
   for (const { scratch } of input.tasks) if (scratch !== null) mkdirSync(scratch, { recursive: true });
-  writeJsonFile(
-    launcherTasksPath,
-    input.tasks.map(({ name, task, scratch }) =>
-      scratch === null
-        ? { name, task }
-        : { name, task, workdir: scratch, sandbox: "workspace-write", ownedPaths: [scratch] },
-    ),
-  );
+  writeJsonFile(launcherTasksPath, input.tasks.map(launcherTask));
   const authored =
     input.orientationText.length + input.sessions.reduce((sum, session) => sum + session.direction.length, 0);
   const total = input.tasks.reduce((sum, task) => sum + task.task.length, 0) + input.instructions.length;

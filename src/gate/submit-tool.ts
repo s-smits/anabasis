@@ -115,7 +115,7 @@ function repairUnits(findings: readonly ContractFinding[], repair: "actionable" 
       ...(group.variantIndex ?? []).map((line) => `    · ${line}`),
     ];
   });
-  const range = `Showing repair groups ${page.from}-${page.to} of ${page.totalGroups} (${page.totalFindings} finding rows).`;
+  const range = `Showing repair groups ${page.from}-${page.to} of ${page.totalGroups} (${page.totalFindings} finding row${page.totalFindings === 1 ? "" : "s"}).`;
   return [range, ...rows, ...(repair === "actionable" ? [FEEDBACK_NAVIGATION] : [])];
 }
 
@@ -194,7 +194,7 @@ async function settleSubmit(binding: SubmitToolBinding) {
     // request could try.
     return {
       ...text(
-        `Accepted. Agent ${outcome.fingerprint.agentHash.slice(0, 12)}, correctnessModel ${outcome.fingerprint.correctnessModelHash.slice(0, 12)}, ${outcome.changedPaths.length} changed paths. The candidate is fixed at this accepted tree: the build is complete, and later file edits are not part of it.`,
+        `Accepted. Agent ${outcome.fingerprint.agentHash.slice(0, 12)}, correctnessModel ${outcome.fingerprint.correctnessModelHash.slice(0, 12)}, ${outcome.changedPaths.length} changed path${outcome.changedPaths.length === 1 ? "" : "s"}. The candidate is fixed at this accepted tree: the build is complete, and later file edits are not part of it.`,
         { outcome: "accepted", candidateId: outcome.snapshotId, conditionId: conditionKey(outcome) },
       ),
       terminate: true,

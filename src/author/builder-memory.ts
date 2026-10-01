@@ -270,7 +270,7 @@ export function noteAtMemoryHead(workspace: string, line: string): void {
 function helperMarker(from: string, helpers: readonly string[]): string {
   const shown = helpers.slice(0, HELPER_NAMES_SHOWN).join(", ");
   const rest = helpers.length - HELPER_NAMES_SHOWN;
-  return `<!-- scratch/ holds ${from}'s ${String(helpers.length)} helper files: ${shown}${rest > 0 ? ` and ${String(rest)} more` : ""}. -->`;
+  return `<!-- scratch/ holds ${from}'s ${String(helpers.length)} helper file${helpers.length === 1 ? "" : "s"}: ${shown}${rest > 0 ? ` and ${String(rest)} more` : ""}. -->`;
 }
 
 function carryScratchHelpers(prior: string, next: string): string[] {

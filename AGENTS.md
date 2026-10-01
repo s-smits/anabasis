@@ -826,7 +826,8 @@ denominators, claims, promotions, verified traces, review spend, safeguard censu
 only then Builder prose or a session synthesis. Report the three case counts with the censored
 denominator, and name the opening's full SHA.
 
-Adjudicate every frozen prediction as `sufficed`, `partial`, `refuted` or `untriggered`. Weight the latest
+Adjudicate every frozen prediction as `sufficed`, `partial`, `refuted`, `untriggered` (never launched,
+or its trigger never occurred) or `censored` (launched, then stopped before its outcome). Weight the latest
 two runs, since older ones measured source that no longer exists. Order batteries by claim `createdAt`,
 and refuse a before/after difficulty reading that lacks the chronology and the required task-set identity.
 

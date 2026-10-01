@@ -437,7 +437,7 @@ bun .claude/skills/run-improvement-campaign/scripts/campaign.ts \
   --campaigns /absolute/campaigns --run <runId> [--json]
 bun .claude/skills/run-improvement-campaign/scripts/prediction.ts adjudicate \
   --run <runId> --id <prediction-id> \
-  --outcome sufficed|partial|refuted|untriggered --evidence "<path and finding>"
+  --outcome sufficed|partial|refuted|untriggered|censored --evidence "<path and finding>"
 ```
 
 Read in this order: terminal, case denominators, claims, promotion decisions, review spend,

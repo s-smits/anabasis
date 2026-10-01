@@ -615,7 +615,8 @@ describe("climb velocity", () => {
   // The 2d7812 firmware battery read 4/6 over the aim on two fails of one check that held the sketch
   // to a status label no public rule stated. A placement resting on fails the review settled against
   // their check measured the check, so the reader says which fails were earned and where the battery
-  // lands once they leave; with no completed review it says none is known earned.
+  // lands once they leave; with no completed review it says none is known earned. Against the check
+  // is the controller's rule: a disposition naming no single deciding check leaves its fail in.
   it.concurrent("reads a partial battery against the review that settled its fails", async () => {
     const dir = twoVersions("ana-climb-earned-", [brief, brief]);
     const tasks = ["a", "b", "c", "d", "e", "f"];
@@ -632,6 +633,7 @@ describe("climb velocity", () => {
       family: "f",
       kind: "disputed-pass",
       checkId: "bench-wiring",
+      checkIds: ["bench-wiring"],
       disposition,
       finding: 0,
     });
@@ -639,7 +641,13 @@ describe("climb velocity", () => {
     const review = (dispositions: CaseDisposition[]) =>
       writeFileSync(
         join(dir, "analysis", "run-b-epoch-review.json"),
-        JSON.stringify({ status: "completed", dispositions }),
+        JSON.stringify({
+          schema: EPOCH_REVIEW_SCHEMA,
+          status: "completed",
+          runId: "run-b",
+          findings: [],
+          dispositions,
+        }),
         "utf8",
       );
     review([settled("a", "check-stands"), settled("b", "check-stands")]);
@@ -657,6 +665,14 @@ describe("climb velocity", () => {
     );
     // Fails settled against their check located nothing, so the line reads the battery as a full pass.
     expect(lineOf(against)).toMatchObject({ signal: [], fullPasses: 1, points: [{ passes: 4, n: 4 }] });
+    // A case another check also decided, and a disposition that recorded no checks, stay in the
+    // controller's sample, so they stay fails here too.
+    const { checkIds: _unnamed, ...unnamed } = settled("b", "against-check");
+    review([{ ...settled("a", "against-check"), checkIds: ["bench-wiring", "timing"] }, unnamed]);
+    const kept = await readCampaign(dir, { embed: fakeEmbed });
+    expect(kept.batteries[1]?.earned).toBeNull();
+    expect(lineOf(kept).signal).toMatchObject([{ runId: "run-b", passes: 4, n: 6 }]);
+    expect(render(kept)).toContain("fails 2: 0 held by the review, 0 settled against the check, 2 unsettled");
   });
 
   // A forked campaign's seed version carries no claim of its own and so no time, and sorted after the

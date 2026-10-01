@@ -674,21 +674,23 @@ describe("scoreboard", () => {
     const repo = scored();
     // SAFETY: `--json` prints the runs and groups, and only the fields below are read.
     const json = JSON.parse(await board(repo, "--json")) as {
-      runs: Array<{ signalFirst8: number; wall: unknown; followUp: unknown }>;
+      runs: Array<{ first8: unknown; fails: unknown; wall: unknown; followUp: unknown }>;
       groups: Array<{ first8: unknown; wall: unknown; followUp: unknown }>;
     };
     // `b` and `c` fail in the first battery and `g` in the third; `h` was settled against its only
     // check. The second battery carries `b` unchanged and passes it under a new agent, and drops
     // `c`; no battery follows the third.
     const followed = { earned: 3, last: 1, carried: 1, passed: 1, answered: 1 };
-    expect(json.runs.map(({ signalFirst8, wall, followUp }) => ({ signalFirst8, wall, followUp }))).toEqual([
+    expect(json.runs.map(({ first8, wall, followUp }) => ({ first8, wall, followUp }))).toEqual([
       {
-        signalFirst8: 2,
+        first8: { signal: 2, batteries: 3 },
         // The batteries' median case shares are 0.25, 0.15 and 0.5 of each product's 60-minute wall.
         wall: { median: 0.25, latest: 0.5, batteries: 3 },
         followUp: followed,
       },
     ]);
+    // The signal batteries are the first, whose `b` and `c` no review settled, and the third at 1/2.
+    expect(json.runs[0]?.fails).toEqual({ held: 1, against: 1, unsettled: 2 });
     expect(json.groups.map(({ first8, wall, followUp }) => ({ first8, wall, followUp }))).toEqual([
       { first8: { signal: 2, batteries: 3 }, wall: { median: 0.25, runs: 1 }, followUp: followed },
     ]);

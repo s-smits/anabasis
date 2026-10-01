@@ -5,9 +5,9 @@
  * source and Builder model so a pass can see whether a change moved anything. It finds runs and
  * reads their openings as `runs pulse` does (`recordedRuns`, `readRunEvidence`), and reads each
  * campaign's line and earned fails through `wri.ts climb`'s own readers (`outcomeRowsOf`, `lineOf`,
- * `followUpOf`) and its solve walls through `wri.ts walls` (`buildWalls`), so a number here and a
- * `climb` or `walls` line cannot disagree. It loads no model, and task bytes only for a battery that
- * holds an earned fail.
+ * `lineTally`, `followUpOf`) and its solve walls through `wri.ts walls` (`buildWalls`), so a number
+ * here and a `climb` or `walls` line cannot disagree. It loads no model, and task bytes only for a
+ * battery that holds an earned fail.
  *
  * What it adds is the numbers the loop is judged on. Signal is how many of a run's first eight
  * batteries land between 1/n and n-1/n, and how many hours the run took to reach its first. It is
@@ -27,6 +27,7 @@ import {
   followUpCounts,
   followUpOf,
   lineOf,
+  lineTally,
   outcomeRowsOf,
 } from "../../whole-run-investigation/scripts/climb-velocity.ts";
 import { buildWalls } from "../../whole-run-investigation/scripts/walls.ts";
@@ -43,9 +44,6 @@ the check, unsettled), and its earned fails: how many the next battery carried u
 many of those passed there after the agent changed (answered). Then one row per source and Builder
 model: signal of the first 8, the median wall share over runs, and the same earned-fail counts.`;
 
-/** The horizon AGENTS.md "Goals and the climb" reads a climb over first. */
-const HORIZON = 8;
-
 type FollowUpCounts = ReturnType<typeof followUpCounts>;
 
 export interface RunScore {
@@ -56,7 +54,7 @@ export interface RunScore {
   openedAt: string;
   batteries: number;
   signal: number;
-  signalFirst8: number;
+  first8: { signal: number; batteries: number };
   fullPasses: number;
   swing: number | null;
   hoursToSignal: number | null;
@@ -110,18 +108,7 @@ function scoreCampaign(campaignDir: string, runs: readonly RunLocation[]): RunSc
       batteries: report.batteries.filter(owned),
       unadopted: report.unadopted.filter(owned),
     });
-    const fails = { held: 0, against: 0, unsettled: 0 };
-    for (const point of line.signal) {
-      const battery = every.find((row) => row.runId === point.runId);
-      const held = battery?.settlement?.failsHeld ?? 0;
-      const against = battery?.settlement?.failsAgainst ?? 0;
-      fails.held += held;
-      fails.against += against;
-      fails.unsettled += Math.max(
-        0,
-        (battery?.counts.verified ?? 0) - (battery?.counts.passed ?? 0) - held - against,
-      );
-    }
+    const { first, fails } = lineTally(line, every);
     const shares = line.points.flatMap((point) => walls.get(point.runId)?.time.median ?? []);
     const opening = readRunEvidence(location).opening;
     const builder = opening?.slots.find((slot) => slot.role === "builder");
@@ -135,7 +122,7 @@ function scoreCampaign(campaignDir: string, runs: readonly RunLocation[]): RunSc
       openedAt,
       batteries: line.points.length,
       signal: line.signal.length,
-      signalFirst8: line.signal.filter((point) => line.points.indexOf(point) < HORIZON).length,
+      first8: first,
       fullPasses: line.fullPasses,
       swing: line.swing,
       hoursToSignal:
@@ -173,10 +160,7 @@ export function groupScores(scores: readonly RunScore[]): GroupScore[] {
       builder: runs[0]?.builder ?? "?",
       runs: runs.length,
       measured: runs.filter((run) => run.batteries > 0).length,
-      first8: {
-        signal: sum((run) => run.signalFirst8),
-        batteries: sum((run) => Math.min(HORIZON, run.batteries)),
-      },
+      first8: { signal: sum((run) => run.first8.signal), batteries: sum((run) => run.first8.batteries) },
       all: { signal: sum((run) => run.signal), batteries: sum((run) => run.batteries) },
       wall: { median: median(walls), runs: walls.length },
       followUp: {
@@ -226,7 +210,7 @@ function scoreboard(args: CommandArgs): void {
   }
   for (const s of scores) {
     console.log(
-      `${s.openedAt.slice(0, 16)}  ${s.runId}  ${s.builder}  ${s.source}  batteries ${s.batteries}  signal ${s.signalFirst8} of first 8 (${s.signal} in all)  full ${s.fullPasses}  swing ${fixed(s.swing)}  first signal ${fixed(s.hoursToSignal)} h  wall ${percent(s.wall.median)} median, ${percent(s.wall.latest)} latest (n ${s.wall.batteries})  fails held ${s.fails.held}, against ${s.fails.against}, unsettled ${s.fails.unsettled}  ${followUpText(s.followUp)}`,
+      `${s.openedAt.slice(0, 16)}  ${s.runId}  ${s.builder}  ${s.source}  batteries ${s.batteries}  signal ${s.first8.signal} of first 8 (${s.signal} in all)  full ${s.fullPasses}  swing ${fixed(s.swing)}  first signal ${fixed(s.hoursToSignal)} h  wall ${percent(s.wall.median)} median, ${percent(s.wall.latest)} latest (n ${s.wall.batteries})  fails held ${s.fails.held}, against ${s.fails.against}, unsettled ${s.fails.unsettled}  ${followUpText(s.followUp)}`,
     );
   }
   const batteries = scores.reduce((sum, s) => sum + s.batteries, 0);

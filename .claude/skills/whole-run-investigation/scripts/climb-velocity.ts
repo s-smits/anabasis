@@ -53,7 +53,7 @@
 // and the verdict deliberately does not read it.
 import { existsSync, readdirSync } from "#src/meta/filesystem.ts";
 import { sha256OfFile } from "#src/meta/digest.ts";
-import { classifyCaseOutcome, outcomeTally, readCaseRecord } from "#src/claim/case-record.ts";
+import { classifyCaseOutcome, readCaseRecord } from "#src/claim/case-record.ts";
 import { type BandPlacement, type BandZone, type MeasuredDifficulty } from "#src/claim/battery-difficulty.ts";
 import { basename, join } from "#src/meta/path.ts";
 import { BRIEF_FILE, TASKS_FILE } from "#src/meta/bundle-layout.ts";
@@ -73,7 +73,7 @@ import {
 } from "../classifier/query-complexity.ts";
 import { isNumber } from "#src/meta/json-shape.ts";
 import { compareCodeUnits, stableJson } from "#src/meta/stable-json.ts";
-import { readDifficultyDecisions } from "./digest-ledgers.ts";
+import { batteryTallies, readDifficultyDecisions } from "./digest-ledgers.ts";
 import { readJsonAs, readJsonAsOrNull } from "./run-overview.ts";
 import type { CaseDisposition, EpochReviewEvidence } from "#src/review/epoch-review-findings.ts";
 import { settledAgainstCheck } from "#src/review/epoch-review-findings.ts";
@@ -277,42 +277,34 @@ function measuredOf(battery: VersionBattery): MeasuredDifficulty {
 }
 
 /** Passed, verified, unaccepted and non-result counts per runId, from the campaign's own case rows
- *  through the controller's strict reader, classifier and tally. An unaccepted attempt is recorded
- *  with `pass: false`, so reading `pass` alone counts every case the solver never submitted as a
- *  verified failure and then places a battery that verified nothing. */
+ *  through the controller's strict reader and the digest's per-battery tally (`batteryTallies`). An
+ *  unaccepted attempt is recorded with `pass: false`, so reading `pass` alone counts every case the
+ *  solver never submitted as a verified failure and then places a battery that verified nothing. */
 export function outcomesOf(campaign: string): Map<string, OutcomeCounts> {
-  const outcomesByRun = new Map<string, ReturnType<typeof classifyCaseOutcome>[]>();
-  for (const { row } of readCaseRecord(`${campaign}/case-record.jsonl`)) {
-    const outcomes = outcomesByRun.get(row.runId) ?? [];
-    outcomes.push(classifyCaseOutcome(row));
-    outcomesByRun.set(row.runId, outcomes);
-  }
-  const byRun = new Map<string, OutcomeCounts>();
-  for (const [runId, outcomes] of outcomesByRun) {
-    const tally = outcomeTally(outcomes);
-    byRun.set(runId, {
-      passed: tally.passed,
-      verified: tally.verified,
-      unaccepted: tally.unaccepted,
-      nonResult: tally.nonResults,
-    });
-  }
-  return byRun;
+  const rows = readCaseRecord(`${campaign}/case-record.jsonl`).map(({ row }) => row);
+  return new Map(
+    batteryTallies(rows).map(({ runId, passed, verified, unaccepted, nonResults }) => [
+      runId,
+      { passed, verified, unaccepted, nonResult: nonResults },
+    ]),
+  );
 }
 
-/** Null when no completed review of this battery is recorded, which is unread, never "nothing settled". */
+/** Null when no completed review of this battery is recorded, which is unread, never "nothing settled".
+ *  Against the check means by the controller's rule (`settledAgainstCheck`): a case its climb drops. */
 export function settlementOf(campaign: string, runId: string): Settlement | null {
   const review = readJsonAsOrNull<Pick<EpochReviewEvidence, "status"> & { dispositions?: CaseDisposition[] }>(
     join(campaign, "analysis", `${runId}-epoch-review.json`),
   );
   if (review?.status !== "completed") return null;
   const rows = review.dispositions ?? [];
-  const count = (veto: boolean, disposition: CaseDisposition["disposition"]) =>
-    rows.filter((row) => (row.kind === "veto") === veto && row.disposition === disposition).length;
+  const settled = settledAgainstCheck(join(campaign, "analysis"), runId);
+  const count = (veto: boolean, counted: (row: CaseDisposition) => boolean) =>
+    rows.filter((row) => (row.kind === "veto") === veto && counted(row)).length;
   return {
-    failsHeld: count(false, "check-stands"),
-    failsAgainst: count(false, "against-check"),
-    passesAgainst: count(true, "against-check"),
+    failsHeld: count(false, (row) => row.disposition === "check-stands"),
+    failsAgainst: count(false, (row) => settled.has(row.taskId)),
+    passesAgainst: count(true, (row) => settled.has(row.taskId)),
     checks: [...new Set(rows.map((row) => row.checkId))],
   };
 }
@@ -740,6 +732,25 @@ export function lineOf(report: {
     ),
     streak: offAimStreak(points.map(({ zone, passes, n }) => ({ zone, placedOn: { passes, n } }))),
   };
+}
+
+/** What the scoreboard reads beside the line: the signal among its first `HORIZONS[0]` points, over
+ *  the points it reached of them, and its signal batteries' fails as their reviews left them. */
+export function lineTally(
+  line: ClimbLine,
+  batteries: readonly Pick<ClimbBatteryRow, "runId" | "counts" | "settlement">[],
+) {
+  const first = line.points.slice(0, HORIZONS[0]);
+  const signal = first.filter((point) => line.signal.includes(point)).length;
+  const fails = { held: 0, against: 0, unsettled: 0 };
+  for (const { runId, counts, settlement } of batteries) {
+    if (!line.signal.some((point) => point.runId === runId)) continue;
+    const { failsHeld, failsAgainst } = settlement ?? { failsHeld: 0, failsAgainst: 0 };
+    fails.held += failsHeld;
+    fails.against += failsAgainst;
+    fails.unsettled += Math.max(0, counts.verified - counts.passed - failsHeld - failsAgainst);
+  }
+  return { first: { signal, batteries: first.length }, fails };
 }
 
 /** The newest edge as the sentence a reader opened this for. The rows above it are the evidence;

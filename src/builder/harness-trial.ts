@@ -549,7 +549,12 @@ function trialNextAction(
   // Stated as the mirror of the pass sentence, and with no next task: a battery locates a limit only
   // through its misses, so a sentence steering towards an easier task would choose the course for
   // the Builder.
-  return `Your solver missed this task on its first unaided attempt, so a battery of tasks like it scores near zero.${roundClause(tally, tellOnce)}`;
+  // ABLATED(miss-reading): the miss read as a battery headed for zero. Of 47 recorded rehearsal misses
+  // 36 were a check or its instrument refusing a right answer, and the sentence named neither reading
+  // (AGENTS.md "Ablated components").
+  // return `Your solver missed this task on its first unaided attempt, so a battery of tasks like it scores near zero.${roundClause(tally, tellOnce)}`;
+  // ADDED(miss-reading): the two readings a miss has, and that this result does not choose between them.
+  return `Your checks rejected the answer your solver submitted on its first unaided attempt: either the answer is wrong, which is a limit, or a check refuses a right answer. This result does not say which.${roundClause(tally, tellOnce)}`;
 }
 
 /** Counts this call into the round before it reads the round back, so a result speaks for every

@@ -544,7 +544,12 @@ describe("the four facts that do cross", () => {
     // A miss is stated as the mirror of a pass and names no next task: a first battery is authored to
     // be missed, so steering towards an easier rehearsal would choose the Builder's course for it.
     const missed = isString(failing.nextAction) ? failing.nextAction : "";
-    expect(missed).toContain("a battery of tasks like it scores near zero");
+    // ABLATED(miss-reading): expect(missed).toContain("a battery of tasks like it scores near zero");
+    // ADDED(miss-reading): the miss names both of its readings and forecasts no battery.
+    expect(missed).toContain(
+      "either the answer is wrong, which is a limit, or a check refuses a right answer. This result does not say which.",
+    );
+    expect(missed).not.toContain("scores near zero");
     expect(missed).not.toMatch(/easier|rehearse a/);
     expect(passing.solve).toEqual({
       accepted: true,

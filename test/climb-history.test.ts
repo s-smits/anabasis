@@ -134,7 +134,7 @@ const passes = (n: number, verdict: boolean | null = true): CaseRow[] =>
   Array.from({ length: n }, (_, i) => ({ taskId: `t${String(i)}`, pass: verdict }));
 
 const read = (tree: string, pin: string | null = RUN_PIN): ClimbBatteriesRead =>
-  readClimbBatteries(tree, pin, join(tree, "claims"));
+  readClimbBatteries(tree, pin, { claimsDir: join(tree, "claims") });
 
 const runIds = (rows: readonly AdmittedClimbRow[]) => rows.map((row) => row.battery.runId);
 
@@ -142,7 +142,7 @@ describe("the population law — every directory accounted for exactly once", ()
   it("reads nothing for a tree no battery ever measured, and no readout either", () => {
     const tree = tmp();
     expect(read(tree)).toEqual({ history: [], admitted: [], excluded: [] });
-    expect(readClimbReadout(tree, RUN_PIN, join(tree, "claims"))).toBeNull();
+    expect(readClimbReadout(tree, RUN_PIN, { claimsDir: join(tree, "claims") })).toBeNull();
   });
 
   it("puts a claim-refused battery in the history and out of the rate, carrying its own refusal", () => {
@@ -390,7 +390,7 @@ describe("what one battery contributes to the reading", () => {
       }
       evidence.record();
       writeClaim(tree, "r1", RECORDED_AT, true);
-      return renderReadout(readClimbReadout(tree, RUN_PIN, join(tree, "claims")), "next");
+      return renderReadout(readClimbReadout(tree, RUN_PIN, { claimsDir: join(tree, "claims") }), "next");
     };
     const a = rendered("secret-verifier-a");
     expect(rendered("secret-verifier-b")).toBe(a);
@@ -571,7 +571,13 @@ describe("the climb readout, read from recorded batteries", () => {
   }
 
   const readout = (tree: string, manifest?: string) =>
-    required(readClimbReadout(tree, RUN_PIN, join(tree, "claims"), manifest), "a climb readout");
+    required(
+      readClimbReadout(tree, RUN_PIN, {
+        claimsDir: join(tree, "claims"),
+        ...keyIfDefined("manifestPath", manifest),
+      }),
+      "a climb readout",
+    );
 
   it("places no battery whose every attempt was refused at submission", () => {
     // Every attempt refused at submission is no difficulty evidence, not a battery below the aim.

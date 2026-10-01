@@ -1,9 +1,10 @@
-import { DATA_READER_TOOL } from "./data-session.ts";
-
 /** Closed Built Harness add-on catalogue. Pi composes selected controller tools directly with
  * generated domain tools; generated code never owns their implementation. */
 export const BUILT_PRESET_IDS = ["public-data", "files", "shell"] as const;
 export type BuiltPresetId = (typeof BUILT_PRESET_IDS)[number];
+
+/** The one tool the `public-data` preset adds: a reader over the domain's public data. */
+export const DATA_READER_TOOL = "query_public_data";
 
 const PRESET_TOOL_NAMES = {
   "public-data": [DATA_READER_TOOL],

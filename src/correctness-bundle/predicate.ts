@@ -1,15 +1,9 @@
 /** Check-input commitments. No second deciding computation. */
-import { resolveJsonPath as resolvePredicatePath } from "../meta/json-evidence.ts";
 import { canonicalJson } from "../meta/stable-json.ts";
 import type { Brief } from "./brief.ts";
 import type { EvaluationRequest } from "./correctness-model-contract.ts";
 import type { CorrectnessModelResult } from "../verify/correctness-model-result.ts";
 import { checkEvaluationRequest } from "../../vendor/correctness-model-bundle/evaluate.ts";
-export {
-  evaluateCheckProgram,
-  type CheckProgramEvaluation,
-} from "../../vendor/correctness-model-bundle/evaluate.ts";
-export { resolvePredicatePath };
 
 export interface OperandCommitmentContext {
   key: Uint8Array;

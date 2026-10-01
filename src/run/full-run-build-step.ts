@@ -1,7 +1,6 @@
 /** The build step of one round: refuse a fixed-policy boundary, reuse the adopted tree, or open
  *  one Builder session and settle what it produced. */
-import { join } from "../meta/path.ts";
-import { FROZEN_MANIFEST_PATH } from "../critic/manifest.ts";
+import { frozenManifestPath } from "../critic/manifest.ts";
 import type { AdmissionLineage, DiagnosisInput, PriorEvidence } from "../author/campaign-types.ts";
 import type { HarnessExperiment } from "../critic/types.ts";
 import { type RunObserver, campaignProgressOptions } from "../observe/run-observer.ts";
@@ -27,7 +26,6 @@ import {
   batterySizingGate,
   renderProbeSizing,
 } from "./battery-sizing.ts";
-import { claimsDirFor } from "./claim-write.ts";
 import { fixedProductBoundary } from "./fixed-product-policy.ts";
 import type { BuildClause } from "./loop-terminal.ts";
 import type { FullRunDeps, FullRunOutcome } from "./full-run.ts";
@@ -128,12 +126,9 @@ function adoptedProbeLanding(read: ClimbBatteriesRead, domainDir: string): Probe
 function remeasuredAuthoring(input: IterationInput): Pick<BuildStepResult, "experimentAuthoring"> {
   const { repoRoot, manifest } = input;
   const domainDir = selectedProductDir(repoRoot, manifest.slug);
-  const rows = readClimbBatteries(
-    domainDir,
-    input.runPin,
-    claimsDirFor(repoRoot, manifest.slug),
-    join(repoRoot, FROZEN_MANIFEST_PATH),
-  ).history.filter((row) => row.authoring.experimentAuthoring !== undefined);
+  const rows = readClimbBatteries(domainDir, input.runPin, { repoRoot, slug: manifest.slug }).history.filter(
+    (row) => row.authoring.experimentAuthoring !== undefined,
+  );
   if (rows.length === 0) return {};
   const bound = adoptedProductRow(domainDir);
   if (bound === null) {
@@ -206,9 +201,8 @@ function composeAuthoringMemory(
   recorded: RecordedDifficultyDecision | null,
 ) {
   const { repoRoot, manifest } = input;
-  const manifestPath = join(repoRoot, FROZEN_MANIFEST_PATH);
-  const claimsDir = claimsDirFor(repoRoot, manifest.slug);
-  const read = readClimbBatteries(domainDir, input.runPin, claimsDir, manifestPath);
+  const campaign = { repoRoot, slug: manifest.slug };
+  const read = readClimbBatteries(domainDir, input.runPin, campaign);
   const rebuild = decision.move === "rebuild";
   const readout = recorded?.evidence.difficulty ?? null;
   const advice = rebuild ? readLatestRebuildAdvice(repoRoot, manifest.slug) : null;
@@ -220,7 +214,7 @@ function composeAuthoringMemory(
     .join("\n\n");
   // Read once, when the context tool first asks: the recorded history does not move inside a round.
   let measuredRows: AdmittedClimbRow[] | undefined;
-  const rows = () => (measuredRows ??= readClimbBatteries(domainDir, null, claimsDir).history);
+  const rows = () => (measuredRows ??= readClimbBatteries(domainDir, null, campaign).history);
   const measured =
     readout === null
       ? undefined
@@ -233,7 +227,7 @@ function composeAuthoringMemory(
     advice,
     advisoryNote,
     measured,
-    band: climbThresholds(manifestPath).band,
+    band: climbThresholds(frozenManifestPath(repoRoot)).band,
   };
 }
 

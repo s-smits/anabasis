@@ -171,6 +171,12 @@ export function canonicalForms(path: string): string[] {
   }
 }
 
+/** Every path form of `paths`, each once and sorted: the root list a rule set and the policy
+ *  identity recording it are both written from. */
+export function canonicalRoots(paths: readonly string[]): string[] {
+  return [...new Set(paths.flatMap(canonicalForms))].sort();
+}
+
 /**
  * Where a host toolchain installs itself, for the two walls that must name a place.
  *
@@ -330,23 +336,6 @@ export function darwinUserTempRoot(): string | undefined {
   return confstrTempRoot;
 }
 
-/**
- * The grant a toolchain needs in a temporary directory: every direct child and what lies beneath
- * it. `regex-quote` is Seatbelt's own path-to-regex boundary, and this is the same form Apple's
- * shipped profiles and Firefox's macOS sandbox use.
- *
- * A narrower, files-only version of this rule keeps concurrent verifier workdirs shut, but it also
- * refuses `mktemp -d`, `mkdir /tmp/x` and every python `TemporaryDirectory()`. So both walls grant
- * this shape and close the product's own trees by name instead (`verifierTempSiblingDenyRules`),
- * which is the only arrangement under which a toolchain works and a sibling's workdir stays shut.
- */
-export function userTempChildTreeRules(roots: string[]): string[] {
-  return roots.map(
-    (root) =>
-      `(allow file-read* file-read-metadata file-write* (regex (string-append #"^" (regex-quote ${capturedJsonStringify(root)}) #"/[^/]+(/.*)?$")))`,
-  );
-}
-
 /** What the product itself creates under the user temporary directory and a verifier tool may not
  *  touch: a concurrent verification's cell (`ana-cell-`, the host's per-check workdir), Built
  *  Harness scratch, reference-solve staging and tool staging. Each is named by prefix because the
@@ -370,6 +359,30 @@ export function verifierTempSiblingDenyRules(
   patterns: readonly string[] = VERIFIER_TEMP_SIBLING_DENY_PATTERNS,
 ): string[] {
   return patterns.map((pattern) => `(deny file-read* file-read-metadata file-write* (regex #"${pattern}"))`);
+}
+
+/**
+ * The confstr temp root and `extraRoots` in both path forms, which each wall records in its policy
+ * identity, and the rules granting a toolchain every direct child of them and what lies beneath it.
+ * `regex-quote` is Seatbelt's own path-to-regex boundary, the form Apple's shipped profiles and
+ * Firefox's macOS sandbox use.
+ *
+ * A narrower, files-only version of this rule keeps concurrent verifier workdirs shut, but it also
+ * refuses `mktemp -d`, `mkdir /tmp/x` and every python `TemporaryDirectory()`. So both walls grant
+ * this shape and close the product's own trees by name after it (`siblingPatterns`), which is the
+ * only arrangement under which a toolchain works and a sibling's workdir stays shut.
+ */
+export function userTempRules(
+  extraRoots: readonly string[],
+  siblingPatterns: readonly string[] = VERIFIER_TEMP_SIBLING_DENY_PATTERNS,
+) {
+  const confstr = darwinUserTempRoot();
+  const roots = canonicalRoots(confstr === undefined ? extraRoots : [confstr, ...extraRoots]);
+  const childTrees = roots.map(
+    (root) =>
+      `(allow file-read* file-read-metadata file-write* (regex (string-append #"^" (regex-quote ${capturedJsonStringify(root)}) #"/[^/]+(/.*)?$")))`,
+  );
+  return { roots, rules: [...childTrees, ...verifierTempSiblingDenyRules(siblingPatterns)] };
 }
 
 /**

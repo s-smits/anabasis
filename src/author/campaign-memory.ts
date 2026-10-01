@@ -7,7 +7,8 @@
 import { existsSync, mkdirSync, readFileSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
 import { ITERATION_FILE, iterationOrdinal, listIterationDirs } from "../builder/campaign-iterations.ts";
-import { type CampaignEpochEvidence, writeCompleted } from "./campaign-epoch.ts";
+import type { CampaignEpochEvidence } from "./campaign-epoch.ts";
+import { writeCompleted } from "../meta/completed-json.ts";
 import type { CampaignClause, CampaignFeedback, IterationEvidence } from "./campaign-types.ts";
 import { parseJsonAs } from "../meta/json-runtime.ts";
 import { isString } from "../meta/json-shape.ts";

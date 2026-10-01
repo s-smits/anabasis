@@ -791,7 +791,7 @@ Builder wrapper a check declares, like its bench simulator `firmware-sim`, and c
 solvers' only check before submitting in 8 verified fails. So `--withhold-instruments true` (added
 2026-09-27), the strict operator mode that withholds every check's required tool inside `.toolchain` and
 travels as `HARNESS_BUILT_WITHHOLD_INSTRUMENTS`, stays off by default. Two retired flags are refused by name
-(`src/run/launch-arguments.ts`): `--max-turns`, since the Built cap is `BUILT_DEFAULT_MAX_TURNS`, and
+(`src/run/launch-arguments.ts`): `--max-turns`, since the Built cap is the harness's `solver.max_turns`, and
 `--turn-budget`, renamed `--iteration-budget`. `tools/fullrun-launchd.zsh` (macOS) and
 `tools/fullrun-systemd.sh` (Linux) detach a run through `env -i` from one frozen environment map with
 absolute `HOME`, `CODEX_HOME`, `TMPDIR` and `PATH`.
@@ -1299,12 +1299,12 @@ the battery was paid for.
 
     Controls are what calibrate the checks. At least 5 accepts and at least 5 rejects is an authoring
     requirement the Builder is told rather than a size the gate measures
-    (`evaluatorCalibration.minimumKnownPasses` and `minimumKnownFailures` in `thresholds.frozen.yaml`,
-    bound through `src/claim/calibration.ts`, and held in the starter by `test/starter-pack.test.ts`). Its
-    one non-test consumer, `acceptIndependenceFeedback`, is advisory. What the gate runs is
-    `validateControls` (`src/correctness-bundle/controls.ts`): every control binds a real task and names
-    declared checks, joins and boundaries, and each reject's named check applies to its task. The census
-    then runs every control, and a failing accept refuses the candidate.
+    (`evaluatorCalibration.minimumKnownPasses` and `minimumKnownFailures` in `thresholds.frozen.yaml`, bound
+    through `src/run/accept-control-independence.ts`, and held in the starter by
+    `test/starter-pack.test.ts`). Its one non-test consumer, `acceptIndependenceFeedback`, is advisory. What
+    the gate runs is `validateControls` (`src/correctness-bundle/controls.ts`): every control binds a real
+    task and names declared checks, joins and boundaries, and each reject's named check applies to its task.
+    The census then runs every control, and a failing accept refuses the candidate.
 
     Build each reject from the known-correct accept for its task by changing one fact; other checks may
     fail on it too (2026-09-14). A reject that does not fail its named check is no discrimination
@@ -1850,7 +1850,7 @@ Each of these rules points at an owner that §6 lists.
   `Bun.sleep(ms)`.
 - 4.35 `no-lifetime-outside-owner` treats a spawn plus `child.kill()` in one file as a third
   process-lifetime owner. Launch through `spawnCollected` / `stageCommandIsolation` and signal through
-  `killProcessGroup` / `terminateAndReapProcessGroup` (`src/meta/subprocess.ts`). Tests are exempt.
+  `killProcessGroup` / `terminateAndReapProcessGroupId` (`src/meta/subprocess.ts`). Tests are exempt.
 - 4.36 `no-hand-spelled-git` says never to spawn `"git"` yourself. Skills use `gitOutput/gitText/gitMaybe`
   (`.claude/skills/main/git.ts`), and `src` uses `src/run/source-identity.ts`, or
   `src/author/domain-repo.ts` for the committing Builder workspace. Tests are exempt.
@@ -1918,7 +1918,7 @@ the promise versions of `mkdir mkdtemp readdir rm`, and the network and the modu
 `network.ts` and `modules.ts`, the `node:net` / `node:module` surfaces. The process belongs to
 `process.ts`, which gives `runtimeProcess` in place of `process`, with `capturedSpawn`, `capturedExecPath`
 and `parseArgs`. Subprocesses belong to `subprocess.ts`, with `runSync`, `runSyncOrThrow`,
-`runTextSyncOrThrow`, `killProcessGroup` and `terminateAndReapProcessGroup`, and host binaries to
+`runTextSyncOrThrow`, `killProcessGroup` and `terminateAndReapProcessGroupId`, and host binaries to
 `host-tool.ts`, as in `hostTool("git")`.
 
 JSON in and out goes through `json-runtime.ts` (`capturedJsonParse`, `parseJsonAs<T>`,

@@ -36,17 +36,14 @@ import { runtimeProcess } from "../src/meta/process.ts";
 import { join, relative } from "../src/meta/path.ts";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { afterAll, describe, expect, it } from "bun:test";
-import {
-  CandidateIsolationRefusal,
-  openPathRecord,
-  readPathRecordRows,
-} from "../src/builder/candidate-isolation-runtime.ts";
+import { CandidateIsolationRefusal } from "../src/builder/candidate-isolation-runtime.ts";
+import { openPathRecord, readPathRecordRows } from "../src/builder/path-record.ts";
 import {
   type CandidateIsolationBinding,
   deriveCandidateIsolation,
 } from "../src/builder/candidate-isolation.ts";
 import { type BuilderIsolation, createBuilderTools } from "../src/builder/tools.ts";
-import { SAFEGUARDS_LOG_FILE, createSafeguardContext } from "../src/meta/safeguard.ts";
+import { SAFEGUARDS_LOG_FILE } from "../src/meta/safeguard.ts";
 import { osIsolationSupport } from "../src/verify/os-isolation.ts";
 import { rejectionOf } from "./helpers/doubles.ts";
 
@@ -183,6 +180,8 @@ describe.if(osIsolationSupport().ok)("the seven capabilities through the isolati
     expect(installEnv).toContain(`${join(binding.iterationDir, ".toolchain", "home")}\n`);
     expect(installEnv).toContain(join(binding.iterationDir, ".toolchain", "home", ".local", "bin"));
     expect(installEnv).toContain(join(binding.iterationDir, ".toolchain", "home", ".cargo", "bin"));
+    // Per-tool configuration is left to the tool that needs it, so the cell sets none of its own.
+    expect(await run("bash", { command: "env" })).not.toMatch(/^ARDUINO_/m);
     // A tool installed where the checks and the solver look first answers to its name here as well.
     await run("bash", {
       command:
@@ -266,10 +265,7 @@ describe.if(osIsolationSupport().ok)("the seven capabilities through the isolati
     chmodSync(join(bin, "dcg"), 0o700);
     const logDir = join(SCRATCH, "guard-safeguards");
     const mounted = new Map<string, AgentTool>(
-      createBuilderTools({ ...isolation, safeguardContext: createSafeguardContext(logDir) }).map((tool) => [
-        tool.name,
-        tool,
-      ]),
+      createBuilderTools({ ...isolation, safeguardContext: { logDir } }).map((tool) => [tool.name, tool]),
     );
     const shell = mounted.get("bash");
     if (!shell) throw new Error("bash tool not found");

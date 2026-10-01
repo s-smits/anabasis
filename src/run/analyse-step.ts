@@ -24,7 +24,7 @@
 import { mkdirSync } from "../meta/filesystem.ts";
 import { campaignDir } from "../meta/campaign-root.ts";
 import { join } from "../meta/path.ts";
-import { readJsonFileOrNull } from "../meta/completed-json.ts";
+import { readJsonFileOrNull, writeCompleted } from "../meta/completed-json.ts";
 import { isRecord } from "../meta/json-shape.ts";
 import type { CampaignFeedback } from "../author/campaign-types.ts";
 import {
@@ -37,7 +37,6 @@ import {
 } from "../analyse/iteration-analysis.ts";
 import { type JudgeReviewsResult, runJudgeReviews } from "../analyse/judge-reviews.ts";
 import { reviewerContested } from "../analyse/judge-contested.ts";
-import { writeCompleted } from "../author/campaign-epoch.ts";
 import {
   type AdviceIssue,
   type RebuildAdvicePacket,

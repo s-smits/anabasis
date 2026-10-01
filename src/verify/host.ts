@@ -66,12 +66,11 @@ import {
 import { type CellToolCache, engineCellEnv, withToolCache } from "./engine-cell-env.ts";
 import {
   createVerifierLifetime,
-  settleUnspawned,
-  superviseVerifierProcess,
   VerifierOperationalStop,
   type VerifierLifetime,
   type VerifierProcessSettlement,
 } from "./verifier-lifetime.ts";
+import { settleUnspawned, superviseVerifierProcess } from "./verifier-lifetime-process.ts";
 import { errorCode, errorMessage } from "../meta/runtime-values.ts";
 import { boundText } from "../meta/bounded-text.ts";
 

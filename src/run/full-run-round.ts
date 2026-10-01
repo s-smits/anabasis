@@ -24,7 +24,7 @@ import { type NextMove, epochPassOf, selectNextMoveFromDisk } from "./next-move.
 import { recordDifficultyDecision } from "./difficulty-decision.ts";
 import { refusedForEnvironmentOnly } from "./climb-battery-admission.ts";
 import type { WrittenRunClaim } from "./claim-write.ts";
-import { ENVIRONMENT_OWNED_NONRESULT_KINDS, isNonResultKind } from "../claim/record-events.ts";
+import { isEnvironmentOwnedNonResult } from "../claim/record-events.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import type { SafeguardContext } from "../meta/safeguard.ts";
 import type { ProviderResourceBudget } from "./provider-resource-budget.ts";
@@ -455,7 +455,7 @@ function environmentOwnsRefusal(claim: Pick<WrittenRunClaim, "clauses" | "nonRes
 
 function environmentNonResultsOnly(claim: Pick<WrittenRunClaim, "nonResults">): boolean {
   return Object.entries(claim.nonResults).every(
-    ([kind, count]) => count === 0 || (isNonResultKind(kind) && ENVIRONMENT_OWNED_NONRESULT_KINDS.has(kind)),
+    ([kind, count]) => count === 0 || isEnvironmentOwnedNonResult(kind),
   );
 }
 

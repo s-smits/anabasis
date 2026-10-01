@@ -186,9 +186,6 @@ export interface CensusOptions {
   runId?: string | undefined;
 }
 
-export type ProseCensus = ReturnType<typeof censusProse>;
-export type SolveCensus = ReturnType<typeof censusSolves>;
-
 export const CENSUS_SCHEMA = "builder-prose-census/v1";
 export const SOLVE_CENSUS_SCHEMA = "built-solve-prose-census/v1";
 /** Execution outcomes that record an environment failure rather than authoring work. Their prose

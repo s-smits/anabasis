@@ -161,10 +161,6 @@ interface SolvabilityCaseOutcome {
   finding: ContractFinding | null;
 }
 
-function failedCheckIds(result: CorrectnessModelResult): string[] {
-  return [...blockingFailedCheckIds(result)].sort();
-}
-
 function blockingFailure(result: CorrectnessModelResult): boolean {
   return result.ok !== true || blockingTruthFailure(result);
 }
@@ -427,7 +423,7 @@ async function runSolvabilityCase(
     ({ result, error, authorClassification, predicateFailures, checkRuns } = verified);
     if (verified.ungrounded.length > 0) attribution = { failure: "ungrounded" };
     if (result !== null && blockingFailure(result)) {
-      const blocked = failedCheckIds(result);
+      const blocked = blockingFailedCheckIds(result);
       error = `reference artifact was rejected${blocked.length > 0 ? ` on [${blocked.join(", ")}]` : " without an attributed check"}`;
       authorClassification ??= "generated-evaluate-result";
     }
@@ -440,7 +436,7 @@ async function runSolvabilityCase(
     artifactDigest: accepted === null ? null : sha256(accepted),
     artifact: accepted === null ? null : capturedJsonParse(accepted),
     referenceSolve: attempt.referenceSolve,
-    failedCheckIds: result === null ? [] : failedCheckIds(result),
+    failedCheckIds: result === null ? [] : blockingFailedCheckIds(result),
     predicateFailures,
     ...keyIfDefined("checkRuns", checkRuns),
     ...keyIfDefined("rerunAfterNonResult", rerunAfterNonResult),

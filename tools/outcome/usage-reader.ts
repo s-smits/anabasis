@@ -12,9 +12,9 @@
 import type { BuilderToolsReport, EpochToolCensus } from "./builder-tools.ts";
 import { builderFailureFindings } from "./builder-failed-calls.ts";
 import { type BuilderExecutionEvidence, submitProjection } from "../../src/author/builder-execution.ts";
-import { existsSync, readFileSync, readdirSync } from "../../src/meta/filesystem.ts";
+import { existsSync, readdirSync } from "../../src/meta/filesystem.ts";
 import { join } from "../../src/meta/path.ts";
-import { SAFEGUARD_INVENTORY, parseSafeguardLog, safeguardLogFile } from "../../src/meta/safeguard.ts";
+import { SAFEGUARD_INVENTORY, readSafeguardLog } from "../../src/meta/safeguard.ts";
 
 interface SafeguardUsageRow {
   readonly name: string;
@@ -171,15 +171,11 @@ export function builderToolFindings(report: BuilderToolsReport): string[] {
   return out;
 }
 
-function logFilesUnder(campaignDir: string): string[] {
+/** The safeguard log of every run under one campaign that wrote one. */
+function logsUnder(campaignDir: string) {
   const root = join(campaignDir, "safeguards");
   if (!existsSync(root)) return [];
-  const files: string[] = [];
-  for (const runId of readdirSync(root)) {
-    const file = safeguardLogFile(campaignDir, runId);
-    if (existsSync(file)) files.push(file);
-  }
-  return files;
+  return readdirSync(root).flatMap((runId) => readSafeguardLog(campaignDir, runId) ?? []);
 }
 
 export function safeguardUsageReport(campaignDirs: readonly string[]): SafeguardUsageReport {
@@ -206,9 +202,8 @@ export function safeguardUsageReport(campaignDirs: readonly string[]): Safeguard
     if (!row.campaigns.includes(campaignDir)) row.campaigns.push(campaignDir);
   };
   for (const campaignDir of campaignDirs) {
-    for (const file of logFilesUnder(campaignDir)) {
+    for (const log of logsUnder(campaignDir)) {
       logsRead += 1;
-      const log = parseSafeguardLog(readFileSync(file, "utf8"));
       malformedLines += log.malformed;
       for (const firing of log.firings) count(firing.name, firing.at, campaignDir);
     }

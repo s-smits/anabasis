@@ -5,11 +5,20 @@
  */
 import { oauthErrorHtml, oauthHtmlResponse, oauthSuccessHtml } from "./oauth-page.ts";
 import { parseAuthorizationInput } from "./paste-input.ts";
-import type { OAuthAuthInfo, OAuthPrompt } from "./types.ts";
 import { asError } from "../../meta/runtime-values.ts";
 import { hasText, textOr } from "../../meta/text.ts";
 
 const CALLBACK_HOST = textOr(Bun.env.ANA_OAUTH_CALLBACK_HOST, "127.0.0.1");
+
+type OAuthPrompt = {
+  message: string;
+  placeholder?: string;
+};
+
+type OAuthAuthInfo = {
+  url: string;
+  instructions?: string;
+};
 
 export type OAuthLoginOptions = {
   onAuth: (info: OAuthAuthInfo) => void;

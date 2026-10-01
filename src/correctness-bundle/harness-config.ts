@@ -20,7 +20,14 @@ import { errorMessage } from "../meta/runtime-values.ts";
 
 export const HARNESS_CONFIG_FILE = "agent/config.yaml";
 
-/** Section, key and default of every setting, in the unit the key names. */
+/** Section, key and default of every setting, in the unit the key names.
+ *
+ *  `solver.max_turns` is the Built solver's per-case turn cap when the harness sets none. Four turns
+ *  fit one write, one preview and one submit and nothing else; twelve leave room to build or run the
+ *  draft, read the result and repair it; twenty-four leave room for a search or optimisation loop
+ *  over several candidates (operator decision). The harness's own value sets the cap and this is only
+ *  the default behind it, which is why `thresholds.frozen.yaml` holds no Built turn limit to disagree
+ *  with. */
 const SETTINGS = {
   solver: { solve_minutes: 120, max_turns: 24, shell_timeout_seconds: 300, shell_timeout_max_seconds: 900 },
   gate: { reference_solve_seconds: 120, census_minutes: 30, check_seconds: 600, tool_run_seconds: 300 },

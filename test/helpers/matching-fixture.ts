@@ -6,7 +6,7 @@
  */
 import { mkdirSync, writeFileSync } from "../../src/meta/filesystem.ts";
 import { join } from "../../src/meta/path.ts";
-import { EVALUATOR_CALIBRATION_POLICY } from "../../src/claim/calibration.ts";
+import { EVALUATOR_CALIBRATION_POLICY } from "../../src/run/accept-control-independence.ts";
 import type { Brief } from "../../src/correctness-bundle/brief.ts";
 import type { Toolset } from "../../src/correctness-bundle/contracts.ts";
 import type { Solver } from "../../src/correctness-bundle/solve.ts";

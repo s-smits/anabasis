@@ -23,7 +23,6 @@ import {
   PROBE_DIRECTIONS,
 } from "../analyse/iteration-analysis.ts";
 import type { AdviceIssue } from "../author/rebuild-advice.ts";
-import { readCompleted } from "../author/campaign-epoch.ts";
 import { BUNDLE_FILES, type BundleFile, ownerSide } from "../author/feedback-routing.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { mentionsTask } from "../meta/identifier-scan.ts";
@@ -44,7 +43,7 @@ import { type ReviewVerifierEvidence, type SourceReadState, deliveredSource } fr
 import { contractDefect } from "../analyse/finding-owner.ts";
 import type { ContestedKind } from "../analyse/judge-contested.ts";
 import { BRIEF_FILE, TASKS_FILE } from "../meta/bundle-layout.ts";
-import { readJsonFile } from "../meta/completed-json.ts";
+import { readJsonFile, readCompleted } from "../meta/completed-json.ts";
 import { boundText } from "../meta/bounded-text.ts";
 import { type AdvisoryDefect, type AdvisoryDisposition, advisoryDefects } from "./review-carry.ts";
 

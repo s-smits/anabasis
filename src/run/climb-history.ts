@@ -14,9 +14,9 @@ import type { MeasuredDifficulty } from "../claim/battery-difficulty.ts";
 import { classifyCaseOutcome } from "../claim/case-record.ts";
 import { wilsonInterval } from "../claim/estimation.ts";
 import { POLICY } from "../critic/policy.ts";
-import { band01, policyRow } from "../critic/manifest.ts";
+import { band01, frozenManifestPath, policyRow } from "../critic/manifest.ts";
 import { sha256 } from "../meta/digest.ts";
-import { keyIfDefined, keyIfTruthy } from "../meta/optional-key.ts";
+import { keyIfDefined, keyIfTruthy, keysIf } from "../meta/optional-key.ts";
 import { isBoolean, isNumber, isRecord, isString } from "../meta/json-shape.ts";
 import { canonicalJson } from "../meta/stable-json.ts";
 import { parseJsonAs } from "../meta/json-runtime.ts";
@@ -30,6 +30,7 @@ import {
 } from "./climb-battery-admission.ts";
 import type { ExperimentAuthoring } from "./experiment-freeze.ts";
 import { productHistoryDirs } from "./product-versions.ts";
+import { claimsDirFor } from "./claim-write.ts";
 import { HarnessConfigError, harnessSettings } from "../correctness-bundle/harness-config.ts";
 import { settledAgainstCheck } from "../review/epoch-review-findings.ts";
 import { SOLVE_WALL_MESSAGE } from "../backends/backend-types.ts";
@@ -48,6 +49,18 @@ export interface ClimbThresholds {
 export const climbThresholds: (manifestPath?: string) => ClimbThresholds = policyRow("climb", {
   band: { bound: band01, fallback: POLICY.climb.band },
 });
+
+/** The claims a read judges batteries by, and the frozen manifest it compares their thresholds
+ *  against; with no manifest the read states nothing about thresholds and checks nothing. */
+interface ClimbEvidencePaths {
+  claimsDir: string;
+  manifestPath?: string;
+}
+
+/** Where a climb read finds its evidence. A campaign is named by its repository and slug, and the
+ *  read derives the campaign's claims directory and the repository's frozen manifest from them. A
+ *  fixture tree that keeps its claims elsewhere names the paths outright. */
+export type ClimbEvidenceAt = { repoRoot: string; slug: string } | ClimbEvidencePaths;
 
 /** One battery's difficulty facts; chronological order is the caller's contract. */
 export interface ClimbBattery {
@@ -405,6 +418,17 @@ function admittedClimbRow(
   };
 }
 
+/** The paths a read at `at` takes. A pinned read of a campaign compares thresholds against the
+ *  repository's frozen manifest; the public history view (a null pin) reads batteries under every
+ *  manifest, as it reads them under every pin. */
+export function climbEvidencePaths(at: ClimbEvidenceAt, runPin: string | null): ClimbEvidencePaths {
+  if ("claimsDir" in at) return at;
+  return {
+    claimsDir: claimsDirFor(at.repoRoot, at.slug),
+    ...keysIf(runPin !== null, () => ({ manifestPath: frozenManifestPath(at.repoRoot) })),
+  };
+}
+
 /**
  * Reads the adopted tree's measured history. `admitBattery` owns the recorded-byte, run, model,
  * threshold, variant and claim checks and names the run behind every exclusion, so the loop here
@@ -417,14 +441,14 @@ function admittedClimbRow(
  * Chronology is the claims' recorded `createdAt`, with runId as the tiebreak, and never file
  * mtime. Scored rows — those with a boolean `pass` — are the denominator, and `pass: null` counts
  * neither way. A null runPin serves the public history view alone, which keeps batteries at other
- * model pins readable with their labels.
+ * model pins and threshold manifests readable with their labels.
  */
 export function readClimbBatteries(
   domainDir: string,
   runPin: string | null,
-  claimsDir: string,
-  manifestPath?: string,
+  at: ClimbEvidenceAt,
 ): ClimbBatteriesRead {
+  const { claimsDir, manifestPath } = climbEvidencePaths(at, runPin);
   const thresholdDigest = currentThresholdDigest(manifestPath);
   const excluded: ExcludedBattery[] = [];
   const history: AdmittedClimbRow[] = [];

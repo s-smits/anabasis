@@ -15,7 +15,8 @@ import {
 } from "../src/meta/filesystem.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
-import { openPathRecord, runIsolated } from "../src/builder/candidate-isolation-runtime.ts";
+import { runIsolated } from "../src/builder/candidate-isolation-runtime.ts";
+import { openPathRecord } from "../src/builder/path-record.ts";
 import {
   deriveBundleContract,
   deriveCandidateIsolation,

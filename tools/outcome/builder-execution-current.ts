@@ -18,15 +18,6 @@ import {
 } from "../../src/author/builder-custom-tool-call.ts";
 import { plainRecord } from "../../src/meta/json-evidence.ts";
 import { isBoolean, isNumber, isString } from "../../src/meta/json-shape.ts";
-import {
-  isNonNegativeInteger,
-  optionalBoolean,
-  optionalCount,
-  optionalNumber,
-  optionalPositive,
-  optionalString,
-  isPositiveInteger,
-} from "./optional-field.ts";
 
 const BACKEND_IDS = new Set(["codex", "claude", "openrouter"]);
 
@@ -44,6 +35,35 @@ const CURRENT_EXECUTION_OUTCOMES = new Set([
   "in-flight",
   "recorded-at-terminal",
 ]);
+
+/** Optional evidence fields: absent, or of the promised shape, so one field rule has one spelling. */
+function isNonNegativeInteger(value: unknown): value is number {
+  return isNumber(value) && Number.isSafeInteger(value) && value >= 0;
+}
+
+function isPositiveInteger(value: unknown): value is number {
+  return isNumber(value) && Number.isSafeInteger(value) && value > 0;
+}
+
+function optionalString(value: unknown): boolean {
+  return value === undefined || isString(value);
+}
+
+function optionalNumber(value: unknown): boolean {
+  return value === undefined || (isNumber(value) && Number.isFinite(value));
+}
+
+function optionalCount(value: unknown): boolean {
+  return value === undefined || isNonNegativeInteger(value);
+}
+
+function optionalPositive(value: unknown): boolean {
+  return value === undefined || isPositiveInteger(value);
+}
+
+function optionalBoolean(value: unknown): boolean {
+  return value === undefined || isBoolean(value);
+}
 
 function validBackend(value: unknown): boolean {
   return value === null || (isString(value) && BACKEND_IDS.has(value));

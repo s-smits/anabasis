@@ -266,12 +266,7 @@ describe("runBuildStep battery sizing", () => {
 
   /** The readout the controller would record for this tree, read the way the round reads it. */
   function recordedReadout(root: string): RecordedDifficultyDecision | null {
-    const readout = readClimbReadout(
-      join(root, "domains", SLUG),
-      PIN,
-      claimsDirFor(root, SLUG),
-      join(root, "thresholds.frozen.yaml"),
-    );
+    const readout = readClimbReadout(join(root, "domains", SLUG), PIN, { repoRoot: root, slug: SLUG });
     return readout === null
       ? null
       : double<RecordedDifficultyDecision>({ path: "decision.json", evidence: { difficulty: readout } });

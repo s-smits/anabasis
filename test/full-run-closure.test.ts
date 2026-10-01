@@ -186,9 +186,11 @@ describe("full-run closure first cause", () => {
       const source = join(import.meta.dirname, "..", "src");
       const script = `
       import { FullRunClosure } from ${JSON.stringify(join(source, "run/full-run-deadline.ts"))};
-      import { createVerifierLifetime, superviseVerifierProcess, VerifierOperationalStop }
+      import { createVerifierLifetime, VerifierOperationalStop }
         from ${JSON.stringify(join(source, "verify/verifier-lifetime.ts"))};
-      import { processGroupExists, terminateAndReapProcessGroup }
+      import { superviseVerifierProcess }
+        from ${JSON.stringify(join(source, "verify/verifier-lifetime-process.ts"))};
+      import { processGroupExists, terminateAndReapProcessGroupId }
         from ${JSON.stringify(join(source, "meta/subprocess.ts"))};
       const lifetime = createVerifierLifetime({ root: ${JSON.stringify(join(root, "receipts"))} });
       const lease = lifetime.begin({ role: "tool" });
@@ -228,7 +230,7 @@ describe("full-run closure first cause", () => {
         const reloaded = createVerifierLifetime({ root: ${JSON.stringify(join(root, "receipts"))} });
         console.log(JSON.stringify({ settlements, beforeUnwind, duringSettlement, terminals, pending, reloaded: reloaded.pendingReceipts() }));
       } finally {
-        await terminateAndReapProcessGroup(child);
+        await terminateAndReapProcessGroupId(child.pid);
         await child.exited;
       }
     `;

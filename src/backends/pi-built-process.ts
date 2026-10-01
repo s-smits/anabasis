@@ -19,12 +19,7 @@ import { runtimeProcess } from "../meta/process.ts";
 import { cancellableByteStream } from "../meta/cancellable-stream.ts";
 import type { RuntimeSignal } from "../meta/runtime-values.ts";
 import type { ProviderTurnReservation } from "../run/provider-resource-budget.ts";
-import {
-  killProcessGroup,
-  killProcessGroupId,
-  terminateAndReapProcessGroup,
-  terminateAndReapProcessGroupId,
-} from "../meta/subprocess.ts";
+import { killProcessGroup, killProcessGroupId, terminateAndReapProcessGroupId } from "../meta/subprocess.ts";
 import { asError, errorMessage } from "../meta/runtime-values.ts";
 import { boundText } from "../meta/bounded-text.ts";
 
@@ -497,7 +492,7 @@ async function reapAndSettle(input: WorkerCompletion, code: number | null): Prom
     input.state.pid === null || input.state.pid === input.child.pid
       ? Promise.resolve(true)
       : terminateAndReapProcessGroupId(input.state.pid);
-  const reaped = await Promise.all([terminateAndReapProcessGroup(input.child), workerGroup])
+  const reaped = await Promise.all([terminateAndReapProcessGroupId(input.child.pid), workerGroup])
     .then((results) => results.every(Boolean))
     .catch(() => false);
   if (!reaped && input.state.failure === null) {

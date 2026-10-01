@@ -27,11 +27,11 @@ import {
   CandidateIsolationRefusal,
   CandidateIsolationUnavailable,
   ISOLATED_OUTPUT_MAX,
-  type PathRecord,
   type IsolatedOutcome,
   type IsolatedRequest,
   runIsolated,
 } from "./candidate-isolation-runtime.ts";
+import type { PathRecord } from "./path-record.ts";
 import type { CandidateAccessPolicy } from "./candidate-isolation.ts";
 import { type PublicSourceBroker, PublicSourceFailure, acquirePublicSource } from "./public-source.ts";
 import { readWindow } from "./read-window.ts";

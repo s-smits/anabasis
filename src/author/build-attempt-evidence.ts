@@ -10,11 +10,10 @@ import { join } from "../meta/path.ts";
 import { plainRecord } from "../meta/json-evidence.ts";
 import type { SourceIdentity } from "../run/source-identity.ts";
 import type { BuildAgentTurnNonResult } from "./build-agent.ts";
-import { writeCompleted } from "./campaign-epoch.ts";
 import { isString, type JsonValue } from "../meta/json-shape.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { runtimeProcess } from "../meta/process.ts";
-import { readJsonFile } from "../meta/completed-json.ts";
+import { readJsonFile, writeCompleted } from "../meta/completed-json.ts";
 
 const AUTHORING_ATTEMPT_EVIDENCE_DIR = "evidence-builder-authoring";
 

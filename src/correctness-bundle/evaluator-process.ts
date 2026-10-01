@@ -21,12 +21,8 @@ import {
   EVALUATOR_FRAME_MAX_BYTES as FRAME_MAX_BYTES,
   type EvaluatorParentMessage,
 } from "./evaluator-process-wire.ts";
-import {
-  superviseVerifierProcess,
-  VerifierOperationalStop,
-  type VerifierLifetime,
-} from "../verify/verifier-lifetime.ts";
-import { launchConfinedChild } from "../verify/verifier-lifetime-process.ts";
+import { VerifierOperationalStop, type VerifierLifetime } from "../verify/verifier-lifetime.ts";
+import { launchConfinedChild, superviseVerifierProcess } from "../verify/verifier-lifetime-process.ts";
 import { boundText } from "../meta/bounded-text.ts";
 
 type Request =

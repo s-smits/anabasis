@@ -9,7 +9,7 @@ import { type BuildTask, validateTasks } from "../src/correctness-bundle/tasks.t
 import { validateToolsSpec } from "../src/correctness-bundle/tools-spec.ts";
 import { MATCHING_ACCEPTS, MATCHING_BRIEF, MATCHING_TASKS } from "./helpers/matching-fixture.ts";
 import { STARTER_DOC, STARTER_ENTRY, brief, fence, fileMapBrief } from "./helpers/starter-contracts.ts";
-import { EVALUATOR_CALIBRATION_POLICY } from "../src/claim/calibration.ts";
+import { EVALUATOR_CALIBRATION_POLICY } from "../src/run/accept-control-independence.ts";
 import { hashJsonBytes, parseJsonAs } from "../src/meta/json-runtime.ts";
 import { STDOUT_MAX_BYTES, createVerifierHost } from "../src/verify/host.ts";
 import { createVerifierLifetime } from "../src/verify/verifier-lifetime.ts";

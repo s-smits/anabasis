@@ -24,7 +24,7 @@ import { isString, asRecord } from "#src/meta/json-shape.ts";
 import { readJsonFileOrNull, writeJsonFile } from "#src/meta/completed-json.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
-import { parseSafeguardLog, safeguardLogFile } from "#src/meta/safeguard.ts";
+import { readSafeguardLog } from "#src/meta/safeguard.ts";
 import { bareCustomToolName } from "#src/author/builder-custom-tool-call.ts";
 import { type BuilderExecutionEvidence, isCandidateSubmit } from "#src/author/builder-execution.ts";
 import { readEpochRecord } from "#src/author/campaign-epoch.ts";
@@ -513,9 +513,10 @@ export function readStatus(
   const spend = recorded?.providerResourceBudget?.terminal ?? null;
   const claims = readClaims(location);
   const refused = claims.filter((claim) => claim.ok === false);
-  const { counts, malformed } = existsSync(safeguardLogFile(campaign, runId))
-    ? parseSafeguardLog(readFileSync(safeguardLogFile(campaign, runId), "utf8"))
-    : { counts: new Map<string, number>(), malformed: 0 };
+  const { counts, malformed } = readSafeguardLog(campaign, runId) ?? {
+    counts: new Map<string, number>(),
+    malformed: 0,
+  };
   const predictions = ledgerView(ledgerPath(runId, roots.predictions ?? PREDICTIONS_DIR));
   const written = lastRecordedWrite(readRunEvidence(location));
   const sessionMs = sessionWriteMs(campaign, runId, roots.tmpParent ?? "/private/var/tmp");

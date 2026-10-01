@@ -6,7 +6,6 @@ import {
   type CampaignEpochEvidence,
   campaignEpochOrder,
   selectCampaignEpoch,
-  writeCompleted,
 } from "../author/campaign-epoch.ts";
 import type { ResolvedSlots } from "../backends/resolve.ts";
 import { loadRepoEnv } from "../backends/env.ts";
@@ -58,15 +57,8 @@ import type { VerifierCleanup, VerifierLifetime } from "../verify/verifier-lifet
 import type { ClimbReadout } from "./climb-readout.ts";
 import { type RecordedRunEnd, runEndAtClose } from "./run-end.ts";
 
-export type { Denominator } from "./controller-denominator.ts";
-
-export {
-  type ContinuationEvidence,
-  latestRecordedContinuation,
-  resolveLaunchRunId,
-} from "./controller-lineage.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
-import { readJsonFile } from "../meta/completed-json.ts";
+import { readJsonFile, writeCompleted } from "../meta/completed-json.ts";
 
 /** `schema` is parsed bytes, so the compiler cannot own these tags as a member type and every
  *  reader compares them by hand. */

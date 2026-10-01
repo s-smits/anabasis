@@ -1,5 +1,4 @@
 export {
-  CHECK_PROGRAM_CONTRACT,
   applicableTruthChecks,
   requiredToolsOf,
 } from "../../vendor/correctness-model-bundle/evaluation-public-task.ts";

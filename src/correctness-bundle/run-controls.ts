@@ -561,7 +561,7 @@ async function runAccepts(run: ControlSession, corpus: ControlCorpus): Promise<R
     rejected.push({
       controlId: control.id,
       attempt: observation.attempt,
-      checkIds: [...blockingFailedCheckIds(observed.result)].sort(compareCodeUnits),
+      checkIds: blockingFailedCheckIds(observed.result),
       issue: `"${control.id}": ${blockingIssueSummary(observed.result)}`,
     });
   }

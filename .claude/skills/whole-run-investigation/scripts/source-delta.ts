@@ -14,13 +14,13 @@
 // Without --previous the script picks the newest sibling campaign of the same lane (same
 // directory name minus its numeric suffix) whose opening was written earlier, and says so.
 
-import { existsSync, readdirSync, readFileSync } from "#src/meta/filesystem.ts";
+import { existsSync, readdirSync } from "#src/meta/filesystem.ts";
 import { basename, dirname, join, resolve } from "#src/meta/path.ts";
 import { gitMaybe, gitText } from "#skills/main/git.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
 import type { JsonObject, JsonValue } from "#src/meta/json-shape.ts";
 import { readJsonFileOrNull } from "#src/meta/completed-json.ts";
-import { parseSafeguardLog, safeguardLogFile } from "#src/meta/safeguard.ts";
+import { readSafeguardLog } from "#src/meta/safeguard.ts";
 import { isControllerBatteryRunId } from "#src/run/controller-battery-record-policy.ts";
 import { campaignRuns, latestRun } from "#tools/runs/discover.ts";
 import { jsonText } from "./run-overview.ts";
@@ -168,9 +168,7 @@ export function firedSafeguards(campaign: string, runId: string): Map<string, nu
   if (!existsSync(root)) return fired;
   for (const name of readdirSync(root)) {
     if (!isControllerBatteryRunId(runId, name)) continue;
-    const log = safeguardLogFile(campaign, name);
-    if (!existsSync(log)) continue;
-    for (const [id, count] of parseSafeguardLog(readFileSync(log, "utf8")).counts) {
+    for (const [id, count] of readSafeguardLog(campaign, name)?.counts ?? []) {
       fired.set(id, (fired.get(id) ?? 0) + count);
     }
   }

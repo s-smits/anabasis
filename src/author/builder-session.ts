@@ -46,10 +46,6 @@ import { realpathSync } from "../meta/filesystem.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { type BuilderSubmitOutcome, makeSubmitTool } from "../gate/submit-tool.ts";
 export type { BuilderSubmitOutcome } from "../gate/submit-tool.ts";
-export {
-  BUILDER_WORKSPACE_CARD,
-  builderSystemPrompt,
-} from "./builder-start-prompt.ts";
 
 interface BuilderSessionInput {
   slug: string;

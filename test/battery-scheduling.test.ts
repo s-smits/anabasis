@@ -14,7 +14,7 @@ import { join } from "../src/meta/path.ts";
 import { afterAll, describe, expect, it } from "bun:test";
 import { verifyRunDir } from "../src/claim/evidence-log.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
-import { createSafeguardContext, SAFEGUARDS_LOG_FILE } from "../src/meta/safeguard.ts";
+import { SAFEGUARDS_LOG_FILE } from "../src/meta/safeguard.ts";
 import { createRunObserver } from "../src/observe/run-observer.ts";
 import { BUILT_SOLVE_MAX_CONCURRENCY } from "../src/run/session-pool.ts";
 import {
@@ -144,7 +144,7 @@ describe("the solve pool", () => {
     async (stop) => {
       const slugDir = bundleSlug();
       const verifierLifetime = createVerifierLifetime({ root: join(slugDir, "lifetime") });
-      const safeguardContext = createSafeguardContext(join(slugDir, "safeguards/r1"));
+      const safeguardContext = { logDir: join(slugDir, "safeguards/r1") };
       let solved = 0;
       const solver: Solver = async () => {
         if (solved++ === 0 && stop) {

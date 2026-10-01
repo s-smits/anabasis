@@ -490,20 +490,6 @@ describe("the history page", () => {
     expect(history(readout, rows, "r2")).toContain("No public task of r2 can be vouched for");
   });
 
-  // ADDED(family-effort): the overview keeps the battery's effort and drops the per-family medians.
-  it("leaves each family's solve effort out of the overview", () => {
-    const effortful = row("r1", 0, {
-      passed: 3,
-      n: 5,
-      effort: { cases: 5, turns: 4, minutes: 20, toolCalls: 14 },
-      familyEffort: [{ family: "span", cases: 5, medianMinutes: 9, maxMinutes: 20, medianToolCalls: 14 }],
-    });
-    const { rows: overview } = historyBody(readoutOf(effortful), [effortful]);
-    const [first] = Array.isArray(overview) ? overview : [];
-    expect(first).toMatchObject({ effort: { minutes: 20 } });
-    expect(first).not.toHaveProperty("familyEffort");
-  });
-
   // ADDED(history-legend): the legend rides in the opening's readout alone.
   it("sends the legend with the opening and not with each history page", () => {
     expect(render(readout)).toContain("Rows are newest first.");

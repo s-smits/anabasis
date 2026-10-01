@@ -1331,6 +1331,13 @@ the battery was paid for.
     their schemas, name only declared tools and use refusal codes the source still emits. Prompt digests
     are condition identities; a prompt test proves delivery, not behaviour.
 
+    This file is not one of those surfaces (operator, 2026-10-01). The Builder's sandbox grants the
+    README and the `starters` tree and not AGENTS.md (`deriveCandidateIsolation`,
+    `test/candidate-isolation-policy.test.ts`), so nothing written here reaches a Builder, and an edit
+    here is not a new condition. What a Builder should know goes in `STARTER.md` or the starter pack.
+    The grant had stood since the first commit and went unused: of 390 recorded Builder path records,
+    318 read `STARTER.md` and none read this file.
+
     The Builder has fifteen tools in `BUILDER_TOOLS` (`src/builder/builder-tool-interface.ts`).
     `harness_inspect` is static and read-only, with four modes: `readiness`, `task`, `coverage` and
     `feedback`. Readiness is the whole static view in one call, a named `family` lists one it cannot fit,

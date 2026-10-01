@@ -61,6 +61,8 @@ describe("policy derivation", () => {
         ["src/verify/host.ts", false],
         ["src/correctness-bundle/contracts.ts", false],
         ["src/verify/verifier-lifetime.ts", false],
+        ["README.md", true],
+        ["AGENTS.md", false],
       ] as const) {
         const target = join(actualRoot, path);
         expect(guardPath(derived, "read", "read", target).decision).toBe(allowed ? "allow" : "deny");
@@ -169,6 +171,15 @@ describe("policy derivation", () => {
     symlinkSync(join(campaign, "epoch-later", "workspace", "correctness-model"), workspaceTools);
     seedFile(join(campaign, "epoch-later", "workspace", "correctness-model", "evaluator.ts"), "PRIVATE");
     expect(adoptedGrants(deriveCandidateIsolation(fixture.binding, "author"))).toEqual([]);
+  });
+
+  it("keeps the repository's AGENTS.md closed to the Builder, whose guide is the starter's own", () => {
+    seedFile(join(repoRoot, "AGENTS.md"), "OPERATOR-DOCTRINE\n");
+    seedFile(join(repoRoot, "starters", "pi-built-harness", "STARTER.md"), "guide\n");
+    const read = (path: string) => guardPath(policy, "read", "read", join(repoRoot, path)).decision;
+    expect(read("AGENTS.md")).toBe("deny");
+    expect(read("README.md")).toBe("allow");
+    expect(read("starters/pi-built-harness/STARTER.md")).toBe("allow");
   });
 
   it("returns the same digest for the same binding and unchanged filesystem", () => {

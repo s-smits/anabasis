@@ -24,7 +24,7 @@ driver is needed. A launch request authorises the command.
 
 ```sh
 bun .claude/skills/launch-run/scripts/launch.ts truss --model astra --source <resolved-full-sha>
-bun .claude/skills/launch-run/scripts/launch.ts truss --model sol,opus --source <resolved-full-sha>
+bun .claude/skills/launch-run/scripts/launch.ts truss buffer --model sol,opus --source <resolved-full-sha>
 bun .claude/skills/launch-run/scripts/launch.ts truss truss --model sol,astra --source <resolved-full-sha> --stop-after-ms 14400000
 bun .claude/skills/launch-run/scripts/launch.ts --prompt "<the user's exact one-line prompt>" --source <resolved-full-sha>
 ```
@@ -35,7 +35,7 @@ or prompt. The controller then continues from the recorded campaign evidence on 
 the launcher refuses an opening that created a fresh project instead. There is no steering text:
 the Builder chooses the next experiment from evidence.
 
-Use one or two lines through `--prompt`, or the `truss` preset in `scripts/options.ts` (`--list` prints it).
+Use one or two lines through `--prompt`, or a preset in `scripts/options.ts`, `truss` or `buffer` (`--list` prints them).
 A `--prompt` run is named `standard`; name `standard` again for replicas, and `custom`, its name
 before 2026-09-30, still parses. A run id reads `<preset>-<model>-<instant>-pr<N>-<sha7>`: the pull
 request that carried the source commit, or `main-<sha7>` on main's head, and the commit's first
@@ -69,15 +69,17 @@ A variant of a model's row is named for its slot efforts, one letter each (l, m,
 Opus 5.5 with the Builder at high. The launched tree's probe sees it as `opus`, so an older source
 launches it too.
 Each preset occurrence runs once per condition. Repeat a preset only for explicitly authorised
-replicas; their run ids gain separate `r1`, `r2` markers. The four-run example above means two
-truss runs per model. A preset authorises its exact prompt; never enrich it.
+replicas; their run ids gain separate `r1`, `r2` markers. `truss buffer --model sol,opus` is the
+standard launch, each preset once per model, and `truss truss --model sol,astra` means two truss
+runs per model. A preset authorises its exact prompt; never enrich it.
 
-`truss` is the one preset: a best answer under a strict limit, several interacting requirements
-and specified loss or fault scenarios in one request. Stacking them is what made truss tasks
+`truss` and `buffer` are the standard presets, one structural and one chemical, and share one
+shape: a best answer under strict limits, several interacting requirements and specified loss or
+substitution scenarios in one request. Stacking them is what made truss tasks
 hard: on the 2026-09-15 pack series one added interaction per task still passed 22 of 23
 verified cases (Sol high), and all of them stacked inside the same mass limit passed 7 of 20
 (Sol high) and 2 of 23 (Opus 5). A custom prompt of that shape stacks the same way. `--list`
-prints the preset.
+prints both.
 
 The probe reads source identity and parses the request using the selected product revision,
 then initializes the real confined worker without a model turn, and runs one minimal Builder-slot

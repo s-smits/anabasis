@@ -16,6 +16,8 @@ import type { JsonObject, JsonValue } from "#src/meta/json-shape.ts";
 export const PRESETS = {
   truss:
     "Design lightweight 3D steel trusses around irregular supports and forbidden volumes, choosing joint positions, connectivity and catalogue sections within strict mass limits.\nMeet strength, buckling and deflection requirements under self-weight, reversing wind and asymmetric live loads, including geometric nonlinearity and specified single-member-loss scenarios.",
+  buffer:
+    "Design aqueous buffer formulations from a published reagent catalogue, choosing components and concentrations within strict ionic-strength, osmolality and cost limits.\nMeet pH, buffer-capacity and precipitation-free requirements across temperature shifts, tenfold dilution and CO2 uptake, including activity corrections and specified single-reagent-substitution scenarios.",
 };
 const PRESET_PROMPTS: ReadonlyMap<string, string> = new Map(Object.entries(PRESETS));
 /**

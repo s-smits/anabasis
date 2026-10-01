@@ -421,11 +421,11 @@ describe("one-command run launcher", () => {
   });
 
   it("uses the exact presets and lets the product parse their full launch arguments", () => {
-    const options = parseOptions([...CUSTOM, "truss"]);
+    const options = parseOptions([...CUSTOM, "truss", "buffer"]);
     const plans = planRuns(options, "/tmp/launch", "unique");
     expect(options).toMatchObject({ source: "origin/main", condition: "opus", tasks: "25", budget: "1320" });
-    expect(plans.map((plan) => plan.prompt)).toEqual([CUSTOM[2], PRESETS.truss]);
-    expect(new Set(plans.map((plan) => plan.dir)).size).toBe(2);
+    expect(plans.map((plan) => plan.prompt)).toEqual([CUSTOM[2], PRESETS.truss, PRESETS.buffer]);
+    expect(new Set(plans.map((plan) => plan.dir)).size).toBe(3);
     for (const plan of plans) {
       const parsed = parseFullRunArgs(fullrunArgs(plan, options, source));
       expect(parsed).toMatchObject({
@@ -510,7 +510,7 @@ describe("one-command run launcher", () => {
     [["unknown"], "unknown preset unknown; use --list"],
     [["truss", "--prompt", "replacement"], "standard runs the --prompt text, so each needs the other"],
     [["standard"], "standard runs the --prompt text, so each needs the other"],
-    [[], "give --prompt or name a preset: truss, standard"],
+    [[], "give --prompt or name a preset: truss, buffer, standard"],
     [["--prompt", "three\nprompt\nlines"], PROMPT_REFUSAL],
     [["--prompt", "\nblank"], PROMPT_REFUSAL],
     [["--prompt", "text\0"], PROMPT_REFUSAL],

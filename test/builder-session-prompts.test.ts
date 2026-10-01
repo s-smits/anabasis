@@ -118,10 +118,15 @@ describe("what the round prompt says a rehearsal is", () => {
   // rehearsals to agree with a prediction held rounds back for hours.
   it("calls a passing rehearsal a blind solve within reach, and asks once for more when all passed", async () => {
     const text = (await freshPrompt({ workspace: workspace("rehearsal") })).replace(/\s+/g, " ");
-    expect(text).toContain("A passing rehearsal is a blind solve of its task");
-    expect(text).toContain("the task you expect to be hardest is the one whose rehearsal says most");
+    // ABLATED(hardest-guess): expect(text).toContain("A passing rehearsal is a blind solve of its task");
+    // ABLATED(hardest-guess): expect(text).toContain("the task you expect to be hardest is the one whose rehearsal says most");
+    // ABLATED(hardest-guess): expect(text).toContain(
+    // ABLATED(hardest-guess):   "A battery whose every rehearsal passed is on course to pass every case, so before you submit it, raise what its hardest tasks demand",
+    // ABLATED(hardest-guess): );
+    // ADDED(hardest-guess): the round asks for no guess at the hardest task.
+    expect(text).not.toMatch(/expect to be hardest|hardest tasks/);
     expect(text).toContain(
-      "A battery whose every rehearsal passed is on course to pass every case, so before you submit it, raise what its hardest tasks demand",
+      "A battery whose every rehearsal passed is on course to pass every case, so before you submit it, raise what its tasks demand",
     );
     expect(text).toContain(
       "rehearse one of them again, then submit: further polish belongs to the next round.",
@@ -139,8 +144,12 @@ describe("what the round prompt says a rehearsal is", () => {
   // its simulator could model; all five cases passed.
   it("names depth, not widening, as the raise when every rehearsal passed", async () => {
     const text = (await freshPrompt({ workspace: workspace("rehearsal-depth") })).replace(/\s+/g, " ");
+    // ABLATED(hardest-guess): expect(text).toContain(
+    // ABLATED(hardest-guess):   "raise what its hardest tasks demand by making more of the request's requirements act together, not by adding tasks, families or inputs at the same demand",
+    // ABLATED(hardest-guess): );
+    // ADDED(hardest-guess): the raise keeps its route and drops "hardest".
     expect(text).toContain(
-      "raise what its hardest tasks demand by making more of the request's requirements act together, not by adding tasks, families or inputs at the same demand",
+      "raise what its tasks demand by making more of the request's requirements act together, not by adding tasks, families or inputs at the same demand",
     );
     expect(text).not.toContain("change what its hardest tasks demand and rehearse");
     expectNoRestatedDuty(text);

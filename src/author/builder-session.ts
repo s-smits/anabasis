@@ -277,10 +277,17 @@ function roundPrompt(input: BuilderSessionInput, previous: PreviousRound | null)
     // five new device families, then stopped at what its simulator could model, and every solve of its
     // five tasks still passed.
     `${roundLimit(input.maxTurns)}Build, check and rehearse the candidate, and submit` +
-      ` once a clear preview says it works. A passing rehearsal is a blind solve of its task, so it shows that task` +
-      ` is within the solver's reach, and the task you expect to be hardest is the one whose rehearsal says most about` +
-      ` the battery. A battery whose every rehearsal passed is on course to pass every case, so before you submit` +
-      ` it, raise what its hardest tasks demand by making more of the request's requirements act together, not by` +
+      // ABLATED(hardest-guess): the sentence that sends the rehearsal to the task the Builder expects to
+      // be hardest, and the "hardest" in the raise. The rehearsed task sat at chance in its battery's
+      // solve-time order, and the round's contract already says a rehearsal proves a task feasible, never
+      // difficult (AGENTS.md "Ablated components").
+      // ` once a clear preview says it works. A passing rehearsal is a blind solve of its task, so it shows that task` +
+      // ` is within the solver's reach, and the task you expect to be hardest is the one whose rehearsal says most about` +
+      // ` the battery. A battery whose every rehearsal passed is on course to pass every case, so before you submit` +
+      // ` it, raise what its hardest tasks demand by making more of the request's requirements act together, not by` +
+      // ADDED(hardest-guess): the same two lines without that sentence and that word.
+      ` once a clear preview says it works. A battery whose every rehearsal passed is on course to pass every case, so before you submit` +
+      ` it, raise what its tasks demand by making more of the request's requirements act together, not by` +
       ` adding tasks, families or inputs at the same demand, and rehearse one of them again, then submit: further` +
       ` polish belongs to the next round.`,
     HANDOVER,

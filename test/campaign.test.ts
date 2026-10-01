@@ -30,12 +30,12 @@ import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { fingerprintSlug } from "../src/claim/fingerprint.ts";
 import { bindProductMeasurement, publishProductVersion } from "../src/run/product-versions.ts";
-import { EPOCH_REVIEW_SCHEMA } from "../src/review/epoch-review-findings.ts";
 import { caseRecordRow } from "./helpers/case-record-row.ts";
 import { execTextSync } from "./helpers/bun-spawn-sync.ts";
 import { recordDigestBattery, solveRow } from "./helpers/digest-battery.ts";
 import { MATCHING_OPERATING_GUIDE } from "./helpers/matching-fixture.ts";
 import { recordedController } from "./helpers/recorded-controller.ts";
+import { writeSettledReview } from "./helpers/review-fixtures.ts";
 import { fence } from "./helpers/starter-contracts.ts";
 
 const RUN = "fullrun-20260923-a";
@@ -598,20 +598,10 @@ describe("scoreboard", () => {
       }
     }
     cases(f, rows);
-    const check = { family: "family", kind: "disputed-pass", checkId: "c", checkIds: ["c"], finding: 0 };
-    const dispositions = [
-      { ...check, taskId: "g", disposition: "check-stands" },
-      { ...check, taskId: "h", disposition: "against-check" },
-    ];
-    const review = {
-      schema: EPOCH_REVIEW_SCHEMA,
-      status: "completed",
-      runId: third,
-      findings: [],
-      dispositions,
-    };
-    mkdirSync(join(f.campaign, "analysis"), { recursive: true });
-    writeFileSync(join(f.campaign, "analysis", `${third}-epoch-review.json`), JSON.stringify(review));
+    writeSettledReview(join(f.campaign, "analysis"), third, [
+      { taskId: "g", disposition: "check-stands" },
+      { taskId: "h" },
+    ]);
     const board = (...flags: string[]) => execTextSync("bun", [SCOREBOARD, "--repo", f.repo, ...flags]);
     const [first8, followUp] = [
       { signal: 2, batteries: 3 },

@@ -3,11 +3,11 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { afterEach, describe, expect, it } from "bun:test";
 import type { CaseRecordRow } from "../src/claim/case-record.ts";
-import { type CaseDisposition, EPOCH_REVIEW_SCHEMA } from "../src/review/epoch-review-findings.ts";
 import { SOLVE_WALL_MESSAGE } from "../src/backends/backend-types.ts";
 import { caseRecordRow } from "./helpers/case-record-row.ts";
 import { recordDigestBattery, solveRow } from "./helpers/digest-battery.ts";
 import { double } from "./helpers/doubles.ts";
+import { writeSettledReview } from "./helpers/review-fixtures.ts";
 import {
   ANCHOR_SHA256,
   STRUCTURE_KEYS,
@@ -640,36 +640,16 @@ describe("climb velocity", () => {
     const unread = render(await readCampaign(dir, { embed: fakeEmbed }));
     expect(unread).toContain("fails 2: no completed review settled any, so none is known earned");
     expect(unread).toContain("follow-up: no adopted battery recorded an earned fail");
-    const settled = (task: string, disposition: CaseDisposition["disposition"]): CaseDisposition => ({
-      taskId: task,
-      family: "f",
-      kind: "disputed-pass",
-      checkId: "bench-wiring",
-      checkIds: ["bench-wiring"],
-      disposition,
-      finding: 0,
-    });
-    mkdirSync(join(dir, "analysis"), { recursive: true });
-    const review = (dispositions: CaseDisposition[]) =>
-      writeFileSync(
-        join(dir, "analysis", "run-b-epoch-review.json"),
-        JSON.stringify({
-          schema: EPOCH_REVIEW_SCHEMA,
-          status: "completed",
-          runId: "run-b",
-          findings: [],
-          dispositions,
-        }),
-        "utf8",
-      );
-    review([settled("a", "check-stands"), settled("b", "check-stands")]);
+    const review = (...rows: Parameters<typeof writeSettledReview>[2]) =>
+      writeSettledReview(join(dir, "analysis"), "run-b", rows);
+    review({ taskId: "a", disposition: "check-stands" }, { taskId: "b", disposition: "check-stands" });
     const held = await readCampaign(dir, { embed: fakeEmbed });
     expect(held.batteries[1]?.earned).toBeNull();
     expect(lineOf(held).signal).toMatchObject([{ runId: "run-b", passes: 4, n: 6 }]);
     expect(render(held)).toContain(
-      "fails 2: 2 held by the review, 0 settled against the check, 0 unsettled; checks bench-wiring",
+      "fails 2: 2 held by the review, 0 settled against the check, 0 unsettled; checks bench",
     );
-    review([settled("a", "against-check"), settled("b", "against-check")]);
+    review({ taskId: "a" }, { taskId: "b" });
     const against = await readCampaign(dir, { embed: fakeEmbed });
     expect(against.batteries[1]?.earned).toMatchObject({ passes: 4, n: 4 });
     expect(render(against)).toContain(
@@ -679,8 +659,7 @@ describe("climb velocity", () => {
     expect(lineOf(against)).toMatchObject({ signal: [], fullPasses: 1, points: [{ passes: 4, n: 4 }] });
     // A case another check also decided, and a disposition that recorded no checks, stay in the
     // controller's sample, so they stay fails here too.
-    const { checkIds: _unnamed, ...unnamed } = settled("b", "against-check");
-    review([{ ...settled("a", "against-check"), checkIds: ["bench-wiring", "timing"] }, unnamed]);
+    review({ taskId: "a", checkIds: ["bench", "timing"] }, { taskId: "b", checkIds: undefined });
     const kept = await readCampaign(dir, { embed: fakeEmbed });
     expect(kept.batteries[1]?.earned).toBeNull();
     expect(lineOf(kept).signal).toMatchObject([{ runId: "run-b", passes: 4, n: 6 }]);

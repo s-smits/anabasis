@@ -27,7 +27,6 @@ import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { EMPTY_USER_CONTEXT } from "../src/builder/user-context.ts";
 import { createRunObserver } from "../src/observe/run-observer.ts";
 import { claimsDirFor } from "../src/run/claim-write.ts";
-import { EPOCH_REVIEW_SCHEMA } from "../src/review/epoch-review-findings.ts";
 import type { RecordedDifficultyDecision } from "../src/run/difficulty-decision.ts";
 import { runBuildStep } from "../src/run/full-run-build-step.ts";
 import type { FullRunDeps } from "../src/run/full-run.ts";
@@ -39,6 +38,7 @@ import {
 } from "./helpers/matching-fixture.ts";
 import { fixtureThresholdDigest, writeFixtureThresholds } from "./helpers/thresholds.ts";
 import { double, required } from "./helpers/doubles.ts";
+import { writeSettledReview } from "./helpers/review-fixtures.ts";
 
 const PROBE = BATTERY_SIZE.probe;
 const exact = (n: number) => ({ min: n, max: n });
@@ -295,27 +295,8 @@ describe("runBuildStep battery sizing", () => {
     // decided each, it reads 2 of 2, above the aim.
     const root = probeRoot(true, 6, 2);
     expect(await sizedRound(root, null)).toMatchObject({ expectedTasks: 25 });
-    const analysis = join(dirname(claimsDirFor(root, SLUG)), "analysis");
-    mkdirSync(analysis, { recursive: true });
-    const settled = ["probe-2", "probe-3", "probe-4", "probe-5"].map((taskId) => ({
-      taskId,
-      family: "matching",
-      kind: "disputed-pass",
-      checkIds: ["bench"],
-      checkId: "bench",
-      disposition: "against-check",
-      finding: 0,
-    }));
-    writeFileSync(
-      join(analysis, "probe-epoch-review.json"),
-      JSON.stringify({
-        schema: EPOCH_REVIEW_SCHEMA,
-        runId: "probe",
-        status: "completed",
-        findings: [],
-        dispositions: settled,
-      }),
-    );
+    const settled = ["probe-2", "probe-3", "probe-4", "probe-5"].map((taskId) => ({ taskId }));
+    writeSettledReview(join(dirname(claimsDirFor(root, SLUG)), "analysis"), "probe", settled);
     expect(await sizedRound(root, null)).toMatchObject({ expectedTasks: 10, minTasks: 5 });
   });
 

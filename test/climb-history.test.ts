@@ -20,7 +20,6 @@ import { join } from "../src/meta/path.ts";
 import { type JsonValue, isString } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { EvidenceLog } from "../src/claim/evidence-log.ts";
-import { EPOCH_REVIEW_SCHEMA } from "../src/review/epoch-review-findings.ts";
 import { EXPERIMENT_AUTHORING_SCHEMA } from "../src/run/experiment-freeze.ts";
 import {
   type AdmittedClimbRow,
@@ -30,6 +29,7 @@ import {
 } from "../src/run/climb-history.ts";
 import { readClimbReadout, renderReadout } from "../src/run/climb-readout.ts";
 import { required } from "./helpers/doubles.ts";
+import { writeSettledReview } from "./helpers/review-fixtures.ts";
 import { fixtureThresholdDigest } from "./helpers/thresholds.ts";
 
 const RUN_PIN = "test/pin";
@@ -382,7 +382,7 @@ describe("what one battery contributes to the reading", () => {
 });
 
 describe("cases the battery's completed review settled against their check", () => {
-  type Disposition = { taskId: string; kind: string; disposition: string; checkIds?: string[] };
+  type Disposition = Parameters<typeof writeSettledReview>[2][number];
   /** Two passes and four fails over two families; `v` is the one veto, a verifier pass. */
   const CASES: CaseRow[] = [
     { taskId: "p1", family: "span", pass: true },
@@ -398,34 +398,17 @@ describe("cases the battery's completed review settled against their check", () 
       { item: "joint", attempts: 3, passes: 0 },
     ],
   };
-  const against = (taskId: string, kind = "disputed-pass", checkIds = ["bench"]): Disposition => ({
-    taskId,
-    kind,
-    disposition: "against-check",
-    checkIds,
-  });
-
   function reviewed(dispositions: Disposition[], status = "completed", overrides: BatteryFields = {}) {
     const tree = tmp();
     writeBattery(tree, "r1", CASES, RECORDED_AT, { measured: MEASURED, ...overrides });
-    mkdirSync(join(tree, "analysis"), { recursive: true });
-    writeFileSync(
-      join(tree, "analysis", "r1-epoch-review.json"),
-      JSON.stringify({
-        schema: EPOCH_REVIEW_SCHEMA,
-        runId: "r1",
-        status,
-        findings: [],
-        dispositions: dispositions.map((row) => ({ family: "joint", checkId: "bench", finding: 0, ...row })),
-      }),
-    );
+    writeSettledReview(join(tree, "analysis"), "r1", dispositions, status);
     return required(read(tree).admitted[0], "the admitted battery");
   }
 
   const UNTOUCHED = { n: 6, passed: 2, failedTaskIds: ["f1", "f2", "f3", "f4"] };
 
   it("leaves a settled disputed fail out of the sample, its family and its failing set", () => {
-    const row = reviewed([against("f2")]);
+    const row = reviewed([{ taskId: "f2" }]);
     expect(row.battery).toMatchObject({
       n: 5,
       passed: 2,
@@ -439,7 +422,11 @@ describe("cases the battery's completed review settled against their check", () 
   });
 
   it("drops a settled veto from both counts rather than turning it into a fail", () => {
-    expect(reviewed([against("v", "veto")]).battery).toMatchObject({ n: 5, passed: 1, settledAgainst: 1 });
+    expect(reviewed([{ taskId: "v", kind: "veto" }]).battery).toMatchObject({
+      n: 5,
+      passed: 1,
+      settledAgainst: 1,
+    });
   });
 
   it("subtracts a settled case from the changed subset it belongs to, and none it does not", () => {
@@ -451,26 +438,22 @@ describe("cases the battery's completed review settled against their check", () 
       changedTaskIds: ["f2", "f3", "p1"],
     };
     const changed = { ...MEASURED, changedSubset: { attempts: 3, passes: 1 } };
-    const row = reviewed([against("f2"), against("f1")], "completed", {
+    const row = reviewed([{ taskId: "f2" }, { taskId: "f1" }], "completed", {
       measured: changed,
       experimentAuthoring,
     });
     expect(row.battery.measured.changedSubset).toEqual({ attempts: 2, passes: 1 });
     // A subset whose members the record does not name gives way to the whole battery.
-    const unnamed = reviewed([against("f2")], "completed", { measured: changed });
+    const unnamed = reviewed([{ taskId: "f2" }], "completed", { measured: changed });
     expect(unnamed.battery.measured).not.toHaveProperty("changedSubset");
   });
 
   it.each<[string, Disposition[], string]>([
-    ["an incomplete review", [against("f2")], "incomplete"],
-    ["a failed review", [against("f2")], "failed"],
-    ["a settlement in the check's favour", [{ ...against("f2"), disposition: "check-stands" }], "completed"],
-    ["a case another check also decided", [against("f2", "disputed-pass", ["bench", "timing"])], "completed"],
-    [
-      "a disposition that recorded no checks",
-      [{ taskId: "f2", kind: "disputed-pass", disposition: "against-check" }],
-      "completed",
-    ],
+    ["an incomplete review", [{ taskId: "f2" }], "incomplete"],
+    ["a failed review", [{ taskId: "f2" }], "failed"],
+    ["a settlement in the check's favour", [{ taskId: "f2", disposition: "check-stands" }], "completed"],
+    ["a case another check also decided", [{ taskId: "f2", checkIds: ["bench", "timing"] }], "completed"],
+    ["a disposition that recorded no checks", [{ taskId: "f2", checkIds: undefined }], "completed"],
   ])("settles nothing on %s", (_name, dispositions, status) => {
     const { battery } = reviewed(dispositions, status);
     expect(battery).toMatchObject(UNTOUCHED);

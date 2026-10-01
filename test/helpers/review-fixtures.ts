@@ -7,7 +7,9 @@
  * reachable only from the file that declared them. One owner each, so a change to the packet shape
  * reaches every reader of it.
  */
+import { mkdirSync, writeFileSync } from "../../src/meta/filesystem.ts";
 import type { JsonValue } from "../../src/meta/json-shape.ts";
+import { join } from "../../src/meta/path.ts";
 import {
   type AdviceIssue,
   type IssueDiagnosis,
@@ -15,7 +17,11 @@ import {
   REBUILD_ADVICE_SCHEMA,
   adviceIssueId,
 } from "../../src/author/rebuild-advice.ts";
-import type { ReviewState } from "../../src/review/epoch-review-findings.ts";
+import {
+  type CaseDisposition,
+  EPOCH_REVIEW_SCHEMA,
+  type ReviewState,
+} from "../../src/review/epoch-review-findings.ts";
 import { emptyProbeState } from "../../src/review/review-probe.ts";
 import type { ReaderTool } from "../../src/review/review-reader.ts";
 import { double } from "./doubles.ts";
@@ -134,4 +140,26 @@ export function reviewState(): ReviewState {
 export async function call(tool: ReaderTool, args: Record<string, JsonValue>): Promise<string> {
   const [first] = (await tool.execute("call-1", double<never>(args))).content;
   return first?.type === "text" ? first.text : "";
+}
+
+/** A review of `runId` in `analysis` whose dispositions settle each named case against `bench`, the
+ *  one check that decided it, unless the row says otherwise; an undefined field is left out. */
+export function writeSettledReview(
+  analysis: string,
+  runId: string,
+  rows: Array<{ [K in keyof CaseDisposition]?: CaseDisposition[K] | undefined }>,
+  status = "completed",
+): void {
+  const dispositions = rows.map((row) => ({
+    family: "f",
+    kind: "disputed-pass",
+    checkId: "bench",
+    checkIds: ["bench"],
+    disposition: "against-check",
+    finding: 0,
+    ...row,
+  }));
+  mkdirSync(analysis, { recursive: true });
+  const review = { schema: EPOCH_REVIEW_SCHEMA, runId, status, findings: [], dispositions };
+  writeFileSync(join(analysis, `${runId}-epoch-review.json`), JSON.stringify(review));
 }

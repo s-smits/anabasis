@@ -12,9 +12,8 @@ import {
 } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 import { tmpdir } from "../src/meta/os.ts";
-import { parseFullRunArgs } from "../src/run/launch-arguments.ts";
+import { commandDigest, parseFullRunArgs } from "../src/run/launch-arguments.ts";
 import { hashJsonBytes } from "../src/meta/json-runtime.ts";
-import { hashJsonValue } from "../src/meta/stable-json.ts";
 import {
   CONDITIONS,
   type OpeningPlan,
@@ -125,7 +124,7 @@ function requestIdentity(argv: string[]) {
   const requestDigest = hashJsonBytes({ prompt: args.prompt, contextDigest });
   return {
     requestDigest,
-    commandDigest: hashJsonValue({ ...args, prompt: null, contextPaths: null, requestDigest }),
+    commandDigest: commandDigest(args, requestDigest),
   };
 }
 

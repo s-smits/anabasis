@@ -5,7 +5,9 @@
     "src/correctness-bundle/probes.ts": 436,
     "src/verify/host.ts": 1149,
     "vendor/pi-agent-session/agent-session.ts": 915,
-    "vendor/pi-claude-bridge/provider.ts": 728
+    "vendor/pi-claude-bridge/provider.ts": 728,
+    "vendor/pi-coding-agent/core/tools/bash.ts": 415,
+    "vendor/pi-coding-agent/core/tools/read.ts": 193
   },
   "refusedLiterals": [
     "../../src/backends/agent-types.ts",

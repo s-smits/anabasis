@@ -85,6 +85,10 @@ SOFTWARE.
   `vendor/pi-built/` keeps the names, interface and LF-only framing of its
   `packages/coding-agent/src/modes/rpc/jsonl.ts`, rewritten here with a byte limit per line.
   `vendor/pi-agent-session/` carries its own copy of this licence.
+- `vendor/pi-coding-agent/` copies the read, write, edit and bash tools and their helpers from
+  `packages/coding-agent/src/core/tools/` and `src/utils/` at v1.0.0 (a13d35a, now
+  https://github.com/earendil-works/pi), and carries its own copy of this licence. Each file's
+  header names its departures.
 
 ```text
 MIT License

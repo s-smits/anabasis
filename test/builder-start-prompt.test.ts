@@ -206,16 +206,10 @@ describe("Builder start prompt", () => {
    *  minutes, so the intent clause defines depth by requirements that compete for one margin, and it
    *  is the one surface that defines it. */
   it("asks for depth in the first tasks, as requirements that compete", () => {
-    // ABLATED(competing-margin): the sentence no longer says what depth is.
-    // expect(flat(INTENT_CLAUSE.join(" "))).toContain("Build that demand into the first tasks, not later:");
-    // expect(PROMPT).toContain(
-    //   "several of the request's requirements act together on a single answer, so that meeting one spends the margin another needs.",
-    // );
-    // ADDED(competing-margin): the line keeps its timing, and the clause keeps its ambition and its limit.
-    expect(flat(INTENT_CLAUSE.join(" "))).toContain("Build that demand into the first tasks, not later.");
-    expect(PROMPT).not.toContain("meeting one spends the margin another needs");
-    expect(PROMPT).toContain("An ambitious round expects its battery to fail some cases");
-    expect(PROMPT).toContain("A limit, state or duty the field does not hold measures your wording");
+    expect(flat(INTENT_CLAUSE.join(" "))).toContain("Build that demand into the first tasks, not later:");
+    expect(PROMPT).toContain(
+      "several of the request's requirements act together on a single answer, so that meeting one spends the margin another needs.",
+    );
     expect(PROMPT).not.toContain("transcription");
   });
 

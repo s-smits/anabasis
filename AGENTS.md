@@ -460,7 +460,7 @@ Builder raises what its hardest tasks demand once, by depth (prior 10) rather th
 or inputs, and rehearses one of them again. The route is named there because the no-limit line
 reaches a Builder only after a full pass in its own readout: firmware 7a97af-i02 raised by five new device
 families, stopped at what its simulator could model, and passed 5 of 5. What stopped it was the board's
-pin inputs and further bus devices, which its emulator cannot drive ("Open gaps"), while the interactions
+pin inputs and further bus devices, which its emulator could not drive, while the interactions
 depth asks for, such as one sensor trajectory driving several outputs that must agree, are observable
 there already. Once, and not until a
 rehearsal fails: nothing holds a submit on rehearsals, because the measured battery decides where it
@@ -537,14 +537,20 @@ closes it.
   source predates 7643780b, which writes `checkIds`. A review replay on main (2026-10-01) settled the
   recorded `esp32-display` false rejection end to end under the current Judge and reviewer, and the
   climb then dropped it, so no link is broken; no firmware run since has had a disposition to exercise
-  it live. Owner of the stand-ins themselves: the firmware instrument (the last bullet). Evidence: the
-  ignored `notes/firmware-fails-20260930/`.
+  it live. Owner of the stand-ins themselves: the instrument each Builder builds, which
+  `VERIFICATION_CLAUSE` steers. -40 (2026-10-01) built its own simulator and its checks ran it on Uno
+  and Pico, with no stand-in in a deciding path. Evidence: the ignored `notes/firmware-fails-20260930/`.
 - **First tasks combine requirements that the solver still meets in minutes** (firmware 7a97af under
   "Authoring"), and 7 of 29 firmware batteries passed with a harness that only compiled. Depth reached a
   Builder only after a full pass or after every rehearsal passed. Owner: the last line of
   `INTENT_CLAUSE`, which since 2026-09-30 defines depth as requirements that compete, "so that meeting
-  one spends the margin another needs", and is not yet measured. Change `SCOPE_CLAUSE` ("let the tasks
-  span them", "vary its stated conditions") only if that line does not carry it.
+  one spends the margin another needs". With it live, firmware -40 and buffer bbc47705-3 (2026-10-01)
+  both built first tasks that join several requirements and still passed 7/7 and 5/5. The buffer's
+  second battery, after its review's finding and with budgets about 0.2% above the stored witness,
+  passed 5/5 with a median solve of 12 minutes (the first: 3.5), its slowest a 64-minute numerical
+  search. The solver is the Builder's model at the Builder's effort and runs the checks' own simulator
+  or PHREEQC; so far its methods recover what these Builders construct, though Opus 5 truss solvers at
+  the same parity failed 4 of 98 verified cases.
 - **Graduation may dilute a bracket.** A probe at 2/6 or 3/6 grows to 25 tasks and the ~19 added tasks
   pass, in 10 of 13 recorded regresses, and with every probe fail held 12 of 13 would still read too
   easy. The added tasks are not isolated as the cause: 10 of the 11 former-limit tasks carried unchanged
@@ -629,7 +635,9 @@ through the grep: remove the prefixes, delete the replacement lines, and flip ba
 under the same marker. Each entry below is a measured condition, not a settled rule. Once its run reads,
 it either moves to "Tried and taken out" or its comments are deleted.
 
-Each arm is one commit that comments its component out, and it lands like any other change (#89). The
+Each arm is one commit that comments its component out, and it lands like any other change (#89). An
+arm whose run has not read lands with a revert above it, so the landed tree stays the control the runs
+measured (#118); the arm commit stays in history, and reverting its revert switches it off again. The
 control is the tree before the arm commits. To run one arm alone, revert the other arm commits, so that
 it differs from the control in one component only. All of them are seeded from one recorded product
 (`seed-campaign.mts republish --as-slug a,b,c`) and launched with the same model, provider budget and
@@ -639,24 +647,7 @@ to 80. Each prediction is frozen before its arm launches.
 Arms are compared on a discovery seed first. A confirmation seed, from another campaign, is launched
 only after every arm's source is fixed, and nothing read from it revises an arm.
 
-- **`competing-margin` (arm, 2026-10-01).** The intent clause's first-task sentence "make several of the
-  request's requirements act together on a single answer, so that meeting one spends the margin another
-  needs". The round prompt's raise-before-submit line, the no-limit line, the reviewer's interaction
-  finding and `examples.md` still name the interaction, so the arm tests this sentence, not the concept.
-  After the depth prescriptions, 83 of 85 recorded batteries passed whole, 77 of them one model on new
-  domains. Grep: `rg "ABLATED\(competing-margin\)"`. Prediction and run: filled when this arm launches.
-- **`trial-forecast` (arm, 2026-10-01).** The harness_trial result's "so a battery of tasks like it
-  scores near its size" and "near zero", and the description's "A task your solver passes on its first
-  attempt will most likely pass in the battery too". The verdict, effort, round tally and examples
-  pointer stay. The rehearsed task sat at chance in its battery's solve-time order (mean rank 0.48
-  against 0.50), and 945 of 994 graded rehearsals passed. Grep: `rg "ABLATED\(trial-forecast\)"`.
-  Prediction and run: filled when this arm launches.
-- **`examples-reminder` (arm, 2026-10-01).** The one-time pointer to the worked examples at a session's
-  first graded rehearsal (`roundClause`). The examples file, the starter's link and the session
-  bookkeeping stay, so this isolates the reminder from the file's availability. It follows #116's
-  examples-reminder arm. Its reading needs a matched control, since the recorded 52 of 310 reads have
-  unmatched eligibility. Grep: `rg "ABLATED\(examples-reminder\)"`. Prediction and run: filled when this
-  arm launches.
+No component is ablated in source at present.
 
 ## Evidence and implementation status
 

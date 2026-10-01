@@ -544,16 +544,7 @@ describe("the four facts that do cross", () => {
     // A miss is stated as the mirror of a pass and names no next task: a first battery is authored to
     // be missed, so steering towards an easier rehearsal would choose the Builder's course for it.
     const missed = isString(failing.nextAction) ? failing.nextAction : "";
-    // ABLATED(trial-forecast): expect(missed).toContain("a battery of tasks like it scores near zero");
-    // ADDED(trial-forecast): neither result sentence nor the description forecasts the battery.
-    expect(missed).toContain("Your solver missed this task on its first unaided attempt.");
-    expect(missed).not.toContain("a battery of tasks like it");
-    const passed1 = isString(passing.nextAction) ? passing.nextAction : "";
-    expect(passed1).toContain("Your solver passed this task on its first unaided attempt.");
-    for (const said of [passed1, missed]) expect(said).not.toMatch(/scores near|most likely pass/);
-    expect(round(dir, assigningSolver(RIGHT_SLOT)).tool.description).not.toContain(
-      "most likely pass in the battery",
-    );
+    expect(missed).toContain("a battery of tasks like it scores near zero");
     expect(missed).not.toMatch(/easier|rehearse a/);
     expect(passing.solve).toEqual({
       accepted: true,
@@ -727,9 +718,7 @@ describe("what one round of rehearsals costs", () => {
     const second = modelVisible(await rehearse(tool));
 
     expect(isString(first.nextAction) ? first.nextAction : "").not.toContain("Across this round");
-    // ABLATED(examples-reminder): expect(first.nextAction).toContain(EXAMPLES_POINTER.trim());
-    // ADDED(examples-reminder): the first graded rehearsal names no file.
-    expect(first.nextAction).not.toContain(EXAMPLES_POINTER.trim());
+    expect(first.nextAction).toContain(EXAMPLES_POINTER.trim());
     expect(second.nextAction).not.toContain("examples.md");
     expect(asRecord(first.validation)?.round).toEqual({
       graded: 1,
@@ -764,10 +753,7 @@ describe("the worked-examples pointer", () => {
     const next = round(dir, assigningSolver(RIGHT_SLOT), true, { tellOnce });
     const continued = modelVisible(await rehearse(next.tool));
 
-    // ABLATED(examples-reminder): expect(opened.nextAction).toContain(EXAMPLES_POINTER.trim());
-    // ADDED(examples-reminder): nor at a session's first, which still spends the once.
-    expect(opened.nextAction).not.toContain(EXAMPLES_POINTER.trim());
-    expect(told.has("examples")).toBe(true);
+    expect(opened.nextAction).toContain(EXAMPLES_POINTER.trim());
     expect(continued.nextAction).not.toContain("examples.md");
     expect(asRecord(continued.validation)?.round).toMatchObject({ graded: 1, passed: 1 });
   }, 60_000);

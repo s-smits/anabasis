@@ -36,9 +36,11 @@ import {
   type ClimbBattery,
   type ClimbBatteriesRead,
   type ClimbEffort,
+  type ClimbEvidenceAt,
   type ClimbFamilySummary,
   type ExcludedBattery,
   type FamilyEffort,
+  climbEvidencePaths,
   climbThresholds,
   decidingSample,
   excludedSummary,
@@ -310,12 +312,12 @@ export function climbReadout(read: ClimbBatteriesRead, band: [number, number]): 
 export function readClimbReadout(
   domainDir: string,
   runPin: string,
-  claimsDir: string,
-  manifestPath?: string,
+  at: ClimbEvidenceAt,
 ): ClimbReadout | null {
-  const read = readClimbBatteries(domainDir, runPin, claimsDir, manifestPath);
+  const paths = climbEvidencePaths(at, runPin);
+  const read = readClimbBatteries(domainDir, runPin, paths);
   if (read.admitted.length === 0 && read.excluded.length === 0) return null;
-  return climbReadout(read, climbThresholds(manifestPath).band);
+  return climbReadout(read, climbThresholds(paths.manifestPath).band);
 }
 
 /** One battery as the author reads it: its identities and its three denominators, then the changed

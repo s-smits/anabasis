@@ -36,7 +36,7 @@ import {
   readCaseRecord,
 } from "../claim/case-record.ts";
 import { type ConformanceEvidence, readBoundConformance } from "../claim/conformance-evidence.ts";
-import { FROZEN_MANIFEST_PATH, loadFrozenManifest } from "../critic/manifest.ts";
+import { frozenManifestPath, loadFrozenManifest } from "../critic/manifest.ts";
 import { fullrunLine, createRunObserver, type RunObserver } from "../observe/run-observer.ts";
 import {
   type BatteryDisposition,
@@ -310,7 +310,7 @@ async function resolveMeasureInterface(manifest: AskManifest, options: HarnessMe
       preflight === null
         ? undefined
         : backendStartupEvidence(slots, preflight.hostRuntime, preflight.modelSelections),
-    thresholdManifestDigest: loadFrozenManifest(join(repoRoot, FROZEN_MANIFEST_PATH)).digest,
+    thresholdManifestDigest: loadFrozenManifest(frozenManifestPath(repoRoot)).digest,
   };
 }
 

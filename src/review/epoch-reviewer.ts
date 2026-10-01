@@ -40,11 +40,9 @@ import {
 } from "../author/rebuild-advice.ts";
 import type { RehearsalRow } from "../builder/harness-trial.ts";
 import { familyTally } from "../claim/case-record.ts";
-import { FROZEN_MANIFEST_PATH } from "../critic/manifest.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { boundText } from "../meta/bounded-text.ts";
 import { writeCompleted } from "../meta/completed-json.ts";
-import { claimsDirFor } from "../run/claim-write.ts";
 import { type ClimbReadout, readClimbReadout, readingSentence } from "../run/climb-readout.ts";
 import { selectedProductDir } from "../run/product-versions.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
@@ -474,12 +472,7 @@ function aimLine(
 ): string {
   let readout: ClimbReadout | null;
   try {
-    readout = readClimbReadout(
-      domainDir(),
-      battery.pin,
-      claimsDirFor(input.repoRoot, input.slug),
-      join(input.repoRoot, FROZEN_MANIFEST_PATH),
-    );
+    readout = readClimbReadout(domainDir(), battery.pin, { repoRoot: input.repoRoot, slug: input.slug });
   } catch (cause) {
     return `Aim: the climb readout could not be read (${errorMessage(cause)}); read the counts alone.`;
   }

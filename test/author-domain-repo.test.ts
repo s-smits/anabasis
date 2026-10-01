@@ -51,7 +51,7 @@ import { MEMORY_FILE, builderMemoryBlock } from "../src/author/builder-memory.ts
 import { BUILT_PRESET_IDS, presetToolNames } from "../src/correctness-bundle/built-presets.ts";
 import { loadBuiltStarterFactory } from "../src/correctness-bundle/contracts.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
-import { SAFEGUARDS_LOG_FILE, createSafeguardContext } from "../src/meta/safeguard.ts";
+import { SAFEGUARDS_LOG_FILE } from "../src/meta/safeguard.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 const TOOLCHAIN = ".toolchain";
 const AGENT_TOOLS_TS = "agent/tools.ts";
@@ -68,7 +68,7 @@ const buildsMachO =
 
 /** One run-local safeguard log per test; absent file reads as no line, never as zero firings. */
 function safeguardLog() {
-  const context = createSafeguardContext(join(tmp(), "safeguards"));
+  const context = { logDir: join(tmp(), "safeguards") };
   const lines = () => {
     const file = join(context.logDir, SAFEGUARDS_LOG_FILE);
     return existsSync(file) ? readFileSync(file, "utf8").trim().split("\n") : [];

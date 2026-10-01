@@ -25,7 +25,6 @@
 import { existsSync } from "../meta/filesystem.ts";
 import { isString } from "../meta/json-shape.ts";
 import { dirname, join } from "../meta/path.ts";
-import { FROZEN_MANIFEST_PATH } from "../critic/manifest.ts";
 import { POLICY } from "../critic/policy.ts";
 import { isEnvironmentOwnedNonResult } from "../claim/record-events.ts";
 import { fingerprintSlug } from "../claim/fingerprint.ts";
@@ -49,7 +48,6 @@ import {
 import { errorMessage } from "../meta/runtime-values.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import type { ExperimentAuthoring } from "./experiment-freeze.ts";
-import { claimsDirFor } from "./claim-write.ts";
 import { retainedRunDir } from "./climb-history.ts";
 import { type ClimbReadout, readClimbReadout } from "./climb-readout.ts";
 import { selectedProductDir } from "./product-versions.ts";
@@ -87,12 +85,7 @@ function latestBattery(
 ): { runId: string; runDir: string } | string {
   const adoptedDir = selectedProductDir(repoRoot, slug);
   if (!existsSync(adoptedDir)) return "no adopted product";
-  const readout = readClimbReadout(
-    adoptedDir,
-    runPin,
-    claimsDirFor(repoRoot, slug),
-    join(repoRoot, FROZEN_MANIFEST_PATH),
-  );
+  const readout = readClimbReadout(adoptedDir, runPin, { repoRoot, slug });
   const latest = readout?.rows[0];
   if (latest === undefined) return "no measured battery";
   const runDir = retainedRunDir(adoptedDir, latest.runId);

@@ -14,7 +14,7 @@ import { existsSync, lstatSync, readFileSync, readdirSync } from "../../src/meta
 import { parseJsonAs } from "../../src/meta/json-runtime.ts";
 import { isRecord, isString, type JsonValue } from "../../src/meta/json-shape.ts";
 import { join } from "../../src/meta/path.ts";
-import { parseSafeguardLog, safeguardLogFile } from "../../src/meta/safeguard.ts";
+import { readSafeguardLog } from "../../src/meta/safeguard.ts";
 import { readDifficultyDecisions, readObservations, readRunEvidence, type Observation } from "./evidence.ts";
 import type { Busy } from "./pulse-host.ts";
 import type { RunRow } from "./rows.ts";
@@ -316,12 +316,11 @@ export function readPulse(row: RunRow, now: number, band: readonly [number, numb
   const { campaignDir } = row.location;
   const observations = readObservations(campaignDir, row.runId);
   const terminal = row.liveness.state === "closed" ? readRunEvidence(row.location).terminal : null;
-  const safeguardLog = safeguardLogFile(campaignDir, row.runId);
   let safeguards: string[] = [];
   try {
-    safeguards = parseSafeguardLog(readFileSync(safeguardLog, "utf8")).firings.map((firing) => firing.name);
+    safeguards = readSafeguardLog(campaignDir, row.runId)?.firings.map((firing) => firing.name) ?? [];
   } catch {
-    // No safeguard fired, or the log cannot be read; either way there is no lead to report.
+    // The log cannot be read, which leaves no lead to report, as an absent log does.
   }
   return {
     runId: row.runId,

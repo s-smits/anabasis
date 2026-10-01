@@ -3,7 +3,6 @@ import { appendFileSync, mkdtempSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import {
   SAFEGUARD_INVENTORY,
-  createSafeguardContext,
   safeguardLogDir,
   safeguardLogFile,
   safeguardTriggered,
@@ -17,13 +16,9 @@ describe("safeguard usage report", () => {
     const original = console.error;
     try {
       console.error = () => undefined;
-      safeguardTriggered(live, "first", createSafeguardContext(safeguardLogDir(campaign, "run-a")));
-      safeguardTriggered(live, "second", createSafeguardContext(safeguardLogDir(campaign, "run-b")));
-      safeguardTriggered(
-        "0-retired-sensor",
-        "old",
-        createSafeguardContext(safeguardLogDir(campaign, "run-b")),
-      );
+      safeguardTriggered(live, "first", { logDir: safeguardLogDir(campaign, "run-a") });
+      safeguardTriggered(live, "second", { logDir: safeguardLogDir(campaign, "run-b") });
+      safeguardTriggered("0-retired-sensor", "old", { logDir: safeguardLogDir(campaign, "run-b") });
     } finally {
       console.error = original;
     }

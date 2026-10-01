@@ -81,7 +81,6 @@ import { readJsonFileOrNull, writeJsonFile } from "#src/meta/completed-json.ts";
 import { builderSystemPrompt } from "#src/author/builder-start-prompt.ts";
 import { productToolTree, usableToolTree } from "./tool-tree.mts";
 import { selectedProductDir } from "#src/run/product-versions.ts";
-import { claimsDirFor } from "#src/run/claim-write.ts";
 import { readClimbBatteries } from "#src/run/climb-history.ts";
 import { loadRepoEnv } from "#src/backends/env.ts";
 import {
@@ -316,11 +315,10 @@ function pinBackend(pin: string): { kind: BackendKind; model: string } | null {
  *  or the history cannot be read here; the controller then reports that reading itself. */
 function latestRecordedBuiltPin(root: string, project: string): string | null {
   try {
-    const { history } = readClimbBatteries(
-      selectedProductDir(root, project),
-      null,
-      claimsDirFor(root, project),
-    );
+    const { history } = readClimbBatteries(selectedProductDir(root, project), null, {
+      repoRoot: root,
+      slug: project,
+    });
     return history.at(-1)?.condition.backendPin ?? null;
   } catch {
     return null;

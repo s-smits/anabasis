@@ -35,9 +35,7 @@ import { slugForDirectInput } from "../src/run/launch-project.ts";
 import { buildHarness } from "../src/run/harness-build.ts";
 import { type HarnessMeasureOptions, measureHarness } from "../src/run/harness-measure.ts";
 import { measuredProductDir, productVersionDir, selectedProductDir } from "../src/run/product-versions.ts";
-import { claimsDirFor } from "../src/run/claim-write.ts";
 import { readClimbReadout } from "../src/run/climb-readout.ts";
-import { FROZEN_MANIFEST_PATH } from "../src/critic/manifest.ts";
 import { type Solver, nonResultOutcome } from "../src/correctness-bundle/solve.ts";
 import { readRecordedBatteryRecord, toolTreeDigestOf } from "../src/correctness-bundle/battery-record.ts";
 import { bundleSnapshotToolTree } from "../src/claim/bundle-snapshot.ts";
@@ -270,12 +268,10 @@ async function twoRounds(
   }));
   const withheld = records.flatMap((battery) => battery.condition.advisorsRemoved);
   // What the next round's author reads of each battery: the readout row, newest first.
-  const readout = readClimbReadout(
-    selectedProductDir(root, SLUG),
-    records[0]?.backendPin ?? "",
-    claimsDirFor(root, SLUG),
-    join(root, FROZEN_MANIFEST_PATH),
-  );
+  const readout = readClimbReadout(selectedProductDir(root, SLUG), records[0]?.backendPin ?? "", {
+    repoRoot: root,
+    slug: SLUG,
+  });
   const promotion = (runId: string) =>
     JSON.parse(readFileSync(join(root, "campaigns", SLUG, "promotions", `${runId}.json`), "utf8"));
   const selected = selectedProductDir(root, SLUG);

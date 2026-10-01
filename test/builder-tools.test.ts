@@ -43,7 +43,7 @@ import {
   deriveCandidateIsolation,
 } from "../src/builder/candidate-isolation.ts";
 import { type BuilderIsolation, createBuilderTools } from "../src/builder/tools.ts";
-import { SAFEGUARDS_LOG_FILE, createSafeguardContext } from "../src/meta/safeguard.ts";
+import { SAFEGUARDS_LOG_FILE } from "../src/meta/safeguard.ts";
 import { osIsolationSupport } from "../src/verify/os-isolation.ts";
 import { rejectionOf } from "./helpers/doubles.ts";
 
@@ -263,10 +263,7 @@ describe.if(osIsolationSupport().ok)("the seven capabilities through the isolati
     chmodSync(join(bin, "dcg"), 0o700);
     const logDir = join(SCRATCH, "guard-safeguards");
     const mounted = new Map<string, AgentTool>(
-      createBuilderTools({ ...isolation, safeguardContext: createSafeguardContext(logDir) }).map((tool) => [
-        tool.name,
-        tool,
-      ]),
+      createBuilderTools({ ...isolation, safeguardContext: { logDir } }).map((tool) => [tool.name, tool]),
     );
     const shell = mounted.get("bash");
     if (!shell) throw new Error("bash tool not found");

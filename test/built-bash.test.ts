@@ -19,7 +19,7 @@ import {
 } from "../src/meta/filesystem.ts";
 import { homedir, tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { SAFEGUARDS_LOG_FILE, createSafeguardContext } from "../src/meta/safeguard.ts";
+import { SAFEGUARDS_LOG_FILE } from "../src/meta/safeguard.ts";
 import { afterAll, describe, expect, it } from "bun:test";
 import { BUILT_BASH_TOOL, type BuiltFilePort, createBuiltBashTool } from "../src/solve/built-bash.ts";
 import { DEFAULT_HARNESS_SETTINGS } from "../src/correctness-bundle/harness-config.ts";
@@ -899,7 +899,7 @@ describe("the destructive-command guard", () => {
       port: mine.wired,
       home: sessionHome,
       guardEnv: { PATH: broken, HOME: home },
-      safeguardContext: createSafeguardContext(asking),
+      safeguardContext: { logDir: asking },
     });
     await unguarded.execute("call-1", double({ command: "rm -rf keep.txt" }), undefined, undefined);
     expect(mine.state.files["keep.txt"]).toBeUndefined();
@@ -914,7 +914,7 @@ describe("the destructive-command guard", () => {
       port: theirs.wired,
       home: sessionHome,
       guardEnv: { PATH: answering, HOME: home },
-      safeguardContext: createSafeguardContext(other),
+      safeguardContext: { logDir: other },
     });
     await guarded.execute("call-1", double({ command: "rm -rf keep.txt" }), undefined, undefined);
     expect(theirs.state.files["keep.txt"]).toBeUndefined();

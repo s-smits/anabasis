@@ -24,7 +24,7 @@ import {
   workspaceResidual,
 } from "../src/builder/command-guard.ts";
 import { BUILT_SHELL_RULES, DCG_RULES, acceptedSpelling } from "../src/solve/dcg-rules.ts";
-import { SAFEGUARDS_LOG_FILE, createSafeguardContext } from "../src/meta/safeguard.ts";
+import { SAFEGUARDS_LOG_FILE } from "../src/meta/safeguard.ts";
 const LOCAL = ".local";
 
 const dirs: string[] = [];
@@ -534,7 +534,7 @@ printf '%s' '{"hookSpecificOutput":{"permissionDecision":"deny","permissionDecis
     );
     const logDir = temp("ana-safeguards-");
     const env = { PATH: bin, HOME: temp("ana-home-") };
-    expect(refuseDestructiveCommand(DESTRUCTIVE_SAMPLE, env, createSafeguardContext(logDir))).toBeNull();
+    expect(refuseDestructiveCommand(DESTRUCTIVE_SAMPLE, env, { logDir })).toBeNull();
     const log = readFileSync(join(logDir, SAFEGUARDS_LOG_FILE), "utf8");
     expect(log).toContain(
       `| 32-command-guard-unanswered | 1 installed guard(s) answered nothing about a "rm" command, which then ran unguarded: ${guard}`,
@@ -543,7 +543,7 @@ printf '%s' '{"hookSpecificOutput":{"permissionDecision":"deny","permissionDecis
     const answering = temp("ana-guard-");
     writeFakeGuard(join(answering, "dcg"), "answering");
     const quiet = temp("ana-safeguards-");
-    const context = createSafeguardContext(quiet);
+    const context = { logDir: quiet };
     expect(refuseDestructiveCommand("ls -la", { PATH: answering, HOME: env.HOME }, context)).toBeNull();
     expect(
       refuseDestructiveCommand(DESTRUCTIVE_SAMPLE, { PATH: answering, HOME: env.HOME }, context),

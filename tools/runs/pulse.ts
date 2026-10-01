@@ -16,7 +16,7 @@
  */
 import type { BandZone } from "../../src/claim/battery-difficulty.ts";
 import { CASE_RECORD_FILE } from "../../src/claim/case-record.ts";
-import { FROZEN_MANIFEST_PATH } from "../../src/critic/manifest.ts";
+import { frozenManifestPath } from "../../src/critic/manifest.ts";
 import { statfsSync } from "../../src/meta/filesystem.ts";
 import { isNumber, isRecord, isString } from "../../src/meta/json-shape.ts";
 import { availableParallelism, loadavg } from "../../src/meta/os.ts";
@@ -520,7 +520,7 @@ function pulseTick(
   table: Parameters<typeof busyUnder>[0],
 ): string[] {
   const now = Date.now();
-  const band = climbThresholds(join(repoRoot, FROZEN_MANIFEST_PATH)).band;
+  const band = climbThresholds(frozenManifestPath(repoRoot)).band;
   const previous = memory.readings;
   const watched = new Set(Object.keys(previous));
   const rows = collectRows(repoRoot, { closedLimit: Number.MAX_SAFE_INTEGER, now }).filter((row) =>

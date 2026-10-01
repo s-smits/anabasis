@@ -2,15 +2,13 @@
  * Difficulty statistics remain evidence, not commands to climb, broaden or discard a product. */
 import { existsSync } from "../meta/filesystem.ts";
 import { campaignDir } from "../meta/campaign-root.ts";
-import { join, relative } from "../meta/path.ts";
-import { FROZEN_MANIFEST_PATH } from "../critic/manifest.ts";
+import { relative } from "../meta/path.ts";
 import { type CampaignBindingInput, latestCampaignEpochForBinding } from "../author/campaign-epoch.ts";
 import { latestPreAdoptionFeedback } from "../author/campaign-memory.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import type { AdmissionLineage, CampaignFeedback, PriorEvidence } from "../author/campaign-types.ts";
 import { readAdmission } from "./admission.ts";
 import type { AskManifest } from "./ask-manifest.ts";
-import { claimsDirFor } from "./claim-write.ts";
 import { type ClimbReadout, readClimbReadout } from "./climb-readout.ts";
 import { type Remeasure, censoredRemeasure } from "./battery-reuse.ts";
 import { isString } from "../meta/json-shape.ts";
@@ -119,12 +117,7 @@ export function selectNextMoveFromDisk(input: {
 }): SelectedNextMove {
   const { repoRoot, manifest, baseKickoff, runPin, domainDir, builder, built } = input;
   const { priorEvidence: measured, lineage } = readAdmission(repoRoot, manifest.slug);
-  const readout = readClimbReadout(
-    domainDir,
-    runPin,
-    claimsDirFor(repoRoot, manifest.slug),
-    join(repoRoot, FROZEN_MANIFEST_PATH),
-  );
+  const readout = readClimbReadout(domainDir, runPin, { repoRoot, slug: manifest.slug });
   const campaignRoot = campaignDir(repoRoot, manifest.slug);
   // selectedProductDir names an immutable version. Its identity also changes when an otherwise
   // identical measurement is followed by an agent-only repair.

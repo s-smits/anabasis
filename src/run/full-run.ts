@@ -3,10 +3,8 @@ import { BuilderConversation } from "../author/builder-conversation.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { ProductVersionFromAnotherSource, selectedProductDir } from "./product-versions.ts";
 import { campaignDir } from "../meta/campaign-root.ts";
-import { join, relative, resolve } from "../meta/path.ts";
+import { relative, resolve } from "../meta/path.ts";
 import { readClimbReadout } from "./climb-readout.ts";
-import { claimsDirFor } from "./claim-write.ts";
-import { FROZEN_MANIFEST_PATH } from "../critic/manifest.ts";
 import type { AdmittedEvidence } from "../analyse/iteration-analysis.ts";
 import type { JudgeReviewsResult } from "../analyse/judge-reviews.ts";
 import { setProjectBackendSelection } from "../backends/project-backends.ts";
@@ -47,12 +45,7 @@ import {
 } from "./full-run-round.ts";
 import { isString } from "../meta/json-shape.ts";
 import { runtimeProcess } from "../meta/process.ts";
-import {
-  createSafeguardContext,
-  safeguardLogDir,
-  safeguardTempRootPressure,
-  type SafeguardContext,
-} from "../meta/safeguard.ts";
+import { safeguardLogDir, safeguardTempRootPressure, type SafeguardContext } from "../meta/safeguard.ts";
 import { cleanStaleTempRootScratch, removeRunTempRootAtExit } from "../meta/temp-scratch-clean.ts";
 import { ProviderResourceBudget } from "./provider-resource-budget.ts";
 import { FullRunClosure } from "./full-run-deadline.ts";
@@ -145,9 +138,9 @@ export async function runFullRun(
     ...args,
     runId: launch.runId,
   };
-  const safeguardContext = createSafeguardContext(
-    safeguardLogDir(campaignDir(repoRoot, launch.project.id), launch.runId),
-  );
+  const safeguardContext: SafeguardContext = {
+    logDir: safeguardLogDir(campaignDir(repoRoot, launch.project.id), launch.runId),
+  };
   // A per-user temp root that has reached six figures of entries stalls every fresh child spawn
   // in getdirentries64. Remove this product's own stale scratch first, in a bounded sweep, then let
   // `safeguardTempRootPressure` report whatever pressure remains. The run proceeds either way,
@@ -394,12 +387,7 @@ async function runUnderLock(run: LockedRun): Promise<FullRunOutcome> {
   };
   // A fresh readout at the close, so the terminal counts a last battery no later decision saw.
   state.readClimb = () =>
-    readClimbReadout(
-      selectedProductDir(repoRoot, manifest.slug),
-      runPin,
-      claimsDirFor(repoRoot, manifest.slug),
-      join(repoRoot, FROZEN_MANIFEST_PATH),
-    );
+    readClimbReadout(selectedProductDir(repoRoot, manifest.slug), runPin, { repoRoot, slug: manifest.slug });
   let adopted: string;
   try {
     adopted = selectedProductDir(repoRoot, manifest.slug);

@@ -655,9 +655,12 @@ describe("what one round of rehearsals costs", () => {
 
     expect(solves).toBe(7);
     expect(verdicts).toEqual(Array.from({ length: 7 }, () => ({ verdict: "pass" })));
-    expect(tool.description).toContain(
-      "Each rehearsal costs one measured case from the run's provider budget",
-    );
+    // ABLATED(rehearsal-price): expect(tool.description).toContain(
+    // ABLATED(rehearsal-price):   "Each rehearsal costs one measured case from the run's provider budget",
+    // ABLATED(rehearsal-price): );
+    // ADDED(rehearsal-price): the description puts no price on a rehearsal.
+    expect(tool.description).not.toMatch(/costs one measured case|provider budget/);
+    expect(tool.description).toContain("The accepted bytes are graded under the same per-check wall");
     expect(tool.description).not.toMatch(/At most \d+ rehearsals/);
     expect(tool.description).toContain("the same per-check wall your agent/config.yaml sets for the battery");
   }, 120_000);

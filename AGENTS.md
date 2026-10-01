@@ -774,6 +774,13 @@ only after every arm's source is fixed, and nothing read from it revises an arm.
   artifacts' location was stated three times in one opening. Grep:
   `rg "ABLATED\(history-pointer\)|ADDED\(history-pointer\)"`. Prediction and run: filled when this arm
   launches.
+- **`history-legend` (arm, 2026-10-01).** The readout's legend (`LEGEND` in
+  `src/run/climb-readout.ts`: what the aliases stand for, what a pass, an unaccepted attempt, a
+  non-result and a regraded case are) on every page of the context tool's history source. The opening
+  readout states it once, and each history page repeated it, the per-battery task pages too, which
+  carry no alias it explains. The history pages keep their data note. Grep:
+  `rg "ABLATED\(history-legend\)|ADDED\(history-legend\)"`. Prediction and run: filled when this arm
+  launches.
 
 ## Evidence and implementation status
 

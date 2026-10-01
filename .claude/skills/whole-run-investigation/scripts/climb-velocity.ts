@@ -749,6 +749,10 @@ function settledLine({ counts, settlement, earned }: ClimbBatteryRow): string | 
     : `${line}\n      earned ${earned.zone} at ${earned.passes}/${earned.n} over the whole battery, with the cases settled against their check counted neither way`;
 }
 
+/** A stalled streak in words, which the `flat` line and the CLIMB FLAT example both print. */
+const stallWords = ({ side, rounds, flat, closest }: NonNullable<ClimbLine["streak"]>) =>
+  `${side} the aim ${rounds} in a row, and the ${flat} since ${closest.passes}/${closest.n} came no closer`;
+
 /** The line as three sentences: its signal and swing, its horizons, and whether it has gone flat. */
 function lineLines(line: ClimbLine): string[] {
   const placed = line.points.length;
@@ -766,7 +770,7 @@ function lineLines(line: ClimbLine): string[] {
     streak === null
       ? "no: the latest battery is on the aim"
       : streak.stalled
-        ? `yes: ${streak.side} the aim ${streak.rounds} in a row, and the ${streak.flat} since ${streak.closest.passes}/${streak.closest.n} came no closer`
+        ? `yes: ${stallWords(streak)}`
         : `no: ${streak.side} the aim ${streak.rounds} in a row, ${streak.flat} since the closest, ${streak.closest.passes}/${streak.closest.n}`;
   return [
     `  velocity: ${line.signal.length} of ${placed} claimed batteries between 1/n and n-1/n${named}; ${line.onAim} on the aim, ${line.fullPasses} full passes and ${line.empty} empty, which locate nothing; ${swing}`,
@@ -777,7 +781,8 @@ function lineLines(line: ClimbLine): string[] {
 
 /** A line gone flat as the trigger the brief starts lanes 10 and 36 from (`LANE_FOR_TRIGGER`). */
 export function flatTriggers({ streak }: ClimbLine): { name: string; rows: number; examples: string[] }[] {
-  return streak?.stalled === true ? [{ name: "CLIMB FLAT (lane 10)", rows: 1, examples: [] }] : [];
+  if (streak?.stalled !== true) return [];
+  return [{ name: "CLIMB FLAT (lane 10)", rows: 1, examples: [stallWords(streak)] }];
 }
 
 /** How many solves the run spent measuring again what a full pass had already answered. */

@@ -357,7 +357,11 @@ describe("climb velocity", () => {
   // after the closest that came no closer, so the line flat by two starts nothing.
   it.concurrent("starts lanes 10 and 36 from a line flat by the stall rule, and not from one a battery short", () => {
     expect(flatTriggers(line(...repeat(4, 7, 7)))).toEqual([
-      { name: "CLIMB FLAT (lane 10)", rows: 1, examples: [] },
+      {
+        name: "CLIMB FLAT (lane 10)",
+        rows: 1,
+        examples: ["above the aim 4 in a row, and the 3 since 7/7 came no closer"],
+      },
     ]);
     expect(flatTriggers(line(...repeat(3, 7, 7)))).toEqual([]);
     expect(flatTriggers(line([2, 6]))).toEqual([]);

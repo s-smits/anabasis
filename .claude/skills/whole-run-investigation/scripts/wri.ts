@@ -46,6 +46,7 @@ import { renderBrief, renderScope, type RunScope, runScope, SEMANTIC_LANES, snap
 import { ANGLE_COUNT, NATIVE_OUTPUT } from "./catalogue-shape.ts";
 import {
   buildOverview,
+  laneTriggers,
   OVERVIEW_FILE,
   readJsonAs,
   REVIEW_STATE_FILE,
@@ -155,13 +156,13 @@ export interface WriArgs {
 }
 
 /**
- * The deterministic readers, in the order a review reads them. `collect` runs the four the paid
- * lanes consume; the rest answer one question each and cost nothing but local compute. A lane
- * whose input this target does not carry is skipped with the reason, never silently. A lane with
- * `cmd` is a script of its own; one with `read` runs in-process as its own subcommand, which a
- * review asks of the measured checkout's copy of this file, and imports its module only when it
- * runs, because the classifier behind two of them loads an embedding runtime. `options` and
- * `flags` are what that subcommand takes beyond the target.
+ * The deterministic readers, in the order a review reads them. `collect` runs the five the paid
+ * lanes consume, `climb` before the `overview` that carries its trigger; the rest answer one
+ * question each and cost nothing but local compute. A lane whose input this target does not carry
+ * is skipped with the reason, never silently. A lane with `cmd` is a script of its own; one with
+ * `read` runs in-process as its own subcommand, which a review asks of the measured checkout's copy
+ * of this file, and imports its module only when it runs, because the classifier behind two of them
+ * loads an embedding runtime. `options` and `flags` are what that subcommand takes beyond the target.
  */
 export const LANES: readonly Lane[] = [
   {
@@ -204,18 +205,9 @@ export const LANES: readonly Lane[] = [
     },
   },
   {
-    name: "overview",
-    label: "shared brief",
-    collect: true,
-    needs: (c) =>
-      existsSync(join(c.snapshot, SNAPSHOT_STATUS_FILE))
-        ? null
-        : `no ${SNAPSHOT_STATUS_FILE} under ${c.snapshot}; the snapshot lane recorded none`,
-    write: (c) => writeOverview(c),
-  },
-  {
     name: "climb",
     label: "climb velocity",
+    collect: true,
     needs: (c) => (existsSync(join(c.campaign, "versions")) ? null : "no adopted version, so no battery yet"),
     // The JSON drops each battery's family vectors, which only the verdict reads.
     read: async (c) => {
@@ -228,6 +220,16 @@ export const LANES: readonly Lane[] = [
       const line = lineOf(report);
       return { report: { ...report, batteries, line, triggers: flatTriggers(line) }, text: render(report) };
     },
+  },
+  {
+    name: "overview",
+    label: "shared brief",
+    collect: true,
+    needs: (c) =>
+      existsSync(join(c.snapshot, SNAPSHOT_STATUS_FILE))
+        ? null
+        : `no ${SNAPSHOT_STATUS_FILE} under ${c.snapshot}; the snapshot lane recorded none`,
+    write: (c) => writeOverview(c),
   },
   {
     name: "yield",
@@ -493,7 +495,8 @@ function runLane(state: WriReviewState, lane: Lane, ctx: LaneContext): void {
 function writeOverview(ctx: LaneContext): string {
   const overview = buildOverview(ctx.snapshot);
   writeJsonFile(join(ctx.reviewDir, OVERVIEW_FILE), overview);
-  writeJsonFile(join(ctx.reviewDir, "shared-instructions.json"), buildSharedInstructions(overview));
+  const lanes = laneTriggers(ctx.reviewDir, loadState(ctx.reviewDir).steps);
+  writeJsonFile(join(ctx.reviewDir, "shared-instructions.json"), buildSharedInstructions(overview, lanes));
   return `${OVERVIEW_FILE} and shared-instructions.json, from ${ctx.snapshot}`;
 }
 

@@ -104,9 +104,14 @@ arguments and reports. Report a missing credential; do not search other accounts
 Before any launch, compare the host's one-minute load with its cores (`sysctl -n vm.loadavg
 hw.ncpu`) and count the open runs in `bun run runs`, firmware runs above all: each firmware Builder
 compiles in 4–5 lanes of its own, and the Epoch Reviewer's probes run the same compilers. Do not
-launch while load is above the core count. A launch into that load slows every sibling as well as
-itself, and it confounds any comparison of round length, because every arm is then bound by its
-tools. [The Super Loop's launch step](../run-improvement-campaign/SKILL.md#4-launch-through-one-owner)
+launch while the one-minute load is above 25 (operator, 2026-10-01), and do not launch a new arm
+while the latest runs are still placing their batteries. A launch into that load slows every sibling
+as well as itself, and it confounds any comparison of round length, because every arm is then bound
+by its tools. The load is not the whole count: from 2026-09-23 to 2026-10-01 an Opus run yielded
+0.160 batteries per run-hour at about two live runs, 0.094 at about six and 0.067 at about nine, so
+count the live runs too, and hold at six. The launcher enforces neither; `settleGate` records the
+load and compares it with nothing.
+[The Super Loop's launch step](../run-improvement-campaign/SKILL.md#4-launch-through-one-owner)
 records what 2026-09-30 measured under it.
 
 Before a Claude-backed launch, read `.accounts/usage` in the main checkout, where it exists. It is

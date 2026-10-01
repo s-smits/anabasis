@@ -296,6 +296,17 @@ custom-sol-f0fb83 (3 of 14 with signal, a 13.8-point swing) above truss-sol-198d
 6a8ca0 (0 of 13, flat). A change that raises a score, adds tasks or renames levels without moving the line
 has not served the goal.
 
+One swing of that line is a **climb step**: a battery with an earned fail, a harness change that answers
+it, the same task passing, a battery that asks more, and a partial battery again. No run completed one
+between 2026-09-23 and 2026-10-01 ("Open gaps"). Signal counts only the first of those links, and it is too
+rare to settle a comparison at the size we run. Of the 322 batteries scored in that window, 11 held a fail
+nobody contested, so an arm of eight batteries sees one with a probability near 0.24, and showing that a
+change doubled the rate would take about 650 batteries an arm. So read the share of the solve wall beside
+it (`wri.ts walls`), which moves on every battery. In truss it rises before a fail does: batteries that
+went on to fail a case used a median of 18.6% of the wall against 6.6% for full passes, and the failing
+cases ran to 68% of it. In firmware it says the opposite, that the fails were not the solver's, because
+they came at 1.5% of the wall.
+
 ### The band and the placement
 
 The band is `climb.band`, `[0.20, 0.50]` on the Wilson interval at `climb.confidence` 0.95, whose one z
@@ -512,15 +523,89 @@ a limit found, and read its wall-bound count before counting a miss as the task'
 band on the same side is a settled result ("While it runs"). The whole-run digest's 4b block lists each
 decision with the battery it reads, and its `OFF-AIM STREAK` line is a lead for review lane 10.
 
-### Open gaps: why batteries still pass whole
+A run that has just measured an earned fail is the one worth keeping. Five of the 11 batteries with an
+uncontested fail since 2026-09-23 were the last their run measured, all four of Opus 5's among them, so
+the step each had opened was never read. Let such a run measure at least two more batteries before
+stopping it, and read whether the harness changed between them (the adopted fingerprint's `agentHash`).
+
+### Open gaps: the four blockers to a climb
 
 On 2026-09-30, 265 of 299 recorded batteries had passed every case. The leniency is not in the grading.
 Since 2026-09-23 the Judge vetoed 5 of 1,411 verifier passes (firmware 2 of 901, truss 3 of 510), and
 counting all five would move no battery out of too-easy. Of the 22 verified fails counted as limits, 17
 were contested, and the check was the stricter side (the Judge passed 11; the review settled 6 against
 the check). It is not in the answers either, since every firmware reference passes F2, nor in the
-limits (prior 10). The gaps are on the task side. Delete a bullet in the commit that
-closes it.
+limits (prior 10).
+
+**A climb is the goal, and none has been measured** (operator, 2026-10-01). The fixes of the last week
+made runs more reliable, and no run from 2026-09-23 to 2026-10-01 completed one climb step ("Its shape,
+and how progress is read"). A census of that window on 2026-10-01 read 322 scored batteries in 65 runs,
+and four things stand between it and a climb. They are ranked by which binds first, so work the first
+before the fourth, and delete one in the commit that closes it. The census is six read-only lanes whose
+tables are in the ignored `notes/climb-blockers-20261001/`; a number below that names no source is theirs
+and has not been re-derived here.
+
+1. **The answer is the author's own.** Every admitted task carries a witness its Builder solved or
+   searched for (prior 10), and in all 91 runs of the window the solver was the Builder's model. So a task
+   asks only what its author could already do with the same instruments, and the solver does it again.
+   Opus 5.5 failed none of its 73 verified cases, and under gpt-6-sol no fail among 783 verified firmware
+   cases has been confirmed as the solver's. Widening the gap by effort or by search has been measured
+   and did not bind: a medium Builder over a low solver (Astra, 28 batteries) verified 139 passes and no
+   fail, and limits reset at a 3.4-hour search's best passed 5 of 6 (prior 10). What has never been a
+   measured condition is an answer the author did not have to find. One kind is an instance built from a
+   chosen answer at a size no enumeration or short search reaches; `examples.md` offers "A planted
+   design" as one option among several, and the plants on record (reserve 6a8ca0, RNA-seq 36e268) were
+   sized so the reference could enumerate them, which the solver then did in one to three minutes. The
+   other kind is an answer the field already recorded, such as a merged fix or a published result, which
+   no surface names. A second author has not been measured either: a split build, in which an answer
+   agent writes the correctness model behind a wall from the author of `agent/`, was written on
+   2026-09-30 (`claude/answer-builder`, three local commits) and has neither landed nor run. Owner: the
+   witness route, in `starter-pack/examples.md`. The cheapest test needs no run: plant instances past
+   enumeration on a recorded product and re-solve them once through `harness-query`.
+2. **An earned fail is not followed up.** Of the 322 batteries, 33 were partial and 11 held a fail
+   nobody contested, 8 in truss and 3 in firmware (those three are the one-minute-wall drafts below).
+   None became a step. Five of the 11 were the last battery their run measured. Where the run went on,
+   the task changed more often than the harness: in six chances the Builder changed `agent/` once,
+   dropped or eased the failing task three times, and twice the task passed unchanged, which reads as
+   variance. A one-fail partial is read as too easy and raised, and the next battery then passed whole 5
+   times in 6, and none of the 359 difficulty decisions on record eases. The Builder can tell which
+   task failed, since the passing solves reach it by task id and the failed task is the one without
+   one, but not where or why, which is protected (rule 6): after a partial battery `renderReadout`
+   gives it the counts, the families and the passing artifacts, and the no-limit line speaks only
+   after a full pass. Nothing asks it to keep that task, and the controller does not measure it again
+   (`decideNextMove` measures again only the cases the environment cut short). Owner:
+   `src/run/next-move.ts` and the battery the next round measures, and the operator's stop ("Reading
+   the climb as the operator").
+3. **The measure cannot show a change at the size we run.** An uncontested fail arrives in 3.4% of
+   batteries, so eight batteries an arm cannot separate two arms on signal ("Its shape, and how progress
+   is read"). All 14 resolved predictions that a change would move a battery were refuted, all 13 that
+   one would stay whole came true, and 100 of the 122 left unresolved never had their measurement. Two
+   instruments with more power exist and neither is on the scoreboard. The share of the solve wall moves
+   on every battery (`wri.ts walls`), up by about 8% a battery step over 253 steps. And a fixed pack
+   compares two products on the same tasks, which "Evidence and implementation status" already asks
+   for and the README's yardstick used; no pack has been cut from the recorded hard tasks, and no solver
+   outside the loop has measured a battery. Owner: `scoreboard.ts`, and a pack solved through
+   `harness-query`.
+4. **Changes outrun measurements, and runs end before they climb.** In the window, 299 commits changed
+   text a model reads and 88 runs opened on 37 sources ("What has cost whole rounds here"). 58 of the 88
+   were stopped by hand at a median age of 11.2 hours and none ended by finishing. Only 15 runs reached
+   eight batteries, all of them Sol. No Opus run placed more than three, because an Opus Builder takes a
+   median of 6.4 hours to its first battery at any number of live runs, where a Sol Builder takes 0.2 to
+   1.5 depending on the domain. Each Opus run also yields less as runs are added: 0.160 batteries per
+   run-hour at about two live runs, 0.094 at about six and 0.067 at about nine. The launcher counts no
+   live runs and compares the load with nothing (`settleGate` in `launch-run/scripts/launch.ts` records
+   it). Owner: the Super Loop's pace (`run-improvement-campaign`), one measured change at a time on a
+   tree that holds still.
+
+The first is model-visible where it changes `examples.md` or opens a split build. The second, third
+and fourth are the controller's, the readers' and the operator's, and move no prompt.
+
+Starting every campaign from a fresh project is not one of them (operator, 2026-10-01). Each run
+tests the whole path from the one-line request, so the hours a Builder spends building its own
+instrument are part of what the run measures, and a fix that seeds a run from an earlier product
+to skip them is not wanted.
+
+Beneath the four, the task side still has these gaps. Delete a bullet in the commit that closes it.
 
 - **No firmware fail has yet been a limit, and the climb still counts them.** All 32 firmware verified
   fails since 2026-09-23 were classified, 29 by replay against their own evaluators and 3 from the
@@ -573,8 +658,8 @@ closes it.
   and the solver's `expected_behaviour`, so the solver can compute every expected value before it
   submits, which `PUBLICATION_CLAUSE` calls the field's own work.
 
-All of these are model-visible, so the stack that closes them is one new condition. Freeze a prediction
-per change, simulate a fresh firmware first round, and launch only on the operator's word.
+All of these bullets are model-visible, so the stack that closes them is one new condition. Freeze a
+prediction per change, simulate a fresh firmware first round, and launch only on the operator's word.
 
 ### Tried and taken out
 
@@ -849,6 +934,12 @@ comparison to a single variable, and batch related fixes one PR per owner, one g
 Eleven PRs went in against model-visible text after two batteries had already shown that text was not the
 lever, and none of them was in the source the next run measured. Another round went on a schema bump
 inside a reader, which made every recorded campaign throw on continuation.
+
+That pattern held for the whole window from 2026-09-23 to 2026-10-01. A commit that changed text a model
+reads waited a median of 6.4 hours for the first battery that contained it, and in 276 of 287 cases
+another such commit landed first, so almost no battery measured one change. The host measures one or two
+attributable changes a day, and the changes came ten to thirty-five times faster. A change made past that
+rate is unmeasured however carefully its prediction was frozen ("Open gaps", the fourth blocker).
 
 Until 2026-09-28 the round prompt asked the Builder to hold its submit until `harness_trial` agreed with
 the aim. Rehearsals passed 96 of the 99 times the Builder had predicted a pass at ≤0.3, so the wait held

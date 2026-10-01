@@ -43,9 +43,31 @@ bun .claude/skills/run-improvement-campaign/scripts/scoreboard.ts --since <ISO d
 
 **The baseline to beat.** On 2026-10-01, the 32 runs opened since 2026-09-29 had 152 batteries on
 their lines and 5 with signal. Two runs had one signal battery in their first 8, at 0.5 and 1.7
-hours, both from source a907460c; every other source and Builder read 0 of its first 8. The wave
-audit of the same day found no source-attributed improvement across 87 runs in five source states.
-A pass rate, a zone, a preview count or a merged PR is not on the scoreboard.
+hours, both from source a907460c; every other source and Builder read 0 of its first 8. Neither of
+the two speaks for its source. The truss one held one earned fail from a 0.9-minute solve, on a task
+that was changed before it passed. The firmware one's two fails were on an output vocabulary the task
+never published, and the review settled both against the check one battery later.
+The wave audit of the same day found no source-attributed improvement across 87 runs in five source
+states. A pass rate, a zone, a preview count or a merged PR is not on the scoreboard.
+
+**What the scoreboard cannot show, and what to read beside it.** The goal is a climb, and since
+2026-09-23 no run has completed one step of it: an earned fail, a harness change that answers it,
+the task passing, and a harder battery that is partial again. AGENTS.md "Open gaps" ranks the four
+blockers, and a pass names the one it attacks. Signal counts only the first link of a step and is
+rare. An uncontested fail arrived in 11 of 322 batteries, so an arm of eight sees one with a
+probability near 0.24, and showing that a change doubled the rate would take about 650 batteries an
+arm. Two readings move on every battery and carry the comparison until a fail does:
+
+- **The share of the solve wall** (`wri.ts walls`). Truss batteries that went on to fail a case used
+  a median of 18.6% of the wall against 6.6% for full passes. A change that raises demand shows here
+  first.
+- **One fixed pack.** Solve the same recorded hard tasks with both products through `harness-query`,
+  as AGENTS.md "Evidence and implementation status" asks. An in-run battery scores each Builder's
+  own tasks and cannot rank two products.
+
+When a battery does hold an earned fail, the run that measured it is the experiment. Keep it going
+for at least two more batteries and read whether `agent/` changed between them; five of the 11 were
+the last battery their run measured.
 
 Every link of the chain has a deterministic reader already in the tree. Read the one for the link a
 change aims at beside the scoreboard, from the newest tree:
@@ -70,7 +92,12 @@ signal battery, 3e4693 none in seven). So a climb change is measured as an arm:
   `command.digest` is equal. A model upgrade is an arm of its own on unchanged source.
 - **One starting product.** Seed every arm from one recorded product (§4), so each arm's first
   battery starts from the same demand.
-- **Two runs an arm** when the claim is on signal of the first 8. One run an arm is a lead.
+- **Two runs an arm** when the claim is on the share of the solve wall or on a fixed pack. On
+  signal of the first 8, two runs an arm cannot separate anything (above), so a signal difference at
+  that size is a lead. One run an arm is a lead on any reading.
+- **One change at a time.** From 2026-09-23 to 2026-10-01 a model-visible commit waited a median of
+  6.4 hours for its first battery and another such commit landed first in 276 of 287 cases. Hold the
+  tree still while an arm runs.
 - **Long enough to answer.** Eight batteries, or a prediction on the first three that says so.
   `--max-iterations 1` measures one battery and no line.
 - **Launched together**, under the load rule (§4), so host load cannot separate the arms.

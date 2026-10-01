@@ -380,7 +380,10 @@ async function runPair(
     { id: baselineId(probe), taskId, artifact },
     { id: mutatedId(probe), taskId, artifact: mutated },
   ];
-  const options = { brief: candidate.brief, lanes: 1, verifierLifetime: candidate.lifetime };
+  // The two sides run side by side. A probe on a compiling domain under load runs minutes per side,
+  // and 23 of 857 reviews since 2026-09-27 reached the reader's hour; the receipts settle in corpus
+  // order whatever the lane count.
+  const options = { brief: candidate.brief, lanes: 2, verifierLifetime: candidate.lifetime };
   const run = await runControls(
     candidate.evaluate,
     { accept, reject: [] },

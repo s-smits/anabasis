@@ -203,8 +203,13 @@ describe("generated evaluation in a confined child", () => {
 
   it("cancels an executing check and settles its process before rejecting", async () => {
     const dir = fixture("function evaluate() { while (true) {} }");
-    const evaluate = await loadCorrectnessModel(dir, LIFETIME, AbortSignal.timeout(500));
-    await expect(evaluate("text", REQUEST)).rejects.toMatchObject({ kind: "timeout" });
+    // The abort waits until the check has started: a timer begun before loading also covers
+    // bundling, and on a loaded host it fired before the child existed.
+    const cancel = new AbortController();
+    const evaluate = await loadCorrectnessModel(dir, LIFETIME, cancel.signal);
+    const running = evaluate("text", REQUEST);
+    setTimeout(() => cancel.abort(), 300);
+    await expect(running).rejects.toMatchObject({ kind: "timeout" });
     expect(LIFETIME.pendingReceipts()).toEqual([]);
     LIFETIME.assertUsable();
   });

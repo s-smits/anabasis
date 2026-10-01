@@ -39,7 +39,7 @@ import {
   type ClimbEvidenceAt,
   type ClimbFamilySummary,
   type ExcludedBattery,
-  type FamilyEffort,
+  // ABLATED(family-effort): type FamilyEffort,
   climbEvidencePaths,
   climbThresholds,
   decidingSample,
@@ -97,8 +97,11 @@ type ReadoutRow = {
   families: ClimbFamilySummary[] | null;
   /** Null when the claim was refused, or when no case recorded a solver block. */
   effort: ClimbEffort | null;
-  /** Null when the claim was refused; empty when no case named a family and recorded a solver block. */
-  familyEffort: FamilyEffort[] | null;
+  // ABLATED(family-effort): each family's median and most minutes and median tool calls, which reached
+  // only the history overview the Builder reads, beside `effort` and the wall-bound count (AGENTS.md
+  // "Ablated components").
+  // /** Null when the claim was refused; empty when no case named a family and recorded a solver block. */
+  // familyEffort: FamilyEffort[] | null;
   /** The `solve_minutes` wall the effort is read against; null when the product's config did not parse. */
   solveWallMinutes: number | null;
   /** Unaccepted cases whose solve ran to that wall; null when the claim was refused. */
@@ -258,10 +261,12 @@ function readoutRow(
           deciding: decidingSample(row.battery),
           families: row.authoring.familySummary,
           effort: row.authoring.effort,
-          familyEffort: row.authoring.familyEffort,
+          // ABLATED(family-effort): familyEffort: row.authoring.familyEffort,
           wallBound: row.authoring.wallBound,
         }
-      : { passed: null, deciding: null, families: null, effort: null, familyEffort: null, wallBound: null };
+      : // ABLATED(family-effort): { passed: null, deciding: null, families: null, effort: null, familyEffort: null, wallBound: null };
+        // ADDED(family-effort): the same nulls without familyEffort.
+        { passed: null, deciding: null, families: null, effort: null, wallBound: null };
   // The controller's placement, null whole when the decision placed this battery nowhere.
   const placement = decision?.placement ?? null;
   const placed =
@@ -461,7 +466,7 @@ export function renderReadout(readout: ClimbReadout | null, reason: string): str
       ? null
       : `Battery ${latest.runId} passed ${String(passing)} case${passing === 1 ? "" : "s"}; each passing solve and the artifact it submitted is at traces/${latest.runId}/<taskId>/artifact.`,
     summary === null ? null : `${summary}.`,
-    // ABLATED(history-pointer):     HISTORY,
+    // ABLATED(history-pointer): HISTORY,
   ]
     .filter((part) => part !== null)
     .join("\n\n");

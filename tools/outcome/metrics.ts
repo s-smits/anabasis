@@ -12,7 +12,7 @@ import {
   readCaseRecord,
 } from "../../src/claim/case-record.ts";
 import { wilsonInterval } from "../../src/claim/estimation.ts";
-import { ENVIRONMENT_OWNED_NONRESULT_KINDS, isNonResultKind } from "../../src/claim/record-events.ts";
+import { isEnvironmentOwnedNonResult } from "../../src/claim/record-events.ts";
 import {
   type TraceReadState,
   campaignTraceRoots,
@@ -465,7 +465,7 @@ function batteryMetrics(
         total: tally.nonResults,
         byKind,
         environmentOwnedKinds: Object.keys(byKind)
-          .filter((k) => isNonResultKind(k) && ENVIRONMENT_OWNED_NONRESULT_KINDS.has(k))
+          .filter((k) => isEnvironmentOwnedNonResult(k))
           .sort(),
       },
     },

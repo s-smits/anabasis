@@ -27,7 +27,7 @@ import { isString } from "../meta/json-shape.ts";
 import { dirname, join } from "../meta/path.ts";
 import { FROZEN_MANIFEST_PATH } from "../critic/manifest.ts";
 import { POLICY } from "../critic/policy.ts";
-import { ENVIRONMENT_OWNED_NONRESULT_KINDS } from "../claim/record-events.ts";
+import { isEnvironmentOwnedNonResult } from "../claim/record-events.ts";
 import { fingerprintSlug } from "../claim/fingerprint.ts";
 import { bundleSnapshotToolTree } from "../claim/bundle-snapshot.ts";
 import { CASE_RECORD_FILE, readCaseRecord } from "../claim/case-record.ts";
@@ -227,10 +227,7 @@ function notRemeasurable(domainDir: string, battery: RecordedBattery): string | 
   const censored = battery.cases.filter((row) => row.runtimeNonResultKind !== null);
   if (censored.length === 0) return "no case ended in a non-result";
   const environmentOwned = censored.every(
-    (row) =>
-      row.solver.nonResult !== null &&
-      row.runtimeNonResultKind !== null &&
-      ENVIRONMENT_OWNED_NONRESULT_KINDS.has(row.runtimeNonResultKind),
+    (row) => row.solver.nonResult !== null && isEnvironmentOwnedNonResult(row.runtimeNonResultKind),
   );
   if (!environmentOwned) return "a non-result the environment does not own, or one past the solver";
   // The analysis routes an unbound external result to the check's owner and says to repair before

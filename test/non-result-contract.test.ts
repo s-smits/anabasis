@@ -9,9 +9,8 @@
  */
 import { describe, expect, it } from "bun:test";
 import {
-  ENVIRONMENT_OWNED_NONRESULT_KINDS,
-  NON_RESULT_KINDS,
   type NonResultKind,
+  isEnvironmentOwnedNonResult,
   isNonResultKind,
 } from "../src/claim/record-events.ts";
 import {
@@ -27,7 +26,6 @@ import {
 } from "../src/correctness-bundle/runtime-blocker.ts";
 import { providerResetAt } from "../src/correctness-bundle/provider-reset.ts";
 import {
-  ENVIRONMENT_OWNED_TOOL_NON_RESULT_KINDS,
   VerifierExecutionNonResult,
   environmentOwnedToolNonResult,
 } from "../src/correctness-bundle/verifier-nonresult.ts";
@@ -48,24 +46,22 @@ const unownedKeyless: NonResultKind = "keyless";
 const retiredEngineKind: NonResultKind = "engine-unavailable";
 
 describe("the case non-result vocabulary", () => {
-  it("is the producer list the evaluator and verifier host share, in order", () => {
-    // `satisfies` is the pin: a kind added to or dropped from the union fails the typecheck here,
-    // so the runtime export and the compile-time union cannot drift apart.
-    const producers = [
-      "solver",
-      "runtime",
-      "verifier-throw",
-      "verifier",
-      "provider",
-      "transport",
-      "verifierUnavailable",
-      "sandbox",
-      "timeout",
-      "crash",
-      "protocol",
-    ] as const satisfies readonly NonResultKind[];
-    expect([...NON_RESULT_KINDS]).toEqual([...producers]);
-  });
+  // `satisfies` is the pin: a kind added to or dropped from the union fails the typecheck here,
+  // and the read boundary below has to admit every one, so the runtime vocabulary and the
+  // compile-time union cannot drift apart.
+  const producers = Object.keys({
+    solver: true,
+    runtime: true,
+    "verifier-throw": true,
+    verifier: true,
+    provider: true,
+    transport: true,
+    verifierUnavailable: true,
+    sandbox: true,
+    timeout: true,
+    crash: true,
+    protocol: true,
+  } satisfies Record<NonResultKind, true>);
 
   it("keeps the verifier relay vocabulary a subset of the case vocabulary", () => {
     // evaluator.ts is a size-frozen copied file, so the runtime spelling lives here instead.
@@ -78,11 +74,10 @@ describe("the case non-result vocabulary", () => {
       "crash",
       "protocol",
     ] as const satisfies readonly VerifierExecutionNonResultKind[];
-    const cases = new Set<string>(NON_RESULT_KINDS);
-    for (const kind of relayed) expect(cases.has(kind)).toBe(true);
+    for (const kind of relayed) expect(isNonResultKind(kind)).toBe(true);
   });
 
-  it.each([...NON_RESULT_KINDS])("admits %s at the read boundary", (kind) => {
+  it.each(producers)("admits %s at the read boundary", (kind) => {
     expect(isNonResultKind(kind)).toBe(true);
   });
 
@@ -106,8 +101,8 @@ describe("the case non-result vocabulary", () => {
   });
 
   it("assigns an unreadable tool to the environment without excusing a tool that ran and died", () => {
-    expect(ENVIRONMENT_OWNED_NONRESULT_KINDS.has("verifierUnavailable")).toBe(true);
-    expect(ENVIRONMENT_OWNED_NONRESULT_KINDS.has("crash")).toBe(false);
+    expect(isEnvironmentOwnedNonResult("verifierUnavailable")).toBe(true);
+    expect(isEnvironmentOwnedNonResult("crash")).toBe(false);
   });
 });
 
@@ -118,7 +113,7 @@ describe("who owns a failed tool run", () => {
   // (`verifierUnavailable`). Those get the one fresh replay the census gate and the battery control
   // replay allow. Everything else is a tool the author chose, run over an input the artifact
   // produced, which the author can act on — so it settles at once.
-  it.each([...ENVIRONMENT_OWNED_TOOL_NON_RESULT_KINDS])("gives %s to the environment", (kind) => {
+  it.each(["sandbox", "verifierUnavailable"])("gives %s to the environment", (kind) => {
     expect(environmentOwnedToolNonResult(kind)).toBe(true);
   });
 
@@ -145,7 +140,7 @@ describe("who owns a failed tool run", () => {
     // from the expected partition must fail here and receive an explicit retry-ownership decision.
     const environment = VERIFIER_EXECUTION_NON_RESULT_KINDS.filter(environmentOwnedToolNonResult);
     const author = VERIFIER_EXECUTION_NON_RESULT_KINDS.filter((kind) => !environmentOwnedToolNonResult(kind));
-    expect(new Set<string>(environment)).toEqual(new Set(ENVIRONMENT_OWNED_TOOL_NON_RESULT_KINDS));
+    expect(environment).toEqual(["verifierUnavailable", "sandbox"]);
     expect(author).toEqual(["provider", "transport", "timeout", "crash", "protocol"]);
   });
 });

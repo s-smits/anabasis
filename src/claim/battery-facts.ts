@@ -9,7 +9,7 @@ import { type CaseOutcomeFields, classifyCaseOutcome } from "./case-record.ts";
 import type { RuntimeIdentityCaseEvidence, RuntimeModelIdentity } from "./runtime-model-identity.ts";
 import { capturedStructuredClone } from "../meta/json-runtime.ts";
 import { REPORTING_CONFIDENCE, wilsonInterval } from "./estimation.ts";
-import { ENVIRONMENT_OWNED_NONRESULT_KINDS, type NonResultKind } from "./record-events.ts";
+import { type NonResultKind, isEnvironmentOwnedNonResult } from "./record-events.ts";
 
 type ScorableCase = CaseOutcomeFields;
 
@@ -68,7 +68,7 @@ export function environmentBlockedBattery(
   if (!evidence.discriminationClaimable || cases.length === 0 || scoredCases(cases).length > 0) return null;
   const kinds = cases.flatMap((c) => (c.runtimeNonResultKind === null ? [] : [c.runtimeNonResultKind]));
   if (kinds.length !== cases.length) return null;
-  if (!kinds.every((k) => ENVIRONMENT_OWNED_NONRESULT_KINDS.has(k))) return null;
+  if (!kinds.every((k) => isEnvironmentOwnedNonResult(k))) return null;
   // A failure at the verifier boundary cannot be classified as solver-origin from its kind alone.
   if (cases.some(({ taskId }) => !evidence.solverOriginCaseIds.has(taskId))) return null;
   return kinds;

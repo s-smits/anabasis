@@ -21,7 +21,7 @@ import { isAbsolute, join, relative } from "../meta/path.ts";
 import type { CampaignFeedback, FeedbackOwner } from "../author/campaign-types.ts";
 import type { BundleFile } from "../author/feedback-routing.ts";
 import { authorSessionOwner, findingSeverity } from "./finding-owner.ts";
-import { ENVIRONMENT_OWNED_NONRESULT_KINDS } from "../claim/record-events.ts";
+import { isEnvironmentOwnedNonResult } from "../claim/record-events.ts";
 import {
   CASE_RECORD_FILE,
   type CaseVerdict,
@@ -419,9 +419,8 @@ export function hostFindings(repoRoot: string, analysis: IterationAnalysis): Ana
   // Only a kind that can establish an environment failure earns "rerun unchanged". A `verifier`
   // non-result — an external check that ran no tool at all — is the harness's own defect, so
   // counting it here would tell the Builder to rerun unchanged around a defect it owns.
-  const nonResults = analysis.cases.filter(
-    (row) =>
-      row.runtimeNonResultKind !== null && ENVIRONMENT_OWNED_NONRESULT_KINDS.has(row.runtimeNonResultKind),
+  const nonResults = analysis.cases.filter((row) =>
+    isEnvironmentOwnedNonResult(row.runtimeNonResultKind),
   ).length;
   // Settled beside the environment restatement, so a non-result the Builder's own check caused is
   // routed to that owner instead of being read as an environment fact (checkerUnboundFinding).

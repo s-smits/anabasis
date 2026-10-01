@@ -41,7 +41,7 @@ import { sha256 } from "../meta/digest.ts";
 import { canonicalJson } from "../meta/stable-json.ts";
 import { hashJsonBytes, parseJsonAs } from "../meta/json-runtime.ts";
 import { familyTally } from "../claim/case-record.ts";
-import { ENVIRONMENT_OWNED_NONRESULT_KINDS, isNonResultKind } from "../claim/record-events.ts";
+import { isEnvironmentOwnedNonResult } from "../claim/record-events.ts";
 import {
   namedSubject,
   type AdmittedEvidence,
@@ -634,10 +634,7 @@ export function environmentOwned(issue: AdviceIssue): boolean {
   // aggregate issue carries no such provenance, and a verifier tool timeout can need author repair,
   // so timeout is excluded here rather than read as the environment's.
   return (
-    issue.kind === "non-result" &&
-    issue.detail !== "timeout" &&
-    isNonResultKind(issue.detail) &&
-    ENVIRONMENT_OWNED_NONRESULT_KINDS.has(issue.detail)
+    issue.kind === "non-result" && issue.detail !== "timeout" && isEnvironmentOwnedNonResult(issue.detail)
   );
 }
 

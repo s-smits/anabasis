@@ -25,7 +25,6 @@ import type {
 import {
   type ClimbReadout,
   climbReadout,
-  excludedSummary,
   readoutHistoryDocuments,
   renderBatteryContract,
   renderReadout,
@@ -439,10 +438,15 @@ describe("rendering", () => {
 });
 
 describe("the refusals, summarised for the author", () => {
+  const excludedLine = (excluded: ClimbReadout["excluded"], admitted: number) =>
+    render({ ...readoutOf(), excluded, admitted })
+      .split("\n")
+      .find((line) => line.includes("excluded from difficulty evidence")) ?? "absent";
+
   it("says nothing without exclusions, names each battery, and groups one shared reason", () => {
-    expect(excludedSummary([], 3)).toBeNull();
+    expect(excludedLine([], 3)).toBe("absent");
     expect(
-      excludedSummary(
+      excludedLine(
         [
           { runId: "r1", reason: "not comparable", claimRefused: false },
           { runId: "r2", reason: "claim refused", claimRefused: true },
@@ -450,7 +454,7 @@ describe("the refusals, summarised for the author", () => {
         1,
       ),
     ).toBe(
-      "2 of 3 recorded batteries excluded from difficulty evidence: not comparable — r1; claim refused — r2",
+      "2 of 3 recorded batteries excluded from difficulty evidence: not comparable — r1; claim refused — r2.",
     );
     // A whole campaign read at another pin shares one reason: it is stated once, not per run.
     const shared = Array.from({ length: 6 }, (_, i) => ({
@@ -458,9 +462,9 @@ describe("the refusals, summarised for the author", () => {
       reason: "not comparable",
       claimRefused: false,
     }));
-    const summary = excludedSummary(shared, 0);
+    const summary = excludedLine(shared, 0);
     expect(summary).toContain("not comparable — r0, r1, r2, r3 and 2 more");
-    expect(summary?.match(/not comparable/g)).toHaveLength(1);
+    expect(summary.match(/not comparable/g)).toHaveLength(1);
   });
 });
 

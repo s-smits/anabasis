@@ -410,7 +410,7 @@ function noLimitLine(row: ReadoutRow): string | null {
   return `Battery ${runId} passed ${all}, so it found no limit. More tasks, families, inputs or scenarios at the same demand measure the same reach again, so the next battery has to demand more of the field's own work within its tasks: make more of the request's requirements act together in each task, in tasks you expect the solver to fail. Carry none of its tasks forward unchanged, since a task it passed measures the same pass again: raise what each one demands or replace it.${spent} Record in your notes which public requirement it changes and the reasoning that change adds. ${MEASURE_SOLVES}`;
 }
 
-export function excludedSummary(excluded: readonly ExcludedBattery[], admitted: number): string | null {
+function excludedSummary(excluded: readonly ExcludedBattery[], admitted: number): string | null {
   if (excluded.length === 0) return null;
   const byReason = new Map<string, string[]>();
   // `excluded` arrives sorted by run, so both the groups and the runs inside them are

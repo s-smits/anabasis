@@ -487,10 +487,10 @@ export function loadValidatedBundle(
  * adding one, read every finding it can emit and keep its detail to public authoring identities.
  */
 export function freshCandidateFindings(loaded: {
-  brief: Brief | null;
+  brief: Brief;
   corpus: ControlCorpus | null;
 }): ContractFinding[] {
-  if (loaded.brief === null || loaded.corpus === null) return [];
+  if (loaded.corpus === null) return [];
   try {
     compilePublicArtifactSchema(
       loaded.brief.artifactSchema,

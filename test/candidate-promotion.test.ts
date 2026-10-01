@@ -246,7 +246,6 @@ describe("promoteCandidate — one battery, one decision", () => {
         manifest: { slug: SLUG, domain: SLUG, expectedTasks: 25 },
         baseKickoff: "build trusses",
         runPin: "fixture",
-        runId: "intermediate",
         domainDir: selectedProductDir(root, SLUG),
         builder: { kind: "codex", model: "fixture", reasoningEffort: "low" },
         built: { reasoningEffort: "low" },

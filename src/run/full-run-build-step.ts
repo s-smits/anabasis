@@ -154,13 +154,12 @@ function remeasuredAuthoring(input: IterationInput): Pick<BuildStepResult, "expe
 function settleBuildOutcome(
   move: NextMove["move"],
   outcome: BuildOutcome,
-  requestedExperiment: HarnessExperiment,
   observer: IterationInput["observer"],
 ): BuildStepResult {
-  const experiment =
+  const experiment: HarnessExperiment =
     outcome.buildAdmissible && outcome.experimentScope !== undefined
       ? outcome.experimentScope.actual
-      : requestedExperiment;
+      : "build";
   const buildAdmissible = outcome.buildAdmissible && outcome.adopted;
   const outcomeClause = outcome.buildAdmissible ? null : outcome.clause;
   if (buildAdmissible) {
@@ -307,7 +306,7 @@ export async function runBuildStep(
       });
       throw cause;
     });
-  const result = settleBuildOutcome(move, outcome, "build", observer);
+  const result = settleBuildOutcome(move, outcome, observer);
   safeguardJudgeAdviceThenEvaluatorRepair(
     move,
     advice,

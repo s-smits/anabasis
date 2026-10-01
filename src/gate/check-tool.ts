@@ -41,7 +41,7 @@ interface CorrectnessCheckBinding {
   /** The controller's preview of the current workspace bytes. */
   preview(): Promise<GateReport>;
   /** The ask's battery size, for the coverage summary; its upper bound when `minTasks` opens a range. */
-  expectedTasks: number | undefined;
+  expectedTasks: number;
   /** The smallest accepted size when the round leaves the count to the Builder. */
   minTasks?: number;
   /** The same store submit records its refusal into, so `harness_inspect feedback` pages a check's
@@ -167,8 +167,8 @@ function coverageOf(
     controls: { accept: harness.corpus.accept.length, reject: harness.corpus.reject.length },
     tasks: {
       authored: harness.battery.tasks.length,
-      expected: binding.expectedTasks ?? null,
-      atLeast: binding.minTasks ?? binding.expectedTasks ?? null,
+      expected: binding.expectedTasks,
+      atLeast: binding.minTasks ?? binding.expectedTasks,
     },
     checks: harness.brief.truthChecks.map((check) => ({
       id: check.id,

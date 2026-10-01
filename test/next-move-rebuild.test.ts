@@ -166,7 +166,6 @@ function writeBlockingTests(root: string, runId: string): void {
 
 const selectAs = (
   root: string,
-  runId: string,
   domainDir = join(root, "domains", SLUG),
   kickoff = "design a steel truss bridge",
 ) =>
@@ -175,7 +174,6 @@ const selectAs = (
     manifest: { slug: SLUG, domain: SLUG, expectedTasks: BATTERY_SIZE.default },
     baseKickoff: kickoff,
     runPin: pinOf(root),
-    runId,
     domainDir,
     builder: { kind: "claude", model: "test-model", reasoningEffort: "medium" },
     built: { reasoningEffort: "medium" },
@@ -185,17 +183,17 @@ describe("the next move on disk", () => {
   it("keeps the reopen key across a moved checkout and changes it for another retained version", () => {
     const root = scratchRepo();
     writeBlockingTests(root, "base");
-    const first = selectAs(root, "round-1");
+    const first = selectAs(root);
     expect(first.decision).toMatchObject({ move: "rebuild" });
     expect(first.decision.reopenKey).toMatch(/^experiment:[a-f0-9]{64}$/);
     // The kickoff stays the operator's one line: no curriculum rides on it.
     expect(first.kickoff).toBe("design a steel truss bridge");
     const moved = scratchRepo();
     cpSync(root, moved, { recursive: true });
-    expect(selectAs(moved, "round-2").decision.reopenKey).toBe(first.decision.reopenKey);
+    expect(selectAs(moved).decision.reopenKey).toBe(first.decision.reopenKey);
     const version = join(moved, "campaigns", SLUG, "products", "new-version");
     cpSync(join(moved, "domains", SLUG), version, { recursive: true });
-    expect(selectAs(moved, "round-3", version).decision.reopenKey).not.toBe(first.decision.reopenKey);
+    expect(selectAs(moved, version).decision.reopenKey).not.toBe(first.decision.reopenKey);
   });
 
   it("leaves saturated batteries to the Builder however many have landed", () => {
@@ -203,7 +201,7 @@ describe("the next move on disk", () => {
     for (let i = 1; i <= 3; i += 1) {
       sealSaturatedBattery(root, `saturated-${String(i)}`, `2026-08-10T0${String(i)}:00:00Z`);
     }
-    const open = selectAs(root, "round-1").decision;
+    const open = selectAs(root).decision;
     expect(open).toMatchObject({ move: "rebuild" });
     expect(open.reason).toContain("Builder");
   });
@@ -215,7 +213,7 @@ describe("the next move on disk", () => {
     const root = scratchRepo();
     writeBlockingTests(root, "base");
     sealSaturatedBattery(root, "saturated-1", "2026-08-10T01:00:00Z");
-    const selected = selectAs(root, "round-1");
+    const selected = selectAs(root);
     const recorded = JSON.stringify(selected.readout);
     const sentences = renderReadout(selected.readout, "reason")
       .split("\n\n")
@@ -223,7 +221,7 @@ describe("the next move on disk", () => {
       .filter((part) => !part.startsWith("|"));
     expect(sentences.length).toBeGreaterThan(2);
     for (const sentence of sentences) expect(recorded).not.toContain(sentence);
-    const other = selectAs(root, "round-2", join(root, "domains", SLUG), "design a timber roof truss");
+    const other = selectAs(root, join(root, "domains", SLUG), "design a timber roof truss");
     expect(other.decision.reopenKey).toBe(selected.decision.reopenKey);
   });
 });

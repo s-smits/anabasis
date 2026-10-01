@@ -105,7 +105,6 @@ export function selectNextMoveFromDisk(input: {
   manifest: AskManifest;
   baseKickoff: string;
   runPin: string;
-  runId: string;
   domainDir: string;
   builder: NonNullable<CampaignBindingInput["builder"]>;
   /** This run's Built slot, which a remeasure's re-solved cases would run under. */

@@ -81,7 +81,7 @@ import { readDifficultyDecisions } from "#tools/runs/evidence.ts";
 /** v2 replaced the endpoint slope (`velocity`) with the line (`line`). */
 export const VELOCITY_SCHEMA = "climb-velocity/v2";
 /** AGENTS.md "Goals and the climb": a run's climb is read over 8 or 12 rounds. */
-const HORIZONS = [8, 12] as const;
+export const HORIZONS = [8, 12] as const;
 /** Cosine at or above this between a family's prose and its nearest predecessor reads as the same
  *  problem restated. bge-small puts genuinely reworded-but-equivalent prose well above this. */
 export const RESTATED_COSINE = 0.98;
@@ -443,7 +443,8 @@ function taskMove(before: Bundle, after: Bundle, taskId: string): "carried" | "c
  *  null when `battery` recorded no battery of its own. An earned fail is a verified fail that the
  *  controller's settlement (`settledAgainstCheck`) leaves in the climb sample and the solve wall did
  *  not stop; a climb step needs that task passing after a harness change (AGENTS.md "Its shape, and
- *  how progress is read"). Null fields are unread: no next battery, or none recorded. A regrade
+ *  how progress is read"). Null fields are unread: no next battery, or none recorded; `outcome` is
+ *  also null when the next battery holds no case of the task, as when it dropped it. A regrade
  *  keeps the recorded solve's instants, so a case starting when the earlier one did is not new. */
 export function followUpOf(
   campaign: string,

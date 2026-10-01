@@ -15,7 +15,7 @@
 //
 // Each battery carries two placements. `placement` is computed here from the case rows through
 // `decideDifficulty`; `recorded` is what the controller wrote in its difficulty decision, read through
-// the digest's schema-refusing reader, so the two can be compared and a decision under another
+// the schema-refusing reader `runs` owns, so the two can be compared and a decision under another
 // schema is named rather than read.
 //
 // Per battery: the tier histogram and the median structural row from query-complexity.ts, plus
@@ -71,11 +71,12 @@ import {
 } from "../classifier/query-complexity.ts";
 import { isNumber } from "#src/meta/json-shape.ts";
 import { compareCodeUnits, stableJson } from "#src/meta/stable-json.ts";
-import { batteryTallies, readDifficultyDecisions } from "./digest-ledgers.ts";
+import { batteryTallies } from "./digest-ledgers.ts";
 import { readJsonAs, readJsonAsOrNull } from "./run-overview.ts";
 import type { CaseDisposition, EpochReviewEvidence } from "#src/review/epoch-review-findings.ts";
 import { settledAgainstCheck } from "#src/review/epoch-review-findings.ts";
 import { offAimStreak } from "#tools/runs/pulse.ts";
+import { readDifficultyDecisions } from "#tools/runs/evidence.ts";
 
 /** v2 replaced the endpoint slope (`velocity`) with the line (`line`). */
 export const VELOCITY_SCHEMA = "climb-velocity/v2";
@@ -533,7 +534,7 @@ export function verdictOf(
 /** The controller's own placement of each battery, from the last difficulty decision that carried
  *  its readout row: the zone and the distance to the aim. */
 function recordedPlacements(campaign: string): RecordedPlacements {
-  const decisions = readDifficultyDecisions(campaign);
+  const decisions = readDifficultyDecisions({ campaignDir: campaign });
   const byRun = new Map<string, RecordedPlacement>();
   for (const decision of decisions.rows) {
     for (const row of decision.rows) {
@@ -541,13 +542,13 @@ function recordedPlacements(campaign: string): RecordedPlacements {
     }
     if (decision.placement !== null) {
       const own: RecordedPlacement = byRun.get(decision.runId) ?? {
-        zone: decision.zone,
+        zone: decision.placement.zone,
         decidedBy: decision.runId,
       };
       byRun.set(decision.runId, { ...own, toAim: decision.placement.toAim });
     }
   }
-  return { byRun, refused: decisions.refused };
+  return { byRun, refused: decisions.refused.map(({ file, reason }) => `${file}: ${reason}`) };
 }
 
 /** Whether a completed review settled any case against its check, so the battery is read earned. */

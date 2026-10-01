@@ -431,15 +431,18 @@ describe("watch", () => {
 });
 
 describe("watch rows over one reading", () => {
+  const AIM: [number, number] = [5, 12];
   /** A decision filed under the round it opens, placing the battery before it. */
   const decision = (runId: string, zone: "too-easy" | "too-hard" | "on-aim" | null, conflict = false) => ({
     runId,
     rationale: "",
-    placement: zone === null ? null : { passes: 1, n: 25, zone },
+    placement: zone === null ? null : { passes: 1, n: 25, zone, aim: AIM, toAim: 4 },
     repeated: false,
     conflict,
     admitted: 1,
+    excluded: 0,
     evidenceRunIds: [`${runId.slice(0, -1)}${Number(runId.slice(-1)) - 1}`],
+    rows: [],
     frame: "f",
   });
 
@@ -457,7 +460,10 @@ describe("watch rows over one reading", () => {
     ]);
     const next = {
       ...first,
-      difficulty: { rows: [...first.difficulty.rows, decision("b3", "too-hard")], refused: ["x"] },
+      difficulty: {
+        rows: [...first.difficulty.rows, decision("b3", "too-hard")],
+        refused: [{ file: "x.json", reason: "x" }],
+      },
     };
     const rows = deviations(first, next);
     expect(rows).toContainEqual({

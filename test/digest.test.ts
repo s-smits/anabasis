@@ -239,6 +239,7 @@ describe("digest", () => {
           },
           admitted: 1,
           excluded: [{ runId: "r2", reason: "claim refused" }],
+          rows: [],
         },
       }),
     );
@@ -249,9 +250,10 @@ describe("digest", () => {
         schema: "difficulty-decision/v10",
         runId: "unplaced-1",
         difficulty: {
-          decision: { placement: null, rationale: "no batteries recorded" },
+          decision: { placement: null, rationale: "no batteries recorded", evidence: [] },
           admitted: 0,
           excluded: [],
+          rows: [],
         },
       }),
     );
@@ -279,6 +281,11 @@ describe("digest", () => {
     ["a v6 record", { schema: "difficulty-decision/v6", runId: "old-6" }, "difficulty-decision/v6"],
     ["a v8 record", { schema: "difficulty-decision/v8", runId: "old-8" }, "difficulty-decision/v8"],
     ["a v9 record", { schema: "difficulty-decision/v9", runId: "old-9" }, "difficulty-decision/v9"],
+    [
+      "a v10 record with no readout",
+      { schema: "difficulty-decision/v10", runId: "new-10" },
+      "difficulty-decision/v10 incomplete",
+    ],
   ])("refuses %s by name rather than reading it or calling it never recorded", (_title, record, reason) => {
     const paths = fixture();
     mkdirSync(join(paths.campaign, "difficulty-decisions"));
@@ -302,7 +309,16 @@ describe("digest", () => {
           // run-4 graded 1 and passed 1, so a decision that read it above the aim and got a
           // perfect battery back is lane 5's question.
           runId: "run-4",
-          difficulty: { decision: { placement: { zone } }, admitted: 1, excluded: [] },
+          difficulty: {
+            decision: {
+              rationale: "",
+              placement: { passes: 1, n: 1, zone, aim: [0, 0], toAim: -1 },
+              evidence: [],
+            },
+            admitted: 1,
+            excluded: [],
+            rows: [],
+          },
         }),
       );
       return digestOf(paths);
@@ -729,7 +745,14 @@ describe("digest", () => {
         schema: "difficulty-decision/v10",
         runId: "run-3",
         difficulty: {
-          decision: { placement: { zone: "on-aim" }, evidence: [{ runId: "run-2" }] },
+          decision: {
+            rationale: "",
+            placement: { passes: 1, n: 3, zone: "on-aim", aim: [1, 1], toAim: 0 },
+            evidence: [{ runId: "run-2" }],
+          },
+          admitted: 1,
+          excluded: [],
+          rows: [],
         },
       }),
     );

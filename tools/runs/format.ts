@@ -145,11 +145,11 @@ function authoringLines(evidence: RunEvidence): string[] {
  * table because its record predates the current schema reads exactly like a battery that never
  * ran, so the count and the versions are printed.
  */
-function climbConditionLines(decisions: DifficultyDecisions): string[] {
-  if (decisions.refused.length === 0) return [];
-  const versions = [...new Set(decisions.refused)].sort().join(", ");
+function climbConditionLines({ refused }: DifficultyDecisions): string[] {
+  if (refused.length === 0) return [];
+  const versions = [...new Set(refused.map((row) => row.reason))].sort().join(", ");
   return [
-    `  Climb records refused: ${decisions.refused.length} (${versions}) — not ${DIFFICULTY_DECISION_SCHEMA},`,
+    `  Climb records refused: ${refused.length} (${versions}) — not ${DIFFICULTY_DECISION_SCHEMA},`,
     "  so their action words were chosen by code this reader cannot account for.",
   ];
 }

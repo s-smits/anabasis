@@ -24,7 +24,7 @@ import {
 import { join } from "../../src/meta/path.ts";
 import { DIFFICULTY_DECISION_SCHEMA } from "../../src/run/difficulty-decision.ts";
 import { isControllerBatteryRunId } from "../../src/run/controller-battery-record-policy.ts";
-import type { BandZone } from "../../src/claim/battery-difficulty.ts";
+import type { BandPlacement, BandZone } from "../../src/claim/battery-difficulty.ts";
 import { parseJsonAs } from "../../src/meta/json-runtime.ts";
 import {
   isBoolean,
@@ -149,32 +149,35 @@ export interface ClaimFacts {
   clauses: string[];
 }
 
-/** One recorded climb decision, as the difficulty evidence states it. The rationale and
- *  admitted count are not nullable, because the schema declares them mandatory; a record claiming
- *  the current schema without them is damaged rather than older, and is refused beside the older
- *  ones. */
+/** One recorded climb decision, as the difficulty evidence states it. No field is nullable
+ *  where the schema declares it mandatory; a record claiming the current schema without one is
+ *  damaged rather than older, and is refused beside the older ones. */
 interface DifficultyFacts {
   runId: string;
   rationale: string;
   /** How the band placed the battery; null when the deciding sample had no verified case or too
    *  few cases to land on the aim. */
-  placement: { passes: number; n: number; zone: BandZone } | null;
+  placement: Pick<BandPlacement, "passes" | "n" | "zone" | "aim" | "toAim"> | null;
   /** The same cases failed in both of the last two batteries of one task set. */
   repeated: boolean;
   /** One family sat entirely above the band while another sat entirely below it. */
   conflict: boolean;
   /** Admitted batteries behind the decision. */
   admitted: number;
+  /** Batteries the decision set aside as not comparable. */
+  excluded: number;
   /** The battery run ids the decision derives from, in recorded order. */
   evidenceRunIds: string[];
+  /** The readout's history rows: each battery, and the zone its round's decision placed it in. */
+  rows: Array<{ runId: string; zone: BandZone | null }>;
 }
 
-/** What one run's recorded climb decisions came to. `refused` holds the declared version of every
- *  record this reader would not open, one entry each, so that a battery absent from the table is
- *  visibly refused rather than reading like a battery that never ran. */
+/** What a run's or a campaign's recorded climb decisions came to. `refused` holds the file and
+ *  the declared version of every record this reader would not open, one entry each, so that a
+ *  battery absent from the table is visibly refused rather than reading like one that never ran. */
 export interface DifficultyDecisions {
   rows: DifficultyFacts[];
-  refused: string[];
+  refused: Array<{ file: string; reason: string }>;
 }
 
 function readJson(path: string): JsonObject | null {
@@ -526,33 +529,42 @@ function isBandZone(value: string | null): value is BandZone {
   return value !== null && BAND_ZONES.has(value);
 }
 
-function evidenceRunIds(decision: JsonObject | null): string[] | null {
-  const rows = decision?.evidence;
+/** Each row's run id and band zone, or null when the list is missing or a row names no run. */
+function zonedRuns(rows: JsonValue | undefined): DifficultyFacts["rows"] | null {
   if (!Array.isArray(rows)) return null;
-  const ids: string[] = [];
+  const read: DifficultyFacts["rows"] = [];
   for (const row of rows) {
-    const id = isRecord(row) ? stringOr(row.runId) : null;
-    if (id === null) return null;
-    ids.push(id);
+    if (!isRecord(row) || !isString(row.runId)) return null;
+    const zone = stringOr(row.zone);
+    read.push({ runId: row.runId, zone: isBandZone(zone) ? zone : null });
   }
-  return ids;
+  return read;
 }
 
-/** One record's facts, or null when a field the schema declares mandatory is missing. A placement
- *  without a recognised zone is incomplete for the same reason. */
-function decisionFacts(raw: JsonObject, runId: string): DifficultyFacts | null {
+/** A recorded placement, or null when it lacks a recognised zone, its counts or its aim. */
+function placementOf(placed: JsonObject): DifficultyFacts["placement"] {
+  const { passes, n, toAim, aim } = placed;
+  const zone = stringOr(placed.zone);
+  const [low, high] = Array.isArray(aim) ? aim : [];
+  if (!isBandZone(zone) || !isNumber(passes) || !isNumber(n) || !isNumber(toAim)) return null;
+  return isNumber(low) && isNumber(high) ? { passes, n, zone, aim: [low, high], toAim } : null;
+}
+
+/** One record's facts, or null when a field the schema declares mandatory is missing. An
+ *  incomplete placement is incomplete for the same reason. */
+function decisionFacts(raw: JsonObject): DifficultyFacts | null {
+  const runId = stringOr(raw.runId);
   const difficulty = nested(raw, "difficulty");
   const decision = nested(difficulty, "decision");
   const rationale = stringOr(decision?.rationale);
   const admitted = numberOr(difficulty?.admitted);
-  const evidence = evidenceRunIds(decision);
+  const excluded = difficulty?.excluded;
+  const evidence = zonedRuns(decision?.evidence);
+  const rows = zonedRuns(difficulty?.rows);
   const placed = nested(decision, "placement");
-  const zone = stringOr(placed?.zone);
-  const passes = numberOr(placed?.passes);
-  const n = numberOr(placed?.n);
-  if (rationale === null || admitted === null || evidence === null) return null;
-  const placement = isBandZone(zone) && passes !== null && n !== null ? { passes, n, zone } : null;
-  if (placed !== null && placement === null) return null;
+  const placement = placed === null ? null : placementOf(placed);
+  if (runId === null || rationale === null || admitted === null || !Array.isArray(excluded)) return null;
+  if (evidence === null || rows === null || (placed !== null && placement === null)) return null;
   return {
     runId,
     rationale,
@@ -560,44 +572,50 @@ function decisionFacts(raw: JsonObject, runId: string): DifficultyFacts | null {
     repeated: nested(decision, "repeated") !== null,
     conflict: nested(decision, "conflict") !== null,
     admitted,
-    evidenceRunIds: evidence,
+    excluded: excluded.length,
+    evidenceRunIds: evidence.map((row) => row.runId),
+    rows,
   };
 }
 
 /**
- * The climb decisions recorded for this run's batteries, in iteration order, taking
- * `DIFFICULTY_DECISION_SCHEMA` and nothing else. An unreadable file is skipped in silence rather
- * than refused, because the reader cannot tell whose run it belonged to and will not claim another
- * run's damage for this one.
+ * The climb decisions recorded for one run's batteries in iteration order, or for every run of the
+ * campaign in file order when the scope names no run, taking `DIFFICULTY_DECISION_SCHEMA` and
+ * nothing else. One run's reader skips an unreadable file in silence rather than refusing it,
+ * because it cannot tell whose run the file belonged to and will not claim another run's damage for
+ * this one; the campaign's reader owns every file, so it refuses the file by name.
  */
-export function readDifficultyDecisions(location: RunLocation): DifficultyDecisions {
+export function readDifficultyDecisions(scope: { campaignDir: string; runId?: string }): DifficultyDecisions {
   const rows: DifficultyFacts[] = [];
-  const refused: string[] = [];
-  const dir = join(location.campaignDir, "difficulty-decisions");
+  const refused: DifficultyDecisions["refused"] = [];
+  const dir = join(scope.campaignDir, "difficulty-decisions");
   if (statSync(dir, { throwIfNoEntry: false })?.isDirectory() !== true) return { rows, refused };
-  for (const entry of readdirSync(dir).sort()) {
-    if (!entry.endsWith(".json")) continue;
-    let raw: JsonObject | null;
+  const run = scope.runId;
+  for (const file of readdirSync(dir).sort()) {
+    if (!file.endsWith(".json")) continue;
+    let raw: JsonObject;
     try {
-      raw = readJson(join(dir, entry));
+      raw = readJson(join(dir, file)) ?? {};
     } catch {
+      if (run === undefined) refused.push({ file, reason: "unreadable" });
       continue;
     }
-    const runId = stringOr(raw?.runId);
-    if (raw === null || runId === null || !isControllerBatteryRunId(location.runId, runId)) continue;
+    const runId = stringOr(raw.runId);
+    if (run !== undefined && (runId === null || !isControllerBatteryRunId(run, runId))) continue;
     const schema = stringOr(raw.schema);
     if (schema !== DIFFICULTY_DECISION_SCHEMA) {
-      refused.push(schema ?? "no schema");
+      refused.push({ file, reason: schema ?? "no schema" });
       continue;
     }
-    const facts = decisionFacts(raw, runId);
-    if (facts === null) refused.push(`${schema} incomplete`);
+    const facts = decisionFacts(raw);
+    if (facts === null) refused.push({ file, reason: `${schema} incomplete` });
     else rows.push(facts);
   }
   // The filename leads with the iteration id, whose two-digit padding sorts only to round 99; the
-  // round itself is the order, and the filename breaks a tie between two records of one round.
+  // round itself is the order, and the filename breaks a tie between two records of one round, or
+  // keeps a campaign's records in file order.
   const round = (runId: string): number =>
-    runId === location.runId ? 1 : Number(runId.slice(location.runId.length + 2));
+    run === undefined || runId === run ? 1 : Number(runId.slice(run.length + 2));
   rows.sort((left, right) => round(left.runId) - round(right.runId));
   return { rows, refused };
 }

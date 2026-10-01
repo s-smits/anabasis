@@ -55,6 +55,7 @@ import { boundDomain } from "#src/author/campaign-memory.ts";
 import { TERMINAL_FILE } from "#src/run/controller-lineage.ts";
 import { WORKSHOP_ACTION_FILE, foldWorkshopActions } from "#tools/outcome/builder-workshop-facts.ts";
 import { readExecutionEvidenceDetails } from "#tools/outcome/builder-execution-facts.ts";
+import { readDifficultyDecisions } from "#tools/runs/evidence.ts";
 import { type TraceCensus, terminalTraceRoot, traceCensus } from "./trace-challenge.ts";
 import {
   admissionLedgerLines,
@@ -71,7 +72,6 @@ import {
   judgeCensusLines,
   type JudgeReviews,
   pad,
-  readDifficultyDecisions,
   readJudgeReviews,
   repeatedConditionLines,
   roleSpendLines,
@@ -904,7 +904,7 @@ export function buildDigest(input: DigestInput): string {
   const { campaign, campaignName, epochDirs, domainDir, selection, traceRoots } = campaignCases(input);
   const caseRows = selection.rows;
   const tallies = batteryTallies(caseRows);
-  const difficulty = readDifficultyDecisions(campaign);
+  const difficulty = readDifficultyDecisions({ campaignDir: campaign });
   const decisions = difficulty.rows;
   const judgeReviews = readJudgeReviews(campaign);
   const executions = readExecutions(epochDirs);

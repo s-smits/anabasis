@@ -79,16 +79,16 @@ SOFTWARE.
 ## pi-mono
 
 - Source: https://github.com/badlogic/pi-mono
-- Copies: `src/builder/pi-coding/edit-core.ts`, `src/builder/pi-coding/file-mutation-queue.ts`,
-  `src/builder/pi-coding/truncate.ts`, `test/pi-file-mutation-queue.test.ts` and
-  `test/pi-truncate.test.ts`. `src/backends/pi-usage.ts` mirrors its usage totals.
+- Copies: `src/meta/truncate.ts` and `test/pi-truncate.test.ts`. `src/backends/pi-usage.ts`
+  mirrors its usage totals.
   `vendor/pi-built/` keeps the names, interface and LF-only framing of its
   `packages/coding-agent/src/modes/rpc/jsonl.ts`, rewritten here with a byte limit per line.
   `vendor/pi-agent-session/` carries its own copy of this licence.
 - `vendor/pi-coding-agent/` copies the read, write, edit and bash tools and their helpers from
   `packages/coding-agent/src/core/tools/` and `src/utils/` at v1.0.0 (a13d35a, now
   https://github.com/earendil-works/pi), and carries its own copy of this licence. Each file's
-  header names its departures.
+  header names its departures. `test/pi-file-mutation-queue.test.ts` copies that release's
+  `packages/coding-agent/test/file-mutation-queue.test.ts`.
 
 ```text
 MIT License

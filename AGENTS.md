@@ -2280,7 +2280,7 @@ are not the cores this suite gets. The idle wall, 180 s without output, widens b
 The part worth knowing before you believe a red run is what happens next. `attribute` reads the first
 process's result and decides, across nine reasons, whether the branch failed or the machine did. Two of them
 say the machine did: every failure ended by a clock rather than an assertion (`clock-only`), or the one-minute
-load passed twice the core count while they ran (`crowded-host`). Either way the failed files run again alone,
+load passed the core count while they ran (`crowded-host`). Either way the failed files run again alone,
 in one fresh process, beside every file whose worker crashed or that Bun aborted or never started, up to eight
 in all, and **that second verdict is the suite's**. Files the idle wall cut off get the same second run,
 however many there are. Some failures never get one. A failure the first process printed on a quiet host

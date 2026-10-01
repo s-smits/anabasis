@@ -213,7 +213,7 @@ describe("Claude credential storage", () => {
       expect(resolvePiSlot(slot, claude, defaults, repoRoot, {}).profile.compaction).toBe("pi");
     }
     // A codex slot compacts through pi whatever the env says; it carries no mode.
-    const codex = { kind: "codex", model: "gpt-5.6-sol", reasoningEffort: "medium" } as const;
+    const codex = { kind: "codex", model: "gpt-6.1-sol", reasoningEffort: "medium" } as const;
     expect(resolvePiSlot("builder", codex, defaults, repoRoot, {}).profile).not.toHaveProperty("compaction");
 
     const unset = makeScratchDir("ana-slot-compaction-unset-");
@@ -339,7 +339,7 @@ describe("login-state owners", () => {
     const before = readFileSync(codexAuthFile({ CODEX_HOME: home }), "utf8");
     const slot = resolvePiSlot(
       "review",
-      { kind: "codex", model: "gpt-5.6-sol", reasoningEffort: "medium" },
+      { kind: "codex", model: "gpt-6.1-sol", reasoningEffort: "medium" },
       { webSearch: false },
       repoRoot,
       {},

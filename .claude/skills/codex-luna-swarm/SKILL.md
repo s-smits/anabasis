@@ -1,6 +1,6 @@
 ---
 name: codex-luna-swarm
-description: Launch, start, monitor, and collect independent Codex subagents (gpt-6-luna at high, xhigh or max; gpt-5.6-sol for small review batches) for bounded parallel work, from Codex or from Claude Code, including requests supplied as a Markdown file of session prompts. This skill owns Codex subagent transport even when another investigation or review skill defines the questions. Use whenever the user asks for Luna or Sol agents, a swarm, many sessions, a concurrency test, a particular reasoning effort, a Codex subagent from Claude Code, or later collection of reports. Distinguish launch-only requests from requests to wait, collect, or synthesise. Route high and xhigh through the direct launcher; for 16 or more sessions, also invoke the direct launcher instead of native spawn_agent.
+description: Launch, start, monitor, and collect independent Codex subagents (gpt-6-luna at high, xhigh or max; gpt-6.1-sol for small review batches) for bounded parallel work, from Codex or from Claude Code, including requests supplied as a Markdown file of session prompts. This skill owns Codex subagent transport even when another investigation or review skill defines the questions. Use whenever the user asks for Luna or Sol agents, a swarm, many sessions, a concurrency test, a particular reasoning effort, a Codex subagent from Claude Code, or later collection of reports. Distinguish launch-only requests from requests to wait, collect, or synthesise. Route high and xhigh through the direct launcher; for 16 or more sessions, also invoke the direct launcher instead of native spawn_agent.
 ---
 
 # Codex Luna Swarm
@@ -92,7 +92,7 @@ The operator's batch policy (2026-09-04) decides the model before these transpor
 
 | independent questions | model and effort | launch |
 | --- | --- | --- |
-| 2 to 5 | `gpt-5.6-sol` at `medium` | native `gpt-5.6-sol` sessions, or the direct launcher with `--model gpt-5.6-sol` from Claude Code |
+| 2 to 5 | `gpt-6.1-sol` at `medium` | native `gpt-6.1-sol` sessions, or the direct launcher with `--model gpt-6.1-sol` from Claude Code |
 | 6 or more | `gpt-6-luna` at `xhigh` | all sessions in one batch; native `luna_worker` cannot represent `xhigh`, so use the direct launcher |
 
 An explicit operator choice for the current batch replaces the table; recover it from
@@ -127,7 +127,7 @@ Batch policy when the operator names no model and effort (operator decision 2026
 
 | sessions | model | effort |
 | --- | --- | --- |
-| 1-5 | `gpt-5.6-sol` | `medium` |
+| 1-5 | `gpt-6.1-sol` | `medium` |
 | 6 or more | `gpt-6-luna` | `xhigh` |
 
 Start every session of a batch in one detached launcher, so the Bash tool's 600 s timeout (exit
@@ -138,7 +138,7 @@ outside the output directory, which must not exist yet:
 nohup bun --no-env-file .claude/skills/codex-luna-swarm/scripts/luna-sessions.ts \
   --tasks-file /private/tmp/<session>/tasks.json --workdir /absolute/worktree \
   --output-dir /private/tmp/<session>/luna \
-  --model gpt-5.6-sol --reasoning-effort medium --launch-only \
+  --model gpt-6.1-sol --reasoning-effort medium --launch-only \
   > /private/tmp/<session>/luna.log 2>&1 &
 ```
 
@@ -155,7 +155,7 @@ A single short session may still use the companion directly with the Bash tool's
 
 ```sh
 bun ~/.claude/plugins/marketplaces/openai-codex/plugins/codex/scripts/codex-companion.mjs \
-  task --fresh --model gpt-5.6-sol --effort medium "<one complete task>"
+  task --fresh --model gpt-6.1-sol --effort medium "<one complete task>"
 ```
 
 Omit `--write` for a read-only session. Do not pass the companion's `--background` flag: it
@@ -226,7 +226,7 @@ that session to finish. For launch-only work, return the accepted task IDs and s
 
 Resolve `scripts/luna-sessions.ts` relative to this `SKILL.md`. Do not read, copy, or reimplement it in
 the main session. It starts one independent `codex exec` process per session, pins the model
-(`gpt-6-luna`, or `gpt-5.6-sol` with `--model gpt-5.6-sol`), the selected reasoning effort and
+(`gpt-6-luna`, or `gpt-6.1-sol` with `--model gpt-6.1-sol`), the selected reasoning effort and
 priority service, sends prompts over stdin without a shell, and writes per-session evidence. Do not
 substitute a global or previously copied launcher for this repo-scoped script.
 

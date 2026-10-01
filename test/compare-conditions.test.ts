@@ -166,7 +166,7 @@ describe("compare-conditions", () => {
     const opus = writeBattery("opus/battery.json", battery("run-a", "claude/claude-opus-5", OPUS_CASES));
     const other = writeBattery(
       "other/battery.json",
-      battery("run-c", "codex/gpt-5.6-sol", FABLE_CASES, { taskSetHash: "ffff".repeat(16) }),
+      battery("run-c", "codex/gpt-6.1-sol", FABLE_CASES, { taskSetHash: "ffff".repeat(16) }),
     );
     const result = run("--condition", `opus=${opus}`, "--condition", `sol=${other}`);
     expect(result.exitCode).toBe(0);

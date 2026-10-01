@@ -438,7 +438,7 @@ describe("one-command run launcher", () => {
       expect(parsed.backendSelections).toEqual({ builder: "claude", built: "claude", review: "claude" });
     }
     expect(slotEnvironment("sol")).toMatchObject({
-      CODEX_BUILDER_MODEL: "gpt-6-sol",
+      CODEX_BUILDER_MODEL: "gpt-6.1-sol",
       CODEX_BUILT_REASONING_EFFORT: "high",
       CODEX_REVIEW_REASONING_EFFORT: "medium",
     });
@@ -774,7 +774,9 @@ describe("one-command run launcher", () => {
     for (const planned of fixture.plans) {
       const { environment, argv } = launchOf(fixture.calls, planned);
       expect(parseFullRunArgs(argv).stopAfterMs).toBe(14400000);
-      expect(environment.CODEX_BUILT_MODEL).toBe(planned.condition === "astra" ? "gpt-6-astra" : "gpt-6-sol");
+      expect(environment.CODEX_BUILT_MODEL).toBe(
+        planned.condition === "astra" ? "gpt-6-astra" : "gpt-6.1-sol",
+      );
       const plan = opened(planned, argv);
       const wrong = openingFor(plan);
       wrong.modelSlots.built.model = "unrequested-model";
@@ -896,7 +898,7 @@ describe("one-command run launcher", () => {
       [{ ...valid, project: { ...valid.project, requestDigest: "wrong" } }, "prompt/request digest"],
       [{ ...valid, providerResourceBudget: { cap: 25 } }, "provider budget"],
       [
-        { ...valid, modelSlots: { ...valid.modelSlots, built: { kind: "codex", model: "gpt-5.6-sol" } } },
+        { ...valid, modelSlots: { ...valid.modelSlots, built: { kind: "codex", model: "gpt-6.1-sol" } } },
         "built model slot",
       ],
     ];

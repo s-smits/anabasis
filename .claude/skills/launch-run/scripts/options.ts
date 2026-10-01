@@ -30,7 +30,7 @@ export const SLOTS = ["builder", "built", "review"] as const;
  * `opushmm` is Opus 5.5 with only the Builder at high, and the Builder at xhigh would be `opusxmm`.
  */
 export const CONDITIONS = {
-  sol: { kind: "codex", model: "gpt-6-sol", efforts: ["high", "high", "medium"] },
+  sol: { kind: "codex", model: "gpt-6.1-sol", efforts: ["high", "high", "medium"] },
   luna: { kind: "codex", model: "gpt-5.6-luna", efforts: ["max", "max", "max"] },
   astra: { kind: "codex", model: "gpt-6-astra", efforts: ["medium", "low", "low"] },
   opus: { kind: "claude", model: "claude-opus-5-5", efforts: ["medium", "medium", "medium"] },

@@ -129,10 +129,12 @@ Which component hears which reading is AGENTS.md "Goals and the climb", under "W
 placement, and what it drives". Check it in the measured tree rather than from memory: the
 `ReadoutRow` comment in `src/run/climb-readout.ts` names the fields that are the controller's and the
 reviewer's, and `readoutHistoryDocuments` strips the zone, aim, `toAim` and Wilson interval from every
-row before the Builder's history source is built. The off-aim streak is `offAimStreak`
-in `tools/runs/pulse.ts`, which `runs pulse` and the `flat` line read from the recorded placements,
-and nothing in the run reads it. Lane 36 asks what pressure the round text put on the Builder towards harder tasks,
-and lane 10 whether its calibration improved round over round.
+row before the Builder's history source is built. The off-aim streak is `offAimStreak` in
+`tools/runs/pulse.ts`: `runs pulse` reads it from the recorded placements, provisional until a
+decision is recorded, and the `flat` line from the placements `lineOf` reads, computed from the case
+rows or earned where a review settled cases against their check. Nothing in the run reads it.
+Lane 36 asks what pressure the round text put on the Builder towards harder tasks, and lane 10
+whether its calibration improved round over round.
 
 The Builder's freedom is recorded, so read it rather than infer it. `builder-path-record.jsonl`
 holds one row per guard decision: c1d2a7's Builder took 85 with no refusal, used 7 of the 15 tools

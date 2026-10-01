@@ -151,6 +151,17 @@ export function digestTriggers(digest: string): DigestTrigger[] {
   return [...groups.values()];
 }
 
+/** The trigger rows of the in-process lanes' reports (`<lane>.json`), in step order, so a lead a
+ *  campaign-only read raises reaches the brief without a snapshot and the lanes through the shared
+ *  instructions. A lane that failed this read contributes none, whatever an earlier read left. */
+export function laneTriggers(reviewDir: string, steps: readonly { label: string; ok?: boolean | null }[]) {
+  return steps.flatMap((step) => {
+    if (step.ok !== true) return [];
+    const rows = readJsonAsOrNull<{ triggers?: DigestTrigger[] }>(join(reviewDir, `${step.label}.json`));
+    return Array.isArray(rows?.triggers) ? rows.triggers : [];
+  });
+}
+
 function evolutionFacts(recorded: JsonValue | null) {
   // Any falsy JSON document reads as absent, as the untyped reader's `!recorded` did.
   if (recorded === null || recorded === false || recorded === 0 || recorded === "") {

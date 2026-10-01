@@ -9,9 +9,9 @@ that string starts. Every reader is a lane of `scripts/wri.ts`, selected by name
 bun .claude/skills/whole-run-investigation/scripts/wri.ts <lane> <campaign>/<runId> [flags]
 ```
 
-The lanes are `snapshot`, `challenge`, `delta` and `overview`, which collect; `climb`, `yield`,
-`posture`, `timeline`, `walls`, `handoff`, `gates` and `target`, which read the campaign; and `archive`,
-which writes the record. `brief.ts` runs the eight campaign lanes as `CAMPAIGN_LANES` and renders
+The lanes are `snapshot`, `challenge`, `delta`, `climb` and `overview`, which collect, `climb` so
+the run overview carries its trigger; `climb`, `yield`, `posture`, `timeline`, `walls`, `handoff`,
+`gates` and `target`, which read the campaign; and `archive`, which writes the record. `brief.ts` runs the eight campaign lanes as `CAMPAIGN_LANES` and renders
 their trigger lines into the sweep brief, reading an in-process lane's triggers from the report it
 records at `<review>/<lane>.json`, so a trigger below is the same bytes whether it was read from a
 lane's own output or from the brief. Inside a review every lane runs from the run's measured

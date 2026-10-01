@@ -1,32 +1,18 @@
 /**
- * Optional file-shaped view over the one DraftStore. Pi owns the read/write/edit behaviour;
- * this file supplies only its ExecutionEnv and binds the harness-tool context to the existing
- * AgentTool runtime. There is no host filesystem and no second mutable workspace.
+ * Optional file-shaped view over the one DraftStore. Pi owns the read/write/edit behaviour; this
+ * file supplies only the file access those tools are handed, as their Operations. There is no host
+ * filesystem and no second mutable workspace.
  */
 import { posix } from "../meta/path.ts";
-import {
-  type AgentHarnessTool,
-  type AgentTool,
-  type ExecutionEnv,
-  ExecutionError,
-  type ExecutionToolContext,
-  FileError,
-  type FileInfo,
-  type Result,
-  createEditTool,
-  createReadTool,
-  createWriteTool,
-  err,
-  ok,
-} from "@earendil-works/pi-agent-core";
+import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
-import type { Context } from "@earendil-works/pi-agent-core/harness/context";
-import { executePiTool } from "./pi-tool-call.ts";
+import { createEditTool, type EditOperations } from "../../vendor/pi-coding-agent/core/tools/edit.ts";
+import { createReadTool, type ReadOperations } from "../../vendor/pi-coding-agent/core/tools/read.ts";
+import { createWriteTool, type WriteOperations } from "../../vendor/pi-coding-agent/core/tools/write.ts";
 import { type DraftStore, preparedArtifactJson } from "./draft-store.ts";
 import { fileMapIssues } from "./file-map.ts";
 import { childPath } from "./public-artifact-validate.ts";
 import type { PublicArtifactSchema } from "./public-artifact-schema.ts";
-import { isString } from "../meta/json-shape.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 
 const ROOT = "/draft";
@@ -70,205 +56,92 @@ export function fileArtifactRootIssue(schema: PublicArtifactSchema): string | nu
   }
 }
 
-function addressed(path: string): Result<{ absolute: string; relative: string }, FileError> {
+/** A refusal from the draft's file access. Pi's edit tool reports a failed access check as
+ *  "Error code: <code>", so the code is the part a solver reads there. */
+class DraftFileError extends Error {
+  constructor(
+    readonly code: "invalid" | "permission_denied" | "not_found" | "is_directory" | "not_directory",
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+/** The draft-relative name of a path Pi resolved against the root, or a refusal. */
+function relativeTo(path: string): string {
   if (path.includes("\0") || path.includes("\\")) {
-    return err(new FileError("invalid", "draft file paths must be POSIX paths", path));
+    throw new DraftFileError("invalid", "draft file paths must be POSIX paths");
   }
-  const absolute = posix.isAbsolute(path) ? posix.normalize(path) : posix.resolve(ROOT, path);
-  const relative = posix.relative(ROOT, absolute);
+  const relative = posix.relative(ROOT, posix.resolve(ROOT, path));
   if (relative === ".." || relative.startsWith("../") || posix.isAbsolute(relative)) {
-    return err(new FileError("permission_denied", "path leaves the DraftStore file root", absolute));
+    throw new DraftFileError("permission_denied", `${path} leaves the DraftStore file root`);
   }
-  return ok({ absolute, relative });
+  return relative;
 }
 
-function aborted(context: Context): FileError | null {
-  return context.abortSignal?.aborted === true ? new FileError("aborted", "operation aborted") : null;
-}
-
-function fileFailure<T>(cause: unknown, path?: string): Result<T, FileError> {
-  if (cause instanceof FileError) return err(cause);
-  return err(new FileError("unknown", errorMessage(cause), path));
-}
-
-function namespaceFailure(relative: string, files: DraftFiles): FileError | null {
-  if (Object.keys(files).some((file) => file.startsWith(`${relative}/`))) {
-    return new FileError("is_directory", "draft path is already a directory", posix.join(ROOT, relative));
+function namespaceFailure(relative: string, files: DraftFiles): DraftFileError | null {
+  if (relative === "" || Object.keys(files).some((file) => file.startsWith(`${relative}/`))) {
+    return new DraftFileError("is_directory", `${posix.join(ROOT, relative)} is a draft directory`);
   }
   const parts = relative.split("/");
   for (let index = 1; index < parts.length; index += 1) {
     const ancestor = parts.slice(0, index).join("/");
     if (Object.hasOwn(files, ancestor)) {
-      return new FileError("not_directory", "a draft path ancestor is a file", posix.join(ROOT, ancestor));
+      return new DraftFileError("not_directory", `${posix.join(ROOT, ancestor)} is a draft file`);
     }
   }
   return null;
 }
 
-/** A member the draft root has no meaning for, refused as the typed result Pi's contract asks for. */
-async function unsupported(member: string): Promise<Result<never, FileError>> {
-  return err(new FileError("not_supported", `the draft file root has no ${member}`));
-}
-
-/** Pi's read, write and edit tools reach only the members with bodies below. The rest refuse as
- *  typed results rather than being left out, so a member Pi adds to `ExecutionEnv` fails the
- *  compile here instead of reaching a tool as `undefined` at solve time. */
-class DraftExecutionEnv implements ExecutionEnv {
-  readonly cwd = ROOT;
-  readonly artifactRoot: string;
-  readonly joinPath = () => unsupported("joinPath");
-  readonly openTextLineReader = () => unsupported("openTextLineReader");
-  readonly readTextLines = () => unsupported("readTextLines");
-  readonly appendFile = () => unsupported("appendFile");
-  readonly renameFile = () => unsupported("renameFile");
-  readonly listDir = () => unsupported("listDir");
-  readonly createDir = () => unsupported("createDir");
-  readonly remove = () => unsupported("remove");
-  readonly createTempDir = () => unsupported("createTempDir");
-  readonly createTempFile = () => unsupported("createTempFile");
-  readonly exec = async () =>
-    err<never, ExecutionError>(new ExecutionError("shell_unavailable", "the draft file root has no shell"));
-  readonly cleanup = async (): Promise<void> => {};
-
-  constructor(
-    private readonly draft: DraftStore,
-    schema: PublicArtifactSchema,
-  ) {
-    this.artifactRoot = fileArtifactRoot(schema);
-  }
-
-  async absolutePath(path: string, context: Context): Promise<Result<string, FileError>> {
-    const stopped = aborted(context);
-    if (stopped) return err(stopped);
-    const result = addressed(path);
-    return result.ok ? ok(result.value.absolute) : result;
-  }
-
-  async readTextFile(path: string, context: Context): Promise<Result<string, FileError>> {
-    const stopped = aborted(context);
-    if (stopped) return err(stopped);
-    const result = addressed(path);
-    if (!result.ok) return result;
-    const content = this.draft.getFile(result.value.relative);
-    return content === undefined
-      ? err(new FileError("not_found", "draft file does not exist", result.value.absolute))
-      : ok(content);
-  }
-
-  async readBinaryFile(path: string, context: Context): Promise<Result<Uint8Array, FileError>> {
-    const result = await this.readTextFile(path, context);
-    return result.ok ? ok(new TextEncoder().encode(result.value)) : result;
-  }
-
-  async writeFile(
-    path: string,
-    content: string | Uint8Array,
-    context: Context,
-  ): Promise<Result<void, FileError>> {
-    const stopped = aborted(context);
-    if (stopped) return err(stopped);
-    const result = addressed(path);
-    if (!result.ok) return result;
-    if (result.value.relative === "") {
-      return err(new FileError("is_directory", "the draft root is a directory", result.value.absolute));
-    }
-    try {
-      const conflict = namespaceFailure(result.value.relative, this.draft.fileSnapshot());
-      if (conflict) return err(conflict);
-      const text = isString(content) ? content : new TextDecoder("utf-8", { fatal: true }).decode(content);
-      const files = { ...this.draft.fileSnapshot(), [result.value.relative]: text };
-      const issue = fileMapIssues(files, this.artifactRoot, childPath)[0];
+/** Pi's file access for read, write and edit, over the one DraftStore. Directories exist only as
+ *  file-name prefixes, so `mkdir` checks the path and creates nothing. */
+function draftOperations(
+  draft: DraftStore,
+  artifactRoot: string,
+): ReadOperations & WriteOperations & EditOperations {
+  const content = (path: string): string => {
+    const relative = relativeTo(path);
+    const text = draft.getFile(relative);
+    if (text !== undefined) return text;
+    throw (
+      namespaceFailure(relative, draft.fileSnapshot()) ??
+      new DraftFileError("not_found", `${path} does not exist`)
+    );
+  };
+  return {
+    access: async (path) => {
+      content(path);
+    },
+    readFile: async (path) => Buffer.from(content(path), "utf8"),
+    mkdir: async (dir) => {
+      relativeTo(dir);
+    },
+    writeFile: async (path, text) => {
+      const relative = relativeTo(path);
+      const conflict = namespaceFailure(relative, draft.fileSnapshot());
+      if (conflict) throw conflict;
+      const files = { ...draft.fileSnapshot(), [relative]: text };
+      const issue = fileMapIssues(files, artifactRoot, childPath)[0];
       if (issue) {
-        return err(
-          new FileError(
-            "invalid",
-            `${issue.path}: expected ${issue.expected}, got ${issue.actual}`,
-            result.value.absolute,
-          ),
-        );
+        throw new DraftFileError("invalid", `${issue.path}: expected ${issue.expected}, got ${issue.actual}`);
       }
-      preparedArtifactJson({ [this.artifactRoot]: files });
-      this.draft.setFile(result.value.relative, text);
-      return ok(undefined);
-    } catch (error) {
-      return fileFailure(error, result.value.absolute);
-    }
-  }
-
-  async fileInfo(path: string, context: Context): Promise<Result<FileInfo, FileError>> {
-    const stopped = aborted(context);
-    if (stopped) return err(stopped);
-    const result = addressed(path);
-    if (!result.ok) return result;
-    try {
-      const files = this.draft.fileSnapshot();
-      const content = files[result.value.relative];
-      if (content !== undefined) {
-        return ok({
-          name: posix.basename(result.value.absolute),
-          path: result.value.absolute,
-          kind: "file",
-          size: new TextEncoder().encode(content).byteLength,
-          mtimeMs: 0,
-        });
-      }
-      const prefix = result.value.relative === "" ? "" : `${result.value.relative}/`;
-      if (result.value.relative === "" || Object.keys(files).some((file) => file.startsWith(prefix))) {
-        return ok({
-          name: posix.basename(result.value.absolute),
-          path: result.value.absolute,
-          kind: "directory",
-          size: 0,
-          mtimeMs: 0,
-        });
-      }
-      return err(new FileError("not_found", "draft path does not exist", result.value.absolute));
-    } catch (error) {
-      return fileFailure(error, result.value.absolute);
-    }
-  }
-
-  async canonicalPath(path: string, context: Context): Promise<Result<string, FileError>> {
-    const info = await this.fileInfo(path, context);
-    return info.ok ? ok(info.value.path) : info;
-  }
-
-  async exists(path: string, context: Context): Promise<Result<boolean, FileError>> {
-    const info = await this.fileInfo(path, context);
-    return info.ok ? ok(true) : info.error.code === "not_found" ? ok(false) : info;
-  }
-
-  get seq(): number {
-    return this.draft.seq;
-  }
-
-  materialize(toolName: string, callId: string): void {
-    this.draft.setArtifact({ [this.artifactRoot]: this.draft.fileSnapshot() }, toolName, callId);
-  }
+      preparedArtifactJson({ [artifactRoot]: files });
+      draft.setFile(relative, text);
+    },
+  };
 }
 
-function bind(tool: AgentHarnessTool<ExecutionToolContext>, env: DraftExecutionEnv): AgentTool {
+/** A read that cuts a single over-long line points at bash, which this preset does not have. */
+function withoutBashAdvice(tool: AgentTool): AgentTool {
   return {
     ...tool,
-    description:
-      `${tool.description} Paths stay inside the draft file root, which is the answer's ` +
-      `\`${env.artifactRoot}\` itself: name a file inside it without a leading \`${env.artifactRoot}/\`. ` +
-      `The shell shows the same file at \`${env.artifactRoot}/<name>\`.`,
-    executionMode: tool.name === "read" ? "parallel" : "sequential",
     execute: async (id, params, signal, onUpdate) => {
-      const before = env.seq;
-      const result = await executePiTool(tool, id, params, {
-        signal,
-        onUpdate,
-        environment: { env },
-      });
-      if (tool.name !== "read" && env.seq !== before) env.materialize(tool.name, id);
+      const result = await tool.execute(id, params, signal, onUpdate);
       const details =
         /* SAFETY: the read tool's details carry an optional truncation report; every field is read through an optional chain below. */ result.details as
           | { truncation?: { firstLineExceedsLimit?: boolean } }
-          | null
           | undefined;
-      if (tool.name !== "read" || details?.truncation?.firstLineExceedsLimit !== true) return result;
+      if (details?.truncation?.firstLineExceedsLimit !== true) return result;
       return {
         ...result,
         content: result.content.map((part) =>
@@ -287,14 +160,37 @@ function bind(tool: AgentHarnessTool<ExecutionToolContext>, env: DraftExecutionE
   };
 }
 
-/** Pi's own tools, bound to one DraftStore-backed ExecutionEnv. The shell is absent here on
+/** Pi's own tools, handed the DraftStore as their file system. The shell is absent here on
  *  purpose: it needs a real directory and a real process, which this confined worker cannot host,
  *  so it is a controller tool instead (`built-bash.ts`) and exchanges the file map over the
  *  protocol. */
 export function createDraftFileTools(draft: DraftStore, schema: PublicArtifactSchema): AgentTool[] {
-  const env = new DraftExecutionEnv(draft, schema);
+  const artifactRoot = fileArtifactRoot(schema);
+  const operations = draftOperations(draft, artifactRoot);
+  const materialize = (toolName: string, callId: string): void => {
+    draft.setArtifact({ [artifactRoot]: draft.fileSnapshot() }, toolName, callId);
+  };
+  const place = (tool: AgentTool): AgentTool => ({
+    ...tool,
+    description:
+      `${tool.description} Paths stay inside the draft file root, which is the answer's ` +
+      `\`${artifactRoot}\` itself: name a file inside it without a leading \`${artifactRoot}/\`. ` +
+      `The shell shows the same file at \`${artifactRoot}/<name>\`.`,
+    executionMode: tool.name === "read" ? "parallel" : "sequential",
+  });
+  const mutating = (tool: AgentTool): AgentTool => ({
+    ...tool,
+    execute: async (id, params, signal, onUpdate) => {
+      const before = draft.seq;
+      const result = await tool.execute(id, params, signal, onUpdate);
+      if (draft.seq !== before) materialize(tool.name, id);
+      return result;
+    },
+  });
   return [
-    ...[createReadTool(), createWriteTool(), createEditTool()].map((tool) => bind(tool, env)),
+    place(withoutBashAdvice(createReadTool(ROOT, { operations }))),
+    place(mutating(createWriteTool(ROOT, { operations }))),
+    place(mutating(createEditTool(ROOT, { operations }))),
     {
       name: "materialize_files",
       label: "Materialize files",
@@ -302,7 +198,7 @@ export function createDraftFileTools(draft: DraftStore, schema: PublicArtifactSc
       parameters: Type.Object({}),
       executionMode: "sequential",
       execute: async (callId) => {
-        env.materialize("materialize_files", callId);
+        materialize("materialize_files", callId);
         return {
           content: [{ type: "text", text: "Materialized the current draft files." }],
           details: null,

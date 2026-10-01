@@ -777,6 +777,16 @@ only after every arm's source is fixed, and nothing read from it revises an arm.
   carry no alias it explains. The history pages keep their data note. Grep:
   `rg "ABLATED\(history-legend\)|ADDED\(history-legend\)"`. Prediction and run: filled when this arm
   launches.
+- **`family-effort` (arm, 2026-10-01).** Each family's median and most minutes and median tool calls
+  in the rows of the history overview (`familyEffort` on the readout row in
+  `src/run/climb-readout.ts`). The overview was the only place they reached, beside each battery's
+  `effort`, its solve wall and its wall-bound count, which stay, and the readout's no-limit line,
+  which states the slowest solve's share of the wall. Whether any Builder used the per-family figures
+  is not measured. Its producer, `familyEffort` and its `median` in `src/run/climb-history.ts`, still runs
+  and now reaches no reader; it stays because another change owns that `median`, and is deleted with
+  this component if the arm moves to "Tried and taken out". Grep:
+  `rg "ABLATED\(family-effort\)|ADDED\(family-effort\)"`. Prediction and run: filled when this arm
+  launches.
 
 ## Evidence and implementation status
 

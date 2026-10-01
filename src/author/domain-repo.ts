@@ -98,10 +98,9 @@ function git(dir: string, args: string[]): string {
  * every iteration open with a salvage commit of thousands of insertions of snapshot bytes.
  */
 const EXCLUDE = `${["/*", ...CANDIDATE_INTERFACE.map((entry) => `!/${entry}`), "node_modules/", ".bundle-snapshots/"].join("\n")}\n`;
-/** The workspace contract and the tools the pack ships beside it (starter-pack/fwsim), refreshed
- *  from the pack on every resume so the bytes a session reads or installs are fixed by the recorded
- *  source commit rather than by whatever an earlier session left behind. They stay on disk for
- *  reading and out of tracking. */
+/** The workspace contract and the pack beside it, refreshed from the pack on every resume so the
+ *  bytes a session reads are fixed by the recorded source commit rather than by whatever an earlier
+ *  session left behind. They stay on disk for reading and out of tracking. */
 const STARTER_REFERENCES = ["STARTER.md", "starter-pack"] as const;
 
 /** Point the workspace's runtime link at this controller's interpreter, resolved rather than as

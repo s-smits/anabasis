@@ -18,7 +18,11 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { afterEach, describe, expect, it } from "bun:test";
 import { type BuilderSessionDeps, runBuilderSession } from "../src/author/builder-session.ts";
-import { continuePrompt, unchangedAuthoringNote } from "../src/author/builder-continuation.ts";
+import {
+  continuePrompt,
+  toolFailureNote,
+  unchangedAuthoringNote,
+} from "../src/author/builder-continuation.ts";
 import type { AgentTurnResult, RunTurnOptions } from "../src/backends/backend-types.ts";
 import type { HostSession } from "../src/backends/pi-session.ts";
 import type { RuntimeModelIdentity } from "../src/claim/runtime-model-identity.ts";
@@ -118,6 +122,12 @@ describe("turn-budget steering", () => {
       "nothing under agent or correctness-model has changed since this round opened",
     );
     expect(unchangedAuthoringNote("changed", ["agent"])).toBe("");
+  });
+
+  it("names one failed tool call of one in the singular", () => {
+    expect(toolFailureNote({ total: 1, failed: 1, failedByName: { Bash: 1 } })).toContain(
+      "Note: last turn 1 of 1 tool call failed (Bash x1)",
+    );
   });
 
   it("states the session limit in the opening prompt", async () => {

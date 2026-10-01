@@ -126,14 +126,15 @@ export function observeJudgeTurn(
   observer: RunObserver | undefined,
   prompt: string,
   context: { subjectId: string; subjectKind: string } | undefined,
+  turn = 1,
 ): void {
   observer?.prompt({
     contract: "judge-census",
     role: context?.subjectKind ?? "unknown-subject",
     prompt,
     phase: "judge",
-    turn: 1,
+    turn,
     ...keyIfDefined("subjectId", context?.subjectId),
-    steeringTypes: ["start-prompt"],
+    steeringTypes: turn === 1 ? ["start-prompt"] : ["runtime-nudge", "follow-up"],
   });
 }

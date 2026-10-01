@@ -1,8 +1,8 @@
 /**
  * The model-facing verdict drivers, split from judge.ts at its size ceiling. This file owns the
  * one verdict vocabulary and schema, the parse of a raw model verdict, and the per-subject schema
- * tool every review transport records its verdict through: one budgeted turn, typed error
- * classification, one dispose, and the terminal-capture rule. No transport takes its own native
+ * tool every review transport records its verdict through: one budgeted turn and one re-ask,
+ * typed error classification, one dispose, and the terminal-capture rule. No transport takes its own native
  * structured-output route, so one output method cannot drift from another. judge.ts keeps the
  * census side: sanitizer gate, conformance probe, subject evidence and aggregation.
  */
@@ -60,6 +60,10 @@ const JUDGE_VERDICT_SCHEMA = {
 const VERDICT_SCHEMA_HINT =
   'judge verdict must match {verdict:"pass"|"fail",rationale:string(1..400),rules?:string[]}; a fail must cite only shown rules, verbatim, at least one';
 
+/** The follow-up a subject gets when its first turn ended without a recorded verdict. */
+const VERDICT_REASK =
+  "Your turn ended without a recorded verdict. Call record_judge_verdict exactly once now.";
+
 type Captured = { verdict: VerdictWord; rationale: string; rules: string[] };
 
 /** What one subject's session captures: the single verdict the tool recorded, and how many times
@@ -113,8 +117,9 @@ function parseVerdict(raw: JsonValue, citable: ReadonlySet<string>): Captured | 
   return { verdict, rationale, rules };
 }
 
-/** One subject's turn: one budgeted turn, typed error classification, one dispose, and the
- *  terminal-capture rule. The verdict tool writes `output` during the turn. */
+/** One subject's turns: one budgeted turn, typed error classification, one dispose, and the
+ *  terminal-capture rule. The verdict tool writes `output` during the turn; a turn that ends
+ *  without one gets one follow-up in the same session. */
 async function runVerdictTurn(config: {
   open(): Promise<AgentSession>;
   input: JudgeInput;
@@ -129,16 +134,25 @@ async function runVerdictTurn(config: {
   let error: string | null = null;
   let errorKind: NonResultKind | null = null;
   try {
-    session = await config.open();
-    turns = 1;
-    const prompt = judgeTurnPrompt(config.input, "Call record_judge_verdict exactly once.");
-    observeJudgeTurn(config.observer, prompt, config.context);
-    const result = await runBudgetedAgentTurn(
-      session,
-      { prompt, ...keyIfDefined("turnTimeoutMs", config.turnTimeoutMs) },
-      config.providerBudget,
-      "review",
-    );
+    const opened = await config.open();
+    session = opened;
+    const turn = (prompt: string) => {
+      turns += 1;
+      observeJudgeTurn(config.observer, prompt, config.context, turns);
+      return runBudgetedAgentTurn(
+        opened,
+        { prompt, ...keyIfDefined("turnTimeoutMs", config.turnTimeoutMs) },
+        config.providerBudget,
+        "review",
+      );
+    };
+    let result = await turn(judgeTurnPrompt(config.input, "Call record_judge_verdict exactly once."));
+    // A turn can end in prose with no verdict recorded: 40 of 2,446 recorded subjects did, each
+    // after one turn, and three of truss-30's five. The same session is asked once more before
+    // the subject becomes a protocol non-result.
+    if (result.status === "completed" && config.output.captured === null) {
+      result = await turn(VERDICT_REASK);
+    }
     if (result.status !== "completed") {
       error = `judge turn ${result.status}: ${result.errorMessages?.join("; ") ?? "no error recorded"}`;
       errorKind = "provider";

@@ -215,10 +215,32 @@ describe("Judge verdict schema", () => {
     expect(evidence.sanitizer.modified).toBe(false);
   });
 
-  it("a completed prose-only turn is null because no schema verdict was recorded", async () => {
-    const judge = toolJudge(async () => ({ status: "completed", assistantText: "looks fine" }));
+  it("a prose-only turn is asked once more, and stays null when the follow-up records nothing", async () => {
+    const prompts: string[] = [];
+    const judge = toolJudge(async (_tool, options) => {
+      prompts.push(options.prompt);
+      return { status: "completed", assistantText: "looks fine" };
+    });
     await expect(judge(REQUEST)).resolves.toEqual(
-      attempt({ error: "judge completed without schema output", errorKind: "protocol" }),
+      attempt({ error: "judge completed without schema output", errorKind: "protocol", turns: 2 }),
+    );
+    expect(prompts).toHaveLength(2);
+    expect(prompts[1]).toBe(
+      "Your turn ended without a recorded verdict. Call record_judge_verdict exactly once now.",
+    );
+  });
+
+  // truss-30's census lost three of five subjects to a first turn that ended in prose; 40 of the
+  // 2,446 recorded subjects did, every one with turns: 1 and no second ask.
+  it("records the verdict a prose-only first turn gives on its one follow-up", async () => {
+    let turn = 0;
+    const judge = toolJudge(async (tool) => {
+      turn += 1;
+      if (turn === 2) await tool.execute("call-1", double({ verdict: "pass", rationale: "complete" }));
+      return { status: "completed" };
+    });
+    await expect(judge(REQUEST)).resolves.toEqual(
+      attempt({ verdict: true, rationale: "complete", turns: 2 }),
     );
   });
 
@@ -294,7 +316,7 @@ describe("Judge verdict schema", () => {
       return { status: "completed" };
     });
     await expect(judge(REQUEST)).resolves.toEqual(
-      attempt({ error: "judge completed without schema output", errorKind: "protocol" }),
+      attempt({ error: "judge completed without schema output", errorKind: "protocol", turns: 2 }),
     );
   });
 });
@@ -391,7 +413,7 @@ describe("the schema-tool verdict: budget, task disclosure, hint and cited rules
       return { status: "completed" };
     });
     await expect(judge(REQUEST)).resolves.toEqual(
-      attempt({ error: "judge completed without schema output", errorKind: "protocol" }),
+      attempt({ error: "judge completed without schema output", errorKind: "protocol", turns: 2 }),
     );
   });
 

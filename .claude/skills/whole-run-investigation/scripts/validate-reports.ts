@@ -19,6 +19,7 @@ import {
   HARDWARE_LANES,
   ISOLATED_ANGLES,
   angleNumbers,
+  launcherTask,
   leafPrompt,
   NATIVE_OUTPUT,
   nativePrompt,
@@ -412,8 +413,7 @@ function inputBinding(
       const launcherTasks = capturedJsonParse(launcherBytes.toString("utf8"));
       if (
         !Array.isArray(launcherTasks) ||
-        JSON.stringify(launcherTasks) !==
-          JSON.stringify(tasks.map((task) => ({ name: task.name, task: task.task })))
+        JSON.stringify(launcherTasks) !== JSON.stringify(tasks.map(launcherTask))
       ) {
         issues.push("launcher task bytes differ from the WRI task projection");
       }
@@ -437,7 +437,11 @@ function inputBinding(
   if (isString(input.workdir)) {
     if (!isAbsolute(input.workdir)) issues.push("launch input workdir is not absolute");
     sessions.forEach((session, index) => {
-      if (asRecord(session)?.workdir !== input.workdir) {
+      // A hardware session runs inside its own scratch, which the launcher records resolved.
+      const scratch = tasks[index]?.scratch ?? null;
+      const workdir =
+        scratch === null ? input.workdir : existsSync(scratch) ? realpathSync(scratch) : scratch;
+      if (asRecord(session)?.workdir !== workdir) {
         issues.push(`launch.sessions[${index}].workdir differs from the recorded launch workdir`);
       }
     });

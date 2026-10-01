@@ -19,6 +19,7 @@ import {
   ISOLATED_ANGLES,
   HARDWARE_LANES,
   hardwareScratch,
+  launcherTask,
   leafPrompt,
   NATIVE_OUTPUT,
   nativePrompt,
@@ -705,14 +706,7 @@ export function writeAndDispatch(input: DispatchInput): void {
   // metadata.
   // A hardware session runs inside its own scratch, the one root its workspace-write sandbox opens.
   for (const { scratch } of input.tasks) if (scratch !== null) mkdirSync(scratch, { recursive: true });
-  writeJsonFile(
-    launcherTasksPath,
-    input.tasks.map(({ name, task, scratch }) =>
-      scratch === null
-        ? { name, task }
-        : { name, task, workdir: scratch, sandbox: "workspace-write", ownedPaths: [scratch] },
-    ),
-  );
+  writeJsonFile(launcherTasksPath, input.tasks.map(launcherTask));
   const authored =
     input.orientationText.length + input.sessions.reduce((sum, session) => sum + session.direction.length, 0);
   const total = input.tasks.reduce((sum, task) => sum + task.task.length, 0) + input.instructions.length;

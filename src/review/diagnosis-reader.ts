@@ -379,7 +379,6 @@ export async function readDiagnoses(input: DiagnosisReaderInput): Promise<Diagno
   evidence.withheld = diagnosable.length - packet.offers.length;
   const prompt = [
     `Campaign ${analysis.slug}, battery ${analysis.runId}. ${packet.offers.length} issue${packet.offers.length === 1 ? " is" : "s are"} offered below, each with sampled solves compiled into numbered steps.`,
-    "Call record_diagnosis once per flaw, naming every offered issue it covers, or abstain for the issues you cannot read.",
     "",
     packet.body,
   ].join("\n");

@@ -222,8 +222,7 @@ export function sessionJudge(options: {
     const tool = {
       name: "record_judge_verdict",
       label: "Record judge verdict",
-      description:
-        "Record fail or pass with a short reason. Fail only on a requirement the shown material shows broken; otherwise pass, and name what you left to the verifier.",
+      description: "Record fail or pass with a short reason.",
       parameters: JUDGE_VERDICT_SCHEMA,
       async execute(_id: string, raw: JsonValue) {
         // The first valid verdict wins; duplicates cannot erase it. A malformed first call returns

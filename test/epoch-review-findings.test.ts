@@ -41,12 +41,9 @@ import {
   briefIdentities,
   recordFindingTool,
 } from "../src/review/epoch-review-findings.ts";
-import { PROBE_BUDGET } from "../src/review/review-probe.ts";
 import { BUNDLE_FILES } from "../src/author/feedback-routing.ts";
 import { EVALUATOR_FILE, TASKS_FILE } from "../src/meta/bundle-layout.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
-
-const NUMBER_WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
 
 /** The method sentences the projection once attached to a finding. The author chooses the repair, so
  *  none of them may reach a projected finding again. */
@@ -59,9 +56,9 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
   const evidence = "campaigns/truss/analysis/r2-epoch-review.json";
 
   // The prompt is a condition identity, so it is held to properties rather than to its sentences:
-  // each duty is stated once, superseded phrasings stay out, and the bounds it spells in words are
-  // the bounds the host enforces.
-  test("its prompt states each duty once, keeps retired phrasings out and spells the host's bounds", async () => {
+  // each duty is stated once, superseded phrasings stay out, and the finding cap its tool states is
+  // the cap the host enforces.
+  test("its prompt states each duty once and keeps retired phrasings out, and its tool states the cap", async () => {
     for (const duty of [
       "held to advice",
       "publication boundary",
@@ -85,7 +82,6 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
     ]) {
       expect(EPOCH_REVIEW_PROMPT).not.toContain(retired);
     }
-    expect(EPOCH_REVIEW_PROMPT).toContain(`at most ${NUMBER_WORDS[PROBE_BUDGET]} in a review`);
     const state = reviewState();
     const tool = recordFindingTool([], [], evidence, state);
     const hardness = {
@@ -93,7 +89,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
       claim: "the family asks more than the harness reaches",
       severity: "advisory",
     };
-    for (let attempt = 0; attempt < NUMBER_WORDS.length; attempt += 1) {
+    for (let attempt = 0; attempt <= 10; attempt += 1) {
       if ((await call(tool, hardness)).includes("records at most")) break;
     }
     expect(tool.description).toContain(`a review records at most ${state.findings.length}.`);

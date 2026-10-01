@@ -11,9 +11,7 @@
   "overrides": [
     {
       "includes": [
-        "**/vendor/pi-agent-session/agent-session.ts",
-        "**/vendor/pi-agent-session/session-context.ts",
-        "**/vendor/pi-agent-session/sleep.ts",
+        "**/vendor/pi-agent-session/**",
         "**/vendor/pi-built/jsonl.ts",
         "**/vendor/pi-coding-agent/**",
         "**/vendor/pi-claude-bridge/agents-md.ts",

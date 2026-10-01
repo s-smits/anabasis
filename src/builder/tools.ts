@@ -24,7 +24,11 @@ import { splitBom } from "../../vendor/pi-coding-agent/utils/text.ts";
 import { refuseDestructiveCommand } from "./command-guard.ts";
 import type { SafeguardContext } from "../meta/safeguard.ts";
 import { withFileMutationQueue } from "../../vendor/pi-coding-agent/core/tools/file-mutation-queue.ts";
-import { truncateHead, truncateLine, truncateTail } from "../meta/truncate.ts";
+import {
+  truncateHead,
+  truncateLine,
+  truncateTail,
+} from "../../vendor/pi-coding-agent/core/tools/truncate.ts";
 import { cutOutputNotice, spillWholeOutput, stageAndCopy } from "./tool-write.ts";
 import { keyIfTruthy, keysIf } from "../meta/optional-key.ts";
 

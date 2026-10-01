@@ -1,4 +1,4 @@
-import { truncateHead, truncateTail } from "./truncate.ts";
+import { truncateHead, truncateTail } from "../../vendor/pi-coding-agent/core/tools/truncate.ts";
 
 /**
  * The one way this repository cuts a text to a size: pi's truncation, in UTF-8 bytes and whole

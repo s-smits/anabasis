@@ -79,11 +79,13 @@ SOFTWARE.
 ## pi-mono
 
 - Source: https://github.com/badlogic/pi-mono
-- Copies: `src/meta/truncate.ts` and `test/pi-truncate.test.ts`. `src/backends/pi-usage.ts`
+- Copies: `test/pi-truncate.test.ts`, run against the truncate.ts in `vendor/pi-coding-agent/`. `src/backends/pi-usage.ts`
   mirrors its usage totals.
   `vendor/pi-built/` keeps the names, interface and LF-only framing of its
   `packages/coding-agent/src/modes/rpc/jsonl.ts`, rewritten here with a byte limit per line.
-  `vendor/pi-agent-session/` carries its own copy of this licence.
+  `vendor/pi-agent-session/` carries its own copy of this licence: coding-agent's session loop, and
+  the harness compaction, message helpers and entry types of pi agent v0.99.2 (005af57), which
+  v1.0.0 removed.
 - `vendor/pi-coding-agent/` copies the read, write, edit and bash tools and their helpers from
   `packages/coding-agent/src/core/tools/` and `src/utils/` at v1.0.0 (a13d35a, now
   https://github.com/earendil-works/pi), and carries its own copy of this licence. Each file's

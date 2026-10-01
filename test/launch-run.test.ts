@@ -25,6 +25,7 @@ import {
   openingProblems,
   parseOptions,
   planRuns,
+  probeArgs,
   slotEnvironment,
 } from "../.claude/skills/launch-run/scripts/options.ts";
 import {
@@ -456,6 +457,20 @@ describe("one-command run launcher", () => {
       CLAUDE_BUILT_REASONING_EFFORT: "medium",
       CLAUDE_REVIEW_REASONING_EFFORT: "medium",
     });
+    expect(slotEnvironment("opushmm")).toMatchObject({
+      CLAUDE_BUILDER_MODEL: "claude-opus-5-5",
+      CLAUDE_BUILDER_REASONING_EFFORT: "high",
+      CLAUDE_BUILT_REASONING_EFFORT: "medium",
+      CLAUDE_REVIEW_REASONING_EFFORT: "medium",
+    });
+  });
+
+  it("names an effort variant in its run id and probes it as its model's standard row", () => {
+    const options = parseOptions(["--prompt", "Write a CLI.", "--model", "opushmm"]);
+    const [plan] = planRuns(options, "/tmp/launch", "at");
+    expect(plan?.runId).toBe("standard-opushmm-at");
+    const args = plan === undefined ? [] : probeArgs(plan, options);
+    expect(args[args.indexOf("--condition") + 1]).toBe("opus");
   });
 
   it("names a --prompt run standard, whether it is named standard, custom or not at all", () => {

@@ -65,6 +65,9 @@ into a fresh isolated run worktree. Keep the source checkout and existing runs u
 
 Model and budget defaults are Opus 5.5 medium/medium/medium, 25 tasks and 1,320 provider
 turns per run. Sol uses high/high/medium; Astra uses medium/low/low; Fable 5.1 uses medium/medium/medium.
+A variant of a model's row is named for its slot efforts, one letter each (l, m, h, x): `opushmm` is
+Opus 5.5 with the Builder at high. The launched tree's probe sees it as `opus`, so an older source
+launches it too.
 Each preset occurrence runs once per condition. Repeat a preset only for explicitly authorised
 replicas; their run ids gain separate `r1`, `r2` markers. The four-run example above means two
 truss runs per model. A preset authorises its exact prompt; never enrich it.

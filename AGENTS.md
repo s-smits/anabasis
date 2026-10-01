@@ -539,7 +539,10 @@ closes it.
   climb then dropped it, so no link is broken; no firmware run since has had a disposition to exercise
   it live. Owner of the stand-ins themselves: the instrument each Builder builds, which
   `VERIFICATION_CLAUSE` steers. -40 (2026-10-01) built its own simulator and its checks ran it on Uno
-  and Pico, with no stand-in in a deciding path. Evidence: the ignored `notes/firmware-fails-20260930/`.
+  and Pico, with no stand-in in a deciding path. Its ESP32 entries are all `simulated: false` (4 of 4 in
+  battery 1, 3 of 3 in the battery-2 draft), so ESP32 code is compiled and its behaviour is unmeasured, as
+  its brief declares: the review's ESP32-only mutation moved no check. Evidence: the ignored
+  `notes/firmware-fails-20260930/`.
 - **First tasks combine requirements that the solver still meets in minutes** (firmware 7a97af under
   "Authoring"), and 7 of 29 firmware batteries passed with a harness that only compiled. Depth reached a
   Builder only after a full pass or after every rehearsal passed. Owner: the last line of

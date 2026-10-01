@@ -31,7 +31,7 @@ of the `--repo` checkout's main checkout, and the WRI archives in the `--repo` c
 `notes/runs/`.
 
 ```sh
-bun --no-env-file .claude/skills/weekly-run-review/scripts/select-best-runs.ts \
+bun .claude/skills/weekly-run-review/scripts/select-best-runs.ts \
   --repo /absolute/main/worktree \
   --week previous --timezone Europe/Oslo \
   --top 5 --min-duration-minutes 30 \

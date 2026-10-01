@@ -88,7 +88,7 @@ undetermined, not unchanged.
 Use the maintained read-only reader from the main checkout:
 
 ```sh
-bun --no-env-file .claude/skills/wave-audit/scripts/census.ts [--states <abs census-states.json>]
+bun .claude/skills/wave-audit/scripts/census.ts [--states <abs census-states.json>]
 ```
 
 It finds and reads runs as `runs pulse` does, plus each seeded campaign's `seed.json`. With a
@@ -132,7 +132,7 @@ For the deterministic reach read, pin both the prior SHA and the run so the camp
 another condition:
 
 ```sh
-bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.ts delta <candidate campaign> \
+bun .claude/skills/whole-run-investigation/scripts/wri.ts delta <candidate campaign> \
   --repo <main checkout> --previous <baseline SHA> --run <candidate runId> --json
 ```
 
@@ -232,7 +232,7 @@ Count correction rounds and whether each flipped a verdict. A correction on byte
 tasks that moves nothing is a loop, not a repair. Replay uses this syntax:
 
 ```sh
-bun --no-env-file run replay -- <campaign>/<runId before> --under <campaign>/<runId after>
+bun run replay -- <campaign>/<runId before> --under <campaign>/<runId after>
 ```
 
 Do not use `replay --help`; it parses the flag as a candidate path. If the stored battery or bundle
@@ -346,7 +346,7 @@ solves more. For that, use a shared pack:
 
 - Solve one fixed task set on both adopted bundles through
   [harness-query](../harness-query/SKILL.md). This is paid: one measured case per task per side.
-- Re-grade artifacts under another evaluator with `bun --no-env-file run replay --
+- Re-grade artifacts under another evaluator with `bun run replay --
   <campaign>/<runId> --under <bundle>`, if recorded artifacts and bundles exist.
 - Join recorded batteries only when they share a task-set hash; `compare-conditions.mts` refuses
   otherwise.

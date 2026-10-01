@@ -46,11 +46,11 @@ Use two passes:
    meaningful task content.
 
 ```sh
-bun --no-env-file /absolute/path/to/codex-luna-swarm/scripts/parse-markdown-tasks.ts \
+bun /absolute/path/to/codex-luna-swarm/scripts/parse-markdown-tasks.ts \
   --input /absolute/prompts.md \
   --inspect
 
-bun --no-env-file /absolute/path/to/codex-luna-swarm/scripts/parse-markdown-tasks.ts \
+bun /absolute/path/to/codex-luna-swarm/scripts/parse-markdown-tasks.ts \
   --input /absolute/prompts.md \
   --output /absolute/luna-tasks.json \
   --expected-count 20
@@ -135,7 +135,7 @@ Start every session of a batch in one detached launcher, so the Bash tool's 600 
 outside the output directory, which must not exist yet:
 
 ```sh
-nohup bun --no-env-file .claude/skills/codex-luna-swarm/scripts/luna-sessions.ts \
+nohup bun .claude/skills/codex-luna-swarm/scripts/luna-sessions.ts \
   --tasks-file /private/tmp/<session>/tasks.json --workdir /absolute/worktree \
   --output-dir /private/tmp/<session>/luna \
   --model gpt-6.1-sol --reasoning-effort medium --launch-only \
@@ -230,9 +230,9 @@ the main session. It starts one independent `codex exec` process per session, pi
 priority service, sends prompts over stdin without a shell, and writes per-session evidence. Do not
 substitute a global or previously copied launcher for this repo-scoped script.
 
-Use the repository-pinned Bun release. Resolve its executable from the active worktree and pass
-`--no-env-file`; do not select a second JavaScript runtime through a version manager. Do not run
-upstream test suites before an ordinary launch.
+Use the repository-pinned Bun release, run from the worktree's root, whose `bunfig.toml` sets
+`env = false` so no `.env` is loaded; do not select a second JavaScript runtime through a version
+manager. Do not run upstream test suites before an ordinary launch.
 
 For a read-only investigation, write a compact JSON task file:
 

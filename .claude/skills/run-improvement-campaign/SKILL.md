@@ -38,7 +38,7 @@ judged on three numbers per run, all read from recorded bytes:
 does and reads each line through `wri.ts climb`'s own readers, so the three cannot disagree:
 
 ```sh
-bun --no-env-file .claude/skills/run-improvement-campaign/scripts/scoreboard.ts --since <ISO date> [--match <text>] [--json]
+bun .claude/skills/run-improvement-campaign/scripts/scoreboard.ts --since <ISO date> [--match <text>] [--json]
 ```
 
 **The baseline to beat.** On 2026-10-01, the 32 runs opened since 2026-09-29 had 152 batteries on
@@ -488,7 +488,7 @@ suspicion, read the `gates` lane and run every `replay --under` it lists. Nine c
 corrections once went by with none regraded.
 
 ```sh
-bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.ts gates <campaign dir> [--json]
+bun .claude/skills/whole-run-investigation/scripts/wri.ts gates <campaign dir> [--json]
 bun run replay -- <campaign>/<earlier runId> --under <campaign>/<corrected runId>
 ```
 

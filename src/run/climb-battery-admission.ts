@@ -16,6 +16,7 @@ import { recordedEvidence } from "../claim/evidence-log.ts";
 import { loadFrozenManifest } from "../critic/manifest.ts";
 import { isBoolean, isNumber, isString, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
+import { countBy } from "../meta/tally.ts";
 import { BATTERY_FILE } from "../correctness-bundle/battery-record.ts";
 import { recordedVerifierHash } from "../correctness-bundle/verifier-environment.ts";
 import { type ExperimentAuthoring, experimentAuthoringRefusal } from "./experiment-freeze.ts";
@@ -204,8 +205,13 @@ function claimFacts(claimsDir: string, runId: string): ClaimFacts {
       if (createdAt !== null && refusedForEnvironmentOnly(names)) {
         return { refusal: null, createdAt };
       }
+      // One clause per control receipt would list the same name once per receipt, so each name
+      // appears once with its count.
+      const listed = Object.entries(countBy(names, (name) => name)).map(([name, count]) =>
+        count > 1 ? `${name} ×${count}` : name,
+      );
       return {
-        refusal: names.length === 0 ? "claim refused" : `claim refused: ${names.join(", ")}`,
+        refusal: listed.length === 0 ? "claim refused" : `claim refused: ${listed.join(", ")}`,
         // A refused claim is recorded evidence too, so its clock still places the refusal among the
         // admitted batteries and a later reader can tell what the most recent evidence said.
         createdAt,

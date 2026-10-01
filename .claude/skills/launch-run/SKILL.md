@@ -114,7 +114,7 @@ it prepares a tree or asks a provider anything: it refuses while the load is abo
 `bun run runs` reads as live past `MAX_LIVE_RUNS` (6), and the refusal prints the load, the live
 count and each live run's id. When that reader fails, the launcher prints what it could not read and
 the load alone decides. `--over-capacity "<reason>"` launches anyway, and each receipt keeps the
-reason, the load and the live count as `gate.overCapacity`.
+load, the live runs and the reason as `pace`.
 [The Super Loop's launch step](../run-improvement-campaign/SKILL.md#4-launch-through-one-owner)
 records what 2026-09-30 measured under it.
 

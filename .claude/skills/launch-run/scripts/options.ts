@@ -149,8 +149,7 @@ export const HELP = `Usage: bun .claude/skills/launch-run/scripts/launch.ts [${P
   --env-file /path                Claude token; default main checkout/.env
   --codex-home /path              Codex auth; default current CODEX_HOME or ~/.codex
   --output-dir /path              Parent of fresh worktrees; default beside main checkout
-  --over-capacity REASON          Launch although the one-minute load is above ${MAX_LAUNCH_LOAD} or the batch would
-                                  take the live runs past ${MAX_LIVE_RUNS}; the reason is kept in each receipt
+  --over-capacity REASON          Launch past the one-minute load ${MAX_LAUNCH_LOAD} or ${MAX_LIVE_RUNS} live runs; each receipt keeps the reason
   --dry-run                      Plan only: no setup, secrets or launch
   --list                         Exact preset prompts
   --help                         This help

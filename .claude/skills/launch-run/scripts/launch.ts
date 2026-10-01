@@ -124,7 +124,7 @@ interface Context {
   /** The pre-push hook's `ana-gate-passed`, which `bun run land` and a passing launch gate share. */
   passRecord: string;
   /** The one-minute load, and the controller runs `bun run runs` reads as live or why it could not. */
-  host: { load: number; live: readonly string[] | { unread: string } };
+  host: { load: number; live: readonly string[] | string };
 }
 interface PreparedRun extends OpeningPlan {
   environment: Environment;
@@ -633,35 +633,33 @@ async function settleGate(
 const oneMinuteLoad = (): number => Math.round((loadavg()[0] ?? 0) * 10) / 10;
 
 /** The host now, its live runs read by the `bun run runs` listing's own reader; a reader that
- *  fails is reported as unread, never as no live runs. */
+ *  fails is reported by its error, never as no live runs. */
 function readHostPace(repo: string): Context["host"] {
   const load = oneMinuteLoad();
   try {
-    const rows = collectRows(repo, { closedLimit: 1 });
+    const rows = collectRows(repo, { closedLimit: 0 });
     return { load, live: rows.flatMap((row) => (row.liveness.state === "live" ? [row.runId] : [])) };
   } catch (error) {
-    return { load, live: { unread: errorMessage(error) } };
+    return { load, live: errorMessage(error) };
   }
 }
 
 /** The operator's pace, settled before any tree is prepared or any provider is asked: a batch past
- *  either limit is refused unless `--over-capacity` gives a reason, which every receipt keeps. Live
- *  runs the reader could not read are said and left out, so the load alone decides. */
+ *  either limit is refused unless `--over-capacity` gives a reason. Live runs the reader could not
+ *  read are said, and the load alone decides. Every receipt keeps the reading and the reason. */
 function settlePace({ load, live }: Context["host"], starting: number, reason: string | undefined) {
-  const count = "unread" in live ? null : live.length;
-  const runs =
-    "unread" in live
-      ? `the live controller runs are unread (${live.unread}), so the load alone decides`
-      : `${live.length} live controller runs, ${live.length + starting} with this batch (limit ${MAX_LIVE_RUNS})\n  live: ${live.join(", ") || "none"}`;
+  const runs = isString(live)
+    ? `live runs unread (${live}), so the load alone decides`
+    : `${live.length + starting} runs live with this batch (limit ${MAX_LIVE_RUNS}), live now: ${live.join(", ") || "none"}`;
   const reading = `one-minute load ${load} (limit ${MAX_LAUNCH_LOAD}); ${runs}`;
-  const over = load > MAX_LAUNCH_LOAD || (count !== null && count + starting > MAX_LIVE_RUNS);
+  const over = load > MAX_LAUNCH_LOAD || (!isString(live) && live.length + starting > MAX_LIVE_RUNS);
   if (over && reason === undefined) {
     throw new Error(
       `refused before preparing any tree: ${reading}\nEach run added slows every run already there. Wait for the load to fall or a run to close, or pass --over-capacity "<reason>" to launch anyway.`,
     );
   }
   console.log(`${over ? `Launching over capacity (${reason})` : "Pace"}: ${reading}`);
-  return reason === undefined ? null : { reason, load, live: count };
+  return { load, live, overCapacity: reason ?? null };
 }
 
 /** Prepares and probes every run and settles the gate; a failure leaves a `refused` receipt in each
@@ -690,9 +688,9 @@ export async function launchBatch(
   context: Context,
   command: Command = spawnCommand,
 ): Promise<LaunchResult[]> {
-  const overCapacity = settlePace(context.host, plans.length, options["over-capacity"]);
+  const pace = settlePace(context.host, plans.length, options["over-capacity"]);
   const { prepared, gate } = await prepareBatch(plans, options, context, command);
-  const extra = { gate: { ...gate, overCapacity }, launcher: context.launcher };
+  const extra = { gate: { ...gate }, pace, launcher: context.launcher };
   const results: LaunchResult[] = [];
   for (const plan of prepared) {
     console.log(

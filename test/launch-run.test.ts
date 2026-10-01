@@ -874,17 +874,17 @@ describe("one-command run launcher", () => {
     [
       "a load above 25",
       { load: 31.2, live: ["run-a", "run-b"] },
-      'refused before preparing any tree: one-minute load 31.2 (limit 25); 2 live controller runs, 4 with this batch (limit 6)\n  live: run-a, run-b\nEach run added slows every run already there. Wait for the load to fall or a run to close, or pass --over-capacity "<reason>" to launch anyway.',
+      'refused before preparing any tree: one-minute load 31.2 (limit 25); 4 runs live with this batch (limit 6), live now: run-a, run-b\nEach run added slows every run already there. Wait for the load to fall or a run to close, or pass --over-capacity "<reason>" to launch anyway.',
     ],
     [
       "a batch that takes the live runs past six",
       { load: 8, live: FIVE_LIVE },
-      "one-minute load 8 (limit 25); 5 live controller runs, 7 with this batch (limit 6)\n  live: run-a, run-b, run-c, run-d, run-e\n",
+      "one-minute load 8 (limit 25); 7 runs live with this batch (limit 6), live now: run-a, run-b, run-c, run-d, run-e\n",
     ],
     [
       "a load above 25 when the live runs could not be read",
-      { load: 25.1, live: { unread: "fixture reader failed" } },
-      "one-minute load 25.1 (limit 25); the live controller runs are unread (fixture reader failed), so the load alone decides\n",
+      { load: 25.1, live: "fixture reader failed" },
+      "one-minute load 25.1 (limit 25); live runs unread (fixture reader failed), so the load alone decides\n",
     ],
   ])("refuses %s before preparing any tree or asking any provider", async (_case, host, refusal) => {
     const { plans, options, context, command, calls } = batchFixture({ host });
@@ -893,20 +893,16 @@ describe("one-command run launcher", () => {
     for (const plan of plans) expect(existsSync(plan.dir)).toBe(false);
   });
 
-  it("launches at the limits, or past them with the operator's reason kept in each receipt beside the gate's load", async () => {
+  it("launches at the limits, or past them, keeping the reading and the operator's reason in each receipt", async () => {
     const reason = "operator: one arm replaces a stopped one";
     for (const [args, host, overCapacity] of [
       [["truss"], { load: 25, live: FIVE_LIVE }, null],
-      [["truss"], { load: 12, live: { unread: "fixture reader failed" } }, null],
-      [
-        ["truss", "--over-capacity", reason],
-        { load: 31.2, live: [...FIVE_LIVE, "run-f"] },
-        { reason, load: 31.2, live: 6 },
-      ],
+      [["truss"], { load: 12, live: "fixture reader failed" }, null],
+      [["truss", "--over-capacity", reason], { load: 31.2, live: [...FIVE_LIVE, "run-f"] }, reason],
     ] as const) {
       const { plans, options, context, command } = batchFixture({ args: [...args], host });
       expect(launched((await launchBatch(plans, options, context, command))[0]).started).toBe(true);
-      expect(readReport(required(plans[0], "plan")).gate).toMatchObject({ decision: "ran", overCapacity });
+      expect(readReport(required(plans[0], "plan")).pace).toEqual({ ...host, overCapacity });
     }
   });
 

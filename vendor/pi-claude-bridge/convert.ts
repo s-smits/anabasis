@@ -3,7 +3,6 @@
 
 import type { Message as PiMessage } from "@earendil-works/pi-ai";
 import type { ContentBlock, Message as SessionMessage } from "cc-session-io";
-import { pascalCase } from "change-case";
 import { isString } from "../../src/meta/json-shape.ts";
 import { hasText } from "../../src/meta/text.ts";
 
@@ -44,6 +43,14 @@ function sessionToolIds(): ToolIds {
 			return unique;
 		},
 	};
+}
+
+/** `web_search`, `web-search` and `webSearch` all become `WebSearch`, the CLI's spelling. */
+function pascalCase(name: string): string {
+	return name
+		.split(/[^A-Za-z0-9]+|(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])/)
+		.map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+		.join("");
 }
 
 function mapPiToolNameToSdk(name: string, customToolNameToSdk?: Map<string, string>): string {

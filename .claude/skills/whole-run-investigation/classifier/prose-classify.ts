@@ -175,6 +175,10 @@ export interface ParsedArgs {
 export const CLASSIFIER_SCHEMA = "run-prose-posture/v5";
 const DEFAULT_MODEL = "Xenova/bge-small-en-v1.5";
 const DEFAULT_MODEL_REVISION = "ea104dacec62c0de699686887e3f920caeb4f3e3";
+/** One embedder per batch size for the whole process. A load holds the model's weights and every
+ *  stored vector until exit, and a campaign read loaded one per battery: a scoreboard over 322
+ *  batteries reached 20 GB on an 18 GB host (2026-10-01). */
+const embedders = new Map<number, Promise<Embed>>();
 export const MODEL = Bun.env.HB4_PROSE_MODEL ?? DEFAULT_MODEL;
 /** The root package.json pins the same version; prose-classify.test.ts keeps the two in step. */
 export const TRANSFORMERS_VERSION = "4.2.0";
@@ -375,7 +379,13 @@ function vectorStore() {
 }
 
 /** The pinned model as an embed function: texts in, unit vectors out, shortest texts batched first. */
-export async function modelEmbed(batchSize: number): Promise<Embed> {
+export function modelEmbed(batchSize: number): Promise<Embed> {
+  const embedder = embedders.get(batchSize) ?? loadEmbed(batchSize);
+  embedders.set(batchSize, embedder);
+  return embedder;
+}
+
+async function loadEmbed(batchSize: number): Promise<Embed> {
   env.cacheDir = CACHE_DIR;
   // transformers.js 4.2.0 discovers a hub model's files at its main revision whatever revision is
   // asked for, so offline it found no tokenizer in a fully cached model and built a pipeline with a

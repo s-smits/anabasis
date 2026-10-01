@@ -33,6 +33,7 @@ import {
   batteryTerminalReason,
   BatteryVerificationNonResult,
   CASE_ARTIFACT_FILE,
+  CASE_RESULT_FILE,
   type CaseRecord,
   type DiscriminationExecution,
   SUBMIT_MAX_ATTEMPTS,
@@ -394,7 +395,7 @@ async function recordSolvedCase(
     const verdict = graded.verdict ?? { ok: null, issues: [], checkReceipts: [] };
     ctx.evidence.write(`cases/${task.taskId}/verifier.json`, { ...verdict, checkRuns: graded.checkRuns });
   }
-  ctx.evidence.write(`cases/${task.taskId}/case-result.json`, graded.record);
+  ctx.evidence.write(`cases/${task.taskId}/${CASE_RESULT_FILE}`, graded.record);
   gradedCases.push(graded);
   return verifierStillUsable(ctx);
 }

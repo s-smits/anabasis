@@ -34,6 +34,7 @@ import {
   type IssueDiagnosis,
   issueFacts,
 } from "#src/author/rebuild-advice.ts";
+import { readEpochRecord } from "#src/author/campaign-epoch.ts";
 import { ownerSide } from "#src/author/feedback-routing.ts";
 import { PATH_RECORD_FILE } from "#src/builder/path-record.ts";
 import { PUBLIC_TASK_FILE } from "#src/correctness-bundle/recorded-solve.ts";
@@ -209,15 +210,6 @@ interface ObservabilityRow {
   contract?: string;
   role?: string;
   prompt?: string;
-}
-
-interface EpochRow {
-  key?: string;
-  createdAt?: string;
-}
-
-interface EpochsFile {
-  epochs?: EpochRow[];
 }
 
 interface PathRow {
@@ -566,11 +558,8 @@ function promptsByEpoch(campaign: string, runId: string | null): Map<string, str
 
 /** One round per epoch: its sessions, path record, prompts and the battery its accepted submit fed. */
 function roundsOf(campaign: string, runId: string | null, batteries: readonly ClaimedBattery[]): Round[] {
-  const epochs = readJsonAsOrNull<EpochsFile | null>(join(campaign, "epochs.json"));
   const prompts = promptsByEpoch(campaign, runId);
-  const listed = records(recordOf(epochs)?.epochs).filter((epoch): epoch is EpochRow & { key: string } =>
-    isString(epoch.key),
-  );
+  const listed = readEpochRecord(campaign)?.epochs ?? [];
   const scoped = prompts.size === 0 ? listed : listed.filter((epoch) => prompts.has(epoch.key));
   return scoped.map((epoch, index) => {
     const dir = join(campaign, epoch.key);
@@ -581,7 +570,7 @@ function roundsOf(campaign: string, runId: string | null, batteries: readonly Cl
     const acceptedAt = accepted.length === 0 ? null : Math.max(...accepted.map((s) => s.at));
     const battery = acceptedAt === null ? null : (batteries.find((b) => b.at > acceptedAt) ?? null);
     const start =
-      sessions.length === 0 ? Date.parse(epoch.createdAt ?? "") : Math.min(...sessions.map((s) => s.start));
+      sessions.length === 0 ? Date.parse(epoch.createdAt) : Math.min(...sessions.map((s) => s.start));
     return {
       index: index + 1,
       epoch: epoch.key,

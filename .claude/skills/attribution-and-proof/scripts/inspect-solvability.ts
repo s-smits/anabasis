@@ -6,6 +6,7 @@ import { readJsonFile } from "#src/meta/completed-json.ts";
 import { campaignDir } from "#src/meta/campaign-root.ts";
 import { campaignEpochOrder, campaignIterations } from "#src/author/campaign-epoch.ts";
 import { asRecord, isString, type JsonValue } from "#src/meta/json-shape.ts";
+import { SOLVABILITY_EVIDENCE_FILE } from "#src/run/solvability-gate.ts";
 import type { CommandArgs } from "#skills/main/cli.ts";
 
 type CampaignIteration = ReturnType<typeof campaignIterations>[number];
@@ -25,7 +26,7 @@ type CampaignIteration = ReturnType<typeof campaignIterations>[number];
 // identity; it prints neither task ids nor raw tool output.
 /** One iteration's census block, or null when the iteration recorded no solvability result. */
 function censusBlock({ epoch, name, dir }: CampaignIteration): string | null {
-  const file = join(dir, "solvability.json");
+  const file = join(dir, SOLVABILITY_EVIDENCE_FILE);
   if (!existsSync(file)) return null;
   const result = asRecord(readJsonFile(file)) ?? {};
   const cases = listOf(asRecord(result.evidence)?.cases).map((row) => asRecord(row) ?? {});

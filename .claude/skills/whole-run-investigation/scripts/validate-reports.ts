@@ -26,11 +26,11 @@ import {
   SHA256,
 } from "./catalogue-shape.ts";
 import { FINDING_OWNERS, REPORT_SECTIONS } from "./manifest-reporting.ts";
+import { ADMISSION_SCHEMA, INSTRUCTIONS_FILE, LAUNCH_INPUT_FILE } from "./manifest-compose.ts";
 import { hasText } from "#src/meta/text.ts";
 import { readJsonFile, writeJsonFile } from "#src/meta/completed-json.ts";
 import { jsonText } from "./run-overview.ts";
 
-const ADMISSION_SCHEMA = "wri-progressive-admission/v2";
 const RECEIPT_SCHEMA = "wri-report-validation/v3";
 
 /** A task's admission row, returned whole so its digest covers every recorded field. */
@@ -578,7 +578,7 @@ function launchBinding(
   // manifest-compose writes the launch input beside the launcher's record, which carries none.
   let input: JsonObject | null = null;
   let inputPath: string | null = null;
-  const sidecarPath = join(outputDir, "wri-launch-input.json");
+  const sidecarPath = join(outputDir, LAUNCH_INPUT_FILE);
   if (existsSync(sidecarPath) && statSync(sidecarPath).isFile()) {
     try {
       input = asRecord(readJsonFile(sidecarPath));
@@ -586,7 +586,7 @@ function launchBinding(
     } catch (error) {
       return {
         state: "invalid",
-        issues: [`wri-launch-input.json is not valid JSON: ${errorMessage(error)}`],
+        issues: [`${LAUNCH_INPUT_FILE} is not valid JSON: ${errorMessage(error)}`],
         promptDigestsBound: false,
       };
     }
@@ -672,7 +672,7 @@ function nativeReports(tasksPath: string): NativeReports | null {
   return {
     dir: realpathSync(dir),
     promptsDir: join(lanesDir, "prompts"),
-    instructions: readFileSync(join(lanesDir, "instructions.md")).toString("utf8"),
+    instructions: readFileSync(join(lanesDir, INSTRUCTIONS_FILE)).toString("utf8"),
   };
 }
 

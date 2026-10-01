@@ -18,7 +18,15 @@ import { TERMINAL_FILE } from "#src/run/controller-lineage.ts";
 import { readCaseCounts } from "#tools/runs/evidence.ts";
 import type { RunLocation } from "#tools/runs/discover.ts";
 import { openRecordedRun } from "#skills/main/run.ts";
-import { type DigestTrigger, jsonText, readJsonAsOrNull, type ScanFinding } from "./run-overview.ts";
+import {
+  type DigestTrigger,
+  jsonText,
+  OVERVIEW_FILE,
+  readJsonAsOrNull,
+  REVIEW_STATE_FILE,
+  type ScanFinding,
+  SNAPSHOT_STATUS_FILE,
+} from "./run-overview.ts";
 import { HARDWARE_TRIGGER } from "./hardware-target.ts";
 
 export const BRIEF_SCHEMA = "wri-brief/v1";
@@ -26,9 +34,6 @@ export const BRIEF_SCHEMA = "wri-brief/v1";
 /** A capture at or under this many lines is quoted whole; a longer one shows its head and its
  *  path. Every lane but `snapshot` came in under 60 lines across the recorded campaigns. */
 export const LANE_LINES = 60;
-
-/** What the snapshot lane records of its own views, under `<review>/snapshot/`. */
-const STATUS_FILE = "snapshot-status.json";
 
 export type Tier = "probe" | "standard" | "deep";
 
@@ -371,10 +376,10 @@ export function laneSuggestions(triggers: readonly DigestTrigger[], tier: Tier):
 export function snapshotGaps(reviewDir: string, steps: readonly BriefStep[]): SnapshotGap[] {
   const snapshot = steps.find((row) => row.label === "snapshot");
   if (snapshot === undefined || snapshot.skipped !== undefined) return [];
-  const path = join(reviewDir, "snapshot", STATUS_FILE);
-  if (!existsSync(path)) return [{ label: STATUS_FILE, status: "absent" }];
+  const path = join(reviewDir, "snapshot", SNAPSHOT_STATUS_FILE);
+  if (!existsSync(path)) return [{ label: SNAPSHOT_STATUS_FILE, status: "absent" }];
   const views = readJsonAsOrNull<SnapshotViews | null>(path)?.views;
-  if (!Array.isArray(views)) return [{ label: STATUS_FILE, status: "unreadable" }];
+  if (!Array.isArray(views)) return [{ label: SNAPSHOT_STATUS_FILE, status: "unreadable" }];
   const gaps = views
     .filter((view) => view.status !== "ok" && view.required !== false)
     .map((view) => ({ label: jsonText(view.label ?? null), status: jsonText(view.status ?? null) }));
@@ -384,7 +389,7 @@ export function snapshotGaps(reviewDir: string, steps: readonly BriefStep[]): Sn
 
 /** The gap that keeps `view`'s leads out of this brief: the view's own, or the status file's. */
 const gapOf = (gaps: readonly SnapshotGap[], view: string): SnapshotGap | undefined =>
-  gaps.find((gap) => gap.label === view || gap.label === STATUS_FILE);
+  gaps.find((gap) => gap.label === view || gap.label === SNAPSHOT_STATUS_FILE);
 
 /** The leads by name and count. A lead whose snapshot view is missing says so in place of its rows,
  *  so a failed digest never reads as a digest that raised nothing. */
@@ -422,7 +427,7 @@ function pressing(
   steps: readonly BriefStep[],
   gaps: readonly SnapshotGap[],
 ): string[] {
-  const overview = readJsonAsOrNull<OverviewFile | null>(join(reviewDir, "overview.json"));
+  const overview = readJsonAsOrNull<OverviewFile | null>(join(reviewDir, OVERVIEW_FILE));
   // The trigger rows of the in-process lanes' reports (`<lane>.json`), in lane order, so a lead a
   // campaign-only read raises reaches the brief without a snapshot. A lane that failed this read
   // contributes none, whatever an earlier read left beside it.
@@ -489,8 +494,10 @@ function laneBlocks(reviewDir: string, steps: readonly BriefStep[]): string[] {
 }
 
 export function renderBrief(reviewDir: string): string {
-  const state = readJsonAsOrNull<ReviewState | null>(join(reviewDir, "wri-review.json"));
-  if (state === null) throw new Error(`no wri-review.json under ${reviewDir}; run \`wri.ts read\` first`);
+  const state = readJsonAsOrNull<ReviewState | null>(join(reviewDir, REVIEW_STATE_FILE));
+  if (state === null) {
+    throw new Error(`no ${REVIEW_STATE_FILE} under ${reviewDir}; run \`wri.ts read\` first`);
+  }
   const scope = state.scope ?? runScope(state.campaign, state.runId);
   const readers =
     state.repo === undefined || state.repo === null

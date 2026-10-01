@@ -58,6 +58,8 @@ import { readJsonFileOrNull } from "#src/meta/completed-json.ts";
 import { sha256 } from "#src/meta/digest.ts";
 import { canonicalJson, compareCodeUnits } from "#src/meta/stable-json.ts";
 import { commitPublicTask, type GeneratedTask } from "#src/correctness-bundle/task-split.ts";
+import { BATTERY_FILE } from "#src/correctness-bundle/battery-record.ts";
+import { CORRECTNESS_MODEL_DIR, TASKS_FILE } from "#src/meta/bundle-layout.ts";
 import type { BuilderExecutionEvidence, BuilderCustomToolSemantic } from "#src/author/builder-execution.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { campaignEpochs } from "#src/author/campaign-epoch.ts";
@@ -94,7 +96,6 @@ const REFUSED = new Set(["findings", "refused"]);
 const CLEARED = new Set(["clear", "accepted"]);
 /** The forms under which a component still refuses; a firing below the bar in one is a lead. */
 const LIVE_FORMS = new Set(["kept", "narrowed", "rewritten"]);
-const TASKS_FILE = "correctness-model/tasks.json";
 
 /** One gate receipt of a session, with the calls the Builder made since the previous one. */
 interface Receipt {
@@ -644,7 +645,7 @@ function recordedBatteries(campaign: string): Battery[] {
     if (!existsSync(runs)) continue;
     for (const runId of readdirSync(runs).sort(compareCodeUnits)) {
       if (byRun.has(runId)) continue;
-      const battery = readJsonFileOrNull(join(runs, runId, "battery.json"));
+      const battery = readJsonFileOrNull(join(runs, runId, BATTERY_FILE));
       if (!isRecord(battery) || !Array.isArray(battery.cases)) continue;
       const authoring = isRecord(battery.experimentAuthoring) ? battery.experimentAuthoring : null;
       const recordedOperation = authoring?.operation;
@@ -689,7 +690,7 @@ function generatedTask(task: TaskRow): GeneratedTask<JsonValue | undefined, Json
 }
 
 function tasksById(dir: string): Map<string, TaskRow> | null {
-  const tasks = readJsonFileOrNull(join(dir, "correctness-model/tasks.json"));
+  const tasks = readJsonFileOrNull(join(dir, TASKS_FILE));
   if (!Array.isArray(tasks)) return null;
   const rows = tasks.filter(isTaskRow);
   if (rows.length !== tasks.length) return null;
@@ -744,7 +745,7 @@ function bundleMoves(campaign: string, beforeRun: string, afterRun: string): Bun
   // A task file that cannot be split is counted as grading rather than cleared.
   const tasksGrade = changed.includes(TASKS_FILE) && (tasks === null || tasks.hidden > 0);
   const inClosure = (rel: string): boolean =>
-    scoring !== "unchanged" && rel.startsWith("correctness-model/") && rel !== TASKS_FILE;
+    scoring !== "unchanged" && rel.startsWith(CORRECTNESS_MODEL_DIR) && rel !== TASKS_FILE;
   const grading = changed.filter(inClosure);
   return {
     scoring,

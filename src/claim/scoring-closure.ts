@@ -37,7 +37,7 @@ import { containsPath } from "../meta/path-containment.ts";
 import { sha256 } from "../meta/digest.ts";
 import { canonicalJson } from "../meta/stable-json.ts";
 import { isBuiltin } from "../meta/modules.ts";
-import { EVALUATOR_FILE } from "../meta/bundle-layout.ts";
+import { BRIEF_FILE, EVALUATOR_FILE } from "../meta/bundle-layout.ts";
 
 /** What a package's program modules reach at run time from their entries. */
 interface RuntimeClosure {
@@ -136,8 +136,9 @@ export function scoringClosureHash(correctnessModelDir: string): string | null {
     const closure = runtimeClosure(root, [basename(EVALUATOR_FILE)]);
     if (!closure.complete) return null;
     const digests: Record<string, string> = {};
-    const brief = join(root, "brief.json");
-    if (existsSync(brief)) digests["brief.json"] = sha256(readFileSync(brief));
+    const briefName = basename(BRIEF_FILE);
+    const brief = join(root, briefName);
+    if (existsSync(brief)) digests[briefName] = sha256(readFileSync(brief));
     for (const name of closure.files) digests[name] = sha256(readFileSync(join(root, name)));
     return sha256(canonicalJson(digests));
   } catch {

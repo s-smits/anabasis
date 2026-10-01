@@ -25,12 +25,14 @@ import {
   ARCHIVE_SCHEMA,
   DIGEST,
   headingSlug,
+  LEDGER_PROJECTION_SCHEMA,
   LUNA,
   MAIN,
   MAIN_HEADINGS,
   predictionFrozenHash,
   FROZEN_PREDICTION_FIELDS,
   REVIEW,
+  SAFEGUARD_DEFINITION_FILE,
   sourceSafeguardCallers,
 } from "./archive-shape.ts";
 import {
@@ -40,6 +42,12 @@ import {
   DIGEST_VERDICTS,
   NATIVE_OUTPUT,
 } from "./catalogue-shape.ts";
+import {
+  HARNESS_EVOLUTION_FILE,
+  OVERVIEW_FILE,
+  REVIEW_STATE_FILE,
+  SNAPSHOT_STATUS_FILE,
+} from "./run-overview.ts";
 
 /** A runtime safeguard's retirement record, which an independent review may settle. */
 interface Retirement {
@@ -278,11 +286,11 @@ function verdictsTemplate(runId: string, laneNames: readonly string[]): Verdicts
 }
 
 function loadInputs(reviewDir: string) {
-  const review = readJson<ReviewFile>(join(reviewDir, "wri-review.json"));
-  if (review === null) throw new Error(`no wri-review.json under ${reviewDir}`);
+  const review = readJson<ReviewFile>(join(reviewDir, REVIEW_STATE_FILE));
+  if (review === null) throw new Error(`no ${REVIEW_STATE_FILE} under ${reviewDir}`);
   const snapshotDir = join(reviewDir, "snapshot");
-  const status = readJson<SnapshotStatus>(join(snapshotDir, "snapshot-status.json"));
-  if (status === null) throw new Error("snapshot-status.json is missing; run collect first");
+  const status = readJson<SnapshotStatus>(join(snapshotDir, SNAPSHOT_STATUS_FILE));
+  if (status === null) throw new Error(`${SNAPSHOT_STATUS_FILE} is missing; run collect first`);
   const controllerDir = dirname(status.opening.path);
   const lanesDir = join(reviewDir, "lanes");
   const outputDir = join(lanesDir, "luna-output");
@@ -301,8 +309,8 @@ function loadInputs(reviewDir: string) {
     // trace-review read the terminal through the controller's strict reader; a run it could not
     // stand behind is live or refused, and the archive records no terminal for it.
     terminal: status.facts?.terminal?.state === "recorded" ? status.facts.terminal : null,
-    evolution: readJson<Evolution>(join(snapshotDir, "harness-evolution.json")),
-    overview: readJson<JsonValue>(join(reviewDir, "overview.json")),
+    evolution: readJson<Evolution>(join(snapshotDir, HARNESS_EVOLUTION_FILE)),
+    overview: readJson<JsonValue>(join(reviewDir, OVERVIEW_FILE)),
     tasks: readJson<LaneTask[]>(join(lanesDir, "tasks.json")) ?? [],
     launch: readJson<LaunchFile>(join(outputDir, LAUNCH_FILE)),
     summary: readJson<SummaryFile>(join(outputDir, SUMMARY_FILE)),
@@ -731,7 +739,7 @@ function runtimeSafeguardRow({
     status,
     owner: file,
     version: "source-callers-v1",
-    sensor: "src/meta/safeguard.ts:safeguardTriggered",
+    sensor: `${SAFEGUARD_DEFINITION_FILE}:safeguardTriggered`,
     definitionSha256: fileSha,
     evidencePointers: [ptr(ANCHOR.safeguards)],
     evidenceBinding: shortIdentity,
@@ -815,7 +823,7 @@ function safeguardRows(
     availability: callerFiles.length > 0 ? "observable" : "absent",
     sourceRevision: identity.sourceRevision,
     sourceDigest: identity.sourceDigest,
-    definitionFile: "src/meta/safeguard.ts",
+    definitionFile: SAFEGUARD_DEFINITION_FILE,
     derivation: "source-callers-v1",
     callerFiles,
     ids: [...new Set(callerFiles.flatMap((row) => row.ids))].sort(compareCodeUnits),
@@ -874,7 +882,7 @@ function buildReview(inputs: Inputs, verdicts: Verdicts, lanes: readonly LaneRow
     lifecycle: { stage: inputs.terminal ? "terminal" : "live" },
     procedureIdentity: procedureIdentity(inputs, ptr),
     ledgerProjection: {
-      schema: "superloop-ledger-projection/v1",
+      schema: LEDGER_PROJECTION_SCHEMA,
       authority: "projection-only",
       mutable: false,
       sourceRevision: identity.sourceRevision,

@@ -15,8 +15,28 @@
 import { CommandFailure, type ExitWith, runCommand } from "#skills/main/cli.ts";
 import { emitReport } from "#skills/main/output.ts";
 import { openRecordedRun } from "#skills/main/run.ts";
+import { BUILDER_EXECUTION_EVIDENCE_FILE } from "#src/author/builder-execution.ts";
+import { BUILDER_PROSE_FILE } from "#src/author/builder-prose.ts";
 import { campaignEpochs, campaignIterations } from "#src/author/campaign-epoch.ts";
+import { PATH_RECORD_FILE } from "#src/builder/path-record.ts";
+import { BUILDER_SESSION_EVIDENCE_FILE } from "#src/builder/session-evidence.ts";
+import { WORKSHOP_ACTION_FILE } from "#src/builder/verifier-workshop-evidence.ts";
+import { BUNDLE_SNAPSHOT_DIRECTORY } from "#src/claim/bundle-snapshot.ts";
+import { CASE_RECORD_FILE } from "#src/claim/case-record.ts";
+import { CONFORMANCE_FILE } from "#src/claim/conformance-evidence.ts";
+import { RUN_MANIFEST_NAME } from "#src/claim/evidence-log.ts";
 import { batteryRunDirs, campaignTraceRoots } from "#src/claim/trace-read.ts";
+import {
+  BATTERY_FILE,
+  CASE_ARTIFACT_FILE,
+  CASE_JUDGE_FILE,
+  CASE_RESULT_FILE,
+} from "#src/correctness-bundle/battery-record.ts";
+import {
+  CASE_TRACE_FILE,
+  FINAL_SUBMISSION_FILE,
+  PUBLIC_TASK_FILE,
+} from "#src/correctness-bundle/recorded-solve.ts";
 import {
   copyFileSync,
   mkdirSync,
@@ -27,12 +47,16 @@ import {
   statSync,
   writeFileSync,
 } from "#src/meta/filesystem.ts";
+import { BRIEF_FILE, EVALUATOR_FILE } from "#src/meta/bundle-layout.ts";
 import { homedir, tmpdir } from "#src/meta/os.ts";
 import { basename, dirname, join, relative, resolve } from "#src/meta/path.ts";
 import { safeguardLogDir } from "#src/meta/safeguard.ts";
 import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
+import { CLAIM_STAGES_FILE } from "#src/run/claim-stages.ts";
 import { isControllerBatteryRunId } from "#src/run/controller-battery-record-policy.ts";
+import { controllerLedgerPath } from "#src/run/controller-ledger.ts";
 import { controllerEvidenceDir, OPENING_FILE, TERMINAL_FILE } from "#src/run/controller-lineage.ts";
+import { PRODUCT_VERSION_FILE } from "#src/run/product-versions.ts";
 import { findRun, readLaunchRecord } from "#tools/runs/discover.ts";
 import { SCRATCH } from "#skills/launch-run/scripts/options.ts";
 
@@ -51,32 +75,32 @@ const NEVER_DIRS = new Set([
   "build",
   ".cache",
   ".tmp",
-  ".bundle-snapshots",
+  BUNDLE_SNAPSHOT_DIRECTORY,
 ]);
 const NEVER_FILES = new Set(["auth.json", ".DS_Store"]);
 
 const QUICK_RUN_LIGHT = ["launch.json", "stop.json", "probe.json", "fullrun.log"];
-const CAMPAIGN_LIGHT_FILES = ["epochs.json", "budget.json", "case-record.jsonl"];
+const CAMPAIGN_LIGHT_FILES = ["epochs.json", "budget.json", CASE_RECORD_FILE];
 const CAMPAIGN_LIGHT_DIRS = ["claims", "difficulty-decisions", "analysis", "promotions"];
 const EPOCH_LIGHT = [
-  "builder-prose.jsonl",
-  "builder-execution.json",
-  "builder-session.json",
+  BUILDER_PROSE_FILE,
+  BUILDER_EXECUTION_EVIDENCE_FILE,
+  BUILDER_SESSION_EVIDENCE_FILE,
   "backends.json",
   "campaign.json",
 ];
-const EPOCH_MEDIUM = ["builder-path-record.jsonl", "verifier-workshop.jsonl"];
-const PRODUCT_LIGHT = ["version.json", "conformance.json", "claim-stages.json"];
-const MODEL_LIGHT = ["brief.json", "evaluator.ts"];
-const BATTERY_LIGHT = ["battery.json", "run-manifest.json", "backends.json"];
-const CASE_LIGHT = ["case-result.json"];
+const EPOCH_MEDIUM = [PATH_RECORD_FILE, WORKSHOP_ACTION_FILE];
+const PRODUCT_LIGHT = [PRODUCT_VERSION_FILE, CONFORMANCE_FILE, CLAIM_STAGES_FILE];
+const MODEL_LIGHT = [basename(BRIEF_FILE), basename(EVALUATOR_FILE)];
+const BATTERY_LIGHT = [BATTERY_FILE, RUN_MANIFEST_NAME, "backends.json"];
+const CASE_LIGHT = [CASE_RESULT_FILE];
 const CASE_MEDIUM = [
-  "trace.json",
+  CASE_TRACE_FILE,
   "verifier.json",
-  "judge.json",
-  "public-task.json",
-  "final-submission.json",
-  "artifact.json",
+  CASE_JUDGE_FILE,
+  PUBLIC_TASK_FILE,
+  FINAL_SUBMISSION_FILE,
+  CASE_ARTIFACT_FILE,
 ];
 
 /** What a lighter depth leaves out, and the depth that brings it in. */
@@ -175,7 +199,7 @@ function selectFiles(campaign: string, runId: string, runDir: string | null, lev
   tree(safeguardLogDir(campaign, runId), "safeguards");
   if (at("verbose")) {
     tree(join(controller, "verifier-lifetime"), "verifier-lifetime");
-    add(join(campaign, "controller.sqlite"), "campaign");
+    add(controllerLedgerPath(campaign), "campaign");
     tree(join(campaign, "observability"), "observability");
   }
 

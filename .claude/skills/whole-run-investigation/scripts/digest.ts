@@ -14,8 +14,14 @@
 import { sha256 } from "#src/meta/digest.ts";
 import { existsSync, readFileSync, readdirSync } from "#src/meta/filesystem.ts";
 import { basename, dirname, join, resolve } from "#src/meta/path.ts";
-import { type CaseRecordRow, classifyCaseOutcome, readCaseRecord } from "#src/claim/case-record.ts";
 import {
+  CASE_RECORD_FILE,
+  type CaseRecordRow,
+  classifyCaseOutcome,
+  readCaseRecord,
+} from "#src/claim/case-record.ts";
+import {
+  BUILDER_EXECUTION_EVIDENCE_FILE,
   type BuilderExecutionEvidence,
   type BuilderSubmitAttempt,
   isCandidateSubmit,
@@ -24,10 +30,19 @@ import {
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { campaignTraceRoots, readVerifiedTrace } from "#src/claim/trace-read.ts";
 import { defaultProductDir } from "#src/meta/campaign-root.ts";
+import { BRIEF_FILE, TOOLS_SPEC_FILE } from "#src/meta/bundle-layout.ts";
 import { isControllerBatteryRunId } from "#src/run/controller-battery-record-policy.ts";
 import { recordedEvidence } from "#src/claim/evidence-log.ts";
-import { type BatteryRecord, readRecordedBatteryRecord } from "#src/correctness-bundle/battery-record.ts";
-import { bundleSnapshotIdOf } from "#src/claim/bundle-snapshot.ts";
+import {
+  BATTERY_FILE,
+  type BatteryRecord,
+  readRecordedBatteryRecord,
+} from "#src/correctness-bundle/battery-record.ts";
+import {
+  BUNDLE_SNAPSHOT_DIRECTORY,
+  bundleSnapshotIdOf,
+  EARLIER_BUNDLE_SNAPSHOT_DIRECTORY,
+} from "#src/claim/bundle-snapshot.ts";
 import { hashBundle } from "#src/claim/bundle-hash.ts";
 import { agentCheckCodeCopies } from "#src/author/candidate-check.ts";
 import { verifyTree } from "#src/claim/bundle-snapshot-verify.ts";
@@ -36,6 +51,7 @@ import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#
 import { readJsonFileOrNull } from "#src/meta/completed-json.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { campaignEpochs } from "#src/author/campaign-epoch.ts";
+import { boundDomain } from "#src/author/campaign-memory.ts";
 import { TERMINAL_FILE } from "#src/run/controller-lineage.ts";
 import { WORKSHOP_ACTION_FILE, foldWorkshopActions } from "#tools/outcome/builder-workshop-facts.ts";
 import { readExecutionEvidenceDetails } from "#tools/outcome/builder-execution-facts.ts";
@@ -167,7 +183,7 @@ export function measuredProductBinding(runId: string, roots: readonly string[]):
   let battery: BatteryRecord | null = null;
   for (const root of roots) {
     const runDir = join(root, "runs", runId);
-    if (!existsSync(join(runDir, "battery.json"))) continue;
+    if (!existsSync(join(runDir, BATTERY_FILE))) continue;
     try {
       const recorded = readRecordedBatteryRecord(runDir, runId);
       if (battery !== null && JSON.stringify(recorded) !== JSON.stringify(battery)) {
@@ -190,7 +206,11 @@ export function measuredProductBinding(runId: string, roots: readonly string[]):
   }
   const id = bundleSnapshotIdOf(fingerprint);
   for (const root of roots) {
-    for (const candidate of [root, join(root, ".bundle-snapshots", id), join(root, ".sealed-bundles", id)]) {
+    for (const candidate of [
+      root,
+      join(root, BUNDLE_SNAPSHOT_DIRECTORY, id),
+      join(root, EARLIER_BUNDLE_SNAPSHOT_DIRECTORY, id),
+    ]) {
       try {
         verifyTree(candidate, fingerprint, "digest measured product");
         return { root: candidate, gap: null, battery };
@@ -444,8 +464,7 @@ function toolRosterLines(
   // The roster and its descriptions belong to the bundle that graded these traces, not to
   // whatever tree is adopted now; an adopted-tree roster is labelled as the fallback it is.
   lines.push(`tool roster read from ${bundleProvenance}`);
-  const specText =
-    bundleDir === null ? null : readJsonFileOrNull(join(bundleDir, "agent", "tools-spec.json"));
+  const specText = bundleDir === null ? null : readJsonFileOrNull(join(bundleDir, TOOLS_SPEC_FILE));
   const descriptions = new Map<string, string>();
   const listed = asRecord(specText)?.tools;
   const specTools = Array.isArray(specText) ? specText : Array.isArray(listed) ? listed : [];
@@ -560,7 +579,8 @@ export function productEvidenceLines({
     bundleDir !== null && existsSync(join(bundleDir, "correctness-model"))
       ? join(bundleDir, "correctness-model")
       : null;
-  const brief = graderDir === null ? null : readJsonAsOrNull<BriefFile | null>(join(graderDir, "brief.json"));
+  const brief =
+    graderDir === null ? null : readJsonAsOrNull<BriefFile | null>(join(graderDir, basename(BRIEF_FILE)));
   const controls =
     graderDir === null ? null : readJsonAsOrNull<ControlsFile | null>(join(graderDir, "controls.json"));
   const checks = Array.isArray(brief?.truthChecks) ? brief.truthChecks : [];
@@ -639,7 +659,7 @@ function outcomeCounts(submits: readonly Pick<BuilderSubmitAttempt, "outcome">[]
 function selectedCaseRows(campaign: string, runIds: readonly string[]): CaseSelection {
   let rows: CaseRecordRow[];
   try {
-    rows = readCaseRecord(join(campaign, "case-record.jsonl")).map((entry) => entry.row);
+    rows = readCaseRecord(join(campaign, CASE_RECORD_FILE)).map((entry) => entry.row);
   } catch (error) {
     return { rows: [], refusal: errorMessage(error), collapsed: 0, divergent: [] };
   }
@@ -676,7 +696,7 @@ function readExecutions(epochDirs: readonly string[]): DigestExecutions {
       const session = read.sessions[index] ?? 1;
       const file =
         session === 1
-          ? "builder-execution.json"
+          ? BUILDER_EXECUTION_EVIDENCE_FILE
           : `builder-execution-${String(session).padStart(2, "0")}.json`;
       records.push({ epoch: basename(dir), file, session, record });
     });
@@ -863,12 +883,12 @@ function productLines({
 export function campaignCases({ campaign: campaignPath, domainsRoot, runIds = [] }: DigestInput) {
   const campaign = resolve(campaignPath);
   const campaignName = basename(campaign);
-  // Resolve the domain from the last readable epoch slug in recorded epoch order, falling back to
-  // the campaign directory name. The slug, not the campaign name, keys domains/<slug>.
+  // Resolve the domain from the last epoch binding that names one, in recorded epoch order, falling
+  // back to the campaign directory name. The domain, not the campaign name, keys domains/<slug>.
   const epochDirs = campaignEpochs(campaign).map((epoch) => join(campaign, epoch));
   const slug = epochDirs
-    .map((dir) => asRecord(readJsonFileOrNull(join(dir, "campaign.json")))?.slug)
-    .reduce<string>((last, value) => (isString(value) ? value : last), campaignName);
+    .map((dir) => boundDomain(dir))
+    .reduce<string>((last, value) => value ?? last, campaignName);
   const domainDir =
     [join(resolve(domainsRoot), slug), defaultProductDir(dirname(dirname(campaign)), slug)]
       .map((dir) => resolve(dir))

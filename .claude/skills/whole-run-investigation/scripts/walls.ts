@@ -24,7 +24,13 @@ import { existsSync } from "#src/meta/filesystem.ts";
 import { basename, dirname, join } from "#src/meta/path.ts";
 import { campaignTraceRoots } from "#src/claim/trace-read.ts";
 import { measuredProductId, productVersionDir } from "#src/run/product-versions.ts";
-import { classifyCaseOutcome, readCaseRecord, type CaseRecordRow } from "#src/claim/case-record.ts";
+import {
+  CASE_RECORD_FILE,
+  classifyCaseOutcome,
+  readCaseRecord,
+  type CaseRecordRow,
+} from "#src/claim/case-record.ts";
+import { CASE_RESULT_FILE } from "#src/correctness-bundle/battery-record.ts";
 import {
   DEFAULT_HARNESS_SETTINGS,
   HARNESS_CONFIG_FILE,
@@ -106,7 +112,7 @@ function median(values: readonly number[]): number | null {
 /** Every case row the campaign recorded, grouped by the battery that ran it, through the strict reader. */
 function caseRows(campaign: string): Map<string, CaseRecordRow[]> {
   const byRun = new Map<string, CaseRecordRow[]>();
-  for (const { row } of readCaseRecord(join(campaign, "case-record.jsonl"))) {
+  for (const { row } of readCaseRecord(join(campaign, CASE_RECORD_FILE))) {
     const rows = byRun.get(row.runId) ?? [];
     rows.push(row);
     byRun.set(row.runId, rows);
@@ -123,7 +129,7 @@ function caseRows(campaign: string): Map<string, CaseRecordRow[]> {
  *  on the share alone. */
 function solverOf(roots: readonly string[], runId: string, taskId: string): SolverFacts {
   for (const root of roots) {
-    const path = join(root, "runs", runId, "cases", taskId, "case-result.json");
+    const path = join(root, "runs", runId, "cases", taskId, CASE_RESULT_FILE);
     if (!existsSync(path)) continue;
     const solver = readJsonAs<CaseResultFile>(path).solver ?? {};
     const errors = Array.isArray(solver.errors) ? solver.errors.filter((value) => isString(value)) : [];

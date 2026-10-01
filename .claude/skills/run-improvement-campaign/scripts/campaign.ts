@@ -25,6 +25,7 @@ import { readJsonFileOrNull, writeJsonFile } from "#src/meta/completed-json.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { readSafeguardLog } from "#src/meta/safeguard.ts";
+import { AGENT_DIR, CORRECTNESS_MODEL_DIR } from "#src/meta/bundle-layout.ts";
 import { bareCustomToolName } from "#src/author/builder-custom-tool-call.ts";
 import { type BuilderExecutionEvidence, isCandidateSubmit } from "#src/author/builder-execution.ts";
 import { readEpochRecord } from "#src/author/campaign-epoch.ts";
@@ -37,6 +38,7 @@ import {
   readCaseRecord,
 } from "#src/claim/case-record.ts";
 import { batteryRunDirs } from "#src/claim/trace-read.ts";
+import { ENVIRONMENT_NON_RESULT_FILE } from "#src/run/census-gate.ts";
 import { isControllerBatteryRunId } from "#src/run/controller-battery-record-policy.ts";
 import type { ControllerAbortClause } from "#src/run/controller-stop-evidence.ts";
 import type { Denominator } from "#src/run/controller-denominator.ts";
@@ -358,8 +360,8 @@ function readBundle(campaign: string, slug: string, runId: string, epoch: string
       }
     }
   };
-  walk(join(dir, "agent"), "agent/");
-  walk(join(dir, "correctness-model"), "correctness-model/");
+  walk(join(dir, AGENT_DIR), AGENT_DIR);
+  walk(join(dir, CORRECTNESS_MODEL_DIR), CORRECTNESS_MODEL_DIR);
   // A workspace before its first authored file has nothing to count, and zeroes would read as a
   // measured empty bundle.
   if (Object.keys(files).length === 0) return null;
@@ -408,7 +410,7 @@ function readAuthoring(campaign: string, epoch: string): Authoring {
     .flatMap(directories)
     .sort((a, b) => mtimeMs(a) - mtimeMs(b));
   for (const trial of trials) {
-    const nonResult = asRecord(readJsonFileOrNull(join(trial, "environment-non-result.json")));
+    const nonResult = asRecord(readJsonFileOrNull(join(trial, ENVIRONMENT_NON_RESULT_FILE)));
     environmentInARow = nonResult === null ? 0 : environmentInARow + 1;
     // A census payload names its kind; a verifier execution record names its outcome instead.
     const kind = nonResult?.kind ?? nonResult?.outcome;

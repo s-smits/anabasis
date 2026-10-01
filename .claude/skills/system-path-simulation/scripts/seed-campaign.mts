@@ -77,6 +77,7 @@ import { claimsDirFor } from "#src/run/claim-write.ts";
 import { ControllerLedger, controllerLedgerExists } from "#src/run/controller-ledger.ts";
 import { CONTROLLER_LOCK_FILE } from "#src/run/campaign-lock.ts";
 import {
+  PRODUCT_VERSION_FILE,
   productVersionDir,
   publishProductVersion,
   readProductVersion,
@@ -486,7 +487,7 @@ function recordedProducts(root: string, slug: string) {
   using ledger = ControllerLedger.open(campaign);
   const registered = (id: string): string => {
     const dir = productVersionDir(root, slug, id);
-    const manifest = parseJsonAs<JsonValue>(readFileSync(join(dir, "version.json"), "utf8"));
+    const manifest = parseJsonAs<JsonValue>(readFileSync(join(dir, PRODUCT_VERSION_FILE), "utf8"));
     if (ledger.productDigest(id) !== hashJsonValue(manifest)) {
       throw new SeedRefusal(`${dir}: version manifest does not match its ledger registration`);
     }

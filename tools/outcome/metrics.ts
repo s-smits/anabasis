@@ -1,6 +1,7 @@
 /** Read-only run projection: strict case denominators, verified traces and controller evidence. */
 import { existsSync, readFileSync, readdirSync, statSync } from "../../src/meta/filesystem.ts";
-import { dirname, join, relative } from "../../src/meta/path.ts";
+import { basename, dirname, join, relative } from "../../src/meta/path.ts";
+import { TOOLS_SPEC_FILE } from "../../src/meta/bundle-layout.ts";
 import { passedCount, scoredCases } from "../../src/claim/battery-facts.ts";
 import {
   CASE_RECORD_FILE,
@@ -233,7 +234,7 @@ function readCaseTrace(
 
 function declaredToolNames(bundleDir: string | null): string[] | null {
   if (bundleDir === null) return null;
-  const specPath = join(bundleDir, "tools-spec.json");
+  const specPath = join(bundleDir, basename(TOOLS_SPEC_FILE));
   if (!existsSync(specPath)) return null;
   const spec = parseJsonAs<{
     presets?: unknown[];

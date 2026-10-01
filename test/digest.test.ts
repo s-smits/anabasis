@@ -34,7 +34,7 @@ function fixture(): DigestFixture {
   writeFileSync(join(domain, "correctness-model", "tasks.json"), "[]");
   mkdirSync(join(domain, "runs", "run-1", "cases", "t1"), { recursive: true });
   mkdirSync(join(domain, "runs", "run-4", "cases", "t1"), { recursive: true });
-  writeFileSync(join(campaign, "epoch-aa", "campaign.json"), JSON.stringify({ slug: "demo-slug" }));
+  writeFileSync(join(campaign, "epoch-aa", "campaign.json"), JSON.stringify({ domain: "demo-slug" }));
   writeFileSync(
     join(campaign, "epoch-aa", "builder-execution.json"),
     executionRecord(

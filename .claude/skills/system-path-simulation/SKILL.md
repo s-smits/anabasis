@@ -35,6 +35,15 @@ what they show and delete the settled entries.
   3,466 tool-tree references, and a second five-minute `--relocate` run left them naming the main
   checkout's tree; Built pins unlike the record turned a rebuild into a measure; `CLAUDE*` variables
   were unset by hand; a transcript copy was lost to the CLI's close stub. Helpers own each step now.
+- 2026-10-01, the `limit-line` arm of PR #122 from esp32 campaign -20 at its partial battery i14. Two
+  seeds and two captures, no model turn. Neither first prompt carried the line: the selector measures a
+  republished product before it builds, so with `--built no-solve` the newest row is a refused claim
+  (`DISCRIMINATION_ACCEPT_REJECTED`, 19 invalid control receipts) and a line that speaks for the latest
+  battery alone cannot fire; and the readout set every carried battery aside, since products recorded
+  before `experiment-authoring/v2` (2026-09-29) are not resumable, by design. A condition on how a Builder
+  answers a battery needs a position recorded after that cut whose seed measure is reproduced (a scripted
+  solver over the recorded artifacts) or solved live; every esp32 campaign after the cut is an Opus full
+  pass, so the arm's trigger has not yet existed for Opus 5.5 there. `pick-run.mts` should say the cut.
 
 ## Standing triggers
 
@@ -97,9 +106,11 @@ such an account, the launching session runs its own conditions, as it did from 2
   nothing the parent cannot read. The steward briefs the parent with the account it used and that
   account's `.accounts/usage` line before and after.
 
-The actor under test keeps the run's own condition — for the standard Opus 5 run that is
-`claude-opus-5` at medium through the production backend — and neither the session nor a steward
-ever stands in for it (operator decision 2026-09-01).
+The actor under test keeps the run's own condition — for the standard Opus run that is
+`claude-opus-5-5` at medium on the Builder, Built and review slots, launch-run's `opus` preset, which
+`run-condition.mts --preset opus` pins — and neither the session nor a steward ever stands in for it
+(operator decision 2026-09-01). The unpinned Claude default in `src/backends/resolve.ts` is still
+`claude-opus-5`, so a runner that takes `--backend claude` without a preset serves a different actor.
 
 ## Rules that hold for every case
 

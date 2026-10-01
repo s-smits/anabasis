@@ -611,7 +611,8 @@ export function readDifficultyDecisions(scope: {
       continue;
     }
     const facts = decisionFacts(raw);
-    if (facts === null) refused.push({ file, reason: `${schema} incomplete` });
+    const gap = nested(raw, "difficulty") === null ? "without a difficulty reading" : "incomplete";
+    if (facts === null) refused.push({ file, reason: `${schema} ${gap}` });
     else rows.push(facts);
   }
   // The filename leads with the iteration id, whose two-digit padding sorts only to round 99; the

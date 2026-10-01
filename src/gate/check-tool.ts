@@ -51,11 +51,9 @@ interface CorrectnessCheckBinding {
 
 /** What this tool did not do. It rides every result, including the clear ones, because a validation
  *  sequence that found no blocking row is the easiest evidence in a run to mistake for a passing
- *  verifier: it is long, it is expensive, and it ends in the word the author is hoping for. */
-const TRUTH = {
-  verdict: "not-run",
-  note: "Preview only. Submit runs the same validation sequence on the same snapshot and is the only acceptance path. A clear result does not establish practitioner identity, semantic completeness, adoption, measurement success or claim issuance.",
-} as const;
+ *  verifier: it is long, it is expensive, and it ends in the word the author is hoping for. The
+ *  description already says submit is the only acceptance path, so the verdict carries no note. */
+const TRUTH = { verdict: "not-run" } as const;
 
 const REPAIR =
   "Read every repair group with harness_inspect feedback, repair the named files, then check the changed tree.";

@@ -221,8 +221,7 @@ export function recordDiagnosisTool(
   return {
     name: "record_diagnosis",
     label: "Record a diagnosis",
-    description:
-      "Record one harness flaw located at a shown step, covering every offered issue it explains, or abstain for issues you cannot read. For an abstention send only issueIds and abstainReason. Never name a task.",
+    description: "Record one harness flaw located at a shown step, or abstain for issues you cannot read.",
     parameters: readerParameters(PARAMETERS),
     execute: (_id: string, args: Record<string, JsonValue>) => {
       const resolved = resolveIssues(strings(args.issueIds), offers, sink);

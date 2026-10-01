@@ -257,7 +257,7 @@ function openSession(input: EpochReviewInput): OpenSession {
     reviewerEffort: input.review.enabled ? (input.review.reasoningEffort ?? null) : null,
     requestDigest: hashJsonValue({
       publicRequest: input.publicRequest,
-      policy: "review-probing-findings/v13",
+      policy: "review-probing-findings/v14",
       prompt: EPOCH_REVIEW_PROMPT,
     }),
     obligationsDigest: obligationsDigest(input, disputableIssues(input)),
@@ -550,7 +550,7 @@ function orientation(
     inventory.files.join("\n"),
     `Missing core files or unreadable entries: ${inventory.missing.join(", ") || "none"}.`,
     verifier.unavailable ??
-      "Recorded verifier entry points (binaries return provenance only; cell-produced programs are not installed tools):",
+      "Recorded verifier entry points (cell-produced programs are not installed tools):",
     ...Object.entries(verifier.tools).map(
       ([alias, tool]) => `${alias}: ${tool.kind}, ${tool.source}, ${tool.path}, sha256 ${tool.digest}`,
     ),

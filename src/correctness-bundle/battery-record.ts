@@ -72,11 +72,12 @@ export type ControlReceipt = {
   nonResultKind: NonResultKind | null;
 };
 
-/** The battery evidence file and the two per-case files a reader opens beside it, named once for
+/** The battery evidence file and the three per-case files a reader opens beside it, named once for
  *  the writers, the joiner and every reader. */
 export const BATTERY_FILE = "battery.json";
 export const CASE_ARTIFACT_FILE = "artifact.json";
 export const CASE_JUDGE_FILE = "judge.json";
+export const CASE_RESULT_FILE = "case-result.json";
 
 export type DiscriminationExecution = {
   accepts: number;

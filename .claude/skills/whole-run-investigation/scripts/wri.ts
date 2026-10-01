@@ -41,9 +41,16 @@ import { existsSync, mkdirSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { dirname, isAbsolute, join, resolve } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { scaffoldArchive } from "./archive-scaffold.ts";
+import { MAIN, REVIEW } from "./archive-shape.ts";
 import { renderBrief, renderScope, type RunScope, runScope, SEMANTIC_LANES, snapshotGaps } from "./brief.ts";
 import { ANGLE_COUNT, NATIVE_OUTPUT } from "./catalogue-shape.ts";
-import { buildOverview, readJsonAs } from "./run-overview.ts";
+import {
+  buildOverview,
+  OVERVIEW_FILE,
+  readJsonAs,
+  REVIEW_STATE_FILE,
+  SNAPSHOT_STATUS_FILE,
+} from "./run-overview.ts";
 import { openRecordedRun, resolveSourceCheckout, sourceUnresolved } from "#skills/main/run.ts";
 import { buildSharedInstructions } from "./shared-instructions.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
@@ -201,9 +208,9 @@ export const LANES: readonly Lane[] = [
     label: "shared brief",
     collect: true,
     needs: (c) =>
-      existsSync(join(c.snapshot, "snapshot-status.json"))
+      existsSync(join(c.snapshot, SNAPSHOT_STATUS_FILE))
         ? null
-        : `no snapshot-status.json under ${c.snapshot}; the snapshot lane recorded none`,
+        : `no ${SNAPSHOT_STATUS_FILE} under ${c.snapshot}; the snapshot lane recorded none`,
     write: (c) => writeOverview(c),
   },
   {
@@ -368,7 +375,7 @@ function resolveTarget(args: WriArgs, positional: string | null): RunSelection {
 function archiveFor(runId: string): string | null {
   const root = join(CHECKOUT, "notes", "runs");
   if (!existsSync(root)) return null;
-  for (const hit of new Bun.Glob(`*${runId}*/review.json`).scanSync({ cwd: root })) {
+  for (const hit of new Bun.Glob(`*${runId}*/${REVIEW}`).scanSync({ cwd: root })) {
     return join(root, dirname(hit));
   }
   return null;
@@ -484,9 +491,9 @@ function runLane(state: WriReviewState, lane: Lane, ctx: LaneContext): void {
 
 function writeOverview(ctx: LaneContext): string {
   const overview = buildOverview(ctx.snapshot);
-  writeJsonFile(join(ctx.reviewDir, "overview.json"), overview);
+  writeJsonFile(join(ctx.reviewDir, OVERVIEW_FILE), overview);
   writeJsonFile(join(ctx.reviewDir, "shared-instructions.json"), buildSharedInstructions(overview));
-  return `overview.json and shared-instructions.json, from ${ctx.snapshot}`;
+  return `${OVERVIEW_FILE} and shared-instructions.json, from ${ctx.snapshot}`;
 }
 
 export function renderLanes(): string {
@@ -515,7 +522,7 @@ export function selectLanes(args: WriArgs): readonly Lane[] | null {
 }
 
 function statePath(reviewDir: string): string {
-  return join(reviewDir, "wri-review.json");
+  return join(reviewDir, REVIEW_STATE_FILE);
 }
 
 function saveState(state: WriReviewState): void {
@@ -524,7 +531,7 @@ function saveState(state: WriReviewState): void {
 
 function loadState(reviewDir: string): WriReviewState {
   const path = statePath(reviewDir);
-  if (!existsSync(path)) throw new Error(`no wri-review.json under ${reviewDir}; run collect first`);
+  if (!existsSync(path)) throw new Error(`no ${REVIEW_STATE_FILE} under ${reviewDir}; run collect first`);
   return readJsonAs<WriReviewState>(path);
 }
 
@@ -734,7 +741,7 @@ function finish(args: WriArgs): void {
   console.log(`\n== archive scaffold\n${JSON.stringify(scaffold, null, 2)}`);
   if (scaffold.fresh) {
     console.log(
-      `\nverdicts template written: ${scaffold.verdictsPath}\n  record states and reasons there, write ${join(scaffold.archiveDir, "main_synthesis.md")}, then run finish again.`,
+      `\nverdicts template written: ${scaffold.verdictsPath}\n  record states and reasons there, write ${join(scaffold.archiveDir, MAIN)}, then run finish again.`,
     );
     return;
   }

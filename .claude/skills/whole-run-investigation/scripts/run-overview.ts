@@ -12,8 +12,18 @@ import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { join, resolve } from "#src/meta/path.ts";
 import { readJsonFileOrNull } from "#src/meta/completed-json.ts";
+import { DIGEST } from "./archive-shape.ts";
 
 export const OVERVIEW_SCHEMA = "wri-run-overview/v1";
+/** The overview `wri.ts collect` writes into the review directory, and the brief and the archive read. */
+export const OVERVIEW_FILE = "overview.json";
+/** The review directory's state, which `wri.ts` records each step in and the brief and archive read. */
+export const REVIEW_STATE_FILE = "wri-review.json";
+/** What trace-review.ts records of its own views in a snapshot directory, under its one schema. */
+export const SNAPSHOT_STATUS_FILE = "snapshot-status.json";
+export const SNAPSHOT_STATUS_SCHEMA = "outcome-snapshot-status/v2";
+/** The harness-evolution view trace-review.ts writes into a snapshot directory. */
+export const HARNESS_EVOLUTION_FILE = "harness-evolution.json";
 const TRIGGER_ROW = /^[A-Z][A-Z0-9 /()-]{5,}[A-Z)]:?\s/;
 
 /** One digest trigger name, how many rows carried it, and its first two distinct rows. */
@@ -185,14 +195,14 @@ function viewStates(status: RecordedStatus): ViewStates {
 /** Derive the overview from a snapshot directory. Every absent source stays an explicit gap. */
 export function buildOverview(snapshotDir: string) {
   const dir = resolve(snapshotDir);
-  const status = readJsonAsOrNull<RecordedStatus>(join(dir, "snapshot-status.json"));
-  if (status === null) throw new Error(`no readable snapshot-status.json under ${dir}`);
+  const status = readJsonAsOrNull<RecordedStatus>(join(dir, SNAPSHOT_STATUS_FILE));
+  if (status === null) throw new Error(`no readable ${SNAPSHOT_STATUS_FILE} under ${dir}`);
   const scan = readJsonAsOrNull<{ findings?: readonly ScanFinding[] }>(
     join(dir, `${String(status.runIds?.[0])}-scan.txt`),
   );
   const timeline = readJsonAsOrNull<{ stalls?: readonly TimelineStall[] }>(join(dir, "timeline.json"));
   const facts = status.facts ?? {};
-  const digestPath = join(dir, "digest.md");
+  const digestPath = join(dir, DIGEST);
   return {
     schema: OVERVIEW_SCHEMA,
     generatedAt: new Date().toISOString(),
@@ -216,7 +226,7 @@ export function buildOverview(snapshotDir: string) {
       reason: "the snapshot recorded no terminal facts",
     },
     terminalAccounting: facts.terminalAccounting ?? null,
-    evolution: evolutionFacts(readJsonFileOrNull(join(dir, "harness-evolution.json"))),
+    evolution: evolutionFacts(readJsonFileOrNull(join(dir, HARNESS_EVOLUTION_FILE))),
     digestTriggers: digestTriggers(existsSync(digestPath) ? readFileSync(digestPath, "utf8") : ""),
     scanFindings: Array.isArray(scan?.findings)
       ? scan.findings.map((finding) => ({

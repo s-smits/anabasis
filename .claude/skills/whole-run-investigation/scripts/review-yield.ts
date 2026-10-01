@@ -20,7 +20,10 @@ import { EPOCH_REVIEW_SCHEMA } from "#src/review/epoch-review-findings.ts";
 import type { EpochReviewEvidence } from "#src/review/epoch-review-findings.ts";
 import { REBUILD_ADVICE_SCHEMA } from "#src/author/rebuild-advice.ts";
 import { campaignEpochs } from "#src/author/campaign-epoch.ts";
-import type { BuilderExecutionEvidence } from "#src/author/builder-execution.ts";
+import {
+  BUILDER_EXECUTION_EVIDENCE_FILE,
+  type BuilderExecutionEvidence,
+} from "#src/author/builder-execution.ts";
 import { readExecutionEvidenceDetails } from "#tools/outcome/builder-execution-facts.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { asRecord, isRecord, isString } from "#src/meta/json-shape.ts";
@@ -319,7 +322,7 @@ function trialRow(epochDir: string): TrialRow {
       consumedSubmit === undefined
         ? null
         : {
-            path: "builder-execution.json",
+            path: BUILDER_EXECUTION_EVIDENCE_FILE,
             field: "customCalls[].semantic.candidateId",
             value: consumedSubmit.candidateId,
           },

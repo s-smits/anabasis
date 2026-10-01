@@ -5,7 +5,7 @@
 import { readExecutionEvidence } from "../outcome/builder-execution-facts.ts";
 import { readEpochRecord } from "../../src/author/campaign-epoch.ts";
 import type { BuilderCustomToolCall } from "../../src/author/builder-custom-tool-call.ts";
-import { PUBLIC_TASK_FILE } from "../../src/correctness-bundle/recorded-solve.ts";
+import { CASE_TRACE_FILE, PUBLIC_TASK_FILE } from "../../src/correctness-bundle/recorded-solve.ts";
 import { CENSUS_FILE } from "../../src/run/census-gate.ts";
 import type { BandZone, MeasuredDifficulty } from "../../src/claim/battery-difficulty.ts";
 import type { ClimbBattery } from "../../src/run/climb-history.ts";
@@ -200,7 +200,7 @@ function readRehearsal(epochDir: string, checkpointAt: string | null): PulseInFl
     // The public task is written once, as the solve starts.
     const startedAt = new Date(lstatSync(join(cases, taskId, PUBLIC_TASK_FILE)).mtimeMs).toISOString();
     if (checkpointAt !== null && startedAt < checkpointAt) return null;
-    const stage = existsSync(join(cases, taskId, "trace.json")) ? "grading" : "solving";
+    const stage = existsSync(join(cases, taskId, CASE_TRACE_FILE)) ? "grading" : "solving";
     return { taskId, stage, startedAt };
   } catch {
     return null;

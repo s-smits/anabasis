@@ -266,10 +266,6 @@ function ownDirectories(shell: string): boolean {
   );
 }
 
-export function privateScratchRedirect(command: string): boolean {
-  return scratchRedirectResidual(command) !== null;
-}
-
 /** The command with every private scratch redirect target replaced by a literal `/tmp` path, or null
  *  when a dynamic target is not one of them. */
 function scratchRedirectResidual(command: string): string | null {

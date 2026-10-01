@@ -20,7 +20,6 @@ import {
   ensureBuilderCommandGuard,
   inspectBuilderCommandGuard,
   refuseDestructiveCommand,
-  privateScratchRedirect,
   workspaceResidual,
 } from "../src/builder/command-guard.ts";
 import { BUILT_SHELL_RULES, DCG_RULES, acceptedSpelling } from "../src/solve/dcg-rules.ts";
@@ -170,7 +169,6 @@ EOF`,
       // A relative target expanding a plain variable stays in the workspace, as a relative remove does.
       `for i in 0 1; do python3 opt.py "${v("i")}" > "scratch/opt-${v("i")}.log" 2>&1 & done; wait`,
     ]) {
-      expect(privateScratchRedirect(allowed)).toBe(true);
       expect(workspaceAllows(allowed, redirect)).toBe(true);
     }
     for (const refused of [

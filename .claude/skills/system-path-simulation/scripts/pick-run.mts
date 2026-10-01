@@ -23,6 +23,7 @@ import { absoluteOption, type ExitWith, exitWith, parseOrDie } from "#skills/mai
 import { asRecord, isString } from "#src/meta/json-shape.ts";
 import type { JsonObject } from "#src/meta/json-shape.ts";
 import { readJsonFile } from "#src/meta/completed-json.ts";
+import { DIGEST, LUNA, MAIN, REVIEW } from "#skills/whole-run-investigation/scripts/archive-shape.ts";
 
 const die: ExitWith = exitWith("pick-run");
 
@@ -164,7 +165,7 @@ function ancestry(source: string | null): Pick<RunFacts, "ancestor" | "onMain" |
 function countHits(dir: string, term: string): number {
   let hits = 0;
   const needle = term.toLowerCase();
-  for (const name of ["main_synthesis.md", "digest.md", "luna_syntheses.md"]) {
+  for (const name of [MAIN, DIGEST, LUNA]) {
     const path = join(dir, name);
     if (!existsSync(path)) continue;
     const haystack = readFileSync(path, "utf8").toLowerCase();
@@ -178,7 +179,7 @@ function countHits(dir: string, term: string): number {
 }
 
 function readReview(dir: string): Review {
-  const path = join(dir, "review.json");
+  const path = join(dir, REVIEW);
   if (!existsSync(path)) return NO_REVIEW;
   try {
     const review = asRecord(readJsonFile(path));
@@ -197,13 +198,13 @@ function readReview(dir: string): Review {
 
 for (const campaign of readdirSync(notes).sort()) {
   const dir = join(notes, campaign);
-  const synthesis = join(dir, "main_synthesis.md");
+  const synthesis = join(dir, MAIN);
   if (!existsSync(synthesis)) continue;
   const review = readReview(dir);
   const facts = parseSynthesis(readFileSync(synthesis, "utf8"), review);
   // A synthesis that opens with prose may keep its identity line in the digest or the session
   // archive; those two are read only for the facts the synthesis itself does not state.
-  for (const sibling of ["digest.md", "luna_syntheses.md"]) {
+  for (const sibling of [DIGEST, LUNA]) {
     if (facts.runId !== null && facts.source !== null) break;
     const path = join(dir, sibling);
     if (!existsSync(path)) continue;

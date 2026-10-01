@@ -17,7 +17,8 @@ import {
   SHA256 as SHA_256,
 } from "./catalogue-shape.ts";
 import { readJsonFile } from "#src/meta/completed-json.ts";
-import { jsonText, readJsonAs } from "./run-overview.ts";
+import { jsonText, readJsonAs, SNAPSHOT_STATUS_FILE, SNAPSHOT_STATUS_SCHEMA } from "./run-overview.ts";
+import { TRACE_CHALLENGE_STATUS_FILE } from "./trace-challenge.ts";
 import { namedTargets } from "./hardware-target.ts";
 
 export const ORIENTATION_HEADING = "orientation";
@@ -386,7 +387,7 @@ export function isolatedLaneGate(snapshot: Snapshot): Map<number, LaneGate> {
     }
     if (
       number === TRACE_CHALLENGE_LANE &&
-      !existsSync(join(snapshot.dir, "trace-challenge", "trace-challenge-status.json"))
+      !existsSync(join(snapshot.dir, "trace-challenge", TRACE_CHALLENGE_STATUS_FILE))
     ) {
       gate.set(number, { fired: false, reason: "the snapshot carries no trace-challenge packet" });
       continue;
@@ -670,15 +671,13 @@ function measuredBunPin(worktreePath: unknown): string {
 /** Load and prove the snapshot. `expectedWorktree` is the --worktree the operator named, which
  *  must be the one the snapshot measured. */
 export function loadSnapshot(dir: string, expectedWorktree: string | null = null): Snapshot {
-  const statusPath = join(dir, "snapshot-status.json");
+  const statusPath = join(dir, SNAPSHOT_STATUS_FILE);
   if (!existsSync(statusPath)) {
-    manifestFail(`no snapshot-status.json under ${dir}; run trace-review.ts first`);
+    manifestFail(`no ${SNAPSHOT_STATUS_FILE} under ${dir}; run trace-review.ts first`);
   }
   const status = readJsonAs<RecordedStatus>(statusPath);
-  if (status.schema !== "outcome-snapshot-status/v2") {
-    manifestFail(
-      `snapshot schema must be outcome-snapshot-status/v2; received ${status.schema ?? "missing"}`,
-    );
+  if (status.schema !== SNAPSHOT_STATUS_SCHEMA) {
+    manifestFail(`snapshot schema must be ${SNAPSHOT_STATUS_SCHEMA}; received ${status.schema ?? "missing"}`);
   }
   const bunPin = measuredBunPin(status.worktree?.path);
   if (status.runtime?.version !== bunPin || !String(status.runtime.executable ?? "").startsWith("/")) {

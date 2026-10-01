@@ -52,10 +52,11 @@ import { existsSync, readdirSync } from "#src/meta/filesystem.ts";
 import { sha256OfFile } from "#src/meta/digest.ts";
 import { classifyCaseOutcome, outcomeTally, readCaseRecord } from "#src/claim/case-record.ts";
 import { type BandPlacement, type BandZone, type MeasuredDifficulty } from "#src/claim/battery-difficulty.ts";
-import { join } from "#src/meta/path.ts";
+import { basename, join } from "#src/meta/path.ts";
+import { BRIEF_FILE, TASKS_FILE } from "#src/meta/bundle-layout.ts";
 import { climbThresholds, decidingSample, type ClimbBattery } from "#src/run/climb-history.ts";
 import { decideDifficulty, fullPass } from "#src/run/climb-readout.ts";
-import { readRecordedBatteryRecord } from "#src/correctness-bundle/battery-record.ts";
+import { BATTERY_FILE, readRecordedBatteryRecord } from "#src/correctness-bundle/battery-record.ts";
 import {
   type Bundle,
   MODEL_IDENTITY,
@@ -82,7 +83,7 @@ const HORIZONS = [8, 12] as const;
 export const RESTATED_COSINE = 0.98;
 
 /** The two files the task-side rows already read, and so the two this digest row leaves alone. */
-export const SCORED_BUNDLE_FILES: ReadonlySet<string> = new Set(["brief.json", "tasks.json"]);
+export const SCORED_BUNDLE_FILES: ReadonlySet<string> = new Set([basename(BRIEF_FILE), basename(TASKS_FILE)]);
 
 /** Passed, verified, unaccepted and non-result counts of one battery. */
 export interface OutcomeCounts {
@@ -232,7 +233,7 @@ export function placementOf(
  *  the version recorded no battery of its own. */
 function measuredOf(battery: VersionBattery): MeasuredDifficulty {
   const runDir = join(battery.dir, "runs", battery.runId);
-  return existsSync(join(runDir, "battery.json"))
+  return existsSync(join(runDir, BATTERY_FILE))
     ? readRecordedBatteryRecord(runDir, battery.runId).measured
     : { items: [] };
 }

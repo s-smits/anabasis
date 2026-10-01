@@ -890,9 +890,7 @@ export function admissionLedgerLines({ campaign }: CampaignInput): string[] {
   const lines = ["", "## 4d admission and epoch-review ledger (counts and owners only)"];
   const dir = join(campaign, "analysis");
   const names = existsSync(dir) ? readdirSync(dir).sort() : [];
-  const admissions = names.filter(
-    (name) => name.endsWith("-admission.json") && name !== "latest-admission.json",
-  );
+  const admissions = names.filter((name) => name.endsWith("-admission.json"));
   const reviews = names.filter((name) => name.endsWith("-epoch-review.json"));
   if (admissions.length === 0 && reviews.length === 0) {
     lines.push("no admission or epoch-review records");

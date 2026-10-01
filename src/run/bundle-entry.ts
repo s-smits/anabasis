@@ -48,6 +48,7 @@ import { builtSolveIsolation } from "./built-agent-runtime.ts";
 import { resolveBuiltSlot } from "./harness-measure.ts";
 import { assertSupportedHostRuntime } from "./host-runtime-policy.ts";
 import { loadRecordedTasks } from "./run-driver.ts";
+import { PRODUCT_VERSION_FILE } from "./product-versions.ts";
 import { asError } from "../meta/runtime-values.ts";
 import { readJsonFile, writeJsonFile } from "../meta/completed-json.ts";
 
@@ -148,7 +149,7 @@ export function resolveTask(bundleDir: string, ref: string, purpose: "solve" | "
 
 export function loadContract(bundleDir: string): BundleContract {
   const briefUnknown = capturedJsonParse(readFileSync(join(bundleDir, BRIEF_FILE), "utf8"));
-  throwIfInvalid(validateBrief(briefUnknown), "brief.json");
+  throwIfInvalid(validateBrief(briefUnknown), BRIEF_FILE);
   const brief =
     /* SAFETY: throwIfInvalid above returns only when validateBrief reported ok, the only proof of this shape. */ briefUnknown as Brief;
   const corpus = capturedJsonParse(readFileSync(join(bundleDir, CONTROLS_FILE), "utf8"));
@@ -214,7 +215,7 @@ export async function runBundleTask(
 /** The bundle's slug: an exported bundle records it, a retained version's fingerprint names its
  *  project (its directory is the run id), and a `domains/` bundle is its directory name. */
 export function bundleSlug(bundleDir: string): string {
-  for (const file of ["harness.json", "version.json"]) {
+  for (const file of ["harness.json", PRODUCT_VERSION_FILE]) {
     const recorded = join(bundleDir, file);
     const parsed: unknown = existsSync(recorded) ? readJsonFile(recorded) : null;
     const owner = isRecord(parsed) && isRecord(parsed.fingerprint) ? parsed.fingerprint : parsed;

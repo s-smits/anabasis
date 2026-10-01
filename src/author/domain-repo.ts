@@ -101,7 +101,7 @@ const EXCLUDE = `${["/*", ...CANDIDATE_INTERFACE.map((entry) => `!/${entry}`), "
 /** The workspace contract and the pack beside it, refreshed from the pack on every resume so the
  *  bytes a session reads are fixed by the recorded source commit rather than by whatever an earlier
  *  session left behind. They stay on disk for reading and out of tracking. */
-const STARTER_REFERENCES = ["STARTER.md", "starter-pack"] as const;
+export const STARTER_REFERENCES = ["STARTER.md", "starter-pack"] as const;
 
 /** Point the workspace's runtime link at this controller's interpreter, resolved rather than as
  *  named: a version manager's `bun` may be a per-shell shim that outlives no session, while the

@@ -27,7 +27,7 @@ import { fingerprintSlug } from "#src/claim/fingerprint.ts";
 import { bundleSnapshotIdOf } from "#src/claim/bundle-snapshot.ts";
 import { campaignDir as campaignDirOf, defaultProductDir } from "#src/meta/campaign-root.ts";
 import { caseVerdictDefect, classifyCaseOutcome, outcomeTally } from "#src/claim/case-record.ts";
-import { readRecordedBatteryRecord } from "#src/correctness-bundle/battery-record.ts";
+import { BATTERY_FILE, readRecordedBatteryRecord } from "#src/correctness-bundle/battery-record.ts";
 import { campaignTraceRoots } from "#src/claim/trace-read.ts";
 import {
   type BatteriesBySnapshot,
@@ -151,7 +151,7 @@ function batteriesByBundleSnapshot(repoRoot: string, slug: string, campaignDir: 
   for (const root of new Set([defaultProductDir(repoRoot, slug), ...campaignTraceRoots(campaignDir)])) {
     for (const runId of dirs(join(root, "runs"))) {
       const runDir = join(root, "runs", runId);
-      if (!existsSync(join(runDir, "battery.json"))) continue;
+      if (!existsSync(join(runDir, BATTERY_FILE))) continue;
       let battery;
       try {
         battery = readRecordedBatteryRecord(runDir, runId);
@@ -187,7 +187,7 @@ function batteriesByBundleSnapshot(repoRoot: string, slug: string, campaignDir: 
       const cases = battery.cases;
       for (const [caseIndex, row] of cases.entries()) {
         const defect = caseVerdictDefect(row);
-        if (defect !== null) throw new Error(`${runDir}/battery.json: case ${caseIndex}: ${defect}`);
+        if (defect !== null) throw new Error(`${runDir}/${BATTERY_FILE}: case ${caseIndex}: ${defect}`);
       }
       const tally = outcomeTally(cases.map(classifyCaseOutcome));
       const claim = readJsonFileOrNull(join(campaignDir, "claims", `${runId}.json`));

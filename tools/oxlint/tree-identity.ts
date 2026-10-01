@@ -245,11 +245,15 @@ function identitySpellings(path: string, text: string): IdentitySpelling[] {
   return found;
 }
 
-/** What the row asks for, which is a different question in each of the three cases. */
-function ownerClause(owner: IdentitySpelling | undefined): string {
+/** What the row asks for, which is a different question in each of the three cases. An owner of a
+ *  longer path ending in the name counts: on 2026-10-01 judges answered no to `brief.json` and
+ *  `tools-spec.json` rows that said "no file names it" while BRIEF_FILE and TOOLS_SPEC_FILE did,
+ *  because the repair was to derive the name from that owner, not to give it a second one. */
+function ownerClause(owner: IdentitySpelling | undefined, value: string): string {
   if (owner === undefined) return "and no file names it";
   const where = `\`${owner.owner}\` in ${owner.path}`;
-  return owner.exported ? `and ${where} already names it` : `and ${where} names it but does not export it`;
+  const names = owner.value === value ? "names it" : `names it as \`${owner.value}\``;
+  return owner.exported ? `and ${where} already ${names}` : `and ${where} ${names} but does not export it`;
 }
 
 /** A name spelled in several files, which is where the repeat this tree actually carries lives. */
@@ -260,6 +264,7 @@ export function identitiesWithoutOwner(declaring: ReadonlyMap<string, string>): 
       spellings.set(found.value, [...(spellings.get(found.value) ?? []), found]);
     }
   }
+  const owners = [...spellings.values()].flat().filter((one) => one.owner !== null);
   const findings: TreeFinding[] = [];
   for (const [value, found] of spellings) {
     const files = new Set(found.map((one) => one.path));
@@ -269,11 +274,13 @@ export function identitiesWithoutOwner(declaring: ReadonlyMap<string, string>): 
     const floor = value.length < IDENTITY_LENGTH_FLOOR ? SHORT_NAME_FILE_FLOOR : IDENTITY_FILE_FLOOR;
     if (files.size < floor || anchor === undefined) continue;
     if (found.some((one) => one.typed)) continue;
+    const owner =
+      found.find((one) => one.owner !== null) ?? owners.find((one) => one.value.endsWith(`/${value}`));
     findings.push({
       kind: "identity-without-owner",
       path: anchor.path,
       line: anchor.line,
-      detail: `\`${value}\` is spelled in ${files.size} files ${ownerClause(found.find((one) => one.owner !== null))}`,
+      detail: `\`${value}\` is spelled in ${files.size} files ${ownerClause(owner, value)}`,
     });
   }
   return findings;

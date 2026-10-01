@@ -106,6 +106,14 @@ export const noHandReadControllerEvidenceRule = defineRule({
       return joined ? parent : node;
     }
 
+    /** A file name spelled as a string or template. `const OPENING = "opening.json"` names the
+     *  file; its uses are where a read happens. */
+    function spelled(node: ESTree.Node): void {
+      const file = fileLiteral(node);
+      const naming = node.parent?.type === "VariableDeclarator" && node.parent.init === node;
+      if (file !== null && !naming) paths.push({ node: pathOf(node), file });
+    }
+
     return {
       before: () =>
         isUnder(context.filename, ".claude/skills") &&
@@ -131,17 +139,8 @@ export const noHandReadControllerEvidenceRule = defineRule({
         if (node.id.type === "Identifier" && file !== null) names.set(node.id.name, file);
       },
       CallExpression: (node) => local.call(node),
-      Literal(node) {
-        const file = fileLiteral(node);
-        // `const OPENING = "opening.json"` names the file; its uses are where a read happens.
-        const naming = node.parent?.type === "VariableDeclarator" && node.parent.init === node;
-        if (file !== null && !naming) paths.push({ node: pathOf(node), file });
-      },
-      TemplateLiteral(node) {
-        const file = fileLiteral(node);
-        const naming = node.parent?.type === "VariableDeclarator" && node.parent.init === node;
-        if (file !== null && !naming) paths.push({ node: pathOf(node), file });
-      },
+      Literal: spelled,
+      TemplateLiteral: spelled,
       Identifier(node) {
         const parent = node.parent;
         if (parent?.type === "CallExpression" && parent.arguments.some((argument) => argument === node)) {

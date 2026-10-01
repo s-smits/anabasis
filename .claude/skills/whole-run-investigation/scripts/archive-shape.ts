@@ -15,6 +15,11 @@ export const ARCHIVE_SCHEMA = "wri-archive/v2";
 export const ARCHIVE_FILES = ["main_synthesis.md", "luna_syntheses.md", "digest.md", "review.json"] as const;
 export const [MAIN, LUNA, DIGEST, REVIEW] = ARCHIVE_FILES;
 export const ARCHIVE_PATHS: ReadonlySet<string> = new Set<string>(ARCHIVE_FILES);
+/** The schema of the ledger projection `review.json` carries, written by the scaffold and checked here. */
+export const LEDGER_PROJECTION_SCHEMA = "superloop-ledger-projection/v1";
+/** The measured worktree's safeguard helper, relative to its root: the file the safeguard census
+ *  is derived from and the one its `definitionFile` names. */
+export const SAFEGUARD_DEFINITION_FILE = "src/meta/safeguard.ts";
 
 /** The sections of `main_synthesis.md`, written once as a skeleton for the primary to fill. */
 export const MAIN_HEADINGS = [
@@ -311,7 +316,7 @@ export function ledgerProjection(
 ): void {
   const row = requiredRecord(review.ledgerProjection, "ledgerProjection", issues);
   if (!row) return;
-  if (row.schema !== "superloop-ledger-projection/v1") {
+  if (row.schema !== LEDGER_PROJECTION_SCHEMA) {
     issues.push("ledgerProjection schema is not canonical");
   }
   if (row.authority !== "projection-only") issues.push("ledgerProjection must be projection-only");

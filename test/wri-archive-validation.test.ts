@@ -568,13 +568,6 @@ describe("WRI four-file archive contract", () => {
       ],
     ],
     [
-      "an archive declaring the previous schema instead of being rewritten",
-      (value) => {
-        value.schema = "wri-archive/v1";
-      },
-      ["schema wri-archive/v1 is the previous archive shape and is refused"],
-    ],
-    [
       "a verdict list without the rehearsal ledger",
       (value) => {
         value.digestVerdicts = value.digestVerdicts.filter((row: any) => row.id !== "rehearsal-ledger");

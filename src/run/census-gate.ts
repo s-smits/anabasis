@@ -42,6 +42,8 @@ import { CONFORMANCE_FILE } from "../claim/conformance-evidence.ts";
 
 /** The control-census record written beside an iteration's candidate. */
 export const CENSUS_FILE = "census.json";
+/** The recorded evidence of a census the host environment refused, which its non-result row points at. */
+export const ENVIRONMENT_NON_RESULT_FILE = "environment-non-result.json";
 
 interface CensusGateOptions {
   verifierLifetime?: VerifierLifetime;
@@ -281,8 +283,7 @@ function settleEnvironment(
   evidence: string,
   completed: Completed = NOTHING_COMPLETED,
 ): CampaignFeedback[] {
-  const file = "environment-non-result.json";
-  writeCompleted(join(context.iterationDir, file), payload);
+  writeCompleted(join(context.iterationDir, ENVIRONMENT_NON_RESULT_FILE), payload);
   return persistFailure(
     context,
     [
@@ -303,7 +304,7 @@ function settleEnvironment(
       },
     ],
     completed,
-    { kind: "non-result", evidence: tracePointer(context.iterationDir, file) },
+    { kind: "non-result", evidence: tracePointer(context.iterationDir, ENVIRONMENT_NON_RESULT_FILE) },
   );
 }
 

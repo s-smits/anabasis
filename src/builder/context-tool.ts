@@ -23,7 +23,15 @@ import { sha256 } from "../meta/digest.ts";
 import { defineTool } from "../solve/define-tool.ts";
 import { eachFileLine, readFileCharacterWindow, readFileWindow } from "./file-window.ts";
 import { truncateLine } from "../meta/truncate.ts";
-import { characterLimit, characterWindow, LIST_WINDOW_ROWS, readWindow, windowNote } from "./read-window.ts";
+import {
+  type CharacterWindow,
+  characterLimit,
+  characterWindow,
+  LIST_WINDOW_ROWS,
+  type ReadWindow,
+  readWindow,
+  windowNote,
+} from "./read-window.ts";
 import type { PreparedUserContext, UserContextFile } from "./user-context.ts";
 import { capturedJsonParse } from "../meta/json-runtime.ts";
 import { MEMORY_FILE, SCRATCHPAD_FILE } from "../author/builder-memory.ts";
@@ -227,28 +235,17 @@ function overview(docs: readonly ContextDocument[], offset?: number, limit?: num
 }
 
 function page(doc: ContextDocument, offset?: number, limit?: number, characterOffset?: number): string {
-  if ("file" in doc) {
-    const { file } = doc;
-    const lines = characterOffset === undefined ? readFileWindow(file.path, file.lines, offset, limit) : null;
-    const chars =
-      characterOffset !== undefined || lines?.cut === true
-        ? readFileCharacterWindow(file.path, file.characters, characterOffset, characterLimit(limit))
-        : null;
-    const window = chars ?? lines;
-    if (window === null) throw new Error("context page window was not constructed");
-    const note = windowNote(
-      window,
-      chars === null ? "lines" : "characters",
-      chars === null ? "offset" : "characterOffset",
-    );
-    return `${doc.id} ${doc.title} — ${note}\n\n${window.text}`;
-  }
-  const text = doc.text();
-  const lines = characterOffset === undefined ? readWindow(text, offset, limit) : null;
-  const chars =
-    characterOffset !== undefined || lines?.cut === true
-      ? characterWindow(text, characterOffset, characterLimit(limit))
-      : null;
+  const text = "file" in doc ? null : doc.text();
+  const readLines = (): ReadWindow =>
+    "file" in doc
+      ? readFileWindow(doc.file.path, doc.file.lines, offset, limit)
+      : readWindow(text ?? "", offset, limit);
+  const readCharacters = (): CharacterWindow =>
+    "file" in doc
+      ? readFileCharacterWindow(doc.file.path, doc.file.characters, characterOffset, characterLimit(limit))
+      : characterWindow(text ?? "", characterOffset, characterLimit(limit));
+  const lines = characterOffset === undefined ? readLines() : null;
+  const chars = characterOffset !== undefined || lines?.cut === true ? readCharacters() : null;
   const window = chars ?? lines;
   if (window === null) throw new Error("context page window was not constructed");
   const note = windowNote(

@@ -483,8 +483,8 @@ describe("scoreboard", () => {
     const [third, START] = [`${RUN}-i03`, "2026-09-23T00:00:00.000Z"];
     // Each battery's minutes per task against the product's 60-minute wall, and the tasks that failed.
     const batteries: [string, Record<string, number>, string[]][] = [
-      [RUN, { a: 3, b: 15, c: 30 }, ["b", "c"]],
-      [BATTERY, { a: 6, b: 12 }, []],
+      [RUN, { a: 3, b: 9, c: 30 }, ["b", "c"]],
+      [BATTERY, { a: 6, b: 18 }, []],
       [third, { d: 30, g: 30, h: 30 }, ["g", "h"]],
     ];
     const rows: ReturnType<typeof caseRecordRow>[] = [];
@@ -524,20 +524,21 @@ describe("scoreboard", () => {
       { earned: 3, last: 1, carried: 1, passed: 1, answered: 1 },
     ];
     // The signal batteries are the first, whose `b` and `c` no review settled, and the third at 1/2.
-    // The batteries' median case shares are 0.25, 0.15 and 0.5 of each product's wall.
+    // The batteries' median case shares are 0.15, 0.2 and 0.5 of each product's wall, so the run's
+    // median is the second battery's, neither the first share nor the latest.
     expect(JSON.parse(board("--json"))).toEqual({
       runs: [
         expect.objectContaining({
           first8,
           fails: { held: 1, against: 1, unsettled: 2 },
-          wall: { median: 0.25, latest: 0.5, batteries: 3 },
+          wall: { median: 0.2, latest: 0.5, batteries: 3 },
           followUp,
         }),
       ],
-      groups: [expect.objectContaining({ first8, wall: { median: 0.25, runs: 1 }, followUp })],
+      groups: [expect.objectContaining({ first8, wall: { median: 0.2, runs: 1 }, followUp })],
     });
     expect(board()).toContain(
-      "first-8 signal 2/3  wall 25.0% (n 1 runs)  earned fails 3, 1 carried unchanged, 1 answered",
+      "first-8 signal 2/3  wall 20.0% (n 1 runs)  earned fails 3, 1 carried unchanged, 1 answered",
     );
   });
 });

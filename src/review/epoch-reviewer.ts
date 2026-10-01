@@ -185,7 +185,12 @@ const PLACEMENT_LEADS = {
   above:
     " A placement above the aim is a lead, not a finding on its own: it asks which obligation of the request those tasks do not demand, or demand only one at a time, and tasks that were easy while leaving none undemanded are a result to report, not a defect to record.",
   below:
-    " A placement on or below the aim is a lead, not a finding on its own, and hardness is the last of its readings rather than the first. A rule the checks apply that the brief does not publish fails every task: probe an accept control at a field the public contract leaves free, and a check that moves on it is that rule, owned by `correctness-model/brief.json`. Where the verified failures are listed by declared check, start from the first one listed: probe at a path it reads, with a value a practitioner of the request would accept and the published rules allow, and say whether it reads narrower than its rule, wider, or as stated. An answer a correct solver cannot write through the tools it was given fails every task too, owned by `agent/tools-spec.json`; the accept controls are the shapes the writer is known to produce. Record an observation of hardness, owned by correctness-model/tasks.json, once you have read the brief and the writer schema against the artifact and neither holds.",
+    // ABLATED(hardness-observation): "hardness is the last of its readings" and the closing instruction to
+    // record an observation of hardness on the task set. That observation reaches the Builder with no
+    // check or path named, on the very battery whose fails are earned (AGENTS.md "Ablated components").
+    // " A placement on or below the aim is a lead, not a finding on its own, and hardness is the last of its readings rather than the first. A rule the checks apply that the brief does not publish fails every task: probe an accept control at a field the public contract leaves free, and a check that moves on it is that rule, owned by `correctness-model/brief.json`. Where the verified failures are listed by declared check, start from the first one listed: probe at a path it reads, with a value a practitioner of the request would accept and the published rules allow, and say whether it reads narrower than its rule, wider, or as stated. An answer a correct solver cannot write through the tools it was given fails every task too, owned by `agent/tools-spec.json`; the accept controls are the shapes the writer is known to produce. Record an observation of hardness, owned by correctness-model/tasks.json, once you have read the brief and the writer schema against the artifact and neither holds.",
+    // ADDED(hardness-observation): the lead and its two probes, with no finding asked for when both hold.
+    " A placement on or below the aim is a lead, not a finding on its own. A rule the checks apply that the brief does not publish fails every task: probe an accept control at a field the public contract leaves free, and a check that moves on it is that rule, owned by `correctness-model/brief.json`. Where the verified failures are listed by declared check, start from the first one listed: probe at a path it reads, with a value a practitioner of the request would accept and the published rules allow, and say whether it reads narrower than its rule, wider, or as stated. An answer a correct solver cannot write through the tools it was given fails every task too, owned by `agent/tools-spec.json`; the accept controls are the shapes the writer is known to produce.",
 };
 
 /** What each side did with a contested case, in the words the reviewer reads it in. */
@@ -257,7 +262,9 @@ function openSession(input: EpochReviewInput): OpenSession {
     reviewerEffort: input.review.enabled ? (input.review.reasoningEffort ?? null) : null,
     requestDigest: hashJsonValue({
       publicRequest: input.publicRequest,
-      policy: "review-probing-findings/v14",
+      // ABLATED(hardness-observation): policy: "review-probing-findings/v14",
+      // ADDED(hardness-observation): a review under this arm's text is not reused for the control's.
+      policy: "review-probing-findings/v14+hardness-observation",
       prompt: EPOCH_REVIEW_PROMPT,
     }),
     obligationsDigest: obligationsDigest(input, disputableIssues(input)),

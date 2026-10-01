@@ -232,7 +232,9 @@ describe("the epoch reviewer's orientation", () => {
       expect(prompt).toContain(placement);
       expect(prompt).not.toContain("as a first battery should");
       expect(prompt).toContain("A placement on or below the aim is a lead, not a finding on its own");
-      expect(prompt).toContain("hardness is the last of its readings rather than the first");
+      // ABLATED(hardness-observation): expect(prompt).toContain("hardness is the last of its readings rather than the first");
+      // ADDED(hardness-observation): the lead keeps its probes and asks for no observation of hardness.
+      expect(prompt).not.toMatch(/hardness is the last of its readings|Record an observation of hardness/);
       // Each reading names the routable owner that repairs it, and the instrument for the first.
       expect(prompt).toContain("rule the checks apply that the brief does not publish fails every task");
       expect(prompt).toContain("probe an accept control at a field the public contract leaves free");

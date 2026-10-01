@@ -2023,7 +2023,8 @@ Most of the shapes are dead or misplaced code. `single-reader-export` is a file'
 with one reader in the same directory, and the repair is to move it in. `test-only-export` /
 `test-only-module` is something only tests call, which you delete with its test or wire into a live path.
 `unread-field` is a field named nowhere else, and `orphan-module` a file nothing imports, spawns or names,
-and both are deleted. `unproduced-set-member` is a union member nothing produces, so it goes, together
+and both are deleted. `unread-forward` is a re-export no file imports from the forwarding module, and the
+forward goes. `unproduced-set-member` is a union member nothing produces, so it goes, together
 with its branch.
 
 The rest are duplication and history. `copied-block` is ≥64 tokens repeated at ≥2 non-test sites, which
@@ -2364,7 +2365,7 @@ the turn, so change the spelling rather than asking for an allowlist entry, and 
 Two different guards get called "the guard", and they admit different things, which is how this paragraph
 once came to recommend a redirect that does not work. Your own Bash calls go through the `dcg` binary
 alone. The Builder's go through `src/builder/command-guard.ts`, which runs that same binary and then adds
-`privateScratchRedirect`. That admits a target matching `SCRATCH_TARGET`, which is `~/…`, `$HOME/…` or
+`scratchRedirectResidual`. That admits a target matching `SCRATCH_TARGET`, which is `~/…`, `$HOME/…` or
 `$TMPDIR/…`, bare or braced, and a relative target expanding a plain variable, such as a loop's
 `> "scratch/opt-$i.log"`, when every `cd` in the command stays in its own tree. dcg alone admits neither
 `$HOME/…` nor `$TMPDIR/…`. Probed against 0.14.4 on 2026-09-23, `> $HOME/f`, `> $TMPDIR/f` and

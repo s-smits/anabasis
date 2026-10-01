@@ -48,7 +48,7 @@ export const DCG_RULES: readonly string[] = [
  *  the harness's own agent/config.yaml, so the shared line names no number. dcg on its own refuses a
  *  redirect to `$HOME/x` and to `$TMPDIR/…`, which costs a solver turn after turn until it finds a
  *  spelling that passes. The guard caller admits both before dcg sees them (command-guard.ts
- *  `privateScratchRedirect`), which is why the write line names `$HOME` beside `~`.
+ *  `scratchRedirectResidual`), which is why the write line names `$HOME` beside `~`.
  *  It leaves out `$TMPDIR`, which the Built shell makes fresh for each command and never reads back,
  *  so a rule naming it would offer the solver a place its next command cannot revisit. The time
  *  line names the parameter because a long build or search cut off at the default wall finds

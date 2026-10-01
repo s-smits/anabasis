@@ -31,7 +31,7 @@ import { runtimeProcess } from "../meta/process.ts";
 import { darwinPlatformReadRoots } from "./wall-policy.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 
-export { DARWIN_SEATBELT_ID, LINUX_BWRAP_ID };
+export { LINUX_BWRAP_ID };
 
 type OsIsolationPlatform = "darwin" | "linux";
 

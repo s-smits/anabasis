@@ -57,12 +57,6 @@ describe("a measured round", () => {
     // Refusals with no placement still count as an observed round: a rebuild, not a first measurement.
     expect(decideNextMove("adopted", [], measured(0, 5)).move).toBe("rebuild");
   });
-
-  it("stops on a blocking environment row", () => {
-    const blocked = decideNextMove("adopted", rows("blocking", "environment"), measured(3));
-    expect(blocked.move).toBe("stop");
-    expect(blocked.reason).toContain("environment outside the product");
-  });
 });
 
 describe("the reopen route", () => {
@@ -76,6 +70,8 @@ describe("the reopen route", () => {
   );
 
   it("stops only on blocking environment feedback, and builds when nothing is adopted", () => {
+    const blocked = decideNextMove("adopted", rows("blocking", "environment"), measured(3));
+    expect(blocked).toMatchObject({ move: "stop", reason: expect.stringContaining("outside the product") });
     expect(
       decideNextMove("adopted", rows("blocking", "environment", "correctness-model/tasks.json")).move,
     ).toBe("stop");

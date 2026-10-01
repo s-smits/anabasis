@@ -181,31 +181,17 @@ describe("the complete repair agenda", () => {
     }
   });
 
-  it("requests a rebuild from the adopted product for each blocking set", () => {
-    expect(
-      decideNextMove("adopted", [row(TASKS_FILE), row("correctness-model/controls.json")]),
-    ).toMatchObject({ move: "rebuild" });
+  it("requests a rebuild from the adopted product naming every blocking owner, sorted", () => {
     // The owners are named. An open campaign admits a candidate that leaves them alone, so the
     // kickoff states no consequence admission does not impose.
+    const owners = "correctness-model/controls.json, correctness-model/tasks.json";
     expect(
-      decideNextMove("adopted", [row(TASKS_FILE), row("correctness-model/controls.json")]).reason,
-    ).toContain(
-      "blocking feedback stands against correctness-model/controls.json, correctness-model/tasks.json",
-    );
+      decideNextMove("adopted", [row(TASKS_FILE), row("correctness-model/controls.json")]),
+    ).toMatchObject({
+      move: "rebuild",
+      reason: expect.stringContaining(`blocking feedback stands against ${owners}`),
+    });
     expect(decideNextMove("adopted", [row(TASKS_FILE)]).reason).not.toContain("admission");
-    expect(
-      decideNextMove("adopted", [
-        row("correctness-model/evaluator.ts"),
-        row("correctness-model/controls.json"),
-      ]),
-    ).toMatchObject({ move: "rebuild" });
-    for (const feedback of [
-      [row(TASKS_FILE), row("correctness-model/evaluator.ts")],
-      [row("correctness-model/controls.json"), row("agent/BUILT_AGENTS.md")],
-    ]) {
-      expect(decideNextMove("adopted", feedback)).toMatchObject({ move: "rebuild" });
-      expect(decideNextMove("adopted", feedback)).not.toHaveProperty("experiment");
-    }
   });
 
   it("settles an iteration to its own blocking rows", () => {

@@ -309,7 +309,8 @@ function refuseBrokenFreeze(input: PostBuildInput): CandidateEvaluation | null {
 /** The recorded solves this round's battery grades instead of solving, or undefined when it solves
  *  every task. Whichever way it goes, the reason is recorded beside the round. */
 function batteryReuse(input: PostBuildInput): BatteryReuse | undefined {
-  const remeasure = input.build === "reused" && input.decision.remeasure !== undefined;
+  // A reused tree is a `measure` round: a remeasure, or a first measurement with no solve to regrade.
+  const remeasure = input.build === "reused";
   if (!remeasure && input.build !== "candidate") return undefined;
   const { reuse, reason } = recordedRegrade({
     repoRoot: input.repoRoot,

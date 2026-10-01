@@ -258,7 +258,7 @@ describe("runBuildStep battery sizing", () => {
         deps: { build },
         observer: createRunObserver(root, SLUG, "next"),
       }),
-      { move, seed: "adopted", reason: "Choose the next experiment." },
+      { move, reason: "Choose the next experiment." },
       { kickoff: "assign parts", prior: null, lineage: null, difficulty },
     );
     return required(seen[0], "build call");

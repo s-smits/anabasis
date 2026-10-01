@@ -52,7 +52,7 @@ function measured(admitted: number, excluded = 0): ClimbReadout {
 
 describe("a measured round", () => {
   it("leaves the round to the Builder however many rounds have been measured", () => {
-    expect(decideNextMove("adopted", [], measured(3))).toMatchObject({ move: "rebuild", seed: "adopted" });
+    expect(decideNextMove("adopted", [], measured(3))).toMatchObject({ move: "rebuild" });
     expect(decideNextMove("adopted", [], measured(1, 2)).move).toBe("rebuild");
     // Refusals with no placement still count as an observed round: a rebuild, not a first measurement.
     expect(decideNextMove("adopted", [], measured(0, 5)).move).toBe("rebuild");
@@ -70,7 +70,7 @@ describe("the reopen route", () => {
     "reopens the adopted product on blocking %s feedback and names the owner",
     (owner) => {
       const move = decideNextMove("adopted", rows("blocking", owner));
-      expect(move).toMatchObject({ move: "rebuild", seed: "adopted" });
+      expect(move).toMatchObject({ move: "rebuild" });
       expect(move.reason).toContain(owner);
     },
   );
@@ -88,9 +88,10 @@ describe("the reopen route", () => {
 describe("a battery the environment cut short", () => {
   const remeasure = { of: "r1", taskIds: ["t4", "t5"] };
 
-  it("is measured again in place of a rebuild, carrying the cases it solves again", () => {
+  it("is measured again in place of a rebuild, naming the cases it solves again", () => {
     const move = decideNextMove("adopted", rows("advisory", "environment"), measured(1), false, remeasure);
-    expect(move).toMatchObject({ move: "measure", remeasure });
+    expect(move.move).toBe("measure");
+    expect(move.reason).toContain("2 case(s) of battery r1 ended in environment-owned non-results");
     expect(move.reason).toContain("rerun them without changing the harness");
   });
 
@@ -185,7 +186,7 @@ describe("the next move on disk", () => {
     const root = scratchRepo();
     writeBlockingTests(root, "base");
     const first = selectAs(root, "round-1");
-    expect(first.decision).toMatchObject({ move: "rebuild", seed: "adopted" });
+    expect(first.decision).toMatchObject({ move: "rebuild" });
     expect(first.decision.reopenKey).toMatch(/^experiment:[a-f0-9]{64}$/);
     // The kickoff stays the operator's one line: no curriculum rides on it.
     expect(first.kickoff).toBe("design a steel truss bridge");
@@ -203,7 +204,7 @@ describe("the next move on disk", () => {
       sealSaturatedBattery(root, `saturated-${String(i)}`, `2026-08-10T0${String(i)}:00:00Z`);
     }
     const open = selectAs(root, "round-1").decision;
-    expect(open).toMatchObject({ move: "rebuild", seed: "adopted" });
+    expect(open).toMatchObject({ move: "rebuild" });
     expect(open.reason).toContain("Builder");
   });
 

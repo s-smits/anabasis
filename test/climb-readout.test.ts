@@ -25,6 +25,7 @@ import type {
 import {
   type ClimbReadout,
   climbReadout,
+  excludedSummary,
   readoutHistoryDocuments,
   renderBatteryContract,
   renderReadout,
@@ -179,7 +180,7 @@ describe("one reading per battery", () => {
       ["r2", null],
       ["r1", "on-aim"],
     ]);
-    expect(readout.decision.refused).toBe(25);
+    expect(readout.decision.rationale).toBe("all 25 attempts refused at submission, none truth-verified");
     expect(lineOf(render(readout), "r2")).toBe(
       "- r2 (P1, T1, S1): 0 passed of 0 verified, 25 unaccepted, 0 non-results.",
     );
@@ -434,6 +435,32 @@ describe("rendering", () => {
       row("r1", 0, { passed: 1, n: 1, slots: 6, effort }),
     ];
     for (const battery of silent) expect(render(readoutOf(battery))).not.toContain("slowest solve");
+  });
+});
+
+describe("the refusals, summarised for the author", () => {
+  it("says nothing without exclusions, names each battery, and groups one shared reason", () => {
+    expect(excludedSummary([], 3)).toBeNull();
+    expect(
+      excludedSummary(
+        [
+          { runId: "r1", reason: "not comparable", claimRefused: false },
+          { runId: "r2", reason: "claim refused", claimRefused: true },
+        ],
+        1,
+      ),
+    ).toBe(
+      "2 of 3 recorded batteries excluded from difficulty evidence: not comparable — r1; claim refused — r2",
+    );
+    // A whole campaign read at another pin shares one reason: it is stated once, not per run.
+    const shared = Array.from({ length: 6 }, (_, i) => ({
+      runId: `r${String(i)}`,
+      reason: "not comparable",
+      claimRefused: false,
+    }));
+    const summary = excludedSummary(shared, 0);
+    expect(summary).toContain("not comparable — r0, r1, r2, r3 and 2 more");
+    expect(summary?.match(/not comparable/g)).toHaveLength(1);
   });
 });
 

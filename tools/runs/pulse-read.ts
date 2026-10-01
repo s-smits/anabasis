@@ -7,9 +7,7 @@ import { readEpochRecord } from "../../src/author/campaign-epoch.ts";
 import type { BuilderCustomToolCall } from "../../src/author/builder-custom-tool-call.ts";
 import { CASE_TRACE_FILE, PUBLIC_TASK_FILE } from "../../src/correctness-bundle/recorded-solve.ts";
 import { CENSUS_FILE } from "../../src/run/census-gate.ts";
-import type { BandZone, MeasuredDifficulty } from "../../src/claim/battery-difficulty.ts";
-import type { ClimbBattery } from "../../src/run/climb-history.ts";
-import { decideDifficulty } from "../../src/run/climb-readout.ts";
+import { type BandZone, placeOnBand } from "../../src/claim/battery-difficulty.ts";
 import { existsSync, lstatSync, readFileSync, readdirSync } from "../../src/meta/filesystem.ts";
 import { parseJsonAs } from "../../src/meta/json-runtime.ts";
 import { isRecord, isString, type JsonValue } from "../../src/meta/json-shape.ts";
@@ -293,12 +291,10 @@ function readBatteries(row: RunRow, band: readonly [number, number]): PulseBatte
   const decisions = readDifficultyDecisions(row.location).rows;
   return row.cases.batteries.map(({ runId, tally }) => {
     const decided = decisions.find((decision) => decision.evidenceRunIds.at(-1) === runId)?.placement ?? null;
-    // Until the decision is recorded, placed as it will place the whole battery.
+    // Until the decision is recorded, placed as it will place the whole battery: nowhere when no
+    // case was verified, and otherwise over every verified and unaccepted attempt.
     const { passed, verified, unaccepted } = tally;
-    const measured: MeasuredDifficulty = { items: [] };
-    // SAFETY: `decideDifficulty` reads runId and batterySha256 only into the evidence it returns.
-    const whole = { passed, unaccepted, measured, n: verified + unaccepted } as ClimbBattery;
-    const placed = decided ?? decideDifficulty([whole], [...band]).placement;
+    const placed = decided ?? (verified === 0 ? null : placeOnBand(passed, verified + unaccepted, band));
     return {
       passed,
       verified,

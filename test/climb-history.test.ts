@@ -26,7 +26,6 @@ import {
   type AdmittedClimbRow,
   type ClimbBatteriesRead,
   climbThresholds,
-  excludedSummary,
   readClimbBatteries,
 } from "../src/run/climb-history.ts";
 import { readClimbReadout, renderReadout } from "../src/run/climb-readout.ts";
@@ -334,23 +333,6 @@ describe("what one battery contributes to the reading", () => {
     expect(admittedOnly(tree).authoring).toMatchObject({ solveWallMinutes: 12, wallBound: 2 });
   });
 
-  it("names a family every case of which ended in a non-result, and no family that kept one scored", () => {
-    const tree = tmp();
-    const cut = { pass: null, acceptedSubmit: false, runtimeNonResult: "usage limit reached" };
-    writeBattery(
-      tree,
-      "r1",
-      [
-        { taskId: "a", family: "span", pass: true },
-        { taskId: "b", family: "span", ...cut },
-        { taskId: "c", family: "joint", ...cut },
-        { taskId: "d", family: "joint", ...cut },
-      ],
-      RECORDED_AT,
-    );
-    expect(admittedOnly(tree).battery.censoredFamilies).toEqual(["joint"]);
-  });
-
   it("calls the failing set unknown, never empty, when one failing row carries no id", () => {
     const tree = tmp();
     writeBattery(
@@ -493,32 +475,6 @@ describe("cases the battery's completed review settled against their check", () 
     const { battery } = reviewed(dispositions, status);
     expect(battery).toMatchObject(UNTOUCHED);
     expect(battery).not.toHaveProperty("settledAgainst");
-  });
-});
-
-describe("the refusals, summarised for the author", () => {
-  it("says nothing without exclusions, names each battery, and groups one shared reason", () => {
-    expect(excludedSummary([], 3)).toBeNull();
-    expect(
-      excludedSummary(
-        [
-          { runId: "r1", reason: "not comparable", claimRefused: false },
-          { runId: "r2", reason: "claim refused", claimRefused: true },
-        ],
-        1,
-      ),
-    ).toBe(
-      "2 of 3 recorded batteries excluded from difficulty evidence: not comparable — r1; claim refused — r2",
-    );
-    // A whole campaign read at another pin shares one reason: it is stated once, not per run.
-    const shared = Array.from({ length: 6 }, (_, i) => ({
-      runId: `r${String(i)}`,
-      reason: "not comparable",
-      claimRefused: false,
-    }));
-    const summary = excludedSummary(shared, 0);
-    expect(summary).toContain("not comparable — r0, r1, r2, r3 and 2 more");
-    expect(summary?.match(/not comparable/g)).toHaveLength(1);
   });
 });
 

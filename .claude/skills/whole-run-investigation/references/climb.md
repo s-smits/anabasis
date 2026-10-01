@@ -156,10 +156,9 @@ Inside the readout, read these fields and nothing looser:
 | field | what it says |
 |---|---|
 | `band`, `admitted`, `excluded` | the band the run measured against, how many batteries `admitBattery` let into the history, and what `excludedSummary` names as left out; zero admitted beside exclusions means every measurement was refused, not that nothing ran, and an exclusion is the usual reason a climb looks stalled |
-| `decision.placement` | `placeOnBand` (`src/claim/battery-difficulty.ts`) over the deciding sample, or null when no battery is recorded, every attempt was refused at submission (`refused` says how many) or the sample could not be placed |
+| `decision.placement` | `placeOnBand` (`src/claim/battery-difficulty.ts`) over the deciding sample, or null when no battery is recorded, every attempt was refused at submission (the `rationale` says how many) or the sample could not be placed |
 | `decision.repeated` | the failing core the last two batteries of one task set share, as `cases` and the two `scores`, stated beside the placement rather than instead of it |
 | `decision.conflict` | one family significantly too easy beside one significantly too hard, named as `easy` and `hard` |
-| `decision.censored` | families the environment censored whole, about which the placement says nothing |
 | `decision.evidence` | every battery the decision derives from, by `runId` and `batterySha256` |
 | a row's `zone`, `aim`, `toAim`, `wilson` | the zone `placeOnBand` gave, as AGENTS.md "Goals and the climb" defines the five under "The band and the placement"; `aim` the pass counts inside `band` at the row's size; `toAim` the signed distance in verified passes, negative above the aim; `wilson` the interval at `REPORTING_Z` (`src/claim/estimation.ts`) |
 | a row's `passed`, `verified`, `unaccepted`, `nonResults` | passes out of verified cases, with the other two kinds beside them; `passed` is null when the claim was refused |

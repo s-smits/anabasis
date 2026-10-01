@@ -144,7 +144,7 @@ it.each(["all", "unmeasured", "exhausted"] as const)(
       builder: { kind: "codex", model: "test-model", reasoningEffort: "low" },
       built: { reasoningEffort: "low" },
     });
-    expect(selected.decision).toMatchObject({ move: "rebuild", seed: "adopted" });
+    expect(selected.decision).toMatchObject({ move: "rebuild" });
     expect(selected.readout?.decision).toMatchObject({ placement: { zone: "too-easy" } });
     expect(selected.decision).not.toHaveProperty("final");
     expect(selected.kickoff).toBe("assign parts to slots");
@@ -339,7 +339,7 @@ it("carries the host-derived operation and changed subset out of the build step"
       },
       observer: createRunObserver(root, SLUG, "next-round"),
     }),
-    { move: "rebuild", seed: "adopted", reason: "Choose the next experiment." },
+    { move: "rebuild", reason: "Choose the next experiment." },
     { kickoff: "assign parts", prior: null, lineage: null, difficulty: null },
   );
   expect(result.build).toBe("candidate");

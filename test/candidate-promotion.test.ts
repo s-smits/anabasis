@@ -252,7 +252,7 @@ describe("promoteCandidate — one battery, one decision", () => {
         built: { reasoningEffort: "low" },
       });
       expect(selected.readout?.decision).toMatchObject({ placement: { zone: "too-hard" } });
-      expect(selected.decision).toMatchObject({ move: "rebuild", seed: "adopted" });
+      expect(selected.decision).toMatchObject({ move: "rebuild" });
       expect(selected.kickoff).toBe("build trusses");
       let calls = 0;
       const build: FullRunDeps["build"] = async (_manifest, options) => {

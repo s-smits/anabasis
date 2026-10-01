@@ -348,12 +348,12 @@ of a check stricter than its published rule, and on the public rules it was an a
 
 `decideDifficulty` writes one record per round under `difficulty-decisions/`. It is named after the
 round it opened and places the latest battery in its `evidence`, so decision i12 places battery i11.
-Its `placement` is null when the battery holds no verified case or `placeOnBand` refused it. Three facts
+Its `placement` is null when the battery holds no verified case or `placeOnBand` refused it. Two facts
 are stated beside the placement and never instead of it: a repeated failure set (at least two cases, and
-at least half the smaller failing set, failing in both of the last two batteries of one task set), a
-family conflict (one family significantly too easy beside one significantly too hard), and the censored
-families. Before `difficulty-decision/v7` the first two set the zone aside, so a battery whose same
-cases failed twice was placed nowhere however far above the aim it read.
+at least half the smaller failing set, failing in both of the last two batteries of one task set) and a
+family conflict (one family significantly too easy beside one significantly too hard). Before
+`difficulty-decision/v7` both set the zone aside, so a battery whose same cases failed twice was placed
+nowhere however far above the aim it read.
 
 ### Who hears the placement, and what it drives
 

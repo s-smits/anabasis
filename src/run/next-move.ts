@@ -19,11 +19,8 @@ export interface NextMove {
   /** `rebuild` is the retained round name for adopted-product authoring, not an order to redesign. */
   move: "build" | "measure" | "rebuild" | "stop";
   reason: string;
-  seed?: "adopted";
   /** One measured condition opens one resumable pass; prose changes cannot reset its allowance. */
   reopenKey?: string;
-  /** A `measure` that solves only these cases of that battery again and regrades the rest. */
-  remeasure?: Remeasure;
 }
 
 interface SelectedNextMove {
@@ -41,7 +38,7 @@ interface SelectedNextMove {
  * session writes into. Carry the pass in the build step alone and a seeded continuation records an
  * empty opening epoch beside the working one. */
 export function epochPassOf(decision: NextMove): string | undefined {
-  if (decision.seed === undefined) return undefined;
+  if (decision.move !== "rebuild") return undefined;
   return decision.reopenKey ?? decision.reason;
 }
 
@@ -83,7 +80,6 @@ export function decideNextMove(
     return {
       move: "measure",
       reason: `${remeasure.taskIds.length} case(s) of battery ${remeasure.of} ended in environment-owned non-results; rerun them without changing the harness and regrade the rest`,
-      remeasure,
     };
   }
   const reason = [
@@ -97,7 +93,7 @@ export function decideNextMove(
   ]
     .filter((part) => part !== null)
     .join("; ");
-  return { move: "rebuild", seed: "adopted", reason };
+  return { move: "rebuild", reason };
 }
 
 /** A changed evidence basis opens a successor pass. Re-entry into the same basis reads its

@@ -336,6 +336,8 @@ describe("rendering", () => {
     expect(text).not.toContain("it proves a task feasible, never difficult");
     expect(renderBatteryContract(6)).toContain("it proves a task feasible, never difficult");
     expect(render(readoutOf(row("r1", 0, { passed: 0, n: 6 })))).not.toContain("traces/r1");
+    // ADDED(history-pointer): the context tool's description names its sources, so the readout does not.
+    expect(text).not.toMatch(/history source holds|traces source holds/);
   });
 
   it("states no course: no streak, target, prediction, ladder or move", () => {

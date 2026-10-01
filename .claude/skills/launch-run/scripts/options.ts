@@ -40,14 +40,8 @@ export const CONDITIONS = {
   opushmm: { kind: "claude", model: "claude-opus-5-5", efforts: ["high", "medium", "medium"] },
 } as const;
 export const DEFAULT_DISK_MIN_GIB = 20;
-/**
- * The operator's launch pace (2026-10-01): nothing starts while the host's one-minute load is above
- * `MAX_LAUNCH_LOAD`, or when the batch would take the live controller runs past `MAX_LIVE_RUNS`.
- * Each Builder's checks compile in four or five lanes, so a run added slows every run already
- * there: from 2026-09-23 to 2026-10-01 an Opus run placed 0.160 batteries per run-hour at about two
- * live runs, 0.094 at about six and 0.067 at about nine, and with 11 to 15 live the host placed 4
- * batteries in 3.3 hours. `--over-capacity <reason>` is the operator's override.
- */
+/** The operator's launch pace, whose yield figures are AGENTS.md "Open gaps", blocker 4: no batch
+ *  starts above this one-minute load or past this many live controller runs, unless `--over-capacity`. */
 export const MAX_LAUNCH_LOAD = 25;
 export const MAX_LIVE_RUNS = 6;
 /** Where a launch keeps its receipts, logs and frozen environment, relative to the run tree. */

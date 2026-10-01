@@ -29,7 +29,6 @@ import {
 } from "../.claude/skills/launch-run/scripts/options.ts";
 import {
   type Command,
-  type HostPace,
   checkOpening,
   launchBatch,
   prepareEnvironment,
@@ -52,7 +51,7 @@ interface BatchFixtureOptions {
   failWorker?: boolean;
   refuseAllowance?: boolean;
   args?: string[];
-  host?: HostPace;
+  host?: Context["host"];
 }
 interface ModelSlot {
   kind: string;
@@ -869,8 +868,7 @@ describe("one-command run launcher", () => {
     expect(uncertain.calls.some((args) => args.includes("kill") || args.includes("bootout"))).toBe(false);
   });
 
-  // The operator's pace (2026-10-01): an Opus run placed 0.160 batteries a run-hour at about two live
-  // runs and 0.067 at about nine, so a batch past the load or the live count starts nothing at all.
+  // The operator's pace (AGENTS.md "Open gaps", blocker 4): a batch past either limit starts nothing.
   const FIVE_LIVE = ["run-a", "run-b", "run-c", "run-d", "run-e"];
   it.each([
     [
@@ -889,13 +887,10 @@ describe("one-command run launcher", () => {
       "one-minute load 25.1 (limit 25); the live controller runs are unread (fixture reader failed), so the load alone decides\n",
     ],
   ])("refuses %s before preparing any tree or asking any provider", async (_case, host, refusal) => {
-    const fixture = batchFixture({ host });
-    const error = await rejectionOf(
-      launchBatch(fixture.plans, fixture.options, fixture.context, fixture.command),
-    );
-    expect(error.message).toContain(refusal);
-    expect(fixture.calls).toEqual([]);
-    for (const plan of fixture.plans) expect(existsSync(plan.dir)).toBe(false);
+    const { plans, options, context, command, calls } = batchFixture({ host });
+    expect((await rejectionOf(launchBatch(plans, options, context, command))).message).toContain(refusal);
+    expect(calls).toEqual([]);
+    for (const plan of plans) expect(existsSync(plan.dir)).toBe(false);
   });
 
   it("launches at the limits, or past them with the operator's reason kept in each receipt beside the gate's load", async () => {
@@ -909,13 +904,9 @@ describe("one-command run launcher", () => {
         { reason, load: 31.2, live: 6 },
       ],
     ] as const) {
-      const fixture = batchFixture({ args: [...args], host });
-      const result = await launchBatch(fixture.plans, fixture.options, fixture.context, fixture.command);
-      expect(launched(result[0]).started).toBe(true);
-      expect(readReport(required(fixture.plans[0], "plan")).gate).toMatchObject({
-        decision: "ran",
-        overCapacity,
-      });
+      const { plans, options, context, command } = batchFixture({ args: [...args], host });
+      expect(launched((await launchBatch(plans, options, context, command))[0]).started).toBe(true);
+      expect(readReport(required(plans[0], "plan")).gate).toMatchObject({ decision: "ran", overCapacity });
     }
   });
 

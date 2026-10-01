@@ -11,9 +11,7 @@
 // and flat from each claimed battery's placement counts, flat through `offAimStreak` so that it
 // is the stall `runs pulse` names, and each edge's `carried` row counts the tasks measured again
 // unchanged (`carriedOf`) and whether the battery before them was a full pass (`fullPass`).
-// Each battery's `followUp` reads the climb step from the other side: every earned fail it held,
-// whether the next battery carried that task unchanged, changed or dropped it, how the task came
-// out there and whether the agent changed between them (`followUpOf`).
+// Each battery's `followUp` follows its earned fails into the next battery (`followUpOf`).
 //
 // Each battery carries two placements. `placement` is computed here from the case rows through
 // `decideDifficulty`; `recorded` is what the controller wrote in its difficulty decision, read through
@@ -161,31 +159,6 @@ interface Carried {
   afterFullPass: boolean;
 }
 
-/** What the battery measured next did with one earned fail: a verified fail that no completed
- *  review settled against its check (`settledAgainstCheck`, the cases the controller's climb sample
- *  drops) and that the solve wall did not stop. A climb step needs that same task passing after a
- *  harness change (AGENTS.md "Its shape, and how progress is read"), and this is that link. */
-interface FollowUp {
-  taskId: string;
-  /** `carried` is the same id, public input and family checks; `changed` the same id with one of
-   *  them moved; `dropped` no task of that id. Null when no battery was measured after it. */
-  task: "carried" | "changed" | "dropped" | null;
-  /** The next battery's outcome for that task id; null when it holds no case of it or has not
-   *  recorded its battery yet. */
-  outcome: ReturnType<typeof classifyCaseOutcome> | null;
-  /** The next battery graded the earlier solve again, as its recorded solve instants show, rather
-   *  than solving the task anew. */
-  regraded: boolean;
-}
-
-/** One battery's earned fails and the battery measured after it. */
-interface FollowUps {
-  next: string | null;
-  /** Whether `agentHash` moved between the two recorded batteries; null when the next is unrecorded. */
-  agentChanged: boolean | null;
-  fails: FollowUp[];
-}
-
 export type EdgeVerdict =
   | "escalated"
   | "eased"
@@ -242,8 +215,7 @@ type LineBattery = Pick<
   "runId" | "createdAt" | "claimed" | "settlement" | "placement" | "earned"
 >;
 
-/** How a followed-up task came out in the battery after its earned fail. */
-const OUTCOME_WORDS: Readonly<Record<NonNullable<FollowUp["outcome"]>, string>> = {
+const OUTCOME_WORDS: Readonly<Record<ReturnType<typeof classifyCaseOutcome>, string>> = {
   pass: "passed",
   fail: "failed",
   unaccepted: "went unaccepted",
@@ -459,34 +431,29 @@ function carriedOf(before: Bundle, after: Bundle): Omit<Carried, "afterFullPass"
   return { unchanged, tasks: after.tasks.length };
 }
 
-/** Whether the later battery poses the earlier one's task `taskId` exactly as before, read by
- *  `carriedOf` over that one task. */
-function taskMove(before: Bundle, after: Bundle, taskId: string): NonNullable<FollowUp["task"]> {
+/** Whether the later battery poses the earlier one's task `taskId` exactly as before (`carriedOf`). */
+function taskMove(before: Bundle, after: Bundle, taskId: string): "carried" | "changed" | "dropped" {
   const tasks = after.tasks.filter((task) => task.taskId === taskId);
   if (tasks.length === 0) return "dropped";
   return carriedOf(before, { ...after, tasks }).unchanged === tasks.length ? "carried" : "changed";
 }
 
-/** The battery a version directory recorded of its own run, or null when it recorded none. */
-function recordedBatteryOf({
-  dir,
-  runId,
-}: Pick<VersionBattery, "dir" | "runId">): ReturnType<typeof readRecordedBatteryRecord> | null {
-  const runDir = join(dir, "runs", runId);
-  return existsSync(join(runDir, BATTERY_FILE)) ? readRecordedBatteryRecord(runDir, runId) : null;
-}
-
-/** What `next`, the battery measured after `battery`, did with each of `battery`'s earned fails,
- *  or null when `battery` recorded no battery of its own. A regrade keeps the recorded solve's own
- *  instants, so a case starting when the earlier one did is that solve graded again, not a new one.
- *  The settlement is the controller's own (`settledAgainstCheck`), so a fail it drops from the climb
- *  sample is not followed here either. */
+/** What `next`, the battery measured after `battery`, did with each of `battery`'s earned fails, or
+ *  null when `battery` recorded no battery of its own. An earned fail is a verified fail that the
+ *  controller's settlement (`settledAgainstCheck`) leaves in the climb sample and the solve wall did
+ *  not stop; a climb step needs that task passing after a harness change (AGENTS.md "Its shape, and
+ *  how progress is read"). Null fields are unread: no next battery, or none recorded. A regrade
+ *  keeps the recorded solve's instants, so a case starting when the earlier one did is not new. */
 export function followUpOf(
   campaign: string,
   battery: Pick<VersionBattery, "dir" | "runId">,
   next: Pick<VersionBattery, "dir" | "runId"> | undefined,
-): FollowUps | null {
-  const record = recordedBatteryOf(battery);
+) {
+  const recorded = ({ dir, runId }: Pick<VersionBattery, "dir" | "runId">) =>
+    existsSync(join(dir, "runs", runId, BATTERY_FILE))
+      ? readRecordedBatteryRecord(join(dir, "runs", runId), runId)
+      : null;
+  const record = recorded(battery);
   if (record === null) return null;
   const settled = settledAgainstCheck(join(campaign, "analysis"), battery.runId);
   const earned = record.cases.filter(
@@ -495,7 +462,7 @@ export function followUpOf(
       !settled.has(row.taskId) &&
       !row.solver.errors.includes(SOLVE_WALL_MESSAGE),
   );
-  const later = next === undefined ? null : recordedBatteryOf(next);
+  const later = next === undefined ? null : recorded(next);
   // Two bundles are loaded only for a battery that holds an earned fail, which few do.
   const bundles =
     next === undefined || earned.length === 0
@@ -734,25 +701,6 @@ export function lineOf(report: {
   };
 }
 
-/** What the scoreboard reads beside the line: the signal among its first `HORIZONS[0]` points, over
- *  the points it reached of them, and its signal batteries' fails as their reviews left them. */
-export function lineTally(
-  line: ClimbLine,
-  batteries: readonly Pick<ClimbBatteryRow, "runId" | "counts" | "settlement">[],
-) {
-  const first = line.points.slice(0, HORIZONS[0]);
-  const signal = first.filter((point) => line.signal.includes(point)).length;
-  const fails = { held: 0, against: 0, unsettled: 0 };
-  for (const { runId, counts, settlement } of batteries) {
-    if (!line.signal.some((point) => point.runId === runId)) continue;
-    const { failsHeld, failsAgainst } = settlement ?? { failsHeld: 0, failsAgainst: 0 };
-    fails.held += failsHeld;
-    fails.against += failsAgainst;
-    fails.unsettled += Math.max(0, counts.verified - counts.passed - failsHeld - failsAgainst);
-  }
-  return { first: { signal, batteries: first.length }, fails };
-}
-
 /** The newest edge as the sentence a reader opened this for. The rows above it are the evidence;
  *  this is the reading, and it is the one the line cannot give, because the line needs measured
  *  batteries and this needs none.
@@ -858,9 +806,9 @@ function followUpLines({ runId, followUp }: ClimbBatteryRow): string[] {
 /** The earned fails `followUpOf` read, those with no battery after them, those the next battery
  *  carried unchanged, those that passed there, and those that passed after the agent changed: a
  *  climb step answered. A changed agent means a new solve, since a regrade needs the same agent bytes. */
-export function followUpCounts(followUps: readonly (FollowUps | null)[]) {
-  const fails = followUps.flatMap((followUp) =>
-    followUp === null ? [] : followUp.fails.map((fail) => ({ ...fail, agentChanged: followUp.agentChanged })),
+export function followUpCounts(followUps: readonly ReturnType<typeof followUpOf>[]) {
+  const fails = followUps.flatMap(
+    (up) => up?.fails.map((fail) => ({ ...fail, agentChanged: up.agentChanged })) ?? [],
   );
   const carried = fails.filter(({ task }) => task === "carried");
   const passed = carried.filter(({ outcome }) => outcome === "pass");

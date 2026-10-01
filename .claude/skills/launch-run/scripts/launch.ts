@@ -123,20 +123,9 @@ interface Context {
   manager: ServiceManager;
   /** The pre-push hook's `ana-gate-passed`, which `bun run land` and a passing launch gate share. */
   passRecord: string;
-  /** The host as the batch found it, which the launch pace decides on before anything is prepared. */
-  host: HostPace;
+  /** The one-minute load, and the controller runs `bun run runs` reads as live or why it could not. */
+  host: { load: number; live: readonly string[] | { unread: string } };
 }
-/** The one-minute load, and the controller runs `bun run runs` reads as live or why it could not. */
-export interface HostPace {
-  load: number;
-  live: readonly string[] | { unread: string };
-}
-/** The operator's reason for launching past the pace, with what the host read, kept in each receipt. */
-type OverCapacity = {
-  reason: string;
-  load: number;
-  live: number | null;
-};
 interface PreparedRun extends OpeningPlan {
   environment: Environment;
   sourceRef: SourceRef | null;
@@ -643,9 +632,9 @@ async function settleGate(
 
 const oneMinuteLoad = (): number => Math.round((loadavg()[0] ?? 0) * 10) / 10;
 
-/** The host now: its one-minute load, and the runs `bun run runs` reads as live, through that
- *  listing's own reader. A reader that fails is reported as unread, never as no live runs. */
-function readHostPace(repo: string): HostPace {
+/** The host now, its live runs read by the `bun run runs` listing's own reader; a reader that
+ *  fails is reported as unread, never as no live runs. */
+function readHostPace(repo: string): Context["host"] {
   const load = oneMinuteLoad();
   try {
     const rows = collectRows(repo, { closedLimit: 1 });
@@ -655,27 +644,24 @@ function readHostPace(repo: string): HostPace {
   }
 }
 
-/**
- * The operator's pace, settled before any tree is prepared or any provider is asked. The batch is
- * refused while the load is above `MAX_LAUNCH_LOAD`, or when its runs would take the live ones past
- * `MAX_LIVE_RUNS`, unless `--over-capacity` gives a reason, which comes back for every receipt.
- * Live runs the reader could not read are said and left out, so the load alone decides.
- */
-function settlePace(host: HostPace, starting: number, reason: string | undefined): OverCapacity | null {
-  const live = "unread" in host.live ? null : host.live.length;
+/** The operator's pace, settled before any tree is prepared or any provider is asked: a batch past
+ *  either limit is refused unless `--over-capacity` gives a reason, which every receipt keeps. Live
+ *  runs the reader could not read are said and left out, so the load alone decides. */
+function settlePace({ load, live }: Context["host"], starting: number, reason: string | undefined) {
+  const count = "unread" in live ? null : live.length;
   const runs =
-    "unread" in host.live
-      ? `the live controller runs are unread (${host.live.unread}), so the load alone decides`
-      : `${host.live.length} live controller runs, ${host.live.length + starting} with this batch (limit ${MAX_LIVE_RUNS})\n  live: ${host.live.length === 0 ? "none" : host.live.join(", ")}`;
-  const reading = `one-minute load ${host.load} (limit ${MAX_LAUNCH_LOAD}); ${runs}`;
-  const over = host.load > MAX_LAUNCH_LOAD || (live !== null && live + starting > MAX_LIVE_RUNS);
+    "unread" in live
+      ? `the live controller runs are unread (${live.unread}), so the load alone decides`
+      : `${live.length} live controller runs, ${live.length + starting} with this batch (limit ${MAX_LIVE_RUNS})\n  live: ${live.join(", ") || "none"}`;
+  const reading = `one-minute load ${load} (limit ${MAX_LAUNCH_LOAD}); ${runs}`;
+  const over = load > MAX_LAUNCH_LOAD || (count !== null && count + starting > MAX_LIVE_RUNS);
   if (over && reason === undefined) {
     throw new Error(
       `refused before preparing any tree: ${reading}\nEach run added slows every run already there. Wait for the load to fall or a run to close, or pass --over-capacity "<reason>" to launch anyway.`,
     );
   }
   console.log(`${over ? `Launching over capacity (${reason})` : "Pace"}: ${reading}`);
-  return reason === undefined ? null : { reason, load: host.load, live };
+  return reason === undefined ? null : { reason, load, live: count };
 }
 
 /** Prepares and probes every run and settles the gate; a failure leaves a `refused` receipt in each

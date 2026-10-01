@@ -32,12 +32,14 @@ import { fingerprintSlug } from "../src/claim/fingerprint.ts";
 import { bindProductMeasurement, publishProductVersion } from "../src/run/product-versions.ts";
 import { EPOCH_REVIEW_SCHEMA } from "../src/review/epoch-review-findings.ts";
 import { caseRecordRow } from "./helpers/case-record-row.ts";
+import { execTextSync } from "./helpers/bun-spawn-sync.ts";
 import { recordDigestBattery, solveRow } from "./helpers/digest-battery.ts";
 import { MATCHING_OPERATING_GUIDE } from "./helpers/matching-fixture.ts";
 import { recordedController } from "./helpers/recorded-controller.ts";
 import { fence } from "./helpers/starter-contracts.ts";
 
 const RUN = "fullrun-20260923-a";
+const SCOREBOARD = join(import.meta.dir, "../.claude/skills/run-improvement-campaign/scripts/scoreboard.ts");
 const BATTERY = `${RUN}-i02`;
 const NON_RESULT = {
   acceptedSubmit: false,
@@ -541,160 +543,88 @@ describe("closure advisories", () => {
 });
 
 describe("scoreboard", () => {
-  const SCOREBOARD = join(
-    import.meta.dir,
-    "../.claude/skills/run-improvement-campaign/scripts/scoreboard.ts",
-  );
-  const RUN_ONE = "fullrun-20260923-s";
-  const [B1, B2, B3] = [RUN_ONE, `${RUN_ONE}-i02`, `${RUN_ONE}-i03`];
-  /** A task's verdict and its minutes against the product's 60-minute wall. */
-  type Solve = [taskId: string, pass: boolean, minutes: number];
-
-  /** One run whose three claimed batteries each measured the product they published, the way the
-   *  controller publishes and binds one, each with its own agent, task bundle, recorded battery and
-   *  case rows, and, for the third, a completed review that held one fail and settled another against
-   *  its only check. */
-  function scored(): string {
-    const repo = mkdtempSync(join(tmpdir(), "scoreboard-"));
-    const { campaign } = recordedController({
-      repo,
-      projectId: "board",
-      runId: RUN_ONE,
-      openedAt: "2026-09-23T00:00:00.000Z",
-    });
-    const batteries: [string, Solve[]][] = [
-      [
-        B1,
-        [
-          ["a", true, 3],
-          ["b", false, 15],
-          ["c", false, 30],
-        ],
-      ],
-      [
-        B2,
-        [
-          ["a", true, 6],
-          ["b", true, 12],
-        ],
-      ],
-      [
-        B3,
-        [
-          ["d", true, 30],
-          ["g", false, 30],
-          ["h", false, 30],
-        ],
-      ],
+  // One run whose three claimed batteries each measured the product it published, as the controller
+  // publishes and binds one, with its own agent, recorded battery and case rows. The second carries
+  // `b` unchanged and passes it under a new agent, and drops `c`; nothing follows the third, whose
+  // completed review held `g` and settled `h` against its only check.
+  it("reads each run's wall share and follows its earned fails into the next battery", () => {
+    const f = fixture("closed");
+    const [third, START] = [`${RUN}-i03`, "2026-09-23T00:00:00.000Z"];
+    // Each battery's minutes per task against the product's 60-minute wall, and the tasks that failed.
+    const batteries: [string, Record<string, number>, string[]][] = [
+      [RUN, { a: 3, b: 15, c: 30 }, ["b", "c"]],
+      [BATTERY, { a: 6, b: 12 }, []],
+      [third, { d: 30, g: 30, h: 30 }, ["g", "h"]],
     ];
     const rows: ReturnType<typeof caseRecordRow>[] = [];
-    mkdirSync(join(campaign, "claims"), { recursive: true });
-    for (const [hour, [battery, solves]] of batteries.entries()) {
-      const snapshot = join(repo, "accepted", battery);
+    mkdirSync(join(f.campaign, "claims"));
+    for (const [hour, [battery, minutes, fails]] of batteries.entries()) {
+      const snapshot = join(f.repo, "accepted", battery);
       mkdirSync(join(snapshot, "agent"), { recursive: true });
       mkdirSync(join(snapshot, "correctness-model"));
       writeFileSync(join(snapshot, "agent", "config.yaml"), "solver:\n  solve_minutes: 60\n");
       writeFileSync(join(snapshot, "agent", "AGENTS.md"), battery);
       writeFileSync(join(snapshot, "correctness-model", "evaluator.ts"), "export const rule = 1;\n");
       writeFileSync(join(snapshot, "correctness-model", "brief.json"), "{}");
-      const tasks = solves.map(([taskId]) => ({ taskId, family: "family", publicInput: {} }));
+      const tasks = Object.keys(minutes).map((taskId) => ({ taskId, family: "family", publicInput: {} }));
       writeFileSync(join(snapshot, "correctness-model", "tasks.json"), JSON.stringify(tasks));
-      const fingerprint = fingerprintSlug(snapshot, { slug: "board" });
+      const fingerprint = fingerprintSlug(snapshot, { slug: "truss" });
       if (!fingerprint.ok) throw new Error(JSON.stringify(fingerprint.findings));
       const product = publishProductVersion({
-        repoRoot: repo,
-        slug: "board",
+        repoRoot: f.repo,
+        slug: "truss",
         id: battery,
         acceptedSnapshot: snapshot,
         fingerprint,
       });
-      bindProductMeasurement(repo, "board", battery, product);
-      const solved = solves.map(([taskId, pass]) => solveRow({ taskId }, battery, pass));
+      bindProductMeasurement(f.repo, "truss", battery, product);
+      const solved = tasks.map(({ taskId }) => solveRow({ taskId }, battery, !fails.includes(taskId)));
       recordDigestBattery(product, [battery], { [battery]: solved });
       writeFileSync(
-        join(campaign, "claims", `${battery}.json`),
+        join(f.campaign, "claims", `${battery}.json`),
         JSON.stringify({ createdAt: `2026-09-23T0${hour + 1}:00:00.000Z` }),
       );
-      for (const [taskId, pass, minutes] of solves) {
-        const start = Date.parse("2026-09-23T00:00:00.000Z");
-        rows.push(
-          caseRecordRow(taskId, "family", {
-            runId: battery,
-            truthOk: pass,
-            pass,
-            solverStartedAt: new Date(start).toISOString(),
-            solverEndedAt: new Date(start + minutes * 60_000).toISOString(),
-          }),
-        );
+      for (const [taskId, spent] of Object.entries(minutes)) {
+        const pass = !fails.includes(taskId);
+        const solverEndedAt = new Date(Date.parse(START) + spent * 60_000).toISOString();
+        const row = { runId: battery, truthOk: pass, pass, solverStartedAt: START, solverEndedAt };
+        rows.push(caseRecordRow(taskId, "family", row));
       }
     }
-    writeFileSync(
-      join(campaign, "case-record.jsonl"),
-      rows.map((row, i) => `${JSON.stringify({ seq: i + 1, row })}\n`).join(""),
-    );
-    const settle = (taskId: string, disposition: string) => ({
-      taskId,
-      family: "family",
-      kind: "disputed-pass",
-      checkId: "check-1",
-      checkIds: ["check-1"],
-      disposition,
-      finding: 0,
-    });
-    mkdirSync(join(campaign, "analysis"), { recursive: true });
-    writeFileSync(
-      join(campaign, "analysis", `${B3}-epoch-review.json`),
-      JSON.stringify({
-        schema: EPOCH_REVIEW_SCHEMA,
-        status: "completed",
-        runId: B3,
-        findings: [],
-        dispositions: [settle("g", "check-stands"), settle("h", "against-check")],
-      }),
-    );
-    return repo;
-  }
-
-  async function board(repo: string, ...flags: string[]): Promise<string> {
-    const cli = Bun.spawn(["bun", SCOREBOARD, "--repo", repo, ...flags], {
-      stdout: "pipe",
-      stderr: "pipe",
-      cwd: runtimeProcess.cwd(),
-    });
-    const [out, err, code] = [
-      await new Response(cli.stdout).text(),
-      await new Response(cli.stderr).text(),
-      await cli.exited,
+    cases(f, rows);
+    const check = { family: "family", kind: "disputed-pass", checkId: "c", checkIds: ["c"], finding: 0 };
+    const dispositions = [
+      { ...check, taskId: "g", disposition: "check-stands" },
+      { ...check, taskId: "h", disposition: "against-check" },
     ];
-    if (code !== 0) throw new Error(err);
-    return out;
-  }
-
-  it("reads each run's wall share and follows its earned fails into the next battery", async () => {
-    const repo = scored();
-    // SAFETY: `--json` prints the runs and groups, and only the fields below are read.
-    const json = JSON.parse(await board(repo, "--json")) as {
-      runs: Array<{ first8: unknown; fails: unknown; wall: unknown; followUp: unknown }>;
-      groups: Array<{ first8: unknown; wall: unknown; followUp: unknown }>;
+    const review = {
+      schema: EPOCH_REVIEW_SCHEMA,
+      status: "completed",
+      runId: third,
+      findings: [],
+      dispositions,
     };
-    // `b` and `c` fail in the first battery and `g` in the third; `h` was settled against its only
-    // check. The second battery carries `b` unchanged and passes it under a new agent, and drops
-    // `c`; no battery follows the third.
-    const followed = { earned: 3, last: 1, carried: 1, passed: 1, answered: 1 };
-    expect(json.runs.map(({ first8, wall, followUp }) => ({ first8, wall, followUp }))).toEqual([
-      {
-        first8: { signal: 2, batteries: 3 },
-        // The batteries' median case shares are 0.25, 0.15 and 0.5 of each product's 60-minute wall.
-        wall: { median: 0.25, latest: 0.5, batteries: 3 },
-        followUp: followed,
-      },
-    ]);
+    mkdirSync(join(f.campaign, "analysis"), { recursive: true });
+    writeFileSync(join(f.campaign, "analysis", `${third}-epoch-review.json`), JSON.stringify(review));
+    const board = (...flags: string[]) => execTextSync("bun", [SCOREBOARD, "--repo", f.repo, ...flags]);
+    const [first8, followUp] = [
+      { signal: 2, batteries: 3 },
+      { earned: 3, last: 1, carried: 1, passed: 1, answered: 1 },
+    ];
     // The signal batteries are the first, whose `b` and `c` no review settled, and the third at 1/2.
-    expect(json.runs[0]?.fails).toEqual({ held: 1, against: 1, unsettled: 2 });
-    expect(json.groups.map(({ first8, wall, followUp }) => ({ first8, wall, followUp }))).toEqual([
-      { first8: { signal: 2, batteries: 3 }, wall: { median: 0.25, runs: 1 }, followUp: followed },
-    ]);
-    expect(await board(repo)).toContain(
+    // The batteries' median case shares are 0.25, 0.15 and 0.5 of each product's wall.
+    expect(JSON.parse(board("--json"))).toEqual({
+      runs: [
+        expect.objectContaining({
+          first8,
+          fails: { held: 1, against: 1, unsettled: 2 },
+          wall: { median: 0.25, latest: 0.5, batteries: 3 },
+          followUp,
+        }),
+      ],
+      groups: [expect.objectContaining({ first8, wall: { median: 0.25, runs: 1 }, followUp })],
+    });
+    expect(board()).toContain(
       "first-8 signal 2/3  wall 25.0% (n 1 runs)  earned fails 3, 1 carried unchanged, 1 answered",
     );
   });

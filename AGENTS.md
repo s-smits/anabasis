@@ -751,17 +751,6 @@ only after every arm's source is fixed, and nothing read from it revises an arm.
   that only a partial battery can locate a limit, and only where its checks are right, stays.
   Grep: `rg "ABLATED\(limit-restated\)|ADDED\(limit-restated\)"`. Prediction and run: filled when this
   arm launches.
-- **`no-limit-depth` (arm, 2026-10-01).** The no-limit line's "More tasks, families, inputs or
-  scenarios at the same demand measure the same reach again, so the next battery has to demand more of
-  the field's own work within its tasks: make more of the request's requirements act together in each
-  task, in tasks you expect the solver to fail" (`noLimitLine`). The opening turn that carries it also
-  carries the intent clause, which defines depth and says an ambitious round expects fails, and the
-  round prompt, whose raise names the same route "not by adding tasks, families or inputs at the same
-  demand", so after a full pass the Builder read the route three times. The full-pass fact, the carry
-  rule, the wall share, the notes request and `MEASURE_SOLVES` stay. After the depth prescriptions 83
-  of 85 recorded batteries passed whole ("competing-margin" in #117). Grep:
-  `rg "ABLATED\(no-limit-depth\)|ADDED\(no-limit-depth\)"`. Prediction and run: filled when this arm
-  launches.
 
 ## Evidence and implementation status
 

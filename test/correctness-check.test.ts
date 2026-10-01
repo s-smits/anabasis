@@ -492,9 +492,11 @@ describe("correctness_check", () => {
     expect(first.status).toBe("clear");
     expect(first.stage).toBe("gates");
     expect(first.notReached).toEqual([]);
-    expect(isString(first.nextAction) && first.nextAction.includes("submit")).toBe(true);
-    expect(first.nextAction).toContain("harness_inspect coverage");
-    expect(first.nextAction).toContain("omitted by both the evaluator and the corpus");
+    // ABLATED(clear-coverage): expect(isString(first.nextAction) && first.nextAction.includes("submit")).toBe(true);
+    // ABLATED(clear-coverage): expect(first.nextAction).toContain("harness_inspect coverage");
+    // ABLATED(clear-coverage): expect(first.nextAction).toContain("omitted by both the evaluator and the corpus");
+    // ADDED(clear-coverage): a clear result states the fact and sets no further condition on submit.
+    expect(first.nextAction).toBe("The validation sequence found no blocking row on these bytes.");
     const coverage = nested(first, "coverage");
     expect(nested(coverage, "controls").accept).toBeGreaterThan(0);
     expect(nested(coverage, "tasks").expected).toBe(4);

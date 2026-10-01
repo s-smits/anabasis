@@ -57,8 +57,13 @@ const TRUTH = { verdict: "not-run" } as const;
 
 const REPAIR =
   "Read every repair group with harness_inspect feedback, repair the named files, then check the changed tree.";
-const CLEAR =
-  "The validation sequence found no blocking row on these bytes. Its controls cannot detect an obligation omitted by both the evaluator and the corpus. Reconcile the declared coverage with your public contract using harness_inspect coverage; submit when every obligation has an observation and a one-fact control. Checking unchanged bytes repeats this result without new evidence.";
+// ABLATED(clear-coverage): the coverage condition a clear result put before submit, and two sentences
+// the tool's description states on every request. The round prompt says to submit once a clear
+// preview says it works (AGENTS.md "Ablated components").
+// const CLEAR =
+//   "The validation sequence found no blocking row on these bytes. Its controls cannot detect an obligation omitted by both the evaluator and the corpus. Reconcile the declared coverage with your public contract using harness_inspect coverage; submit when every obligation has an observation and a one-fact control. Checking unchanged bytes repeats this result without new evidence.";
+// ADDED(clear-coverage): the fact alone.
+const CLEAR = "The validation sequence found no blocking row on these bytes.";
 const REPEATED =
   "the workspace and installed-tool bytes are unchanged: conformance and gate rows are remembered, not re-run; the bundle was checked again";
 const BLOCKED =

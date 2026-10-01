@@ -280,8 +280,14 @@ export function settlementOf(campaign: string, runId: string): Settlement | null
 
 /** Batteries in the order they were measured. A claim's `createdAt` owns chronology; a version with
  *  no claim keeps its directory's recorded time and is marked, because an unclaimed battery is
- *  exactly the case this reader exists for. */
+ *  exactly the case this reader exists for. The version a forked campaign was seeded from (its
+ *  `seed.json` `selectedProductId`) comes first whatever its time: every battery the fork measured
+ *  derives from it, and an undated seed sorted last read each fork edge backwards (2026-10-01). */
 export function batteriesOf(campaign: string): VersionBattery[] {
+  const seedPath = `${campaign}/seed.json`;
+  const seed = existsSync(seedPath)
+    ? readJsonAs<{ selectedProductId?: string | null }>(seedPath).selectedProductId
+    : null;
   const versions = readdirSync(`${campaign}/versions`, { withFileTypes: true });
   const rows: VersionBattery[] = [];
   for (const entry of versions) {
@@ -298,7 +304,10 @@ export function batteriesOf(campaign: string): VersionBattery[] {
     rows.push({ runId: entry.name, dir, createdAt, claimed });
   }
   rows.sort(
-    (a, b) => String(a.createdAt).localeCompare(String(b.createdAt)) || a.runId.localeCompare(b.runId),
+    (a, b) =>
+      Number(b.runId === seed) - Number(a.runId === seed) ||
+      String(a.createdAt).localeCompare(String(b.createdAt)) ||
+      a.runId.localeCompare(b.runId),
   );
   return rows;
 }

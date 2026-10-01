@@ -227,10 +227,16 @@ function iterationRunIds(terminal: JsonObject, rounds: "every" | "measured"): st
   if (!Array.isArray(rows)) return [];
   const ids: string[] = [];
   for (const row of rows) {
-    const id = isRecord(row) && (rounds === "every" || row.measured === true) ? stringOr(row.runId) : null;
+    const id = isRecord(row) && (rounds === "every" || measuredRound(row)) ? stringOr(row.runId) : null;
     if (id !== null) ids.push(id);
   }
   return ids;
+}
+
+/** A terminal written before `measured` existed listed each round's batteries instead; a round that
+ *  lists one measured it, so an older run does not read as having measured nothing. */
+function measuredRound(row: JsonObject): boolean {
+  return row.measured === true || (Array.isArray(row.batteryRunIds) && row.batteryRunIds.length > 0);
 }
 
 function roleTurns(terminal: JsonObject): Array<{ role: string; turns: number }> {

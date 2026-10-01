@@ -18,6 +18,7 @@ import { median } from "#src/meta/tally.ts";
 import {
   followUpCounts,
   followUpOf,
+  HORIZONS,
   lineOf,
   outcomeRowsOf,
 } from "../../whole-run-investigation/scripts/climb-velocity.ts";
@@ -35,9 +36,6 @@ the check, unsettled), and its earned fails: how many passed another solve under
 (flips), how many the next battery carried unchanged, and how many of those passed there after the
 agent changed and are no flip (answered). Then one row per source and Builder
 model: signal of the first 8, the median wall share over runs, and the same earned-fail counts.`;
-
-/** The horizon AGENTS.md "Goals and the climb" reads a climb over first. */
-const HORIZON = 8;
 
 type RunScore = ReturnType<typeof scoreCampaign>[number];
 
@@ -60,7 +58,7 @@ function scoreCampaign(campaignDir: string, runs: readonly RunLocation[]) {
       batteries: report.batteries.filter(owned),
       unadopted: report.unadopted.filter(owned),
     });
-    const first = line.points.slice(0, HORIZON);
+    const first = line.points.slice(0, HORIZONS[0]);
     const fails = { held: 0, against: 0, unsettled: 0 };
     for (const { runId: id, counts, settlement } of every) {
       if (!line.signal.some((point) => point.runId === id)) continue;

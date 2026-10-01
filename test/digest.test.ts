@@ -282,9 +282,9 @@ describe("digest", () => {
     ["a v8 record", { schema: "difficulty-decision/v8", runId: "old-8" }, "difficulty-decision/v8"],
     ["a v9 record", { schema: "difficulty-decision/v9", runId: "old-9" }, "difficulty-decision/v9"],
     [
-      "a v10 record with no readout",
+      "a v10 record with no difficulty reading",
       { schema: "difficulty-decision/v10", runId: "new-10" },
-      "difficulty-decision/v10 incomplete",
+      "difficulty-decision/v10 without a difficulty reading",
     ],
   ])("refuses %s by name rather than reading it or calling it never recorded", (_title, record, reason) => {
     const paths = fixture();

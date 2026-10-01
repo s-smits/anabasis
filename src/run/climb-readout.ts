@@ -149,14 +149,8 @@ const HISTORY =
 /** A necessary condition and never a sufficient one: a checker that refuses a valid answer leaves the
  *  same partial count as a task the solver could not do, so a partial battery is not by that alone a
  *  located limit. */
-// ABLATED(limit-restated): the two clauses the same opening already states. The readout's legend
-// says a non-result counts neither way, and the intent clause and the no-limit line say a full pass
-// locates nothing (AGENTS.md "Ablated components").
-// const LIMIT =
-//   "Only a battery that passes some but not all of its cases can locate a limit, an unaccepted attempt counting as a fail and a non-result as neither, and only where the checks that failed it are right; one that passes every case found none.";
-// ADDED(limit-restated): the sentence without "and a non-result as neither" and "one that passes every case found none".
 const LIMIT =
-  "Only a battery that passes some but not all of its cases can locate a limit, an unaccepted attempt counting as a fail, and only where the checks that failed it are right.";
+  "Only a battery that passes some but not all of its cases can locate a limit, an unaccepted attempt counting as a fail and a non-result as neither, and only where the checks that failed it are right; one that passes every case found none.";
 
 /** What a full pass sends the Builder to read: how the passing solves reached their answers. The
  *  method, not the margin, is what a harder battery has to defeat, because a limit moved toward the

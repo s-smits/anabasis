@@ -359,15 +359,9 @@ describe("rendering", () => {
   it("states what a limit needs for a battery of the round's one size, and no count at any size", () => {
     const probe = renderBatteryContract(10, 5);
     const one = renderBatteryContract(25);
-    // ABLATED(limit-restated): expect(one).toContain(
-    // ABLATED(limit-restated):   "Only a battery that passes some but not all of its cases can locate a limit, an unaccepted attempt counting as a fail and a non-result as neither, and only where the checks that failed it are right; one that passes every case found none.",
-    // ABLATED(limit-restated): );
-    // ADDED(limit-restated): the sentence keeps its own claim and leaves the restatements to the legend
-    // and the no-limit line.
     expect(one).toContain(
-      "Only a battery that passes some but not all of its cases can locate a limit, an unaccepted attempt counting as a fail, and only where the checks that failed it are right.",
+      "Only a battery that passes some but not all of its cases can locate a limit, an unaccepted attempt counting as a fail and a non-result as neither, and only where the checks that failed it are right; one that passes every case found none.",
     );
-    expect(one).not.toMatch(/non-result as neither|found none/);
     // A partial count is necessary and not sufficient, so nothing says a partial battery located one.
     expect(one).not.toContain("locates a limit");
     // A probe range leaves that sentence to the sizing sentence, which says what a probe must pass.

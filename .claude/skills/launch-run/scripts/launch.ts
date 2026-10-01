@@ -34,6 +34,8 @@ import {
   DEFAULT_DISK_MIN_GIB,
   HELP,
   LAUNCH_ARGUMENTS,
+  MAX_LAUNCH_LOAD,
+  MAX_LIVE_RUNS,
   PRESETS,
   SCRATCH,
   fullrunArgs,
@@ -69,6 +71,7 @@ import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { WORKTREE_SCRIPT } from "#tools/dependency-identity.ts";
 import { LAUNCH_RECEIPT_PATH } from "#tools/runs/discover.ts";
+import { collectRows } from "#tools/runs/rows.ts";
 
 const REPO = resolve(import.meta.dirname, "../../../..");
 const WORKTREE = join(REPO, WORKTREE_SCRIPT);
@@ -120,7 +123,20 @@ interface Context {
   manager: ServiceManager;
   /** The pre-push hook's `ana-gate-passed`, which `bun run land` and a passing launch gate share. */
   passRecord: string;
+  /** The host as the batch found it, which the launch pace decides on before anything is prepared. */
+  host: HostPace;
 }
+/** The one-minute load, and the controller runs `bun run runs` reads as live or why it could not. */
+export interface HostPace {
+  load: number;
+  live: readonly string[] | { unread: string };
+}
+/** The operator's reason for launching past the pace, with what the host read, kept in each receipt. */
+type OverCapacity = {
+  reason: string;
+  load: number;
+  live: number | null;
+};
 interface PreparedRun extends OpeningPlan {
   environment: Environment;
   sourceRef: SourceRef | null;
@@ -605,7 +621,7 @@ async function settleGate(
     return { policy, decision: "recorded-pass", evidence: context.passRecord, seconds: null, load: null };
   }
   const log = join(first.dir, SCRATCH, "gate.log");
-  const load = Math.round((loadavg()[0] ?? 0) * 10) / 10;
+  const load = oneMinuteLoad();
   console.log(`Checking the source gate once for ${short} at load ${load}; ${log}`);
   if (policy === "auto") {
     console.log("No recorded pass for this commit; --gate skip launches without the gate.");
@@ -623,6 +639,43 @@ async function settleGate(
     appendFileSync(context.passRecord, `${context.commit} --at\n`);
   }
   return { policy, decision: "ran", evidence: log, seconds, load };
+}
+
+const oneMinuteLoad = (): number => Math.round((loadavg()[0] ?? 0) * 10) / 10;
+
+/** The host now: its one-minute load, and the runs `bun run runs` reads as live, through that
+ *  listing's own reader. A reader that fails is reported as unread, never as no live runs. */
+function readHostPace(repo: string): HostPace {
+  const load = oneMinuteLoad();
+  try {
+    const rows = collectRows(repo, { closedLimit: 1 });
+    return { load, live: rows.flatMap((row) => (row.liveness.state === "live" ? [row.runId] : [])) };
+  } catch (error) {
+    return { load, live: { unread: errorMessage(error) } };
+  }
+}
+
+/**
+ * The operator's pace, settled before any tree is prepared or any provider is asked. The batch is
+ * refused while the load is above `MAX_LAUNCH_LOAD`, or when its runs would take the live ones past
+ * `MAX_LIVE_RUNS`, unless `--over-capacity` gives a reason, which comes back for every receipt.
+ * Live runs the reader could not read are said and left out, so the load alone decides.
+ */
+function settlePace(host: HostPace, starting: number, reason: string | undefined): OverCapacity | null {
+  const live = "unread" in host.live ? null : host.live.length;
+  const runs =
+    "unread" in host.live
+      ? `the live controller runs are unread (${host.live.unread}), so the load alone decides`
+      : `${host.live.length} live controller runs, ${host.live.length + starting} with this batch (limit ${MAX_LIVE_RUNS})\n  live: ${host.live.length === 0 ? "none" : host.live.join(", ")}`;
+  const reading = `one-minute load ${host.load} (limit ${MAX_LAUNCH_LOAD}); ${runs}`;
+  const over = host.load > MAX_LAUNCH_LOAD || (live !== null && live + starting > MAX_LIVE_RUNS);
+  if (over && reason === undefined) {
+    throw new Error(
+      `refused before preparing any tree: ${reading}\nEach run added slows every run already there. Wait for the load to fall or a run to close, or pass --over-capacity "<reason>" to launch anyway.`,
+    );
+  }
+  console.log(`${over ? `Launching over capacity (${reason})` : "Pace"}: ${reading}`);
+  return reason === undefined ? null : { reason, load: host.load, live };
 }
 
 /** Prepares and probes every run and settles the gate; a failure leaves a `refused` receipt in each
@@ -651,8 +704,9 @@ export async function launchBatch(
   context: Context,
   command: Command = spawnCommand,
 ): Promise<LaunchResult[]> {
+  const overCapacity = settlePace(context.host, plans.length, options["over-capacity"]);
   const { prepared, gate } = await prepareBatch(plans, options, context, command);
-  const extra = { gate: { ...gate }, launcher: context.launcher };
+  const extra = { gate: { ...gate, overCapacity }, launcher: context.launcher };
   const results: LaunchResult[] = [];
   for (const plan of prepared) {
     console.log(
@@ -774,6 +828,7 @@ export async function main(argv: readonly string[]): Promise<number> {
     uid: process.getuid(),
     manager,
     passRecord,
+    host: readHostPace(mainRepo),
   });
   console.log(JSON.stringify(results, null, 2));
   return results.length === plans.length && results.every((row) => !("error" in row)) ? 0 : 1;

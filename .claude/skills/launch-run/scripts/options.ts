@@ -40,6 +40,16 @@ export const CONDITIONS = {
   opushmm: { kind: "claude", model: "claude-opus-5-5", efforts: ["high", "medium", "medium"] },
 } as const;
 export const DEFAULT_DISK_MIN_GIB = 20;
+/**
+ * The operator's launch pace (2026-10-01): nothing starts while the host's one-minute load is above
+ * `MAX_LAUNCH_LOAD`, or when the batch would take the live controller runs past `MAX_LIVE_RUNS`.
+ * Each Builder's checks compile in four or five lanes, so a run added slows every run already
+ * there: from 2026-09-23 to 2026-10-01 an Opus run placed 0.160 batteries per run-hour at about two
+ * live runs, 0.094 at about six and 0.067 at about nine, and with 11 to 15 live the host placed 4
+ * batteries in 3.3 hours. `--over-capacity <reason>` is the operator's override.
+ */
+export const MAX_LAUNCH_LOAD = 25;
+export const MAX_LIVE_RUNS = 6;
 /** Where a launch keeps its receipts, logs and frozen environment, relative to the run tree. */
 export const SCRATCH = ".scratch/quick-run";
 /**
@@ -105,6 +115,7 @@ const OPTIONAL_VALUES = [
   "env-file",
   "codex-home",
   "output-dir",
+  "over-capacity",
 ] as const;
 
 /** The launcher's arguments, parsed by `.claude/skills/main/cli.ts`, so a misspelled flag refuses
@@ -144,6 +155,8 @@ export const HELP = `Usage: bun .claude/skills/launch-run/scripts/launch.ts [${P
   --env-file /path                Claude token; default main checkout/.env
   --codex-home /path              Codex auth; default current CODEX_HOME or ~/.codex
   --output-dir /path              Parent of fresh worktrees; default beside main checkout
+  --over-capacity REASON          Launch although the one-minute load is above ${MAX_LAUNCH_LOAD} or the batch would
+                                  take the live runs past ${MAX_LIVE_RUNS}; the reason is kept in each receipt
   --dry-run                      Plan only: no setup, secrets or launch
   --list                         Exact preset prompts
   --help                         This help
@@ -171,6 +184,7 @@ function refuseValues(options: LaunchOptions, refuse: ExitWith): void {
     const value = options[key];
     if (value !== undefined && !isAbsolute(value)) refuse(`--${key} must be absolute`);
   }
+  if (options["over-capacity"]?.trim() === "") refuse("--over-capacity needs the reason, in words");
   const lines = options.prompt?.split("\n") ?? [];
   if (/[\r\0]/.test(options.prompt ?? "") || lines.length > 2 || lines.some((line) => !line.trim())) {
     refuse(PROMPT_REFUSAL);

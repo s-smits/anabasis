@@ -592,10 +592,12 @@ and has not been re-derived here.
    eight batteries, all of them Sol. No Opus run placed more than three, because an Opus Builder takes a
    median of 6.4 hours to its first battery at any number of live runs, where a Sol Builder takes 0.2 to
    1.5 depending on the domain. Each Opus run also yields less as runs are added: 0.160 batteries per
-   run-hour at about two live runs, 0.094 at about six and 0.067 at about nine. The launcher counts no
-   live runs and compares the load with nothing (`settleGate` in `launch-run/scripts/launch.ts` records
-   it). Owner: the Super Loop's pace (`run-improvement-campaign`), one measured change at a time on a
-   tree that holds still.
+   run-hour at about two live runs, 0.094 at about six and 0.067 at about nine. The launcher now refuses
+   a launch while the one-minute load is above 25, or when its batch would take the live runs past six
+   (`MAX_LAUNCH_LOAD` and `MAX_LIVE_RUNS` in `launch-run/scripts/options.ts`), before it prepares a
+   tree; `--over-capacity "<reason>"` launches anyway and each receipt keeps the reason. The rate of
+   change has no such guard. Owner: the Super Loop's pace (`run-improvement-campaign`), one measured
+   change at a time on a tree that holds still.
 
 The first is model-visible where it changes `examples.md` or opens a split build. The second, third
 and fourth are the controller's, the readers' and the operator's, and move no prompt.

@@ -307,7 +307,9 @@ or five lanes at once, so every run added stretches every run already there. On 
 `correctness_check` took 137 minutes, and eleven firmware epoch reviews ended at their one-hour cap.
 The controller's own share of a check was 3 to 5 minutes; the rest was the checks' compiles, slowed
 by the load. Under that load every arm is tool-bound, ablated or not, so arms cannot be compared on
-round length.
+round length. The launcher refuses such a launch, and one that would take the live runs past six,
+before it prepares a tree; `--over-capacity "<reason>"` is the operator's override, kept in each
+receipt.
 
 Two launch arguments decide whether the run can answer a climb question at all:
 

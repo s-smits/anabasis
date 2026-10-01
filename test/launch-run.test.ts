@@ -29,6 +29,7 @@ import {
 } from "../.claude/skills/launch-run/scripts/options.ts";
 import {
   type Command,
+  type HostPace,
   checkOpening,
   launchBatch,
   prepareEnvironment,
@@ -39,7 +40,7 @@ import { serviceManager } from "../.claude/skills/launch-run/scripts/service.ts"
 import { solveIsolationPolicy, spawnUnderSolveIsolation } from "../src/verify/solve-sandbox.ts";
 import { sha256 } from "../src/meta/digest.ts";
 import { hasText } from "../src/meta/text.ts";
-import { double, required } from "./helpers/doubles.ts";
+import { double, rejectionOf, required } from "./helpers/doubles.ts";
 import { gitOutput } from "../.claude/skills/main/git.ts";
 
 type Context = Parameters<typeof launchBatch>[2];
@@ -51,6 +52,7 @@ interface BatchFixtureOptions {
   failWorker?: boolean;
   refuseAllowance?: boolean;
   args?: string[];
+  host?: HostPace;
 }
 interface ModelSlot {
   kind: string;
@@ -156,6 +158,7 @@ function batchFixture({
   failWorker = false,
   refuseAllowance = false,
   args = [...CUSTOM, "truss"],
+  host = { load: 1.5, live: [] },
 }: BatchFixtureOptions = {}) {
   const options = parseOptions(args);
   const plans = planRuns(options, temp(), "fixture");
@@ -168,6 +171,7 @@ function batchFixture({
     uid: 501,
     sharedRoot: temp(),
     manager,
+    host,
     credentials: {
       claude: {
         kind: "claude",
@@ -515,6 +519,7 @@ describe("one-command run launcher", () => {
     [["--prompt", "text\0"], PROMPT_REFUSAL],
     [["--prompt", "text\r"], PROMPT_REFUSAL],
     [["truss", "--env-file", "relative"], "--env-file must be absolute"],
+    [["truss", "--over-capacity", " "], "--over-capacity needs the reason, in words"],
     [["truss", "--claim", "unsupported"], 'unknown option "--claim"'],
     [["truss", "truss", "--project", "old-project"], PROJECT_REFUSAL],
     [["truss", "--project", "../old"], PROJECT_REFUSAL],
@@ -862,6 +867,56 @@ describe("one-command run launcher", () => {
     expect(launched(result[0]).error).toContain("uncertain start");
     expect(uncertain.calls.filter((args) => isLauncher(args))).toHaveLength(1);
     expect(uncertain.calls.some((args) => args.includes("kill") || args.includes("bootout"))).toBe(false);
+  });
+
+  // The operator's pace (2026-10-01): an Opus run placed 0.160 batteries a run-hour at about two live
+  // runs and 0.067 at about nine, so a batch past the load or the live count starts nothing at all.
+  const FIVE_LIVE = ["run-a", "run-b", "run-c", "run-d", "run-e"];
+  it.each([
+    [
+      "a load above 25",
+      { load: 31.2, live: ["run-a", "run-b"] },
+      'refused before preparing any tree: one-minute load 31.2 (limit 25); 2 live controller runs, 4 with this batch (limit 6)\n  live: run-a, run-b\nEach run added slows every run already there. Wait for the load to fall or a run to close, or pass --over-capacity "<reason>" to launch anyway.',
+    ],
+    [
+      "a batch that takes the live runs past six",
+      { load: 8, live: FIVE_LIVE },
+      "one-minute load 8 (limit 25); 5 live controller runs, 7 with this batch (limit 6)\n  live: run-a, run-b, run-c, run-d, run-e\n",
+    ],
+    [
+      "a load above 25 when the live runs could not be read",
+      { load: 25.1, live: { unread: "fixture reader failed" } },
+      "one-minute load 25.1 (limit 25); the live controller runs are unread (fixture reader failed), so the load alone decides\n",
+    ],
+  ])("refuses %s before preparing any tree or asking any provider", async (_case, host, refusal) => {
+    const fixture = batchFixture({ host });
+    const error = await rejectionOf(
+      launchBatch(fixture.plans, fixture.options, fixture.context, fixture.command),
+    );
+    expect(error.message).toContain(refusal);
+    expect(fixture.calls).toEqual([]);
+    for (const plan of fixture.plans) expect(existsSync(plan.dir)).toBe(false);
+  });
+
+  it("launches at the limits, or past them with the operator's reason kept in each receipt beside the gate's load", async () => {
+    const reason = "operator: one arm replaces a stopped one";
+    for (const [args, host, overCapacity] of [
+      [["truss"], { load: 25, live: FIVE_LIVE }, null],
+      [["truss"], { load: 12, live: { unread: "fixture reader failed" } }, null],
+      [
+        ["truss", "--over-capacity", reason],
+        { load: 31.2, live: [...FIVE_LIVE, "run-f"] },
+        { reason, load: 31.2, live: 6 },
+      ],
+    ] as const) {
+      const fixture = batchFixture({ args: [...args], host });
+      const result = await launchBatch(fixture.plans, fixture.options, fixture.context, fixture.command);
+      expect(launched(result[0]).started).toBe(true);
+      expect(readReport(required(fixture.plans[0], "plan")).gate).toMatchObject({
+        decision: "ran",
+        overCapacity,
+      });
+    }
   });
 
   // The terminal is read only through the controller's strict reader, so one it refuses still ends

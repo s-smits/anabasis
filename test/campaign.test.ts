@@ -15,11 +15,7 @@ import {
 } from "../.claude/skills/run-improvement-campaign/scripts/prediction.ts";
 import { readEpochRecord } from "../src/author/campaign-epoch.ts";
 import type { Denominator } from "../src/run/controller-denominator.ts";
-import {
-  BUILDER_EXECUTION_SCHEMA,
-  submitProjection,
-  type BuilderSubmitAttempt,
-} from "../src/author/builder-execution.ts";
+import { BUILDER_EXECUTION_SCHEMA, type BuilderSubmitAttempt } from "../src/author/builder-execution.ts";
 import type {
   BuilderCustomToolCall,
   BuilderCustomToolSemantic,
@@ -27,9 +23,9 @@ import type {
 import { mkdirSync, mkdtempSync, unlinkSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { runtimeProcess } from "../src/meta/process.ts";
 import { bindProductMeasurement } from "../src/run/product-versions.ts";
-import { caseRecordRow } from "./helpers/case-record-row.ts";
+import { executionRecord } from "./helpers/builder-execution-record.ts";
+import { caseRecordRow, writeCaseRecord } from "./helpers/case-record-row.ts";
 import { execTextSync } from "./helpers/bun-spawn-sync.ts";
 import { publishProduct, recordDigestBattery, solveRow } from "./helpers/digest-battery.ts";
 import { MATCHING_OPERATING_GUIDE } from "./helpers/matching-fixture.ts";
@@ -38,7 +34,7 @@ import { writeSettledReview } from "./helpers/review-fixtures.ts";
 import { fence } from "./helpers/starter-contracts.ts";
 
 const RUN = "fullrun-20260923-a";
-const SCOREBOARD = join(import.meta.dir, "../.claude/skills/run-improvement-campaign/scripts/scoreboard.ts");
+const SCRIPTS = join(import.meta.dir, "../.claude/skills/run-improvement-campaign/scripts");
 const BATTERY = `${RUN}-i02`;
 const NON_RESULT = {
   acceptedSubmit: false,
@@ -89,37 +85,6 @@ function bundle(f: Fixture, tasks = fence("## Task battery contract", "json")): 
   writeFileSync(join(dir, "agent/BUILT_AGENTS.md"), MATCHING_OPERATING_GUIDE);
 }
 
-function cases(f: Fixture, rows: ReturnType<typeof caseRecordRow>[]): void {
-  writeFileSync(
-    join(f.campaign, "case-record.jsonl"),
-    rows.map((row, i) => `${JSON.stringify({ seq: i + 1, row })}\n`).join(""),
-  );
-}
-
-function submit(
-  ordinal: number,
-  outcome: "accepted" | "refused",
-  repeatedFindings = false,
-): BuilderSubmitAttempt {
-  const first = ordinal === 1;
-  return {
-    kind: "candidate",
-    ordinal,
-    turn: ordinal,
-    atMs: ordinal * 100,
-    outcome,
-    stage: outcome === "accepted" ? null : "gates",
-    commit: `commit-${ordinal}`,
-    findingsDigest: outcome === "accepted" ? null : `digest-${ordinal}`,
-    findingCodes: [],
-    repeatedFindings: first ? null : repeatedFindings,
-    findingsDelta: first ? null : { carried: 0, resolved: 0, introduced: 0 },
-    workspaceChanged: first ? null : true,
-    treeFirstSubmittedAsAttempt: null,
-    terminal: false,
-  };
-}
-
 /** One returned custom call, placed in minutes from its session's start. */
 function receipt(
   sequence: number,
@@ -140,37 +105,19 @@ function receipt(
   };
 }
 
+/** The epoch's execution record: `submits` over the writer's defaults, `checks` correctness_check
+ *  calls, and a session of `minutes` holding `customCalls`. */
 function execution(
   f: Fixture,
-  schema: string,
-  submits: BuilderSubmitAttempt[],
+  submits: Partial<BuilderSubmitAttempt>[],
   checks = 0,
-  [customCalls, durationMs]: [BuilderCustomToolCall[], number] = [[], 60_000],
-): void {
+  [customCalls, minutes]: [BuilderCustomToolCall[], number] = [[], 1],
+): string {
   const byName = { correctness_check: checks };
-  const record = {
-    schema,
-    backend: "codex",
-    runtimeIdentity: null,
-    turns: 1,
-    durationMs,
-    toolCalls: { total: checks, failed: 0, byName, custom: checks, native: 0 },
-    usage: { inputTokens: null, outputTokens: null, costUsd: null, reportedTurns: 1, estimatedTurns: 0 },
-    firstToolMs: null,
-    submits,
-    ...submitProjection(submits),
-    partialTurn: null,
-    turnRetries: [],
-    authoringReviews: [],
-    failedCalls: [],
-    failedCallsOmitted: 0,
-    failedByName: {},
-    customCalls,
-    customCallsOmitted: 0,
-    outcome: "recorded",
-    writtenAt: "2026-09-23T10:00:00.000Z",
-  };
-  writeFileSync(join(f.epochDir, "builder-execution.json"), JSON.stringify(record));
+  const toolCalls = { total: checks, failed: 0, byName, custom: checks, native: 0 };
+  const record = executionRecord(submits, checks, { customCalls, toolCalls, durationMs: minutes * 60_000 });
+  writeFileSync(join(f.epochDir, "builder-execution.json"), record);
+  return record;
 }
 
 describe("status", () => {
@@ -197,9 +144,13 @@ describe("status", () => {
     expect(text).toContain("bundle validator refused: tasks-shape");
   });
 
-  it("refuses an older execution record by name in text and JSON, rather than reading zero submits", async () => {
+  it("refuses an older execution record by name in text and JSON, rather than reading zero submits", () => {
     const f = fixture("live");
-    execution(f, "builder-execution/v4", [submit(1, "refused")], 3);
+    const older = execution(f, [{ outcome: "refused" }], 3).replace(
+      BUILDER_EXECUTION_SCHEMA,
+      "builder-execution/v4",
+    );
+    writeFileSync(join(f.epochDir, "builder-execution.json"), older);
     const read = status(f);
     expect(read.authoring?.session).toBeNull();
     expect(read.authoring?.unreadable).toContain("recorded as builder-execution/v4 by another source");
@@ -209,20 +160,8 @@ describe("status", () => {
         .map((row) => row.detail)
         .join("\n"),
     ).toContain("Builder execution record refused");
-    const cli = Bun.spawn(
-      [
-        "bun",
-        join(import.meta.dir, "../.claude/skills/run-improvement-campaign/scripts/campaign.ts"),
-        "--campaigns",
-        join(f.repo, "campaigns"),
-        "--run",
-        RUN,
-        "--json",
-      ],
-      { stdout: "pipe", stderr: "pipe", cwd: runtimeProcess.cwd() },
-    );
-    const [out, code] = [await new Response(cli.stdout).text(), await cli.exited];
-    expect(code).toBe(0);
+    const args = ["--campaigns", join(f.repo, "campaigns"), "--run", RUN, "--json"];
+    const out = execTextSync("bun", [join(SCRIPTS, "campaign.ts"), ...args]);
     // SAFETY: `--json` prints the status array, and only the authoring fields below are read.
     const [json] = JSON.parse(out) as Array<{ authoring: { session: null; unreadable: string } }>;
     expect(json?.authoring.session).toBeNull();
@@ -231,12 +170,8 @@ describe("status", () => {
 
   it("counts a current record's submits and rehearsals, restarting the refused streak at acceptance", () => {
     const f = fixture("live");
-    execution(
-      f,
-      BUILDER_EXECUTION_SCHEMA,
-      [submit(1, "refused"), submit(2, "accepted"), submit(3, "refused"), submit(4, "refused", true)],
-      4,
-    );
+    const refused = { outcome: "refused" } as const;
+    execution(f, [refused, {}, refused, { ...refused, repeatedFindings: true }], 4);
     expect(status(f).authoring?.session).toEqual({
       rehearsals: 4,
       submits: 4,
@@ -251,12 +186,12 @@ describe("status", () => {
     const f = fixture("live");
     const held = { outcome: "blocked" as const, reason: "review-unread" };
     const progress = [receipt(1, "submit", [100, 1], held), receipt(2, "harness_trial", [101, 40])];
-    execution(f, BUILDER_EXECUTION_SCHEMA, [], 0, [progress, 150 * 60_000]);
+    execution(f, [], 0, [progress, 150]);
     const read = status(f);
     expect(read.authoring?.session).toMatchObject({ submits: 0, quietMinutes: 9 });
     expect(deviations(null, read).some((row) => row.detail.includes("Builder minutes"))).toBe(false);
     const busy = [receipt(1, "bash", [0, 90]), receipt(2, "correctness_check", [90, 20])];
-    execution(f, BUILDER_EXECUTION_SCHEMA, [], 1, [busy, 150 * 60_000]);
+    execution(f, [], 1, [busy, 150]);
     expect(deviations(null, status(f)).map((row) => row.detail)).toContainEqual(
       expect.stringContaining("150 Builder minutes since its last submit or harness_trial returned"),
     );
@@ -264,7 +199,7 @@ describe("status", () => {
 
   it("partitions this run's batteries through the controller's classifier and names an unreadable record", () => {
     const f = fixture("live");
-    cases(f, [
+    writeCaseRecord(f.campaign, [
       caseRecordRow("t1", "mast", { runId: BATTERY }),
       caseRecordRow("t2", "mast", { runId: BATTERY, acceptedSubmit: false, truthOk: null, pass: false }),
       caseRecordRow("t3", "mast", { runId: BATTERY, ...NON_RESULT }),
@@ -305,10 +240,10 @@ describe("watch", () => {
 
   it("names each new case once, and stops scheduling after five trailing non-results", () => {
     const f = fixture("live");
-    cases(f, [caseRecordRow("t1", "mast", { runId: BATTERY })]);
+    writeCaseRecord(f.campaign, [caseRecordRow("t1", "mast", { runId: BATTERY })]);
     const before = status(f);
     expect(deviations(null, before).map((row) => row.detail)).toContain(`battery ${BATTERY} started`);
-    cases(f, [
+    writeCaseRecord(f.campaign, [
       caseRecordRow("t1", "mast", { runId: BATTERY }),
       ...["t2", "t3", "t4", "t5", "t6"].map((t) =>
         caseRecordRow(t, "mast", { runId: BATTERY, ...NON_RESULT }),
@@ -324,24 +259,15 @@ describe("watch", () => {
   });
 
   it("names a Builder limit once as it is crossed", () => {
-    const base = status(fixture("live"));
-    const session = {
-      rehearsals: 12,
-      submits: 5,
-      refusedInARow: 5,
-      sameFindingsInARow: 0,
-      checksWithoutAccept: 12,
-      quietMinutes: 300,
-    };
-    const authoring = {
-      epoch: "e",
-      commits: 1,
-      session,
-      unreadable: null,
-      environmentInARow: 0,
-      environmentKind: null,
-    };
-    const crossed = { ...base, authoring };
+    const f = fixture("live");
+    const base = status(f);
+    execution(
+      f,
+      Array.from({ length: 5 }, () => ({ outcome: "refused" as const })),
+      12,
+      [[], 300],
+    );
+    const crossed = status(f);
     const details = deviations(base, crossed).map((row) => row.detail);
     expect(details.some((d) => d.includes("5 submits refused in a row"))).toBe(true);
     expect(details.some((d) => d.includes("correctness_check calls"))).toBe(true);
@@ -410,7 +336,7 @@ describe("watch", () => {
       freeGib: 100,
       diskMinGib: 20,
     };
-    cases(f, [caseRecordRow("t1", "mast", { runId: BATTERY })]);
+    writeCaseRecord(f.campaign, [caseRecordRow("t1", "mast", { runId: BATTERY })]);
     const quiet = watchPass(new Map([[RUN, fresh()]]), state, options);
     expect(quiet.rows).toEqual([]);
     expect(state.pending.length).toBeGreaterThan(0);
@@ -577,10 +503,8 @@ describe("scoreboard", () => {
       bindProductMeasurement(f.repo, "truss", battery, product);
       const solved = tasks.map(({ taskId }) => solveRow({ taskId }, battery, !fails.includes(taskId)));
       recordDigestBattery(product, [battery], { [battery]: solved });
-      writeFileSync(
-        join(f.campaign, "claims", `${battery}.json`),
-        JSON.stringify({ createdAt: `2026-09-23T0${hour + 1}:00:00.000Z` }),
-      );
+      const createdAt = `2026-09-23T0${hour + 1}:00:00.000Z`;
+      writeFileSync(join(f.campaign, "claims", `${battery}.json`), JSON.stringify({ createdAt }));
       for (const [taskId, spent] of Object.entries(minutes)) {
         const pass = !fails.includes(taskId);
         const solverEndedAt = new Date(Date.parse(START) + spent * 60_000).toISOString();
@@ -588,12 +512,13 @@ describe("scoreboard", () => {
         rows.push(caseRecordRow(taskId, "family", row));
       }
     }
-    cases(f, rows);
+    writeCaseRecord(f.campaign, rows);
     writeSettledReview(join(f.campaign, "analysis"), third, [
       { taskId: "g", disposition: "check-stands" },
       { taskId: "h" },
     ]);
-    const board = (...flags: string[]) => execTextSync("bun", [SCOREBOARD, "--repo", f.repo, ...flags]);
+    const board = (...flags: string[]) =>
+      execTextSync("bun", [join(SCRIPTS, "scoreboard.ts"), "--repo", f.repo, ...flags]);
     const [first8, followUp] = [
       { signal: 2, batteries: 3 },
       { earned: 3, last: 1, carried: 1, passed: 1, answered: 1 },

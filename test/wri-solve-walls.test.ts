@@ -6,7 +6,7 @@ import { campaignDir } from "../src/meta/campaign-root.ts";
 import { bindProductMeasurement } from "../src/run/product-versions.ts";
 import type { CaseRecordRow } from "../src/claim/case-record.ts";
 import type { NonResultKind } from "../src/claim/record-events.ts";
-import { caseRecordRow } from "./helpers/case-record-row.ts";
+import { caseRecordRow, writeCaseRecord } from "./helpers/case-record-row.ts";
 import { publishProduct } from "./helpers/digest-battery.ts";
 import {
   type WallBattery as Battery,
@@ -88,8 +88,7 @@ function campaign(
   const dir = campaignDir(root, SLUG);
   mkdirSync(dir, { recursive: true });
   const products = new Map<string, string>();
-  const lines: string[] = [];
-  let seq = 0;
+  const rows: CaseRecordRow[] = [];
   for (const battery of batteries) {
     const productId = battery.product ?? battery.runId;
     if (battery.config !== null && !products.has(productId)) {
@@ -99,19 +98,10 @@ function campaign(
     if (product !== undefined) bindProductMeasurement(root, SLUG, battery.runId, product);
     const runRoot = product ?? dir;
     for (const spec of battery.cases) {
-      const start = Date.parse("2026-09-19T10:00:00.000Z");
-      const end = start + spec.minutes * 60_000 + (spec.seconds ?? 0) * 1000;
-      seq += 1;
-      lines.push(
-        JSON.stringify({
-          seq,
-          row: {
-            ...caseRecordRow(spec.taskId, "one", { runId: battery.runId, ...verdictOf(spec) }),
-            solverStartedAt: new Date(start).toISOString(),
-            solverEndedAt: new Date(end).toISOString(),
-          },
-        }),
-      );
+      const solverStartedAt = "2026-09-19T10:00:00.000Z";
+      const end = Date.parse(solverStartedAt) + spec.minutes * 60_000 + (spec.seconds ?? 0) * 1000;
+      const at = { solverStartedAt, solverEndedAt: new Date(end).toISOString() };
+      rows.push(caseRecordRow(spec.taskId, "one", { runId: battery.runId, ...verdictOf(spec), ...at }));
       if (spec.turns !== null) {
         const caseDir = join(runRoot, "runs", battery.runId, "cases", spec.taskId);
         mkdirSync(caseDir, { recursive: true });
@@ -124,7 +114,7 @@ function campaign(
       }
     }
   }
-  writeFileSync(join(dir, "case-record.jsonl"), lines.join("\n") + "\n");
+  writeCaseRecord(dir, rows);
   return dir;
 }
 

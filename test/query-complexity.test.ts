@@ -2,9 +2,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/files
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { afterEach, describe, expect, it } from "bun:test";
-import type { CaseRecordRow } from "../src/claim/case-record.ts";
 import { SOLVE_WALL_MESSAGE } from "../src/backends/backend-types.ts";
-import { caseRecordRow } from "./helpers/case-record-row.ts";
+import { caseRecordRow, writeCaseRecord } from "./helpers/case-record-row.ts";
 import { recordDigestBattery, solveRow } from "./helpers/digest-battery.ts";
 import { double } from "./helpers/doubles.ts";
 import { writeSettledReview } from "./helpers/review-fixtures.ts";
@@ -248,12 +247,6 @@ describe("query complexity", () => {
     for (const anchors of Object.values(TIERS)) expect(anchors.length).toBeGreaterThanOrEqual(8);
   });
 });
-
-/** Write rows the way the case-record writer does: one `{seq, row}` line each, seq from 1. */
-function writeCaseRecord(dir: string, rows: CaseRecordRow[]): void {
-  const lines = rows.map((row, index) => JSON.stringify({ seq: index + 1, row }));
-  writeFileSync(join(dir, "case-record.jsonl"), `${lines.join("\n")}\n`, "utf8");
-}
 
 describe("climb velocity", () => {
   const reading = (mass: number) => ({ rows: [{ taskId: "heavy-01", numerics: { "limits.mass": mass } }] });

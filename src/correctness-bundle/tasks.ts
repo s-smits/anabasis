@@ -49,7 +49,7 @@ export interface TaskBattery {
   tasks: BuildTask[];
 }
 
-export interface TaskValidationContext {
+interface TaskValidationContext {
   /** Battery size from the ask manifest, or its upper bound when `minTasks` opens a range. Check it
    *  while the Builder can still repair the candidate. The census gate repeats the count after
    *  fingerprinting as independent evidence, rather than being the first place a wrong count is

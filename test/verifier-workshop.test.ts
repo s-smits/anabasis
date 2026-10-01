@@ -18,14 +18,13 @@ import { afterAll, describe, expect, it } from "bun:test";
 import { CandidateIsolationUnavailable } from "../src/builder/candidate-isolation-runtime.ts";
 import { openPathRecord } from "../src/builder/path-record.ts";
 import { deriveCandidateIsolation } from "../src/builder/candidate-isolation.ts";
-import { createPublicSourceTool } from "../src/builder/public-source-tool.ts";
 import {
   type PublicSourceBroker,
   PublicSourceFailure,
   isPublicNetworkAddress,
   resolvePublicHttpsTarget,
 } from "../src/builder/public-source.ts";
-import { createVerifierWorkshopTool } from "../src/builder/verifier-workshop-tool.ts";
+import { createVerifierWorkshopTool, createPublicSourceTool } from "../src/builder/verifier-workshop-tool.ts";
 
 type WorkshopCall = {
   command: string;

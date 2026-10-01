@@ -21,7 +21,6 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { afterEach, describe, expect, it } from "bun:test";
 import { initWorkspace, workspaceHead, workspaceStatus } from "../src/author/domain-repo.ts";
-import { freshCandidateFindings } from "../src/author/fresh-candidate-contract.ts";
 import {
   type CandidateCheckContext,
   type CandidateCheckOutcome,
@@ -29,6 +28,7 @@ import {
   checkCandidate,
   conditionKey,
   validatedBundle,
+  freshCandidateFindings,
 } from "../src/author/candidate-check.ts";
 import { double, required } from "./helpers/doubles.ts";
 import { projectFindingForAuthor } from "../src/correctness-bundle/brief.ts";

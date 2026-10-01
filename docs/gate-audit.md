@@ -80,7 +80,7 @@ Conformance registers exactly this roster, so it has to parse into one stable wo
 
 Refuses an accept control the public artifact schema cannot compile, or one off the declared
 top-level schema (`controls-accept-public-schema-inconsistent`, `controls-accept-off-schema`;
-`src/author/fresh-candidate-contract.ts`, `src/correctness-bundle/controls.ts`). That is a contradiction inside
+`src/author/candidate-check.ts`, `src/correctness-bundle/controls.ts`). That is a contradiction inside
 the Builder's own bytes, and the solver is told the same schema.
 
 ### expected-check-inapplicable

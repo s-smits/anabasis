@@ -19,12 +19,16 @@ import {
   detectLineEnding,
   normalizeToLF,
   restoreLineEndings,
-  stripBom,
-} from "./pi-coding/edit-core.ts";
+} from "../../vendor/pi-coding-agent/core/tools/edit-diff.ts";
+import { splitBom } from "../../vendor/pi-coding-agent/utils/text.ts";
 import { refuseDestructiveCommand } from "./command-guard.ts";
 import type { SafeguardContext } from "../meta/safeguard.ts";
-import { withFileMutationQueue } from "./pi-coding/file-mutation-queue.ts";
-import { truncateHead, truncateLine, truncateTail } from "../meta/truncate.ts";
+import { withFileMutationQueue } from "../../vendor/pi-coding-agent/core/tools/file-mutation-queue.ts";
+import {
+  truncateHead,
+  truncateLine,
+  truncateTail,
+} from "../../vendor/pi-coding-agent/core/tools/truncate.ts";
 import { cutOutputNotice, spillWholeOutput, stageAndCopy } from "./tool-write.ts";
 import { keyIfTruthy, keysIf } from "../meta/optional-key.ts";
 
@@ -351,7 +355,7 @@ export function createBuilderTools(isolation: BuilderIsolation): AgentTool[] {
           if (current.status !== 0) {
             throw new Error(current.stderr.trim() || `edit read exited ${current.status}`);
           }
-          const { bom, text: withoutBom } = stripBom(current.stdout);
+          const { bom, text: withoutBom } = splitBom(current.stdout);
           const lineEnding = detectLineEnding(withoutBom);
           const normalized = normalizeToLF(withoutBom);
           const { baseContent, newContent } = applyEditsToNormalizedContent(normalized, edits, params.path);

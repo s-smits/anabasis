@@ -5,8 +5,9 @@
 // ahead of the summary are copied from pi coding-agent's
 // packages/coding-agent/src/core/session-manager.ts at the same commit, where the prompt and tool
 // declarations live in transcript system messages; v0.87.0 keeps the same mechanism.
-import type { AgentMessage, CompactionEntry, Entry } from "@earendil-works/pi-agent-core";
-import { createBranchSummaryMessage, createCompactionSummaryMessage } from "@earendil-works/pi-agent-core";
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import { createBranchSummaryMessage, createCompactionSummaryMessage } from "./messages.ts";
+import type { CompactionEntry, Entry } from "./types.ts";
 import type { SystemMessage } from "@earendil-works/pi-ai";
 
 export interface SessionCompactionEntry extends CompactionEntry {

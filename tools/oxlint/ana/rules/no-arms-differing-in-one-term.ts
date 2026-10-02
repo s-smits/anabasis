@@ -44,7 +44,7 @@ import { blockBody, onlyStatement } from "../shared/statements.ts";
  * `verify ? args[1] : args[0]` names two. Punctuation keeps its branch, because `===` against
  * `!==` is two relations and `(a === b) === wanted` is not the shorter spelling. A template
  * literal keeps it for the same reason a quoted string does: two messages differing in their
- * text are two messages, which is four of the sites in `edit-core.ts` and `full-run.ts`. An arm
+ * text are two messages, as at the sites in `full-run.ts` this would otherwise flag. An arm
  * carrying a comment keeps it, because the comment is about that branch and has nowhere to go in
  * a merged expression. An arm over 200 characters keeps it, because the merged line would need
  * wrapping and the saving disappears. And a `default:`-less switch is not a branch pair, so this

@@ -742,6 +742,8 @@ describe("row and column helpers", () => {
 describe("the climb decisions recorded for a run", () => {
   const CURRENT_SCHEMA = DIFFICULTY_DECISION_SCHEMA;
   const RETIRED_SCHEMA = "difficulty-decision/v8";
+  const AIM: [number, number] = [5, 12];
+  const PLACEMENT = { passes: 9, n: 25, zone: "on-aim" as const, aim: AIM, toAim: 0 };
 
   /** One `difficulty-decisions/` record in the shape `recordDifficultyDecision` writes. An
    *  incomplete one omits the rationale, which the schema declares mandatory. */
@@ -758,10 +760,12 @@ describe("the climb decisions recorded for a run", () => {
       digest: `${runId}-digest`,
       difficulty: {
         admitted: 1,
+        excluded: [],
+        rows: [{ runId, zone: "on-aim" }],
         decision: {
           ...(complete && { rationale: `${runId} placed on the band` }),
           evidence: [{ runId, batterySha256: "c".repeat(64) }],
-          placement: { passes: 9, n: 25, zone: "on-aim" },
+          placement: PLACEMENT,
         },
       },
     });
@@ -774,7 +778,7 @@ describe("the climb decisions recorded for a run", () => {
     writeDecision(campaignDir, "run-1-i03", CURRENT_SCHEMA);
     const decisions = readDifficultyDecisions(onlyRun(root));
     expect(decisions.rows.map((row) => row.runId)).toEqual(["run-1-i03"]);
-    expect(decisions.refused).toEqual([RETIRED_SCHEMA]);
+    expect(decisions.refused).toEqual([{ file: "run-1-i02.json", reason: RETIRED_SCHEMA }]);
   });
 
   it("refuses a current-schema record missing a mandatory field instead of reading it as null", () => {
@@ -783,7 +787,24 @@ describe("the climb decisions recorded for a run", () => {
     writeDecision(campaignDir, "run-1-i02", CURRENT_SCHEMA, false);
     const decisions = readDifficultyDecisions(onlyRun(root));
     expect(decisions.rows).toEqual([]);
-    expect(decisions.refused).toEqual([`${CURRENT_SCHEMA} incomplete`]);
+    expect(decisions.refused).toEqual([{ file: "run-1-i02.json", reason: `${CURRENT_SCHEMA} incomplete` }]);
+  });
+
+  it("skips an unreadable file for one run and refuses it by name for the whole campaign", () => {
+    const root = checkout();
+    const campaignDir = writeOpening(root, "slug-aaaaaaaa-1", "run-1", OPENED_AT);
+    writeDecision(campaignDir, "run-1-i02");
+    writeDecision(campaignDir, "run-1-i03", CURRENT_SCHEMA, false);
+    writeFileSync(join(campaignDir, "difficulty-decisions", "run-1-i04.json"), "{");
+    expect(readDifficultyDecisions(onlyRun(root)).refused).toEqual([
+      { file: "run-1-i03.json", reason: `${CURRENT_SCHEMA} incomplete` },
+    ]);
+    const campaign = readDifficultyDecisions({ campaignDir, runId: null });
+    expect(campaign.rows.map((row) => row.runId)).toEqual(["run-1-i02"]);
+    expect(campaign.refused).toEqual([
+      { file: "run-1-i03.json", reason: `${CURRENT_SCHEMA} incomplete` },
+      { file: "run-1-i04.json", reason: "unreadable" },
+    ]);
   });
 
   it("reads each decision's placement and evidence, in round order past two padded digits", () => {
@@ -794,8 +815,8 @@ describe("the climb decisions recorded for a run", () => {
     const decisions = readDifficultyDecisions(onlyRun(root));
     expect(decisions.rows.map((row) => [row.runId, row.placement, row.admitted, row.evidenceRunIds])).toEqual(
       [
-        ["run-1-i99", { passes: 9, n: 25, zone: "on-aim" }, 1, ["run-1-i99"]],
-        ["run-1-i100", { passes: 9, n: 25, zone: "on-aim" }, 1, ["run-1-i100"]],
+        ["run-1-i99", PLACEMENT, 1, ["run-1-i99"]],
+        ["run-1-i100", PLACEMENT, 1, ["run-1-i100"]],
       ],
     );
   });
@@ -825,10 +846,12 @@ describe("the climb decisions recorded for a run", () => {
       digest: "run-1-i02-digest",
       difficulty: {
         admitted: 1,
+        excluded: [],
+        rows: [],
         decision: {
           rationale: "the first battery placed",
           evidence: [{ runId: "run-1", batterySha256: "c".repeat(64) }],
-          placement: { passes: 1, n: 1, zone: "too-easy" },
+          placement: { passes: 1, n: 1, zone: "too-easy", aim: [1, 0], toAim: 0 },
         },
       },
     });

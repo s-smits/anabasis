@@ -15,7 +15,7 @@
  */
 import { wilsonInterval } from "./estimation.ts";
 
-export interface Observation {
+interface Observation {
   /** Item identity: task family (pooled) or task id (fine-grained), the caller's choice. */
   item: string;
   pass: boolean;

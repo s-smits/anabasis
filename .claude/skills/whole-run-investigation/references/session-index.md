@@ -73,7 +73,7 @@ call sequences, say whether the brief and tools publish a sufficient constructio
 **9. Rehearsal instrument reach.** From `REHEARSAL NOT-RUN`, say which families the rehearsal
 verifier deadline lets the instrument grade at all.
 
-**10. Difficulty calibration loop.** From `OFF-AIM STREAK`, the calibration table and the `climb`
+**10. Difficulty calibration loop.** From `CLIMB FLAT`, the calibration table and the `climb`
 lane's line, say whether the batteries draw the line AGENTS.md "Goals and the climb" reads progress
 on, rather than whether they approach the aim.
 
@@ -161,7 +161,7 @@ program on the solver's PATH or guide line mirrors, and how often solves propose
 **35. Independent recomputation of passes.** From a dangling toolchain or a perfect battery,
 recompute a sample of passes from public facts before reading the evaluator, and count which held.
 
-**36. Difficulty pressure on the Builder.** From `OFF-AIM STREAK`, say which channels could have
+**36. Difficulty pressure on the Builder.** From `CLIMB FLAT`, say which channels could have
 pressed the Builder to change the tasks and what the Builder did with each.
 
 **37. Battery size and probe graduation.** Standing in standard and deep reads: recompute each

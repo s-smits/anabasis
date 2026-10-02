@@ -400,7 +400,7 @@ families the plan is about; it routes to `controller-source`
 
 **10. Difficulty calibration loop.**
 
-Starts from block 4b's `OFF-AIM STREAK (lane 10)`, from the calibration table the `handoff` lane
+Starts from the `climb` lane's `CLIMB FLAT (lane 10)`, from the calibration table the `handoff` lane
 prints, and from the `climb` lane's `velocity`, `horizon`, `flat` and `carried` lines.
 
 The question is whether the run draws the line the climb is meant to draw. Its shape and its four
@@ -410,9 +410,9 @@ battery's count, the placement the controller recorded
 (`difficulty-decisions/<runId>-<digest>.json`: `placement.zone`, `aim`, `toAim`, the Wilson
 interval), the operation the accepted bytes were attributed as, and the `climb` lane's four numbers
 as [the climb reference](climb.md) reads them. A run of n/n batteries is the finding, whatever its
-zones read, and `carried` says whether the Builder measured the same passed tasks again. The digest
-streak counts consecutive placements on one side of the aim; say which side, and whether it meets
-the stall rule `flat` applies (`STALL_BATTERIES`). The Builder is told no count, share or zone at
+zones read, and `carried` says whether the Builder measured the same passed tasks again. The `flat`
+line counts consecutive placements on one side of the aim; say which side, and whether it meets
+the stall rule it applies (`STALL_BATTERIES`). The Builder is told no count, share or zone at
 any size (AGENTS.md "Goals and the climb", under "Who hears the placement, and what it drives"), so
 no battery can be scored against a target the controller stated. A run whose source predates the
 removal of `EXPERIMENT.json` recorded a plan beside each accepted submit, and nothing reads it. Why
@@ -1071,12 +1071,12 @@ too little, and to `correctness-model/tasks.json` when the task could never fail
 
 **36. Difficulty pressure on the Builder.**
 
-Starts from block 4b's `OFF-AIM STREAK (lane 10)`, beside lane 10.
+Starts from the `climb` lane's `CLIMB FLAT (lane 10)`, beside lane 10.
 
 The question is what, in this run, pressed the Builder to make the tasks harder, and whether
 anything did. Only the Builder raises difficulty, and only through the tasks it writes: the
-controller writes no task, and the off-aim streak is counted for the operator by the digest and
-`runs pulse` and stops nothing, so a product can land above the aim round after round with no
+controller writes no task, and the off-aim streak is counted for the operator by `runs pulse` and
+the `climb` lane's `flat` and stops nothing, so a product can land above the aim round after round with no
 controller action (AGENTS.md "Goals and the climb", under "Who hears the placement, and what it
 drives"). Read the channels that could have carried pressure and say what each carried: the
 kickoff, the system prompt's intent clause, the round prompt's submit sentence, the climb readout

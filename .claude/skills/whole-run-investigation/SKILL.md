@@ -189,7 +189,7 @@ against a row of the brief: the trigger, the question it settles and the decisio
 | block 1 `UNTRIPPED IN SHIPPING`; 1c `REACH-ONLY CHECKS` | 6 |
 | verified cases, with lane 5 or 6 reading slack | 7, isolated |
 | 6 `REHEARSAL NOT-RUN` | 9 |
-| 4b `OFF-AIM STREAK`; the `handoff` calibration table; a `climb` edge label beside a placement | 10 |
+| `climb` `CLIMB FLAT`; the `handoff` calibration table; a `climb` edge label beside a placement | 10 |
 | 6 `SUBMITTED BYTES NEVER REHEARSED`; the `yield` `harness-trial` row | 11 |
 | the `yield` `epoch-reviewer` row; a review the census marks incomplete | 12 |
 | 4d `FINDINGS WITHOUT OWNER` or `ADVISORY FINDING RECURS UNROUTED`; the `yield` `epoch-reviewer` row | 14 |
@@ -212,7 +212,7 @@ against a row of the brief: the trigger, the question it settles and the decisio
 | standing at `standard` and `deep`; row F's F2 completion | 33 |
 | standing at every tier; 1b `CHECK CODE IN SOLVER REACH`; read beside lane 23 when 1b `CHECK TOOL IN SOLVER TRACE` fires | 34 |
 | 6b `VERSION TOOLCHAIN DANGLING`; 1c `PERFECT BATTERY OVER AIM` | 35 |
-| 4b `OFF-AIM STREAK`, beside lane 10 | 36 |
+| `climb` `CLIMB FLAT`, beside lane 10 | 36 |
 | standing at `standard` and `deep` | 37 |
 | 3b `FAMILY UNMOVED all-fail`; any verified fail, opened by hand when no row fired | 38 |
 

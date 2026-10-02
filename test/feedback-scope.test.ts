@@ -147,7 +147,7 @@ describe("the complete repair agenda", () => {
       expect(result).toMatchObject({ kind: "continue", carried: order });
       expect(result.evidence.findingsHash).toBe(first.evidence.findingsHash);
       expect(result.evidence.focusOwner).toBeNull();
-      expect(decideNextMove("adopted", order)).toMatchObject({ move: "rebuild", seed: "adopted" });
+      expect(decideNextMove("adopted", order)).toMatchObject({ move: "rebuild" });
       const environmental = await settle([...order, row("environment")]);
       expect(environmental).toMatchObject({ kind: "terminal", clause: "environment-blocked" });
       expect(environmental.evidence.feedback).toHaveLength(5);
@@ -170,7 +170,7 @@ describe("the complete repair agenda", () => {
     });
     const hostCut = cut(CASE_CODE["submission-path-host"], CASE_CODE["reference-solve-host"]);
     expect(await settle([hostCut])).toMatchObject({ kind: "continue", carried: [hostCut] });
-    expect(decideNextMove("adopted", [hostCut])).toMatchObject({ move: "rebuild", seed: "adopted" });
+    expect(decideNextMove("adopted", [hostCut])).toMatchObject({ move: "rebuild" });
     // Any other environment fact still ends both: one beside the cut solves, one mixed into the row.
     for (const blocked of [
       [hostCut, row("environment")],
@@ -181,37 +181,17 @@ describe("the complete repair agenda", () => {
     }
   });
 
-  it("requests a rebuild from the adopted product for each blocking set", () => {
+  it("requests a rebuild from the adopted product naming every blocking owner, sorted", () => {
+    // The owners are named. An open campaign admits a candidate that leaves them alone, so the
+    // kickoff states no consequence admission does not impose.
+    const owners = "correctness-model/controls.json, correctness-model/tasks.json";
     expect(
       decideNextMove("adopted", [row(TASKS_FILE), row("correctness-model/controls.json")]),
     ).toMatchObject({
       move: "rebuild",
-      seed: "adopted",
+      reason: expect.stringContaining(`blocking feedback stands against ${owners}`),
     });
-    // The owners are named. An open campaign admits a candidate that leaves them alone, so the
-    // kickoff states no consequence admission does not impose.
-    expect(
-      decideNextMove("adopted", [row(TASKS_FILE), row("correctness-model/controls.json")]).reason,
-    ).toContain(
-      "blocking feedback stands against correctness-model/controls.json, correctness-model/tasks.json",
-    );
     expect(decideNextMove("adopted", [row(TASKS_FILE)]).reason).not.toContain("admission");
-    expect(
-      decideNextMove("adopted", [
-        row("correctness-model/evaluator.ts"),
-        row("correctness-model/controls.json"),
-      ]),
-    ).toMatchObject({
-      move: "rebuild",
-      seed: "adopted",
-    });
-    for (const feedback of [
-      [row(TASKS_FILE), row("correctness-model/evaluator.ts")],
-      [row("correctness-model/controls.json"), row("agent/BUILT_AGENTS.md")],
-    ]) {
-      expect(decideNextMove("adopted", feedback)).toMatchObject({ move: "rebuild", seed: "adopted" });
-      expect(decideNextMove("adopted", feedback)).not.toHaveProperty("experiment");
-    }
   });
 
   it("settles an iteration to its own blocking rows", () => {

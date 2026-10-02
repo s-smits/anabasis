@@ -471,7 +471,10 @@ export function deriveCandidateIsolation(
         ...["package.json", "bun.lock", ".bun-version", "biome.json"].map((file) =>
           lit(repo(file), "toolchain"),
         ),
-        ...["README.md", "AGENTS.md"].map((file) => lit(repo(file), "docs")),
+        // The README is the public description of what a harness is for. AGENTS.md is not granted:
+        // it is the operator's and the repository agents' doctrine, with measured outcomes and the
+        // reasons behind each prompt, and the Builder's own guide is STARTER.md under `starters`.
+        lit(repo("README.md"), "docs"),
       ]
     : workshop;
   const write = author ? [sub(iterationDir, "iteration-write")] : workshop;

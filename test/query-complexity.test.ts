@@ -2,10 +2,11 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/files
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { afterEach, describe, expect, it } from "bun:test";
-import type { CaseRecordRow } from "../src/claim/case-record.ts";
-import type { CaseDisposition } from "../src/review/epoch-review-findings.ts";
-import { caseRecordRow } from "./helpers/case-record-row.ts";
+import { SOLVE_WALL_MESSAGE } from "../src/backends/backend-types.ts";
+import { caseRecordRow, writeCaseRecord } from "./helpers/case-record-row.ts";
+import { recordDigestBattery, solveRow } from "./helpers/digest-battery.ts";
 import { double } from "./helpers/doubles.ts";
+import { writeSettledReview } from "./helpers/review-fixtures.ts";
 import {
   ANCHOR_SHA256,
   STRUCTURE_KEYS,
@@ -27,6 +28,7 @@ import {
   render,
   sourceMovesOf,
   topTierOf,
+  flatTriggers,
   lineOf,
   placementOf,
   verdictOf,
@@ -57,7 +59,6 @@ interface Task {
   family: string;
   publicInput: typeof HEAVY_INPUT | { limits: { mass: number } };
 }
-type Structure = ReturnType<typeof structureOf>;
 
 const dirs: string[] = [];
 /** The heavy task's public input, named so the fixture writer can take it without widening to
@@ -246,14 +247,12 @@ describe("query complexity", () => {
   });
 });
 
-/** Write rows the way the case-record writer does: one `{seq, row}` line each, seq from 1. */
-function writeCaseRecord(dir: string, rows: CaseRecordRow[]): void {
-  const lines = rows.map((row, index) => JSON.stringify({ seq: index + 1, row }));
-  writeFileSync(join(dir, "case-record.jsonl"), `${lines.join("\n")}\n`, "utf8");
-}
-
 describe("climb velocity", () => {
   const reading = (mass: number) => ({ rows: [{ taskId: "heavy-01", numerics: { "limits.mass": mass } }] });
+  /** No structural count moved; one task joined and none of its numbers moved; two checks at a tier. */
+  const zero = { checks: 0, limits: 0, coupled: 0, tooled: 0, rules: 0, roots: 0, inputs: 0, scenarios: 0 };
+  const still = { median: 0, moved: 0, joined: 1, tasks: 1 };
+  const tiers = (medium = 2, hard = 0) => ({ checkTiers: { easy: 0, medium, hard, frontier: 0 } });
 
   // Direction is absent on purpose: a loosened limit moved just as far as a tightened one.
   it.concurrent.each([
@@ -265,35 +264,26 @@ describe("climb velocity", () => {
   });
 
   // Renaming every task once read as "numbers moved 0" and so as `restated`, over batteries whose
-  // limits had moved 3.75 times: the join found nothing and reported nothing as no change.
-  it.concurrent("names a battery whose task ids all changed as replaced, not restated", () => {
-    const renamed = { rows: [{ taskId: "heavy-02", numerics: { "limits.mass": 375 } }] };
-    const drift = numericDriftOf(reading(100), renamed);
-    expect(drift).toEqual({ median: 0, moved: 0, joined: 0, tasks: 1 });
-    const flat = { checks: 0, limits: 0, coupled: 0, tooled: 0, rules: 0, roots: 0, inputs: 0, scenarios: 0 };
-    const tiers = { checkTiers: { easy: 0, medium: 2, hard: 0, frontier: 0 } };
-    expect(verdictOf(tiers, tiers, null, flat, drift)).toBe("replaced");
-  });
-
-  // A renumbered battery keeps one id by chance, and that one task's unchanged numbers once read
-  // as the whole battery standing still: 1 of 25 joined, 0 moved, `restated`. A battery adding one
-  // new task to 24 unchanged ones still asked for something the last did not, so it is not restated.
-  it.concurrent("reads a mostly renumbered or partly new battery as moved, not restated", () => {
-    const flat = { checks: 0, limits: 0, coupled: 0, tooled: 0, rules: 0, roots: 0, inputs: 0, scenarios: 0 };
-    const tiers = { checkTiers: { easy: 0, medium: 2, hard: 0, frontier: 0 } };
-    const rows = (ids: string[]) => ({
-      rows: ids.map((taskId) => ({ taskId, numerics: { "limits.mass": 100 } })),
+  // limits had moved 3.75 times: the join found nothing and reported nothing as no change. A
+  // renumbered battery keeps one id by chance, and that one task's unchanged numbers once read as the
+  // whole battery standing still: 1 of 25 joined, 0 moved, `restated`. A battery adding one new task
+  // to 24 unchanged ones still asked for something the last did not, so it is not restated.
+  it.concurrent("reads a renamed or mostly renumbered battery as replaced, and a partly new one as moved", () => {
+    const rows = (ids: string[], mass = 100) => ({
+      rows: ids.map((taskId) => ({ taskId, numerics: { "limits.mass": mass } })),
     });
     const ids = Array.from({ length: 25 }, (_, at) => `truss-${at}`);
+    const renamed = numericDriftOf(rows(["heavy-01"]), rows(["heavy-02"], 375));
+    expect(renamed).toEqual({ median: 0, moved: 0, joined: 0, tasks: 1 });
     const renumbered = numericDriftOf(
       rows(ids.slice(0, 5)),
       rows(["truss-0", ...ids.slice(5).map((id) => `${id}b`)]),
     );
     expect(renumbered).toEqual({ median: 0, moved: 0, joined: 1, tasks: 21 });
-    expect(verdictOf(tiers, tiers, null, flat, renumbered)).toBe("replaced");
-    const oneNew = numericDriftOf(rows(ids.slice(0, 24)), rows(ids));
-    expect(verdictOf(tiers, tiers, null, flat, oneNew)).toBe("adjusted");
-    expect(verdictOf(tiers, tiers, null, flat, numericDriftOf(rows(ids), rows(ids)))).toBe("restated");
+    const verdict = (drift: typeof still) => verdictOf(tiers(), tiers(), null, zero, drift);
+    expect([renamed, renumbered].map(verdict)).toEqual(["replaced", "replaced"]);
+    expect(verdict(numericDriftOf(rows(ids.slice(0, 24)), rows(ids)))).toBe("adjusted");
+    expect(verdict(numericDriftOf(rows(ids), rows(ids)))).toBe("restated");
   });
 
   const counts = (passed: number, verified: number, unaccepted = 0) => ({
@@ -303,27 +293,18 @@ describe("climb velocity", () => {
     nonResult: 0,
   });
 
-  // The placement is the controller's: its deciding sample, read by its band owner.
-  it.concurrent("places a battery with the same interval the controller uses", () => {
+  // The placement is the controller's: its deciding sample, read by its band owner. Once any case is
+  // verified, a refused submit is a difficulty failure: read as passed over verified, five passes
+  // beside twenty refused submits placed at a rate of 1, far above the band the controller placed
+  // that same battery on. A changed subset the host recorded is the deciding sample.
+  it.concurrent("places a battery as the controller does, refused submits and a recorded subset included", () => {
     expect(placementOf(counts(24, 25))).toMatchObject({ zone: "too-easy", population: "whole-battery" });
     expect(placementOf(counts(24, 25))?.lo).toBeCloseTo(0.8046, 4);
     expect(placementOf(counts(0, 0, 25))).toBeNull();
-  });
-
-  // Once any case is verified, a refused submit is a difficulty failure. Read as passed over
-  // verified, five passes beside twenty refused submits placed at a rate of 1, far above the band
-  // the controller placed that same battery on.
-  it.concurrent("keeps unaccepted attempts in the denominator, as the controller does", () => {
     expect(placementOf(counts(5, 5, 20))).toMatchObject({ passes: 5, n: 25, rate: 0.2, zone: "on-aim" });
-  });
-
-  it.concurrent("reads the changed subset when the host recorded one", () => {
     const measured = { items: [], changedSubset: { attempts: 5, passes: 0 } };
-    expect(placementOf(counts(20, 25), measured)).toMatchObject({
-      population: "changed-subset",
-      passes: 0,
-      n: 5,
-    });
+    const subset = { population: "changed-subset", passes: 0, n: 5 };
+    expect(placementOf(counts(20, 25), measured)).toMatchObject(subset);
   });
 
   /** A line of claimed batteries, one per pair of passed and verified counts, in that order. */
@@ -372,6 +353,16 @@ describe("climb velocity", () => {
     expect(located.swing).toBeGreaterThan(fewer.swing ?? Number.POSITIVE_INFINITY);
   });
 
+  // The stall rule `runs pulse` names is the one lead lanes 10 and 36 start from: three batteries
+  // after the closest that came no closer, so the line flat by two starts nothing.
+  it.concurrent("starts lanes 10 and 36 from a line flat by the stall rule, and not from one a battery short", () => {
+    expect(flatTriggers(line(...repeat(4, 7, 7)))).toEqual([
+      { name: "CLIMB FLAT (lane 10)", rows: 1, examples: [] },
+    ]);
+    expect(flatTriggers(line(...repeat(3, 7, 7)))).toEqual([]);
+    expect(flatTriggers(line([2, 6]))).toEqual([]);
+  });
+
   // The launch film's illustration: a raised requirement drops the rate, a repair lifts it, and over
   // twelve rounds the swings settle into the band. It rises as often as it falls, and it is the shape
   // the goal describes, so it reads as signal on every battery but the full pass and never as flat.
@@ -398,16 +389,6 @@ describe("climb velocity", () => {
   // hours of solves each to confirm a 6 of 6 that settled nothing, with both verdicts already in the
   // adopted bytes.
   it.concurrent("ends on the newest edge, whether or not the later battery measured a case", () => {
-    const zeros: Structure = {
-      checks: 0,
-      limits: 0,
-      coupled: 0,
-      tooled: 0,
-      rules: 0,
-      roots: 0,
-      inputs: 0,
-      scenarios: 0,
-    };
     const battery = (runId: string) => ({
       runId,
       dir: runId,
@@ -419,13 +400,14 @@ describe("climb velocity", () => {
         families: [],
         histogram: {},
         checkTiers: { easy: 0, medium: 0, hard: 0, frontier: 0 },
-        medians: zeros,
+        medians: zero,
         rows: [],
         familyVectors: {},
       },
       counts: { passed: 0, verified: 0, unaccepted: 0, nonResult: 0 },
       placement: null,
       recorded: null,
+      followUp: null,
     });
     const report = (verdict: ReturnType<typeof verdictOf>) =>
       double<ClimbReport>({
@@ -442,7 +424,7 @@ describe("climb velocity", () => {
             verdict,
             novelty: null,
             drift: { median: 0, moved: 0 },
-            delta: zeros,
+            delta: zero,
             source: null,
             carried: { unchanged: 0, tasks: 0, afterFullPass: false },
             outcome: "unobservable",
@@ -500,31 +482,26 @@ describe("climb velocity", () => {
 
   // A battery that fell down the tier order, and one that dropped a check, both read as `adjusted`
   // — the one verdict that names no direction. A retreat reported as neutral is the reading this
-  // script exists to prevent.
-  it.concurrent("names a retreat instead of reporting it as adjusted", () => {
-    const flat = { checks: 0, limits: 0, coupled: 0, tooled: 0, rules: 0, roots: 0, inputs: 0, scenarios: 0 };
-    const still = { median: 0, moved: 0, joined: 1, tasks: 1 };
-    const tiers = (medium: number, hard: number) => ({ checkTiers: { easy: 0, medium, hard, frontier: 0 } });
-    expect(verdictOf(tiers(0, 2), tiers(2, 0), null, flat, still)).toBe("eased");
-    expect(verdictOf(tiers(2, 0), tiers(0, 2), null, flat, still)).toBe("escalated");
-    expect(verdictOf(tiers(2, 0), tiers(2, 0), null, { ...flat, checks: -1 }, still)).toBe("narrowed");
-    expect(verdictOf(tiers(2, 0), tiers(2, 0), null, { ...flat, checks: 1 }, still)).toBe("widened");
-    expect(verdictOf(tiers(2, 0), tiers(2, 0), null, flat, still)).toBe("restated");
-  });
-
-  // truss-sol-2d7812 added load sites and a forbidden volume, two inputs at the same checks, and read
-  // `adjusted`, the label for the same counts with numbers moved. Any structural count names a
-  // direction; checks, couplings and scenarios decide first, and only they survive replaced tasks.
-  it.concurrent("names growth in any structural count, and keeps a replaced edge replaced", () => {
-    const flat = { checks: 0, limits: 0, coupled: 0, tooled: 0, rules: 0, roots: 0, inputs: 0, scenarios: 0 };
-    const still = { median: 0, moved: 0, joined: 1, tasks: 1 };
+  // script exists to prevent. truss-sol-2d7812 added load sites and a forbidden volume, two inputs at
+  // the same checks, and read `adjusted`, the label for the same counts with numbers moved. Any
+  // structural count names a direction; checks, couplings and scenarios decide first, and only they
+  // survive replaced tasks.
+  it.concurrent("names a retreat and growth in any structural count, and keeps a replaced edge replaced", () => {
     const swapped = { median: 0, moved: 0, joined: 0, tasks: 2 };
-    const tiers = { checkTiers: { easy: 0, medium: 2, hard: 0, frontier: 0 } };
-    expect(verdictOf(tiers, tiers, null, { ...flat, inputs: 2 }, still)).toBe("widened");
-    expect(verdictOf(tiers, tiers, null, { ...flat, rules: -1 }, still)).toBe("narrowed");
-    expect(verdictOf(tiers, tiers, null, { ...flat, checks: -1, inputs: 3 }, still)).toBe("narrowed");
-    expect(verdictOf(tiers, tiers, null, { ...flat, inputs: 2 }, swapped)).toBe("replaced");
-    expect(verdictOf(tiers, tiers, null, { ...flat, scenarios: 1 }, swapped)).toBe("widened");
+    const edges = [
+      ["eased", tiers(0, 2), tiers(2, 0), zero, still],
+      ["escalated", tiers(2, 0), tiers(0, 2), zero, still],
+      ["narrowed", tiers(), tiers(), { ...zero, checks: -1 }, still],
+      ["widened", tiers(), tiers(), { ...zero, checks: 1 }, still],
+      ["restated", tiers(), tiers(), zero, still],
+      ["widened", tiers(), tiers(), { ...zero, inputs: 2 }, still],
+      ["narrowed", tiers(), tiers(), { ...zero, rules: -1 }, still],
+      ["narrowed", tiers(), tiers(), { ...zero, checks: -1, inputs: 3 }, still],
+      ["replaced", tiers(), tiers(), { ...zero, inputs: 2 }, swapped],
+      ["widened", tiers(), tiers(), { ...zero, scenarios: 1 }, swapped],
+    ] as const;
+    const read = edges.map(([, before, after, delta, drift]) => verdictOf(before, after, null, delta, drift));
+    expect(read).toEqual(edges.map(([verdict]) => verdict));
   });
 
   // Five more checks at a tier a battery already occupies is a wider battery, not a harder one. A
@@ -612,7 +589,8 @@ describe("climb velocity", () => {
   // The 2d7812 firmware battery read 4/6 over the aim on two fails of one check that held the sketch
   // to a status label no public rule stated. A placement resting on fails the review settled against
   // their check measured the check, so the reader says which fails were earned and where the battery
-  // lands once they leave; with no completed review it says none is known earned.
+  // lands once they leave; with no completed review it says none is known earned. Against the check
+  // is the controller's rule: a disposition naming no single deciding check leaves its fail in.
   it.concurrent("reads a partial battery against the review that settled its fails", async () => {
     const dir = twoVersions("ana-climb-earned-", [brief, brief]);
     const tasks = ["a", "b", "c", "d", "e", "f"];
@@ -624,29 +602,17 @@ describe("climb velocity", () => {
     );
     const unread = render(await readCampaign(dir, { embed: fakeEmbed }));
     expect(unread).toContain("fails 2: no completed review settled any, so none is known earned");
-    const settled = (task: string, disposition: CaseDisposition["disposition"]): CaseDisposition => ({
-      taskId: task,
-      family: "f",
-      kind: "disputed-pass",
-      checkId: "bench-wiring",
-      disposition,
-      finding: 0,
-    });
-    mkdirSync(join(dir, "analysis"), { recursive: true });
-    const review = (dispositions: CaseDisposition[]) =>
-      writeFileSync(
-        join(dir, "analysis", "run-b-epoch-review.json"),
-        JSON.stringify({ status: "completed", dispositions }),
-        "utf8",
-      );
-    review([settled("a", "check-stands"), settled("b", "check-stands")]);
+    expect(unread).toContain("follow-up: no adopted battery recorded an earned fail");
+    const review = (...rows: Parameters<typeof writeSettledReview>[2]) =>
+      writeSettledReview(join(dir, "analysis"), "run-b", rows);
+    review({ taskId: "a", disposition: "check-stands" }, { taskId: "b", disposition: "check-stands" });
     const held = await readCampaign(dir, { embed: fakeEmbed });
     expect(held.batteries[1]?.earned).toBeNull();
     expect(lineOf(held).signal).toMatchObject([{ runId: "run-b", passes: 4, n: 6 }]);
     expect(render(held)).toContain(
-      "fails 2: 2 held by the review, 0 settled against the check, 0 unsettled; checks bench-wiring",
+      "fails 2: 2 held by the review, 0 settled against the check, 0 unsettled; checks bench",
     );
-    review([settled("a", "against-check"), settled("b", "against-check")]);
+    review({ taskId: "a" }, { taskId: "b" });
     const against = await readCampaign(dir, { embed: fakeEmbed });
     expect(against.batteries[1]?.earned).toMatchObject({ passes: 4, n: 4 });
     expect(render(against)).toContain(
@@ -654,6 +620,13 @@ describe("climb velocity", () => {
     );
     // Fails settled against their check located nothing, so the line reads the battery as a full pass.
     expect(lineOf(against)).toMatchObject({ signal: [], fullPasses: 1, points: [{ passes: 4, n: 4 }] });
+    // A case another check also decided, and a disposition that recorded no checks, stay in the
+    // controller's sample, so they stay fails here too.
+    review({ taskId: "a", checkIds: ["bench", "timing"] }, { taskId: "b", checkIds: undefined });
+    const kept = await readCampaign(dir, { embed: fakeEmbed });
+    expect(kept.batteries[1]?.earned).toBeNull();
+    expect(lineOf(kept).signal).toMatchObject([{ runId: "run-b", passes: 4, n: 6 }]);
+    expect(render(kept)).toContain("fails 2: 0 held by the review, 0 settled against the check, 2 unsettled");
   });
 
   // A forked campaign's seed version carries no claim of its own and so no time, and sorted after the
@@ -740,6 +713,45 @@ describe("climb velocity", () => {
     const partial = await edgeOf([brief, brief], false, 1);
     expect(partial.carried).toEqual({ unchanged: 2, tasks: 2, afterFullPass: false });
     expect(partial.text).toContain("carried: no edge follows a full pass");
+  });
+
+  // A climb step is an earned fail, a harness change that answers it and the same task passing. The
+  // battery after an earned fail says whether it kept the task, how the task came out and whether a
+  // changed agent solved it anew or the earlier solve was only graded again. A fail the solve wall
+  // stopped is not earned; one the review settled against its check is the scoreboard test's.
+  it.concurrent("follows each earned fail into the battery measured after it", async () => {
+    const first = [solveRow(heavy, "t1", false), solveRow(light, "t1", false, [SOLVE_WALL_MESSAGE])];
+    const follow = async (agents: string[], later: ReturnType<typeof solveRow>[], tasks = [heavy, light]) => {
+      const dir = twoVersions("ana-climb-follow-", [brief, brief], (model, index) => {
+        mkdirSync(join(model, "..", "agent"), { recursive: true });
+        writeFileSync(join(model, "..", "agent", "BUILT_AGENTS.md"), agents[index] ?? "", "utf8");
+        if (index === 1) write(join(model, "tasks.json"), tasks);
+      });
+      recordDigestBattery(join(dir, "versions", "run-a"), ["run-a"], { "run-a": first });
+      recordDigestBattery(join(dir, "versions", "run-b"), ["run-b"], { "run-b": later });
+      return render(await readCampaign(dir, { embed: fakeEmbed }));
+    };
+    const answered = await follow(["a", "b"], [solveRow(heavy, "t2", true), solveRow(light, "t2", true)]);
+    expect(answered).toContain(
+      "earned fail heavy-01 in run-a: carried unchanged into run-b, passed there on a new solve; agent changed between them",
+    );
+    expect(answered).toContain(
+      "follow-up: 1 earned fail (0 passed another solve under the same solver), 0 with no battery after it; 1 carried unchanged into the next battery, 1 of them passed there and 1 of those after the agent changed",
+    );
+    // The same task bytes passing a new solve under the same agent make the fail a flip, never an answer.
+    const flipped = await follow(["a", "a"], [solveRow(heavy, "t2", true), solveRow(light, "t2", true)]);
+    expect(flipped).toContain(
+      "earned fail heavy-01 in run-a (passed 1 of 1 other solves under the same solver: a flip, not a limit): carried unchanged into run-b, passed there on a new solve; agent unchanged between them",
+    );
+    expect(flipped).toContain("follow-up: 1 earned fail (1 passed another solve under the same solver)");
+    const regraded = await follow(["a", "a"], [solveRow(heavy, "t1", false), solveRow(light, "t2", true)]);
+    expect(regraded).toContain(
+      "earned fail heavy-01 in run-a: carried unchanged into run-b, failed there on its earlier solve graded again; agent unchanged between them",
+    );
+    expect(regraded).toContain("earned fail heavy-01 in run-b: no battery measured after it");
+    expect(await follow(["a", "b"], [solveRow(light, "t2", true)], [light])).toContain(
+      "earned fail heavy-01 in run-a: dropped from run-b; agent changed between them",
+    );
   });
 
   // The hostile half: two identical bundles must not read as a moved correctness model.

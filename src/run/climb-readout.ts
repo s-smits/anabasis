@@ -43,7 +43,6 @@ import {
   climbEvidencePaths,
   climbThresholds,
   decidingSample,
-  excludedSummary,
   publicTaskProjection,
   readClimbBatteries,
 } from "./climb-history.ts";
@@ -55,15 +54,10 @@ export type DifficultyDecision = {
   /** Null when no battery is recorded, when every attempt was refused at submission, or when
    *  `placeOnBand` could not place the deciding sample. */
   placement: BandPlacement | null;
-  /** The attempts refused at submission, when that is why the placement is null. */
-  refused?: number;
   /** The failing core the last two batteries of one task set share, when there is one. */
   repeated?: { cases: number; scores: [string, string] };
   /** A family significantly too easy beside one significantly too hard, when there are both. */
   conflict?: { easy: string; hard: string };
-  /** Families the environment censored whole, so the placement says nothing about them. A fact
-   *  beside the placement, never a reason to withhold it. */
-  censored?: { families: readonly string[] };
 };
 
 /** One recorded battery, read once. Field names are the history page's keys, so one legend explains
@@ -126,6 +120,14 @@ export type ClimbReadout = {
 type Aliases = Record<"product" | "taskSet" | "scoring", (id: string | null) => string>;
 
 const SHOWN_ROWS = 3;
+/** How many runs the exclusion summary names under the reason they share before counting the rest.
+ *  Each run is named, and the denominator says how many there were, because an anonymous reason
+ *  repeated round after round never tells the reader that several separate batteries measured
+ *  nothing. One reason per group, because a whole recorded history refused for one cause is one
+ *  fact: a foreign backend pin excludes every battery a product ever recorded, and the per-run
+ *  form writes the same sentence once per battery — thousands of characters of steering. The
+ *  evidence rows keep every run id; this bound governs the prose beside them. */
+const NAMED_RUNS_PER_REASON = 4;
 const REPEATED_FAILURE_MIN_CORE = 2;
 
 /** How a placed battery's zone reads in `readingSentence`, the reviewer's aim line. */
@@ -173,7 +175,6 @@ export function decideDifficulty(
       ...base,
       placement: null,
       rationale: `all ${String(latest.n)} attempts refused at submission, none truth-verified`,
-      refused: latest.n,
     };
   }
   const prior = batteries.at(-2);
@@ -188,7 +189,6 @@ export function decideDifficulty(
         },
       }),
     ...(conflict !== null && { conflict }),
-    ...(latest.censoredFamilies !== undefined && { censored: { families: latest.censoredFamilies } }),
   };
   const sample = decidingSample(latest);
   const placement = placeOnBand(sample.passes, sample.n, band);
@@ -408,6 +408,19 @@ function noLimitLine(row: ReadoutRow): string | null {
       ? ""
       : ` Its slowest solve took ${String(slowest)} of the ${String(row.solveWallMinutes)} minutes a solve may run.`;
   return `Battery ${runId} passed ${all}, so it found no limit. More tasks, families, inputs or scenarios at the same demand measure the same reach again, so the next battery has to demand more of the field's own work within its tasks: make more of the request's requirements act together in each task, in tasks you expect the solver to fail. Carry none of its tasks forward unchanged, since a task it passed measures the same pass again: raise what each one demands or replace it.${spent} Record in your notes which public requirement it changes and the reasoning that change adds. ${MEASURE_SOLVES}`;
+}
+
+function excludedSummary(excluded: readonly ExcludedBattery[], admitted: number): string | null {
+  if (excluded.length === 0) return null;
+  const byReason = new Map<string, string[]>();
+  // `excluded` arrives sorted by run, so both the groups and the runs inside them are
+  // deterministic, and two reads of one history print the same sentence.
+  for (const row of excluded) byReason.set(row.reason, [...(byReason.get(row.reason) ?? []), row.runId]);
+  const groups = [...byReason].map(([reason, runs]) => {
+    const rest = runs.length - NAMED_RUNS_PER_REASON;
+    return `${reason} — ${runs.slice(0, NAMED_RUNS_PER_REASON).join(", ")}${rest > 0 ? ` and ${String(rest)} more` : ""}`;
+  });
+  return `${excluded.length} of ${excluded.length + admitted} recorded batteries excluded from difficulty evidence: ${groups.join("; ")}`;
 }
 
 /**

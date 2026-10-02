@@ -34,6 +34,8 @@ import {
   DEFAULT_DISK_MIN_GIB,
   HELP,
   LAUNCH_ARGUMENTS,
+  MAX_LAUNCH_LOAD,
+  MAX_LIVE_RUNS,
   PRESETS,
   SCRATCH,
   fullrunArgs,
@@ -69,6 +71,7 @@ import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { WORKTREE_SCRIPT } from "#tools/dependency-identity.ts";
 import { LAUNCH_RECEIPT_PATH } from "#tools/runs/discover.ts";
+import { collectRows } from "#tools/runs/rows.ts";
 
 const REPO = resolve(import.meta.dirname, "../../../..");
 const WORKTREE = join(REPO, WORKTREE_SCRIPT);
@@ -120,6 +123,8 @@ interface Context {
   manager: ServiceManager;
   /** The pre-push hook's `ana-gate-passed`, which `bun run land` and a passing launch gate share. */
   passRecord: string;
+  /** The one-minute load, and the controller runs `bun run runs` reads as live or why it could not. */
+  host: { load: number; live: readonly string[] | string };
 }
 interface PreparedRun extends OpeningPlan {
   environment: Environment;
@@ -605,7 +610,7 @@ async function settleGate(
     return { policy, decision: "recorded-pass", evidence: context.passRecord, seconds: null, load: null };
   }
   const log = join(first.dir, SCRATCH, "gate.log");
-  const load = Math.round((loadavg()[0] ?? 0) * 10) / 10;
+  const load = oneMinuteLoad();
   console.log(`Checking the source gate once for ${short} at load ${load}; ${log}`);
   if (policy === "auto") {
     console.log("No recorded pass for this commit; --gate skip launches without the gate.");
@@ -623,6 +628,38 @@ async function settleGate(
     appendFileSync(context.passRecord, `${context.commit} --at\n`);
   }
   return { policy, decision: "ran", evidence: log, seconds, load };
+}
+
+const oneMinuteLoad = (): number => Math.round((loadavg()[0] ?? 0) * 10) / 10;
+
+/** The host now, its live runs read by the `bun run runs` listing's own reader; a reader that
+ *  fails is reported by its error, never as no live runs. */
+function readHostPace(repo: string): Context["host"] {
+  const load = oneMinuteLoad();
+  try {
+    const rows = collectRows(repo, { closedLimit: 0 });
+    return { load, live: rows.flatMap((row) => (row.liveness.state === "live" ? [row.runId] : [])) };
+  } catch (error) {
+    return { load, live: errorMessage(error) };
+  }
+}
+
+/** The operator's pace, settled before any tree is prepared or any provider is asked: a batch past
+ *  either limit is refused unless `--over-capacity` gives a reason. Live runs the reader could not
+ *  read are said, and the load alone decides. Every receipt keeps the reading and the reason. */
+function settlePace({ load, live }: Context["host"], starting: number, reason: string | undefined) {
+  const runs = isString(live)
+    ? `live runs unread (${live}), so the load alone decides`
+    : `${live.length + starting} runs live with this batch (limit ${MAX_LIVE_RUNS}), live now: ${live.join(", ") || "none"}`;
+  const reading = `one-minute load ${load} (limit ${MAX_LAUNCH_LOAD}); ${runs}`;
+  const over = load > MAX_LAUNCH_LOAD || (!isString(live) && live.length + starting > MAX_LIVE_RUNS);
+  if (over && reason === undefined) {
+    throw new Error(
+      `refused before preparing any tree: ${reading}\nEach run added slows every run already there. Wait for the load to fall or a run to close, or pass --over-capacity "<reason>" to launch anyway.`,
+    );
+  }
+  console.log(`${over ? `Launching over capacity (${reason})` : "Pace"}: ${reading}`);
+  return { load, live, overCapacity: reason ?? null };
 }
 
 /** Prepares and probes every run and settles the gate; a failure leaves a `refused` receipt in each
@@ -651,8 +688,9 @@ export async function launchBatch(
   context: Context,
   command: Command = spawnCommand,
 ): Promise<LaunchResult[]> {
+  const pace = settlePace(context.host, plans.length, options["over-capacity"]);
   const { prepared, gate } = await prepareBatch(plans, options, context, command);
-  const extra = { gate: { ...gate }, launcher: context.launcher };
+  const extra = { gate: { ...gate }, pace, launcher: context.launcher };
   const results: LaunchResult[] = [];
   for (const plan of prepared) {
     console.log(
@@ -774,6 +812,7 @@ export async function main(argv: readonly string[]): Promise<number> {
     uid: process.getuid(),
     manager,
     passRecord,
+    host: readHostPace(mainRepo),
   });
   console.log(JSON.stringify(results, null, 2));
   return results.length === plans.length && results.every((row) => !("error" in row)) ? 0 : 1;

@@ -49,7 +49,6 @@ export type SolveWalls = { maxTurns: number; solveMinutes: number };
 
 export type CompiledSolve = {
   label: string;
-  outcome: CaseOutcome;
   text: string;
   /** Every reference a diagnosis may cite in this solve, with the tool called at that step; the
    *  solve's end maps to null. Empty when no trace was readable. */
@@ -184,7 +183,6 @@ export function compileSolve(
   if (trace === null) {
     return {
       label,
-      outcome,
       text: `${head}: no readable trace, so nothing in it can be cited`,
       refs: new Map(),
       calls: [],
@@ -223,7 +221,6 @@ export function compileSolve(
   lines.push(`  end ${end.line}`);
   return {
     label,
-    outcome,
     text: lines.join("\n"),
     refs,
     calls: steps.map((step) => ({ tool: step.tool, failed: step.status !== "ok" })),

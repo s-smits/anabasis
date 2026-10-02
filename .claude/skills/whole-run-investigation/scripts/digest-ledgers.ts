@@ -16,18 +16,12 @@ import { existsSync, readdirSync, readFileSync, statSync } from "#src/meta/files
 import { basename, join } from "#src/meta/path.ts";
 import { wilsonInterval } from "#src/claim/estimation.ts";
 import { MEMORY_CAP_BYTES, MEMORY_FILE, WORKSPACE_DIR } from "#src/author/builder-memory.ts";
-import {
-  asRecord,
-  isNumber,
-  isRecord,
-  isString,
-  type JsonObject,
-  type JsonValue,
-} from "#src/meta/json-shape.ts";
+import { asRecord, isNumber, isRecord, isString, type JsonValue } from "#src/meta/json-shape.ts";
 import { readJsonFileOrNull } from "#src/meta/completed-json.ts";
 import { authorSessionOwner } from "#src/analyse/finding-owner.ts";
 import type { AnalysisFinding } from "#src/analyse/iteration-analysis.ts";
 import { DIFFICULTY_DECISION_SCHEMA } from "#src/run/difficulty-decision.ts";
+import type { DifficultyDecisions } from "#tools/runs/evidence.ts";
 import { fullPass } from "#src/run/climb-readout.ts";
 import { EPOCH_REVIEW_SCHEMA } from "#src/review/epoch-review-findings.ts";
 import { JUDGE_REVIEWS_SCHEMA } from "#src/analyse/judge-reviews.ts";
@@ -45,49 +39,10 @@ import { PROVIDER_ALLOWANCE } from "#src/correctness-bundle/runtime-blocker.ts";
 import { controllerRunOfBattery } from "#src/run/controller-battery-record-policy.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { openRecordedRun, type RecordedRun } from "../../main/run.ts";
-import { isBandZone } from "#tools/runs/evidence.ts";
-import { offAimStreak } from "#tools/runs/pulse.ts";
 import { jsonText, readJsonAsOrNull } from "./run-overview.ts";
 
-/** The placement a difficulty decision recorded, each field null where the record omits it. */
-export interface RecordedPlacement {
-  passes: number | null;
-  n: number | null;
-  zone: string | null;
-  aim: readonly number[] | null;
-  toAim: number | null;
-}
-
-/** One readout row a decision carries, as the ledger prints it. */
-export interface ReadoutRow {
-  runId: string;
-  passed: number | null;
-  verified: number | null;
-  zone: string | null;
-}
-
-/** One difficulty decision this reader opened. */
-export interface DecisionRow {
-  runId: string;
-  repeated: boolean;
-  conflict: boolean;
-  placement: RecordedPlacement | null;
-  zone: string | null;
-  rows: ReadoutRow[];
-  admitted: number | null;
-  excluded: number;
-  evidenceRunIds: string[];
-}
-
-export interface DifficultyDecisions {
-  rows: DecisionRow[];
-  refused: string[];
-}
-
-interface OffAimStreak {
-  side: "above" | "below";
-  runIds: string[];
-}
+/** One difficulty decision as `readDifficultyDecisions` returns it. */
+export type DecisionRow = DifficultyDecisions["rows"][number];
 
 /** One battery's outcome counts, overall and per family. */
 export type BatteryTally = OutcomeTally & {
@@ -117,8 +72,8 @@ export interface CheckBucket {
 }
 
 /** The fields of a decision the check-informativeness and censoring blocks read. */
-export type ZoneDecision = Pick<DecisionRow, "runId" | "zone">;
-export type CensusDecision = Pick<DecisionRow, "runId" | "zone" | "evidenceRunIds">;
+export type ZoneDecision = Pick<DecisionRow, "runId" | "placement">;
+export type CensusDecision = Pick<DecisionRow, "runId" | "placement" | "evidenceRunIds">;
 
 export interface InformativenessInput {
   checks: readonly Pick<DeclaredCheck, "id">[];
@@ -250,129 +205,28 @@ function interval(passes: number, n: number): string {
 const minutes = (ms: number) => Math.round(ms / 6_000) / 10;
 
 // --- 4b: difficulty decisions and band placement ----------------------------------------------
-/** The recorded placement of the battery a decision read, or null when the decision placed none. */
-function placementOf(decision: JsonObject): RecordedPlacement | null {
-  const placement = decision.placement;
-  if (!isRecord(placement)) return null;
-  const aim = Array.isArray(placement.aim) ? placement.aim : null;
-  return {
-    passes: isNumber(placement.passes) ? placement.passes : null,
-    n: isNumber(placement.n) ? placement.n : null,
-    zone: isString(placement.zone) ? placement.zone : null,
-    aim: aim?.length === 2 && aim.every(isNumber) ? aim : null,
-    toAim: isNumber(placement.toAim) ? placement.toAim : null,
-  };
-}
-
-/** The readout rows a decision carries, keeping the fields the ledger prints: the battery's counts
- *  and the zone it read. */
-function readoutRowsOf(counters: JsonObject): ReadoutRow[] {
-  return (Array.isArray(counters.rows) ? counters.rows : []).flatMap((row) =>
-    isRecord(row) && isString(row.runId)
-      ? [
-          {
-            runId: row.runId,
-            passed: isNumber(row.passed) ? row.passed : null,
-            verified: isNumber(row.verified) ? row.verified : null,
-            zone: isString(row.zone) ? row.zone : null,
-          },
-        ]
-      : [],
-  );
-}
-
-/**
- * Difficulty decisions in file order; `runId` on each record names the battery the decision
- * authored, and `evidence[].runId` the batteries it read. `refused` carries one line per record
- * this reader would not open, because the digest is read as an inventory of the run: a battery
- * whose decision predates the current schema would otherwise be indistinguishable from a battery
- * that never had a decision recorded at all, which is the more alarming of the two.
- */
-export function readDifficultyDecisions(campaign: string): DifficultyDecisions {
-  const rows: DecisionRow[] = [];
-  const refused: string[] = [];
-  const dir = join(campaign, "difficulty-decisions");
-  if (!existsSync(dir)) return { rows, refused };
-  for (const name of readdirSync(dir)
-    .filter((file) => file.endsWith(".json"))
-    .sort()) {
-    const read = readJsonFileOrNull(join(dir, name));
-    if (read === null) {
-      refused.push(`${name}: unreadable`);
-      continue;
-    }
-    const record: JsonObject = asRecord(read) ?? {};
-    if (record.schema !== DIFFICULTY_DECISION_SCHEMA) {
-      refused.push(`${name}: ${isString(record.schema) ? record.schema : "no schema"}`);
-      continue;
-    }
-    const counters = isRecord(record.difficulty) ? record.difficulty : null;
-    if (counters === null) {
-      refused.push(`${name}: ${DIFFICULTY_DECISION_SCHEMA} without a difficulty reading`);
-      continue;
-    }
-    const decision: JsonObject = asRecord(counters.decision) ?? {};
-    rows.push({
-      runId: isString(record.runId) ? record.runId : name,
-      repeated: isRecord(decision.repeated),
-      conflict: isRecord(decision.conflict),
-      placement: placementOf(decision),
-      // Where the decision placed the battery it read, repeated at the top level because the
-      // check-informativeness block keys its perfect-battery lead on it.
-      zone: placementOf(decision)?.zone ?? null,
-      rows: readoutRowsOf(counters),
-      admitted: isNumber(counters.admitted) ? counters.admitted : null,
-      excluded: Array.isArray(counters.excluded) ? counters.excluded.length : 0,
-      evidenceRunIds: (Array.isArray(decision.evidence) ? decision.evidence : [])
-        .map((row) => asRecord(row)?.runId)
-        .filter((value) => isString(value)),
-    });
-  }
-  return { rows, refused };
-}
-
 function decisionLine(row: DecisionRow): string {
   const placement = row.placement;
   const placed =
     placement === null
       ? " unplaced"
-      : ` ${placement.zone ?? "?"} · ${placement.passes ?? "?"}/${placement.n ?? "?"}` +
-        ` aim [${placement.aim === null ? "?" : placement.aim.join(",")}] toAim ${placement.toAim ?? "?"}`;
+      : ` ${placement.zone} · ${placement.passes}/${placement.n}` +
+        ` aim [${placement.aim.join(",")}] toAim ${placement.toAim}`;
   const facts = `${row.repeated ? " · repeated failures" : ""}${row.conflict ? " · family conflict" : ""}`;
   // A decision is named after the round it opened, and it places the latest battery in its
   // evidence: without that id two WRI lanes read an i12 decision as a battery recorded after T0.
   const read = row.evidenceRunIds.at(-1);
   const label = read === undefined ? row.runId : `${row.runId} (reads ${read})`;
-  return `${label}:${placed}${facts} · admitted ${row.admitted ?? "-"} excluded ${row.excluded}`;
-}
-
-/** Every run of two or more placements on one side of the aim, each counted back from its last
- *  member by the streak `runs pulse` reads (`offAimStreak`), which passes over a decision that
- *  placed nothing. */
-function offAimStreaks(rows: readonly DecisionRow[]): OffAimStreak[] {
-  const placed = rows.flatMap(({ runId, placement: p }) =>
-    p !== null && isBandZone(p.zone) && p.passes !== null && p.n !== null
-      ? [{ runId, zone: p.zone, placedOn: { passes: p.passes, n: p.n } }]
-      : [],
-  );
-  const streaks: OffAimStreak[] = [];
-  for (let end = placed.length; end > 0; ) {
-    const streak = offAimStreak(placed.slice(0, end));
-    const rounds = streak?.rounds ?? 1;
-    const runIds = placed.slice(end - rounds, end).map((row) => row.runId);
-    if (streak !== null && rounds >= 2) streaks.unshift({ side: streak.side, runIds });
-    end -= rounds;
-  }
-  return streaks;
+  return `${label}:${placed}${facts} · admitted ${row.admitted} excluded ${row.excluded}`;
 }
 
 /**
- * Section 4b: one line per decision this reader opened, any run of placements on one side of the
- * aim, then one line per record it refused. The section reads the
- * placement the controller recorded and never re-derives one, so a lead here disagrees with the
- * controller only when the record does.
+ * Section 4b: one line per decision this reader opened, then one line per record it refused. The
+ * section reads the placement the controller recorded and never re-derives one, and leaves a run of
+ * placements on one side of the aim to the climb's `flat` (`climb-velocity.ts`).
  */
-export function bandPlacementLines({ rows, refused }: DifficultyDecisions): string[] {
+export function bandPlacementLines({ rows, refused: records }: DifficultyDecisions): string[] {
+  const refused = records.map(({ file, reason }) => `${file}: ${reason}`);
   const lines = ["", "## 4b band placement (difficulty decisions)"];
   // Absence proves only that no placement was recorded. The controller may still have chosen
   // build or rebuild, so the digest does not say "never ran"; the controller decision reasons in
@@ -383,11 +237,6 @@ export function bandPlacementLines({ rows, refused }: DifficultyDecisions): stri
     );
   }
   for (const row of rows) lines.push(decisionLine(row));
-  for (const streak of offAimStreaks(rows)) {
-    lines.push(
-      `OFF-AIM STREAK (lane 10): ${streak.runIds.length} consecutive placements ${streak.side} the aim (${streak.runIds.join(", ")})`,
-    );
-  }
   for (const line of refused) lines.push(`refused, not ${DIFFICULTY_DECISION_SCHEMA} — ${line}`);
   return lines;
 }
@@ -450,7 +299,7 @@ export function checkInformativenessLines({
   // battery placed above the aim: the round that answered an easy battery found no limit either.
   const overAim = new Set(
     decisions
-      .filter((decision) => decision.zone === "too-easy" || decision.zone === "over-aim")
+      .filter(({ placement }) => placement?.zone === "too-easy" || placement?.zone === "over-aim")
       .map((decision) => decision.runId),
   );
   const perfect = tallies.filter((tally) => overAim.has(tally.runId) && fullPass(tally));
@@ -780,7 +629,7 @@ function censoringLines({ tallies, batteryOf, decisions }: CensoringInput): stri
     const hit = decision.evidenceRunIds.filter((runId) => censored.includes(runId));
     if (hit.length > 0) {
       lines.push(
-        `DECISION ON CENSORED BATTERY (lane 24): ${decision.runId} ${decision.zone ?? "unplaced"} read ${hit.join(", ")}`,
+        `DECISION ON CENSORED BATTERY (lane 24): ${decision.runId} ${decision.placement?.zone ?? "unplaced"} read ${hit.join(", ")}`,
       );
     }
   }

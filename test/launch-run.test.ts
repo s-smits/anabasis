@@ -39,7 +39,7 @@ import { serviceManager } from "../.claude/skills/launch-run/scripts/service.ts"
 import { solveIsolationPolicy, spawnUnderSolveIsolation } from "../src/verify/solve-sandbox.ts";
 import { sha256 } from "../src/meta/digest.ts";
 import { hasText } from "../src/meta/text.ts";
-import { double, required } from "./helpers/doubles.ts";
+import { double, rejectionOf, required } from "./helpers/doubles.ts";
 import { gitOutput } from "../.claude/skills/main/git.ts";
 
 type Context = Parameters<typeof launchBatch>[2];
@@ -51,6 +51,7 @@ interface BatchFixtureOptions {
   failWorker?: boolean;
   refuseAllowance?: boolean;
   args?: string[];
+  host?: Context["host"];
 }
 interface ModelSlot {
   kind: string;
@@ -156,6 +157,7 @@ function batchFixture({
   failWorker = false,
   refuseAllowance = false,
   args = [...CUSTOM, "truss"],
+  host = { load: 1.5, live: [] },
 }: BatchFixtureOptions = {}) {
   const options = parseOptions(args);
   const plans = planRuns(options, temp(), "fixture");
@@ -168,6 +170,7 @@ function batchFixture({
     uid: 501,
     sharedRoot: temp(),
     manager,
+    host,
     credentials: {
       claude: {
         kind: "claude",
@@ -462,6 +465,12 @@ describe("one-command run launcher", () => {
       CLAUDE_BUILT_REASONING_EFFORT: "medium",
       CLAUDE_REVIEW_REASONING_EFFORT: "medium",
     });
+    expect(slotEnvironment("haiku")).toMatchObject({
+      CLAUDE_BUILDER_MODEL: "claude-haiku-4-5-20251001",
+      CLAUDE_BUILT_MODEL: "claude-haiku-4-5-20251001",
+      CLAUDE_REVIEW_MODEL: "claude-haiku-4-5-20251001",
+      CLAUDE_BUILDER_REASONING_EFFORT: "medium",
+    });
   });
 
   it("names an effort variant in its run id and probes it as its model's standard row", () => {
@@ -515,6 +524,7 @@ describe("one-command run launcher", () => {
     [["--prompt", "text\0"], PROMPT_REFUSAL],
     [["--prompt", "text\r"], PROMPT_REFUSAL],
     [["truss", "--env-file", "relative"], "--env-file must be absolute"],
+    [["truss", "--over-capacity", " "], "--over-capacity needs the reason, in words"],
     [["truss", "--claim", "unsupported"], 'unknown option "--claim"'],
     [["truss", "truss", "--project", "old-project"], PROJECT_REFUSAL],
     [["truss", "--project", "../old"], PROJECT_REFUSAL],
@@ -862,6 +872,44 @@ describe("one-command run launcher", () => {
     expect(launched(result[0]).error).toContain("uncertain start");
     expect(uncertain.calls.filter((args) => isLauncher(args))).toHaveLength(1);
     expect(uncertain.calls.some((args) => args.includes("kill") || args.includes("bootout"))).toBe(false);
+  });
+
+  // The operator's pace (AGENTS.md "Open gaps", blocker 4): a batch past either limit starts nothing.
+  const FIVE_LIVE = ["run-a", "run-b", "run-c", "run-d", "run-e"];
+  it.each([
+    [
+      "a load above 25",
+      { load: 31.2, live: ["run-a", "run-b"] },
+      'refused before preparing any tree: one-minute load 31.2 (limit 25); 4 runs live with this batch (limit 6), live now: run-a, run-b\nEach run added slows every run already there. Wait for the load to fall or a run to close, or pass --over-capacity "<reason>" to launch anyway.',
+    ],
+    [
+      "a batch that takes the live runs past six",
+      { load: 8, live: FIVE_LIVE },
+      "one-minute load 8 (limit 25); 7 runs live with this batch (limit 6), live now: run-a, run-b, run-c, run-d, run-e\n",
+    ],
+    [
+      "a load above 25 when the live runs could not be read",
+      { load: 25.1, live: "fixture reader failed" },
+      "one-minute load 25.1 (limit 25); live runs unread (fixture reader failed), so the load alone decides\n",
+    ],
+  ])("refuses %s before preparing any tree or asking any provider", async (_case, host, refusal) => {
+    const { plans, options, context, command, calls } = batchFixture({ host });
+    expect((await rejectionOf(launchBatch(plans, options, context, command))).message).toContain(refusal);
+    expect(calls).toEqual([]);
+    for (const plan of plans) expect(existsSync(plan.dir)).toBe(false);
+  });
+
+  it("launches at the limits, or past them, keeping the reading and the operator's reason in each receipt", async () => {
+    const reason = "operator: one arm replaces a stopped one";
+    for (const [args, host, overCapacity] of [
+      [["truss"], { load: 25, live: FIVE_LIVE }, null],
+      [["truss"], { load: 12, live: "fixture reader failed" }, null],
+      [["truss", "--over-capacity", reason], { load: 31.2, live: [...FIVE_LIVE, "run-f"] }, reason],
+    ] as const) {
+      const { plans, options, context, command } = batchFixture({ args: [...args], host });
+      expect(launched((await launchBatch(plans, options, context, command))[0]).started).toBe(true);
+      expect(readReport(required(plans[0], "plan")).pace).toEqual({ ...host, overCapacity });
+    }
   });
 
   // The terminal is read only through the controller's strict reader, so one it refuses still ends

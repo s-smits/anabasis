@@ -45,7 +45,7 @@ import {
   type SolvabilityStageCache,
   createSolvabilityStageCache,
 } from "../correctness-bundle/solvability-stages.ts";
-import { type AdmissionInput, experimentOperation } from "./experiment-admission.ts";
+import { experimentOperation } from "./experiment-admission.ts";
 
 /** The codes of a run that did not finish in time: a check's tool run, or the whole census wall. */
 const TIMEOUT_CODES = new Set(["tool-timeout", "census-wall-exceeded"]);
@@ -59,7 +59,9 @@ export type Gate = (
   scope?: GateScope,
 ) => Promise<CampaignFeedback[]>;
 
-export interface PipelineInput extends AdmissionInput {
+export interface PipelineInput {
+  /** The adopted tree a continuation moves away from; absent on an initial build. */
+  adoptedDir?: string;
   /** The probe pack the harness loads with: generated-module typecheck and conformance. */
   toolsProbes(candidateDir: string): AgentToolsProbes;
 }
@@ -115,13 +117,6 @@ interface ValidationMemory {
   clear: Map<string, GateRun>;
   stages: SolvabilityStageCache;
 }
-
-/** What a shared gate run reuses across candidates: the gate implementations themselves and the
- *  memory that decides whether this scope has already been settled for these bytes. */
-type SharedGateDeps = {
-  readonly gates: Gate;
-  readonly memory: ValidationMemory;
-};
 
 interface ExecuteDeps {
   gates: Gate;
@@ -242,7 +237,7 @@ async function sharedGate(
   candidate: CandidateSnapshot,
   harness: BuiltHarness,
   runDir: (label: string) => string,
-  deps: SharedGateDeps,
+  deps: Pick<ExecuteDeps, "gates" | "memory">,
   scope: GateScope,
 ): Promise<{ run: GateRun; reused: boolean }> {
   const { gates, memory } = deps;

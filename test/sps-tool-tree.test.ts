@@ -6,11 +6,11 @@ import { mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "..
 import { join } from "../src/meta/path.ts";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { campaignDir } from "../src/meta/campaign-root.ts";
-import { fingerprintSlug } from "../src/claim/fingerprint.ts";
-import { publishProductVersion, selectInitialProduct } from "../src/run/product-versions.ts";
+import { selectInitialProduct } from "../src/run/product-versions.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { uppercaseFixture } from "./helpers/uppercase-fixture.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
+import { publishProduct } from "./helpers/digest-battery.ts";
 import { runTypeScript } from "../.claude/skills/system-path-simulation/scripts/test-support.ts";
 import {
   siblingCampaignRoots,
@@ -30,15 +30,7 @@ beforeAll(() => {
   scratch = realpathSync(scratchDir("sps-tool-tree-"));
   const workspace = join(campaignDir(join(scratch, "a"), SLUG), "epoch-1", "workspace");
   uppercaseFixture(workspace, false, true);
-  const fingerprint = fingerprintSlug(workspace, { slug: SLUG });
-  if (!fingerprint.ok) throw new Error("fixture has no fingerprint");
-  publishProductVersion({
-    repoRoot: join(scratch, "a"),
-    slug: SLUG,
-    id: "v1",
-    acceptedSnapshot: workspace,
-    fingerprint,
-  });
+  publishProduct({ repoRoot: join(scratch, "a"), slug: SLUG, id: "v1", acceptedSnapshot: workspace });
   selectInitialProduct(join(scratch, "a"), SLUG, "v1");
   recorded = realpathSync(join(workspace, ".toolchain"));
   sibling = join(

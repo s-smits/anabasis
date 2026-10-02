@@ -61,6 +61,9 @@ describe("policy derivation", () => {
         ["src/verify/host.ts", false],
         ["src/correctness-bundle/contracts.ts", false],
         ["src/verify/verifier-lifetime.ts", false],
+        ["README.md", true],
+        // The repository's doctrine is closed to the Builder, whose guide is the starter's own.
+        ["AGENTS.md", false],
       ] as const) {
         const target = join(actualRoot, path);
         expect(guardPath(derived, "read", "read", target).decision).toBe(allowed ? "allow" : "deny");
@@ -78,6 +81,8 @@ describe("policy derivation", () => {
         });
         expect(outcome.status === 0).toBe(allowed);
       }
+      const guide = join(actualRoot, "starters", "pi-built-harness", "STARTER.md");
+      expect(guardPath(derived, "read", "read", guide).decision).toBe("allow");
     } finally {
       rmSync(epochDir, { recursive: true, force: true });
     }

@@ -56,7 +56,7 @@ test("a perfect battery is a full pass, so a battery with an unaccepted attempt 
           families: new Map(),
         },
       ],
-      decisions: [{ runId: "i2", zone: "too-easy" }],
+      decisions: [{ runId: "i2", placement: { passes: 5, n: 5, zone: "too-easy", aim: [1, 2], toAim: -3 } }],
     }).join("\n");
   expect(lead(0)).toContain("PERFECT BATTERY OVER AIM (lane 5): i2 5/5");
   expect(lead(3)).not.toContain("PERFECT BATTERY");
@@ -155,7 +155,13 @@ test("a turn retry is an explicit allowance wait on the provider's own clause al
   const censored = roleSpendLines({
     ...options,
     tallies: batteryTallies([caseRecordRow("t1", "f", { runId: "run", ...providerNonResult })]),
-    decisions: [{ runId: "next", zone: "on-aim", evidenceRunIds: ["run"] }],
+    decisions: [
+      {
+        runId: "next",
+        placement: { passes: 1, n: 1, zone: "on-aim", aim: [1, 1], toAim: 0 },
+        evidenceRunIds: ["run"],
+      },
+    ],
   }).join("\n");
   expect(censored).toContain(
     "run: graded 0 · provider non-results 1 · first ? last ? · CENSORED (provider non-results; the typed kind is the evidence, the message is not)",

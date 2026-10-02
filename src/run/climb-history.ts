@@ -15,10 +15,9 @@ import { classifyCaseOutcome } from "../claim/case-record.ts";
 import { wilsonInterval } from "../claim/estimation.ts";
 import { POLICY } from "../critic/policy.ts";
 import { band01, frozenManifestPath, policyRow } from "../critic/manifest.ts";
-import { sha256 } from "../meta/digest.ts";
 import { keyIfDefined, keyIfTruthy, keysIf } from "../meta/optional-key.ts";
+import { median } from "../meta/tally.ts";
 import { isBoolean, isNumber, isRecord, isString } from "../meta/json-shape.ts";
-import { canonicalJson } from "../meta/stable-json.ts";
 import { parseJsonAs } from "../meta/json-runtime.ts";
 import { recordedEvidence, verifyRunDir } from "../claim/evidence-log.ts";
 import {
@@ -89,9 +88,6 @@ export interface ClimbBattery {
   /** Verified cases the battery's completed Epoch Review settled against the one check that decided
    *  them, left out of `n`, `passed`, `measured` and `failedTaskIds`. Absent when there are none. */
   settledAgainst?: number;
-  /** Families every one of whose cases ended in a runtime non-result, so the placement holds none
-   *  of their tasks. Absent when there are none. */
-  censoredFamilies?: readonly string[];
 }
 
 /** One family's difficulty counts, as the readout hands them to the author. `attempts` is the
@@ -189,18 +185,9 @@ export interface ClimbBatteriesRead {
   excluded: ExcludedBattery[];
 }
 
-/** How many runs the exclusion summary names under the reason they share before counting the rest.
- *  Each run is named, and the denominator says how many there were, because an anonymous reason
- *  repeated round after round never tells the reader that several separate batteries measured
- *  nothing. One reason per group, because a whole recorded history refused for one cause is one
- *  fact: a foreign backend pin excludes every battery a product ever recorded, and the per-run
- *  form writes the same sentence once per battery — thousands of characters of steering. The
- *  evidence rows keep every run id; this bound governs the prose beside them. */
-const NAMED_RUNS_PER_REASON = 4;
-
 /** How close to the wall a solve must end to count as cut by it. A solve's recorded span starts
  *  after the wall's own clock does, so a solve the wall stopped can read a little short of it. */
-const WALL_BOUND_SHARE = 0.95;
+export const WALL_BOUND_SHARE = 0.95;
 
 /** The sample a battery is read over: the host-identified changed subset when one was recorded,
  *  even at zero attempts, and otherwise the whole battery. Unchanged successes cannot be allowed
@@ -258,13 +245,10 @@ function caseSpend(cases: CaseRows) {
   });
 }
 
-function median(values: readonly number[]): number | null {
-  const sorted = values.toSorted((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  if (sorted.length === 0) return null;
-  const value = sorted.length % 2 === 1 ? sorted[mid] : ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2;
-  return value === undefined ? null : Number(value.toFixed(1));
-}
+const medianToTenth = (values: readonly number[]) => {
+  const value = median(values);
+  return value === null ? null : Number(value.toFixed(1));
+};
 
 function familyEffort(cases: CaseRows): FamilyEffort[] {
   const byFamily = Map.groupBy(
@@ -277,9 +261,9 @@ function familyEffort(cases: CaseRows): FamilyEffort[] {
       return {
         family,
         cases: rows.length,
-        medianMinutes: median(minutes),
+        medianMinutes: medianToTenth(minutes),
         maxMinutes: minutes.length === 0 ? null : Math.max(...minutes),
-        medianToolCalls: median(rows.map((row) => row.toolCalls).filter(isNumber)),
+        medianToolCalls: medianToTenth(rows.map((row) => row.toolCalls).filter(isNumber)),
       };
     })
     .sort((a, b) => a.family.localeCompare(b.family));
@@ -314,18 +298,6 @@ function wallBoundCount(scored: CaseRows, wallMinutes: number | null): number {
     const minutes = countUnaccepted([row]) === 1 ? (caseSpend([row])[0]?.minutes ?? null) : null;
     return minutes !== null && minutes >= wallMinutes * WALL_BOUND_SHARE;
   }).length;
-}
-
-/** The named families none of whose cases produced a scored row, or undefined when there are none. */
-function censoredFamilies(rows: CaseRows): string[] | undefined {
-  const scoredByFamily = new Map<string, boolean>();
-  for (const row of rows) {
-    if (!isString(row.family) || row.family.trim() === "") continue;
-    const scored = !isString(row.runtimeNonResult);
-    scoredByFamily.set(row.family, (scoredByFamily.get(row.family) ?? false) || scored);
-  }
-  const censored = [...scoredByFamily].flatMap(([family, scored]) => (scored ? [] : [family])).sort();
-  return censored.length === 0 ? undefined : censored;
 }
 
 /** `measured` without the settled cases, by family and in the changed subset. A subset whose
@@ -409,7 +381,6 @@ function admittedClimbRow(
         "failedTaskIds",
         failedIds.every((id): id is string => id !== null) ? failedIds : undefined,
       ),
-      ...keyIfDefined("censoredFamilies", censoredFamilies(evidence.cases ?? [])),
       ...keyIfTruthy("settledAgainst", settled.length),
       // Refused rows stay in `n` as fails; `ClimbBattery.unaccepted` says why.
       unaccepted: countUnaccepted(scored),
@@ -488,23 +459,10 @@ export function retainedRunDir(domainDir: string, runId: string): string | null 
   return matches.length === 1 ? (matches[0] ?? null) : null;
 }
 
-export function excludedSummary(excluded: readonly ExcludedBattery[], admitted: number): string | null {
-  if (excluded.length === 0) return null;
-  const byReason = new Map<string, string[]>();
-  // `excluded` arrives sorted by run, so both the groups and the runs inside them are
-  // deterministic, and two reads of one history print the same sentence.
-  for (const row of excluded) byReason.set(row.reason, [...(byReason.get(row.reason) ?? []), row.runId]);
-  const groups = [...byReason].map(([reason, runs]) => {
-    const rest = runs.length - NAMED_RUNS_PER_REASON;
-    return `${reason} — ${runs.slice(0, NAMED_RUNS_PER_REASON).join(", ")}${rest > 0 ? ` and ${String(rest)} more` : ""}`;
-  });
-  return `${excluded.length} of ${excluded.length + admitted} recorded batteries excluded from difficulty evidence: ${groups.join("; ")}`;
-}
-
 /** A recorded battery's public tasks, read through the evidence log and refused whole whenever any
  *  one case cannot be vouched for, since a partial projection would be a different exam wearing
- *  the same run id. The history view's task pages, the gate's repeat prints and the readout's
- *  schema prints all read it. */
+ *  the same run id. Its one reader is the context tool's history source, for each battery's task
+ *  page. */
 export function publicTaskProjection(
   domainDir: string,
   runId: string,
@@ -531,7 +489,7 @@ export function publicTaskProjection(
 export function recordedPublicTasks(
   runDir: string,
   ids: readonly string[],
-  violations = verifyRunDir(runDir),
+  violations: ReturnType<typeof verifyRunDir>,
 ): { tasks: unknown[] } | { refusal: string } {
   const tasks: unknown[] = [];
   for (const id of ids) {
@@ -548,17 +506,4 @@ export function recordedPublicTasks(
     }
   }
   return { tasks };
-}
-
-/** One battery's public measurement identity: the sorted multiset of its tasks' publicInput bytes.
- *  Hidden rows are deliberately absent, because a recorded battery keeps only
- *  `cases/<taskId>/public-task.json` on disk, so the public bytes are the identity every earlier
- *  battery can still be compared on. */
-export function publicBatteryFingerprint(tasks: ReadonlyArray<{ publicInput: unknown }>): string {
-  return sha256(
-    tasks
-      .map((task) => canonicalJson(task.publicInput))
-      .sort()
-      .join("\n"),
-  );
 }

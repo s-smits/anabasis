@@ -676,7 +676,7 @@ export function renderStatus(run: RunStatus, detail: "files" | "summary"): strin
     lines.push(`  ${decisionText(row)}`);
   }
   if (run.difficulty.refused.length > 0) {
-    lines.push(`  climb decisions refused: ${run.difficulty.refused.join(", ")}`);
+    lines.push(`  climb decisions refused: ${run.difficulty.refused.map((row) => row.reason).join(", ")}`);
   }
   const fired =
     Object.entries(run.safeguards.counts)

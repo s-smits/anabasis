@@ -245,12 +245,12 @@ function evaluationExamHash(dir: string): string {
 
 /** Check unchanged fields before probing and at final validation. Conformance later proves the
  * compiled schema identity; a changed declared representation can already be refused here.
- * `base` and `candidate` are identities the caller read; null marks an unreadable one. */
+ * `base` and `candidate` are identities the caller already read. */
 function evaluationInvariantClauses(
   baseDir: string,
   candidateDir: string,
-  base: FreezeFingerprint | null,
-  candidate: FreezeFingerprint | null,
+  base: FreezeFingerprint,
+  candidate: FreezeFingerprint,
 ): string[] {
   const clauses: string[] = [];
   try {
@@ -291,9 +291,7 @@ function evaluationInvariantClauses(
       "evaluation-exam-unverifiable: the public exam and declared representation require readable positive evidence",
     );
   }
-  if (base === null || candidate === null) {
-    clauses.push("evaluation-harness-unverifiable: both bundle identities must be readable");
-  } else if (base.agentHash !== candidate.agentHash) {
+  if (base.agentHash !== candidate.agentHash) {
     clauses.push("evaluation-agent-drift: preserve the solving agent during an evaluation correction");
   }
   return clauses;
@@ -453,13 +451,4 @@ export function experimentFreeze(
       "climb-harness-drifted: the candidate's agent or scoring program differs from current's — a task probe keeps the agent, brief and evaluator with everything it imports fixed while the battery, its controls, reference solves and tests change, so this generation is a re-authoring instead of a task probe",
     ],
   };
-}
-
-/** The clauses alone, for the promotion check that only applies them. */
-export function validateExperiment(input: {
-  kind: HarnessExperiment | null;
-  baseDir: string;
-  candidateDir: string;
-}): string[] {
-  return experimentFreeze(input).clauses;
 }

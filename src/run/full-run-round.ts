@@ -143,7 +143,6 @@ function selectorContext(
     manifest: input.manifest,
     baseKickoff: input.baseKickoff,
     runPin: input.runPin,
-    runId: input.runId,
     domainDir,
     builder: input.builderCondition,
     built: input.slots.built,
@@ -177,7 +176,7 @@ export function heldInLoop(steps: CandidateEvaluation): boolean {
 }
 
 export async function runIteration(input: IterationInput): Promise<IterationResult> {
-  const { args, repoRoot, manifest, runId, runPin, deps, observer } = input;
+  const { repoRoot, manifest, runId, runPin, deps, observer } = input;
   throwIfStopRequested(input);
   const domainDir = selectedProductDir(repoRoot, manifest.slug);
   const { prior, lineage, readout, decision, kickoff } = selectNextMoveFromDisk(
@@ -224,7 +223,6 @@ export async function runIteration(input: IterationInput): Promise<IterationResu
   });
   throwIfStopRequested(input);
   const steps = await settleCandidateEvaluation({
-    args,
     repoRoot,
     manifest,
     runId,

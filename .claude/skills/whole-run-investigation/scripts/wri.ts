@@ -219,13 +219,14 @@ export const LANES: readonly Lane[] = [
     needs: (c) => (existsSync(join(c.campaign, "versions")) ? null : "no adopted version, so no battery yet"),
     // The JSON drops each battery's family vectors, which only the verdict reads.
     read: async (c) => {
-      const { lineOf, readCampaign, render } = await import("./climb-velocity.ts");
+      const { flatTriggers, lineOf, readCampaign, render } = await import("./climb-velocity.ts");
       const report = await readCampaign(c.campaign);
       const batteries = report.batteries.map((battery) => ({
         ...battery,
         reading: { ...battery.reading, familyVectors: undefined },
       }));
-      return { report: { ...report, batteries, line: lineOf(report) }, text: render(report) };
+      const line = lineOf(report);
+      return { report: { ...report, batteries, line, triggers: flatTriggers(line) }, text: render(report) };
     },
   },
   {

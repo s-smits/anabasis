@@ -40,8 +40,6 @@ const SKIP_DIRS = new Set(["node_modules", ".git", ".toolchain", "runs", "scratc
 const CORE_FILES = BUNDLE_FILES.filter((file) => file !== HARNESS_CONFIG_FILE);
 /** A text file of the tool tree the reviewer can read: at most 1 MiB, no NUL byte, valid UTF-8. */
 const TOOLCHAIN_TEXT_BYTES = 1024 * 1024;
-/** A regular file's count; a link, an external target or a special file counts otherwise. */
-const FILE_COUNT = /^[0-9a-f]{64}$/;
 export const TOOLCHAIN_PREFIX = "toolchain:";
 /**
  * The measured tree's `.toolchain`, when a recorded verifier tool's tree digest still covers it. An
@@ -200,15 +198,7 @@ function verifierSources(tools: Record<string, JsonValue>, evidence: readonly Ve
     for (const row of receipts) {
       const command = boundCommand(id, tool, row);
       const alias = `verifier:${id}:${hashJsonValue({ path: command, digest: tool.digest }).slice(0, 16)}`;
-      sources[alias] = {
-        id,
-        path: command,
-        digest: tool.digest,
-        source: tool.source,
-        kind: tool.kind,
-        interpreter: tool.interpreter,
-        ...(tool.treeDigest === undefined ? null : { treeDigest: tool.treeDigest }),
-      };
+      sources[alias] = { id, path: command, ...tool };
     }
   }
   const undeclared = evidence.find(
@@ -289,7 +279,8 @@ function toolchainRead(reach: ToolchainReach, path: string): string {
   const rel = path.slice(TOOLCHAIN_PREFIX.length).replace(/\/+$/, "");
   const count = reach.counts.get(rel);
   if (count === undefined) return toolchainListing(reach, path, rel);
-  if (!FILE_COUNT.test(count)) throw new Error(`${path} is a link or special file; read the file it names`);
+  // A regular file counts as a digest; a link, an external target or a special file otherwise.
+  if (!isDigest(count)) throw new Error(`${path} is a link or special file; read the file it names`);
   const read = toolchainText(join(reach.tree, rel));
   if (read === null) throw new Error(`${path} is not text of at most 1 MiB`);
   if (portableFileCount(read.bytes, reach.tree) !== count) {

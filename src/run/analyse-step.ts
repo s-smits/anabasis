@@ -188,7 +188,6 @@ export async function analyseStep(
       ...contested,
       review,
       publicRequest: options.publicRequest ?? null,
-      ...keyIfDefined("safeguardContext", options.safeguardContext),
       ...keyIfDefined("observer", observer),
       ...keyIfDefined("providerBudget", providerBudget),
     });

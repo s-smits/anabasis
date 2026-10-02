@@ -179,7 +179,7 @@ describe("one reading per battery", () => {
       ["r2", null],
       ["r1", "on-aim"],
     ]);
-    expect(readout.decision.refused).toBe(25);
+    expect(readout.decision.rationale).toBe("all 25 attempts refused at submission, none truth-verified");
     expect(lineOf(render(readout), "r2")).toBe(
       "- r2 (P1, T1, S1): 0 passed of 0 verified, 25 unaccepted, 0 non-results.",
     );
@@ -415,6 +415,27 @@ describe("rendering", () => {
     // Only the latest battery speaks: an earlier whole pass under a later partial one says nothing.
     const text = render(readoutOf(row("r1", 0, { passed: 6, n: 6 }), row("r2", 1, { passed: 3, n: 6 })));
     expect(text).not.toContain("found no limit");
+  });
+
+  it("summarises no exclusion, names each excluded battery, and states one shared reason once", () => {
+    const excludedLine = (reasons: string[], admitted: number) => {
+      const excluded = reasons.map((reason, i) => ({ runId: `r${String(i)}`, reason, claimRefused: false }));
+      const text = render({ ...readoutOf(), excluded, admitted });
+      return text.split("\n").find((line) => line.includes("excluded from difficulty evidence")) ?? "absent";
+    };
+    expect(excludedLine([], 3)).toBe("absent");
+    expect(excludedLine(["not comparable", "claim refused"], 1)).toBe(
+      "2 of 3 recorded batteries excluded from difficulty evidence: not comparable — r0; claim refused — r1.",
+    );
+    // A whole campaign read at another pin shares one reason: it is stated once, not per run.
+    expect(
+      excludedLine(
+        Array.from({ length: 6 }, () => "not comparable"),
+        0,
+      ),
+    ).toBe(
+      "6 of 6 recorded batteries excluded from difficulty evidence: not comparable — r0, r1, r2, r3 and 2 more.",
+    );
   });
 
   it("says how much of the solve wall a full pass's slowest solve took", () => {

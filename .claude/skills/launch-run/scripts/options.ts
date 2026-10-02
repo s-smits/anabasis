@@ -38,8 +38,13 @@ export const CONDITIONS = {
   opus: { kind: "claude", model: "claude-opus-5-5", efforts: ["medium", "medium", "medium"] },
   fable: { kind: "claude", model: "claude-fable-5-1", efforts: ["medium", "medium", "medium"] },
   opushmm: { kind: "claude", model: "claude-opus-5-5", efforts: ["high", "medium", "medium"] },
+  haiku: { kind: "claude", model: "claude-haiku-4-5-20251001", efforts: ["medium", "medium", "medium"] },
 } as const;
 export const DEFAULT_DISK_MIN_GIB = 20;
+/** The operator's launch pace, whose yield figures are AGENTS.md "Open gaps", blocker 4: no batch
+ *  starts above this one-minute load or past this many live controller runs, unless `--over-capacity`. */
+export const MAX_LAUNCH_LOAD = 25;
+export const MAX_LIVE_RUNS = 6;
 /** Where a launch keeps its receipts, logs and frozen environment, relative to the run tree. */
 export const SCRATCH = ".scratch/quick-run";
 /**
@@ -105,6 +110,7 @@ const OPTIONAL_VALUES = [
   "env-file",
   "codex-home",
   "output-dir",
+  "over-capacity",
 ] as const;
 
 /** The launcher's arguments, parsed by `.claude/skills/main/cli.ts`, so a misspelled flag refuses
@@ -130,7 +136,7 @@ export type LaunchOptions = Partial<Record<(typeof OPTIONAL_VALUES)[number], str
 
 const PRESET_NAMES = [...PRESET_PROMPTS.keys(), STANDARD].join("|");
 export const HELP = `Usage: bun .claude/skills/launch-run/scripts/launch.ts [${PRESET_NAMES}]... [options]
-  --model sol,luna,astra,opus,fable,opushmm Model presets; default opus (legacy alias: --condition)
+  --model sol,luna,astra,opus,fable,opushmm,haiku Model presets; default opus (legacy alias: --condition)
   --source <ref|sha|pr:number>     Default current origin/main
   --budget N --tasks N            Defaults 1320 provider turns and 25 tasks per run
   --gate auto|run|skip            Default auto: skip bun run gate when the pre-push hook recorded a
@@ -144,6 +150,7 @@ export const HELP = `Usage: bun .claude/skills/launch-run/scripts/launch.ts [${P
   --env-file /path                Claude token; default main checkout/.env
   --codex-home /path              Codex auth; default current CODEX_HOME or ~/.codex
   --output-dir /path              Parent of fresh worktrees; default beside main checkout
+  --over-capacity REASON          Launch past the one-minute load ${MAX_LAUNCH_LOAD} or ${MAX_LIVE_RUNS} live runs; each receipt keeps the reason
   --dry-run                      Plan only: no setup, secrets or launch
   --list                         Exact preset prompts
   --help                         This help
@@ -171,6 +178,7 @@ function refuseValues(options: LaunchOptions, refuse: ExitWith): void {
     const value = options[key];
     if (value !== undefined && !isAbsolute(value)) refuse(`--${key} must be absolute`);
   }
+  if (options["over-capacity"]?.trim() === "") refuse("--over-capacity needs the reason, in words");
   const lines = options.prompt?.split("\n") ?? [];
   if (/[\r\0]/.test(options.prompt ?? "") || lines.length > 2 || lines.some((line) => !line.trim())) {
     refuse(PROMPT_REFUSAL);

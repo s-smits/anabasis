@@ -14,7 +14,7 @@
  *     --project <slug> --prompt-file /abs/one-liner.txt --run <runId> \
  *     --expected-tasks 25 --provider-turn-budget 15 --out /abs/report-dir \
  *     --builder live|capture|/abs/turn.mts --built live|no-solve|/abs/solver.mts --review live|off \
- *     [--preset opus|sol|luna|astra|fable] [--capture /abs/capture-dir] \
+ *     [--preset opus|sol|luna|astra|fable] [--built-model <model id>] [--capture /abs/capture-dir] \
  *     [--root /abs/tree] [--max-iterations N] [--max-builder-turns N] [--wall-ms N] \
  *     [--predictions /abs/note.md] [--dcg true|false] [--census-ms N] [--allow-dirty] \
  *     [--real-isolation] [--json]
@@ -23,6 +23,8 @@
  *   - the calling session's `CLAUDE*` variables leave this process (session-env.mts);
  *   - `--preset` pins each live slot's backend, model and effort from launch-run's condition table,
  *     the one a paid launch reads;
+ *   - `--built-model` pins a live Built slot to another model of the preset's kind, so a weaker
+ *     solver can give a product a partial battery the climb has something to answer with;
  *   - a scripted or `no-solve` Built slot takes the latest recorded battery's Built pin, and a live
  *     one that differs is named. Two truss conditions that day labelled Built claude/claude-opus-5-5
  *     against batteries recorded under codex/gpt-6-sol, so the climb readout set all seven aside and
@@ -387,6 +389,7 @@ const parsed = parseOrDie(die, {
     "dcg",
     "census-ms",
     "preset",
+    "built-model",
     "capture",
   ],
   flags: ["json", "allow-dirty", "real-isolation"],
@@ -456,6 +459,14 @@ const followed = live.built || recordedBuiltPin === null ? null : pinBackend(rec
 if (followed !== null) {
   slotKinds.built = followed.kind;
   Bun.env[`${followed.kind.toUpperCase()}_BUILT_MODEL`] = followed.model;
+}
+const builtModel = single.get("built-model");
+if (builtModel !== undefined) {
+  if (!live.built) die("--built-model pins a live Built slot; pair it with --built live");
+  if (slotKinds.built === null) {
+    die("--built-model needs --preset, which names the Built slot's backend kind");
+  }
+  Bun.env[`${slotKinds.built.toUpperCase()}_BUILT_MODEL`] = builtModel;
 }
 const plannedPins: Record<BackendSlot, string> = {
   builder: plannedPin(root, project, "builder", slotKinds.builder),

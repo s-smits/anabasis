@@ -6,13 +6,12 @@ description: "Compare one or several recorded source states to see whether chang
 # Wave audit: did the source improve the runs
 
 The goal is a healthier, more ambitious climb: successive batteries move towards the solver's limit
-on failures the verifier can earn. Read AGENTS.md "Goals and the climb" for the target, and [the
-climb reference](../whole-run-investigation/references/climb.md) for velocity, horizon, flat,
-carried and edge labels. Per run, compare the Super Loop's scoreboard: signal of the first 8, hours
-to first signal, held fails. This audit reads recorded runs; it launches and stops nothing.
-
-What it concludes goes to [run-improvement-campaign](../run-improvement-campaign/SKILL.md) as the
-next move, and its scoreboard (`scripts/scoreboard.ts` there) prints those numbers per run.
+on failures the verifier can earn. Read AGENTS.md "Goals and the climb" for the target and the line's
+numbers, and [the climb reference](../whole-run-investigation/references/climb.md#the-line) for the
+rows that print them. Per run, lead with the share of the solve wall and the follow-up of each earned
+fail; signal is rare and confirms a step. This audit reads recorded runs; it launches and stops
+nothing. What it concludes goes to [run-improvement-campaign](../run-improvement-campaign/SKILL.md)
+("The scoreboard") as the next move.
 
 ## When this skill applies, and when a neighbour does
 
@@ -33,10 +32,10 @@ are different exams. The lower score may mean a harder battery, a broken evaluat
 product. A pass count alone cannot tell those apart.
 
 Raw pass rates compare only on a shared pack. `compare-conditions.mts` refuses a join whose task-set
-hashes differ, and `harness-query` solves one fixed pack on each harness. Without a shared pack,
-report what the loop did with its batteries, not what they scored. A perfect battery is the base
-rate here, as AGENTS.md "Goals and the climb" says, and it is not news. A battery with both passes
-and verified fails is a useful signal only after the fails survive review.
+hashes differ, and `harness-query` solves one fixed pack on each harness of one campaign (§9).
+Without a shared pack, report what the loop did with its batteries, not what they scored. A perfect
+battery is the base rate here, as AGENTS.md "Goals and the climb" says, and it is not news. A
+battery with both passes and verified fails is a useful signal only after the fails survive review.
 
 ## Study, state, condition and pair
 
@@ -346,6 +345,9 @@ solves more. For that, use a shared pack:
 
 - Solve one fixed task set on both adopted bundles through
   [harness-query](../harness-query/SKILL.md). This is paid: one measured case per task per side.
+  The two bundles must be rounds of one campaign or of a seeded continuation of it, because a pack
+  task is graded by the correctness bundle of the product that authored it. Across fresh campaigns
+  read the solve-wall share instead (AGENTS.md "Open gaps", the third blocker).
 - Re-grade artifacts under another evaluator with `bun run replay --
   <campaign>/<runId> --under <bundle>`, if recorded artifacts and bundles exist.
 - Join recorded batteries only when they share a task-set hash; `compare-conditions.mts` refuses
@@ -383,27 +385,3 @@ Settles at:          <next checkpoint and what it could change>
 
 An audit without a next move or an adjudicated prediction was only a report. Say which checkpoint
 will settle it.
-
-## Worked baseline, 2026-09-27
-
-This is the baseline wave on source `4ec0615bf`, with run ids `*-20260927T052020405Z-1408e8`
-(truss) and `*-20260927T052323252Z-b445f0` (custom). Every run ended `signal-terminated` when the
-operator stopped the wave for the relaunch on `6e96003d` (`*-20260927T145744429Z-7e43c0`). Its
-`runEnd.climb` rows, read from each `terminal.json`, show what the candidate is measured against.
-The
-target column is the plan's, which sources before `EXPERIMENT.json`'s removal still wrote:
-
-| condition | campaign | batteries (zone, passed of verified, target) |
-|---|---|---|
-| truss-sol | `…-3fd52f9e-19` | 4 batteries, all `too-easy` at 6 of 6; the first missed an `at-most 3` target by 3, with a Brier score of 0.40 |
-| truss-opus | `…-3fd52f9e-17` | 1 battery, `too-easy` at 6 of 6; an `at-least 1` target met, which only a battery with no pass could miss |
-| truss-astra | `…-3fd52f9e-18` | 1 battery, `over-aim` at 4 of 4 verified; an `at-most 3` target missed |
-| custom-sol | `…-9c0c68b1-15` | 7 batteries, all `too-easy` at 6 of 6; six of the seven targets missed |
-| custom-astra | `…-9c0c68b1-14` | 1 battery, `too-easy` at 5 of 5; target missed |
-| custom-opus | `…-9c0c68b1-13` | 1 battery, `too-easy` at 4 of 4; target met |
-
-For the truss-sol pair, the prediction frozen by file time was "first batteries at or below the aim
-(fewer 6/6 perfect batteries); no identical-exam evaluation-correction loops; the
-withhold-instruments flag stays off". Against that baseline, a candidate first battery that passes
-some cases and fails some, on fails its review holds, is the reading that would count as
-improvement; an `over-aim` placement at a full pass would not.

@@ -64,7 +64,8 @@ default remains `origin/main` and does not resolve the stack. Let the launcher f
 into a fresh isolated run worktree. Keep the source checkout and existing runs untouched.
 
 Model and budget defaults are Opus 5.5 medium/medium/medium, 25 tasks and 1,320 provider
-turns per run. Sol uses high/high/medium; Astra uses medium/low/low; Fable 5.1 uses medium/medium/medium.
+turns per run. Sol uses high/high/medium; Astra uses medium/low/low; Fable 5.1 uses medium/medium/medium;
+`haiku` puts Haiku 4.5 at medium on every slot, a floor condition for whether a weak model can use the harness at all.
 A variant of a model's row is named for its slot efforts, one letter each (l, m, h, x): `opushmm` is
 Opus 5.5 with the Builder at high. The launched tree's probe sees it as `opus`, so an older source
 launches it too.
@@ -101,12 +102,21 @@ and carries it into the run's frozen env. Codex conditions use the selected `COD
 Capture each selected credential once per batch; keep snapshots private and secrets out of
 arguments and reports. Report a missing credential; do not search other accounts or substitute keys.
 
-Before any launch, compare the host's one-minute load with its cores (`sysctl -n vm.loadavg
-hw.ncpu`) and count the open runs in `bun run runs`, firmware runs above all: each firmware Builder
-compiles in 4–5 lanes of its own, and the Epoch Reviewer's probes run the same compilers. Do not
-launch while load is above the core count. A launch into that load slows every sibling as well as
-itself, and it confounds any comparison of round length, because every arm is then bound by its
-tools. [The Super Loop's launch step](../run-improvement-campaign/SKILL.md#4-launch-through-one-owner)
+Before any launch, read the host's one-minute load (`sysctl -n vm.loadavg`) and count the open runs
+in `bun run runs`, firmware runs above all: each firmware Builder compiles in 4–5 lanes of its own,
+and the Epoch Reviewer's probes run the same compilers. Do not launch while the one-minute load is
+above 25 (operator, 2026-10-01), and do not launch a new arm while the latest runs are still placing
+their batteries. A launch into that load slows every sibling as well as itself, and it confounds any
+comparison of round length, because every arm is then bound by its tools. The load is not the whole
+count: each Opus run yields fewer batteries an hour as live runs are added (AGENTS.md "Open gaps",
+the fourth blocker), so count the live runs too, and hold at six. The launcher enforces both before
+it prepares a tree or asks a provider anything: it refuses while the load is above
+`MAX_LAUNCH_LOAD` (25), or when the batch, counting every run it would start, would take the runs
+`bun run runs` reads as live past `MAX_LIVE_RUNS` (6), and the refusal prints the load, the live
+count and each live run's id. When that reader fails, the launcher prints what it could not read and
+the load alone decides. `--over-capacity "<reason>"` launches anyway, and each receipt keeps the
+load, the live runs and the reason as `pace`.
+[The Super Loop's launch step](../run-improvement-campaign/SKILL.md#4-launch-through-one-owner)
 records what 2026-09-30 measured under it.
 
 Before a Claude-backed launch, read `.accounts/usage` in the main checkout, where it exists. It is

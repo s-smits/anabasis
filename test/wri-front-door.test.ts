@@ -97,7 +97,6 @@ function snapshotFixture() {
       "FAMILY UNMOVED all-pass: beta 5/5 → 5/5 (i01 → i02)",
       "FAMILY UNMOVED all-pass: alpha 5/5 → 5/5 (i02 → i03)",
       "REVIEW TURNS EXCEED SOLVER TURNS (lane 24): review 37 > built 60",
-      "OFF-AIM STREAK (lane 10): 3 batteries under the aim",
       "ordinary prose line",
       "",
     ].join("\n"),
@@ -155,7 +154,6 @@ describe("run overview", () => {
     expect(rendered).toContain("100 of 100 turns used (builder 3, built 60, review 37)");
     expect(rendered).toContain("FAMILY UNMOVED all-pass [3 rows]: alpha 5/5");
     // A lane-suffixed trigger groups on the whole text before its colon, suffix included.
-    expect(rendered).toContain("OFF-AIM STREAK (lane 10) [1 row");
     expect(rendered).toContain("REVIEW TURNS EXCEED SOLVER TURNS (lane 24) [1 row");
     expect(rendered).toContain("families alpha 5, beta 5");
     expect(rendered).not.toContain("census");

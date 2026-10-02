@@ -10,7 +10,7 @@ import type {
 export function executionRecord(
   rows: Array<Partial<BuilderSubmitAttempt>>,
   calls = 0,
-  extra: Partial<Pick<BuilderExecutionEvidence, "customCalls" | "customCallsOmitted" | "turnRetries">> = {},
+  extra: Partial<BuilderExecutionEvidence> = {},
 ): string {
   const submits = rows.map(
     (row, index): BuilderSubmitAttempt => ({

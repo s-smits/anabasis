@@ -264,14 +264,19 @@ export function outcomesOf(campaign: string): Map<string, OutcomeCounts> {
   );
 }
 
-/** Null when no completed review of this battery is recorded, which is unread, never "nothing settled".
- *  Against the check means by the controller's rule (`settledAgainstCheck`): a case its climb drops. */
-export function settlementOf(campaign: string, runId: string): Settlement | null {
+/** The completed review of battery `runId`, or null when none is recorded. */
+function reviewOf(campaign: string, runId: string): CaseDisposition[] | null {
   const review = readJsonAsOrNull<Pick<EpochReviewEvidence, "status"> & { dispositions?: CaseDisposition[] }>(
     join(campaign, "analysis", `${runId}-epoch-review.json`),
   );
-  if (review?.status !== "completed") return null;
-  const rows = review.dispositions ?? [];
+  return review?.status === "completed" ? (review.dispositions ?? []) : null;
+}
+
+/** Null when no completed review of this battery is recorded, which is unread, never "nothing settled".
+ *  Against the check means by the controller's rule (`settledAgainstCheck`): a case its climb drops. */
+export function settlementOf(campaign: string, runId: string): Settlement | null {
+  const rows = reviewOf(campaign, runId);
+  if (rows === null) return null;
   const settled = settledAgainstCheck(join(campaign, "analysis"), runId);
   const count = (veto: boolean, counted: (row: CaseDisposition) => boolean) =>
     rows.filter((row) => (row.kind === "veto") === veto && counted(row)).length;
@@ -452,10 +457,10 @@ const solverOf = ({ backendPin, condition, bundleSnapshot }: BatteryRecord) =>
 
 /** What `next`, the battery measured after `battery`, did with each of `battery`'s earned fails, or
  *  null when `battery` recorded no battery of its own. An earned fail is a verified fail that the
- *  controller's settlement (`settledAgainstCheck`) leaves in the climb sample and the solve wall did
- *  not stop; a climb step needs that task passing after a harness change (AGENTS.md "Its shape, and
- *  how progress is read"). Null fields are unread: no next battery, or none recorded. A regrade
- *  keeps the recorded solve's instants, so a case starting when the earlier one did is not new.
+ *  review did not settle against its check and the solve wall did not stop; a climb step needs that
+ *  task passing after a harness change (AGENTS.md "Its shape, and how progress is read"). Null
+ *  fields are unread: no next battery, or none recorded. A regrade keeps the recorded solve's
+ *  instants, so a case starting when the earlier one did is not new.
  *  `elsewhere` counts the task's other verified solves in any battery under the same solver
  *  (`solverOf`) that poses it exactly as this one did: a fail of a task that passed there is the
  *  solver's variance, not a limit. In trusses-26, 13 tasks were solved 59 times that way and both
@@ -471,7 +476,16 @@ export function followUpOf(
       : null;
   const record = recorded(battery);
   if (record === null) return null;
-  const settled = settledAgainstCheck(join(campaign, "analysis"), battery.runId);
+  // A settlement recorded before dispositions named their checks stays in the controller's sample,
+  // since it cannot tell whether another check decided the case, and for that reason is no earned
+  // fail either (esp32-30 i02 and esp32-31 b1: six such fails).
+  const unscoped = (reviewOf(campaign, battery.runId) ?? []).filter(
+    (row) => row.disposition === "against-check" && row.checkIds === undefined,
+  );
+  const settled = new Set([
+    ...settledAgainstCheck(join(campaign, "analysis"), battery.runId),
+    ...unscoped.map((row) => row.taskId),
+  ]);
   const earned = record.cases.filter(
     (row) =>
       classifyCaseOutcome(row) === "fail" &&

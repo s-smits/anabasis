@@ -560,17 +560,27 @@ and has not been re-derived here.
    Opus 5.5 failed none of its 73 verified cases, and under gpt-6-sol no fail among 783 verified firmware
    cases has been confirmed as the solver's. Widening the gap by effort or by search has been measured
    and did not bind: a medium Builder over a low solver (Astra, 28 batteries) verified 139 passes and no
-   fail, and limits reset at a 3.4-hour search's best passed 5 of 6 (prior 10). What has never been a
-   measured condition is an answer the author did not have to find. One kind is an instance built from a
-   chosen answer at a size no enumeration or short search reaches; `examples.md` offers "A planted
-   design" as one option among several, and the plants on record (reserve 6a8ca0, RNA-seq 36e268) were
-   sized so the reference could enumerate them, which the solver then did in one to three minutes. The
-   other kind is an answer the field already recorded, such as a merged fix or a published result, which
-   no surface names. A second author has not been measured either: a split build, in which an answer
-   agent writes the correctness model behind a wall from the author of `agent/`, was written on
-   2026-09-30 (`claude/answer-builder`, three local commits) and has neither landed nor run. Owner: the
-   witness route, in `starter-pack/examples.md`. The cheapest test needs no run: plant instances past
-   enumeration on a recorded product and re-solve them once through `harness-query`.
+   fail, and limits reset at a 3.4-hour search's best passed 5 of 6 (prior 10). An answer the author
+   did not have to find has been measured once, and it did not bind either. `examples.md` offers "A
+   planted design" as one option among several, and the plants on record (reserve 6a8ca0, RNA-seq
+   36e268) were sized so the reference could enumerate them, which the solver then did in one to three
+   minutes. On 2026-10-01 six reserve instances were built from a chosen answer at 72 to 132 units, a
+   size at which every greedy and a 12,000-move local search failed, and re-solved once through
+   `harness-query` on the recorded product by Opus 5.5 at medium: all six passed, in 2.5 to 26 minutes
+   of a 120-minute wall (prediction a25b19c0, refuted). The published rules let the solver compute every
+   check on its own candidate, so it wrote a search and ran it until the checks cleared. Where the solver
+   can check its own answer, an instance a written search reaches is an instance it passes, so size alone
+   is not the lever. Taking the check away did not bind either: the twelve firmware tasks of the two
+   first products on source 2590f776 were re-solved the same day with the simulator named in
+   `checkOnlyTools`, and all twelve passed, each in under three minutes and faster than with it
+   (prediction 7f93fb2e, sufficed). In the recorded passes 8 of 12 submissions were the draft the solver
+   had before its first simulation. So neither the size of the search nor the solver's hold on the
+   check is what these tasks lack; they ask for work the public text settles. Two kinds remain
+   unmeasured. One is an answer the field already recorded, such as a merged fix or a published result,
+   which no surface names. The other is a second author: a split build, in which an answer agent writes
+   the correctness model behind a wall from the author of `agent/`, was written on 2026-09-30
+   (`claude/answer-builder`, three local commits) and has neither landed nor run. Owner: the witness
+   route, in `starter-pack/examples.md`.
 2. **An earned fail is not followed up.** Of the 322 batteries, 33 were partial and 11 held a fail
    nobody contested, 8 in truss and 3 in firmware (those three are the one-minute-wall drafts below).
    None became a step, and some ended their run ("Reading the climb as the operator"). Where it went on,
@@ -1590,7 +1600,7 @@ the battery was paid for.
     | --- | --- | --- |
     | solver | `solve_minutes 120`, `max_turns 24`, `shell_timeout_seconds 300`, `shell_timeout_max_seconds 900` | ≤10×, ≥0.1× |
     | gate | `reference_solve_seconds 120`, `census_minutes 30`, `check_seconds 600`, `tool_run_seconds 300` | none |
-    | battery | `solve_concurrency 3` | ≤10× |
+    | battery | `solve_concurrency 5`, the one variable `BUILT_SOLVE_CONCURRENCY` | ≤10× |
 
     The solve wall is part of the measured condition. Below a tenth of the default the solver never sees a
     command return, so the battery would grade the wall's submit of a first draft. The floor

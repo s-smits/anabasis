@@ -471,6 +471,17 @@ describe("one-command run launcher", () => {
       CLAUDE_REVIEW_MODEL: "claude-haiku-4-5-20251001",
       CLAUDE_BUILDER_REASONING_EFFORT: "medium",
     });
+    expect(slotEnvironment("opus47")).toMatchObject({
+      CLAUDE_BUILDER_MODEL: "claude-opus-4-7",
+      CLAUDE_BUILT_MODEL: "claude-opus-4-7",
+      CLAUDE_REVIEW_MODEL: "claude-opus-4-7",
+    });
+    expect(slotEnvironment("gpt55")).toMatchObject({
+      CODEX_BUILDER_MODEL: "gpt-5.5",
+      CODEX_BUILT_MODEL: "gpt-5.5",
+      CODEX_BUILDER_REASONING_EFFORT: "high",
+      CODEX_REVIEW_REASONING_EFFORT: "medium",
+    });
   });
 
   it("names an effort variant in its run id and probes it as its model's standard row", () => {
@@ -479,6 +490,13 @@ describe("one-command run launcher", () => {
     expect(plan?.runId).toBe("standard-opushmm-at");
     const args = plan === undefined ? [] : probeArgs(plan, options);
     expect(args[args.indexOf("--condition") + 1]).toBe("opus");
+  });
+
+  it("probes an older model as its own row, not as the newer model its name starts with", () => {
+    const options = parseOptions(["--prompt", "Write a CLI.", "--model", "opus47"]);
+    const [plan] = planRuns(options, "/tmp/launch", "at");
+    const args = plan === undefined ? [] : probeArgs(plan, options);
+    expect(args[args.indexOf("--condition") + 1]).toBe("opus47");
   });
 
   it("names a --prompt run standard, whether it is named standard, custom or not at all", () => {

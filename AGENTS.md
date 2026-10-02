@@ -734,11 +734,14 @@ through the grep: remove the prefixes, delete the replacement lines, and flip ba
 under the same marker. Each entry below is a measured condition, not a settled rule. Once its run reads,
 it either moves to "Tried and taken out" or its comments are deleted.
 
-Each arm is one commit that comments its component out, and it lands like any other change (#89). An
-arm whose run has not read lands with a revert above it, so the landed tree stays the control the runs
-measured (#118); the arm commit stays in history, and reverting its revert switches it off again. The
-control is the tree before the arm commits. To run one arm alone, revert the other arm commits, so that
-it differs from the control in one component only. All of them are seeded from one recorded product
+Each arm is one commit that comments its component out, and it lands like any other change (#89)
+once its run has read. Until then it waits on its own ref, `refs/arms/<id>` on origin, which is the top of the open stack
+plus that one commit (the pre-push gate places every new ref there), and its entry below names the
+ref. A ref outside `refs/heads` keeps the arm off GitHub's branch list and its pull-request prompt;
+`git fetch origin 'refs/arms/*:refs/arms/*'` brings them here. An unread arm is not published as an arm with a revert above it: a pull
+request whose tip equals its base shows no change and lands commits that cancel (operator,
+2026-10-01, replacing #118's shape). The control is the arm's parent, the tip it forked from. To run one
+arm alone, launch from its ref, so that it differs from the control in one component only. All of them are seeded from one recorded product
 (`seed-campaign.mts republish --as-slug a,b,c`) and launched with the same model, provider budget and
 expected-task count. Run them one at a time, or record the machine load beside each: the three forks of
 2026-09-30 ran at once, and each spent 123 to 247 minutes in gate calls where the seed's rounds spent 26
@@ -746,7 +749,110 @@ to 80. Each prediction is frozen before its arm launches.
 Arms are compared on a discovery seed first. A confirmation seed, from another campaign, is launched
 only after every arm's source is fixed, and nothing read from it revises an arm.
 
-No component is ablated in source at present.
+No component is ablated in the landed source at present. Nine arms wait on refs:
+
+- **`held-findings` (arm, added, 2026-10-01).** `harness_trial` starts no solve while the round's
+  latest gate result is a `correctness_check` that found blocking rows on the very bytes being
+  rehearsed (same snapshot id).
+  It returns `blocked` at stage `candidate` with one sentence and repeats no finding (`heldFindings` in
+  `src/builder/author-feedback.ts`, read in `runTrial`). A clear check, changed bytes, or no check at
+  all lets the solve run as before. On record (1,064 rehearsals since 2026-09-23) it would have held
+  32: 5 of the 36 instrument-defect misses, none of the 7 real misses, 21 passes and 6 not-runs, none
+  on bytes that were later accepted. 23 of the 32 came in the same tool batch as the refusing check.
+  The arm is read as `harness_trial` receipts blocked at stage `candidate` straight after a
+  `correctness_check` receipt with findings on a `candidateId`, and as the defect share of rehearsal
+  misses. Grep: `rg "ADDED\(held-findings\)"`. Prediction and run: filled when this arm launches.
+  Ref `refs/arms/held-findings`: the stack top plus this one commit.
+
+- **`miss-reading` (arm, 2026-10-01).** The sentence `harness_trial` returns with a graded miss, "so a
+  battery of tasks like it scores near zero" (`trialNextAction` in `src/builder/harness-trial.ts`). In
+  its place the result says the checks rejected the submitted answer, that either the answer is wrong,
+  which is a limit, or a check refuses a right answer, and that the result does not say which. Of 47
+  recorded rehearsal misses (1,064 rehearsals since 2026-09-23), 36 were a check or its instrument
+  refusing a right answer, 7 were real and 4 were under-specified tasks; 23 were never rehearsed again
+  and 3 kept the task with its public text unchanged. The pass sentence and the round tally stay.
+  Grep: `rg "ABLATED\(miss-reading\)|ADDED\(miss-reading\)"`. Prediction and run: filled when this
+  arm launches.
+  Ref `refs/arms/miss-reading`: the stack top plus this one commit.
+
+- **`hardest-guess` (arm, 2026-10-01).** The round prompt's "A passing rehearsal is a blind solve of
+  its task, so it shows that task is within the solver's reach, and the task you expect to be hardest
+  is the one whose rehearsal says most about the battery", and the word "hardest" in the raise that
+  follows it (`roundPrompt` in `src/author/builder-session.ts`). The sentence relies on the Builder
+  predicting which task is hardest: its predicted pass probability averaged 0.41 against an observed
+  0.94, and the rehearsed task sat at chance in its battery's solve-time order (mean rank 0.48 against
+  0.50). Its first half restates the witness line the round opens with. The raise, its route "act
+  together" and the one rehearsal after it stay. Grep:
+  `rg "ABLATED\(hardest-guess\)|ADDED\(hardest-guess\)"`. Prediction and run: filled when this arm
+  launches.
+  Ref `refs/arms/hardest-guess`: the stack top plus this one commit.
+
+- **`clear-coverage` (arm, 2026-10-01).** What a clear `correctness_check` says after "The validation
+  sequence found no blocking row on these bytes" (`CLEAR` in `src/gate/check-tool.ts`): that its
+  controls cannot detect an obligation both the evaluator and the corpus omit, to reconcile the
+  declared coverage and "submit when every obligation has an observation and a one-fact control", and
+  that checking unchanged bytes repeats the result. The round prompt says to submit once a clear
+  preview says it works, so the result added a condition the round does not set; a Builder with a
+  clear preview and no submit is the case that ran longest. The tool's description, sent with every
+  request, already states the omitted-obligation limit and the remembered rows, and `harness_inspect`
+  states the coverage duty. Grep: `rg "ABLATED\(clear-coverage\)|ADDED\(clear-coverage\)"`.
+  Prediction and run: filled when this arm launches.
+  Ref `refs/arms/clear-coverage`: the stack top plus this one commit.
+
+- **`rehearsal-price` (arm, 2026-10-01).** The `harness_trial` description's "Each rehearsal costs one
+  measured case from the run's provider budget" (`createHarnessTrialTool` in
+  `src/builder/harness-trial.ts`), which every Builder request carried. A rehearsal took a median 3.1
+  minutes and 4% of the solve wall, 23 of 47 rehearsal misses were never rehearsed again, and nothing
+  rations rehearsals: the provider budget owns that spend. STARTER.md still says "one measured case
+  each" once, and the starter pack's "a sample you may buy, not a step you owe" stays. Grep:
+  `rg "ABLATED\(rehearsal-price\)|ADDED\(rehearsal-price\)"`. Prediction and run: filled when this
+  arm launches.
+  Ref `refs/arms/rehearsal-price`: the stack top plus this one commit.
+
+- **`hardness-observation` (arm, 2026-10-01).** In the Epoch Reviewer's lead for a battery on or below
+  the aim, "and hardness is the last of its readings rather than the first" and the closing "Record an
+  observation of hardness, owned by correctness-model/tasks.json, once you have read the brief and the
+  writer schema against the artifact and neither holds" (`PLACEMENT_LEADS.below` in
+  `src/review/epoch-reviewer.ts`); and in `record_finding`, "tasks that are harder than the harness"
+  and "or hardness" (`src/review/epoch-review-findings.ts`). The observation reaches the Builder as
+  "no check or path named; an observation, not a demonstrated defect" on the task set, so an earned
+  fail, on the battery the climb wants, arrived as an advisory against its tasks. The lead, both
+  probes and their owners stay. The review policy string carries the arm's name while it is on. Grep:
+  `rg "ABLATED\(hardness-observation\)|ADDED\(hardness-observation\)"`. Prediction and run: filled
+  when this arm launches.
+  Ref `refs/arms/hardness-observation`: the stack top plus this one commit.
+
+- **`easy-result` (arm, 2026-10-01).** In the Epoch Reviewer's lead for a battery above the aim, "and
+  tasks that were easy while leaving none undemanded are a result to report, not a defect to record"
+  (`PLACEMENT_LEADS.above` in `src/review/epoch-reviewer.ts`). A battery that passes whole found no
+  limit, and "Evidence and implementation status" records this clause as an open gap: the orientation
+  still reads easy tasks as a result. The guard against a finding on the score alone stays in "a lead,
+  not a finding on its own", and the question the lead asks, which obligation the tasks do not demand
+  or demand only one at a time, stays. The review policy string carries the arm's name while it is on.
+  Grep: `rg "ABLATED\(easy-result\)|ADDED\(easy-result\)"`. Prediction and run: filled when this arm
+  launches.
+  Ref `refs/arms/easy-result`: the stack top plus this one commit.
+
+- **`one-check-question` (arm, 2026-10-01).** The rebuild advice's "One check carrying every failure
+  asks whether its rule is stated in the public contract before the count reads as solver capability"
+  (`blockingLine` in `src/author/rebuild-advice.ts`), appended after a partial battery whose verified
+  failures all sat on one declared check; the Epoch Reviewer's battery block renders the same line. It
+  met a located limit by pointing at the Builder's own contract, which the publication clause already
+  asks about once, and 11 of 47 rehearsal misses came back with their public text changed. The
+  per-check counts stay. Grep: `rg "ABLATED\(one-check-question\)|ADDED\(one-check-question\)"`.
+  Prediction and run: filled when this arm launches.
+  Ref `refs/arms/one-check-question`: the stack top plus this one commit.
+
+- **`readiness-contract` (arm, 2026-10-01).** The `contract` field of every `harness_inspect
+  readiness` result: the round's task count, `LIMIT`, "Every task must be valid and solved by your
+  reference." and `WITNESS` (`roundContract` in `src/run/builder-campaign.ts`, served by
+  `readinessResult` in `src/builder/harness-inspect.ts`), about 500 bytes per call. The same bytes
+  open the round and are the context tool's round source, which now gives the compaction recovery the
+  field was added for. The binding's `contract` plumbing is commented out with it, and `roundContract`,
+  left with one caller, sits inline in the round opening. Grep:
+  `rg "ABLATED\(readiness-contract\)|ADDED\(readiness-contract\)"`. Prediction and run: filled when
+  this arm launches.
+  Ref `refs/arms/readiness-contract`: the stack top plus this one commit.
 
 ## Evidence and implementation status
 

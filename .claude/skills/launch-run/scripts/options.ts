@@ -39,6 +39,10 @@ export const CONDITIONS = {
   fable: { kind: "claude", model: "claude-fable-5-1", efforts: ["medium", "medium", "medium"] },
   opushmm: { kind: "claude", model: "claude-opus-5-5", efforts: ["high", "medium", "medium"] },
   haiku: { kind: "claude", model: "claude-haiku-4-5-20251001", efforts: ["medium", "medium", "medium"] },
+  sonnet: { kind: "claude", model: "claude-sonnet-5-5", efforts: ["medium", "medium", "medium"] },
+  opus48: { kind: "claude", model: "claude-opus-4-8", efforts: ["medium", "medium", "medium"] },
+  opus47: { kind: "claude", model: "claude-opus-4-7", efforts: ["medium", "medium", "medium"] },
+  gpt55: { kind: "codex", model: "gpt-5.5", efforts: ["high", "high", "medium"] },
 } as const;
 export const DEFAULT_DISK_MIN_GIB = 20;
 /** The operator's launch pace, whose yield figures are AGENTS.md "Open gaps", blocker 4: no batch
@@ -136,7 +140,7 @@ export type LaunchOptions = Partial<Record<(typeof OPTIONAL_VALUES)[number], str
 
 const PRESET_NAMES = [...PRESET_PROMPTS.keys(), STANDARD].join("|");
 export const HELP = `Usage: bun .claude/skills/launch-run/scripts/launch.ts [${PRESET_NAMES}]... [options]
-  --model sol,luna,astra,opus,fable,opushmm,haiku Model presets; default opus (legacy alias: --condition)
+  --model ${Object.keys(CONDITIONS).join(",")} Model presets; default opus (legacy alias: --condition)
   --source <ref|sha|pr:number>     Default current origin/main
   --budget N --tasks N            Defaults 1320 provider turns and 25 tasks per run
   --gate auto|run|skip            Default auto: skip bun run gate when the pre-push hook recorded a

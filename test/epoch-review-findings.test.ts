@@ -41,12 +41,9 @@ import {
   briefIdentities,
   recordFindingTool,
 } from "../src/review/epoch-review-findings.ts";
-import { PROBE_BUDGET } from "../src/review/review-probe.ts";
 import { BUNDLE_FILES } from "../src/author/feedback-routing.ts";
 import { EVALUATOR_FILE, TASKS_FILE } from "../src/meta/bundle-layout.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
-
-const NUMBER_WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
 
 /** The method sentences the projection once attached to a finding. The author chooses the repair, so
  *  none of them may reach a projected finding again. */
@@ -59,9 +56,9 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
   const evidence = "campaigns/truss/analysis/r2-epoch-review.json";
 
   // The prompt is a condition identity, so it is held to properties rather than to its sentences:
-  // each duty is stated once, superseded phrasings stay out, and the bounds it spells in words are
-  // the bounds the host enforces.
-  test("its prompt states each duty once, keeps retired phrasings out and spells the host's bounds", async () => {
+  // each duty is stated once, superseded phrasings stay out, and the finding cap its tool states is
+  // the cap the host enforces.
+  test("its prompt states each duty once and keeps retired phrasings out, and its tool states the cap", async () => {
     for (const duty of [
       "held to advice",
       "publication boundary",
@@ -85,7 +82,6 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
     ]) {
       expect(EPOCH_REVIEW_PROMPT).not.toContain(retired);
     }
-    expect(EPOCH_REVIEW_PROMPT).toContain(`at most ${NUMBER_WORDS[PROBE_BUDGET]} in a review`);
     const state = reviewState();
     const tool = recordFindingTool([], [], evidence, state);
     const hardness = {
@@ -93,10 +89,10 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
       claim: "the family asks more than the harness reaches",
       severity: "advisory",
     };
-    for (let attempt = 0; attempt < NUMBER_WORDS.length; attempt += 1) {
+    for (let attempt = 0; attempt <= 10; attempt += 1) {
       if ((await call(tool, hardness)).includes("records at most")) break;
     }
-    expect(EPOCH_REVIEW_PROMPT).toContain(`one of your ${NUMBER_WORDS[state.findings.length]} slots`);
+    expect(tool.description).toContain(`a review records at most ${state.findings.length}.`);
   });
 
   // The publication paragraph once required a decision a passing answer needs to stay private,
@@ -616,7 +612,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
       ]);
       const projected = publicEpochReview({ status: "completed", ...state }).findings[0]?.claim ?? "";
       expect(projected).toContain(
-        "The Judge failed 2 verified pass(es) in roof, uno citing this obligation, and the review settled them against the check",
+        "The Judge failed 2 verified passes in roof, uno citing this obligation, and they were settled against the check",
       );
       for (const word of ["PRIVATE", "private prose", "t1", "t2"]) expect(projected).not.toContain(word);
       // A second finding on the same check, naming no case, settles none, and says nothing about them.
@@ -669,7 +665,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
       expect(await call(tool, { ...rejects, settlesCases: ["d1"] })).toBe("recorded defect as blocking");
       const projected = publicEpochReview({ status: "completed", ...state }).findings[0]?.claim ?? "";
       expect(projected).toContain(
-        "The Judge did not fail 1 verified fail(s) in uno on this obligation, and the review settled them against the check: it refuses an artifact the obligation admits.",
+        "The Judge did not fail 1 verified fail in uno on this obligation, and it was settled against the check: it refuses an artifact the obligation admits.",
       );
       expect(projected).not.toContain("The Judge failed");
     });
@@ -693,7 +689,9 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
       }
       const completed = publicEpochReview({ status: "completed", ...state });
       expect(completed.findings.map((finding) => finding.severity)).toEqual([undefined, undefined]);
-      expect(completed.findings[0]?.claim).toContain("The Judge failed 1 verified pass(es) in uno");
+      expect(completed.findings[0]?.claim).toContain(
+        "The Judge failed 1 verified pass in uno citing this obligation, and it was settled against the check",
+      );
     });
 
     test("an observation names the check and says it demonstrated nothing", async () => {
@@ -989,7 +987,7 @@ describe("what a finding's typed fields carry to authoring", () => {
     const projected = publicEpochReview({ status: "completed", ...state }, { brief });
     expect(projected.settledJudge).toEqual([vetoedIssue.id]);
     expect(projected.findings[0]?.claim).toContain(
-      "The review settled the Judge's disagreement on 1 case(s) in roof in the check's favour",
+      "The Judge's disagreement was settled on 1 case in roof in the check's favour",
     );
     expect(projected.findings[0]?.claim).not.toContain("PRIVATE");
     const settled = attachIssueReadings(advicePacket([vetoedIssue, issue()]), {
@@ -1045,11 +1043,9 @@ describe("what a finding's typed fields carry to authoring", () => {
       }).issues.map(isStanding);
 
     const claim = (await project(["t1"])).findings[0]?.claim ?? "";
-    expect(claim).toContain(
-      "The review settled the Judge's disagreement on 1 case(s) in roof in the check's favour",
-    );
+    expect(claim).toContain("The Judge's disagreement was settled on 1 case in roof in the check's favour");
     for (const word of ["t1", "t2", "walls", "PRIVATE", "misread"]) expect(claim).not.toContain(word);
-    expect((await project([])).findings[0]?.claim).not.toContain("settled the Judge");
+    expect((await project([])).findings[0]?.claim).not.toContain("disagreement was settled");
     // One named case of roof's two leaves roof standing, and walls, read but never named, stands too.
     expect(await standing(["t1"])).toEqual([true, true]);
     expect(await standing(["t1", "t3"])).toEqual([false, true]);

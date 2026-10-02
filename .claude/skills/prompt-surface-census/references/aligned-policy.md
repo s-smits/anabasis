@@ -23,10 +23,13 @@ source disagree the source wins and this file is the thing to correct.
 | session and round strikes | `POLICY.loop` (`src/critic/policy.ts`) | `noopSubmitStrikes` 3 |
 | review clock and hold | `REVIEW_INTERVAL_MS` (`src/gate/review-clock.ts`), `READER_DEADLINE_MS` (`src/review/review-reader.ts`) | a review after 40 min without one; a held submit waits at most 1 h |
 | Epoch Reviewer probes | `PROBE_BUDGET`, `VALUE_MAX_CHARS` (`src/review/review-probe.ts`) | 8 probes per review, replacement values up to 4,000 characters |
+| Epoch Reviewer findings | `MAX_FINDINGS` (`src/review/epoch-review-findings.ts`) | 6 per review |
+| Judge rationale | `RATIONALE_MAX` (`src/review/judge-drivers.ts`) | 400 characters |
 
 The model-visible difficulty surfaces are `renderBatteryContract` and `renderReadout`
-(`src/run/climb-readout.ts`), and the size sentences `taskCountSentence` and `renderProbeSizing`
-(`src/run/battery-sizing.ts`). What each may state, and why the placement stays with the controller
+(`src/run/climb-readout.ts`), the size sentences `taskCountSentence` and `renderProbeSizing`
+(`src/run/battery-sizing.ts`), and, for the reviewer only, `readingSentence` with its `ZONE_WORDS`
+(`src/run/climb-readout.ts`). What each may state, and why the placement stays with the controller
 and the reviewer, is AGENTS.md "Goals and the climb", under "Who hears the placement, and what it
 drives". So flag any zone, aim, share or count to author towards on these surfaces, and any band or
 battery-size number a surface spells rather than derives from its owner.

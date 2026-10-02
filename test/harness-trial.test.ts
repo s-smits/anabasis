@@ -568,6 +568,9 @@ describe("the four facts that do cross", () => {
     expect(body.status).toBe("unaccepted");
     expect(asRecord(body.solve)?.accepted).toBe(false);
     expect(body.truth).toEqual({ verdict: "fail" });
+    expect(body.nextAction).toContain(
+      "The solver submitted no accepted artifact, which a battery counts as a fail.",
+    );
     expect(body.verifier).toEqual({ status: "not-run" });
     expect(rows.map((row) => [row.verdict, row.submitted])).toEqual([["fail", false]]);
     expectWithinCensus(body);

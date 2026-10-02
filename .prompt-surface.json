@@ -14,7 +14,8 @@
     "configDenyBlocks",
     "privateKeyDenyRules",
     "sbRule",
-    "roots\\.map"
+    "roots\\.map",
+    "^block\\(\\)$"
   ],
   "audiences": {
     "src/solve": "built agent",
@@ -28,7 +29,9 @@
     "src/correctness-bundle": "shared contracts",
     "src/backends": "transport (all audiences)",
     "src/observe": "telemetry (verify: may reach no model)",
-    "src/run": "orchestration",
+    "src/run/climb-readout": "builder (readout, history) and Epoch Reviewer (readingSentence)",
+    "src/run/battery-sizing": "builder (task count, probe sizing)",
+    "src/run": "orchestration (verify: gate feedback and terminals reach the Builder)",
     "src/claim": "receipts (operator; reaches a model only if a packet quotes it)",
     "src/verify": "sandbox walls (operator)",
     "src/meta": "internal",
@@ -58,6 +61,19 @@
     "sinceLast",
     "measuredAs",
     "^gate$",
-    "^exact$"
+    "^exact$",
+    "^block$",
+    "whoseBattery",
+    "caseSettlement",
+    "probeRequest",
+    "toolchainListing",
+    "^deliver$",
+    "^reply",
+    "batteryCensus",
+    "installedPrograms",
+    "publicFolder",
+    "renderMargins",
+    "renderReadout",
+    "renderProbeSizing"
   ]
 }

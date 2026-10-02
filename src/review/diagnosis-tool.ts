@@ -221,8 +221,7 @@ export function recordDiagnosisTool(
   return {
     name: "record_diagnosis",
     label: "Record a diagnosis",
-    description:
-      "Record one harness flaw located at a shown step, covering every offered issue it explains, or abstain for issues you cannot read. For an abstention send only issueIds and abstainReason. Never name a task.",
+    description: "Record one harness flaw located at a shown step, or abstain for issues you cannot read.",
     parameters: readerParameters(PARAMETERS),
     execute: (_id: string, args: Record<string, JsonValue>) => {
       const resolved = resolveIssues(strings(args.issueIds), offers, sink);
@@ -232,7 +231,9 @@ export function recordDiagnosisTool(
         if (reason === "") return refuse("an abstention needs a reason");
         if (namesTask(reason)) return refuse("an abstention may not name an individual task");
         sink.abstentions.push({ issueIds: resolved.ids, reason });
-        return Promise.resolve(readerToolText(`abstained for ${resolved.ids.length} issue(s)`));
+        return Promise.resolve(
+          readerToolText(`abstained for ${resolved.ids.length} issue${resolved.ids.length === 1 ? "" : "s"}`),
+        );
       }
       const fields = readingFields(args);
       if ("why" in fields) return refuse(fields.why);
@@ -261,7 +262,7 @@ export function recordDiagnosisTool(
       });
       return Promise.resolve(
         readerToolText(
-          `recorded for ${resolved.ids.length} issue(s): holds for ${support.cases} of ${support.shown} shown, ${support.contrasts} contrast(s)`,
+          `recorded for ${resolved.ids.length} issue${resolved.ids.length === 1 ? "" : "s"}: holds for ${support.cases} of ${support.shown} shown, ${support.contrasts} contrast${support.contrasts === 1 ? "" : "s"}`,
         ),
       );
     },

@@ -83,7 +83,7 @@ inside its wall, because the search that found that answer is one the solver can
 does not reliably meet is demand: several published requirements acting together on one answer under
 one shared limit, so that meeting one spends the margin another needs, with the way to meet them
 together withheld. A first battery can already hold a family that only a real search over its
-interacting requirements meets. Five constructions may help; none is required, and another method is
+interacting requirements meets. Four constructions may help; none is required, and another method is
 as welcome.
 
 - **A demand the battery does not yet make.** Change what a task asks the solver to reason about,
@@ -91,9 +91,8 @@ as welcome.
   rule at a time fails, published scenarios under which a different answer works, outputs or states
   that must agree after the same step, or a trade-off no direct formula settles, so candidates have
   to be searched. Publish every requirement and withhold only how your reference meets them
-  together. Take each from what the request's field already holds, and note in `MEMORY.md` which
-  public requirement changed and the reasoning it adds. It fails when the answer that met the old
-  task still meets the new one, or when the requirement is one the field would not hold.
+  together. Take each from what the request's field already holds. It fails when the answer that
+  met the old task still meets the new one, or when the requirement is one the field would not hold.
 - **The work at the size and in the environment the field works in.** A small copy of the field's
   work can be easy because its difficulty lives in what the copy left out: the full-size instance,
   the real library, device or dataset, the rest of the system the piece runs inside. Author the task
@@ -110,15 +109,8 @@ as welcome.
   keep its best incumbents, and store the best as the answer `reference/` replays, which F2 admits
   as it admits any stored answer. The limit then sits between what the long search found and what a
   short one finds. It fails when the long search finds nothing a short one does not.
-- **The solver's own answers.** Every passing solve of a measured battery or a rehearsal is a
-  witness you can read through `context`, in its traces source. Measure each beside your stored
-  answer for the same task. Where the stored answer is clearly better, the room between it and the
-  limit is what let the solve pass, so the limit belongs nearer the stored answer. Where a solve
-  matched or beat the stored answer, your search was one the solver runs too, so start the next
-  search from the best solve and keep the better incumbent. It fails when every solve lands on the
-  stored answer, which says the task has one obvious answer rather than a hard one.
 
-The last three set where a limit or a stored answer sits, and each combines with the first two.
+The last two set where a limit or a stored answer sits, and each combines with the first two.
 
 Some changes look harder and are not. Moving a limit or a magnitude while the method that passed
 still meets it, adding tasks, families or conditions that method also settles, a rule the task does

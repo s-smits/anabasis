@@ -116,5 +116,5 @@ export function toolFailureNote(
     .slice(0, 3)
     .map(([name, count]) => `${name} x${count}`)
     .join(", ");
-  return `Note: last turn ${calls.failed} of ${calls.total} tool calls failed (${names}) — read those errors before repeating the calls.`;
+  return `Note: last turn ${calls.failed} of ${calls.total} tool call${calls.total === 1 ? "" : "s"} failed (${names}) — read those errors before repeating the calls.`;
 }

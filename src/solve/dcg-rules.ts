@@ -25,9 +25,9 @@
  * At most eight rules and about fifteen tokens each (operator decision), because the list is paid on
  * every turn of both agents.
  *
- * The Builder list states no time limit: its bash tool description owns the deadline, the timeout
- * ceiling and what a long search should do, and both reach the same session, so a second statement
- * here can only repeat that description or contradict it.
+ * Neither list states a time limit: each shell's tool description owns the deadline and the timeout
+ * ceiling (the Built one in its `timeout` parameter, from the harness's own settings), and both reach
+ * the same session, so a second statement here can only repeat that description or contradict it.
  *
  * Both lists say a refused command runs nothing, and neither says the turn is lost, because it is
  * not: a session can take a refusal on its second call, make dozens more in the same turn and submit
@@ -44,21 +44,17 @@ export const DCG_RULES: readonly string[] = [
   "A refused command runs nothing: change the spelling and run it again.",
 ];
 /** Each Built command starts in a fresh folder that is removed afterwards (built-bash.ts), so the
- *  Builder's "workspace root" line would point the solver at nothing, and the time walls come from
- *  the harness's own agent/config.yaml, so the shared line names no number. dcg on its own refuses a
+ *  Builder's "workspace root" line would point the solver at nothing. dcg on its own refuses a
  *  redirect to `$HOME/x` and to `$TMPDIR/…`, which costs a solver turn after turn until it finds a
  *  spelling that passes. The guard caller admits both before dcg sees them (command-guard.ts
  *  `scratchRedirectResidual`), which is why the write line names `$HOME` beside `~`.
  *  It leaves out `$TMPDIR`, which the Built shell makes fresh for each command and never reads back,
- *  so a rule naming it would offer the solver a place its next command cannot revisit. The time
- *  line names the parameter because a long build or search cut off at the default wall finds
- *  nothing; the filesystem scan a timeout should not be spent on is the line before it. */
+ *  so a rule naming it would offer the solver a place its next command cannot revisit. */
 export const BUILT_SHELL_RULES: readonly string[] = [
   "Refused: rm -r outside the command's own folder, find -delete, git clean, git reset --hard.",
   "Delete a tree with rm -rf <relative path> or ~/<path>, also after cd ~; /tmp is shared with other solves, so keep your trees in $HOME.",
   "Write with > to $HOME/<name>, ~/<name>, a relative name or a literal /tmp/<name>; a redirect to any other $VAR/… is refused; make temp dirs with mktemp -d.",
   "Keep scripts and results in $HOME; do not scan the filesystem.",
-  "A command has a default time limit; pass timeout for a long build or search.",
   "A refused command runs nothing: change the spelling and run it again.",
 ];
 

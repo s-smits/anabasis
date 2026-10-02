@@ -21,6 +21,7 @@ import { openRecordedRun } from "#skills/main/run.ts";
 import {
   type DigestTrigger,
   jsonText,
+  laneTriggers,
   OVERVIEW_FILE,
   readJsonAsOrNull,
   REVIEW_STATE_FILE,
@@ -190,6 +191,8 @@ export const LANE_FOR_TRIGGER = new Map([
   ["REACH-ONLY CHECKS (lane 6)", [6]],
   ["REHEARSAL NOT-RUN (lane 9)", [9]],
   ["CLIMB FLAT (lane 10)", [10, 36]],
+  // The digest of a run whose source predates the climb lane's CLIMB FLAT still prints this.
+  ["OFF-AIM STREAK (lane 10)", [10, 36]],
   ["SUBMITTED BYTES NEVER REHEARSED (lane 11)", [11]],
   ["FINDINGS WITHOUT OWNER (lane 14)", [14]],
   ["ADVISORY FINDING RECURS UNROUTED (lane 14)", [14]],
@@ -428,16 +431,7 @@ function pressing(
   gaps: readonly SnapshotGap[],
 ): string[] {
   const overview = readJsonAsOrNull<OverviewFile | null>(join(reviewDir, OVERVIEW_FILE));
-  // The trigger rows of the in-process lanes' reports (`<lane>.json`), in lane order, so a lead a
-  // campaign-only read raises reaches the brief without a snapshot. A lane that failed this read
-  // contributes none, whatever an earlier read left beside it.
-  const fromLanes = steps.flatMap((step) => {
-    if (step.ok !== true) return [];
-    const rows = readJsonAsOrNull<{ triggers?: DigestTrigger[] } | null>(
-      join(reviewDir, `${step.label}.json`),
-    );
-    return Array.isArray(rows?.triggers) ? rows.triggers : [];
-  });
+  const fromLanes = laneTriggers(reviewDir, steps);
   if (overview === null && fromLanes.length === 0 && gaps.length === 0) return [];
   const missing = { digest: gapOf(gaps, "digest"), scan: gapOf(gaps, `${scope.runId}-scan`) };
   const triggers = [

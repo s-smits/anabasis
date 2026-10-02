@@ -250,7 +250,7 @@ describe("what the diagnosis reader is shown", () => {
     // The passing contrast, whose artifact the battery already publishes, shows its payloads.
     expect(prompt).toContain("  s2 write_layout ok turn 2 1.5s → layout written with a fixed support");
     expect(prompt).toContain("accepted submission: yes; final text: Done.");
-    expect(prompt).toContain("Showing 3 of 3 failing solves; 1 passing solve(s) of this family to contrast.");
+    expect(prompt).toContain("Showing 3 of 3 failing solves; 1 passing solve of this family to contrast.");
     // Each issue states where it was seen, and no lifecycle word the record cannot settle.
     expect(prompt).toContain(
       `ISSUE ${BEAMS.slice(0, 12)} — family beams, kind verified-fail: 3 of 4, first seen r1, last seen r2.`,
@@ -359,7 +359,7 @@ describe("what a reading records", () => {
   test("a structured diagnosis whose boundary resolves to the shown step and whose support is counted", async () => {
     const fixture = battery();
     const { evidence, replies } = await read(fixture, [WRITER_READING]);
-    expect(replies[0]).toBe("recorded for 1 issue(s): holds for 3 of 3 shown, 1 contrast(s)");
+    expect(replies[0]).toBe("recorded for 1 issue: holds for 3 of 3 shown, 1 contrast");
     expect(evidence.diagnoses).toEqual([
       {
         issueIds: [BEAMS],
@@ -446,7 +446,7 @@ describe("what a reading records", () => {
       { ...WRITER_READING, cause },
     ]);
     expect(replies[0]).toContain("boundaryReading exceeds 300 characters");
-    expect(replies[1]).toContain("recorded for 1 issue(s)");
+    expect(replies[1]).toContain("recorded for 1 issue:");
     expect(evidence.diagnoses[0]?.diagnosis.cause).toBe(cause);
   });
 
@@ -462,7 +462,7 @@ describe("what a reading records", () => {
       { issueIds: [B], abstainReason: "the shown steps cannot separate the writer from the guide" },
       WRITER_READING,
     ]);
-    expect(replies[0]).toBe("abstained for 1 issue(s)");
+    expect(replies[0]).toBe("abstained for 1 issue");
     expect(replies[1]).toContain("is already diagnosed or explicitly declined");
     expect(replies[2]).toContain("is already diagnosed or explicitly declined");
     expect(evidence.abstentions).toEqual([
@@ -541,7 +541,7 @@ describe("a solve compiled into steps", () => {
     }));
     const solve = compileSolve("c07", "fail", trace(calls, 4), WALLS, "accepted");
     expect(solve.text).toContain("  s11 write_layout ERR");
-    expect(solve.text).toContain("… 6 step(s) omitted, not citable");
+    expect(solve.text).toContain("… 6 steps omitted, not citable");
     expect(solve.refs.has("c07.s11")).toBe(true);
     expect(solve.refs.has("c07.s6")).toBe(false);
     expect(solve.refs.get("c07.end")).toBeNull();

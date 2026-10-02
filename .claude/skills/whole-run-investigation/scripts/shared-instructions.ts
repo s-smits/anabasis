@@ -123,8 +123,8 @@ function evolutionValues(evolution: EvolutionFacts) {
 }
 
 function triggerValue(triggers: readonly DigestTrigger[]): string {
-  if (triggers.length === 0) return "- Digest trigger rows: none.";
-  const lines = ["- Digest trigger rows by trigger (row count over all batteries; first examples):"];
+  if (triggers.length === 0) return "- Digest and lane trigger rows: none.";
+  const lines = ["- Digest and lane trigger rows by trigger (row count; first examples):"];
   for (const trigger of triggers) {
     const examples = trigger.examples.map((example) =>
       example.startsWith(trigger.name) ? example.slice(trigger.name.length).replace(/^:?\s*/, "") : example,
@@ -148,8 +148,8 @@ function scanValue(scan: readonly ScanFinding[] | null | undefined): string {
   return lines.join("\n");
 }
 
-/** Every placeholder value derived from the overview, plus the empty authored values. */
-function overviewValues(overview: OverviewReading | null | undefined) {
+/** Every placeholder value from the overview and the lanes' triggers, plus the empty authored values. */
+function overviewValues(overview: OverviewReading | null | undefined, lanes: readonly DigestTrigger[]) {
   if (overview?.schema !== OVERVIEW_SCHEMA) throw new Error(`overview schema must be ${OVERVIEW_SCHEMA}`);
   const views = overview.snapshot?.views ?? { ok: [], failed: [], unsupported: [] };
   return {
@@ -158,7 +158,7 @@ function overviewValues(overview: OverviewReading | null | undefined) {
       `${views.failed.length > 0 ? `, failed: ${views.failed.map(code).join(", ")}` : ""}${views.unsupported.length > 0 ? `, unsupported: ${views.unsupported.map(code).join(", ")}` : ""}.`,
     ...terminalValues(overview.terminal ?? { state: "unavailable", reason: "no terminal facts" }),
     ...evolutionValues(overview.evolution ?? { state: "unavailable" }),
-    triggers: triggerValue(overview.digestTriggers ?? []),
+    triggers: triggerValue([...(overview.digestTriggers ?? []), ...lanes]),
     scan: scanValue(overview.scanFindings),
     timeline:
       Array.isArray(overview.timelineStalls) && overview.timelineStalls.length > 0
@@ -169,14 +169,14 @@ function overviewValues(overview: OverviewReading | null | undefined) {
   };
 }
 
-export function buildSharedInstructions(overview: OverviewReading) {
+export function buildSharedInstructions(overview: OverviewReading, lanes: readonly DigestTrigger[] = []) {
   return {
     schema: SHARED_SCHEMA,
     runId: overview.runId ?? null,
     generatedAt: new Date().toISOString(),
     guide: GUIDE,
     template: [...DEFAULT_TEMPLATE],
-    values: overviewValues(overview),
+    values: overviewValues(overview, lanes),
   };
 }
 

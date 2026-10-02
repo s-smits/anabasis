@@ -294,10 +294,11 @@ bun .claude/skills/whole-run-investigation/scripts/wri.ts review <target> \
   --out <review> --repo <measured-source checkout> [launch options]
 ```
 
-`collect` runs the four lanes the paid lanes consume — `snapshot`, `challenge`, `delta` and
+`collect` runs the five lanes the paid lanes consume — `snapshot`, `challenge`, `delta`, `climb` and
 `overview` — and writes `<review>/overview.json` from recorded bytes (terminal, denominators,
 budget, versions, task set, grouped digest triggers, scan findings) and
-`<review>/shared-instructions.json`, the one file the primary edits: a `template` of lines carrying
+`<review>/shared-instructions.json`, which adds the in-process lanes' triggers, such as `climb`'s
+`CLIMB FLAT`, to the digest's; it is the one file the primary edits: a `template` of lines carrying
 `{placeholder}` tokens and a `values` map filled from the overview. Every lane reads the rendered
 template as `## Run overview`. Edit any value, add a value and its token, reorder or drop template
 lines, and fill the two authored values `orientation` and `movedVariable` before `launch`; a token

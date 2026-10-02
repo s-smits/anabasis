@@ -224,7 +224,7 @@ answer is an evaluator defect however many rejects it catches.
 ## Harness tests
 
 Extend the tracked `correctness-model/harness.test.ts` and `evaluator.test.ts` and run them with
-`.toolchain/bun --preserve-symlinks --no-env-file test correctness-model/harness.test.ts correctness-model/evaluator.test.ts`.
+the command in STARTER.md.
 The seed's `evaluateCheckProgram` projects inputs and aggregates your checks beside the reference
 solve, and its last test runs each accept control through a stub runtime applying the host's
 tool-request contract. These prove neither process confinement nor installed tool execution:

@@ -23,6 +23,11 @@ import {
 } from "../.claude/skills/whole-run-investigation/scripts/brief.ts";
 import { LANES, lanesForScope } from "../.claude/skills/whole-run-investigation/scripts/wri.ts";
 import { HARDWARE_TRIGGER } from "../.claude/skills/whole-run-investigation/scripts/hardware-target.ts";
+import { digestTriggers } from "../.claude/skills/whole-run-investigation/scripts/run-overview.ts";
+import {
+  readSharedInstructions,
+  renderSharedInstructions,
+} from "../.claude/skills/whole-run-investigation/scripts/shared-instructions.ts";
 
 const RUN = "custom-test-20260919T000000000Z-abcdef";
 const WRI = resolve(import.meta.dirname, "../.claude/skills/whole-run-investigation/scripts/wri.ts");
@@ -367,6 +372,11 @@ describe("what the read said", () => {
   it("maps each digest trigger to the lanes the catalogue starts from it, and names the launch spec", () => {
     // A suffixed trigger starts its own lane first, then the lane the catalogue added beside it.
     expect(lanesForTrigger("CLIMB FLAT (lane 10)")).toEqual([10, 36]);
+    // A run whose source predates CLIMB FLAT prints the streak under its old key, read by this brief.
+    const legacy = digestTriggers(
+      "OFF-AIM STREAK (lane 10): 3 consecutive placements below the aim (i02, i03, i04)\n",
+    );
+    expect(laneSuggestions(legacy, "probe")).toMatchObject({ defaulted: false, sessions: "10,31,34,36" });
     expect(lanesForTrigger("CENSUS WITH DISAGREEMENT (lane 16)")).toEqual([16, 32]);
     // The plan declares no target, so no target trigger maps anywhere.
     expect(lanesForTrigger("TARGET MISSED (lane 10)")).toEqual([]);
@@ -550,6 +560,23 @@ describe("a read past a failed snapshot view", () => {
     );
     expect(stdout).not.toContain("SNAPSHOT INCOMPLETE");
     expect(code).toBe(0);
+  }, 60_000);
+
+  it("collects the climb before the overview, so the lanes' run overview carries its trigger", () => {
+    const reviewDir = scratchDir("ana-brief-collect-");
+    const flat = { name: "CLIMB FLAT (lane 10)", rows: 1, examples: ["below the aim 4 in a row"] };
+    expect(readThrough(stubSource({ triggers: [flat] }), reviewDir, "collect").code).toBe(0);
+    expect(recordedSteps(reviewDir).map((row) => row.label)).toEqual([
+      "snapshot",
+      "challenge",
+      "delta",
+      "climb",
+      "overview",
+    ]);
+    const shared = readSharedInstructions(join(reviewDir, "shared-instructions.json"));
+    expect(renderSharedInstructions(shared)).toContain(
+      "CLIMB FLAT (lane 10) [1 rows]: below the aim 4 in a row",
+    );
   }, 60_000);
 
   it("reads every lane of a review but launches no paid lane over an incomplete snapshot", () => {

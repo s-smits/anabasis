@@ -225,12 +225,12 @@ describe("the handover between measured rounds", () => {
     );
     expect(existsSync(join(workspaceOf(next), "scratch", "run"))).toBe(false);
     expect(existsSync(join(workspaceOf(next), "scratch", "trace.bin"))).toBe(false);
-    expect(read(next, MEMORY_FILE)).toContain(`scratch/ holds ${first.key}'s 1 helper files`);
+    expect(read(next, MEMORY_FILE)).toContain(`scratch/ holds ${first.key}'s 1 helper file:`);
     expect(read(next, MEMORY_FILE)).toContain("gen.ts");
     // A second carry names only its own predecessor's helpers, in one line.
     const third = read(nextPass(PASS_TWO), MEMORY_FILE);
     expect(count(third, "scratch/ holds")).toBe(1);
-    expect(third).toContain(`scratch/ holds ${next.key}'s 1 helper files`);
+    expect(third).toContain(`scratch/ holds ${next.key}'s 1 helper file:`);
   });
 
   it("names at most five helpers and counts the rest", () => {

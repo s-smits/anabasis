@@ -57,8 +57,7 @@ const JUDGE_VERDICT_SCHEMA = {
   additionalProperties: false,
 };
 
-const VERDICT_SCHEMA_HINT =
-  'judge verdict must match {verdict:"pass"|"fail",rationale:string(1..400),rules?:string[]}; a fail must cite only shown rules, verbatim, at least one';
+const VERDICT_SCHEMA_HINT = `judge verdict must match {verdict:"pass"|"fail",rationale:string(1..${RATIONALE_MAX}),rules?:string[]}; a fail must cite only shown rules, verbatim, at least one`;
 
 /** The follow-up a subject gets when its first turn ended without a recorded verdict. */
 const VERDICT_REASK =
@@ -223,8 +222,7 @@ export function sessionJudge(options: {
     const tool = {
       name: "record_judge_verdict",
       label: "Record judge verdict",
-      description:
-        "Record fail or pass with a short reason. Fail only on a requirement the shown material shows broken; otherwise pass, and name what you left to the verifier.",
+      description: "Record fail or pass with a short reason.",
       parameters: JUDGE_VERDICT_SCHEMA,
       async execute(_id: string, raw: JsonValue) {
         // The first valid verdict wins; duplicates cannot erase it. A malformed first call returns

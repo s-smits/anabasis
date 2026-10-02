@@ -336,6 +336,50 @@ describe("the bytes the host hands back", () => {
     expect(quiet).toMatchObject({ executed: true, exitCode: 1, stdout: "" });
   });
 
+  it("hands back no answer when the tool's interpreter died in its own start-up", async () => {
+    // The end of what a truss instrument's venv python printed in 9 recorded rehearsal runs, whose
+    // home the wall would not open: no line of the program ran, and each run read as a rejection.
+    const unstarted = [
+      "Could not find platform independent libraries <prefix>",
+      "  stdlib dir = '/install/lib/python3.12'",
+      "Fatal Python error: init_fs_encoding: failed to get the Python codec of the filesystem encoding",
+      "Python runtime state: core initialized",
+      "ModuleNotFoundError: No module named 'encodings'",
+      "",
+      "Current thread 0x00000002004a6140 (most recent call first):",
+      "  <no Python frame>",
+    ];
+    const traceback = [
+      "Traceback (most recent call last):",
+      '  File "/t/.toolchain/truss/analyze.py", line 40, in <module>',
+      "ValueError: member m17 is not connected",
+    ];
+    const toStderr = (lines: readonly string[]) => ["cat <<'EOF' 1>&2", ...lines, "EOF"];
+    const fx = hostFixture({
+      "unstarted-tool": [...toStderr(unstarted), "exit 1"],
+      "raised-tool": ['printf \'{"error": "m17"}\'', ...toStderr(traceback), "exit 1"],
+      "raised-quiet-tool": [...toStderr(traceback), "exit 1"],
+      "answered-tool": ["printf 'verdict: pass'", ...toStderr(unstarted), "exit 1"],
+    });
+    const out = await runOnce(fx.host, subject({}), { toolId: "unstarted-tool", checkId: "c" });
+    expect(out).toMatchObject({ executed: false, stdout: "", exitCode: 1 });
+    expect(out.nonResult?.kind).toBe("protocol");
+    expect(out.evidence.nonResultReason).toContain("exited 1 without writing stdout");
+    expect(out.evidence.nonResultReason).toContain("Python's failed start-up");
+
+    // A program that ran and raised has answered, with or without stdout, and so has any run that
+    // wrote stdout, whatever its stderr says.
+    for (const [toolId, stdout] of [
+      ["raised-tool", '{"error": "m17"}'],
+      ["raised-quiet-tool", ""],
+      ["answered-tool", "verdict: pass"],
+    ] as const) {
+      const answered = await runOnce(fx.host, subject({}), { toolId, checkId: "c" });
+      expect(answered).toMatchObject({ executed: true, exitCode: 1, stdout });
+      expect(answered.evidence.outcome).toBe("executed");
+    }
+  });
+
   it("keeps stdout whole at the cap and the last of stderr past its own", async () => {
     const fx = hostFixture({
       "chatty-tool": [

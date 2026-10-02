@@ -285,7 +285,7 @@ describe("the probes an authoring review rested its findings on, carried to the 
         path: "$.answer",
         value: MARKER,
       });
-      expect(ran).toContain("1 declared check(s) moved: answer");
+      expect(ran).toContain("1 declared check moved: answer");
       expect(await answerFinding(tools, [1])).toStartWith("recorded defect");
     });
     const carried = required(carriedDemonstrations(first.result), "the first review's demonstrations");
@@ -297,7 +297,7 @@ describe("the probes an authoring review rested its findings on, carried to the 
     const second = await reviewed(root, "authoring-2", carried, async (tools, prompt) => {
       const line = required(/^- probe_check (\{.*\}): /m.exec(prompt)?.[1], "a carried call");
       expect(await call(tool(tools, "probe_check"), parseJsonAs<Record<string, JsonValue>>(line))).toContain(
-        "1 declared check(s) moved: answer",
+        "1 declared check moved: answer",
       );
       expect(await answerFinding(tools, [1])).toStartWith("recorded defect");
     });

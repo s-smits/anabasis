@@ -403,8 +403,9 @@ function modelView(value: JsonValue | DraftSnapshot, draftSeq: number, from = 0)
   const window = complete.slice(start, start + MODEL_JSON_LIMIT);
   const next = start + window.length;
   const left = complete.length - next;
-  const before = start === 0 ? "" : `… (${start} chars before this)\n`;
-  const after = left === 0 ? "" : `\n… (${left} chars left; call again with from: ${next})`;
+  const before = start === 0 ? "" : `… (${start} char${start === 1 ? "" : "s"} before this)\n`;
+  const after =
+    left === 0 ? "" : `\n… (${left} char${left === 1 ? "" : "s"} left; call again with from: ${next})`;
   return {
     text: `${before}${window}${after}`,
     details: {

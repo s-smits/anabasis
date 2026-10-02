@@ -736,8 +736,14 @@ describe("climb velocity", () => {
       "earned fail heavy-01 in run-a: carried unchanged into run-b, passed there on a new solve; agent changed between them",
     );
     expect(answered).toContain(
-      "follow-up: 1 earned fail, 0 with no battery after it; 1 carried unchanged into the next battery, 1 of them passed there and 1 of those after the agent changed",
+      "follow-up: 1 earned fail (0 passed another solve under the same solver), 0 with no battery after it; 1 carried unchanged into the next battery, 1 of them passed there and 1 of those after the agent changed",
     );
+    // The same task bytes passing a new solve under the same agent make the fail a flip, never an answer.
+    const flipped = await follow(["a", "a"], [solveRow(heavy, "t2", true), solveRow(light, "t2", true)]);
+    expect(flipped).toContain(
+      "earned fail heavy-01 in run-a (passed 1 of 1 other solves under the same solver: a flip, not a limit): carried unchanged into run-b, passed there on a new solve; agent unchanged between them",
+    );
+    expect(flipped).toContain("follow-up: 1 earned fail (1 passed another solve under the same solver)");
     const regraded = await follow(["a", "a"], [solveRow(heavy, "t1", false), solveRow(light, "t2", true)]);
     expect(regraded).toContain(
       "earned fail heavy-01 in run-a: carried unchanged into run-b, failed there on its earlier solve graded again; agent unchanged between them",

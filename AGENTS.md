@@ -294,7 +294,11 @@ Progress is read on that line (`wri.ts climb`, `climb-velocity/v2`), with five n
   battery passed every verified case with no unaccepted attempt (`fullPass`), which are the solves
   spent re-measuring a known pass;
 - **follow-up**: each earned fail read into the battery after it: carried unchanged, changed or
-  dropped, how it came out there, and whether the agent changed between the two (`followUpOf`).
+  dropped, how it came out there, and whether the agent changed between the two (`followUpOf`). A
+  fail whose task, posed the same way, passed another solve under the same solver (agent bytes, Built
+  pin, run condition, tool tree) is a **flip**, the solver's variance and not a limit, and never counts
+  as answered. In trusses-26, 13 tasks solved 59 times that way failed twice, and both fails passed in
+  the battery beside them (2026-10-02).
 
 A zone cannot stand in for these, since 3/3 places `over-aim` and passes everything. A change that raises
 a score, adds tasks or renames levels without moving the line has not served the goal.

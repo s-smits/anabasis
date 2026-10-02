@@ -58,6 +58,7 @@ import { BRIEF_FILE, TASKS_FILE } from "#src/meta/bundle-layout.ts";
 import { climbThresholds, decidingSample, type ClimbBattery } from "#src/run/climb-history.ts";
 import { decideDifficulty, fullPass } from "#src/run/climb-readout.ts";
 import { BATTERY_FILE, readRecordedBatteryRecord } from "#src/correctness-bundle/battery-record.ts";
+import type { BatteryRecord } from "#src/correctness-bundle/battery-record.ts";
 import { SOLVE_WALL_MESSAGE } from "#src/backends/backend-types.ts";
 import {
   type Bundle,
@@ -439,12 +440,26 @@ function taskMove(before: Bundle, after: Bundle, taskId: string): "carried" | "c
   return carriedOf(before, { ...after, tasks }).unchanged === tasks.length ? "carried" : "changed";
 }
 
+/** The condition a battery's solves ran under: the Built pin, the run condition, the agent bytes and
+ *  the tool tree the solver's shell runs first. */
+const solverOf = ({ backendPin, condition, bundleSnapshot }: BatteryRecord) =>
+  stableJson({
+    backendPin,
+    condition,
+    agent: bundleSnapshot.agentHash,
+    tools: bundleSnapshot.toolTreeDigest,
+  });
+
 /** What `next`, the battery measured after `battery`, did with each of `battery`'s earned fails, or
  *  null when `battery` recorded no battery of its own. An earned fail is a verified fail that the
  *  controller's settlement (`settledAgainstCheck`) leaves in the climb sample and the solve wall did
  *  not stop; a climb step needs that task passing after a harness change (AGENTS.md "Its shape, and
  *  how progress is read"). Null fields are unread: no next battery, or none recorded. A regrade
- *  keeps the recorded solve's instants, so a case starting when the earlier one did is not new. */
+ *  keeps the recorded solve's instants, so a case starting when the earlier one did is not new.
+ *  `elsewhere` counts the task's other verified solves in any battery under the same solver
+ *  (`solverOf`) that poses it exactly as this one did: a fail of a task that passed there is the
+ *  solver's variance, not a limit. In trusses-26, 13 tasks were solved 59 times that way and both
+ *  of its fails passed in the battery beside them (oracle review, 2026-10-02). */
 export function followUpOf(
   campaign: string,
   battery: Pick<VersionBattery, "dir" | "runId">,
@@ -464,21 +479,41 @@ export function followUpOf(
       !row.solver.errors.includes(SOLVE_WALL_MESSAGE),
   );
   const later = next === undefined ? null : recorded(next);
-  // Two bundles are loaded only for a battery that holds an earned fail, which few do.
-  const bundles =
-    next === undefined || earned.length === 0
-      ? null
-      : { before: loadBundle(battery.dir), after: loadBundle(next.dir) };
+  // Bundles are loaded only for a battery that holds an earned fail, which few do.
+  const before = earned.length === 0 ? null : loadBundle(battery.dir);
+  const bundles = next === undefined || before === null ? null : { before, after: loadBundle(next.dir) };
+  const peers =
+    before === null
+      ? []
+      : batteriesOf(campaign).flatMap((other) => {
+          const solved = other.runId === battery.runId ? null : recorded(other);
+          if (solved === null || solverOf(solved) !== solverOf(record)) return [];
+          const bundle = loadBundle(other.dir);
+          return [{ solved, poses: (taskId: string) => taskMove(before, bundle, taskId) === "carried" }];
+        });
   return {
     next: next?.runId ?? null,
     agentChanged: later === null ? null : later.bundleSnapshot.agentHash !== record.bundleSnapshot.agentHash,
     fails: earned.map(({ taskId, solver }) => {
       const row = later?.cases.find((each) => each.taskId === taskId);
+      // Keyed by the solve's instants, so a regrade counts its solve once.
+      const others = new Map(
+        peers
+          .filter(({ poses }) => poses(taskId))
+          .flatMap(({ solved }) => solved.cases)
+          .filter((each) => each.taskId === taskId && each.solver.startedAt !== solver.startedAt)
+          .map((each) => [each.solver.startedAt, classifyCaseOutcome(each)] as const),
+      );
+      const outcomes = [...others.values()];
       return {
         taskId,
         task: bundles === null ? null : taskMove(bundles.before, bundles.after, taskId),
         outcome: row === undefined ? null : classifyCaseOutcome(row),
         regraded: row?.solver.startedAt === solver.startedAt,
+        elsewhere: {
+          passed: outcomes.filter((each) => each === "pass").length,
+          failed: outcomes.filter((each) => each === "fail").length,
+        },
       };
     }),
   };
@@ -794,8 +829,10 @@ function followUpLines({ runId, followUp }: ClimbBatteryRow): string[] {
   if (followUp === null) return [];
   const { next, agentChanged } = followUp;
   const agent = agentChanged === null ? "" : `; agent ${agentChanged ? "changed" : "unchanged"} between them`;
-  return followUp.fails.map(({ taskId, task, outcome, regraded }) => {
-    const head = `earned fail ${taskId} in ${runId}`;
+  return followUp.fails.map(({ taskId, task, outcome, regraded, elsewhere }) => {
+    const solves = elsewhere.passed + elsewhere.failed;
+    const flip = elsewhere.passed > 0 ? ": a flip, not a limit" : "";
+    const head = `earned fail ${taskId} in ${runId}${solves === 0 ? "" : ` (passed ${elsewhere.passed} of ${solves} other solves under the same solver${flip})`}`;
     if (next === null || task === null) return `${head}: no battery measured after it`;
     if (task === "dropped") return `${head}: dropped from ${next}${agent}`;
     const solve = regraded ? "its earlier solve graded again" : "a new solve";
@@ -804,9 +841,10 @@ function followUpLines({ runId, followUp }: ClimbBatteryRow): string[] {
   });
 }
 
-/** The earned fails `followUpOf` read, those with no battery after them, those the next battery
- *  carried unchanged, those that passed there, and those that passed after the agent changed: a
- *  climb step answered. A changed agent means a new solve, since a regrade needs the same agent bytes. */
+/** The earned fails `followUpOf` read, the flips among them (the task passed another solve under
+ *  the same solver), those with no battery after them, those the next battery carried unchanged,
+ *  those that passed there, and those that passed after the agent changed and are no flip: a climb
+ *  step answered. A changed agent means a new solve, since a regrade needs the same agent bytes. */
 export function followUpCounts(followUps: readonly ReturnType<typeof followUpOf>[]) {
   const fails = followUps.flatMap(
     (up) => up?.fails.map((fail) => ({ ...fail, agentChanged: up.agentChanged })) ?? [],
@@ -815,17 +853,19 @@ export function followUpCounts(followUps: readonly ReturnType<typeof followUpOf>
   const passed = carried.filter(({ outcome }) => outcome === "pass");
   return {
     earned: fails.length,
+    flips: fails.filter(({ elsewhere }) => elsewhere.passed > 0).length,
     last: fails.filter(({ task }) => task === null).length,
     carried: carried.length,
     passed: passed.length,
-    answered: passed.filter(({ agentChanged }) => agentChanged === true).length,
+    answered: passed.filter(({ agentChanged, elsewhere }) => agentChanged === true && elsewhere.passed === 0)
+      .length,
   };
 }
 
 function followUpLine(report: ClimbReport): string {
   const count = followUpCounts(report.batteries.map(({ followUp }) => followUp));
   if (count.earned === 0) return "  follow-up: no adopted battery recorded an earned fail";
-  return `  follow-up: ${count.earned} earned fail${count.earned === 1 ? "" : "s"}, ${count.last} with no battery after it; ${count.carried} carried unchanged into the next battery, ${count.passed} of them passed there and ${count.answered} of those after the agent changed`;
+  return `  follow-up: ${count.earned} earned fail${count.earned === 1 ? "" : "s"} (${count.flips} passed another solve under the same solver), ${count.last} with no battery after it; ${count.carried} carried unchanged into the next battery, ${count.passed} of them passed there and ${count.answered} of those after the agent changed`;
 }
 
 export function render(report: ClimbReport): string {

@@ -521,7 +521,7 @@ describe("scoreboard", () => {
       execTextSync("bun", [join(SCRIPTS, "scoreboard.ts"), "--repo", f.repo, ...flags]);
     const [first8, followUp] = [
       { signal: 2, batteries: 3 },
-      { earned: 3, last: 1, carried: 1, passed: 1, answered: 1 },
+      { earned: 3, flips: 0, last: 1, carried: 1, passed: 1, answered: 1 },
     ];
     // The signal batteries are the first, whose `b` and `c` no review settled, and the third at 1/2.
     // The batteries' median case shares are 0.15, 0.2 and 0.5 of each product's wall, so the run's
@@ -538,7 +538,7 @@ describe("scoreboard", () => {
       groups: [expect.objectContaining({ first8, wall: { median: 0.2, runs: 1 }, followUp })],
     });
     expect(board()).toContain(
-      "first-8 signal 2/3  wall 20.0% (n 1 runs)  earned fails 3, 1 carried unchanged, 1 answered",
+      "first-8 signal 2/3  wall 20.0% (n 1 runs)  earned fails 3 (0 flips), 1 carried unchanged, 1 answered",
     );
   });
 });

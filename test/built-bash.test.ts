@@ -154,6 +154,7 @@ describe("the shell the solver is given", () => {
     // Every runtime the toolchain case below runs by name is named, and none is called complete.
     expect(tool.description).toContain("sh, bun, node, python3");
     expect(tool.description).toContain("check one before building on it");
+    expect(tool.description).toContain("killed when the command returns");
   });
 });
 

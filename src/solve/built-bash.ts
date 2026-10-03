@@ -99,7 +99,8 @@ const WALLS =
   "a separate folder that survives between commands and is never read back; $TMPDIR is fresh for " +
   "each command. It can write those places and /tmp, and read the host's own toolchains and public " +
   "runtime roots, but no repository or private data. It does not check whether your answer is " +
-  "correct. sh, bun, node, python3 and the system C and C++ compilers " +
+  "correct. Work a command leaves running in the background is killed when the command returns, so run " +
+  "a long search in the foreground, under the command's timeout. sh, bun, node, python3 and the system C and C++ compilers " +
   "run, with versions and libraries that differ by host: check one before building on it, and install " +
   "what is missing into your home directory.";
 const SCRATCH_FOLDER =

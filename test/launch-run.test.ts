@@ -465,6 +465,14 @@ describe("one-command run launcher", () => {
       CLAUDE_BUILT_REASONING_EFFORT: "medium",
       CLAUDE_REVIEW_REASONING_EFFORT: "medium",
     });
+    expect(slotEnvironment("sonnetxhh")).toMatchObject({
+      CLAUDE_BUILDER_MODEL: "claude-sonnet-5-5",
+      CLAUDE_BUILT_MODEL: "claude-sonnet-5-5",
+      CLAUDE_REVIEW_MODEL: "claude-sonnet-5-5",
+      CLAUDE_BUILDER_REASONING_EFFORT: "xhigh",
+      CLAUDE_BUILT_REASONING_EFFORT: "high",
+      CLAUDE_REVIEW_REASONING_EFFORT: "high",
+    });
     expect(slotEnvironment("haiku")).toMatchObject({
       CLAUDE_BUILDER_MODEL: "claude-haiku-4-5-20251001",
       CLAUDE_BUILT_MODEL: "claude-haiku-4-5-20251001",
@@ -490,6 +498,14 @@ describe("one-command run launcher", () => {
     expect(plan?.runId).toBe("standard-opushmm-at");
     const args = plan === undefined ? [] : probeArgs(plan, options);
     expect(args[args.indexOf("--condition") + 1]).toBe("opus");
+  });
+
+  it("probes the Sonnet effort variant as the standard sonnet row", () => {
+    const options = parseOptions(["--prompt", "Write a CLI.", "--model", "sonnetxhh"]);
+    const [plan] = planRuns(options, "/tmp/launch", "at");
+    expect(plan?.runId).toBe("standard-sonnetxhh-at");
+    const args = plan === undefined ? [] : probeArgs(plan, options);
+    expect(args[args.indexOf("--condition") + 1]).toBe("sonnet");
   });
 
   it("probes an older model as its own row, not as the newer model its name starts with", () => {

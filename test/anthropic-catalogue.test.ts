@@ -4,7 +4,7 @@ import { anthropicProvider } from "@earendil-works/pi-ai/providers/anthropic";
 import { applyLongContext, claudeCodeModelId } from "../vendor/pi-claude-bridge/models.ts";
 
 describe("the Built slot's Anthropic catalogue", () => {
-  it.each(["claude-opus-5", "claude-opus-5-5", "claude-fable-5-1"])(
+  it.each(["claude-opus-5", "claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5-1"])(
     "supports %s at medium through the native catalogue and SDK bridge",
     (id) => {
       const models = createModels();

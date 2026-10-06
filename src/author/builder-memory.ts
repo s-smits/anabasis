@@ -2,11 +2,33 @@
  *  these files in its existing session, so no extra model turn is spent rewriting them, and they
  *  stay outside the accepted bundle and carry no correctness authority: memory is what a build
  *  would otherwise have to learn again, never evidence about a candidate. */
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "../meta/filesystem.ts";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+} from "../meta/filesystem.ts";
 import { AGENT_DIR, CORRECTNESS_MODEL_DIR } from "../meta/bundle-layout.ts";
-import { join } from "../meta/path.ts";
+import { compareCodeUnits } from "../meta/stable-json.ts";
+import { dirname, join } from "../meta/path.ts";
 import { containsPath } from "../meta/path-containment.ts";
 import { type CampaignEpochEvidence, type EpochSuccession, epochSuccession } from "./campaign-epoch.ts";
+
+/** What the carry copied, and the names it left behind: a tree as `dir/`, a file by its path. */
+interface ScratchCarry {
+  carried: string[];
+  left: string[];
+}
+
+/** One top-level entry of `scratch/`: the regular files that would cross under it, by path from
+ *  `scratch/`, their bytes, and those over the per-file limit, which stay behind. */
+interface ScratchEntry {
+  files: string[];
+  bytes: number;
+  large: string[];
+}
 
 /** The workspace under an epoch directory. It is named here rather than left to the caller because
  *  MEMORY.md is the one thing that crosses epochs, so this file has to resolve a workspace it is
@@ -95,13 +117,22 @@ const WHOLE_UNITS = { head: [/^([\s\S]*\n)/, /^([\s\S]*\s)/], tail: [/\n([\s\S]*
 const HEAD_MARKER_PATTERN =
   /^(?:<!-- (?:carried forward from|scratch\/ holds|controller:)[^\n]*-->(?:\n+|$))+/;
 
-/** The Builder's own helper scripts — generators, local checks, debug probes — sit at the top of
- *  `scratch/`, and a successor epoch otherwise rebuilds each one from nothing, so they cross. Only
- *  regular files at the top level and only under this size: the helpers are kilobytes, while an
- *  output directory beside them can hold hundreds of megabytes that a recursive copy would carry.
- *  Scratch is untracked, so nothing that crosses can enter a candidate. */
+/** The Builder's own helper scripts and the small data they read — generators, local checks, debug
+ *  probes — live under `scratch/`, and a successor epoch otherwise rebuilds each one from nothing,
+ *  so the tree crosses, whole directories included. A file crosses only under the per-file limit:
+ *  the helpers are kilobytes, while an output file can hold hundreds of megabytes. The carry as a
+ *  whole stops at the ceiling, sixteen files at the per-file limit, which sits above the few
+ *  megabytes a Builder's files under the per-file limit have added up to. A top-level folder
+ *  crosses whole or not at all, and a file over the per-file limit never crosses, even inside a
+ *  folder that does. The top-level entries are taken smallest first, so that a large folder sorting
+ *  early cannot spend the ceiling before the scripts are reached. Scratch is untracked, so nothing
+ *  that crosses can enter a candidate. */
 export const SCRATCH_DIR = "scratch";
 const SCRATCH_FILE_LIMIT_BYTES = 256 * 1024;
+const SCRATCH_CARRY_LIMIT_BYTES = 16 * SCRATCH_FILE_LIMIT_BYTES;
+
+/** The two limits in the words the handover and the carry marker both use. */
+export const SCRATCH_LIMITS = `files up to ${String(SCRATCH_FILE_LIMIT_BYTES / 1024)} KB each, ${String(SCRATCH_CARRY_LIMIT_BYTES / 1024)} KB in all`;
 
 /** How many helper names the carry marker spells out; the rest are counted. A predecessor can leave
  *  a hundred helpers, and naming each one spent a third of the memory ceiling on a file listing the
@@ -267,24 +298,76 @@ export function noteAtMemoryHead(workspace: string, line: string): void {
   writeFileSync(file, cappedToEnds(`<!-- controller: ${line} -->\n${text}`, MEMORY_CAP_BYTES));
 }
 
-function helperMarker(from: string, helpers: readonly string[]): string {
-  const shown = helpers.slice(0, HELPER_NAMES_SHOWN).join(", ");
-  const rest = helpers.length - HELPER_NAMES_SHOWN;
-  return `<!-- scratch/ holds ${from}'s ${String(helpers.length)} helper file${helpers.length === 1 ? "" : "s"}: ${shown}${rest > 0 ? ` and ${String(rest)} more` : ""}. -->`;
+function listed(names: readonly string[]): string {
+  const rest = names.length - HELPER_NAMES_SHOWN;
+  return `${names.slice(0, HELPER_NAMES_SHOWN).join(", ")}${rest > 0 ? ` and ${String(rest)} more` : ""}`;
 }
 
-function carryScratchHelpers(prior: string, next: string): string[] {
+function helperMarker(from: string, { carried, left }: ScratchCarry): string {
+  const held =
+    carried.length === 0
+      ? `none of ${from}'s files`
+      : `${from}'s ${String(carried.length)} helper file${carried.length === 1 ? "" : "s"}: ${listed(carried)}`;
+  const behind =
+    left.length === 0 ? "" : `; left behind, over the limit of ${SCRATCH_LIMITS}: ${listed(left)}`;
+  return `<!-- scratch/ holds ${held}${behind}. -->`;
+}
+
+/** Add what lies at `path` under `root` to `found`. `lstat` describes the entry itself and not what a
+ *  link points at, so a linked file or directory is neither one and nothing is followed out of the
+ *  tree. The walk stops once the entry's bytes are past the ceiling, so a directory of many small
+ *  files is not read to its end, and the entry stays behind however much more it holds. Only bytes
+ *  stop it: a tree of empty files, or of files over the per-file limit, is walked in full, one stat
+ *  each. */
+function gatherScratch(root: string, path: string, found: ScratchEntry): void {
+  if (found.bytes > SCRATCH_CARRY_LIMIT_BYTES) return;
+  const stat = lstatSync(join(root, path));
+  if (stat.isDirectory()) {
+    for (const child of readdirSync(join(root, path)).sort(compareCodeUnits)) {
+      gatherScratch(root, join(path, child), found);
+    }
+  } else if (stat.isFile()) {
+    if (stat.size > SCRATCH_FILE_LIMIT_BYTES) {
+      found.large.push(path);
+    } else {
+      found.files.push(path);
+      found.bytes += stat.size;
+    }
+  }
+}
+
+function carryScratchHelpers(prior: string, next: string): ScratchCarry {
   const from = join(prior, SCRATCH_DIR);
   const to = join(next, SCRATCH_DIR);
-  if (!existsSync(from) || existsSync(to)) return [];
-  const names = readdirSync(from, { withFileTypes: true })
-    .filter((entry) => entry.isFile() && Bun.file(join(from, entry.name)).size <= SCRATCH_FILE_LIMIT_BYTES)
-    .map((entry) => entry.name)
-    .sort();
-  if (names.length === 0) return [];
-  mkdirSync(to, { recursive: true });
-  for (const name of names) writeFileSync(join(to, name), readFileSync(join(from, name)));
-  return names;
+  const carry: ScratchCarry = { carried: [], left: [] };
+  // The lstat refuses a `scratch` that is itself a link, which would carry whatever it points at.
+  if (lstatSync(from, { throwIfNoEntry: false })?.isDirectory() !== true || existsSync(to)) return carry;
+  const entries = readdirSync(from).map((name) => {
+    const found: ScratchEntry = { files: [], bytes: 0, large: [] };
+    gatherScratch(from, name, found);
+    return { name, found };
+  });
+  // Smallest first, the name breaking a tie, so that a large folder sorting early (a cache, a
+  // trash) cannot spend the ceiling before the scripts beside it are reached.
+  entries.sort((a, b) => a.found.bytes - b.found.bytes || compareCodeUnits(a.name, b.name));
+  let bytes = 0;
+  for (const { name, found } of entries) {
+    if (bytes + found.bytes > SCRATCH_CARRY_LIMIT_BYTES) {
+      carry.left.push(lstatSync(join(from, name)).isDirectory() ? `${name}/` : name);
+      continue;
+    }
+    bytes += found.bytes;
+    carry.carried.push(...found.files);
+    carry.left.push(...found.large);
+  }
+  // The marker names helpers in path order whatever order they were taken in.
+  carry.carried.sort(compareCodeUnits);
+  carry.left.sort(compareCodeUnits);
+  for (const path of carry.carried) {
+    mkdirSync(dirname(join(to, path)), { recursive: true });
+    writeFileSync(join(to, path), readFileSync(join(from, path)));
+  }
+  return carry;
 }
 
 /**
@@ -314,14 +397,14 @@ export function carryMemoryForward(campaignRoot: string, epoch: CampaignEpochEvi
   // itself is not a workspace either, so the equal case refuses as well.
   if (prior === campaignRoot || !containsPath(prior, campaignRoot)) return;
   const next = join(epoch.dir, WORKSPACE_DIR);
-  let helpers: string[] = [];
+  let helpers: ScratchCarry = { carried: [], left: [] };
   try {
     helpers = carryScratchHelpers(prior, next);
   } catch {
     // Helpers are a convenience like the notes themselves: a failed copy leaves the Builder to
     // rewrite them, which costs minutes, while failing the epoch over them would cost the round.
   }
-  const helperLine = helpers.length === 0 ? [] : [helperMarker(from, helpers)];
+  const helperLine = helpers.carried.length + helpers.left.length === 0 ? [] : [helperMarker(from, helpers)];
   for (const [file, starter, cap] of FILES) {
     if (succession === "binding" && file !== MEMORY_FILE) continue;
     const marker = [CARRIED[succession](from), ...(file === MEMORY_FILE ? helperLine : [])].join("\n");

@@ -115,6 +115,13 @@ const held = (): Call => ({
   semantic: { outcome: "blocked", reason: "review-unread" },
 });
 
+/** A submit turned away before its gate ran, because the Builder's notes were over their cap. */
+const overCap = (): Call => ({
+  tool: "submit",
+  action: "submit",
+  semantic: { outcome: "blocked", reason: "notes-over-cap" },
+});
+
 /** A refused receipt under a condition named after its candidate, having run every stage. */
 const refusal = (candidate: string, ...codes: string[]): Call =>
   check({ candidate, condition: `${candidate}-e1`, codes, stagesRun: FULL });
@@ -462,11 +469,27 @@ describe("gate-rent episodes", () => {
     expect(triggerNames(single)).not.toContain("REVIEW HOLD CHAIN (lane 27)");
   });
 
+  it("counts a submit blocked before the gate by its reason, though no receipt refused it", () => {
+    const report = buildGateRent({
+      campaign: campaign([
+        [overCap(), held(), held(), accepted("c1")],
+        [refusal("c2", "gates:tool-timeout")],
+      ]),
+    });
+    expect(report.sessions).toEqual([
+      expect.objectContaining({ refused: 0, blocked: { "notes-over-cap": 1, "review-unread": 2 } }),
+      expect.objectContaining({ refused: 1, blocked: {} }),
+    ]);
+    expect(renderGateRent(report)).toContain(
+      "2 Builder sessions, 5 gate receipts, 1 refused, 3 blocked before the gate (notes-over-cap 1, review-unread 2);",
+    );
+  });
+
   it("renders its counts in the singular and the plural", () => {
     const text = renderGateRent(
       buildGateRent({ campaign: campaign([[refusal("c1", "gates:tool-timeout")]]) }),
     );
-    expect(text).toContain("1 Builder session, 1 gate receipt, 1 refused");
+    expect(text).toContain("1 Builder session, 1 gate receipt, 1 refused, 0 blocked before the gate;");
     expect(text).toContain("1 episode over 1 refused receipt;");
     expect(text).not.toContain("(s)");
   });

@@ -4,9 +4,11 @@ import type { CampaignFeedback, FeedbackOwner } from "../author/campaign-types.t
 import type { AnalysisFinding } from "./iteration-analysis.ts";
 
 /** The only author-session owner admitted for a finding, or null. Per-case detail never crosses to
- *  authoring at all, and a finding about no bundle file is not the Builder's to repair. */
+ *  authoring at all, and a finding about no bundle file is not the Builder's to repair. A demand gap
+ *  that names no file is weak task demand by its own definition, so it is the task set's. */
 export function authorSessionOwner(finding: AnalysisFinding): FeedbackOwner | null {
-  return finding.subject === undefined && isBundleFile(finding.owner) ? finding.owner : null;
+  const owner = finding.owner ?? (finding.demandGap === undefined ? null : TASKS_FILE);
+  return finding.subject === undefined && isBundleFile(owner) ? owner : null;
 }
 
 /** A defect blocks unless its producer explicitly said advisory; an observation never does. */

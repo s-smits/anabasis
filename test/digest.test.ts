@@ -9,6 +9,7 @@ import {
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { isString, type JsonValue } from "../src/meta/json-shape.ts";
+import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { recordDigestBattery } from "./helpers/digest-battery.ts";
 import { caseRecordRow } from "./helpers/case-record-row.ts";
 import type { CaseRecordRow } from "../src/claim/case-record.ts";
@@ -20,6 +21,19 @@ import type { TurnRetryRow } from "../src/author/builder-execution.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 
 type DigestFixture = { campaign: string; domainsRoot: string };
+
+/** A check's `execution` as a validated brief records it: an authored check names its tools beside
+ *  `evidence`, an external one inside it. */
+function execution(evidence: JsonValue, requiredToolIds?: string[]): JsonValue {
+  return {
+    families: "all",
+    artifactPaths: [],
+    publicInputPaths: [],
+    hidden: "none",
+    evidence,
+    ...keyIfDefined("requiredToolIds", requiredToolIds),
+  };
+}
 
 afterAll(cleanupScratch);
 
@@ -74,8 +88,11 @@ function fixture(): DigestFixture {
     join(domain, "correctness-model", "brief.json"),
     JSON.stringify({
       truthChecks: [
-        { id: "alpha-check", grounding: { kind: "authored" } },
-        { id: "beta-check", grounding: { kind: "external-verifier" } },
+        { id: "alpha-check", execution: execution({ kind: "authored" }, ["alpha-engine"]) },
+        {
+          id: "beta-check",
+          execution: execution({ kind: "external", requiredToolIds: ["beta-engine"] }),
+        },
       ],
     }),
   );
@@ -494,6 +511,29 @@ describe("digest", () => {
     );
     // No row means no verified case applied the check, so the claim grounds it in nothing.
     expect(claimWith([])).toMatch(/^beta-check\s+external-verifier\s+beta-engine\s+-\s+/m);
+  });
+
+  it("reads a refused claim's checks from the brief and says the solver-reach rows are unobservable", () => {
+    const paths = fixture();
+    // A claim refused over the served model's identity records clauses and no statement, so it
+    // holds no grounding row and no verifier tools.
+    writeFileSync(
+      join(paths.campaign, "claims", "run-1.json"),
+      JSON.stringify({
+        claim: { ok: false, repairable: false, clauses: [{ name: "runtime-model-identity-unproven" }] },
+      }),
+    );
+    const digest = digestOf(paths);
+    expect(digest).toMatch(/^alpha-check\s+authored\s+-\s+declared:alpha-engine\s+/m);
+    expect(digest).toMatch(/^beta-check\s+external\s+-\s+declared:beta-engine\s+/m);
+    expect(digest).not.toMatch(/^(alpha|beta)-check\s+\?/m);
+    expect(digest).toContain(
+      "solver-reach rows unobservable: 1 of 1 claims carry no statement, so no verifier tool is recorded for them",
+    );
+  });
+
+  it("says nothing of unobservable reach rows where every claim carries its statement", () => {
+    expect(digestOf(fixture())).not.toContain("solver-reach rows unobservable");
   });
 
   it("reads the battery root matching the recorded digest when an earlier root has a changed copy", () => {

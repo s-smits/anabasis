@@ -51,10 +51,15 @@ export type BatteryTally = OutcomeTally & {
   families: Map<string, OutcomeTally & { total: number }>;
 };
 
-/** A truth check as the measured brief declares it. */
+/** A truth check as the measured brief declares it. The evidence kind and the installed tools it
+ *  names sit under `execution`: an external check lists its tools inside `evidence`, an authored one
+ *  beside it. */
 export interface DeclaredCheck {
   id: string;
-  grounding?: { kind?: string };
+  execution?: {
+    requiredToolIds?: readonly string[];
+    evidence?: { kind?: string; requiredToolIds?: readonly string[] };
+  };
 }
 
 /** A control row as the measured controls file records it. */

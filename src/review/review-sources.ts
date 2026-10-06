@@ -1,13 +1,6 @@
 /** Private epoch-review inputs: the files a verdict can depend on, held; the rest of the tree, by name;
  *  and only receipt-bound verifier entry points. */
-import {
-  existsSync,
-  lstatSync,
-  readFileSync,
-  readdirSync,
-  realpathSync,
-  statSync,
-} from "../meta/filesystem.ts";
+import { lstatSync, readFileSync, readdirSync, realpathSync, statSync } from "../meta/filesystem.ts";
 import { isAbsolute, join, relative, resolve } from "../meta/path.ts";
 import { containsPath } from "../meta/path-containment.ts";
 import { sha256 } from "../meta/digest.ts";
@@ -45,8 +38,6 @@ const COMPACT_JSON_CHARS = 500_000;
 const SKIP_DIRS = new Set(["node_modules", ".git", ".toolchain", "runs", "scratch", "dist"]);
 // Every bundle file but the optional walls, whose absence is the defaults rather than a gap.
 const CORE_FILES = BUNDLE_FILES.filter((file) => file !== HARNESS_CONFIG_FILE);
-// What `missing` says when the closure of the held files cannot be read, so the review is incomplete.
-const UNKNOWN_CLOSURE = "what the bundle files import at run time";
 // The verifier runs some programs by import, which the closure finds, and some only by name: a script
 // a check runs as a tool is a string to the import walk. Every program under a bundle directory is
 // held, since which of them decides a verdict is not visible from the source.
@@ -103,7 +94,6 @@ interface DeliveredSource {
 export interface SourceReadState {
   reads: string[];
   readChars: number;
-  refused: number;
   delivered: DeliveredSource[];
 }
 
@@ -112,19 +102,6 @@ const isDigest = (value: unknown): value is string => isString(value) && /^[0-9a
 /** A program under a bundle directory is held, whatever imports it: see `PROGRAM_FILE`. */
 const heldProgram = (path: string) =>
   (path.startsWith(CORRECTNESS_MODEL_DIR) || path.startsWith(AGENT_DIR)) && PROGRAM_FILE.test(path);
-
-/** What the held files import at run time, data files included (`runtimeClosure`, the walk
- *  `scoringClosureHash` uses, without its refusal of a package holding a build configuration). An
- *  import it cannot follow leaves its file out: any module that way is still held as a program, and
- *  any other file is background, which the reviewer reads by name. Null when a file cannot be read,
- *  which leaves the held set unknown. */
-function reachedFiles(root: string, entries: readonly string[]): string[] | null {
-  try {
-    return runtimeClosure(realpathSync(root), entries).files;
-  } catch {
-    return null;
-  }
-}
 
 /** What a review reads. The held set is what can change a verdict or the reference's output: the
  *  bundle files, every program under the bundle directories and everything those import. A review is
@@ -139,7 +116,6 @@ export function reviewInventory(root: string): ReviewInventory {
   const missing: string[] = [];
   const tree = new Map<string, number>();
   const walk = (dir: string): void => {
-    if (!existsSync(dir)) return;
     let entries: string[];
     try {
       entries = readdirSync(dir).sort(compareCodeUnits);
@@ -163,9 +139,16 @@ export function reviewInventory(root: string): ReviewInventory {
   missing.unshift(...CORE_FILES.filter((path) => !tree.has(path)));
   const core = BUNDLE_FILES.filter((path) => tree.has(path));
   const programs = [...tree.keys()].filter(heldProgram).sort(compareCodeUnits);
-  const reached = reachedFiles(root, [...core, ...programs]);
-  if (reached === null) missing.push(UNKNOWN_CLOSURE);
-  const held = new Set([...core, ...(reached ?? []).filter((path) => tree.has(path)), ...programs]);
+  // What those import at run time, data files included (`runtimeClosure`, the walk `scoringClosureHash`
+  // uses, without its refusal of a package holding a build configuration). An import it cannot follow
+  // leaves its file to the program rule or the background; a file it cannot read is named in `missing`.
+  let reached: string[] = [];
+  try {
+    reached = runtimeClosure(realpathSync(root), [...core, ...programs]).files;
+  } catch (error) {
+    missing.push(`what the bundle files import at run time (${errorMessage(error)})`);
+  }
+  const held = new Set([...core, ...reached.filter((path) => tree.has(path)), ...programs]);
   const rest = [...tree].filter(([path]) => !held.has(path)).sort(([a], [b]) => compareCodeUnits(a, b));
   const files = [...held]
     .slice(0, INVENTORY_MAX_FILES)
@@ -427,10 +410,7 @@ export function readSourceTool(
   texts: NamedTexts,
 ): ReaderTool {
   const reply = (text: string) => Promise.resolve(readerToolText(text));
-  const refuse = (why: string) => {
-    state.refused += 1;
-    return reply(`refused: ${why}`);
-  };
+  const refuse = (why: string) => reply(`refused: ${why}`);
   /**
    * One entry's next page, or why it gave none. `unreadable` separates an entry that yields no
    * bytes at all -- outside the tree, not a regular file, a recorded verifier tool whose bytes or

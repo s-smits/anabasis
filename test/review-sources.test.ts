@@ -52,7 +52,7 @@ const NO_FIRING = {
 
 afterAll(cleanupScratch);
 
-const reviewState = (): SourceReadState => ({ reads: [], readChars: 0, refused: 0, delivered: [] });
+const reviewState = (): SourceReadState => ({ reads: [], readChars: 0, delivered: [] });
 const complete = (state: SourceReadState, path: string) => deliveredSource(state, path).complete;
 const quoted = (state: SourceReadState, path: string, quote: string) =>
   deliveredSource(state, path).record?.pages.some((page) => page.text.includes(quote)) ?? false;
@@ -234,12 +234,12 @@ describe("review coverage tied to recorded execution", () => {
     expect(await call(reader, { path: "correctness-model/missing.json" })).toContain("not in the inventory");
   });
 
-  test("a bundle file that cannot be read leaves what it imports unknown, and the review incomplete", async () => {
+  test("a bundle file that cannot be read leaves what it imports unknown, says which, and leaves the review incomplete", async () => {
     if (process.getuid?.() === 0) return;
     const root = searchTree();
     chmodSync(join(root, "correctness-model/evaluator.ts"), 0);
     const inventory = reviewInventory(root);
-    expect(inventory.missing).toEqual(["what the bundle files import at run time"]);
+    expect(inventory.missing).toEqual([expect.stringContaining("correctness-model/evaluator.ts")]);
     const coverage = reviewCoverage(
       inventory,
       { identity: "none", tools: {}, unavailable: null },
@@ -1022,7 +1022,6 @@ describe("what the reviewer may open", () => {
     expect(await call(reader, { path: first })).toBe("x".repeat(4_000));
     expect(await call(reader, { path: first })).toContain("already completely delivered");
     expect(state.reads).toEqual([first, first, second, first, first]);
-    expect(state.refused).toBe(3);
     // A spent budget refuses the next page and keeps what was delivered eligible for citation.
     state.readChars = 4_000_000;
     expect(await call(reader, { path: first, reread: true })).toContain("read budget is spent");
@@ -1045,11 +1044,9 @@ describe("what the reviewer may open", () => {
     const reader = readSourceTool(root, new Set(["broken.json", "real.json"]), state, {}, new Map());
     expect(await call(reader, {})).toContain("real.json (offset 0)");
     expect(state.reads).toEqual(["real.json"]);
-    expect(state.refused).toBe(0);
     // With nothing left it can deliver, the scan says so once rather than pretending more remains.
     const exhausted = await call(reader, {});
     expect(exhausted).toContain("no unread entry could be delivered; 1 remains unreadable (broken.json)");
-    expect(state.refused).toBe(1);
     // The unreadable entry is still missing coverage, and naming it still returns its reason.
     expect(await call(reader, { path: "broken.json" })).toContain("path escapes the measured tree");
     expect(complete(state, "broken.json")).toBe(false);
@@ -1109,7 +1106,6 @@ describe("what the reviewer may open", () => {
     expect(await call(tool, { path: EVALUATOR_TS })).toContain("refused:");
     expect(state.readChars).toBe("public evaluation".length);
     expect(state.reads).toEqual([EVALUATOR_TS]);
-    expect(state.refused).toBe(1);
   });
 
   test("pages preserve Unicode, and changed bytes keep their delivered pages as history that certifies nothing", async () => {
@@ -1129,7 +1125,6 @@ describe("what the reviewer may open", () => {
     expect(quoted(state, EVALUATOR_TS, "aaa")).toBe(false);
     expect(complete(state, EVALUATOR_TS)).toBe(false);
     expect(state.reads).toEqual([EVALUATOR_TS]);
-    expect(state.refused).toBe(1);
     // No page was delivered for "shorter", so changing the file again reads it from the start without a second refusal.
     writeFileSync(join(root, EVALUATOR_TS), source);
     expect(await call(tool, { path: EVALUATOR_TS })).toBe(first);

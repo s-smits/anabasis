@@ -45,7 +45,7 @@ import { boundText } from "../meta/bounded-text.ts";
 import { writeCompleted } from "../meta/completed-json.ts";
 import { type ClimbReadout, readClimbReadout, readingSentence } from "../run/climb-readout.ts";
 import { selectedProductDir } from "../run/product-versions.ts";
-import { hashJsonValue } from "../meta/stable-json.ts";
+import { compareCodeUnits, hashJsonValue } from "../meta/stable-json.ts";
 import { keyIfDefined, keysIf } from "../meta/optional-key.ts";
 import { type ReviewChoice, backendConditionPin } from "../backends/resolve.ts";
 import type { RunObserver } from "../observe/run-observer.ts";
@@ -513,16 +513,6 @@ function standingIssueLines(issues: readonly AdviceIssue[]): string[] {
   ];
 }
 
-/** The rest of the tree: every file the review is not held to, with its size, for a reviewer to ask
- *  for by name. A finding that rests on one cites it, so the record says what it rests on. */
-function backgroundLines({ background, backgroundTruncated }: ReviewInventory): string[] {
-  if (background.length === 0) return [];
-  return [
-    `Background files (${background.length}${backgroundTruncated ? ", list cut at its cap" : ""}), the rest of the tree: not required reading, never read automatically, readable by name. A finding that rests on one cites it and says so. Sizes in bytes:`,
-    ...background.map(({ path, size }) => `${path} (${size})`),
-  ];
-}
-
 function orientation(
   input: EpochReviewInput,
   inventory: ReviewInventory,
@@ -557,9 +547,15 @@ function orientation(
     ...demonstrationLines(input.demonstrations ?? NOTHING_CARRIED, measured.declared),
     ...standingIssueLines(issues),
     `Read with read_source, then record findings. Held files, which the review is held to (${inventory.files.length}, truncated: ${inventory.truncated}):`,
-    inventory.files.join("\n"),
+    // Listed in path order for the reader, while read_source reads them smallest first for the budget.
+    inventory.files.toSorted(compareCodeUnits).join("\n"),
     `Missing core files or unreadable entries: ${inventory.missing.join(", ") || "none"}.`,
-    ...backgroundLines(inventory),
+    ...(inventory.background.length === 0
+      ? []
+      : [
+          `Background files (${inventory.background.length}${inventory.backgroundTruncated ? ", list cut at its cap" : ""}), the rest of the tree: not required reading, never read automatically, readable by name. A finding that rests on one cites it and says so. Sizes in bytes:`,
+          ...inventory.background.map(({ path, size }) => `${path} (${size})`),
+        ]),
     verifier.unavailable ??
       "Recorded verifier entry points (cell-produced programs are not installed tools):",
     ...Object.entries(verifier.tools).map(
@@ -708,7 +704,6 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
   const state: ReviewState = {
     reads: [],
     readChars: 0,
-    refused: 0,
     delivered: [],
     probes: emptyProbeState(),
     dispositions: [],

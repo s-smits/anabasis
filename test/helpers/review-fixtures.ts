@@ -130,7 +130,6 @@ export function reviewState(): ReviewState {
   return {
     reads: ["evaluator.ts"],
     readChars: 12,
-    refused: 0,
     probes: emptyProbeState(),
     dispositions: [],
     delivered: [

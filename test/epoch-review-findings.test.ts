@@ -252,7 +252,6 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
       );
     }
     expect(state.findings).toHaveLength(0);
-    expect(state.refused).toBe(4);
     await call(tool, {
       defect: true,
       owner: TASKS_FILE,
@@ -754,7 +753,6 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
         "may not name an individual task",
       );
       expect(state.findings).toHaveLength(0);
-      expect(state.refused).toBe(5);
     });
 
     test("the identities are read from the measured brief, and an absent brief declares none", () => {

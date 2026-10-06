@@ -1455,7 +1455,10 @@ the battery was paid for.
     closure and rules are read only while its tree still scores to the hash its snapshot recorded. A dispute
     carries onto a re-observation only under the condition that recorded it, public rules included, since an issue's id names where a failure showed and not what caused it,
     and a diagnosis never carries onto a re-observation at all: it reads one battery's traces, so the
-    battery an issue line names and the one its diagnosis read are always the same.
+    battery an issue line names and the one its diagnosis read are always the same. First seen and seen
+    again hold only across the same task inputs, with the id kept: one id names a failure on other task
+    records as a first sighting there, which until 2026-10-07 read "first seen baseline" for a failure the
+    baseline never had, and a return means a return on the same tasks.
 
     `--product-policy fixed` permits measure or stop and refuses build and rebuild. A campaign runs
     uncapped unless the operator sets `--iteration-budget N`; there is no launch default (2026-08-19).

@@ -16,7 +16,9 @@
  * rules, `returned` says it was observed again after an absence, and `retired` says the family
  * left the task set. Nothing turns them into "fixed" or "regressed": identity is
  * `kind + family + detail`, which names where a failure showed and not what caused it, so an
- * absence is a failure not seen again and never a repair. `issueFacts` states them as one phrase.
+ * absence is a failure not seen again and never a repair, and a failure under one id on other task
+ * inputs is a first sighting there: `firstSeenRunId` and `returned` hold only across the same tasks.
+ * `issueFacts` states them as one phrase.
  * Comparable means the family's tasks, hidden expectations included, the checks (the verdict
  * closure, not the brief's prose), the tools they ran and the Built condition all match the battery
  * that last observed the issue (`issue-condition.ts`). A recheck whose public rules changed, in words or
@@ -127,6 +129,7 @@ export type AdviceIssue = {
   /** Cases showing the issue in the battery that last observed it, over that family's denominator. */
   count: number;
   denominator: number;
+  /** The first battery to observe it on the task inputs it was last observed under. */
   firstSeenRunId: string;
   lastSeenRunId: string;
   /** Complete rechecks since `lastSeenRunId`: later batteries on a comparable condition in which
@@ -137,7 +140,8 @@ export type AdviceIssue = {
    *  battery's. The checks were the same, so the absence says whether the repair held under the new
    *  rules and not whether the issue persists under the old. */
   rulesChangedRechecks: number;
-  /** Some observation after the first followed a complete recheck that did not observe it. */
+  /** Some observation after the first, on the same task inputs, followed a complete recheck that
+   *  did not observe it. */
   returned: boolean;
   /** The family left the task set, so this battery could not observe the issue. That is a separate
    *  fact from absence: counted as a recheck, it would say the failure was not seen again on tasks
@@ -390,7 +394,7 @@ function observedIssues(
 }
 
 /** Advance the register by one battery: an observed issue resets its rechecks and remembers whether
- *  it came back, and an unobserved one counts a recheck only when every case of its family was
+ *  it came back on the same tasks, and an unobserved one counts a recheck only when every case of its family was
  *  verified on a comparable condition. A Judge issue that no complete Judge review could observe is
  *  carried unchanged, because an absent review is not evidence of absence. */
 export function advanceIssues(
@@ -423,14 +427,20 @@ export function advanceIssues(
       prior !== undefined &&
       conditionGaps(prior.observedUnder, now).length === 0 &&
       !publicRulesMoved(prior.observedUnder, now);
+    // The id also names a failure on other task records, which is a first sighting and no return: no
+    // recheck of the earlier tasks missed it. Tasks that could not be vouched for compare with nothing.
+    const sameTasks =
+      prior !== undefined &&
+      prior.observedUnder.taskInputs !== null &&
+      prior.observedUnder.taskInputs === now.taskInputs;
     next.push({
       id,
       ...entry,
-      firstSeenRunId: prior?.firstSeenRunId ?? runId,
+      firstSeenRunId: sameTasks ? prior.firstSeenRunId : runId,
       lastSeenRunId: runId,
       absentBatteries: 0,
       rulesChangedRechecks: 0,
-      returned: prior !== undefined && (prior.absentBatteries > 0 || prior.returned),
+      returned: sameTasks && (prior.absentBatteries > 0 || prior.returned),
       retired: false,
       observedUnder: now,
       unmeasured: [],

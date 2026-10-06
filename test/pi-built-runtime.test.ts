@@ -219,7 +219,9 @@ describe("the Built harness instructions", () => {
     expect(prompt).toContain("120 minutes");
     // The wall sends the answer last prepared, not the best one, which the solver cannot observe;
     // save_candidate and restore_candidate describe themselves in the roster.
-    expect(prompt).toContain("the last answer an artifact-writer prepared is submitted for you");
+    expect(prompt).toContain(
+      "When it runs out, the last answer an artifact-writer prepared is submitted for you unless the draft changed after it",
+    );
     // The Built Harness owns its solving method. Clauses asking the solver to grade each candidate,
     // adjust for each breach, search, save or widen a margin made every task the same loop.
     for (const asked of [

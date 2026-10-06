@@ -252,11 +252,15 @@ export const publishedRequirements = (source: string): string =>
  * the wall widening the worst margin made every task propose, grade, adjust, whatever the task
  * asked for, so the battery measured that loop rather than the solver's own method.
  *
+ * Only the wall submits for the solver (`submitAtWall`, pi-built.ts), and `submit` sends only an
+ * answer still current, so the sentence names both conditions. It once said the answer was
+ * submitted "at the end", which a turn cap, a cancel or a silence stop does not keep.
+ *
  * The tools say what they do, `save_candidate` and `restore_candidate` included, and the
  * artifact-writer's margin table (`readMargins`) is host fact rather than instruction.
  */
 export const builtSystemPrompt = (solveMs: number): string =>
-  `${BUILT_SOLVE_DUTY} ${solveTime(solveMs)}, and at the end the last answer an artifact-writer prepared is submitted for you.`;
+  `${BUILT_SOLVE_DUTY} ${solveTime(solveMs)}. When it runs out, the last answer an artifact-writer prepared is submitted for you unless the draft changed after it; a session that ends any other way submits nothing for you.`;
 
 export function builtFirstTurnPrompt(
   task: Pick<PublicTask<unknown>, "taskId" | "family" | "publicInput">,
@@ -540,8 +544,14 @@ function standardTools(
           };
         }
         draft.adopt(candidate);
+        // A candidate saved before any answer was prepared, or after the draft moved past one,
+        // brings back no answer submit can send.
+        const answer =
+          draft.artifactMaterialization().state === "current"
+            ? "the answer prepared with it is prepared again"
+            : "it holds no current prepared answer, so call an artifact-writer before you submit";
         return {
-          text: `Restored "${name}"; the answer prepared with it is prepared again.`,
+          text: `Restored "${name}"; ${answer}.`,
           details: { saved: [...saved.keys()], restored: true, draftSeq: draft.seq },
         };
       },

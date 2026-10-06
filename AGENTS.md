@@ -1424,15 +1424,17 @@ the battery was paid for.
     says how many consecutive batteries have admitted it and since which. Until 2026-09-29 each
     recurrence read as a fresh finding: 48 of the 171 routed findings then recorded repeated the battery
     before, and one on `correctness-model/brief.json`'s `wiring-behavior` check ran twelve. It states each issue's owner, not what to rebuild. Each issue keeps a stable id
-    and states its recorded facts rather than a verdict on them (`issueFacts`, `rebuild-advice/v11`):
-    where it was first and last seen, how many complete rechecks have not observed it since, whether it
-    was seen again after an absence, which condition moved when a recheck was not comparable, and
+    and states its recorded facts rather than a verdict on them (`issueFacts`, `rebuild-advice/v12`):
+    where it was first and last seen, how many complete rechecks have not observed it since and how many
+    of those ran under changed public rules, whether it was seen again after an absence, which condition moved when a recheck was not comparable, and
     whether its family left the set, a review disputed it or a review settled it. Until 2026-09-29 the
     register read those absences as `tentatively-fixed` and then `confirmed-fixed`, which is a
     conclusion an absence cannot carry, since an absence says the failure did not show and not that
     anything repaired it. A family leaving the set proves no fix at all. An absence counts as a complete
     recheck only when every case of the family was truth-verified under the condition that observed the
-    issue: the same tasks, hidden expectations included, `scoringHash`, check tools, Built pin,
+    issue: the same tasks, hidden expectations included, the verdict closure (`verdictClosureHash`: the
+    evaluator and its imports with the brief's check ids, execution declarations and the artifact fields a
+    submission is read against), check tools, Built pin,
     recorded reasoning effort, isolation and run condition, which carries the host's share of the Built
     prompt (`src/author/issue-condition.ts`). An effort or a procedure the cases never recorded
     compares with nothing, and the solver walls in `agent/config.yaml` are left out, because raising
@@ -1442,9 +1444,16 @@ the battery was paid for.
     one that failed. Under another
     condition the recheck is named not comparable and counts neither way, because swapping out the failing
     tasks or blinding the evaluator makes an issue vanish without repairing anything. An evaluation
-    correction therefore leaves its rechecks not comparable even when it regrades: the scoring hash moved, and
-    nothing settles an issue as corrected. A dispute carries onto a re-observation only under the
-    condition that recorded it, since an issue's id names where a failure showed and not what caused it,
+    correction therefore leaves its rechecks not comparable even when it regrades: the verdict closure moved,
+    and nothing settles an issue as corrected. A brief reworded or renumbered over unchanged checks is not
+    such a change, because the closure leaves out its text and constants: the recheck counts, and it is named
+    "rechecked under unchanged checks, public rules changed" (`briefPublicationHash`, the digest of what
+    `briefPublicResources` hands the solver), because it answers whether the repair held under the new rules
+    and not whether the issue persists under the old. Until 2026-10-07 the comparison read `scoringHash`,
+    which hashes every byte of the brief, so one reworded sentence made every later battery not comparable,
+    and the six batteries of `standard-sonnetxhh-20261003T164336992Z-d5cfcb1` credited no recheck. A battery's
+    closure and rules are read only while its tree still scores to the hash its snapshot recorded. A dispute
+    carries onto a re-observation only under the condition that recorded it, public rules included, since an issue's id names where a failure showed and not what caused it,
     and a diagnosis never carries onto a re-observation at all: it reads one battery's traces, so the
     battery an issue line names and the one its diagnosis read are always the same.
 

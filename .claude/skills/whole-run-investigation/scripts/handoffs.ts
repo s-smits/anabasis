@@ -744,7 +744,12 @@ function calibration(rounds: readonly Round[], rows: ReadonlyMap<string, Decisio
 /** The register's facts about a recorded issue. A packet recorded before a field existed leaves it
  *  out, and each absent one reads as the empty value the register writes. */
 function recordedFacts(issue: AdviceIssue): string {
-  return issueFacts({ ...issue, dispute: issue.dispute ?? null, unmeasured: issue.unmeasured ?? [] });
+  return issueFacts({
+    ...issue,
+    dispute: issue.dispute ?? null,
+    unmeasured: issue.unmeasured ?? [],
+    rulesChangedRechecks: issue.rulesChangedRechecks ?? 0,
+  });
 }
 
 /** A diagnosis names a bundle file or `solver` (`DIAGNOSIS_OWNERS`), and a file's own prefix is the

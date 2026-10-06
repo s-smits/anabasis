@@ -153,6 +153,13 @@ export function briefPublicResources(brief: Brief): PublicBriefResource[] {
   return resources;
 }
 
+/** What the brief told the solver, as one digest over the public resources it reads. A reworded or
+ *  renumbered public rule, rule decision, artifact field, constant or value set moves it, and a
+ *  private row, a decision, a gate and a join, which no solver reads, do not. */
+export function briefPublicationHash(brief: Brief): string {
+  return sha256(canonicalJson(briefPublicResources(brief).map(({ digest }) => digest)));
+}
+
 /** The one public card every review model receives, so that a review reads the domain rules from
  *  one card rather than inferring them from whatever trace it happens to have been shown. */
 export function judgePublicDomainOf(

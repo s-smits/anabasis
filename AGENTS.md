@@ -1913,7 +1913,8 @@ depth. `starters/` never imports `src/`.
 
 `.oxlintrc.json` turns on `typeAware` and the plugins `import`, `oxc`, `typescript` (through `tsgolint`)
 and `unicorn`, beside the JS plugins `ana` and `anti-slop`, and it ignores `node_modules campaigns domains
-tmp`. `--report-unused-disable-directives` makes a stale disable a finding in its own right. The roots are
+tmp` and the two pi-mono copies, `vendor/pi-coding-agent` and `vendor/pi-agent-session` (see "sed" under
+Writing style). `--report-unused-disable-directives` makes a stale disable a finding in its own right. The roots are
 `src tools vendor starters test packages .claude`, though `packages/` joins only once
 `packages/ui/node_modules` exists (`bun run ui:deps`).
 
@@ -2186,7 +2187,7 @@ The type-aware TypeScript rules follow.
   `no-redundant-type-constituents`, `no-unnecessary-template-expression`, `no-unnecessary-type-assertion`,
   `no-useless-default-assignment`, `prefer-optional-chain`, `prefer-readonly`, `restrict-plus-operands`
   and `unbound-method` are on as well, each catching what its name describes.
-- `no-explicit-any` refuses `any`, and is off in `test/**`, `.claude/**` and `vendor/pi-agent-session/**`.
+- `no-explicit-any` refuses `any`, and is off in `test/**` and `.claude/**`.
 - `no-extraneous-class` turns a static-only class into module functions.
 - `no-floating-promises` runs with `ignoreVoid: false`, so `void p` does not satisfy it; await the
   promise, return it or `.catch` it.
@@ -2194,8 +2195,7 @@ The type-aware TypeScript rules follow.
 - `no-non-null-assertion` refuses the non-null `!`, and is off in `test/**`, `packages/ui/**` and
   `.claude/**`.
 - `no-unsafe-argument/assignment/call/member-access/return` want `any` parsed first. They are off in
-  `test/**`, `packages/ui/**` and `.claude/**`, and `no-unsafe-argument` is off in
-  `vendor/pi-agent-session/**` too.
+  `test/**`, `packages/ui/**` and `.claude/**`.
 - `only-throw-error` and `prefer-promise-reject-errors` want `Error` instances, made via `asError`.
 - `prefer-nullish-coalescing` lets strings and numbers keep `||`, but not booleans and objects.
 - `require-array-sort-compare` wants a comparator, which for strings is `compareCodeUnits`.
@@ -2294,7 +2294,6 @@ Each block in `.oxlintrc.json` that names a path changes the rules there. `test/
 `no-explicit-any`. `**/src/backends/oauth/**` turns nothing off and adds bans on `JSON.parse` and on
 importing `parseJsonAs`. `tools/oxlint/anti-slop/**` turns off §4.40 and lets
 `switch-exhaustiveness-check` count a `default` as exhaustive, because the AST unions there are untyped.
-`vendor/pi-agent-session/**` turns off §4.33, `no-explicit-any` and `no-unsafe-argument`.
 `vendor/pi-claude-bridge/**` keeps the taste of the upstream it was copied from, and so turns off
 §4.2–4.4, 4.6–4.13, 4.15–4.17, 4.19–4.22, 4.25, 4.26, 4.34, 4.35, 4.40, `no-else-return`,
 `prefer-nullish-coalescing`, `no-lonely-if`, `no-negated-condition`, `prefer-array-flat`, `prefer-at` and
@@ -2866,6 +2865,13 @@ diff against upstream to find them. A fresh implementation of the same idea is n
 adding the upstream package as a dependency. On 2026-09-24 a test-runner fix the operator asked to sed
 from Bun's CI runner arrived as hand-written code, then as a new dependency, then as a rewrite of Bun's
 approach, before Bun's parse loop and messages were copied across (operator decision 2026-09-24).
+
+A copy of pi-mono stays as close to upstream as it can, because that code has more use behind it than
+anything our rules would turn it into. So `vendor/pi-coding-agent` and `vendor/pi-agent-session` are not
+linted at all, and their departures are only what this repository forces, each named in the file's
+header. Everything we wrote keeps every rule, `anti-slop` and `ana` included: the files beside the
+copies, `vendor/pi-built`, and the adapted bridge, whose own override is in §10 (operator decision
+2026-10-07).
 
 ### Repository map
 

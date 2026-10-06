@@ -3,7 +3,14 @@
   "options": {
     "typeAware": true
   },
-  "ignorePatterns": ["node_modules", "campaigns", "domains", "tmp"],
+  "ignorePatterns": [
+    "node_modules",
+    "campaigns",
+    "domains",
+    "tmp",
+    "vendor/pi-coding-agent",
+    "vendor/pi-agent-session"
+  ],
   "jsPlugins": [
     {
       "name": "anti-slop",
@@ -98,55 +105,6 @@
         "unicorn/prefer-array-flat": "off",
         "unicorn/prefer-at": "off",
         "unicorn/prefer-string-raw": "off"
-      }
-    },
-    {
-      "files": ["vendor/pi-coding-agent/**", "vendor/pi-agent-session/**"],
-      "rules": {
-        "ana/declarations-before-the-first-function": "off",
-        "ana/no-deep-nesting": "off",
-        "ana/no-hand-rolled-error-render": "off",
-        "ana/no-pass-through-wrapper": "off",
-        "ana/no-positional-boolean-parameter": "off",
-        "ana/no-renaming-temporary": "off",
-        "ana/no-repeated-string-literal": "off",
-        "ana/no-single-caller-helper": "off",
-        "ana/no-unknown-union": "off",
-        "ana/prefer-condition-over-boolean-returns": "off",
-        "ana/prefer-key-if-defined": "off",
-        "ana/require-captured-json-runtime": "off",
-        "ana/require-meta-runtime-import": "off",
-        "ana/unproven-unknown-parameter": "off",
-        "anti-slop/no-array-filter-map": "off",
-        "anti-slop/no-conditional-empty-object-spread": "off",
-        "anti-slop/no-known-value-widening": "off",
-        "anti-slop/no-runtime-typeof": "off",
-        "anti-slop/no-unsafe-dictionary-type": "off",
-        "anti-slop/require-safety-comment-for-type-assertion": "off",
-        "eslint/no-control-regex": "off",
-        "eslint/no-else-return": "off",
-        "eslint/no-empty": "off",
-        "eslint/preserve-caught-error": "off",
-        "import/no-duplicates": "off",
-        "eslint/max-params": "off",
-        "typescript/no-deprecated": "off",
-        "typescript/no-explicit-any": "off",
-        "typescript/no-floating-promises": "off",
-        "typescript/no-non-null-assertion": "off",
-        "typescript/no-redundant-type-constituents": "off",
-        "typescript/no-unnecessary-type-assertion": "off",
-        "typescript/no-unsafe-argument": "off",
-        "typescript/no-unsafe-assignment": "off",
-        "typescript/no-unsafe-return": "off",
-        "typescript/prefer-nullish-coalescing": "off",
-        "typescript/prefer-promise-reject-errors": "off",
-        "typescript/restrict-template-expressions": "off",
-        "typescript/strict-boolean-expressions": "off",
-        "typescript/switch-exhaustiveness-check": "off",
-        "unicorn/no-negated-condition": "off",
-        "unicorn/prefer-at": "off",
-        "unicorn/prefer-string-raw": "off",
-        "unicorn/prefer-string-starts-ends-with": "off"
       }
     },
     {

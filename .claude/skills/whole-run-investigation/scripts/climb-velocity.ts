@@ -170,7 +170,8 @@ export type EdgeVerdict =
   | "restated"
   | "adjusted";
 
-/** The controller's recorded placement of one battery. */
+/** The controller's recorded placement of one battery. `decidedBy` is the round whose decision
+ *  carried it, which is never the battery's own run id. */
 export interface RecordedPlacement {
   zone: string | null;
   decidedBy: string;
@@ -581,21 +582,21 @@ export function verdictOf(
   return "adjusted";
 }
 
-/** The controller's own placement of each battery, from the last difficulty decision that carried
- *  its readout row: the zone and the distance to the aim. */
+/** The controller's own placement of each battery: the zone from the last difficulty decision that
+ *  carried its readout row, and the distance to the aim from the decision that read it. A decision
+ *  is named for the round it opened and places the battery its evidence ends on, so its placement
+ *  goes to that battery and never to `decision.runId`. */
 function recordedPlacements(campaign: string): RecordedPlacements {
   const decisions = readDifficultyDecisions({ campaignDir: campaign, runId: null });
   const byRun = new Map<string, RecordedPlacement>();
   for (const decision of decisions.rows) {
     for (const row of decision.rows) {
-      byRun.set(row.runId, { zone: row.zone, decidedBy: decision.runId });
+      byRun.set(row.runId, { ...byRun.get(row.runId), zone: row.zone, decidedBy: decision.runId });
     }
-    if (decision.placement !== null) {
-      const own: RecordedPlacement = byRun.get(decision.runId) ?? {
-        zone: decision.placement.zone,
-        decidedBy: decision.runId,
-      };
-      byRun.set(decision.runId, { ...own, toAim: decision.placement.toAim });
+    const read = decision.evidenceRunIds.at(-1);
+    if (decision.placement !== null && read !== undefined) {
+      const { zone, toAim } = decision.placement;
+      byRun.set(read, { zone, decidedBy: decision.runId, toAim });
     }
   }
   return { byRun, refused: decisions.refused.map(({ file, reason }) => `${file}: ${reason}`) };

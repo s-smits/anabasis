@@ -19,9 +19,9 @@ import {
 import { type DraftTool, isDraftTool } from "./draft-tool.ts";
 import {
   type PublishedMargin,
-  WRITER_BINDING_SENTENCE,
   readMargins,
   renderMargins,
+  writerBindingSentence,
 } from "./published-margin.ts";
 import type { SubmissionPort } from "./final-submission.ts";
 import type { PublicArtifactSchema } from "./public-artifact-schema.ts";
@@ -626,7 +626,9 @@ function bindDraftTools(
       // anything against the published limits while the bound execute below returns exactly that
       // table. The authored sentence stays, because it says what the tool is for in the domain's
       // own words; the host appends what actually runs, at the one place it takes the tool over.
-      description: exactArtifactWriter ? `${tool.description} ${WRITER_BINDING_SENTENCE}` : tool.description,
+      description: exactArtifactWriter
+        ? `${tool.description} ${writerBindingSentence(margins.length > 0 ? "answer-and-limits" : "answer")}`
+        : tool.description,
       parameters: exactArtifactWriter
         ? /* SAFETY: exactArtifactWriter can be true only when publicArtifactSchema is non-null,
            which is the same branch that creates artifactWriterParameters above. */ (artifactWriterParameters as AgentTool["parameters"])

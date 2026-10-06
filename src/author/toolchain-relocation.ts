@@ -20,17 +20,14 @@ import { runtimeProcess } from "../meta/process.ts";
  *  stand wherever that path stood. */
 const PLAIN_PATH = /^[\w/.+,:=@%-]+$/;
 
-/** What the copy did to one file: a launcher rewritten -- a Python header, with the single-quoted
- *  form uv writes reported apart from the ordinary one so a copy that aborts names which of the two
- *  it met, or a script's own paths; a Mach-O install name moved; nothing; or `retains-adopted-path`
- *  -- the copy still names the tree it came from and nothing here can move that name. The caller
- *  drops such a file; this function only reports it. */
-type LauncherRelocation =
-  | "rewritten"
-  | "rewritten-single-quoted"
-  | "install-name"
-  | "retains-adopted-path"
-  | null;
+/** The longest shebang line pip writes on this platform: past it pip writes the wrapped form. */
+const SHEBANG_LIMIT = runtimeProcess.platform === "darwin" ? 512 : 127;
+
+/** What the copy did to one file: a launcher rewritten -- a Python header, or a script's own paths;
+ *  a Mach-O install name moved; nothing; or `retains-adopted-path` -- the copy still names the tree
+ *  it came from and nothing here can move that name. The caller drops such a file; this function
+ *  only reports it. */
+type LauncherRelocation = "rewritten" | "install-name" | "retains-adopted-path" | null;
 
 /** Whether a file still names `root`. Read in overlapping chunks rather than whole, so binaries
  *  can be scanned too without holding an installed executable in memory. */
@@ -108,7 +105,8 @@ export function relocateToolLauncher(
   if (stat.size <= 1_048_576) {
     const text = readFileSync(file, "utf8");
     const direct = /^#!(\/[^\n]+\/python[\d.]*)\r?\n/.exec(text);
-    // uv quotes the interpreter with single quotes; pip and the rewrite below use double or none.
+    // uv single-quotes the interpreter; pip double-quotes it, or leaves it bare when it has no
+    // space.
     const wrapped = /^#!\/bin\/sh\n'''exec' ("[^"\n]+"|'[^'\n]+'|[^\s]+) "\$0" "\$@"\n' '''\n/.exec(text);
     const launcher = direct ?? wrapped;
     // Only the wrapped form quotes the interpreter; the replace leaves a bare path as it is.
@@ -118,7 +116,7 @@ export function relocateToolLauncher(
       const absolute = join(realpathSync(dirname(interpreter)), basename(interpreter));
       if (containsPath(absolute, source)) {
         const target = join(destination, relative(source, absolute));
-        // The header below quotes the target inside an `sh` string, so a destination carrying a
+        // The header below writes the target into an `sh` string, so a destination carrying a
         // quote, a backslash, a backtick, `$` or a newline cannot be written into one safely. That
         // destination derives from the project slug and the campaign root, so it is the same for
         // every launcher in the tree: throwing here ended the whole rebuild, with advice to
@@ -126,9 +124,16 @@ export function relocateToolLauncher(
         // instead says what is true -- the launcher still names the adopted tree -- and the caller
         // drops it.
         if (/['"`$\n\\]/.test(target)) return "retains-adopted-path";
-        const header = `#!/bin/sh\n'''exec' "${target}" "$0" "$@"\n' '''\n`;
+        // The header keeps every byte but the path, so a copy counts as the original did. An
+        // unquoted path splits at a space, and a direct shebang is cut at the kernel's limit, so
+        // those take the double-quoted wrapped header, which holds either.
+        const kept = launcher[0].replace(interpreter, target);
+        const respell =
+          launcher[1] === interpreter &&
+          (/\s/.test(target) || (launcher === direct && Buffer.byteLength(kept) > SHEBANG_LIMIT));
+        const header = respell ? `#!/bin/sh\n'''exec' "${target}" "$0" "$@"\n' '''\n` : kept;
         writeFileSync(file, header + text.slice(launcher[0].length));
-        relocated = wrapped?.[1]?.startsWith("'") === true ? "rewritten-single-quoted" : "rewritten";
+        relocated = "rewritten";
       }
     } else if (activation) {
       // venv owns these templates and the VIRTUAL_ENV path; no replacement in arbitrary scripts.

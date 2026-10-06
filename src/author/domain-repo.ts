@@ -196,7 +196,7 @@ function copySeedToolTree(dir: string, safeguard?: SafeguardContext): string | n
   }
   const copy = join(dir, `${WORKSPACE_TOOL_TREE}-${crypto.randomUUID()}`);
   const started = performance.now();
-  const counts = { files: 0, relinked: 0, rewritten: 0, singleQuoted: 0, installNames: 0 };
+  const counts = { files: 0, relinked: 0, rewritten: 0, installNames: 0 };
   const dropped: string[] = [];
   try {
     const source = realpathSync(path);
@@ -236,7 +236,6 @@ function copySeedToolTree(dir: string, safeguard?: SafeguardContext): string | n
         }
         if (relocated === "install-name") counts.installNames += 1;
         else if (relocated !== null) counts.rewritten += 1;
-        if (relocated === "rewritten-single-quoted") counts.singleQuoted += 1;
         continue;
       }
       const target = readlinkSync(link);
@@ -256,7 +255,7 @@ function copySeedToolTree(dir: string, safeguard?: SafeguardContext): string | n
     // it ran.
     safeguardTriggered(
       "54-rebuild-seed-tool-tree-copied",
-      `files=${String(counts.files)} relinked=${String(counts.relinked)} launchersRewritten=${String(counts.rewritten)} singleQuoted=${String(counts.singleQuoted)} installNames=${String(counts.installNames)} dropped=${String(dropped.length)}${dropped.length > 0 ? ` droppedFirst=${dropped.slice(0, 3).join(",")}` : ""} ms=${String(Math.round(performance.now() - started))}`,
+      `files=${String(counts.files)} relinked=${String(counts.relinked)} launchersRewritten=${String(counts.rewritten)} installNames=${String(counts.installNames)} dropped=${String(dropped.length)}${dropped.length > 0 ? ` droppedFirst=${dropped.slice(0, 3).join(",")}` : ""} ms=${String(Math.round(performance.now() - started))}`,
       safeguard,
     );
     // Safeguard 55: a venv names its interpreter's home by absolute path in pyvenv.cfg, and a home

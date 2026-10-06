@@ -44,6 +44,8 @@ function issue(family: string, dispute: string | null) {
   };
 }
 
+const input = (budget: number, genes = ["cds"]): JsonObject => ({ genes, budget });
+
 /** Two rounds and two batteries. Round 2's battery measures round 1's `alpha` inputs again under
  *  the family name `beta`, so the packet retires `alpha` on a comparison of names alone. */
 function campaign(options: { toolCalls?: boolean } = {}): string {
@@ -177,16 +179,23 @@ function campaign(options: { toolCalls?: boolean } = {}): string {
   });
   // An authoring review at 02:40, after round 2's preview (02:30) and before its submit (02:59).
   write(join(dir, "analysis", "authoring-01a0b788-f000-7000-8000-000000000000-epoch-review.json"), {});
-  const cases = (battery: string, family: string, inputs: number[]) =>
-    inputs.forEach((value, n) =>
-      write(join(dir, "versions", battery, "runs", battery, "cases", `t-${n}`, "public-task.json"), {
-        taskId: `t-${n}`,
+  const cases = (battery: string, family: string, inputs: JsonObject[]) =>
+    inputs.forEach((publicInput, n) => {
+      const taskId = `t-${family}-${n}`;
+      write(join(dir, "versions", battery, "runs", battery, "cases", taskId, "public-task.json"), {
+        taskId,
         family,
-        publicTask: { taskId: `t-${n}`, family, publicInput: { span: value } },
-      }),
-    );
-  cases(RUN, "alpha", [1, 2]);
-  cases(SECOND, "beta", [1, 2]);
+        publicTask: { taskId, family, publicInput },
+      });
+    });
+  cases(RUN, "alpha", [input(1), input(2)]);
+  cases(SECOND, "beta", [input(1), input(2)]);
+  // Same gene list, new budget: the family keeps its task and shares no whole input.
+  cases(RUN, "gamma", [input(10), input(20)]);
+  cases(SECOND, "gamma", [input(30), input(40)]);
+  // Replaced gene list and new budget.
+  cases(RUN, "delta", [input(50)]);
+  cases(SECOND, "delta", [input(60, ["utr"])]);
   return dir;
 }
 
@@ -194,7 +203,7 @@ it.each([
   [["a", "b"], ["b", "a"], "identical-tasks"],
   [["a", "b"], ["a", "c"], "partially-shared"],
   [["a"], ["a", "c"], "partially-shared"],
-  [["a"], ["c"], "name-only"],
+  [["a"], ["c"], "no-shared-input"],
   [[], ["c"], "absent-before"],
   [["a"], [], "absent-after"],
 ] as const)("joins a family's tasks %p before and %p after as %s", (before, after, kind) => {
@@ -268,6 +277,8 @@ describe("round hand-offs", () => {
     expect(pair.families).toEqual([
       { family: "alpha", join: "absent-after" },
       { family: "beta", join: "absent-before" },
+      { family: "delta", join: "no-shared-input", changed: ["budget", "genes"] },
+      { family: "gamma", join: "no-shared-input", changed: ["budget"] },
     ]);
     expect(pair.renamedTasks).toBe(2);
     expect(pair.transitions).toEqual([
@@ -280,6 +291,9 @@ describe("round hand-offs", () => {
     ]);
     expect(sameTask.producer).toEqual({ issues: 2, familyKeyed: 2 });
     expect(renderHandoffs(report)).toContain("2 tasks reappear under another family name");
+    expect(renderHandoffs(report)).toContain(
+      "no-shared-input 2 (delta changed budget, genes; gamma changed budget)",
+    );
     expect(renderHandoffs(report)).toMatch(/served, no read route: round-facts .*; rebuild-advice/);
     expect(renderHandoffs(report)).toContain(
       "earlier review's advisory defects in this battery's review: span absent",

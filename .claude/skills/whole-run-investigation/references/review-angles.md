@@ -600,10 +600,12 @@ comparison of task identity or of family names alone. Read each battery's
 `analysis/<runId>-rebuild-advice.json` packets, and `deriveRebuildAdvice` in
 `src/author/rebuild-advice.ts`, whose `advanceIssues` keys every issue with `adviceIssueId`. Join
 per family before and after each repair and classify it `identical-tasks`, `partially-shared` or
-`name-only`, or absent on one side, counting inputs that reappear under another family name. Report
-every change in an issue's recorded facts and flag those resting on a name-only or absent join:
-renaming every family retires every issue without a failing task being measured again, and
-`retired` proves no fix. Say whether the producer keys on task identity or family name by
+`no-shared-input`, or absent on one side, counting inputs that reappear under another family name.
+`no-shared-input` says only that no whole public input is shared; the table names the top-level
+public-input keys that changed, and a family whose gene lists stayed and whose budget or measures
+moved is a re-parameterised task, not a replaced one. Report every change in an issue's recorded
+facts and flag those resting on a `no-shared-input` or absent join: renaming every family retires
+every issue without a failing task being measured again, and `retired` proves no fix. Say whether the producer keys on task identity or family name by
 recomputing the recorded issue ids. Do not read what the task change means for difficulty, which
 lane 20 owns. The decision it changes is whether an issue's recorded absence speaks about the task
 that exposed it; it routes to `controller-source` (`src/author/rebuild-advice.ts`) for the key and

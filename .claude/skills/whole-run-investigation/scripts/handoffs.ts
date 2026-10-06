@@ -24,8 +24,9 @@ import { basename, join } from "#src/meta/path.ts";
 import { BUILDER_EXECUTION_SCHEMA } from "#src/author/builder-execution.ts";
 import { DIFFICULTY_DECISION_SCHEMA } from "#src/run/difficulty-decision.ts";
 import { readJsonFileOrNull } from "#src/meta/completed-json.ts";
-import { hashJsonValue } from "#src/meta/stable-json.ts";
-import { isNumber, isRecord, isString, type JsonValue } from "#src/meta/json-shape.ts";
+import { compareCodeUnits, hashJsonValue } from "#src/meta/stable-json.ts";
+import { keysIf } from "#src/meta/optional-key.ts";
+import { asRecord, isNumber, isRecord, isString, type JsonValue } from "#src/meta/json-shape.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { campaignTraceRoots } from "#src/claim/trace-read.ts";
 import {
@@ -40,7 +41,7 @@ import { PATH_RECORD_FILE } from "#src/builder/path-record.ts";
 import { PUBLIC_TASK_FILE } from "#src/correctness-bundle/recorded-solve.ts";
 import { jsonText, readJsonAsOrNull } from "./run-overview.ts";
 
-export const HANDOFFS_SCHEMA = "wri-handoffs/v1";
+export const HANDOFFS_SCHEMA = "wri-handoffs/v2";
 
 /** The Builder tools this reader counts, spelled once. */
 const TRIAL = "harness_trial";
@@ -358,7 +359,7 @@ export interface Triage {
 export type FamilyJoin =
   | "absent-before"
   | "absent-after"
-  | "name-only"
+  | "no-shared-input"
   | "identical-tasks"
   | "partially-shared";
 
@@ -366,11 +367,15 @@ interface TaskInput {
   taskId: JsonValue | undefined;
   family: JsonValue | undefined;
   input: string;
+  /** The digest of each top-level key of the public input. */
+  fields: Record<string, string>;
 }
 
 export interface FamilyJoinRow {
   family: JsonValue | undefined;
   join: FamilyJoin;
+  /** On `no-shared-input`: the top-level public-input keys whose values differ across the family. */
+  changed?: string[];
 }
 
 export interface IssueTransition {
@@ -871,6 +876,12 @@ function tasksOf(campaign: string, battery: string): TaskInput[] | null {
                 taskId: row.taskId,
                 family: row.family,
                 input: hashJsonValue(row.publicTask.publicInput ?? null),
+                fields: Object.fromEntries(
+                  Object.entries(asRecord(row.publicTask.publicInput) ?? {}).map(([key, value]) => [
+                    key,
+                    hashJsonValue(value),
+                  ]),
+                ),
               },
             ]
           : [],
@@ -879,11 +890,25 @@ function tasksOf(campaign: string, battery: string): TaskInput[] | null {
   return null;
 }
 
+/** The top-level public-input keys whose values differ between a family's tasks before and after.
+ *  Each side's values are compared as a sorted list, so the order the cases were read in decides
+ *  nothing, and a key one side lacks reads as a different value. */
+function changedKeys(before: readonly TaskInput[], after: readonly TaskInput[]): string[] {
+  const values = (tasks: readonly TaskInput[], key: string): string =>
+    tasks
+      .map((t) => t.fields[key] ?? "")
+      .sort(compareCodeUnits)
+      .join(",");
+  return [...new Set([...before, ...after].flatMap((t) => Object.keys(t.fields)))]
+    .filter((key) => values(before, key) !== values(after, key))
+    .sort(compareCodeUnits);
+}
+
 export function classifyFamily(before: readonly string[], after: readonly string[]): FamilyJoin {
   if (before.length === 0) return "absent-before";
   if (after.length === 0) return "absent-after";
   const shared = after.filter((digest) => before.includes(digest)).length;
-  if (shared === 0) return "name-only";
+  if (shared === 0) return "no-shared-input";
   return shared === after.length && before.length === after.length ? "identical-tasks" : "partially-shared";
 }
 
@@ -893,6 +918,25 @@ function byDefaultSortOrder(a: JsonValue | undefined, b: JsonValue | undefined):
   const [x, y] = [a === undefined ? "" : jsonText(a), b === undefined ? "" : jsonText(b)];
   if (x < y) return -1;
   return x > y ? 1 : 0;
+}
+
+/** Each family either battery measured, joined on the digests of its public inputs; a family that
+ *  shares none on both sides names the top-level keys that moved. */
+function joinFamilies(before: readonly TaskInput[], after: readonly TaskInput[]): FamilyJoinRow[] {
+  const names = [...new Set([...before, ...after].map((t) => t.family))].sort(byDefaultSortOrder);
+  return names.map((family) => {
+    const ofFamily = (tasks: readonly TaskInput[]) => tasks.filter((t) => t.family === family);
+    const [earlier, later] = [ofFamily(before), ofFamily(after)];
+    const relation = classifyFamily(
+      earlier.map((t) => t.input),
+      later.map((t) => t.input),
+    );
+    return {
+      family,
+      join: relation,
+      ...keysIf(relation === "no-shared-input", () => ({ changed: changedKeys(earlier, later) })),
+    };
+  });
 }
 
 /** Lane 18: consecutive batteries joined per family on public-input digests, and the advice
@@ -910,13 +954,7 @@ function sameTask(campaign: string, batteries: readonly ClaimedBattery[]): SameT
     if (a === null || b === null) {
       return [{ before: before.runId, after: after.runId, families: null, transitions: [] }];
     }
-    const names = [...new Set([...a, ...b].map((t) => t.family))].sort(byDefaultSortOrder);
-    const digests = (tasks: readonly TaskInput[], family: JsonValue | undefined): string[] =>
-      tasks.flatMap((t) => (t.family === family ? [t.input] : []));
-    const families = names.map((family) => ({
-      family,
-      join: classifyFamily(digests(a, family), digests(b, family)),
-    }));
+    const families = joinFamilies(a, b);
     const renamed = b.filter((t) => a.some((p) => p.input === t.input && p.family !== t.family)).length;
     const prior = new Map(records(packets.get(before.runId)?.issues).map((issue) => [issue.id, issue]));
     const transitions = records(packets.get(after.runId)?.issues)
@@ -932,7 +970,7 @@ function sameTask(campaign: string, batteries: readonly ClaimedBattery[]): SameT
             from,
             to,
             join: familyJoin,
-            onNamesAlone: familyJoin === "name-only" || familyJoin === "absent-after",
+            onNamesAlone: familyJoin === "no-shared-input" || familyJoin === "absent-after",
           },
         ];
       })
@@ -1064,15 +1102,19 @@ function renderSameTask({ sameTask: s }: ReadHandoffs): string[] {
     }
     const counts = new Map<string, number>();
     for (const f of pair.families) counts.set(f.join, (counts.get(f.join) ?? 0) + 1);
+    const moves = pair.families
+      .flatMap(({ family, changed = [] }) =>
+        changed.length > 0 ? [`${shown(family)} changed ${changed.join(", ")}`] : [],
+      )
+      .join("; ");
+    const joins = [...counts]
+      .map(([k, v]) => (k === "no-shared-input" && moves !== "" ? `${k} ${v} (${moves})` : `${k} ${v}`))
+      .join(", ");
     const moved = pair.transitions
       .map((t) => `${t.family} ${t.from}->${t.to} on ${t.join}${t.onNamesAlone ? ", names alone" : ""}`)
       .join("; ");
     lines.push(
-      `${head} ${[...counts]
-        .map(([k, v]) => `${k} ${v}`)
-        .join(
-          ", ",
-        )}; ${pair.renamedTasks} tasks reappear under another family name${moved === "" ? "" : `; ${moved}`}`,
+      `${head} ${joins}; ${pair.renamedTasks} tasks reappear under another family name${moved === "" ? "" : `; ${moved}`}`,
     );
   }
   lines.push(

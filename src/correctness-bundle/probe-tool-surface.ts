@@ -11,7 +11,7 @@
 import { canonicalJsonCopy as trustedJson } from "../meta/stable-json.ts";
 import type { BuiltStarter, GeneratedToolWorkerEvidence } from "../solve/built-starter.ts";
 import { generatedToolInterface } from "../solve/generated-tool-worker-protocol.ts";
-import { WRITER_BINDING_SENTENCE } from "../solve/published-margin.ts";
+import { writerBindingSentence } from "../solve/published-margin.ts";
 import { type ContractFinding, controllerValidatedFinding, controllerValidatedFindings } from "./brief.ts";
 import type { ToolsSpec } from "./tools-spec.ts";
 import { GENERATED_TOOLS_FILE } from "../meta/bundle-layout.ts";
@@ -39,10 +39,12 @@ export function toolDescriptionParityFindings(
       if (description === undefined) return [];
       // The host appends its own sentence to an artifact-writer it has bound, because it replaced
       // that tool's parameters and execution and the spec was written against neither. That text
-      // is the host's, not the Builder's, so it is not drift; everything before it must still be
-      // exactly what the spec declares.
-      const appended = ` ${WRITER_BINDING_SENTENCE}`;
-      const authored = description.endsWith(appended) ? description.slice(0, -appended.length) : description;
+      // is the host's, not the Builder's, so it is not drift, in the form with a margin clause or
+      // the one without; everything before it must still be exactly what the spec declares.
+      const appended = (["answer-and-limits", "answer"] as const)
+        .map((says) => ` ${writerBindingSentence(says)}`)
+        .find((host) => description.endsWith(host));
+      const authored = appended === undefined ? description : description.slice(0, -appended.length);
       if (authored === declared.description) return [];
       return [
         {

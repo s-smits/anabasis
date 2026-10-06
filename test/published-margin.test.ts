@@ -4,7 +4,7 @@ import { join } from "../src/meta/path.ts";
 import { createGeneratedToolStarter } from "../src/solve/generated-tool-worker.ts";
 import { compilePublicArtifactSchema } from "../src/solve/public-artifact-schema.ts";
 import { createSubmissionAuthority, submissionPortOf } from "../src/solve/final-submission.ts";
-import { WRITER_BINDING_SENTENCE, readMargins, renderMargins } from "../src/solve/published-margin.ts";
+import { readMargins, renderMargins, writerBindingSentence } from "../src/solve/published-margin.ts";
 import { publishedMargins } from "../src/correctness-bundle/numeric-boundary.ts";
 import { validateBrief } from "../src/correctness-bundle/brief-validator.ts";
 import type { Brief } from "../src/correctness-bundle/brief.ts";
@@ -123,7 +123,8 @@ describe("published margins", () => {
   it("states the host binding without a count, so one registration serves every family", () => {
     // Conformance requires one stable registration across a battery whose families publish
     // different numbers of limits; the confined-worker case below proves the sentence is delivered.
-    expect(WRITER_BINDING_SENTENCE).not.toMatch(/\d/);
+    expect(writerBindingSentence("answer-and-limits")).not.toMatch(/\d/);
+    expect(writerBindingSentence("answer")).not.toMatch(/\d/);
   });
 
   it("renders nothing when the harness published no complete boundary", () => {
@@ -223,7 +224,10 @@ export function createDomainHarness() {
 `;
   afterAll(cleanupScratch);
 
-  async function prepare(massKg: number): Promise<{ text: string; description: string }> {
+  async function prepare(
+    massKg: number,
+    margins: readonly (typeof MARGIN)[] = [MARGIN],
+  ): Promise<{ text: string; description: string }> {
     // Inside the checkout, because the worker bundle resolves the generated tool's own
     // "@ana/agent-bundle" import from the directory that file sits in.
     const slugDir = scratchDir(".ana-scratch-margin-", import.meta.dir);
@@ -240,7 +244,7 @@ export function createDomainHarness() {
         presets: [],
         domainToolAuthorities: [{ name: "write_answer", authority: "artifact-writer" }],
         operatingGuide: "Write the answer with write_answer.",
-        publishedMargins: [MARGIN],
+        publishedMargins: margins,
       },
       publicArtifactSchema: SCHEMA,
     });
@@ -275,10 +279,23 @@ export function createDomainHarness() {
     // The description the solver reads comes from the same binding as the text it gets back: the
     // generated module declared only "prepare the exact public answer", and the host adds what it
     // does with that call. Both survive the worker's registration round trip.
-    expect(breach.description).toBe(`prepare the exact public answer ${WRITER_BINDING_SENTENCE}`);
+    expect(breach.description).toBe(
+      `prepare the exact public answer ${writerBindingSentence("answer-and-limits")}`,
+    );
     expect(await prepare(2160.912)).toHaveProperty(
       "text",
       expect.stringContaining("massBudgetKg: 2160.912, at most 2171.4; 10.488 to spare"),
     );
+  }, 120_000);
+
+  it("tells a solver the result reports published limits only when the battery publishes one", async () => {
+    // The sentence is the solver's only word that a margin table exists. A battery whose brief
+    // declares no complete boundary serves none, so the same sentence there promised a table every
+    // call then failed to carry: "Prepared the exact public answer." and nothing else.
+    const none = await prepare(2180.4, []);
+    expect(none.description).toBe(`prepare the exact public answer ${writerBindingSentence("answer")}`);
+    expect(none.description).not.toContain("reports each published limit");
+    expect(none.text).toBe("Prepared the exact public answer.");
+    expect((await prepare(2180.4)).description).toContain("reports each published limit");
   }, 120_000);
 });

@@ -234,17 +234,20 @@ const REVIEW_HEADER = {
 } as const;
 
 /** One reading of the whole review: the request once, then what blocks submit. An advisory row
- *  crosses only with a probe behind it, because advisory rows arrive in bulk, repeat one another
- *  and promise themselves "for the next round", and no reader carries them anywhere that changes
- *  what the Builder does. The post-battery review weighs the product again. */
+ *  crosses only with a probe behind it or a demand gap, because advisory rows arrive in bulk, repeat
+ *  one another and promise themselves "for the next round", and no reader carries them anywhere that
+ *  changes what the Builder does. A demand gap is the exception that can carry no probe, since a
+ *  probe re-runs the checks and the gap is in the tasks, and it answers the climb's question of
+ *  whether the tasks are too easy. The post-battery review weighs the product again. */
 export function authoringReviewText(
   trigger: keyof typeof REVIEW_HEADER,
   status: string,
   request: string,
-  findings: readonly Pick<AnalysisFinding, "severity" | "claim" | "probes">[],
+  findings: readonly Pick<AnalysisFinding, "severity" | "claim" | "probes" | "demandGap">[],
 ): AuthoringAdvice {
   const shown = findings.filter(
-    (finding) => finding.severity !== "advisory" || (finding.probes ?? []).length > 0,
+    (finding) =>
+      finding.severity !== "advisory" || (finding.probes ?? []).length > 0 || finding.demandGap !== undefined,
   );
   const blocking = shown.filter((finding) => finding.severity !== "advisory").length;
   const route =

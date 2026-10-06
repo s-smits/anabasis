@@ -289,8 +289,8 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
     expect(text.split("design trusses")).toHaveLength(2);
     expect(text).toContain("1 blocking finding(s)");
     expect(text).not.toContain("private remedy");
-    // An advisory row without a probe stays out of the tool result: five runs showed 33 such rows,
-    // repeated and promised to a next round no reader carried them to.
+    // An advisory row with neither a probe nor a demand gap stays out of the tool result: five runs
+    // showed 33 such rows, repeated and promised to a next round no reader carried them to.
     expect(text).not.toContain("[advisory]");
     expect(text).not.toContain("next round");
     const deferredOnly = authoringReviewText("repair", "completed", "design trusses", findings.slice(0, 1));
@@ -327,6 +327,32 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
     expect(shown.text).toContain(
       "Executed against this candidate's own declared checks: changing x on accept control a moved no declared check.",
     );
+    // A demand gap can carry no probe, since a probe re-runs the checks and the gap is in the tasks,
+    // yet it answers whether the tasks are too easy: 381 of 485 recorded in authoring reviews were
+    // hidden behind the probe filter. It crosses with its fixed sentence and holds no submit.
+    const gap = publicEpochReview(
+      {
+        status: "completed",
+        disputes: [],
+        findings: [
+          {
+            defect: false,
+            claim: "private reading",
+            evidence: "e.json",
+            owner: "correctness-model/tasks.json",
+            severity: "advisory",
+            demandGap: "limit-cleared-widely",
+          },
+        ],
+      },
+      { brief: null },
+    ).findings;
+    expect(authoringReviewText("repair", "completed", "design trusses", gap)).toMatchObject({
+      text: expect.stringContaining(
+        "- [advisory] Epoch review (correctness-model/tasks.json): no check or path named; an observation, not a demonstrated defect.\nThe first reasonable candidate clears a published limit widely.",
+      ),
+      blocking: 0,
+    });
   });
 
   test("a probe-backed finding prints what its probes executed, and only a defect adds which way they show", () => {

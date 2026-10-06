@@ -2,8 +2,13 @@ import { mkdirSync, readFileSync, realpathSync, writeFileSync } from "../src/met
 import type { JsonObject, JsonValue } from "../src/meta/json-shape.ts";
 import { join } from "../src/meta/path.ts";
 import { afterAll, describe, expect, it } from "bun:test";
-import { adviceIssueId } from "../src/author/rebuild-advice.ts";
+import {
+  adviceIssueId,
+  type RebuildAdvicePacket,
+  renderRebuildAdvice,
+} from "../src/author/rebuild-advice.ts";
 import { required } from "./helpers/doubles.ts";
+import { advicePacket, issue as adviceIssue } from "./helpers/review-fixtures.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import {
   CHANNELS,
@@ -48,7 +53,7 @@ const input = (budget: number, genes = ["cds"]): JsonObject => ({ genes, budget 
 
 /** Two rounds and two batteries. Round 2's battery measures round 1's `alpha` inputs again under
  *  the family name `beta`, so the packet retires `alpha` on a comparison of names alone. */
-function campaign(options: { toolCalls?: boolean } = {}): string {
+function campaign(options: { toolCalls?: boolean; advice?: string; reviewed?: boolean } = {}): string {
   // Trace roots must match their realpath, and the host temp directory may sit behind a link.
   const root = realpathSync(scratchDir("wri-handoffs-"));
   const dir = join(root, "campaigns", "handoffs");
@@ -63,7 +68,7 @@ function campaign(options: { toolCalls?: boolean } = {}): string {
       `Work in ${dir}/${epochs[1].key}/workspace`,
       "Task count: 3",
       "Recorded batteries (controller-derived data, oldest first):",
-      "Standing issues, largest first.",
+      options.advice ?? "Standing issues, largest first.",
     ].join("\n"),
   ];
   writeText(
@@ -123,6 +128,15 @@ function campaign(options: { toolCalls?: boolean } = {}): string {
     };
     // An older record has no tool tally at all, so that shape omits the key.
     if (options.toolCalls !== false) record.toolCalls = { byName: { bash: 5 + index } };
+    // Three reviews attached the length of a no-finding text to round 1's tool results.
+    if (options.reviewed === true && index === 0) {
+      record.authoringReviews = [171, 179, 171].map((adviceChars, turn) => ({
+        turn,
+        tool: "correctness_check",
+        adviceChars,
+        reviewMs: 1_000,
+      }));
+    }
     write(join(epoch, "builder-execution.json"), record);
     const at = (minutes: number) => new Date(round.start + minutes * 60_000).toISOString();
     writeText(
@@ -330,9 +344,62 @@ describe("round hand-offs", () => {
     expect(memory?.alternative).not.toContain("resumed session");
   });
 
+  it("does not read a review attached mid-round as the kickoff's review projection", () => {
+    const reviewed = buildHandoffs({ campaign: campaign({ reviewed: true }), runId: RUN });
+    const first = required(required(reviewed.census, "census")[0], "first round");
+    expect(first.channels.find((c) => c.name === "epoch-review")).toMatchObject({ served: false });
+  });
+
   it("refuses to invent a round for a campaign with neither epochs nor claims", () => {
     expect(buildHandoffs({ campaign: scratchDir("wri-handoffs-empty-"), runId: null })).toMatchObject({
       state: "empty",
     });
+  });
+});
+
+describe("the advice channel's served marker", () => {
+  const adviceCell = (advice: string) => {
+    const report = buildHandoffs({ campaign: campaign({ advice }), runId: RUN });
+    return required(
+      required(report.census, "census")[1]?.channels.find((c) => c.name === "rebuild-advice"),
+      "advice cell",
+    );
+  };
+
+  it("reads an all-unmeasured packet as served, though it prints no standing line", () => {
+    const advice = renderRebuildAdvice(advicePacket([adviceIssue({ unmeasured: ["task-inputs"] })]));
+    expect(advice).toContain("Unmeasured issues");
+    expect(advice).not.toContain("Standing issues");
+    expect(adviceCell(advice)).toMatchObject({ served: true });
+  });
+
+  const sections: [string, RebuildAdvicePacket][] = [
+    ["standing issues", advicePacket([adviceIssue()])],
+    ["disputed issues", advicePacket([adviceIssue({ dispute: "the check reads an unpublished rule" })])],
+    ["settled Judge disagreements", advicePacket([adviceIssue({ judgeSettled: true })])],
+    [
+      "failures by declared check",
+      { ...advicePacket([]), blockingByCheck: { "mass-check": 2 }, applicableByCheck: { "mass-check": 5 } },
+    ],
+    [
+      "checks that blocked nothing",
+      { ...advicePacket([]), blockingByCheck: { "mass-check": 0 }, applicableByCheck: { "mass-check": 5 } },
+    ],
+    [
+      "checks no case posed",
+      { ...advicePacket([]), blockingByCheck: { "mass-check": 0 }, applicableByCheck: { "mass-check": 0 } },
+    ],
+    [
+      "the Judge review",
+      {
+        ...advicePacket([]),
+        judge: { exit: "advisory", reason: "the Judge and the verifier disagreed", contestedFamilies: [] },
+      },
+    ],
+  ];
+  it.each(sections)("reads a packet that prints only %s as served", (_section, packet) => {
+    const advice = renderRebuildAdvice(packet);
+    expect(advice).not.toBe("");
+    expect(adviceCell(advice)).toMatchObject({ served: true });
   });
 });

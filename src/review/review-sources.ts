@@ -1,4 +1,5 @@
-/** Private epoch-review inputs: core files first, plus only receipt-bound verifier entry points. */
+/** Private epoch-review inputs: the files a verdict can depend on, held; the rest of the tree, by name;
+ *  and only receipt-bound verifier entry points. */
 import {
   existsSync,
   lstatSync,
@@ -24,10 +25,13 @@ import {
   toolTreeCountsDigest,
 } from "../verify/tool-inventory.ts";
 import { bundleSnapshotToolTree } from "../claim/bundle-snapshot.ts";
+import { runtimeClosure } from "../claim/scoring-closure.ts";
 import type { ToolEntry, VerifierExecutionEvidence } from "../verify/verifier-port.ts";
 import { type ReaderTool, readerParameters, readerToolText } from "./review-reader.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { boundText } from "../meta/bounded-text.ts";
+import { capturedJsonParse } from "../meta/json-runtime.ts";
+import { AGENT_DIR, CORRECTNESS_MODEL_DIR } from "../meta/bundle-layout.ts";
 
 // Coverage counts host-returned text, not proof of model consumption.
 const READ_CHARS_TOTAL = 4_000_000;
@@ -35,9 +39,18 @@ const READ_CHARS_TOTAL = 4_000_000;
 // be small enough that the transport delivers it at all.
 const READ_CHARS_PER_CALL = 16_000;
 const INVENTORY_MAX_FILES = 400;
+// A JSON file this long is delivered without its insignificant whitespace, which takes a pretty-printed
+// task file from 5.47M characters to 1.55M, inside the budget the rest of the contract also needs.
+const COMPACT_JSON_CHARS = 500_000;
 const SKIP_DIRS = new Set(["node_modules", ".git", ".toolchain", "runs", "scratch", "dist"]);
 // Every bundle file but the optional walls, whose absence is the defaults rather than a gap.
 const CORE_FILES = BUNDLE_FILES.filter((file) => file !== HARNESS_CONFIG_FILE);
+// What `missing` says when the closure of the held files cannot be read, so the review is incomplete.
+const UNKNOWN_CLOSURE = "what the bundle files import at run time";
+// The verifier runs some programs by import, which the closure finds, and some only by name: a script
+// a check runs as a tool is a string to the import walk. Every program under a bundle directory is
+// held, since which of them decides a verdict is not visible from the source.
+const PROGRAM_FILE = /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs|py|sh)$/;
 /** A text file of the tool tree the reviewer can read: at most 1 MiB, no NUL byte, valid UTF-8. */
 const TOOLCHAIN_TEXT_BYTES = 1024 * 1024;
 export const TOOLCHAIN_PREFIX = "toolchain:";
@@ -51,12 +64,21 @@ export const TOOLCHAIN_PREFIX = "toolchain:";
  * finds a file from the top.
  */
 export type ToolchainReach = { tree: string; counts: ReadonlyMap<string, string> };
-/** Text a review reads by name beside its measured source: a recorded text, or a path of the tool
- *  tree, whose read throws the reason it cannot give the file. */
+/** Text a review reads by name beside its measured source: a recorded text, a path of the tool tree,
+ *  whose read throws the reason it cannot give the file, or a background file, which gives none. */
 type NamedTexts = Pick<ReadonlyMap<string, string>, "get" | "has">;
+/** A file of the tree the review is not held to: its path and size in bytes. */
+export type BackgroundFile = { path: string; size: number };
+
 export interface ReviewInventory {
+  /** The held set, smallest first. */
   files: string[];
+  /** Every other file of the tree, in path order. */
+  background: BackgroundFile[];
+  /** A cap refused a held path. */
   truncated: boolean;
+  /** A cap cut the background list; what it left out is not nameable. */
+  backgroundTruncated: boolean;
   missing: string[];
 }
 
@@ -87,60 +109,74 @@ export interface SourceReadState {
 
 const isDigest = (value: unknown): value is string => isString(value) && /^[0-9a-f]{64}$/.test(value);
 
-/** The files a review may read: the core contract first, then the rest of the tree. The order is
- *  the rule -- a cap must never crowd the core contract out of a review, nor silently reduce the
- *  denominator the review reports against -- and the core contract is a handful of fixed paths
- *  well under the cap, so only the walk can meet it. A cap that refuses any path marks the whole
- *  inventory truncated so the review states the limit instead of reading past it. */
-export function reviewInventory(root: string): ReviewInventory {
-  const files = new Set<string>();
-  const missing: string[] = [];
-  /** False once the cap refuses a path. The walk below stops on that return value rather than
-   *  read a flag afterwards, so there is one place the cap can be observed. */
-  const add = (path: string): boolean => {
-    if (files.has(path)) return true;
-    if (files.size >= INVENTORY_MAX_FILES) return false;
-    files.add(path);
-    return true;
-  };
-  for (const path of CORE_FILES) {
-    try {
-      if (lstatSync(join(root, path)).isFile()) {
-        add(path);
-      } else {
-        missing.push(path);
-      }
-    } catch {
-      missing.push(path);
-    }
+/** A program under a bundle directory is held, whatever imports it: see `PROGRAM_FILE`. */
+const heldProgram = (path: string) =>
+  (path.startsWith(CORRECTNESS_MODEL_DIR) || path.startsWith(AGENT_DIR)) && PROGRAM_FILE.test(path);
+
+/** What the held files import at run time, data files included (`runtimeClosure`, the walk
+ *  `scoringClosureHash` uses, without its refusal of a package holding a build configuration). An
+ *  import it cannot follow leaves its file out: any module that way is still held as a program, and
+ *  any other file is background, which the reviewer reads by name. Null when a file cannot be read,
+ *  which leaves the held set unknown. */
+function reachedFiles(root: string, entries: readonly string[]): string[] | null {
+  try {
+    return runtimeClosure(realpathSync(root), entries).files;
+  } catch {
+    return null;
   }
-  /** False once a descendant met the cap, which unwinds the recursion to the first caller. */
-  const walk = (dir: string): boolean => {
-    if (!existsSync(dir)) return true;
+}
+
+/** What a review reads. The held set is what can change a verdict or the reference's output: the
+ *  bundle files, every program under the bundle directories and everything those import. A review is
+ *  complete when it has read the held set, and reads it smallest first, so one oversized file cannot
+ *  spend the read budget before the rest of the contract is delivered. Every other file of the tree
+ *  is background: listed with its size, read by name when the reviewer asks, and never part of what
+ *  completeness counts. Ownership does not define evidence, which is why the held set is not the
+ *  files a finding can name. The tree is walked whole before any cap applies, so a long background
+ *  list cannot push a held file out; a cap that refuses a held path marks the inventory truncated,
+ *  and a cap on the background list only shortens it. */
+export function reviewInventory(root: string): ReviewInventory {
+  const missing: string[] = [];
+  const tree = new Map<string, number>();
+  const walk = (dir: string): void => {
+    if (!existsSync(dir)) return;
     let entries: string[];
     try {
       entries = readdirSync(dir).sort(compareCodeUnits);
     } catch {
       missing.push(relative(root, dir) || ".");
-      return true;
+      return;
     }
     for (const entry of entries) {
       if (SKIP_DIRS.has(entry) || entry.startsWith(".")) continue;
       const abs = join(dir, entry);
       try {
         const stat = lstatSync(abs);
-        if (stat.isDirectory()) {
-          if (!walk(abs)) return false;
-        } else if (stat.isFile() && !add(relative(root, abs))) return false;
+        if (stat.isDirectory()) walk(abs);
+        else if (stat.isFile()) tree.set(relative(root, abs), stat.size);
       } catch {
         missing.push(relative(root, abs));
       }
     }
-    return true;
   };
-  // Walked before `files` is spread, since an object literal evaluates its properties in order.
-  const truncated = !walk(root);
-  return { files: [...files], truncated, missing };
+  walk(root);
+  missing.unshift(...CORE_FILES.filter((path) => !tree.has(path)));
+  const core = BUNDLE_FILES.filter((path) => tree.has(path));
+  const programs = [...tree.keys()].filter(heldProgram).sort(compareCodeUnits);
+  const reached = reachedFiles(root, [...core, ...programs]);
+  if (reached === null) missing.push(UNKNOWN_CLOSURE);
+  const held = new Set([...core, ...(reached ?? []).filter((path) => tree.has(path)), ...programs]);
+  const rest = [...tree].filter(([path]) => !held.has(path)).sort(([a], [b]) => compareCodeUnits(a, b));
+  const files = [...held]
+    .slice(0, INVENTORY_MAX_FILES)
+    .sort((a, b) => (tree.get(a) ?? 0) - (tree.get(b) ?? 0) || compareCodeUnits(a, b));
+  return {
+    files,
+    background: rest.slice(0, INVENTORY_MAX_FILES).map(([path, size]) => ({ path, size })),
+    truncated: held.size > INVENTORY_MAX_FILES,
+    backgroundTruncated: rest.length > INVENTORY_MAX_FILES,
+    missing,
+  };
 }
 
 /** Only complete installed-tool provenance can grant a source read. */
@@ -263,11 +299,17 @@ export function toolchainReach(
   return { tree, counts };
 }
 
-/** The recorded texts, and any `toolchain:` path of the reach, read by name. */
-export function namedTexts(texts: ReadonlyMap<string, string>, toolchain: ToolchainReach | null): NamedTexts {
+/** The recorded texts, any `toolchain:` path of the reach and each background file of the tree, read
+ *  by name. A background file has no text here and reads from disk like the held files. */
+export function namedTexts(
+  texts: ReadonlyMap<string, string>,
+  toolchain: ToolchainReach | null,
+  background: readonly BackgroundFile[] = [],
+): NamedTexts {
   const reaches = (path: string) => toolchain !== null && path.startsWith(TOOLCHAIN_PREFIX);
+  const listed = new Set(background.map((file) => file.path));
   return {
-    has: (path) => texts.has(path) || reaches(path),
+    has: (path) => texts.has(path) || listed.has(path) || reaches(path),
     get: (path) =>
       texts.get(path) ?? (toolchain !== null && reaches(path) ? toolchainRead(toolchain, path) : undefined),
   };
@@ -346,7 +388,19 @@ function sourceText(root: string, path: string, tools: Readonly<Record<string, T
   const canonical = realpathSync(abs);
   if (!containsPath(canonical, realpathSync(root))) throw new Error("path escapes the measured tree");
   if (!statSync(canonical).isFile()) throw new Error("path is not a regular file");
-  return readFileSync(canonical, "utf8");
+  return compactJson(path, readFileSync(canonical, "utf8"));
+}
+
+/** A long JSON file without the whitespace between its tokens, strings, numbers and key order kept
+ *  as written. A file that does not parse is delivered as written, so its line numbers stay true. */
+function compactJson(path: string, text: string): string {
+  if (!path.endsWith(".json") || text.length <= COMPACT_JSON_CHARS) return text;
+  try {
+    capturedJsonParse(text);
+  } catch {
+    return text;
+  }
+  return text.replace(/("[^"\\]*(?:\\.[^"\\]*)*")|\s+/g, "$1");
 }
 
 /** The next page of `whole` from `offset`, recorded on `record`, with its continuation note. */
@@ -362,8 +416,9 @@ function deliver(state: SourceReadState, record: DeliveredSource, whole: string,
     : `${text}\n\n(${remaining} character${remaining === 1 ? " remains" : "s remain"}${state.readChars >= READ_CHARS_TOTAL ? ", but the review's read budget is spent" : "; call again to continue"}.)`;
 }
 
-/** `texts` holds entries whose bytes the controller already has in hand rather than on disk, such as
- *  what a rehearsal's solver submitted; each is read under its name like any other entry. */
+/** `inventory` is what the automatic scan reads. `texts` holds entries only a name reads, some of
+ *  them bytes the controller already has in hand rather than on disk, such as what a rehearsal's
+ *  solver submitted; each is read under its name like any other entry. */
 export function readSourceTool(
   root: string,
   inventory: ReadonlySet<string>,
@@ -423,7 +478,7 @@ export function readSourceTool(
   return {
     name: "read_source",
     label: "Read measured source or a recorded verifier entry point",
-    description: `Read measured source at most ${READ_CHARS_PER_CALL} characters per call, within a total budget of ${READ_CHARS_TOTAL}. Verifier scripts are checked against their recorded digest; binaries return provenance only.`,
+    description: `Read measured source at most ${READ_CHARS_PER_CALL} characters per call, within a total budget of ${READ_CHARS_TOTAL}. A JSON file over ${COMPACT_JSON_CHARS} characters comes without the whitespace between its tokens. Verifier scripts are checked against their recorded digest; binaries return provenance only.`,
     parameters: readerParameters({
       type: "object",
       additionalProperties: false,
@@ -431,7 +486,7 @@ export function readSourceTool(
         path: {
           type: "string",
           description:
-            "A path or verifier alias exactly as the inventory lists it, or a toolchain: path of the verified tool tree; omit to read the next unread page. Each call continues the path, and a completely delivered file returns a note.",
+            "A path or verifier alias exactly as the orientation lists it, background files included, or a toolchain: path of the verified tool tree; omit to read the next unread page of the held files. Each call continues the path, and a completely delivered file returns a note.",
         },
         reread: {
           type: "boolean",
@@ -476,7 +531,9 @@ export function readSourceTool(
   };
 }
 
-/** Partial inspection is useful evidence, but cannot suppress the next review of this condition. */
+/** Partial inspection is useful evidence, but cannot suppress the next review of this condition.
+ *  `complete` is over the held files and the verifier entry points; each background file is listed
+ *  with whether the review read it through. */
 export function reviewCoverage(
   inventory: ReviewInventory,
   verifier: ReviewVerifierEvidence,
@@ -491,5 +548,11 @@ export function reviewCoverage(
     complete: !inventory.truncated && missing.length === 0 && verifier.unavailable === null,
     truncated: inventory.truncated,
     missing,
+    background: inventory.background.map(({ path, size }) => ({
+      path,
+      size,
+      read: deliveredSource(state, path).complete,
+    })),
+    backgroundTruncated: inventory.backgroundTruncated,
   };
 }

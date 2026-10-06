@@ -257,7 +257,7 @@ function openSession(input: EpochReviewInput): OpenSession {
     reviewerEffort: input.review.enabled ? (input.review.reasoningEffort ?? null) : null,
     requestDigest: hashJsonValue({
       publicRequest: input.publicRequest,
-      policy: "review-probing-findings/v14",
+      policy: "review-probing-findings/v15",
       prompt: EPOCH_REVIEW_PROMPT,
     }),
     obligationsDigest: obligationsDigest(input, disputableIssues(input)),
@@ -513,6 +513,16 @@ function standingIssueLines(issues: readonly AdviceIssue[]): string[] {
   ];
 }
 
+/** The rest of the tree: every file the review is not held to, with its size, for a reviewer to ask
+ *  for by name. A finding that rests on one cites it, so the record says what it rests on. */
+function backgroundLines({ background, backgroundTruncated }: ReviewInventory): string[] {
+  if (background.length === 0) return [];
+  return [
+    `Background files (${background.length}${backgroundTruncated ? ", list cut at its cap" : ""}), the rest of the tree: not required reading, never read automatically, readable by name. A finding that rests on one cites it and says so. Sizes in bytes:`,
+    ...background.map(({ path, size }) => `${path} (${size})`),
+  ];
+}
+
 function orientation(
   input: EpochReviewInput,
   inventory: ReviewInventory,
@@ -546,9 +556,10 @@ function orientation(
     ...rehearsalLines(input.rehearsals ?? []),
     ...demonstrationLines(input.demonstrations ?? NOTHING_CARRIED, measured.declared),
     ...standingIssueLines(issues),
-    `Read with read_source, then record findings. Files in the review (${inventory.files.length}, truncated: ${inventory.truncated}):`,
+    `Read with read_source, then record findings. Held files, which the review is held to (${inventory.files.length}, truncated: ${inventory.truncated}):`,
     inventory.files.join("\n"),
     `Missing core files or unreadable entries: ${inventory.missing.join(", ") || "none"}.`,
+    ...backgroundLines(inventory),
     verifier.unavailable ??
       "Recorded verifier entry points (cell-produced programs are not installed tools):",
     ...Object.entries(verifier.tools).map(
@@ -713,7 +724,7 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
     (row) => contestedArtifact(input.treeRoot, row) ?? [],
   );
   // A rehearsal's bytes are read under its name and, like a contested artifact, lie outside the
-  // coverage the review is held to, which counts the tree and the verifier alone.
+  // coverage the review is held to, which counts the held tree files and the verifier alone.
   const rehearsed = new Map(
     (input.rehearsals ?? []).flatMap((row) =>
       row.artifact === null ? [] : [[rehearsalName(row), row.artifact] as const],
@@ -730,6 +741,7 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
   // held to, and not among the pages the unread prompt resumes the reader for, so the automatic
   // scan reads none of it: every tree file is read by name.
   const toolchain = toolchainReach(root, verifier.tools);
+  const named = namedTexts(rehearsed, toolchain, inventory.background);
   // The task ids a finding may not name, since a finding is about a family and a claim pinned to
   // one task cannot direct an authoring pass. A measured battery supplies them; at an authoring
   // checkpoint they come from the draft's own task file, and a partial draft still gets a reading.
@@ -755,7 +767,7 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
       repoRoot: input.repoRoot,
       role: "epoch-reviewer",
       tools: [
-        readSourceTool(root, sourcePaths, state, verifier.tools, namedTexts(rehearsed, toolchain)),
+        readSourceTool(root, sourcePaths, state, verifier.tools, named),
         probe.tool,
         recordFindingTool(
           issues,

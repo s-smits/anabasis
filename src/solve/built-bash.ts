@@ -25,6 +25,7 @@ import {
   writeFileSync,
 } from "../meta/filesystem.ts";
 import { dirname, join } from "../meta/path.ts";
+import { runtimeProcess } from "../meta/process.ts";
 import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
 import {
@@ -103,6 +104,9 @@ const WALLS =
   "a long search in the foreground, under the command's timeout. sh, bun, node, python3 and the system C and C++ compilers " +
   "run, with versions and libraries that differ by host: check one before building on it, and install " +
   "what is missing into your home directory.";
+/** The shell is the host's own `/bin/sh`, and a macOS host's `sed` is BSD: its errors in recorded
+ *  cases were often hidden by a later command's exit status. */
+const BSD_TOOLS = " On this host the system utilities, sed among them, are BSD, not GNU.";
 const SCRATCH_FOLDER =
   " The command runs in a fresh private folder that is removed when it ends; nothing there becomes " +
   "your answer, which you still record with the harness's own tools.";
@@ -358,7 +362,7 @@ export function createBuiltBashTool({
     label: base.label,
     name: BUILT_BASH_TOOL,
     parameters: shellParameters(timeouts),
-    description: `${base.description}${port === null ? SCRATCH_FOLDER : draftFolder(port.root)}${WALLS}${publicFolder}${installedPrograms(toolTree, withheld)} ${BUILT_SHELL_RULES.join(" ")}`,
+    description: `${base.description}${port === null ? SCRATCH_FOLDER : draftFolder(port.root)}${WALLS}${runtimeProcess.platform === "darwin" ? BSD_TOOLS : ""}${publicFolder}${installedPrograms(toolTree, withheld)} ${BUILT_SHELL_RULES.join(" ")}`,
     executionMode: "sequential",
     execute: async (callId, params, signal, onUpdate): Promise<AgentToolResult<unknown>> => {
       const { command, timeout } =

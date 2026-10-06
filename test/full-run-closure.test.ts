@@ -26,12 +26,17 @@ import { runBuilderSession } from "../src/author/builder-session.ts";
 import { PiBuiltWorkerNonResult, startPiBuiltWorker } from "../src/backends/pi-built-process.ts";
 import type { PiBuiltRuntime } from "../src/backends/pi-built.ts";
 import { builtSolveIsolation } from "../src/run/built-agent-runtime.ts";
-import { ProviderResourceBudget, runBudgetedAgentTurn } from "../src/run/provider-resource-budget.ts";
+import {
+  ProviderResourceBudget,
+  runBudgetedAgentTurn,
+  type ProviderTurnReservation,
+} from "../src/run/provider-resource-budget.ts";
 import { builtAgentInterface, starterRegistration } from "../src/solve/built-starter.ts";
 import { DEFAULT_HARNESS_SETTINGS } from "../src/correctness-bundle/harness-config.ts";
 import { double } from "./helpers/doubles.ts";
 
 const roots: string[] = [];
+const PERMIT_REQUEST = `${JSON.stringify({ type: "turn_permit_request", turn: 1 })}\n`;
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
@@ -391,12 +396,18 @@ it("controller TERM cancels an active reservation and records the original signa
   });
 });
 
-it("cancels and reaps a confined Built worker which ignores TERM, settling its active permit", async () => {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), "ana-cancel-worker-")));
+/** A confined Built worker whose child is `preamble` plus a fake that answers the start with
+ *  matching ready evidence and then writes `afterReady` verbatim. No provider stands behind it. */
+async function startFakeWorker(
+  preamble: string,
+  afterReady: string,
+  budget: ProviderResourceBudget,
+  reserveTurn: (turn: number) => ProviderTurnReservation = () => budget.reserve("built"),
+) {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "ana-fake-worker-")));
+  roots.push(dir);
   const file = join(dir, "worker.cjs");
-  const source = `
-process.on("SIGTERM", () => {});
-setInterval(() => {}, 60000);
+  const source = `${preamble}
 let input = "";
 process.stdin.setEncoding("utf8");
 process.stdin.on("data", (chunk) => {
@@ -409,14 +420,12 @@ process.stdin.on("data", (chunk) => {
       process.stdout.write(JSON.stringify({ type: "ready", workerInstanceId: message.workerInstanceId,
         pid: process.pid, promptDigest: message.contract.promptDigest, toolSchemaDigest: message.contract.toolSchemaDigest,
         modelSelection: { source: "faux-provider", resolvedModel: message.profile.model, effort: "off" } }) + "\\n");
-      process.stdout.write(JSON.stringify({ type: "turn_permit_request", turn: 1 }) + "\\n");
+      process.stdout.write(${JSON.stringify(afterReady)});
     }
   }
 });
 `;
   writeFileSync(file, source);
-  const budget = new ProviderResourceBudget(2);
-  const entered = Promise.withResolvers<void>();
   const runtime: PiBuiltRuntime = {
     profile: { provider: "openrouter", transport: "openrouter", model: "faux-cancel", thinkingLevel: "off" },
     auth: async () => ({ type: "api_key", key: "fake" }),
@@ -443,20 +452,31 @@ process.stdin.on("data", (chunk) => {
     conditionDigest: "cancellation-fixture",
     tools: new Map(),
     onMessage: () => {},
-    reserveTurn: () => {
+    reserveTurn,
+    signal: budget.cancellationSignal,
+  });
+  return worker.catch((error: unknown) => {
+    if (!(error instanceof Error)) throw error;
+    return error;
+  });
+}
+
+it("cancels and reaps a confined Built worker which ignores TERM, settling its active permit", async () => {
+  const budget = new ProviderResourceBudget(2);
+  const entered = Promise.withResolvers<void>();
+  const result = startFakeWorker(
+    `process.on("SIGTERM", () => {});\nsetInterval(() => {}, 60000);`,
+    PERMIT_REQUEST,
+    budget,
+    () => {
       const reservation = budget.reserve("built");
       entered.resolve();
       return reservation;
     },
-    signal: budget.cancellationSignal,
-  });
-  const result = worker.catch((error: unknown) => {
-    if (!(error instanceof Error)) throw error;
-    return error;
-  });
+  );
   const cleanup = setTimeout(() => budget.cancelActiveTurns(new Error("fixture wall")), 10_000);
   try {
-    await Promise.race([entered.promise, worker]);
+    await Promise.race([entered.promise, result]);
     expect(budget.activeReservations).toBe(1);
     budget.cancelActiveTurns(new Error("operator stopped"));
     const error = await result;
@@ -478,6 +498,15 @@ process.stdin.on("data", (chunk) => {
     clearTimeout(cleanup);
     budget.cancelActiveTurns(new Error("fixture cleanup"));
     await result;
-    rmSync(dir, { recursive: true, force: true });
   }
+}, 20_000);
+
+// A worker already being stopped can still have a permit request in flight. Granted, it opened a
+// provider turn the run paid for after the worker's own failure had ended the solve.
+it("grants no turn permit to a worker it has already stopped", async () => {
+  const budget = new ProviderResourceBudget(2);
+  const error = await startFakeWorker(`setInterval(() => {}, 60000);`, `{\n${PERMIT_REQUEST}`, budget);
+  expect(error).toBeInstanceOf(PiBuiltWorkerNonResult);
+  expect(errorMessage(error)).toContain("malformed JSONL");
+  expect(budget.snapshot().used).toBe(0);
 }, 20_000);

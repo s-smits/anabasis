@@ -1,7 +1,9 @@
 import {
   chmodSync,
+  closeSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readFileSync,
   rmSync,
   statSync,
@@ -120,6 +122,24 @@ describe("Codex auth.json storage", () => {
     expect(written.tokens?.id_token).toBe("i1");
     expect(written.tokens?.account_id).toBe("acc-7");
     expect(isString(written.last_refresh)).toBe(true);
+    expect(statSync(file).mode & 0o777).toBe(0o600);
+  });
+
+  // The Codex CLI and every parallel solve read this file while one process refreshes it, and the
+  // refresh token rotates, so an in-place rewrite could hand a reader, or a killed writer, half a login.
+  it("replaces auth.json whole, so a reader holding the old file still reads all of it", () => {
+    const home = makeScratchDir("ana-login-codex-swap-");
+    const first = { access: "a1", refresh: "r1", expires: 1000, idToken: "i1", accountId: "acc-7" };
+    const file = writeCodexAuthJson(first, { CODEX_HOME: home });
+    const before = readFileSync(file, "utf8");
+    const reader = openSync(file, "r");
+    try {
+      writeCodexAuthJson({ ...first, access: "a2", refresh: "r2" }, { CODEX_HOME: home });
+      expect(readFileSync(reader, "utf8")).toBe(before);
+    } finally {
+      closeSync(reader);
+    }
+    expect(readFileSync(file, "utf8")).toContain('"refresh_token": "r2"');
     expect(statSync(file).mode & 0o777).toBe(0o600);
   });
 

@@ -75,7 +75,7 @@ type Bridge = {
 	/** The top-level query's context; a reentrant query gets its own. */
 	top: QueryContext;
 	readonly configDir: string | undefined;
-	/** Pi compacted while the top query ran; its tool results open a fresh query. */
+	/** Pi compacted while the top query ran, or a query failed; its tool results open a fresh query. */
 	restart: boolean;
 };
 
@@ -566,9 +566,8 @@ function streamClaudeAgentSdk(bridge: Bridge, model: Model<Api>, transcript: Con
 		return stream;
 	}
 
-	// --- Orphaned tool result (e.g. user aborted a tool call) ---
-	// The query is gone but pi still delivered the result. Nothing to do — just
-	// emit end_turn so pi waits for the next real user message.
+	// --- Orphaned tool result: its query was stopped (a user abort) or had already answered ---
+	// Nothing can take the result, so the turn ends and pi waits for the next real user message.
 	const lastMsg = context.messages.at(-1);
 	if (lastMsg?.role === "toolResult" && !bridge.restart) {
 		continuity.advancedTo(context.messages.length);
@@ -708,6 +707,7 @@ function streamClaudeAgentSdk(bridge: Bridge, model: Model<Api>, transcript: Con
 				// A refused or unanswered turn is not the session's continuation: pi retries it with the
 				// same history, which only a rebuild gives back. The thrown path below settles the same way.
 				continuity.failed();
+				bridge.restart = true;
 			} else if (hasText(sessionId)) {
 				continuity.settled(sessionId, Math.max(context.messages.length, queryCtx.latestCursor), cwd);
 			}
@@ -721,7 +721,7 @@ function streamClaudeAgentSdk(bridge: Bridge, model: Model<Api>, transcript: Con
 		})
 		.catch((error) => {
 			reportCompactSummaries(bridge, tally, continuity.state()?.sessionId, cwd);
-			if (!tally.aborted && options?.signal?.aborted !== true) continuity.failed();
+			if (!tally.aborted && options?.signal?.aborted !== true) { continuity.failed(); bridge.restart = true; }
 			promptStream.fail(asError(error));
 			if (queryCtx.turnOutput) {
 				queryCtx.turnOutput.stopReason = options?.signal?.aborted === true ? "aborted" : "error";

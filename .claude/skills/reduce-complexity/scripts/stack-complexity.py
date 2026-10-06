@@ -123,8 +123,8 @@ PROMPT_FILES = (
     "src/solve/built-bash.ts",
     "src/solve/dcg-rules.ts",
     "src/solve/published-margin.ts",
-    # submit-time-left.ts held the first early submit until 2026-10-07; it stays listed so a delta
-    # across its deletion counts the notice it sent as text removed.
+    # Deleted 2026-10-07 with the first-submit hold. `blob` reads an absent file as empty, so the
+    # entry adds nothing after that and lets a delta from an earlier base count the notice removed.
     "src/solve/submit-time-left.ts",
     # Judge
     "src/review/judge-framing.ts",

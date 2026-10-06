@@ -631,11 +631,6 @@ function bindDraftTools(
     const exactArtifactWriter = authority === "artifact-writer" && publicArtifactSchema !== null;
     const boundTool: AgentTool = {
       ...tool,
-      // The host owns this tool's parameters and its execution, and the Builder wrote its
-      // description against neither — an authored description can end up denying it checks
-      // anything against the published limits while the bound execute below returns exactly that
-      // table. The authored sentence stays, because it says what the tool is for in the domain's
-      // own words; the host appends what actually runs, at the one place it takes the tool over.
       description: exactArtifactWriter
         ? `${tool.description} ${writerBindingSentence(margins.length > 0 ? "answer-and-limits" : "answer")}`
         : tool.description,

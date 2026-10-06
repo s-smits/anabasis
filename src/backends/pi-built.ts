@@ -24,7 +24,6 @@ import {
   starterRegistration,
 } from "../solve/built-starter.ts";
 import { GeneratedToolWorkerNonResult, createGeneratedToolStarter } from "../solve/generated-tool-worker.ts";
-import { withTimeLeftAtSubmit } from "../solve/submit-time-left.ts";
 import { PENDING_REQUESTS_AT_CLOSE } from "../solve/generated-tool-worker-termination.ts";
 import { loadBuiltControllerInterface } from "../correctness-bundle/contracts.ts";
 import { runtimeNonResultReason } from "../correctness-bundle/runtime-blocker.ts";
@@ -428,12 +427,7 @@ export function piBuiltSolver(runtime: PiBuiltRuntime, options: BuiltSolverOptio
     if (!("contractCondition" in opened)) return opened;
     const { start, contractCondition } = opened;
     let generatedWorker: GeneratedToolWorkerEvidence | null = null;
-    const tools = withTimeLeftAtSubmit(
-      new Map(starter.tools.map((tool) => [tool.name, tool])),
-      runtime.solveWallMs ?? settingsOf(starter).solveMs,
-      Date.now,
-      () => turns.identities.length + 1 >= start.maxTurns,
-    );
+    const tools = new Map(starter.tools.map((tool) => [tool.name, tool]));
     try {
       const events = workerEvents(task, starter, recorder, turns, {
         observer,

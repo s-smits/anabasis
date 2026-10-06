@@ -4,8 +4,7 @@
 // the run actually decided: each authoring submit's outcome, and each battery case's kind. A pinned model revision, fp32 weights and a
 // digested anchor set make one input classify the same way on every host; no provider is called
 // and no row text leaves this process. Labels are semantic leads for an investigator, never a
-// score input. Codex sessions supply reasoning summaries and messages; Claude sessions supply
-// messages only, because the SDK delivers their thinking blocks with empty text.
+// score input. Reasoning and message rows both count, as each session's transport recorded them.
 //   bun prose-classify.ts <builder-prose.jsonl | epoch-dir | campaign-dir> [--run <runId>] [--json] [--min-margin 0.5] [--batch 16] [--window 5]
 import { boundText } from "#src/meta/bounded-text.ts";
 import { sha256 } from "#src/meta/digest.ts";

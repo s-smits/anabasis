@@ -906,6 +906,22 @@ describe("the command Pi runs behind the wall", () => {
     );
   });
 
+  // The shell is the host's own `/bin/sh`, so a macOS host's sed is BSD, and its errors in recorded
+  // cases were often hidden by a later command's exit status.
+  it("tells the solver on a darwin host that the system utilities are BSD, and a linux host nothing", () => {
+    const describedOn = (platform: "darwin" | "linux") => {
+      const descriptor = Object.getOwnPropertyDescriptor(runtimeProcess, "platform");
+      Object.defineProperty(runtimeProcess, "platform", { ...descriptor, value: platform });
+      try {
+        return createBuiltBashTool({ policy: session, port: null, home: sessionHome }).description;
+      } finally {
+        if (descriptor) Object.defineProperty(runtimeProcess, "platform", descriptor);
+      }
+    };
+    expect(describedOn("darwin")).toContain("the system utilities, sed among them, are BSD, not GNU");
+    expect(describedOn("linux")).not.toContain("BSD");
+  });
+
   // A failing command can still produce useful output. Keep the files it wrote before failing so
   // the agent can inspect or continue that work, and still fail the call, so the solver cannot
   // read a non-zero exit as success.

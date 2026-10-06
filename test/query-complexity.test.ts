@@ -3,9 +3,11 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { afterEach, describe, expect, it } from "bun:test";
 import { SOLVE_WALL_MESSAGE } from "../src/backends/backend-types.ts";
+import { placeOnBand } from "../src/claim/battery-difficulty.ts";
+import { DIFFICULTY_DECISION_SCHEMA } from "../src/run/difficulty-decision.ts";
 import { caseRecordRow, writeCaseRecord } from "./helpers/case-record-row.ts";
 import { recordDigestBattery, solveRow } from "./helpers/digest-battery.ts";
-import { double } from "./helpers/doubles.ts";
+import { double, required } from "./helpers/doubles.ts";
 import { writeSettledReview } from "./helpers/review-fixtures.ts";
 import {
   ANCHOR_SHA256,
@@ -23,6 +25,7 @@ import {
   type ClimbReport,
   VELOCITY_SCHEMA,
   numericDriftOf,
+  outcomeRowsOf,
   outcomesOf,
   readCampaign,
   render,
@@ -669,6 +672,65 @@ describe("climb velocity", () => {
     expect(render(report)).toContain(
       "run-c: 2/3 passed, 0 unaccepted, 0 non-result; claimed with no version of its own, so on the line and on no edge",
     );
+  });
+
+  /** One `difficulty-decisions/` record as `recordDifficultyDecision` writes it: filed under the round
+   *  it opened, one row per battery it read newest first, and the placement of the last one. */
+  function recordDecision(dir: string, opened: string, read: [runId: string, passes: number][]): void {
+    const band: [number, number] = [0.2, 0.5];
+    const placed = read.map(([runId, passes]) => ({
+      runId,
+      placement: required(placeOnBand(passes, 8, band), `a battery of 8 placed on ${String(band)}`),
+    }));
+    const latest = required(placed.at(-1), "a battery the decision read");
+    mkdirSync(join(dir, "difficulty-decisions"), { recursive: true });
+    writeFileSync(
+      join(dir, "difficulty-decisions", `${opened}-digest.json`),
+      JSON.stringify({
+        schema: DIFFICULTY_DECISION_SCHEMA,
+        runId: opened,
+        slug: "slug",
+        digest: "digest",
+        difficulty: {
+          band,
+          admitted: read.length,
+          excluded: [],
+          rows: placed
+            .map(({ runId, placement: { zone, aim, toAim } }) => ({ runId, zone, aim, toAim }))
+            .toReversed(),
+          decision: {
+            rationale: `${opened} placed ${latest.runId}`,
+            evidence: read.map(([runId]) => ({ runId, batterySha256: "c".repeat(64) })),
+            placement: latest.placement,
+          },
+        },
+      }),
+      "utf8",
+    );
+  }
+
+  // A decision is filed under the round it opens and places the battery its evidence ends on: the
+  // decision run-b recorded before run-b measured anything placed run-a. Filed under run-b, run-a's
+  // distance to the aim went to a battery the decision never read, and run-b read as placed by a
+  // decision that predates it. Every row of a later decision overwrites the earlier entry, so a
+  // placement has to survive the decisions that carry the same battery's row.
+  it.concurrent("files a decision's placement under the battery it read, not the round it opened", () => {
+    const dir = twoVersions("ana-climb-recorded-", [brief, brief]);
+    recordDecision(dir, "run-b", [["run-a", 8]]);
+    const recorded = () =>
+      Object.fromEntries(outcomeRowsOf(dir).batteries.map((battery) => [battery.runId, battery.recorded]));
+    expect(recorded()).toEqual({
+      "run-a": { zone: "too-easy", decidedBy: "run-b", toAim: -4 },
+      "run-b": null,
+    });
+    recordDecision(dir, "run-c", [
+      ["run-a", 8],
+      ["run-b", 1],
+    ]);
+    expect(recorded()).toEqual({
+      "run-a": { zone: "too-easy", decidedBy: "run-c", toAim: -4 },
+      "run-b": { zone: "under-aim", decidedBy: "run-c", toAim: 1 },
+    });
   });
 
   // A task measured again exactly as it was, after a battery that passed every case, re-measures a

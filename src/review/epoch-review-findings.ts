@@ -720,7 +720,6 @@ export function recordFindingTool(
       const verdict = findingVerdict(subject);
       if ("why" in verdict) {
         if (verdict.why === CITATIONS_UNBOUND) state.admission.citationRefusals += 1;
-        state.refused += 1;
         return Promise.resolve(readerToolText(`refused: ${verdict.why}`));
       }
       const probes = probeBackedRows(state.probes, args.probeIds);

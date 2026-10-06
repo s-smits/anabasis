@@ -347,7 +347,6 @@ describe("controller admission", () => {
     const state: ReviewState = {
       reads: ["evaluator.ts"],
       readChars: 12,
-      refused: 0,
       probes: emptyProbeState(),
       dispositions: [],
       delivered: [
@@ -426,7 +425,6 @@ describe("controller admission", () => {
     const advisory: ReviewState = {
       reads: ["evaluator.ts"],
       readChars: 12,
-      refused: 0,
       probes: emptyProbeState(),
       dispositions: [],
       delivered: [

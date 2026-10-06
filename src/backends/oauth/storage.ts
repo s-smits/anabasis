@@ -7,8 +7,8 @@
  * and nothing else.
  */
 import { capturedJsonStringify } from "../../meta/json-runtime.ts";
-import { chmodSync, mkdirSync, rmSync, writeFileSync } from "../../meta/filesystem.ts";
-import { readJsonFile } from "../../meta/completed-json.ts";
+import { mkdirSync, rmSync } from "../../meta/filesystem.ts";
+import { readJsonFile, writeAtomic } from "../../meta/completed-json.ts";
 import { isRecord, type JsonValue } from "../../meta/json-shape.ts";
 import { errorCode } from "../../meta/runtime-values.ts";
 import { keyIfDefined } from "../../meta/optional-key.ts";
@@ -31,12 +31,11 @@ type ClaudeCredential = {
   updatedAt: string;
 };
 
+/** Published whole: the Codex CLI and every parallel solve read these files while one process
+ *  rewrites them, and a refresh rotates the token, so a torn or truncated write loses the login. */
 function writePrivateFile(file: string, contents: string): void {
   mkdirSync(dirname(file), { recursive: true, mode: 0o700 });
-  writeFileSync(file, contents);
-  // `writeFileSync`'s mode applies only at creation: a rewrite of an existing file keeps the
-  // permissions it already had, so the private mode is enforced explicitly on every write.
-  chmodSync(file, 0o600);
+  writeAtomic(file, contents, 0o600);
 }
 
 /**

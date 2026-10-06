@@ -350,6 +350,8 @@ function grantTurnPermit(
   reserveTurn: ((turn: number) => ProviderTurnReservation) | undefined,
   message: PermitRequest,
 ): void {
+  // A request still in flight when the worker was stopped opens no turn the run would pay for.
+  if (state.failure !== null) return;
   if (state.phase !== "running" || state.activeTurn !== null || message.turn !== state.nextPermitTurn) {
     stopWorker(child, state, "protocol", "Pi Built worker requested an unordered turn permit");
     return;

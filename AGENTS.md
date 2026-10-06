@@ -1341,10 +1341,11 @@ the battery was paid for.
    probes showed a check refusing the published default pins was admitted as advice: that check had been named
    in four earlier reviews, and a naming count cannot tell two defects on one check apart. What crosses to the
    Builder is what a finding found and where: its owner, check, schema path and public inputs, its
-   `demandGap`, the probes it cites with the checks they moved, and the direction they show
-   (`epoch-review-public.ts`). It carries no repair method; the Builder chooses the repair. Until 2026-09-29
-   the projection attached one from a fixed table (`GAP_ACTS`, `publicAct`), and a task-set defect was refused
-   without a public input to vary.
+   `demandGap`, the probes it cites with the checks they moved, and, for a defect only, the direction
+   they show (`epoch-review-public.ts`). It carries no repair method; the Builder chooses the repair. Until
+   2026-09-29 the projection attached one from a fixed table (`GAP_ACTS`, `publicAct`), and a task-set defect
+   was refused without a public input to vary. Until 2026-10-07 only a defect's probes crossed, so a
+   probe-backed observation reached the Builder as a check name alone.
 
    A finding settles a Judge disagreement only by naming it: `record_finding` takes `settlesCases`, the task
    ids of listed vetoes and disputed fails the finding decides, and the host records one disposition per case,

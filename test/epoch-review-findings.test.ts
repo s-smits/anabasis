@@ -304,12 +304,75 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
       "Epoch review of your workspace, frozen when the review began. It ran while you kept working",
     );
     // A probe behind an advisory row is executed evidence, and it still crosses; being advisory, it
-    // rides the next tool result and holds no submit.
-    const probed = [{ ...findings[0]!, probes: [{ controlId: "a", path: "x", movedCheckIds: [] }] }];
-    expect(authoringReviewText("repair", "completed", "design trusses", probed)).toMatchObject({
-      text: expect.stringContaining("- [advisory] "),
-      blocking: 0,
+    // rides the next tool result and holds no submit. An observation is advisory by kind, and the row
+    // it earns by its probe carries that probe's line.
+    const probed = publicEpochReview(
+      {
+        status: "completed",
+        disputes: [],
+        findings: [
+          {
+            ...defect,
+            defect: false,
+            severity: "advisory",
+            probes: [{ controlId: "a", path: "x", movedCheckIds: [] }],
+          },
+        ],
+      },
+      { brief: null },
+    ).findings;
+    const shown = authoringReviewText("repair", "completed", "design trusses", probed);
+    expect(shown.blocking).toBe(0);
+    expect(shown.text).toContain("- [advisory] ");
+    expect(shown.text).toContain(
+      "Executed against this candidate's own declared checks: changing x on accept control a moved no declared check.",
+    );
+  });
+
+  test("a probe-backed finding prints what its probes executed, and only a defect adds which way they show", () => {
+    const executed =
+      "Executed against this candidate's own declared checks: changing layout.span on accept control accept-a moved a-check, b-check.";
+    const finding = { claim: "private reading", evidence: "e.json", checkId: "a-check" };
+    const probes = [{ controlId: "accept-a", path: "layout.span", movedCheckIds: ["b-check", "a-check"] }];
+    const claimOf = (row: Parameters<typeof publicEpochReview>[0]["findings"][number]) =>
+      publicEpochReview({ status: "completed", disputes: [], findings: [row] }, { brief: null }).findings[0]
+        ?.claim ?? "";
+    const falseAcceptance = "a false acceptance";
+    const falseRejection = "a false rejection";
+
+    // An observation with probes: the line, whichever way the reviewer read them, and no direction.
+    const observed = claimOf({
+      ...finding,
+      owner: null,
+      defect: false,
+      severity: "advisory",
+      probes,
+      probeDirection: "accepts-invalid",
     });
+    expect(observed).toContain(executed);
+    expect(observed).not.toContain(falseAcceptance);
+    expect(observed).not.toContain("do not establish");
+
+    // A defect with probes: the line and the direction the probes show, or that they do not say.
+    const shows = claimOf({
+      ...finding,
+      owner: EVALUATOR_FILE,
+      defect: true,
+      probes,
+      probeDirection: "rejects-valid",
+    });
+    expect(shows).toContain(executed);
+    expect(shows).toContain(falseRejection);
+    const unresolved = claimOf({ ...finding, owner: EVALUATOR_FILE, defect: true, probes });
+    expect(unresolved).toContain(executed);
+    expect(unresolved).toContain("do not establish");
+
+    // An observation with no probes prints neither.
+    const unprobed = claimOf({ ...finding, owner: null, defect: false, severity: "advisory" });
+    expect(unprobed).not.toContain("Executed against");
+    expect(unprobed).not.toContain(falseAcceptance);
+    expect(unprobed).not.toContain(falseRejection);
+    expect(unprobed).not.toContain("do not establish");
   });
 
   test("an authoring dispute reaches the ledger the next build reads", () => {

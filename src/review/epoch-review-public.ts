@@ -151,16 +151,19 @@ function publicFinding(
             rules: rules.map((rule) => ({ id: rule.id, statement: rule.statement })),
           })}`,
         ];
-  // What the probes executed, and which way they show the check wrong, or that they do not say. The
-  // three identities here are the class the check id already crosses by — an accept control the
-  // Builder wrote, a dotted path under its own artifactSchema root, and its own declared check ids.
-  // It rides with an advisory defect too: a probe is the review's strongest evidence, and without
-  // this line the author reads a check name with nothing behind it.
+  // What the probes executed, and for a defect which way they show the check wrong, or that they do
+  // not say. The three identities here are the class the check id already crosses by — an accept
+  // control the Builder wrote, a dotted path under its own artifactSchema root, and its own declared
+  // check ids. The executed line rides with every finding that cites a probe, an observation and an
+  // advisory defect included: a probe is the review's strongest evidence, and without this line the
+  // author reads a check name with nothing behind it. The direction is a claim that the check is
+  // wrong, so only a defect makes it.
+  const probes = finding.probes ?? [];
   const probed =
-    !finding.defect || (finding.probes ?? []).length === 0
+    probes.length === 0
       ? []
       : [
-          `Executed against this candidate's own declared checks: ${(finding.probes ?? [])
+          `Executed against this candidate's own declared checks: ${probes
             .map(
               (probe) =>
                 `changing ${probe.path} on accept control ${probe.controlId} ${
@@ -170,7 +173,7 @@ function publicFinding(
                 }`,
             )
             .join("; ")}.`,
-          PROBE_DIRECTION_SENTENCES[finding.probeDirection ?? "unresolved"],
+          ...(finding.defect ? [PROBE_DIRECTION_SENTENCES[finding.probeDirection ?? "unresolved"]] : []),
         ];
   // The request is not repeated here. Every prompt that renders these rows states it once under its
   // own heading, and a copy per finding puts it several times into one authoring prompt, in front

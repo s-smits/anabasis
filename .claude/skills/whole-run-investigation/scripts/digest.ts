@@ -101,6 +101,20 @@ interface ClaimGroundings {
   groundingSources: Map<JsonValue | undefined, Set<string>>;
 }
 
+/** What decided one declared check, and where each tool that did came from. */
+interface CheckGrounding {
+  grounding: JsonObject;
+  sources: string[];
+}
+
+/** The check programs the claims resolved inside the Builder's tool tree, and how many claims could
+ *  say: a refused claim carries clauses and no statement, so it records no verifier tool at all. */
+interface ToolTreeReach {
+  onPath: string[];
+  unrecorded: number;
+  claims: number;
+}
+
 interface CheckMatrixInput extends ClaimGroundings {
   checks: readonly DeclaredCheck[];
   rejectRows: readonly ControlRow[];
@@ -248,6 +262,11 @@ function verdictJson(caseDir: string): JsonObject | null {
   }
 }
 
+/** A claim's statement, or null for a refused claim, which records clauses and no statement. */
+function statementOf(claim: JsonValue): JsonObject | null {
+  return asRecord(asRecord(asRecord(claim)?.claim)?.statement);
+}
+
 /** What decided each declared check, per claim, from the host-attested launches its
  *  `externalCheckCoverage` rows count: the installed tool it ran, a program it built in its own
  *  cell, or neither, which is `in-process`. The claim-wide `verifierEnvironmentHash` exists
@@ -257,7 +276,7 @@ function claimGroundings(claims: readonly JsonValue[]): ClaimGroundings {
   const groundingByCheck = new Map<JsonValue | undefined, JsonObject>();
   const groundingSources = new Map<JsonValue | undefined, Set<string>>();
   for (const claim of claims) {
-    const statement = asRecord(asRecord(asRecord(claim)?.claim)?.statement);
+    const statement = statementOf(claim);
     const coverage = Array.isArray(statement?.externalCheckCoverage) ? statement.externalCheckCoverage : [];
     const groundings = statement?.groundings;
     for (const grounding of Array.isArray(groundings) ? groundings : []) {
@@ -282,17 +301,21 @@ function claimGroundings(claims: readonly JsonValue[]): ClaimGroundings {
 
 /** The check programs these claims resolved inside the Builder's tool tree, which the solver's shell
  *  searches before the host's, less any the withheld-instruments condition closed for the battery. */
-function checkProgramsOnPath(claims: readonly JsonValue[]): string[] {
+function checkProgramsOnPath(claims: readonly JsonValue[]): ToolTreeReach {
   const ids = claims.flatMap((claim) => {
     const withheld = asRecord(asRecord(claim)?.condition)?.advisorsRemoved;
-    const tools = asRecord(asRecord(asRecord(claim)?.claim)?.statement)?.verifierTools;
+    const tools = statementOf(claim)?.verifierTools;
     return (Array.isArray(tools) ? tools : []).flatMap((entry) => {
       const tool = asRecord(entry);
       const id = tool?.source === "workspace-toolchain" ? tool.toolId : null;
       return isString(id) && !(Array.isArray(withheld) && withheld.includes(`instrument:${id}`)) ? [id] : [];
     });
   });
-  return [...new Set(ids)].sort();
+  return {
+    onPath: [...new Set(ids)].sort(),
+    unrecorded: claims.filter((claim) => statementOf(claim) === null).length,
+    claims: claims.length,
+  };
 }
 
 /** One check's sources in one claim: each tool the host launched for it, a cell-built program when
@@ -380,6 +403,25 @@ function contestedEvidence(
   return contestedByCheck;
 }
 
+/** What decided one check. The claim's grounding row and launches say so where it holds a row for
+ *  the check. A refused claim carries no statement, so its checks read the brief, which every
+ *  battery has, and print the kind and tools it declares rather than `?` and none. */
+function groundingOf(
+  check: DeclaredCheck,
+  groundingByCheck: ClaimGroundings["groundingByCheck"],
+  groundingSources: ClaimGroundings["groundingSources"],
+): CheckGrounding {
+  const row = groundingByCheck.get(check.id);
+  if (row !== undefined) return { grounding: row, sources: [...(groundingSources.get(check.id) ?? [])] };
+  const { evidence, requiredToolIds } = check.execution ?? {};
+  return {
+    grounding: { kind: evidence?.kind ?? "?", adapterId: null },
+    sources: [...(evidence?.requiredToolIds ?? []), ...(requiredToolIds ?? [])].map(
+      (tool) => `declared:${tool}`,
+    ),
+  };
+}
+
 function checkMatrix({
   checks,
   groundingByCheck,
@@ -410,10 +452,7 @@ function checkMatrix({
   // sat hard against the published limits the checks enforce.
   const inert: string[] = [];
   for (const check of checks) {
-    const grounding: JsonObject = groundingByCheck.get(check.id) ?? {
-      kind: check?.grounding?.kind ?? "?",
-      adapterId: null,
-    };
+    const { grounding, sources } = groundingOf(check, groundingByCheck, groundingSources);
     const isolating = rejectRows.filter((row) => row.expectedCheckId === check.id);
     const mutations = new Set(isolating.map((row) => row.mutationClass));
     const shipping = perCheck.get(check.id) ?? { rejections: 0, classes: new Set<string>() };
@@ -422,7 +461,7 @@ function checkMatrix({
       pad(check.id, 27) +
         pad(jsonText(grounding.kind ?? "?"), 19) +
         pad(jsonText(grounding.adapterId ?? "-"), 19) +
-        pad([...(groundingSources.get(check.id) ?? [])].join(",") || "-", 27) +
+        pad(sources.join(",") || "-", 27) +
         pad(isolating.length, 7) +
         pad(mutations.size, 7) +
         pad(shipping.rejections, 8) +
@@ -503,7 +542,7 @@ function processCensus(
   caseRootOf: CaseRoots,
   bundleDir: string | null,
   bundleProvenance: string,
-  onPath: readonly string[],
+  toolTree: ToolTreeReach,
 ): string[] {
   // --- block 1b: solver process census and oracle-preview suspects ----------------------------
   // How uniform is the solve, and does any public tool look like a verdict previewer? A tool
@@ -522,10 +561,15 @@ function processCensus(
     correctnessModelFiles: files("correctness-model"),
   });
   for (const reach of [
-    ...onPath.map((id) => `${id} on the solver's PATH, from the Builder's tool tree`),
+    ...toolTree.onPath.map((id) => `${id} on the solver's PATH, from the Builder's tool tree`),
     ...copies.map(([copy, original]) => `agent/${copy} is byte-identical to correctness-model/${original}`),
   ]) {
     lines.push(`CHECK CODE IN SOLVER REACH (lane 34): ${reach}`);
+  }
+  if (toolTree.unrecorded > 0) {
+    lines.push(
+      `solver-reach rows unobservable: ${toolTree.unrecorded} of ${toolTree.claims} claims carry no statement, so no verifier tool is recorded for them and no tool-tree PATH row (lane 34) or named-call row (lane 23) can print for them`,
+    );
   }
   const records = caseRows.map((row) => {
     const root = caseRootOf.get(row) ?? null;
@@ -549,7 +593,7 @@ function processCensus(
   lines.push(...toolRosterLines(census.tools, bundleDir, bundleProvenance));
   // A shell call keeps its arguments only as a digest and clipped text, so a check program run
   // through bash shows in a trace only where the text of some call names it.
-  for (const id of onPath) {
+  for (const id of toolTree.onPath) {
     const named = records.filter(
       ({ trace }) => trace?.toolCalls.some((call) => JSON.stringify(call).includes(id)) === true,
     );

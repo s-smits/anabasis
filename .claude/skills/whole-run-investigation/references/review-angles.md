@@ -569,9 +569,9 @@ rounds.
 
 The question is which of the channels one round hands the next were present, served, read back and
 acted on. The channels are the round facts, the climb readout and battery contract, the rebuild
-advice packet, the Epoch Reviewer's public projection from both authoring and battery reviews,
-diagnosis issues, memory notes, the `context` tool, and the solver traces and
-rehearsals it offers. Read the full Builder kickoff in `observability/<runId>.jsonl`
+advice packet, the Epoch Reviewer's public projection as the kickoff renders it (an authoring review
+attached to a tool result is not counted as served here), diagnosis issues, memory notes, the
+`context` tool, and the solver traces and rehearsals it offers. Read the full Builder kickoff in `observability/<runId>.jsonl`
 (`prompt-ingested`, role `builder`), each epoch's `builder-path-record.jsonl` and
 `builder-execution*.json` custom calls, and `analysis/<runId>-{rebuild-advice,diagnoses,epoch-review}.json`.
 Read-back means a tool call that opened or queried the channel; prompt text in context is served,

@@ -57,50 +57,62 @@ export type ReadKind = "history" | "memory" | "context" | "traces";
 /** One channel a round can hand the next. */
 export interface Channel {
   name: string;
-  marker: string;
+  markers: readonly string[];
   read: ReadKind | null;
   alternative: string;
 }
 
 /**
- * The channels a round can hand the next. `marker` is a sentence the current source renders into
- * the kickoff (grep-confirmed at the owner named beside it); `read` names the tool evidence that
- * counts as opening the channel, or null when no tool re-serves it; `alternative` is the cheapest
- * route a served-but-unread channel could take instead, stated as a candidate for lane 17 to test.
+ * The channels a round can hand the next. `markers` are sentences the current source renders into
+ * the kickoff (grep-confirmed at the owner named beside it), and any one of them counts as served;
+ * `read` names the tool evidence that counts as opening the channel, or null when no tool re-serves
+ * it; `alternative` is the cheapest route a served-but-unread channel could take instead, stated as
+ * a candidate for lane 17 to test.
  */
 export const CHANNELS: readonly Channel[] = [
   // src/run/battery-sizing.ts
   {
     name: "round-facts",
-    marker: "Task count:",
+    markers: ["Task count:"],
     read: null,
     alternative: "re-serve through an existing harness_inspect mode",
   },
   // src/run/climb-readout.ts
   {
     name: "climb-readout",
-    marker: "Recorded batteries (controller-derived data",
+    markers: ["Recorded batteries (controller-derived data"],
     read: "history",
     alternative: "the context tool's history source exists; name it where the target is chosen",
   },
   // src/author/rebuild-advice.ts
   {
     name: "rebuild-advice",
-    marker: "Standing issues",
+    // One heading per section `renderRebuildAdvice` prints. A packet of only its findings has no
+    // fixed prefix, so it stays uncovered and reads as not served.
+    markers: [
+      "Standing issues",
+      "Unmeasured issues",
+      "Disputed issues",
+      "Settled Judge disagreements",
+      "Verified failures by declared check",
+      "Declared checks that blocked no shipping artifact",
+      "Declared checks no verified case posed",
+      "Judge review: ",
+    ],
     read: null,
     alternative: "return the current packet from harness_inspect feedback",
   },
   // src/author/rebuild-advice.ts
   {
     name: "diagnosis",
-    marker: "First failure boundary ",
+    markers: ["First failure boundary "],
     read: null,
     alternative: "ride the advice packet's inspect route",
   },
   // src/review/epoch-review-public.ts
   {
     name: "epoch-review",
-    marker: "Epoch review (",
+    markers: ["Epoch review ("],
     read: null,
     alternative: "return the latest public projection from harness_inspect feedback",
   },
@@ -108,7 +120,7 @@ export const CHANNELS: readonly Channel[] = [
   // round opening in a workspace the conversation has not worked in, resumed sessions included
   {
     name: "memory",
-    marker: "Historical notes, model-authored",
+    markers: ["Historical notes, model-authored"],
     read: "memory",
     alternative:
       "restate on a round that stays in the same workspace, the one round that receives no memory block",
@@ -116,14 +128,14 @@ export const CHANNELS: readonly Channel[] = [
   // src/builder/user-context.ts
   {
     name: "context",
-    marker: "User context:",
+    markers: ["User context:"],
     read: "context",
     alternative: "none when no files were supplied",
   },
   // src/run/climb-readout.ts
   {
     name: "traces",
-    marker: "history source holds every row",
+    markers: ["history source holds every row"],
     read: "traces",
     alternative: "name the context tool's traces source where the next limit is set",
   },
@@ -188,7 +200,6 @@ interface ExecutionRecord {
   writtenAt?: string;
   durationMs?: number;
   customCalls?: CustomCallRow[];
-  authoringReviews?: JsonValue;
   submits?: SubmitRow[];
   toolCalls?: ToolCallCounts | null;
 }
@@ -201,7 +212,6 @@ interface Session {
   start: number;
   end: number;
   calls: Call[];
-  reviews: number;
   submits: Submit[];
   bash: number | null;
 }
@@ -531,7 +541,6 @@ function sessionsOf(epochDir: string): Session[] {
           start,
           end: Date.parse(writtenAt),
           calls: records(record.customCalls).map((row) => ({ ...row, at: at(row) })),
-          reviews: recordCount(record.authoringReviews),
           submits: records(record.submits).map((row) => ({
             ...row,
             at: isNumber(row.atMs) ? start + row.atMs : null,
@@ -669,8 +678,7 @@ function census(campaign: string, rounds: readonly Round[]): CensusRow[] {
   return rounds.map((round) => {
     const text = round.prompts.join("\n");
     const channels = CHANNELS.map((channel) => {
-      let served = text.includes(channel.marker);
-      if (channel.name === "epoch-review") served ||= round.sessions.some((s) => s.reviews > 0);
+      let served = channel.markers.some((marker) => text.includes(marker));
       if (channel.name === "traces") served ||= calls(round, TRIAL).length > 0;
       const read = readCount(round, channel.read);
       return {

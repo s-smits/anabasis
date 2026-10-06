@@ -253,6 +253,25 @@ describe("the domain workspace repository", () => {
     expect(read(long, "direct")).toBe(wrapped(owned(long)));
   });
 
+  it("counts a copy's links as the seed's when the seed spells them through a linked ancestor", () => {
+    // A run worktree reaches its campaigns through a link, so an absolute link made inside the tool
+    // tree there is spelled through it, while the tree is counted by its real path. The copy
+    // relinks it by the real path, so the two have to count it alike.
+    const real = realpathSync(tmp());
+    const linked = join(tmp(), "campaigns");
+    symlinkSync(real, linked);
+    const seed = join(linked, "workspace");
+    initWorkspace(seed);
+    seedWithUvVenv(seed, "/host");
+    symlinkSync(join(seed, ".toolchain/venv/bin/f2py"), join(seed, ".toolchain/venv/bin/f2py-alias"));
+    const dir = tmp();
+    initWorkspace(dir, seed);
+    expect(readlinkSync(join(dir, ".toolchain/venv/bin/f2py-alias"))).toBe("f2py");
+    expect(portableToolTreeDigest(join(dir, TOOLCHAIN))).toBe(
+      portableToolTreeDigest(join(real, "workspace", TOOLCHAIN)),
+    );
+  });
+
   it("records the seed copy once with its launcher counts, and the venv home only when it stays in the adopted tree", () => {
     const outsideHome = tmp();
     seedWithUvVenv(outsideHome, "/host/python");

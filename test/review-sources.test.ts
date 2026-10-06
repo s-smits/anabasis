@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import {
+  chmodSync,
   closeSync,
   mkdirSync,
   openSync,
@@ -38,6 +39,8 @@ import { TASKS_FILE } from "../src/meta/bundle-layout.ts";
 import type { RunObserver } from "../src/observe/run-observer.ts";
 import { readJsonFile } from "../src/meta/completed-json.ts";
 const EVALUATOR_TS = "evaluator.ts";
+const OFFLINE = "correctness-model/reference/offline";
+const OFFLINE_DUMP = `${OFFLINE}/data/dump.json`;
 /** A battery that verified nothing, as the runner records one. */
 const NO_FIRING = {
   firedByCheck: {},
@@ -111,7 +114,203 @@ const REVIEW = {
   source: "operator",
 } as const;
 
+/** The tree of a Builder that kept a search beside its reference, as the recorded Sonnet run did
+ *  (campaign recodes-escherichia-coli f29396f7: `reference/offline` grew to 4M+ characters and five
+ *  reviews stopped at the read budget): the core bundle, a reference reaching one module and its data,
+ *  a script a check runs as a tool, the search's notes and package file, and a dump of the search
+ *  larger than the whole read budget. */
+function searchTree() {
+  const root = coreTree();
+  const write = (path: string, text: string) => {
+    mkdirSync(dirname(join(root, path)), { recursive: true });
+    writeFileSync(join(root, path), text);
+  };
+  write(TASKS_FILE, JSON.stringify([{ taskId: "case-1", publicInput: { count: 1 } }]));
+  write(
+    "correctness-model/reference/index.ts",
+    'import { SOLUTIONS } from "./solutions.ts";\nexport const solve = () => SOLUTIONS;\n',
+  );
+  write(
+    "correctness-model/reference/solutions.ts",
+    'import answers from "./answers.json";\nexport const SOLUTIONS = answers;\n',
+  );
+  write("correctness-model/reference/answers.json", "[]");
+  write("correctness-model/trusssim.py", "print('simulate')\n");
+  write(`${OFFLINE}/README.md`, "notes\n");
+  write(`${OFFLINE}/package.json`, "{}");
+  write(OFFLINE_DUMP, "x".repeat(4_000_001));
+  return root;
+}
+
+/** Review a tree whose reader asks for the next page once per turn and then finishes, so the review
+ *  runs for as many turns as the host keeps resuming it. */
+async function reviewByNextPage(root: string) {
+  let turns = 0;
+  const result = await runEpochReview({
+    repoRoot: root,
+    slug: "bounds",
+    runId: "r1",
+    treeRoot: ".",
+    analysis: null,
+    priorAdvice: null,
+    publicRequest: null,
+    review: REVIEW,
+    readerTurn: (input) =>
+      runReaderTurn({
+        ...input,
+        openSession: async () => ({
+          backend: "codex",
+          abort() {},
+          configure() {},
+          sessionId: "pi-test",
+          async dispose() {},
+          async runTurn() {
+            turns++;
+            await call(input.tools.find((tool) => tool.name === "read_source")!, {});
+            return { status: "completed", finalText: "Done." };
+          },
+        }),
+      }),
+  });
+  return { result, turns };
+}
+
 describe("review coverage tied to recorded execution", () => {
+  test("a review reads what can change a verdict or the reference, and a search dump beside it is background", async () => {
+    const root = searchTree();
+    const { result, turns } = await reviewByNextPage(root);
+    // Held to the bundle files, the script a check runs as a tool, the reference's module and the
+    // data it imports, the review needs a page each, where the dump held it open for 250 pages and
+    // the whole read budget. The package file inside the search changes nothing about that.
+    expect(result.status).toBe("completed");
+    expect(result.coverage.complete).toBe(true);
+    expect(result.coverage.chars).toBeLessThan(1_000);
+    expect(result.admission?.continuations).toBe(turns - 1);
+    expect(turns).toBeLessThanOrEqual(15);
+    expect(result.coverage.background).toEqual([
+      { path: `${OFFLINE}/README.md`, size: 6, read: false },
+      { path: OFFLINE_DUMP, size: 4_000_001, read: false },
+      { path: `${OFFLINE}/package.json`, size: 2, read: false },
+    ]);
+    for (const held of [
+      "correctness-model/trusssim.py",
+      "correctness-model/reference/solutions.ts",
+      "correctness-model/reference/answers.json",
+    ]) {
+      expect(result.reads).toContain(held);
+    }
+    expect(result.coverage.missing).toEqual([]);
+  });
+
+  test("a background file is listed with its size, and readable by name without entering the scan", async () => {
+    const root = searchTree();
+    const inventory = reviewInventory(root);
+    expect(inventory.files).not.toContain(OFFLINE_DUMP);
+    expect(inventory.background.map(({ path }) => path)).toContain(OFFLINE_DUMP);
+    const state = reviewState();
+    const reader = readSourceTool(
+      root,
+      new Set(inventory.files),
+      state,
+      {},
+      namedTexts(new Map(), null, inventory.background),
+    );
+    // The automatic scan finishes the held files and never reaches the background.
+    for (let i = 0; i < inventory.files.length; i++) await call(reader, {});
+    expect(await call(reader, {})).toContain("No unread source");
+    expect(state.reads).not.toContain(OFFLINE_DUMP);
+    // Naming it still delivers it, and the review reports what of the background it left unread.
+    expect(await call(reader, { path: OFFLINE_DUMP })).toStartWith("x".repeat(16_000));
+    expect(state.reads).toContain(OFFLINE_DUMP);
+    const verifier = { identity: "none", tools: {}, unavailable: null };
+    const coverage = reviewCoverage(inventory, verifier, state);
+    expect(coverage.complete).toBe(true);
+    expect(coverage.background.find(({ path }) => path === OFFLINE_DUMP)).toEqual({
+      path: OFFLINE_DUMP,
+      size: 4_000_001,
+      read: false,
+    });
+    // A name outside both lists is still refused.
+    expect(await call(reader, { path: "correctness-model/missing.json" })).toContain("not in the inventory");
+  });
+
+  test("a bundle file that cannot be read leaves what it imports unknown, and the review incomplete", async () => {
+    if (process.getuid?.() === 0) return;
+    const root = searchTree();
+    chmodSync(join(root, "correctness-model/evaluator.ts"), 0);
+    const inventory = reviewInventory(root);
+    expect(inventory.missing).toEqual(["what the bundle files import at run time"]);
+    const coverage = reviewCoverage(
+      inventory,
+      { identity: "none", tools: {}, unavailable: null },
+      reviewState(),
+    );
+    expect(coverage.complete).toBe(false);
+  });
+
+  test("an oversized held file is read after the others, so it cannot crowd them out of the budget", async () => {
+    // A 5.47 MB `tasks.json` held an Astra review open for 148 continuations (firmware-17). It is a
+    // core file, so naming it held changes nothing; reading it last leaves the rest of the contract
+    // read when the budget runs out inside it.
+    const root = searchTree();
+    writeFileSync(
+      join(root, TASKS_FILE),
+      JSON.stringify([{ taskId: "case-1", publicInput: { pad: "x".repeat(4_100_000) } }]),
+    );
+    const { result } = await reviewByNextPage(root);
+    expect(result.status).toBe("incomplete");
+    expect(result.coverage.chars).toBe(4_000_000);
+    expect(result.coverage.missing).toEqual([TASKS_FILE]);
+    expect(result.reads).toContain("correctness-model/evaluator.ts");
+    expect(result.reads).toContain("correctness-model/reference/solutions.ts");
+    // Two held files that cannot both fit read smaller first: the budget runs out in the larger.
+    const two = searchTree();
+    const bulk = (taskId: string, chars: number) =>
+      JSON.stringify([{ taskId, publicInput: { pad: "x".repeat(chars) } }]);
+    writeFileSync(join(two, TASKS_FILE), bulk("case-1", 2_100_000));
+    writeFileSync(join(two, "correctness-model/controls.json"), bulk("ctl", 2_200_000));
+    const both = (await reviewByNextPage(two)).result;
+    expect(both.status).toBe("incomplete");
+    expect(both.coverage.missing).toEqual(["correctness-model/controls.json"]);
+    expect(both.reads).toContain("correctness-model/reference/answers.json");
+  });
+
+  test("a long pretty-printed JSON file is delivered without its whitespace, so it fits the budget it needs", async () => {
+    const root = searchTree();
+    const rows = Array.from({ length: 32_000 }, (_, i) => ({
+      taskId: `case-${i}`,
+      publicInput: { a: i, b: i, c: i, d: i },
+    }));
+    const pretty = JSON.stringify(rows, null, 2);
+    expect(pretty.length).toBeGreaterThan(4_000_000);
+    writeFileSync(join(root, TASKS_FILE), pretty);
+    const { result } = await reviewByNextPage(root);
+    expect(result.status).toBe("completed");
+    expect(result.coverage.chars).toBeGreaterThan(JSON.stringify(rows).length);
+    expect(result.coverage.chars).toBeLessThan(4_000_000);
+  });
+
+  test("compacting keeps every token as written, and leaves a file that does not parse as it was", async () => {
+    const root = scratchDir("ana-read-compact-");
+    const pad = "    0,\n".repeat(100_000);
+    const text = `{\n  "k e y": "v  a\\"l",\n  "n": 1.50,\n  "e": 1e3,\n  "pad": [\n${pad}    1\n  ]\n}\n`;
+    writeFileSync(join(root, "whole.json"), text);
+    writeFileSync(join(root, "broken.json"), `${text}}`);
+    const named = namedTexts(new Map(), null, [
+      { path: "whole.json", size: text.length },
+      { path: "broken.json", size: text.length + 1 },
+    ]);
+    const reader = readSourceTool(root, new Set(), reviewState(), {}, named);
+    expect(await call(reader, { path: "whole.json" })).toStartWith(
+      String.raw`{"k e y":"v  a\"l","n":1.50,"e":1e3,"pad":[0,0,`,
+    );
+    expect(await call(reader, { path: "broken.json" })).toStartWith(
+      String.raw`{
+  "k e y": "v  a\"l",
+  "n": 1.50`,
+    );
+  });
+
   test("an early finish resumes the same session; no progress or a failed turn ends it", async () => {
     for (const mode of ["complete", "stalled", "failed"] as const) {
       const root = coreTree();
@@ -568,20 +767,42 @@ describe("review coverage tied to recorded execution", () => {
     expect([result.status, result.reason]).toEqual(["failed", "source tree gone is not on disk"]);
   });
 
-  test("lists required files before applying the inventory cap and marks truncated coverage incomplete", async () => {
-    const root = coreTree();
-    for (let i = 0; i < 400; i++) writeFileSync(join(root, "agent", `${i}.ts`), "x");
-    const inventory = reviewInventory(root);
-    expect(inventory.files).toContain("correctness-model/evaluator.ts");
-    expect(inventory.files).toHaveLength(400);
-    expect(inventory.truncated).toBe(true);
-    expect(inventory.missing).toEqual([]);
-    const state = reviewState();
-    const reader = readSourceTool(root, new Set(inventory.files), state, {}, new Map());
-    for (const path of inventory.files) await call(reader, { path });
-    expect(
-      reviewCoverage(inventory, { identity: "none", tools: {}, unavailable: null }, state).complete,
-    ).toBe(false);
+  test("the held set is listed before any cap applies, and only a cap on it marks coverage truncated", async () => {
+    const verifier = { identity: "none", tools: {}, unavailable: null };
+    const readAll = async (root: string, inventory: ReturnType<typeof reviewInventory>) => {
+      const state = reviewState();
+      const reader = readSourceTool(root, new Set(inventory.files), state, {}, new Map());
+      for (const path of inventory.files) await call(reader, { path });
+      return reviewCoverage(inventory, verifier, state);
+    };
+    // A long background list is cut at its cap and stays nameable up to it; the held set is whole,
+    // though every file of that list sorts before the reference's module and the script a check runs.
+    const wide = searchTree();
+    for (let i = 0; i < 401; i++) writeFileSync(join(wide, OFFLINE, "data", `f${i}.json`), "[]");
+    const background = reviewInventory(wide);
+    expect(background.files).toEqual(
+      expect.arrayContaining([
+        "correctness-model/evaluator.ts",
+        "correctness-model/reference/solutions.ts",
+        "correctness-model/reference/answers.json",
+        "correctness-model/trusssim.py",
+      ]),
+    );
+    expect(background.background).toHaveLength(400);
+    expect([background.truncated, background.backgroundTruncated]).toEqual([false, true]);
+    const listed = await readAll(wide, background);
+    expect([listed.complete, listed.truncated, listed.backgroundTruncated]).toEqual([true, false, true]);
+    // An evaluator that reaches 400 modules overruns the cap on the held set itself, which is
+    // incomplete coverage however much of it is read.
+    const deep = coreTree();
+    const imports = Array.from({ length: 400 }, (_, i) => `import "./h${i}.ts";`);
+    writeFileSync(join(deep, "correctness-model/evaluator.ts"), imports.join("\n"));
+    for (let i = 0; i < 400; i++) writeFileSync(join(deep, "correctness-model", `h${i}.ts`), "export {};");
+    const held = reviewInventory(deep);
+    expect(held.files).toHaveLength(400);
+    expect([held.truncated, held.backgroundTruncated]).toEqual([true, false]);
+    expect(held.missing).toEqual([]);
+    expect((await readAll(deep, held)).complete).toBe(false);
   });
 
   test("requires every source page and every required file for complete coverage", async () => {
@@ -850,7 +1071,7 @@ describe("what the reviewer may open", () => {
     expect(await call(reader, {})).toContain("a.json (offset 0)");
   });
 
-  test("the inventory carries the harness and skips installed and generated trees", () => {
+  test("the inventory holds the agent's programs, lists the rest as background and skips installed and generated trees", () => {
     const root = scratchDir("ana-inventory-");
     mkdirSync(join(root, "agent"), { recursive: true });
     mkdirSync(join(root, "node_modules", "pkg"), { recursive: true });
@@ -859,7 +1080,9 @@ describe("what the reviewer may open", () => {
     writeFileSync(join(root, "agent", "solve.ts"), "export {};");
     writeFileSync(join(root, "node_modules", "pkg", "index.js"), "module.exports={};");
     writeFileSync(join(root, "runs", "r1", "case.json"), "{}");
-    expect(reviewInventory(root).files.sort()).toEqual(["agent/solve.ts", "tasks.json"]);
+    const inventory = reviewInventory(root);
+    expect(inventory.files).toEqual(["agent/solve.ts"]);
+    expect(inventory.background).toEqual([{ path: "tasks.json", size: 2 }]);
   });
 
   test("the inventory skips a dangling link and every link leaving the measured tree", () => {
@@ -870,7 +1093,7 @@ describe("what the reviewer may open", () => {
     symlinkSync(join(root, "gone.ts"), join(root, "broken.ts"));
     symlinkSync(join(outside, "secret.txt"), join(root, "linked.txt"));
     symlinkSync(outside, join(root, "linked-dir"));
-    expect(reviewInventory(root).files).toEqual([EVALUATOR_TS]);
+    expect(reviewInventory(root).background).toEqual([{ path: EVALUATOR_TS, size: 17 }]);
   });
 
   test("refuses a listed file replaced by an outside link without consuming the text budget", async () => {
@@ -878,9 +1101,8 @@ describe("what the reviewer may open", () => {
     const outside = scratchDir("ana-private-");
     writeFileSync(join(root, EVALUATOR_TS), "public evaluation");
     writeFileSync(join(outside, "secret.txt"), "private controller bytes");
-    const inventory = new Set(reviewInventory(root).files);
     const state = reviewState();
-    const tool = readSourceTool(root, inventory, state, {}, new Map());
+    const tool = readSourceTool(root, new Set([EVALUATOR_TS]), state, {}, new Map());
     expect(await call(tool, { path: EVALUATOR_TS })).toBe("public evaluation");
     unlinkSync(join(root, EVALUATOR_TS));
     symlinkSync(join(outside, "secret.txt"), join(root, EVALUATOR_TS));

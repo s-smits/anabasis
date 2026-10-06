@@ -39,7 +39,12 @@ import {
   probeShows,
   probeCitationRefusal,
 } from "./review-probe.ts";
-import { type ReviewVerifierEvidence, type SourceReadState, deliveredSource } from "./review-sources.ts";
+import {
+  type BackgroundFile,
+  type ReviewVerifierEvidence,
+  type SourceReadState,
+  deliveredSource,
+} from "./review-sources.ts";
 import { contractDefect } from "../analyse/finding-owner.ts";
 import type { ContestedKind } from "../analyse/judge-contested.ts";
 import { BRIEF_FILE, TASKS_FILE } from "../meta/bundle-layout.ts";
@@ -88,9 +93,11 @@ export type EpochReviewEvidence = {
   /** The listed vetoes and disputed fails no finding settled. `status` says how far the reading
    *  got; this says what of the settlement work it left open, which a completed review can too. */
   unsettled: string[];
-  /** What the host returned against the inventory, in files and characters. This counts the host
+  /** What the host returned against the held files, in files and characters. This counts the host
    *  side alone, so a complete coverage row establishes that the source was offered, not that the
-   *  review saw it. */
+   *  review saw it. `background` is every other file of the tree, with its size in bytes and whether
+   *  the review read it through: the review is not held to it, and a finding that rests on one
+   *  cites it. */
   coverage: {
     files: number;
     opened: number;
@@ -98,6 +105,8 @@ export type EpochReviewEvidence = {
     complete?: boolean;
     truncated?: boolean;
     missing?: string[];
+    background?: Array<BackgroundFile & { read: boolean }>;
+    backgroundTruncated?: boolean;
   };
   /** Absent on a review that stopped before reading its source. Host-bound tool provenance is
    *  private, like everything else the verifier produced, so it never reaches authoring. */

@@ -1287,6 +1287,17 @@ the battery was paid for.
    to find something: a review at any placement may end with nothing demonstrated, and say plainly
    that the tasks were easy.
 
+   The review is held to what can change a verdict or the reference's output, and `complete` counts that
+   alone: the bundle files, every program under `correctness-model/` and `agent/` (a script a check runs as a
+   tool is named by a string, which no import walk sees) and what those import (`runtimeClosure`, the walk
+   `scoringClosureHash` uses), read smallest first so one oversized file cannot spend the 4,000,000-character
+   read budget before the rest of the contract is delivered. Every other file of the tree is background: listed
+   in the orientation and in `coverage.background` with its size and whether it was read through, returned by
+   `read_source` by name, and cited by a finding that rests on it. A JSON file over 500,000 characters is
+   delivered without its insignificant whitespace. Until 2026-10-07 the review walked every file of the
+   snapshot, so a Builder that kept a search of over 4,000,000 characters under `reference/offline` left five
+   reviews of the d5cfcb1 run at the budget as `incomplete`, 49 to 185 continuations each, and they ran again.
+
    The closing message is recorded as its `report`; its tools refuse only what a decision or rule 4 reads,
    so a long claim or a fifth citation is recorded rather than bounced.
 

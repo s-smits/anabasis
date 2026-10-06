@@ -54,6 +54,14 @@ describe("the complete repair agenda", () => {
     expect(authorSessionOwner({ ...base, defect: true, owner: TASKS_FILE })).toBe(TASKS_FILE);
     const subject = { taskId: "t1", family: "beams" };
     expect(authorSessionOwner({ ...base, defect: true, owner: TASKS_FILE, subject })).toBeNull();
+    // A demand gap is weak task demand by its own definition, so a reviewer that named no file
+    // still routes it to the task set; a file it did name stands.
+    const gap = { ...base, defect: false as const, demandGap: "sibling-values-only" as const };
+    expect(authorSessionOwner({ ...gap, owner: null })).toBe(TASKS_FILE);
+    expect(authorSessionOwner({ ...gap, owner: "correctness-model/brief.json" })).toBe(
+      "correctness-model/brief.json",
+    );
+    expect(authorSessionOwner({ ...gap, owner: null, subject })).toBeNull();
   });
 
   it("preserves admitted severity and public findings while private-only changes leave author text identical", () => {

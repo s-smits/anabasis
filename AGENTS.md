@@ -1666,7 +1666,8 @@ the battery was paid for.
     **Only submit waits** for a running review, for at most `READER_DEADLINE_MS`, 1 h
     (`src/review/review-reader.ts`). An unread *blocking* finding comes back in place of the verdict and
     the call counts as no submit (`review-unread`), so the same bytes sent next are a first submission.
-    Advisory-only reviews hold nothing, because an advisory finding is advice and rides the next result; up
+    Advisory-only reviews hold nothing, because an advisory finding is advice: it rides the next result
+    when a probe or a demand gap backs it, and otherwise stays in the review's evidence; up
     to 2026-09-27, 34 holds in 19 chains cost ~79 min, two campaigns held for all-advisory reviews. No
     probe budget or no-submit strike bounds reconnaissance before the first authoring change.
 

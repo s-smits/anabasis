@@ -83,7 +83,7 @@ import {
 
 export type GateRentReport = ReturnType<typeof buildGateRent>;
 
-const GATE_RENT_SCHEMA = "wri-gate-rent/v2";
+const GATE_RENT_SCHEMA = "wri-gate-rent/v3";
 /** An episode that spans this many refused receipts reads as a stall even if it later cleared. */
 const STALL_RECEIPTS = 3;
 /** Two holds in a row is a chain: the Builder resubmitted into a review that was still running. */
@@ -158,6 +158,8 @@ export interface GateSession {
   where: string;
   receipts: number;
   refused: number;
+  /** Submits the tool turned away before its gate ran, by the reason each receipt recorded. */
+  blocked: Record<string, number>;
   accepted: boolean;
 }
 
@@ -456,6 +458,18 @@ function holdsOf(receipts: readonly Receipt[], where: string): HoldChain[] {
   return chains;
 }
 
+/** The submits turned away before the gate ran, tallied by recorded reason. None of them is a
+ *  refusal, so `refused` never sees them, and `holdsOf` ledgers only the reasons the ledger names. */
+function blockedSubmits(receipts: readonly Receipt[]) {
+  const byReason = new Map<string, number>();
+  for (const receipt of receipts) {
+    if (receipt.tool !== "submit" || receipt.outcome !== "blocked") continue;
+    const reason = receipt.reason ?? "unrecorded";
+    byReason.set(reason, (byReason.get(reason) ?? 0) + 1);
+  }
+  return Object.fromEntries(byReason);
+}
+
 /** Every session of every epoch, with its receipts, episodes and holds. */
 function sessionsOf(campaign: string): SessionsRead {
   const sessions: SessionRead[] = [];
@@ -474,6 +488,7 @@ function sessionsOf(campaign: string): SessionsRead {
         where,
         receipts: receipts.length,
         refused: receipts.filter((receipt) => REFUSED.has(receipt.outcome)).length,
+        blocked: blockedSubmits(receipts),
         accepted,
         episodes: episodesOf(receipts, where, accepted),
         holds: holdsOf(receipts, where),
@@ -884,6 +899,22 @@ function correctionLine(row: CorrectionRow): string {
   return `${head}; ${movedLine(row.moved)}${drift}; regrade: ${row.regrade}`;
 }
 
+/** The submits turned away before the gate ran, summed over the sessions and named by reason. */
+function blockedLine(sessions: readonly GateSession[]): string {
+  const byReason = new Map<string, number>();
+  for (const { blocked } of sessions) {
+    for (const [reason, n] of Object.entries(blocked)) {
+      byReason.set(reason, (byReason.get(reason) ?? 0) + n);
+    }
+  }
+  const total = [...byReason.values()].reduce((sum, n) => sum + n, 0);
+  const reasons = [...byReason]
+    .sort(([a], [b]) => compareCodeUnits(a, b))
+    .map(([reason, n]) => `${reason} ${n}`)
+    .join(", ");
+  return `${total} blocked before the gate${total === 0 ? "" : ` (${reasons})`}`;
+}
+
 export function renderGateRent(report: GateRentReport): string {
   if (report.state !== "recorded") return `${report.campaign}: ${report.reason}`;
   const receipts = report.sessions.reduce((sum, session) => sum + session.receipts, 0);
@@ -899,7 +930,7 @@ export function renderGateRent(report: GateRentReport): string {
     component === null ? "" : ` — ${component.code} ${component.id}, P(right) ${component.pRight}`;
   const sessions = `${count(report.sessions.length, "Builder session")}, ${count(receipts, "gate receipt")}`;
   const lines = [
-    `${sessions}, ${refused} refused; priors from the gate audit of ${report.ledgerDate}, bar P(right) ≥ ${report.refusalBar}`,
+    `${sessions}, ${refused} refused, ${blockedLine(report.sessions)}; priors from the gate audit of ${report.ledgerDate}, bar P(right) ≥ ${report.refusalBar}`,
     ...(report.components.length === 0
       ? ["  no gate component fired"]
       : report.components.map(componentLine)),

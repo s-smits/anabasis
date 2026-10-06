@@ -1629,10 +1629,11 @@ the battery was paid for.
     command return, so the battery would grade the wall's submit of a first draft. The floor
     (`harnessConfigIssue`) refuses admitting a candidate or starting a solve, but never reading a recorded
     bundle, so a replay still grades one that declared less. The Built prompt (`builtSystemPrompt`,
-    `src/solve/built-starter.ts`) names its closed roster, the solve wall and what the wall submits, and
-    leaves the method to the solver. Until 2026-09-29 it also asked the solver to grade every candidate,
-    reach a tight limit by a bounded search and widen the worst margin, which turned every task into
-    propose, grade and adjust, so a battery measured that loop rather than the solver's own way of solving.
+    `src/solve/built-starter.ts`) names its closed roster, the solve wall, what the wall submits and that no
+    other ending submits, and leaves the method to the solver. Until 2026-09-29 it also asked the solver to
+    grade every candidate, reach a tight limit by a bounded search and widen the worst margin, which turned
+    every task into propose, grade and adjust, so a battery measured that loop rather than the solver's own
+    way of solving.
 
     Every fresh `tools-spec.json` gives the solver a shell through `presets`: `"files"` for a file-shaped
     answer, whose draft files become the answer and which already carries the shell, or `"shell"` beside

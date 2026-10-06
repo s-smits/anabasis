@@ -36,8 +36,11 @@ import { basename, dirname, extname, join, relative } from "../meta/path.ts";
 import { containsPath } from "../meta/path-containment.ts";
 import { sha256 } from "../meta/digest.ts";
 import { canonicalJson } from "../meta/stable-json.ts";
+import { capturedJsonParse } from "../meta/json-runtime.ts";
+import { type JsonObject, asRecord, isString } from "../meta/json-shape.ts";
 import { isBuiltin } from "../meta/modules.ts";
 import { BRIEF_FILE, EVALUATOR_FILE } from "../meta/bundle-layout.ts";
+import type { ArtifactField, Brief, BriefTruthCheck, CheckExecution } from "../correctness-bundle/brief.ts";
 
 /** What a package's program modules reach at run time from their entries. */
 interface RuntimeClosure {
@@ -56,6 +59,11 @@ interface RuntimeImport {
   resolved: string | null;
   opaque: boolean;
 }
+
+/** Whether a verdict depends on a field of the brief or of one of its rows. A field added to
+ *  any of these types fails to compile until it is classified here, so the closure cannot go on
+ *  missing a field the host starts to act on, nor start counting one that only carries text. */
+type FieldRole = "verdict" | "other";
 
 /** Controller packages the evaluator may import. The evaluator bundle resolves them from the
  *  controller whatever the candidate's configuration says, so their bytes are never the
@@ -78,6 +86,54 @@ const LOADERS = new Map<string, "ts" | "tsx" | "js" | "jsx">([
   [".cjs", "js"],
   [".jsx", "jsx"],
 ]);
+
+// Each brief field and row key, as the host reads it: one read by a check, a submission or the
+// verifier's runner decides a verdict, and the rest only carry text or constants.
+const BRIEF_ROLES = {
+  correctnessContract: "verdict",
+  // Text the Judge card and the coverage map carry, and the tools the Built shell withholds from the
+  // solver: none of them grades an artifact.
+  slug: "other",
+  domain: "other",
+  decisions: "other",
+  gates: "other",
+  checkOnlyTools: "other",
+  truthChecks: "verdict",
+  // What the solver reads (`briefPublicResources`) or what a control or probe is validated against,
+  // never what a check decides on.
+  ruleDecisions: "other",
+  joins: "other",
+  designRuleConstants: "other",
+  designRuleSets: "other",
+  artifactSchema: "verdict",
+} satisfies Record<keyof Brief, FieldRole>;
+
+const CHECK_ROLES = {
+  id: "verdict",
+  execution: "verdict",
+  assertion: "other",
+  citedDecisionIds: "other",
+  joinIds: "other",
+  numericBoundaries: "other",
+} satisfies Record<keyof BriefTruthCheck, FieldRole>;
+
+const EXECUTION_ROLES = {
+  families: "verdict",
+  artifactPaths: "verdict",
+  publicInputPaths: "verdict",
+  hidden: "verdict",
+  requiredToolIds: "verdict",
+  evidence: "verdict",
+} satisfies Record<keyof CheckExecution, FieldRole>;
+
+// A field's `shape` is the sentence the solver reads; the submission is read against the rest.
+const ARTIFACT_FIELD_ROLES = {
+  name: "verdict",
+  allowedValues: "verdict",
+  fileMap: "verdict",
+  openMapPaths: "verdict",
+  "shape": "other",
+} satisfies Record<keyof ArtifactField, FieldRole>;
 
 /** The files one program module imports at run time, resolved, with null for each import the walk
  *  does not follow: one that leaves the package, names any other package or does not resolve, all of
@@ -127,20 +183,76 @@ export function runtimeClosure(root: string, entries: readonly string[]): Runtim
   return { files: [...files], complete, opaque };
 }
 
+/** The digest of every file the evaluator reaches, or null when that closure cannot be read: a
+ *  package carrying build configuration, or an import the walk could not follow. */
+function evaluatorDigests(root: string): Record<string, string> | null {
+  const files = readdirSync(root, { recursive: true, encoding: "utf8" });
+  if (files.some((path) => BUILD_CONFIGURATION.has(basename(path)))) return null;
+  const closure = runtimeClosure(root, [basename(EVALUATOR_FILE)]);
+  if (!closure.complete) return null;
+  return Object.fromEntries(closure.files.map((name) => [name, sha256(readFileSync(join(root, name)))]));
+}
+
 /** Null when the closure cannot be read; callers then compare the whole package's bytes. */
 export function scoringClosureHash(correctnessModelDir: string): string | null {
   try {
     const root = realpathSync(correctnessModelDir);
-    const files = readdirSync(root, { recursive: true, encoding: "utf8" });
-    if (files.some((path) => BUILD_CONFIGURATION.has(basename(path)))) return null;
-    const closure = runtimeClosure(root, [basename(EVALUATOR_FILE)]);
-    if (!closure.complete) return null;
-    const digests: Record<string, string> = {};
+    const evaluator = evaluatorDigests(root);
+    if (evaluator === null) return null;
     const briefName = basename(BRIEF_FILE);
     const brief = join(root, briefName);
-    if (existsSync(brief)) digests[briefName] = sha256(readFileSync(brief));
-    for (const name of closure.files) digests[name] = sha256(readFileSync(join(root, name)));
+    const digests = existsSync(brief)
+      ? { [briefName]: sha256(readFileSync(brief)), ...evaluator }
+      : evaluator;
     return sha256(canonicalJson(digests));
+  } catch {
+    return null;
+  }
+}
+
+/** The fields of one row that `roles` marks as deciding a verdict, with any key no role names left
+ *  out as the host leaves it out. Null when the value is no object. */
+function verdictFields(value: unknown, roles: Record<string, FieldRole>): JsonObject | null {
+  const row = asRecord(value);
+  return row === null
+    ? null
+    : Object.fromEntries(Object.entries(row).filter(([key]) => roles[key] === "verdict"));
+}
+
+/** What the brief decides in a verdict: which checks run, by id, under which execution
+ *  declaration, and the artifact schema a submission is read against. Null when the brief does not
+ *  declare them, so no identity is named over a brief the host would not run. */
+function briefMechanics(root: string): JsonObject | null {
+  const brief = verdictFields(
+    capturedJsonParse(readFileSync(join(root, basename(BRIEF_FILE)), "utf8")),
+    BRIEF_ROLES,
+  );
+  const { truthChecks, artifactSchema } = brief ?? {};
+  if (brief === null || !Array.isArray(truthChecks) || !Array.isArray(artifactSchema)) return null;
+  const checks = truthChecks.map((check) => {
+    const row = verdictFields(check, CHECK_ROLES);
+    const execution = verdictFields(row?.execution, EXECUTION_ROLES);
+    return row !== null && isString(row.id) && execution !== null ? { ...row, execution } : null;
+  });
+  const fields = artifactSchema.map((field) => verdictFields(field, ARTIFACT_FIELD_ROLES));
+  if (checks.includes(null) || fields.includes(null)) return null;
+  return { ...brief, truthChecks: checks, artifactSchema: fields };
+}
+
+/** The identity of what executes to a verdict: the evaluator closure with the brief's check ids,
+ *  execution declarations and the artifact schema fields a submission is read against, and none of
+ *  its text. Equal hashes mean an artifact replayed against the checks gets the same verdict,
+ *  however the public rules were reworded or their numbers restated between: an assertion, a rule
+ *  decision, a constant, a decision, a gate and a join are read by people and models and run
+ *  nothing. `scoringClosureHash` stays the identity the task-probe freeze holds fixed, because there
+ *  a changed public rule is exactly the change to catch; this one answers only whether a recheck's
+ *  checks are the checks that observed the issue. Null when either half cannot be read. */
+export function verdictClosureHash(correctnessModelDir: string): string | null {
+  try {
+    const root = realpathSync(correctnessModelDir);
+    const evaluator = evaluatorDigests(root);
+    const brief = briefMechanics(root);
+    return evaluator === null || brief === null ? null : sha256(canonicalJson({ evaluator, brief }));
   } catch {
     return null;
   }

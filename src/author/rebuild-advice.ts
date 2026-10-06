@@ -12,13 +12,16 @@
  * An issue is recorded facts and no lifecycle. `firstSeenRunId` and `lastSeenRunId` say where it
  * was observed, `absentBatteries` counts the later batteries that verified its whole family on a
  * comparable condition without observing it, `unmeasured` names what moved when the latest such
- * battery was not comparable, `returned` says it was observed again after an absence, and `retired`
- * says the family left the task set. Nothing turns them into "fixed" or "regressed": identity is
+ * battery was not comparable, `rulesChangedRechecks` counts the rechecks that ran under changed public
+ * rules, `returned` says it was observed again after an absence, and `retired` says the family
+ * left the task set. Nothing turns them into "fixed" or "regressed": identity is
  * `kind + family + detail`, which names where a failure showed and not what caused it, so an
  * absence is a failure not seen again and never a repair. `issueFacts` states them as one phrase.
- * Comparable means the family's tasks, hidden expectations included, the scoring program, the tools
- * its checks ran and the Built condition all match the battery that last observed the issue
- * (`issue-condition.ts`).
+ * Comparable means the family's tasks, hidden expectations included, the checks (the verdict
+ * closure, not the brief's prose), the tools they ran and the Built condition all match the battery
+ * that last observed the issue (`issue-condition.ts`). A recheck whose public rules changed, in words or
+ * in numbers, is credited and named as such, because it answers whether the repair held and not
+ * whether the issue persists.
  * Identity deliberately excludes the harness, which is what lets one issue be followed across a
  * rebuild.
  *
@@ -59,9 +62,10 @@ import {
   type ConditionGap,
   type IssueCondition,
   conditionGaps,
+  publicRulesMoved,
 } from "./issue-condition.ts";
 
-export const REBUILD_ADVICE_SCHEMA = "rebuild-advice/v11";
+export const REBUILD_ADVICE_SCHEMA = "rebuild-advice/v12";
 const REBUILD_ADVICE_LATEST = "rebuild-advice-latest.json";
 
 /** What a battery can say about a family without naming a task. */
@@ -129,6 +133,10 @@ export type AdviceIssue = {
    *  every case of the family was truth-verified and the issue was absent. A partial recheck counts
    *  nothing, since the case left without a verdict may be the one that failed. */
   absentBatteries: number;
+  /** Of `absentBatteries`, the rechecks that ran under public rules other than the observing
+   *  battery's. The checks were the same, so the absence says whether the repair held under the new
+   *  rules and not whether the issue persists under the old. */
+  rulesChangedRechecks: number;
   /** Some observation after the first followed a complete recheck that did not observe it. */
   returned: boolean;
   /** The family left the task set, so this battery could not observe the issue. That is a separate
@@ -140,7 +148,8 @@ export type AdviceIssue = {
   observedUnder: IssueCondition;
   /** What moved when the latest battery that ran the family without the issue was not comparable;
    *  empty otherwise. Non-empty, the absence is unmeasured rather than a recheck: identical
-   *  inputs under a weaker evaluator, or other inputs altogether, make an issue vanish unrepaired. */
+   *  inputs under a weaker evaluator, or other inputs altogether, make an issue vanish unrepaired.
+   *  Changed public rules over unchanged checks are not a gap (see `rulesChangedRechecks`). */
   unmeasured: ConditionGap[];
   /** The diagnosis reader's reading of the battery that last observed the issue; null when none was
    *  read or the reading failed. It stays with that observation, so a partial recheck carries it and
@@ -193,9 +202,12 @@ export type RebuildAdvicePacket = {
   /** The Built model pin the battery was measured under, which is the pin its climb readout is read
    *  under when a later reader has only this packet. */
   backendPin: string;
-  /** The scoring program, the tools its checks ran and the measured condition the battery ran
-   *  under; with each family's `taskInputs`, the condition its issues were observed under. */
+  /** The scoring program, the executable identity of its checks and the public rules beside it,
+   *  the tools those checks ran and the measured condition the battery ran under; with each family's
+   *  `taskInputs`, the condition its issues were observed under. */
   scoringHash: string;
+  verdictClosureHash: string | null;
+  publicationHash: string | null;
   checkTools: string | null;
   measuredCondition: string;
   /** The battery, one row per family. The totals are read off these rows rather than stored beside
@@ -219,7 +231,7 @@ type Observed = Pick<AdviceIssue, "kind" | "family" | "detail" | "count" | "deno
  *  the Built condition every one of them ran under. */
 type MeasuredBattery = { families: readonly AdviceFamilyRow[] } & Pick<
   IssueCondition,
-  "scoringHash" | "checkTools" | "measuredCondition"
+  "scoringHash" | "verdictClosureHash" | "publicationHash" | "checkTools" | "measuredCondition"
 >;
 
 /** Standing issues the render shows, and the findings and claim length beside them. Unbounded, one
@@ -238,6 +250,9 @@ const GAP_WORDS: Record<ConditionGap, string> = {
   "built-condition": "Built model or resources",
 };
 
+/** What a recheck that ran under the observing battery's checks and other public rules is called. */
+const RULES_CHANGED_WORDS = "rechecked under unchanged checks, public rules changed";
+
 /** No complete recheck since its last observation, comparable or not, and a family still in the task
  *  set: an issue this battery observed, or one it carried because it could not recheck it. */
 const unrechecked = (issue: AdviceIssue) =>
@@ -252,11 +267,13 @@ const gapWords = (issue: AdviceIssue) => issue.unmeasured.map((gap) => GAP_WORDS
 /** The register's facts about one issue as one phrase, for the readers that show them. */
 export function issueFacts(issue: AdviceIssue): string {
   const rechecks = issue.absentBatteries;
+  const changed = issue.rulesChangedRechecks;
   return [
     `first seen ${issue.firstSeenRunId}`,
     rechecks === 0
       ? `last seen ${issue.lastSeenRunId}`
       : `not observed in ${rechecks} complete recheck${rechecks === 1 ? "" : "s"} since ${issue.lastSeenRunId}`,
+    changed > 0 ? `${changed === rechecks ? "" : `${changed} of them `}${RULES_CHANGED_WORDS}` : null,
     issue.returned ? "seen again after an absence" : null,
     issue.unmeasured.length === 0 ? null : `latest recheck not comparable (${gapWords(issue)} changed)`,
     issue.retired ? "family left the task set" : null,
@@ -387,6 +404,8 @@ export function advanceIssues(
   const conditionOf = (family: string): IssueCondition => ({
     taskInputs: byFamily.get(family)?.taskInputs ?? null,
     scoringHash: battery.scoringHash,
+    verdictClosureHash: battery.verdictClosureHash,
+    publicationHash: battery.publicationHash,
     checkTools: battery.checkTools,
     measuredCondition: battery.measuredCondition,
   });
@@ -400,13 +419,17 @@ export function advanceIssues(
     const now = conditionOf(entry.family);
     // Identity names no cause: a dispute an evaluator defect earned would otherwise suspend the
     // solver failure its repair now exposes.
-    const same = prior !== undefined && conditionGaps(prior.observedUnder, now).length === 0;
+    const same =
+      prior !== undefined &&
+      conditionGaps(prior.observedUnder, now).length === 0 &&
+      !publicRulesMoved(prior.observedUnder, now);
     next.push({
       id,
       ...entry,
       firstSeenRunId: prior?.firstSeenRunId ?? runId,
       lastSeenRunId: runId,
       absentBatteries: 0,
+      rulesChangedRechecks: 0,
       returned: prior !== undefined && (prior.absentBatteries > 0 || prior.returned),
       retired: false,
       observedUnder: now,
@@ -448,8 +471,16 @@ function agedIssue(
   // An issue the battery no longer shows carries no dispute: a dispute kept across batteries of
   // absence promises a withholding the controller is no longer applying.
   const unmeasured = conditionGaps(issue.observedUnder, now);
-  const absentBatteries = issue.absentBatteries + (unmeasured.length === 0 ? 1 : 0);
-  return { ...issue, absentBatteries, unmeasured, retired: false, dispute: null };
+  const comparable = unmeasured.length === 0;
+  return {
+    ...issue,
+    absentBatteries: issue.absentBatteries + (comparable ? 1 : 0),
+    rulesChangedRechecks:
+      issue.rulesChangedRechecks + (comparable && publicRulesMoved(issue.observedUnder, now) ? 1 : 0),
+    unmeasured,
+    retired: false,
+    dispute: null,
+  };
 }
 
 /** Attach what the two review readers said to the register this battery just advanced. They run
@@ -535,6 +566,8 @@ export function deriveRebuildAdvice(
     analysisDigest: hashJsonBytes(analysis),
     backendPin: analysis.identities.backendPin,
     scoringHash: condition.scoringHash,
+    verdictClosureHash: condition.verdictClosureHash,
+    publicationHash: condition.publicationHash,
     checkTools: condition.checkTools,
     measuredCondition: condition.measuredCondition,
     families,
@@ -679,6 +712,24 @@ function unmeasuredLine(issues: readonly AdviceIssue[]): string | null {
   return `Unmeasured issues — absent from this battery, but their family did not rerun under the condition that observed them, so the absence is not a fix: ${shown.join("; ")}${more > 0 ? `; ${String(more)} more` : ""}.`;
 }
 
+/** Issues every one of whose complete rechecks followed a change of the public rules, with the latest
+ *  battery on unchanged checks. They stay out of the standing lines like any rechecked issue, and the
+ *  change is named here because it changes what the absence answers: whether the repair held under the
+ *  new rules, not whether the issue persists under the old. */
+function rulesChangedLine(issues: readonly AdviceIssue[]): string | null {
+  const changed = issues.filter(
+    (issue) =>
+      !issue.retired &&
+      issue.unmeasured.length === 0 &&
+      issue.rulesChangedRechecks > 0 &&
+      issue.rulesChangedRechecks === issue.absentBatteries,
+  );
+  if (changed.length === 0) return null;
+  const shown = changed.slice(0, RENDERED_ISSUES).map((issue) => `${issue.family} (${issue.kind})`);
+  const more = changed.length - shown.length;
+  return `Issues ${RULES_CHANGED_WORDS} — absent from every recheck, but the public rules, in words or numbers, differed from the battery that observed them, so the absence says whether the repair held under the new rules, not whether the issue persists: ${shown.join("; ")}${more > 0 ? `; ${String(more)} more` : ""}.`;
+}
+
 /** Public finding text, capped in count and in length, in admitted order. A finding no bundle file
  *  holds is the row the controller could not route, so it is the row most likely to grow, and the
  *  cap therefore belongs to the boundary rather than to any one producer feeding it. */
@@ -754,6 +805,7 @@ export function renderRebuildAdvice(packet: RebuildAdvicePacket): string {
   return [
     ...standingLines(packet.issues),
     unmeasuredLine(packet.issues),
+    rulesChangedLine(packet.issues),
     disputed.length === 0
       ? null
       : `Disputed issues — an epoch review argued these come from the evaluation rather than the harness: ${disputed.map((issue) => `${issue.family} (${issue.kind})`).join("; ")}.`,

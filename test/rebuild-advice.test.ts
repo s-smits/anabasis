@@ -44,11 +44,14 @@ import { EvidenceLog } from "../src/claim/evidence-log.ts";
 import { verifierEnvironmentHashOfTools } from "../src/correctness-bundle/verifier-environment.ts";
 import { resolveToolInventory } from "../src/verify/tool-inventory.ts";
 import { taskSetDigest } from "../src/claim/fingerprint.ts";
+import { scoringClosureHash, verdictClosureHash } from "../src/claim/scoring-closure.ts";
+import { briefPublicationHash } from "../src/correctness-bundle/public-resources.ts";
 import {
   type BatteryCondition,
   batteryCondition,
   measuredConditionDigest,
 } from "../src/author/issue-condition.ts";
+import { MATCHING_BRIEF } from "./helpers/matching-fixture.ts";
 import { BEAMS, JOINTS, MEASURED_UNDER, READING, advicePacket, issue } from "./helpers/review-fixtures.ts";
 import {
   type AdviceIssue,
@@ -187,6 +190,8 @@ function admission(admitted: AnalysisFinding[] = []): AdmittedEvidence {
 function conditionOf(data: IterationAnalysis, overrides?: Partial<BatteryCondition>): BatteryCondition {
   return {
     scoringHash: MEASURED_UNDER.scoringHash,
+    verdictClosureHash: MEASURED_UNDER.verdictClosureHash,
+    publicationHash: MEASURED_UNDER.publicationHash,
     checkTools: MEASURED_UNDER.checkTools,
     measuredCondition: MEASURED_UNDER.measuredCondition,
     familyInputs: new Map(data.cases.map((row) => [row.family, MEASURED_UNDER.taskInputs] as const)),
@@ -491,7 +496,12 @@ describe("how an issue ages across batteries", () => {
       [read],
       [beamsFail],
       "r2",
-      { ...MEASURED_UNDER, families: ran("beams"), scoringHash: "8".repeat(64) },
+      {
+        ...MEASURED_UNDER,
+        families: ran("beams"),
+        scoringHash: "8".repeat(64),
+        verdictClosureHash: "9".repeat(64),
+      },
       "complete",
     );
     expect(repaired).toEqual([
@@ -1146,7 +1156,7 @@ describe("whether an absence is comparable evidence", () => {
       [issue()],
       [],
       "r2",
-      { ...MEASURED_UNDER, families: ran(), scoringHash: other("8") },
+      { ...MEASURED_UNDER, families: ran(), scoringHash: other("8"), verdictClosureHash: other("9") },
       "complete",
     );
     expect(weaker[0]?.unmeasured).toEqual(["scoring"]);
@@ -1211,6 +1221,8 @@ describe("whether an absence is comparable evidence", () => {
       familyInputs: new Map([["beams", other("5")]]),
     });
     expect(result.scoringHash).toBe(MEASURED_UNDER.scoringHash);
+    expect(result.verdictClosureHash).toBe(MEASURED_UNDER.verdictClosureHash);
+    expect(result.publicationHash).toBe(MEASURED_UNDER.publicationHash);
     expect(result.checkTools).toBe(MEASURED_UNDER.checkTools);
     expect(result.measuredCondition).toBe(MEASURED_UNDER.measuredCondition);
     expect(result.families.map((row) => row.taskInputs)).toEqual([other("5")]);
@@ -1230,6 +1242,118 @@ describe("whether an absence is comparable evidence", () => {
     expect(rendered).toContain("- joints: 2/5");
     expect(rendered).not.toContain("- beams:");
     expect(rendered).not.toContain("fixed");
+  });
+
+  describe("a recheck after the public rules changed", () => {
+    // The brief was reworded: the scoring hash reads its bytes, so it moved, while the verdict
+    // closure, which reads the checks and not their prose, did not.
+    const reworded = {
+      ...MEASURED_UNDER,
+      scoringHash: other("8"),
+      publicationHash: other("7"),
+    };
+    const recheck = (
+      battery: Partial<Omit<Parameters<typeof advanceIssues>[3], "families">>,
+      previous = [issue()],
+    ) => advanceIssues(previous, [], "r2", { ...MEASURED_UNDER, ...battery, families: ran() }, "complete");
+
+    it("is credited as a recheck under unchanged checks, with the changed rules named, never as unmeasured", () => {
+      const result = recheck(reworded);
+      expect(result).toEqual([
+        expect.objectContaining({ absentBatteries: 1, rulesChangedRechecks: 1, unmeasured: [] }),
+      ]);
+      expect(result.map(issueFacts)).toEqual([
+        "first seen r1, not observed in 1 complete recheck since r1, rechecked under unchanged checks, public rules changed",
+      ]);
+      expect(result.filter(isStanding)).toEqual([]);
+      const rendered = renderRebuildAdvice(advicePacket(result));
+      expect(rendered).toContain(
+        "Issues rechecked under unchanged checks, public rules changed — absent from every recheck, but the public rules, in words or numbers, differed from the battery that observed them, so the absence says whether the repair held under the new rules, not whether the issue persists: beams (verified-fail).",
+      );
+      expect(rendered).not.toContain("Unmeasured");
+    });
+
+    it("is a plain recheck when the rules read the same, even though the brief's bytes moved", () => {
+      // A private row or a decision moves the scoring hash and publishes nothing.
+      for (const battery of [{}, { scoringHash: other("8") }]) {
+        const result = recheck(battery);
+        expect(result).toEqual([
+          expect.objectContaining({ absentBatteries: 1, rulesChangedRechecks: 0, unmeasured: [] }),
+        ]);
+        expect(issueFacts(required(result[0], "the rechecked issue"))).toBe(
+          "first seen r1, not observed in 1 complete recheck since r1",
+        );
+        expect(renderRebuildAdvice(advicePacket(result))).not.toContain("public rules changed");
+      }
+    });
+
+    it("stays unmeasured when the checks moved, whatever the rules did", () => {
+      expect(recheck({ ...reworded, verdictClosureHash: other("9") })[0]).toMatchObject({
+        absentBatteries: 0,
+        rulesChangedRechecks: 0,
+        unmeasured: ["scoring"],
+      });
+      // A closure that could not be vouched for compares with nothing, on either side.
+      expect(recheck({ ...reworded, verdictClosureHash: null })[0]?.unmeasured).toEqual(["scoring"]);
+      const unvouched = { ...MEASURED_UNDER, verdictClosureHash: null };
+      expect(recheck(reworded, [issue({ observedUnder: unvouched })])[0]?.unmeasured).toEqual(["scoring"]);
+      // Unvouched rules cannot show identical instructions, but the checks are the same.
+      expect(recheck({ ...reworded, publicationHash: null })[0]).toMatchObject({
+        absentBatteries: 1,
+        rulesChangedRechecks: 1,
+      });
+    });
+
+    it("still needs the same tools, tasks and Built condition, which only the scoring term gave up", () => {
+      expect(recheck({ ...reworded, checkTools: other("6") })[0]?.unmeasured).toEqual(["check-tools"]);
+      expect(recheck({ ...reworded, measuredCondition: other("5") })[0]?.unmeasured).toEqual([
+        "built-condition",
+      ]);
+      const moved = advanceIssues(
+        [issue()],
+        [],
+        "r2",
+        { ...reworded, families: ran(other("4")) },
+        "complete",
+      );
+      expect(moved[0]?.unmeasured).toEqual(["task-inputs"]);
+    });
+
+    it("counts beside the plain rechecks, and names itself alone only when every recheck followed a change", () => {
+      const plain = recheck({});
+      const [mixed] = recheck(reworded, plain);
+      expect(mixed).toMatchObject({ absentBatteries: 2, rulesChangedRechecks: 1 });
+      expect(issueFacts(required(mixed, "the rechecked issue"))).toContain(
+        "not observed in 2 complete rechecks since r1, 1 of them rechecked under unchanged checks, public rules changed",
+      );
+      expect(renderRebuildAdvice(advicePacket([required(mixed, "the rechecked issue")]))).not.toContain(
+        "Issues rechecked under unchanged checks",
+      );
+    });
+
+    it("returns as seen again after an absence, and takes the dispute away", () => {
+      const rechecked = recheck(reworded, [issue({ dispute: "the check enforces an unpublished rule" })]);
+      expect(rechecked[0]?.dispute).toBeNull();
+      const again = advanceIssues(rechecked, [beamsFail], "r3", { ...reworded, families: ran() }, "complete");
+      expect(again[0]).toMatchObject({ returned: true, rulesChangedRechecks: 0, absentBatteries: 0 });
+      // The same condition keeps a dispute through a second sighting; changed public rules do not.
+      const disputed = issue({ dispute: "the check enforces an unpublished rule" });
+      const [same] = advanceIssues(
+        [disputed],
+        [beamsFail],
+        "r2",
+        { ...MEASURED_UNDER, families: ran() },
+        "complete",
+      );
+      const [moved] = advanceIssues(
+        [disputed],
+        [beamsFail],
+        "r2",
+        { ...reworded, families: ran() },
+        "complete",
+      );
+      expect([same?.dispute, moved?.dispute]).toEqual(["the check enforces an unpublished rule", null]);
+    });
   });
 });
 
@@ -1287,6 +1411,49 @@ describe("measuredConditionDigest", () => {
     const before = batteryCondition(recorded, tree).measuredCondition;
     writeFileSync(join(tree, "agent", "config.yaml"), "solver:\n  max_turns: 24\n  solve_minutes: 120\n");
     expect(batteryCondition(recorded, tree).measuredCondition).toBe(before);
+  });
+});
+
+describe("the identities a battery's condition records for its checks and rules", () => {
+  const tree = () => {
+    const dir = scratchDir("ana-condition-identities-");
+    mkdirSync(join(dir, "correctness-model"), { recursive: true });
+    writeFileSync(join(dir, "correctness-model", "brief.json"), JSON.stringify(MATCHING_BRIEF));
+    writeFileSync(join(dir, "correctness-model", "evaluator.ts"), "export const checks = {};\n");
+    return { dir, model: join(dir, "correctness-model") };
+  };
+  const recordedAs = (scoringHash: string) =>
+    double<Parameters<typeof batteryCondition>[0]>({
+      runId: "run-identities",
+      cases: [],
+      identities: {
+        backendPin: "codex:test",
+        isolationStrength: "physical",
+        bundleSnapshot: { scoringHash },
+      },
+      battery: { condition: { variant: "shipping", advisorsRemoved: [] } },
+    });
+
+  it("reads the verdict closure and the public rules from a tree that still scores to the recorded hash", () => {
+    const { dir, model } = tree();
+    const condition = batteryCondition(
+      recordedAs(required(scoringClosureHash(model), "the tree's scoring hash")),
+      dir,
+    );
+    expect(condition.verdictClosureHash).toBe(verdictClosureHash(model));
+    expect(condition.verdictClosureHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(condition.publicationHash).toBe(briefPublicationHash(MATCHING_BRIEF));
+  });
+
+  it("reads neither from a tree edited since the battery, which compares with nothing", () => {
+    const { dir, model } = tree();
+    const recorded = recordedAs(required(scoringClosureHash(model), "the tree's scoring hash"));
+    const reworded = { ...MATCHING_BRIEF, decisions: ["placement is decided elsewhere now"] };
+    writeFileSync(join(model, "brief.json"), JSON.stringify(reworded));
+    const condition = batteryCondition(recorded, dir);
+    expect(condition.verdictClosureHash).toBeNull();
+    expect(condition.publicationHash).toBeNull();
+    expect(batteryCondition(recordedAs("9".repeat(64)), dir).verdictClosureHash).toBeNull();
   });
 });
 

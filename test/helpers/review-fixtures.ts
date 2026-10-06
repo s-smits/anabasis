@@ -31,12 +31,15 @@ export const BEAMS = adviceIssueId("verified-fail", "beams", null);
 export const JOINTS = adviceIssueId("unaccepted", "joints", null);
 
 /** The condition every fixture battery measured under: one family's public inputs, the scoring
- *  program, the tools its checks ran and the Built model and resource condition. An absence counts
- *  as a complete recheck only across batteries that share all four, so a test that means a
+ *  program (its bytes, its verdict closure and the public wording), the tools its checks ran and the
+ *  Built model and resource condition. An absence counts as a complete recheck only across batteries
+ *  that share the inputs, the closure, the tools and the Built condition, so a test that means a
  *  different condition says which part moved. */
 export const MEASURED_UNDER = {
   taskInputs: "1".repeat(64),
   scoringHash: "2".repeat(64),
+  verdictClosureHash: "5".repeat(64),
+  publicationHash: "6".repeat(64),
   checkTools: "4".repeat(64),
   measuredCondition: "3".repeat(64),
 } as const;
@@ -81,6 +84,7 @@ export function issue(overrides: Partial<AdviceIssue> = {}): AdviceIssue {
     firstSeenRunId: "r1",
     lastSeenRunId: "r1",
     absentBatteries: 0,
+    rulesChangedRechecks: 0,
     returned: false,
     retired: false,
     observedUnder: { ...MEASURED_UNDER },
@@ -99,6 +103,8 @@ export function advicePacket(issues: AdviceIssue[]): RebuildAdvicePacket {
     backendPin: "codex:built-model:high",
     analysisDigest: "d".repeat(64),
     scoringHash: MEASURED_UNDER.scoringHash,
+    verdictClosureHash: MEASURED_UNDER.verdictClosureHash,
+    publicationHash: MEASURED_UNDER.publicationHash,
     checkTools: MEASURED_UNDER.checkTools,
     measuredCondition: MEASURED_UNDER.measuredCondition,
     families: [

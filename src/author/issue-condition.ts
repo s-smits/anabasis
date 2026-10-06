@@ -6,14 +6,22 @@
  * have to hold for that. The family ran on the same tasks, public inputs and hidden expectations
  * alike: a task probe that swaps the inputs removes the failing tasks rather than repairing anything,
  * and one that moves only a hidden limit or operand asks the verifier another question while the
- * solver reads the same bytes. The scoring program is the same,
- * because identical inputs graded by a weaker evaluator also make a failure disappear. The tools
- * the checks ran are the same, because the scoring hash stops at evaluator.ts and its imports while
- * a check can hand the verdict to an installed analyser, and an analyser replaced underneath an
- * unchanged evaluator is a weaker evaluator all the same. And the Built model, its effort and the
- * host-imposed condition are the same, because a different model, effort or isolation answers a
- * different question about the same harness. When any of the four moved, the issue is unmeasured: the
- * register keeps it, the author is told it was not measured, and nothing ages it towards fixed.
+ * solver reads the same bytes. The checks are the same, meaning the verdict closure
+ * (`verdictClosureHash`: the evaluator and its imports with the brief's check ids, execution
+ * declarations and the artifact fields a submission is read against), because identical inputs graded by a weaker evaluator also make
+ * a failure disappear. The tools the checks ran are the same, because that closure stops at
+ * evaluator.ts and its imports while a check can hand the verdict to an installed analyser, and an
+ * analyser replaced underneath an unchanged evaluator is a weaker evaluator all the same. And the
+ * Built model, its effort and the host-imposed condition are the same, because a different model,
+ * effort or isolation answers a different question about the same harness. When any of the four
+ * moved, the issue is unmeasured: the register keeps it, the author is told it was not measured, and
+ * nothing ages it towards fixed.
+ *
+ * The public rules are not a fifth gap. A reworded rule or a restated number changes which answers
+ * the solver was told count, so a recheck after it answers whether the repair held and not whether the
+ * issue persists, but it asks the same checks of the same tasks. `publicRulesMoved` says which of the
+ * two a comparable recheck was, and the register carries the answer beside the count instead of
+ * dropping the recheck.
  *
  * The check tools are compared by what the battery's verifier launched: each tool's own bytes, where
  * it was found, its interpreter's bytes and, for a workspace tool, the portable digest of the
@@ -30,7 +38,9 @@
  * Every value here is read from what the battery already recorded: the scoring hash from the
  * bundle snapshot the analysis names, each family's tasks from the measured tree's tasks.json while
  * that tree still hashes to the task-set hash the same snapshot recorded, the check tools from its
- * digest-bound `battery.json`, and the measured condition from the analysis's identities.
+ * digest-bound `battery.json`, and the measured condition from the analysis's identities. The
+ * verdict closure and the publication hash are read from the measured tree's brief and evaluator
+ * only while that tree still scores to the scoring hash the snapshot recorded.
  */
 import { existsSync, readFileSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
@@ -39,9 +49,11 @@ import { capturedJsonParse } from "../meta/json-runtime.ts";
 import { asRecord, isString } from "../meta/json-shape.ts";
 import { TASKS_FILE } from "../meta/bundle-layout.ts";
 import { taskSetDigest } from "../claim/fingerprint.ts";
+import { scoringClosureHash, verdictClosureHash } from "../claim/scoring-closure.ts";
 import type { IterationAnalysis } from "../analyse/iteration-analysis.ts";
 import { type EvidenceLogViolation, recordedEvidence, verifyRunDir } from "../claim/evidence-log.ts";
 import { BATTERY_FILE } from "../correctness-bundle/battery-record.ts";
+import { briefPublicationHash, readValidatedBrief } from "../correctness-bundle/public-resources.ts";
 import { recordedVerifierHash } from "../correctness-bundle/verifier-environment.ts";
 
 /** Which part of the condition moved between the battery that observed an issue and a later one
@@ -56,6 +68,13 @@ export type IssueCondition = {
    *  with nothing. */
   taskInputs: string | null;
   scoringHash: string;
+  /** `verdictClosureHash` of the scoring program: what an artifact replayed against the checks is
+   *  decided by, apart from the brief's text and constants. Null when the measured tree could not be vouched for,
+   *  which compares with nothing. */
+  verdictClosureHash: string | null;
+  /** `briefPublicationHash` of the brief: the public rules the solver read, in words and numbers.
+   *  Null when the measured tree could not be vouched for, which counts as changed. */
+  publicationHash: string | null;
   /** sha256 over the tools the battery's checks launched, each by its own digest, source,
    *  interpreter digest and tree digest; null when the battery record could not be vouched for,
    *  which compares with nothing. */
@@ -67,6 +86,8 @@ export type IssueCondition = {
 /** One battery's condition, for every family it ran. */
 export type BatteryCondition = {
   scoringHash: string;
+  verdictClosureHash: string | null;
+  publicationHash: string | null;
   checkTools: string | null;
   measuredCondition: string;
   familyInputs: ReadonlyMap<string, string | null>;
@@ -99,15 +120,30 @@ export function measuredConditionDigest(facts: {
   });
 }
 
-/** What moved between two conditions, in `CONDITION_GAPS` order; empty when they are comparable. */
+/** What moved between two conditions, in `CONDITION_GAPS` order; empty when they are comparable.
+ *  The scoring program moved when the bytes differ and the verdict closure, vouched on both sides,
+ *  does not say they decide the same: a reworded brief moves the scoring hash and no verdict. */
 export function conditionGaps(was: IssueCondition, now: IssueCondition): ConditionGap[] {
   const moved: Record<ConditionGap, boolean> = {
     "task-inputs": was.taskInputs === null || was.taskInputs !== now.taskInputs,
-    scoring: was.scoringHash !== now.scoringHash,
+    scoring:
+      was.scoringHash !== now.scoringHash &&
+      (was.verdictClosureHash === null || was.verdictClosureHash !== now.verdictClosureHash),
     "check-tools": was.checkTools === null || was.checkTools !== now.checkTools,
     "built-condition": was.measuredCondition !== now.measuredCondition,
   };
   return CONDITION_GAPS.filter((gap) => moved[gap]);
+}
+
+/** Whether the public rules moved between two conditions. The same scoring hash is the same brief
+ *  bytes; otherwise only two vouched publication hashes can show the rules unchanged. Read beside
+ *  `conditionGaps`: an empty list with this true is a recheck under unchanged checks and changed
+ *  public rules. */
+export function publicRulesMoved(was: IssueCondition, now: IssueCondition): boolean {
+  return (
+    was.scoringHash !== now.scoringHash &&
+    (was.publicationHash === null || was.publicationHash !== now.publicationHash)
+  );
 }
 
 /** Each family's task digest: sha256 over its whole task records, sorted by task id, from the
@@ -175,8 +211,15 @@ export function batteryCondition(analysis: IterationAnalysis, measuredDir: strin
   const { identities, battery, runId } = analysis;
   const runDir = join(measuredDir, "runs", runId);
   const violations = verifyRunDir(runDir);
+  // The vouching `scoredBrief` (solver-traces.ts) does: a tree that no longer scores to what the
+  // snapshot recorded says nothing about the brief and evaluator the battery ran.
+  const scoredTree = join(measuredDir, "correctness-model");
+  const vouched = scoringClosureHash(scoredTree) === identities.bundleSnapshot.scoringHash;
+  const brief = vouched ? readValidatedBrief(measuredDir) : null;
   return {
     scoringHash: identities.bundleSnapshot.scoringHash,
+    verdictClosureHash: vouched ? verdictClosureHash(scoredTree) : null,
+    publicationHash: brief === null ? null : briefPublicationHash(brief),
     checkTools: checkToolsDigest(runDir, runId, violations),
     measuredCondition: measuredConditionDigest({
       runId,

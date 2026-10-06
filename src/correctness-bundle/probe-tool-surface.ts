@@ -37,10 +37,8 @@ export function toolDescriptionParityFindings(
       const description = served.get(declared.name);
       // An unregistered name is the contract mismatch reported once by its own owner.
       if (description === undefined) return [];
-      // The host appends its own sentence to an artifact-writer it has bound, because it replaced
-      // that tool's parameters and execution and the spec was written against neither. That text
-      // is the host's, not the Builder's, so it is not drift, in the form with a margin clause or
-      // the one without; everything before it must still be exactly what the spec declares.
+      // The sentence the host appends to an artifact-writer it bound, in either form, is not the
+      // Builder's drift; everything before it must still be exactly what the spec declares.
       const appended = (["answer-and-limits", "answer"] as const)
         .map((says) => ` ${writerBindingSentence(says)}`)
         .find((host) => description.endsWith(host));

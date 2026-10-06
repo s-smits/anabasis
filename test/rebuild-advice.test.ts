@@ -481,6 +481,38 @@ describe("how an issue ages across batteries", () => {
     expect(facts(again)).toEqual(["first seen r1, last seen r2"]);
   });
 
+  it("reads an issue seen again on other tasks as first seen there, and as returned only on the same tasks", () => {
+    // Identity names where a failure showed, not on which tasks, so one id can name failures on two
+    // task records. The second is not the first seen again, and no recheck missed it.
+    const moved = [{ ...familyRow("beams"), taskInputs: "9".repeat(64) }];
+    const missed = advance([priorIssue()], [], "r2", ran("beams"), "complete");
+    expect(missed[0]?.absentBatteries).toBe(1);
+    const elsewhere = advance(missed, [beamsFail], "r3", moved, "complete");
+    expect(elsewhere).toEqual([
+      expect.objectContaining({
+        id: BEAMS,
+        firstSeenRunId: "r3",
+        lastSeenRunId: "r3",
+        returned: false,
+        observedUnder: { ...MEASURED_UNDER, taskInputs: "9".repeat(64) },
+      }),
+    ]);
+    expect(facts(elsewhere)).toEqual(["first seen r3, last seen r3"]);
+    // The same failure on those tasks again, after a recheck there, is a return.
+    const rechecked = advance(elsewhere, [], "r4", moved, "complete");
+    const back = advance(rechecked, [beamsFail], "r5", moved, "complete");
+    expect(back).toEqual([expect.objectContaining({ firstSeenRunId: "r3", returned: true })]);
+    // Tasks that could not be vouched for, on either side, compare with nothing.
+    const unvouched = priorIssue({ observedUnder: { ...MEASURED_UNDER, taskInputs: null }, returned: true });
+    expect(advance([unvouched], [beamsFail], "r2", ran("beams"), "complete")).toEqual([
+      expect.objectContaining({ firstSeenRunId: "r2", returned: false }),
+    ]);
+    const unread = [{ ...familyRow("beams"), taskInputs: null }];
+    expect(advance(missed, [beamsFail], "r3", unread, "complete")).toEqual([
+      expect.objectContaining({ firstSeenRunId: "r3", returned: false }),
+    ]);
+  });
+
   it("carries a dispute to a re-observation only under the condition that recorded it, and a diagnosis to none", () => {
     // Identity is kind, family and detail, not the failure's cause. A dispute an evaluator defect
     // earned, kept across the evaluator's repair, would suspend the solver failure the repaired

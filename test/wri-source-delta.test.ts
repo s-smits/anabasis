@@ -9,6 +9,14 @@ import { join } from "../src/meta/path.ts";
 import { runTextSyncOrThrow } from "../src/meta/subprocess.ts";
 import { hostTool } from "../src/meta/host-tool.ts";
 
+/** The prompt surface the fixture repo declares: source under src and starters, starter documents,
+ *  and two audiences. */
+const SURFACE = {
+  dirs: ["src", "starters"],
+  doc: ["starters"],
+  audiences: { "src/solve": "built agent", starters: "builder" },
+};
+
 afterAll(cleanupScratch);
 
 const GIT_ENV = {
@@ -25,8 +33,9 @@ function git(repo: string, args: string[]): string {
   return runTextSyncOrThrow([hostTool("git"), "-C", repo, ...args], { env: GIT_ENV }).trim();
 }
 
-/** Two commits: the older declares safeguard `old-one`; the newer edits that call, adds `new-one`
- *  to the same run file and changes a starter file. Neither commit deletes a file. */
+/** Two commits: the older declares safeguard `old-one` and the prompt surface; the newer edits that
+ *  call, adds `new-one` to the same run file, and changes a starter file, the built agent's source
+ *  and an operator note outside the surface. Neither commit deletes a file. */
 function repoWithTwoCommits() {
   const repo = scratchDir("ana-source-delta-repo-");
   git(repo, ["init", "-q", "-b", "main"]);
@@ -34,6 +43,7 @@ function repoWithTwoCommits() {
   mkdirSync(join(repo, "starters"), { recursive: true });
   writeFileSync(join(repo, "src", "run", "loop.ts"), 'safeguardTriggered("old-one", "x");\n');
   writeFileSync(join(repo, "starters", "card.md"), "v1\n");
+  writeFileSync(join(repo, ".prompt-surface.json"), JSON.stringify(SURFACE));
   git(repo, ["add", "."]);
   git(repo, ["commit", "-q", "-m", "one"]);
   const older = git(repo, ["rev-parse", "HEAD"]);
@@ -42,10 +52,19 @@ function repoWithTwoCommits() {
     'safeguardTriggered("old-one", "x, edited");\nsafeguardTriggered("new-one", "y");\n',
   );
   writeFileSync(join(repo, "starters", "card.md"), "v2\n");
+  mkdirSync(join(repo, "src", "solve"), { recursive: true });
+  mkdirSync(join(repo, "tools"), { recursive: true });
+  writeFileSync(join(repo, "src", "solve", "agent.ts"), "export const turn = 1;\n");
+  writeFileSync(join(repo, "tools", "prompt-notes.md"), "for the operator\n");
   git(repo, ["add", "."]);
   git(repo, ["commit", "-q", "-m", "two"]);
   const newer = git(repo, ["rev-parse", "HEAD"]);
   return { repo, older, newer };
+}
+
+/** The delta of the `run-b` every lane-2 campaign here records. */
+function runB(current: string, repo: string) {
+  return buildSourceDelta({ campaign: current, runId: "run-b", repo });
 }
 
 function campaign(root: string, name: string, runId: string, commit: string, writtenAt: string): string {
@@ -70,13 +89,15 @@ describe("source-delta reach", () => {
       "2026-09-02T01:00:00.000Z | old-one | detail\n2026-09-02T01:00:01.000Z | elsewhere | detail\n",
     );
 
-    const delta = buildSourceDelta({ campaign: current, runId: "run-b", repo });
+    const delta = runB(current, repo);
     expect(delta.state).toBe("resolved");
     expect(delta.previousCommit).toBe(older);
     expect(delta.previousProvenance).toContain("lane-1");
     expect(delta.changed.map((entry: { path: string }) => entry.path).sort()).toEqual([
       "src/run/loop.ts",
+      "src/solve/agent.ts",
       "starters/card.md",
+      "tools/prompt-notes.md",
     ]);
     const loop = delta.changed.find((entry: { path: string }) => entry.path === "src/run/loop.ts");
     expect(loop?.newSafeguardIds).toEqual(["new-one"]);
@@ -85,11 +106,21 @@ describe("source-delta reach", () => {
       { id: "old-one", state: "fired", firings: 1 },
     ]);
     expect(delta.firedElsewhere).toEqual([{ id: "elsewhere", firings: 1 }]);
-    expect(delta.modelVisibleChanged).toEqual(["starters/card.md"]);
+    // The repo's own prompt surface decides, not a path list: the built agent's source is in it, an
+    // operator note whose name says prompt is not, and run source no audience names is unclassified.
+    expect(delta.promptSurface).toBe(".prompt-surface.json at this source");
+    expect(delta.modelVisibleChanged).toEqual([
+      { path: "src/run/loop.ts", audience: "unclassified" },
+      { path: "src/solve/agent.ts", audience: "built agent" },
+      { path: "starters/card.md", audience: "builder" },
+    ]);
 
     const text = renderSourceDelta(delta);
     expect(text).toContain("UNREACHED CHANGED SAFEGUARDS (lane 21): new-one");
-    expect(text).toContain("MODEL-VISIBLE SURFACE CHANGED (lane 21): starters/card.md");
+    expect(text).toContain("src/solve/agent.ts · model-visible (built agent)");
+    expect(text).toContain(
+      "MODEL-VISIBLE SURFACE CHANGED (lane 21): 3 file(s) the prompt surface declares — unclassified 1, built agent 1, builder 1",
+    );
     expect(text).not.toContain("safeguardTriggered(");
   });
 
@@ -125,7 +156,7 @@ describe("source-delta reach", () => {
     campaign(root, "lane-1", "run-a", before, "2026-09-01T00:00:00.000Z");
     const current = campaign(root, "lane-2", "run-b", after, "2026-09-02T00:00:00.000Z");
 
-    const delta = buildSourceDelta({ campaign: current, runId: "run-b", repo });
+    const delta = runB(current, repo);
     expect(
       delta.changed.map((entry) => [
         entry.path,
@@ -193,7 +224,7 @@ describe("source-delta reach", () => {
     const root = scratchDir("ana-source-delta-campaigns-");
     campaign(root, "lane-1", "run-a", newer, "2026-09-01T00:00:00.000Z");
     const current = campaign(root, "lane-2", "run-b", head, "2026-09-02T00:00:00.000Z");
-    const delta = buildSourceDelta({ campaign: current, runId: "run-b", repo });
+    const delta = runB(current, repo);
     expect(delta.changed.map((entry: { path: string }) => entry.path).sort()).toEqual([
       "src/gate/submit.ts",
       "test/sensor.test.ts",
@@ -216,7 +247,7 @@ describe("source-delta reach", () => {
         "2026-09-02T01:00:00.000Z | old-one | detail\n",
       );
     }
-    const delta = buildSourceDelta({ campaign: current, runId: "run-b", repo });
+    const delta = runB(current, repo);
     expect(delta.safeguards).toContainEqual({ id: "old-one", state: "fired", firings: 1 });
   });
 
@@ -237,6 +268,23 @@ describe("source-delta reach", () => {
     );
     expect(buildSourceDelta({ campaign: alone, runId: "run-c", repo, previous: unknown }).state).toBe(
       "previous-unresolved",
+    );
+  });
+
+  it("names no model-visible change from a source that declares no prompt surface", () => {
+    const { repo, newer } = repoWithTwoCommits();
+    git(repo, ["rm", "-q", ".prompt-surface.json"]);
+    writeFileSync(join(repo, "starters", "card.md"), "v3\n");
+    git(repo, ["add", "."]);
+    git(repo, ["commit", "-q", "-m", "three"]);
+    const head = git(repo, ["rev-parse", "HEAD"]);
+    const root = scratchDir("ana-source-delta-campaigns-");
+    campaign(root, "lane-1", "run-a", newer, "2026-09-01T00:00:00.000Z");
+    const current = campaign(root, "lane-2", "run-b", head, "2026-09-02T00:00:00.000Z");
+    const delta = runB(current, repo);
+    expect(delta.modelVisibleChanged).toEqual([]);
+    expect(renderSourceDelta(delta)).toContain(
+      "prompt surface: this source holds no readable .prompt-surface.json, so no change is named model-visible",
     );
   });
 });

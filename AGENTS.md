@@ -967,7 +967,9 @@ select product bytes and nothing else.
 6. Launch the one operator-supplied prompt through `launch-run`, with the resolved full SHA as source,
    running the deterministic preflight and the launcher in the same turn:
    `bun .claude/skills/launch-run/scripts/launch.ts truss --model astra|sol|opus --source <sha>`. A pair
-   is `--model sol,opus`, and any other request is `custom --prompt "<exact line>"`. The launcher is
+   is `--model sol,opus`, and any other request is `custom --prompt "<exact line>"`. The standard
+   prompts are the `PRESETS` table in `.claude/skills/launch-run/scripts/options.ts`: `truss`,
+   `buffer` and `recode`, each two lines, which is where a new standard prompt is added. The launcher is
    main's; it probes the source with that tree's own `probe.ts` and gates the shared source once. Omit
    `--project` unless continuing one, and then take it from that run's `opening.json`. Paid runs have no
    round ceiling: they continue until a typed terminal, an exhausted budget, required user input or a

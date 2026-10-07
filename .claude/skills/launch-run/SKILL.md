@@ -35,7 +35,7 @@ or prompt. The controller then continues from the recorded campaign evidence on 
 the launcher refuses an opening that created a fresh project instead. There is no steering text:
 the Builder chooses the next experiment from evidence.
 
-Use one or two lines through `--prompt`, or a preset in `scripts/options.ts`, `truss` or `buffer` (`--list` prints them).
+Use one or two lines through `--prompt`, or a preset in `scripts/options.ts`, `truss`, `buffer` or `recode` (`--list` prints them).
 A `--prompt` run is named `standard`; name `standard` again for replicas, and `custom`, its name
 before 2026-09-30, still parses. A run id reads `<preset>-<model>-<instant>-pr<N>-<sha7>`: the pull
 request that carried the source commit, or `main-<sha7>` on main's head, and the commit's first
@@ -72,17 +72,18 @@ A variant of a model's row is named for its slot efforts, one letter each (l, m,
 Opus 5.5 with the Builder at high. The launched tree's probe sees it as `opus`, so an older source
 launches it too.
 Each preset occurrence runs once per condition. Repeat a preset only for explicitly authorised
-replicas; their run ids gain separate `r1`, `r2` markers. `truss buffer --model sol,opus` is the
-standard launch, each preset once per model, and `truss truss --model sol,astra` means two truss
+replicas; their run ids gain separate `r1`, `r2` markers. `truss buffer recode --model sol,opus` is
+the standard launch, each preset once per model, and `truss truss --model sol,astra` means two truss
 runs per model. A preset authorises its exact prompt; never enrich it.
 
-`truss` and `buffer` are the standard presets, one structural and one chemical, and share one
+`truss`, `buffer` and `recode` are the standard presets, one structural, one chemical and one
+biological, and share one
 shape: a best answer under strict limits, several interacting requirements and specified loss or
 substitution scenarios in one request. Stacking them is what made truss tasks
 hard: on the 2026-09-15 pack series one added interaction per task still passed 22 of 23
 verified cases (Sol high), and all of them stacked inside the same mass limit passed 7 of 20
 (Sol high) and 2 of 23 (Opus 5). A custom prompt of that shape stacks the same way. `--list`
-prints both.
+prints them all.
 
 The probe reads source identity and parses the request using the selected product revision,
 then initializes the real confined worker without a model turn, and runs one minimal Builder-slot

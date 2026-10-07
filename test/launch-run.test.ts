@@ -536,7 +536,7 @@ describe("one-command run launcher", () => {
     [["unknown"], "unknown preset unknown; use --list"],
     [["truss", "--prompt", "replacement"], "standard runs the --prompt text, so each needs the other"],
     [["standard"], "standard runs the --prompt text, so each needs the other"],
-    [[], "give --prompt or name a preset: truss, buffer, standard"],
+    [[], "give --prompt or name a preset: truss, buffer, recode, standard"],
     [["--prompt", "three\nprompt\nlines"], PROMPT_REFUSAL],
     [["--prompt", "\nblank"], PROMPT_REFUSAL],
     [["--prompt", "text\0"], PROMPT_REFUSAL],

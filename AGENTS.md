@@ -596,7 +596,7 @@ and has not been re-derived here.
    had before its first simulation. So neither the size of the search nor the solver's hold on the
    check is what these tasks lack; they ask for work the public text settles. Two kinds remain
    unmeasured. One is an answer the field already recorded, such as a merged fix or a published result,
-   which no surface names. The other is a second author: a split build, in which an answer agent writes
+   which `examples.md` offers as a construction since 2026-10-07. The other is a second author: a split build, in which an answer agent writes
    the correctness model behind a wall from the author of `agent/`, was written on 2026-09-30
    (`claude/answer-builder`, three local commits) and has neither landed nor run. Owner: the witness
    route, in `starter-pack/examples.md`.

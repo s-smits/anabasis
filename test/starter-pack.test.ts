@@ -255,6 +255,16 @@ describe("pi starter pack brief vocabulary", () => {
       "Use this to propose the next task; fresh solver attempts establish its difficulty.",
     );
     expect(text).not.toContain("The limit then sits between what the long search found");
+    // An answer the field already recorded needs no search by the author, and gives the solver none to
+    // rerun; a public task that does not decide it would refuse a different valid answer.
+    expect(text).toContain("Five constructions may help;");
+    expect(text).toContain("**An answer the field already recorded.**");
+    expect(text).toContain("such as a merged fix or a published result");
+    expect(text).toContain("the solver cannot reach it by rerunning your search.");
+    expect(text).toContain("It fails when the public task does not decide the recorded answer");
+    // A solver with a network can look a published answer up, which is no limit.
+    expect(text).toContain("when the solver can find the recorded answer where the field published it.");
+    expect(text).toContain("The last three set where a limit or a stored answer sits");
     // A count of solves reads as a share to author towards (prior 10).
     expect(text).not.toContain("3 of 6 blind solves");
     expect(text).toContain(

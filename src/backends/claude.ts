@@ -70,6 +70,12 @@ type TurnEnd = Extract<StopReason, "stop" | "length" | "toolUse">;
 
 const sessions = new Map<string, Session>();
 
+/**
+ * The diagnostic the query's last turn carries: `details.totalCostUsd` is the whole query's cost as
+ * Claude Code reports it, which the meter's billed dollars are held to.
+ */
+export const REPORTED_COST = "claude-code-total-cost";
+
 /** pi's Anthropic catalog, served through Claude Code: the same ids and the same list prices. */
 export function claudeProvider(): Provider {
   return createProvider({
@@ -237,6 +243,9 @@ async function readTurn(
       return "toolUse";
     } else if (message.type === "result") {
       close(key, session);
+      turn.diagnostics = [
+        { type: REPORTED_COST, timestamp: Date.now(), details: { totalCostUsd: message.total_cost_usd } },
+      ];
       if (message.subtype !== "success") {
         throw new Error(`Claude Code: ${message.subtype}: ${message.errors.join("; ")}`);
       }
@@ -264,6 +273,10 @@ function take(message: SDKAssistantMessage, model: Model<Api>, turn: AssistantMe
       });
     }
   }
+  // pi-claude-bridge 0.9.1's updateUsage leaves pi's hour-long share of the cache writes unset, so pi
+  // would bill Claude Code's writes, all of them an hour long, at the five-minute price.
+  const longWrite = message.message.usage.cache_creation?.ephemeral_1h_input_tokens;
+  if (longWrite !== undefined) turn.usage.cacheWrite1h = longWrite;
   updateUsage(turn, message.message.usage, model);
 }
 

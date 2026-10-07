@@ -3,10 +3,10 @@
  * `runs/<sweep>/cNN/<task>/result.json` for the solve, and the case's `trace.json` for its turns.
  * The milestone tools test the new host on these stored solves, so no model session is needed.
  *
- * Dollars come two ways. v1 recorded what Claude Code reported a turn cost, with cache reads at a
- * tenth of the input price and cache writes at a quarter over it; this meter charges cached input
- * at the full price. v1's trace keeps each turn's input with its cached part inside and no split,
- * which this meter needs none of, since it charges the two alike.
+ * Dollars come two ways. Billed is what v1 recorded Claude Code reporting a turn cost. Metered is
+ * this meter's, which charges cached input at the full price. v1's trace keeps each turn's input
+ * with its cached part inside and no split, so billed cannot be recomputed from it; metered needs
+ * no split, since it charges the classes alike.
  */
 import { backends } from "#src/backends/models.ts";
 import { dollars, freezePrices, type PriceTable } from "#src/kernel/meter.ts";
@@ -59,8 +59,8 @@ export interface Row extends StoredSolve {
 /** A row and its two dollar readings. */
 interface Priced {
   readonly row: Row;
-  readonly v1: number;
-  readonly meter: number;
+  readonly billed: number;
+  readonly metered: number;
 }
 
 const VERIFIED = new Set(["verified-pass", "verified-fail"]);
@@ -138,7 +138,7 @@ function rowPrices(rows: readonly Row[]): PriceTable {
 }
 
 /**
- * A stored solve's spend: v1's recorded dollars, and this meter's for the same tokens. Null when a
+ * A stored solve's spend: its billed dollars, as v1 recorded them, and its metered ones. Null when a
  * turn never ended, since what it spent was never reported: that solve's cost is unknown, not zero.
  */
 function spend(row: Row, prices: PriceTable) {
@@ -146,8 +146,14 @@ function spend(row: Row, prices: PriceTable) {
   if (ended.length < row.turns.length) return null;
   const sum = (field: "inputTokens" | "outputTokens" | "costUsd") =>
     ended.reduce((total, turn) => total + turn[field], 0);
-  const tokens = { input: sum("inputTokens"), cached: 0, output: sum("outputTokens") };
-  return { v1: sum("costUsd"), meter: dollars(prices, `${row.provider}/${row.model}`, tokens) };
+  const tokens = {
+    input: sum("inputTokens"),
+    cacheRead: 0,
+    cacheWrite: 0,
+    cacheWrite1h: 0,
+    output: sum("outputTokens"),
+  };
+  return { billed: sum("costUsd"), metered: dollars(prices, `${row.provider}/${row.model}`, tokens).metered };
 }
 
 /** The rows with both dollar readings, and apart from them the rows whose cost was never reported. */

@@ -8,7 +8,7 @@ const condition: Condition = {
   model: "claude/claude-opus-5",
   effort: "high",
   budget: { dollars: 2, cpuSeconds: 600 },
-  prices: { "claude/claude-opus-5": { input: 5, output: 25 } },
+  prices: { "claude/claude-opus-5": { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 } },
   wallSeconds: 1_800,
   solverTools: "s1",
   verifierTools: "v1",

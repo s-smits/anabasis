@@ -1,7 +1,7 @@
 /**
  * M0's exit test: regrade an experiment's stored answers with this verifier and compare each verdict
- * with the one v1 recorded in the sweep's `grades.tsv`, and price each stored solve with this meter
- * beside the dollars v1 recorded for it.
+ * with the one v1 recorded in the sweep's `grades.tsv`, and report each stored solve's metered
+ * dollars beside the billed ones v1 recorded.
  *
  *   bun tools/m0/regrade.ts --root ../anabasis-cycles-4c67fc --sweep veryhard-hb-4c67fc
  *
@@ -41,12 +41,12 @@ async function main(): Promise<number> {
   for (const sweep of sweeps) {
     const { rows, apart } = sweepRows(root, sweep);
     const { priced } = pricedRows(rows);
-    const v1 = priced.reduce((total, solve) => total + solve.v1, 0);
-    const meter = priced.reduce((total, solve) => total + solve.meter, 0);
+    const billed = priced.reduce((total, solve) => total + solve.billed, 0);
+    const metered = priced.reduce((total, solve) => total + solve.metered, 0);
     console.log(`${sweep}: ${rows.length} verifier rows, ${apart} decided apart`);
     console.log(
-      `  ${priced.length} with a recorded cost: v1 recorded $${v1.toFixed(2)}, ` +
-        `this meter $${meter.toFixed(2)} (${(meter / v1).toFixed(2)}x)`,
+      `  ${priced.length} with a recorded cost: billed $${billed.toFixed(2)}, ` +
+        `metered $${metered.toFixed(2)} (${(metered / billed).toFixed(2)}x)`,
     );
     queue.push(...rows);
   }

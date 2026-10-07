@@ -6,12 +6,15 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Options, SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import {
+  type Api,
   type AssistantMessage,
   type Message,
+  type Model,
   normalizeContext,
   type ThinkingLevel,
   Type,
 } from "@earendil-works/pi-ai";
+import { dollars, freezePrices, priceKey, tokensOf } from "../src/kernel/meter.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 
 interface Call {
@@ -40,8 +43,12 @@ await mock.module("@anthropic-ai/claude-agent-sdk", () => ({
   },
 }));
 
-const { claudeProvider } = await import("../src/backends/claude.ts");
+const { claudeProvider, REPORTED_COST } = await import("../src/backends/claude.ts");
 const provider = claudeProvider();
+// The model the fixtures were recorded on, so its list prices are the ones Claude Code billed.
+const haiku = provider.getModels().find((entry) => entry.id === "claude-haiku-4-5");
+if (haiku === undefined) throw new Error("pi's Anthropic catalog has no claude-haiku-4-5");
+const recorded: Model<Api> = haiku;
 
 async function pump(prompt: AsyncIterable<SDKUserMessage>, into: SDKUserMessage[]): Promise<void> {
   for await (const message of prompt) into.push(message);
@@ -58,11 +65,23 @@ function load(name: string): SDKMessage[] {
 }
 
 function turn(messages: Message[], reasoning?: ThinkingLevel): Promise<AssistantMessage> {
-  const model = provider.getModels().find((entry) => entry.id === "claude-opus-5");
-  if (model === undefined) throw new Error("pi's Anthropic catalog has no claude-opus-5");
   const context = normalizeContext({ systemPrompt: "You are a solver.", messages, tools: [read] });
   const options = { sessionId: "solve-1", apiKey: "token", ...keyIfDefined("reasoning", reasoning) };
-  return provider.streamSimple(model, context, options).result();
+  return provider.streamSimple(recorded, context, options).result();
+}
+
+/** The tool results pi sends back for every call in `message`. */
+function answered(message: AssistantMessage): Message[] {
+  return message.content
+    .filter((block) => block.type === "toolCall")
+    .map((block) => ({
+      role: "toolResult",
+      toolCallId: block.id,
+      toolName: block.name,
+      content: [{ type: "text", text: "contents" }],
+      isError: false,
+      timestamp: 0,
+    }));
 }
 
 describe("the Claude backend", () => {
@@ -81,18 +100,28 @@ describe("the Claude backend", () => {
     expect(call?.options.systemPrompt).toBe("You are a solver.");
     expect(call?.prompts[0]?.message.content).toBe("Read the three files.");
 
-    const results: Message[] = toolCalls.map((block) => ({
-      role: "toolResult",
-      toolCallId: block.id,
-      toolName: block.name,
-      content: [{ type: "text", text: "contents" }],
-      isError: false,
-      timestamp: 0,
-    }));
-    const second = await turn([opening, first, ...results]);
+    const second = await turn([opening, first, ...answered(first)]);
     expect(second.stopReason).toBe("stop");
     expect(second.content.some((block) => block.type === "text" && block.text.length > 0)).toBe(true);
     expect(call?.pumpFailure).toBeUndefined();
+  });
+
+  it("bills the turns' token classes at what Claude Code reported the query cost", async () => {
+    const prices = freezePrices([haiku]);
+    for (const [fixture, reported] of [
+      ["text.jsonl", 0.020421],
+      ["parallel-tools.jsonl", 0.0056776],
+    ] as const) {
+      replay = load(fixture);
+      const turns = [await turn([opening])];
+      for (let last = turns[0]; last?.stopReason === "toolUse"; last = turns.at(-1)) {
+        turns.push(await turn([opening, last, ...answered(last)]));
+      }
+      const diagnostic = turns.at(-1)?.diagnostics?.find((entry) => entry.type === REPORTED_COST);
+      expect(diagnostic?.details?.totalCostUsd).toBeCloseTo(reported, 10);
+      const { billed } = dollars(prices, priceKey(haiku), tokensOf(turns.map((message) => message.usage)));
+      expect(Math.abs(billed - reported) / reported).toBeLessThan(0.01);
+    }
   });
 
   it("refuses a second prompt once Claude Code holds the conversation", async () => {

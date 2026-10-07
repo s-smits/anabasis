@@ -21,6 +21,7 @@
 import { POLICY } from "../critic/policy.ts";
 import type { PiTool } from "../backends/pi-session.ts";
 import { BuilderAuthorFeedback } from "../builder/author-feedback.ts";
+import type { BuilderRole } from "../builder/builder-tool-interface.ts";
 import { authoringIdentity, PRIMARY_AUTHOR_PATHS } from "./author-first.ts";
 import type { FingerprintEvidence } from "../claim/fingerprint.ts";
 import type { RunObserver } from "../observe/run-observer.ts";
@@ -161,8 +162,8 @@ export interface BuilderSessionDeps {
   /** Opens the Builder slot's host session; a continued conversation reconfigures its own instead. */
   open: OpenSession;
   /** Record what this round's session exposes, every round and before it begins, whether the round
-   *  opens a session or continues the conversation. */
-  recordSession?: (tools: readonly PiTool[], systemPrompt: string) => void;
+   *  opens a session or continues the conversation, against the catalogue of the role it opens in. */
+  recordSession?: (tools: readonly PiTool[], systemPrompt: string, role: BuilderRole) => void;
   /** The run's one Builder conversation. Absent, the round opens its own session and closes it. */
   conversation?: BuilderConversation;
   /** The composed candidate-isolated toolkit; the launch framing tells the Builder how to begin. */
@@ -545,6 +546,27 @@ async function runRoundTurns(
   return turns;
 }
 
+function roundContext(input: BuilderSessionInput, deps: BuilderSessionDeps): RoundContext {
+  const recorder = new BuilderExecutionRecorder();
+  const checkpoint = (): void => deps.onCheckpoint?.(recorder.finish("in-flight"));
+  return { deps, state: freshSessionState(), recorder, checkpoint, maxTurns: input.maxTurns };
+}
+
+/** The round's entry: its roster composed and recorded, through the entry gate, before any
+ *  session sees a tool. */
+function enterRound(context: RoundContext, input: BuilderSessionInput) {
+  const roster = roundRoster(context, context.deps.feedback ?? new BuilderAuthorFeedback(), input);
+  const prompts = sessionPrompts(input);
+  context.deps.recordSession?.(roster, prompts.system, input.split?.role ?? "whole");
+  return { roster, prompts };
+}
+
+/** A round's entry gate alone, with no session opened, so a split build checks both sides' rosters
+ *  before its first answer pass rather than after it. */
+export function checkRoundEntry(input: BuilderSessionInput, deps: BuilderSessionDeps): void {
+  enterRound(roundContext(input, deps), input);
+}
+
 /** Run one Builder round until it settles. Like a Codex goal, a round has no turn ceiling of its
  *  own: it ends on an accepted submit, a final refusal, `POLICY.loop.stalledTurns` turns in a row without a
  *  successful tool call, the budget, a thrown turn, or the operator's `maxTurns` when one is set. */
@@ -552,14 +574,10 @@ export async function runBuilderSession(
   input: BuilderSessionInput,
   deps: BuilderSessionDeps,
 ): Promise<BuilderSessionOutcome> {
-  const state = freshSessionState();
-  const recorder = new BuilderExecutionRecorder();
-  const checkpoint = (): void => deps.onCheckpoint?.(recorder.finish("in-flight"));
-  const context = { deps, state, recorder, checkpoint, maxTurns: input.maxTurns };
-  const roster = roundRoster(context, deps.feedback ?? new BuilderAuthorFeedback(), input);
-  const prompts = sessionPrompts(input);
+  const context = roundContext(input, deps);
+  const { state, recorder, checkpoint } = context;
+  const { roster, prompts } = enterRound(context, input);
   const systemPrompt = prompts.system;
-  deps.recordSession?.(roster, systemPrompt);
   const conversation = deps.conversation ?? new BuilderConversation();
   const round = await openBuildSession(() =>
     conversation.begin(roster, systemPrompt, input.workspace, deps.open),

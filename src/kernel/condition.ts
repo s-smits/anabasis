@@ -11,7 +11,7 @@ import type { PriceTable } from "./meter.ts";
 
 /**
  * What the host holds every solve to. A harness never sets one: a file or a prompt that asks for a
- * longer wall, more turns or more concurrency changes nothing.
+ * longer wall, more turns, more concurrency or more disk changes nothing.
  */
 export interface Limits {
   readonly wallSeconds: number;
@@ -21,6 +21,13 @@ export interface Limits {
   readonly shellSeconds: number;
   /** Solves the host runs at once, which moves wall time through the load they put on one another. */
   readonly concurrency: number;
+  /**
+   * The most bytes one solve's writable roots may hold together, enforced as the size of the volume
+   * they sit on (`src/verify/disk-cap.ts`). Neither v1 nor the sweep this plan targets capped disk,
+   * so one solve could fill the host's disk under every other. The runner hands the same number to
+   * `solveIsolationPolicy`, so a change here moves `sandbox` too.
+   */
+  readonly diskBytes: number;
 }
 
 export interface Condition {

@@ -1,3 +1,7 @@
+// Copied from v1 (github.com/s-smits/anabasis, 3f93d06b): src/verify/solve-sandbox.ts, verbatim but
+// for one departure, the disk cap: `cap` on the policy, its input and the probe's, the cap in the
+// hashed identity, the refusal of a cap root inside a denied tree, the sized tmpfs in the Linux argv
+// and the move-guard probe's own small cap. v1 had no disk cap.
 /** Host-owned OS isolation for the networked Built model process.
  *
  * The Built Harness reaches its provider over the network, so this wall cannot work by closing the
@@ -13,6 +17,11 @@
  * `isolationArgv` builds both launches, and `policyHash` covers the mechanism's digest along with
  * the denied and allowed roots, so `composedIsolation` can refuse a session whose policy bytes
  * differ from the ones the probe executed.
+ *
+ * The policy also carries the solve's disk cap (`disk-cap.ts`): the root every writable directory a
+ * solve's commands get sits inside, and the bytes it may hold. It sits in the identity, so two caps
+ * are two policies. On Linux `isolationArgv` mounts it; on Darwin `mountDiskCap` does, outside the
+ * launch.
  */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../meta/filesystem.ts";
 import { homedir, tmpdir } from "../meta/os.ts";
@@ -29,6 +38,7 @@ import {
   bwrapTmpfsDenies,
   nodeRuntimeReadRoots,
 } from "./linux-bwrap.ts";
+import type { DiskCap } from "./disk-cap.ts";
 import { type OsIsolationRuntime, osIsolationSupport } from "./os-isolation.ts";
 import {
   type MoveGuardCheck,
@@ -57,6 +67,9 @@ type HostSolveIsolationFixture =
 export const HOST_SOLVE_ISOLATION_PROFILE_ID = "harness-host-solve-isolated";
 
 const CANARY_MARKER = "ANA-HOST-ISOLATION-PROBE-CANARY-DO-NOT-TRUST";
+/** The move-guard probe runs through `isolationArgv` like every launch, so it needs a cap of its own;
+ *  it writes nothing there, and one mebibyte is any small number. */
+const LINUX_MOVE_GUARD_CAP_BYTES = 1024 * 1024;
 /** A Linux policy is argv, not a second textual policy language, so there is no policy text for
  *  the evidence field to quote. This fixed sentence goes there for a human reader, and
  *  `isolationArgv` below remains the only thing that builds a launch — otherwise the evidence would
@@ -77,6 +90,8 @@ export interface SolveIsolationPolicy {
   deniedWriteRoots: string[];
   /** Exact runtime paths reopened read-only inside a denied home or repository. */
   allowedReadRoots: string[];
+  /** The solve's capped writable root, resolved, and its byte limit. */
+  cap: DiskCap;
   mechanismPath: string;
   /** `darwin-seatbelt/v1` or `linux-bwrap/v1`: read by `isolationArgv` to choose how the launch is
    *  built, and by the fixture chooser above to decide which family this evidence belongs to. */
@@ -119,6 +134,7 @@ function hostSolveIsolationFixture(mechanismId: string): HostSolveIsolationFixtu
  */
 export function solveIsolationPolicy(input: {
   repoRoot: string;
+  cap: DiskCap;
   runtime?: OsIsolationRuntime;
   liftDeniesCovering?: string;
   readAllowRoots?: readonly string[];
@@ -136,6 +152,13 @@ export function solveIsolationPolicy(input: {
   const keep = (root: string): boolean => !lifted.some((target) => covers(root, target));
   const reads = canonicalRoots([input.repoRoot, home]).filter(keep);
   const writes = [...reads];
+  const cap = { root: resolve(input.cap.root), bytes: input.cap.bytes };
+  // A root inside the repository or the home would sit under a denied tree: Seatbelt would refuse
+  // the worker its own scratch, and Bubblewrap would mount the cap onto a tmpfs it remounts
+  // read-only.
+  if (canonicalForms(cap.root).some((form) => reads.some((root) => covers(root, form)))) {
+    throw new Error(`the disk cap's root ${cap.root} sits inside a denied root`);
+  }
   const allowedReads = canonicalRoots([...nodeRuntimeReadRoots(), ...(input.readAllowRoots ?? [])]).filter(
     (path) => reads.some((root) => covers(root, path)),
   );
@@ -148,6 +171,7 @@ export function solveIsolationPolicy(input: {
     deniedReads: reads,
     deniedWrites: writes,
     allowedReads,
+    cap,
   };
   // Linux reaches the same allow-except posture through Bubblewrap: it begins with the host mount
   // tree so the Built Harness can still reach its provider, then overmounts every protected root
@@ -181,6 +205,7 @@ export function solveIsolationPolicy(input: {
     deniedReadRoots: reads,
     deniedWriteRoots: writes,
     allowedReadRoots: allowedReads,
+    cap,
     mechanismPath: support.mechanismPath,
     mechanismId: support.mechanismId,
   };
@@ -193,7 +218,10 @@ export function solveIsolationPolicy(input: {
  * reach one of them while the other went on testing an isolation no session uses.
  */
 export function isolationArgv(
-  policy: Pick<SolveIsolationPolicy, "profile" | "mechanismId" | "deniedReadRoots" | "allowedReadRoots">,
+  policy: Pick<
+    SolveIsolationPolicy,
+    "profile" | "mechanismId" | "deniedReadRoots" | "allowedReadRoots" | "cap"
+  >,
   command: string,
   args: readonly string[],
   environment: OptionalEnvValues = {},
@@ -206,6 +234,16 @@ export function isolationArgv(
       ...bwrapWholeRootArgs("--dev-bind"),
       ...bwrapTmpfsDenies(policy.deniedReadRoots),
       ...bwrapReadBinds(policy.allowedReadRoots),
+      // The disk cap: a tmpfs of exactly `bytes` at the solve's root, so a write past it fails with
+      // ENOSPC. `--size` applies only to the `--tmpfs` straight after it (bwrap(1); added in
+      // bubblewrap 0.7.0, below the 0.8.0 `classifyBwrapRefusal` already requires). It comes after
+      // the whole-root bind and the denies so neither covers it, and before the read-only remounts,
+      // which name only denied roots, and the policy refuses a cap root inside one. Its contents vanish with the
+      // namespace, which loses nothing: the answer and the trace cross the worker's pipe.
+      "--size",
+      String(policy.cap.bytes),
+      "--tmpfs",
+      policy.cap.root,
       // After the re-exposing binds, so that nothing reopens a hidden root as writable. Without
       // this a write into an overmounted path would succeed against the tmpfs and land on namespace
       // memory the host never sees; with it the write fails with EROFS.
@@ -279,7 +317,7 @@ export function observedRefusal(
 function runUnderPolicy(
   policy: Pick<
     SolveIsolationPolicy,
-    "profile" | "mechanismId" | "deniedReadRoots" | "allowedReadRoots" | "mechanismPath"
+    "profile" | "mechanismId" | "deniedReadRoots" | "allowedReadRoots" | "cap" | "mechanismPath"
   >,
   cwd: string,
   command: string,
@@ -308,6 +346,7 @@ function linuxMoveGuardCheck(mechanismPath: string, workRoot: string): MoveGuard
           mechanismId: LINUX_BWRAP_ID,
           deniedReadRoots: hidden ? [secret] : [],
           allowedReadRoots: [],
+          cap: { root: join(root, "cap"), bytes: LINUX_MOVE_GUARD_CAP_BYTES },
           mechanismPath,
         },
         root,
@@ -353,6 +392,7 @@ function linuxMoveGuardCheck(mechanismPath: string, workRoot: string): MoveGuard
  */
 export function probeHostSolveReadDeny(opts: {
   repoRoot: string;
+  cap: DiskCap;
   runtime?: OsIsolationRuntime;
   readAllowRoots?: readonly string[];
 }): HostSolveIsolationEvidence {
@@ -374,7 +414,7 @@ export function probeHostSolveReadDeny(opts: {
   });
   const runtime = opts.runtime === undefined ? {} : { runtime: opts.runtime };
   const readAllow = opts.readAllowRoots === undefined ? {} : { readAllowRoots: opts.readAllowRoots };
-  const real = solveIsolationPolicy({ repoRoot: opts.repoRoot, ...runtime, ...readAllow });
+  const real = solveIsolationPolicy({ repoRoot: opts.repoRoot, cap: opts.cap, ...runtime, ...readAllow });
   if ("unsupported" in real) {
     return unproven(`host solve isolation unavailable — remaining contractual: ${real.unsupported}`);
   }
@@ -393,6 +433,7 @@ export function probeHostSolveReadDeny(opts: {
     writeFileSync(repoCanary, `${CANARY_MARKER}\n`, { mode: 0o600 });
     const open = solveIsolationPolicy({
       repoRoot: opts.repoRoot,
+      cap: opts.cap,
       ...runtime,
       ...readAllow,
       liftDeniesCovering: repoCanary,

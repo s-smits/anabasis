@@ -1,6 +1,8 @@
 // Copied from v1 (github.com/s-smits/anabasis, 3f93d06b): test/solve-sandbox.test.ts, its first two
 // blocks verbatim, the policy and the executed fixture. Its last three blocks test v1's Built worker
 // and isolation claim, which did not come over, and the five imports only they read went with them.
+// Every policy and probe here now takes the disk cap v1 did not have, and the cases under "the disk
+// cap" are new.
 //
 // Host-owned solve isolation, proved by running it rather than by reading it. Every case here
 // executes the sandbox on the host the suite is running on, because a profile that is checked only
@@ -36,8 +38,12 @@ import {
   solveIsolationPolicy,
   isolationArgv,
 } from "../src/verify/solve-sandbox.ts";
+import { LINUX_BWRAP_ID } from "../src/verify/linux-bwrap.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 
+/** A cap these policies name and never mount: on Darwin nothing mounts outside `mountDiskCap`, and
+ *  on Linux the probe's launches mount it inside their own namespace. */
+const cap = { root: join(tmpdir(), "ana-solve-sandbox-cap"), bytes: 64 * 1024 * 1024 };
 const dirs: string[] = [];
 function workRepo(): string {
   const root = mkdtempSync(join(tmpdir(), "ana-solve-sandbox-"));
@@ -51,7 +57,7 @@ afterEach(() => {
 describe("the solve isolation's policy", () => {
   it("denies the repository and whole operator home, reopening only explicit runtimes", () => {
     const repoRoot = workRepo();
-    const policy = solveIsolationPolicy({ repoRoot });
+    const policy = solveIsolationPolicy({ repoRoot, cap });
     if ("unsupported" in policy) throw new Error(`this host cannot run the isolation: ${policy.unsupported}`);
     expect(policy.deniedReadRoots).toContain(homedir());
     // Both path forms of the repository, or the symlink form stays readable and the isolation leaks.
@@ -77,8 +83,8 @@ describe("the solve isolation's policy", () => {
 
   it("lifts exactly the denies covering one path for the discrimination check", () => {
     const repoRoot = workRepo();
-    const real = solveIsolationPolicy({ repoRoot });
-    const open = solveIsolationPolicy({ repoRoot, liftDeniesCovering: join(repoRoot, "canary.txt") });
+    const real = solveIsolationPolicy({ repoRoot, cap });
+    const open = solveIsolationPolicy({ repoRoot, cap, liftDeniesCovering: join(repoRoot, "canary.txt") });
     if ("unsupported" in real || "unsupported" in open) throw new Error("this host cannot run the isolation");
     expect(open.deniedReadRoots.length).toBeLessThan(real.deniedReadRoots.length);
     expect(open.policyHash).not.toBe(real.policyHash);
@@ -92,7 +98,7 @@ describe("the solve isolation's policy", () => {
   // guard; the executed half is the fixture's fourth check.
   it("denies the rename of every protected root's ancestors, so a deny cannot be relocated", () => {
     const repoRoot = workRepo();
-    const policy = solveIsolationPolicy({ repoRoot });
+    const policy = solveIsolationPolicy({ repoRoot, cap });
     if ("unsupported" in policy) throw new Error(`this host cannot run the isolation: ${policy.unsupported}`);
     // The parent of each denied root is guarded against relocation.
     const ancestors = guardedAncestors(policy.deniedReadRoots);
@@ -110,7 +116,7 @@ describe("the solve isolation's policy", () => {
       // would make the profile bytes differ per run and break `profileDigest === policyHash`.
       expect(policy.profile).not.toContain("with message");
     }
-    const again = solveIsolationPolicy({ repoRoot });
+    const again = solveIsolationPolicy({ repoRoot, cap });
     if ("unsupported" in again) throw new Error("this host cannot run the isolation");
     expect(again.profile).toBe(policy.profile);
     expect(again.policyHash).toBe(policy.policyHash);
@@ -118,7 +124,7 @@ describe("the solve isolation's policy", () => {
 
   it("refuses to create an isolation policy on an unsupported platform", () => {
     // This policy supports neither Seatbelt nor bubblewrap on win32.
-    const policy = solveIsolationPolicy({ repoRoot: workRepo(), runtime: { platform: "win32" } });
+    const policy = solveIsolationPolicy({ repoRoot: workRepo(), cap, runtime: { platform: "win32" } });
     expect("unsupported" in policy).toBe(true);
   });
 
@@ -132,7 +138,7 @@ describe("the solve isolation's policy", () => {
     dirs.push(homeRoot);
     const homeCanary = join(homeRoot, "canary.txt");
     writeFileSync(homeCanary, "HOME-CANARY\n");
-    const policy = solveIsolationPolicy({ repoRoot, readAllowRoots: [runtimeRoot] });
+    const policy = solveIsolationPolicy({ repoRoot, cap, readAllowRoots: [runtimeRoot] });
     if ("unsupported" in policy) throw new Error(`this host cannot run the isolation: ${policy.unsupported}`);
     const result = spawnSync(
       policy.mechanismPath,
@@ -149,7 +155,7 @@ describe("the executed fixture", () => {
   it("proves the OS refused a protected read the lifted policy shows would otherwise succeed", () => {
     const repoRoot = workRepo();
     writeFileSync(join(repoRoot, "hidden-tasks.json"), "{}\n");
-    const evidence = probeHostSolveReadDeny({ repoRoot });
+    const evidence = probeHostSolveReadDeny({ repoRoot, cap });
     expect(evidence.fixture).toBe(
       onLinux ? HOST_BWRAP_SOLVE_ISOLATION_FIXTURE : HOST_SOLVE_ISOLATION_FIXTURE,
     );
@@ -160,7 +166,7 @@ describe("the executed fixture", () => {
     expect(evidence.moveGuardRefused).toBe(true);
     if (onLinux) expect(evidence.evidence.join("\n")).toContain("stayed hidden");
     expect(evidence.isolated).toBe(true);
-    const policy = solveIsolationPolicy({ repoRoot });
+    const policy = solveIsolationPolicy({ repoRoot, cap });
     if ("unsupported" in policy) throw new Error("this host cannot run the isolation");
     // The evidence binds the rules it executed, so a later reader can re-derive them.
     expect(evidence.profileDigest).toBe(policy.policyHash);
@@ -185,7 +191,7 @@ describe("the executed fixture", () => {
   });
 
   it("reports an unavailable mechanism as unproven instead of throwing", () => {
-    const evidence = probeHostSolveReadDeny({ repoRoot: workRepo(), runtime: { platform: "win32" } });
+    const evidence = probeHostSolveReadDeny({ repoRoot: workRepo(), cap, runtime: { platform: "win32" } });
     expect(evidence.available).toBe(false);
     expect(evidence.isolated).toBe(false);
     expect(evidence.profileDigest).toBeNull();
@@ -196,5 +202,46 @@ describe("the executed fixture", () => {
     expect(observedRefusal("cat: Operation not permitted", 1, "MARKER")).toBe(true);
     // The canary in the output refutes a refusal outright, whatever the exit code said.
     expect(observedRefusal("MARKER\ncat: Operation not permitted", 1, "MARKER")).toBe(false);
+  });
+});
+
+describe("the disk cap", () => {
+  it("is part of the policy's identity, so another root or size is another policy", () => {
+    const repoRoot = workRepo();
+    const hashes = [cap, { ...cap, bytes: cap.bytes * 2 }, { ...cap, root: `${cap.root}-other` }].map(
+      (each) => {
+        const policy = solveIsolationPolicy({ repoRoot, cap: each });
+        if ("unsupported" in policy) throw new Error("this host cannot run the isolation");
+        return policy.policyHash;
+      },
+    );
+    expect(new Set(hashes).size).toBe(3);
+  });
+
+  it("refuses a root inside a denied tree, where the worker could not write it", () => {
+    const repoRoot = workRepo();
+    expect(() => solveIsolationPolicy({ repoRoot, cap: { ...cap, root: join(repoRoot, "solve") } })).toThrow(
+      "sits inside a denied root",
+    );
+  });
+
+  // Argv only: this suite's host may not be Linux, and the order is what the policy is.
+  it("mounts a sized tmpfs at the root after the denies and before any read-only remount", () => {
+    const argv = isolationArgv(
+      {
+        profile: "linux",
+        mechanismId: LINUX_BWRAP_ID,
+        deniedReadRoots: ["/home/operator", "/srv/repo"],
+        allowedReadRoots: ["/home/operator/.bun"],
+        cap: { root: "/tmp/solve-1", bytes: 1_048_576 },
+      },
+      "/bin/true",
+      [],
+    );
+    const size = argv.indexOf("--size");
+    expect(argv.slice(size, size + 4)).toEqual(["--size", "1048576", "--tmpfs", "/tmp/solve-1"]);
+    expect(size).toBeGreaterThan(argv.indexOf("--dev-bind"));
+    expect(size).toBeGreaterThan(argv.lastIndexOf("/home/operator/.bun"));
+    expect(size).toBeLessThan(argv.indexOf("--remount-ro"));
   });
 });

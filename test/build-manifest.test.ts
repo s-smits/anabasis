@@ -9,7 +9,8 @@
  *
  * The launches read a generated catalogue and index in the maintained shape, so a hostile variant
  * is one edit of a fixture the test owns; one test lists the live catalogue, which is where the
- * maintained references and this shape are proved to agree.
+ * maintained references and this shape are proved to agree. `compose-native-pairs.py` reads the
+ * native prompts a launch writes, so its tests compose from them.
  */
 import { spawnTextSync as spawnSync } from "./helpers/bun-spawn-sync.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "../src/meta/filesystem.ts";
@@ -73,6 +74,7 @@ type Edit = (text: string) => string;
 const REPO = resolve(import.meta.dirname, "..");
 const SKILL = join(REPO, ".claude/skills/whole-run-investigation");
 const SCRIPT = join(SKILL, "scripts/build-manifest.ts");
+const COMPOSER = join(SKILL, "scripts/compose-native-pairs.py");
 const OPEN_LANES = ANGLE_COUNT - ISOLATED_ANGLES.size;
 const SCAN_VIEW = JSON.stringify({
   findings: [{ rule: "telemetry-constant", battery: "run-1-on", statement: "turns is 1." }],
@@ -990,5 +992,50 @@ describe("what a launch refuses", () => {
     );
     expect(staleResult.status).toBe(2);
     expect(staleResult.stderr).toContain("differs from worktree HEAD");
+  });
+});
+
+/** A shared-instructions file whose one rendered line is `fact`. */
+function sharedInstructions(fact: string): string {
+  const path = join(scratchDir("ana-build-shared-"), "shared-instructions.json");
+  writeFileSync(
+    path,
+    JSON.stringify({ schema: "wri-shared-instructions/v1", template: ["{fact}"], values: { fact } }),
+  );
+  return path;
+}
+
+function composePairs(...args: string[]) {
+  return spawnSync("python3", ["-I", COMPOSER, ...args]);
+}
+
+describe("what the native-pair composer makes of a launch", () => {
+  it("keeps the shared instructions in an open group when an isolated lane shared its launch, and the isolated lane blind", () => {
+    const result = launch(
+      snapshot(),
+      "--sessions",
+      `2,3,${PUBLIC_ONLY_LANE}`,
+      "--transport",
+      "native",
+      "--notes",
+      notes(""),
+      "--shared-instructions",
+      sharedInstructions("- Recorded fact SHARED_FACT."),
+    );
+    expect(result.status).toBe(0);
+    // The launch held a blind lane, so every prompt opens with the blind file.
+    expect(result.prompt("lane_02").startsWith("# Independent blind review")).toBe(true);
+
+    const composed = composePairs("--lanes", result.out, "--agents", "2");
+    expect(composed.stdout).toContain('"problems": []');
+    expect(composed.status).toBe(0);
+    const open = readFileSync(join(result.out, "pairs", "lanes_02_03.md"), "utf8");
+    expect(open).toContain("## Run overview");
+    expect(open).toContain("SHARED_FACT");
+    expect(open).not.toContain("# Independent blind review");
+    expect(open.match(/^# Your assignment$/gm)).toHaveLength(1);
+    const blind = readFileSync(join(result.out, "pairs", `${laneName(PUBLIC_ONLY_LANE)}.md`), "utf8");
+    expect(blind).toContain("# Independent blind review");
+    expect(blind).not.toContain("SHARED_FACT");
   });
 });

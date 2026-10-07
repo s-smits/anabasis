@@ -26,7 +26,10 @@ nothing here replaces it, and nothing here changes what a lane is asked or how `
    file to the Agent tool as the whole prompt, and do not write a prompt that says "read these
    files": the subagent then spends its first turns assembling what the script assembles in one second.
    The script exits 1 and names the group when a composed prompt lost the shared instructions (no
-   `## Run overview`) or kept a second `Authority` paragraph, so read its exit code, not only its table.
+   `## Run overview`), an isolated lane's prompt gained them, or a prompt kept a second `Authority`
+   paragraph, so read its exit code, not only its table. An isolated lane may share the launch: the
+   manifest then puts the blind file first in every prompt and the shared instructions inside each
+   open lane's task, and the script cuts them on their own heading, not on `# Your assignment`.
 4. The composed Authority paragraph is report only. A native lane's default authority lets it
    commit repairs in its own worktree; withhold that until the primary has adjudicated. It also
    tells the lane to write `owner:` only on a finding's own owner line (see the validator note

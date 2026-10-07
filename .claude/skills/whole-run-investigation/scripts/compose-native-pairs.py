@@ -33,6 +33,12 @@ from pathlib import Path
 
 DEFAULT_GROUPS = Path(__file__).resolve().parent.parent / "references" / "lane-groups.json"
 WIDE_GROUP = 8
+# The full shared instructions open with this heading. A launch that also held an isolated lane
+# writes the blind file first and these instructions inside each open lane's task, after
+# `# Your assignment`, so a prefix is cut from this heading to `assignedSession:`, never at the
+# first `# Your assignment`. A prompt without it is an isolated lane's, whose head is the blind file.
+FULL_HEAD = "# Whole-run investigation"
+ASSIGNMENT = ["", "---", "", "# Your assignment", ""]
 
 
 def load_groups(path: Path) -> tuple[set[int], dict]:
@@ -145,39 +151,48 @@ def parse(lanes: Path, n: int) -> dict:
                 return i
         raise SystemExit(f"lane {n}: {what} not found in {path}")
 
-    assignment = find(lambda l: l == "# Your assignment", 0, "`# Your assignment` heading")
-    starts = find(lambda l: l.startswith("startsFrom:"), assignment + 1, "`startsFrom:` line")
-    report = find(lambda l: l.startswith("Report one clearly separated"), assignment + 1, "report paragraph")
-    body0 = find(lambda l: re.match(r"^\*\*\d+\. ", l) is not None, assignment + 1, "`**N. Title.**` lane body")
+    full = next((i for i, line in enumerate(lines) if line.startswith(FULL_HEAD)), None)
+    session = find(lambda l: l.startswith("assignedSession:"), full or 0, "`assignedSession:` line")
+    prefix = lines[full or 0 : session]
+    while prefix and prefix[-1] in ASSIGNMENT:
+        prefix.pop()
+    starts = find(lambda l: l.startswith("startsFrom:"), session, "`startsFrom:` line")
+    report = find(lambda l: l.startswith("Report one clearly separated"), session, "report paragraph")
+    body0 = find(lambda l: re.match(r"^\*\*\d+\. ", l) is not None, session, "`**N. Title.**` lane body")
     auth = find(lambda l: l.startswith("Authority:"), body0, "`Authority:` paragraph")
     return {
-        "prefix": lines[: assignment + 1],
+        "blind": full is None,
+        "prefix": prefix,
         "startsFrom": lines[starts],
         "report": lines[report:body0],
         "body": lines[body0:auth],
     }
 
 
-def compose(lanes: Path, pair: tuple[int, ...], out_dir: Path, remote_host: str | None) -> tuple[str, str]:
+def compose(lanes: Path, pair: tuple[int, ...], out_dir: Path, remote_host: str | None) -> tuple[str, str, bool]:
     parts = [parse(lanes, n) for n in pair]
     nums = [f"{n:02d}" for n in pair]
     name = "lanes_" + "_".join(nums) if len(pair) > 1 else f"lane_{nums[0]}"
-    out = list(parts[0]["prefix"]) + ["", f"assignedSession: {name}", f"assignedLanes: {', '.join(nums)}"]
+    out = list(parts[0]["prefix"]) + ASSIGNMENT + [f"assignedSession: {name}", f"assignedLanes: {', '.join(nums)}"]
     out += [p["startsFrom"] for p in parts]
     out += ["assignmentKind: grouped semantic review" if len(pair) > 1 else "assignmentKind: single semantic review", ""]
     out += parts[0]["report"]
     for p in parts:
         out += p["body"]
     out += [authority(lanes / "native-output", remote_host), ""]
-    return name, "\n".join(out)
+    return name, "\n".join(out), parts[0]["blind"]
 
 
-def check(text: str, pair: tuple[int, ...]) -> list[str]:
+def check(text: str, pair: tuple[int, ...], blind: bool = False) -> list[str]:
     bad = []
     if text.count("# Your assignment") != 1:
         bad.append(f"{text.count('# Your assignment')} assignment headings")
-    if "## Run overview" not in text:
+    if blind and "## Run overview" in text:
+        bad.append("an isolated lane's prompt carries the `## Run overview` it must be blind to")
+    if not blind and "## Run overview" not in text:
         bad.append("no `## Run overview`: the shared instructions did not reach the composed prompt")
+    if not blind and "# Independent blind review" in text:
+        bad.append("an open lane's prompt carries the isolated lanes' blind file")
     authorities = len(re.findall(r"^Authority[ (:]", text, re.M))
     if authorities != 1:
         bad.append(f"{authorities} Authority paragraphs; a lane body kept its own")
@@ -244,9 +259,9 @@ def main() -> int:
     )
     failed = False
     for g, reads in plan:
-        name, text = compose(lanes, g, out_dir, args.remote_host)
+        name, text, blind = compose(lanes, g, out_dir, args.remote_host)
         (out_dir / f"{name}.md").write_text(text)
-        bad = check(text, g)
+        bad = check(text, g, blind)
         failed |= bool(bad)
         print(name, json.dumps({"lanes": list(g), "reads": reads, "chars": len(text), "problems": bad}))
     print(f"{len(plan)} prompts for {sum(len(g) for g, _ in plan)} lanes in {out_dir}")

@@ -118,6 +118,8 @@ const searchHome = fauxAssistantMessage(
 describe("an attempt's ending", () => {
   const PLAYED: Played = {
     crash: null,
+    broken: null,
+    harness: null,
     turns: [],
     submitted: undefined,
     wallEnded: false,
@@ -198,6 +200,14 @@ describe("an attempt's ending", () => {
       kind: "no-answer",
     });
   });
+
+  it("is the harness's own fail when its tools could not be bundled or listed", async () => {
+    expect(await ending({ broken: "harness bundle failed", wallEnded: true }).ending).toEqual({
+      outcome: "fail",
+      kind: "broken-harness",
+      reason: "harness bundle failed",
+    });
+  });
 });
 
 // Each of these mounts a disk image and runs the real wall, so they run side by side.
@@ -228,6 +238,7 @@ describe.skipIf(!darwin)("a solve end to end", () => {
     expect(done?.data.turns).toBe(5);
     expect(done?.data.billed).toBeGreaterThan(0);
     expect(done?.data.metered).toBeGreaterThan(0);
+    expect(done?.data.harness).toMatch(/^[0-9a-f]{64}$/);
 
     // Exit test 5: the hidden value reaches nothing the solver reads: the prompt, the tool rows,
     // the first turn and every tool result among them, the harness's process, and its home.
@@ -302,6 +313,13 @@ describe.skipIf(!darwin)("a solve end to end", () => {
       "the verifier could not decide t-1, so the run stops: value: the wall broke",
     );
     expect(finished().at(-1)?.data.ending).toMatchObject({ outcome: "non-result", kind: "verifier" });
+  }, 120_000);
+
+  it.concurrent("fails a harness whose tools do not bundle once, with no rerun", async () => {
+    const { request, finished } = setup([]);
+    writeFileSync(join(request.harness, "agent", "tools.ts"), "export const = ;\n");
+    expect(await solve(request, noWait)).toMatchObject({ outcome: "fail", kind: "broken-harness" });
+    expect(finished().map(({ data }) => data.harness)).toEqual([null]);
   }, 120_000);
 
   it.concurrent("returns a faulty check's ending once, neither rerun nor stopping the run", async () => {

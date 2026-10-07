@@ -17,7 +17,8 @@
  */
 import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { TSchema } from "@earendil-works/pi-ai";
-import { existsSync, writeFileSync } from "../meta/filesystem.ts";
+import { sha256OfFile } from "../meta/digest.ts";
+import { existsSync, lstatSync, readdirSync, readlinkSync, writeFileSync } from "../meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "../meta/json-runtime.ts";
 import { type JsonValue, asRecord, isRecord, isString } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
@@ -40,7 +41,8 @@ export interface Harness {
   readonly toolTree: string | null;
   /** `agent/tools.ts` bundled into one self-contained ESM module over `harness-shim.ts`. */
   readonly module: string;
-  /** sha256 over everything the solver-visible tools depend on: module, spec and guide. */
+  /** sha256 over everything the solver-visible tools depend on: module, spec, guide and the tool
+   *  tree's files, so a tool tree changed under an unchanged module changes it (v1's row G7). */
   readonly digest: string;
 }
 
@@ -123,14 +125,21 @@ export async function openHarness(dir: string): Promise<Harness> {
   }
   const module = await bundle(join(dir, "agent", "tools.ts"));
   const toolchain = join(dir, ".toolchain");
-  return {
-    guide,
-    presets,
-    kinds,
-    toolTree: existsSync(toolchain) ? toolchain : null,
-    module,
-    digest: hashJsonValue({ module, spec, guide }),
-  };
+  const toolTree = existsSync(toolchain) ? toolchain : null;
+  const tree = toolTree === null ? null : treeContent(toolTree);
+  return { guide, presets, kinds, toolTree, module, digest: hashJsonValue({ module, spec, guide, tree }) };
+}
+
+/** Each entry under `dir` by path, mode and content: a file by its sha256, a link by its target. */
+function treeContent(dir: string) {
+  return readdirSync(dir, { recursive: true, encoding: "utf8" })
+    .sort()
+    .map((path) => {
+      const full = join(dir, path);
+      const stat = lstatSync(full);
+      const content = stat.isSymbolicLink() ? readlinkSync(full) : stat.isFile() ? sha256OfFile(full) : null;
+      return { path, mode: stat.mode, content };
+    });
 }
 
 /** v1's bundling (generated-tool-worker-process.ts:103-112), with the two imports a harness makes

@@ -5,6 +5,8 @@ import { describe, expect, it } from "bun:test";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type, validateToolArguments } from "@earendil-works/pi-ai";
 import {
+  chmodSync,
+  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -65,6 +67,25 @@ describe("a v1 harness state", () => {
     expect(harness.module).toContain("createDomainHarness");
     expect(harness.module).not.toMatch(/from\s*"(@ana\/agent-bundle|@earendil-works\/pi-ai|\.\/helper\.ts)"/);
     expect(harness.digest).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("changes its digest with any file or mode in the tool tree, as with the module", async () => {
+    const dir = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-harness-tree-")));
+    try {
+      cpSync(FIXTURE, dir, { recursive: true });
+      const bin = join(dir, ".toolchain", "bin");
+      mkdirSync(bin, { recursive: true });
+      writeFileSync(join(bin, "tool"), "#!/bin/sh\necho one\n");
+      const digests = [(await openHarness(dir)).digest];
+      writeFileSync(join(bin, "tool"), "#!/bin/sh\necho two\n");
+      digests.push((await openHarness(dir)).digest);
+      chmodSync(join(bin, "tool"), 0o755);
+      digests.push((await openHarness(dir)).digest);
+      expect(new Set(digests).size).toBe(3);
+      expect(digests[2]).toBe((await openHarness(dir)).digest);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   // The shim drops v1's nullable-number rewrite on this behaviour of the pinned pi.

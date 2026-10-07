@@ -88,6 +88,10 @@ export interface SolveRequest {
 /** What one attempt left behind for its ending to be read from. */
 export interface Played {
   readonly crash: string | null;
+  /** Why the harness's tools could not be bundled or listed; null when they were. */
+  readonly broken: string | null;
+  /** The harness's digest, null when it did not open. */
+  readonly harness: string | null;
   readonly turns: readonly AssistantMessage[];
   readonly submitted: JsonValue | undefined;
   readonly wallEnded: boolean;
@@ -149,6 +153,7 @@ async function attemptSolve(request: SolveRequest, id: string): Promise<Ending> 
     ...dollars(freezePrices([model]), priceKey(model), tokens),
     reportedCost: isNumber(reportedCost) ? reportedCost : null,
     responseModels: [...new Set(played.turns.flatMap((turn) => turn.responseModel ?? []))],
+    harness: played.harness,
     homeBytes: played.homeBytes,
     seconds: (performance.now() - started) / 1000,
     load: loadavg(),
@@ -161,7 +166,14 @@ async function attemptSolve(request: SolveRequest, id: string): Promise<Ending> 
   return ending;
 }
 
-/** Mount, seed, run the loop, tear down. Anything that throws on the way is the sandbox's crash. */
+/** A harness whose tools could not be bundled or listed. */
+class BrokenHarness extends Error {}
+const brokenHarness = (error: unknown): never => {
+  throw new BrokenHarness(errorMessage(error));
+};
+
+/** Mount, seed, run the loop, tear down. Anything that throws on the way is the sandbox's crash,
+ *  except the harness's opening and listing, which are its own. */
 async function play(request: SolveRequest, id: string): Promise<Played> {
   const { limits } = request;
   const dirs = solveDirs(id);
@@ -175,6 +187,8 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
   let release: ReleaseDiskCap | null = null;
   let homeBytes: number | null = null;
   let crash: string | null = null;
+  let broken: string | null = null;
+  let digest: string | null = null;
   try {
     release = await mountDiskCap({ root: dirs.root, bytes: limits.diskBytes });
     for (const dir of [dirs.home, dirs.runs, dirs.host]) mkdirSync(dir, { recursive: true });
@@ -183,10 +197,11 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
       cap: { root: dirs.root, bytes: limits.diskBytes },
     });
     if ("unsupported" in base) throw new Error(`this host cannot wall a solve: ${base.unsupported}`);
-    const harness = await openHarness(request.harness);
     const files = seedHome(dirs.home, request.task, request.resources);
+    const harness = await openHarness(request.harness).catch(brokenHarness);
+    digest = harness.digest;
     const commandWall: CommandWall = { base, dirs, toolTree: harness.toolTree, limits };
-    const tools = await solverTools(request, harness, commandWall, desk, files);
+    const tools = await solverTools(request, harness, commandWall, desk, files).catch(brokenHarness);
     const prompt = systemPrompt(
       limits.wallSeconds,
       tools.map(({ name }) => name),
@@ -215,7 +230,8 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
     );
     homeBytes = bytesUnder(dirs.home);
   } catch (error) {
-    crash = errorMessage(error);
+    if (error instanceof BrokenHarness) broken = error.message;
+    else crash = errorMessage(error);
   } finally {
     clearTimeout(timer);
     done.abort();
@@ -224,6 +240,8 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
   }
   return {
     crash,
+    broken,
+    harness: digest,
     turns,
     submitted: desk.submitted,
     wallEnded: wall.signal.aborted,
@@ -327,6 +345,7 @@ export async function judge(request: SolveRequest, id: string, played: Played): 
     }
     return verdict?.kind === "pass" ? { outcome: "pass" } : { outcome: "fail", kind: "rejected" };
   }
+  if (played.broken !== null) return { outcome: "fail", kind: "broken-harness", reason: played.broken };
   if (played.wallEnded) return { outcome: "fail", kind: "wall-ended" };
   const last = played.turns.at(-1);
   if (last !== undefined && (last.stopReason === "length" || isContextOverflow(last))) {

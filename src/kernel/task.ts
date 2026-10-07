@@ -267,9 +267,12 @@ export async function controlsGate(
 
 /**
  * Gate 5: each harness's solve under the test condition. A task is admitted when at least one fails,
- * and is wall-bound when every fail ended at the wall.
+ * and is wall-bound when every fail ended at the wall. A broken harness fails every task alike, so
+ * its fail says nothing of this one, and it may not screen.
  */
 export function screen(tests: readonly [Counted, Counted]): Screening {
+  const broken = tests.find((solve) => solve.outcome === "fail" && solve.kind === "broken-harness");
+  if (broken !== undefined) throw new Error(`a broken harness cannot screen a task: ${broken.reason}`);
   const fails = tests.flatMap((solve) => (solve.outcome === "fail" ? [solve.kind] : []));
   if (fails.length === 0) return "too-easy";
   return fails.every((kind) => kind === "wall-ended") ? "wall-bound" : "admitted";

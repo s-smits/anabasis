@@ -285,6 +285,11 @@ describe("gate 5, screening", () => {
     expect(screen([fail("wall-ended"), fail("wall-ended")])).toBe("wall-bound");
     expect(screen([fail("wall-ended"), fail("rejected")])).toBe("admitted");
   });
+
+  it("refuses to screen with a broken harness, whose fail says nothing of the task", () => {
+    const broken: Counted = { outcome: "fail", kind: "broken-harness", reason: "no tools" };
+    expect(() => screen([pass, broken])).toThrow("a broken harness cannot screen a task: no tools");
+  });
 });
 
 describe("the task states", () => {

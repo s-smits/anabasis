@@ -984,13 +984,15 @@ select product bytes and nothing else.
    round ceiling: they continue until a typed terminal, an exhausted budget, required user input or a
    direct stop. `--stop-after-ms` is a soft boundary, in that the round in flight finishes and records
    before the stop, and provider reset waits count against it, so give a generous one, or none, when the
-   question needs several rounds. "Proof run", "one epoch" and "at least one" set a minimum, not a
-   maximum.
+   question needs several rounds. `--max-batteries N` ends a run once it has measured N new batteries
+   of its own (a build or rebuild that measured) and its next move is no `measure`, so the last
+   battery's remeasures run first; a remeasure never counts, and the opening records N. "Proof run",
+   "one epoch" and "at least one" set a minimum, not a maximum.
 
 ```text
 bun run fullrun -- --prompt "<request>" --provider-turn-budget N [--project <id>]
   [--context <path> ...] [--expected-source <commit>:<digest>] [--run <runId>]
-  [--max-iterations N] [--stop-after-ms N] [--max-builder-turns N] [--expected-tasks N]
+  [--max-iterations N] [--max-batteries N] [--stop-after-ms N] [--max-builder-turns N] [--expected-tasks N]
   [--iteration-budget N|none] [--product-policy fixed] [--dcg true|false]
   [--withhold-instruments true|false]
   [--builder-backend <kind>] [--built-backend <kind>] [--review-backend <kind|disabled|inherit>]

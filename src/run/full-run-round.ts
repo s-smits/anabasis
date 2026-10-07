@@ -150,17 +150,20 @@ function selectorContext(
 }
 
 /** The decision recomputed after a failed build or a held candidate, which `loopTerminal` reads to
- *  decide whether another round may run; null otherwise. The condition and the selector call sit
- *  together in one function so that both outcomes are read off the same current evidence, rather
- *  than one branch testing a stale decision. */
+ *  decide whether another round may run, and after every round of a run with a battery cap, which
+ *  ends it only before a move that is no remeasure; null otherwise. It reads the product selected
+ *  now, which a promotion may just have moved. The condition and the selector call sit together in
+ *  one function so that both outcomes are read off the same current evidence, rather than one branch
+ *  testing a stale decision. */
 function endingDecision(
   input: IterationInput,
   build: FullRunOutcome["build"],
   steps: CandidateEvaluation,
-  domainDir: string,
 ): NextMove | null {
   const held = steps.promotion !== null && steps.promotion.decision !== "promoted";
-  if (build !== "build-failed" && !(build === "candidate" && held)) return null;
+  const unresolved = build === "build-failed" || (build === "candidate" && held);
+  if (!unresolved && input.args.maxBatteries === undefined) return null;
+  const domainDir = selectedProductDir(input.repoRoot, input.manifest.slug);
   return selectNextMoveFromDisk(selectorContext(input, domainDir)).decision;
 }
 
@@ -254,7 +257,7 @@ export async function runIteration(input: IterationInput): Promise<IterationResu
   }
   return {
     decision,
-    nextDecision: endingDecision(input, built.build, steps, domainDir),
+    nextDecision: endingDecision(input, built.build, steps),
     measuredTree: relative(repoRoot, measureDir),
     admissionBasisDigest: prior?.digest ?? null,
     build: built.build,

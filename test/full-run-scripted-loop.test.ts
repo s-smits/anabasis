@@ -29,6 +29,7 @@ import { buildHarness } from "../src/run/harness-build.ts";
 import { measureHarness } from "../src/run/harness-measure.ts";
 import { selectedProductDir } from "../src/run/product-versions.ts";
 import { readRecordedBatteryRecord } from "../src/correctness-bundle/battery-record.ts";
+import { nonResultOutcome } from "../src/correctness-bundle/solve.ts";
 import { builtSession, fullFakeHost, probeEvidence } from "./helpers/measure-doubles.ts";
 import { type ScriptedTurn, scriptedBuilderRuntime } from "./helpers/scripted-builder-runtime.ts";
 import { writeFixtureThresholds } from "./helpers/thresholds.ts";
@@ -80,7 +81,7 @@ const measureUppercase: FullRunDeps["drive"] = (manifest, options) =>
     judge: null,
   });
 
-function args(root: string, runId: string, maxIterations: number, maxBuilderTurns = 2) {
+function args(root: string, runId: string, maxIterations: number, maxBuilderTurns = 2, extra: string[] = []) {
   return {
     ...parseFullRunArgs([
       "--prompt",
@@ -101,6 +102,7 @@ function args(root: string, runId: string, maxIterations: number, maxBuilderTurn
       "codex",
       "--review-backend",
       "disabled",
+      ...extra,
     ]),
     repoRoot: root,
   };
@@ -234,4 +236,70 @@ describe("the whole loop through the Builder runtime interface, with no provider
     const claims = claimsDirFor(root, SLUG);
     expect(existsSync(claims) ? readdirSync(claims) : []).toEqual([]);
   }, 60_000);
+
+  it("stops each run at its own nth new battery once that battery's remeasure has run, counting no remeasure", async () => {
+    const root = scratchRepo();
+    let session = 0;
+    // The first build writes the bundle; every later round rewords the solver's instructions, so
+    // each of its batteries measures a new harness.
+    const turn: ScriptedTurn = async (ctx) => {
+      if (ctx.turn !== 1) return "nothing further this round";
+      session += 1;
+      if (session === 1) uppercaseFixture(ctx.workspace, false, false, TASKS);
+      else {
+        writeFileSync(
+          join(ctx.workspace, "agent/BUILT_AGENTS.md"),
+          `<!-- rule:uppercase --> Write the requested uppercase answer with write_answer, then submit (${session}).`,
+        );
+      }
+      await ctx.call("submit", {});
+      return "submitted";
+    };
+    // Each run's first battery loses t5 to the provider, so the controller solves it again on
+    // unchanged bytes before the Builder's next round, as it does a fail awaiting confirmation.
+    const cut: FullRunDeps["drive"] = (manifest, options) =>
+      measureHarness(manifest, {
+        ...options,
+        solver: async (task, toolset, submitted) =>
+          ["a", "b"].includes(options.runId) && task.taskId === "t5"
+            ? nonResultOutcome({ kind: "provider", message: "usage limit reached" })
+            : scriptedUppercaseSolver()(task, toolset, submitted),
+        createVerifier: () => fullFakeHost(),
+        isolationProbe: () => probeEvidence(true),
+        // The solves report the run's own Built effort, so the remeasure keeps the solving condition.
+        sessionProbe: async () => ({
+          ...builtSession(),
+          reasoningEffort: options.resolvedSlots?.built.reasoningEffort ?? "medium",
+        }),
+        judge: null,
+      });
+    const run = async (runId: string, maxBatteries: number) => {
+      const { repoRoot, ...runArgs } = args(root, runId, 6, 2, ["--max-batteries", String(maxBatteries)]);
+      return await runFullRun(runArgs, repoRoot, scriptedDeps(turn, cut));
+    };
+    const capped = (cap: number, round: number) =>
+      `operator-interrupted: battery cap ${cap} reached after completed round ${round} (--max-batteries sets it)`;
+    const opening = (runId: string) =>
+      JSON.parse(readFileSync(join(campaignDir(root, SLUG), "controller", runId, "opening.json"), "utf8"));
+
+    // The cap is met by round one's battery, and the run still waits for its remeasure.
+    const first = await run("a", 1);
+    expect(first.rounds.map((row) => [row.move, row.measured])).toEqual([
+      ["build", true],
+      ["measure", true],
+    ]);
+    expect(first.terminal).toBe(capped(1, 2));
+    expect(opening("a").maxBatteries).toBe(1);
+
+    // A continuation counts only its own new batteries: counting the remeasure, or the predecessor's
+    // battery, would have stopped it after round two.
+    const second = await run("b", 2);
+    expect(second.rounds.map((row) => [row.move, row.measured])).toEqual([
+      ["rebuild", true],
+      ["measure", true],
+      ["rebuild", true],
+    ]);
+    expect(second.terminal).toBe(capped(2, 3));
+    expect(opening("b")).toMatchObject({ maxBatteries: 2, continuation: { predecessorRunId: "a" } });
+  }, 240_000);
 });

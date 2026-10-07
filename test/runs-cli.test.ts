@@ -605,7 +605,7 @@ describe("resume", () => {
     // "resume" — a changed measurement condition the printed command did not show.
     const dir = writeLaunch(root, "run-1", "designs steel roof trusses to Eurocode 3", {
       project: "slug-aaaaaaaa-1",
-      extra: ["--max-iterations", "6", "--stop-after-ms", "43200000"],
+      extra: ["--max-iterations", "6", "--max-batteries", "8", "--stop-after-ms", "43200000"],
     });
     const bounded = readLaunchRecord(dir);
     if (bounded === null) throw new Error("the fixture wrote no launcher receipt");
@@ -613,16 +613,18 @@ describe("resume", () => {
     const plan = resumePlan(readRunEvidence(onlyRun(root)).opening, bounded);
     expect(plan.ok).toBe(true);
     if (!plan.ok) return;
-    expect(plan.plan.command.slice(-6)).toEqual([
+    expect(plan.plan.command.slice(-8)).toEqual([
       "--tasks",
       "60",
       "--max-iterations",
       "6",
+      "--max-batteries",
+      "8",
       "--stop-after-ms",
       "43200000",
     ]);
     expect(plan.plan.provenance.at(-1)).toBe(
-      "battery and boundary: --tasks 60, --max-iterations 6, --stop-after-ms 43200000",
+      "battery and boundary: --tasks 60, --max-iterations 6, --max-batteries 8, --stop-after-ms 43200000",
     );
   });
 });

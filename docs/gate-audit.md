@@ -65,7 +65,7 @@ clamped because a silently changed size is a silently changed condition.
 
 ### harness-config
 
-Refuses runtime walls in `agent/config.yaml` beyond ten times their defaults, and a `files`
+Refuses a solver wall in `agent/config.yaml` beyond ten times its default or below a tenth of it, and a `files`
 preset with no file-map root (`harness-config-invalid`, `tools-files-preset-artifact-root`;
 `src/author/candidate-check.ts`). A wall the host would refuse at run time, or a preset that cannot
 carry the artifact, otherwise fails as a non-result in a paid battery.

@@ -44,8 +44,8 @@ const TAIL_STEPS = 6;
 /** Whether the solve ended with a submission the harness accepted. */
 export type Submission = "accepted" | "none";
 
-/** The walls the measured harness declared, in the units its config names. */
-export type SolveWalls = { maxTurns: number; solveMinutes: number };
+/** The solve wall the measured harness declared, in minutes. */
+export type SolveWalls = { solveMinutes: number };
 
 export type CompiledSolve = {
   label: string;
@@ -55,7 +55,7 @@ export type CompiledSolve = {
   refs: ReadonlyMap<string, string | null>;
   /** Every recorded call, for the battery census. */
   calls: ReadonlyArray<{ tool: string; failed: boolean }>;
-  walls: { turns: boolean; minutes: boolean };
+  walls: { minutes: boolean };
 };
 
 type Step = {
@@ -147,18 +147,14 @@ function turnFacts(trace: ReadCaseTrace) {
 function endLine(trace: ReadCaseTrace, walls: SolveWalls, submission: Submission, open: boolean) {
   const facts = turnFacts(trace);
   const hit = {
-    turns: facts.turns >= walls.maxTurns,
     // A solve stopped by its wall records a little under the wall, because the clock here starts at
     // each turn rather than at the solve; 98 per cent is inside that slack.
     minutes: facts.minutes >= walls.solveMinutes * 0.98,
   };
-  const reached = [
-    ...(hit.turns ? ["turn cap reached"] : []),
-    ...(hit.minutes ? ["solve wall reached"] : []),
-  ];
+  const reached = hit.minutes ? ["solve wall reached"] : [];
   const parts = [
     `stop ${facts.stop}`,
-    `${facts.turns} of ${walls.maxTurns} turns`,
+    `${facts.turns} ${facts.turns === 1 ? "turn" : "turns"}`,
     `${facts.minutes.toFixed(1)} of ${walls.solveMinutes} minutes`,
     ...reached,
     `accepted submission: ${submission === "accepted" ? "yes" : "no"}`,
@@ -189,7 +185,7 @@ export function compileSolve(
       text: `${head}: no readable trace, so nothing in it can be cited`,
       refs: new Map(),
       calls: [],
-      walls: { turns: false, minutes: false },
+      walls: { minutes: false },
     };
   }
   const open = outcome === "pass";
@@ -249,7 +245,7 @@ export function batteryCensus(solves: readonly CompiledSolve[]): string {
     .sort((a, b) => b[1].calls - a[1].calls || a[0].localeCompare(b[0]))
     .map(([tool, row]) => `${tool} ${row.calls} calls in ${row.cases.size} cases, ${row.failed} failed`);
   return [
-    `Battery census over ${traced} readable traces of ${solves.length} cases: ${solves.filter((s) => s.walls.turns).length} reached the turn cap, ${solves.filter((s) => s.walls.minutes).length} reached the solve wall.`,
+    `Battery census over ${traced} readable traces of ${solves.length} cases: ${solves.filter((s) => s.walls.minutes).length} reached the solve wall.`,
     `Tool use: ${tools.join("; ") || "no tool call recorded"}.`,
   ].join("\n");
 }

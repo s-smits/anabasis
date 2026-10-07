@@ -49,7 +49,7 @@ import {
   JUDGE_PUBLIC_CONTEXT_SCHEMA,
   projectDeclared,
 } from "../correctness-bundle/declared-projection.ts";
-import { DEFAULT_HARNESS_SETTINGS, harnessSettings } from "../correctness-bundle/harness-config.ts";
+import { DEFAULT_HARNESS_SETTINGS, readableHarnessSettings } from "../correctness-bundle/harness-config.ts";
 import { TOOLS_SPEC_FILE } from "../meta/bundle-layout.ts";
 import { BUILT_AGENTS_FILE } from "../solve/built-starter.ts";
 import { type JsonValue, isRecord, isString } from "../meta/json-shape.ts";
@@ -216,15 +216,6 @@ function registeredTools(read: RecordedRead, trace: VerifiedTraceRead, taskId: s
 
 const named = (value: JsonValue | undefined, absent: string) => (isString(value) ? value : absent);
 
-/** A config the gate would refuse never reached measurement, so a throw here reads the defaults. */
-function settingsOf(measuredDir: string) {
-  try {
-    return harnessSettings(measuredDir);
-  } catch {
-    return DEFAULT_HARNESS_SETTINGS;
-  }
-}
-
 /** The measured harness's public surface: its operating guide, its declared tool descriptions and
  *  its walls. Each is what the solver was given, read from the measured tree. */
 function harnessSurface(measuredDir: string) {
@@ -236,8 +227,9 @@ function harnessSurface(measuredDir: string) {
     (tool) =>
       `- ${named(tool.name, "?")} [${named(tool.kind, "?")}]: ${boundText(named(tool.description, ""), TOOL_TEXT_BYTES).shown}`,
   );
-  const settings = settingsOf(measuredDir);
-  const walls: SolveWalls = { maxTurns: settings.maxTurns, solveMinutes: settings.solveMs / 60_000 };
+  // A config the gate would refuse never reached measurement, so a defective one reads the defaults.
+  const settings = readableHarnessSettings(measuredDir) ?? DEFAULT_HARNESS_SETTINGS;
+  const walls: SolveWalls = { solveMinutes: settings.solveMs / 60_000 };
   const presets =
     isRecord(spec) && Array.isArray(spec.presets)
       ? spec.presets.filter(isString).join(", ")
@@ -245,7 +237,7 @@ function harnessSurface(measuredDir: string) {
   return {
     walls,
     text: [
-      `Walls: ${walls.maxTurns} turns, ${walls.solveMinutes} minutes per solve, shell commands ${settings.shellDefaultSeconds} s by default and at most ${settings.shellMaxSeconds} s.`,
+      `Walls: ${walls.solveMinutes} minutes per solve, ${settings.shellCommandSeconds} s per shell command.`,
       `Declared domain tools (presets: ${presets}):`,
       ...(described.length === 0 ? ["(none declared)"] : described),
       `Operating guide the solver read (${BUILT_AGENTS_FILE}):`,

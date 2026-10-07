@@ -680,16 +680,15 @@ changed file.
 
 **22. Solver process and walls.**
 
-Starts from the `walls` lane's `time-bound`, `turn-bound` and `submitted` rows against a wall
+Starts from the `walls` lane's `time-bound` and `submitted` rows against a wall
 share, and from block 1b's `CHECK TOOL IN SOLVER TRACE (lane 23)` read as a lead.
 
-The question is how the solver spent its walls. `agent/config.yaml` owns `solve_minutes`,
-`max_turns`, `shell_timeout_seconds` and `shell_timeout_max_seconds`
-(`src/correctness-bundle/harness-config.ts`), and a harness may set a solver wall anywhere from a
-tenth of its default to ten times it, so a short wall is a Builder choice and the first thing to
-check when cases time out. A turn is one outer prompt carrying an unbounded tool loop, and the pi
-backend records one for every solve, so a turn count below `max_turns` is not room the solver could
-have used; the tool calls are the work. A case
+The question is how the solver spent its walls. `agent/config.yaml` owns `solve_seconds` and
+`shell_command_seconds` (`src/correctness-bundle/harness-config.ts`), and a harness may set a solver
+wall anywhere from a tenth of its default to ten times it, so a short wall is a Builder choice and
+the first thing to check when cases time out. A turn is one outer prompt carrying an unbounded tool
+loop, nearly every solve records one, and the turn count is the host's runaway guard
+(`BUILT_RUNAWAY_TURNS`), not room the solver could have used; the tool calls are the work. A case
 that reached a wall without passing is a truncated solve and not a settled capability failure, and
 a solve the whole-solve wall stopped after a tool call is an unaccepted attempt carrying its traced
 calls, not a non-result. Read each case's `built-runtime.json` and `final-submission.json`,
@@ -699,7 +698,7 @@ and the wall shares `walls.ts` prints. Reusable algorithms, a bounded search and
 table on published limits are legitimate solving support; a tool, program or guide line that
 does a check's work is lane 34's finding, and lane 23 reads its use per case.
 Do not open the private packet. A wall-bound miss stays a fail in the count, and `wallBound` names
-the unaccepted cases that ran to within `WALL_BOUND_SHARE` of `solve_minutes` (AGENTS.md "Goals and
+the unaccepted cases that ran to within `WALL_BOUND_SHARE` of `solve_seconds` (AGENTS.md "Goals and
 the climb", under "What one battery can say"). The decision it changes is whether such a miss is
 read as the task's limit or as the wall's; it routes to `agent/config.yaml` for a wall the Builder
 set, `agent/BUILT_AGENTS.md` when the guide sends the solver into work the wall cannot hold, and
@@ -1116,7 +1115,7 @@ decides and why; [the climb reference](climb.md) walks its branches. Its landing
 `admittedClimbRow`'s count, so a case the Epoch Reviewer settled against its check counts neither
 way. Three things follow that no recorded field states. The graduation rule counts scored cases, and
 an unaccepted case is scored, so a probe whose unaccepted timeouts bring it down to the aim
-graduates exactly as one with verified fails does. The Builder sets `solve_minutes` in
+graduates exactly as one with verified fails does. The Builder sets `solve_seconds` in
 `agent/config.yaml`, anywhere down to a tenth of its default, and a short wall produces exactly
 those unaccepted timeouts. And the landing is read only when the adopted product fingerprints and
 its harness identity can be computed, which `harnessBundleIdentity` cannot do when the recorded

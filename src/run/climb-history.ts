@@ -30,7 +30,7 @@ import {
 import type { ExperimentAuthoring } from "./experiment-freeze.ts";
 import { productHistoryDirs } from "./product-versions.ts";
 import { claimsDirFor } from "./claim-write.ts";
-import { HarnessConfigError, harnessSettings } from "../correctness-bundle/harness-config.ts";
+import { readableHarnessSettings } from "../correctness-bundle/harness-config.ts";
 import { settledAgainstCheck } from "../review/epoch-review-findings.ts";
 import { SOLVE_WALL_MESSAGE } from "../backends/backend-types.ts";
 
@@ -116,7 +116,7 @@ export type ClimbEffort = {
 };
 
 /** One family's solve effort over its cases that recorded a solver block: the median and the most
- *  minutes, read against the product's `solve_minutes`, and the median tool calls. A plain fact,
+ *  minutes, read against the product's `solve_seconds`, and the median tool calls. A plain fact,
  *  like `ClimbEffort`, and no reading of difficulty. */
 export type FamilyEffort = {
   family: string;
@@ -150,10 +150,10 @@ interface ClimbAuthoringRow {
   /** The scored cases that passed, by task id: which solver traces the Builder may read as a
    *  passing solve. Rule 4 lets a measured battery publish each task's aggregate bit. */
   passedTaskIds: string[];
-  /** The `solve_minutes` wall of the product that recorded this battery, which the effort of its
+  /** The `solve_seconds` wall of the product that recorded this battery, which the effort of its
    *  cases is read against; null when that product's agent/config.yaml does not parse. */
   solveWallMinutes: number | null;
-  /** The failed cases the solve wall cut: a fact to read beside a lowered `solve_minutes`, since a
+  /** The failed cases the solve wall cut: a fact to read beside a lowered `solve_seconds`, since a
    *  failure the wall caused measures the wall rather than the task. Zero when the wall is unknown. */
   wallBound: number;
   experimentAuthoring?: ExperimentAuthoring;
@@ -427,7 +427,8 @@ export function readClimbBatteries(
   for (const dir of productHistoryDirs(domainDir)) {
     const root = join(dir, "runs");
     if (!existsSync(root)) continue;
-    const wall = solveWallMinutes(dir);
+    const solveMs = readableHarnessSettings(dir)?.solveMs;
+    const wall = solveMs === undefined ? null : solveMs / 60_000;
     for (const name of readdirSync(root)) {
       const admission = admitBattery(join(root, name), name, runPin, thresholdDigest, claimsDir);
       if (admission === null) continue;
@@ -440,15 +441,6 @@ export function readClimbBatteries(
   );
   excluded.sort((a, b) => a.runId.localeCompare(b.runId));
   return { history, admitted: history.filter((row) => row.excludedReason === null), excluded };
-}
-
-function solveWallMinutes(productDir: string): number | null {
-  try {
-    return harnessSettings(productDir).solveMs / 60_000;
-  } catch (cause) {
-    if (cause instanceof HarnessConfigError) return null;
-    throw cause;
-  }
 }
 
 /** The one retained directory holding `runId`, or null when none or several do. */

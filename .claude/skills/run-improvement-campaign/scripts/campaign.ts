@@ -43,11 +43,7 @@ import { isControllerBatteryRunId } from "#src/run/controller-battery-record-pol
 import type { ControllerAbortClause } from "#src/run/controller-stop-evidence.ts";
 import type { Denominator } from "#src/run/controller-denominator.ts";
 import { type LoopTerminalCode, loopTerminalCode } from "#src/run/loop-terminal.ts";
-import {
-  DEFAULT_HARNESS_SETTINGS,
-  HarnessConfigError,
-  harnessSettings,
-} from "#src/correctness-bundle/harness-config.ts";
+import { DEFAULT_HARNESS_SETTINGS, readableHarnessSettings } from "#src/correctness-bundle/harness-config.ts";
 import { readExecutionEvidenceDetails } from "#tools/outcome/builder-execution-facts.ts";
 import { findRun } from "#tools/runs/discover.ts";
 import { readInFlight } from "#tools/runs/pulse-read.ts";
@@ -289,14 +285,8 @@ function readBatteries(campaign: string, runId: string): BatteryRead {
 }
 
 /** The solve wall a bundle or workspace sets itself, or `fallback` while its config is defective. */
-function solveWallMs(dir: string, fallback: number = DEFAULT_HARNESS_SETTINGS.solveMs): number {
-  try {
-    return harnessSettings(dir).solveMs;
-  } catch (error) {
-    if (!(error instanceof HarnessConfigError)) throw error;
-    return fallback;
-  }
-}
+const solveWallMs = (dir: string, fallback: number = DEFAULT_HARNESS_SETTINGS.solveMs): number =>
+  readableHarnessSettings(dir)?.solveMs ?? fallback;
 
 /** A `harness_trial` holds its Builder call, and with it every checkpoint, until its solve is graded,
  *  so one still solving or grading inside its solve wall is work. The wall is the workspace's, which

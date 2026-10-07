@@ -241,7 +241,7 @@ describe("what the diagnosis reader is shown", () => {
     expect(prompt).not.toContain('{"support":"pinned"}');
     // Three identical refusals in a row are one fact, shown once as a range.
     expect(prompt).toContain("  s2–s4 ×3 write_layout ERR");
-    expect(prompt).toContain("  end stop stop; 3 of 24 turns;");
+    expect(prompt).toContain("  end stop stop; 3 turns;");
     expect(prompt).toContain("accepted submission: yes");
     // The passing contrast, whose artifact the battery already publishes, shows its payloads.
     expect(prompt).toContain("  s2 write_layout ok turn 2 1.5s → layout written with a fixed support");
@@ -514,7 +514,7 @@ describe("a reading that did not happen", () => {
 });
 
 describe("a solve compiled into steps", () => {
-  const WALLS = { maxTurns: 4, solveMinutes: 1 };
+  const WALLS = { solveMinutes: 1 };
   const trace = (calls: Call[], turns: number): ReadCaseTrace => ({
     schema: "case-trace/v4",
     backend: "codex",
@@ -541,8 +541,8 @@ describe("a solve compiled into steps", () => {
     expect(solve.refs.has("c07.s11")).toBe(true);
     expect(solve.refs.has("c07.s6")).toBe(false);
     expect(solve.refs.get("c07.end")).toBeNull();
-    expect(solve.text).toContain("4 of 4 turns; 1.0 of 1 minutes; turn cap reached; solve wall reached");
-    expect(batteryCensus([solve])).toContain("1 reached the turn cap, 1 reached the solve wall.");
+    expect(solve.text).toContain("4 turns; 1.0 of 1 minutes; solve wall reached");
+    expect(batteryCensus([solve])).toContain("1 reached the solve wall.");
   });
 
   test("a trace is called a prefix only when its capture was truncated, not when raw events were dropped", () => {

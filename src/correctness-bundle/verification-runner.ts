@@ -41,7 +41,6 @@ import {
 } from "./battery-record.ts";
 import { solveBatteryWithProviderStop } from "./battery-provider-stop.ts";
 import { type BatteryReuse, recordedSolvedCase } from "./recorded-solve.ts";
-import { harnessSettings } from "./harness-config.ts";
 import { validateBrief } from "./brief-validator.ts";
 import { type Brief, externalChecksOf, throwIfInvalid } from "./brief.ts";
 import type { BuildDeps } from "./build-deps.ts";
@@ -252,7 +251,7 @@ function recordBatteryRecord(
     estimation: parts.estimation,
     judge: parts.judge,
     solveExecution: {
-      maxConcurrency: solveWidth(ctx),
+      maxConcurrency: builtSolveConcurrency(),
       scheduling: "bounded-worker-pool",
     },
     ...keyIfDefined("regrade", regradeFact(ctx.options.reuse, parts.cases)),
@@ -467,10 +466,6 @@ function recordUnclaimableBattery(
   });
 }
 
-/** The width this battery runs at: what the harness declared, unless the operator bounded it. */
-const solveWidth = (ctx: BatteryContext) =>
-  builtSolveConcurrency(harnessSettings(ctx.bundleSnapshot.dir).solveConcurrency);
-
 /** The run-wide spans this pool opens and closes. Per-case rows reuse the phase and say their own
  *  summary; these two say the same thing every time, so only their state changes. */
 const SOLVING = { phase: "solve", summary: "Built Harness solve pool" } as const;
@@ -526,7 +521,7 @@ async function solveAndGradeBattery(ctx: BatteryContext): Promise<GradedCase[]> 
         }
         return solvedCase;
       },
-      solveWidth(ctx),
+      builtSolveConcurrency(),
       {
         onSolved: async (solvedCase) => {
           delivered += 1;

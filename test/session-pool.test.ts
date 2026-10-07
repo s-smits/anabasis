@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { BUILT_SOLVE_CONCURRENCY } from "../src/correctness-bundle/harness-config.ts";
 import {
+  BUILT_SOLVE_CONCURRENCY,
   builtSolveConcurrency,
   JUDGE_MAX_CONCURRENCY,
   mapWithConcurrencyLimit,
@@ -66,17 +66,16 @@ describe("session pool", () => {
     expect(active).toBe(0);
   });
 
-  // The harness declares the Built width and the operator may bound it; a malformed value refuses
-  // rather than falling back, because a silently changed width is a changed measurement condition.
-  it("takes the Built width from the harness, lets ANA_BUILT_CONCURRENCY override it, and refuses a malformed one", () => {
-    expect(builtSolveConcurrency(undefined, {})).toBe(BUILT_SOLVE_CONCURRENCY);
-    expect(builtSolveConcurrency(8, {})).toBe(8);
-    expect(builtSolveConcurrency(8, { ANA_BUILT_CONCURRENCY: "" })).toBe(8);
+  // The host sets the Built width and the operator may bound it; a malformed value refuses rather
+  // than falling back, because a silently changed width is a changed measurement condition.
+  it("takes the Built width from the host, lets ANA_BUILT_CONCURRENCY override it, and refuses a malformed one", () => {
+    expect(builtSolveConcurrency({})).toBe(BUILT_SOLVE_CONCURRENCY);
+    expect(builtSolveConcurrency({ ANA_BUILT_CONCURRENCY: "" })).toBe(BUILT_SOLVE_CONCURRENCY);
     // The operator's bound wins in both directions: it is the provider session limit being spent.
-    expect(builtSolveConcurrency(8, { ANA_BUILT_CONCURRENCY: "2" })).toBe(2);
-    expect(builtSolveConcurrency(2, { ANA_BUILT_CONCURRENCY: "6" })).toBe(6);
+    expect(builtSolveConcurrency({ ANA_BUILT_CONCURRENCY: "2" })).toBe(2);
+    expect(builtSolveConcurrency({ ANA_BUILT_CONCURRENCY: "8" })).toBe(8);
     for (const raw of ["0", "-2", "2.5", "six", "06"]) {
-      expect(() => builtSolveConcurrency(8, { ANA_BUILT_CONCURRENCY: raw })).toThrow(
+      expect(() => builtSolveConcurrency({ ANA_BUILT_CONCURRENCY: raw })).toThrow(
         "ANA_BUILT_CONCURRENCY must be a positive integer",
       );
     }

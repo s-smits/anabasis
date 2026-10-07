@@ -21,15 +21,13 @@
 import type { ContextDocument } from "../builder/context-tool.ts";
 import { solverTraceLines } from "../builder/solver-trace-text.ts";
 import { recordedEvidence, verifyRunDir } from "../claim/evidence-log.ts";
-import { scoringClosureHash } from "../claim/scoring-closure.ts";
 import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "../meta/json-runtime.ts";
 import { isRecord, isString } from "../meta/json-shape.ts";
-import { dirname, join } from "../meta/path.ts";
+import { dirname } from "../meta/path.ts";
 import { readMargins, renderMargins } from "../solve/published-margin.ts";
-import { CASE_ARTIFACT_FILE, readRecordedBatteryRecord } from "../correctness-bundle/battery-record.ts";
+import { CASE_ARTIFACT_FILE } from "../correctness-bundle/battery-record.ts";
 import { publishedMargins } from "../correctness-bundle/numeric-boundary.ts";
-import type { Brief } from "../correctness-bundle/brief.ts";
-import { readValidatedBrief } from "../correctness-bundle/public-resources.ts";
+import { scoredBrief } from "../correctness-bundle/public-resources.ts";
 import { DEFAULT_HARNESS_SETTINGS } from "../correctness-bundle/harness-config.ts";
 import { type AdmittedClimbRow, recordedPublicTasks, retainedRunDir } from "./climb-history.ts";
 
@@ -45,7 +43,8 @@ export function measuredSolverTraces(
     const runDir = retainedRunDir(domainDir, runId);
     if (runDir === null) return [];
     const violations = verifyRunDir(runDir);
-    const brief = scoredBrief(runDir, runId);
+    // The admitted row's scoring hash is the one its vouched battery.json records.
+    const brief = scoredBrief(dirname(dirname(runDir)), row.authoring.scoringHash);
     const margins = brief === null ? [] : publishedMargins(brief);
     return row.authoring.passedTaskIds.flatMap((taskId): ContextDocument[] => {
       const passing = passingCase(runDir, taskId, violations);
@@ -103,21 +102,4 @@ function passingCase(
   const task = recordedPublicTasks(runDir, [taskId], violations);
   if (!artifact.ok || !("tasks" in task)) return null;
   return { publicTask: task.tasks[0], submittedArtifact: capturedJsonParse(artifact.bytes) };
-}
-
-/** The brief this battery was scored under; null when it cannot be read back or no longer matches the
- *  scoring program the battery recorded, so no line speaks about other rules. */
-function scoredBrief(runDir: string, runId: string): Brief | null {
-  const productDir = dirname(dirname(runDir));
-  let scoringHash: unknown;
-  try {
-    const snapshot: unknown = readRecordedBatteryRecord(runDir, runId).bundleSnapshot;
-    scoringHash = isRecord(snapshot) ? snapshot.scoringHash : null;
-  } catch {
-    return null;
-  }
-  if (!isString(scoringHash) || scoringClosureHash(join(productDir, "correctness-model")) !== scoringHash) {
-    return null;
-  }
-  return readValidatedBrief(productDir);
 }

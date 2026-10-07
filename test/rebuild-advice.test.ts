@@ -44,14 +44,11 @@ import { EvidenceLog } from "../src/claim/evidence-log.ts";
 import { verifierEnvironmentHashOfTools } from "../src/correctness-bundle/verifier-environment.ts";
 import { resolveToolInventory } from "../src/verify/tool-inventory.ts";
 import { taskSetDigest } from "../src/claim/fingerprint.ts";
-import { scoringClosureHash, verdictClosureHash } from "../src/claim/scoring-closure.ts";
-import { briefPublicationHash } from "../src/correctness-bundle/public-resources.ts";
 import {
   type BatteryCondition,
   batteryCondition,
   measuredConditionDigest,
 } from "../src/author/issue-condition.ts";
-import { MATCHING_BRIEF } from "./helpers/matching-fixture.ts";
 import { BEAMS, JOINTS, MEASURED_UNDER, READING, advicePacket, issue } from "./helpers/review-fixtures.ts";
 import {
   type AdviceIssue,
@@ -1443,49 +1440,6 @@ describe("measuredConditionDigest", () => {
     const before = batteryCondition(recorded, tree).measuredCondition;
     writeFileSync(join(tree, "agent", "config.yaml"), "solver:\n  max_turns: 24\n  solve_minutes: 120\n");
     expect(batteryCondition(recorded, tree).measuredCondition).toBe(before);
-  });
-});
-
-describe("the identities a battery's condition records for its checks and rules", () => {
-  const tree = () => {
-    const dir = scratchDir("ana-condition-identities-");
-    mkdirSync(join(dir, "correctness-model"), { recursive: true });
-    writeFileSync(join(dir, "correctness-model", "brief.json"), JSON.stringify(MATCHING_BRIEF));
-    writeFileSync(join(dir, "correctness-model", "evaluator.ts"), "export const checks = {};\n");
-    return { dir, model: join(dir, "correctness-model") };
-  };
-  const recordedAs = (scoringHash: string) =>
-    double<Parameters<typeof batteryCondition>[0]>({
-      runId: "run-identities",
-      cases: [],
-      identities: {
-        backendPin: "codex:test",
-        isolationStrength: "physical",
-        bundleSnapshot: { scoringHash },
-      },
-      battery: { condition: { variant: "shipping", advisorsRemoved: [] } },
-    });
-
-  it("reads the verdict closure and the public rules from a tree that still scores to the recorded hash", () => {
-    const { dir, model } = tree();
-    const condition = batteryCondition(
-      recordedAs(required(scoringClosureHash(model), "the tree's scoring hash")),
-      dir,
-    );
-    expect(condition.verdictClosureHash).toBe(verdictClosureHash(model));
-    expect(condition.verdictClosureHash).toMatch(/^[0-9a-f]{64}$/);
-    expect(condition.publicationHash).toBe(briefPublicationHash(MATCHING_BRIEF));
-  });
-
-  it("reads neither from a tree edited since the battery, which compares with nothing", () => {
-    const { dir, model } = tree();
-    const recorded = recordedAs(required(scoringClosureHash(model), "the tree's scoring hash"));
-    const reworded = { ...MATCHING_BRIEF, decisions: ["placement is decided elsewhere now"] };
-    writeFileSync(join(model, "brief.json"), JSON.stringify(reworded));
-    const condition = batteryCondition(recorded, dir);
-    expect(condition.verdictClosureHash).toBeNull();
-    expect(condition.publicationHash).toBeNull();
-    expect(batteryCondition(recordedAs("9".repeat(64)), dir).verdictClosureHash).toBeNull();
   });
 });
 

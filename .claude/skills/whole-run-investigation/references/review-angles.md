@@ -569,23 +569,44 @@ rounds.
 
 The question is which of the channels one round hands the next were present, served, read back and
 acted on. The channels are the round facts, the climb readout and battery contract, the rebuild
-advice packet, the Epoch Reviewer's public projection as the kickoff renders it (an authoring review
-attached to a tool result is not counted as served here), diagnosis issues, memory notes, the
+advice packet, the Epoch Reviewer's public projection as the kickoff renders it, the in-round
+authoring review's text, diagnosis issues, memory notes, the
 `context` tool, and the solver traces and rehearsals it offers. Read the full Builder kickoff in `observability/<runId>.jsonl`
 (`prompt-ingested`, role `builder`), each epoch's `builder-path-record.jsonl` and
 `builder-execution*.json` custom calls, and `analysis/<runId>-{rebuild-advice,diagnoses,epoch-review}.json`.
 Read-back means a tool call that opened or queried the channel; prompt text in context is served,
-not read. The round facts, the advice packet, the diagnosis and the review projection have no
-re-query channel, so an unread one is structural rather than a Builder choice, and a file opened
-through `bash` records only its working directory; the census prints those as "no read route". Acted
+not read. An unread channel is a reading gap, not a missing route, wherever a tool re-serves it, and
+on sources since `a02da892` (2026-09-24) two tools re-serve most of them: the context tool's
+`round/opening` document (`documentsOf` in `src/builder/context-tool.ts`, bound in
+`src/run/builder-campaign.ts` over `openingContext()` and `freshContext()`) holds the round facts,
+the climb readout and the rebuild advice packet with the diagnosis and review-projection lines it
+carries, and `harness_inspect readiness` (`readinessResult` in `src/builder/harness-inspect.ts`)
+returns the round contract beside the static view. The census counts a channel's reads over every
+route it has, and the JSON `readRoute` says whether one exists. It credits neither route with a
+channel the round's opening did not carry, a call the record says `threw`, or a `readiness` call
+naming a family, which returns that family's tasks and not the contract; a call that named
+`round/opening` is counted for every channel the document carried, whatever window it showed. A
+channel is reported as "served, no read route" only from an empty route list in the census or from
+source read for this run's commit, naming what renders the bytes and checking every tool that could
+reach them. At `5d091201` the one such channel is the in-round Epoch Reviewer text:
+`authoringReviewText` in `src/run/harness-build.ts` composes it, and `afterTool` (or `join`, onto a
+held submit) in `src/run/authoring-review.ts` hands it to one result and drops it from the pending
+review as it does, so no later call returns it. Re-check that claim on any other source rather
+than carrying it. Never infer absence from a search: a marker a reader looks for is a sentence the
+current source renders, so a missing marker means "not found", never "not served", and a missing
+call means "not seen", never "no route"; say which was measured. A "never read" count is a floor:
+a file opened through `bash` records only its working directory, and a context question that names
+no document records no document, so the census counts it toward the user's files. Acted
 is read only where a record holds it: memory writes and rehearsals. For the review, the census prints
 the next battery review's `earlierAdvisory` dispositions as they are; `absent` means the finding did
 not recur, not that the Builder acted on it. The
-Builder keeps one conversation across rounds and compaction cuts its oldest turns first, so a channel served once at the opening may be gone by
-the time the decision it feeds is taken; say when a channel was served relative to the last
-compaction. For every channel served and never read, name the cheapest alternative — drop it, move
-it to a `harness_inspect` mode, or state it where the decision is taken — and the observation that
-would show it mattered. The decision it changes is the kickoff prompt's contents, owned by
+Builder keeps one conversation across rounds and compaction cuts its oldest turns first, so a channel served once at the opening may be gone from
+context by the time the decision it feeds is taken, though `round/opening` still re-serves it; say
+when a channel was served relative to the last compaction, and whether the round paged the opening
+after it. For every channel served and never read, name the cheapest alternative and the
+observation that would show it mattered: for a channel with a route, dropping it, shortening it,
+naming its route, or stating it where the decision is taken, never a tool mode it already has; a new
+surface only where the route list is empty. The decision it changes is the kickoff prompt's contents, owned by
 `controller-source` (`src/author/builder-continuation.ts`); lane 14 owns whether the right owner
 received a packet and lane 26 owns memory.
 
@@ -650,7 +671,11 @@ moved the evaluator receives build attribution, and a change to the installed to
 alone leaves `scoringHash` where it was while the harness identity moves, so name both. `adjusted`
 deliberately states no direction, because a moved limit is a climb only when it moves inward, and a
 round that re-posed the same public schemas under new values is the `adjusted` edge read round over
-round. Do not read a new hash, id, family name or longer description as a harder problem; the
+round. The numbers row states the basis it was read on: the tasks that joined by id where any did,
+and otherwise the whole battery path by path at each path's median, because a round that replaced
+every task id still moved its published numbers; `basis: none` is two batteries declaring no numeric
+path in common, where the zero is nothing compared rather than nothing moved, so read the basis and
+its denominator before reading the percentage. Do not read a new hash, id, family name or longer description as a harder problem; the
 Builder names the public requirement that changed and the reasoning interaction it adds, or the
 change is coverage. Each edge's `carried` row counts the tasks held unchanged in id, public input
 and family checks; after a full pass every one of them measured a known pass again. The decision

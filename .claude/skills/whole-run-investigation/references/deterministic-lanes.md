@@ -93,8 +93,8 @@ lane suffix it carries, so the brief can say which lanes have something to read.
 
 `climb` runs `climb-velocity.ts` (`climb-velocity/v2`) over consecutive versions and labels every
 edge `restated`, `adjusted`, `narrowed`, `widened`, `eased`, `escalated` or `replaced`; `adjusted`
-deliberately states no direction, and `replaced` means fewer than half the task ids carried over so
-the numbers could not be compared. Each edge also counts the tasks `carried` unchanged, which after a
+deliberately states no direction, and `replaced` means fewer than half the task ids carried over;
+with none carried, the numbers row compares the two batteries path by path and names that basis. Each edge also counts the tasks `carried` unchanged, which after a
 full pass re-measure a known pass. The lane closes on the line the claimed batteries draw, whose
 rows [the climb reference](climb.md#the-line) lists. Every label and line starts lanes 10 and 20, and
 `CLIMB FLAT (lane 10)`, where `flat` meets the stall rule, starts lanes 10 and 36.

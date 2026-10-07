@@ -10,10 +10,18 @@
  * The launches read a generated catalogue and index in the maintained shape, so a hostile variant
  * is one edit of a fixture the test owns; one test lists the live catalogue, which is where the
  * maintained references and this shape are proved to agree. `compose-native-pairs.py` reads the
- * native prompts a launch writes, so its tests compose from them.
+ * native prompts a launch writes, for one run or across several, so its tests compose from them.
  */
 import { spawnTextSync as spawnSync } from "./helpers/bun-spawn-sync.ts";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "../src/meta/filesystem.ts";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  symlinkSync,
+  writeFileSync,
+} from "../src/meta/filesystem.ts";
 import { dirname, join, resolve } from "../src/meta/path.ts";
 import { afterEach, describe, expect, it } from "bun:test";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
@@ -34,7 +42,11 @@ import {
   scratchAuthority,
   TRACE_CHALLENGE_LANE,
 } from "../.claude/skills/whole-run-investigation/scripts/catalogue-shape.ts";
-import { REPORT_SECTIONS } from "../.claude/skills/whole-run-investigation/scripts/manifest-reporting.ts";
+import {
+  MULTI_RUN_OUTCOMES,
+  MULTI_RUN_PILES,
+  REPORT_SECTIONS,
+} from "../.claude/skills/whole-run-investigation/scripts/manifest-reporting.ts";
 
 type View = { label: string; file: string; status: string; required: boolean; bytes: number; sha256: string };
 type Status = {
@@ -75,6 +87,7 @@ const REPO = resolve(import.meta.dirname, "..");
 const SKILL = join(REPO, ".claude/skills/whole-run-investigation");
 const SCRIPT = join(SKILL, "scripts/build-manifest.ts");
 const COMPOSER = join(SKILL, "scripts/compose-native-pairs.py");
+const VALIDATOR = join(SKILL, "scripts/validate-reports.ts");
 const OPEN_LANES = ANGLE_COUNT - ISOLATED_ANGLES.size;
 const SCAN_VIEW = JSON.stringify({
   findings: [{ rule: "telemetry-constant", battery: "run-1-on", statement: "turns is 1." }],
@@ -1009,6 +1022,42 @@ function composePairs(...args: string[]) {
   return spawnSync("python3", ["-I", COMPOSER, ...args]);
 }
 
+/** One run as `wri.ts read` leaves its review: the state naming the run, its campaign's opening
+ *  with the source commit, and, for a run with a snapshot, the native prompts a launch wrote. */
+function reviewedRun(runId: string, snap: Snapshot | null, ...launchArgs: string[]) {
+  const review = scratchDir("ana-build-review-");
+  const campaign = snap?.status.campaign ?? scratchDir("ana-build-campaign-");
+  const commit = snap?.status.source.commit ?? "f".repeat(40);
+  mkdirSync(join(campaign, "controller", runId), { recursive: true });
+  writeFileSync(join(campaign, "controller", runId, "opening.json"), JSON.stringify({ source: { commit } }));
+  if (snap === null) {
+    writeFileSync(join(review, "timeline.txt"), "timeline\n");
+  } else {
+    const result = launch(snap, "--transport", "native", "--notes", notes(""), ...launchArgs);
+    if (result.status !== 0) throw new Error(result.stderr);
+    renameSync(result.out, join(review, "lanes"));
+    symlinkSync(snap.dir, join(review, "snapshot"));
+  }
+  writeFileSync(
+    join(review, "wri-review.json"),
+    JSON.stringify({
+      schema: "wri-review/v2",
+      reviewDir: review,
+      campaign,
+      runId,
+      repo: snap?.status.worktree.path ?? campaign,
+      scope: {
+        tier: snap === null ? "probe" : "standard",
+        why: snap === null ? "no scored case yet" : "one battery",
+        terminal: { outcome: "aborted", reason: "stopped" },
+        batteries: snap === null ? [] : [{ battery: runId }],
+        cases: { verified: snap === null ? 0 : 25, unaccepted: 0, nonResult: 0 },
+      },
+    }),
+  );
+  return { review, campaign, commit, runId };
+}
+
 describe("what the native-pair composer makes of a launch", () => {
   it("keeps the shared instructions in an open group when an isolated lane shared its launch, and the isolated lane blind", () => {
     const result = launch(
@@ -1037,5 +1086,115 @@ describe("what the native-pair composer makes of a launch", () => {
     const blind = readFileSync(join(result.out, "pairs", `${laneName(PUBLIC_ONLY_LANE)}.md`), "utf8");
     expect(blind).toContain("# Independent blind review");
     expect(blind).not.toContain("SHARED_FACT");
+  });
+
+  it("reads one lane group across named runs, each at its own source, a probe run named for what it can answer", () => {
+    const first = reviewedRun(
+      "run-a",
+      snapshot(),
+      "--sessions",
+      `2,3,31,34,${PUBLIC_ONLY_LANE}`,
+      "--shared-instructions",
+      sharedInstructions("- FACT_OF_A."),
+    );
+    const second = reviewedRun(
+      "run-b",
+      snapshot(),
+      "--sessions",
+      "2,3,31,34",
+      "--shared-instructions",
+      sharedInstructions("- FACT_OF_B."),
+    );
+    const probe = reviewedRun("run-p", null);
+    const lead = join(first.review, "lanes", "native-output", "lane_02.md");
+    mkdirSync(dirname(lead), { recursive: true });
+    writeFileSync(lead, "## lane_02\n");
+    const multi = scratchDir("ana-build-multi-");
+    const runs = [first, second, probe];
+
+    const composed = composePairs(
+      "--runs",
+      ...runs.map((run) => run.review),
+      "--components",
+      "6",
+      "--out-dir",
+      multi,
+    );
+    expect(composed.status).toBe(0);
+    // Six components over three runs is two lanes a subagent, cut along the theme tree; the
+    // isolated lane stays with its own run.
+    expect(composed.stderr).toContain(`lanes [${PUBLIC_ONLY_LANE}] run alone and stay per run`);
+    const groups = parseJsonAs<{ session: string; runs: string[] }[]>(
+      readFileSync(join(multi, "groups.json"), "utf8"),
+    );
+    expect(groups.map((group) => group.session)).toEqual(["lanes_02_34", "lanes_03_31"]);
+    expect(groups.every((group) => group.runs.join() === "run-a,run-b,run-p")).toBe(true);
+
+    const prompt = readFileSync(join(multi, "lanes_02_34.md"), "utf8");
+    for (const run of runs) {
+      for (const identity of [run.runId, run.campaign, realpathSync(run.review), run.commit]) {
+        expect(prompt).toContain(identity);
+      }
+    }
+    expect(probe.commit).not.toBe(first.commit);
+    expect(prompt).toContain("different source commits");
+    // The orientation both runs share is said once; each run's own overview stays under that run.
+    expect(prompt.match(/^## Orientation$/gm)).toHaveLength(1);
+    expect(prompt.match(/^### Run overview/gm)).toHaveLength(2);
+    expect(prompt.indexOf("FACT_OF_A")).toBeLessThan(prompt.indexOf("## Run run-b"));
+    expect(prompt.indexOf("FACT_OF_B")).toBeGreaterThan(prompt.indexOf("## Run run-b"));
+    expect(prompt).toContain("## Run run-p (no snapshot)");
+    expect(prompt).not.toContain("## Assignments in this launch");
+    expect(prompt.match(/^# Your assignment$/gm)).toHaveLength(1);
+    // Each lane names its trigger, or why there is none, in every run, and an earlier report as a lead.
+    for (const lane of ["02", "34"]) {
+      const block = prompt.slice(prompt.indexOf(`Lane ${lane} in each run:`));
+      expect(block).toContain(`\`run-a\`: ${laneTrigger(Number(lane)).replace(/\.$/, "")}`);
+      expect(block).toContain(`\`run-b\`: ${laneTrigger(Number(lane)).replace(/\.$/, "")}`);
+      expect(block).toContain("`run-p`: no snapshot");
+    }
+    expect(prompt).toContain(`Earlier report: \`${realpathSync(lead)}\``);
+    // The report contract names exactly the labels the validator accepts.
+    for (const label of [...MULTI_RUN_PILES, ...MULTI_RUN_OUTCOMES]) expect(prompt).toContain(`\`${label}\``);
+
+    // One report per group in the asked shape is what the validator accepts.
+    const finding = "- One mechanism.\n  owner: controller-source\n  pile: every\n  outcome: patch";
+    const section = (lane: string): string =>
+      [
+        `## lane_${lane}`,
+        ...REPORT_SECTIONS.flatMap((name) => [`### ${name}`, name === "Findings" ? finding : "x"]),
+      ].join("\n");
+    mkdirSync(join(multi, "native-output"));
+    for (const [session, lanes] of [
+      ["lanes_02_34", ["02", "34"]],
+      ["lanes_03_31", ["03", "31"]],
+    ] as const) {
+      writeFileSync(
+        join(multi, "native-output", `${session}.md`),
+        [`# Multi-run: ${session}`, ...lanes.map(section)].join("\n\n"),
+      );
+    }
+    const validated = spawnSync(Bun.argv[0]!, [VALIDATOR, "--groups", join(multi, "groups.json")]);
+    expect(validated.stderr).toBe("");
+    expect(validated.status).toBe(0);
+  });
+
+  it("sizes each subagent by lanes times runs, splitting a theme only when it does not fit", () => {
+    const shared = sharedInstructions("- A fact.");
+    const runs = ["run-a", "run-b"].map(
+      (id) => reviewedRun(id, snapshot(), "--sessions", "2,3,31,34", "--shared-instructions", shared).review,
+    );
+    const sessions = (components: number): string[] => {
+      const out = scratchDir("ana-build-multi-");
+      expect(
+        composePairs("--runs", ...runs, "--components", String(components), "--out-dir", out).status,
+      ).toBe(0);
+      return parseJsonAs<{ session: string }[]>(readFileSync(join(out, "groups.json"), "utf8")).map(
+        (row) => row.session,
+      );
+    };
+    expect(sessions(8)).toEqual(["lanes_02_34_03_31"]);
+    expect(sessions(5)).toEqual(["lanes_02_34", "lanes_03_31"]);
+    expect(sessions(2)).toEqual(["lane_02", "lane_34", "lane_03", "lane_31"]);
   });
 });

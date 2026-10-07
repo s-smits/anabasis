@@ -19,7 +19,8 @@ nothing here replaces it, and nothing here changes what a lane is asked or how `
    `--agents 8`). `references/lane-groups.json` already says which lanes read the same bytes, as a
    tree of themes, and which lanes always run alone (7, 23, 29, 30, each in its own subagent and
    counted in N); the script prunes lanes that have no prompt, cuts the rest into the remaining groups
-   by splitting the largest group in two until N is met, prints and writes the plan as
+   by splitting the largest group in two until N is met (`--components K` instead splits until no
+   group holds more than K lanes), prints and writes the plan as
    `<review>/lanes/pairs/groups.json` before composing, and writes one prompt per group under
    `<review>/lanes/pairs/`. `--pairs 1+8,2+34,5` names groups by hand instead. `--sessions` only
    groups contiguous lanes, which is why the script exists. Read the plan, hand each composed
@@ -39,6 +40,39 @@ nothing here replaces it, and nothing here changes what a lane is asked or how `
 
 A group of eight lanes or more draws a warning (the reports get thin and the lanes stop being independent); say the effort you wanted: the Agent tool's effort for a
 subagent cannot be enforced, so the report says what ran, not what was asked.
+
+## Several runs
+
+When the operator names several runs, or asks which findings recur, one subagent reads its lane
+group in every named run (see [Several runs at once](../SKILL.md#several-runs-at-once)). A
+subagent's load is lanes times runs: three lanes over three runs is nine, and two over two or two
+over four are as valid. Write each run's prompts exactly as above, one review per run; the same
+orientation and moved variable written into each run's `shared-instructions.json` render once for
+the set, and anything that differs stays under its own run. A probe-tier run is read and given no
+prompts. Then:
+
+```text
+bun .claude/skills/whole-run-investigation/scripts/wri.ts read <full run id> --out <review A>
+bun .claude/skills/whole-run-investigation/scripts/build-manifest.ts --transport native \
+  --snapshot <review A>/snapshot --worktree <A's measured checkout> --out <review A>/lanes \
+  --shared-instructions <review A>/shared-instructions.json --sessions 1,2,3,... --effort max
+  # likewise for each run; a probe-tier run stops after `read`
+python3 -I .claude/skills/whole-run-investigation/scripts/compose-native-pairs.py \
+  --runs <review A> <review B> <review C> --components 9 --out-dir <multi> [--prior <earlier note>]
+  # hand each <multi>/<group>.md to the Agent tool; each writes <multi>/native-output/<group>.md
+bun .claude/skills/whole-run-investigation/scripts/validate-reports.ts --groups <multi>/groups.json
+```
+
+`--components K` cuts the lane-group tree until each subagent holds at most K lanes times runs, so a
+theme stays together while it fits; `--agents N` fixes the count instead. The lanes in `alone`
+stay per run, since their evidence boundary or scratch belongs to one run: compose those with
+`--lanes`. Each lane names, per run, the trigger it started from, why it has none, and any earlier
+report of it under that review, which the subagent reads as a lead, not a receipt. Runs measured at
+different commits are named with each commit and checkout, and the subagent reads each run's source
+at its own. `--prior` hands over an earlier reading of the same runs to reconcile with after the
+sort. Each finding carries `owner:`, `pile:` (`every`, `absent` or `unsaid`) and `outcome:`
+(`patch`, `decision`, `prediction` or `drop`), which the validator reads; `finish` does not read a
+multi-run review, and the primary's note joins it to the per-run ones.
 
 ## What `finish` rejects, learned the hard way
 

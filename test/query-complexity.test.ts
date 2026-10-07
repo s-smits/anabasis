@@ -255,12 +255,22 @@ describe("climb velocity", () => {
   const reading = (mass: number) => ({ rows: [{ taskId: "heavy-01", numerics: { "limits.mass": mass } }] });
   /** No structural count moved; one task joined and none of its numbers moved; two checks at a tier. */
   const zero = { checks: 0, limits: 0, coupled: 0, tooled: 0, rules: 0, roots: 0, inputs: 0, scenarios: 0 };
-  const still: NumericDrift = { median: 0, moved: 0, joined: 1, tasks: 1, basis: "tasks", paths: null };
+  const still: NumericDrift = {
+    median: 0,
+    moved: 0,
+    joined: 1,
+    renamed: 0,
+    tasks: 1,
+    basis: "tasks",
+    paths: null,
+  };
+  const unmoved = { medians: zero, totals: zero };
   const tiers = (medium = 2, hard = 0) => ({ checkTiers: { easy: 0, medium, hard, frontier: 0 } });
   const onTasks = (median: number, moved: number): NumericDrift => ({
     median,
     moved,
     joined: 1,
+    renamed: 0,
     tasks: 1,
     basis: "tasks",
     paths: null,
@@ -292,6 +302,7 @@ describe("climb velocity", () => {
       median: 2.75,
       moved: 1,
       joined: 0,
+      renamed: 0,
       tasks: 1,
       basis: "battery",
       paths: { compared: 1, declared: 1 },
@@ -301,7 +312,7 @@ describe("climb velocity", () => {
       rows(["truss-0", ...ids.slice(5).map((id) => `${id}b`)]),
     );
     expect(renumbered).toEqual({ ...still, joined: 1, tasks: 21 });
-    const verdict = (drift: NumericDrift) => verdictOf(tiers(), tiers(), null, zero, drift);
+    const verdict = (drift: NumericDrift) => verdictOf(tiers(), tiers(), null, unmoved, drift);
     expect([renamed, renumbered].map(verdict)).toEqual(["replaced", "replaced"]);
     expect(verdict(numericDriftOf(rows(ids.slice(0, 24)), rows(ids)))).toBe("adjusted");
     expect(verdict(numericDriftOf(rows(ids), rows(ids)))).toBe("restated");
@@ -321,6 +332,7 @@ describe("climb velocity", () => {
       median: 1.5,
       moved: 1,
       joined: 0,
+      renamed: 0,
       tasks: 4,
       basis: "battery",
       paths: { compared: 1, declared: 1 },
@@ -332,6 +344,7 @@ describe("climb velocity", () => {
       median: 0,
       moved: 0,
       joined: 0,
+      renamed: 0,
       tasks: 1,
       basis: "none",
       paths: { compared: 0, declared: 1 },
@@ -479,8 +492,9 @@ describe("climb velocity", () => {
             to: "i04",
             verdict,
             novelty: null,
-            drift: { median: 0, moved: 0, joined: 2, tasks: 2, basis: "tasks", paths: null },
+            drift: { median: 0, moved: 0, joined: 2, renamed: 0, tasks: 2, basis: "tasks", paths: null },
             delta: zero,
+            totals: zero,
             source: null,
             carried: { unchanged: 0, tasks: 0, afterFullPass: false },
             outcome: "unobservable",
@@ -548,6 +562,7 @@ describe("climb velocity", () => {
       median: 0,
       moved: 0,
       joined: 0,
+      renamed: 0,
       tasks: 2,
       basis: "battery",
       paths: { compared: 1, declared: 1 },
@@ -564,7 +579,9 @@ describe("climb velocity", () => {
       ["replaced", tiers(), tiers(), { ...zero, inputs: 2 }, swapped],
       ["widened", tiers(), tiers(), { ...zero, scenarios: 1 }, swapped],
     ] as const;
-    const read = edges.map(([, before, after, delta, drift]) => verdictOf(before, after, null, delta, drift));
+    const read = edges.map(([, before, after, delta, drift]) =>
+      verdictOf(before, after, null, { medians: delta, totals: zero }, drift),
+    );
     expect(read).toEqual(edges.map(([verdict]) => verdict));
   });
 
@@ -623,6 +640,49 @@ describe("climb velocity", () => {
     expect(report.edges).toHaveLength(1);
     expect(report.edges[0]).toMatchObject({ verdict, outcome: "unobservable" });
     if (verdict === "restated") expect(report.edges[0]?.novelty?.mean).toBeCloseTo(0, 6);
+  });
+
+  // A Builder that renames its tasks keeps their families and inputs, and one that grows its battery
+  // adds tasks shaped like the ones it held. On an id join and medians alone both read `replaced`:
+  // fewer than half the tasks joined, and no median moved.
+  it.concurrent("pairs renamed tasks by family and input, and reads a grown battery on its totals", async () => {
+    const renamedTasks = [
+      { ...heavy, taskId: "heavy-02", publicInput: { ...HEAVY_INPUT, limits: { mass: 120 } } },
+      { ...light, taskId: "light-02" },
+    ];
+    const renamed = await readCampaign(
+      twoVersions("ana-climb-renamed-", [brief, brief], (model, index) => {
+        if (index === 1) write(join(model, "tasks.json"), renamedTasks);
+      }),
+      { embed: fakeEmbed },
+    );
+    expect(renamed.edges[0]).toMatchObject({
+      verdict: "adjusted",
+      drift: { joined: 2, renamed: 2, tasks: 2, moved: 1, basis: "tasks" },
+    });
+    expect(render(renamed)).toContain(
+      "over 2 of 2 tasks joined by id, 2 of them renamed and joined by family and input structure",
+    );
+    const grown = [
+      heavy,
+      light,
+      ...[3, 4].flatMap((n) => [
+        { ...heavy, taskId: `heavy-0${n}` },
+        { ...light, taskId: `light-0${n}` },
+      ]),
+    ];
+    const grownReport = await readCampaign(
+      twoVersions("ana-climb-grown-", [brief, brief], (model, index) => {
+        if (index === 1) write(join(model, "tasks.json"), grown);
+      }),
+      { embed: fakeEmbed },
+    );
+    expect(grownReport.edges[0]).toMatchObject({
+      verdict: "widened",
+      drift: { joined: 2, renamed: 0, tasks: 6 },
+      delta: { checks: 0, scenarios: 0 },
+      totals: { checks: 6, scenarios: 4 },
+    });
   });
 
   // Both task-side rows read brief.json and tasks.json only. The truss run published a new

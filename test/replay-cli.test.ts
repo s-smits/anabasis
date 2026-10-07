@@ -128,6 +128,8 @@ it.each([true, false])("replays accepted bytes through the real verifier: pass=%
     pass ? "pass" : "fail",
   );
   expect(report.rows[0].replayed.checkRuns).toBeUndefined();
+  // The matching checks run in the evaluator alone, so no tool run sits under them.
+  expect(report.rows[0].toolRuns).toEqual([]);
   expect(JSON.parse(readFileSync(join(root, "report.json"), "utf8"))).toEqual(report);
   await expect(main([RUN_1, "--out"], root)).rejects.toThrow("usage: replay");
 });

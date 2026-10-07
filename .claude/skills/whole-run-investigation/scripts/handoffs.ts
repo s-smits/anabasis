@@ -19,6 +19,8 @@
 // record and the Builder's custom calls. A file opened through `bash` records only its working
 // directory, so every round states its bash count beside the reads as the unobservable remainder.
 // A field an older source never recorded is `null` and printed as unobservable, never as zero.
+// A round acted on its memory when the file moved: a write or edit row says so, and a `bash` edit,
+// which no row names, shows as the workspace's final memory differing from what the round opened on.
 // A channel is `no read route` only where no recorded call shape reaches its bytes at all. Every
 // channel the round's opening carried is re-served by the context tool's `round/opening` document,
 // and the round's own contract by `harness_inspect readiness` besides, so an unread cell on either
@@ -46,6 +48,7 @@ import {
 import { readEpochRecord } from "#src/author/campaign-epoch.ts";
 import { ownerSide } from "#src/author/feedback-routing.ts";
 import { PATH_RECORD_FILE } from "#src/builder/path-record.ts";
+import { MEMORY_FILE, STARTER_MEMORY, WORKSPACE_DIR } from "#src/author/builder-memory.ts";
 import { PUBLIC_TASK_FILE } from "#src/correctness-bundle/recorded-solve.ts";
 import { jsonText, readJsonAsOrNull } from "./run-overview.ts";
 
@@ -171,6 +174,14 @@ const READ_PATHS = {
   memory: /\/MEMORY\.md$/,
   traces: /\/(rehearsals|trials|cases)\/|trace/,
 };
+
+/** A line that is wholly an HTML comment: the controller's carry, cut and note markers, which the
+ *  memory read passes over (`src/author/builder-memory.ts`), so no part of what the Builder wrote. */
+const COMMENT_LINE = /^<!--.*-->$/;
+/** The head marker naming the epoch a memory file was carried forward from, and the marker a cut to
+ *  the byte cap leaves (`carryMemoryForward`, `cappedToEnds`). */
+const CARRIED_FROM = /^<!-- carried forward from (epoch-[0-9a-f]{12})\b/m;
+const MEMORY_CUT = /^<!-- memory cut to \d+ bytes/m;
 
 /** The context-tool document sources this reader joins by id prefix, as `documentsOf` spells them
  *  (`src/builder/context-tool.ts`). */
@@ -739,10 +750,41 @@ function presentOf(campaign: string, round: Round, name: string): boolean {
   }
 }
 
-function actedOf(round: Round, name: string): boolean | null {
-  if (name === "memory") return pathHits(round, "write", READ_PATHS.memory) > 0;
+function actedOf(campaign: string, round: Round, name: string): boolean | null {
+  if (name === "memory") return memoryActed(campaign, round);
   if (name === "traces") return calls(round, TRIAL).length > 0;
   return null;
+}
+
+/** An epoch workspace's memory file as it stands, or null when there is none. */
+function memoryText(epochDir: string): string | null {
+  const path = join(epochDir, WORKSPACE_DIR, MEMORY_FILE);
+  return existsSync(path) ? readFileSync(path, "utf8") : null;
+}
+
+/** What a memory file says, without the controller's comment lines. */
+function memoryBody(text: string): string {
+  return text
+    .split("\n")
+    .filter((line) => !COMMENT_LINE.test(line.trim()))
+    .join("\n")
+    .trim();
+}
+
+/** Whether the round changed its own memory, by any tool. A write or edit row naming the file says
+ *  so; otherwise the workspace's final memory is compared with what the round opened on, the memory
+ *  its head says it was carried forward from or else the starter. A carried file cut to the cap
+ *  opened on bytes this reader cannot rebuild, and a missing file says nothing: both are null. */
+function memoryActed(campaign: string, round: Round): boolean | null {
+  const edits = pathHits(round, "write", READ_PATHS.memory) + pathHits(round, "edit", READ_PATHS.memory);
+  if (edits > 0) return true;
+  const text = memoryText(round.dir);
+  if (text === null) return null;
+  const from = CARRIED_FROM.exec(text)?.[1];
+  if (from === undefined) return memoryBody(text) !== memoryBody(STARTER_MEMORY);
+  const earlier = memoryText(join(campaign, from));
+  if (earlier === null || MEMORY_CUT.test(text)) return null;
+  return memoryBody(text) !== memoryBody(earlier);
 }
 
 /** What the round's own battery review records of the earlier review's advisory defects
@@ -782,7 +824,7 @@ function census(campaign: string, rounds: readonly Round[]): CensusRow[] {
         present: presentOf(campaign, round, channel.name),
         served,
         read,
-        acted: actedOf(round, channel.name),
+        acted: actedOf(campaign, round, channel.name),
       };
     });
     const unread = channels.flatMap((cell) =>

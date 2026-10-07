@@ -6,6 +6,7 @@ import { type RebuildAdvicePacket, renderRebuildAdvice } from "../src/author/reb
 import { adviceIssueId } from "../src/author/issue-register.ts";
 import { required } from "./helpers/doubles.ts";
 import { advicePacket, issue as adviceIssue } from "./helpers/review-fixtures.ts";
+import { STARTER_MEMORY } from "../src/author/builder-memory.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import {
   CHANNELS,
@@ -415,6 +416,40 @@ describe("round hand-offs", () => {
     expect(buildHandoffs({ campaign: scratchDir("wri-handoffs-empty-"), runId: null })).toMatchObject({
       state: "empty",
     });
+  });
+});
+
+describe("the memory channel's acted cell", () => {
+  const [first, second] = ["epoch-aaaaaaaaaaaa", "epoch-bbbbbbbbbbbb"];
+  /** The two rounds' acted cells once each workspace holds `memory`, and the path record names the
+   *  file only through `rows`, keyed by epoch. */
+  const acted = (memory: Record<string, string>, rows: Record<string, unknown[]> = {}) => {
+    const dir = campaign();
+    for (const epoch of [first, second]) {
+      writeText(join(dir, epoch, "builder-path-record.jsonl"), jsonl(rows[epoch] ?? []));
+      const text = memory[epoch];
+      if (text !== undefined) writeText(join(dir, epoch, "workspace", "MEMORY.md"), text);
+    }
+    const census = required(buildHandoffs({ campaign: dir, runId: RUN }).census, "census");
+    return census.map((row) => row.channels.find((c) => c.name === "memory")?.acted);
+  };
+  const noted = `${STARTER_MEMORY}\n- the tolerance check needs the raw units\n`;
+  const carried = `<!-- carried forward from ${first}, an earlier pass on this same request. Correct what no longer holds. -->\n\n${noted}`;
+
+  it("reads a memory a shell command changed, which no path row names", () => {
+    // Round 1 wrote its note through bash and round 2 kept the carried notes as they came.
+    expect(acted({ [first]: noted, [second]: carried })).toEqual([true, false]);
+    // A starter left as seeded, and a workspace that holds no memory file, say nothing was written.
+    expect(acted({ [first]: STARTER_MEMORY })).toEqual([false, null]);
+  });
+
+  it("reads an edit-tool row on the memory file as acting on it", () => {
+    const row = {
+      capability: "edit",
+      at: "2026-09-19T02:10:00.000Z",
+      resolved: `/w/${second}/workspace/MEMORY.md`,
+    };
+    expect(acted({ [first]: noted, [second]: carried }, { [second]: [row] })).toEqual([true, true]);
   });
 });
 

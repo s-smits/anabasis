@@ -53,9 +53,24 @@ describe("the three backends", () => {
     const sweep: BackendOptions = {
       claude: { ...options.claude, compaction: { window: SWEEP_COMPACT_WINDOW } },
     };
-    expect(compactionMode("claude", sweep)).toBe("autoCompactWindow=300000");
-    expect(compactionMode("claude", options)).toBe("off");
-    expect(compactionMode("openai-codex", sweep)).toBe("off");
-    expect(compactionMode("openrouter", sweep)).toBe("off");
+    const claude = (id: string) => ({ provider: "claude", id });
+    expect(compactionMode(claude("claude-opus-5"), sweep)).toBe("autoCompactWindow=300000");
+    expect(compactionMode(claude("claude-opus-5-5"), options)).toBe("off");
+    expect(compactionMode({ provider: "openai-codex", id: "gpt-5.5" }, sweep)).toBe("off");
+    expect(compactionMode({ provider: "openrouter", id: "z-ai/glm-5" }, sweep)).toBe("off");
+  });
+
+  // The CLI clamps the window to the context it serves the id, without a word: a bare id gets 200K.
+  it("refuse a compaction window the model's served context cannot hold", () => {
+    const at = (window: number): BackendOptions => ({
+      claude: { ...options.claude, compaction: { window } },
+    });
+    const claude = (id: string) => ({ provider: "claude", id });
+    expect(() => compactionMode(claude("claude-opus-5-5"), at(SWEEP_COMPACT_WINDOW))).toThrow(
+      "claude-opus-5-5 a 200000-token context",
+    );
+    expect(() => compactionMode(claude("claude-sonnet-5-5"), at(SWEEP_COMPACT_WINDOW))).toThrow("clamped");
+    expect(compactionMode(claude("claude-opus-5-5"), at(200_000))).toBe("autoCompactWindow=200000");
+    expect(compactionMode(claude("claude-fable-5-1"), at(1_000_000))).toBe("autoCompactWindow=1000000");
   });
 });

@@ -4,8 +4,10 @@
  * the Built Harness both resolve their models here.
  */
 import {
+  type Api,
   type CredentialStore,
   createModels,
+  type Model,
   type MutableModels,
   type OAuthCredential,
 } from "@earendil-works/pi-ai";
@@ -58,9 +60,11 @@ export function backends(options: BackendOptions): MutableModels {
   return models;
 }
 
-/** The compaction a solve on `provider` runs under, as the condition pins it. */
-export function compactionMode(provider: string, options: BackendOptions): string {
-  return provider === CLAUDE_PROVIDER ? claudeCompactionMode(options.claude.compaction) : PI_LOOP_COMPACTION;
+/** The compaction a solve on `model` runs under, as the condition pins it. */
+export function compactionMode(model: Pick<Model<Api>, "provider" | "id">, options: BackendOptions): string {
+  return model.provider === CLAUDE_PROVIDER
+    ? claudeCompactionMode(options.claude.compaction, model.id)
+    : PI_LOOP_COMPACTION;
 }
 
 function codexAuthFile(): string {

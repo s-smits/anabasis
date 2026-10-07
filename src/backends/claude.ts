@@ -143,9 +143,27 @@ export interface ClaudeOptions {
   readonly compaction: ClaudeCompaction;
 }
 
-/** The compaction a condition pins for a Claude solve, in the words the CLI's own settings use. */
-export function claudeCompactionMode(compaction: ClaudeCompaction): string {
-  return compaction === "off" ? "off" : `autoCompactWindow=${String(compaction.window)}`;
+/**
+ * The window Claude Code gives a bare id, `fq=200000` in the bundled CLI 0.3.285. Its resolver clamps
+ * the compaction window to the model's own (`window: Math.min(g, ye)` in `XA`), so a larger window
+ * pinned for a bare id would run at this one.
+ */
+const BARE_WINDOW = 200_000;
+
+/**
+ * The compaction a condition pins for a Claude solve on `modelId`, in the words the CLI's own
+ * settings use. A window the id's served context cannot hold is refused, where the CLI would clamp it
+ * without a word: `claude-opus-5-5` goes bare, so a 300K window there ran at 200K.
+ */
+export function claudeCompactionMode(compaction: ClaudeCompaction, modelId: string): string {
+  if (compaction === "off") return "off";
+  const served = LONG_CONTEXT.has(modelId) ? WINDOW_BOUNDS[1] : BARE_WINDOW;
+  if (compaction.window > served) {
+    throw new Error(
+      `Claude Code serves ${modelId} a ${String(served)}-token context, so a ${String(compaction.window)}-token compaction window would be clamped`,
+    );
+  }
+  return `autoCompactWindow=${String(compaction.window)}`;
 }
 
 /**

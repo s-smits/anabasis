@@ -490,8 +490,9 @@ epoch, one copy and one independent accept per task, so it stayed silent; confor
 independent accept of six in five of six epochs, and the Builder carried it anyway.
 
 **Rehearsal and submit.** `harness_trial` solves one task blind with the measured Built solver (rule 14),
-so a passing rehearsal shows that task is within the solver's reach, and the task the Builder expects to
-be hardest is the one whose rehearsal says most. The round prompt (`src/author/builder-session.ts`) says
+so a passing rehearsal shows that task is within the solver's reach. Its result forecasts no battery,
+and a miss says the checks rejected the answer without saying whether the answer is wrong, a check
+refuses a right answer or the task leaves the answer open. The round prompt (`src/author/builder-session.ts`) says
 that a battery whose every rehearsal passed is on course to pass every case, so before submitting it the
 Builder raises what its hardest tasks demand once, by depth (prior 10) rather than more tasks, families
 or inputs, and rehearses one of them again. The route is named there because the no-limit line
@@ -504,7 +505,7 @@ rehearsal fails: nothing holds a submit on rehearsals, because the measured batt
 lands (`WITNESS`, in the battery contract), and a rehearsal hold of that kind cost whole rounds (96 of 99 predicted passes at ≤0.3 did pass;
 "What has cost whole rounds"). Across 241 batteries from 2026-09-25 on, the rehearsed task had sat at
 chance in its battery's solve-time order: in 111 single-rehearsal rounds it was the slowest in 18, at a
-mean rank of 0.48 against 0.50. The two Sol runs on 887c163ee each submitted on one rehearsal that passed
+mean rank of 0.48 against 0.50, so since 2026-10-07 the round prompt names no task to rehearse. The two Sol runs on 887c163ee each submitted on one rehearsal that passed
 in its first turn, citing "submit once a clear preview says it works" as the user's instruction with the
 sentence on a pass's reach already in front of them (primary lanes, 2026-09-30). Each `harness_trial`
 result also totals the round's graded rehearsals, because verdicts read one call at a time were never
@@ -637,8 +638,8 @@ and has not been re-derived here.
    1.5 depending on the domain. Each Opus run also yields less as runs are added: 0.160 batteries per
    run-hour at about two live runs, 0.094 at about six and 0.067 at about nine. The launcher now holds
    the load and the live runs (`launch-run`, "Launch a run"); the rate of change has no such guard.
-   Owner: the Super Loop's pace (`run-improvement-campaign`), one measured change at a time on a tree
-   that holds still.
+   Owner: the Super Loop's pace (`run-improvement-campaign`), one measured change, or one bundle while
+   task sets sit at a full pass ("Ablated components"), at a time on a tree that holds still.
 
 The first is model-visible where it changes `examples.md` or opens a split build. The second, third
 and fourth are the controller's, the readers' and the operator's, and move no prompt.
@@ -687,16 +688,8 @@ Beneath the four, the task side still has these gaps. Delete a bullet in the com
   easy. The added tasks are not isolated as the cause: 10 of the 11 former-limit tasks carried unchanged
   passed again, and 11 of the 13 transitions changed the scoring program. The Builder heard only "Task count: exactly N tasks". Owner:
   `renderProbeSizing`, which now names the hardest families' demand at graduation, not yet measured.
-- **The worked example is a toy.** The one worked domain in `starter-pack/examples.md` is a duty
-  roster: one or two shifts, one public rule, a greedy reference, and families that differ in size. Its
-  list of targets the solver does not reliably meet leads with three limit-tightening routes and puts
-  demand last. At least 52 of 310 Builder sessions since 2026-09-23 read it (13 through the read tool,
-  39 in prose or compaction read-lists; reads through bash are unrecorded). Replace it with families
-  that differ by which requirements interact under one shared limit, an obvious answer that fails, and a
-  very hard family, which is where the operator's aim at very hard reaches the Builder, with no count
-  (prior 10).
 - **The Epoch Reviewer could not name requirements exercised one at a time.** `DEMAND_GAPS` now holds
-  `requirements-one-at-a-time`, not yet measured; its orientation still reads easy tasks as a result.
+  `requirements-one-at-a-time`, not yet measured.
 - **The expected-output oracle is unmeasured.** The firmware `rules.ts` is both the check's expectation
   and the solver's `expected_behaviour`, so the solver can compute every expected value before it
   submits, which `PUBLICATION_CLAUSE` calls the field's own work.
@@ -781,7 +774,15 @@ to 80. Each prediction is frozen before its arm launches.
 Arms are compared on a discovery seed first. A confirmation seed, from another campaign, is launched
 only after every arm's source is fixed, and nothing read from it revises an arm.
 
-No component is ablated in the landed source at present. Nine arms wait on refs:
+While task sets sit at a full pass, changes that pull the same way run as one bundle against main,
+and the bundle is split into its arms only after it climbs (operator, 2026-10-07): an arm alone
+cannot be separated at the size we run ("Open gaps", the third blocker), and a full pass leaves it
+no fail to move. The arm protocol above stays for single-change comparisons. The blockers in "Open
+gaps" are worked in their ranked order, so a gate is not the first lever.
+
+No component is ablated in the landed source at present. Nine arms wait on refs. The five marked
+folded landed on 2026-10-07 in the climb bundle rather than alone, as their entries say, under review
+policy v17 rather than an arm's name; each keeps its ref for that split:
 
 - **`held-findings` (arm, added, 2026-10-01).** `harness_trial` starts no solve while the round's
   latest gate result is a `correctness_check` that found blocking rows on the very bytes being
@@ -796,25 +797,28 @@ No component is ablated in the landed source at present. Nine arms wait on refs:
   misses. Grep: `rg "ADDED\(held-findings\)"`. Prediction and run: filled when this arm launches.
   Ref `refs/arms/held-findings`: the stack top plus this one commit.
 
-- **`miss-reading` (arm, 2026-10-01).** The sentence `harness_trial` returns with a graded miss, "so a
+- **`miss-reading` (arm, 2026-10-01; folded).** The sentence `harness_trial` returns with a graded miss, "so a
   battery of tasks like it scores near zero" (`trialNextAction` in `src/builder/harness-trial.ts`). In
   its place the result says the checks rejected the submitted answer, that either the answer is wrong,
   which is a limit, or a check refuses a right answer, and that the result does not say which. Of 47
   recorded rehearsal misses (1,064 rehearsals since 2026-09-23), 36 were a check or its instrument
   refusing a right answer, 7 were real and 4 were under-specified tasks; 23 were never rehearsed again
   and 3 kept the task with its public text unchanged. The pass sentence and the round tally stay.
+  Folded with a third reading, a task that leaves the answer open, and with the pass sentence's and
+  the tool description's forecasts of the battery taken out too.
   Grep: `rg "ABLATED\(miss-reading\)|ADDED\(miss-reading\)"`. Prediction and run: filled when this
   arm launches.
   Ref `refs/arms/miss-reading`: the stack top plus this one commit.
 
-- **`hardest-guess` (arm, 2026-10-01).** The round prompt's "A passing rehearsal is a blind solve of
+- **`hardest-guess` (arm, 2026-10-01; folded).** The round prompt's "A passing rehearsal is a blind solve of
   its task, so it shows that task is within the solver's reach, and the task you expect to be hardest
   is the one whose rehearsal says most about the battery", and the word "hardest" in the raise that
   follows it (`roundPrompt` in `src/author/builder-session.ts`). The sentence relies on the Builder
   predicting which task is hardest: its predicted pass probability averaged 0.41 against an observed
   0.94, and the rehearsed task sat at chance in its battery's solve-time order (mean rank 0.48 against
   0.50). Its first half restates the witness line the round opens with. The raise, its route "act
-  together" and the one rehearsal after it stay. Grep:
+  together" and the one rehearsal after it stay. Folded without the second change: "hardest" stays in
+  the raise. Grep:
   `rg "ABLATED\(hardest-guess\)|ADDED\(hardest-guess\)"`. Prediction and run: filled when this arm
   launches.
   Ref `refs/arms/hardest-guess`: the stack top plus this one commit.
@@ -841,7 +845,7 @@ No component is ablated in the landed source at present. Nine arms wait on refs:
   arm launches.
   Ref `refs/arms/rehearsal-price`: the stack top plus this one commit.
 
-- **`hardness-observation` (arm, 2026-10-01).** In the Epoch Reviewer's lead for a battery on or below
+- **`hardness-observation` (arm, 2026-10-01; folded).** In the Epoch Reviewer's lead for a battery on or below
   the aim, "and hardness is the last of its readings rather than the first" and the closing "Record an
   observation of hardness, owned by correctness-model/tasks.json, once you have read the brief and the
   writer schema against the artifact and neither holds" (`PLACEMENT_LEADS.below` in
@@ -849,12 +853,14 @@ No component is ablated in the landed source at present. Nine arms wait on refs:
   and "or hardness" (`src/review/epoch-review-findings.ts`). The observation reaches the Builder as
   "no check or path named; an observation, not a demonstrated defect" on the task set, so an earned
   fail, on the battery the climb wants, arrived as an advisory against its tasks. The lead, both
-  probes and their owners stay. The review policy string carries the arm's name while it is on. Grep:
+  probes and their owners stay. Folded with the lead naming real difficulty, valid answers the checks
+  reject, too little checking and an answer the tools cannot represent as competing explanations,
+  none first. The review policy string carries the arm's name while it is on. Grep:
   `rg "ABLATED\(hardness-observation\)|ADDED\(hardness-observation\)"`. Prediction and run: filled
   when this arm launches.
   Ref `refs/arms/hardness-observation`: the stack top plus this one commit.
 
-- **`easy-result` (arm, 2026-10-01).** In the Epoch Reviewer's lead for a battery above the aim, "and
+- **`easy-result` (arm, 2026-10-01; folded).** In the Epoch Reviewer's lead for a battery above the aim, "and
   tasks that were easy while leaving none undemanded are a result to report, not a defect to record"
   (`PLACEMENT_LEADS.above` in `src/review/epoch-reviewer.ts`). A battery that passes whole found no
   limit, and "Evidence and implementation status" records this clause as an open gap: the orientation
@@ -865,13 +871,14 @@ No component is ablated in the landed source at present. Nine arms wait on refs:
   launches.
   Ref `refs/arms/easy-result`: the stack top plus this one commit.
 
-- **`one-check-question` (arm, 2026-10-01).** The rebuild advice's "One check carrying every failure
+- **`one-check-question` (arm, 2026-10-01; folded).** The rebuild advice's "One check carrying every failure
   asks whether its rule is stated in the public contract before the count reads as solver capability"
   (`blockingLine` in `src/author/rebuild-advice.ts`), appended after a partial battery whose verified
   failures all sat on one declared check; the Epoch Reviewer's battery block renders the same line. It
   met a located limit by pointing at the Builder's own contract, which the publication clause already
   asks about once, and 11 of 47 rehearsal misses came back with their public text changed. The
-  per-check counts stay. Grep: `rg "ABLATED\(one-check-question\)|ADDED\(one-check-question\)"`.
+  per-check counts stay. Folded as three readings, none first, in place of the question. Grep:
+  `rg "ABLATED\(one-check-question\)|ADDED\(one-check-question\)"`.
   Prediction and run: filled when this arm launches.
   Ref `refs/arms/one-check-question`: the stack top plus this one commit.
 
@@ -967,8 +974,9 @@ select product bytes and nothing else.
 ### Before launch
 
 1. Choose one change from a recorded failure, wasted work or an open decision, and name its owner and a
-   falsifier before writing code. Prefer deleting the competing owner, then reusing the existing one, then
-   adding the minimum.
+   falsifier before writing code. While task sets sit at a full pass, the change may be one bundle of
+   changes that pull the same way ("Ablated components"), each part with its owner. Prefer deleting
+   the competing owner, then reusing the existing one, then adding the minimum.
 2. Prove the path cheaply (`system-path-simulation`). The strongest cheap proof is a script in gitignored
    `.scratch/` that imports the exported production function and replays it over every recorded campaign
    on disk. Before adding a refusal or a gate, count the recorded rounds on which it would have fired,
@@ -1078,7 +1086,8 @@ every identity except the tested variable, and grade the attribution `proven`, `
 
 Give each valid defect one owner, and then pick **one** move: retain and measure, fix the demonstrated
 owner, delete a mechanism with no consumer, investigate a consequential ambiguity, or stop. Keep the next
-comparison to a single variable, and batch related fixes one PR per owner, one gate per batch.
+comparison to a single variable, or to one bundle while task sets sit at a full pass ("Ablated
+components"), and batch related fixes one PR per owner, one gate per batch.
 
 ### What has cost whole rounds here
 
@@ -1538,7 +1547,7 @@ the battery was paid for.
     or easier by itself; blind measurement decides, and its one reading of the third, six truss tasks, did
     not show it (prior 10). Tightening stays legitimate, since a slack limit is a finding about its
     reference, and a longer search stays an optional method; what the evidence does not support is
-    leading with it as the route to difficulty, as `examples.md`'s list still does ("Open gaps"). Each
+    leading with it as the route to difficulty. Each
     prompt says it once: the Builder system prompt owns the clauses, publication and the definition of
     depth among them, `examples.md` the optional routes to a target the solver does not reliably meet,
     `roundPrompt` and `renderBatteryContract` when to submit and what a witness proves, and the climb

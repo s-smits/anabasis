@@ -174,8 +174,10 @@ describe("the authoring call's cost against the solver's own budget", () => {
     expect(notice).toContain("one solver command 900 s (4.1x) (solver.shell_command_seconds)");
     expect(notice).toContain("one correctness check 600 s (6.1x) (gate.check_seconds)");
     expect(notice).toContain("a whole solve 7200 s (0.5x) (solver.solve_seconds)");
-    // The second lever: the tools it installed, not only the numbers it wrote.
-    expect(notice).toContain(".toolchain");
+    // Measurements only: a search far past the solver's wall is how a stored answer the solver cannot
+    // reach by rerunning it is made, so the notice no longer asks for a shorter one.
+    expect(notice).toEndWith("(solver.solve_seconds).");
+    expect(notice).not.toMatch(/\.toolchain|cannot repeat|accuracy for a lot of time|fewer iterations/);
   });
 
   it("follows the workspace's declared settings, and stays silent on a defective file", () => {

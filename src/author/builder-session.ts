@@ -270,11 +270,12 @@ function roundPrompt(input: BuilderSessionInput, previous: PreviousRound | null)
     // The cap counts replies, not tool calls, and says so: read as a count of steps, fifteen turns
     // looked nearly spent a dozen calls into the first, and a Builder dropped a change it had
     // judged right for want of turns it still had.
-    // The rehearsal sentences say what a passing rehearsal is, a blind solve the solver finished;
-    // which task's pass says most, since a pass speaks only for its own task and the task a Builder
-    // happens to rehearse is an ordinary one; and that a battery whose every rehearsal passed is on
-    // course to find no limit, because saying what a pass is did not by itself stop a Builder
-    // submitting on one first-turn pass. The demand changes once, and not until a rehearsal fails:
+    // The rehearsal sentence says that a battery whose every rehearsal passed is on course to pass
+    // every case, because saying what a pass is did not by itself stop a Builder submitting on one
+    // first-turn pass. What a pass is, the battery contract's witness line already says, and the
+    // sentence that named the task expected to be hardest as the one to rehearse is gone: Builders'
+    // predicted pass probability averaged 0.41 against an observed 0.94, and the rehearsed task sat at
+    // chance in its battery's solve-time order (mean rank 0.48 against 0.50). The demand changes once, and not until a rehearsal fails:
     // a condition a rehearsal has to meet held rounds back without moving where the battery landed.
     // What a full pass finds and where a battery lands are the battery contract's (`LIMIT`, `WITNESS`
     // in climb-readout.ts), stated once there. The measurements behind each clause are in AGENTS.md
@@ -284,9 +285,7 @@ function roundPrompt(input: BuilderSessionInput, previous: PreviousRound | null)
     // five new device families, then stopped at what its simulator could model, and every solve of its
     // five tasks still passed.
     `${roundLimit(input.maxTurns)}Build, check and rehearse the candidate, and submit` +
-      ` once a clear preview says it works. A passing rehearsal is a blind solve of its task, so it shows that task` +
-      ` is within the solver's reach, and the task you expect to be hardest is the one whose rehearsal says most about` +
-      ` the battery. A battery whose every rehearsal passed is on course to pass every case, so before you submit` +
+      ` once a clear preview says it works. A battery whose every rehearsal passed is on course to pass every case, so before you submit` +
       ` it, raise what its hardest tasks demand by making more of the request's requirements act together, not by` +
       ` adding tasks, families or inputs at the same demand, and rehearse one of them again, then submit: further` +
       ` polish belongs to the next round.`,

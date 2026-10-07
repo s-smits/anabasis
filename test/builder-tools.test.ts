@@ -252,6 +252,7 @@ describe.if(osIsolationSupport().ok)("the seven capabilities through the isolati
     expect(killed.message).toContain("killed after 1 s");
     expect(killed.message).toContain("up to 7200");
     expect(killed.message).toMatch(/host load average was \d+\.\d on \d+ cores/);
+    expect(killed.message).not.toContain("fewer iterations");
     expect(killed.message).not.toContain("late");
     expect(await run("bash", { command: "echo quick", timeout: 5 })).toContain("quick");
   });

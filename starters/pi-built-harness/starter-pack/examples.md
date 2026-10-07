@@ -107,8 +107,8 @@ as welcome.
   when many simpler answers meet them too, or when they are requirements the field would not hold.
 - **A search past the solver's wall.** Run an offline search far longer than one solve may take,
   keep its best incumbents, and store the best as the answer `reference/` replays, which F2 admits
-  as it admits any stored answer. The limit then sits between what the long search found and what a
-  short one finds. It fails when the long search finds nothing a short one does not.
+  as it admits any stored answer. Use this to propose the next task; fresh solver attempts establish
+  its difficulty. It fails when the long search finds nothing a short one does not.
 
 The last two set where a limit or a stored answer sits, and each combines with the first two.
 
@@ -147,7 +147,7 @@ guaranteed-hours  Contract minimums join the other three. Ward-only staff with a
                   staff first meets a task here.
 ```
 
-What makes the last family very hard is a property of its tasks: minimum hours force named staff
+The last family is built to be the hardest, by a property of its tasks: minimum hours force named staff
 onto shifts while rest and the scarce charge qualification decide which shifts they can pair, and
 the budget sits less than one cheapest shift above the best roster the reference finds, so no rule
 can be settled on its own and only a search over whole rosters meets the budget.

@@ -189,8 +189,11 @@ describe("the epoch reviewer's orientation", () => {
     expect(prompt).toContain("A placement above the aim is a lead, not a finding on its own");
     // Requirements asked for one at a time are an undemanded obligation too, so that gap is reachable
     // from the lead rather than only the capability no task exercises.
-    expect(prompt).toContain("do not demand, or demand only one at a time");
+    expect(prompt).toContain("do not demand, or demand only one at a time.");
     expect(prompt).not.toContain("hardness is the last of its readings");
+    // Easy tasks are not called a result to report: the guard above already keeps a finding off the
+    // score alone.
+    expect(prompt).not.toContain("a result to report");
     // The first-probe pointer belongs to the side below the aim, and the static prompt no longer
     // carries it to every review.
     expect(prompt).not.toContain("start from the first one listed");
@@ -233,7 +236,13 @@ describe("the epoch reviewer's orientation", () => {
       expect(prompt).toContain(placement);
       expect(prompt).not.toContain("as a first battery should");
       expect(prompt).toContain("A placement on or below the aim is a lead, not a finding on its own");
-      expect(prompt).toContain("hardness is the last of its readings rather than the first");
+      // Real difficulty is one explanation among four, none read first, and no longer an observation
+      // recorded against the tasks: that reached the Builder as an advisory against an earned fail.
+      expect(prompt).toContain(
+        "Weigh four explanations of what it measured against each other, none first: real difficulty for the solver, valid answers the checks reject, too little checking, and a valid answer the tools cannot represent.",
+      );
+      expect(prompt).not.toContain("hardness is the last of its readings");
+      expect(prompt).not.toContain("Record an observation of hardness");
       // Each reading names the routable owner that repairs it, and the instrument for the first.
       expect(prompt).toContain("rule the checks apply that the brief does not publish fails every task");
       expect(prompt).toContain("probe an accept control at a field the public contract leaves free");

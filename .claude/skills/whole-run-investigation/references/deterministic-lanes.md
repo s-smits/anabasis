@@ -14,8 +14,37 @@ the run overview carries its trigger; `climb`, `yield`, `posture`, `timeline`, `
 `gates` and `target`, which read the campaign; and `archive`, which writes the record. `brief.ts` runs the eight campaign lanes as `CAMPAIGN_LANES` and renders
 their trigger lines into the sweep brief, reading an in-process lane's triggers from the report it
 records at `<review>/<lane>.json`, so a trigger below is the same bytes whether it was read from a
-lane's own output or from the brief. Inside a review every lane runs from the run's measured
-checkout, so an older run is read by the readers of the source that wrote it.
+lane's own output or from the brief. Each campaign lane is also a verb of `bun run runs`, which
+starts `wri.ts <lane>` with its options untouched (`RUN_VERBS`, `.claude/skills/main/verbs.ts`).
+
+## How a read finds its readers
+
+A run's records are read by the source that wrote them. So `start` and `read` first resolve the
+checkout at the opening's `source.commit`: `--repo` when it is clean there with its own dependencies
+installed, else a registered worktree at that commit (the review worktree `ana-wri-<sha8>` first,
+the run's own worktree last, another run's never), else `ana-wri-<sha8>` created beside the main
+checkout and prepared from its own lock. Every lane then runs as that checkout's own script, and the
+brief's `readers` line names it with every checkout passed over. A run no checkout can read is
+refused as `source-unresolved` with exit 2 before any lane. Current source explains an older run
+only through an ancestry and changed-path check, and the review procedure's own revision is kept
+apart from the measured one.
+
+Every lane's output is captured to `<review>/<lane>.txt` and the read is recorded in
+`<review>/wri-review.json`. What the command prints is one bounded brief: the run's size and
+terminal, each lane quoted whole or pointed at, the triggers and scan findings, and the semantic
+lanes those triggers start. Read the brief, and open a lane file only once the brief has made that
+lane the question; `wri.ts brief --out <review>` renders it again. A later read into the same
+review adds its lanes and replaces only the captures it read again. The probe tier withholds only
+the lanes that open the measured checkout or an archive, because a battery that scored nothing gives
+them nothing to read.
+
+The snapshot lane is `trace-review.ts`, also `bun run review:collect`. It makes no model calls and
+reports a missing view inside `snapshot-status.json` rather than failing, and a new deterministic
+question belongs there as another view rather than in a further collection script. Require
+`complete: true` before treating the snapshot as complete. A read whose snapshot left a required
+view unproduced still runs every other lane, names each such view under `== SNAPSHOT INCOMPLETE` at
+the head of the brief, prints `digest: skipped: snapshot view <view> <status>` where those leads
+would be, and only then exits 1.
 
 ## The digest
 
@@ -175,13 +204,78 @@ verdicts or lane titles are not the catalogue's. The digest verdict set is the b
 so `band-placement`, `rehearsal-ledger` and `toolchain-retention` are verdicts and a saturation
 ledger is not.
 
-## Tiers
+## The digest verdicts
 
-`brief.ts` decides the tier from the run's shape and bounds the semantic lanes it may launch, by
-trigger first and by the default set only where no trigger picks, with the tier's standing lanes
-(`STANDING_LANES`) joining every sweep: probe, which is a run not scored or under two hours,
-launches six lanes, by default 5, 8, 12 and 25 with 31 and 34 standing; standard launches twelve,
-the probe set plus 1, 9, 14 and 24 with 31, 33, 34 and 37 standing; deep, which is twelve hours,
-three epochs or three batteries, launches nineteen, the standard set plus 2, 6, 10, 11, 13 and 22
-with 31, 32, 33, 34 and 37 standing. Thirty-eight is the ceiling. Lanes 7, 23 and 30 sit outside
-every tier and are launched alone, only when their own trigger fired.
+The digest settles ten verdicts beside rows A to I, in the order `DIGEST_VERDICTS`
+(`scripts/catalogue-shape.ts`) lists them: discrimination-inertness, submit-stall-shape,
+evidence-integrity, solver-process, check-informativeness, family-wise-coverage,
+role-spend-and-censoring, band-placement, rehearsal-ledger and toolchain-retention. Each is
+arithmetic over recorded rows and supplies a lead, never a semantic conclusion. No shipping
+rejection does not make a check useless, a constant tool sequence does not prove an answer
+shortcut, and a perfect battery proves that no limit was measured, not why.
+
+## What each reader can and cannot say
+
+`delta` prints paths and counts, never source text, so it says a surface moved and not that the
+move reached anything. A `climb` label is structural and not a forecast: `escalated` says the checks
+reached a higher tier, `widened` says the battery holds more and not that it asks more, `adjusted`
+states no direction, and `replaced` says the edge could not be read. `walls` reads the walls the
+Builder wrote in `agent/config.yaml`, the one file nothing inspects again after the gate, and its
+usual decision-changing reading is the negative one: no case reached a wall, so room explains
+nothing. `timeline`'s `unreadable` and `adrift` are separate claims, the first about the classifier
+and the second about the model. `yield` counts opportunities, outputs, consumption and change per
+review component, each with its own denominator, and is never a lane's yield. `handoff` reads a
+served marker as a sentence the current source renders, so an absent marker reads `not found`,
+never `not served`. A `posture` label is a lead for explaining an observed refusal, stall or case
+kind, never a score, and `integrity-failure` means the execution and sidecar joins disagreed.
+
+## From trigger to lane
+
+`LANE_FOR_TRIGGER` in `scripts/brief.ts` maps each trigger to the lanes it starts, the suffixed lane
+first, so the brief is itself the map from what the read found to the lane worth paying for. Name
+each semantic lane against a row of the brief: the trigger, the question it settles and the decision
+it could change.
+
+| deterministic trigger | lane |
+| --- | --- |
+| an artifact root or declared input that no check reads; a relation no check enforces | 1 |
+| 6b `VERSION TOOLCHAIN IS A SYMLINK`, `VERSION TOOLCHAIN DANGLING` or `WRAPPER-ONLY TOOL DIGEST` | 2 |
+| block 1 `UNTRIPPED IN SHIPPING`; 1c `PERFECT BATTERY OVER AIM`; a 4b placement over the aim | 5 |
+| block 1 `UNTRIPPED IN SHIPPING`; 1c `REACH-ONLY CHECKS` | 6 |
+| verified cases, with lane 5 or 6 reading slack | 7, isolated |
+| 6 `REHEARSAL NOT-RUN` | 9 |
+| `climb` `CLIMB FLAT`; the `handoff` calibration table; a `climb` edge label beside a placement | 10 |
+| 6 `SUBMITTED BYTES NEVER REHEARSED`; the `yield` `harness-trial` row | 11 |
+| the `yield` `epoch-reviewer` row; a review the census marks incomplete | 12 |
+| 4d `FINDINGS WITHOUT OWNER` or `ADVISORY FINDING RECURS UNROUTED`; the `yield` `epoch-reviewer` row | 14 |
+| the `handoff` triage table | 15 |
+| 2b `CENSUS WITH DISAGREEMENT` | 16 |
+| the `handoff` census table | 17 |
+| the `handoff` same-task table | 18 |
+| 3c `REPEATED CONDITION`; a `climb` edge label | 20 |
+| source-delta `UNREACHED CHANGED SAFEGUARDS` or `MODEL-VISIBLE SURFACE CHANGED` | 21 |
+| a `walls` case `time-bound` or `turn-bound`, or a pass at a wall; passes at a tiny share of the solve wall | 22 |
+| 1b `CHECK TOOL IN SOLVER TRACE` or `CHECK CODE IN SOLVER REACH`; verified cases with lane 1, 4, 8, 22 or 34 suspecting a shortcut | 23, isolated |
+| a `timeline` gap over thirty minutes; 4c `REVIEW TURNS EXCEED SOLVER TURNS`, `EXPLICIT ALLOWANCE WAIT` or `DECISION ON CENSORED BATTERY` | 24 |
+| any unaccepted case; any non-result; a terminal other than `completed`; submit strikes | 25 |
+| a `posture` stretch `adrift` or `unreadable`; 4e `MEMORY OVER READ CAP` | 26 |
+| `gates` `GATE STALL`, `GATE CLEARED WITHOUT EDIT`, `BELOW-BAR GATE FIRED`, `UNLEDGERED REFUSAL CODE`, `REVIEW HOLD CHAIN` or `CEILING ENDED RUN`; a defect a battery found that a gate owns | 27 |
+| `gates` `EVALUATION CORRECTION REPLAY CANDIDATE`; an issue left `unmeasured` across a correction | 28 |
+| `target` `HARDWARE TARGET NAMED`; lane 30 also needs verified cases above zero | 29, 30 isolated |
+| standing at every tier; lane 1 or 29 reporting an obligation of the request no check observes | 31 |
+| 2b `CENSUS WITH DISAGREEMENT`, beside lane 16; standing at `deep` | 32 |
+| standing at `standard` and `deep`; row F's F2 completion | 33 |
+| standing at every tier; 1b `CHECK CODE IN SOLVER REACH`; read beside lane 23 when 1b `CHECK TOOL IN SOLVER TRACE` fires | 34 |
+| 6b `VERSION TOOLCHAIN DANGLING`; 1c `PERFECT BATTERY OVER AIM` | 35 |
+| `climb` `CLIMB FLAT`, beside lane 10 | 36 |
+| standing at `standard` and `deep` | 37 |
+| 3b `FAMILY UNMOVED all-fail`; any verified fail, opened by hand when no row fired | 38 |
+
+A missing trigger does not settle the semantic question: it says the arithmetic found nothing,
+which is different from the property being absent. Block 3b's `AGGREGATE HIDES FAMILY`, `FAMILY
+UNMOVED all-pass` and `UNOBSERVED FAMILIES` and block 5b's `SERVED MODEL MISMATCH` and `UNATTESTED
+ROWS` stay with the primary, because a family split and an identity claim are bindings rather than
+questions for a lane; a family that passes every case round after round is read beside lanes 5 and
+35 through the placement. Lanes 3, 4, 8, 13 and 19 have no digest trigger: they open on what the
+primary reads in rows C, D and H and in the earlier notes, which is why the tiers' default sets
+carry some of them ([the session index](session-index.md#tiers)).

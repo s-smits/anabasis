@@ -16,7 +16,10 @@
 //     [--json] [--out <abs file>]
 //
 // Without --previous the script picks the newest sibling campaign of the same lane (same
-// directory name minus its numeric suffix) whose opening was written earlier, and says so.
+// directory name minus its numeric suffix) whose opening was written earlier on another source,
+// preferring one whose Builder and Built models match this run's, since a baseline under other
+// models moves the outcome by more than the source; it says which it took, and when no earlier
+// campaign ran these models.
 
 import { existsSync, readdirSync } from "#src/meta/filesystem.ts";
 import { basename, dirname, join, resolve } from "#src/meta/path.ts";
@@ -34,11 +37,12 @@ interface FoundOpening {
   opening: JsonValue | null;
 }
 
-/** An earlier campaign of the same lane and the source commit its opening recorded. */
+/** An earlier campaign of the same lane, the source commit its opening recorded, and its models. */
 export interface PreviousCampaign {
   dir: string;
   at: string;
   commit: JsonValue;
+  models: string | null;
 }
 
 /** What `buildSourceDelta` reads: `previous` is an earlier campaign directory or a revision; absent,
@@ -103,6 +107,9 @@ export interface SourceDelta {
   commit: string;
   previousCommit: JsonValue;
   previousProvenance: string;
+  /** Whether the baseline's Builder and Built models match this run's; null when either side
+   *  records none, as an operator-named revision does not. */
+  previousSameModels: boolean | null;
   state: string;
   reason?: string;
   changed: ChangedPath[];
@@ -168,14 +175,24 @@ function laneKey(campaign: string): string {
   return basename(campaign).replace(/-\d+$/, "");
 }
 
-/** The newest sibling campaign of the same lane opened before this run on another source commit.
- *  Several campaigns of one lane often launch from one commit, and the nearest of them by launch
- *  time would read as an identical source, which says nothing about what changed since the lane
- *  last measured a different tree. */
+/** The models of the two slots that make the measured product, as one label; null when the
+ *  opening records none. */
+function modelsOf(opening: JsonValue | null | undefined): string | null {
+  const slots = asRecord(asRecord(opening)?.modelSlots);
+  const builder = asRecord(slots?.builder)?.model;
+  const built = asRecord(slots?.built)?.model;
+  return isString(builder) && isString(built) ? `builder ${builder}, built ${built}` : null;
+}
+
+/** The newest sibling campaign of the same lane opened before this run on another source commit,
+ *  under this run's models when any such campaign ran them. Several campaigns of one lane often
+ *  launch from one commit, and the nearest of them by launch time would read as an identical
+ *  source, which says nothing about what changed since the lane last measured a different tree. */
 export function previousCampaign(
   campaign: string,
   writtenAt: JsonValue | undefined,
   commit: string,
+  models: string | null,
 ): PreviousCampaign | null {
   const parent = dirname(campaign);
   const lane = laneKey(campaign);
@@ -187,10 +204,12 @@ export function previousCampaign(
     const at = asRecord(found?.opening)?.writtenAt;
     if (!isString(at) || (isString(writtenAt) && at >= writtenAt)) continue;
     const earlier = sourceCommitOf(found?.opening);
-    if (earlier !== commit) candidates.push({ dir, at, commit: earlier });
+    if (earlier !== commit) candidates.push({ dir, at, commit: earlier, models: modelsOf(found?.opening) });
   }
   candidates.sort((left, right) => (left.at < right.at ? 1 : -1));
-  return candidates[0] ?? null;
+  return (
+    candidates.find((candidate) => models !== null && candidate.models === models) ?? candidates[0] ?? null
+  );
 }
 
 /** A file's exact bytes at a commit, untrimmed so line numbers hold; null when it is not there. */
@@ -274,33 +293,59 @@ export function firedSafeguards(campaign: string, runId: string): Map<string, nu
   return fired;
 }
 
-/** The commit this run is compared against and where it came from: the operator's campaign or
- *  revision when named, otherwise the lane's nearest earlier campaign on another source. */
+/** The commit this run is compared against, where it came from and whether it ran this run's
+ *  models: the operator's campaign or revision when named, otherwise the lane's nearest earlier
+ *  campaign on another source, under the same models when the lane has one. */
 function previousSource(
   campaign: string,
   previous: string | null,
-  writtenAt: JsonValue,
+  opening: JsonObject | null,
   commit: string,
-): Pick<SourceDelta, "previousCommit" | "previousProvenance"> {
+): Pick<SourceDelta, "previousCommit" | "previousProvenance" | "previousSameModels"> {
+  const models = modelsOf(opening);
+  const sameAs = (other: string | null): boolean | null =>
+    models === null || other === null ? null : other === models;
   if (previous !== null && existsSync(join(previous, "controller"))) {
     const older = openingOf(resolve(previous), null);
     return {
       previousCommit: sourceCommitOf(older?.opening),
       previousProvenance: `campaign ${basename(resolve(previous))}`,
+      previousSameModels: sameAs(modelsOf(older?.opening)),
     };
   }
-  if (previous !== null) return { previousCommit: previous, previousProvenance: "operator-named revision" };
-  const sibling = previousCampaign(campaign, writtenAt, commit);
+  if (previous !== null) {
+    return {
+      previousCommit: previous,
+      previousProvenance: "operator-named revision",
+      previousSameModels: null,
+    };
+  }
+  const lane = laneKey(campaign);
+  const sibling = previousCampaign(campaign, opening?.writtenAt ?? null, commit, models);
   if (sibling === null) {
     return {
       previousCommit: null,
-      previousProvenance: `no earlier campaign of lane ${laneKey(campaign)} on another source beside ${campaign}`,
+      previousProvenance: `no earlier campaign of lane ${lane} on another source beside ${campaign}`,
+      previousSameModels: null,
     };
   }
   return {
     previousCommit: sibling.commit,
-    previousProvenance: `newest earlier campaign of lane ${laneKey(campaign)} on another source: ${basename(sibling.dir)} (opened ${sibling.at})`,
+    previousProvenance: siblingProvenance(lane, models, sibling),
+    previousSameModels: sameAs(sibling.models),
   };
+}
+
+/** Which sibling the lane's baseline is, and whether it ran this run's models. */
+function siblingProvenance(lane: string, models: string | null, sibling: PreviousCampaign): string {
+  const chosen = `${basename(sibling.dir)} (opened ${sibling.at})`;
+  if (models === null) {
+    return `newest earlier campaign of lane ${lane} on another source (this run records no models): ${chosen}`;
+  }
+  if (sibling.models === models) {
+    return `newest earlier campaign of lane ${lane} on another source under the same models (${models}): ${chosen}`;
+  }
+  return `no earlier campaign of lane ${lane} on another source ran ${models}; newest on another source, under ${sibling.models ?? "unrecorded models"}: ${chosen}`;
 }
 
 /** One `--name-status` line as a changed path, with the safeguard ids whose calls a run-reachable
@@ -411,20 +456,14 @@ export function buildSourceDelta(named: SourceDeltaInput): SourceDelta {
   if (!isString(commit) || !GIT_SHA.test(commit)) {
     throw new Error(`opening for ${found.runId} records no full source commit`);
   }
-  const opening: JsonObject | null = asRecord(found.opening);
-  const { previousCommit, previousProvenance } = previousSource(
-    campaign,
-    previous,
-    opening?.writtenAt ?? null,
-    commit,
-  );
+  const baseline = previousSource(campaign, previous, asRecord(found.opening), commit);
+  const { previousCommit, previousProvenance } = baseline;
   const result: SourceDelta = {
     schema: "wri-source-delta/v2",
     campaign,
     runId: found.runId,
     commit,
-    previousCommit,
-    previousProvenance,
+    ...baseline,
     state: "resolved",
     changed: [],
     safeguards: [],

@@ -9,6 +9,11 @@ import { join } from "../src/meta/path.ts";
 import { runTextSyncOrThrow } from "../src/meta/subprocess.ts";
 import { hostTool } from "../src/meta/host-tool.ts";
 
+/** The opening instants of a lane's campaigns, in launch order. */
+const OPENED_FIRST = "2026-09-01T00:00:00.000Z";
+const OPENED_SECOND = "2026-09-02T00:00:00.000Z";
+const OPENED_THIRD = "2026-09-03T00:00:00.000Z";
+
 /** The prompt surface the fixture repo declares: source under src and starters, starter documents,
  *  and two audiences. */
 const SURFACE = {
@@ -77,12 +82,19 @@ function campaign(root: string, name: string, runId: string, commit: string, wri
   return dir;
 }
 
+/** Record the model both product slots of `runId`'s opening ran, as the controller writes them. */
+function runModel(dir: string, runId: string, model: string): void {
+  const path = join(dir, "controller", runId, "opening.json");
+  const opening = JSON.parse(readFileSync(path, "utf8"));
+  writeFileSync(path, JSON.stringify({ ...opening, modelSlots: { builder: { model }, built: { model } } }));
+}
+
 describe("source-delta reach", () => {
   it("joins safeguards declared in changed files to the run's fired log and flags a model-visible change", () => {
     const { repo, older, newer } = repoWithTwoCommits();
     const root = scratchDir("ana-source-delta-campaigns-");
-    campaign(root, "lane-1", "run-a", older, "2026-09-01T00:00:00.000Z");
-    const current = campaign(root, "lane-2", "run-b", newer, "2026-09-02T00:00:00.000Z");
+    campaign(root, "lane-1", "run-a", older, OPENED_FIRST);
+    const current = campaign(root, "lane-2", "run-b", newer, OPENED_SECOND);
     mkdirSync(join(current, "safeguards", "run-b-i02"), { recursive: true });
     writeFileSync(
       join(current, "safeguards", "run-b-i02", "SAFEGUARDS_LOG.txt"),
@@ -153,8 +165,8 @@ describe("source-delta reach", () => {
     git(repo, ["commit", "-q", "-m", "four"]);
     const after = git(repo, ["rev-parse", "HEAD"]);
     const root = scratchDir("ana-source-delta-campaigns-");
-    campaign(root, "lane-1", "run-a", before, "2026-09-01T00:00:00.000Z");
-    const current = campaign(root, "lane-2", "run-b", after, "2026-09-02T00:00:00.000Z");
+    campaign(root, "lane-1", "run-a", before, OPENED_FIRST);
+    const current = campaign(root, "lane-2", "run-b", after, OPENED_SECOND);
 
     const delta = runB(current, repo);
     expect(
@@ -175,9 +187,9 @@ describe("source-delta reach", () => {
   it("reads a sibling campaign's latest run by its opening instant, not its directory name", () => {
     const { repo, older, newer } = repoWithTwoCommits();
     const root = scratchDir("ana-source-delta-campaigns-");
-    const previous = campaign(root, "lane-1", "run-10", older, "2026-09-02T00:00:00.000Z");
-    campaign(root, "lane-1", "run-9", newer, "2026-09-01T00:00:00.000Z");
-    const current = campaign(root, "lane-2", "run-b", newer, "2026-09-03T00:00:00.000Z");
+    const previous = campaign(root, "lane-1", "run-10", older, OPENED_SECOND);
+    campaign(root, "lane-1", "run-9", newer, OPENED_FIRST);
+    const current = campaign(root, "lane-2", "run-b", newer, OPENED_THIRD);
     // By name `run-9` is last, and it was opened first; its commit equals the current one, so the
     // old name order reported an identical source where the recorded latest run differs.
     const delta = buildSourceDelta({ campaign: current, runId: "run-b", repo, previous });
@@ -188,9 +200,9 @@ describe("source-delta reach", () => {
   it("skips earlier campaigns of the lane that launched from the same source", () => {
     const { repo, older, newer } = repoWithTwoCommits();
     const root = scratchDir("ana-source-delta-campaigns-");
-    campaign(root, "lane-1", "run-a", older, "2026-09-01T00:00:00.000Z");
-    campaign(root, "lane-2", "run-b", newer, "2026-09-02T00:00:00.000Z");
-    const current = campaign(root, "lane-3", "run-c", newer, "2026-09-03T00:00:00.000Z");
+    campaign(root, "lane-1", "run-a", older, OPENED_FIRST);
+    campaign(root, "lane-2", "run-b", newer, OPENED_SECOND);
+    const current = campaign(root, "lane-3", "run-c", newer, OPENED_THIRD);
     // lane-2 is nearer by launch time and ran this same commit, so it would read as no delta.
     const delta = buildSourceDelta({ campaign: current, runId: "run-c", repo });
     expect(delta.state).toBe("resolved");
@@ -198,8 +210,8 @@ describe("source-delta reach", () => {
     expect(delta.previousProvenance).toContain("lane-1");
 
     const sameOnly = scratchDir("ana-source-delta-campaigns-");
-    campaign(sameOnly, "lane-1", "run-a", newer, "2026-09-01T00:00:00.000Z");
-    const alone = campaign(sameOnly, "lane-2", "run-b", newer, "2026-09-02T00:00:00.000Z");
+    campaign(sameOnly, "lane-1", "run-a", newer, OPENED_FIRST);
+    const alone = campaign(sameOnly, "lane-2", "run-b", newer, OPENED_SECOND);
     const none = buildSourceDelta({ campaign: alone, runId: "run-b", repo });
     expect(none.state).toBe("previous-unresolved");
     expect(none.reason).toContain("on another source");
@@ -222,8 +234,8 @@ describe("source-delta reach", () => {
     git(repo, ["commit", "-q", "-m", "three"]);
     const head = git(repo, ["rev-parse", "HEAD"]);
     const root = scratchDir("ana-source-delta-campaigns-");
-    campaign(root, "lane-1", "run-a", newer, "2026-09-01T00:00:00.000Z");
-    const current = campaign(root, "lane-2", "run-b", head, "2026-09-02T00:00:00.000Z");
+    campaign(root, "lane-1", "run-a", newer, OPENED_FIRST);
+    const current = campaign(root, "lane-2", "run-b", head, OPENED_SECOND);
     const delta = runB(current, repo);
     expect(delta.changed.map((entry: { path: string }) => entry.path).sort()).toEqual([
       "src/gate/submit.ts",
@@ -235,11 +247,38 @@ describe("source-delta reach", () => {
     ]);
   });
 
+  it("prefers an earlier campaign of the lane under this run's models, and says when none ran them", () => {
+    const { repo, older, newer } = repoWithTwoCommits();
+    writeFileSync(join(repo, "starters", "card.md"), "v3\n");
+    git(repo, ["commit", "-q", "-am", "three"]);
+    const head = git(repo, ["rev-parse", "HEAD"]);
+    const lane = (model: string) => {
+      const root = scratchDir("ana-source-delta-campaigns-");
+      runModel(campaign(root, "lane-1", "run-a", older, OPENED_FIRST), "run-a", "alpha");
+      runModel(campaign(root, "lane-2", "run-c", newer, OPENED_SECOND), "run-c", "beta");
+      const current = campaign(root, "lane-3", "run-b", head, OPENED_THIRD);
+      runModel(current, "run-b", model);
+      return runB(current, repo);
+    };
+    // lane-2 is the newest on another source, and it ran another model: the source is not all
+    // that moved between it and this run.
+    const same = lane("alpha");
+    expect(same.previousCommit).toBe(older);
+    expect(same.previousSameModels).toBe(true);
+    expect(same.previousProvenance).toContain("under the same models (builder alpha, built alpha): lane-1");
+    const none = lane("gamma");
+    expect(none.previousCommit).toBe(newer);
+    expect(none.previousSameModels).toBe(false);
+    expect(renderSourceDelta(none)).toContain(
+      "no earlier campaign of lane lane on another source ran builder gamma, built gamma; newest on another source, under builder beta, built beta: lane-2",
+    );
+  });
+
   it("counts a safeguard log only for this run's canonical iterations", () => {
     const { repo, older, newer } = repoWithTwoCommits();
     const root = scratchDir("ana-source-delta-campaigns-");
-    campaign(root, "lane-1", "run-a", older, "2026-09-01T00:00:00.000Z");
-    const current = campaign(root, "lane-2", "run-b", newer, "2026-09-02T00:00:00.000Z");
+    campaign(root, "lane-1", "run-a", older, OPENED_FIRST);
+    const current = campaign(root, "lane-2", "run-b", newer, OPENED_SECOND);
     for (const name of ["run-b-i02", "run-b-ix"]) {
       mkdirSync(join(current, "safeguards", name), { recursive: true });
       writeFileSync(
@@ -255,10 +294,10 @@ describe("source-delta reach", () => {
     const { repo, newer } = repoWithTwoCommits();
     const root = scratchDir("ana-source-delta-campaigns-");
     const unknown = "f".repeat(40);
-    const missing = campaign(root, "lane-1", "run-a", unknown, "2026-09-01T00:00:00.000Z");
+    const missing = campaign(root, "lane-1", "run-a", unknown, OPENED_FIRST);
     expect(buildSourceDelta({ campaign: missing, runId: "run-a", repo }).state).toBe("source-unresolved");
 
-    const alone = campaign(root, "other-1", "run-c", newer, "2026-09-03T00:00:00.000Z");
+    const alone = campaign(root, "other-1", "run-c", newer, OPENED_THIRD);
     const noPrevious = buildSourceDelta({ campaign: alone, runId: "run-c", repo });
     expect(noPrevious.state).toBe("previous-unresolved");
     expect(renderSourceDelta(noPrevious)).toContain("no earlier campaign of lane other");
@@ -279,8 +318,8 @@ describe("source-delta reach", () => {
     git(repo, ["commit", "-q", "-m", "three"]);
     const head = git(repo, ["rev-parse", "HEAD"]);
     const root = scratchDir("ana-source-delta-campaigns-");
-    campaign(root, "lane-1", "run-a", newer, "2026-09-01T00:00:00.000Z");
-    const current = campaign(root, "lane-2", "run-b", head, "2026-09-02T00:00:00.000Z");
+    campaign(root, "lane-1", "run-a", newer, OPENED_FIRST);
+    const current = campaign(root, "lane-2", "run-b", head, OPENED_SECOND);
     const delta = runB(current, repo);
     expect(delta.modelVisibleChanged).toEqual([]);
     expect(renderSourceDelta(delta)).toContain(

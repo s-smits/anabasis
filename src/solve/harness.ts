@@ -131,7 +131,7 @@ export async function openHarness(dir: string): Promise<Harness> {
 }
 
 /** Each entry under `dir` by path, mode and content: a file by its sha256, a link by its target. */
-function treeContent(dir: string) {
+export function treeContent(dir: string) {
   return readdirSync(dir, { recursive: true, encoding: "utf8" })
     .sort()
     .map((path) => {

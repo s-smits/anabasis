@@ -22,7 +22,6 @@
  *   task v1 gave fewer than three is refused.
  * - The check program is the bundle's, copied once without its battery (`checkProgram`).
  */
-import type { Contract } from "#src/kernel/contract.ts";
 import { append, type EventKind, read } from "#src/kernel/log.ts";
 import {
   CONTROLS,
@@ -36,7 +35,7 @@ import {
   taskStates,
   taskVersion,
 } from "#src/kernel/task.ts";
-import { applicableTruthChecks, openVerifier, readBrief, type Task } from "#src/kernel/verify.ts";
+import { openVerifier } from "#src/kernel/verify.ts";
 import { mkdtempSync, readFileSync, rmSync } from "#src/meta/filesystem.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import type { JsonObject, JsonValue } from "#src/meta/json-shape.ts";
@@ -44,7 +43,15 @@ import { tmpdir } from "#src/meta/os.ts";
 import { join } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { countBy } from "#src/meta/tally.ts";
-import { checkProgram, recordedAnswerFormat, storedAnswer, sweepRows } from "../m0/stored-sweep.ts";
+import {
+  checkProgram,
+  contractOf,
+  packageOf,
+  readPack,
+  recordedAnswerFormat,
+  storedAnswer,
+  sweepRows,
+} from "../m0/stored-sweep.ts";
 
 const { values } = parseArgs({
   options: {
@@ -56,12 +63,6 @@ const { values } = parseArgs({
   },
 });
 
-/** The parts of v1's `brief.json` the stand-in contract is made from. */
-interface PackBrief {
-  readonly domain: string;
-  readonly ruleDecisions: readonly { id: string; visibility: string; statement: string }[];
-}
-
 /** v1's `controls.json`: answers the check must accept, and edits of them it must reject, each
  *  naming the check that must reject it. */
 interface PackControls {
@@ -69,26 +70,15 @@ interface PackControls {
   readonly reject: readonly { taskId: string; artifact: JsonValue; expectedCheckId: string }[];
 }
 
-function contractOf(brief: PackBrief, answerFormat: JsonValue): Contract {
-  return {
-    answerFormat,
-    tools: [],
-    install: "",
-    conventions: "",
-    rules: brief.ruleDecisions.filter((rule) => rule.visibility === "public"),
-    scope: brief.domain,
-  };
-}
-
 async function main(): Promise<void> {
   const { root, sweep, bundle, stronger } = values;
   if (root === undefined || sweep === undefined || bundle === undefined || stronger === undefined) {
     throw new Error("name --root, --sweep, --bundle and --stronger");
   }
-  const model = join(bundle, "correctness-model");
-  const brief = parseJsonAs<PackBrief>(readFileSync(join(model, "brief.json"), "utf8"));
-  const controls = parseJsonAs<PackControls>(readFileSync(join(model, "controls.json"), "utf8"));
-  const tasks = parseJsonAs<Task[]>(readFileSync(join(model, "tasks.json"), "utf8"));
+  const { brief, tasks } = readPack(bundle);
+  const controls = parseJsonAs<PackControls>(
+    readFileSync(join(bundle, "correctness-model", "controls.json"), "utf8"),
+  );
   const dir = mkdtempSync(join(tmpdir(), "ana-admit-"));
   const checks = checkProgram(bundle, join(dir, "checks"));
   const verify = openVerifier({ checks, tools: join(bundle, ".toolchain") });
@@ -156,10 +146,7 @@ async function main(): Promise<void> {
   };
 
   try {
-    const packages = tasks.map((task): TaskPackage => {
-      const cited = applicableTruthChecks(readBrief(checks), task).flatMap((check) => check.citedDecisionIds);
-      return { ...task, statement: `${brief.domain}: ${task.taskId}`, ruleIds: [...new Set(cited)], checks };
-    });
+    const packages = tasks.map((task) => packageOf(brief, checks, task));
     const versions = new Map(packages.map((task) => [task.taskId, taskVersion(task)]));
     const why = new Map<string, string>();
     const queue = [...packages];

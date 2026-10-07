@@ -8,16 +8,20 @@
  * with its cached part inside and no split, so billed cannot be recomputed from it; metered needs
  * no split, since it charges the classes alike.
  */
+import type { Api, Model } from "@earendil-works/pi-ai";
 import { claudeExecutable, SWEEP_COMPACT_WINDOW } from "#src/backends/claude.ts";
-import { backends } from "#src/backends/models.ts";
+import { type BackendOptions, backends } from "#src/backends/models.ts";
+import type { Contract } from "#src/kernel/contract.ts";
 import { dollars, freezePrices, type PriceTable } from "#src/kernel/meter.ts";
 import type { Ending } from "#src/kernel/solve.ts";
-import type { Verdict } from "#src/kernel/verify.ts";
+import type { TaskPackage } from "#src/kernel/task.ts";
+import { applicableTruthChecks, readBrief, type Task, type Verdict } from "#src/kernel/verify.ts";
 import { cpSync, existsSync, readFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, parseJsonAs } from "#src/meta/json-runtime.ts";
-import type { JsonValue } from "#src/meta/json-shape.ts";
+import type { JsonObject, JsonValue } from "#src/meta/json-shape.ts";
 import { homedir } from "#src/meta/os.ts";
 import { basename, join } from "#src/meta/path.ts";
+import { type PublicResource, publicResource } from "#src/solve/answer.ts";
 
 /** The fields of v1's `cycle-solve/v1` result read here. */
 interface StoredSolve {
@@ -56,6 +60,16 @@ export interface Row extends StoredSolve {
   /** How the solve ended, as this host types it. */
   readonly ending: Ending;
   readonly turns: readonly StoredTurn[];
+}
+
+/** The parts of v1's `brief.json` read here. */
+interface PackBrief {
+  readonly domain: string;
+  readonly ruleDecisions: readonly (JsonObject & { id: string; statement: string; visibility: string })[];
+  readonly truthChecks: readonly { assertion: string; execution: { publicInputPaths: string[] } }[];
+  readonly artifactSchema: readonly JsonObject[];
+  readonly designRuleConstants: readonly JsonObject[];
+  readonly designRuleSets?: readonly JsonObject[];
 }
 
 /** A row and its two dollar readings. */
@@ -174,22 +188,16 @@ export function storedAnswer(row: Row): JsonValue | undefined {
   }
 }
 
-/**
- * The list prices of the models the rows ran, frozen from the backends this system runs on, set as the
- * sweep ran its Claude solves.
- */
-function rowPrices(rows: readonly Row[]): PriceTable {
-  const models = backends({
-    claude: { executable: claudeExecutable(), compaction: { window: SWEEP_COMPACT_WINDOW }, home: homedir() },
-  });
-  const named = new Map(rows.map((row) => [`${row.provider}/${row.model}`, row]));
-  return freezePrices(
-    [...named.values()].map((row) => {
-      const model = models.getModel(row.provider, row.model);
-      if (model === undefined) throw new Error(`no backend serves ${row.provider}/${row.model}`);
-      return model;
-    }),
-  );
+/** The backends set as the sweep ran its Claude solves, for a model process keeping its state in `home`. */
+export function sweepOptions(home = homedir()): BackendOptions {
+  return { claude: { executable: claudeExecutable(), compaction: { window: SWEEP_COMPACT_WINDOW }, home } };
+}
+
+/** The model a row ran, from the backends this system runs on. */
+export function rowModel(row: Row): Model<Api> {
+  const model = backends(sweepOptions()).getModel(row.provider, row.model);
+  if (model === undefined) throw new Error(`no backend serves ${row.provider}/${row.model}`);
+  return model;
 }
 
 /**
@@ -213,7 +221,9 @@ function spend(row: Row, prices: PriceTable) {
 
 /** The rows with both dollar readings, and apart from them the rows whose cost was never reported. */
 export function pricedRows(rows: readonly Row[]) {
-  const prices = rowPrices(rows);
+  // The list prices of the models the rows ran.
+  const named = new Map(rows.map((row) => [`${row.provider}/${row.model}`, row]));
+  const prices = freezePrices([...named.values()].map(rowModel));
   const priced: Priced[] = [];
   const unpriced: Row[] = [];
   for (const row of rows) {
@@ -225,4 +235,82 @@ export function pricedRows(rows: readonly Row[]) {
     }
   }
   return { priced, unpriced };
+}
+
+/** A v1 check program's pack: its brief, its tasks and their hidden values, and its controls. */
+export function readPack(bundle: string) {
+  const read = <T>(file: string) =>
+    parseJsonAs<T>(readFileSync(join(bundle, "correctness-model", file), "utf8"));
+  return { brief: read<PackBrief>("brief.json"), tasks: read<Task[]>("tasks.json") };
+}
+
+/** The stand-in contract: the brief's public rule decisions are its rules, and its answer format is
+ *  the schema the sweep's record tool took (`recordedAnswerFormat`). */
+export function contractOf(brief: PackBrief, answerFormat: JsonValue): Contract {
+  return {
+    answerFormat,
+    tools: [],
+    install: "",
+    conventions: "",
+    rules: brief.ruleDecisions.filter((rule) => rule.visibility === "public"),
+    scope: brief.domain,
+  };
+}
+
+/** A v1 task as a package: its statement is its id under the brief's domain, since v1's tasks carry
+ *  none, and its rule ids are those its family's checks cite. */
+export function packageOf(brief: PackBrief, checks: string, task: Task): TaskPackage {
+  const cited = applicableTruthChecks(readBrief(checks), task).flatMap((check) => check.citedDecisionIds);
+  return { ...task, statement: `${brief.domain}: ${task.taskId}`, ruleIds: [...new Set(cited)], checks };
+}
+
+/**
+ * The public resources the sweep's solver read, sed from harness-builder-v4 at 7af7315,
+ * `src/truth/public-resources.ts:118-144` with the row projections of lines 66-111: each row is
+ * rebuilt from its declared fields alone, in their order, and a field the row lacks is left out.
+ */
+export function sweepResources(brief: PackBrief): PublicResource[] {
+  const rows = (list: readonly JsonObject[], keys: readonly string[]) => list.map((row) => pick(row, keys));
+  const named: [string, JsonValue[]][] = [
+    [
+      "public-validity-rules",
+      brief.truthChecks.map((check) => ({
+        assertion: check.assertion,
+        publicInputPaths: check.execution.publicInputPaths,
+      })),
+    ],
+    ["public-rule-decisions", publicDecisions(brief)],
+    [
+      "artifact-schema",
+      rows(brief.artifactSchema, [
+        "name",
+        "shape",
+        "allowedValues",
+        "fileMap",
+        "taskConditioned",
+        "openMapPaths",
+      ]),
+    ],
+    [
+      "design-rule-constants",
+      rows(brief.designRuleConstants, ["name", "value", "unit", "authority", "citation"]),
+    ],
+    [
+      "design-rule-sets",
+      rows(brief.designRuleSets ?? [], ["name", "values", "unit", "authority", "citation"]),
+    ],
+  ];
+  return named.flatMap(([name, content]) => (content.length > 0 ? [publicResource(name, content)] : []));
+}
+
+/** public-resources.ts:113-117 and 66-75. */
+function publicDecisions(brief: PackBrief): JsonObject[] {
+  return brief.ruleDecisions
+    .filter((decision) => decision.visibility === "public")
+    .map((decision) => pick(decision, ["id", "visibility", "statement", "families", "publicInputPaths"]));
+}
+
+/** A row rebuilt from the named fields alone, in their order, leaving out those it lacks. */
+function pick(row: JsonObject, keys: readonly string[]): JsonObject {
+  return Object.fromEntries(keys.flatMap((key) => (row[key] === undefined ? [] : [[key, row[key]]])));
 }

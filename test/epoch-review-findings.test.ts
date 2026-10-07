@@ -9,7 +9,6 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
-import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import { double } from "./helpers/doubles.ts";
 import type { Brief } from "../src/correctness-bundle/brief.ts";
@@ -1048,37 +1047,6 @@ describe("what a finding's typed fields carry to authoring", () => {
     expect(await standing(["t1"])).toEqual([true, true]);
     expect(await standing(["t1", "t3"])).toEqual([false, true]);
     expect(await standing(["t1", "t2", "t3"])).toEqual([false, false]);
-  });
-
-  // Settlement counts cases against an issue's count, so a case the issue does not count must not
-  // reach it. A review recorded before 2026-09-30 may have settled an undecided dispute, on which
-  // the advice raised no issue: read back beside one settled pass, it must not mark two settled.
-  test("a stored undecided settlement settles no Judge pass issue", async () => {
-    const disputed = (taskId: string) => ({ ...vetoedCase(taskId, "roof"), kind: "disputed-pass" as const });
-    const cases = [disputed("p1"), disputed("p2")];
-    const state = reviewState();
-    state.reads.push(...cases.map((row) => row.path));
-    state.probes.rows.push(probeRow(1, ["deflection"]));
-    await call(recordFindingTool([], [], evidence, state, { identities, cases }), {
-      defect: false,
-      claim: "the Judge misread span/250",
-      severity: "advisory",
-      checkId: "deflection",
-      settlesCases: ["p1"],
-      citations: CITATIONS,
-      probeIds: [1],
-    });
-    const stored = JSON.stringify({ ...state.dispositions[0], taskId: "u1", kind: "disputed-undecided" });
-    state.dispositions.push(parseJsonAs<(typeof state.dispositions)[number]>(stored));
-    const projected = publicEpochReview({ status: "completed", ...state }, { brief });
-    const passIssue = adviceIssueId("judge-passed-verifier-failed", "roof", null);
-    expect(projected.settledJudge).toEqual([passIssue]);
-    const packet = advicePacket([
-      issue({ id: passIssue, kind: "judge-passed-verifier-failed", family: "roof", count: 2 }),
-    ]);
-    expect(attachIssueReadings(packet, { settled: projected.settledJudge }).issues.map(isStanding)).toEqual([
-      true,
-    ]);
   });
 
   // A probe that wrote a valid variant the check refused, and one that wrote an invalid variant the

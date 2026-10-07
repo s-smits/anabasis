@@ -40,7 +40,7 @@ import {
   probeCitationRefusal,
 } from "./review-probe.ts";
 import {
-  type BackgroundFile,
+  type ReviewCoverage,
   type ReviewVerifierEvidence,
   type SourceReadState,
   deliveredSource,
@@ -52,7 +52,7 @@ import { readJsonFile, readCompleted } from "../meta/completed-json.ts";
 import { boundText } from "../meta/bounded-text.ts";
 import { type AdvisoryDefect, type AdvisoryDisposition, advisoryDefects } from "./review-carry.ts";
 
-export const EPOCH_REVIEW_SCHEMA = "epoch-review/v7";
+export const EPOCH_REVIEW_SCHEMA = "epoch-review/v8";
 /** Product identity; review procedure belongs to the review request. */
 export type MeasuredCondition = {
   /** Null when the recorded fields cannot establish a measured condition. */
@@ -97,17 +97,8 @@ export type EpochReviewEvidence = {
    *  side alone, so a complete coverage row establishes that the source was offered, not that the
    *  review saw it. `background` is every other file of the tree, with its size in bytes and whether
    *  the review read it through: the review is not held to it, and a finding that rests on one
-   *  cites it. */
-  coverage: {
-    files: number;
-    opened: number;
-    chars: number;
-    complete?: boolean;
-    truncated?: boolean;
-    missing?: string[];
-    background?: Array<BackgroundFile & { read: boolean }>;
-    backgroundTruncated?: boolean;
-  };
+   *  cites it. A review that opened no session records the three counts alone. */
+  coverage: Partial<ReviewCoverage> & Pick<ReviewCoverage, "files" | "opened" | "chars">;
   /** Absent on a review that stopped before reading its source. Host-bound tool provenance is
    *  private, like everything else the verifier produced, so it never reaches authoring. */
   verifier?: ReviewVerifierEvidence;

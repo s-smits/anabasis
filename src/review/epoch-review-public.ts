@@ -235,13 +235,9 @@ const JUDGE_ISSUE = {
  *  took. A case is settled at most once (`caseSettlement`), so the advice settles an issue once
  *  every case it counts appears here. */
 function settledJudgeIssues(settled: readonly CaseDisposition[]) {
-  // A review recorded before 2026-09-30 may have settled an undecided dispute, which counts towards
-  // no issue.
   return settled
     .flatMap((row) =>
-      row.disposition === "check-stands" && row.kind in JUDGE_ISSUE
-        ? [adviceIssueId(JUDGE_ISSUE[row.kind], row.family, null)]
-        : [],
+      row.disposition === "check-stands" ? [adviceIssueId(JUDGE_ISSUE[row.kind], row.family, null)] : [],
     )
     .sort();
 }

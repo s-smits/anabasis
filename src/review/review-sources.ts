@@ -58,18 +58,14 @@ export type ToolchainReach = { tree: string; counts: ReadonlyMap<string, string>
 /** Text a review reads by name beside its measured source: a recorded text, a path of the tool tree,
  *  whose read throws the reason it cannot give the file, or a background file, which gives none. */
 type NamedTexts = Pick<ReadonlyMap<string, string>, "get" | "has">;
-/** A file of the tree the review is not held to: its path and size in bytes. */
-export type BackgroundFile = { path: string; size: number };
 
 export interface ReviewInventory {
   /** The held set, smallest first. */
   files: string[];
-  /** Every other file of the tree, in path order. */
-  background: BackgroundFile[];
+  /** Every other file of the tree, in path order, with its size in bytes, up to the cap. */
+  background: Array<{ path: string; size: number }>;
   /** A cap refused a held path. */
   truncated: boolean;
-  /** A cap cut the background list; what it left out is not nameable. */
-  backgroundTruncated: boolean;
   missing: string[];
 }
 
@@ -79,6 +75,7 @@ export type ReviewVerifierEvidence = {
   tools: Record<string, Pick<ToolEntry, keyof ToolEntry>>;
   unavailable: string | null;
 };
+export type ReviewCoverage = ReturnType<typeof reviewCoverage>;
 
 /** The bytes behind one path or verifier alias, and the pages of them read_source returned. */
 interface DeliveredSource {
@@ -99,7 +96,6 @@ export interface SourceReadState {
 
 const isDigest = (value: unknown): value is string => isString(value) && /^[0-9a-f]{64}$/.test(value);
 
-/** A program under a bundle directory is held, whatever imports it: see `PROGRAM_FILE`. */
 const heldProgram = (path: string) =>
   (path.startsWith(CORRECTNESS_MODEL_DIR) || path.startsWith(AGENT_DIR)) && PROGRAM_FILE.test(path);
 
@@ -150,14 +146,12 @@ export function reviewInventory(root: string): ReviewInventory {
   }
   const held = new Set([...core, ...reached.filter((path) => tree.has(path)), ...programs]);
   const rest = [...tree].filter(([path]) => !held.has(path)).sort(([a], [b]) => compareCodeUnits(a, b));
-  const files = [...held]
-    .slice(0, INVENTORY_MAX_FILES)
-    .sort((a, b) => (tree.get(a) ?? 0) - (tree.get(b) ?? 0) || compareCodeUnits(a, b));
   return {
-    files,
+    files: [...held]
+      .slice(0, INVENTORY_MAX_FILES)
+      .sort((a, b) => (tree.get(a) ?? 0) - (tree.get(b) ?? 0) || compareCodeUnits(a, b)),
     background: rest.slice(0, INVENTORY_MAX_FILES).map(([path, size]) => ({ path, size })),
     truncated: held.size > INVENTORY_MAX_FILES,
-    backgroundTruncated: rest.length > INVENTORY_MAX_FILES,
     missing,
   };
 }
@@ -287,12 +281,11 @@ export function toolchainReach(
 export function namedTexts(
   texts: ReadonlyMap<string, string>,
   toolchain: ToolchainReach | null,
-  background: readonly BackgroundFile[] = [],
+  background: ReviewInventory["background"] = [],
 ): NamedTexts {
   const reaches = (path: string) => toolchain !== null && path.startsWith(TOOLCHAIN_PREFIX);
-  const listed = new Set(background.map((file) => file.path));
   return {
-    has: (path) => texts.has(path) || listed.has(path) || reaches(path),
+    has: (path) => texts.has(path) || background.some((file) => file.path === path) || reaches(path),
     get: (path) =>
       texts.get(path) ?? (toolchain !== null && reaches(path) ? toolchainRead(toolchain, path) : undefined),
   };
@@ -528,11 +521,9 @@ export function reviewCoverage(
     complete: !inventory.truncated && missing.length === 0 && verifier.unavailable === null,
     truncated: inventory.truncated,
     missing,
-    background: inventory.background.map(({ path, size }) => ({
-      path,
-      size,
-      read: deliveredSource(state, path).complete,
+    background: inventory.background.map((file) => ({
+      ...file,
+      read: deliveredSource(state, file.path).complete,
     })),
-    backgroundTruncated: inventory.backgroundTruncated,
   };
 }

@@ -208,9 +208,14 @@ async function twoRounds(
     return measureHarness(manifest, measured);
   };
   const submits: string[] = [];
+  /** Each Builder round's opening prompt, in round order. */
+  const prompts: string[] = [];
   let round = -1;
   const builderRuntime = scriptedBuilderRuntime(async (ctx) => {
-    if (ctx.turn === 1) round += 1;
+    if (ctx.turn === 1) {
+      round += 1;
+      prompts.push(ctx.prompt);
+    }
     if (round === 0) {
       // The instrument the launch withholds is the fixture's own tool-tree program, which its check
       // runs.
@@ -298,7 +303,7 @@ async function twoRounds(
   const promotion = (runId: string) =>
     JSON.parse(readFileSync(join(root, "campaigns", SLUG, "promotions", `${runId}.json`), "utf8"));
   const selected = selectedProductDir(root, SLUG);
-  return { root, outcome, batteries, calls, submits, withheld, readout, promotion, selected };
+  return { root, outcome, batteries, calls, submits, withheld, readout, promotion, selected, prompts };
 }
 
 describe("an evaluation correction regrades instead of re-solving", () => {
@@ -642,6 +647,24 @@ describe("a fail is solved again while every solve in its group failed and there
       [1, 5],
       [1, 5],
     ]);
+  }, 180_000);
+});
+
+describe("what the Builder reads of a fail solved again", () => {
+  it("reads the three solves once, beside the line that asks to keep the task", async () => {
+    const { outcome, prompts } = await twoRounds(flubbing(new Set(["t5"])), {}, {}, 2);
+    expect(outcome.rounds.map((row) => row.move)).toEqual(["build", "measure", "measure", "rebuild"]);
+    expect(prompts[1]).toContain(
+      "Battery rg-i03's verified fails, counted over every solve of the same task under the same bytes and solver: 1 task failed 3 of 3 solves. Keep each task that battery rg-i03 failed",
+    );
+  }, 180_000);
+
+  it("reads the review's settlement of the first solve on the battery of the third", async () => {
+    // The two remeasures were never reviewed again: their condition already had been.
+    const { prompts } = await twoRounds(flubbing(new Set(["t5"])), {}, { settled: ["t5"] }, 2);
+    expect(prompts[1]).toContain(
+      ": 1 task failed 3 of 3 solves. The review of rg settled 1 of these tasks against its check. Keep each task that battery rg-i03 failed",
+    );
   }, 180_000);
 });
 

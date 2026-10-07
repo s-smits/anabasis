@@ -11,7 +11,9 @@
 import { existsSync, readdirSync } from "../meta/filesystem.ts";
 import { dirname, join } from "../meta/path.ts";
 import type { MeasuredDifficulty } from "../claim/battery-difficulty.ts";
-import { classifyCaseOutcome } from "../claim/case-record.ts";
+import { CASE_RECORD_FILE, classifyCaseOutcome, readCaseRecord } from "../claim/case-record.ts";
+import { canonicalJson } from "../meta/stable-json.ts";
+import { recordedBuiltEffort } from "../analyse/iteration-analysis.ts";
 import { wilsonInterval } from "../claim/estimation.ts";
 import { POLICY } from "../critic/policy.ts";
 import { band01, frozenManifestPath, policyRow } from "../critic/manifest.ts";
@@ -124,6 +126,17 @@ export type FamilyEffort = {
   medianMinutes: number | null;
   maxMinutes: number | null;
   medianToolCalls: number | null;
+};
+
+/** One verified fail's group: every fresh solve of its task under one solver, as the case record
+ *  pins it (backend, build inputs, run condition, Built effort), and one tool tree, read from each
+ *  solve's battery, so an edit of the task, the agent or the tools starts a group of its own. */
+export type FailGroup = {
+  solves: number;
+  fails: number;
+  /** The first battery of the group whose completed review settled the task against its check, or
+   *  null. A remeasure on an unchanged condition is not reviewed again, so its own row carries none. */
+  settledBy: string | null;
 };
 
 type CaseRows = NonNullable<BatteryEvidence["cases"]>;
@@ -441,6 +454,43 @@ export function readClimbBatteries(
   );
   excluded.sort((a, b) => a.runId.localeCompare(b.runId));
   return { history, admitted: history.filter((row) => row.excludedReason === null), excluded };
+}
+
+/** Battery `runId`'s fresh verified fails, by task id, each with its group. A row restating an earlier
+ *  row's solve instant is a regrade, not a solve. The remeasure decides from this which fails to solve
+ *  again, and the readout states it, so the two never count one fail two ways. */
+export function failGroups(campaignDir: string, runId: string): Map<string, FailGroup> {
+  const record = readCaseRecord(join(campaignDir, CASE_RECORD_FILE));
+  const solves = [...Map.groupBy(record, ({ row }) => `${row.taskId} ${row.solverStartedAt}`).values()]
+    .flatMap((restated) =>
+      restated.slice(0, 1).map(({ row }) => ({ row, outcome: classifyCaseOutcome(row) })),
+    )
+    .filter(({ outcome }) => outcome === "pass" || outcome === "fail");
+  const failed = new Set(
+    solves.flatMap(({ row, outcome }) => (row.runId === runId && outcome === "fail" ? [row.taskId] : [])),
+  );
+  const mine = solves.filter(({ row }) => failed.has(row.taskId));
+  const batteries = [...new Set(mine.map(({ row }) => row.runId))];
+  const analysisDir = join(campaignDir, "analysis");
+  const settled = new Map(batteries.map((id) => [id, settledAgainstCheck(analysisDir, id)]));
+  const groupOf = ({ row }: (typeof mine)[number]) =>
+    canonicalJson([
+      row.taskId,
+      row.examHash ?? null,
+      row.backendPin,
+      row.condition,
+      recordedBuiltEffort([row]),
+    ]);
+  const groups = Map.groupBy(mine, groupOf);
+  return new Map(
+    mine.flatMap((solve) => {
+      if (solve.row.runId !== runId || solve.outcome !== "fail") return [];
+      const group = groups.get(groupOf(solve)) ?? [];
+      const by = group.find(({ row }) => settled.get(row.runId)?.has(row.taskId) === true);
+      const fails = group.filter(({ outcome }) => outcome === "fail").length;
+      return [[solve.row.taskId, { solves: group.length, fails, settledBy: by?.row.runId ?? null }] as const];
+    }),
+  );
 }
 
 /** The one retained directory holding `runId`, or null when none or several do. */

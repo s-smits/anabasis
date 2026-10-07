@@ -393,8 +393,11 @@ not on the zone: the latest battery has at least one verified case, no unaccepte
 verified case passed (`noLimitLine`). A 9 of 10 reads significantly too easy, shrinks the next battery
 and orients the reviewer, and sends the Builder its counts and the keep line (`keepFailedLine`), as any
 battery that failed a case, unaccepted attempts included, does: keep each failed task as it is, its public
-input and checks unchanged, unless a review shows a check refused a right answer. It names no task, check,
-location or cause. Until 2026-10-07 a partial battery read as counts alone, and in six chances to follow
+input and checks unchanged, unless a review shows a check refused a right answer. Before it, one sentence
+counts the battery's verified fails by group, the solves of each task under the same bytes and solver that
+decided whether it was solved again (`failGroups`, "1 task failed 3 of 3 solves"), and names the battery
+whose completed review settled any of them against its check, since a remeasure on a reviewed condition is
+not reviewed again and its own row carries no settlement. It names no task, check, location or cause. Until 2026-10-07 a partial battery read as counts alone, and in six chances to follow
 an earned fail the Builder changed `agent/` once and dropped or eased the failed task three times. The zone was kept from the
 Builder on purpose: a zone read back to the author decided nothing the counts beside it did not already
 say, and it read as a course (prior 10).

@@ -32,7 +32,7 @@ import { POLICY } from "../critic/policy.ts";
 import { isEnvironmentOwnedNonResult } from "../claim/record-events.ts";
 import { fingerprintSlug } from "../claim/fingerprint.ts";
 import { bundleSnapshotToolTree } from "../claim/bundle-snapshot.ts";
-import { CASE_RECORD_FILE, classifyCaseOutcome, readCaseRecord } from "../claim/case-record.ts";
+import { CASE_RECORD_FILE, readCaseRecord } from "../claim/case-record.ts";
 import type { SlotChoice } from "../backends/resolve.ts";
 import { campaignDir } from "../meta/campaign-root.ts";
 import { canonicalJson } from "../meta/stable-json.ts";
@@ -51,7 +51,7 @@ import {
 import { errorMessage } from "../meta/runtime-values.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import type { ExperimentAuthoring } from "./experiment-freeze.ts";
-import { retainedRunDir } from "./climb-history.ts";
+import { failGroups, retainedRunDir } from "./climb-history.ts";
 import { type ClimbReadout, readClimbReadout } from "./climb-readout.ts";
 import { selectedProductDir } from "./product-versions.ts";
 import { batteryCondition, loadRecordedTasks } from "./run-driver.ts";
@@ -134,35 +134,19 @@ export function solverConditionMoved(
 }
 
 /** The tasks of battery `runId` to solve again before the Builder reads their fails: each fresh fail
- *  whose group holds fewer than `AGREEING_SOLVES` solves, every one a fail. A group is the exam one
- *  task poses (the row's `examHash`: the agent, the correctness model, the tool tree and that task's
- *  own bytes) under one Built pin, run condition and effort. Another task's edit leaves it whole, so
- *  a fail the Builder keeps stays as confirmed as it was. One pass in the group makes the fail the
- *  solver's variance, a flip, and nothing is solved again. A row restating an earlier row's solve
- *  instant is a regrade, not a solve.
- *  Neither the Judge nor the review chooses which fails are solved again; validity is read apart. */
+ *  whose group (`failGroups`) holds fewer than `AGREEING_SOLVES` solves, every one a fail. A group is
+ *  the exam one task poses (the row's `examHash`: the agent, the correctness model, the tool tree and
+ *  that task's own bytes) under one Built pin, run condition and effort. Another task's edit leaves
+ *  it whole, so a fail the Builder keeps stays as confirmed as it was. One pass in the group makes
+ *  the fail the solver's variance, a flip, and nothing is solved again. Neither the Judge nor the
+ *  review chooses which fails are solved again; validity is read apart. */
 function unconfirmedSolves(input: ExamInput, runId: string): Set<string> {
-  const record = readCaseRecord(join(campaignDir(input.repoRoot, input.slug), CASE_RECORD_FILE));
-  const solves = [...Map.groupBy(record, ({ row }) => `${row.taskId} ${row.solverStartedAt}`).values()]
-    .flatMap((restated) =>
-      restated.slice(0, 1).map(({ row }) => ({ row, outcome: classifyCaseOutcome(row) })),
-    )
-    .filter(({ outcome }) => outcome === "pass" || outcome === "fail");
-  const groupOf = ({ row }: (typeof solves)[number]) =>
-    canonicalJson([
-      row.taskId,
-      row.examHash ?? null,
-      row.backendPin,
-      row.condition,
-      recordedBuiltEffort([row]),
-    ]);
-  const groups = Map.groupBy(solves, groupOf);
-  const unconfirmed = solves.filter((solve) => {
-    if (solve.row.runId !== runId || solve.outcome !== "fail") return false;
-    const group = groups.get(groupOf(solve)) ?? [];
-    return group.length < AGREEING_SOLVES && group.every(({ outcome }) => outcome === "fail");
-  });
-  return new Set(unconfirmed.map(({ row }) => row.taskId));
+  const groups = failGroups(campaignDir(input.repoRoot, input.slug), runId);
+  return new Set(
+    [...groups].flatMap(([taskId, { solves, fails }]) =>
+      solves < AGREEING_SOLVES && fails === solves ? [taskId] : [],
+    ),
+  );
 }
 
 /** The latest battery's solves that still pose `candidateDir`'s exam, or null with the condition

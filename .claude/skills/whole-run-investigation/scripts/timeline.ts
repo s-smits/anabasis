@@ -13,7 +13,7 @@
 //
 //   bun wri.ts timeline <target> [--run <runId>] [--classify] [--json] [--out <abs file>]
 import { existsSync, readFileSync, readdirSync } from "#src/meta/filesystem.ts";
-import { basename, join, resolve } from "#src/meta/path.ts";
+import { join, resolve } from "#src/meta/path.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { sha256 } from "#src/meta/digest.ts";
@@ -246,13 +246,13 @@ function stalls(rows: readonly ObservationRow[]): Gap[] {
 function causeSources(campaign: string): CauseSources {
   const waits: Wait[] = [];
   const trials: Interval[] = [];
-  for (const epochDir of campaignEpochs(campaign)) {
-    const read = readExecutionEvidenceDetails(epochDir);
+  for (const epoch of campaignEpochs(campaign)) {
+    const read = readExecutionEvidenceDetails(join(campaign, epoch));
     read.records.forEach((record, index) => {
       if (!isString(record.writtenAt) || !isNumber(record.durationMs)) return;
       const end = Date.parse(record.writtenAt);
       const start = end - record.durationMs;
-      const where = `${basename(epochDir)} session ${read.sessions[index] ?? index + 1}`;
+      const where = `${epoch} session ${read.sessions[index] ?? index + 1}`;
       for (const row of Array.isArray(record.turnRetries) ? record.turnRetries : []) {
         if (!isNumber(row.waitMs)) continue;
         waits.push({

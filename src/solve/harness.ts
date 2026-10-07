@@ -22,7 +22,7 @@ import { existsSync, lstatSync, readlinkSync, writeFileSync } from "../meta/file
 import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "../meta/json-runtime.ts";
 import { type JsonValue, asRecord, isRecord, isString } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
-import { join } from "../meta/path.ts";
+import { join, resolve } from "../meta/path.ts";
 import { capturedExecPath } from "../meta/process.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { shellQuote } from "../verify/solve-command-isolation.ts";
@@ -124,7 +124,7 @@ export async function openHarness(dir: string): Promise<Harness> {
     kinds.set(row.name, row.kind as ToolKind);
   }
   const module = await bundle(join(dir, "agent", "tools.ts"));
-  const toolchain = join(dir, ".toolchain");
+  const toolchain = resolve(dir, ".toolchain");
   const toolTree = existsSync(toolchain) ? toolchain : null;
   const tree = toolTree === null ? null : treeContent(toolTree);
   return { guide, presets, kinds, toolTree, module, digest: hashJsonValue({ module, spec, guide, tree }) };

@@ -19,7 +19,7 @@ import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import type { JsonValue } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { tmpdir } from "../src/meta/os.ts";
-import { join } from "../src/meta/path.ts";
+import { join, relative } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { type CommandWall, solveDirs } from "../src/solve/command.ts";
 import { harnessTools, openHarness } from "../src/solve/harness.ts";
@@ -156,7 +156,10 @@ describe("a v1 harness state", () => {
   it.skipIf(!darwin || !existsSync(C07))(
     "lists the sweep's c07 domain tools as its model received them",
     async () => {
-      const harness = await openHarness(C07);
+      // Opened as the live driver opens it, by a path relative to this process: the shell runs each
+      // command in its own folder, so a relative tool tree would leave PATH naming nothing.
+      const harness = await openHarness(relative(runtimeProcess.cwd(), C07));
+      expect(harness.toolTree).toBe(join(C07, ".toolchain"));
       const recorded = parseJsonAs<{ rows: JsonValue[] }>(
         await Bun.file(new URL("fixtures/harness-c07-tools.json", import.meta.url)).text(),
       ).rows;

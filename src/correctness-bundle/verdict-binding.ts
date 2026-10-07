@@ -27,9 +27,9 @@ export function blockingTruthFailure(result: CorrectnessModelResult): boolean {
 }
 
 /** The declared checks a result failed on — the contract finding-1 attributes a reject's failure
- *  through. */
-export function blockingFailedCheckIds(result: CorrectnessModelResult): Set<string> {
-  return new Set(result.issues.map((issue) => issue.checkId));
+ *  through — each named once and sorted, so two gradings of the same bytes compare. */
+export function blockingFailedCheckIds(result: CorrectnessModelResult): string[] {
+  return [...new Set(result.issues.map((issue) => issue.checkId))].sort();
 }
 
 /**
@@ -51,7 +51,7 @@ export function publicTaskVerdict(
     truthOk: record.truthOk,
     pass: record.pass,
     nonResultKind: record.runtimeNonResultKind,
-    failedCheckIds: verdict === null ? [] : [...blockingFailedCheckIds(verdict)].sort(),
+    failedCheckIds: verdict === null ? [] : blockingFailedCheckIds(verdict),
   };
 }
 

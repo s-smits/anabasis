@@ -40,6 +40,7 @@ import {
   requiredString,
   requiredStrings,
   ROUTE_STATES,
+  SAFEGUARD_DEFINITION_FILE,
   safeguardReconciliation,
   scanPathFields,
   sectionPointers,
@@ -74,9 +75,6 @@ export interface ArchiveValidation {
 /** A source file's safeguard ids, keyed by its path relative to the measured worktree. */
 type SourceCallers = ReadonlyMap<string, ReadonlySet<string>>;
 
-/** The archive shape this validator reads. An archive written under the previous shape carried a
- *  source-readiness session and a forty-angle catalogue, and is refused by name rather than read. */
-const REFUSED_SCHEMAS = new Map([["wri-archive/v1", "the previous archive shape"]]);
 /** The runtime log, whose filename is never a safeguard identity. */
 const SAFEGUARDS_LOG_STEM = SAFEGUARDS_LOG_FILE.replace(/\.txt$/, "");
 const isLogName = (value: string): boolean => value === SAFEGUARDS_LOG_STEM || value === SAFEGUARDS_LOG_FILE;
@@ -128,7 +126,7 @@ function measuredHelperAvailable(identityRow: ArchiveIdentity | null): boolean {
   return (
     identityRow !== null &&
     identityRow.worktree !== "" &&
-    existsSync(resolve(identityRow.worktree, "src/meta/safeguard.ts"))
+    existsSync(resolve(identityRow.worktree, SAFEGUARD_DEFINITION_FILE))
   );
 }
 
@@ -655,8 +653,8 @@ function safeguardCensus(
   if (isLogName(definitionFile)) {
     issues.push(`safeguardCensus.definitionFile must name the measured source, not ${SAFEGUARDS_LOG_STEM}`);
   }
-  if (definitionFile && definitionFile !== "src/meta/safeguard.ts") {
-    issues.push("safeguardCensus.definitionFile must name src/meta/safeguard.ts");
+  if (definitionFile && definitionFile !== SAFEGUARD_DEFINITION_FILE) {
+    issues.push(`safeguardCensus.definitionFile must name ${SAFEGUARD_DEFINITION_FILE}`);
   }
   oneOf(census.derivation, "safeguardCensus.derivation", states("source-callers-v1"), issues);
   const derivedIds = new Set<string>();
@@ -775,13 +773,7 @@ export function validateArchiveDirectory(archivePath: string): ArchiveValidation
   const review = readArchive(archiveDir, issues);
   const reviewRecord = review === null ? null : requiredRecord(review, REVIEW, issues);
   if (!reviewRecord) throw new ArchiveValidationError(issues);
-  const schema = isString(reviewRecord.schema) ? reviewRecord.schema : null;
-  const refused = schema === null ? undefined : REFUSED_SCHEMAS.get(schema);
-  if (schema !== null && refused !== undefined) {
-    issues.push(`${REVIEW} schema ${schema} is ${refused} and is refused; rewrite it as ${ARCHIVE_SCHEMA}`);
-  } else if (reviewRecord.schema !== ARCHIVE_SCHEMA) {
-    issues.push(`${REVIEW} schema must be ${ARCHIVE_SCHEMA}`);
-  }
+  if (reviewRecord.schema !== ARCHIVE_SCHEMA) issues.push(`${REVIEW} schema must be ${ARCHIVE_SCHEMA}`);
   const identityRow = identity(reviewRecord, issues);
   const stage = lifecycle(reviewRecord, issues);
   procedureIdentity(reviewRecord, identityRow, issues);

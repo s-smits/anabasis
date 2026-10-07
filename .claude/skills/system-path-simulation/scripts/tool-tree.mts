@@ -25,7 +25,7 @@ import { readJsonFileOrNull } from "#src/meta/completed-json.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
 import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
 import { bundleSnapshotToolTree } from "#src/claim/bundle-snapshot.ts";
-import { selectedProductDir } from "#src/run/product-versions.ts";
+import { PRODUCT_VERSION_FILE, selectedProductDir } from "#src/run/product-versions.ts";
 import { campaignRoot } from "#src/meta/campaign-root.ts";
 import { portableToolTreeDigest } from "#src/verify/tool-inventory.ts";
 import { runCommand } from "#skills/main/cli.ts";
@@ -81,7 +81,7 @@ function readRecord(path: string): RecordedFields {
 
 /** The tool tree `product` recorded at publication and the one its link reaches now. */
 export function productToolTree(product: string): ProductToolTree {
-  const { toolTree, treeDigest } = readRecord(join(product, "version.json"));
+  const { toolTree, treeDigest } = readRecord(join(product, PRODUCT_VERSION_FILE));
   const link = join(product, TOOL_TREE);
   return {
     product,

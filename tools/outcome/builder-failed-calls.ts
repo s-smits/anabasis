@@ -18,7 +18,7 @@ type BuilderPartialTurn =
   | { state: "none" }
   | { state: "recorded"; turn: number; calls: number; failed: number };
 
-export interface BuilderFailureSession {
+interface BuilderFailureSession {
   /** The record's on-disk session number; null when the caller read no filenames. */
   session: number | null;
   /** The record's own write time, and the census ordering key. */

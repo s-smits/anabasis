@@ -93,11 +93,12 @@ submit 3 (commit ..., 1 findings)                             (submit refusal, c
 1 further admitted finding(s) omitted from this packet        (rebuild advice packet)
 ```
 
-Find them with an AST-free scan of the producers, then read each hit for whether its count can
-actually reach one:
+Find them with two AST-free scans of the producers, the second for hedged `(s)` spellings, then read
+each hit for whether its count can actually reach one:
 
 ```sh
-grep -rnE '\$\{[^{}]*(count|length|total|passes|cases|findings|lines|attempts)[^{}]*\} +[a-z]+s\b' src --include='*.ts'
+grep -rnE '\$\{[^{}]*(count|length|total|passes|cases|findings|lines|attempts|nonResults|unaccepted)[^{}]*\} +([a-z]+ )?[a-z-]+s\b' src --include='*.ts'
+grep -rnE '\$\{[^}]*\}[^$]{0,40}[a-z]\((s|es)\)' src --include='*.ts'
 ```
 
 Most hits are safe by construction — the battery floor `POLICY.battery.floor`, a constant, a branch

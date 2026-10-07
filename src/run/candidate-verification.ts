@@ -29,7 +29,6 @@ import {
 import { evaluationIdentity } from "../claim/fingerprint.ts";
 import { executedBundleSnapshotFact } from "./claim-write.ts";
 import { type ExperimentAuthoring, type ExperimentFreeze, experimentFreeze } from "./experiment-freeze.ts";
-import type { FullRunArgs } from "./launch-arguments.ts";
 import type { FullRunDeps, FullRunOutcome } from "./full-run.ts";
 import type { HarnessMeasureResult } from "./harness-measure.ts";
 import { recordMeasurement } from "./claim-stages.ts";
@@ -45,7 +44,6 @@ import type { BatteryReuse } from "../correctness-bundle/recorded-solve.ts";
 import { recordedRegrade } from "./battery-reuse.ts";
 
 interface PostBuildInput {
-  args: FullRunArgs;
   repoRoot: string;
   manifest: AskManifest;
   runId: string;
@@ -60,7 +58,7 @@ interface PostBuildInput {
   runPin: string;
   slots: ResolvedSlots;
   /** The exact operator request, kept public and unchanged through the battery. */
-  publicRequest?: string;
+  publicRequest: string;
   experimentAuthoring?: ExperimentAuthoring;
   /** Kept beside post-build sequencing so later steps cannot erase a started battery identity. */
   markMeasured?: () => void;
@@ -134,7 +132,7 @@ async function runAnalysePhase(
       resolvedSlots: input.slots,
       observer,
       ...keyIfDefined("safeguardContext", input.safeguardContext),
-      ...keyIfDefined("publicRequest", input.publicRequest),
+      publicRequest: input.publicRequest,
       ...keyIfDefined("providerBudget", input.providerBudget),
     });
     observeAnalysisResult(observer, manifest.slug, runId, analysed);
@@ -187,13 +185,8 @@ export function publishesAdmissionPointer(input: {
  *  reused from `refuseBrokenFreeze`: that read happened before the battery, and a background write
  *  into the candidate workspace between the two would leave the packet recorded with one identity
  *  and admitted on another. Computed only on the path that consumes it. */
-function publicationFreeze(
-  input: PostBuildInput,
-  decision: PromotionEvidence["decision"] | null,
-): ExperimentFreeze | null {
-  if (input.build !== "candidate" || decision === "promoted" || input.experiment !== "evaluation") {
-    return null;
-  }
+function publicationFreeze(input: PostBuildInput): ExperimentFreeze | null {
+  if (input.build !== "candidate" || input.experiment !== "evaluation") return null;
   const currentDir = selectedProductDir(input.repoRoot, input.manifest.slug);
   if (!existsSync(currentDir)) return null;
   return experimentFreeze({ kind: input.experiment, baseDir: currentDir, candidateDir: input.measureDir });
@@ -216,7 +209,7 @@ function settleCheckAndPointer(
     analysed === null
       ? null
       : prepareAdmissionPointer(repoRoot, manifest.slug, runId, analysed.admission, observed);
-  const freeze = publicationFreeze(input, "held");
+  const freeze = publicationFreeze(input);
   const adoptedDir = selectedProductDir(repoRoot, manifest.slug);
   const observedOnAdopted =
     !existsSync(adoptedDir) || movedIdentity(observed, evaluationIdentity(adoptedDir)) === null;
@@ -309,7 +302,8 @@ function refuseBrokenFreeze(input: PostBuildInput): CandidateEvaluation | null {
 /** The recorded solves this round's battery grades instead of solving, or undefined when it solves
  *  every task. Whichever way it goes, the reason is recorded beside the round. */
 function batteryReuse(input: PostBuildInput): BatteryReuse | undefined {
-  const remeasure = input.build === "reused" && input.decision.remeasure !== undefined;
+  // A reused tree is a `measure` round: a remeasure, or a first measurement with no solve to regrade.
+  const remeasure = input.build === "reused";
   if (!remeasure && input.build !== "candidate") return undefined;
   const { reuse, reason } = recordedRegrade({
     repoRoot: input.repoRoot,
@@ -336,7 +330,7 @@ async function driveCandidate(input: PostBuildInput): Promise<HarnessMeasureResu
     repoRoot,
     observer: input.observer,
     resolvedSlots: input.slots,
-    ...keyIfDefined("publicRequest", input.publicRequest),
+    publicRequest: input.publicRequest,
     domainDir: measureDir,
     ...keyIfDefined("experimentAuthoring", input.experimentAuthoring),
     ...keyIfDefined("onBatteryStart", input.markMeasured),

@@ -12,6 +12,7 @@ import { parseJsonAs } from "../../src/meta/json-runtime.ts";
 import { JUDGE_REVIEWS_SCHEMA, type JudgeReviewsResult } from "../../src/analyse/judge-reviews.ts";
 import { judgeDecision } from "../../src/claim/judge.ts";
 import { BATTERY_FILE } from "../../src/correctness-bundle/battery-record.ts";
+import { CASE_TRACE_FILE } from "../../src/correctness-bundle/recorded-solve.ts";
 
 interface LogLine {
   at: string;
@@ -230,7 +231,7 @@ export function toolCallCensus(batteryDir: string): Map<string, { calls: number;
   const casesDir = join(batteryDir, "cases");
   if (!existsSync(casesDir)) return out;
   for (const caseName of readdirSync(casesDir)) {
-    const tracePath = join(casesDir, caseName, "trace.json");
+    const tracePath = join(casesDir, caseName, CASE_TRACE_FILE);
     if (!existsSync(tracePath)) continue;
     const trace = parseJsonAs<{
       toolCalls?: Array<{ toolName?: string; isError?: boolean }>;

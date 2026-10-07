@@ -41,7 +41,7 @@ describe("Astra through the installed Pi catalogue", () => {
   }, 60_000);
 
   it.each([
-    { transport: "codex", provider: "openai-codex", model: "gpt-5.6-sol", level: "minimal" },
+    { transport: "codex", provider: "openai-codex", model: "gpt-6.1-sol", level: "minimal" },
     { transport: "claude", provider: "anthropic", model: "claude-sonnet-5", level: "minimal" },
     { transport: "claude", provider: "anthropic", model: "claude-sonnet-5", level: "off" },
   ] as const)("refuses $level on $model, which its transport would serve as another level", (row) => {
@@ -56,7 +56,7 @@ describe("Astra through the installed Pi catalogue", () => {
   });
 
   it.each([
-    { transport: "codex", provider: "openai-codex", model: "gpt-5.6-sol", level: "medium" },
+    { transport: "codex", provider: "openai-codex", model: "gpt-6.1-sol", level: "high" },
     { transport: "claude", provider: "anthropic", model: "claude-sonnet-5", level: "xhigh" },
   ] as const)("keeps $level on $model, which its transport serves under its own name", (row) => {
     expect(
@@ -85,7 +85,9 @@ describe("Astra through the installed Pi catalogue", () => {
           tools: [{ name: "inspect", description: "Read the draft.", parameters: Type.Object({}) }],
         },
         {
-          apiKey: "test-key",
+          // An OpenAI API key: since Pi 0.99 a key without `sk-` reads as a ChatGPT sign-in, which
+          // drops the cache fields this case asserts.
+          apiKey: "sk-test-key",
           reasoning: "medium",
           cacheRetention: "long",
           onPayload: (value) => {

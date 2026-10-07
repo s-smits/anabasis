@@ -13,6 +13,11 @@ import type { JsonValue } from "../meta/json-shape.ts";
 import type { RuntimeModelIdentity } from "../claim/runtime-model-identity.ts";
 import type { BackendKind } from "./resolve.ts";
 
+/** The Built worker's failure when the whole-solve wall stops it. A case row keeps it in
+ *  `solver.errors`, which is how a reader knows the wall, not the solver, ended a solve whose draft
+ *  was accepted. */
+export const SOLVE_WALL_MESSAGE = "Pi Built worker exceeded its bounded solve time";
+
 /** Provider-reported per-turn spend. Null means the transport reported none, never zero. */
 export interface TurnUsage {
   inputTokens: number | null;

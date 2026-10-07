@@ -2,6 +2,7 @@
 // it exists, so an audit never creates one, and nothing here writes to it.
 import { existsSync, readdirSync } from "#src/meta/filesystem.ts";
 import { ControllerLedger, controllerLedgerExists } from "#src/run/controller-ledger.ts";
+import { PRODUCT_VERSION_FILE, PRODUCT_VERSION_SCHEMA } from "#src/run/product-versions.ts";
 import { join } from "#src/meta/path.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
@@ -53,10 +54,10 @@ function readSavedProduct(
   snapshotId: SnapshotIdOf,
 ): void {
   if (!isSafePathSegment(row.id)) throw new Error("invalid product version identity");
-  const manifest = asRecord(readJsonFile(join(row.path, "version.json")));
+  const manifest = asRecord(readJsonFile(join(row.path, PRODUCT_VERSION_FILE)));
   if (
     manifest === null ||
-    manifest.schema !== "product-version/v2" ||
+    manifest.schema !== PRODUCT_VERSION_SCHEMA ||
     manifest.id !== row.id ||
     asRecord(manifest.fingerprint)?.slug !== slug
   ) {

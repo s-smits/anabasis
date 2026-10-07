@@ -41,7 +41,7 @@ interface CorrectnessCheckBinding {
   /** The controller's preview of the current workspace bytes. */
   preview(): Promise<GateReport>;
   /** The ask's battery size, for the coverage summary; its upper bound when `minTasks` opens a range. */
-  expectedTasks: number | undefined;
+  expectedTasks: number;
   /** The smallest accepted size when the round leaves the count to the Builder. */
   minTasks?: number;
   /** The same store submit records its refusal into, so `harness_inspect feedback` pages a check's
@@ -51,11 +51,9 @@ interface CorrectnessCheckBinding {
 
 /** What this tool did not do. It rides every result, including the clear ones, because a validation
  *  sequence that found no blocking row is the easiest evidence in a run to mistake for a passing
- *  verifier: it is long, it is expensive, and it ends in the word the author is hoping for. */
-const TRUTH = {
-  verdict: "not-run",
-  note: "Preview only. Submit runs the same validation sequence on the same snapshot and is the only acceptance path. A clear result does not establish practitioner identity, semantic completeness, adoption, measurement success or claim issuance.",
-} as const;
+ *  verifier: it is long, it is expensive, and it ends in the word the author is hoping for. The
+ *  description already says submit is the only acceptance path, so the verdict carries no note. */
+const TRUTH = { verdict: "not-run" } as const;
 
 const REPAIR =
   "Read every repair group with harness_inspect feedback, repair the named files, then check the changed tree.";
@@ -167,8 +165,8 @@ function coverageOf(
     controls: { accept: harness.corpus.accept.length, reject: harness.corpus.reject.length },
     tasks: {
       authored: harness.battery.tasks.length,
-      expected: binding.expectedTasks ?? null,
-      atLeast: binding.minTasks ?? binding.expectedTasks ?? null,
+      expected: binding.expectedTasks,
+      atLeast: binding.minTasks ?? binding.expectedTasks,
     },
     checks: harness.brief.truthChecks.map((check) => ({
       id: check.id,

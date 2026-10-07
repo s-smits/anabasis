@@ -15,6 +15,8 @@ import simplify from "../tools/oxlint/simplify.json" with { type: "json" };
 import { corpus } from "../tools/loc/source-policy.ts";
 import { siteId } from "../tools/oxlint/not-slop-ledger.ts";
 import {
+  type PassRow,
+  passTable,
   type ReplayedSite,
   scoreTable,
   uniqueSites,
@@ -25,7 +27,7 @@ import {
   treeFindings,
   treeFindingsOver,
 } from "../tools/oxlint/tree-findings.ts";
-import { unreadModules } from "../tools/oxlint/tree-module.ts";
+import { unreadForwards, unreadModules } from "../tools/oxlint/tree-module.ts";
 import { existsSync, readFileSync } from "../src/meta/filesystem.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
@@ -78,7 +80,7 @@ const DECLARING = new Map([
   // without the call is a name like any other.
   [
     "src/identity-reader.ts",
-    `if (row.schema !== "campaign-opening/v9") throw new Error("bad");\nreadFileSync("campaign-opening.json");\nreadFileSync(join(dir, "campaign-opening", "terminal.json"));\nif (row.receipt !== "control-receipt/v7") return;\nexport const RECORD_FILE = "campaign-record.jsonl";\nconst LOCAL_FILE = "campaign-local.jsonl";\ntype Level = "campaign-level/v1" | "other-level/v1";\nconst FIXTURES = [\n  "campaign-fixture/v1",\n] as const;\ntype Fixture = (typeof FIXTURES)[number];\nconst mod = await load<typeof import("../../campaign-loader.ts")>("campaign-loader.ts");\nreadFileSync(join(dir, "census.json"));\nreadFileSync(join(dir, "battery.json"));\nreadFileSync("package.json");\nconst STAGES = [\n  "campaign-stage/v1",\n] satisfies readonly Stage[];\nreadFileSync("campaign-brief.json");\nconst staged = Bun.pathToFileURL(join(worktree, "campaign-staged.ts")).href;\nconst unstaged = join(worktree, "campaign-unstaged.ts");\n`,
+    `if (row.schema !== "campaign-opening/v9") throw new Error("bad");\nreadFileSync("campaign-opening.json");\nreadFileSync(join(dir, "campaign-opening", "terminal.json"));\nif (row.receipt !== "control-receipt/v7") return;\nexport const RECORD_FILE = "campaign-record.jsonl";\nconst LOCAL_FILE = "campaign-local.jsonl";\ntype Level = "campaign-level/v1" | "other-level/v1";\nconst FIXTURES = [\n  "campaign-fixture/v1",\n] as const;\ntype Fixture = (typeof FIXTURES)[number];\nconst mod = await load<typeof import("../../campaign-loader.ts")>("campaign-loader.ts");\nreadFileSync(join(dir, "census.json"));\nreadFileSync(join(dir, "battery.json"));\nreadFileSync("package.json");\nconst STAGES = [\n  "campaign-stage/v1",\n] satisfies readonly Stage[];\nreadFileSync("campaign-brief.json");\nconst staged = Bun.pathToFileURL(join(worktree, "campaign-staged.ts")).href;\nconst unstaged = join(worktree, "campaign-unstaged.ts");\nexport const BRIEF_PATH = "model/campaign-brief.json";\n`,
   ],
   [
     "src/identity-writer.ts",
@@ -611,7 +613,7 @@ describe("the whole-tree simplify scans", () => {
       "`campaign-opening.json` is spelled in 2 files and `CAMPAIGN_FILE` in src/identity-writer.ts already names it",
       "`campaign-opening/terminal.json` is spelled in 2 files and no file names it",
       "`census.json` is spelled in 3 files and no file names it",
-      "`campaign-brief.json` is spelled in 2 files and no file names it",
+      "`campaign-brief.json` is spelled in 2 files and `BRIEF_PATH` in src/identity-reader.ts already names it as `model/campaign-brief.json`",
       "`campaign-unstaged.ts` is spelled in 2 files and no file names it",
       "`campaign-record.jsonl` is spelled in 2 files and `RECORD_FILE` in src/identity-reader.ts already names it",
       "`campaign-local.jsonl` is spelled in 2 files and `LOCAL_FILE` in src/identity-reader.ts names it but does not export it",
@@ -682,6 +684,62 @@ describe("the whole-tree simplify scans", () => {
         .map((finding) => finding.path);
     expect(found(480)).toStrictEqual(["src/single-export.ts"]);
     expect(found(545)).toStrictEqual([]);
+  });
+
+  it("counts a second reader on a code line, and not a comment naming the export", () => {
+    // PR #120 folded `checkerUnboundFinding` into its one caller; a doc comment in a second file
+    // had held it at two readers.
+    const home = [...DECLARING].filter(([path]) => path === "src/single-export.ts");
+    const found = (second: string): string[] =>
+      treeFindingsOver(
+        new Map(home),
+        new Map([...home, ["src/reader.ts", READERS.get("src/reader.ts") ?? ""], ["src/second.ts", second]]),
+      )
+        .filter((finding) => finding.kind === "single-reader-export")
+        .map((finding) => finding.path);
+    expect(
+      found("/** Shaped like `readClosing` in single-export.ts. */\nexport const y = 1;\n"),
+    ).toStrictEqual(["src/single-export.ts"]);
+    expect(
+      found('import { readClosing } from "./single-export.ts";\nexport const y = readClosing(".");\n'),
+    ).toStrictEqual([]);
+  });
+
+  it("reports a forward no file imports from its module, and not one a caller reaches through it", () => {
+    const owner = [
+      "src/owner-mod.ts",
+      "export const shared = 1;\nexport type Shape = { a: number };\n",
+    ] as const;
+    const forwarder = [
+      "src/forwarder.ts",
+      `import { shared } from "./owner-mod.ts";
+export { shared };
+export type { Shape } from "./owner-mod.ts";
+export { join } from "node:path";
+export const own = shared;
+`,
+    ] as const;
+    const rows = (caller: string): string[] =>
+      unreadForwards(new Map([owner, forwarder]), new Map([owner, forwarder, ["src/caller.ts", caller]])).map(
+        (row) => `${row.line} ${row.detail}`,
+      );
+    // Every caller imports the owner, so both forwards are doors nobody uses; `node:` is a shim's.
+    expect(
+      rows('import { shared, type Shape } from "./owner-mod.ts";\nexport const x: Shape = { a: shared };\n'),
+    ).toStrictEqual([
+      "2 `shared` is re-exported here and no file imports it from this module",
+      "3 `Shape` is re-exported here and no file imports it from this module",
+    ]);
+    // A namespace import through an alias reads both, and a package's index module is its entry.
+    expect(
+      rows('import * as f from "#src/forwarder.ts";\nexport const x: f.Shape = { a: f.shared };\n'),
+    ).toStrictEqual([]);
+    expect(
+      unreadForwards(
+        new Map([["src/pkg/index.ts", 'export { shared } from "../owner-mod.ts";\n']]),
+        new Map(),
+      ),
+    ).toStrictEqual([]);
   });
 
   it("counts a skill script run through a shell variable or an absolute path as read", () => {
@@ -985,5 +1043,28 @@ describe("the census precision score", () => {
     expect(table).toContain("ledger-no judged-no 1/1");
     expect(table).toContain("dropped 2 (yes 0, no 1)");
     expect(table).toContain("candidate adds 0 sites");
+  });
+
+  it("counts a pass's surfaces a site names, and not a neighbour on the same line", () => {
+    // One forwarding line of PR #120 held a name it removed and a name it kept.
+    const base = site("f", "unread-forward", "2026-09-30", "0b3e5927aa");
+    const forward = {
+      ...base,
+      detail: "`gone` is re-exported here and no file imports it from this module",
+      places: [{ path: base.path, line: 4, end: 4 }],
+    };
+    const row = (verdict: "removed" | "kept", symbol: string, line = 4): PassRow => ({
+      rev: "0b3e5927",
+      verdict,
+      path: base.path,
+      line,
+      symbol,
+      class: "reexport-forward",
+    });
+    const table = passTable(
+      [forward],
+      [row("removed", "gone"), row("removed", "far", 9), row("kept", "live")],
+    );
+    expect(table).toMatch(/reexport-forward +1\/2 +0\/1\n/u);
   });
 });

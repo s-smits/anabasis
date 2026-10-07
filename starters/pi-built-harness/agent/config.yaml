@@ -13,6 +13,6 @@ gate:
   check_seconds: 600 # one check with its tool runs
   tool_run_seconds: 300 # one verifier tool run
 battery:
-  solve_concurrency: 3 # tasks solved at once in a measured battery; the host has more cores than
+  solve_concurrency: 5 # tasks solved at once in a measured battery; the host has more cores than
                        # this, and a wider battery finishes a round sooner, but every case in
                        # flight holds a model session, a solver child and its tool children

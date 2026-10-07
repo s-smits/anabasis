@@ -15,6 +15,7 @@ import { defaultProductDir } from "../meta/campaign-root.ts";
 import { readdirSync, realpathSync, statSync } from "../meta/filesystem.ts";
 import { basename, dirname, join, resolve } from "../meta/path.ts";
 import { CASE_TRACE_SCHEMA } from "../backends/trace-capture.ts";
+import { CASE_TRACE_FILE } from "../correctness-bundle/recorded-solve.ts";
 import { plainRecord } from "../meta/json-evidence.ts";
 import { type TracePointer, tracePointerPath, verifyTracePointers } from "./case-record.ts";
 import { isSafePathSegment } from "../meta/path-segment.ts";
@@ -83,8 +84,8 @@ function parseReadableTrace(absPath: string): ReadCaseTrace | null {
  */
 export function readVerifiedTrace(row: { traces: TracePointer[] }, baseDir: string): VerifiedTraceRead {
   const ordered = [
-    ...row.traces.filter((pointer) => basename(pointer.path) === "trace.json"),
-    ...row.traces.filter((pointer) => basename(pointer.path) !== "trace.json"),
+    ...row.traces.filter((pointer) => basename(pointer.path) === CASE_TRACE_FILE),
+    ...row.traces.filter((pointer) => basename(pointer.path) !== CASE_TRACE_FILE),
   ];
   const states = new Set<string>();
   for (const pointer of ordered) {

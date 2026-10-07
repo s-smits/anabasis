@@ -44,11 +44,19 @@ registry and no `correctness-model/engines.json`: what a Builder writes cannot a
 
 ## The cell
 
-Each check gets one private tool directory. `files` and `stdin` must match string leaves or JSON
-from that check's declared artifact and public-input projections. A check cannot compile the
-submission against a header its author supplied outside those inputs. A tool may read what
-an earlier run of the same scope wrote, named
-`cell:<path>` — that is how a compiled program is then executed.
+Each check gets one private tool directory. The check's mode decides what it may hand the tool
+(`toolInputViolation`, `vendor/correctness-model-bundle/tool-inputs.ts`):
+
+- An `external` check's `files` and `stdin` must match string leaves or JSON from its declared
+  artifact and public-input projections, so it cannot compile the submission against a header its
+  author supplied.
+- An `authored` check may construct them.
+
+The host records each input's origin in the run's `inputPaths`, and bytes that are not a declared
+leaf read `authored:derived`. That label is an origin, not a verdict: a legitimate driver or
+fixture carries it as surely as a stand-in header does. A device model installed under
+`.toolchain` as the tool carries no such label at all. A tool may read what an earlier run of the
+same scope wrote, named `cell:<path>` — that is how a compiled program is then executed.
 
 | Condition | Outcome |
 |---|---|

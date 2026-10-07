@@ -219,7 +219,7 @@ async function tracesOf(
   tree: string,
   afterAdmission: (caseDir: string) => void = () => {},
 ): Promise<{ ids: string[]; text: string; artifact: string }> {
-  const { admitted } = readClimbBatteries(tree, PIN, join(tree, "claims"));
+  const { admitted } = readClimbBatteries(tree, PIN, { claimsDir: join(tree, "claims") });
   afterAdmission(join(tree, "runs", "r1", "cases", "t0"));
   const docs = measuredSolverTraces(tree, admitted);
   const bound = binding({ traces: () => docs });

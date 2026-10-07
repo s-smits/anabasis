@@ -6,8 +6,8 @@
  * is bound to it by test/frozen-manifest-binding.test.ts. Reading a manifest row is
  * src/critic/manifest.ts's job, not this file's: `climb` is read through `climbThresholds`
  * (src/run/climb-history.ts) and `evaluatorCalibration` through `EVALUATOR_CALIBRATION_POLICY`
- * (src/claim/calibration.ts). Every other value below is code-only, so adding one moves no
- * manifest digest.
+ * (src/run/accept-control-independence.ts). Every other value below is code-only, so adding one
+ * moves no manifest digest.
  *
  * Where a value's history is long, it is written once at the consumer that acts on it and named
  * here by file. A number still states why it is that number.

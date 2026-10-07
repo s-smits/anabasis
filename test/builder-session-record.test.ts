@@ -14,7 +14,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { submitProjection } from "../src/author/builder-execution.ts";
 import { runBuilderSession } from "../src/author/builder-session.ts";
-import type { PathRecord } from "../src/builder/candidate-isolation-runtime.ts";
+import type { PathRecord } from "../src/builder/path-record.ts";
 import type { CandidateAccessPolicy } from "../src/builder/candidate-isolation.ts";
 import { writeBuilderSessionEvidence } from "../src/builder/session-evidence.ts";
 import { builderShellWall } from "../src/run/builder-backend.ts";

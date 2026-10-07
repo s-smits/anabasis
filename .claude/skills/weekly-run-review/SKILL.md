@@ -31,7 +31,7 @@ of the `--repo` checkout's main checkout, and the WRI archives in the `--repo` c
 `notes/runs/`.
 
 ```sh
-bun --no-env-file .claude/skills/weekly-run-review/scripts/select-best-runs.ts \
+bun .claude/skills/weekly-run-review/scripts/select-best-runs.ts \
   --repo /absolute/main/worktree \
   --week previous --timezone Europe/Oslo \
   --top 5 --min-duration-minutes 30 \
@@ -101,7 +101,7 @@ lower concurrency and slower pacing. Treat any remaining transport failure as mi
 Each leaf is read-only and independent. It must state a rival explanation and falsifier, keep exact
 denominators, and return `unobservable` rather than guess.
 
-The Scheduled task's primary synthesis runs as `gpt-5.6-sol` at xhigh. It owns the week-over-week
+The Scheduled task's primary synthesis runs as `gpt-6.1-sol` at xhigh. It owns the week-over-week
 synthesis after the Luna reports return. When this Skill is invoked under another condition, use one
 bounded read-only Sol xhigh session for that synthesis. Do not ask a Luna session to confirm its own
 WRI conclusion. If missing finalist syntheses block Luna, the Sol primary still publishes the

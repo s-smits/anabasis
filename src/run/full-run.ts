@@ -3,10 +3,8 @@ import { BuilderConversation } from "../author/builder-conversation.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { ProductVersionFromAnotherSource, selectedProductDir } from "./product-versions.ts";
 import { campaignDir } from "../meta/campaign-root.ts";
-import { join, relative, resolve } from "../meta/path.ts";
+import { relative, resolve } from "../meta/path.ts";
 import { readClimbReadout } from "./climb-readout.ts";
-import { claimsDirFor } from "./claim-write.ts";
-import { FROZEN_MANIFEST_PATH } from "../critic/manifest.ts";
 import type { AdmittedEvidence } from "../analyse/iteration-analysis.ts";
 import type { JudgeReviewsResult } from "../analyse/judge-reviews.ts";
 import { setProjectBackendSelection } from "../backends/project-backends.ts";
@@ -36,9 +34,6 @@ import type { NextMove } from "./next-move.ts";
 import { SOURCE_IDENTITY } from "./source-identity.ts";
 import { keyIfDefined, keysIf } from "../meta/optional-key.ts";
 
-export { directKickoff } from "./direct-input.ts";
-export { selectProject, slugForDirectInput } from "./launch-project.ts";
-
 import {
   type IterationResult,
   type UnresolvedAuthoringStall,
@@ -50,19 +45,12 @@ import {
 } from "./full-run-round.ts";
 import { isString } from "../meta/json-shape.ts";
 import { runtimeProcess } from "../meta/process.ts";
-import {
-  createSafeguardContext,
-  safeguardLogDir,
-  safeguardTempRootPressure,
-  type SafeguardContext,
-} from "../meta/safeguard.ts";
+import { safeguardLogDir, safeguardTempRootPressure, type SafeguardContext } from "../meta/safeguard.ts";
 import { cleanStaleTempRootScratch, removeRunTempRootAtExit } from "../meta/temp-scratch-clean.ts";
 import { ProviderResourceBudget } from "./provider-resource-budget.ts";
 import { FullRunClosure } from "./full-run-deadline.ts";
 import { campaignVerifierLifetime } from "./verifier-lifetime.ts";
 import { VerifierOperationalStop } from "../verify/verifier-lifetime.ts";
-
-export { type FullRunArgs, parseFullRunArgs } from "./launch-arguments.ts";
 
 export interface FullRunDeps {
   build: typeof buildHarness;
@@ -71,7 +59,6 @@ export interface FullRunDeps {
   ensureDcg?: () => BuilderCommandGuardResult;
 }
 
-export { readAdmission } from "./admission.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 
 type ControllerIteration = ControllerRunState["iterations"][number];
@@ -151,9 +138,9 @@ export async function runFullRun(
     ...args,
     runId: launch.runId,
   };
-  const safeguardContext = createSafeguardContext(
-    safeguardLogDir(campaignDir(repoRoot, launch.project.id), launch.runId),
-  );
+  const safeguardContext: SafeguardContext = {
+    logDir: safeguardLogDir(campaignDir(repoRoot, launch.project.id), launch.runId),
+  };
   // A per-user temp root that has reached six figures of entries stalls every fresh child spawn
   // in getdirentries64. Remove this product's own stale scratch first, in a bounded sweep, then let
   // `safeguardTempRootPressure` report whatever pressure remains. The run proceeds either way,
@@ -181,7 +168,7 @@ export async function runFullRun(
     state.providerBudget,
     (cause) => closeControllerRun(repoRoot, launch, state, cause),
     async () => {
-      stopIsolatedCommands();
+      stopIsolatedCommands(campaignDir(repoRoot, launch.project.id));
       await builderConversation.close();
       const pending = await state.verifierLifetime?.close();
       state.verifierSettled = true;
@@ -214,16 +201,10 @@ export async function runFullRun(
  *  a launch condition, so the command digest stays what the operator typed. */
 function ensureDcgForBuilder(args: FullRunArgs, deps: FullRunDeps, builder: CampaignBuilderCondition): void {
   if (args.dcg !== true || builder.kind === "codex") return;
-  const supplied = (deps.ensureDcg ?? ensureBuilderCommandGuard)();
-  const guard: BuilderCommandGuardResult = {
-    ...supplied,
-    path: supplied.path === null ? null : resolve(supplied.path),
-  };
-  if (guard.path === null) {
-    fullrunLine(`dcg ${guard.state}: ${guard.skippedReason ?? "no path"}`);
-  } else {
-    fullrunLine(`dcg ${guard.state}: ${guard.path}`);
-  }
+  const guard = (deps.ensureDcg ?? ensureBuilderCommandGuard)();
+  fullrunLine(
+    `dcg ${guard.state}: ${guard.path === null ? (guard.skippedReason ?? "no path") : resolve(guard.path)}`,
+  );
 }
 
 /** An unset --max-iterations reads as Infinity, so there is no default round cap (operator
@@ -400,12 +381,7 @@ async function runUnderLock(run: LockedRun): Promise<FullRunOutcome> {
   };
   // A fresh readout at the close, so the terminal counts a last battery no later decision saw.
   state.readClimb = () =>
-    readClimbReadout(
-      selectedProductDir(repoRoot, manifest.slug),
-      runPin,
-      claimsDirFor(repoRoot, manifest.slug),
-      join(repoRoot, FROZEN_MANIFEST_PATH),
-    );
+    readClimbReadout(selectedProductDir(repoRoot, manifest.slug), runPin, { repoRoot, slug: manifest.slug });
   let adopted: string;
   try {
     adopted = selectedProductDir(repoRoot, manifest.slug);

@@ -284,6 +284,12 @@ describe("review-yield: harness-trial reader", () => {
     expect(out.summary).toMatchObject({ iterations: 1, opportunities: 1, outputs: 1, consumed: 0 });
     expect(out.runs[0]?.note).toBe("1 rehearsal(s); accepted submit was not rehearsed");
     expect(out.reasons[0]).toContain("not-run 1; epochs whose accepted submit was never rehearsed: 1");
+    // An accepted submit with no rehearsal at all is unrehearsed too, as run -40's round 1 was; a
+    // rehearsal with no accepted submit after it is not.
+    epoch(root, [submitCall(1, candidate)]);
+    expect(harnessTrial(root).reasons[0]).toContain("never rehearsed: 1");
+    epoch(root, [trialCall(1, "t1", candidate, "pass")]);
+    expect(harnessTrial(root).reasons[0]).toContain("never rehearsed: 0");
     // An epoch without an execution record leaves the reading unknown rather than empty.
     mkdirSync(join(root, "epoch-bb"));
     const missing: Yield = harnessTrial(root);

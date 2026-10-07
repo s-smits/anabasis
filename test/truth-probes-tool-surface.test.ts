@@ -6,7 +6,7 @@
  */
 import { afterAll, describe, expect, it } from "bun:test";
 import { closeOneAtATime } from "../src/solve/built-starter.ts";
-import { WRITER_BINDING_SENTENCE } from "../src/solve/published-margin.ts";
+import { writerBindingSentence } from "../src/solve/published-margin.ts";
 import {
   terminationFindings,
   toolDescriptionParityFindings,
@@ -55,28 +55,33 @@ describe("the served tool surface", () => {
     }
   });
 
-  it("reads the host's own sentence on a bound artifact-writer as the host's, not as drift", () => {
-    // The host replaces a bound artifact-writer's parameters and execution, and says so in the
-    // served text. The spec was written against neither and cannot declare it, so comparing the
-    // whole served string would refuse every candidate that ships an artifact-writer.
-    const spec = { tools: [{ name: "w", description: "write the answer" }] };
-    const served = (description: string) => [{ name: "w", description }];
-    expect(
-      toolDescriptionParityFindings(
-        /* SAFETY: the parity reader uses each tool's name and description, which is what these two fixtures carry. */ spec as never,
-        /* SAFETY: as above. */ served(`write the answer ${WRITER_BINDING_SENTENCE}`) as never,
-      ),
-    ).toEqual([]);
-    // Only the appended sentence is the host's. Drift underneath it is still drift, and the
-    // finding quotes the authored text rather than the host's paragraph.
-    const drifted = toolDescriptionParityFindings(
-      /* SAFETY: as above. */ spec as never,
-      /* SAFETY: as above. */ served(`write half the answer ${WRITER_BINDING_SENTENCE}`) as never,
-    );
-    expect(drifted).toHaveLength(1);
-    expect(drifted[0]?.detail).toContain('serves the description "write half the answer"');
-    expect(drifted[0]?.detail).not.toContain("The host binds this tool");
-  });
+  it.each(["answer-and-limits", "answer"] as const)(
+    "reads the host's own sentence on a bound artifact-writer as the host's, not as drift (%s)",
+    (says) => {
+      // The host replaces a bound artifact-writer's parameters and execution, and says so in the
+      // served text. The spec was written against neither and cannot declare it, so comparing the
+      // whole served string would refuse every candidate that ships an artifact-writer. The sentence
+      // names the margin table only on a battery that publishes a limit, and either form is the host's.
+      const host = writerBindingSentence(says);
+      const spec = { tools: [{ name: "w", description: "write the answer" }] };
+      const served = (description: string) => [{ name: "w", description }];
+      expect(
+        toolDescriptionParityFindings(
+          /* SAFETY: the parity reader uses each tool's name and description, which is what these two fixtures carry. */ spec as never,
+          /* SAFETY: as above. */ served(`write the answer ${host}`) as never,
+        ),
+      ).toEqual([]);
+      // Only the appended sentence is the host's. Drift underneath it is still drift, and the
+      // finding quotes the authored text rather than the host's paragraph.
+      const drifted = toolDescriptionParityFindings(
+        /* SAFETY: as above. */ spec as never,
+        /* SAFETY: as above. */ served(`write half the answer ${host}`) as never,
+      );
+      expect(drifted).toHaveLength(1);
+      expect(drifted[0]?.detail).toContain('serves the description "write half the answer"');
+      expect(drifted[0]?.detail).not.toContain("The host binds this tool");
+    },
+  );
 
   it.concurrent("carries an excerpt of a long served description rather than the whole text", async () => {
     // A generated tool description may run to thousands of characters, and the author already

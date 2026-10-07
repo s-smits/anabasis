@@ -20,11 +20,10 @@ import {
   ensureBuilderCommandGuard,
   inspectBuilderCommandGuard,
   refuseDestructiveCommand,
-  privateScratchRedirect,
   workspaceResidual,
 } from "../src/builder/command-guard.ts";
 import { BUILT_SHELL_RULES, DCG_RULES, acceptedSpelling } from "../src/solve/dcg-rules.ts";
-import { SAFEGUARDS_LOG_FILE, createSafeguardContext } from "../src/meta/safeguard.ts";
+import { SAFEGUARDS_LOG_FILE } from "../src/meta/safeguard.ts";
 const LOCAL = ".local";
 
 const dirs: string[] = [];
@@ -170,7 +169,6 @@ EOF`,
       // A relative target expanding a plain variable stays in the workspace, as a relative remove does.
       `for i in 0 1; do python3 opt.py "${v("i")}" > "scratch/opt-${v("i")}.log" 2>&1 & done; wait`,
     ]) {
-      expect(privateScratchRedirect(allowed)).toBe(true);
       expect(workspaceAllows(allowed, redirect)).toBe(true);
     }
     for (const refused of [
@@ -458,28 +456,16 @@ EOF`,
 });
 
 describe("the fullrun dcg presence check", () => {
-  it.concurrent("names an existing protocol-compatible guard with its version and digest", () => {
+  it.concurrent("names an existing protocol-compatible guard", () => {
     const bin = fakeGuard("dcg");
     const result = ensureBuilderCommandGuard({ PATH: bin, HOME: temp("ana-home-") });
-    expect(result).toEqual({
-      state: "existing",
-      path: join(bin, "dcg"),
-      dcgVersion: "9.9.9",
-      binarySha256: expect.stringMatching(/^[0-9a-f]{64}$/),
-      skippedReason: null,
-    });
+    expect(result).toEqual({ state: "existing", path: join(bin, "dcg"), skippedReason: null });
   });
 
   it.concurrent("reports a host with no guard as not installed and installs nothing", () => {
     const home = temp("ana-home-");
     const result = ensureBuilderCommandGuard({ PATH: temp("ana-empty-"), HOME: home });
-    expect(result).toEqual({
-      state: "skipped",
-      path: null,
-      dcgVersion: null,
-      binarySha256: null,
-      skippedReason: "not-installed",
-    });
+    expect(result).toEqual({ state: "skipped", path: null, skippedReason: "not-installed" });
     expect(existsSync(join(home, LOCAL))).toBe(false);
   });
 
@@ -534,7 +520,7 @@ printf '%s' '{"hookSpecificOutput":{"permissionDecision":"deny","permissionDecis
     );
     const logDir = temp("ana-safeguards-");
     const env = { PATH: bin, HOME: temp("ana-home-") };
-    expect(refuseDestructiveCommand(DESTRUCTIVE_SAMPLE, env, createSafeguardContext(logDir))).toBeNull();
+    expect(refuseDestructiveCommand(DESTRUCTIVE_SAMPLE, env, { logDir })).toBeNull();
     const log = readFileSync(join(logDir, SAFEGUARDS_LOG_FILE), "utf8");
     expect(log).toContain(
       `| 32-command-guard-unanswered | 1 installed guard(s) answered nothing about a "rm" command, which then ran unguarded: ${guard}`,
@@ -543,7 +529,7 @@ printf '%s' '{"hookSpecificOutput":{"permissionDecision":"deny","permissionDecis
     const answering = temp("ana-guard-");
     writeFakeGuard(join(answering, "dcg"), "answering");
     const quiet = temp("ana-safeguards-");
-    const context = createSafeguardContext(quiet);
+    const context = { logDir: quiet };
     expect(refuseDestructiveCommand("ls -la", { PATH: answering, HOME: env.HOME }, context)).toBeNull();
     expect(
       refuseDestructiveCommand(DESTRUCTIVE_SAMPLE, { PATH: answering, HOME: env.HOME }, context),

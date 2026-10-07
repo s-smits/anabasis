@@ -52,16 +52,10 @@ function measured(admitted: number, excluded = 0): ClimbReadout {
 
 describe("a measured round", () => {
   it("leaves the round to the Builder however many rounds have been measured", () => {
-    expect(decideNextMove("adopted", [], measured(3))).toMatchObject({ move: "rebuild", seed: "adopted" });
+    expect(decideNextMove("adopted", [], measured(3))).toMatchObject({ move: "rebuild" });
     expect(decideNextMove("adopted", [], measured(1, 2)).move).toBe("rebuild");
     // Refusals with no placement still count as an observed round: a rebuild, not a first measurement.
     expect(decideNextMove("adopted", [], measured(0, 5)).move).toBe("rebuild");
-  });
-
-  it("stops on a blocking environment row", () => {
-    const blocked = decideNextMove("adopted", rows("blocking", "environment"), measured(3));
-    expect(blocked.move).toBe("stop");
-    expect(blocked.reason).toContain("environment outside the product");
   });
 });
 
@@ -70,12 +64,14 @@ describe("the reopen route", () => {
     "reopens the adopted product on blocking %s feedback and names the owner",
     (owner) => {
       const move = decideNextMove("adopted", rows("blocking", owner));
-      expect(move).toMatchObject({ move: "rebuild", seed: "adopted" });
+      expect(move).toMatchObject({ move: "rebuild" });
       expect(move.reason).toContain(owner);
     },
   );
 
   it("stops only on blocking environment feedback, and builds when nothing is adopted", () => {
+    const blocked = decideNextMove("adopted", rows("blocking", "environment"), measured(3));
+    expect(blocked).toMatchObject({ move: "stop", reason: expect.stringContaining("outside the product") });
     expect(
       decideNextMove("adopted", rows("blocking", "environment", "correctness-model/tasks.json")).move,
     ).toBe("stop");
@@ -88,9 +84,10 @@ describe("the reopen route", () => {
 describe("a battery the environment cut short", () => {
   const remeasure = { of: "r1", taskIds: ["t4", "t5"] };
 
-  it("is measured again in place of a rebuild, carrying the cases it solves again", () => {
+  it("is measured again in place of a rebuild, naming the cases it solves again", () => {
     const move = decideNextMove("adopted", rows("advisory", "environment"), measured(1), false, remeasure);
-    expect(move).toMatchObject({ move: "measure", remeasure });
+    expect(move.move).toBe("measure");
+    expect(move.reason).toContain("2 case(s) of battery r1 ended in environment-owned non-results");
     expect(move.reason).toContain("rerun them without changing the harness");
   });
 
@@ -165,7 +162,6 @@ function writeBlockingTests(root: string, runId: string): void {
 
 const selectAs = (
   root: string,
-  runId: string,
   domainDir = join(root, "domains", SLUG),
   kickoff = "design a steel truss bridge",
 ) =>
@@ -174,7 +170,6 @@ const selectAs = (
     manifest: { slug: SLUG, domain: SLUG, expectedTasks: BATTERY_SIZE.default },
     baseKickoff: kickoff,
     runPin: pinOf(root),
-    runId,
     domainDir,
     builder: { kind: "claude", model: "test-model", reasoningEffort: "medium" },
     built: { reasoningEffort: "medium" },
@@ -184,17 +179,17 @@ describe("the next move on disk", () => {
   it("keeps the reopen key across a moved checkout and changes it for another retained version", () => {
     const root = scratchRepo();
     writeBlockingTests(root, "base");
-    const first = selectAs(root, "round-1");
-    expect(first.decision).toMatchObject({ move: "rebuild", seed: "adopted" });
+    const first = selectAs(root);
+    expect(first.decision).toMatchObject({ move: "rebuild" });
     expect(first.decision.reopenKey).toMatch(/^experiment:[a-f0-9]{64}$/);
     // The kickoff stays the operator's one line: no curriculum rides on it.
     expect(first.kickoff).toBe("design a steel truss bridge");
     const moved = scratchRepo();
     cpSync(root, moved, { recursive: true });
-    expect(selectAs(moved, "round-2").decision.reopenKey).toBe(first.decision.reopenKey);
+    expect(selectAs(moved).decision.reopenKey).toBe(first.decision.reopenKey);
     const version = join(moved, "campaigns", SLUG, "products", "new-version");
     cpSync(join(moved, "domains", SLUG), version, { recursive: true });
-    expect(selectAs(moved, "round-3", version).decision.reopenKey).not.toBe(first.decision.reopenKey);
+    expect(selectAs(moved, version).decision.reopenKey).not.toBe(first.decision.reopenKey);
   });
 
   it("leaves saturated batteries to the Builder however many have landed", () => {
@@ -202,8 +197,8 @@ describe("the next move on disk", () => {
     for (let i = 1; i <= 3; i += 1) {
       sealSaturatedBattery(root, `saturated-${String(i)}`, `2026-08-10T0${String(i)}:00:00Z`);
     }
-    const open = selectAs(root, "round-1").decision;
-    expect(open).toMatchObject({ move: "rebuild", seed: "adopted" });
+    const open = selectAs(root).decision;
+    expect(open).toMatchObject({ move: "rebuild" });
     expect(open.reason).toContain("Builder");
   });
 
@@ -214,7 +209,7 @@ describe("the next move on disk", () => {
     const root = scratchRepo();
     writeBlockingTests(root, "base");
     sealSaturatedBattery(root, "saturated-1", "2026-08-10T01:00:00Z");
-    const selected = selectAs(root, "round-1");
+    const selected = selectAs(root);
     const recorded = JSON.stringify(selected.readout);
     const sentences = renderReadout(selected.readout, "reason")
       .split("\n\n")
@@ -222,7 +217,7 @@ describe("the next move on disk", () => {
       .filter((part) => !part.startsWith("|"));
     expect(sentences.length).toBeGreaterThan(2);
     for (const sentence of sentences) expect(recorded).not.toContain(sentence);
-    const other = selectAs(root, "round-2", join(root, "domains", SLUG), "design a timber roof truss");
+    const other = selectAs(root, join(root, "domains", SLUG), "design a timber roof truss");
     expect(other.decision.reopenKey).toBe(selected.decision.reopenKey);
   });
 });

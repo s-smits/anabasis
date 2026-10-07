@@ -76,6 +76,8 @@ interface ReplayRow {
   rationale: string | null;
   error: string | null;
   errorKind: string | null;
+  /** 2 when the first turn recorded nothing and the follow-up was asked. */
+  turns: number;
 }
 
 /** The review slot `--repo` resolves, opened at `--repo`. The session's root is only where its
@@ -119,6 +121,7 @@ function replayRow(
     rationale: evidence.rationale,
     error: evidence.error,
     errorKind: evidence.errorKind ?? null,
+    turns: evidence.turns,
   };
 }
 

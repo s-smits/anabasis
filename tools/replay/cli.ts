@@ -48,11 +48,11 @@ import { type Brief, externalChecksOf } from "../../src/correctness-bundle/brief
 import { validateBrief } from "../../src/correctness-bundle/brief-validator.ts";
 import { loadCorrectnessModel } from "../../src/correctness-bundle/contracts.ts";
 import { type GradeCaseDeps, gradeCase } from "../../src/correctness-bundle/solve-case.ts";
-import { evaluateCheckProgram } from "../../src/correctness-bundle/predicate.ts";
+import { evaluateCheckProgram } from "../../vendor/correctness-model-bundle/evaluate.ts";
 import { applicableCheckIds } from "../../src/correctness-bundle/run-controls.ts";
 import { commitPublicTask } from "../../src/correctness-bundle/task-split.ts";
 import { type BuildTask, type TaskBattery, validateTasks } from "../../src/correctness-bundle/tasks.ts";
-import { blockingFailedCheckIds, publicTaskVerdict } from "../../src/correctness-bundle/verdict-binding.ts";
+import { publicTaskVerdict } from "../../src/correctness-bundle/verdict-binding.ts";
 import { resolveVerifier } from "../../src/correctness-bundle/verification-registry.ts";
 import type { CheckRun, CorrectnessModelResult } from "../../src/verify/correctness-model-result.ts";
 import { SOURCE_IDENTITY } from "../../src/run/source-identity.ts";
@@ -199,16 +199,6 @@ function recordedJson<T>(runDir: string, rel: string, violations: ReturnType<typ
   return read.ok ? parseJsonAs<T>(read.bytes) : null;
 }
 
-function recordedSide(row: CaseRecord, verdict: CorrectnessModelResult | null): VerdictSide {
-  return {
-    truthOk: row.truthOk,
-    pass: row.pass,
-    nonResultKind: row.runtimeNonResultKind,
-    nonResult: row.runtimeNonResult,
-    failedCheckIds: verdict === null ? [] : [...blockingFailedCheckIds(verdict)].sort(),
-  };
-}
-
 export function recordedCases(recorded: RecordedCandidate): RecordedCases {
   const violations = verifyRunDir(recorded.runDir);
   const sides = new Map<string, VerdictSide>();
@@ -230,13 +220,14 @@ export function recordedCases(recorded: RecordedCandidate): RecordedCases {
       skippedUnaccepted.push(row.taskId);
       continue;
     }
-    sides.set(
+    // The recorded side is read through the projection the replayed side is read through, with its
+    // fields in the order a replay report has always printed them.
+    const { truthOk, pass, nonResultKind, failedCheckIds } = publicTaskVerdict(
       row.taskId,
-      recordedSide(
-        row,
-        recordedJson<CorrectnessModelResult>(recorded.runDir, `${prefix}/verifier.json`, violations),
-      ),
+      row,
+      recordedJson<CorrectnessModelResult>(recorded.runDir, `${prefix}/verifier.json`, violations),
     );
+    sides.set(row.taskId, { truthOk, pass, nonResultKind, nonResult: row.runtimeNonResult, failedCheckIds });
     cases.push({ taskId: row.taskId, publicTaskDigest: publicTask.publicTaskDigest, finalSubmission });
   }
   return { sides, cases, skippedUnaccepted };

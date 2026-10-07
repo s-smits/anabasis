@@ -103,7 +103,10 @@ directory.
 
 ## Files
 
-- `scripts/precision.mts`: replay, sample, ingest, score.
+- `scripts/precision.mts`: replay, sample, ingest, score, pass.
+- `passes/pr120.tsv`: every surface PR #120's simplification removed or kept on purpose, at its
+  base `0b3e5927`. Replay a candidate rule at that revision and run `pass --sites <replay>
+  --pass passes/pr120.tsv`: the kept column must read 0, and the removed column is recall.
 - `scripts/usage.mts`: census readings and not-slop answers from every transcript.
 - `references/judge.md`: the judge instruction.
 - `labels.tsv`: every judged site (`id kind verdict source reason`), appended, never rewritten.

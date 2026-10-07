@@ -2,7 +2,8 @@
 
 The candidate is eight files: `correctness-model/brief.json`, `tasks.json`, `controls.json`,
 `evaluator.ts` and `reference/index.ts`, and `agent/tools-spec.json`, `tools.ts` and
-`BUILT_AGENTS.md`. Helper modules may sit beside them. Exact shapes are in
+`BUILT_AGENTS.md`. Helper modules may sit beside them, and excerpts of the sources a rule rests on
+in `correctness-model/sources/`. Exact shapes are in
 [`starter-pack/contract.md`](starter-pack/contract.md);
 [`starter-pack/examples.md`](starter-pack/examples.md) holds optional worked examples whose
 domain and method are not requirements. Presets are in `starter-pack/add-ons.json`.

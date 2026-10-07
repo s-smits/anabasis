@@ -2,12 +2,12 @@ import { mkdirSync, readFileSync, writeFileSync } from "../src/meta/filesystem.t
 import { join } from "../src/meta/path.ts";
 import { afterAll, describe, expect, it } from "bun:test";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
-import { fingerprintSlug } from "../src/claim/fingerprint.ts";
 import { campaignDir } from "../src/meta/campaign-root.ts";
-import { bindProductMeasurement, publishProductVersion } from "../src/run/product-versions.ts";
+import { bindProductMeasurement } from "../src/run/product-versions.ts";
 import type { CaseRecordRow } from "../src/claim/case-record.ts";
 import type { NonResultKind } from "../src/claim/record-events.ts";
-import { caseRecordRow } from "./helpers/case-record-row.ts";
+import { caseRecordRow, writeCaseRecord } from "./helpers/case-record-row.ts";
+import { publishProduct } from "./helpers/digest-battery.ts";
 import {
   type WallBattery as Battery,
   type WallsReport as Report,
@@ -71,15 +71,12 @@ afterAll(cleanupScratch);
 /** A retained product version published the way the controller publishes one, carrying `config`
  *  as its agent/config.yaml, and returned as the directory a battery measuring it runs under. */
 function publish(root: string, id: string, config: string): string {
-  const snapshot = join(root, "accepted", id);
-  mkdirSync(join(snapshot, "agent"), { recursive: true });
-  mkdirSync(join(snapshot, "correctness-model"));
-  writeFileSync(join(snapshot, "agent", "config.yaml"), config);
-  writeFileSync(join(snapshot, "correctness-model", "evaluator.ts"), "export const rule = 1;\n");
-  writeFileSync(join(snapshot, "correctness-model", "tasks.json"), JSON.stringify([id]));
-  const fingerprint = fingerprintSlug(snapshot, { slug: SLUG });
-  if (!fingerprint.ok) throw new Error(JSON.stringify(fingerprint.findings));
-  return publishProductVersion({ repoRoot: root, slug: SLUG, id, acceptedSnapshot: snapshot, fingerprint });
+  const source = { repoRoot: root, slug: SLUG, id, acceptedSnapshot: join(root, "accepted", id) };
+  return publishProduct(source, {
+    "agent/config.yaml": config,
+    "correctness-model/evaluator.ts": "export const rule = 1;\n",
+    "correctness-model/tasks.json": JSON.stringify([id]),
+  });
 }
 
 /** One campaign holding each battery's measured product, its case rows and the per-case results. A
@@ -91,8 +88,7 @@ function campaign(
   const dir = campaignDir(root, SLUG);
   mkdirSync(dir, { recursive: true });
   const products = new Map<string, string>();
-  const lines: string[] = [];
-  let seq = 0;
+  const rows: CaseRecordRow[] = [];
   for (const battery of batteries) {
     const productId = battery.product ?? battery.runId;
     if (battery.config !== null && !products.has(productId)) {
@@ -102,19 +98,10 @@ function campaign(
     if (product !== undefined) bindProductMeasurement(root, SLUG, battery.runId, product);
     const runRoot = product ?? dir;
     for (const spec of battery.cases) {
-      const start = Date.parse("2026-09-19T10:00:00.000Z");
-      const end = start + spec.minutes * 60_000 + (spec.seconds ?? 0) * 1000;
-      seq += 1;
-      lines.push(
-        JSON.stringify({
-          seq,
-          row: {
-            ...caseRecordRow(spec.taskId, "one", { runId: battery.runId, ...verdictOf(spec) }),
-            solverStartedAt: new Date(start).toISOString(),
-            solverEndedAt: new Date(end).toISOString(),
-          },
-        }),
-      );
+      const solverStartedAt = "2026-09-19T10:00:00.000Z";
+      const end = Date.parse(solverStartedAt) + spec.minutes * 60_000 + (spec.seconds ?? 0) * 1000;
+      const at = { solverStartedAt, solverEndedAt: new Date(end).toISOString() };
+      rows.push(caseRecordRow(spec.taskId, "one", { runId: battery.runId, ...verdictOf(spec), ...at }));
       if (spec.turns !== null) {
         const caseDir = join(runRoot, "runs", battery.runId, "cases", spec.taskId);
         mkdirSync(caseDir, { recursive: true });
@@ -127,7 +114,7 @@ function campaign(
       }
     }
   }
-  writeFileSync(join(dir, "case-record.jsonl"), lines.join("\n") + "\n");
+  writeCaseRecord(dir, rows);
   return dir;
 }
 

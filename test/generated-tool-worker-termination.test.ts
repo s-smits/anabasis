@@ -18,7 +18,7 @@
 //   limit from a reported failure.
 
 import { describe, expect, it } from "bun:test";
-import { ENVIRONMENT_OWNED_NONRESULT_KINDS } from "../src/claim/record-events.ts";
+import { isEnvironmentOwnedNonResult } from "../src/claim/record-events.ts";
 import {
   closeRefusal,
   exitOwner,
@@ -111,7 +111,7 @@ describe("a startup the host gave up waiting for", () => {
   it("blames the host while the walls were still going up", () => {
     const cause = readyTimeoutCause("pending", 30_000);
     expect(cause).toMatchObject({ kind: "runtime", deadline: true });
-    expect(ENVIRONMENT_OWNED_NONRESULT_KINDS.has(cause.kind)).toBe(true);
+    expect(isEnvironmentOwnedNonResult(cause.kind)).toBe(true);
     expect(cause.message).toContain("before its ready handshake");
   });
 
@@ -120,7 +120,7 @@ describe("a startup the host gave up waiting for", () => {
     // The battery charges the case to the author, as F2 does, rather than letting it count
     // towards an environment-blocked battery.
     expect(cause.kind).toBe("protocol");
-    expect(ENVIRONMENT_OWNED_NONRESULT_KINDS.has(cause.kind)).toBe(false);
+    expect(isEnvironmentOwnedNonResult(cause.kind)).toBe(false);
     expect(cause.message).toContain("loading the candidate harness");
     expect(cause.message).toContain("30000ms");
   });
@@ -142,7 +142,7 @@ describe("a request the host gave up waiting for", () => {
       deadline: true,
     });
     // The battery still charges a candidate's slow reply to the author.
-    expect(ENVIRONMENT_OWNED_NONRESULT_KINDS.has(requestTimeoutCause(30_000, "candidate").kind)).toBe(false);
+    expect(isEnvironmentOwnedNonResult(requestTimeoutCause(30_000, "candidate").kind)).toBe(false);
   });
 
   it("gives a trusted request's lost wait to the environment, as a startup before its walls", () => {
@@ -153,7 +153,7 @@ describe("a request the host gave up waiting for", () => {
       message: "generated-tool worker request timed out after 120000ms",
       deadline: true,
     });
-    expect(ENVIRONMENT_OWNED_NONRESULT_KINDS.has(cause.kind)).toBe(true);
+    expect(isEnvironmentOwnedNonResult(cause.kind)).toBe(true);
   });
 
   it("leaves a close with a request still in flight unmarked, since that is the worker's own break", () => {

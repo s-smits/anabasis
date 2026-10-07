@@ -106,19 +106,15 @@ let promoteSeq = 0;
  * Copy the current slug tree into its snapshot. Refuse drift, a copy that fails verification, or
  * a competing copy with different bytes; a concurrent identical snapshot is verified and reused.
  */
-export function createBundleSnapshot(
-  slugDir: string,
-  fingerprint: FingerprintEvidence,
-  storageRoot = slugDir,
-): BundleSnapshot {
+export function createBundleSnapshot(slugDir: string, fingerprint: FingerprintEvidence): BundleSnapshot {
   verifyTree(slugDir, fingerprint, "slug tree (promote source)");
-  const target = bundleSnapshotDirOf(storageRoot, fingerprint);
+  const target = bundleSnapshotDirOf(slugDir, fingerprint);
   if (existsSync(target)) {
     verifyTree(target, fingerprint, "existing bundle snapshot");
     return evidenceOf(fingerprint, target);
   }
   promoteSeq += 1;
-  const tmp = join(storageRoot, BUNDLE_SNAPSHOT_DIRECTORY, `.tmp-${runtimeProcess.pid}-${promoteSeq}`);
+  const tmp = join(slugDir, BUNDLE_SNAPSHOT_DIRECTORY, `.tmp-${runtimeProcess.pid}-${promoteSeq}`);
   rmSync(tmp, { recursive: true, force: true });
   mkdirSync(tmp, { recursive: true });
   try {

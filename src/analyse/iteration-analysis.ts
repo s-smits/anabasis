@@ -21,8 +21,7 @@ import { isAbsolute, join, relative } from "../meta/path.ts";
 import type { CampaignFeedback, FeedbackOwner } from "../author/campaign-types.ts";
 import type { BundleFile } from "../author/feedback-routing.ts";
 import { authorSessionOwner, findingSeverity } from "./finding-owner.ts";
-import { ENVIRONMENT_OWNED_NONRESULT_KINDS } from "../claim/record-events.ts";
-import { checkerUnboundFinding } from "./checker-unbound.ts";
+import { isEnvironmentOwnedNonResult } from "../claim/record-events.ts";
 import {
   CASE_RECORD_FILE,
   type CaseVerdict,
@@ -34,9 +33,11 @@ import {
 } from "../claim/case-record.ts";
 import { hashJsonBytes, parseJsonAs } from "../meta/json-runtime.ts";
 import { claimsDirFor, executedBundleSnapshotFact } from "../run/claim-write.ts";
-import { type RunSummary, assertRunIdSafe, summarizeRun } from "../run/run-driver.ts";
+import { type RunSummary, summarizeRun } from "../run/run-driver.ts";
+import { assertPathSegment } from "../meta/path-segment.ts";
 import { controllerValidatedFindings } from "../correctness-bundle/brief.ts";
 import { type BundleSnapshotFact, batteryPath } from "../correctness-bundle/battery-record.ts";
+import { EVALUATOR_FILE } from "../meta/bundle-layout.ts";
 import { isNumber, isRecord, isString } from "../meta/json-shape.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 
@@ -356,7 +357,7 @@ export function deriveIterationAnalysis(
   runId: string,
   measuredDir = selectedProductDir(repoRoot, slug),
 ): IterationAnalysis {
-  assertRunIdSafe(runId);
+  assertPathSegment("runId", runId);
   const treeRoot = relative(repoRoot, measuredDir);
   if (treeRoot === "" || treeRoot.startsWith("..") || isAbsolute(treeRoot)) {
     throw new Error(`${measuredDir}: measured tree must stay inside the repository`);
@@ -418,12 +419,11 @@ export function hostFindings(repoRoot: string, analysis: IterationAnalysis): Ana
   // Only a kind that can establish an environment failure earns "rerun unchanged". A `verifier`
   // non-result — an external check that ran no tool at all — is the harness's own defect, so
   // counting it here would tell the Builder to rerun unchanged around a defect it owns.
-  const nonResults = analysis.cases.filter(
-    (row) =>
-      row.runtimeNonResultKind !== null && ENVIRONMENT_OWNED_NONRESULT_KINDS.has(row.runtimeNonResultKind),
+  const nonResults = analysis.cases.filter((row) =>
+    isEnvironmentOwnedNonResult(row.runtimeNonResultKind),
   ).length;
   // Settled beside the environment restatement, so a non-result the Builder's own check caused is
-  // routed to that owner instead of being read as an environment fact (checker-unbound.ts).
+  // routed to that owner instead of being read as an environment fact (checkerUnboundFinding).
   const checkerOutage = checkerUnboundFinding(repoRoot, analysis);
   if (nonResults > 0) {
     findings.push({
@@ -444,6 +444,32 @@ export function hostFindings(repoRoot: string, analysis: IterationAnalysis): Ana
   // had not chosen, and restated in a fifth dialect what the packet already says four other ways.
   // The climb readout owns the sentence "this battery found no limit".
   return findings;
+}
+
+/** A checker outage the Builder owns: EXTERNAL_RESULT_UNBOUND rows recorded in the measured
+ *  battery. The row says a check reported an externally grounded verdict that no host tool run
+ *  supports — the check never called `runtime.tools.run`, or it read a non-result as an answer.
+ *  Since the host resolves every tool itself there is no declared registry left to blame, which is
+ *  what makes the check code the owner. Without this row a checker whose own compiles exceed its
+ *  timeout blocks the claim and reads as an environment failure with no owner, so the one
+ *  repairable thing in it never reaches an author session. The routed claim carries public
+ *  identities and counts only; task ids and process facts stay in the battery. */
+function checkerUnboundFinding(repoRoot: string, analysis: IterationAnalysis): AnalysisFinding | null {
+  const path = batteryPath(join(repoRoot, analysis.treeRoot), analysis.battery.runId);
+  const parsed = parseJsonAs<{ discrimination?: { findings?: Array<{ code?: unknown }> } }>(
+    existsSync(path) ? readFileSync(path, "utf8") : "{}",
+  );
+  const unbound = (parsed.discrimination?.findings ?? []).filter(
+    (row) => row.code === "EXTERNAL_RESULT_UNBOUND",
+  ).length;
+  if (unbound === 0) return null;
+  return {
+    owner: EVALUATOR_FILE,
+    defect: true,
+    claim: `run ${analysis.battery.runId} recorded ${unbound} unbound-external-result finding(s): a check reported an external verdict that no host tool run supports, so this battery supports no claim. Repair the check — call the declared tool through runtime.tools.run and return a non-result when the run did not complete — instead of waiting for an environment fix`,
+    evidence: relative(repoRoot, path),
+    hostRule: "external-result-unbound",
+  };
 }
 
 /** A routed finding's subject, and how many consecutive batteries have admitted one on the same

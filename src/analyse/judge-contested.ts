@@ -8,10 +8,7 @@
  * materiality threshold can be found only by opening every judge evidence file by hand. The count
  * of these rows is what the Judge exit in judge-reviews.ts reads.
  */
-import { join } from "../meta/path.ts";
 import { type JudgeCaseKind, type JudgeSubjectEvidence, judgeCaseKind } from "../review/judge.ts";
-import type { JsonValue } from "../meta/json-shape.ts";
-import { readJsonFile } from "../meta/completed-json.ts";
 
 /** The ways a Judge answer can contradict the verifier: every `JudgeCaseKind` but agreement. */
 export type ContestedKind = Exclude<JudgeCaseKind, "agree">;
@@ -51,13 +48,6 @@ export interface ContestedSubject {
   artifactPath: string | null;
   /** The check ids the verifier recorded as failing; empty for a pass and for records without receipts. */
   failedCheckIds: string[];
-}
-
-/** Reads one repo-root-relative evidence file. It lives here rather than in judge-reviews.ts
- *  because the import already points this way; judge-reviews.ts imports it back for its own
- *  subject reads. */
-export function readJson(repoRoot: string, rel: string): JsonValue {
-  return readJsonFile(join(repoRoot, rel));
 }
 
 /** Whether the Epoch Reviewer must settle a row. A veto is settled against the rule the Judge cited.

@@ -114,11 +114,6 @@ export const BUILDER_PRIVATE_KEY_DENY_GLOB_STEMS: readonly string[] = [
 export const CANDIDATE_ISOLATION_GUARD_ID = "candidate-isolation/guardPath@v1";
 export const CANDIDATE_ISOLATION_SCHEMA = "candidate-isolation/v1" as const;
 
-/** The host scratch roots an authoring session may write: the OS temp trees. Re-exported under the
- *  isolation's own name so a reader of this policy need not know the list is kept beside the
- *  solve-side wall policy; both walls reach it through `scratchWriteRoots` below, so there is one
- *  list and not a Darwin copy and a Linux copy. */
-export { BUILDER_SCRATCH_ROOTS as HOST_SCRATCH_ROOTS } from "../verify/wall-policy.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { CONFORMANCE_FILE } from "../claim/conformance-evidence.ts";
 import { CODEX_AUTH_FILE } from "../backends/login-state.ts";
@@ -471,7 +466,10 @@ export function deriveCandidateIsolation(
         ...["package.json", "bun.lock", ".bun-version", "biome.json"].map((file) =>
           lit(repo(file), "toolchain"),
         ),
-        ...["README.md", "AGENTS.md"].map((file) => lit(repo(file), "docs")),
+        // The README is the public description of what a harness is for. AGENTS.md is not granted:
+        // it is the operator's and the repository agents' doctrine, with measured outcomes and the
+        // reasons behind each prompt, and the Builder's own guide is STARTER.md under `starters`.
+        lit(repo("README.md"), "docs"),
       ]
     : workshop;
   const write = author ? [sub(iterationDir, "iteration-write")] : workshop;

@@ -9,7 +9,7 @@ import { VERIFIER_EXECUTION_NON_RESULT_KINDS } from "../verify/correctness-model
 
 /** Every kind a case can be a non-result of: the four the case layer decides, then the verifier's
  *  own seven, taken from the array that already calls itself their single spelling. */
-export const NON_RESULT_KINDS = [
+const NON_RESULT_KINDS = [
   "solver",
   "runtime",
   "verifier-throw",
@@ -31,10 +31,10 @@ export type NonResultKind = (typeof NON_RESULT_KINDS)[number];
  * Excluded kinds need different handling. `verifier-throw` indicates an evaluator defect and
  * is handled by suspect-correctness-model; `verifier` has no attributed cause. A `crash` or
  * `protocol` error alone cannot establish environment ownership and may expose a checker
- * defect. Consumers use this set with the required evidence to classify a fully blocked
- * battery without treating unmeasured cases as a capability result.
+ * defect. Consumers ask `isEnvironmentOwnedNonResult` with the required evidence beside it to
+ * classify a fully blocked battery without treating unmeasured cases as a capability result.
  */
-export const ENVIRONMENT_OWNED_NONRESULT_KINDS: ReadonlySet<NonResultKind> = new Set([
+const ENVIRONMENT_OWNED_NONRESULT_KINDS: ReadonlySet<NonResultKind> = new Set([
   "solver",
   "runtime",
   "provider",
@@ -55,4 +55,10 @@ export const ENVIRONMENT_OWNED_NONRESULT_KINDS: ReadonlySet<NonResultKind> = new
 export const PROVIDER_STOPPED_REASON_PREFIX = "provider-stopped:";
 export function isNonResultKind(value: JsonValue | undefined): value is NonResultKind {
   return NON_RESULT_KINDS.some((known) => known === value);
+}
+
+/** Whether a recorded kind, read from saved JSON or already typed, is one the environment may own.
+ *  A string outside the vocabulary and an absent kind are both no. */
+export function isEnvironmentOwnedNonResult(kind: string | null): boolean {
+  return isNonResultKind(kind) && ENVIRONMENT_OWNED_NONRESULT_KINDS.has(kind);
 }

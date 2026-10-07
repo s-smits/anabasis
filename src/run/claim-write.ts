@@ -56,7 +56,8 @@ import {
 } from "../correctness-bundle/verifier-nonresult.ts";
 import { toolNonResultCode } from "../author/tool-non-result.ts";
 import { toolRunFailureDetail } from "./census-gate.ts";
-import { assertRunIdSafe, loadRecordedTasks } from "./run-driver.ts";
+import { loadRecordedTasks } from "./run-driver.ts";
+import { assertPathSegment } from "../meta/path-segment.ts";
 import { sourceStillFrozen } from "./source-identity.ts";
 import { writeLimitMargin } from "./limit-margin.ts";
 import { parseJsonAs, capturedJsonParse, capturedJsonStringify } from "../meta/json-runtime.ts";
@@ -390,7 +391,7 @@ function recordedClaimEvidence(
 
 export async function writeRunClaim(options: WriteRunClaimOptions): Promise<WrittenRunClaim> {
   const { runId, slugDir } = options;
-  assertRunIdSafe(runId);
+  assertPathSegment("runId", runId);
   const battery = readRecordedBatteryRecord(join(slugDir, "runs", runId), runId);
   if (!isRecord(battery.truthCheckFiring)) {
     throw new Error(`${options.slug}/${runId}: recorded battery carries no truthCheckFiring`);

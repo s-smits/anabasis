@@ -24,23 +24,6 @@ import { isNumber, isRecord } from "../meta/json-shape.ts";
 
 export type MarginDirection = "atMost" | "atLeast";
 
-/**
- * What an artifact-writer does, said by the host that does it.
- *
- * The host replaces an exact artifact-writer's parameters and execution: the parameters become the
- * public artifact schema, and the call records the answer and returns the margin table below. The
- * Builder can observe neither, so an authored description can end "It runs no analysis and checks
- * nothing against the published limits" while the bound call returns a table of exactly that. The
- * authored sentence stays, because it says what the tool is for in the domain's own words;
- * this one says what runs. It names no count, so every task in a battery serves the same text and
- * the registration stays stable across families.
- */
-export const WRITER_BINDING_SENTENCE =
-  "The host binds this tool: its parameters are the exact public artifact schema, a call records the " +
-  "answer that would be submitted at the wall, and the result reports each published limit that " +
-  "applies to your task beside the value your answer gives for it. Where the description above says " +
-  "otherwise about what this tool runs or returns, this sentence is what runs.";
-
 /** One published comparison, complete enough to evaluate with no hidden operand. */
 export interface PublishedMargin {
   /** The `designRuleConstants` row naming this limit, which the solver already reads. */
@@ -66,6 +49,31 @@ interface MarginReading {
   /** How far inside its limit the reported value sits. Negative is a breach, null unreadable. */
   slack: number | null;
   breached: boolean;
+}
+
+/**
+ * What an artifact-writer does, said by the host that does it.
+ *
+ * The host replaces an exact artifact-writer's parameters and execution: the parameters become the
+ * public artifact schema, and the call records the answer and, where the battery published a limit,
+ * returns the margin table below. The Builder can observe neither, so an authored description can
+ * end "It runs no analysis and checks nothing against the published limits" while the bound call
+ * returns a table of exactly that. The authored sentence stays, because it says what the tool is for
+ * in the domain's own words; this one says what runs. It names the table only where the battery
+ * declared a complete boundary, since on any other battery a solver reads a promise every result
+ * breaks, and it names no count, so every task in a battery serves the same text and the
+ * registration stays stable across families.
+ */
+export function writerBindingSentence(says: "answer" | "answer-and-limits"): string {
+  const effects =
+    says === "answer-and-limits"
+      ? ", a call records the answer that would be submitted at the wall, and the result reports each " +
+        "published limit that applies to your task beside the value your answer gives for it"
+      : " and a call records the answer that would be submitted at the wall";
+  return (
+    `The host binds this tool: its parameters are the exact public artifact schema${effects}. Where the ` +
+    "description above says otherwise about what this tool runs or returns, this sentence is what runs."
+  );
 }
 
 /** Every comparison that applies to this task's family, read against one prepared answer. */

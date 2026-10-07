@@ -1,0 +1,164 @@
+rev	verdict	path	line	symbol	class	change
+0b3e5927	removed	src/author/builder-session.ts	49	BUILDER_WORKSPACE_CARD	reexport-forward	dropped live re-export; importers repointed to the owner (1 test imports via forwarder, 2 import owner)
+0b3e5927	removed	src/author/builder-session.ts	49	builderSystemPrompt	reexport-forward	dropped dead re-export (0 importers via forwarder)
+0b3e5927	removed	src/author/campaign-epoch.ts	21	readCompleted	reexport-forward	dropped live re-export; importers repointed to the owner (1 prod via, 1 direct)
+0b3e5927	removed	src/author/campaign-epoch.ts	21	writeCompleted	reexport-forward	dropped live re-export; importers repointed to the owner (9 via (8 prod), 9 direct)
+0b3e5927	removed	src/builder/candidate-isolation-runtime.ts	43	PathRecord	reexport-forward	dropped live re-export; importers repointed to the owner (6 via (4 prod), 0 direct)
+0b3e5927	removed	src/builder/candidate-isolation-runtime.ts	43	PathRecordRow	reexport-forward	dropped live re-export; importers repointed to the owner (1 prod via, 0 direct)
+0b3e5927	removed	src/builder/candidate-isolation-runtime.ts	43	openPathRecord	reexport-forward	dropped live re-export; importers repointed to the owner (9 via (1 prod), 0 direct)
+0b3e5927	removed	src/builder/candidate-isolation-runtime.ts	43	readPathRecordRows	reexport-forward	dropped live re-export; importers repointed to the owner (4 via (1 prod), 0 direct)
+0b3e5927	removed	src/builder/tools.ts	33	BUILDER_CAPABILITY_MODES	reexport-forward	dropped dead re-export (0 importers via forwarder)
+0b3e5927	removed	src/correctness-bundle/brief.ts	1	CHECK_PROGRAM_CONTRACT	reexport-forward	dropped dead re-export (0 importers via forwarder)
+0b3e5927	removed	src/correctness-bundle/predicate.ts	8	evaluateCheckProgram	reexport-forward	dropped live re-export; importers repointed to the owner (7 prod via, 10 direct)
+0b3e5927	removed	src/correctness-bundle/predicate.ts	8	CheckProgramEvaluation	reexport-forward	dropped dead re-export (0 importers via forwarder)
+0b3e5927	removed	src/correctness-bundle/predicate.ts	12	resolvePredicatePath	reexport-forward	dropped live re-export; importers repointed to the owner (export-list of an import alias of resolveJsonPath; 2 via (1 prod), 4 direct)
+0b3e5927	removed	src/review/judge.ts	14	Judge	reexport-forward	dropped dead re-export (0 importers via forwarder)
+0b3e5927	removed	src/review/judge.ts	14	JudgeCallContext	reexport-forward	dropped dead re-export (0 importers via forwarder)
+0b3e5927	removed	src/run/controller-evidence.ts	61	Denominator	reexport-forward	dropped dead re-export (0 importers via forwarder)
+0b3e5927	removed	src/run/controller-evidence.ts	63	ContinuationEvidence	reexport-forward	dropped dead re-export (0 importers via forwarder)
+0b3e5927	removed	src/run/controller-evidence.ts	63	latestRecordedContinuation	reexport-forward	dropped dead re-export (0 importers via forwarder)
+0b3e5927	removed	src/run/controller-evidence.ts	63	resolveLaunchRunId	reexport-forward	dropped live re-export; importers repointed to the owner (1 test via, 1 direct)
+0b3e5927	removed	src/run/full-run.ts	39	directKickoff	reexport-forward	dropped dead re-export (0 importers via forwarder)
+0b3e5927	removed	src/run/full-run.ts	40	selectProject	reexport-forward	dropped dead re-export (0 importers via forwarder)
+0b3e5927	removed	src/run/full-run.ts	40	slugForDirectInput	reexport-forward	dropped live re-export; importers repointed to the owner (4 tests via, 2 direct; no production importer anywhere)
+0b3e5927	removed	src/run/full-run.ts	65	FullRunArgs	reexport-forward	dropped live re-export; importers repointed to the owner (1 test via, 6 direct)
+0b3e5927	removed	src/run/full-run.ts	65	parseFullRunArgs	reexport-forward	dropped live re-export; importers repointed to the owner (3 tests via + namespace read in run-condition.mts:528, 3 direct)
+0b3e5927	removed	src/run/full-run.ts	74	readAdmission	reexport-forward	dropped dead re-export (0 importers via forwarder)
+0b3e5927	removed	src/verify/verifier-lifetime.ts	11	settleUnspawned	reexport-forward	dropped live re-export; importers repointed to the owner (1 prod via, 0 direct)
+0b3e5927	removed	src/verify/verifier-lifetime.ts	11	superviseVerifierProcess	reexport-forward	dropped live re-export; importers repointed to the owner (3 prod via, 0 direct (+ generated script text in test/full-run-closure.test.ts:189))
+0b3e5927	removed	tools/outcome/builder-tool-journeys.ts	26	WorkshopJourneyJoin	reexport-forward	dropped dead re-export (0 importers via forwarder)
+0b3e5927	removed	tools/outcome/builder-tools.ts	57	WorkshopActionCensus	reexport-forward	dropped dead re-export (0 importers via forwarder)
+0b3e5927	removed	tools/outcome/builder-tools.ts	58	BuilderFailureCensus	reexport-forward	dropped dead re-export (0 importers via forwarder)
+0b3e5927	removed	tools/outcome/builder-tools.ts	58	BuilderFailureSession	reexport-forward	dropped dead re-export (0 importers via forwarder)
+0b3e5927	removed	src/run/run-driver.ts	142	assertRunIdSafe	forwarding-export	deleted; 3 callers call assertPathSegment("runId", id) directly
+0b3e5927	removed	src/meta/subprocess.ts	146	terminateAndReapProcessGroup	forwarding-export	deleted; callers pass child.pid to terminateAndReapProcessGroupId
+0b3e5927	removed	src/backends/pi-built.ts	108	BUILT_DEFAULT_MAX_TURNS	forwarding-export	deleted alias const (= DEFAULT_HARNESS_SETTINGS.maxTurns); reader spells the owner
+0b3e5927	removed	src/claim/calibration.ts	54	evaluatorIndependence	unread-export	deleted with its module and test
+0b3e5927	removed	src/claim/calibration.ts	23	EvaluatorIndependence	unread-export	deleted with its module
+0b3e5927	removed	src/analyse/judge-contested.ts	59	readJson	unread-export	deleted unread forwarder to readJsonFile(join(...))
+0b3e5927	removed	.claude/skills/whole-run-investigation/scripts/run-overview.ts	235	readOverview	unread-export	deleted test-only export and its test
+0b3e5927	removed	.claude/skills/whole-run-investigation/scripts/run-overview.ts	249	runJsonScript	unread-export	deleted unread export
+0b3e5927	removed	.claude/skills/whole-run-investigation/classifier/prose-input.ts	189	ProseCensus	unread-export	deleted unread type alias
+0b3e5927	removed	.claude/skills/whole-run-investigation/classifier/prose-input.ts	190	SolveCensus	unread-export	deleted unread type alias
+0b3e5927	removed	src/meta/safeguard.ts	141	createSafeguardContext	identity-wrapper	deleted; full-run.ts:154 and 9 test files build { logDir } inline
+0b3e5927	removed	src/author/fresh-candidate-contract.ts	9	freshTaskValidationContext	identity-wrapper	deleted with the fold; candidate-check.ts:236 builds { exactTasks: exactTasks ?? null }
+0b3e5927	removed	src/claim/calibration.ts	0	calibration.ts	module-fold	deleted; EVALUATOR_CALIBRATION_POLICY moved into its one production consumer
+0b3e5927	removed	src/claim/calibration.ts	14	EVALUATOR_CALIBRATION_POLICY	module-fold	moved into src/run/accept-control-independence.ts
+0b3e5927	removed	src/correctness-bundle/data-session.ts	1	DATA_READER_TOOL	module-fold	deleted 1-const module; const moved into built-presets.ts
+0b3e5927	removed	src/correctness-bundle/run-safeguards.ts	8	safeguardRepeatedRefusalCode	module-fold	folded into src/run/builder-campaign.ts
+0b3e5927	removed	src/builder/public-source-tool.ts	12	createPublicSourceTool	module-fold	folded into sibling verifier-workshop-tool.ts that the same reader imports
+0b3e5927	removed	src/analyse/checker-unbound.ts	16	checkerUnboundFinding	module-fold	folded into iteration-analysis.ts
+0b3e5927	removed	src/author/fresh-candidate-contract.ts	42	freshCandidateFindings	module-fold	folded into candidate-check.ts
+0b3e5927	removed	src/backends/oauth/types.ts	1	OAuthPrompt	module-fold	folded into callback-flow.ts
+0b3e5927	removed	src/backends/oauth/types.ts	6	OAuthAuthInfo	module-fold	folded into callback-flow.ts
+0b3e5927	removed	tools/outcome/optional-field.ts	5	isNonNegativeInteger	module-fold	folded into builder-execution-current.ts
+0b3e5927	removed	tools/outcome/optional-field.ts	9	isPositiveInteger	module-fold	folded into builder-execution-current.ts
+0b3e5927	removed	tools/outcome/optional-field.ts	13	optionalString	module-fold	folded into builder-execution-current.ts
+0b3e5927	removed	tools/outcome/optional-field.ts	17	optionalNumber	module-fold	folded into builder-execution-current.ts
+0b3e5927	removed	tools/outcome/optional-field.ts	21	optionalCount	module-fold	folded into builder-execution-current.ts
+0b3e5927	removed	tools/outcome/optional-field.ts	25	optionalPositive	module-fold	folded into builder-execution-current.ts
+0b3e5927	removed	tools/outcome/optional-field.ts	29	optionalBoolean	module-fold	folded into builder-execution-current.ts
+0b3e5927	removed	src/correctness-bundle/tasks.ts	52	TaskValidationContext	narrowed-export	made private after the fold
+0b3e5927	removed	tools/outcome/builder-failed-calls.ts	21	BuilderFailureSession	narrowed-export	made private after the re-export drop
+0b3e5927	removed	src/claim/record-events.ts	12	NON_RESULT_KINDS	narrowed-export	made private behind isEnvironmentOwnedNonResult
+0b3e5927	removed	src/claim/record-events.ts	37	ENVIRONMENT_OWNED_NONRESULT_KINDS	narrowed-export	made private behind isEnvironmentOwnedNonResult
+0b3e5927	removed	src/correctness-bundle/verifier-nonresult.ts	32	ENVIRONMENT_OWNED_TOOL_NON_RESULT_KINDS	narrowed-export	made private
+0b3e5927	removed	src/builder/bash-install-env.ts	34	BASH_TIMEOUT_MAX_MS	narrowed-export	made private when runBuilderBash took over
+0b3e5927	removed	src/builder/bash-install-env.ts	69	bashTimeoutMs	narrowed-export	made private
+0b3e5927	removed	src/builder/bash-install-env.ts	79	bashKilledNotice	narrowed-export	inlined into runBuilderBash
+0b3e5927	removed	src/builder/bash-install-env.ts	102	solverBudgetNotice	narrowed-export	made private
+0b3e5927	removed	src/verify/wall-policy.ts	343	userTempChildTreeRules	narrowed-export	deleted; replaced by userTempRules/canonicalRoots
+0b3e5927	removed	src/analyse/iteration-analysis.ts	423	ENVIRONMENT_OWNED_NONRESULT_KINDS.has(...)	caller-assembly	replaced by isEnvironmentOwnedNonResult (4dab9d54)
+0b3e5927	removed	src/author/rebuild-advice.ts	640	ENVIRONMENT_OWNED_NONRESULT_KINDS.has(...)	caller-assembly	replaced by isEnvironmentOwnedNonResult (4dab9d54)
+0b3e5927	removed	src/claim/battery-facts.ts	71	ENVIRONMENT_OWNED_NONRESULT_KINDS.has(...)	caller-assembly	replaced by isEnvironmentOwnedNonResult (4dab9d54)
+0b3e5927	removed	src/run/battery-reuse.ts	233	ENVIRONMENT_OWNED_NONRESULT_KINDS.has(...)	caller-assembly	replaced by isEnvironmentOwnedNonResult (4dab9d54)
+0b3e5927	removed	src/run/full-run-round.ts	458	ENVIRONMENT_OWNED_NONRESULT_KINDS.has(...)	caller-assembly	replaced by isEnvironmentOwnedNonResult (4dab9d54)
+0b3e5927	removed	tools/outcome/metrics.ts	468	ENVIRONMENT_OWNED_NONRESULT_KINDS.has(...)	caller-assembly	replaced by isEnvironmentOwnedNonResult (4dab9d54)
+0b3e5927	removed	src/correctness-bundle/run-controls.ts	564	[...blockingFailedCheckIds(v)].sort()	caller-assembly	owner now returns a sorted array; callers drop the conversion (4dab9d54)
+0b3e5927	removed	src/correctness-bundle/solvability.ts	165	[...blockingFailedCheckIds(v)].sort()	caller-assembly	owner now returns a sorted array; callers drop the conversion (4dab9d54)
+0b3e5927	removed	src/correctness-bundle/verdict-binding.ts	54	[...blockingFailedCheckIds(v)].sort()	caller-assembly	owner now returns a sorted array; callers drop the conversion (4dab9d54)
+0b3e5927	removed	tools/replay/cli.ts	208	[...blockingFailedCheckIds(v)].sort()	caller-assembly	owner now returns a sorted array; callers drop the conversion (4dab9d54)
+0b3e5927	removed	.claude/skills/system-path-simulation/scripts/run-condition.mts	319	readClimbReadout/readClimbBatteries(dir, pin, claimsDirFor(root, slug), join(root, FROZEN_MANIFEST_PATH))	caller-assembly	climb readers take { repoRoot, slug } (1503263b)
+0b3e5927	removed	src/review/epoch-reviewer.ts	477	readClimbReadout/readClimbBatteries(dir, pin, claimsDirFor(root, slug), join(root, FROZEN_MANIFEST_PATH))	caller-assembly	climb readers take { repoRoot, slug } (1503263b)
+0b3e5927	removed	src/run/battery-reuse.ts	90	readClimbReadout/readClimbBatteries(dir, pin, claimsDirFor(root, slug), join(root, FROZEN_MANIFEST_PATH))	caller-assembly	climb readers take { repoRoot, slug } (1503263b)
+0b3e5927	removed	src/run/full-run-build-step.ts	131	readClimbReadout/readClimbBatteries(dir, pin, claimsDirFor(root, slug), join(root, FROZEN_MANIFEST_PATH))	caller-assembly	climb readers take { repoRoot, slug } (1503263b)
+0b3e5927	removed	src/run/full-run-build-step.ts	209	readClimbReadout/readClimbBatteries(dir, pin, claimsDirFor(root, slug), join(root, FROZEN_MANIFEST_PATH))	caller-assembly	climb readers take { repoRoot, slug } (1503263b)
+0b3e5927	removed	src/run/full-run.ts	403	readClimbReadout/readClimbBatteries(dir, pin, claimsDirFor(root, slug), join(root, FROZEN_MANIFEST_PATH))	caller-assembly	climb readers take { repoRoot, slug } (1503263b)
+0b3e5927	removed	src/run/next-move.ts	122	readClimbReadout/readClimbBatteries(dir, pin, claimsDirFor(root, slug), join(root, FROZEN_MANIFEST_PATH))	caller-assembly	climb readers take { repoRoot, slug } (1503263b)
+0b3e5927	removed	src/run/harness-measure.ts	312	join(repoRoot, FROZEN_MANIFEST_PATH)	caller-assembly	replaced by frozenManifestPath (1503263b)
+0b3e5927	removed	tools/runs/pulse.ts	523	join(repoRoot, FROZEN_MANIFEST_PATH)	caller-assembly	replaced by frozenManifestPath (1503263b)
+0b3e5927	removed	.claude/skills/run-improvement-campaign/scripts/campaign.ts	517	exists/read/parseSafeguardLog(readFileSync(safeguardLogFile(...)))	caller-assembly	replaced by readSafeguardLog (1503263b)
+0b3e5927	removed	.claude/skills/whole-run-investigation/scripts/source-delta.ts	173	exists/read/parseSafeguardLog(readFileSync(safeguardLogFile(...)))	caller-assembly	replaced by readSafeguardLog (1503263b)
+0b3e5927	removed	tools/outcome/usage-reader.ts	211	exists/read/parseSafeguardLog(readFileSync(safeguardLogFile(...)))	caller-assembly	replaced by readSafeguardLog (1503263b)
+0b3e5927	removed	tools/runs/pulse-read.ts	322	exists/read/parseSafeguardLog(readFileSync(safeguardLogFile(...)))	caller-assembly	replaced by readSafeguardLog (1503263b)
+0b3e5927	removed	src/builder/tools.ts	312	bashTimeoutMs+bashCallTmpdir+bashEnv+workspaceSolverBudgetNotice+bashKilledNotice	caller-assembly	assembly moved into runBuilderBash in bash-install-env.ts (6a935aaf)
+0b3e5927	removed	src/verify/darwin-seatbelt.ts	333	user temp rules	caller-assembly	replaced by userTempRules / canonicalRoots in wall-policy.ts (6a935aaf)
+0b3e5927	removed	src/verify/darwin-seatbelt.ts	369	canonical roots	caller-assembly	replaced by userTempRules / canonicalRoots in wall-policy.ts (6a935aaf)
+0b3e5927	removed	src/verify/solve-command-isolation.ts	272	covered roots	caller-assembly	replaced by userTempRules / canonicalRoots in wall-policy.ts (6a935aaf)
+0b3e5927	removed	src/verify/solve-command-isolation.ts	301	tempRoots	caller-assembly	replaced by userTempRules / canonicalRoots in wall-policy.ts (6a935aaf)
+0b3e5927	removed	src/verify/solve-command-isolation.ts	318	user temp rules	caller-assembly	replaced by userTempRules / canonicalRoots in wall-policy.ts (6a935aaf)
+0b3e5927	removed	src/verify/solve-command-isolation.ts	381	scratchRoots	caller-assembly	replaced by userTempRules / canonicalRoots in wall-policy.ts (6a935aaf)
+0b3e5927	removed	src/verify/solve-command-isolation.ts	384	withheld roots	caller-assembly	replaced by userTempRules / canonicalRoots in wall-policy.ts (6a935aaf)
+0b3e5927	removed	src/verify/solve-sandbox.ts	137	canonicalForms roots	caller-assembly	replaced by userTempRules / canonicalRoots in wall-policy.ts (6a935aaf)
+0b3e5927	kept	src/review/judge-framing.ts	27	judgeTurnPrompt	module-fold	considered, kept (Not done): Judge model-visible text apart from transport; 3 judged labels say keep
+0b3e5927	kept	.claude/skills/main/verbs.ts	27	RUN_VERBS	module-fold	considered, kept (Not done): run verbs stay with the skills that own them
+0b3e5927	kept	.claude/skills/harness-query/judge/configured-judge.mts	60	configuredJudgeProfile	module-fold	considered, kept (Not done): one-file-per-backend seam the README documents
+0b3e5927	kept	vendor/correctness-model-prims/relational-join-pairs.ts	6	duplicateKeyGroups;joinedPair	module-fold	considered, kept (Not done): prims package the Builder reads
+0b3e5927	kept	src/correctness-bundle/run-controls.ts	361	await toolRetryDelay(...) retry after an environment refusal	tool-run-retry	considered, kept (Not done): the census gate decides inside its settlement
+0b3e5927	kept	src/run/census-gate.ts	602	await toolRetryDelay(...) retry after an environment refusal	tool-run-retry	considered, kept (Not done): the census gate decides inside its settlement
+0b3e5927	kept	src/run/claim-write.ts	189	await toolRetryDelay(...) retry after an environment refusal	tool-run-retry	considered, kept (Not done): the census gate decides inside its settlement
+0b3e5927	kept	src/meta/assert.ts	1	assert.ts	node-shim	kept: re-exports node:* behind the require-meta-runtime-import rule
+0b3e5927	kept	src/meta/env-parser.ts	1	env-parser.ts	node-shim	kept: re-exports node:* behind the require-meta-runtime-import rule
+0b3e5927	kept	src/meta/filesystem.ts	1	filesystem.ts	node-shim	kept: re-exports node:* behind the require-meta-runtime-import rule
+0b3e5927	kept	src/meta/modules.ts	1	modules.ts	node-shim	kept: re-exports node:* behind the require-meta-runtime-import rule
+0b3e5927	kept	src/meta/network.ts	1	network.ts	node-shim	kept: re-exports node:* behind the require-meta-runtime-import rule
+0b3e5927	kept	src/meta/os.ts	1	os.ts	node-shim	kept: re-exports node:* behind the require-meta-runtime-import rule
+0b3e5927	kept	src/meta/path.ts	1	path.ts	node-shim	kept: re-exports node:* behind the require-meta-runtime-import rule
+0b3e5927	kept	src/meta/process.ts	1	process.ts	node-shim	kept: re-exports node:* behind the require-meta-runtime-import rule
+0b3e5927	kept	src/backends/pi-built-child.ts	1	pi-built-child.ts	child-entry	kept: spawned process entry
+0b3e5927	kept	src/correctness-bundle/evaluator-process-child.ts	1	evaluator-process-child.ts	child-entry	kept: spawned process entry
+0b3e5927	kept	src/correctness-bundle/generated-module-typecheck-child.ts	1	generated-module-typecheck-child.ts	child-entry	kept: spawned process entry
+0b3e5927	kept	src/correctness-bundle/reference-solve-child.ts	1	reference-solve-child.ts	child-entry	kept: spawned process entry
+0b3e5927	kept	src/solve/generated-tool-worker-child.ts	1	generated-tool-worker-child.ts	child-entry	kept: spawned process entry
+0b3e5927	kept	src/solve/worker-bundle-child.ts	1	worker-bundle-child.ts	child-entry	kept: spawned process entry
+0b3e5927	kept	src/builder/capability-modes.ts	1	capability-modes.ts	line-ceiling-split	kept: split from tools.ts
+0b3e5927	kept	src/review/judge-drivers.ts	1	judge-drivers.ts	line-ceiling-split	kept: split from judge.ts
+0b3e5927	kept	src/analyse/judge-contested.ts	1	judge-contested.ts	line-ceiling-split	kept: split from judge-reviews.ts
+0b3e5927	kept	tools/oxlint/tree-identity.ts	1	tree-identity.ts	line-ceiling-split	kept: split from tree-findings.ts
+0b3e5927	kept	.claude/skills/whole-run-investigation/scripts/archive-scaffold.ts	649	parseSafeguardLog(bytes, prefix)	caller-assembly	kept its own safeguard log reader (reads stderr prefix too)
+0b3e5927	kept	src/builder/bash-install-env.ts	114	workspaceSolverBudgetNotice	narrowed-export	kept exported for tests
+0b3e5927	kept	src/builder/bash-install-env.ts	147	bashCallTmpdir	narrowed-export	kept exported for tests
+0b3e5927	kept	src/builder/bash-install-env.ts	158	bashEnv	narrowed-export	kept exported for tests
+0b3e5927	kept	src/author/builder-execution.ts	37	BuilderCustomToolCall	reexport-forward	left in place: live re-export with importers through the forwarder
+0b3e5927	kept	src/author/builder-execution.ts	37	BuilderCustomToolSemantic	reexport-forward	left in place: live re-export with importers through the forwarder
+0b3e5927	kept	src/author/builder-execution.ts	44	BuilderFailedCall	reexport-forward	left in place: live re-export with importers through the forwarder
+0b3e5927	kept	src/author/builder-session.ts	48	BuilderSubmitOutcome	reexport-forward	left in place: live re-export with importers through the forwarder
+0b3e5927	kept	src/builder/candidate-isolation.ts	116	HOST_SCRATCH_ROOTS	reexport-forward	left in place: live re-export with importers through the forwarder
+0b3e5927	kept	src/correctness-bundle/brief.ts	1	applicableTruthChecks	reexport-forward	left in place: live re-export with importers through the forwarder
+0b3e5927	kept	src/correctness-bundle/brief.ts	1	requiredToolsOf	reexport-forward	left in place: live re-export with importers through the forwarder
+0b3e5927	kept	src/correctness-bundle/task-split.ts	9	evaluationPublicTask	reexport-forward	left in place: live re-export with importers through the forwarder
+0b3e5927	kept	src/correctness-bundle/tasks.ts	34	HiddenExpectation	reexport-forward	left in place: live re-export with importers through the forwarder
+0b3e5927	kept	src/solve/generated-tool-worker.ts	52	GeneratedToolWorkerNonResult	reexport-forward	left in place: live re-export with importers through the forwarder
+0b3e5927	kept	src/solve/public-artifact-schema.ts	2	publicArtifactSchemaFindings	reexport-forward	left in place: live re-export with importers through the forwarder
+0b3e5927	kept	tools/outcome/builder-tools.ts	59	builderToolFindings	reexport-forward	left in place: live re-export with importers through the forwarder
+0b3e5927	kept	tools/outcome/builder-workshop-facts.ts	10	WORKSHOP_ACTION_FILE	reexport-forward	left in place: live re-export with importers through the forwarder
+0b3e5927	kept	src/review/judge.ts	38	sessionJudge	reexport-forward	left in place: live re-export with importers through the forwarder
+0b3e5927	kept	src/claim/bundle-snapshot.ts	24	assertTaskSetMatchesFingerprint	reexport-forward	left in place: live re-export with importers through the forwarder
+0b3e5927	kept	src/verify/os-isolation.ts	34	LINUX_BWRAP_ID	reexport-forward	left in place: live re-export with importers through the forwarder
+0b3e5927	kept	src/review/judge.ts	14	JudgeAttempt	reexport-forward	left in place: live re-export with importers through the forwarder
+0b3e5927	kept	src/review/judge.ts	14	JudgeCaseKind	reexport-forward	left in place: live re-export with importers through the forwarder
+0b3e5927	kept	src/review/judge.ts	14	JudgeInput	reexport-forward	left in place: live re-export with importers through the forwarder
+0b3e5927	kept	src/review/judge.ts	14	JudgeObservation	reexport-forward	left in place: live re-export with importers through the forwarder
+0b3e5927	kept	src/review/judge.ts	14	JudgePublicContext	reexport-forward	left in place: live re-export with importers through the forwarder
+0b3e5927	kept	src/review/judge.ts	14	JudgePublicDomain	reexport-forward	left in place: live re-export with importers through the forwarder
+0b3e5927	kept	src/review/judge.ts	14	JudgePublicTask	reexport-forward	left in place: live re-export with importers through the forwarder
+0b3e5927	kept	src/review/judge.ts	14	JudgeRequest	reexport-forward	left in place: live re-export with importers through the forwarder
+0b3e5927	kept	src/review/judge.ts	14	JudgeSession	reexport-forward	left in place: live re-export with importers through the forwarder
+0b3e5927	kept	src/review/judge.ts	14	JudgeSubjectEvidence	reexport-forward	left in place: live re-export with importers through the forwarder
+0b3e5927	removed	src/verify/os-isolation.ts	34	DARWIN_SEATBELT_ID	reexport-forward	dead export-list re-export #120 did not address (0 importers through os-isolation.ts at 0b3e5927 and 6a935aaf); removed on the branch above it once unread-forward printed it
+0b3e5927	kept	vendor/agent-bundle/index.ts	1	index.ts	entry-point	untouched package entry / barrel
+0b3e5927	kept	vendor/correctness-model-bundle/index.ts	1	index.ts	entry-point	untouched package entry / barrel
+0b3e5927	kept	vendor/correctness-model-prims/index.ts	1	index.ts	entry-point	untouched package entry / barrel
+0b3e5927	kept	tools/oxlint/ana/index.ts	1	index.ts	entry-point	untouched package entry / barrel
+0b3e5927	kept	tools/oxlint/anti-slop/index.ts	1	index.ts	entry-point	untouched package entry / barrel
+0b3e5927	kept	starters/pi-built-harness/correctness-model/reference/index.ts	1	index.ts	entry-point	untouched package entry / barrel

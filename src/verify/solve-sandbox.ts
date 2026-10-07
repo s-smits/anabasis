@@ -38,7 +38,7 @@ import {
   runIsolationProbe,
   sbRule,
 } from "./seatbelt-path-guard.ts";
-import { canonicalForms, traversalMetadataRules } from "./wall-policy.ts";
+import { canonicalForms, canonicalRoots, traversalMetadataRules } from "./wall-policy.ts";
 import { runtimeProcess } from "../meta/process.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hasText } from "../meta/text.ts";
@@ -134,17 +134,11 @@ export function solveIsolationPolicy(input: {
   // mechanism is broken" when the mechanism is fine.
   const lifted = input.liftDeniesCovering === undefined ? [] : canonicalForms(input.liftDeniesCovering);
   const keep = (root: string): boolean => !lifted.some((target) => covers(root, target));
-  const repoRoots = canonicalForms(input.repoRoot);
-  const homeRoots = canonicalForms(home);
-  const reads = [...new Set([...repoRoots, ...homeRoots])].filter(keep).sort();
-  const writes = [...new Set([...repoRoots, ...homeRoots])].filter(keep).sort();
-  const allowedReads = [
-    ...new Set(
-      [...nodeRuntimeReadRoots(), ...(input.readAllowRoots ?? [])].flatMap((root) => canonicalForms(root)),
-    ),
-  ]
-    .filter((path) => reads.some((root) => covers(root, path)))
-    .sort();
+  const reads = canonicalRoots([input.repoRoot, home]).filter(keep);
+  const writes = [...reads];
+  const allowedReads = canonicalRoots([...nodeRuntimeReadRoots(), ...(input.readAllowRoots ?? [])]).filter(
+    (path) => reads.some((root) => covers(root, path)),
+  );
   const fixture = hostSolveIsolationFixture(support.mechanismId);
   const identity = {
     schema: fixture,

@@ -139,10 +139,6 @@ function discriminationOf(passed: number, scored: number): RunSummary["discrimin
   return "informative";
 }
 
-export function assertRunIdSafe(runId: string): void {
-  assertPathSegment("runId", runId);
-}
-
 /** Append the recorded battery's case rows to the campaign record — the driver is the record's
  *  one writer, and the rows come from the run records on disk, never from process memory. */
 async function appendRecordedCaseRows(options: DriveBatteryOptions): Promise<void> {
@@ -188,7 +184,7 @@ async function appendRecordedCaseRows(options: DriveBatteryOptions): Promise<voi
 }
 
 export async function driveBattery(options: DriveBatteryOptions): Promise<DriveBatteryResult> {
-  assertRunIdSafe(options.runId);
+  assertPathSegment("runId", options.runId);
   // The record is append-only and each row names the run directory's bytes by digest, so a second
   // battery under a recorded run id would rewrite those bytes and add rows nothing can remove.
   if (readCaseRecord(options.recordPath).some((entry) => entry.row.runId === options.runId)) {

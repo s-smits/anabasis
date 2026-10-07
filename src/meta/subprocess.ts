@@ -142,14 +142,9 @@ export async function terminateAndReapProcessGroupId(processGroupId: number): Pr
   return !processGroupExists(processGroupId);
 }
 
-/** Terminate every same-group descendant and verify the group is gone before accepting output. */
-export async function terminateAndReapProcessGroup(child: Bun.Subprocess): Promise<boolean> {
-  return await terminateAndReapProcessGroupId(child.pid);
-}
-
 /**
  * Interrupt the group's leader alone, give it `graceMs` to end the rest itself, and then reap the
- * group as `terminateAndReapProcessGroup` does. It is the answer Bun's own CI runner gives a stalled
+ * group as `terminateAndReapProcessGroupId` does. It is the answer Bun's own CI runner gives a stalled
  * process (`spawnWithTimeout` with `gracefulTimeout` in oven-sh/bun `scripts/runner.node.ts`):
  * SIGTERM to the process, and SIGKILL 15 s later. A leader that coordinates workers can use that
  * time to stop them and report what it was doing; the reap follows either way, for whatever it
@@ -162,7 +157,7 @@ export async function interruptAndReapProcessGroup(child: Bun.Subprocess, graceM
     // the leader may already have exited
   }
   await Promise.race([child.exited, Bun.sleep(graceMs)]);
-  return await terminateAndReapProcessGroup(child);
+  return await terminateAndReapProcessGroupId(child.pid);
 }
 
 const EMPTY = new Uint8Array();

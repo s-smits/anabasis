@@ -31,7 +31,13 @@ import type { ModelAttemptGate } from "../run/campaign-budget.ts";
 import type { ProviderResourceBudget } from "../run/provider-resource-budget.ts";
 import { type BuilderExecutionEvidence, BuilderExecutionRecorder } from "./builder-execution.ts";
 import { sessionClock, withCustomToolReceipts } from "./builder-tool-receipts.ts";
-import { MEMORY_FILE, SCRATCHPAD_FILE, SCRATCH_DIR, builderMemoryBlock } from "./builder-memory.ts";
+import {
+  MEMORY_FILE,
+  SCRATCHPAD_FILE,
+  SCRATCH_DIR,
+  SCRATCH_LIMITS,
+  builderMemoryBlock,
+} from "./builder-memory.ts";
 import { builderSystemPrompt } from "./builder-start-prompt.ts";
 import {
   BuilderConversation,
@@ -46,10 +52,6 @@ import { realpathSync } from "../meta/filesystem.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { type BuilderSubmitOutcome, makeSubmitTool } from "../gate/submit-tool.ts";
 export type { BuilderSubmitOutcome } from "../gate/submit-tool.ts";
-export {
-  BUILDER_WORKSPACE_CARD,
-  builderSystemPrompt,
-} from "./builder-start-prompt.ts";
 
 interface BuilderSessionInput {
   slug: string;
@@ -110,8 +112,9 @@ const SEEDED: Record<WorkspaceSeed, string> = {
  *  for after a clear submit is never written. */
 const HANDOVER =
   `The next round opens in a new workspace, and what you learned reaches it only through ${MEMORY_FILE}, ` +
-  `${SCRATCHPAD_FILE} and ${SCRATCH_DIR}/. An accepted submit ends this round at that turn, so bring them up ` +
-  "to date before you submit.";
+  `${SCRATCHPAD_FILE} and ${SCRATCH_DIR}/ (${SCRATCH_LIMITS}; a larger file stays behind, a top-level folder that ` +
+  "no longer fits stays behind whole, and a symbolic link never crosses). An accepted submit ends this round at " +
+  "that turn, so bring them up to date before you submit.";
 
 export interface BuilderSessionDeps {
   /** The campaign's review of the authoring tree, asked after every completed host tool call while

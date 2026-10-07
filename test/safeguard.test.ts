@@ -16,7 +16,6 @@ import {
   SAFEGUARDS_LOG_FILE,
   SAFEGUARD_INVENTORY,
   SAFEGUARD_STDERR_PREFIX,
-  createSafeguardContext,
   parseSafeguardLog,
   safeguardLogDir,
   safeguardLogFile,
@@ -29,7 +28,7 @@ import {
 describe("safeguard log", () => {
   test("appends one bounded line per invocation and never throws", () => {
     const dir = mkdtempSync(`${tmpdir()}/safeguard-`);
-    const context = createSafeguardContext(dir);
+    const context = { logDir: dir };
     safeguardTriggered("5-zero-tool-battery", "first  line\nwith   noise", context);
     safeguardTriggered("5-zero-tool-battery", "x".repeat(900), context);
     const lines = readFileSync(`${dir}/${SAFEGUARDS_LOG_FILE}`, "utf8").trimEnd().split("\n");
@@ -42,7 +41,7 @@ describe("safeguard log", () => {
   });
 
   test("an unwritable log directory does not throw", () => {
-    const context = createSafeguardContext("/proc/1/safeguard-no-write");
+    const context = { logDir: "/proc/1/safeguard-no-write" };
     expect(() => safeguardTriggered("t", "detail", context)).not.toThrow();
   });
 
@@ -59,7 +58,7 @@ describe("safeguard log", () => {
   });
 
   test("the same call with a run context keeps its durable receipt", () => {
-    const context = createSafeguardContext(mkdtempSync(`${tmpdir()}/safeguard-owned-`));
+    const context = { logDir: mkdtempSync(`${tmpdir()}/safeguard-owned-`) };
     safeguardTriggered("16-codex-session-data-retry", "owned receipt", context);
     expect(readFileSync(join(context.logDir, SAFEGUARDS_LOG_FILE), "utf8")).toContain(
       "| 16-codex-session-data-retry | owned receipt",
@@ -68,7 +67,7 @@ describe("safeguard log", () => {
 
   test("a broken stderr remains diagnostic-only and does not suppress the durable line", () => {
     const dir = mkdtempSync(`${tmpdir()}/safeguard-stderr-`);
-    const context = createSafeguardContext(dir);
+    const context = { logDir: dir };
     const original = console.error;
     try {
       console.error = () => {
@@ -85,8 +84,8 @@ describe("safeguard log", () => {
 
   test("run contexts keep concurrent diagnostic logs separate", async () => {
     const root = mkdtempSync(`${tmpdir()}/safeguard-runs-`);
-    const first = createSafeguardContext(safeguardLogDir(join(root, "campaigns", "demo"), "run-a"));
-    const second = createSafeguardContext(safeguardLogDir(join(root, "campaigns", "demo"), "run-b"));
+    const first = { logDir: safeguardLogDir(join(root, "campaigns", "demo"), "run-a") };
+    const second = { logDir: safeguardLogDir(join(root, "campaigns", "demo"), "run-b") };
 
     await Promise.all([
       (async () => {
@@ -108,7 +107,7 @@ describe("safeguard log", () => {
   // a writer change that the parser does not follow shows up here, and as malformed lines elsewhere.
   test("the parser reads back exactly what the writer wrote, on both channels", () => {
     const campaign = mkdtempSync(`${tmpdir()}/safeguard-parse-`);
-    const context = createSafeguardContext(safeguardLogDir(campaign, "run-a"));
+    const context = { logDir: safeguardLogDir(campaign, "run-a") };
     const printed: string[] = [];
     const original = console.error;
     try {
@@ -161,14 +160,14 @@ describe("safeguard 21 - temp-root spawn hazard", () => {
 
   test("a quiet temp root leaves no line, and a loaded one names the counts and the ceiling", () => {
     const quiet = mkdtempSync(`${tmpdir()}/safeguard-temp-quiet-`);
-    const quietContext = createSafeguardContext(mkdtempSync(`${tmpdir()}/safeguard-temp-log-`));
+    const quietContext = { logDir: mkdtempSync(`${tmpdir()}/safeguard-temp-log-`) };
     mkdirSync(join(quiet, "ana-user-context-one"));
     safeguardTempRootPressure(quietContext, quiet);
     expect(existsSync(join(quietContext.logDir, SAFEGUARDS_LOG_FILE))).toBe(false);
 
     const loaded = mkdtempSync(`${tmpdir()}/safeguard-temp-loaded-`);
     for (let i = 0; i < 5001; i += 1) writeFileSync(join(loaded, `ana-leak-${String(i)}`), "");
-    const loadedContext = createSafeguardContext(mkdtempSync(`${tmpdir()}/safeguard-temp-log2-`));
+    const loadedContext = { logDir: mkdtempSync(`${tmpdir()}/safeguard-temp-log2-`) };
     safeguardTempRootPressure(loadedContext, loaded);
     const line = readFileSync(join(loadedContext.logDir, SAFEGUARDS_LOG_FILE), "utf8").trimEnd();
     expect(line).toContain("| 21-tempdir-spawn-hazard |");

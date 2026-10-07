@@ -6,7 +6,6 @@ import {
   type CampaignEpochEvidence,
   campaignEpochOrder,
   selectCampaignEpoch,
-  writeCompleted,
 } from "../author/campaign-epoch.ts";
 import type { ResolvedSlots } from "../backends/resolve.ts";
 import { loadRepoEnv } from "../backends/env.ts";
@@ -14,7 +13,7 @@ import { slotCredentials } from "../backends/login-state.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { CONTROLLER_LOCK_FILE, type LockHolderState, lockHolderState, lockToken } from "./campaign-lock.ts";
-import type { FullRunArgs } from "./launch-arguments.ts";
+import { type FullRunArgs, commandDigest } from "./launch-arguments.ts";
 import type { ProjectIdentity } from "./launch-project.ts";
 import { assertSupportedHostRuntime, hostRuntimeIdentity } from "./host-runtime-policy.ts";
 import { SOURCE_IDENTITY, type SourceIdentity } from "./source-identity.ts";
@@ -58,15 +57,8 @@ import type { VerifierCleanup, VerifierLifetime } from "../verify/verifier-lifet
 import type { ClimbReadout } from "./climb-readout.ts";
 import { type RecordedRunEnd, runEndAtClose } from "./run-end.ts";
 
-export type { Denominator } from "./controller-denominator.ts";
-
-export {
-  type ContinuationEvidence,
-  latestRecordedContinuation,
-  resolveLaunchRunId,
-} from "./controller-lineage.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
-import { readJsonFile } from "../meta/completed-json.ts";
+import { readJsonFile, writeCompleted } from "../meta/completed-json.ts";
 
 /** `schema` is parsed bytes, so the compiler cannot own these tags as a member type and every
  *  reader compares them by hand. */
@@ -288,15 +280,7 @@ function writeControllerOpening(input: {
     // the one at record bracket it.
     budget: loadBudget(campaign),
     providerResourceBudget: input.providerBudget?.snapshot() ?? null,
-    command: {
-      name: "fullrun",
-      digest: hashJsonValue({
-        ...input.args,
-        prompt: null,
-        contextPaths: null,
-        requestDigest: input.project.requestDigest,
-      }),
-    },
+    command: { name: "fullrun", digest: commandDigest(input.args, input.project.requestDigest) },
   };
   mkdirSync(dir, { recursive: true });
   writeCompleted(path, evidence);

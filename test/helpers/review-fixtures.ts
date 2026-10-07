@@ -7,15 +7,16 @@
  * reachable only from the file that declared them. One owner each, so a change to the packet shape
  * reaches every reader of it.
  */
+import { mkdirSync, writeFileSync } from "../../src/meta/filesystem.ts";
 import type { JsonValue } from "../../src/meta/json-shape.ts";
+import { join } from "../../src/meta/path.ts";
+import { type RebuildAdvicePacket, REBUILD_ADVICE_SCHEMA } from "../../src/author/rebuild-advice.ts";
+import { type AdviceIssue, type IssueDiagnosis, adviceIssueId } from "../../src/author/issue-register.ts";
 import {
-  type AdviceIssue,
-  type IssueDiagnosis,
-  type RebuildAdvicePacket,
-  REBUILD_ADVICE_SCHEMA,
-  adviceIssueId,
-} from "../../src/author/rebuild-advice.ts";
-import type { ReviewState } from "../../src/review/epoch-review-findings.ts";
+  type CaseDisposition,
+  EPOCH_REVIEW_SCHEMA,
+  type ReviewState,
+} from "../../src/review/epoch-review-findings.ts";
 import { emptyProbeState } from "../../src/review/review-probe.ts";
 import type { ReaderTool } from "../../src/review/review-reader.ts";
 import { double } from "./doubles.ts";
@@ -24,13 +25,17 @@ import { double } from "./doubles.ts";
 export const BEAMS = adviceIssueId("verified-fail", "beams", null);
 export const JOINTS = adviceIssueId("unaccepted", "joints", null);
 
-/** The condition every fixture battery measured under: one family's public inputs, the scoring
- *  program, the tools its checks ran and the Built model and resource condition. An absence counts
- *  as a complete recheck only across batteries that share all four, so a test that means a
- *  different condition says which part moved. */
+/** The condition every fixture battery measured under: one family's tasks and their public inputs,
+ *  the scoring program (its bytes, its verdict closure and the public wording), the tools its checks
+ *  ran and the Built model and resource condition. An absence counts as a complete recheck only
+ *  across batteries that share the inputs, the closure, the tools and the Built condition, so a test
+ *  that means a different condition says which part moved. */
 export const MEASURED_UNDER = {
+  taskIds: ["t1", "t2"],
   taskInputs: "1".repeat(64),
   scoringHash: "2".repeat(64),
+  verdictClosureHash: "5".repeat(64),
+  publicationHash: "6".repeat(64),
   checkTools: "4".repeat(64),
   measuredCondition: "3".repeat(64),
 } as const;
@@ -75,6 +80,7 @@ export function issue(overrides: Partial<AdviceIssue> = {}): AdviceIssue {
     firstSeenRunId: "r1",
     lastSeenRunId: "r1",
     absentBatteries: 0,
+    rulesChangedRechecks: 0,
     returned: false,
     retired: false,
     observedUnder: { ...MEASURED_UNDER },
@@ -92,9 +98,13 @@ export function advicePacket(issues: AdviceIssue[]): RebuildAdvicePacket {
     runId: "r2",
     backendPin: "codex:built-model:high",
     analysisDigest: "d".repeat(64),
-    scoringHash: MEASURED_UNDER.scoringHash,
-    checkTools: MEASURED_UNDER.checkTools,
-    measuredCondition: MEASURED_UNDER.measuredCondition,
+    condition: {
+      scoringHash: MEASURED_UNDER.scoringHash,
+      verdictClosureHash: MEASURED_UNDER.verdictClosureHash,
+      publicationHash: MEASURED_UNDER.publicationHash,
+      checkTools: MEASURED_UNDER.checkTools,
+      measuredCondition: MEASURED_UNDER.measuredCondition,
+    },
     families: [
       {
         family: "beams",
@@ -102,6 +112,7 @@ export function advicePacket(issues: AdviceIssue[]): RebuildAdvicePacket {
         passed: 3,
         unaccepted: 0,
         nonResults: 0,
+        taskIds: MEASURED_UNDER.taskIds,
         taskInputs: MEASURED_UNDER.taskInputs,
       },
     ],
@@ -118,7 +129,6 @@ export function reviewState(): ReviewState {
   return {
     reads: ["evaluator.ts"],
     readChars: 12,
-    refused: 0,
     probes: emptyProbeState(),
     dispositions: [],
     delivered: [
@@ -134,4 +144,26 @@ export function reviewState(): ReviewState {
 export async function call(tool: ReaderTool, args: Record<string, JsonValue>): Promise<string> {
   const [first] = (await tool.execute("call-1", double<never>(args))).content;
   return first?.type === "text" ? first.text : "";
+}
+
+/** A review of `runId` in `analysis` whose dispositions settle each named case against `bench`, the
+ *  one check that decided it, unless the row says otherwise; an undefined field is left out. */
+export function writeSettledReview(
+  analysis: string,
+  runId: string,
+  rows: Array<{ [K in keyof CaseDisposition]?: CaseDisposition[K] | undefined }>,
+  status = "completed",
+): void {
+  const dispositions = rows.map((row) => ({
+    family: "f",
+    kind: "disputed-pass",
+    checkId: "bench",
+    checkIds: ["bench"],
+    disposition: "against-check",
+    finding: 0,
+    ...row,
+  }));
+  mkdirSync(analysis, { recursive: true });
+  const review = { schema: EPOCH_REVIEW_SCHEMA, runId, status, findings: [], dispositions };
+  writeFileSync(join(analysis, `${runId}-epoch-review.json`), JSON.stringify(review));
 }

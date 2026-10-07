@@ -27,7 +27,9 @@ import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { analyseStep } from "../src/run/analyse-step.ts";
 import { claimsDirFor } from "../src/run/claim-write.ts";
 import type { DifficultyDecisionEvidence } from "../src/run/difficulty-decision.ts";
-import { type FullRunDeps, parseFullRunArgs, runFullRun, slugForDirectInput } from "../src/run/full-run.ts";
+import { type FullRunDeps, runFullRun } from "../src/run/full-run.ts";
+import { parseFullRunArgs } from "../src/run/launch-arguments.ts";
+import { slugForDirectInput } from "../src/run/launch-project.ts";
 import { buildHarness } from "../src/run/harness-build.ts";
 import { measureHarness } from "../src/run/harness-measure.ts";
 import { measuredProductDir } from "../src/run/product-versions.ts";
@@ -61,13 +63,7 @@ const BATTERIES = [
 ] as const;
 
 const scratch: string[] = [];
-const guard: BuilderCommandGuardResult = {
-  state: "skipped",
-  path: null,
-  dcgVersion: null,
-  binarySha256: null,
-  skippedReason: "explicit-off",
-};
+const guard: BuilderCommandGuardResult = { state: "skipped", path: null, skippedReason: "not-installed" };
 
 afterEach(() => {
   for (const dir of scratch.splice(0)) rmSync(dir, { recursive: true, force: true });

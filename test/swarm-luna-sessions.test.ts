@@ -581,9 +581,9 @@ test("runs Sol at Sol's own efforts, and refuses a model or effort the launcher 
   const rig = lunaRig("luna-sol-");
   const manifest = rig.manifest([{ name: "review", task: "Review the change." }]);
   const refused: [string[], RegExp][] = [
-    [["--model", "gpt-4"], /--model must be one of gpt-6-luna or gpt-5\.6-sol/],
+    [["--model", "gpt-4"], /--model must be one of gpt-6-luna or gpt-6\.1-sol/],
     [
-      ["--model", "gpt-5.6-sol", "--reasoning-effort", "max"],
+      ["--model", "gpt-6.1-sol", "--reasoning-effort", "max"],
       /--reasoning-effort must be one of low, medium, high, or xhigh/,
     ],
   ];
@@ -608,17 +608,17 @@ test("runs Sol at Sol's own efforts, and refuses a model or effort the launcher 
     "--output-dir",
     rig.out,
     "--model",
-    "gpt-5.6-sol",
+    "gpt-6.1-sol",
     "--reasoning-effort",
     "medium",
     "--launch-only",
   ]);
   assert.equal(result.exitCode, 0, result.stderr);
   const [call] = rig.calls();
-  assert.equal(valueAfter(call?.args ?? [], "--model"), "gpt-5.6-sol");
+  assert.equal(valueAfter(call?.args ?? [], "--model"), "gpt-6.1-sol");
   assert.equal(call?.args.includes('model_reasoning_effort="medium"'), true);
   const launch = rig.read<LaunchReceipt>("launch.json");
-  assert.deepEqual([launch.model, launch.reasoningEffort], ["gpt-5.6-sol", "medium"]);
+  assert.deepEqual([launch.model, launch.reasoningEffort], ["gpt-6.1-sol", "medium"]);
 });
 
 // Codex starts only inside a Git work tree, where Git can undo what a session wrote: from a session

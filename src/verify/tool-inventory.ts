@@ -348,11 +348,15 @@ function rootlessDigest(read: (into: Buffer, at: number, length: number) => numb
 }
 
 /** A link inside the tree counts by the tree path it names, so a copy whose absolute links were
- *  moved counts the same; one leaving the tree counts by the file it reaches, never its host path. */
+ *  moved counts the same, and so does one spelled through a linked ancestor, which the copy
+ *  relinks by its real path; one leaving the tree counts by the file it reaches, never its host
+ *  path. */
 function linkCount(path: string, toolTree: string, root: string): string {
   const target = resolve(dirname(path), readlinkSync(path));
   if (containsPath(target, toolTree)) return `link:${relative(toolTree, target)}`;
   try {
+    const real = join(realpathSync.native(dirname(target)), basename(target));
+    if (containsPath(real, root)) return `link:${relative(root, real)}`;
     return statSync(target).isFile()
       ? `external:${fileCount(target, "portable", root)}`
       : "external:not-a-file";

@@ -18,7 +18,7 @@
 import { gateFeedbackFindings } from "../src/builder/author-feedback.ts";
 import { afterAll, describe, expect, it } from "bun:test";
 import type { BuiltHarness } from "../src/author/campaign-types.ts";
-import { EVALUATOR_CALIBRATION_POLICY } from "../src/claim/calibration.ts";
+import { EVALUATOR_CALIBRATION_POLICY } from "../src/run/accept-control-independence.ts";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";

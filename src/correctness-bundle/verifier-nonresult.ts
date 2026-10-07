@@ -29,7 +29,7 @@ export interface TimeoutRerun {
  * class carries both and the census gate settles them in one place. It carries the exact host
  * evidence rather than a copied kind string, so the settlement records typed evidence.
  */
-export const ENVIRONMENT_OWNED_TOOL_NON_RESULT_KINDS: ReadonlySet<string> = new Set<string>([
+const ENVIRONMENT_OWNED_TOOL_NON_RESULT_KINDS: ReadonlySet<string> = new Set<string>([
   "sandbox",
   "verifierUnavailable",
 ] satisfies VerifierExecutionNonResultKind[]);

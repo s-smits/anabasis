@@ -193,7 +193,7 @@ describe("an exported Built Harness bundle", () => {
     symlinkSync(tools, join(bundle, WORKSPACE_TOOL_TREE));
     const result = exportBundle(REPO_ROOT, bundle, target);
     expect(readFileSync(join(target, WORKSPACE_TOOL_TREE, "venv", "bin", "field-cli"), "utf8")).toBe(
-      `#!/bin/sh\n'''exec' "${join(target, WORKSPACE_TOOL_TREE, "venv", "bin", "python")}" "$0" "$@"\n' '''\nprint(1)\n`,
+      `#!${join(target, WORKSPACE_TOOL_TREE, "venv", "bin", "python")}\nprint(1)\n`,
     );
     expect(readFileSync(join(target, WORKSPACE_TOOL_TREE, "run"), "utf8")).toBe(
       `#!/bin/sh\nexec ${join(target, WORKSPACE_TOOL_TREE, "venv", "bin", "python")}\n`,

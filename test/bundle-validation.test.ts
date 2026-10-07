@@ -101,6 +101,13 @@ describe("bundle isolation checks", () => {
       ["escape-import"],
     ],
     [
+      // The worker bundler follows a relative import and inlines a text file's bytes, so this refusal,
+      // which every run's fingerprint applies, is what keeps a retained excerpt out of the solver's tools.
+      "a relative import of a source excerpt kept beside the correctness model",
+      `import excerpt from "../correctness-model/sources/vendor-datasheet.txt";\nexport const cited = excerpt;\n`,
+      ["escape-import"],
+    ],
+    [
       "an unvetted package through dynamic import and require",
       `const a = await import("some-random-pkg");\nconst b = require("@harness/builder");\nexport { a, b };\n`,
       ["unvetted-import", "unvetted-import"],
@@ -125,6 +132,7 @@ describe("bundle isolation checks", () => {
     write(dir, AGENT_TOOLS_TS, source);
     write(dir, "agent/catalog.ts", "export const CATALOG = [];\n");
     write(dir, CORRECTNESS_MODEL_EVALUATOR_TS, "export const makeVerifier = () => null;\n");
+    write(dir, "correctness-model/sources/vendor-datasheet.txt", "Origin: vendor datasheet rev C\n");
     const result = validateAgentBundle(join(dir, "agent"));
     expect<string[]>(result.findings.map((f) => f.code)).toEqual(codes);
     expect(result.ok).toBe(codes.length === 0);

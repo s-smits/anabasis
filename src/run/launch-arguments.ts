@@ -9,6 +9,7 @@
 
 import { admitBackendSelection } from "../backends/project-backends.ts";
 import type { BackendSlot, ProjectBackendSelection } from "../backends/resolve.ts";
+import { hashJsonValue } from "../meta/stable-json.ts";
 import { builtSolveConcurrency, reviewConcurrency } from "./session-pool.ts";
 
 /** The one policy an invocation may fix: measure and stop only. */
@@ -64,7 +65,7 @@ type Apply = (args: FullRunArgs, value: string, flag: string) => void;
 const RETIRED = new Map<string, string>([
   [
     "--max-turns",
-    "was removed: the Built solver keeps its per-case turn cap (BUILT_DEFAULT_MAX_TURNS in src/backends/pi-built.ts), and --max-builder-turns caps the Builder session",
+    "was removed: the Built solver keeps its per-case turn cap (the harness's solver.max_turns, defaulted in src/correctness-bundle/harness-config.ts), and --max-builder-turns caps the Builder session",
   ],
   [
     "--turn-budget",
@@ -202,4 +203,20 @@ export function parseFullRunArgs(argv: string[]): FullRunArgs {
   builtSolveConcurrency();
   reviewConcurrency();
   return args;
+}
+
+/** The condition's digest, which the opening records as `command.digest` and the launcher's probe
+ *  predicts. It leaves out the request text, which `requestDigest` stands for, and the run's own
+ *  identity (its id, source and project), which the opening records beside it, so two runs of one
+ *  condition share it and a pair that differs in it moved a flag. */
+export function commandDigest(args: FullRunArgs, requestDigest: string): string {
+  return hashJsonValue({
+    ...args,
+    prompt: null,
+    contextPaths: null,
+    runId: null,
+    expectedSource: null,
+    project: null,
+    requestDigest,
+  });
 }

@@ -11,7 +11,7 @@
  * Confidence is neither asked for nor derived: the support is recorded as counts and graded into
  * nothing, because a grade drawn from those counts would claim a calibration no measurement made.
  */
-import { DIAGNOSIS_OWNERS, type DiagnosisOwner } from "../author/rebuild-advice.ts";
+import { DIAGNOSIS_OWNERS, type DiagnosisOwner } from "../author/issue-register.ts";
 import { BRIEF_FILE, GENERATED_TOOLS_FILE, TOOLS_SPEC_FILE } from "../meta/bundle-layout.ts";
 import { mentionsTask } from "../meta/identifier-scan.ts";
 import { type JsonValue, isString } from "../meta/json-shape.ts";
@@ -221,8 +221,7 @@ export function recordDiagnosisTool(
   return {
     name: "record_diagnosis",
     label: "Record a diagnosis",
-    description:
-      "Record one harness flaw located at a shown step, covering every offered issue it explains, or abstain for issues you cannot read. For an abstention send only issueIds and abstainReason. Never name a task.",
+    description: "Record one harness flaw located at a shown step, or abstain for issues you cannot read.",
     parameters: readerParameters(PARAMETERS),
     execute: (_id: string, args: Record<string, JsonValue>) => {
       const resolved = resolveIssues(strings(args.issueIds), offers, sink);
@@ -232,7 +231,9 @@ export function recordDiagnosisTool(
         if (reason === "") return refuse("an abstention needs a reason");
         if (namesTask(reason)) return refuse("an abstention may not name an individual task");
         sink.abstentions.push({ issueIds: resolved.ids, reason });
-        return Promise.resolve(readerToolText(`abstained for ${resolved.ids.length} issue(s)`));
+        return Promise.resolve(
+          readerToolText(`abstained for ${resolved.ids.length} issue${resolved.ids.length === 1 ? "" : "s"}`),
+        );
       }
       const fields = readingFields(args);
       if ("why" in fields) return refuse(fields.why);
@@ -261,7 +262,7 @@ export function recordDiagnosisTool(
       });
       return Promise.resolve(
         readerToolText(
-          `recorded for ${resolved.ids.length} issue(s): holds for ${support.cases} of ${support.shown} shown, ${support.contrasts} contrast(s)`,
+          `recorded for ${resolved.ids.length} issue${resolved.ids.length === 1 ? "" : "s"}: holds for ${support.cases} of ${support.shown} shown, ${support.contrasts} contrast${support.contrasts === 1 ? "" : "s"}`,
         ),
       );
     },

@@ -26,11 +26,8 @@ import {
   isOverbroadSandboxReadRoot,
   ancestorDirectories,
   SEATBELT_BASELINE,
-  canonicalForms,
   darwinPlatformReadRoots,
-  darwinUserTempRoot,
-  userTempChildTreeRules,
-  verifierTempSiblingDenyRules,
+  userTempRules,
   surroundingSandbox,
 } from "./wall-policy.ts";
 import { type IsolationPosture, seatbeltProfile } from "./isolation-description.ts";
@@ -328,9 +325,7 @@ export function prepareDarwinSeatbelt(
     ...new Set([...metadataAncestors, ...exactSymlinkMetadataPaths(exactReadSnapshots)]),
   ].sort();
   const platformRoots = input.platformRoots ?? darwinPlatformReadRoots();
-  const configuredTemp = darwinUserTempRoot();
-  const userTempRoots =
-    configuredTemp === undefined ? [] : [...new Set(canonicalForms(configuredTemp))].sort();
+  const userTemp = userTempRules([]);
   const policyIdentity = {
     schema: DARWIN_SEATBELT_ID,
     mechanism: {
@@ -348,7 +343,7 @@ export function prepareDarwinSeatbelt(
       metadata: metadataPaths,
       privateWorkdir: true,
     },
-    writes: { privateWorkdir: true, devNull: true, userTempChildren: userTempRoots },
+    writes: { privateWorkdir: true, devNull: true, userTempChildren: userTemp.roots },
   };
   const policyHash = hashJsonBytes(policyIdentity);
   const profile = seatbeltProfile({
@@ -366,8 +361,7 @@ export function prepareDarwinSeatbelt(
         // Clang and Apple's python3 shim use the confstr temp root rather than TMPDIR. The grant
         // opens what a command creates there; the concurrent verifier workdirs beside it are then
         // closed by name, and this engine's own workdir is re-opened last.
-        ...userTempChildTreeRules(userTempRoots),
-        ...verifierTempSiblingDenyRules(),
+        ...userTemp.rules,
         ...sbRule("allow file-read* file-read-metadata file-write*", "subpath", [workdir]),
         // `process*` does not cover `signal`, so a deny-default wall stops a tool from stopping a
         // process it started — an emulator harness ending QEMU, a runner ending a test child — and

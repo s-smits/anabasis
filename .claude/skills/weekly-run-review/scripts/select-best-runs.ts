@@ -28,7 +28,7 @@ import { builderToolsReport } from "#tools/outcome/builder-tools.ts";
 import { type OutcomeReport, outcomeReport } from "#tools/outcome/metrics.ts";
 import { scorecardFromReports } from "#tools/outcome/scorecard.ts";
 import { mainCheckout, openedAt, recordedRuns } from "#tools/runs/discover.ts";
-import { ARCHIVE_SCHEMA } from "#skills/whole-run-investigation/scripts/archive-shape.ts";
+import { ARCHIVE_SCHEMA, MAIN, REVIEW } from "#skills/whole-run-investigation/scripts/archive-shape.ts";
 
 export const WEEKLY_SELECTION_SCHEMA = "weekly-best-run-selection/v2";
 
@@ -251,8 +251,8 @@ export function publishedArchives(repo: string): Map<string, Archive[]> {
   const root = join(repo, "notes", "runs");
   const index = new Map<string, Archive[]>();
   for (const folder of existsSync(root) ? readdirSync(root) : []) {
-    const synthesisPath = join(root, folder, "main_synthesis.md");
-    const review = asRecord(readJsonFileOrNull(join(root, folder, "review.json")));
+    const synthesisPath = join(root, folder, MAIN);
+    const review = asRecord(readJsonFileOrNull(join(root, folder, REVIEW)));
     const identity = asRecord(review?.identity);
     const runId = identity?.runId;
     const sourceCommit = identity?.sourceRevision;

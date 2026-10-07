@@ -22,12 +22,14 @@ import type { BuildTask } from "./tasks.ts";
  *  reader, the diagnosis reader and a later replay find each reused case where a fresh one would
  *  be. The first two are required; the rest exist only for some solves. */
 export const PUBLIC_TASK_FILE = "public-task.json";
-const FINAL_SUBMISSION_FILE = "final-submission.json";
+export const FINAL_SUBMISSION_FILE = "final-submission.json";
+/** The Built solver's trace of one case, under `cases/<taskId>/`. */
+export const CASE_TRACE_FILE = "trace.json";
 const OPTIONAL_SOLVE_FILES = [
   "built-registration.json",
   "worker-binding.json",
   "built-runtime.json",
-  "trace.json",
+  CASE_TRACE_FILE,
   "draft-checkpoints.json",
 ] as const;
 

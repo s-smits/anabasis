@@ -13,10 +13,14 @@ import { CommandFailure, runCommand } from "#skills/main/cli.ts";
 import { type MeasuredCheckout, measuredCheckout, openRecordedRun } from "#skills/main/run.ts";
 import { productRoot } from "#src/meta/campaign-root.ts";
 import { buildDigest } from "./digest.ts";
-import { buildTimeline } from "./timeline.ts";
-import { buildReviewYield, renderReviewYield } from "./review-yield.ts";
+import { buildTimeline, TIMELINE_SCHEMA } from "./timeline.ts";
+import { buildReviewYield, renderReviewYield, REVIEW_YIELD_SCHEMA } from "./review-yield.ts";
+import { DIGEST } from "./archive-shape.ts";
 import { capturedJsonParse, parseJsonAs } from "#src/meta/json-runtime.ts";
-import { buildHarnessEvolution } from "../../final-harness-audit/scripts/harness-versions.ts";
+import {
+  buildHarnessEvolution,
+  HARNESS_EVOLUTION_SCHEMA,
+} from "../../final-harness-audit/scripts/harness-versions.ts";
 import { asError, errorMessage } from "#src/meta/runtime-values.ts";
 import {
   asRecord,
@@ -29,7 +33,12 @@ import {
 import type { CommandArgs } from "#skills/main/cli.ts";
 import type { ControllerEvidence } from "#src/run/controller-evidence.ts";
 import { writeJsonFile } from "#src/meta/completed-json.ts";
-import { jsonText } from "./run-overview.ts";
+import {
+  HARNESS_EVOLUTION_FILE,
+  jsonText,
+  SNAPSHOT_STATUS_FILE,
+  SNAPSHOT_STATUS_SCHEMA,
+} from "./run-overview.ts";
 
 const USAGE = `usage: bun run review:collect -- <campaign dir | campaign/controller/<runId>> [--run <runId>] [--repo <measured checkout>] [--out <snapshot dir>] [--cases <n>] [--all]
 
@@ -293,7 +302,7 @@ function collectSnapshot(command: CommandArgs): number {
     () =>
       `${JSON.stringify(
         {
-          schema: "wri-run-timeline/v1",
+          schema: TIMELINE_SCHEMA,
           state: "failed",
           reason: "The observation stream is unreadable or carries a misshapen row; no timing supplied.",
         },
@@ -305,7 +314,7 @@ function collectSnapshot(command: CommandArgs): number {
   // The selector stays singular: a digest for another run is a different evidence identity. The
   // Builder, review-yield and evolution views keep their campaign-wide scope.
   capture(
-    { label: "digest", file: "digest.md", args: ["digest.ts"] },
+    { label: "digest", file: DIGEST, args: ["digest.ts"] },
     () => {
       const text = buildDigest({
         campaign,
@@ -325,11 +334,11 @@ function collectSnapshot(command: CommandArgs): number {
       const text = `${JSON.stringify(report, null, 2)}\n`;
       return report.complete ? { text } : { text, status: "failed", note: "component row invalid" };
     },
-    failedJson("wri-review-yield-report/v1"),
+    failedJson(REVIEW_YIELD_SCHEMA),
   );
 
   capture(
-    { label: "harness-evolution", file: "harness-evolution.json", args: ["harness-versions.ts", "--json"] },
+    { label: "harness-evolution", file: HARNESS_EVOLUTION_FILE, args: ["harness-versions.ts", "--json"] },
     () => ({
       text: `${JSON.stringify(
         buildHarnessEvolution({
@@ -341,7 +350,7 @@ function collectSnapshot(command: CommandArgs): number {
         2,
       )}\n`,
     }),
-    failedJson("harness-evolution/v1"),
+    failedJson(HARNESS_EVOLUTION_SCHEMA),
   );
 
   view("builder", [campaign, "--builder"]);
@@ -402,7 +411,7 @@ function collectSnapshot(command: CommandArgs): number {
 
   // A complete manifest proves collection, not reader correctness; the runtime is recorded, not enforced.
   const manifest = {
-    schema: "outcome-snapshot-status/v2",
+    schema: SNAPSHOT_STATUS_SCHEMA,
     capturedAt: new Date().toISOString(),
     campaign: resolve(campaign),
     repo,
@@ -419,7 +428,7 @@ function collectSnapshot(command: CommandArgs): number {
     complete: views.every((entry) => entry.status === "ok" || entry.required === false),
     views,
   };
-  writeJsonFile(join(out, "snapshot-status.json"), manifest);
+  writeJsonFile(join(out, SNAPSHOT_STATUS_FILE), manifest);
 
   if (!manifest.complete) {
     const failed = views.flatMap((entry) =>

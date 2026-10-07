@@ -14,7 +14,7 @@
  *     --project <slug> --prompt-file /abs/one-liner.txt --run <runId> \
  *     --expected-tasks 25 --provider-turn-budget 15 --out /abs/report-dir \
  *     --builder live|capture|/abs/turn.mts --built live|no-solve|/abs/solver.mts --review live|off \
- *     [--preset opus|sol|luna|astra|fable] [--capture /abs/capture-dir] \
+ *     [--preset opus|sol|luna|astra|fable] [--built-model <model id>] [--capture /abs/capture-dir] \
  *     [--root /abs/tree] [--max-iterations N] [--max-builder-turns N] [--wall-ms N] \
  *     [--predictions /abs/note.md] [--dcg true|false] [--census-ms N] [--allow-dirty] \
  *     [--real-isolation] [--json]
@@ -23,6 +23,8 @@
  *   - the calling session's `CLAUDE*` variables leave this process (session-env.mts);
  *   - `--preset` pins each live slot's backend, model and effort from launch-run's condition table,
  *     the one a paid launch reads;
+ *   - `--built-model` pins a live Built slot to another model of the preset's kind, so a weaker
+ *     solver can give a product a partial battery the climb has something to answer with;
  *   - a scripted or `no-solve` Built slot takes the latest recorded battery's Built pin, and a live
  *     one that differs is named. Two truss conditions that day labelled Built claude/claude-opus-5-5
  *     against batteries recorded under codex/gpt-6-sol, so the climb readout set all seven aside and
@@ -81,7 +83,6 @@ import { readJsonFileOrNull, writeJsonFile } from "#src/meta/completed-json.ts";
 import { builderSystemPrompt } from "#src/author/builder-start-prompt.ts";
 import { productToolTree, usableToolTree } from "./tool-tree.mts";
 import { selectedProductDir } from "#src/run/product-versions.ts";
-import { claimsDirFor } from "#src/run/claim-write.ts";
 import { readClimbBatteries } from "#src/run/climb-history.ts";
 import { loadRepoEnv } from "#src/backends/env.ts";
 import {
@@ -316,11 +317,10 @@ function pinBackend(pin: string): { kind: BackendKind; model: string } | null {
  *  or the history cannot be read here; the controller then reports that reading itself. */
 function latestRecordedBuiltPin(root: string, project: string): string | null {
   try {
-    const { history } = readClimbBatteries(
-      selectedProductDir(root, project),
-      null,
-      claimsDirFor(root, project),
-    );
+    const { history } = readClimbBatteries(selectedProductDir(root, project), null, {
+      repoRoot: root,
+      slug: project,
+    });
     return history.at(-1)?.condition.backendPin ?? null;
   } catch {
     return null;
@@ -389,6 +389,7 @@ const parsed = parseOrDie(die, {
     "dcg",
     "census-ms",
     "preset",
+    "built-model",
     "capture",
   ],
   flags: ["json", "allow-dirty", "real-isolation"],
@@ -459,6 +460,14 @@ if (followed !== null) {
   slotKinds.built = followed.kind;
   Bun.env[`${followed.kind.toUpperCase()}_BUILT_MODEL`] = followed.model;
 }
+const builtModel = single.get("built-model");
+if (builtModel !== undefined) {
+  if (!live.built) die("--built-model pins a live Built slot; pair it with --built live");
+  if (slotKinds.built === null) {
+    die("--built-model needs --preset, which names the Built slot's backend kind");
+  }
+  Bun.env[`${slotKinds.built.toUpperCase()}_BUILT_MODEL`] = builtModel;
+}
 const plannedPins: Record<BackendSlot, string> = {
   builder: plannedPin(root, project, "builder", slotKinds.builder),
   built: plannedPin(root, project, "built", slotKinds.built),
@@ -517,15 +526,17 @@ const fullRunArgv = [
 ];
 
 /** Keep the production controller graph behind every provider-free refusal above. */
-const [fullRun, harnessBuild, harnessMeasure, analyse, evidence, loopTerminal] = await Promise.all([
-  import("#src/run/full-run.ts"),
-  import("#src/run/harness-build.ts"),
-  import("#src/run/harness-measure.ts"),
-  import("#src/run/analyse-step.ts"),
-  import("#src/run/controller-evidence.ts"),
-  import("#src/run/loop-terminal.ts"),
-]);
-const args = fullRun.parseFullRunArgs(fullRunArgv);
+const [fullRun, launchArguments, harnessBuild, harnessMeasure, analyse, evidence, loopTerminal] =
+  await Promise.all([
+    import("#src/run/full-run.ts"),
+    import("#src/run/launch-arguments.ts"),
+    import("#src/run/harness-build.ts"),
+    import("#src/run/harness-measure.ts"),
+    import("#src/run/analyse-step.ts"),
+    import("#src/run/controller-evidence.ts"),
+    import("#src/run/loop-terminal.ts"),
+  ]);
+const args = launchArguments.parseFullRunArgs(fullRunArgv);
 mkdirSync(out, { recursive: true });
 
 const recordPrompt = promptRecorder((record) => {

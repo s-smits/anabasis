@@ -5,12 +5,10 @@ import { campaignDir } from "../meta/campaign-root.ts";
 import { join, relative } from "../meta/path.ts";
 import type { BuilderConversation } from "../author/builder-conversation.ts";
 import { carryMemoryForward } from "../author/builder-memory.ts";
-import { type CampaignEpochEvidence, selectCampaignEpoch, writeCompleted } from "../author/campaign-epoch.ts";
-import {
-  attachIssueReadings,
-  latestRebuildAdvicePath,
-  readLatestRebuildAdvice,
-} from "../author/rebuild-advice.ts";
+import { type CampaignEpochEvidence, selectCampaignEpoch } from "../author/campaign-epoch.ts";
+import { writeCompleted } from "../meta/completed-json.ts";
+import { latestRebuildAdvicePath, readLatestRebuildAdvice } from "../author/rebuild-advice.ts";
+import { attachIssueReadings } from "../author/issue-register.ts";
 import { type EpochReviewInput, runEpochReview } from "../review/epoch-reviewer.ts";
 import { NOTHING_CARRIED, carriedDemonstrations } from "../review/review-carry.ts";
 import { publicEpochReview } from "../review/epoch-review-public.ts";
@@ -233,17 +231,20 @@ const REVIEW_HEADER = {
 } as const;
 
 /** One reading of the whole review: the request once, then what blocks submit. An advisory row
- *  crosses only with a probe behind it, because advisory rows arrive in bulk, repeat one another
- *  and promise themselves "for the next round", and no reader carries them anywhere that changes
- *  what the Builder does. The post-battery review weighs the product again. */
+ *  crosses only with a probe behind it or a demand gap, because advisory rows arrive in bulk, repeat
+ *  one another and promise themselves "for the next round", and no reader carries them anywhere that
+ *  changes what the Builder does. A demand gap is the exception that can carry no probe, since a
+ *  probe re-runs the checks and the gap is in the tasks, and it answers the climb's question of
+ *  whether the tasks are too easy. The post-battery review weighs the product again. */
 export function authoringReviewText(
   trigger: keyof typeof REVIEW_HEADER,
   status: string,
   request: string,
-  findings: readonly Pick<AnalysisFinding, "severity" | "claim" | "probes">[],
+  findings: readonly Pick<AnalysisFinding, "severity" | "claim" | "probes" | "demandGap">[],
 ): AuthoringAdvice {
   const shown = findings.filter(
-    (finding) => finding.severity !== "advisory" || (finding.probes ?? []).length > 0,
+    (finding) =>
+      finding.severity !== "advisory" || (finding.probes ?? []).length > 0 || finding.demandGap !== undefined,
   );
   const blocking = shown.filter((finding) => finding.severity !== "advisory").length;
   const route =

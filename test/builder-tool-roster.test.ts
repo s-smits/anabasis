@@ -5,7 +5,7 @@
  * sandboxed children.
  */
 import { describe, expect, it } from "bun:test";
-import type { PathRecord } from "../src/builder/candidate-isolation-runtime.ts";
+import type { PathRecord } from "../src/builder/path-record.ts";
 import {
   CANDIDATE_ISOLATION_SCHEMA,
   type CandidateAccessPolicy,

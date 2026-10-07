@@ -1,5 +1,5 @@
-// Structural import-order gate: capture controller primitives before any loader below can import
-// generated source, including direct contracts.ts callers that do not enter through falsify.ts.
+// Structural import-order gate: capture controller primitives before any loader below imports
+// generated source.
 import { capturedJsonParse as nativeParse } from "../meta/json-runtime.ts";
 import { existsSync, readFileSync } from "../meta/filesystem.ts";
 import { isFunction, type OpenRecord } from "../meta/json-shape.ts";
@@ -133,27 +133,22 @@ export async function loadBuiltControllerInterface(slugDir: string): Promise<Bui
   };
 }
 
-async function importGenerated(
-  file: string,
-  cacheBust?: number,
-  timeoutMs = GENERATED_IMPORT_TIMEOUT_MS,
-): Promise<OpenRecord> {
-  const url = Bun.pathToFileURL(file).href + (cacheBust === undefined ? "" : `?probe=${cacheBust}`);
+async function importGenerated(file: string): Promise<OpenRecord> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
       /* SAFETY: a module namespace is a string-keyed object and every export this file reads off it is checked before use. */ import(
-        url
+        Bun.pathToFileURL(file).href
       ) as Promise<OpenRecord>,
       new Promise<never>((_, reject) => {
         timer = setTimeout(
           () =>
             reject(
               new Error(
-                `${file} did not finish loading within ${timeoutMs}ms — top-level code in the generated module never completed`,
+                `${file} did not finish loading within ${GENERATED_IMPORT_TIMEOUT_MS}ms — top-level code in the generated module never completed`,
               ),
             ),
-          timeoutMs,
+          GENERATED_IMPORT_TIMEOUT_MS,
         );
       }),
     ]);

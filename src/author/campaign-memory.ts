@@ -7,11 +7,15 @@
 import { existsSync, mkdirSync, readFileSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
 import { ITERATION_FILE, iterationOrdinal, listIterationDirs } from "../builder/campaign-iterations.ts";
-import { type CampaignEpochEvidence, writeCompleted } from "./campaign-epoch.ts";
+import type { CampaignEpochEvidence } from "./campaign-epoch.ts";
+import { readJsonFileOrNull, writeCompleted } from "../meta/completed-json.ts";
 import type { CampaignClause, CampaignFeedback, IterationEvidence } from "./campaign-types.ts";
 import { parseJsonAs } from "../meta/json-runtime.ts";
-import { isString } from "../meta/json-shape.ts";
+import { asRecord, isString } from "../meta/json-shape.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
+
+/** The binding at an epoch's root: the domain and kickoff its memory was written under. */
+const BINDING_FILE = "campaign.json";
 
 export interface CampaignMemory {
   clause: CampaignClause | null;
@@ -100,6 +104,12 @@ export function latestPreAdoptionFeedback(epoch: CampaignEpochEvidence): Campaig
   return feedback.length === 0 ? null : feedback;
 }
 
+/** The domain an epoch's binding names, or null before the epoch has a readable one. */
+export function boundDomain(epochDir: string): string | null {
+  const binding = asRecord(readJsonFileOrNull(join(epochDir, BINDING_FILE)));
+  return isString(binding?.domain) ? binding.domain : null;
+}
+
 /** Resume from disk. A directory without iteration.json holds unfinished work from an invocation
  *  that never recorded its result: it is skipped when restoring memory, its files and its reserved
  *  iteration number are preserved, and it is not reported as completed. An existing record that
@@ -107,7 +117,7 @@ export function latestPreAdoptionFeedback(epoch: CampaignEpochEvidence): Campaig
  *  cannot safely be treated as absent. A different campaign binding refuses reuse in the same way,
  *  since its iterations describe another condition. */
 export function resumeCampaignMemory(campaignDir: string, slug: string, kickoffHash: string): CampaignMemory {
-  const bindingFile = join(campaignDir, "campaign.json");
+  const bindingFile = join(campaignDir, BINDING_FILE);
   if (!existsSync(bindingFile)) {
     mkdirSync(campaignDir, { recursive: true });
     writeCompleted(bindingFile, { domain: slug, kickoffHash });

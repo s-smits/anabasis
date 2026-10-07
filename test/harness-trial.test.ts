@@ -40,7 +40,12 @@ import { join } from "../src/meta/path.ts";
 import { sha256 } from "../src/meta/digest.ts";
 import { keyIfNotNull, keysIf } from "../src/meta/optional-key.ts";
 import { asRecord, isString, type JsonObject } from "../src/meta/json-shape.ts";
-import { type RehearsalRow, createHarnessTrialTool, verifierView } from "../src/builder/harness-trial.ts";
+import {
+  EXAMPLES_POINTER,
+  type RehearsalRow,
+  createHarnessTrialTool,
+  verifierView,
+} from "../src/builder/harness-trial.ts";
 import { RehearsalTraces } from "../src/builder/context-tool.ts";
 import { createBuiltStarter } from "../src/solve/built-starter.ts";
 import { defineDraftTool } from "../src/solve/draft-tool.ts";
@@ -55,6 +60,7 @@ import {
 } from "./helpers/matching-fixture.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import { double, required } from "./helpers/doubles.ts";
+import { expectNoRestatedDuty } from "./helpers/duty-overlap.ts";
 
 /** The task every case rehearses: one part, one slot, two applicable checks. */
 const TASK_ID = "t1";
@@ -323,7 +329,7 @@ function round(
   dir: string,
   solver: Solver | null,
   verifying = true,
-  plan: Pick<Parameters<typeof createHarnessTrialTool>[0], "rehearsals" | "onRehearsal"> = {},
+  plan: Pick<Parameters<typeof createHarnessTrialTool>[0], "rehearsals" | "onRehearsal" | "tellOnce"> = {},
 ) {
   const rehearsalDir = join(dir, "rehearsals");
   const tool = createHarnessTrialTool({
@@ -562,6 +568,9 @@ describe("the four facts that do cross", () => {
     expect(body.status).toBe("unaccepted");
     expect(asRecord(body.solve)?.accepted).toBe(false);
     expect(body.truth).toEqual({ verdict: "fail" });
+    expect(body.nextAction).toContain(
+      "The solver submitted no accepted artifact, which a battery counts as a fail.",
+    );
     expect(body.verifier).toEqual({ status: "not-run" });
     expect(rows.map((row) => [row.verdict, row.submitted])).toEqual([["fail", false]]);
     expectWithinCensus(body);
@@ -712,6 +721,8 @@ describe("what one round of rehearsals costs", () => {
     const second = modelVisible(await rehearse(tool));
 
     expect(isString(first.nextAction) ? first.nextAction : "").not.toContain("Across this round");
+    expect(first.nextAction).toContain(EXAMPLES_POINTER.trim());
+    expect(second.nextAction).not.toContain("examples.md");
     expect(asRecord(first.validation)?.round).toEqual({
       graded: 1,
       passed: 1,
@@ -730,6 +741,49 @@ describe("what one round of rehearsals costs", () => {
       mostPassToolCalls: 2,
     });
   }, 60_000);
+});
+
+describe("the worked-examples pointer", () => {
+  // A run's one Builder conversation continues its session across rounds, and each round builds a
+  // new tool. So the pointer is told once per session, which the conversation answers; a round
+  // with no conversation is its own session.
+  it("names the examples at a session's first graded rehearsal, not again in its next round", async () => {
+    const dir = workspace();
+    const told = new Set<string>();
+    const tellOnce = (key: string) => !told.has(key) && told.add(key).has(key);
+    const first = round(dir, assigningSolver(RIGHT_SLOT), true, { tellOnce });
+    const opened = modelVisible(await rehearse(first.tool));
+    const next = round(dir, assigningSolver(RIGHT_SLOT), true, { tellOnce });
+    const continued = modelVisible(await rehearse(next.tool));
+
+    expect(opened.nextAction).toContain(EXAMPLES_POINTER.trim());
+    expect(continued.nextAction).not.toContain("examples.md");
+    expect(asRecord(continued.validation)?.round).toMatchObject({ graded: 1, passed: 1 });
+  }, 60_000);
+
+  it("leaves the pointer owed after a rehearsal that graded nothing", async () => {
+    let asked = 0;
+    const tellOnce = () => {
+      asked += 1;
+      return true;
+    };
+    const { tool } = round(workspace(), null, true, { tellOnce });
+    const body = modelVisible(await rehearse(tool));
+
+    expect(isString(body.nextAction) ? body.nextAction : "").not.toContain("examples.md");
+    expect(asked).toBe(0);
+  }, 60_000);
+
+  // It names a file the copied starter carries, restates no duty from the system prompt, and carries
+  // no word of the climb's aim: repeated in every round, a heading like examples.md's "A target the
+  // solver does not reliably meet" would be an aim sentence (prior 10).
+  it("names a file the starter carries, restates no duty and states no aim", () => {
+    const path = /(starter-pack\/\S+\.md)/.exec(EXAMPLES_POINTER)?.[1];
+    expect(path).toBeDefined();
+    expect(existsSync(join(import.meta.dir, "../starters/pi-built-harness", path ?? "missing"))).toBe(true);
+    expect(EXAMPLES_POINTER).not.toMatch(/reliabl|hard|limit|target|difficult|miss|fail/i);
+    expectNoRestatedDuty(EXAMPLES_POINTER);
+  });
 });
 
 describe("the wall a rehearsal grades under", () => {

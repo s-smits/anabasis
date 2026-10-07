@@ -24,6 +24,7 @@ import type { JsonValue } from "../src/meta/json-shape.ts";
 import {
   MEMORY_FILE,
   SCRATCHPAD_FILE,
+  SCRATCH_LIMITS,
   STARTER_MEMORY,
   WORKSPACE_DIR,
   carryMemoryForward,
@@ -327,7 +328,10 @@ describe("the notes a round opens on", () => {
       { ...input, workspace: workspace("b") },
     );
     for (const prompt of [fresh, continued]) {
-      expect(prompt).toContain(`${MEMORY_FILE}, ${SCRATCHPAD_FILE} and scratch/`);
+      expect(prompt).toContain(`${MEMORY_FILE}, ${SCRATCHPAD_FILE} and scratch/ (${SCRATCH_LIMITS};`);
+      // The two ways a whole entry stays out, which the limits alone do not say.
+      expect(prompt).toContain("a top-level folder that no longer fits stays behind whole");
+      expect(prompt).toContain("a symbolic link never crosses");
       expect(prompt).toContain("before you submit");
     }
     expect(fresh).toContain("Authoring context:\nTask count: exactly 4.\n\nEarlier errors: [shape] tasks.");

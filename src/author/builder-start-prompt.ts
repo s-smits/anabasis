@@ -60,10 +60,18 @@ export const SCOPE_CLAUSE = [
   "A limit, state or duty the field does not hold measures your wording rather than the solver, so add none.",
 ] as const;
 
-/** The ceiling on what a solver's analysis may report, held once for both readers: the Builder hears
- *  it as a publication rule and the Epoch Reviewer judges the tools against it. */
+/** The ceiling on what a solver's tools may do for it, held once for both readers: the Builder hears
+ *  it as a publication rule and the Epoch Reviewer judges the tools against it.
+ *
+ *  It names the two routes by which a tool does a check's work. Analysing a candidate the way a
+ *  check does covers a check's code, a copy of it, its instrument run the check's way and its
+ *  verdict. Computing what a check expects covers the route firmware 7a97af took: its
+ *  `expected_behaviour` tool was byte-identical to `correctness-model/rules.ts`, took a scenario the
+ *  solver chose and never the candidate, and returned what the checks expected there; nine of ten
+ *  measured traces called it. The earlier ceiling named only the first route, so that tool sat
+ *  outside its words. */
 export const NO_GRADER_IN_REACH =
-  "No tool, program or guide line analyses a candidate for the solver the way a check does, whether through the check's code or a copy of it, its instrument, or a verdict: a solver that can ask the grader searches until it passes, and its battery then measures that search rather than the field's work.";
+  "No tool, program or guide line does a check's work for the solver, whether it analyses a candidate the way a check does or computes what a check expects for a case the solver names: a solver that can ask the grader searches until it passes, and its battery then measures that search rather than the field's work. Running the field's own compiler or simulator on the solver's candidate, with inputs the solver writes, is not the grader, nor is a test the solver writes, even where a check runs the same tool: judging that output against the published rules is the solver's work.";
 
 /** What the solver may read, what it must never read, and what its tools may do for it.
  *
@@ -73,12 +81,14 @@ export const NO_GRADER_IN_REACH =
  *  reference recipe private and then write that same recipe into BUILT_AGENTS.md as guidance, in its
  *  own words, where no literal comparison of the two texts would see it.
  *
- *  The last sentence sets the ceiling on what an analysis may report. A solver whose tools run a
- *  check, a copy of its module or its instrument searches against the grader until it passes, so
- *  its battery measures that search rather than the field's work. The real toolchain and a bounded
- *  search stay, and computing the response a check decides with is the field's own work (AGENTS.md
- *  "Goals and the climb"). The program sentence answers harnesses that published an exact call
- *  sequence and graded a call trace, which turned writing the program into transcribing it. */
+ *  The last sentence sets the ceiling on what a tool may do for the solver (`NO_GRADER_IN_REACH`).
+ *  The real toolchain, a bounded search and shared public computation stay, and computing the
+ *  response a check decides with is the field's own work (AGENTS.md "Goals and the climb"). No
+ *  byte comparison enforces the ceiling: a copy of correctness-model code is named beside
+ *  readiness as a lead, because public constants and standard routines are legitimately shared and
+ *  a rewritten expectation model matches no bytes. The program sentence answers harnesses that
+ *  published an exact call sequence and graded a call trace, which turned writing the program into
+ *  transcribing it. */
 export const PUBLICATION_CLAUSE = [
   "Publish everything the verifier requires of an answer wherever the solver reads it: constants with their authority, units, precision and rounding, comparison direction and tolerance, canonical form, tie-break and fallback rules, required paths and entry points, and the assumptions an installed tool applies. A solver that follows every published rule must never fail on a rule it could not read; where a practitioner could read a rule two ways, the brief states the verified reading.",
   "Withhold hidden expectations, private controls and decisions, reference answers, solved task-specific fixtures and protected verifier information from everything the solver reads, in any wording, tool results included. For a program, publish the behaviour it must show, not the calls or steps that produce it: a published sequence turns writing the program into transcribing it.",

@@ -15,12 +15,9 @@
  *
  * A concurrency limit does not establish an independent measurement condition by itself.
  */
-export const JUDGE_MAX_CONCURRENCY = 5;
+import { BUILT_SOLVE_CONCURRENCY } from "../correctness-bundle/harness-config.ts";
 
-/** Built Harness cases solved at once by default. Lower than the judge width because a case is
- *  heavier: one Pi child, one generated-tool child and their Seatbelt wrappers per case, against a
- *  judge's single provider call. */
-export const BUILT_SOLVE_MAX_CONCURRENCY = 3;
+export const JUDGE_MAX_CONCURRENCY = 5;
 
 /**
  * A failing call ends the map with the first error, as a one-at-a-time loop would, but every call
@@ -60,7 +57,7 @@ interface EarliestFailure {
  *  provider's session limit, which is the operator's to bound and not the harness's to see. The
  *  battery record states the width that actually ran. */
 export function builtSolveConcurrency(
-  declared: number = BUILT_SOLVE_MAX_CONCURRENCY,
+  declared: number = BUILT_SOLVE_CONCURRENCY,
   env: Record<string, string | undefined> = Bun.env,
 ): number {
   return operatorWidth("ANA_BUILT_CONCURRENCY", declared, env);

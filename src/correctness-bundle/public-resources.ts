@@ -21,15 +21,10 @@ import { Type } from "typebox";
 import { sha256 } from "../meta/digest.ts";
 import { canonicalJson } from "../meta/stable-json.ts";
 import { validateBrief } from "./brief-validator.ts";
-import {
-  type ArtifactField,
-  type Brief,
-  type DesignRuleConstant,
-  type DesignRuleSet,
-  applicableTruthChecks,
-} from "./brief.ts";
-import { keyIfDefined } from "../meta/optional-key.ts";
+import { type ArtifactField, type Brief, applicableTruthChecks } from "./brief.ts";
 import { type BriefRuleDecision, isPublicRule } from "./rule-decisions.ts";
+import { publishedMargins } from "./numeric-boundary.ts";
+import { scoringClosureHash } from "../claim/scoring-closure.ts";
 import type { JudgePublicDomain, JudgePublicTask } from "../review/judge.ts";
 import type { GeneratedTask } from "./task-split.ts";
 import { BRIEF_FILE } from "../meta/bundle-layout.ts";
@@ -58,69 +53,40 @@ function makePublicResource(name: string, content: PublicResourceContent): Publi
 }
 
 /**
- * Every published row is rebuilt from its declared fields alone, never handed on as the object the
- * Builder authored. A brief is Builder-authored JSON: a row may carry keys no type names, and
- * returning the authored object puts those bytes on the solver tool and on every review card, so a
- * rule-decision row carrying reference-artifact or verifier bytes passes validation and reaches
- * those model inputs. Validation answers whether a row is well formed; these projections answer
- * what leaves the brief, so an undeclared key reaches no reader even where the validator does not
- * yet refuse it.
+ * Every published row is rebuilt from its declared fields alone, in their declared order with each
+ * array copied, never handed on as the object the Builder authored. A brief is Builder-authored
+ * JSON: a row may carry keys no type names, and returning the authored object puts those bytes on
+ * the solver tool and on every review card, so a rule-decision row carrying reference-artifact or
+ * verifier bytes passes validation and reaches those model inputs. Validation answers whether a row
+ * is well formed; this projection answers what leaves the brief, so an undeclared key reaches no
+ * reader even where the validator does not yet refuse it.
  */
-function publicRuleDecisionRow(decision: BriefRuleDecision): BriefRuleDecision {
-  return {
-    id: decision.id,
-    visibility: decision.visibility,
-    statement: decision.statement,
-    ...keyIfDefined("families", decision.families === undefined ? undefined : [...decision.families]),
-    ...keyIfDefined(
-      "publicInputPaths",
-      decision.publicInputPaths === undefined ? undefined : [...decision.publicInputPaths],
-    ),
-  };
+function declaredRow<T extends object, K extends keyof T>(row: T, keys: readonly K[]): Pick<T, K> {
+  const fields = keys.flatMap((key) => {
+    const value = row[key];
+    return value === undefined ? [] : [[key, Array.isArray(value) ? [...value] : value] as const];
+  });
+  return /* SAFETY: every key is one of `keys` holding its own value; only an absent optional one is left out. */ Object.fromEntries(
+    fields,
+  ) as Pick<T, K>;
 }
 
-function publicArtifactField(field: ArtifactField): ArtifactField {
-  return {
-    name: field.name,
-    "shape": field["shape"],
-    ...keyIfDefined(
-      "allowedValues",
-      field.allowedValues === undefined ? undefined : [...field.allowedValues],
-    ),
-    ...keyIfDefined("fileMap", field.fileMap),
-    ...keyIfDefined("openMapPaths", field.openMapPaths === undefined ? undefined : [...field.openMapPaths]),
-  };
-}
-
-function publicDesignRuleConstant(constant: DesignRuleConstant): DesignRuleConstant {
-  return {
-    name: constant.name,
-    value: constant.value,
-    ...keyIfDefined("unit", constant.unit),
-    authority: constant.authority,
-    citation: constant.citation,
-  };
-}
-
-function publicDesignRuleSet(set: DesignRuleSet): DesignRuleSet {
-  return {
-    name: set.name,
-    values: [...set.values],
-    ...keyIfDefined("unit", set.unit),
-    authority: set.authority,
-    citation: set.citation,
-  };
-}
+const RULE_DECISION_KEYS = ["id", "visibility", "statement", "families", "publicInputPaths"] as const;
+const ARTIFACT_FIELD_KEYS = ["name", "shape", "allowedValues", "fileMap", "openMapPaths"] as const;
+const CONSTANT_KEYS = ["name", "value", "unit", "authority", "citation"] as const;
+const VALUE_SET_KEYS = ["name", "values", "unit", "authority", "citation"] as const;
 
 /** The one owner of "which artifact-schema rows leave the brief", read by the solver resource and
  *  by the Judge card's own schema field so neither can publish bytes the other withholds. */
 function publicArtifactSchemaRows(brief: Brief): ArtifactField[] {
-  return brief.artifactSchema.map(publicArtifactField);
+  return brief.artifactSchema.map((field) => declaredRow(field, ARTIFACT_FIELD_KEYS));
 }
 
 /** The public rows, as `isPublicRule` (rule-decisions.ts) selects them for the citation rule too. */
 export function publicRuleDecisions(brief: Brief): BriefRuleDecision[] {
-  return (brief.ruleDecisions ?? []).filter(isPublicRule).map(publicRuleDecisionRow);
+  return (brief.ruleDecisions ?? [])
+    .filter(isPublicRule)
+    .map((decision) => declaredRow(decision, RULE_DECISION_KEYS));
 }
 
 export function briefPublicResources(brief: Brief): PublicBriefResource[] {
@@ -143,14 +109,28 @@ export function briefPublicResources(brief: Brief): PublicBriefResource[] {
   if (brief.artifactSchema.length > 0) {
     resources.push(makePublicResource("artifact-schema", publicArtifactSchemaRows(brief)));
   }
-  if (brief.designRuleConstants.length > 0) {
-    resources.push(
-      makePublicResource("design-rule-constants", brief.designRuleConstants.map(publicDesignRuleConstant)),
-    );
-  }
-  const sets = brief.designRuleSets ?? [];
-  if (sets.length > 0) resources.push(makePublicResource("design-rule-sets", sets.map(publicDesignRuleSet)));
+  const constants = brief.designRuleConstants.map((constant) => declaredRow(constant, CONSTANT_KEYS));
+  if (constants.length > 0) resources.push(makePublicResource("design-rule-constants", constants));
+  const sets = (brief.designRuleSets ?? []).map((set) => declaredRow(set, VALUE_SET_KEYS));
+  if (sets.length > 0) resources.push(makePublicResource("design-rule-sets", sets));
   return resources;
+}
+
+/** What the brief told the solver, as one digest over the public resources it reads and the margin
+ *  table it is shown. A reworded or renumbered public rule, rule decision, artifact field, constant,
+ *  value set or published margin moves it, and a private row, a decision, a gate and a join, which no
+ *  solver reads, do not. */
+export function briefPublicationHash(brief: Brief): string {
+  const resources = briefPublicResources(brief).map(({ digest }) => digest);
+  return sha256(canonicalJson({ resources, margins: publishedMargins(brief) }));
+}
+
+/** The brief a battery was scored under: the tree's valid brief while it still scores to the
+ *  scoring hash the battery recorded, and null otherwise, so no reading speaks about other rules. */
+export function scoredBrief(slugDir: string, scoringHash: string | null): Brief | null {
+  const vouched =
+    scoringHash !== null && scoringClosureHash(join(slugDir, "correctness-model")) === scoringHash;
+  return vouched ? readValidatedBrief(slugDir) : null;
 }
 
 /** The one public card every review model receives, so that a review reads the domain rules from

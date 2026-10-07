@@ -18,14 +18,15 @@ command, which rows, and what each row can and cannot say.
 Progress is read on a line rather than a zone (AGENTS.md "Goals and the climb", under "Its shape,
 and how progress is read"). `wri.ts climb` draws it from the claimed batteries, adopted or not, in
 claim order and on the counts the controller placed, so a case a review settled against its check
-counts neither way. Below the batteries and edges it prints four lines:
+counts neither way. Below the batteries and edges it prints five lines:
 
 | line | what it counts |
 | --- | --- |
 | `velocity` | the batteries between 1/n and n−1/n and which ones, how many sat on the aim, passed whole or passed nothing, and the mean swing in points a battery: AGENTS.md's *signal* and *swing* |
 | `horizon` | the same signal count over the first 8 and the first 12 batteries |
-| `flat` | whether the latest batteries meet the stall `runs pulse` names, `STALL_BATTERIES` (`tools/runs/pulse.ts`) in a row on one side of the aim with none closer than the closest before them |
+| `flat` | whether the latest batteries meet the stall `runs pulse` names, `STALL_BATTERIES` (`tools/runs/pulse.ts`) in a row on one side of the aim with none closer than the closest before them; a `yes` is the trigger `CLIMB FLAT (lane 10)`, which starts lanes 10 and 36 |
 | `carried` | the tasks measured again unchanged in id, public input and family checks after a full pass |
+| `follow-up` | the earned fails (AGENTS.md defines them under "Its shape, and how progress is read"), how many the next battery carried unchanged, how many of those passed there, and how many of those after the agent changed. Under each battery, one line per earned fail says the same of that task |
 
 Read these before any zone. `--json` carries the same line as `climb-velocity/v2`; a `v1` reading in
 an older archive holds an endpoint slope under `velocity` instead, which read truss-sol-198d70 and
@@ -73,7 +74,7 @@ The chain, in the order a round runs it, and what tests each link:
 | the solver | a wall the Builder set; a tool or program that grades a candidate | the `walls` lane and lane 22; lane 34 on 1b `CHECK CODE IN SOLVER REACH`; lane 23, isolated, on 1b `CHECK TOOL IN SOLVER TRACE`, with lane 34 beside it |
 | the checks | a check that observes too little, or refuses right answers | lane 6 on 1c `REACH-ONLY CHECKS`; lane 35; lane 38 on 3b `FAMILY UNMOVED all-fail` |
 | admission and placement | a refusal that cost the round, a battery held or excluded, a size set on unaccepted cases | lane 27 on the `gates` triggers; row B and the readout's `admitted` and `excluded`; row G; lane 24 on 4c `DECISION ON CENSORED BATTERY`; lane 37 |
-| the readout back to the Builder | a reading that never reached the next round, or reached it and was declined | the `handoff` tables and lane 17; lane 10 on 4b `OFF-AIM STREAK`, with lane 36 beside it |
+| the readout back to the Builder | a reading that never reached the next round, or reached it and was declined | the `handoff` tables and lane 17; lane 10 on the `climb` lane's `CLIMB FLAT`, with lane 36 beside it |
 
 **Test the capping links first.** A grader the solver can reach, a wall that stops the solve before
 the task does, and limits set at the reference's values each cap the line whatever the demand says,
@@ -128,10 +129,12 @@ Which component hears which reading is AGENTS.md "Goals and the climb", under "W
 placement, and what it drives". Check it in the measured tree rather than from memory: the
 `ReadoutRow` comment in `src/run/climb-readout.ts` names the fields that are the controller's and the
 reviewer's, and `readoutHistoryDocuments` strips the zone, aim, `toAim` and Wilson interval from every
-row before the Builder's history source is built. The off-aim streak the digest prints is
-`offAimStreaks` in `scripts/digest-ledgers.ts`, computed from the recorded placements, and nothing in
-the run reads it. Lane 36 asks what pressure the round text put on the Builder towards harder tasks,
-and lane 10 whether its calibration improved round over round.
+row before the Builder's history source is built. The off-aim streak is `offAimStreak` in
+`tools/runs/pulse.ts`: `runs pulse` reads it from the recorded placements, provisional until a
+decision is recorded, and the `flat` line from the placements `lineOf` reads, computed from the case
+rows or earned where a review settled cases against their check. Nothing in the run reads it.
+Lane 36 asks what pressure the round text put on the Builder towards harder tasks, and lane 10
+whether its calibration improved round over round.
 
 The Builder's freedom is recorded, so read it rather than infer it. `builder-path-record.jsonl`
 holds one row per guard decision: c1d2a7's Builder took 85 with no refusal, used 7 of the 15 tools
@@ -155,10 +158,9 @@ Inside the readout, read these fields and nothing looser:
 | field | what it says |
 |---|---|
 | `band`, `admitted`, `excluded` | the band the run measured against, how many batteries `admitBattery` let into the history, and what `excludedSummary` names as left out; zero admitted beside exclusions means every measurement was refused, not that nothing ran, and an exclusion is the usual reason a climb looks stalled |
-| `decision.placement` | `placeOnBand` (`src/claim/battery-difficulty.ts`) over the deciding sample, or null when no battery is recorded, every attempt was refused at submission (`refused` says how many) or the sample could not be placed |
+| `decision.placement` | `placeOnBand` (`src/claim/battery-difficulty.ts`) over the deciding sample, or null when no battery is recorded, every attempt was refused at submission (the `rationale` says how many) or the sample could not be placed |
 | `decision.repeated` | the failing core the last two batteries of one task set share, as `cases` and the two `scores`, stated beside the placement rather than instead of it |
 | `decision.conflict` | one family significantly too easy beside one significantly too hard, named as `easy` and `hard` |
-| `decision.censored` | families the environment censored whole, about which the placement says nothing |
 | `decision.evidence` | every battery the decision derives from, by `runId` and `batterySha256` |
 | a row's `zone`, `aim`, `toAim`, `wilson` | the zone `placeOnBand` gave, as AGENTS.md "Goals and the climb" defines the five under "The band and the placement"; `aim` the pass counts inside `band` at the row's size; `toAim` the signed distance in verified passes, negative above the aim; `wilson` the interval at `REPORTING_Z` (`src/claim/estimation.ts`) |
 | a row's `passed`, `verified`, `unaccepted`, `nonResults` | passes out of verified cases, with the other two kinds beside them; `passed` is null when the claim was refused |
@@ -317,7 +319,7 @@ checks read, which would make a hard-looking limit easy to meet.
 
 The calibration side is the Builder's measuring before it paid. Lane 11 reads bytes submitted that
 its own rehearsal never tested, `SUBMITTED BYTES NEVER REHEARSED`, and lane 9 families the rehearsal
-could not grade, `REHEARSAL NOT-RUN`. `OFF-AIM STREAK` sends the round-over-round reading to lanes
+could not grade, `REHEARSAL NOT-RUN`. `CLIMB FLAT` sends the round-over-round reading to lanes
 10 and 36. What the Builder then changed, and whether the changed bytes carry a changed demand, is
 lane 20's question, with `REPEATED CONDITION` the case where they carry none; whether changed source
 reached anything is lane 21's. At the other end, a battery that fails everything is read by lane

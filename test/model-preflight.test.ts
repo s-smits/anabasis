@@ -35,11 +35,11 @@ const CLAUDE_REVIEW: ReviewChoice = {
   source: "operator",
 };
 const NO_REVIEW: ReviewChoice = { enabled: false, source: "operator" };
-const CODEX_BUILDER: PiSlotChoice = { kind: "codex", model: "gpt-5.6-sol", reasoningEffort: "high" };
+const CODEX_BUILDER: PiSlotChoice = { kind: "codex", model: "gpt-6.1-sol", reasoningEffort: "high" };
 const CODEX_REVIEW: ReviewChoice = {
   enabled: true,
   kind: "codex",
-  model: "gpt-5.6-sol",
+  model: "gpt-6.1-sol",
   reasoningEffort: "medium",
   source: "operator",
 };

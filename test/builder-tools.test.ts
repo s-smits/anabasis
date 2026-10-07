@@ -36,17 +36,14 @@ import { runtimeProcess } from "../src/meta/process.ts";
 import { join, relative } from "../src/meta/path.ts";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { afterAll, describe, expect, it } from "bun:test";
-import {
-  CandidateIsolationRefusal,
-  openPathRecord,
-  readPathRecordRows,
-} from "../src/builder/candidate-isolation-runtime.ts";
+import { CandidateIsolationRefusal } from "../src/builder/candidate-isolation-runtime.ts";
+import { openPathRecord, readPathRecordRows } from "../src/builder/path-record.ts";
 import {
   type CandidateIsolationBinding,
   deriveCandidateIsolation,
 } from "../src/builder/candidate-isolation.ts";
 import { type BuilderIsolation, createBuilderTools } from "../src/builder/tools.ts";
-import { SAFEGUARDS_LOG_FILE, createSafeguardContext } from "../src/meta/safeguard.ts";
+import { SAFEGUARDS_LOG_FILE } from "../src/meta/safeguard.ts";
 import { osIsolationSupport } from "../src/verify/os-isolation.ts";
 import { rejectionOf } from "./helpers/doubles.ts";
 
@@ -176,6 +173,38 @@ describe.if(osIsolationSupport().ok)("the seven capabilities through the isolati
     expect(readFileSync(target, "utf8")).toBe("export const s = 2;\n");
   });
 
+  // The Builder's own copy of Pi's fuzzy fold had lost its escapes: `[ - {3}\u3000]` folded every
+  // `{`, `}` and `3` into a space, so a unique `return {` collided with `return 3;`.
+  it("edit: tells a line from one differing only in braces or digits", async () => {
+    const target = join(binding.iterationDir, "slug", "gen", "braces.ts");
+    await run("write", {
+      path: target,
+      content: "function f() {\n  return {\n    a: 1,\n  };\n}\nfunction g() {\n  return 3;\n}\n",
+    });
+    await run("edit", { path: target, edits: [{ oldText: "  return {", newText: "  return {\n    b: 2," }] });
+    expect(readFileSync(target, "utf8")).toBe(
+      "function f() {\n  return {\n    b: 2,\n    a: 1,\n  };\n}\nfunction g() {\n  return 3;\n}\n",
+    );
+  });
+
+  // Pi 1.0 applies a near match on the lines it touches and copies every other line back, which is
+  // what the Builder's exact-only refusal had been guarding against.
+  it("edit: takes a near match and rewrites only the lines it touches", async () => {
+    const target = join(binding.iterationDir, "slug", "gen", "quotes.ts");
+    await run("write", {
+      path: target,
+      content: "const greeting = \u201Chi\u201D;\nconst keep = \u201Cuntouched\u201D;\nconst set = {3};\n",
+    });
+    const text = await run("edit", {
+      path: target,
+      edits: [{ oldText: 'const greeting = "hi";', newText: 'const greeting = "hello";' }],
+    });
+    expect(text).toContain("1 block(s)");
+    expect(readFileSync(target, "utf8")).toBe(
+      'const greeting = "hello";\nconst keep = \u201Cuntouched\u201D;\nconst set = {3};\n',
+    );
+  });
+
   it("bash: builds in the iteration dir by default, cannot exfiltrate secrets, refuses an out-of-isolation cwd", async () => {
     await run("bash", { command: "echo built > out.txt" });
     expect(readFileSync(join(binding.iterationDir, "out.txt"), "utf8")).toBe("built\n");
@@ -183,6 +212,14 @@ describe.if(osIsolationSupport().ok)("the seven capabilities through the isolati
     expect(installEnv).toContain(`${join(binding.iterationDir, ".toolchain", "home")}\n`);
     expect(installEnv).toContain(join(binding.iterationDir, ".toolchain", "home", ".local", "bin"));
     expect(installEnv).toContain(join(binding.iterationDir, ".toolchain", "home", ".cargo", "bin"));
+    // Per-tool configuration is left to the tool that needs it, so the cell sets none of its own.
+    expect(await run("bash", { command: "env" })).not.toMatch(/^ARDUINO_/m);
+    // A tool installed where the checks and the solver look first answers to its name here as well.
+    await run("bash", {
+      command:
+        "mkdir -p .toolchain/bin && printf '#!/bin/sh\\necho by-name\\n' > .toolchain/bin/tool-probe && chmod 755 .toolchain/bin/tool-probe",
+    });
+    expect(await run("bash", { command: "tool-probe" })).toContain("by-name");
     const refusal = await rejectionOf(run("bash", { command: `cat ${join(repoRoot, ".env")}` }));
     expect(refusal.message).toContain("exited with code");
     expect(refusal.message).not.toContain("hunter2");
@@ -260,10 +297,7 @@ describe.if(osIsolationSupport().ok)("the seven capabilities through the isolati
     chmodSync(join(bin, "dcg"), 0o700);
     const logDir = join(SCRATCH, "guard-safeguards");
     const mounted = new Map<string, AgentTool>(
-      createBuilderTools({ ...isolation, safeguardContext: createSafeguardContext(logDir) }).map((tool) => [
-        tool.name,
-        tool,
-      ]),
+      createBuilderTools({ ...isolation, safeguardContext: { logDir } }).map((tool) => [tool.name, tool]),
     );
     const shell = mounted.get("bash");
     if (!shell) throw new Error("bash tool not found");

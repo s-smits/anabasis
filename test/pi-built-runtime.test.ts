@@ -10,6 +10,7 @@
  */
 
 import {
+  cpSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -35,12 +36,14 @@ import { BUILT_SHELL_RULES } from "../src/solve/dcg-rules.ts";
 import { createSubmissionAuthority, submissionPortOf } from "../src/solve/final-submission.ts";
 import { compilePublicArtifactSchema } from "../src/solve/public-artifact-schema.ts";
 import { DEFAULT_HARNESS_SETTINGS } from "../src/correctness-bundle/harness-config.ts";
+import { PUBLIC_RESOURCES_TOOL } from "../src/correctness-bundle/public-resources.ts";
 import { solverNonResultReason } from "../src/correctness-bundle/runtime-blocker.ts";
 import { TURN_PERMIT_REFUSED_PREFIX, builtStarterFactoryForSolver } from "../src/correctness-bundle/solve.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { double } from "./helpers/doubles.ts";
+import { MATCHING_BRIEF } from "./helpers/matching-fixture.ts";
 import { ProviderResourceBudget } from "../src/run/provider-resource-budget.ts";
 import { createRunObserver, type RunObserver } from "../src/observe/run-observer.ts";
 
@@ -166,9 +169,6 @@ const call = (id: string, name: string, args: JsonObject = {}): FauxRow => ({
 });
 const WRITE = call("write", "write_answer", { answer: "ok" });
 const SUBMIT = call("submit", "submit");
-// A first submit with most of the solve time left is answered with that time and sends nothing
-// (submit-time-left.ts), so a solver that means to send calls it twice.
-const SUBMIT_AGAIN = call("submit-again", "submit");
 
 function runtimeFor(rows: FauxRow[], extra: Partial<PiBuiltRuntime> = {}): PiBuiltRuntime {
   return {
@@ -216,7 +216,9 @@ describe("the Built harness instructions", () => {
     expect(prompt).toContain("120 minutes");
     // The wall sends the answer last prepared, not the best one, which the solver cannot observe;
     // save_candidate and restore_candidate describe themselves in the roster.
-    expect(prompt).toContain("the last answer an artifact-writer prepared is submitted for you");
+    expect(prompt).toContain(
+      "When it runs out, the last answer an artifact-writer prepared is submitted for you unless the draft changed after it",
+    );
     // The Built Harness owns its solving method. Clauses asking the solver to grade each candidate,
     // adjust for each breach, search, save or widen a margin made every task the same loop.
     for (const asked of [
@@ -247,23 +249,48 @@ describe("the Built harness instructions", () => {
     }
     expect(BUILT_NUDGE).toBe("Finish the task with the available tools, then submit your answer.");
   });
+
+  // contract.md offers correctness-model/sources/ for the passage a rule rests on and says the
+  // solver never reads it. The host reads the brief's public rules out of that same directory, so
+  // one solve through the production starter shows what it carries across: the public-rules tool,
+  // and nothing of the excerpt in the prompt, the guide, a tool row or the trace.
+  it("carries the brief's public rules and nothing of a retained source excerpt", async () => {
+    const slug = mkdtempSync(join(import.meta.dir, ".ana-scratch-pi-built-sources-"));
+    try {
+      cpSync(join(SLUG, "agent"), join(slug, "agent"), { recursive: true });
+      mkdirSync(join(slug, "correctness-model", "sources"), { recursive: true });
+      writeFileSync(join(slug, "correctness-model", "brief.json"), JSON.stringify(MATCHING_BRIEF));
+      const marker = "ANA-SOURCE-EXCERPT-51c8";
+      writeFileSync(join(slug, "correctness-model", "sources", "vendor-datasheet.txt"), `${marker}\n`);
+      const { outcome, accepted } = await solve([WRITE, SUBMIT], { slug });
+      expect(accepted).toBe(true);
+      const condition = outcome.runtimeBoundary?.contractCondition;
+      expect(condition?.tools.map(({ name }) => name)).toContain(PUBLIC_RESOURCES_TOOL);
+      expect(condition?.systemPrompt).toContain("Write the answer, then prepare it.");
+      const told = JSON.stringify(outcome);
+      for (const leaked of [marker, "vendor-datasheet"]) expect(told).not.toContain(leaked);
+    } finally {
+      rmSync(slug, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("the solve loop", () => {
-  it("writes, submits and stops without spending a further turn", async () => {
+  // The first submit sends however much of the wall is left: the default wall is 120 minutes, and
+  // a solver that calls submit means to send.
+  it("writes, sends at its first submit and stops without spending a further turn", async () => {
     const { outcome, accepted } = await solve([
       WRITE,
       { text: "draft ready" },
       SUBMIT,
-      SUBMIT_AGAIN,
       { text: "must not be reached" },
     ]);
     expect(accepted).toBe(true);
     // A turn is one prompt, however many model calls it takes: the writer and the text it ended
-    // with are turn one, both submits are turn two, and the last row is never paid for.
-    expect(outcome).toMatchObject({ turns: 2, completedTurns: 2, toolCalls: 3 });
+    // with are turn one, the submit is turn two, and the last row is never paid for.
+    expect(outcome).toMatchObject({ turns: 2, completedTurns: 2, toolCalls: 2 });
     const submits = outcome.trace?.toolCalls.filter((row) => row.toolName === "submit") ?? [];
-    expect(submits.map((row) => row.resultPreview?.slice(0, 9))).toEqual(["Not sent:", "Submitted"]);
+    expect(submits.map((row) => row.resultPreview?.slice(0, 9))).toEqual(["Submitted"]);
     expect(outcome.errors).toEqual([]);
     expect(outcome.nonResult).toBeUndefined();
     expect(outcome.checkpoints).toHaveLength(2);
@@ -273,7 +300,7 @@ describe("the solve loop", () => {
     // A span opened and never closed leaves a reader of a live battery unable to say which case
     // is still running, how any of them settled, or how long one took.
     const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-case-span-")));
-    await solve([WRITE, SUBMIT, SUBMIT_AGAIN], { observer: createRunObserver(root, "demo", "run-01") });
+    await solve([WRITE, SUBMIT], { observer: createRunObserver(root, "demo", "run-01") });
     const stream = readFileSync(join(root, "campaigns", "demo", "observability", "run-01.jsonl"), "utf8")
       .trim()
       .split("\n")
@@ -290,8 +317,6 @@ describe("the solve loop", () => {
   // A turn that fails after many tool calls would otherwise end the solve with its turns unused
   // and nothing submitted. The agent keeps its messages and tool results, so one more prompt
   // continues the same solve — and the turn that produced nothing is not one of the solver's turns.
-  // The one permitted turn is also the last, so its first submit sends rather than answering with
-  // the time left (submit-time-left.ts): a second submit would never get a turn.
   it("retries a failed turn without spending a solving turn, keeping the provider's own words", async () => {
     const { outcome, accepted } = await solve(
       [{ stopReason: "error", errorMessage: "the model declined to continue" }, WRITE, SUBMIT],
@@ -447,8 +472,7 @@ describe("a worker failure after an accepted submit", () => {
   // grading, so it still voids the submit.
   const submitThenStall = [
     WRITE,
-    SUBMIT,
-    { toolCalls: [...(SUBMIT_AGAIN.toolCalls ?? []), { id: "stall", name: "stall", arguments: {} }] },
+    { toolCalls: [...(SUBMIT.toolCalls ?? []), { id: "stall", name: "stall", arguments: {} }] },
   ];
 
   it("keeps the accepted submit and records the silence wall as evidence", async () => {
@@ -477,12 +501,12 @@ describe("a tool result the protocol cannot frame", () => {
   // non-result, which voided the whole paid case. The call fails; the session does not, and the
   // solver still submits. A non-finite number in the same result is already carried as null.
   it("fails that call and leaves the solve able to submit", async () => {
-    const { outcome, accepted } = await solve([call("ratio", "utilisation"), WRITE, SUBMIT, SUBMIT_AGAIN], {
+    const { outcome, accepted } = await solve([call("ratio", "utilisation"), WRITE, SUBMIT], {
       maxTurns: 4,
     });
     expect(accepted).toBe(true);
     expect(outcome.nonResult).toBeUndefined();
-    expect(outcome.toolCalls).toBe(4);
+    expect(outcome.toolCalls).toBe(3);
     const failed = outcome.trace?.toolCalls.find((row) => row.toolName === "utilisation");
     expect(failed).toMatchObject({ isError: true });
     expect(failed?.resultExcerpt).toContain("could not be returned");

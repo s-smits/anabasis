@@ -52,8 +52,6 @@ describe("a case solved through the production Pi path", () => {
       { id: "declare", name: "declare_part", arguments: { name: "alpha" } },
       { id: "bind", name: "bind_slot", arguments: { assignments: [{ part: "alpha", slot: "s3" }] } },
       { id: "submit", name: "submit", arguments: {} },
-      // The first early submit is answered with the time left (submit-time-left.ts); the second sends.
-      { id: "submit-again", name: "submit", arguments: {} },
     ]);
     const report = await solveFirstTask(slugDir, solver, "run-direct-pi-eval");
     expect(report.score.map(({ caseId, passed }) => ({ caseId, passed }))).toEqual([

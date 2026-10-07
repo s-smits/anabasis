@@ -23,8 +23,6 @@ import {
   type WorkshopJourneyJoin,
 } from "./builder-tool-workshop-journey.ts";
 
-export type { WorkshopJourneyJoin } from "./builder-tool-workshop-journey.ts";
-
 const BUILDER_TOOL_JOURNEYS_SCHEMA = "builder-tool-journeys/v2";
 
 type CountMap = Record<string, number>;

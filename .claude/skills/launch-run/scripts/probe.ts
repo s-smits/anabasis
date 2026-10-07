@@ -13,9 +13,8 @@ import { tmpdir } from "#src/meta/os.ts";
 import { sha256 } from "#src/meta/digest.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { hashJsonBytes } from "#src/meta/json-runtime.ts";
-import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { SOURCE_IDENTITY } from "#src/run/source-identity.ts";
-import { parseFullRunArgs } from "#src/run/launch-arguments.ts";
+import { commandDigest, parseFullRunArgs } from "#src/run/launch-arguments.ts";
 import { builtSolveIsolation } from "#src/run/built-agent-runtime.ts";
 import { loadRepoEnv } from "#src/backends/env.ts";
 import { resolvedSlot } from "#src/backends/resolve.ts";
@@ -43,7 +42,6 @@ export async function probe(options: LaunchOptions) {
   if (source.dirty) throw new Error("target source is dirty");
   const parsed = parseFullRunArgs(fullrunArgs(plan, options, source));
   const requestDigest = hashJsonBytes({ prompt: parsed.prompt, contextDigest: sha256("[]") });
-  const commandDigest = hashJsonValue({ ...parsed, prompt: null, contextPaths: null, requestDigest });
   const env = loadRepoEnv(ROOT).env;
   const slot = (side: "builder" | "built" | "review") =>
     resolvedSlot(CONDITIONS[plan.condition].kind, env, side, "operator");
@@ -57,7 +55,7 @@ export async function probe(options: LaunchOptions) {
   const policy = builtSolveIsolation(ROOT, piBuiltReadAllowRoots(slots));
   const worker = await preflightPiBuilt(resolvePiBuiltRuntime(slots, ROOT, policy));
   const allowance = await checkAllowance(plan.condition, env);
-  return { source, requestDigest, commandDigest, worker, allowance };
+  return { source, requestDigest, commandDigest: commandDigest(parsed, requestDigest), worker, allowance };
 }
 
 /** One minimal Builder-slot turn on the host session every slot shares: a session or usage limit on

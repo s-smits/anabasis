@@ -5,16 +5,14 @@
 import { readExecutionEvidence } from "../outcome/builder-execution-facts.ts";
 import { readEpochRecord } from "../../src/author/campaign-epoch.ts";
 import type { BuilderCustomToolCall } from "../../src/author/builder-custom-tool-call.ts";
-import { PUBLIC_TASK_FILE } from "../../src/correctness-bundle/recorded-solve.ts";
+import { CASE_TRACE_FILE, PUBLIC_TASK_FILE } from "../../src/correctness-bundle/recorded-solve.ts";
 import { CENSUS_FILE } from "../../src/run/census-gate.ts";
-import type { BandZone, MeasuredDifficulty } from "../../src/claim/battery-difficulty.ts";
-import type { ClimbBattery } from "../../src/run/climb-history.ts";
-import { decideDifficulty } from "../../src/run/climb-readout.ts";
+import { type BandZone, placeOnBand } from "../../src/claim/battery-difficulty.ts";
 import { existsSync, lstatSync, readFileSync, readdirSync } from "../../src/meta/filesystem.ts";
 import { parseJsonAs } from "../../src/meta/json-runtime.ts";
 import { isRecord, isString, type JsonValue } from "../../src/meta/json-shape.ts";
 import { join } from "../../src/meta/path.ts";
-import { parseSafeguardLog, safeguardLogFile } from "../../src/meta/safeguard.ts";
+import { readSafeguardLog } from "../../src/meta/safeguard.ts";
 import { readDifficultyDecisions, readObservations, readRunEvidence, type Observation } from "./evidence.ts";
 import type { Busy } from "./pulse-host.ts";
 import type { RunRow } from "./rows.ts";
@@ -200,7 +198,7 @@ function readRehearsal(epochDir: string, checkpointAt: string | null): PulseInFl
     // The public task is written once, as the solve starts.
     const startedAt = new Date(lstatSync(join(cases, taskId, PUBLIC_TASK_FILE)).mtimeMs).toISOString();
     if (checkpointAt !== null && startedAt < checkpointAt) return null;
-    const stage = existsSync(join(cases, taskId, "trace.json")) ? "grading" : "solving";
+    const stage = existsSync(join(cases, taskId, CASE_TRACE_FILE)) ? "grading" : "solving";
     return { taskId, stage, startedAt };
   } catch {
     return null;
@@ -293,12 +291,10 @@ function readBatteries(row: RunRow, band: readonly [number, number]): PulseBatte
   const decisions = readDifficultyDecisions(row.location).rows;
   return row.cases.batteries.map(({ runId, tally }) => {
     const decided = decisions.find((decision) => decision.evidenceRunIds.at(-1) === runId)?.placement ?? null;
-    // Until the decision is recorded, placed as it will place the whole battery.
+    // Until the decision is recorded, placed as it will place the whole battery: nowhere when no
+    // case was verified, and otherwise over every verified and unaccepted attempt.
     const { passed, verified, unaccepted } = tally;
-    const measured: MeasuredDifficulty = { items: [] };
-    // SAFETY: `decideDifficulty` reads runId and batterySha256 only into the evidence it returns.
-    const whole = { passed, unaccepted, measured, n: verified + unaccepted } as ClimbBattery;
-    const placed = decided ?? decideDifficulty([whole], [...band]).placement;
+    const placed = decided ?? (verified === 0 ? null : placeOnBand(passed, verified + unaccepted, band));
     return {
       passed,
       verified,
@@ -316,12 +312,11 @@ export function readPulse(row: RunRow, now: number, band: readonly [number, numb
   const { campaignDir } = row.location;
   const observations = readObservations(campaignDir, row.runId);
   const terminal = row.liveness.state === "closed" ? readRunEvidence(row.location).terminal : null;
-  const safeguardLog = safeguardLogFile(campaignDir, row.runId);
   let safeguards: string[] = [];
   try {
-    safeguards = parseSafeguardLog(readFileSync(safeguardLog, "utf8")).firings.map((firing) => firing.name);
+    safeguards = readSafeguardLog(campaignDir, row.runId)?.firings.map((firing) => firing.name) ?? [];
   } catch {
-    // No safeguard fired, or the log cannot be read; either way there is no lead to report.
+    // The log cannot be read, which leaves no lead to report, as an absent log does.
   }
   return {
     runId: row.runId,

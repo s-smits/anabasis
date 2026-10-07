@@ -2,15 +2,13 @@
  * Difficulty statistics remain evidence, not commands to climb, broaden or discard a product. */
 import { existsSync } from "../meta/filesystem.ts";
 import { campaignDir } from "../meta/campaign-root.ts";
-import { join, relative } from "../meta/path.ts";
-import { FROZEN_MANIFEST_PATH } from "../critic/manifest.ts";
+import { relative } from "../meta/path.ts";
 import { type CampaignBindingInput, latestCampaignEpochForBinding } from "../author/campaign-epoch.ts";
 import { latestPreAdoptionFeedback } from "../author/campaign-memory.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import type { AdmissionLineage, CampaignFeedback, PriorEvidence } from "../author/campaign-types.ts";
 import { readAdmission } from "./admission.ts";
 import type { AskManifest } from "./ask-manifest.ts";
-import { claimsDirFor } from "./claim-write.ts";
 import { type ClimbReadout, readClimbReadout } from "./climb-readout.ts";
 import { type Remeasure, censoredRemeasure } from "./battery-reuse.ts";
 import { isString } from "../meta/json-shape.ts";
@@ -21,11 +19,8 @@ export interface NextMove {
   /** `rebuild` is the retained round name for adopted-product authoring, not an order to redesign. */
   move: "build" | "measure" | "rebuild" | "stop";
   reason: string;
-  seed?: "adopted";
   /** One measured condition opens one resumable pass; prose changes cannot reset its allowance. */
   reopenKey?: string;
-  /** A `measure` that solves only these cases of that battery again and regrades the rest. */
-  remeasure?: Remeasure;
 }
 
 interface SelectedNextMove {
@@ -43,7 +38,7 @@ interface SelectedNextMove {
  * session writes into. Carry the pass in the build step alone and a seeded continuation records an
  * empty opening epoch beside the working one. */
 export function epochPassOf(decision: NextMove): string | undefined {
-  if (decision.seed === undefined) return undefined;
+  if (decision.move !== "rebuild") return undefined;
   return decision.reopenKey ?? decision.reason;
 }
 
@@ -85,21 +80,19 @@ export function decideNextMove(
     return {
       move: "measure",
       reason: `${remeasure.taskIds.length} case(s) of battery ${remeasure.of} ended in environment-owned non-results; rerun them without changing the harness and regrade the rest`,
-      remeasure,
     };
   }
   const reason = [
     preAdoption
       ? "pre-adoption continuation: finish or revise the in-flight proposal"
       : "the measured condition is ready for the Builder's next experiment",
-    "start from the adopted product; choose task redesign or product repair, and submit the corresponding bytes",
     // Named, not required: an open campaign admits a candidate that leaves these owners alone, so
     // promising otherwise here tells the Builder its own experiment will be refused when it will not.
     blocking.length === 0 ? null : `blocking feedback stands against ${blocking.join(", ")}`,
   ]
     .filter((part) => part !== null)
     .join("; ");
-  return { move: "rebuild", seed: "adopted", reason };
+  return { move: "rebuild", reason };
 }
 
 /** A changed evidence basis opens a successor pass. Re-entry into the same basis reads its
@@ -111,7 +104,6 @@ export function selectNextMoveFromDisk(input: {
   manifest: AskManifest;
   baseKickoff: string;
   runPin: string;
-  runId: string;
   domainDir: string;
   builder: NonNullable<CampaignBindingInput["builder"]>;
   /** This run's Built slot, which a remeasure's re-solved cases would run under. */
@@ -119,12 +111,7 @@ export function selectNextMoveFromDisk(input: {
 }): SelectedNextMove {
   const { repoRoot, manifest, baseKickoff, runPin, domainDir, builder, built } = input;
   const { priorEvidence: measured, lineage } = readAdmission(repoRoot, manifest.slug);
-  const readout = readClimbReadout(
-    domainDir,
-    runPin,
-    claimsDirFor(repoRoot, manifest.slug),
-    join(repoRoot, FROZEN_MANIFEST_PATH),
-  );
+  const readout = readClimbReadout(domainDir, runPin, { repoRoot, slug: manifest.slug });
   const campaignRoot = campaignDir(repoRoot, manifest.slug);
   // selectedProductDir names an immutable version. Its identity also changes when an otherwise
   // identical measurement is followed by an agent-only repair.

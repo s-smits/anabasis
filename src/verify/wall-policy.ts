@@ -171,6 +171,12 @@ export function canonicalForms(path: string): string[] {
   }
 }
 
+/** Every path form of `paths`, each once and sorted: the root list a rule set and the policy
+ *  identity recording it are both written from. */
+export function canonicalRoots(paths: readonly string[]): string[] {
+  return [...new Set(paths.flatMap(canonicalForms))].sort();
+}
+
 /**
  * Where a host toolchain installs itself, for the two walls that must name a place.
  *
@@ -206,14 +212,11 @@ export function darwinToolchainInstallRoots(home: string | undefined = Bun.env.H
 }
 
 /** The Darwin platform roots the verifier wall opens: the system roots that are present, plus the
- *  toolchain install roots under `home`. A verifier host reads this once at construction and hands
- *  the list to every plan, so a root appearing on the shared machine mid-census cannot move the
- *  policy hash and discard exit-0 verdicts for a wall that never changed. */
-export function darwinPlatformReadRoots(home: string | undefined = Bun.env.HOME): string[] {
-  return [
-    ...DARWIN_SYSTEM_READ_ROOTS.filter((root) => existsSync(root)),
-    ...darwinToolchainInstallRoots(home),
-  ];
+ *  toolchain install roots under the process home. A verifier host reads this once at construction
+ *  and hands the list to every plan, so a root appearing on the shared machine mid-census cannot
+ *  move the policy hash and discard exit-0 verdicts for a wall that never changed. */
+export function darwinPlatformReadRoots(): string[] {
+  return [...DARWIN_SYSTEM_READ_ROOTS.filter((root) => existsSync(root)), ...darwinToolchainInstallRoots()];
 }
 
 /**
@@ -330,23 +333,6 @@ export function darwinUserTempRoot(): string | undefined {
   return confstrTempRoot;
 }
 
-/**
- * The grant a toolchain needs in a temporary directory: every direct child and what lies beneath
- * it. `regex-quote` is Seatbelt's own path-to-regex boundary, and this is the same form Apple's
- * shipped profiles and Firefox's macOS sandbox use.
- *
- * A narrower, files-only version of this rule keeps concurrent verifier workdirs shut, but it also
- * refuses `mktemp -d`, `mkdir /tmp/x` and every python `TemporaryDirectory()`. So both walls grant
- * this shape and close the product's own trees by name instead (`verifierTempSiblingDenyRules`),
- * which is the only arrangement under which a toolchain works and a sibling's workdir stays shut.
- */
-export function userTempChildTreeRules(roots: string[]): string[] {
-  return roots.map(
-    (root) =>
-      `(allow file-read* file-read-metadata file-write* (regex (string-append #"^" (regex-quote ${capturedJsonStringify(root)}) #"/[^/]+(/.*)?$")))`,
-  );
-}
-
 /** What the product itself creates under the user temporary directory and a verifier tool may not
  *  touch: a concurrent verification's cell (`ana-cell-`, the host's per-check workdir), Built
  *  Harness scratch, reference-solve staging and tool staging. Each is named by prefix because the
@@ -373,6 +359,30 @@ export function verifierTempSiblingDenyRules(
 }
 
 /**
+ * The confstr temp root and `extraRoots` in both path forms, which each wall records in its policy
+ * identity, and the rules granting a toolchain every direct child of them and what lies beneath it.
+ * `regex-quote` is Seatbelt's own path-to-regex boundary, the form Apple's shipped profiles and
+ * Firefox's macOS sandbox use.
+ *
+ * A narrower, files-only version of this rule keeps concurrent verifier workdirs shut, but it also
+ * refuses `mktemp -d`, `mkdir /tmp/x` and every python `TemporaryDirectory()`. So both walls grant
+ * this shape and close the product's own trees by name after it (`siblingPatterns`), which is the
+ * only arrangement under which a toolchain works and a sibling's workdir stays shut.
+ */
+export function userTempRules(
+  extraRoots: readonly string[],
+  siblingPatterns: readonly string[] = VERIFIER_TEMP_SIBLING_DENY_PATTERNS,
+) {
+  const confstr = darwinUserTempRoot();
+  const roots = canonicalRoots(confstr === undefined ? extraRoots : [confstr, ...extraRoots]);
+  const childTrees = roots.map(
+    (root) =>
+      `(allow file-read* file-read-metadata file-write* (regex (string-append #"^" (regex-quote ${capturedJsonStringify(root)}) #"/[^/]+(/.*)?$")))`,
+  );
+  return { roots, rules: [...childTrees, ...verifierTempSiblingDenyRules(siblingPatterns)] };
+}
+
+/**
  * The directories a confined command searches for a program.
  *
  * A read grant lets a toolchain be opened, but PATH decides whether it can be named at all, and the
@@ -383,7 +393,7 @@ export function verifierTempSiblingDenyRules(
  *
  * `shims` is here for pyenv and rbenv, which put no binaries in `bin` at all.
  */
-export function toolchainPathDirs(home: string | undefined = Bun.env.HOME): string[] {
+export function toolchainPathDirs(): string[] {
   // Both /opt entries sit under the granted /opt read root, so neither needs a read rule of its
   // own. This host may have its only system Node under zerobrew, so the derived toolchain owner has
   // to retain that executable directory rather than assume /usr/bin holds one.
@@ -396,10 +406,7 @@ export function toolchainPathDirs(home: string | undefined = Bun.env.HOME): stri
     "/opt/homebrew/bin",
     "/opt/zerobrew/bin",
   ];
-  const installed = darwinToolchainInstallRoots(home).flatMap((root) => [
-    join(root, "bin"),
-    join(root, "shims"),
-  ]);
+  const installed = darwinToolchainInstallRoots().flatMap((root) => [join(root, "bin"), join(root, "shims")]);
   // Every entry is checked for existence, the fixed ones included: /opt/homebrew/bin exists on this
   // Darwin host and not in the Linux VM, so an unchecked list would put a directory that is not
   // there on PATH.

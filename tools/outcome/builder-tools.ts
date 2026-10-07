@@ -34,7 +34,6 @@ import {
   semanticFindingsIdentity,
 } from "../../src/author/builder-execution.ts";
 import { campaignEpochs } from "../../src/author/campaign-epoch.ts";
-import { type PathRecordRow, readPathRecordRows } from "../../src/builder/candidate-isolation-runtime.ts";
 import { BUILDER_TOOLS } from "../../src/builder/builder-tool-interface.ts";
 import {
   BUILDER_SESSION_EVIDENCE_FILE,
@@ -43,7 +42,7 @@ import {
   type BuilderSessionIsolationEvidence,
 } from "../../src/builder/session-evidence.ts";
 import { plainRecord } from "../../src/meta/json-evidence.ts";
-import { PATH_RECORD_FILE } from "../../src/builder/path-record.ts";
+import { PATH_RECORD_FILE, type PathRecordRow, readPathRecordRows } from "../../src/builder/path-record.ts";
 import { readExecutionEvidenceDetails } from "./builder-execution-facts.ts";
 import { type BuilderFailureCensus, builderFailureCensus } from "./builder-failed-calls.ts";
 import {
@@ -54,8 +53,6 @@ import {
 import { isNumber, isString, type JsonValue } from "../../src/meta/json-shape.ts";
 import { readJsonFile } from "../../src/meta/completed-json.ts";
 
-export type { WorkshopActionCensus } from "./builder-workshop-facts.ts";
-export type { BuilderFailureCensus, BuilderFailureSession } from "./builder-failed-calls.ts";
 export { builderToolFindings } from "./usage-reader.ts";
 
 const BUILDER_TOOLS_SCHEMA = "builder-tools/v7";

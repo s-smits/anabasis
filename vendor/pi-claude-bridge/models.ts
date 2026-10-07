@@ -40,6 +40,8 @@ function resolveClaudeCodeRuntimeModel(modelId: string, settings: LongContextSet
 			return { cliModelId: "claude-fable-5-1[1m]", contextWindow: ONE_M_CONTEXT };
 		case "claude-sonnet-5":
 			return { cliModelId: "claude-sonnet-5[1m]", contextWindow: ONE_M_CONTEXT };
+		case "claude-sonnet-5-5":
+			return { cliModelId: "claude-sonnet-5-5[1m]", contextWindow: ONE_M_CONTEXT };
 		case "claude-sonnet-4-6":
 			return {
 				cliModelId: settings.longContextExtraUsage ? "claude-sonnet-4-6[1m]" : "claude-sonnet-4-6",

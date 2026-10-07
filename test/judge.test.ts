@@ -1,7 +1,6 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { describe, expect, it } from "bun:test";
 import type { AgentSession } from "../src/backends/backend-types.ts";
-import { evaluatorIndependence } from "../src/claim/calibration.ts";
 import { judgeDecision, validateJudgeEvidence } from "../src/claim/judge.ts";
 import { JudgeCensus, type JudgeCensusSubject } from "../src/review/judge-census.ts";
 import { runJudgePhase } from "../src/review/judge-phase.ts";
@@ -215,10 +214,32 @@ describe("Judge verdict schema", () => {
     expect(evidence.sanitizer.modified).toBe(false);
   });
 
-  it("a completed prose-only turn is null because no schema verdict was recorded", async () => {
-    const judge = toolJudge(async () => ({ status: "completed", assistantText: "looks fine" }));
+  it("a prose-only turn is asked once more, and stays null when the follow-up records nothing", async () => {
+    const prompts: string[] = [];
+    const judge = toolJudge(async (_tool, options) => {
+      prompts.push(options.prompt);
+      return { status: "completed", assistantText: "looks fine" };
+    });
     await expect(judge(REQUEST)).resolves.toEqual(
-      attempt({ error: "judge completed without schema output", errorKind: "protocol" }),
+      attempt({ error: "judge completed without schema output", errorKind: "protocol", turns: 2 }),
+    );
+    expect(prompts).toHaveLength(2);
+    expect(prompts[1]).toBe(
+      "Your turn ended without a recorded verdict. Call record_judge_verdict exactly once now.",
+    );
+  });
+
+  // truss-30's census lost three of five subjects to a first turn that ended in prose; 40 of the
+  // 2,446 recorded subjects did, every one with turns: 1 and no second ask.
+  it("records the verdict a prose-only first turn gives on its one follow-up", async () => {
+    let turn = 0;
+    const judge = toolJudge(async (tool) => {
+      turn += 1;
+      if (turn === 2) await tool.execute("call-1", double({ verdict: "pass", rationale: "complete" }));
+      return { status: "completed" };
+    });
+    await expect(judge(REQUEST)).resolves.toEqual(
+      attempt({ verdict: true, rationale: "complete", turns: 2 }),
     );
   });
 
@@ -294,7 +315,7 @@ describe("Judge verdict schema", () => {
       return { status: "completed" };
     });
     await expect(judge(REQUEST)).resolves.toEqual(
-      attempt({ error: "judge completed without schema output", errorKind: "protocol" }),
+      attempt({ error: "judge completed without schema output", errorKind: "protocol", turns: 2 }),
     );
   });
 });
@@ -391,7 +412,7 @@ describe("the schema-tool verdict: budget, task disclosure, hint and cited rules
       return { status: "completed" };
     });
     await expect(judge(REQUEST)).resolves.toEqual(
-      attempt({ error: "judge completed without schema output", errorKind: "protocol" }),
+      attempt({ error: "judge completed without schema output", errorKind: "protocol", turns: 2 }),
     );
   });
 
@@ -849,12 +870,9 @@ describe("judge battery aggregation", () => {
     ).toThrow(/cannot be below/);
   });
 
-  it("records both pins, from which independence derives", () => {
+  it("records both pins", () => {
     const crossFamily = summarize([observation("t1", true, { verifier: true })]);
-    // The label compares model names; it does not prove independent errors or reasoning.
     expect(crossFamily).toMatchObject({ judgePin: session.pin, evaluatedPin: EVALUATED_PIN });
-    expect(evaluatorIndependence("scripted/judge", EVALUATED_PIN)).toBe("different-family");
-    expect(evaluatorIndependence(EVALUATED_PIN, EVALUATED_PIN)).toBe("same-model");
   });
 
   it("rejects contradictory observations before aggregation", () => {

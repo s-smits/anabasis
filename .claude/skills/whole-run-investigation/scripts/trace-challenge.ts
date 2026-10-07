@@ -45,6 +45,13 @@ import {
 } from "#tools/outcome/trace-facts.ts";
 
 export const DEFAULT_MAX_CHARS = 400_000;
+/** The files the challenge writes into its directory, and its status schema, which the manifest
+ *  reads back by these names. */
+export const TRACE_CHALLENGE_STATUS_FILE = "trace-challenge-status.json";
+export const TRACE_CHALLENGE_STATUS_SCHEMA = "whole-run-trace-challenge-status/v1";
+export const TRACE_CHALLENGE_PACKET_FILE = "trace-challenge-packet.json";
+export const TRACE_CHALLENGE_PROMPT_FILE = "trace-challenge-prompt.md";
+export const TRACE_TELEMETRY_FILE = "trace-telemetry.json";
 
 const USAGE = [
   "usage: bun trace-challenge.ts",
@@ -460,14 +467,14 @@ export function collect({ campaignDir, runId, outDir, maxChars }: CollectInput) 
   };
   const packetText = `${JSON.stringify(packet, null, 2)}\n`;
   const telemetryText = `${JSON.stringify(telemetry, null, 2)}\n`;
-  const packetPath = join(outDir, "trace-challenge-packet.json");
-  const promptPath = join(outDir, "trace-challenge-prompt.md");
-  const telemetryPath = join(outDir, "trace-telemetry.json");
+  const packetPath = join(outDir, TRACE_CHALLENGE_PACKET_FILE);
+  const promptPath = join(outDir, TRACE_CHALLENGE_PROMPT_FILE);
+  const telemetryPath = join(outDir, TRACE_TELEMETRY_FILE);
   writeFileSync(packetPath, packetText);
   writeFileSync(promptPath, `${promptText(runId)}\n`);
   writeFileSync(telemetryPath, telemetryText);
   const status = {
-    schema: "whole-run-trace-challenge-status/v1",
+    schema: TRACE_CHALLENGE_STATUS_SCHEMA,
     complete: existsSync(caseRecord),
     campaign: resolve(campaignDir),
     runId,
@@ -484,7 +491,7 @@ export function collect({ campaignDir, runId, outDir, maxChars }: CollectInput) 
     telemetry: telemetryPath,
     note: "Trace previews are bounded and redacted; missing or truncated trace is unobservable.",
   };
-  writeJsonFile(join(outDir, "trace-challenge-status.json"), status);
+  writeJsonFile(join(outDir, TRACE_CHALLENGE_STATUS_FILE), status);
   return { packet, status, packetPath, promptPath, telemetryPath };
 }
 

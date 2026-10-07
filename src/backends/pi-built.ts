@@ -24,7 +24,6 @@ import {
   starterRegistration,
 } from "../solve/built-starter.ts";
 import { GeneratedToolWorkerNonResult, createGeneratedToolStarter } from "../solve/generated-tool-worker.ts";
-import { withTimeLeftAtSubmit } from "../solve/submit-time-left.ts";
 import { PENDING_REQUESTS_AT_CLOSE } from "../solve/generated-tool-worker-termination.ts";
 import { loadBuiltControllerInterface } from "../correctness-bundle/contracts.ts";
 import { runtimeNonResultReason } from "../correctness-bundle/runtime-blocker.ts";
@@ -98,14 +97,6 @@ type BuiltCaseEvidence = BuiltTurnRecord & {
   readonly submitted: boolean;
   readonly contractCondition: SolveInterfaceCondition;
 };
-
-/** Per-case turn cap of the Built solver when the harness's agent/config.yaml sets none. Four turns
- *  fit one write, one preview and one submit and nothing else; twelve leave room to build or run the
- *  draft, read the result and repair it; twenty-four leave room for a search or optimisation loop
- *  over several candidates (operator decision). The harness's own `solver.max_turns` sets the cap
- *  and this is only the default behind it, which is why `thresholds.frozen.yaml` holds no Built turn
- *  limit to disagree with. */
-export const BUILT_DEFAULT_MAX_TURNS = DEFAULT_HARNESS_SETTINGS.maxTurns;
 
 /** What a Built solver is opened with beyond its runtime: the turn cap a test or the export path
  *  overrides, the observer and phase its cases are recorded under, the provider budget each turn is
@@ -436,12 +427,7 @@ export function piBuiltSolver(runtime: PiBuiltRuntime, options: BuiltSolverOptio
     if (!("contractCondition" in opened)) return opened;
     const { start, contractCondition } = opened;
     let generatedWorker: GeneratedToolWorkerEvidence | null = null;
-    const tools = withTimeLeftAtSubmit(
-      new Map(starter.tools.map((tool) => [tool.name, tool])),
-      runtime.solveWallMs ?? settingsOf(starter).solveMs,
-      Date.now,
-      () => turns.identities.length + 1 >= start.maxTurns,
-    );
+    const tools = new Map(starter.tools.map((tool) => [tool.name, tool]));
     try {
       const events = workerEvents(task, starter, recorder, turns, {
         observer,

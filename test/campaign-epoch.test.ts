@@ -33,14 +33,19 @@ import {
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
-import { readJsonFile, readJsonFileOrNull, writeAtomic, writeJsonFile } from "../src/meta/completed-json.ts";
+import {
+  readJsonFile,
+  readJsonFileOrNull,
+  writeAtomic,
+  writeJsonFile,
+  writeCompleted,
+} from "../src/meta/completed-json.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { hashJsonValue } from "../src/meta/stable-json.ts";
 import {
   campaignEpochForBinding,
   latestCampaignEpochForBinding,
   selectCampaignEpoch,
-  writeCompleted,
 } from "../src/author/campaign-epoch.ts";
 
 type EpochBinding = Parameters<typeof selectCampaignEpoch>[1];

@@ -5,6 +5,7 @@
  *   sample  draw unjudged sites per shape into blind judge packets
  *   ingest  merge a judge's verdict lines into the label file
  *   score   precision per shape with its Wilson interval, and what a candidate rule removed
+ *   pass    which surfaces of a recorded simplification pass the census printed at its base
  *
  * The rule is the tree this script runs from. A candidate is measured by running `replay` from
  * its worktree over the same revisions and passing both outputs to `score`. Labels outlive the
@@ -19,6 +20,8 @@
  *     --verdicts /abs/packets/verdicts-1.tsv --judge opus-5.5
  *   bun .claude/skills/simplify-precision/scripts/precision.mts score --sites /abs/sites.jsonl \
  *     [--candidate /abs/candidate.jsonl] [--ledger /abs/other-repo/tools/oxlint/not-slop.tsv]
+ *   bun .claude/skills/simplify-precision/scripts/precision.mts pass --sites /abs/base-sites.jsonl \
+ *     --pass .claude/skills/simplify-precision/passes/pr120.tsv
  */
 
 import { exitWith, parseCommandOrDie } from "#skills/main/cli.ts";
@@ -56,6 +59,16 @@ export interface Label {
   verdict: "yes" | "no";
   source: string;
   reason: string;
+}
+
+/** One surface a recorded simplification pass removed or kept, at the revision it started from. */
+export interface PassRow {
+  rev: string;
+  verdict: "removed" | "kept";
+  path: string;
+  line: number;
+  symbol: string;
+  class: string;
 }
 
 /** The judged set, beside this skill so it survives the session that judged it. */
@@ -98,6 +111,7 @@ const QUESTIONS = new Map<string, string>(
     "unread-field": "Should this field be removed, since nothing reads it?",
     "orphan-module": "Should this module be deleted, since nothing runs it?",
     "test-only-module": "Should this module be deleted with its tests, since the product never runs it?",
+    "unread-forward": "Should this re-export be deleted, since every caller imports the name from its owner?",
     "rule-without-fixture": "Should this rule get a fixture that makes it report (or be removed)?",
   }),
 );
@@ -380,12 +394,64 @@ function score(values: Readonly<Record<string, string | undefined>>, ledgers: re
   return `${scoreTable(sites, labels, candidate)}\n`;
 }
 
+/**
+ * Per class of a recorded pass, how many surfaces it removed the census printed, and how many it
+ * kept. A kept surface printed is a no the pass already answered, so that column should read 0; the
+ * removed column is recall, which a precise scan may leave low. A site covers a row when one of its
+ * places spans the row's line, or is about the row's whole file, and its detail quotes the row's
+ * symbol or no name at all: one `export { … } from` line held names #120 removed and names it kept.
+ */
+export function passTable(sites: readonly ReplayedSite[], rows: readonly PassRow[]): string {
+  const covers = (site: ReplayedSite, row: PassRow): boolean => {
+    const quoted = [...site.detail.matchAll(/`([\w$]+)`/gu)].map((match) => match[1]);
+    return (
+      (site.rev.startsWith(row.rev) || row.rev.startsWith(site.rev)) &&
+      (quoted.length === 0 || quoted.includes(row.symbol)) &&
+      site.places.some(
+        (place) =>
+          place.path === row.path && (place.line === 0 || (place.line <= row.line && row.line <= place.end)),
+      )
+    );
+  };
+  const count = (group: readonly PassRow[], verdict: PassRow["verdict"]): string => {
+    const of = group.filter((row) => row.verdict === verdict);
+    return `${of.filter((row) => sites.some((site) => covers(site, row))).length}/${of.length}`;
+  };
+  return [
+    `${"class".padEnd(20)} removed printed  kept printed`,
+    ...[...Map.groupBy(rows, (row) => row.class)]
+      .map(
+        ([name, group]) =>
+          `${name.padEnd(20)} ${count(group, "removed").padStart(15)}  ${count(group, "kept").padStart(12)}`,
+      )
+      .sort(),
+    `${"all".padEnd(20)} ${count(rows, "removed").padStart(15)}  ${count(rows, "kept").padStart(12)}`,
+  ].join("\n");
+}
+
+function pass(values: Readonly<Record<string, string | undefined>>): string {
+  const sites = readSites(values.sites ?? die("--sites is required"));
+  const [, ...lines] = readFileSync(values.pass ?? die("--pass is required"), "utf8")
+    .trim()
+    .split("\n");
+  const rows = lines.map((line): PassRow => {
+    const [rev = "", verdict = "", path = "", at = "", symbol = "", name = ""] = line.split("\t");
+    const outcome =
+      verdict === "removed" || verdict === "kept"
+        ? verdict
+        : die(`pass row verdict ${verdict} is neither removed nor kept`);
+    return { rev, verdict: outcome, path, line: Number(at), symbol, class: name };
+  });
+  return `${passTable(sites, rows)}\n`;
+}
+
 async function main(): Promise<void> {
   const parsed = parseCommandOrDie(die, {
     replay: { values: ["repo", "out", "every", "since", "branch", "revs"] },
     sample: { values: ["sites", "per-shape", "seed", "out", "again"] },
     ingest: { values: ["manifest", "verdicts", "judge"] },
     score: { values: ["sites", "candidate"], repeatable: ["ledger"] },
+    pass: { values: ["sites", "pass"] },
   });
   const single = Object.fromEntries(parsed.single);
   const commands = new Map<string, () => string | Promise<string>>([
@@ -393,6 +459,7 @@ async function main(): Promise<void> {
     ["sample", () => sample(single)],
     ["ingest", () => ingest(single)],
     ["score", () => score(single, parsed.repeated.get("ledger") ?? [])],
+    ["pass", () => pass(single)],
   ]);
   const run = commands.get(parsed.command) ?? die(`no command ${parsed.command}`);
   // `write` on the stream printed nothing from this script; `Bun.write` resolves once stdout has

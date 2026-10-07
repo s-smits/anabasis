@@ -8,7 +8,6 @@ import { processGroupExists } from "../meta/subprocess.ts";
 import { errorCode, type RuntimeSignal } from "../meta/runtime-values.ts";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
-export { settleUnspawned, superviseVerifierProcess } from "./verifier-lifetime-process.ts";
 
 export interface VerifierProcessSettlement {
   receiptId: string;

@@ -187,6 +187,15 @@ proves another condition.
 Optional `numbersWithin`, `multisetMatches` and `relationalJoin` helpers come from
 `@ana/correctness-model-prims`; use public units and tolerances.
 
+### Where a rule comes from
+
+A rule, constant or scenario taken from a datasheet, a standard, vendor reference code or a pinned
+upstream revision can keep the passage it rests on under `correctness-model/sources/`: a short
+quoted excerpt in a text file, not the whole document, whose first lines name where it came from
+(a URL, or a repository and revision), the obligation it grounds and the check ids that enforce
+it. The solver never reads this directory. The host hashes each file into the version it
+publishes, and the reviewer reads it beside the tasks. A rule you set yourself needs no source.
+
 ## Task battery and controls
 
 `tasks.json` is an array of `{taskId, family, publicInput, hidden}` with unique task ids that are
@@ -215,7 +224,7 @@ answer is an evaluator defect however many rejects it catches.
 ## Harness tests
 
 Extend the tracked `correctness-model/harness.test.ts` and `evaluator.test.ts` and run them with
-`.toolchain/bun --preserve-symlinks --no-env-file test correctness-model/harness.test.ts correctness-model/evaluator.test.ts`.
+the command in STARTER.md.
 The seed's `evaluateCheckProgram` projects inputs and aggregates your checks beside the reference
 solve, and its last test runs each accept control through a stub runtime applying the host's
 tool-request contract. These prove neither process confinement nor installed tool execution:
@@ -254,12 +263,14 @@ placeholder is missing evidence.
   effect to first order sends every solver over the limit. Where the public input leaves an effect
   open, name it and its direction in the returned text. A fast screening adviser beside a slow exact
   one is fine; generated tools cannot start processes.
-- An adviser never analyses a candidate the way a check does: it imports and copies nothing from
-  `correctness-model/`, and it returns neither a check's verdict nor the response a check decides
-  from. What a candidate is — its layout, its counts, its totals — an adviser may compute; how it
-  behaves under the task's loads, scenarios or data is the solver's analysis. The operating guide
-  holds the same line: it names no command that runs a check's instrument the way the check runs
-  it.
+- An adviser never does a check's work: it returns neither a check's verdict, nor the response a
+  check decides from, nor what a check expects for a scenario the solver chooses. What a candidate
+  is — its layout, its counts, its totals — an adviser may compute; how it behaves under the task's
+  loads, scenarios or data, and how the task requires it to behave there, are the solver's
+  analysis. Code the correctness model also runs may serve an adviser when it holds only
+  published rules, constants and standard computation. The operating guide holds the same line: it
+  may say how the solver's shell runs an installed compiler or simulator, and names no command that
+  returns a check's verdict or its expected result.
 
 ```json
 {

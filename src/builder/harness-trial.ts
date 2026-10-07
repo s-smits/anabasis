@@ -52,6 +52,12 @@ import { harnessSettings } from "../correctness-bundle/harness-config.ts";
 import type { RehearsalTraces } from "./context-tool.ts";
 import { effortPhrase, type SolveEffort, solverTraceLines, traceEffort } from "./solver-trace-text.ts";
 
+/** The worked examples a session's first graded rehearsal names, once (see `roundClause`). It
+ *  says what the file holds and quotes none of its headings, since one of them states the climb's aim
+ *  and a sentence repeated every round is the aim-sentence channel prior 10 keeps closed. */
+export const EXAMPLES_POINTER =
+  " Optional worked examples of domain shapes, task batteries and evaluators are in starter-pack/examples.md.";
+
 const Params = Type.Object({
   taskId: Type.String({ minLength: 1, maxLength: 256 }),
 });
@@ -74,6 +80,10 @@ interface HarnessTrialBinding {
   /** Hands each rehearsal that reached a solve to the authoring review: the aggregate verdict, the
    *  solve's effort and the bytes the solver submitted, which reach the Builder only for a pass. */
   onRehearsal?: (row: RehearsalRow, submitted: SubmittedRehearsal) => void;
+  /** True the first time the Builder's session asks to be told `key`. A run's one conversation keeps
+   *  its session across rounds, so the round's first graded rehearsal names the worked examples only
+   *  where the session has not been told them. Absent, the round is the session. */
+  tellOnce?: (key: string) => boolean;
 }
 
 /** One rehearsal as the authoring review reads it: the aggregate verdict rule 4 lets a rehearsal
@@ -499,8 +509,14 @@ function notePassEffort(tally: RoundRehearsals, row: RehearsalRow): void {
  * pass took, and the most tool calls any pass made. It does not count turns, because on the pi
  * backend every solve records one turn whatever it does, so a turn count is always one and says
  * nothing (AGENTS.md "Goals and the climb").
+ *
+ * The first graded rehearsal instead names the worked examples, once per session (`tellOnce`,
+ * asked only where the clause is rendered, so a result that shows none leaves it owed): it
+ * is the first moment the Builder holds a measurement of its own tasks, and the starter's pointer
+ * alone was read in 52 of 310 recorded sessions. It points at the file and asks nothing.
  */
-function roundClause(tally: RoundRehearsals): string {
+function roundClause(tally: RoundRehearsals, tellOnce: (key: string) => boolean): string {
+  if (tally.graded === 1) return tellOnce("examples") ? EXAMPLES_POINTER : "";
   if (tally.graded < 2) return "";
   const { longestPassWallPercent: percent, mostPassToolCalls: calls } = tally;
   const wall = percent === null ? null : `took more than ${String(percent)}% of the solve wall`;
@@ -510,7 +526,13 @@ function roundClause(tally: RoundRehearsals): string {
   return ` Across this round your solver has now passed ${String(tally.passed)} of ${String(tally.graded)} graded rehearsals${passes}.`;
 }
 
-function trialNextAction(status: string, verdict: string, stage: string, tally: RoundRehearsals): string {
+function trialNextAction(
+  status: string,
+  verdict: string,
+  stage: string,
+  tally: RoundRehearsals,
+  tellOnce: (key: string) => boolean,
+): string {
   if (status === "blocked") return blockedNextAction(stage);
   if (status === "non-result" || status === "verifier-failed") {
     return "The rehearsal reached no verdict, so this task is unmeasured: it is neither hard nor easy evidence. Repair the named stage and repeat it.";
@@ -519,22 +541,22 @@ function trialNextAction(status: string, verdict: string, stage: string, tally: 
     return "Candidate bytes changed during the rehearsal. Repeat it on unchanged files.";
   }
   if (status === "unaccepted") {
-    return `The solver ran and submitted no accepted artifact. That is a solver miss, not a check failure: it counts towards difficulty only if a correct answer is reachable from the public task with the tools you published. Read your own tool roster and brief before treating it as a hard task.${roundClause(tally)}`;
+    return `The solver submitted no accepted artifact, which a battery counts as a fail.${roundClause(tally, tellOnce)}`;
   }
   if (verdict === "pass") {
-    return `Your solver passed this task on its first unaided attempt, so a battery of tasks like it scores near its size.${roundClause(tally)}`;
+    return `Your solver passed this task on its first unaided attempt, so a battery of tasks like it scores near its size.${roundClause(tally, tellOnce)}`;
   }
   // Stated as the mirror of the pass sentence, and with no next task: a battery locates a limit only
   // through its misses, so a sentence steering towards an easier task would choose the course for
   // the Builder.
-  return `Your solver missed this task on its first unaided attempt, so a battery of tasks like it scores near zero.${roundClause(tally)}`;
+  return `Your solver missed this task on its first unaided attempt, so a battery of tasks like it scores near zero.${roundClause(tally, tellOnce)}`;
 }
 
 /** Counts this call into the round before it reads the round back, so a result speaks for every
  *  rehearsal including its own. The tally is updated here rather than by the caller because this is
  *  where the row has already been parsed, and a second parse of the same bytes is a second thing to
  *  keep right. */
-function trialResultSummary(value: unknown, tally: RoundRehearsals) {
+function trialResultSummary(value: unknown, tally: RoundRehearsals, tellOnce: (key: string) => boolean) {
   const row = asRecord(value);
   const solve = asRecord(row?.solve);
   const candidate = asRecord(row?.candidate);
@@ -554,7 +576,9 @@ function trialResultSummary(value: unknown, tally: RoundRehearsals) {
     // A body that already named its own cause keeps it. The status alone cannot tell a blank taskId
     // from an unreadable bundle, so recomputing here would write a vaguer sentence over the more
     // specific one the stage produced.
-    nextAction: isString(row?.nextAction) ? row.nextAction : trialNextAction(status, verdict, stage, tally),
+    nextAction: isString(row?.nextAction)
+      ? row.nextAction
+      : trialNextAction(status, verdict, stage, tally, tellOnce),
     receipt,
   };
 }
@@ -580,7 +604,7 @@ export function createHarnessTrialTool(binding: HarnessTrialBinding): AgentTool<
   return defineTool({
     name: "harness_trial",
     label: "Harness trial",
-    description: `Measure one of your own tasks against your own solver. The Built Harness you wrote solves the named task blind — public input and your registered tools only, no hidden expectations, no reference solve, under the same turn cap, solve wall and confinement a measured battery uses — and the real check program then grades the bytes it submitted. You get one aggregate truth.verdict of pass, fail or not-run, whether it submitted at all, how many turns it took and what the solve spent (minutes against the solve wall, tool calls, cost): never which check decided, a counterexample, a failure location, the artifact or any verifier output. This is the only evidence in the round about how hard your battery actually is. A task your solver passes on its first attempt will most likely pass in the battery too. Each rehearsal costs one measured case from the run's provider budget, and the accepted bytes are graded under the same per-check wall your agent/config.yaml sets for the battery. Use harness_inspect readiness to choose taskId; full battery and control coverage, candidate gates and adoption stay with submit.`,
+    description: `Measure one of your own tasks against your own solver. The Built Harness you wrote solves the named task blind — public input and your registered tools only, no hidden expectations, no reference solve, under the same turn cap, solve wall and confinement a measured battery uses — and the real check program then grades the bytes it submitted. You get one aggregate truth.verdict of pass, fail or not-run, whether it submitted at all, how many turns it took and what the solve spent (minutes against the solve wall, tool calls, cost): never which check decided, a counterexample, a failure location, the artifact or any verifier output. A task your solver passes on its first attempt will most likely pass in the battery too. Each rehearsal costs one measured case from the run's provider budget, and the accepted bytes are graded under the same per-check wall your agent/config.yaml sets for the battery. Use harness_inspect readiness to choose taskId; full battery and control coverage, candidate gates and adoption stay with submit.`,
     parameters: Params,
     executionMode: "sequential",
     run: async (params, signal) => {
@@ -589,7 +613,7 @@ export function createHarnessTrialTool(binding: HarnessTrialBinding): AgentTool<
       // A rehearsal blocked before its solve wrote nothing under this ordinal, so the next call reuses
       // it without colliding with an evidence directory that exists.
       if (result.status === "blocked") ordinal -= 1;
-      const summary = trialResultSummary(result, tally);
+      const summary = trialResultSummary(result, tally, binding.tellOnce ?? (() => true));
       return {
         text: capturedJsonStringify({
           ...result,

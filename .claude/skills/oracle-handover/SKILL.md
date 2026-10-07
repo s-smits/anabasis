@@ -1,6 +1,6 @@
 ---
 name: oracle-handover
-description: "Hand a question to an outside Oracle model (GPT-5.5 Pro or whichever the operator names) as one task document plus one zip. The Oracle reads GitHub and the harness-builder-v4 history; the zip carries what it cannot fetch: run traces via zip-run, patches for unpublished commits, notes, ledgers, predictions and plans. Use for \"oracle prompt\", \"prompt for GPT-5 Pro\", \"zip the traces for the oracle\", or the retired gpt-5-pro-appender."
+description: "Hand a question to an outside Oracle model (GPT-6 Pro or whichever the operator names) as one task document plus one zip. The Oracle reads GitHub and the harness-builder-v4 history; the zip carries what it cannot fetch: run traces via zip-run, patches for unpublished commits, notes, ledgers, predictions and plans. Use for \"oracle prompt\", \"prompt for GPT-6 Pro\", \"gpt-6-pro appender\", \"zip the traces for the oracle\", or the retired gpt-5-pro-appender."
 ---
 
 # Oracle handover
@@ -17,11 +17,11 @@ run launched from a local compose. So a handover is two files. One is a task doc
 operator pastes as the message. The other is a zip, which the operator attaches. The document cites
 code by commit and path, and the zip carries only what GitHub cannot serve.
 
-This skill replaces the user-level `gpt-5-pro-appender`, retired on 2026-09-28. That skill copied
-source into one long Markdown file. Copying was the right call when the reading model had no
-repository access. With access, a SHA and a path say the same thing without drifting, and the size
-budget goes on the traces instead, which the Oracle cannot get anywhere else. The appender's
-copying mechanism survives below for a reader that has no access.
+This skill is the gpt-6-pro appender. It replaces the user-level `gpt-5-pro-appender`, retired on
+2026-09-28. That skill copied source into one long Markdown file. Copying was the right call when
+the reading model had no repository access. With access, a SHA and a path say the same thing
+without drifting, and the size budget goes on the traces instead, which the Oracle cannot get
+anywhere else. The appender's copying mechanism survives below for a reader that has no access.
 
 ## Resolve what GitHub can serve
 

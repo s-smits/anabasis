@@ -21,9 +21,9 @@ import {
   type PreparedControllerTerminal,
   prepareControllerTerminal,
   readControllerEvidence,
-  resolveLaunchRunId,
   writeControllerTerminal,
 } from "../src/run/controller-evidence.ts";
+import { resolveLaunchRunId } from "../src/run/controller-lineage.ts";
 import { controllerDenominator } from "../src/run/controller-denominator.ts";
 import { type LoopTerminalCode, loopTerminalCode } from "../src/run/loop-terminal.ts";
 import type { ControllerAbortClause } from "../src/run/controller-stop-evidence.ts";

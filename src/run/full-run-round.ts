@@ -24,7 +24,7 @@ import { type NextMove, epochPassOf, selectNextMoveFromDisk } from "./next-move.
 import { recordDifficultyDecision } from "./difficulty-decision.ts";
 import { refusedForEnvironmentOnly } from "./climb-battery-admission.ts";
 import type { WrittenRunClaim } from "./claim-write.ts";
-import { ENVIRONMENT_OWNED_NONRESULT_KINDS, isNonResultKind } from "../claim/record-events.ts";
+import { isEnvironmentOwnedNonResult } from "../claim/record-events.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import type { SafeguardContext } from "../meta/safeguard.ts";
 import type { ProviderResourceBudget } from "./provider-resource-budget.ts";
@@ -143,7 +143,6 @@ function selectorContext(
     manifest: input.manifest,
     baseKickoff: input.baseKickoff,
     runPin: input.runPin,
-    runId: input.runId,
     domainDir,
     builder: input.builderCondition,
     built: input.slots.built,
@@ -177,7 +176,7 @@ export function heldInLoop(steps: CandidateEvaluation): boolean {
 }
 
 export async function runIteration(input: IterationInput): Promise<IterationResult> {
-  const { args, repoRoot, manifest, runId, runPin, deps, observer } = input;
+  const { repoRoot, manifest, runId, runPin, deps, observer } = input;
   throwIfStopRequested(input);
   const domainDir = selectedProductDir(repoRoot, manifest.slug);
   const { prior, lineage, readout, decision, kickoff } = selectNextMoveFromDisk(
@@ -224,7 +223,6 @@ export async function runIteration(input: IterationInput): Promise<IterationResu
   });
   throwIfStopRequested(input);
   const steps = await settleCandidateEvaluation({
-    args,
     repoRoot,
     manifest,
     runId,
@@ -455,7 +453,7 @@ function environmentOwnsRefusal(claim: Pick<WrittenRunClaim, "clauses" | "nonRes
 
 function environmentNonResultsOnly(claim: Pick<WrittenRunClaim, "nonResults">): boolean {
   return Object.entries(claim.nonResults).every(
-    ([kind, count]) => count === 0 || (isNonResultKind(kind) && ENVIRONMENT_OWNED_NONRESULT_KINDS.has(kind)),
+    ([kind, count]) => count === 0 || isEnvironmentOwnedNonResult(kind),
   );
 }
 

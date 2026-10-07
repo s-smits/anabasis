@@ -72,7 +72,7 @@ from dataclasses import dataclass, fields
 
 EXCLUDE = re.compile(
     r"(^|/)generated/"
-    r"|(^|/)(evidence|runs)/|\.jsonl$"
+    r"|\.jsonl$"
     r"|\.(md|mdx|txt)$"
     r"|(^|/)(test|tests|__tests__)/|\.(test|spec)\.[cm]?tsx?$"
     r"|(^|/)(vendor|vendored|third_party)/|\.venv/|\.uv-cache/"
@@ -81,26 +81,66 @@ EXCLUDE = re.compile(
 SOURCE_ROOTS = ("src/", "tools/", "starters/", "packages/")
 SOURCE_SUFFIX = (".ts", ".tsx", ".mts", ".js", ".mjs", ".py")
 
-# Files that compose text a model receives in an ordinary session: system prompts, the loop's
-# continuation and advice text, and the descriptions and results of the tools a session calls.
-# Kept explicit: an AST census guesses audiences, and for a delta the honest move is to name the
-# composers and let the number be exact. Validator modules are deliberately out, although their
-# findings reach the author: their literals are mostly codes and paths, and only a refused session
-# reads them, so renaming a code would move a "how much a model reads" number for no one.
+# Files that compose text a model receives in an ordinary session: system prompts, round and
+# continuation text, advice, and the descriptions and ordinary results of the tools a session
+# calls. Each was followed to the line that hands it to its reader on 2026-10-01; the list had
+# covered 13 files and a third of this text. Kept explicit: an AST census guesses audiences, and
+# for a delta the honest move is to name the composers and let the number be exact. Modules whose
+# text only a refused or failing session reads (validators, gates, admission) are deliberately
+# out: their literals are mostly codes and paths, so renaming a code would move a "how much a
+# model reads" number for no one. A sentence moved between a listed and an unlisted file still
+# reads as growth or shrinkage, so move prompt text into a listed composer, not out of one.
 PROMPT_FILES = (
-    "src/solve/built-starter.ts",
-    "src/solve/built-bash.ts",
-    "src/solve/dcg-rules.ts",
+    # Builder: system prompt, round prompt, continuation, opening context
     "src/author/builder-start-prompt.ts",
     "src/author/builder-session.ts",
     "src/author/builder-continuation.ts",
-    "src/author/experiment-plan.ts",
+    "src/author/builder-memory.ts",
+    "src/run/direct-input.ts",
+    # climb-history.ts rendered readout text until its last sentence moved to climb-readout.ts,
+    # and holds only refusals since; it stays listed so a delta across that move sees both sides.
+    "src/run/climb-history.ts",
     "src/run/climb-readout.ts",
+    "src/run/battery-sizing.ts",
     "src/author/rebuild-advice.ts",
+    "src/author/issue-register.ts",  # issueFacts and the unmeasured gap words, split out of rebuild-advice
+    "src/review/epoch-review-public.ts",  # also the Epoch Reviewer
+    # Builder: tool descriptions and ordinary results
+    "src/builder/tools.ts",
+    "src/builder/bash-install-env.ts",
+    "src/builder/tool-write.ts",
+    "src/builder/read-window.ts",
+    "src/builder/verifier-workshop-tool.ts",
+    "src/builder/context-tool.ts",
     "src/builder/harness-inspect.ts",
     "src/builder/harness-trial.ts",
+    "src/builder/solver-trace-text.ts",
+    "src/builder/harness-reset.ts",
+    "src/builder/author-feedback.ts",
+    "src/gate/check-tool.ts",
+    "src/gate/submit-tool.ts",
+    # Built Harness solver (dcg-rules also feeds the Builder's system prompt)
+    "src/solve/built-starter.ts",
+    "src/solve/built-bash.ts",
+    "src/solve/dcg-rules.ts",
+    "src/solve/published-margin.ts",
+    # Deleted 2026-10-07 with the first-submit hold. `blob` reads an absent file as empty, so the
+    # entry adds nothing after that and lets a delta from an earlier base count the notice removed.
+    "src/solve/submit-time-left.ts",
+    # Judge
     "src/review/judge-framing.ts",
     "src/review/judge-prompt-policy.ts",
+    "src/review/judge-drivers.ts",
+    # Epoch Reviewer
+    "src/review/epoch-review-prompt.ts",
+    "src/review/epoch-reviewer.ts",
+    "src/review/epoch-review-findings.ts",
+    "src/review/review-probe.ts",
+    "src/review/review-sources.ts",
+    # Diagnosis reader
+    "src/review/diagnosis-tool.ts",
+    "src/review/diagnosis-reader.ts",
+    "src/review/solve-steps.ts",
 )
 DOC_FILES = (
     "starters/pi-built-harness/starter-pack/contract.md",
@@ -109,6 +149,8 @@ DOC_FILES = (
 )
 BASELINE_FILE = "tools/loc/complexity-baseline.json"
 CEILING_FILE = "tools/loc/complexity-policy.ts"
+# Every file of each revision read so far, by revision and path; `blob` fills it.
+TEXTS: dict[str, dict[str, str]] = {}
 
 DECISION = re.compile(
     r"\bif\s*\(|\bfor\s*\(|\bwhile\s*\(|\bcase\s+|\bcatch\s*\(|&&|\|\||\?\?|\?\.|\s\?\s"
@@ -118,7 +160,16 @@ EXPORT = re.compile(r"^\s*export\s+(?:const|function|class|interface|type|enum|a
 # before `?`, which this does not match; `foo?.(` is a call, excluded by requiring `:` next.
 OPTIONAL = re.compile(r"[A-Za-z_$][\w$]*\?:")
 # Single- and double-quoted literals plus backtick templates, which is where prompt text lives.
-LITERAL = re.compile(r'"(?:[^"\\\n]|\\.)*"' r"|'(?:[^'\\\n]|\\.)*'" r"|`(?:[^`\\]|\\.)*`", re.S)
+# A comment is matched first and dropped, so a quoted word inside one is not read as a literal, and
+# a literal that is a module path is dropped with its `from` or `import(`. So are the key names in a
+# `Pick<T, "a" | "b">`, which name fields of a type and reach no reader.
+LITERAL = re.compile(
+    r"//[^\n]*|/\*.*?\*/"
+    r"""|(?:\bfrom\s+|\bimport\s*\(?\s*)["'][^"'\n]*["']"""
+    r"|\b(?:Pick|Omit)<[^<>;]*>"
+    r'|"(?:[^"\\\n]|\\.)*"' r"|'(?:[^'\\\n]|\\.)*'" r"|`(?:[^`\\]|\\.)*`",
+    re.S,
+)
 # A relative import of another module in this tree, which is the only edge kind that counts:
 # a package import is not a coupling this repository can shorten.
 IMPORT = re.compile(r"""\bfrom\s+["'](\.[^"']*)["']|\bimport\s*\(\s*["'](\.[^"']*)["']""")
@@ -213,10 +264,26 @@ def git(repo: str, *args: str) -> str:
 
 
 def blob(repo: str, rev: str, path: str) -> str:
-    done = subprocess.run(
-        ["git", "-C", repo, "show", f"{rev}:{path}"], capture_output=True, text=True, check=False
-    )
-    return done.stdout if done.returncode == 0 else ""
+    """The file at `rev` as `git show` reads it, or "" where it is absent. The first read of a
+    revision takes all of its files through one `git cat-file --batch`: a `git show` per file was
+    a thousand processes a revision and 14 of the 16 seconds a two-revision read took."""
+    if rev not in TEXTS:
+        listed = git(repo, "ls-tree", "-r", "-z", rev).split("\0")
+        entries = [entry.split("\t", 1) for entry in listed if entry]
+        blobs = [(meta.split()[2], name) for meta, name in entries if meta.split()[1] == "blob"]
+        out = subprocess.run(
+            ["git", "-C", repo, "cat-file", "--batch"],
+            input="".join(f"{sha}\n" for sha, _ in blobs).encode(), capture_output=True, check=True,
+        ).stdout
+        TEXTS[rev], at = {}, 0
+        for _, name in blobs:
+            start = out.index(b"\n", at) + 1
+            end = start + int(out[at : start - 1].rsplit(b" ", 1)[1])
+            # The newline translation that `text=True` applied to what `git show` printed.
+            text = out[start:end].decode(errors="replace")
+            TEXTS[rev][name] = text.replace("\r\n", "\n").replace("\r", "\n")
+            at = end + 1
+    return TEXTS[rev].get(path, "")
 
 
 def is_source(path: str) -> bool:
@@ -231,7 +298,7 @@ def literal_bytes(text: str) -> int:
     """Bytes of string-literal content. Comments carry no model-visible text, and a prompt file's
     own explanation of why a clause exists is often longer than the clause, so counting whole
     files would report the reasoning as prompt."""
-    return sum(len(m.group(0).encode()) - 2 for m in LITERAL.finditer(text))
+    return sum(len(m.group(0).encode()) - 2 for m in LITERAL.finditer(text) if m.group(0)[0] in "\"'`")
 
 
 def wide_signatures(text: str) -> int:
@@ -390,7 +457,7 @@ def main() -> int:
             path: head_files.get(path, 0) - base_files.get(path, 0)
             for path in set(base_files) | set(head_files)
         }
-        rows = sorted((d for d in moved.items() if d[1]), key=lambda kv: -abs(kv[1]))[:15]
+        rows = sorted((d for d in moved.items() if d[1]), key=lambda kv: (-abs(kv[1]), kv[0]))[:15]
         if rows:
             print("\nlargest per-file line moves")
             for path, count in rows:

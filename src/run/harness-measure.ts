@@ -36,7 +36,7 @@ import {
   readCaseRecord,
 } from "../claim/case-record.ts";
 import { type ConformanceEvidence, readBoundConformance } from "../claim/conformance-evidence.ts";
-import { FROZEN_MANIFEST_PATH, loadFrozenManifest } from "../critic/manifest.ts";
+import { frozenManifestPath, loadFrozenManifest } from "../critic/manifest.ts";
 import { fullrunLine, createRunObserver, type RunObserver } from "../observe/run-observer.ts";
 import {
   type BatteryDisposition,
@@ -62,7 +62,8 @@ import {
   backendStartupEvidence,
   preflightCampaignModels,
 } from "./model-preflight.ts";
-import { assertRunIdSafe, batteryCondition, driveBattery, loadRecordedTasks } from "./run-driver.ts";
+import { batteryCondition, driveBattery, loadRecordedTasks } from "./run-driver.ts";
+import { assertPathSegment } from "../meta/path-segment.ts";
 import { keyIfDefined, keyIfNotNull, keysIf } from "../meta/optional-key.ts";
 import { runtimeProcess } from "../meta/process.ts";
 import type { ProviderResourceBudget } from "./provider-resource-budget.ts";
@@ -309,7 +310,7 @@ async function resolveMeasureInterface(manifest: AskManifest, options: HarnessMe
       preflight === null
         ? undefined
         : backendStartupEvidence(slots, preflight.hostRuntime, preflight.modelSelections),
-    thresholdManifestDigest: loadFrozenManifest(join(repoRoot, FROZEN_MANIFEST_PATH)).digest,
+    thresholdManifestDigest: loadFrozenManifest(frozenManifestPath(repoRoot)).digest,
   };
 }
 
@@ -417,7 +418,7 @@ export async function measureHarness(
 ): Promise<HarnessMeasureResult> {
   // Validate before any filesystem operation: runId is used directly in run and claim paths,
   // so an id containing path traversal must be refused before joining it to a directory.
-  assertRunIdSafe(options.runId);
+  assertPathSegment("runId", options.runId);
   if (options.verifierLifetime === undefined) {
     const repoRoot = options.repoRoot ?? runtimeProcess.cwd();
     const verifierLifetime = campaignVerifierLifetime(

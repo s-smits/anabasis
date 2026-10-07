@@ -91,9 +91,9 @@ into a trigger. So the read runs first, always, and its triggers choose most of 
 and which lane each trigger starts.
 
 ```text
-bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.ts lanes
-bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.ts scope <runId | campaign dir>
-bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.ts read <runId | campaign dir> \
+bun .claude/skills/whole-run-investigation/scripts/wri.ts lanes
+bun .claude/skills/whole-run-investigation/scripts/wri.ts scope <runId | campaign dir>
+bun .claude/skills/whole-run-investigation/scripts/wri.ts read <runId | campaign dir> \
   --out <absolute review dir> [--all | --lanes 5,yield] [--run <runId>] [--repo <abs>]
 ```
 
@@ -189,7 +189,7 @@ against a row of the brief: the trigger, the question it settles and the decisio
 | block 1 `UNTRIPPED IN SHIPPING`; 1c `REACH-ONLY CHECKS` | 6 |
 | verified cases, with lane 5 or 6 reading slack | 7, isolated |
 | 6 `REHEARSAL NOT-RUN` | 9 |
-| 4b `OFF-AIM STREAK`; the `handoff` calibration table; a `climb` edge label beside a placement | 10 |
+| `climb` `CLIMB FLAT`; the `handoff` calibration table; a `climb` edge label beside a placement | 10 |
 | 6 `SUBMITTED BYTES NEVER REHEARSED`; the `yield` `harness-trial` row | 11 |
 | the `yield` `epoch-reviewer` row; a review the census marks incomplete | 12 |
 | 4d `FINDINGS WITHOUT OWNER` or `ADVISORY FINDING RECURS UNROUTED`; the `yield` `epoch-reviewer` row | 14 |
@@ -212,7 +212,7 @@ against a row of the brief: the trigger, the question it settles and the decisio
 | standing at `standard` and `deep`; row F's F2 completion | 33 |
 | standing at every tier; 1b `CHECK CODE IN SOLVER REACH`; read beside lane 23 when 1b `CHECK TOOL IN SOLVER TRACE` fires | 34 |
 | 6b `VERSION TOOLCHAIN DANGLING`; 1c `PERFECT BATTERY OVER AIM` | 35 |
-| 4b `OFF-AIM STREAK`, beside lane 10 | 36 |
+| `climb` `CLIMB FLAT`, beside lane 10 | 36 |
 | standing at `standard` and `deep` | 37 |
 | 3b `FAMILY UNMOVED all-fail`; any verified fail, opened by hand when no row fired | 38 |
 
@@ -286,18 +286,19 @@ default.
 direction; `review` is the "all" path, for a run the operator asked to sweep whole.
 
 ```text
-bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.ts collect <target> --out <review>
-bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.ts launch \
+bun .claude/skills/whole-run-investigation/scripts/wri.ts collect <target> --out <review>
+bun .claude/skills/whole-run-investigation/scripts/wri.ts launch \
   --out <review> --sessions 5,11,25,31,34 --effort max --title <t> [--notes <f>] [--context <f>]
-bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.ts finish --out <review>
-bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.ts review <target> \
+bun .claude/skills/whole-run-investigation/scripts/wri.ts finish --out <review>
+bun .claude/skills/whole-run-investigation/scripts/wri.ts review <target> \
   --out <review> --repo <measured-source checkout> [launch options]
 ```
 
-`collect` runs the four lanes the paid lanes consume — `snapshot`, `challenge`, `delta` and
+`collect` runs the five lanes the paid lanes consume — `snapshot`, `challenge`, `delta`, `climb` and
 `overview` — and writes `<review>/overview.json` from recorded bytes (terminal, denominators,
 budget, versions, task set, grouped digest triggers, scan findings) and
-`<review>/shared-instructions.json`, the one file the primary edits: a `template` of lines carrying
+`<review>/shared-instructions.json`, which adds the in-process lanes' triggers, such as `climb`'s
+`CLIMB FLAT`, to the digest's; it is the one file the primary edits: a `template` of lines carrying
 `{placeholder}` tokens and a `values` map filled from the overview. Every lane reads the rendered
 template as `## Run overview`. Edit any value, add a value and its token, reorder or drop template
 lines, and fill the two authored values `orientation` and `movedVariable` before `launch`; a token
@@ -470,7 +471,7 @@ adjudications: WRI can propose a refutation or an experiment, but creates no cam
 promotion or closure.
 
 ```text
-bun --no-env-file .claude/skills/whole-run-investigation/scripts/validate-archive.ts \
+bun .claude/skills/whole-run-investigation/scripts/validate-archive.ts \
   --archive <absolute archive dir>
 ```
 

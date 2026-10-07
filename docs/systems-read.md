@@ -203,11 +203,11 @@ clauses ever fire, beside the outcome, would show which of the 57 earn their pla
 
 At the other end, the host rebinds an artifact-writer's parameters and execution, the Builder cannot
 observe that, and so the Builder can honestly write "it runs no analysis" over a call that returns a
-margin table. The shipped remedy is `WRITER_BINDING_SENTENCE`, appended to the Builder's own
-description and ending "Where the description above says otherwise about what this tool runs or
+margin table. The shipped remedy is a host sentence, `writerBindingSentence`, appended to the Builder's
+own description and ending "Where the description above says otherwise about what this tool runs or
 returns, this sentence is what runs." The binding happens either way, so the sentence changes no
 decision. What it changes is that the solver reads a self-contradicting description and has to
-adjudicate it, which is rule 13's "teaching agents the mismatch in prose" shipped as a constant.
+adjudicate it, which is rule 13's "teaching agents the mismatch in prose" shipped as a host sentence.
 
 ### An identity minted for a comparison nothing performs
 

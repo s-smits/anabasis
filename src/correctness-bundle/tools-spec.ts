@@ -9,8 +9,8 @@ import {
   isBuiltPresetId,
   presetOwningTool,
   presetToolNames,
+  DATA_READER_TOOL,
 } from "./built-presets.ts";
-import { DATA_READER_TOOL } from "./data-session.ts";
 import { PUBLIC_RESOURCES_TOOL } from "./public-resources.ts";
 import { isRecord, isString, type JsonObject } from "../meta/json-shape.ts";
 

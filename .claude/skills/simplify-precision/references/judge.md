@@ -21,7 +21,10 @@ For each item in your packet:
 1. Read every place at the item's revision with `git -C <repository> show <revision>:<path>`, with
    enough surrounding code to see what the place does and who calls it. For an export, read its
    reader. For a copy, read both places. For a union member, grep the tree at that revision
-   (`git -C <repository> grep -n <name> <revision> -- src tools packages .claude`).
+   (`git -C <repository> grep -n <name> <revision> -- src tools packages .claude
+   ':!tools/oxlint/not-slop.tsv' ':!.claude/skills/simplify-precision'`). Keep those two
+   exclusions on every search: on 2026-10-01 three of four judges met a ledger or label row
+   through a grep over `tools` or `.claude`, and those verdicts were no longer blind.
 2. Answer the item's question as a maintainer of this repository would today, applying the
    current rules you read above: "Guarantees a pass must not cut" and "Not a finding here" in the
    simplify skill, and the AGENTS.md paragraphs.

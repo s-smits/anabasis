@@ -11,10 +11,15 @@
  * on GitHub as `ana/commit`; without either, the script writes nothing to GitHub. `--sanitize` proves
  * the stack mergeable and stops there.
  *
+ * `--sanitize` and `--merge` also need the Actions gate (`gate.yml`) to pass on the top's head, since only
+ * it shows the Linux isolation and a clean runner. Unless a run on that head exists, they dispatch one
+ * before gating the commits here, so it runs meanwhile, and wait for it after them. A failed run is not
+ * dispatched again, since nothing about its head changed.
+ *
  * Main's ruleset requires `ana/stack-gate` on every pull request a merge lands, and nothing but this
- * script posts it: after every commit has passed, on heads it has just read again, immediately
- * before its own merge request. A merge that does not go through sets them back to pending, so the
- * Merge button, `gh stack merge` and a raw API call stay refused until the next land.
+ * script posts it: after every commit and the Actions gate have passed, on heads it has just read
+ * again, immediately before its own merge request. A merge that does not go through sets them back to
+ * pending, so the Merge button, `gh stack merge` and a raw API call stay refused until the next land.
  *
  * What it lands is this clone's `land/<ref>` branch for each pull request, made from GitHub's head the
  * first time. A fix goes into the commit that failed, and the rebase it prints carries it across every
@@ -48,6 +53,11 @@ const PROVED: Record<Mode, string> = {
 };
 const POLL_MS = 2000;
 const MERGE_WAIT_MS = 15 * 60_000;
+const CI_WORKFLOW = "gate.yml";
+/** ANA_CI_POLL_MS shortens it for the tests that walk a run from queued to completed. */
+const CI_POLL_MS = Number(runtimeProcess.env.ANA_CI_POLL_MS) || 20_000;
+/** The gate's jobs stop at 45 minutes; the rest is the macOS runner's queue. */
+const CI_WAIT_MS = 75 * 60_000;
 const FIELDS = String.raw`map(tostring) | join("\t")`;
 const WORKBENCH = "land/";
 // The rebase's sequence editor: of the branches `--update-refs` would move, it keeps the `land/` ones,
@@ -351,6 +361,63 @@ async function firstFailure(
   }
 }
 
+/** The newest Actions gate run on `sha` that a later dispatch did not cancel, as its status,
+ *  conclusion, id and link; null when there is none, so land dispatches one; undefined when GitHub
+ *  did not answer, which is never read as "none". A dispatched run always runs both jobs, and the gate
+ *  runs on no other event for a pull request's head. */
+function ciRun(root: string, sha: string): string[] | null | undefined {
+  const read = run(root, [
+    "gh",
+    "run",
+    "list",
+    "--workflow",
+    CI_WORKFLOW,
+    "--commit",
+    sha,
+    "--json",
+    "status,conclusion,databaseId,url",
+    "--jq",
+    `[.[] | select(.conclusion != "cancelled")] | first // empty | [.status, .conclusion, .databaseId, .url] | ${FIELDS}`,
+  ]);
+  if (!read.ok) return undefined;
+  return read.out === "" ? null : read.out.split("\t");
+}
+
+/** Dispatches the Actions gate on the top's head unless a run is already there. */
+function startCi(root: string, top: Pull): void {
+  const ci = ciRun(root, top.sha);
+  if (ci === undefined) {
+    throw new Refusal(`GitHub did not list the Actions gate's runs on ${short(top.sha)}. Land again.`);
+  }
+  if (ci !== null) return;
+  must(root, ["gh", "workflow", "run", CI_WORKFLOW, "--ref", top.ref]);
+  say(
+    `dispatched the Actions gate on #${top.number}'s head ${short(top.sha)}; it runs while the commits are gated here.`,
+  );
+}
+
+function awaitCi(root: string, top: Pull): void {
+  const deadline = Date.now() + CI_WAIT_MS;
+  let ci = ciRun(root, top.sha);
+  while (ci?.[0] !== "completed" && Date.now() < deadline) {
+    Bun.sleepSync(CI_POLL_MS);
+    const next = ciRun(root, top.sha);
+    if (next !== undefined) ci = next;
+  }
+  const [status, conclusion, id, url] = ci ?? [];
+  const head = `#${top.number}'s head ${short(top.sha)}`;
+  if (conclusion === "success") {
+    say(`the Actions gate passed on ${head}: ${url}`);
+    return;
+  }
+  throw new Refusal(
+    status === "completed"
+      ? `the Actions gate ended ${conclusion} on ${head}: ${url}. Fix the commit it names, or run ` +
+          `gh run rerun ${id} if the runner was at fault, and land again.`
+      : `the Actions gate on ${head} has not finished: ${url ?? "no run has started"}. Land again once it has.`,
+  );
+}
+
 function mergeAnswer(text: string, fallback: string): MergeAnswer {
   let body: ReturnType<typeof asRecord>;
   try {
@@ -390,7 +457,7 @@ function merge(root: string, target: number, landing: Landing): boolean {
         sha,
         STACK_CONTEXT,
         "success",
-        "every commit passed on its own; the top passed the whole gate",
+        "every commit passed on its own; the top passed the whole gate here and on Actions",
       )
     ) {
       continue;
@@ -468,6 +535,9 @@ async function main(argv: readonly string[]): Promise<number> {
       `${landing.pulls.map((pull) => `#${pull.number}`).join(", ")} onto ${landing.trunk} ${short(landing.trunkSha)}: ` +
         `${steps.length} commits.`,
     );
+    // SAFETY: readLanding refuses a landing whose last pull request is not the one named.
+    const top = landing.pulls.at(-1) as Pull;
+    if (reach === "github") startCi(root, top);
     const failed = await firstFailure(root, steps, reach, jobs);
     if (failed !== null) {
       const at = short(failed);
@@ -487,6 +557,7 @@ async function main(argv: readonly string[]): Promise<number> {
       say(`every commit passed. Publish the fixes: ${pushCommand(unpushed)}`);
       return 0;
     }
+    if (reach === "github") awaitCi(root, top);
     if (values.merge !== true) {
       const next =
         reach === "github" ? `each shows ${COMMIT_CONTEXT} on GitHub` : `--sanitize shows it on GitHub`;

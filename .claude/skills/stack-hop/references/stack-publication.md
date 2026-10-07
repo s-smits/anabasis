@@ -169,11 +169,12 @@ Record partial or rejected publication honestly. A local gate pass is not proof 
 
 Before a stack lands, `bun run land -- <top> --sanitize` proves every commit where it sits and the
 top's head whole, and posts each verdict as `ana/commit`; `--merge` does the same and then merges.
+Both dispatch the Actions gate on the top's head while the commits are gated, and wait for it to pass.
 Run it with neither flag first while fixing: it gates each pull request's `land/<ref>` branch in this
 clone and writes nothing to GitHub, and its fix recipe moves only those branches, so fixes collect there
 until the leased push it prints publishes them all at once.
 
 Report: `H1–H5: every commit gated alone, full gate on the top's head`, with the logs. A red
 ancestor under a green descendant is exactly what the policy rules out, so a failing commit is
-fixed inside itself and its descendants replayed, never repaired above. GitHub Actions is off
-here, so the pre-push hook is the only gate a published head gets.
+fixed inside itself and its descendants replayed, never repaired above. The pre-push hook gates each
+published head; the Actions gate reads only the stack's top, through `bun run land`.

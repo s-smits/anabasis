@@ -37,7 +37,7 @@ beforeEach(() => {
       sourceDigest: "a".repeat(64),
     },
     epoch: { key: "epoch-b77b", supersedes: null },
-    modelSlots: { builder: { kind: "codex", model: "gpt-5.6-sol", reasoningEffort: "high" } },
+    modelSlots: { builder: { kind: "codex", model: "gpt-6.1-sol", reasoningEffort: "high" } },
   });
   writeJson(join(campaign, "epoch-b77b", "builder-execution.json"), {
     backend: "codex",

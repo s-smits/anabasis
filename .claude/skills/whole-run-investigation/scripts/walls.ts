@@ -24,7 +24,13 @@ import { existsSync } from "#src/meta/filesystem.ts";
 import { basename, dirname, join } from "#src/meta/path.ts";
 import { campaignTraceRoots } from "#src/claim/trace-read.ts";
 import { measuredProductId, productVersionDir } from "#src/run/product-versions.ts";
-import { classifyCaseOutcome, readCaseRecord, type CaseRecordRow } from "#src/claim/case-record.ts";
+import {
+  CASE_RECORD_FILE,
+  classifyCaseOutcome,
+  readCaseRecord,
+  type CaseRecordRow,
+} from "#src/claim/case-record.ts";
+import { CASE_RESULT_FILE } from "#src/correctness-bundle/battery-record.ts";
 import {
   DEFAULT_HARNESS_SETTINGS,
   HARNESS_CONFIG_FILE,
@@ -32,12 +38,11 @@ import {
   type HarnessSettings,
 } from "#src/correctness-bundle/harness-config.ts";
 import { isNumber, isString } from "#src/meta/json-shape.ts";
+import { median } from "#src/meta/tally.ts";
+import { WALL_BOUND_SHARE } from "#src/run/climb-history.ts";
 import { readJsonAs } from "./run-overview.ts";
 
 export const WALLS_SCHEMA = "wri-solve-walls/v2";
-/** A share at or above this is read as the case ending on that wall rather than near it. A solve
- *  the host stops is recorded a moment after the wall, so an exact 1.0 is not the only binding. */
-export const BOUND_SHARE = 0.95;
 /** Below this, with no completed turn, the case spent no budget: the host stopped before the solve. */
 export const UNSTARTED_MS = 30_000;
 /** The bounds that say a declared wall was reached, whatever the verdict. */
@@ -94,19 +99,11 @@ export type WallsReport = ReturnType<typeof buildWalls>;
 const share = (used: number, wall: number): number | null =>
   wall > 0 ? Math.round((used / wall) * 1000) / 1000 : null;
 const minutes = (ms: number): number => Math.round(ms / 600) / 100;
-// An even count averages its two middle values, so a battery of six is not read at its fourth case.
-function median(values: readonly number[]): number | null {
-  if (values.length === 0) return null;
-  const sorted = values.toSorted((a, b) => a - b);
-  const middle = Math.floor(sorted.length / 2);
-  const upper = sorted[middle] ?? 0;
-  return sorted.length % 2 === 1 ? upper : ((sorted[middle - 1] ?? 0) + upper) / 2;
-}
 
 /** Every case row the campaign recorded, grouped by the battery that ran it, through the strict reader. */
 function caseRows(campaign: string): Map<string, CaseRecordRow[]> {
   const byRun = new Map<string, CaseRecordRow[]>();
-  for (const { row } of readCaseRecord(join(campaign, "case-record.jsonl"))) {
+  for (const { row } of readCaseRecord(join(campaign, CASE_RECORD_FILE))) {
     const rows = byRun.get(row.runId) ?? [];
     rows.push(row);
     byRun.set(row.runId, rows);
@@ -123,7 +120,7 @@ function caseRows(campaign: string): Map<string, CaseRecordRow[]> {
  *  on the share alone. */
 function solverOf(roots: readonly string[], runId: string, taskId: string): SolverFacts {
   for (const root of roots) {
-    const path = join(root, "runs", runId, "cases", taskId, "case-result.json");
+    const path = join(root, "runs", runId, "cases", taskId, CASE_RESULT_FILE);
     if (!existsSync(path)) continue;
     const solver = readJsonAs<CaseResultFile>(path).solver ?? {};
     const errors = Array.isArray(solver.errors) ? solver.errors.filter((value) => isString(value)) : [];
@@ -164,9 +161,10 @@ function wallsOf(campaign: string, runId: string): WallsSource {
  *  `acceptedSubmit`, the same recorded field the outcome is classified from. */
 function boundOf({ elapsedMs, timeShare, turnShare, turns, acceptedSubmit, passed }: BoundInput): WallBound {
   if (elapsedMs === null && turns === null) return "unrecorded";
-  const atWall = (timeShare !== null && timeShare >= BOUND_SHARE) || (turnShare !== null && turnShare >= 1);
+  const atWall =
+    (timeShare !== null && timeShare >= WALL_BOUND_SHARE) || (turnShare !== null && turnShare >= 1);
   if (atWall && passed) return "submitted-at-wall";
-  if (timeShare !== null && timeShare >= BOUND_SHARE) return "time-bound";
+  if (timeShare !== null && timeShare >= WALL_BOUND_SHARE) return "time-bound";
   if (turnShare !== null && turnShare >= 1) return "turn-bound";
   if (elapsedMs !== null && elapsedMs < UNSTARTED_MS && (turns === null || turns === 0)) return "unstarted";
   return acceptedSubmit ? "submitted" : "no-submit";

@@ -52,6 +52,16 @@ export class BuilderConversation {
   private waiting: Waiting | null = null;
   /** Set when the run settles; a round still in flight then closes its session when it ends. */
   private closed = false;
+  /** What the session now open has been told once, by key. Each round builds new tools, so a line
+   *  said once per session cannot be remembered by a tool; a fresh session starts with none. */
+  private told = new Set<string>();
+
+  /** True the first time the session now open asks to be told `key`. */
+  tellOnce(key: string): boolean {
+    if (this.told.has(key)) return false;
+    this.told.add(key);
+    return true;
+  }
 
   /** Begin a round: continue the waiting session on this round's tools and framing, or open one. */
   async begin(
@@ -67,6 +77,7 @@ export class BuilderConversation {
       return this.round(held, workspace);
     }
     const session = await open(tools, systemPrompt);
+    this.told = new Set();
     return this.round({ session, openedIn: workspace, previous: null }, workspace);
   }
 

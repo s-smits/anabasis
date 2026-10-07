@@ -434,7 +434,7 @@ describe("seed-campaign republish", () => {
     expect(selectedProductDir(into, "sim-uppercase")).toBe(version);
     expect(realpathSync(join(version, TOOL_TREE)).startsWith(`${into}/`)).toBe(true);
     expect(existsSync(join(version, TOOL_TREE, "bin", "uppercase-fixture"))).toBe(true);
-    const history = readClimbBatteries(version, null, claimsDirFor(into, "sim-uppercase"));
+    const history = readClimbBatteries(version, null, { repoRoot: into, slug: "sim-uppercase" });
     expect(history.history).toHaveLength(1);
     expect(readAdmission(into, "sim-uppercase")).toBe(ADMISSION);
     expect(readAdmission(source, SLUG)).toBe(ADMISSION);
@@ -460,7 +460,9 @@ describe("seed-campaign republish", () => {
     expect(result.exitCode).toBe(0);
     expect(manifestOf(into, "sim-uppercase").carried).toMatchObject({ historyRuns: 1, sourceHistoryRuns: 1 });
     const version = readProductVersion(into, "sim-uppercase", "seed-v1");
-    expect(readClimbBatteries(version, null, claimsDirFor(into, "sim-uppercase")).history).toHaveLength(1);
+    expect(readClimbBatteries(version, null, { repoRoot: into, slug: "sim-uppercase" }).history).toHaveLength(
+      1,
+    );
 
     const cloned = join(scratch, "condition");
     expect(run("--from-root", source, "--slug", SLUG, "--into-root", cloned).exitCode).toBe(0);

@@ -53,6 +53,22 @@ const RELATIVE_IMPORT = /(?:from|import|require\(|resolve\()\s*["']([./][^"']*)[
 /** A path or basename ending in a code suffix, spelled anywhere. */
 const SPELLED_PATH = /[\w./-]*[\w-]\.(?:ts|tsx|mts|mjs|js|cjs)(?![\w])/gu;
 
+/** `export { a, b as c } from "…"`, its `export type` form, or `export { a }` naming bindings. */
+const FORWARD = /^export (?:type )?\{([^}]*)\}(?:\s*from\s*["']([^"']+)["'])?/gmu;
+
+/** `import { a, type b as c } from "…"`: the names a module binds from another. */
+const NAMED_IMPORT = /^import (?:type )?\{([^}]*)\}\s*from\s*["']([^"']+)["']/gmu;
+
+/** A quoted string on one line, which may be a specifier or a path naming a module. */
+const QUOTED = /["'`]([^"'`\n]*)["'`]/gu;
+
+/** A file's lines, less the comment lines when it is code: a comment naming a module or an export
+ *  says where something came from, not that the file reads it. */
+export function codeLines(path: string, text: string): string[] {
+  const lines = text.split("\n");
+  return CODE.test(path) ? lines.filter((line) => !COMMENT_LINE.test(line)) : lines;
+}
+
 /** The files a relative specifier may mean, in the order the runtime tries them. */
 function resolutions(reader: string, specifier: string): string[] {
   const base = join(dirname(reader), specifier);
@@ -108,12 +124,8 @@ function readerCounts(
   }
   for (const [reader, text] of corpus) {
     const isTest = TEST_PATH.test(reader);
-    const code = CODE.test(reader);
     const read = new Set(
-      text
-        .split("\n")
-        .filter((line) => !(code && COMMENT_LINE.test(line)))
-        .flatMap((line) => modulesOnLine(reader, line, modules, byBasename)),
+      codeLines(reader, text).flatMap((line) => modulesOnLine(reader, line, modules, byBasename)),
     );
     read.delete(reader);
     for (const module of read) {
@@ -149,6 +161,80 @@ export function unreadModules(corpus: ReadonlyMap<string, string>): TreeFinding[
             detail: `read by ${tests === 1 ? "one test file" : `${tests} test files`} and nothing else`,
           },
     );
+  }
+  return rows;
+}
+
+/** A module's name without its directory or code suffix: what every spelling of it ends in. */
+const stemOf = (path: string): string => path.slice(path.lastIndexOf("/") + 1).replace(CODE, "");
+
+/** Each entry of a brace list as `[local, exported]`: `type a as b` is `["a", "b"]`. */
+function braceNames(list: string): [string, string][] {
+  return list.split(",").flatMap((entry) => {
+    const [local = "", exported = local] = entry
+      .trim()
+      .replace(/^type\s+/u, "")
+      .split(/\s+as\s+/u);
+    return local === "" ? [] : [[local, exported]];
+  });
+}
+
+/**
+ * One row per forwarding statement whose names no file imports from the forwarder.
+ *
+ * A module that re-exports a name another module declares is a second door to it, and a door no
+ * caller uses is a surface the forwarder keeps in step for nobody. PR #120 deleted 16 of these on
+ * 2026-10-01, each beside callers that already imported the owner, and the other whole-tree scans
+ * saw none: the forwarder spells the name, so it counts as a reader of the owner, and the forward
+ * itself declares nothing. A forward is read when another file spells the forwarded name and
+ * names the forwarder's module in a quoted string, which is how an import, a dynamic import or a
+ * namespace import of it reads; two modules sharing a basename both count, which fails open. An
+ * `index` module is a package's entry and is left out, as is a declaration file, whose surface is
+ * its runtime twin's, and a forward of a `node:` module, which is the shim the meta layer exists to
+ * be. Replayed at #120's base, it prints 13 of those 16 and the one #120 left, `DARWIN_SEATBELT_ID`
+ * in os-isolation.ts.
+ */
+export function unreadForwards(
+  declaring: ReadonlyMap<string, string>,
+  corpus: ReadonlyMap<string, string>,
+): TreeFinding[] {
+  const namers = new Map<string, Set<string>>();
+  const spelled = new Map<string, Set<string>>();
+  for (const [reader, text] of corpus) {
+    const code = codeLines(reader, text).join("\n");
+    spelled.set(reader, new Set(code.match(/[A-Za-z_$][\w$]*/gu) ?? []));
+    for (const [, quoted = ""] of code.matchAll(QUOTED)) {
+      const stem = stemOf(quoted);
+      namers.set(stem, (namers.get(stem) ?? new Set()).add(reader));
+    }
+  }
+  const rows: TreeFinding[] = [];
+  for (const [path, text] of declaring) {
+    if (TEST_PATH.test(path) || DECLARATION.test(path) || stemOf(path) === "index") continue;
+    const imported = new Map(
+      [...text.matchAll(NAMED_IMPORT)].flatMap((match) =>
+        braceNames(match[1] ?? "").map(([, local]): [string, string] => [local, match[2] ?? ""]),
+      ),
+    );
+    const readers = [...(namers.get(stemOf(path)) ?? [])].filter((reader) => reader !== path);
+    for (const match of text.matchAll(FORWARD)) {
+      const unread = braceNames(match[1] ?? "")
+        .filter(([local]) => {
+          const source = match[2] ?? imported.get(local);
+          return source !== undefined && !source.startsWith("node:");
+        })
+        .filter(([, exported]) => !readers.some((reader) => spelled.get(reader)?.has(exported) === true))
+        .map(([, exported]) => `\`${exported}\``);
+      if (unread.length === 0) continue;
+      const line = text.slice(0, match.index).split("\n").length;
+      rows.push({
+        kind: "unread-forward",
+        path,
+        line,
+        detail: `${unread.join(", ")} ${unread.length === 1 ? "is" : "are"} re-exported here and no file imports ${unread.length === 1 ? "it" : "them"} from this module`,
+        places: [{ path, line, end: line + match[0].split("\n").length - 1 }],
+      });
+    }
   }
   return rows;
 }

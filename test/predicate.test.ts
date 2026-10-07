@@ -11,7 +11,8 @@ import {
 import { VerifierContractError } from "../vendor/correctness-model-bundle/contract-error.ts";
 import { EvaluatorProcessFailure } from "../src/correctness-bundle/evaluator-process.ts";
 import type { CheckRun } from "../src/verify/correctness-model-result.ts";
-import { checkProgramFailureDetails, resolvePredicatePath } from "../src/correctness-bundle/predicate.ts";
+import { checkProgramFailureDetails } from "../src/correctness-bundle/predicate.ts";
+import { resolveJsonPath } from "../src/meta/json-evidence.ts";
 import { MATCHING_BRIEF } from "./helpers/matching-fixture.ts";
 import { double } from "./helpers/doubles.ts";
 import { numbersWithin, multisetMatches } from "../vendor/correctness-model-prims/index.ts";
@@ -347,7 +348,7 @@ test("offers finite comparison helpers without changing the domain's units or to
 
 test("rooted path lookup refuses malformed text instead of reading a different value", () => {
   const input = { target: [4], "target[0]": 99 };
-  expect(resolvePredicatePath(input, "$.target[0]")).toEqual({ found: true, value: 4 });
+  expect(resolveJsonPath(input, "$.target[0]")).toEqual({ found: true, value: 4 });
   for (const path of [
     "target",
     "garbage.target[0]",
@@ -356,7 +357,7 @@ test("rooted path lookup refuses malformed text instead of reading a different v
     "$.target[-1]",
     "",
   ]) {
-    expect(resolvePredicatePath(input, path).found).toBe(false);
+    expect(resolveJsonPath(input, path).found).toBe(false);
   }
 });
 

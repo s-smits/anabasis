@@ -9,6 +9,7 @@ import {
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { isString, type JsonValue } from "../src/meta/json-shape.ts";
+import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { recordDigestBattery } from "./helpers/digest-battery.ts";
 import { caseRecordRow } from "./helpers/case-record-row.ts";
 import type { CaseRecordRow } from "../src/claim/case-record.ts";
@@ -20,6 +21,19 @@ import type { TurnRetryRow } from "../src/author/builder-execution.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 
 type DigestFixture = { campaign: string; domainsRoot: string };
+
+/** A check's `execution` as a validated brief records it: an authored check names its tools beside
+ *  `evidence`, an external one inside it. */
+function execution(evidence: JsonValue, requiredToolIds?: string[]): JsonValue {
+  return {
+    families: "all",
+    artifactPaths: [],
+    publicInputPaths: [],
+    hidden: "none",
+    evidence,
+    ...keyIfDefined("requiredToolIds", requiredToolIds),
+  };
+}
 
 afterAll(cleanupScratch);
 
@@ -34,7 +48,7 @@ function fixture(): DigestFixture {
   writeFileSync(join(domain, "correctness-model", "tasks.json"), "[]");
   mkdirSync(join(domain, "runs", "run-1", "cases", "t1"), { recursive: true });
   mkdirSync(join(domain, "runs", "run-4", "cases", "t1"), { recursive: true });
-  writeFileSync(join(campaign, "epoch-aa", "campaign.json"), JSON.stringify({ slug: "demo-slug" }));
+  writeFileSync(join(campaign, "epoch-aa", "campaign.json"), JSON.stringify({ domain: "demo-slug" }));
   writeFileSync(
     join(campaign, "epoch-aa", "builder-execution.json"),
     executionRecord(
@@ -74,8 +88,11 @@ function fixture(): DigestFixture {
     join(domain, "correctness-model", "brief.json"),
     JSON.stringify({
       truthChecks: [
-        { id: "alpha-check", grounding: { kind: "authored" } },
-        { id: "beta-check", grounding: { kind: "external-verifier" } },
+        { id: "alpha-check", execution: execution({ kind: "authored" }, ["alpha-engine"]) },
+        {
+          id: "beta-check",
+          execution: execution({ kind: "external", requiredToolIds: ["beta-engine"] }),
+        },
       ],
     }),
   );
@@ -239,6 +256,7 @@ describe("digest", () => {
           },
           admitted: 1,
           excluded: [{ runId: "r2", reason: "claim refused" }],
+          rows: [],
         },
       }),
     );
@@ -249,9 +267,10 @@ describe("digest", () => {
         schema: "difficulty-decision/v10",
         runId: "unplaced-1",
         difficulty: {
-          decision: { placement: null, rationale: "no batteries recorded" },
+          decision: { placement: null, rationale: "no batteries recorded", evidence: [] },
           admitted: 0,
           excluded: [],
+          rows: [],
         },
       }),
     );
@@ -279,6 +298,11 @@ describe("digest", () => {
     ["a v6 record", { schema: "difficulty-decision/v6", runId: "old-6" }, "difficulty-decision/v6"],
     ["a v8 record", { schema: "difficulty-decision/v8", runId: "old-8" }, "difficulty-decision/v8"],
     ["a v9 record", { schema: "difficulty-decision/v9", runId: "old-9" }, "difficulty-decision/v9"],
+    [
+      "a v10 record with no difficulty reading",
+      { schema: "difficulty-decision/v10", runId: "new-10" },
+      "difficulty-decision/v10 without a difficulty reading",
+    ],
   ])("refuses %s by name rather than reading it or calling it never recorded", (_title, record, reason) => {
     const paths = fixture();
     mkdirSync(join(paths.campaign, "difficulty-decisions"));
@@ -302,7 +326,16 @@ describe("digest", () => {
           // run-4 graded 1 and passed 1, so a decision that read it above the aim and got a
           // perfect battery back is lane 5's question.
           runId: "run-4",
-          difficulty: { decision: { placement: { zone } }, admitted: 1, excluded: [] },
+          difficulty: {
+            decision: {
+              rationale: "",
+              placement: { passes: 1, n: 1, zone, aim: [0, 0], toAim: -1 },
+              evidence: [],
+            },
+            admitted: 1,
+            excluded: [],
+            rows: [],
+          },
         }),
       );
       return digestOf(paths);
@@ -478,6 +511,29 @@ describe("digest", () => {
     );
     // No row means no verified case applied the check, so the claim grounds it in nothing.
     expect(claimWith([])).toMatch(/^beta-check\s+external-verifier\s+beta-engine\s+-\s+/m);
+  });
+
+  it("reads a refused claim's checks from the brief and says the solver-reach rows are unobservable", () => {
+    const paths = fixture();
+    // A claim refused over the served model's identity records clauses and no statement, so it
+    // holds no grounding row and no verifier tools.
+    writeFileSync(
+      join(paths.campaign, "claims", "run-1.json"),
+      JSON.stringify({
+        claim: { ok: false, repairable: false, clauses: [{ name: "runtime-model-identity-unproven" }] },
+      }),
+    );
+    const digest = digestOf(paths);
+    expect(digest).toMatch(/^alpha-check\s+authored\s+-\s+declared:alpha-engine\s+/m);
+    expect(digest).toMatch(/^beta-check\s+external\s+-\s+declared:beta-engine\s+/m);
+    expect(digest).not.toMatch(/^(alpha|beta)-check\s+\?/m);
+    expect(digest).toContain(
+      "solver-reach rows unobservable: 1 of 1 claims carry no statement, so no verifier tool is recorded for them",
+    );
+  });
+
+  it("says nothing of unobservable reach rows where every claim carries its statement", () => {
+    expect(digestOf(fixture())).not.toContain("solver-reach rows unobservable");
   });
 
   it("reads the battery root matching the recorded digest when an earlier root has a changed copy", () => {
@@ -729,7 +785,14 @@ describe("digest", () => {
         schema: "difficulty-decision/v10",
         runId: "run-3",
         difficulty: {
-          decision: { placement: { zone: "on-aim" }, evidence: [{ runId: "run-2" }] },
+          decision: {
+            rationale: "",
+            placement: { passes: 1, n: 3, zone: "on-aim", aim: [1, 1], toAim: 0 },
+            evidence: [{ runId: "run-2" }],
+          },
+          admitted: 1,
+          excluded: [],
+          rows: [],
         },
       }),
     );
@@ -928,47 +991,6 @@ describe("digest", () => {
     expect(digest).not.toContain("WRAPPER-ONLY TOOL DIGEST (lane 2): run-1 tree-wrap");
   });
 
-  it("reads an off-aim streak from the recorded placements, and states no target", () => {
-    const paths = fixture();
-    const dir = join(paths.campaign, "difficulty-decisions");
-    mkdirSync(dir);
-    const over = { passes: 5, zone: "over-aim", toAim: -2 };
-    const decision = (name: string, runId: string, placed: typeof over | null, rows: unknown[]) =>
-      writeFileSync(
-        join(dir, `${name}.json`),
-        JSON.stringify({
-          schema: "difficulty-decision/v10",
-          runId,
-          difficulty: {
-            decision: { placement: placed === null ? null : { ...placed, n: 6, aim: [2, 3] } },
-            admitted: 1,
-            excluded: [],
-            rows,
-          },
-        }),
-      );
-    decision("0", "d1", over, [
-      {
-        runId: "run-1",
-        passed: 5,
-        verified: 6,
-        zone: "over-aim",
-      },
-    ]);
-    const one = digestOf(paths);
-    expect(one).not.toContain("TARGET MISSED");
-    expect(one).not.toContain("OFF-AIM STREAK");
-    decision("1", "d2", over, []);
-    const streak = "OFF-AIM STREAK (lane 10): 2 consecutive placements above the aim (d1, d2)";
-    expect(digestOf(paths)).toContain(streak);
-    // A decision that placed nothing between them passes the streak on, as `runs pulse` counts it.
-    decision("0a", "d1a", null, []);
-    expect(digestOf(paths)).toContain(streak);
-    // A placement that crossed the aim ends the streak, and one placement on a side is no streak.
-    decision("1", "d2", { passes: 1, zone: "under-aim", toAim: 1 }, []);
-    expect(digestOf(paths)).not.toContain("OFF-AIM STREAK");
-  });
-
   it("separates attested, unattested and no-turn identity rows and flags a served model off the pin", () => {
     const paths = fixture();
     const domain = join(paths.domainsRoot, "demo-slug");
@@ -979,23 +1001,29 @@ describe("digest", () => {
       openedAt: "2026-09-08T00:00:00.000Z",
       builtModel: "claude-opus-5",
     });
-    const identity = (model: string, resultId: string | null) => ({
+    const identity = (model: string | null, resultId: string | null, id = "anthropic") => ({
       schema: "runtime-model-identity/v2",
-      provider: { id: "anthropic", model, resultId },
+      provider: { id, model, resultId },
     });
+    // The Codex route reports no served model, and its resultId is still the provider's receipt: the
+    // truss rows of 2026-10-01 were each read as carrying none.
     const battery = (model: string) =>
       recordDigestBattery(domain, ["run-1"], {
         "run-1": [
           { taskId: "t1", solver: { completedTurns: 3, runtimeIdentities: [identity(model, "msg_1")] } },
           { taskId: "t2", solver: { completedTurns: 2, runtimeIdentities: [identity(model, null)] } },
           { taskId: "t3", solver: { completedTurns: 0, runtimeIdentities: [] } },
+          {
+            taskId: "t4",
+            solver: { completedTurns: 1, runtimeIdentities: [identity(null, "resp_1", "openai-codex")] },
+          },
         ],
       });
     battery("claude-opus-5");
     rmSync(join(domain, "runs", "run-4", "battery.json"));
     const digest = digestOf(paths);
     expect(digest).toContain(
-      "run-1: attested 1 · unattested 1 · no completed turn 1 · configured claude-opus-5 · served {claude-opus-5 ×1}",
+      "run-1: attested 2 · unattested 1 · no completed turn 1 · configured claude-opus-5 · served {claude-opus-5 ×1, unreported ×1}",
     );
     expect(digest).toContain("UNATTESTED ROWS: 1 case(s) carry no provider receipt");
     expect(digest).not.toContain("SERVED MODEL MISMATCH");

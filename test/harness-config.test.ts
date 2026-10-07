@@ -5,6 +5,7 @@ import { loadValidatedBundle } from "../src/author/candidate-check.ts";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 import {
+  BUILT_SOLVE_CONCURRENCY,
   DEFAULT_HARNESS_SETTINGS,
   HARNESS_CONFIG_FILE,
   harnessConfigIssue,
@@ -93,9 +94,10 @@ describe("agent/config.yaml", () => {
   // is and what the host has to run them on, so it declares the width instead of the run alone.
   it("lets the harness declare the battery width, up to ten times the seeded one", () => {
     expect(parsed("battery:\n  solve_concurrency: 12\n").solveConcurrency).toBe(12);
-    expect(parsed("battery:\n  solve_concurrency: 30\n").solveConcurrency).toBe(30);
-    expect(refusal("battery:\n  solve_concurrency: 31\n")).toBe(
-      "battery.solve_concurrency 31 is above what this host allows; choose a value closer to the seeded one",
+    const ceiling = 10 * BUILT_SOLVE_CONCURRENCY;
+    expect(parsed(`battery:\n  solve_concurrency: ${ceiling}\n`).solveConcurrency).toBe(ceiling);
+    expect(refusal(`battery:\n  solve_concurrency: ${ceiling + 1}\n`)).toBe(
+      `battery.solve_concurrency ${ceiling + 1} is above what this host allows; choose a value closer to the seeded one`,
     );
     expect(refusal("battery:\n  solve_concurrency: 0\n")).toContain("positive whole number");
   });
@@ -115,9 +117,10 @@ describe("agent/config.yaml", () => {
   });
 
   it("refuses a defective config at the bundle contract with its path", () => {
-    const root = workspace("battery:\n  solve_concurrency: 31\n");
+    const tooWide = 10 * BUILT_SOLVE_CONCURRENCY + 1;
+    const root = workspace(`battery:\n  solve_concurrency: ${tooWide}\n`);
     expect(harnessConfigIssue(root)).toBe(
-      "agent/config.yaml battery.solve_concurrency 31 is above what this host allows; choose a value closer to the seeded one",
+      `agent/config.yaml battery.solve_concurrency ${tooWide} is above what this host allows; choose a value closer to the seeded one`,
     );
     const finding = loadValidatedBundle(root, { slug: "config" }).findings.find(
       ({ code }) => code === "harness-config-invalid",

@@ -23,6 +23,11 @@ import {
 } from "../.claude/skills/whole-run-investigation/scripts/brief.ts";
 import { LANES, lanesForScope } from "../.claude/skills/whole-run-investigation/scripts/wri.ts";
 import { HARDWARE_TRIGGER } from "../.claude/skills/whole-run-investigation/scripts/hardware-target.ts";
+import { digestTriggers } from "../.claude/skills/whole-run-investigation/scripts/run-overview.ts";
+import {
+  readSharedInstructions,
+  renderSharedInstructions,
+} from "../.claude/skills/whole-run-investigation/scripts/shared-instructions.ts";
 
 const RUN = "custom-test-20260919T000000000Z-abcdef";
 const WRI = resolve(import.meta.dirname, "../.claude/skills/whole-run-investigation/scripts/wri.ts");
@@ -366,7 +371,12 @@ describe("what the read said", () => {
 
   it("maps each digest trigger to the lanes the catalogue starts from it, and names the launch spec", () => {
     // A suffixed trigger starts its own lane first, then the lane the catalogue added beside it.
-    expect(lanesForTrigger("OFF-AIM STREAK (lane 10)")).toEqual([10, 36]);
+    expect(lanesForTrigger("CLIMB FLAT (lane 10)")).toEqual([10, 36]);
+    // A run whose source predates CLIMB FLAT prints the streak under its old key, read by this brief.
+    const legacy = digestTriggers(
+      "OFF-AIM STREAK (lane 10): 3 consecutive placements below the aim (i02, i03, i04)\n",
+    );
+    expect(laneSuggestions(legacy, "probe")).toMatchObject({ defaulted: false, sessions: "10,31,34,36" });
     expect(lanesForTrigger("CENSUS WITH DISAGREEMENT (lane 16)")).toEqual([16, 32]);
     // The plan declares no target, so no target trigger maps anywhere.
     expect(lanesForTrigger("TARGET MISSED (lane 10)")).toEqual([]);
@@ -388,7 +398,7 @@ describe("what the read said", () => {
     const suggested = laneSuggestions(
       [
         { name: "EXPLICIT ALLOWANCE WAIT (lane 24)", rows: 1, examples: [] },
-        { name: "OFF-AIM STREAK (lane 10)", rows: 2, examples: [] },
+        { name: "CLIMB FLAT (lane 10)", rows: 2, examples: [] },
         { name: "UNTRIPPED IN SHIPPING", rows: 1, examples: [] },
         { name: "AGGREGATE HIDES FAMILY", rows: 1, examples: [] },
       ],
@@ -398,11 +408,11 @@ describe("what the read said", () => {
       lanes: [
         { lane: 5, triggers: ["UNTRIPPED IN SHIPPING"] },
         { lane: 6, triggers: ["UNTRIPPED IN SHIPPING"] },
-        { lane: 10, triggers: ["OFF-AIM STREAK (lane 10)"] },
+        { lane: 10, triggers: ["CLIMB FLAT (lane 10)"] },
         { lane: 24, triggers: ["EXPLICIT ALLOWANCE WAIT (lane 24)"] },
         { lane: 31, triggers: ["standing (probe)"] },
         { lane: 34, triggers: ["standing (probe)"] },
-        { lane: 36, triggers: ["OFF-AIM STREAK (lane 10)"] },
+        { lane: 36, triggers: ["CLIMB FLAT (lane 10)"] },
       ],
       defaulted: false,
       sessions: "5,6,10,24,31,34,36",
@@ -424,28 +434,29 @@ describe("what the read said", () => {
   });
 
   it("prints the lanes the triggers start under their own heading in the brief", () => {
-    const reviewDir = reviewWith([], {});
+    const reviewDir = reviewWith([{ label: "climb", ok: true, exitCode: 0 }], { climb: "4 batteries\n" });
     writeFileSync(
       join(reviewDir, "overview.json"),
       json({
         schema: "wri-run-overview/v1",
-        digestTriggers: [
-          { name: "OFF-AIM STREAK (lane 10)", rows: 3, examples: ["OFF-AIM STREAK (lane 10): 3 under aim"] },
-          { name: "EXPLICIT ALLOWANCE WAIT (lane 24)", rows: 1, examples: [] },
-        ],
+        digestTriggers: [{ name: "EXPLICIT ALLOWANCE WAIT (lane 24)", rows: 1, examples: [] }],
         scanFindings: [],
       }),
+    );
+    writeFileSync(
+      join(reviewDir, "climb.json"),
+      json({ triggers: [{ name: "CLIMB FLAT (lane 10)", rows: 1, examples: [] }] }),
     );
     const brief = renderBrief(reviewDir);
     expect(brief).toContain(
       [
         "== lanes the triggers start",
-        "  lane 10: OFF-AIM STREAK (lane 10)",
+        "  lane 10: CLIMB FLAT (lane 10)",
         "  lane 24: EXPLICIT ALLOWANCE WAIT (lane 24)",
         "  lane 31: standing (standard)",
         "  lane 33: standing (standard)",
         "  lane 34: standing (standard)",
-        "  lane 36: OFF-AIM STREAK (lane 10)",
+        "  lane 36: CLIMB FLAT (lane 10)",
         "  lane 37: standing (standard)",
         "  launch --sessions 10,24,31,33,34,36,37",
       ].join("\n"),
@@ -549,6 +560,23 @@ describe("a read past a failed snapshot view", () => {
     );
     expect(stdout).not.toContain("SNAPSHOT INCOMPLETE");
     expect(code).toBe(0);
+  }, 60_000);
+
+  it("collects the climb before the overview, so the lanes' run overview carries its trigger", () => {
+    const reviewDir = scratchDir("ana-brief-collect-");
+    const flat = { name: "CLIMB FLAT (lane 10)", rows: 1, examples: ["below the aim 4 in a row"] };
+    expect(readThrough(stubSource({ triggers: [flat] }), reviewDir, "collect").code).toBe(0);
+    expect(recordedSteps(reviewDir).map((row) => row.label)).toEqual([
+      "snapshot",
+      "challenge",
+      "delta",
+      "climb",
+      "overview",
+    ]);
+    const shared = readSharedInstructions(join(reviewDir, "shared-instructions.json"));
+    expect(renderSharedInstructions(shared)).toContain(
+      "CLIMB FLAT (lane 10) [1 rows]: below the aim 4 in a row",
+    );
   }, 60_000);
 
   it("reads every lane of a review but launches no paid lane over an incomplete snapshot", () => {

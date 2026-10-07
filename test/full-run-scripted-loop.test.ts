@@ -22,7 +22,9 @@ import { campaignDir } from "../src/meta/campaign-root.ts";
 import { analyseStep } from "../src/run/analyse-step.ts";
 import { claimsDirFor } from "../src/run/claim-write.ts";
 import { readControllerEvidence } from "../src/run/controller-evidence.ts";
-import { type FullRunDeps, parseFullRunArgs, runFullRun, slugForDirectInput } from "../src/run/full-run.ts";
+import { type FullRunDeps, runFullRun } from "../src/run/full-run.ts";
+import { parseFullRunArgs } from "../src/run/launch-arguments.ts";
+import { slugForDirectInput } from "../src/run/launch-project.ts";
 import { buildHarness } from "../src/run/harness-build.ts";
 import { measureHarness } from "../src/run/harness-measure.ts";
 import { selectedProductDir } from "../src/run/product-versions.ts";
@@ -38,13 +40,7 @@ const PROMPT = "Build a harness that uppercases one public input.";
 const TASKS = 6;
 const SLUG = slugForDirectInput(PROMPT, EMPTY_USER_CONTEXT.digest);
 const scratch: string[] = [];
-const guard: BuilderCommandGuardResult = {
-  state: "skipped",
-  path: null,
-  dcgVersion: null,
-  binarySha256: null,
-  skippedReason: "explicit-off",
-};
+const guard: BuilderCommandGuardResult = { state: "skipped", path: null, skippedReason: "not-installed" };
 
 afterEach(() => {
   for (const dir of scratch.splice(0)) rmSync(dir, { recursive: true, force: true });

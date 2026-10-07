@@ -24,7 +24,9 @@ import { ControllerLedger, controllerLedgerExists, fsyncPath } from "./controlle
 import { CONFORMANCE_FILE } from "../claim/conformance-evidence.ts";
 import { portableToolTreeDigest } from "../verify/tool-inventory.ts";
 
-const PRODUCT_VERSION_SCHEMA = "product-version/v2";
+export const PRODUCT_VERSION_SCHEMA = "product-version/v2";
+/** The manifest at the root of each retained version directory, registered in the ledger by digest. */
+export const PRODUCT_VERSION_FILE = "version.json";
 
 type ProductManifest = {
   schema: typeof PRODUCT_VERSION_SCHEMA;
@@ -81,7 +83,7 @@ function durableProductTree(path: string): void {
 }
 
 function manifestAt(dir: string): ProductManifest {
-  const file = join(dir, "version.json");
+  const file = join(dir, PRODUCT_VERSION_FILE);
   const stat = lstatSync(file);
   if (!stat.isFile() || stat.nlink !== 1) {
     throw new Error(`${file}: version manifest must be a direct regular file`);
@@ -187,9 +189,9 @@ export function publishProductVersion(input: {
     toolTree: bundleSnapshotToolTree(staging),
     treeDigest: toolTreeDigestAt(staging),
   };
-  writeFileSync(join(staging, "version.json"), capturedJsonStringify(manifest));
+  writeFileSync(join(staging, PRODUCT_VERSION_FILE), capturedJsonStringify(manifest));
   for (const file of [
-    "version.json",
+    PRODUCT_VERSION_FILE,
     CLAIM_STAGES_FILE,
     ...(input.conformancePath === undefined ? [] : [CONFORMANCE_FILE]),
   ]) {

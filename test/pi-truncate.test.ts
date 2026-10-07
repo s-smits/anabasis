@@ -1,17 +1,10 @@
 // Copied verbatim from pi-mono packages/agent/test/harness/truncate.test.ts at 086c32e74 (main,
-// 2026-08-15), with only the import path repointed. src/meta/truncate.ts is the
-// matching upstream file re-pinned at the same revision; before the re-pin, two of these nine
-// cases failed on trailing-newline handling that upstream fixed after the original copy was taken.
+// 2026-08-15), with only the import path repointed: the Builder and the Built Harness share Pi 1.0's
+// truncate.ts (vendor/pi-coding-agent), which passes every case here. Before the earlier re-pin, two
+// of these cases failed on trailing-newline handling that upstream fixed after the first copy.
 
 import { describe, expect, it } from "bun:test";
-import { truncateHead, truncateTail } from "../src/meta/truncate.ts";
-
-// The Built Harness's file and bash tools come live from the pinned registry package
-// @earendil-works/pi-agent-core, while this vendored copy serves the Builder's bash tail. The two
-// implementations must agree: the vendored copy silently missed an upstream fix once (an
-// oversized >maxBytes last line ending in a newline truncated to zero bytes). These comparisons
-// catch differences when either the package version or the vendored implementation changes.
-import { truncateHead as pinnedHead, truncateTail as pinnedTail } from "@earendil-works/pi-agent-core";
+import { truncateHead, truncateTail } from "../vendor/pi-coding-agent/core/tools/truncate.ts";
 
 const encoder = new TextEncoder();
 
@@ -186,34 +179,6 @@ describe("truncate utilities", () => {
       const length = Math.floor(random() * 80);
       for (let j = 0; j < length; j++) input += alphabet[Math.floor(random() * alphabet.length)];
       assertMatchesBufferTail(input, sampledByteLimits(input));
-    }
-  });
-
-  const PIN_CASES: ReadonlyArray<[string, string]> = [
-    ["oversized last line with trailing newline", `ok\n${"y".repeat(60_000)}\n`],
-    ["oversized single line without newline", "y".repeat(60_000)],
-    ["oversized single line with trailing newline", `${"X".repeat(300_000)}\n`],
-    ["multibyte content at the boundary", `${"é🙂中".repeat(20_000)}\n`],
-    ["small content with trailing newline", "line\nline\nline\n"],
-  ];
-
-  it("truncateTail agrees with the pinned pi-agent-core copy on every comparison case", () => {
-    for (const [name, input] of PIN_CASES) {
-      expect(truncateTail(input), name).toEqual(pinnedTail(input));
-    }
-  });
-
-  it("truncateHead agrees with the pinned pi-agent-core copy on every comparison case", () => {
-    for (const [name, input] of PIN_CASES) {
-      expect(truncateHead(input), name).toEqual(pinnedHead(input));
-    }
-  });
-
-  it("the trailing-newline tail regression stays fixed on both sides", () => {
-    const input = `ok\n${"y".repeat(60_000)}\n`;
-    for (const result of [truncateTail(input), pinnedTail(input)]) {
-      expect(result.outputBytes).toBeGreaterThan(0);
-      expect(result.content.endsWith("y")).toBe(true);
     }
   });
 });

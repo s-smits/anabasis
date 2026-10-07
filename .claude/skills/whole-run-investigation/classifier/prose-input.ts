@@ -11,8 +11,14 @@ import type { JsonObject, JsonValue } from "#src/meta/json-shape.ts";
 import { capturedJsonParse } from "#src/meta/json-runtime.ts";
 import { readJsonFile } from "#src/meta/completed-json.ts";
 import { campaignEpochOrder } from "#src/author/campaign-epoch.ts";
-import { BUILDER_EXECUTION_SCHEMA } from "#src/author/builder-execution.ts";
-import { type BuilderProseRow, proseRowCap, proseSidecarPath } from "#src/author/builder-prose.ts";
+import { BUILDER_EXECUTION_EVIDENCE_FILE, BUILDER_EXECUTION_SCHEMA } from "#src/author/builder-execution.ts";
+import {
+  BUILDER_PROSE_CAPTURE_SCHEMA,
+  BUILDER_PROSE_SCHEMA,
+  type BuilderProseRow,
+  proseRowCap,
+  proseSidecarPath,
+} from "#src/author/builder-prose.ts";
 import {
   CASE_RECORD_FILE,
   type CaseRecordRow,
@@ -186,17 +192,12 @@ export interface CensusOptions {
   runId?: string | undefined;
 }
 
-export type ProseCensus = ReturnType<typeof censusProse>;
-export type SolveCensus = ReturnType<typeof censusSolves>;
-
 export const CENSUS_SCHEMA = "builder-prose-census/v1";
 export const SOLVE_CENSUS_SCHEMA = "built-solve-prose-census/v1";
 /** Execution outcomes that record an environment failure rather than authoring work. Their prose
  *  rows are the provider talking, not the Builder: a session closed on a provider limit can capture
  *  "You've hit your session limit" as its only row. Rows from these sessions carry no posture. */
 export const NON_EVIDENCE_OUTCOMES = new Set(["turn-non-result", "evidence-unavailable"]);
-const CAPTURE_SCHEMA = "builder-prose-capture/v1";
-const ROW_SCHEMA = "builder-prose/v2";
 const ROW_KINDS = ["message", "reasoning", "prompt", "compaction"] as const;
 /** The rows in the Builder's own words. `prompt` and `compaction` rows record what the controller
  *  sent and what the transport did, so they carry no posture of the Builder's. */
@@ -210,7 +211,9 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-
 const sessionOf = (name: string): number =>
   Number((EXECUTION_RE.exec(name) ?? PROSE_RE.exec(name))?.[1] ?? 1);
 const executionName = (session: number): string =>
-  session === 1 ? "builder-execution.json" : `builder-execution-${String(session).padStart(2, "0")}.json`;
+  session === 1
+    ? BUILDER_EXECUTION_EVIDENCE_FILE
+    : `builder-execution-${String(session).padStart(2, "0")}.json`;
 const proseName = (session: number): string => basename(proseSidecarPath(`/${executionName(session)}`));
 const validInteger = (value: JsonValue | undefined, minimum = 0): value is number =>
   isNumber(value) && Number.isInteger(value) && value >= minimum;
@@ -268,7 +271,7 @@ function locationsFor(target: string): EpochLocation[] {
 
 function validateRow(row: JsonValue, index: number, label: string): ProseRow {
   const at = `${label} row ${index + 1}`;
-  if (!isRecord(row) || row.schema !== ROW_SCHEMA) throw new Error(`${at}: unknown schema`);
+  if (!isRecord(row) || row.schema !== BUILDER_PROSE_SCHEMA) throw new Error(`${at}: unknown schema`);
   const { sequence, turn, atMs, chars, text, truncated } = row;
   if (sequence !== index + 1) throw new Error(`${at}: sequence is not contiguous`);
   if (!validInteger(turn, 1) || !validInteger(atMs)) throw new Error(`${at}: invalid turn or atMs`);
@@ -283,7 +286,7 @@ function validateRow(row: JsonValue, index: number, label: string): ProseRow {
   if (!isBoolean(truncated) || (truncated ? chars <= text.length : chars !== text.length)) {
     throw new Error(`${at}: chars and truncation disagree`);
   }
-  return { ...row, schema: ROW_SCHEMA, sequence, turn, atMs, kind, chars, text, truncated };
+  return { ...row, schema: BUILDER_PROSE_SCHEMA, sequence, turn, atMs, kind, chars, text, truncated };
 }
 
 /** The sidecar's capture header, or null when its first line is not one, and its rows. */
@@ -300,7 +303,7 @@ function parseSidecar(file: string): Sidecar {
       }
     });
   const first = values[0];
-  const header = isRecord(first) && first.schema === CAPTURE_SCHEMA ? first : null;
+  const header = isRecord(first) && first.schema === BUILDER_PROSE_CAPTURE_SCHEMA ? first : null;
   if (header !== null) values.shift();
   const rows = values.map((row, index) => validateRow(row, index, label));
   if (header === null) return { header, rows };
@@ -390,7 +393,7 @@ function inspectSession(
     return unbound("receipt-mismatch", `${executionFile} and ${proseFile}: a capture receipt is missing`);
   }
   const matching =
-    receipt.schema === CAPTURE_SCHEMA &&
+    receipt.schema === BUILDER_PROSE_CAPTURE_SCHEMA &&
     receipt.captureId === header.captureId &&
     receipt.file === proseFile &&
     header.file === proseFile &&

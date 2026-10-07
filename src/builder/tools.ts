@@ -6,19 +6,12 @@
  * disagreement between guard and operating system is observable rather than resolved inside a tool.
  */
 import type { JsonObject, JsonValue } from "../meta/json-shape.ts";
-import { rmSync } from "../meta/filesystem.ts";
 import { isAbsolute, join, relative, resolve as resolvePath } from "../meta/path.ts";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { createPatch } from "diff";
-import {
-  bashCallTmpdir,
-  bashDescription,
-  bashEnv,
-  bashKilledNotice,
-  bashTimeoutMs,
-  workspaceSolverBudgetNotice,
-} from "./bash-install-env.ts";
-import { type PathRecord, guardAndRecord, runIsolated } from "./candidate-isolation-runtime.ts";
+import { bashDescription, runBuilderBash } from "./bash-install-env.ts";
+import { guardAndRecord, runIsolated } from "./candidate-isolation-runtime.ts";
+import type { PathRecord } from "./path-record.ts";
 import { moreRowsNote } from "./read-window.ts";
 import type { CandidateAccessPolicy } from "./candidate-isolation.ts";
 import {
@@ -26,13 +19,16 @@ import {
   detectLineEnding,
   normalizeToLF,
   restoreLineEndings,
-  stripBom,
-} from "./pi-coding/edit-core.ts";
+} from "../../vendor/pi-coding-agent/core/tools/edit-diff.ts";
+import { splitBom } from "../../vendor/pi-coding-agent/utils/text.ts";
 import { refuseDestructiveCommand } from "./command-guard.ts";
 import type { SafeguardContext } from "../meta/safeguard.ts";
-export { BUILDER_CAPABILITY_MODES } from "./capability-modes.ts";
-import { withFileMutationQueue } from "./pi-coding/file-mutation-queue.ts";
-import { truncateHead, truncateLine, truncateTail } from "../meta/truncate.ts";
+import { withFileMutationQueue } from "../../vendor/pi-coding-agent/core/tools/file-mutation-queue.ts";
+import {
+  truncateHead,
+  truncateLine,
+  truncateTail,
+} from "../../vendor/pi-coding-agent/core/tools/truncate.ts";
 import { cutOutputNotice, spillWholeOutput, stageAndCopy } from "./tool-write.ts";
 import { keyIfTruthy, keysIf } from "../meta/optional-key.ts";
 
@@ -309,32 +305,17 @@ export function createBuilderTools(isolation: BuilderIsolation): AgentTool[] {
         // The Builder's shell on every backend: destructive forms stop here, the OS policy enforces files.
         const refusal = refuseDestructiveCommand(params.command, Bun.env, isolation.safeguardContext);
         if (refusal !== null) throw new Error(refusal);
-        const timeoutMs = bashTimeoutMs(params.timeout);
-        const startedMs = Date.now();
-        // A TMPDIR for this call alone, removed with it where the call made it on the host.
-        const temp = bashCallTmpdir();
-        const outcome = await runIsolated(policy, record, {
-          capability: "bash",
-          mode: "exec",
-          command: "/bin/sh",
-          args: ["-lc", params.command],
+        const { outcome, budgetNotice, killedNotice } = await runBuilderBash(isolation, {
+          command: params.command,
           cwd,
-          paths: [cwd],
-          env: { ...bashEnv(workDir), TMPDIR: temp.path },
-          osRefusalIsOutcome: true,
-          timeoutMs,
-          signal, // An aborted prompt waits for running tools, so abort kills the command.
-        }).finally(() => {
-          if (temp.made) rmSync(temp.path, { recursive: true, force: true });
+          timeout: params.timeout,
+          signal,
         });
         const whole = `${outcome.stdout}${outcome.stderr}` || "(no output)";
         const tail = truncateTail(whole);
         const spilled = tail.truncated ? await spillWholeOutput(isolation, whole) : null;
-        // A call that outran the solver's own per-command budget says so, whatever its exit was;
-        // the wall itself stays BASH_TIMEOUT_MAX_MS, since searching a domain is not solving a task.
-        const budget = workspaceSolverBudgetNotice(workDir, Date.now() - startedMs);
-        const body = `${tail.content}${tail.truncated ? `\n\n${cutOutputNotice(whole, tail, spilled, "read it with offset and limit")}` : ""}${budget === null ? "" : `\n\n${budget}`}`;
-        if (outcome.timedOut) throw new Error(`${body}\n\n${bashKilledNotice(timeoutMs)}`);
+        const body = `${tail.content}${tail.truncated ? `\n\n${cutOutputNotice(whole, tail, spilled, "read it with offset and limit")}` : ""}${budgetNotice === null ? "" : `\n\n${budgetNotice}`}`;
+        if (killedNotice !== null) throw new Error(`${body}\n\n${killedNotice}`);
         if (outcome.status !== null && outcome.status !== 0) {
           throw new Error(`${body}\n\nCommand exited with code ${outcome.status}`);
         }
@@ -374,7 +355,7 @@ export function createBuilderTools(isolation: BuilderIsolation): AgentTool[] {
           if (current.status !== 0) {
             throw new Error(current.stderr.trim() || `edit read exited ${current.status}`);
           }
-          const { bom, text: withoutBom } = stripBom(current.stdout);
+          const { bom, text: withoutBom } = splitBom(current.stdout);
           const lineEnding = detectLineEnding(withoutBom);
           const normalized = normalizeToLF(withoutBom);
           const { baseContent, newContent } = applyEditsToNormalizedContent(normalized, edits, params.path);

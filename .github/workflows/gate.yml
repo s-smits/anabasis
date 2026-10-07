@@ -1,16 +1,16 @@
 # The composed gate on GitHub Actions: the same deterministic runtime, typecheck, lint and test
-# boundary as the pre-push hook in .githooks/pre-push. The hook is what gates a change; this is not
-# a required check, so a pull request merges without it.
+# boundary as the pre-push hook in .githooks/pre-push. The hook gates each push. `bun run land
+# --sanitize` and `--merge` dispatch this on the stack's top and wait for it, so a stack lands only
+# after it passed there.
 #
-# It runs on each stack merge and once a day against main, not on every push or pull request, because
+# It runs on that dispatch, on each stack merge and once a day against main, not on every push, because
 # the pre-push hook already runs this gate on every source push, which catches nearly everything
 # first. What only CI shows is the Linux isolation (below) and a clean-runner install. A stack merge
 # is the one merge commit `bun run land` puts on main; a direct commit there (documentation or a
 # hotfix) has one parent and waits for the daily run. Nothing is read twice: the `changed` job skips
 # both runners when a completed run on any branch already read the head's tree. Land's merge commit
-# has the stack top's tree, so a dispatch on the top before `land --merge` has already read main after
-# it. A manual dispatch always runs, which is how to re-check a head whose run failed without a new
-# commit.
+# has the stack top's tree, which land's own dispatch already read, so the merge's run skips. A
+# dispatch always runs, which is how to re-check a head whose run failed without a new commit.
 #
 # Both jobs use the stable release in .bun-version, shared with local setup and launch.
 #

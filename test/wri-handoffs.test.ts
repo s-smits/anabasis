@@ -2,8 +2,10 @@ import { mkdirSync, readFileSync, realpathSync, writeFileSync } from "../src/met
 import type { JsonObject, JsonValue } from "../src/meta/json-shape.ts";
 import { join } from "../src/meta/path.ts";
 import { afterAll, describe, expect, it } from "bun:test";
-import { adviceIssueId } from "../src/author/rebuild-advice.ts";
+import { type RebuildAdvicePacket, renderRebuildAdvice } from "../src/author/rebuild-advice.ts";
+import { adviceIssueId } from "../src/author/issue-register.ts";
 import { required } from "./helpers/doubles.ts";
+import { advicePacket, issue as adviceIssue } from "./helpers/review-fixtures.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import {
   CHANNELS,
@@ -26,27 +28,27 @@ const write = (path: string, value: JsonValue) => writeText(path, JSON.stringify
 
 const jsonl = (rows: unknown[]) => `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`;
 
-function issue(family: string, dispute: string | null) {
-  return {
+const issue = (family: string, dispute: string | null) =>
+  adviceIssue({
     id: adviceIssueId("verified-fail", family, null),
-    kind: "verified-fail",
     family,
-    detail: null,
-    count: 2,
     denominator: 3,
     firstSeenRunId: RUN,
     lastSeenRunId: RUN,
-    absentBatteries: 0,
-    returned: false,
-    retired: false,
-    diagnosis: null,
     dispute,
-  };
-}
+  });
+
+const disputed = issue("alpha", "the check reads an unpublished rule");
+
+const input = (budget: number, genes = ["cds"]): JsonObject => ({ genes, budget });
 
 /** Two rounds and two batteries. Round 2's battery measures round 1's `alpha` inputs again under
- *  the family name `beta`, so the packet retires `alpha` on a comparison of names alone. */
-function campaign(options: { toolCalls?: boolean } = {}): string {
+ *  the family name `beta`, so the packet retires `alpha` on a comparison of names alone. Round 2's
+ *  kickoff carries the first battery's packet as rendered, unless `advice` replaces it. */
+function campaign(
+  options: { toolCalls?: boolean; advice?: string; packet?: RebuildAdvicePacket; reviewed?: boolean } = {},
+): string {
+  const packet = options.packet ?? advicePacket([disputed]);
   // Trace roots must match their realpath, and the host temp directory may sit behind a link.
   const root = realpathSync(scratchDir("wri-handoffs-"));
   const dir = join(root, "campaigns", "handoffs");
@@ -61,7 +63,7 @@ function campaign(options: { toolCalls?: boolean } = {}): string {
       `Work in ${dir}/${epochs[1].key}/workspace`,
       "Task count: 3",
       "Recorded batteries (controller-derived data, oldest first):",
-      "Standing issues, largest first.",
+      options.advice ?? renderRebuildAdvice(packet),
     ].join("\n"),
   ];
   writeText(
@@ -121,6 +123,15 @@ function campaign(options: { toolCalls?: boolean } = {}): string {
     };
     // An older record has no tool tally at all, so that shape omits the key.
     if (options.toolCalls !== false) record.toolCalls = { byName: { bash: 5 + index } };
+    // Three reviews attached the length of a no-finding text to round 1's tool results.
+    if (options.reviewed === true && index === 0) {
+      record.authoringReviews = [171, 179, 171].map((adviceChars, turn) => ({
+        turn,
+        tool: "correctness_check",
+        adviceChars,
+        reviewMs: 1_000,
+      }));
+    }
     write(join(epoch, "builder-execution.json"), record);
     const at = (minutes: number) => new Date(round.start + minutes * 60_000).toISOString();
     writeText(
@@ -154,33 +165,42 @@ function campaign(options: { toolCalls?: boolean } = {}): string {
       ],
     },
   });
-  const disputed = issue("alpha", "the check reads an unpublished rule");
-  write(join(dir, "analysis", `${RUN}-rebuild-advice.json`), {
-    schema: "rebuild-advice/v4",
-    issues: [disputed],
-  });
-  write(join(dir, "analysis", `${SECOND}-rebuild-advice.json`), {
-    schema: "rebuild-advice/v4",
-    issues: [{ ...disputed, retired: true, dispute: null }],
-  });
+  write(join(dir, "analysis", `${RUN}-rebuild-advice.json`), packet);
+  write(
+    join(dir, "analysis", `${SECOND}-rebuild-advice.json`),
+    advicePacket([{ ...disputed, retired: true, dispute: null }]),
+  );
   write(join(dir, "analysis", `${RUN}-epoch-review.json`), {
     status: "completed",
     findings: [{}],
     probes: [{ baseline: { outcome: "pass" }, movedCheckIds: [], refused: null }],
     disputes: [{ issueId: disputed.id, reason: "unpublished rule" }],
   });
+  // The second battery's review no longer finds the first review's advisory defect.
+  write(join(dir, "analysis", `${SECOND}-epoch-review.json`), {
+    status: "completed",
+    findings: [],
+    earlierAdvisory: [{ owner: "correctness-model/tasks.json", subject: "span", disposition: "absent" }],
+  });
   // An authoring review at 02:40, after round 2's preview (02:30) and before its submit (02:59).
   write(join(dir, "analysis", "authoring-01a0b788-f000-7000-8000-000000000000-epoch-review.json"), {});
-  const cases = (battery: string, family: string, inputs: number[]) =>
-    inputs.forEach((value, n) =>
-      write(join(dir, "versions", battery, "runs", battery, "cases", `t-${n}`, "public-task.json"), {
-        taskId: `t-${n}`,
+  const cases = (battery: string, family: string, inputs: JsonObject[]) =>
+    inputs.forEach((publicInput, n) => {
+      const taskId = `t-${family}-${n}`;
+      write(join(dir, "versions", battery, "runs", battery, "cases", taskId, "public-task.json"), {
+        taskId,
         family,
-        publicTask: { taskId: `t-${n}`, family, publicInput: { span: value } },
-      }),
-    );
-  cases(RUN, "alpha", [1, 2]);
-  cases(SECOND, "beta", [1, 2]);
+        publicTask: { taskId, family, publicInput },
+      });
+    });
+  cases(RUN, "alpha", [input(1), input(2)]);
+  cases(SECOND, "beta", [input(1), input(2)]);
+  // Same gene list, new budget: the family keeps its task and shares no whole input.
+  cases(RUN, "gamma", [input(10), input(20)]);
+  cases(SECOND, "gamma", [input(30), input(40)]);
+  // Replaced gene list and new budget.
+  cases(RUN, "delta", [input(50)]);
+  cases(SECOND, "delta", [input(60, ["utr"])]);
   return dir;
 }
 
@@ -188,7 +208,7 @@ it.each([
   [["a", "b"], ["b", "a"], "identical-tasks"],
   [["a", "b"], ["a", "c"], "partially-shared"],
   [["a"], ["a", "c"], "partially-shared"],
-  [["a"], ["c"], "name-only"],
+  [["a"], ["c"], "no-shared-input"],
   [[], ["c"], "absent-before"],
   [["a"], [], "absent-after"],
 ] as const)("joins a family's tasks %p before and %p after as %s", (before, after, kind) => {
@@ -209,7 +229,14 @@ describe("round hand-offs", () => {
     // Both traces were opened through the context tool, and neither counts as reading the user's files.
     expect(cell("traces")).toMatchObject({ read: 2 });
     expect(cell("context")).toMatchObject({ read: 0 });
-    expect(second.servedNotRead.map((u: { name: string }) => u.name)).toContain("rebuild-advice");
+    expect(second.servedNotRead).toContainEqual(
+      expect.objectContaining({ name: "rebuild-advice", readRoute: false }),
+    );
+    // The round's own battery review no longer finds the earlier review's defect. That is the
+    // successor's disposition, reported as such; it is not an acted mark.
+    expect(cell("epoch-review")).toMatchObject({ read: null, acted: null });
+    expect(second.carriedDispositions).toEqual(["span absent"]);
+    expect(census[0]?.carriedDispositions).toEqual([]);
     // The first round's prompt carries no readout, and its memory note was written, not handed on.
     expect(census[0]?.channels.find((c: { name: string }) => c.name === "climb-readout")?.served).toBe(false);
     expect(second.bashCalls).toBe(6);
@@ -255,6 +282,8 @@ describe("round hand-offs", () => {
     expect(pair.families).toEqual([
       { family: "alpha", join: "absent-after" },
       { family: "beta", join: "absent-before" },
+      { family: "delta", join: "no-shared-input", changed: ["budget", "genes"] },
+      { family: "gamma", join: "no-shared-input", changed: ["budget"] },
     ]);
     expect(pair.renamedTasks).toBe(2);
     expect(pair.transitions).toEqual([
@@ -267,6 +296,13 @@ describe("round hand-offs", () => {
     ]);
     expect(sameTask.producer).toEqual({ issues: 2, familyKeyed: 2 });
     expect(renderHandoffs(report)).toContain("2 tasks reappear under another family name");
+    expect(renderHandoffs(report)).toContain(
+      "no-shared-input 2 (delta changed budget, genes; gamma changed budget)",
+    );
+    expect(renderHandoffs(report)).toMatch(/served, no read route: round-facts .*; rebuild-advice/);
+    expect(renderHandoffs(report)).toContain(
+      "earlier review's advisory defects in this battery's review: span absent",
+    );
   });
 
   it("reads an absent field as unobservable, never as zero", () => {
@@ -299,9 +335,45 @@ describe("round hand-offs", () => {
     expect(memory?.alternative).not.toContain("resumed session");
   });
 
+  it("does not read a review attached mid-round as the kickoff's review projection", () => {
+    const reviewed = buildHandoffs({ campaign: campaign({ reviewed: true }), runId: RUN });
+    const first = required(required(reviewed.census, "census")[0], "first round");
+    expect(first.channels.find((c) => c.name === "epoch-review")).toMatchObject({ served: false });
+  });
+
   it("refuses to invent a round for a campaign with neither epochs nor claims", () => {
     expect(buildHandoffs({ campaign: scratchDir("wri-handoffs-empty-"), runId: null })).toMatchObject({
       state: "empty",
+    });
+  });
+});
+
+describe("the advice channel's served cell", () => {
+  const adviceCell = (options: { advice?: string; packet?: RebuildAdvicePacket }) => {
+    const report = buildHandoffs({ campaign: campaign(options), runId: RUN });
+    return required(
+      required(report.census, "census")[1]?.channels.find((c) => c.name === "rebuild-advice"),
+      "advice cell",
+    );
+  };
+
+  // Neither packet opens with a section heading: the first prints only the rules-changed line, the
+  // second only its findings.
+  const packets: [string, RebuildAdvicePacket][] = [
+    ["rechecked issues", advicePacket([adviceIssue({ absentBatteries: 1, rulesChangedRechecks: 1 })])],
+    ["findings", { ...advicePacket([]), findings: [{ owner: null, claim: "no task reaches the limit" }] }],
+  ];
+  it.each(packets)(
+    "reads a packet of only %s as served where the kickoff carries its render",
+    (_, packet) => {
+      expect(adviceCell({ packet })).toMatchObject({ served: true });
+    },
+  );
+
+  it("reads a kickoff that carries no packet as not served, though one is present", () => {
+    expect(adviceCell({ advice: "Standing issues, largest first." })).toMatchObject({
+      present: true,
+      served: false,
     });
   });
 });

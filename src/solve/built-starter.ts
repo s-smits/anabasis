@@ -19,9 +19,9 @@ import {
 import { type DraftTool, isDraftTool } from "./draft-tool.ts";
 import {
   type PublishedMargin,
-  WRITER_BINDING_SENTENCE,
   readMargins,
   renderMargins,
+  writerBindingSentence,
 } from "./published-margin.ts";
 import type { SubmissionPort } from "./final-submission.ts";
 import type { PublicArtifactSchema } from "./public-artifact-schema.ts";
@@ -252,11 +252,15 @@ export const publishedRequirements = (source: string): string =>
  * the wall widening the worst margin made every task propose, grade, adjust, whatever the task
  * asked for, so the battery measured that loop rather than the solver's own method.
  *
+ * Only the wall submits for the solver (`submitAtWall`, pi-built.ts), and `submit` sends only an
+ * answer still current, so the sentence names both conditions. It once said the answer was
+ * submitted "at the end", which a turn cap, a cancel or a silence stop does not keep.
+ *
  * The tools say what they do, `save_candidate` and `restore_candidate` included, and the
  * artifact-writer's margin table (`readMargins`) is host fact rather than instruction.
  */
 export const builtSystemPrompt = (solveMs: number): string =>
-  `${BUILT_SOLVE_DUTY} ${solveTime(solveMs)}, and at the end the last answer an artifact-writer prepared is submitted for you.`;
+  `${BUILT_SOLVE_DUTY} ${solveTime(solveMs)}. When it runs out, the last answer an artifact-writer prepared is submitted for you unless the draft changed after it; a session that ends any other way submits nothing for you.`;
 
 export function builtFirstTurnPrompt(
   task: Pick<PublicTask<unknown>, "taskId" | "family" | "publicInput">,
@@ -403,8 +407,9 @@ function modelView(value: JsonValue | DraftSnapshot, draftSeq: number, from = 0)
   const window = complete.slice(start, start + MODEL_JSON_LIMIT);
   const next = start + window.length;
   const left = complete.length - next;
-  const before = start === 0 ? "" : `… (${start} chars before this)\n`;
-  const after = left === 0 ? "" : `\n… (${left} chars left; call again with from: ${next})`;
+  const before = start === 0 ? "" : `… (${start} char${start === 1 ? "" : "s"} before this)\n`;
+  const after =
+    left === 0 ? "" : `\n… (${left} char${left === 1 ? "" : "s"} left; call again with from: ${next})`;
   return {
     text: `${before}${window}${after}`,
     details: {
@@ -539,8 +544,14 @@ function standardTools(
           };
         }
         draft.adopt(candidate);
+        // A candidate saved before any answer was prepared, or after the draft moved past one,
+        // brings back no answer submit can send.
+        const answer =
+          draft.artifactMaterialization().state === "current"
+            ? "the answer prepared with it is prepared again"
+            : "it holds no current prepared answer, so call an artifact-writer before you submit";
         return {
-          text: `Restored "${name}"; the answer prepared with it is prepared again.`,
+          text: `Restored "${name}"; ${answer}.`,
           details: { saved: [...saved.keys()], restored: true, draftSeq: draft.seq },
         };
       },
@@ -620,12 +631,9 @@ function bindDraftTools(
     const exactArtifactWriter = authority === "artifact-writer" && publicArtifactSchema !== null;
     const boundTool: AgentTool = {
       ...tool,
-      // The host owns this tool's parameters and its execution, and the Builder wrote its
-      // description against neither — an authored description can end up denying it checks
-      // anything against the published limits while the bound execute below returns exactly that
-      // table. The authored sentence stays, because it says what the tool is for in the domain's
-      // own words; the host appends what actually runs, at the one place it takes the tool over.
-      description: exactArtifactWriter ? `${tool.description} ${WRITER_BINDING_SENTENCE}` : tool.description,
+      description: exactArtifactWriter
+        ? `${tool.description} ${writerBindingSentence(margins.length > 0 ? "answer-and-limits" : "answer")}`
+        : tool.description,
       parameters: exactArtifactWriter
         ? /* SAFETY: exactArtifactWriter can be true only when publicArtifactSchema is non-null,
            which is the same branch that creates artifactWriterParameters above. */ (artifactWriterParameters as AgentTool["parameters"])

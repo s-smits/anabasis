@@ -143,10 +143,10 @@ describe("slot resolution", () => {
 
   it("keeps the generic Codex model override above the Builder default", () => {
     const root = repo(operatorFile("s1", { builder: { kind: "codex" } }));
-    const slots = resolveSlots(root, "s1", loadRepoEnv(root, { CODEX_MODEL: "gpt-5.6-sol" }));
+    const slots = resolveSlots(root, "s1", loadRepoEnv(root, { CODEX_MODEL: "gpt-6.1-sol" }));
     expect(slots.builder).toMatchObject({
       kind: "codex",
-      model: "gpt-5.6-sol",
+      model: "gpt-6.1-sol",
       reasoningEffort: "xhigh",
     });
   });

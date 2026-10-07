@@ -1,6 +1,9 @@
 /**
- * The verifier workshop's model-facing interface. The execution code decides paths, phases,
- * evidence and typed non-results; this file defines the tool schema and routes its actions.
+ * The verifier workshop's model-facing interface: the workshop tool and its public_source download
+ * tool. The execution code decides paths, phases, evidence and typed non-results; this file
+ * defines the tool schemas and routes their actions. For a download the controller resolves and
+ * checks each public HTTPS address, including redirects, and the model receives a file named by
+ * its digest in the isolated workshop.
  */
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
@@ -66,5 +69,19 @@ export function createVerifierWorkshopTool(workshop: VerifierWorkshop): AgentToo
           return workshop.export(params.path, params.destination);
       }
     },
+  });
+}
+
+const SourceParams = Type.Object({ url: Type.String() });
+
+export function createPublicSourceTool(workshop: VerifierWorkshop): AgentTool<typeof SourceParams> {
+  return defineTool({
+    name: "public_source",
+    label: "Public source",
+    description:
+      "Download the exact public HTTPS archive or package you intend to inspect, build or use as checker evidence, by its exact address; it saves the download under its byte digest in the workshop downloads directory. Use verifier_workshop to unpack, build and test it offline, then export the tested binary or package into candidate .toolchain. A completed fetch proves only which public bytes were downloaded, not that they are authoritative or correct.",
+    parameters: SourceParams,
+    executionMode: "sequential",
+    run: ({ url }, signal) => workshop.fetch(url, signal),
   });
 }

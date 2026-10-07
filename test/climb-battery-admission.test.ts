@@ -284,6 +284,18 @@ describe("admission — what the claim decides", () => {
       "refused (claim): claim refused: grounding-missing",
     ],
     ["a refusal carrying no clauses", { ok: false }, CREATED_AT, "kept out (claim): claim refused —"],
+    // A claim refused once per control receipt names the clause once, with its count.
+    [
+      "a clause repeated for every control receipt",
+      refused(
+        "accept-rejected",
+        "control-receipt-invalid",
+        "control-receipt-invalid",
+        "control-receipt-invalid",
+      ),
+      CREATED_AT,
+      "kept out (claim): claim refused: accept-rejected, control-receipt-invalid ×3",
+    ],
     // A contradicted census recorded another served model, transport or provider, so the battery's
     // pass rate belongs to that condition and not to this product's climb.
     [

@@ -20,10 +20,9 @@ import { dirname, join } from "../src/meta/path.ts";
 import {
   CandidateIsolationRefusal,
   CandidateIsolationUnavailable,
-  openPathRecord,
-  readPathRecordRows,
   runIsolated,
 } from "../src/builder/candidate-isolation-runtime.ts";
+import { openPathRecord, readPathRecordRows } from "../src/builder/path-record.ts";
 import {
   CANDIDATE_ISOLATION_GUARD_ID,
   deriveCandidateIsolation,

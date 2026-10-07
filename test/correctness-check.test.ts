@@ -1,4 +1,5 @@
 import { required, text } from "./helpers/doubles.ts";
+import { expectNoRestatedDuty } from "./helpers/duty-overlap.ts";
 import { MATCHING_BRIEF, MATCHING_TASKS, writeMatchingBuildFixture } from "./helpers/matching-fixture.ts";
 import { loadSolvabilityPublicSchema } from "../src/correctness-bundle/solvability-artifact-schema.ts";
 import {
@@ -318,8 +319,6 @@ it("reads a repair behind an unchanged wrapper, and a package installed under ho
 });
 
 /** A solver tool running a check's own module is the shape every whole-passing harness of
- *  2026-09-29/30 shared, so a byte copy refuses at the bundle; one byte apart is review's. */
-/** A solver tool running a check's own module is the shape every whole-passing harness of
  *  2026-09-29/30 shared, so a byte copy is named beside readiness; one byte apart is review's. The
  *  note never refuses: whether to keep the copy is the Builder's call. */
 it("names agent code byte-identical to correctness-model code as an advisory, and only that", () => {
@@ -334,6 +333,8 @@ it("names agent code byte-identical to correctness-model code as an advisory, an
     return candidate.advisories.filter((finding) => finding.code === "agent-copies-check-code");
   };
   expect(copies()).toMatchObject([{ path: "agent/metrics.ts" }]);
+  // The note names the rule's trigger and leaves the rule to the system prompt that states it.
+  expectNoRestatedDuty(copies()[0]?.detail ?? "");
 
   writeFileSync(join(dir, "agent/metrics.ts"), `${metrics}\n`);
   expect(copies()).toEqual([]);

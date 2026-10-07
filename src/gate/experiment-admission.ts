@@ -5,13 +5,13 @@
  */
 import type { CandidateSnapshot } from "../author/candidate-check.ts";
 import { readBoundConformance } from "../claim/conformance-evidence.ts";
+import { sha256 } from "../meta/digest.ts";
 import { readFileSync } from "../meta/filesystem.ts";
 import { canonicalJson } from "../meta/stable-json.ts";
 import { parseJsonAs } from "../meta/json-runtime.ts";
 import type { JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { join } from "../meta/path.ts";
-import { publicBatteryFingerprint } from "../run/climb-history.ts";
 import {
   type ExperimentDimension,
   type ExperimentOperation,
@@ -21,11 +21,6 @@ import {
 import { compilePublicArtifactSchema } from "../solve/public-artifact-schema.ts";
 import { isControlCorpus } from "../correctness-bundle/controls.ts";
 import { CONTROLS_FILE } from "../meta/bundle-layout.ts";
-
-export interface AdmissionInput {
-  /** The adopted tree a continuation moves away from; absent on an initial build. */
-  adoptedDir?: string;
-}
 
 /** Whether the candidate keeps the adopted installed verifier and compiled submission schema.
  *  Unproven is neither preserved nor moved, and the three answers stay apart because a missing
@@ -77,6 +72,19 @@ function scoringOf(dir: string) {
   } catch {
     return null;
   }
+}
+
+/** One battery's public measurement identity: the sorted multiset of its tasks' publicInput bytes.
+ *  Hidden rows are deliberately absent, because a recorded battery keeps only
+ *  `cases/<taskId>/public-task.json` on disk, so the public bytes are the identity every earlier
+ *  battery can still be compared on. */
+function publicBatteryFingerprint(tasks: ReadonlyArray<{ publicInput: unknown }>): string {
+  return sha256(
+    tasks
+      .map((task) => canonicalJson(task.publicInput))
+      .sort()
+      .join("\n"),
+  );
 }
 
 const SINGLE_OPERATION = {

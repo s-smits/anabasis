@@ -15,9 +15,8 @@ import {
   type WorkspaceSeed,
   runBuilderSession,
 } from "../author/builder-session.ts";
-import { writeCompleted } from "../author/campaign-epoch.ts";
+import { writeCompleted } from "../meta/completed-json.ts";
 import { type CampaignMemory, nextOrdinal, resumeCampaignMemory } from "../author/campaign-memory.ts";
-import { safeguardRepeatedRefusalCode } from "../correctness-bundle/run-safeguards.ts";
 import { renderBatteryContract } from "./climb-readout.ts";
 import { taskCountSentence } from "./battery-sizing.ts";
 import { ITERATION_FILE } from "../builder/campaign-iterations.ts";
@@ -159,6 +158,10 @@ type Accepted = {
 };
 
 type Iteration = { ordinal: number; dir: string; iterationDir: string };
+
+/** Safeguard 40's floor: a 25-task battery refused on one cause, so a smaller battery repeating a
+ *  code does not trip it. */
+const REPEATED_CODE_FLOOR = 20;
 
 /** The clause that ends this campaign before a model session opens: exhausted authoring, an
  *  environment blocker or a spent durable cap, none of which a provider turn could change. */
@@ -536,7 +539,7 @@ class BuilderCampaignController {
       rehearsals: this.rehearsals,
       user: input.userContext ?? EMPTY_USER_CONTEXT,
     });
-    const { builtSolver } = deps;
+    const { builtSolver, conversation } = deps;
     const trial = createHarnessTrialTool({
       workspace: this.workspace,
       context: toolContext,
@@ -548,6 +551,10 @@ class BuilderCampaignController {
         builtSolver === undefined ? undefined : () => builtSolver(deps.providerBudget),
       ),
       ...keyIfDefined("verifierLifetime", deps.verifierLifetime),
+      ...keyIfDefined(
+        "tellOnce",
+        conversation === undefined ? undefined : (key: string) => conversation.tellOnce(key),
+      ),
     });
     const reset = createHarnessResetTool({
       workspace: this.workspace,
@@ -577,6 +584,23 @@ function unsettledRefusal(candidate: CandidateSnapshot, report: GateReport): Ref
     commit: candidate.commit,
     findings: report.refusals.flatMap((row) => row.findings),
   };
+}
+
+/** Safeguard 40: a refused submit whose findings repeat one code across most of the battery is one
+ * defect reported once per task, and the recorded findings keep only the count of it. */
+function safeguardRepeatedRefusalCode(
+  outcome: { stage: string; findings: ReadonlyArray<{ code: string }> },
+  context: SafeguardContext | undefined,
+): void {
+  const counts = new Map<string, number>();
+  for (const finding of outcome.findings) counts.set(finding.code, (counts.get(finding.code) ?? 0) + 1);
+  const [code, count] = [...counts.entries()].sort((a, b) => b[1] - a[1])[0] ?? ["", 0];
+  if (count < REPEATED_CODE_FLOOR) return;
+  safeguardTriggered(
+    "40-refused-submit-repeated-code",
+    `stage ${outcome.stage}: ${code} x${count} of ${outcome.findings.length} findings`,
+    context,
+  );
 }
 
 /**

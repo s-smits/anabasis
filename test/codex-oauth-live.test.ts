@@ -57,7 +57,7 @@ it.if(runLive)(
     const neutralRoot = mkdtempSync(join(tmpdir(), "ana-codex-oauth-preflight-"));
     try {
       const runtime = resolvePiBuiltRuntime(
-        codexSlots(Bun.env.ANA_CODEX_OAUTH_MODEL ?? "gpt-5.6-sol"),
+        codexSlots(Bun.env.ANA_CODEX_OAUTH_MODEL ?? "gpt-6.1-sol"),
         neutralRoot,
         builtSolveIsolation(neutralRoot),
         { CODEX_HOME: Bun.env.CODEX_HOME, HOME: Bun.env.HOME, PATH: Bun.env.PATH },
@@ -76,7 +76,7 @@ it.if(runLive)(
 it.if(runLive)(
   "runs one real prompt through the confined Pi OpenAI-Codex OAuth transport",
   async () => {
-    const model = Bun.env.ANA_CODEX_OAUTH_MODEL ?? "gpt-5.6-sol";
+    const model = Bun.env.ANA_CODEX_OAUTH_MODEL ?? "gpt-6.1-sol";
     const neutralRoot = mkdtempSync(join(tmpdir(), "ana-codex-oauth-root-"));
     const bundle = await bundleWorker();
     try {

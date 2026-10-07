@@ -33,15 +33,14 @@ import {
   RUN_DATA_DENY_PATTERNS,
   VERIFIER_TEMP_SIBLING_DENY_PATTERNS,
   canonicalForms,
+  canonicalRoots,
   darwinToolchainInstallRoots,
-  darwinUserTempRoot,
   hostToolchainEnv,
   runDataDenyPaths,
   runDataDenyRules,
   toolchainPathDirs,
   traversalMetadataRules,
-  userTempChildTreeRules,
-  verifierTempSiblingDenyRules,
+  userTempRules,
 } from "./wall-policy.ts";
 import { runtimeProcess } from "../meta/process.ts";
 
@@ -266,13 +265,11 @@ function commandReadAllows(
   readDenies: readonly string[],
   toolTree: string | null,
 ): string[] {
-  const covered = [
-    ...new Set(
-      [...base.allowedReadRoots, ...nodeRuntimeReadRoots(), ...darwinToolchainInstallRoots()].flatMap(
-        (root) => canonicalForms(root),
-      ),
-    ),
-  ].filter((path) => readDenies.some((root) => covers(root, path)));
+  const covered = canonicalRoots([
+    ...base.allowedReadRoots,
+    ...nodeRuntimeReadRoots(),
+    ...darwinToolchainInstallRoots(),
+  ]).filter((path) => readDenies.some((root) => covers(root, path)));
   // The adopted bundle's tool tree is a symlink into the candidate workspace under `campaigns/`,
   // which the run-data pattern denies by name, so without this the Builder's own install answers
   // `command not found`. Allowing it by path after the pattern denies restores that one tree and
@@ -296,9 +293,7 @@ function darwinCommandProfile(
   const readAllows = commandReadAllows(base, readDenies, toolTree);
   // The two shared temporary directories a toolchain writes without asking: the confstr one clang
   // and Apple's python3 shim use, and `/tmp`, which `mktemp` and most build scripts spell literally.
-  const confstr = darwinUserTempRoot();
-  const roots = confstr === undefined ? ["/tmp"] : [confstr, "/tmp"];
-  const tempRoots = [...new Set(roots.flatMap((root) => canonicalForms(root)))].sort();
+  const userTemp = userTempRules(["/tmp"], COMMAND_TEMP_SIBLING_DENY_PATTERNS);
   const profile = [
     "(version 1)",
     // The same read posture as the session that owns this command and as the Builder's authoring
@@ -314,12 +309,11 @@ function darwinCommandProfile(
     // down, directories included, because a `mktemp -d` there has a name only the tool knows, so
     // the grant cannot be narrower without refusing the tool outright. That leaves another tenant's
     // tree under the same root open, which is the Darwin wall's stated limit; the Linux path closes
-    // it with a private tmpfs instead.
-    ...userTempChildTreeRules(tempRoots),
-    // What those same directories hold that must stay separate: concurrent verifier workdirs and
-    // the product's other staging trees, closed by name because each path is known only once it has
-    // been created. The parent of every command's scratch tree is closed by subpath below instead.
-    ...verifierTempSiblingDenyRules(COMMAND_TEMP_SIBLING_DENY_PATTERNS),
+    // it with a private tmpfs instead. The same rules then close by name what those directories
+    // hold that must stay separate, concurrent verifier workdirs and the product's other staging
+    // trees, because each path is known only once it has been created. The parent of every
+    // command's scratch tree is closed by subpath below instead.
+    ...userTemp.rules,
     // Run data is denied by name rather than by place, so one rule covers every earlier run's copy
     // instead of a worktree enumeration that goes stale. It follows the temporary-directory grant
     // so that a copy left under /tmp stays closed too.
@@ -365,7 +359,7 @@ function darwinCommandProfile(
       readAllows,
       readDenies,
       readDenyPatterns: [...RUN_DATA_DENY_PATTERNS, ...COMMAND_TEMP_SIBLING_DENY_PATTERNS],
-      userTempRoots: tempRoots,
+      userTempRoots: userTemp.roots,
       writeDenies,
       toolTree,
       ...withheldKey(withheld),
@@ -377,11 +371,9 @@ export function commandIsolationPolicy(
   base: SolveIsolationPolicy,
   dirs: CommandDirectories,
 ): CommandIsolationPolicy {
-  const scratchRoots = [
-    ...new Set([...canonicalForms(dirs.work), ...canonicalForms(dirs.home), ...canonicalForms(dirs.temp)]),
-  ].sort();
+  const scratchRoots = canonicalRoots([dirs.work, dirs.home, dirs.temp]);
   const toolTree = dirs.toolTree ?? null;
-  const withheld = [...new Set((dirs.withheld ?? []).flatMap((path) => canonicalForms(path)))].sort();
+  const withheld = canonicalRoots(dirs.withheld ?? []);
   const linux = base.mechanismId === LINUX_BWRAP_ID;
   /*
    * What the Linux command wall overmounts, now that its reads open by default: the session's

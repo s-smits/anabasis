@@ -400,7 +400,7 @@ families the plan is about; it routes to `controller-source`
 
 **10. Difficulty calibration loop.**
 
-Starts from block 4b's `OFF-AIM STREAK (lane 10)`, from the calibration table the `handoff` lane
+Starts from the `climb` lane's `CLIMB FLAT (lane 10)`, from the calibration table the `handoff` lane
 prints, and from the `climb` lane's `velocity`, `horizon`, `flat` and `carried` lines.
 
 The question is whether the run draws the line the climb is meant to draw. Its shape and its four
@@ -410,9 +410,9 @@ battery's count, the placement the controller recorded
 (`difficulty-decisions/<runId>-<digest>.json`: `placement.zone`, `aim`, `toAim`, the Wilson
 interval), the operation the accepted bytes were attributed as, and the `climb` lane's four numbers
 as [the climb reference](climb.md) reads them. A run of n/n batteries is the finding, whatever its
-zones read, and `carried` says whether the Builder measured the same passed tasks again. The digest
-streak counts consecutive placements on one side of the aim; say which side, and whether it meets
-the stall rule `flat` applies (`STALL_BATTERIES`). The Builder is told no count, share or zone at
+zones read, and `carried` says whether the Builder measured the same passed tasks again. The `flat`
+line counts consecutive placements on one side of the aim; say which side, and whether it meets
+the stall rule it applies (`STALL_BATTERIES`). The Builder is told no count, share or zone at
 any size (AGENTS.md "Goals and the climb", under "Who hears the placement, and what it drives"), so
 no battery can be scored against a target the controller stated. A run whose source predates the
 removal of `EXPERIMENT.json` recorded a plan beside each accepted submit, and nothing reads it. Why
@@ -569,16 +569,19 @@ rounds.
 
 The question is which of the channels one round hands the next were present, served, read back and
 acted on. The channels are the round facts, the climb readout and battery contract, the rebuild
-advice packet, the Epoch Reviewer's public projection from both authoring and battery reviews,
-diagnosis issues, memory notes, the `context` tool, and the solver traces and
-rehearsals it offers. Read the full Builder kickoff in `observability/<runId>.jsonl`
+advice packet, the Epoch Reviewer's public projection as the kickoff renders it (an authoring review
+attached to a tool result is not counted as served here), diagnosis issues, memory notes, the
+`context` tool, and the solver traces and rehearsals it offers. Read the full Builder kickoff in `observability/<runId>.jsonl`
 (`prompt-ingested`, role `builder`), each epoch's `builder-path-record.jsonl` and
 `builder-execution*.json` custom calls, and `analysis/<runId>-{rebuild-advice,diagnoses,epoch-review}.json`.
 Read-back means a tool call that opened or queried the channel; prompt text in context is served,
 not read. The round facts, the advice packet, the diagnosis and the review projection have no
 re-query channel, so an unread one is structural rather than a Builder choice, and a file opened
-through `bash` records only its working directory. The Builder keeps one conversation across rounds
-and compaction cuts its oldest turns first, so a channel served once at the opening may be gone by
+through `bash` records only its working directory; the census prints those as "no read route". Acted
+is read only where a record holds it: memory writes and rehearsals. For the review, the census prints
+the next battery review's `earlierAdvisory` dispositions as they are; `absent` means the finding did
+not recur, not that the Builder acted on it. The
+Builder keeps one conversation across rounds and compaction cuts its oldest turns first, so a channel served once at the opening may be gone by
 the time the decision it feeds is taken; say when a channel was served relative to the last
 compaction. For every channel served and never read, name the cheapest alternative — drop it, move
 it to a `harness_inspect` mode, or state it where the decision is taken — and the observation that
@@ -595,15 +598,20 @@ The question is whether an issue's complete rechecks (`absentBatteries`) or its 
 comparison of task identity or of family names alone. Read each battery's
 `cases/*/public-task.json` digested over the public input, the consecutive
 `analysis/<runId>-rebuild-advice.json` packets, and `deriveRebuildAdvice` in
-`src/author/rebuild-advice.ts`, whose `advanceIssues` keys every issue with `adviceIssueId`. Join
+`src/author/rebuild-advice.ts`, whose `advanceIssues` (in `src/author/issue-register.ts`) keys every issue with `adviceIssueId`. Join
 per family before and after each repair and classify it `identical-tasks`, `partially-shared` or
-`name-only`, or absent on one side, counting inputs that reappear under another family name. Report
-every change in an issue's recorded facts and flag those resting on a name-only or absent join:
-renaming every family retires every issue without a failing task being measured again, and
-`retired` proves no fix. Say whether the producer keys on task identity or family name by
+`no-shared-input`, or absent on one side, counting inputs that reappear under another family name.
+`no-shared-input` says only that no whole public input is shared; the table names the top-level
+public-input keys that changed, and a family that kept some keys and changed others is a
+re-parameterised task, not a replaced one. Report every change in an issue's recorded
+facts and flag those resting on a `no-shared-input` or absent join: renaming every family used to
+retire every issue without a failing task being measured again, and `retired` proves no fix. Since
+2026-10-07 the register holds an issue unmeasured while any task id it was observed under (`observedUnder.taskIds`)
+runs under another family name (`continuedUnder`), so a `retired` row at a join that shares an input is a defect to
+report, and an unmeasured row says where the tasks went. Say whether the producer keys on task identity or family name by
 recomputing the recorded issue ids. Do not read what the task change means for difficulty, which
 lane 20 owns. The decision it changes is whether an issue's recorded absence speaks about the task
-that exposed it; it routes to `controller-source` (`src/author/rebuild-advice.ts`) for the key and
+that exposed it; it routes to `controller-source` (`src/author/issue-register.ts`) for the key and
 to `correctness-model/tasks.json` when the failing task was never measured again.
 
 **19. Semantic repair closure.**
@@ -689,7 +697,7 @@ calls, not a non-result. Read each case's `built-runtime.json` and `final-submis
 sequences per battery and per family, so one expensive family cannot disappear in the aggregate),
 and the wall shares `walls.ts` prints. Reusable algorithms, a bounded search and the host's margin
 table on published limits are legitimate solving support; a tool, program or guide line that
-analyses a candidate the way a check does is lane 34's finding, and lane 23 reads its use per case.
+does a check's work is lane 34's finding, and lane 23 reads its use per case.
 Do not open the private packet. A wall-bound miss stays a fail in the count, and `wallBound` names
 the unaccepted cases that ran to within `WALL_BOUND_SHARE` of `solve_minutes` (AGENTS.md "Goals and
 the climb", under "What one battery can say"). The decision it changes is whether such a miss is
@@ -1018,16 +1026,22 @@ Starts from every run at every tier as a standing lane, because the solver's too
 Builder's too, and from block 1b's `CHECK CODE IN SOLVER REACH (lane 34)` and `CHECK TOOL IN SOLVER
 TRACE (lane 23)`.
 
-The question is whether anything in the solver's reach analyses a candidate the way a check does,
-so that solving becomes propose, read the failing state, adjust. Keep two things apart first. The
+The question is whether anything in the solver's reach does a check's work: it analyses a candidate
+the way a check does, so that solving becomes propose, read the failing state, adjust, or it
+computes what a check expects for a scenario the solver chooses, which needs no candidate at all.
+Firmware 7a97af's `expected_behaviour` was the second kind, a byte copy of
+`correctness-model/rules.ts` called in nine of ten traces. Keep two things apart first. The
 host's own margin table, `readMargins` (`src/solve/published-margin.ts`, called from
 `src/solve/built-starter.ts`), reads every complete published boundary against a prepared answer
 and returns it in the artifact-writer's text; its readings ride the trace as `details.margins`.
 That is controller code, the same for every domain, and it stays legitimate, as do reusable
 algorithms and a bounded search. A tool in `agent/tools.ts`, a program on the solver's PATH or a
 guide line that computes what a declared check reads over a proposed candidate, whether through the
-check's code, a copy of it, its instrument or a verdict, is the finding, because the solver then
-searches against the grader instead of doing the field's work. So for each, list which declared
+check's code, a copy of it, its instrument or a verdict, or that returns what a check expects for a
+case, is the finding, because the solver then searches against the grader instead of doing the
+field's work. Equal bytes between `agent/` and `correctness-model/` are a lead, not the finding:
+published constants and standard routines are shared legitimately, and a rewritten expectation
+model matches no bytes. So for each, list which declared
 checks it mirrors — same operands, same computation — and which it leaves the solver to reason
 about. Then read the traces for the shape: a proposal, a reading showing a breach, an adjustment,
 repeated until clear, with no derivation between readings. The shape says how much the mirror
@@ -1062,12 +1076,12 @@ too little, and to `correctness-model/tasks.json` when the task could never fail
 
 **36. Difficulty pressure on the Builder.**
 
-Starts from block 4b's `OFF-AIM STREAK (lane 10)`, beside lane 10.
+Starts from the `climb` lane's `CLIMB FLAT (lane 10)`, beside lane 10.
 
 The question is what, in this run, pressed the Builder to make the tasks harder, and whether
 anything did. Only the Builder raises difficulty, and only through the tasks it writes: the
-controller writes no task, and the off-aim streak is counted for the operator by the digest and
-`runs pulse` and stops nothing, so a product can land above the aim round after round with no
+controller writes no task, and the off-aim streak is counted for the operator by `runs pulse` and
+the `climb` lane's `flat` and stops nothing, so a product can land above the aim round after round with no
 controller action (AGENTS.md "Goals and the climb", under "Who hears the placement, and what it
 drives"). Read the channels that could have carried pressure and say what each carried: the
 kickoff, the system prompt's intent clause, the round prompt's submit sentence, the climb readout

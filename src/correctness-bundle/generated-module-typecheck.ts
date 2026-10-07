@@ -1,5 +1,5 @@
-// Structural import-order gate: capture controller primitives before any loader below can import
-// generated source, including direct contracts.ts callers that do not enter through falsify.ts.
+// Structural import-order gate: capture controller primitives before any loader below imports
+// generated source.
 import { join, relative } from "../meta/path.ts";
 import { sha256 } from "../meta/digest.ts";
 import { parseJsonAs } from "../meta/json-runtime.ts";

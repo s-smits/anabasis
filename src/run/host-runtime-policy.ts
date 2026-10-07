@@ -14,12 +14,8 @@ export type HostRuntimeIdentity = {
   executableSha256: string;
 };
 
-function runningBunVersion(): string | undefined {
-  return globalThis.Bun?.version;
-}
-
 export function assertSupportedHostRuntime(): void {
-  const version = runningBunVersion();
+  const version = globalThis.Bun?.version;
   const revision = globalThis.Bun?.revision;
   if (version === PINNED_BUN_VERSION && revision === PINNED_BUN_REVISION) return;
   throw new Error(
@@ -29,12 +25,10 @@ export function assertSupportedHostRuntime(): void {
 
 export function hostRuntimeIdentity(): HostRuntimeIdentity {
   assertSupportedHostRuntime();
-  const version = runningBunVersion();
-  if (version === undefined) throw new Error("Bun runtime identity disappeared after admission");
   return {
     schema: HOST_RUNTIME_IDENTITY_SCHEMA,
     name: "bun",
-    version,
+    version: Bun.version,
     platform: runtimeProcess.platform,
     arch: runtimeProcess.arch,
     executableSha256: sha256OfFile(runtimeProcess.execPath),

@@ -38,11 +38,7 @@ type OsIsolationPlatform = "darwin" | "linux";
 /** A shared test and runtime override carrying the fields either mechanism may use. The selected
  *  host ignores the irrelevant half, which is what preserves the per-mechanism test boundaries
  *  rather than forcing one override shape on both. */
-export type OsIsolationRuntime = DarwinSeatbeltRuntime &
-  LinuxBwrapRuntime & {
-    /** The home whose toolchain install roots the Darwin wall opens; the process HOME by default. */
-    toolchainHome?: string;
-  };
+export type OsIsolationRuntime = DarwinSeatbeltRuntime & LinuxBwrapRuntime;
 
 export interface OsIsolationSupport {
   ok: boolean;
@@ -180,7 +176,7 @@ export function verifierOsIsolation(runtime: OsIsolationRuntime): VerifierOsIsol
   }
   // Read once: every plan of this host then binds the same platform roots, so its policy hash
   // moves only when the command, the inputs or the declared roots move.
-  const platformRoots = darwinPlatformReadRoots(runtime.toolchainHome);
+  const platformRoots = darwinPlatformReadRoots();
   return {
     id: DARWIN_SEATBELT_ID,
     requires: "requires Darwin Seatbelt",

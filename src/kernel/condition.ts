@@ -17,8 +17,11 @@ export interface Limits {
   readonly wallSeconds: number;
   /** Model turns before the solve stops without an answer of its own. */
   readonly turns: number;
+  /** How long one shell command runs when the solver names no timeout. A timeout it names only
+   *  raises this, up to `shellMaxSeconds`, as v1's Built shell clamped it (built-bash.ts:316-321). */
+  readonly shellDefaultSeconds: number;
   /** The longest one shell command may run. */
-  readonly shellSeconds: number;
+  readonly shellMaxSeconds: number;
   /** Solves the host runs at once, which moves wall time through the load they put on one another. */
   readonly concurrency: number;
   /**

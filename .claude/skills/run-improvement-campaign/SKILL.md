@@ -492,6 +492,20 @@ cases give an operational result and no capability rate. Run `bun run outcome --
 reports firings only; separating a silent sensor from one no run reached, and any removal,
 belong to the weekly review, not to this step.
 
+A comparison of main against a pull request's head, both arms republished from one seed round, is
+decided by the rule frozen in `climb-outcome.ts` before its launch, and nothing else: per cell (one
+request under one Builder model and effort) the first k measured task sets of each arm, k the fewer
+reached; fresh failures M2 labelled `limit`, a fresh failure being a verified fail on bytes that
+never failed in the arm by a task that did not fail at its previous measurement, the seed's failures
+included; the seed's batteries left out of both arms; censored below 12 pooled rounds, then margins
+of 5, 6 and 7; a health guard on the head's fresh failures. The reader prints the verdict and the
+counts beside it, read-only:
+
+```sh
+bun .claude/skills/run-improvement-campaign/scripts/climb-outcome-cli.ts \
+  --control <main sha> --treatment <head sha> [--labels <M2 labels.jsonl>] [--json]
+```
+
 Evidence precedence:
 
 ```text

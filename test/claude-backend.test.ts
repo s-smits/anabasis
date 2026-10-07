@@ -92,6 +92,7 @@ describe("the Claude backend", () => {
     const toolCalls = first.content.filter((block) => block.type === "toolCall");
     expect(toolCalls.map((block) => block.name)).toEqual(["read", "read", "read"]);
     expect(first.usage.output).toBeGreaterThan(0);
+    expect(first.responseModel).toBe("claude-haiku-4-5-20251001");
 
     const call = calls.at(-1);
     expect(call?.options.tools).toEqual([]);

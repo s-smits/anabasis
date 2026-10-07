@@ -255,9 +255,13 @@ async function readTurn(
   }
 }
 
-/** One content block of the API message. Claude Code's `<synthetic>` reports of its own failures stay out. */
+/**
+ * One content block of the API message. Claude Code's `<synthetic>` reports of its own failures stay
+ * out. The message names the snapshot that served it, which the condition's model id may only alias.
+ */
 function take(message: SDKAssistantMessage, model: Model<Api>, turn: AssistantMessage): void {
   if (message.message.model === "<synthetic>") return;
+  turn.responseModel = message.message.model;
   for (const block of message.message.content) {
     if (block.type === "text") turn.content.push({ type: "text", text: block.text });
     else if (block.type === "thinking") {

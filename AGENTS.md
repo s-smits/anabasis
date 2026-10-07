@@ -1464,14 +1464,16 @@ the battery was paid for.
     The same remeasure solves again each fresh fail not yet confirmed (`unconfirmedSolves`): a fail is
     solved again while its group, the task's fresh solves on one pin, set of build inputs, run
     condition, effort and tool tree, holds fewer than `AGREEING_SOLVES` solves and every one failed, so
-    the Builder never reads a fail on one solve alone, and an edit of the task, the agent or the tools
-    starts a group of its own. One pass in the group makes the fail a flip, and the case is not solved
-    again; a pass is never solved again. A case awaiting a solve is never regraded, so a round that
-    blocking feedback gives to the Builder first solves it afresh. Neither the Judge nor the review
-    chooses which fails are solved again, so a fail the review settled against its check is solved like
-    any other, and so is a fail the solve wall cut; an unaccepted attempt is not. A battery whose every
-    case failed or was cut short is measured again whole and records `regrade: {reused: 0}`, so its
-    chain of remeasures stays bounded. A *repeat* posing the exam an at-or-above-aim battery already sat is measured afresh and
+    the Builder never reads a fail on one solve alone. The build inputs (`buildInputsHash`) hash the
+    agent, the correctness model and the whole task set, so an edit of any task, of the agent, of the
+    correctness model or of the tools starts a new group for every task. One pass in the group makes
+    the fail a flip, and the case is not solved again; a pass is never solved again. A case awaiting a
+    solve is never regraded, so a round that blocking feedback gives to the Builder first solves it
+    afresh. Neither the Judge nor the review chooses which fails are solved again, so a fail the review
+    settled against its check is solved like any other, and so is a fail the solve wall cut; an
+    unaccepted attempt is not. A battery whose every case failed or was cut short is measured again
+    whole and records `regrade: {reused: 0}`, so its chain of remeasures stays bounded.
+    A *repeat* posing the exam an at-or-above-aim battery already sat is measured afresh and
     recorded as `repeat`, because a second solve can show whether a full pass was reliable where a regrade only reads the
     same attempts again; the submit refusal it met until 2026-09-29 (`identical-exam-over-aim`) never fired in
     the recorded corpus. A repeat is the adopted product measured again, so promotion selects it like any

@@ -280,6 +280,7 @@ describe("the whole loop through the Builder runtime interface, with no provider
       expect(bound(whole.epoch.key).binding.builder?.answerWallMs).toBeUndefined();
       expect(bound(split.epoch.key).binding.builder?.answerWallMs).toBe(4 * 3_600_000);
       expect(split.epoch.supersedes).toBe(whole.epoch.key);
+      expect([whole.opening.answerAgent, split.opening.answerAgent]).toEqual([false, true]);
       const digest = (opening: JsonObject) => asRecord(opening.command)?.digest;
       const project = required(asRecord(split.opening.project), "project");
       const requestDigest = isString(project.requestDigest) ? project.requestDigest : "";
@@ -370,7 +371,7 @@ describe("the whole loop through the Builder runtime interface, with no provider
       ["measure", true],
     ]);
     expect(first.terminal).toBe(capped(1, 2));
-    expect(opening("a").maxBatteries).toBe(1);
+    expect(opening("a")).toMatchObject({ maxBatteries: 1, answerAgent: false });
 
     // A continuation counts only its own new batteries: counting the remeasure, or the predecessor's
     // battery, would have stopped it after round two.

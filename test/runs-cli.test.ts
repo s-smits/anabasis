@@ -626,7 +626,7 @@ describe("resume", () => {
       "43200000",
     ]);
     expect(plan.plan.provenance.at(-1)).toBe(
-      "battery and boundary: --tasks 60, --max-iterations 6, --max-batteries 8, --stop-after-ms 43200000",
+      "carried flags: --tasks 60, --max-iterations 6, --max-batteries 8, --stop-after-ms 43200000",
     );
   });
 

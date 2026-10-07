@@ -11,9 +11,10 @@
  * each paying for a full battery.
  *
  * A verified fail is solved again on unchanged bytes, each time in a remeasure that regrades the
- * other tasks, while every solve of its task in its group (one pin, set of build inputs, run
- * condition, effort and tool tree) has failed and there are fewer than three. So a correction after
- * a fail the solver repeats is the fourth battery, not the second.
+ * other tasks, while every solve in its group has failed and there are fewer than three. A group is
+ * the exam that task poses: its own bytes, the agent, the correctness model and the tool tree, under
+ * one pin, run condition and effort. The other tasks' bytes are not part of it. So a correction
+ * after a fail the solver repeats is the fourth battery, not the second.
  *
  * No provider: round one builds and measures, a later round submits one change or remeasures. The
  * solver counts its calls per battery, so "no solve" is a count of zero rather than an inference
@@ -535,7 +536,33 @@ describe("a fail is solved again while every solve in its group failed and there
     expect(batteries[3]?.passes[5]).toBe(true);
   }, 180_000);
 
-  it("starts a group with each edit of a task: its fail after a confirmed fail of the old bytes is solved again", async () => {
+  it("keeps the group when a neighbour's bytes move: the fail's second solve counts with its first", async () => {
+    // The environment cuts t5 short three times, so the fourth battery's fail reaches the Builder on
+    // one solve. The Builder keeps t5 and edits t0; the candidate solves t5 again beside t0 under the
+    // same exam, so one more remeasure confirms it.
+    const cutThenFail = (runId: string, taskId: string): Answer => {
+      if (taskId !== "t5") return "right";
+      return ["rg", "rg-i02", "rg-i03"].includes(runId) ? "provider" : "flub";
+    };
+    const inputs = ["z", ...UPPERCASE_TASK_INPUTS.slice(1)];
+    const { outcome, batteries } = await twoRounds(cutThenFail, { inputs }, {}, 5);
+    expect(outcome.rounds.map((row) => row.move)).toEqual([
+      "build",
+      "measure",
+      "measure",
+      "measure",
+      "rebuild",
+      "measure",
+      "rebuild",
+    ]);
+    expect(batteries.slice(3, 6).map((row) => [row.solves, row.passes[5]])).toEqual([
+      [1, false],
+      [2, false],
+      [1, false],
+    ]);
+  }, 180_000);
+
+  it("starts a group with each edit of this task: its fail after a confirmed fail of the old bytes is solved again", async () => {
     const inputs = [...UPPERCASE_TASK_INPUTS.slice(0, 5), "gh"];
     const { outcome, batteries } = await twoRounds(flubbing(new Set(["t5"])), { inputs }, {}, 3);
     expect(outcome.rounds.map((row) => row.move)).toEqual([
@@ -547,6 +574,28 @@ describe("a fail is solved again while every solve in its group failed and there
     ]);
     expect(batteries[4]).toMatchObject({ solves: 1, regrade: { of: "rg-i04", reused: 5, changedPasses: 0 } });
   }, 180_000);
+
+  it.each([
+    ["the agent", { agent: "Keep the answer as given." }],
+    ["the correctness model", { assertion: "The answer is the input in upper case, letter for letter." }],
+  ] as const)(
+    "starts a group with each edit of %s: a fail after a confirmed fail is solved again",
+    async (_, second) => {
+      const { outcome, batteries } = await twoRounds(flubbing(new Set(["t5"])), second, {}, 3);
+      expect(outcome.rounds.map((row) => row.move)).toEqual([
+        "build",
+        "measure",
+        "measure",
+        "rebuild",
+        "measure",
+      ]);
+      expect(batteries.slice(3).map((row) => [row.solves, row.passes[5]])).toEqual([
+        [TASKS, false],
+        [1, false],
+      ]);
+    },
+    180_000,
+  );
 
   it("starts a group with each tool tree: a fail after a pass under the earlier tree is solved again", async () => {
     const failsUnderNewTree = (runId: string, taskId: string): Answer =>

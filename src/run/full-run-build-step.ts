@@ -17,7 +17,6 @@ import { measuredSolverTraces } from "./solver-traces.ts";
 import { fingerprintSlug } from "../claim/fingerprint.ts";
 import { recordedVerifierEnvironmentHash } from "../claim/conformance-evidence.ts";
 import { harnessBundleIdentity } from "./climb-battery-admission.ts";
-import { hashJsonValue } from "../meta/stable-json.ts";
 import { hashJsonBytes } from "../meta/json-runtime.ts";
 import { selectedProductDir } from "./product-versions.ts";
 import {
@@ -121,29 +120,20 @@ function adoptedProbeLanding(read: ClimbBatteriesRead, domainDir: string): Probe
 
 /** Remeasurement keeps the declaration of which tasks changed, so their result remains separate
  * from unchanged tasks. A round that loses the declaration records one count over the whole
- * battery, and the changed subset's own result is gone. Recover only byte-matched public authoring
- * metadata; no score or verdict is carried forward. */
+ * battery, and the changed subset's own result is gone. It carries the declaration of the battery
+ * it measures again, the adopted bytes' latest: a repeat on those bytes declares another
+ * experiment than the battery before it, and its remeasure is the repeat's. Recover only
+ * byte-matched public authoring metadata; no score or verdict is carried forward. */
 function remeasuredAuthoring(input: IterationInput): Pick<BuildStepResult, "experimentAuthoring"> {
   const { repoRoot, manifest } = input;
   const domainDir = selectedProductDir(repoRoot, manifest.slug);
-  const rows = readClimbBatteries(domainDir, input.runPin, { repoRoot, slug: manifest.slug }).history.filter(
-    (row) => row.authoring.experimentAuthoring !== undefined,
-  );
-  if (rows.length === 0) return {};
+  const rows = readClimbBatteries(domainDir, input.runPin, { repoRoot, slug: manifest.slug }).history;
+  if (rows.every((row) => row.authoring.experimentAuthoring === undefined)) return {};
   const bound = adoptedProductRow(domainDir);
   if (bound === null) {
     throw new Error("remeasurement cannot bind the adopted task authoring to its fingerprint");
   }
-  const matches = rows.filter(bound);
-  const declarations = new Map(
-    matches.map(
-      (row) => [hashJsonValue(row.authoring.experimentAuthoring), row.authoring.experimentAuthoring] as const,
-    ),
-  );
-  if (declarations.size > 1) {
-    throw new Error("remeasurement has conflicting authored experiments for one fixed task set");
-  }
-  return keyIfDefined("experimentAuthoring", declarations.values().next().value);
+  return keyIfDefined("experimentAuthoring", rows.findLast(bound)?.authoring.experimentAuthoring);
 }
 
 /** Settle what one Builder session produced: a failed build reaches the progress stream with its

@@ -129,7 +129,7 @@ export function solverConditionMoved(
  *  that moved. A solve is kept when its case reached no non-result and its public task bytes match
  *  the candidate's; the agent bytes, the solving condition and, when the scoring moved, the brief's
  *  public rules must match for any to be kept, because the solver read all of them. */
-function posedSolves(input: ExamInput): RecordedRegrade {
+export function posedSolves(input: ExamInput): RecordedRegrade {
   const source = latestBattery(input.repoRoot, input.slug, input.runPin);
   if (isString(source)) return { reuse: null, reason: source };
   let battery: Pick<BatteryRecord, "backendPin" | "bundleSnapshot" | "cases" | "condition">;
@@ -175,9 +175,9 @@ function posedSolves(input: ExamInput): RecordedRegrade {
   };
 }
 
-/** The recorded solves this round regrades instead of solving, or null when it measures a fresh
- *  battery, with the reason either way. Every round reads the same solves; only a repeat, which
- *  moved nothing, opts out and is solved afresh. */
+/** The recorded solves a candidate regrades instead of solving, or null when it measures a fresh
+ *  battery, with the reason either way. It reads the solves a remeasure reads (`posedSolves`); only
+ *  a repeat, which moved nothing, opts out and is solved afresh. */
 export function recordedRegrade(
   input: ExamInput & { experimentAuthoring: ExperimentAuthoring | undefined },
 ): RecordedRegrade {

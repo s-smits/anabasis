@@ -3,7 +3,11 @@
  * with GitHub and the gate replaced at their command boundaries. The fake `gh` answers the stack
  * reads and the merge from the environment and logs every call, so a test reads which statuses were
  * posted, on what, and in which order against the merge request; the fake `bun` logs each gate it
- * was asked for. The Actions gate on the top's head has passed unless ANA_FAKE_CI says otherwise, or
+ * was asked for. With ANA_FAKE_TOGETHER=N, a gate logs its end only once N gates have started, or
+ * after some ten seconds, so gates run side by side overlap in the log whichever process the host
+ * starts first, while gates run one after another do not. The gate of ANA_FAKE_LATE's commit then
+ * holds half a second longer, so a gate started as soon as another ended logs before it ends. The
+ * Actions gate on the top's head has passed unless ANA_FAKE_CI says otherwise, or
  * ANA_FAKE_CI_AFTER names a file only its dispatch creates. ANA_FAKE_CI_STATES instead names a file
  * whose lines answer successive run reads, the last one repeating: `none` lists no run and `down`
  * fails as a 502 would. Nothing here reaches GitHub.
@@ -66,7 +70,9 @@ writeFileSync(
 writeFileSync(
   join(fakeBin, "bun"),
   '#!/bin/sh\nprintf \'%s\\t%s\\n\' "$3" "$ANA_TESTED_COMMIT" >> "$ANA_GATE_LOG"\n' +
-    '[ -z "${ANA_FAKE_SLOW:-}" ] || { sleep "$ANA_FAKE_SLOW"; printf \'end\\t%s\\n\' "$ANA_TESTED_COMMIT" >> "$ANA_GATE_LOG"; }\n' +
+    '[ -z "${ANA_FAKE_TOGETHER:-}" ] || { i=0; while [ "$(grep -c \'^--\' "$ANA_GATE_LOG")" -lt "$ANA_FAKE_TOGETHER" ] && [ "$i" -lt 500 ]; do sleep 0.01; i=$((i + 1)); done\n' +
+    '  [ "$ANA_TESTED_COMMIT" != "${ANA_FAKE_LATE:-}" ] || sleep 0.5\n' +
+    '  printf \'end\\t%s\\n\' "$ANA_TESTED_COMMIT" >> "$ANA_GATE_LOG"; }\n' +
     '[ "$ANA_TESTED_COMMIT" != "${ANA_FAKE_FAIL:-}" ] || { echo "gate: step lint failed (exit 1)"; exit 1; }\n' +
     '[ -z "${ANA_FAKE_LITTER:-}" ] || { [ ! -e stray ] || { echo "gate: step tests failed (exit 1)"; exit 1; }; touch stray; }\n',
 );
@@ -237,26 +243,25 @@ describe("bun run land", () => {
 
   it("gates commits side by side with --jobs, and the top alone once every one beneath it passed", () => {
     forgetPasses();
-    const result = runLand(["12", "--jobs", "2"], { ANA_FAKE_SLOW: "0.3" });
+    const result = runLand(["12", "--jobs", "2"], { ANA_FAKE_TOGETHER: "2", ANA_FAKE_LATE: lower });
     expect(result.status).toBe(0);
-    expect(logged(gateLog)).toEqual([
-      `--static\t${lower}`,
-      `--static\t${lowerMore}`,
-      `end\t${lower}`,
-      `end\t${lowerMore}`,
-      `--at\t${upper}`,
-      `end\t${upper}`,
-    ]);
+    // Two gates side by side reach the log in whichever order the host runs their processes. The
+    // lower one ends last, so a top started on the other's exit alone would log before that end.
+    const gated = logged(gateLog);
+    expect(gated.slice(0, 2).toSorted()).toEqual([`--static\t${lower}`, `--static\t${lowerMore}`].toSorted());
+    expect(gated.slice(2, 4).toSorted()).toEqual([`end\t${lower}`, `end\t${lowerMore}`].toSorted());
+    expect(gated.slice(4)).toEqual([`--at\t${upper}`, `end\t${upper}`]);
   });
 
   it("names the lowest commit that failed side by side, and starts nothing after it", () => {
     forgetPasses();
-    const result = runLand(["12", "--jobs", "2"], { ANA_FAKE_SLOW: "0.3", ANA_FAKE_FAIL: lowerMore });
+    const result = runLand(["12", "--jobs", "2"], { ANA_FAKE_TOGETHER: "2", ANA_FAKE_FAIL: lowerMore });
     expect(result.status).toBe(1);
-    expect(logged(gateLog).filter((line) => line.startsWith("--"))).toEqual([
-      `--static\t${lower}`,
-      `--static\t${lowerMore}`,
-    ]);
+    expect(
+      logged(gateLog)
+        .filter((line) => line.startsWith("--"))
+        .toSorted(),
+    ).toEqual([`--static\t${lower}`, `--static\t${lowerMore}`].toSorted());
     expect(result.stderr).toContain(`git commit --fixup=${lowerMore.slice(0, 9)}`);
     expect(readFileSync(join(work, ".git", "ana-gate-passed"), "utf8")).toBe(`${lower} --static\n`);
   });

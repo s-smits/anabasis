@@ -40,13 +40,7 @@ const PROMPT = "Build a harness that uppercases one public input.";
 const TASKS = 6;
 const SLUG = slugForDirectInput(PROMPT, EMPTY_USER_CONTEXT.digest);
 const scratch: string[] = [];
-const guard: BuilderCommandGuardResult = {
-  state: "skipped",
-  path: null,
-  dcgVersion: null,
-  binarySha256: null,
-  skippedReason: "explicit-off",
-};
+const guard: BuilderCommandGuardResult = { state: "skipped", path: null, skippedReason: "not-installed" };
 
 afterEach(() => {
   for (const dir of scratch.splice(0)) rmSync(dir, { recursive: true, force: true });

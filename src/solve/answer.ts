@@ -220,10 +220,10 @@ function modelView(value: JsonValue, from = 0): AgentToolResult<JsonObject | nul
 }
 
 /** A tool whose arguments are typed by its own parameters, in a list of any tools. */
-function tool<Parameters extends TSchema>(definition: AgentTool<Parameters>): AgentTool {
+export function tool<Parameters extends TSchema>(definition: AgentTool<Parameters>): AgentTool {
   return definition;
 }
 
-function text(value: string, details: JsonObject | null = null): AgentToolResult<JsonObject | null> {
+export function text(value: string, details: JsonObject | null = null): AgentToolResult<JsonObject | null> {
   return { content: [{ type: "text", text: value }], details };
 }

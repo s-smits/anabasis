@@ -46,6 +46,7 @@ export const EVENT_KINDS = [
   "verdict",
   "referee.finding",
   "referee.dispute",
+  "diagnosis.recorded",
   "comparison.reported",
   "anchor.drawn",
   "anchor.scored",

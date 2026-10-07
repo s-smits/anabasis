@@ -4,7 +4,8 @@
  *
  * An append is written and synced before it returns, so an event the host acted on survives a crash.
  * A read refuses a torn or unknown line instead of skipping it: a view over a log with a hole in it
- * would be a view over a different history.
+ * would be a view over a different history. A torn last line is a crash inside an append, and
+ * `repair` cuts it.
  *
  * An append refuses, writing nothing, an event that would make the log unreadable: any event after a
  * torn last line, and an event the task states read when folding it onto the log so far throws. A
@@ -16,6 +17,7 @@ import {
   existsSync,
   fstatSync,
   fsyncSync,
+  ftruncateSync,
   openSync,
   readFileSync,
   readSync,
@@ -96,6 +98,25 @@ export function read(path: string): LogEvent[] {
       }
       return { at: event.at, kind, data };
     });
+}
+
+/**
+ * Cuts a torn last line and returns its text, or null when the log ends whole. Cutting is safe: an
+ * append returns only after its line is synced, so the host acted on no event the torn part held.
+ */
+export function repair(path: string): string | null {
+  if (!existsSync(path)) return null;
+  const bytes = readFileSync(path);
+  if (bytes.length === 0 || bytes.at(-1) === NEWLINE) return null;
+  const kept = bytes.lastIndexOf(NEWLINE) + 1;
+  const fd = openSync(path, "r+");
+  try {
+    ftruncateSync(fd, kept);
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+  return bytes.subarray(kept).toString("utf8");
 }
 
 function parsed(line: string): JsonValue | undefined {

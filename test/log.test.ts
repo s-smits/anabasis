@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from "bun:test";
-import { append, read } from "../src/kernel/log.ts";
+import { append, read, repair } from "../src/kernel/log.ts";
 import { appendFileSync, mkdtempSync, readFileSync, rmSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
@@ -26,6 +26,23 @@ describe("the log", () => {
     append(path, "verdict", { pass: true });
     appendFileSync(path, '{"at":"2026-10-07T00:00:00.000Z","kind":"verd');
     expect(() => read(path)).toThrow("the last line is torn");
+  });
+
+  it("cuts a torn last line back to the last whole event, and leaves a whole log alone", () => {
+    const path = fresh();
+    expect(repair(path)).toBeNull();
+    const kept = append(path, "verdict", { pass: true });
+    expect(repair(path)).toBeNull();
+    const torn = '{"at":"2026-10-07T00:00:00.000Z","kind":"verd';
+    appendFileSync(path, torn);
+    expect(repair(path)).toBe(torn);
+    expect(read(path)).toEqual([kept]);
+    const next = append(path, "verdict", { pass: false });
+    expect(read(path)).toEqual([kept, next]);
+    const only = fresh();
+    appendFileSync(only, torn);
+    expect(repair(only)).toBe(torn);
+    expect(read(only)).toEqual([]);
   });
 
   it("refuses a line that is not one of the plan's events", () => {

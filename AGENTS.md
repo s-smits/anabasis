@@ -1290,12 +1290,11 @@ the battery was paid for.
    The review is held to what can change a verdict or the reference's output, and `complete` counts that
    alone: the bundle files, every program under `correctness-model/` and `agent/` (a script a check runs as a
    tool is named by a string, which no import walk sees) and what those import (`runtimeClosure`, the walk
-   `scoringClosureHash` uses), read smallest first so one oversized file cannot spend the 4,000,000-character
-   read budget before the rest of the contract is delivered. Every other file of the tree is background: listed
-   in the orientation and in `coverage.background` with its size and whether it was read through, returned by
-   `read_source` by name, and cited by a finding that rests on it. A JSON file over 500,000 characters is
-   delivered without its insignificant whitespace. Until 2026-10-07 the review walked every file of the
-   snapshot, so a Builder that kept a search of over 4,000,000 characters under `reference/offline` left five
+   `scoringClosureHash` uses), read smallest first so one oversized file cannot spend the read budget before
+   the rest of the contract is delivered. Every other file of the tree is background: listed in the
+   orientation and in `coverage.background` with its size and whether it was read through, returned by
+   `read_source` by name, and cited by a finding that rests on it. Until 2026-10-07 the review walked every
+   file of the snapshot, so a Builder that kept a search of over 4,000,000 characters under `reference/offline` left five
    reviews of the d5cfcb1 run at the budget as `incomplete`, 49 to 185 continuations each, and they ran again.
 
    The closing message is recorded as its `report`; its tools refuse only what a decision or rule 4 reads,
@@ -1435,7 +1434,7 @@ the battery was paid for.
     says how many consecutive batteries have admitted it and since which. Until 2026-09-29 each
     recurrence read as a fresh finding: 48 of the 171 routed findings then recorded repeated the battery
     before, and one on `correctness-model/brief.json`'s `wiring-behavior` check ran twelve. It states each issue's owner, not what to rebuild. Each issue keeps a stable id
-    and states its recorded facts rather than a verdict on them (`issueFacts`, `rebuild-advice/v12`):
+    and states its recorded facts rather than a verdict on them (`issueFacts`):
     where it was first and last seen, how many complete rechecks have not observed it since and how many
     of those ran under changed public rules, whether it was seen again after an absence, which condition moved when a recheck was not comparable, and
     whether its family left the set, a review disputed it or a review settled it. Until 2026-09-29 the
@@ -1443,10 +1442,8 @@ the battery was paid for.
     conclusion an absence cannot carry, since an absence says the failure did not show and not that
     anything repaired it. A family leaving the set proves no fix at all. An absence counts as a complete
     recheck only when every case of the family was truth-verified under the condition that observed the
-    issue: the same tasks, hidden expectations included, the verdict closure (`verdictClosureHash`: the
-    evaluator and its imports with the brief's check ids, execution declarations and the artifact fields a
-    submission is read against), check tools, Built pin,
-    recorded reasoning effort, isolation and run condition, which carries the host's share of the Built
+    issue: the same tasks, hidden expectations included, the verdict closure (`verdictClosureHash`), check
+    tools, Built pin, recorded reasoning effort, isolation and run condition, which carries the host's share of the Built
     prompt (`src/author/issue-condition.ts`). An effort or a procedure the cases never recorded
     compares with nothing, and the solver walls in `agent/config.yaml` are left out, because raising
     them is a fix. A probe that moves only a hidden limit asks the verifier another question while the
@@ -1458,8 +1455,7 @@ the battery was paid for.
     correction therefore leaves its rechecks not comparable even when it regrades: the verdict closure moved,
     and nothing settles an issue as corrected. A brief reworded or renumbered over unchanged checks is not
     such a change, because the closure leaves out its text and constants: the recheck counts, and it is named
-    "rechecked under unchanged checks, public rules changed" (`briefPublicationHash`, the digest of what
-    `briefPublicResources` hands the solver), because it answers whether the repair held under the new rules
+    "rechecked under unchanged checks, public rules changed" (`briefPublicationHash`), because it answers whether the repair held under the new rules
     and not whether the issue persists under the old. Until 2026-10-07 the comparison read `scoringHash`,
     which hashes every byte of the brief, so one reworded sentence made every later battery not comparable,
     and the six batteries of `standard-sonnetxhh-20261003T164336992Z-d5cfcb1` credited no recheck. A battery's

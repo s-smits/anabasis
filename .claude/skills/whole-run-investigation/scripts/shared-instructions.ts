@@ -1,55 +1,45 @@
 #!/usr/bin/env bun
-// The editable shared-instructions config every review lane reads. `buildSharedInstructions`
-// turns the run overview (recorded bytes) into `shared-instructions.json`: a `template` of lines
-// carrying `{placeholder}` tokens and a `values` map filled from the overview. The primary may
-// edit any value, add a value and reference it from the template, reorder or drop template lines,
-// or fill the two authored values `orientation` and `movedVariable`, all before `launch`.
-// `renderSharedInstructions` substitutes the tokens; a token without a value refuses the render
-// and a line whose value is empty is dropped, so an unfilled authored field leaves no trace.
+// The shared instructions every open lane prompt of an investigation carries, and the run overview
+// each run's lanes read beside them.
+//
+// `wri.ts start` renders a preset template (`references/shared-instructions.template.md`, or the
+// one `--preset` names) into `<investigation>/shared-instructions.md`, filling `{runTable}` with one
+// row per run and leaving the authored sections as marked blanks. The primary edits any section of
+// that file; `readSharedInstructions` drops its `<!-- -->` comments and refuses it while any `##`
+// section is left blank, so an unfilled orientation never reaches a lane. Every open prompt then
+// carries the result whole, and the composer refuses a group that lost it.
+//
+// The run overview is recorded bytes, not authored: `renderRunOverview` states the snapshot, the
+// terminal, its denominator, the budget, the versions and every trigger the digest and the
+// in-process lanes raised, and the `overview` lane writes it beside `overview.json` as
+// `run-overview.md`, which build-manifest renders as `## Run overview`.
 
-import { asRecord, isString, type JsonValue } from "#src/meta/json-shape.ts";
-import { isAbsolute } from "#src/meta/path.ts";
+import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
+import type { JsonValue } from "#src/meta/json-shape.ts";
+import { dirname, join } from "#src/meta/path.ts";
 import {
   type DigestTrigger,
   type EvolutionFacts,
   jsonText,
   jsonTruthy,
   OVERVIEW_SCHEMA,
-  readJsonAs,
   type ScanFinding,
   type TerminalReading,
   type TimelineStall,
   type ViewStates,
 } from "./run-overview.ts";
 
-const SHARED_SCHEMA = "wri-shared-instructions/v1";
-const AUTHORED_VALUES = ["orientation", "movedVariable"] as const;
-const TOKEN = /\{([A-Za-z][A-Za-z0-9_]*)\}/g;
+/** The editable shared instructions `wri.ts start` writes into the investigation directory. */
+export const SHARED_INSTRUCTIONS_FILE = "shared-instructions.md";
+/** The recorded run overview the `overview` lane writes into each run's review directory. */
+export const RUN_OVERVIEW_FILE = "run-overview.md";
+const REFERENCES = join(dirname(import.meta.dir), "references");
+const PRESET_SUFFIX = ".template.md";
+/** The preset `start` renders when `--preset` names none. */
+const DEFAULT_PRESET = "shared-instructions";
+const COMMENT = /<!--[\s\S]*?-->/g;
 
-/** The default template: one recorded-fact line per placeholder, in reading order. */
-const DEFAULT_TEMPLATE = [
-  "{snapshot}",
-  "{terminal}",
-  "{denominator}",
-  "{iterations}",
-  "{budget}",
-  "{versions}",
-  "{checkpoint}",
-  "{taskSet}",
-  "{triggers}",
-  "{scan}",
-  "{timeline}",
-];
-
-const GUIDE = [
-  "Every lane reads the rendered `template` as `## Run overview`. Each `{name}` token is replaced by",
-  "`values.name`; a token without a value refuses the launch and a line whose value is empty is",
-  "dropped. Edit values, add your own value and token, reorder or remove template lines. The two",
-  "authored values `orientation` (rendered as `## Orientation`) and `movedVariable` (rendered as",
-  "`## The moved variable and prior state`) are empty until the primary fills them.",
-].join(" ");
-
-/** The overview as this reader meets it: built in-process, or read back from an edited file. */
+/** The overview as this reader meets it: built in-process, or read back from `overview.json`. */
 export interface OverviewReading {
   schema?: string;
   runId?: string | null;
@@ -59,55 +49,52 @@ export interface OverviewReading {
   digestTriggers?: readonly DigestTrigger[];
   scanFindings?: readonly ScanFinding[] | null;
   timelineStalls?: readonly TimelineStall[] | null;
-  orientation?: JsonValue;
-  movedVariable?: JsonValue;
 }
 
-/** `shared-instructions.json` as this reader meets it. */
-export interface SharedInstructions {
-  schema?: string;
-  template?: readonly JsonValue[];
-  values?: JsonValue;
+/** One run as the shared instructions' run table names it. */
+export interface RunRow {
+  runId: string;
+  tier: string;
+  campaign: string;
+  review: string;
+  commit: string;
+  checkout: string;
+  terminal: string;
+  batteries: number;
+  cases: string;
 }
 
 function code(value: JsonValue | undefined): string {
   return `\`${value === undefined ? value : jsonText(value)}\``;
 }
 
-function terminalValues(terminal: TerminalReading) {
-  if (terminal.state !== "recorded") {
-    return {
-      terminal: `- Terminal: unavailable (${terminal.reason}).`,
-      denominator: "",
-      iterations: "",
-      budget: "",
-    };
-  }
+function terminalLines(terminal: TerminalReading): string[] {
+  if (terminal.state !== "recorded") return [`- Terminal: unavailable (${terminal.reason}).`];
   const d = terminal.denominator ?? null;
   const b = terminal.providerBudget ?? null;
+  const denominator =
+    d === null
+      ? ""
+      : d.state === "invalid"
+        ? `- Recorded denominator: INVALID — ${String(d.error)}.`
+        : `- Recorded denominator (${d.state ?? "state unknown"}): ${d.total ?? "?"} total = ${d.verified ?? "?"} verified + ${d.unaccepted ?? "?"} unaccepted + ${d.nonResults ?? "?"} non-results.`;
   const budget =
     b === null
       ? ""
       : `- Provider resource budget: ${b.used} of ${b.cap} turns used (${Object.entries(b.byRole)
           .map(([role, used]) => `${role} ${used}`)
           .join(", ")}).`;
-  return {
-    terminal: `- Terminal: ${code(terminal.outcome ?? "unknown")}${(terminal.abortClause ?? "") ? `, abort clause ${code(terminal.abortClause)}` : ""}; reason: ${terminal.reason ?? "none recorded"}.`,
-    denominator:
-      d === null
-        ? ""
-        : d.state === "invalid"
-          ? `- Recorded denominator: INVALID — ${String(d.error)}.`
-          : `- Recorded denominator (${d.state ?? "state unknown"}): ${d.total ?? "?"} total = ${d.verified ?? "?"} verified + ${d.unaccepted ?? "?"} unaccepted + ${d.nonResults ?? "?"} non-results.`,
-    iterations: `- Controller iterations: ${terminal.iterations ?? "?"}; last iteration ${code(terminal.lastIteration ?? "unknown")}; epoch ${code(terminal.epoch ?? "unknown")}.`,
+  return [
+    `- Terminal: ${code(terminal.outcome ?? "unknown")}${(terminal.abortClause ?? "") ? `, abort clause ${code(terminal.abortClause)}` : ""}; reason: ${terminal.reason ?? "none recorded"}.`,
+    denominator,
+    // The recorded epoch is the one the run opened in; a run that rebuilt ended in a later one.
+    `- Controller iterations: ${terminal.iterations ?? "?"}; last iteration ${code(terminal.lastIteration ?? "unknown")}; opened in epoch ${code(terminal.epoch ?? "unknown")}.`,
     budget,
-  };
+  ];
 }
 
-function evolutionValues(evolution: EvolutionFacts) {
-  if (evolution.state !== "recorded") {
-    return { versions: "- Harness evolution view: unavailable.", checkpoint: "", taskSet: "" };
-  }
+function evolutionLines(evolution: EvolutionFacts): string[] {
+  if (evolution.state !== "recorded") return ["- Harness evolution view: unavailable."];
   const recordedFamilies = evolution.taskSet.families;
   const families = jsonTruthy(recordedFamilies)
     ? Object.entries(recordedFamilies)
@@ -115,108 +102,107 @@ function evolutionValues(evolution: EvolutionFacts) {
         .join(", ")
     : "unknown";
   const latest = evolution.latestCheckpoint;
-  return {
-    versions: `- Harness versions: ${jsonText(evolution.savedVersions ?? "?")} saved, ${jsonText(evolution.measuredBatteries ?? "?")} measured batteries, ${jsonText(evolution.epochs ?? "?")} epochs; current bundle ${code(evolution.currentBundle ?? "unknown")}.`,
-    checkpoint: `- Latest checkpoint: ordinal ${jsonText(latest.ordinal ?? "?")}, outcome ${code(latest.outcome ?? "unknown")}; product ${jsonText(evolution.product.files ?? "?")} files, ${jsonText(evolution.product.nonBlankLines ?? "?")} nonblank lines.`,
-    taskSet: `- Task set: ${jsonText(evolution.taskSet.tasks ?? "?")} tasks; families ${families}.`,
-  };
-}
-
-function triggerValue(triggers: readonly DigestTrigger[]): string {
-  if (triggers.length === 0) return "- Digest and lane trigger rows: none.";
-  const lines = ["- Digest and lane trigger rows by trigger (row count; first examples):"];
-  for (const trigger of triggers) {
-    const examples = trigger.examples.map((example) =>
-      example.startsWith(trigger.name) ? example.slice(trigger.name.length).replace(/^:?\s*/, "") : example,
-    );
-    lines.push(`  - ${trigger.name} [${trigger.rows} rows]: ${examples.join(" | ")}`);
-  }
-  return lines.join("\n");
-}
-
-function scanValue(scan: readonly ScanFinding[] | null | undefined): string {
-  if (scan === null || scan === undefined) return "- Deterministic scan: view unavailable.";
-  if (scan.length === 0) return "- Deterministic scan: no findings.";
-  const lines = [
-    "- Deterministic scan findings (the scan reports and never gates — a warning is a question):",
+  return [
+    `- Harness versions: ${jsonText(evolution.savedVersions ?? "?")} saved, ${jsonText(evolution.measuredBatteries ?? "?")} measured batteries, ${jsonText(evolution.epochs ?? "?")} epochs; current bundle ${code(evolution.currentBundle ?? "unknown")}.`,
+    `- Latest checkpoint: ordinal ${jsonText(latest.ordinal ?? "?")}, outcome ${code(latest.outcome ?? "unknown")}; product ${jsonText(evolution.product.files ?? "?")} files, ${jsonText(evolution.product.nonBlankLines ?? "?")} nonblank lines.`,
+    `- Task set: ${jsonText(evolution.taskSet.tasks ?? "?")} tasks; families ${families}.`,
   ];
-  for (const finding of scan) {
-    lines.push(
-      `  - ${code(finding.rule ?? "?")}${jsonTruthy(finding.battery) ? ` [${jsonText(finding.battery)}]` : ""}: ${jsonText(finding.statement ?? "")}`,
-    );
-  }
-  return lines.join("\n");
 }
 
-/** Every placeholder value from the overview and the lanes' triggers, plus the empty authored values. */
-function overviewValues(overview: OverviewReading | null | undefined, lanes: readonly DigestTrigger[]) {
+function triggerLines(triggers: readonly DigestTrigger[]): string[] {
+  if (triggers.length === 0) return ["- Digest and lane trigger rows: none."];
+  return [
+    "- Digest and lane trigger rows by trigger (row count; first examples):",
+    ...triggers.map((trigger) => {
+      const examples = trigger.examples.map((example) =>
+        example.startsWith(trigger.name) ? example.slice(trigger.name.length).replace(/^:?\s*/, "") : example,
+      );
+      return `  - ${trigger.name} [${trigger.rows} rows]: ${examples.join(" | ")}`;
+    }),
+  ];
+}
+
+function scanLines(scan: readonly ScanFinding[] | null | undefined): string[] {
+  if (scan === null || scan === undefined) return ["- Deterministic scan: view unavailable."];
+  if (scan.length === 0) return ["- Deterministic scan: no findings."];
+  return [
+    "- Deterministic scan findings (the scan reports and never gates — a warning is a question):",
+    ...scan.map(
+      (finding) =>
+        `  - ${code(finding.rule ?? "?")}${jsonTruthy(finding.battery) ? ` [${jsonText(finding.battery)}]` : ""}: ${jsonText(finding.statement ?? "")}`,
+    ),
+  ];
+}
+
+/** The run's recorded facts, one line each, from its overview and the triggers its in-process lanes
+ *  raised: what every open lane of this run reads as `## Run overview`. */
+export function renderRunOverview(
+  overview: OverviewReading | null | undefined,
+  lanes: readonly DigestTrigger[] = [],
+): string {
   if (overview?.schema !== OVERVIEW_SCHEMA) throw new Error(`overview schema must be ${OVERVIEW_SCHEMA}`);
   const views = overview.snapshot?.views ?? { ok: [], failed: [], unsupported: [] };
-  return {
-    snapshot:
-      `- Snapshot ${overview.snapshot?.complete === true ? "complete" : "INCOMPLETE"} at ${code(overview.snapshot?.capturedAt ?? "unknown")}: ${views.ok.length} views ok` +
+  const stalls = overview.timelineStalls ?? [];
+  return [
+    `- Snapshot ${overview.snapshot?.complete === true ? "complete" : "INCOMPLETE"} at ${code(overview.snapshot?.capturedAt ?? "unknown")}: ${views.ok.length} views ok` +
       `${views.failed.length > 0 ? `, failed: ${views.failed.map(code).join(", ")}` : ""}${views.unsupported.length > 0 ? `, unsupported: ${views.unsupported.map(code).join(", ")}` : ""}.`,
-    ...terminalValues(overview.terminal ?? { state: "unavailable", reason: "no terminal facts" }),
-    ...evolutionValues(overview.evolution ?? { state: "unavailable" }),
-    triggers: triggerValue([...(overview.digestTriggers ?? []), ...lanes]),
-    scan: scanValue(overview.scanFindings),
-    timeline:
-      Array.isArray(overview.timelineStalls) && overview.timelineStalls.length > 0
-        ? `- Longest recorded gaps: ${overview.timelineStalls.map((row) => `${String(row.minutes)} min in ${code(row.phase ?? "no phase")} after ${code(row.after ?? "?")}`).join(", ")}. Elapsed time, not a diagnosis.`
-        : "",
-    orientation: isString(overview.orientation) ? overview.orientation : "",
-    movedVariable: isString(overview.movedVariable) ? overview.movedVariable : "",
-  };
+    ...terminalLines(overview.terminal ?? { state: "unavailable", reason: "no terminal facts" }),
+    ...evolutionLines(overview.evolution ?? { state: "unavailable" }),
+    ...triggerLines([...(overview.digestTriggers ?? []), ...lanes]),
+    ...scanLines(overview.scanFindings),
+    stalls.length > 0
+      ? `- Longest recorded gaps: ${stalls.map((row) => `${String(row.minutes)} min in ${code(row.phase ?? "no phase")} after ${code(row.after ?? "?")}`).join(", ")}. Elapsed time, not a diagnosis.`
+      : "",
+  ]
+    .filter((line) => line.trim() !== "")
+    .join("\n");
 }
 
-export function buildSharedInstructions(overview: OverviewReading, lanes: readonly DigestTrigger[] = []) {
-  return {
-    schema: SHARED_SCHEMA,
-    runId: overview.runId ?? null,
-    generatedAt: new Date().toISOString(),
-    guide: GUIDE,
-    template: [...DEFAULT_TEMPLATE],
-    values: overviewValues(overview, lanes),
-  };
-}
-
-/** Substitute every `{token}` in the template; refuse unknown tokens, drop lines left empty. */
-export function renderSharedInstructions(config: SharedInstructions | null | undefined): string {
-  if (config?.schema !== SHARED_SCHEMA) {
-    throw new Error(`shared instructions schema must be ${SHARED_SCHEMA}`);
+/** The preset a name or a path selects: an existing file, else `references/<name>.template.md`. */
+export function presetPath(name: string | null): string {
+  if (name !== null && existsSync(name)) return name;
+  const path = join(REFERENCES, `${name ?? DEFAULT_PRESET}${PRESET_SUFFIX}`);
+  if (!existsSync(path)) {
+    throw new Error(`no preset ${name}: name a template file, or one of references/*${PRESET_SUFFIX}`);
   }
-  const values = asRecord(config.values) ?? {};
-  const lines: string[] = [];
-  for (const line of config.template ?? []) {
-    const rendered = jsonText(line).replace(TOKEN, (_, name: string) => {
-      const value = values[name];
-      if (!isString(value)) throw new Error(`shared instructions token {${name}} has no string value`);
-      return value.trim();
-    });
-    if (rendered.trim()) lines.push(rendered);
-  }
-  return lines.join("\n");
+  return path;
 }
 
-/** The two authored values, trimmed, empty when the primary left them. */
-export function sharedAuthoredText(
-  config: SharedInstructions | null,
-): Record<(typeof AUTHORED_VALUES)[number], string> {
-  const text = { orientation: "", movedVariable: "" };
-  const values = asRecord(config?.values);
-  for (const name of AUTHORED_VALUES) {
-    const value = values?.[name];
-    text[name] = isString(value) ? value.trim() : "";
+/** The run table, one row per run, in the order the runs were named. */
+function runTable(rows: readonly RunRow[]): string {
+  return [
+    "| run | tier | campaign | review | source | read source in | terminal | batteries | cases |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    ...rows.map(
+      (row) =>
+        `| \`${row.runId}\` | ${row.tier} | \`${row.campaign}\` | \`${row.review}\` | \`${row.commit}\` | \`${row.checkout}\` | ${row.terminal} | ${row.batteries} | ${row.cases} |`,
+    ),
+  ].join("\n");
+}
+
+/** The preset with its run table filled in; every other line stays as the preset wrote it. */
+export function renderPreset(preset: string, rows: readonly RunRow[]): string {
+  return readFileSync(preset, "utf8").replaceAll("{runTable}", runTable(rows));
+}
+
+/** The shared instructions as every open lane reads them: the file without its comments. A `##`
+ *  section left with nothing but a comment is an authored blank the primary has not filled, and
+ *  refuses, so delete a section's heading to drop it on purpose. */
+export function readSharedInstructions(path: string): string {
+  if (!existsSync(path)) throw new Error(`no ${path}; \`wri.ts start\` writes it`);
+  const text = readFileSync(path, "utf8")
+    .replaceAll(COMMENT, "")
+    .replaceAll(/[ \t]+$/gm, "")
+    .replaceAll(/\n{3,}/g, "\n\n")
+    .trim();
+  const empty = text
+    .split(/^(?=## )/m)
+    .filter((section) => section.startsWith("## ") && section.slice(section.indexOf("\n") + 1).trim() === "")
+    .map((section) => (section.split("\n")[0] ?? "").trim());
+  if (text === "" || empty.length > 0) {
+    throw new Error(
+      `${path}: fill or delete the blank section(s) ${empty.join(", ") || "(the file is empty)"} before building lane prompts`,
+    );
   }
   return text;
-}
-
-export function readSharedInstructions(path: string): SharedInstructions {
-  if (!isAbsolute(path)) throw new Error("--shared-instructions must be an absolute path");
-  const config = readJsonAs<SharedInstructions | null>(path);
-  if (!asRecord(config) || config?.schema !== SHARED_SCHEMA) {
-    throw new Error(`${path} is not a ${SHARED_SCHEMA} file`);
-  }
-  renderSharedInstructions(config);
-  return config;
 }

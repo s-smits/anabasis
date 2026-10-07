@@ -2,21 +2,33 @@
 // One entry point for a whole-run investigation. Each subcommand runs the deterministic readers
 // and records what it did in `<review>/wri-review.json`.
 //
-//   bun wri.ts lanes
+//   bun wri.ts start  <run> [<run> ...] --out <abs dir> [--preset <name | file>]
+//                     [--all | --lanes 1,3,5 | --lanes climb,yield] [--repo <abs>] [--reference <abs>]
+//   bun wri.ts lanes  --out <abs dir> [--lanes 1-4,7 | --tier] [--agents <n> | --components <k>]
+//                     [--readings per-run,cross-run,multi-run] [--remote-host <host>] [--prior <abs file>]
+//   bun wri.ts collect   --out <abs dir>
+//   bun wri.ts synthesis --out <abs dir> [--template <abs file>]
+//   bun wri.ts launch --out <abs dir> [--run <runId>] [--auto <count> | --sessions <spec>] [--effort max]
+//                     [--title <t>] [--notes <f>] [--max-active <n>] [--live]
+//   bun wri.ts finish --out <abs dir> [--run <runId>]
+//   bun wri.ts readers
 //   bun wri.ts scope  <target> [--json]
-//   bun wri.ts read   <campaign | controller/<runId> | runId> --out <abs review dir>
-//                      [--all | --lanes 1,3,5 | --lanes climb,yield] [--run <runId>] [--repo <abs>]
+//   bun wri.ts read   <target> --out <abs review dir> [--all | --lanes 1,3,5 | --lanes climb,yield]
+//                     [--run <runId>] [--repo <abs>]
 //   bun wri.ts brief  --out <abs review dir>
-//   bun wri.ts review  <target> --out <abs review dir> [launch options]
-//   bun wri.ts collect <target> --out <abs review dir>
-//   bun wri.ts launch  --out <abs review dir> [--lanes <count> | --sessions <spec>] [--effort max] [--title <t>] [--notes <f>] [--context <f>]
-//   bun wri.ts finish  --out <abs review dir>
-//   bun wri.ts census  [--root <campaign tree>] [--json] [--out <abs file>]
+//   bun wri.ts census [--root <campaign tree>] [--json] [--out <abs file>]
 //   bun wri.ts delta | climb | yield | timeline | walls | handoff | gates | target  <target> [--run <runId>] [--json] [--out <abs file>]
 //              delta [--repo <abs>] [--previous <commit | abs campaign dir>]; timeline [--classify];
 //              walls [--battery <runId>]; target [--reference <abs dir>]
 //
-// `lanes` prints the deterministic catalogue and `scope` sizes one run. `read` resolves the run's
+// An investigation is `start`, an edit of `<dir>/shared-instructions.md`, `lanes`, one subagent per
+// `<dir>/launch.md` entry, `collect`, and `synthesis` (investigation.ts holds those four).
+// `start` reads each run into `<dir>/<runId>/` as `read` does and writes the shared instructions from
+// the preset with the run table filled in. `launch` is the Luna route instead of `lanes`: it starts
+// one run's lanes as Codex sessions. `finish` validates one run's per-run lane reports and scaffolds
+// its archive.
+//
+// `readers` prints the deterministic catalogue and `scope` sizes one run. `read` resolves the run's
 // measured checkout (`resolveSourceCheckout` in main/run.ts; exit 2 when no checkout can read it)
 // and runs every lane that reads the run's records as that checkout's own script, sized by its own
 // `scope`, because a newer tree's readers refuse an older run's records; only the overview and the
@@ -25,13 +37,8 @@
 // `<review>/<lane>.txt`, an in-process lane's report to `<review>/<lane>.json`, whose `triggers` the
 // brief reads, and the command prints one bounded brief instead, because the whole read is the size
 // of a paid lane's context. A snapshot view that fails heads the brief and stops no other lane; the
-// read exits 1 once every lane has run. `review` reads every lane, prints the brief and then
-// launches the semantic lanes the run's tier names, unless that snapshot is incomplete; the
-// ordinary path is `read`, then `launch --sessions` with the lanes the brief argues for, each a
-// number from the catalogue. `brief` re-renders that digest from a finished review directory. Use `collect` and `launch` separately only to edit `shared-instructions.json`
-// between them. `finish` validates the lane reports, Luna and native alike, scaffolds the archive
-// from recorded bytes and `verdicts.json`, then runs the archive validator; the investigation itself
-// ends in one adjudicated note the primary writes by hand.
+// read exits 1 once every lane has run. `brief` re-renders that digest from a finished review
+// directory. The investigation itself ends in one adjudicated note.
 //
 // A target is one folder — a campaign, its `controller` directory or one `controller/<runId>`
 // folder — or a bare run id, looked up in the main checkout's campaign tree, which every run
@@ -45,6 +52,17 @@ import { MAIN, REVIEW } from "./archive-shape.ts";
 import { renderBrief, renderScope, type RunScope, runScope, SEMANTIC_LANES, snapshotGaps } from "./brief.ts";
 import { ANGLE_COUNT, NATIVE_OUTPUT } from "./catalogue-shape.ts";
 import {
+  buildLanes,
+  collectReports,
+  agentPrompt,
+  investigationRun,
+  type LanesOptions,
+  modelCheck,
+  refuseRestart,
+  renderSynthesis,
+  writeStart,
+} from "./investigation.ts";
+import {
   buildOverview,
   laneTriggers,
   OVERVIEW_FILE,
@@ -53,7 +71,7 @@ import {
   SNAPSHOT_STATUS_FILE,
 } from "./run-overview.ts";
 import { openRecordedRun, resolveSourceCheckout, sourceUnresolved } from "#skills/main/run.ts";
-import { buildSharedInstructions } from "./shared-instructions.ts";
+import { RUN_OVERVIEW_FILE, renderRunOverview, SHARED_INSTRUCTIONS_FILE } from "./shared-instructions.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { CommandFailure, exitWith, parseCommandOrDie } from "#skills/main/cli.ts";
 import { writeJsonFile } from "#src/meta/completed-json.ts";
@@ -70,6 +88,8 @@ import {
 import { campaignRoot } from "#src/meta/campaign-root.ts";
 
 const SCRIPT_DIR = dirname(new URL(import.meta.url).pathname);
+/** This file, as the next command each step prints names it. */
+const WRI_SCRIPT = join(SCRIPT_DIR, "wri.ts");
 const CHECKOUT = resolve(SCRIPT_DIR, "../../../..");
 /** This skill's directory inside any checkout, so a lane runs the measured checkout's own copy. */
 const SKILL = ".claude/skills/whole-run-investigation";
@@ -156,8 +176,8 @@ export interface WriArgs {
 }
 
 /**
- * The deterministic readers, in the order a review reads them. `collect` runs the five the paid
- * lanes consume, `climb` before the `overview` that carries its trigger; the rest answer one
+ * The deterministic readers, in the order a review reads them. Five are the ones the paid lanes
+ * consume, `climb` before the `overview` that carries its trigger; the rest answer one
  * question each and cost nothing but local compute. A lane whose input this target does not carry
  * is skipped with the reason, never silently. A lane with `cmd` is a script of its own; one with
  * `read` runs in-process as its own subcommand, which a review asks of the measured checkout's copy
@@ -308,19 +328,26 @@ export const LANES: readonly Lane[] = [
 ];
 
 const TARGET = ["out", "campaign", "run", "repo", "reference"];
-const LAUNCH = ["out", "lanes", "sessions", "effort", "title", "notes", "context", "max-active"];
 /** Each subcommand's own options, so one a subcommand does not take is refused there. */
 const COMMANDS: Record<
   string,
   { values?: readonly string[]; flags?: readonly string[]; positionals?: readonly [number, number] }
 > = {
-  lanes: {},
+  start: { values: ["out", "preset", "lanes", "repo", "reference"], flags: ["all"], positionals: [1, 64] },
+  lanes: {
+    values: ["out", "lanes", "agents", "components", "readings", "remote-host", "prior"],
+    flags: ["tier"],
+  },
+  collect: { values: ["out"] },
+  synthesis: { values: ["out", "template"] },
+  launch: {
+    values: ["out", "run", "auto", "sessions", "effort", "title", "notes", "max-active"],
+    flags: ["live"],
+  },
+  finish: { values: ["out", "run"] },
+  readers: {},
   read: { values: [...TARGET, "lanes"], flags: ["all"], positionals: [0, 1] },
   brief: { values: ["out"] },
-  review: { values: [...new Set([...TARGET, ...LAUNCH])], flags: ["live"], positionals: [0, 1] },
-  collect: { values: TARGET, positionals: [0, 1] },
-  launch: { values: LAUNCH, flags: ["live"] },
-  finish: { values: ["out"] },
   census: { values: ["root", "out"], flags: ["json"] },
   scope: { values: ["campaign", "run"], flags: ["json"], positionals: [0, 1] },
   ...Object.fromEntries(
@@ -496,14 +523,14 @@ function writeOverview(ctx: LaneContext): string {
   const overview = buildOverview(ctx.snapshot);
   writeJsonFile(join(ctx.reviewDir, OVERVIEW_FILE), overview);
   const lanes = laneTriggers(ctx.reviewDir, loadState(ctx.reviewDir).steps);
-  writeJsonFile(join(ctx.reviewDir, "shared-instructions.json"), buildSharedInstructions(overview, lanes));
-  return `${OVERVIEW_FILE} and shared-instructions.json, from ${ctx.snapshot}`;
+  writeFileSync(join(ctx.reviewDir, RUN_OVERVIEW_FILE), `${renderRunOverview(overview, lanes)}\n`);
+  return `${OVERVIEW_FILE} and ${RUN_OVERVIEW_FILE}, from ${ctx.snapshot}`;
 }
 
-export function renderLanes(): string {
+export function renderReaders(): string {
   const rows = LANES.map(
     (lane, index) =>
-      `  ${String(index + 1).padStart(2)}  ${lane.name.padEnd(12)}${lane.label}${lane.collect === true ? "  (also run by collect)" : ""}`,
+      `  ${String(index + 1).padStart(2)}  ${lane.name.padEnd(12)}${lane.label}${lane.collect === true ? "  (feeds the lane prompts)" : ""}`,
   );
   return ["deterministic lanes — `--lanes` takes ranks or names, `--all` runs every one", ...rows].join("\n");
 }
@@ -520,7 +547,7 @@ export function selectLanes(args: WriArgs): readonly Lane[] | null {
       const rank = Number(token);
       const lane =
         token !== "" && Number.isInteger(rank) ? LANES[rank - 1] : LANES.find((row) => row.name === token);
-      if (lane === undefined) throw new Error(`no lane ${token}; run \`wri.ts lanes\` for the catalogue`);
+      if (lane === undefined) throw new Error(`no lane ${token}; run \`wri.ts readers\` for the catalogue`);
       return lane;
     });
 }
@@ -535,7 +562,7 @@ function saveState(state: WriReviewState): void {
 
 function loadState(reviewDir: string): WriReviewState {
   const path = statePath(reviewDir);
-  if (!existsSync(path)) throw new Error(`no ${REVIEW_STATE_FILE} under ${reviewDir}; run collect first`);
+  if (!existsSync(path)) throw new Error(`no ${REVIEW_STATE_FILE} under ${reviewDir}; read the run first`);
   return readJsonAs<WriReviewState>(path);
 }
 
@@ -573,19 +600,18 @@ function sourceScope(repo: string, target: RunSelection): RunScope {
 }
 
 /**
- * Resolve the measured checkout, size the run by it, choose the lanes, read them, then print one
- * brief. `select` receives the scope, so `read` can defer to the tier while `collect` and `review`
- * keep their fixed sets. A read into a review that already recorded one of the same run keeps the
- * earlier lanes' rows, so a narrower second read adds to the review rather than replacing it; a
- * lane read again replaces only its own row. A review of another run starts empty.
+ * Resolve the measured checkout, size the run by it, choose the lanes, read them into `reviewDir`,
+ * then print one brief. `select` receives the scope, so a read with no lanes named defers to the
+ * tier. A read into a review that already recorded one of the same run keeps the earlier lanes'
+ * rows, so a narrower second read adds to the review rather than replacing it; a lane read again
+ * replaces only its own row. A review of another run starts empty.
  */
 async function runRead(
   args: WriArgs,
-  positional: string | null,
+  target: RunSelection,
+  reviewDir: string,
   select: (scope: RunScope) => readonly Lane[],
 ): Promise<WriReviewState> {
-  const reviewDir = absolute(args, "out");
-  const target = resolveTarget(args, positional);
   const reference = args.value("reference") === null ? null : absolute(args, "reference");
   const { repo, chosen, passed } = sourceCheckout(args, target);
   const scope = sourceScope(repo, target);
@@ -620,8 +646,8 @@ async function runRead(
   const ctx = context(state, reference);
   for (const lane of lanes) runLane(state, lane, ctx);
   console.log(`\n${renderBrief(reviewDir)}\n\nrecorded: ${statePath(reviewDir)}`);
-  // Only once every lane has run, and only over this read's own snapshot, so nothing launches or
-  // collects on a partial read that its caller could take for a whole one.
+  // Only once every lane has run, and only over this read's own snapshot, so nothing builds lanes
+  // on a partial read that its caller could take for a whole one.
   const gaps = lanes.some((lane) => lane.name === "snapshot") ? snapshotGaps(reviewDir, state.steps) : [];
   if (gaps.length > 0) {
     const named = gaps.map((gap) => `${gap.label}: ${gap.status}`).join(", ");
@@ -649,29 +675,120 @@ async function readOneLane(args: WriArgs, positional: string | null, lane: Readi
   emitReport(report, { json: args.flag("json"), out, render: () => text });
 }
 
-async function collect(args: WriArgs, positional: string | null): Promise<WriReviewState> {
-  const state = await runRead(args, positional, () => LANES.filter((lane) => lane.collect === true));
+/** Read every named run into the investigation and write its shared instructions from the
+ *  preset. A run whose snapshot came out incomplete is still in the run table; `start` names it and
+ *  exits 1 once every run is read. */
+async function start(args: WriArgs, positionals: readonly string[]): Promise<void> {
+  const out = absolute(args, "out");
+  refuseRestart(out);
+  const named = selectLanes(args);
+  const states: WriReviewState[] = [];
+  const incomplete: string[] = [];
+  for (const positional of positionals) {
+    const target = resolveTarget(args, positional);
+    const reviewDir = join(out, target.runId);
+    try {
+      states.push(await runRead(args, target, reviewDir, (scope) => named ?? lanesForScope(scope)));
+    } catch (error) {
+      if (!(error instanceof CommandFailure) || error.code !== 1) throw error;
+      console.error(`wri: ${target.runId}: ${errorMessage(error)}`);
+      incomplete.push(target.runId);
+      states.push(loadState(reviewDir));
+    }
+  }
+  const shared = writeStart(out, states, args.value("preset"));
   console.log(
-    `\nshared instructions: ${join(state.reviewDir, "shared-instructions.json")}\n  edit its values, template lines, \`orientation\` and \`movedVariable\` before \`launch\` when the lanes need direction.`,
+    `\nshared instructions: ${shared}\n  fill its marked sections (and edit any other line every lane should read), then:\n  bun ${WRI_SCRIPT} lanes --out ${out}`,
   );
-  return state;
+  if (incomplete.length > 0) {
+    throw new CommandFailure(
+      `snapshot incomplete for ${incomplete.join(", ")}; their lanes cannot be built`,
+      1,
+    );
+  }
 }
 
-function launch(args: WriArgs, state: WriReviewState = loadState(absolute(args, "out"))): void {
+function count(args: WriArgs, name: string): number | null {
+  const raw = args.value(name);
+  if (raw === null) return null;
+  if (!/^[1-9]\d*$/.test(raw)) throw new Error(`--${name} takes a positive count, got "${raw}"`);
+  return Number(raw);
+}
+
+function lanesOptions(args: WriArgs): LanesOptions {
+  const agents = count(args, "agents");
+  const components = count(args, "components");
+  if (agents !== null && components !== null) throw new Error("pass --agents or --components, not both");
+  if (args.flag("tier") && args.value("lanes") !== null) throw new Error("pass --lanes or --tier, not both");
+  return {
+    lanes: args.value("lanes"),
+    tier: args.flag("tier") ? "tier" : "all",
+    size: components === null ? { agents: agents ?? 10 } : { components },
+    readings: args.value("readings"),
+    remoteHost: args.value("remote-host"),
+    prior: args.value("prior") === null ? null : absolute(args, "prior"),
+  };
+}
+
+function buildLaneCommand(args: WriArgs): void {
+  const out = absolute(args, "out");
+  const { launch: launchPath, notes } = buildLanes(out, lanesOptions(args));
+  for (const note of notes) console.log(`   ${note}`);
+  console.log(
+    `\nlaunch: ${launchPath}\n  launch one subagent per entry, then: bun ${WRI_SCRIPT} collect --out ${out}`,
+  );
+}
+
+function collect(args: WriArgs): void {
+  const out = absolute(args, "out");
+  const { index, readings } = collectReports(out);
+  for (const row of readings) {
+    console.log(`${row.reading.padEnd(10)} ${row.ok}/${row.of} ok${row.ok === row.of ? ", complete" : ""}`);
+  }
+  console.log(`\nindex: ${index}`);
+  const perRun = readings.find((row) => row.reading === "per-run");
+  const done = readings.every((row) => row.ok === row.of);
+  if (
+    perRun !== undefined &&
+    perRun.ok === perRun.of &&
+    !readings.some((row) => row.reading === "cross-run")
+  ) {
+    console.log(
+      `  per-run is complete; for the cross-run reading: bun ${WRI_SCRIPT} lanes --out ${out} --readings cross-run`,
+    );
+  }
+  if (done) console.log(`  then: bun ${WRI_SCRIPT} synthesis --out ${out}`);
+  else runtimeProcess.exit(1);
+}
+
+function synthesis(args: WriArgs): void {
+  const out = absolute(args, "out");
+  const template = args.value("template") === null ? null : absolute(args, "template");
+  const { prompt, incomplete } = renderSynthesis(out, template);
+  for (const row of incomplete) console.log(`   incomplete: ${row}; the synthesis names the gaps`);
+  console.log(
+    `\nsynthesis prompt: ${prompt}\n  launch one subagent with: ${agentPrompt(prompt)}\n  model check: ${modelCheck(prompt)}`,
+  );
+}
+
+/** The Luna route: one run's lanes, launched as Codex sessions from the same shared instructions. */
+function launch(args: WriArgs): void {
+  const out = absolute(args, "out");
+  const state = loadState(investigationRun(out, args.value("run")));
   const lanesDir = join(state.reviewDir, "lanes");
   if (existsSync(join(lanesDir, "luna-output", LAUNCH_FILE))) {
     throw new Error(`${lanesDir} already holds a launch; use a fresh --out or trash the lanes directory`);
   }
-  // `--sessions` names lanes from the catalogue; `--lanes` asks the manifest to pick that many, and
-  // with neither the count is the one the run's tier named when it was read.
+  // `--sessions` names lanes from the catalogue; `--auto` asks the manifest to group every lane into
+  // that many sessions, and with neither the count is the one the run's tier named when it was read.
   const sessions = args.value("sessions");
-  const count = args.value("lanes") ?? String(state.scope.semanticLanes);
-  if (!/^\d+$/.test(count) || Number(count) < 1 || Number(count) > ANGLE_COUNT) {
+  const auto = args.value("auto") ?? String(state.scope.semanticLanes);
+  if (!/^\d+$/.test(auto) || Number(auto) < 1 || Number(auto) > ANGLE_COUNT) {
     throw new Error(
-      `--lanes must be a count from 1 to ${ANGLE_COUNT}; the tiers ask ${SEMANTIC_LANES.probe} (probe), ${SEMANTIC_LANES.standard} (standard) or ${SEMANTIC_LANES.deep} (deep)`,
+      `--auto must be a count from 1 to ${ANGLE_COUNT}; the tiers ask ${SEMANTIC_LANES.probe} (probe), ${SEMANTIC_LANES.standard} (standard) or ${SEMANTIC_LANES.deep} (deep)`,
     );
   }
-  const select = sessions !== null && sessions !== "" ? ["--sessions", sessions] : ["--auto", count];
+  const select = sessions !== null && sessions !== "" ? ["--sessions", sessions] : ["--auto", auto];
   const cmd = [
     BUN,
     "--no-env-file",
@@ -688,18 +805,20 @@ function launch(args: WriArgs, state: WriReviewState = loadState(absolute(args, 
     "--effort",
     args.value("effort") ?? "max",
     "--shared-instructions",
-    join(state.reviewDir, "shared-instructions.json"),
+    join(out, SHARED_INSTRUCTIONS_FILE),
+    "--run-overview",
+    join(state.reviewDir, RUN_OVERVIEW_FILE),
     "--launch",
     "--detach",
   ];
-  for (const name of ["title", "notes", "context", "max-active"]) {
+  for (const name of ["title", "notes", "max-active"]) {
     const given = args.value(name);
     if (given !== null && given !== "") cmd.push(`--${name}`, given);
   }
   if (args.flag("live")) cmd.push("--live");
   step(state, "launch", cmd);
   console.log(
-    `\nlanes: ${lanesDir}\n  progress: ${join(lanesDir, "luna-output")}/<name>.md as each lane finishes; summary.json marks completion.\n  then: bun ${script("wri.ts")} finish --out ${state.reviewDir}`,
+    `\nlanes: ${lanesDir}\n  progress: ${join(lanesDir, "luna-output")}/<name>.md as each lane finishes; summary.json marks completion.\n  then: bun ${WRI_SCRIPT} finish --out ${out} --run ${state.runId}`,
   );
 }
 
@@ -722,8 +841,15 @@ function lunaSummary(lanesDir: string): string | null {
   return null;
 }
 
+/** Validate one run's per-run lane reports and scaffold its archive. The archive records `lanes/`
+ *  only: the isolated lanes' reports under `lanes-isolated/` and the cross-run and multi-run
+ *  readings are not in it, and are carried by the synthesis instead. */
 function finish(args: WriArgs): void {
-  const state = loadState(absolute(args, "out"));
+  const out = absolute(args, "out");
+  const state = loadState(investigationRun(out, args.value("run")));
+  console.log(
+    `finish archives ${state.runId}'s lanes/ only; lanes-isolated/, cross-run/ and multi-run/ are not in the archive`,
+  );
   const lanesDir = join(state.reviewDir, "lanes");
   const summary = lunaSummary(lanesDir);
   step(
@@ -775,8 +901,16 @@ async function main(): Promise<void> {
   const lane = LANES.filter(isReadingLane).find((row) => row.name === command);
   if (lane !== undefined) return readOneLane(args, positional, lane);
   switch (command) {
+    case "start":
+      return start(args, parsed.positionals);
     case "lanes":
-      return console.log(renderLanes());
+      return buildLaneCommand(args);
+    case "collect":
+      return collect(args);
+    case "synthesis":
+      return synthesis(args);
+    case "readers":
+      return console.log(renderReaders());
     case "scope": {
       const target = resolveTarget(args, positional);
       const scope = runScope(target.campaign, target.runId);
@@ -784,14 +918,16 @@ async function main(): Promise<void> {
     }
     case "read": {
       const named = selectLanes(args);
-      return void (await runRead(args, positional, (scope) => named ?? lanesForScope(scope)));
+      const target = resolveTarget(args, positional);
+      return void (await runRead(
+        args,
+        target,
+        absolute(args, "out"),
+        (scope) => named ?? lanesForScope(scope),
+      ));
     }
     case "brief":
       return console.log(renderBrief(absolute(args, "out")));
-    case "review":
-      return launch(args, await runRead(args, positional, () => LANES));
-    case "collect":
-      return void (await collect(args, positional));
     case "launch":
       return launch(args);
     case "finish":

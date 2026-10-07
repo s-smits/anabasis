@@ -24,10 +24,6 @@ import {
 import { LANES, lanesForScope } from "../.claude/skills/whole-run-investigation/scripts/wri.ts";
 import { HARDWARE_TRIGGER } from "../.claude/skills/whole-run-investigation/scripts/hardware-target.ts";
 import { digestTriggers } from "../.claude/skills/whole-run-investigation/scripts/run-overview.ts";
-import {
-  readSharedInstructions,
-  renderSharedInstructions,
-} from "../.claude/skills/whole-run-investigation/scripts/shared-instructions.ts";
 
 const RUN = "custom-test-20260919T000000000Z-abcdef";
 const WRI = resolve(import.meta.dirname, "../.claude/skills/whole-run-investigation/scripts/wri.ts");
@@ -562,29 +558,32 @@ describe("a read past a failed snapshot view", () => {
     expect(code).toBe(0);
   }, 60_000);
 
-  it("collects the climb before the overview, so the lanes' run overview carries its trigger", () => {
-    const reviewDir = scratchDir("ana-brief-collect-");
+  it("reads the climb before the overview, so the lanes' run overview carries its trigger", () => {
+    const reviewDir = scratchDir("ana-brief-overview-");
     const flat = { name: "CLIMB FLAT (lane 10)", rows: 1, examples: ["below the aim 4 in a row"] };
-    expect(readThrough(stubSource({ triggers: [flat] }), reviewDir, "collect").code).toBe(0);
-    expect(recordedSteps(reviewDir).map((row) => row.label)).toEqual([
-      "snapshot",
-      "challenge",
-      "delta",
-      "climb",
-      "overview",
-    ]);
-    const shared = readSharedInstructions(join(reviewDir, "shared-instructions.json"));
-    expect(renderSharedInstructions(shared)).toContain(
+    expect(readThrough(stubSource({ triggers: [flat] }), reviewDir, "read", "--all").code).toBe(0);
+    const labels = recordedSteps(reviewDir).map((row) => row.label);
+    expect(labels.indexOf("climb")).toBeLessThan(labels.indexOf("overview"));
+    expect(readFileSync(join(reviewDir, "run-overview.md"), "utf8")).toContain(
       "CLIMB FLAT (lane 10) [1 rows]: below the aim 4 in a row",
     );
+    expect(existsSync(join(reviewDir, "shared-instructions.json"))).toBe(false);
   }, 60_000);
 
-  it("reads every lane of a review but launches no paid lane over an incomplete snapshot", () => {
-    const reviewDir = scratchDir("ana-brief-review-");
-    const { code, stderr } = readThrough(stubSource(FAILED), reviewDir, "review");
-    expect(existsSync(join(reviewDir, "walls.txt"))).toBe(true);
-    expect(existsSync(join(reviewDir, "lanes"))).toBe(false);
+  it("starts an investigation over an incomplete snapshot with its run in the table, and exits non-zero", () => {
+    const out = scratchDir("ana-brief-start-");
+    const { code, stdout, stderr } = readThrough(stubSource(FAILED), out, "start", "--all");
+    expect(existsSync(join(out, STUB_RUN, "walls.txt"))).toBe(true);
+    expect(existsSync(join(out, STUB_RUN, "lanes"))).toBe(false);
+    const shared = readFileSync(join(out, "shared-instructions.md"), "utf8");
+    expect(shared).toContain(`| \`${STUB_RUN}\` | probe |`);
+    expect(shared).toContain("<!-- AUTHOR:");
+    expect(stdout).toContain(`lanes --out ${out}`);
     expect(stderr).toContain("snapshot incomplete");
     expect(code).toBe(1);
+    // A second start into the same investigation refuses before reading anything.
+    const again = readThrough(stubSource(), out, "start");
+    expect(again.stderr).toContain("shared-instructions.md exists");
+    expect(again.code).toBe(1);
   }, 60_000);
 });

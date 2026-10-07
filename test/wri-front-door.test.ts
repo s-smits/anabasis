@@ -9,15 +9,17 @@ import {
   digestTriggers,
 } from "../.claude/skills/whole-run-investigation/scripts/run-overview.ts";
 import {
-  buildSharedInstructions,
-  renderSharedInstructions,
+  presetPath,
+  readSharedInstructions,
+  renderPreset,
+  renderRunOverview,
 } from "../.claude/skills/whole-run-investigation/scripts/shared-instructions.ts";
 import { scaffoldArchive } from "../.claude/skills/whole-run-investigation/scripts/archive-scaffold.ts";
 import {
   LANES,
   type Lane,
   type LaneContext,
-  renderLanes,
+  renderReaders,
   selectLanes,
 } from "../.claude/skills/whole-run-investigation/scripts/wri.ts";
 import { ANGLE_COUNT } from "../.claude/skills/whole-run-investigation/scripts/catalogue-shape.ts";
@@ -147,13 +149,12 @@ describe("run overview", () => {
       denominator: { state: "recorded", total: 75, verified: 70, unaccepted: 2, nonResults: 3 },
     });
     expect(overview.snapshot.views.failed).toEqual([`${RUN}-default`]);
-    expect(overview.orientation).toBe("");
     const flat = {
       name: "CLIMB FLAT (lane 10)",
       rows: 1,
       examples: ["below the aim 4 in a row, and the 3 since 2/25 came no closer"],
     };
-    const rendered = renderSharedInstructions(buildSharedInstructions(overview, [flat]));
+    const rendered = renderRunOverview(overview, [flat]);
     expect(rendered).toContain("Snapshot INCOMPLETE");
     expect(rendered).toContain("75 total = 70 verified + 2 unaccepted + 3 non-results");
     expect(rendered).toContain("100 of 100 turns used (builder 3, built 60, review 37)");
@@ -166,6 +167,9 @@ describe("run overview", () => {
     );
     expect(rendered).toContain("families alpha 5, beta 5");
     expect(rendered).not.toContain("census");
+    // The recorded epoch is the one the run opened in, never presented as where it ended.
+    expect(rendered).toMatch(/; opened in epoch `[^`]+`\./);
+    expect(rendered).not.toMatch(/; epoch `/);
   });
 
   // A reader that took the fields one at a time printed a count line of question marks for an
@@ -178,33 +182,63 @@ describe("run overview", () => {
       ...terminal,
       denominator: { state: "invalid", error: "case-record unreadable" },
     }));
-    const invalid = renderSharedInstructions(buildSharedInstructions(buildOverview(snapshot)));
+    const invalid = renderRunOverview(buildOverview(snapshot));
     expect(invalid).toContain("- Recorded denominator: INVALID — case-record unreadable.");
     amendTerminalFacts(snapshot, () => ({
       state: "unavailable",
       reason: "terminal budget is not a snapshot",
     }));
-    const refused = renderSharedInstructions(buildSharedInstructions(buildOverview(snapshot)));
+    const refused = renderRunOverview(buildOverview(snapshot));
     expect(refused).toContain("- Terminal: unavailable (terminal budget is not a snapshot).");
     expect(refused).not.toContain("100 of 100 turns used");
   });
 
-  it("renders the primary's edits to values and template, and refuses a token without a value", () => {
-    const { snapshot } = snapshotFixture();
-    const built = buildSharedInstructions(buildOverview(snapshot));
-    // The primary edits the file it was handed, so a token it adds is one the builder never wrote.
-    const shared = {
-      ...built,
-      values: { ...built.values, terminal: "- Terminal: edited by the primary.", hint: "- Read i03 first." },
-      template: ["{terminal}", "{hint}", "{orientation}"],
-    };
-    expect(renderSharedInstructions(shared)).toBe("- Terminal: edited by the primary.\n- Read i03 first.");
-    shared.template.push("{missing}");
-    expect(() => renderSharedInstructions(shared)).toThrow("{missing}");
+  it("refuses an overview of another schema", () => {
+    expect(() => renderRunOverview({ schema: "something-else/v1" })).toThrow("wri-run-overview/v1");
+  });
+});
+
+describe("shared instructions", () => {
+  const row = {
+    runId: RUN,
+    tier: "standard",
+    campaign: "/campaigns/demo",
+    review: "/reviews/demo",
+    commit: COMMIT,
+    checkout: "/checkouts/demo",
+    terminal: "`aborted`",
+    batteries: 2,
+    cases: "5 verified, 0 unaccepted, 1 non-results",
+  };
+
+  it("renders the preset with the run table filled and the authored sections left blank, and refuses it until they are filled", () => {
+    const rendered = renderPreset(presetPath(null), [row]);
+    expect(rendered).toContain(`| \`${RUN}\` | standard | \`/campaigns/demo\` |`);
+    expect(rendered).not.toContain("{runTable}");
+    for (const heading of ["## Orientation", "## The moved variable and prior state", "## Hard rules"]) {
+      expect(rendered).toContain(heading);
+    }
+    const path = join(scratchDir("ana-wri-shared-"), "shared-instructions.md");
+    writeFileSync(path, rendered);
+    expect(() => readSharedInstructions(path)).toThrow(
+      "fill or delete the blank section(s) ## Orientation, ## The moved variable and prior state",
+    );
+
+    const filled = rendered
+      .replace(/(## Orientation\n\n)<!--[\s\S]*?-->/, "$1What did the harness read first?")
+      .replace(/(## The moved variable and prior state\n\n)<!--[\s\S]*?-->/, "$1none");
+    writeFileSync(path, filled);
+    const read = readSharedInstructions(path);
+    expect(read.startsWith("## Orientation\n\nWhat did the harness read first?")).toBe(true);
+    expect(read).not.toContain("<!--");
+    expect(read).toContain("## Hard rules\n\n- Never quote task content");
   });
 
-  it("refuses an overview of another schema", () => {
-    expect(() => buildSharedInstructions({ schema: "something-else/v1" })).toThrow("wri-run-overview/v1");
+  it("selects another preset by path, and refuses a name with no template", () => {
+    const own = join(scratchDir("ana-wri-preset-"), "mine.template.md");
+    writeFileSync(own, "## Runs\n\n{runTable}\n");
+    expect(renderPreset(presetPath(own), [row])).toContain(`\`${RUN}\``);
+    expect(() => presetPath("no-such-preset")).toThrow("no preset no-such-preset");
   });
 });
 
@@ -548,12 +582,12 @@ describe("deterministic lane catalogue", () => {
     expect(climb?.needs?.(double<LaneContext>({ campaign }))).toBeNull();
   });
 
-  it("prints one row per lane under its rank and marks exactly the lanes collect also runs", () => {
-    const rows: string[] = renderLanes().split("\n").slice(1);
+  it("prints one row per lane under its rank and marks exactly the lanes that feed the lane prompts", () => {
+    const rows: string[] = renderReaders().split("\n").slice(1);
     expect(rows).toHaveLength(lanes.length);
     lanes.forEach((lane, at) => {
       expect(rows[at]).toContain(`${String(at + 1).padStart(2)}  ${lane.name}`);
-      expect(rows[at]?.includes("also run by collect")).toBe(lane.collect === true);
+      expect(rows[at]?.includes("feeds the lane prompts")).toBe(lane.collect === true);
     });
   });
 });

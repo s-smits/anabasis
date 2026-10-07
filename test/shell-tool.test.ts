@@ -14,8 +14,8 @@ import {
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
-import { type CommandWall, solveDirs } from "../src/solve/command.ts";
-import { shellDescription, shellSeconds, shellTool } from "../src/solve/shell.ts";
+import { type CommandWall, shellSeconds, solveDirs } from "../src/solve/command.ts";
+import { shellDescription, shellTool } from "../src/solve/shell.ts";
 import { solveIsolationPolicy } from "../src/verify/solve-sandbox.ts";
 
 /** The sweep's tool tree: the Builder's interpreter in `bin`, a venv beside it whose `activate` is
@@ -71,8 +71,8 @@ describe("the solver's bash tool", () => {
         for (const dir of [dirs.home, dirs.runs, dirs.host]) mkdirSync(dir, { recursive: true });
         const base = solveIsolationPolicy({ repoRoot, cap: { root: dirs.root, bytes: 16 * 1024 * 1024 } });
         if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);
-        const wall: CommandWall = { base, dirs, toolTree: null };
-        const tool = shellTool(wall, { shellDefaultSeconds: 1, shellMaxSeconds: 2 }, 0);
+        const limits = { shellDefaultSeconds: 1, shellMaxSeconds: 2 };
+        const tool = shellTool({ base, dirs, toolTree: null, limits } satisfies CommandWall, 0);
         const call = (command: string, timeout?: number) =>
           tool.execute("call", timeout === undefined ? { command } : { command, timeout });
 

@@ -14,19 +14,18 @@
 import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
 import { createBashTool } from "../../vendor/pi-coding-agent/core/tools/bash.ts";
-import type { Limits } from "../kernel/condition.ts";
 import { readdirSync, statSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
 import { asError } from "../meta/runtime-values.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
 import { toolTreeSearchDirs } from "../verify/solve-command-isolation.ts";
-import { type CommandWall, wallOperations } from "./command.ts";
+import { type CommandWall, shellSeconds, wallOperations } from "./command.ts";
 
 /** pi 1.0.4's own (vendor/pi-coding-agent/core/tools/bash.ts, `createShellToolDefinition`), read
  *  from the tool rather than copied, so it moves with the vendored pi. */
 const BASE_DESCRIPTION = createBashTool("/").description;
 
-type ShellLimits = Pick<Limits, "shellDefaultSeconds" | "shellMaxSeconds">;
+type ShellLimits = CommandWall["limits"];
 
 /** Installed program names the description lists before it elides the rest (built-bash.ts:98). */
 const LISTED_PROGRAMS = 20;
@@ -55,13 +54,6 @@ const SHELL_RULES = [
   "Keep scripts and results in $HOME; do not scan the filesystem.",
   "A command has a default time limit; pass timeout for a long build, never for a search.",
 ];
-
-/** The wall one call runs under: `asked` is what the solver named, floored and at least 1 s, and a
- *  named value only raises the default, up to the maximum (built-bash.ts:316-321). */
-export function shellSeconds(timeout: number | undefined, limits: ShellLimits) {
-  const asked = Math.max(1, Math.floor(timeout ?? limits.shellDefaultSeconds));
-  return { asked, seconds: Math.min(Math.max(asked, limits.shellDefaultSeconds), limits.shellMaxSeconds) };
-}
 
 /** What the harness would have allowed, appended to a command its own wall cut: time left to ask
  *  for, an ask above the maximum, or the maximum already in hand (built-bash.ts:82-96, verbatim). */
@@ -130,7 +122,8 @@ export function shellDescription(toolTree: string | null, publicResourceFiles: n
  * "this wall cut it" is read from the backend's `timeout:` error, not from the output text a
  * command could print. The solve's abort reaches pi as `aborted` and gains nothing.
  */
-export function shellTool(wall: CommandWall, limits: ShellLimits, publicResourceFiles: number): AgentTool {
+export function shellTool(wall: CommandWall, publicResourceFiles: number): AgentTool {
+  const { limits } = wall;
   const operations = wallOperations(wall);
   return {
     name: "bash",

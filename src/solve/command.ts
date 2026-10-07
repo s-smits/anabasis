@@ -17,6 +17,7 @@ import {
   createLocalBashOperations,
   type BashOperations,
 } from "../../vendor/pi-coding-agent/core/tools/bash.ts";
+import type { Limits } from "../kernel/condition.ts";
 import { mkdirSync, mkdtempSync, rmSync } from "../meta/filesystem.ts";
 import { basename, join } from "../meta/path.ts";
 import {
@@ -35,12 +36,16 @@ export interface SolveDirs {
   readonly host: string;
 }
 
+type ShellLimits = Pick<Limits, "shellDefaultSeconds" | "shellMaxSeconds">;
+
 /** What every command of one solve runs under. */
 export interface CommandWall {
   readonly base: SolveIsolationPolicy;
   readonly dirs: SolveDirs;
   /** The harness's `.toolchain`, read-only and first on PATH; null when it has none. */
   readonly toolTree: string | null;
+  /** The condition's; every command is held to them here, whoever launches it. */
+  readonly limits: ShellLimits;
 }
 
 /** A command's own two directories, for a caller that stages input files before it runs. */
@@ -52,13 +57,22 @@ export interface RunDirs {
 export interface WalledOptions {
   readonly onData: (data: Buffer) => void;
   readonly signal?: AbortSignal | undefined;
-  /** Seconds; pi's backend throws `timeout:<seconds>` when the command runs past it. */
+  /** Seconds asked for, held to the limits by `shellSeconds`; pi's backend throws
+   *  `timeout:<seconds>` when the command runs past what it was given. */
   readonly timeout?: number | undefined;
   /** Writes what the command reads into its fresh directories before it starts. */
   readonly stage?: (run: RunDirs) => void;
 }
 
 const SHELL = createLocalBashOperations({ shellPath: "/bin/sh" });
+
+/** The wall one command runs under: `asked` is what was named, floored and at least 1 s, and a
+ *  named value only raises the default, up to the maximum, as v1's Built shell held it
+ *  (harness-builder-v4 7af7315, src/solve/built-bash.ts:316-321). */
+export function shellSeconds(timeout: number | undefined, limits: ShellLimits) {
+  const asked = Math.max(1, Math.floor(timeout ?? limits.shellDefaultSeconds));
+  return { asked, seconds: Math.min(Math.max(asked, limits.shellDefaultSeconds), limits.shellMaxSeconds) };
+}
 
 /** The directories of solve `id`, named, not yet made: the runner mounts the cap at `root`. */
 export function solveDirs(id: string): SolveDirs {
@@ -88,7 +102,7 @@ export async function runWalled(
     return await SHELL.exec(stageCommandIsolation(policy, profile, command), work, {
       onData: options.onData,
       signal: options.signal,
-      timeout: options.timeout,
+      timeout: shellSeconds(options.timeout, wall.limits).seconds,
       env: policy.environment,
     });
   } finally {

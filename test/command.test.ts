@@ -1,6 +1,6 @@
 // A solve's commands, executed under the real command wall on a mounted cap: the home survives
 // between commands, each command's own folder does not, staged input reaches it, and neither the
-// host-only folder nor the repository can be read.
+// host-only folder nor the repository can be read, and no command outlives the shell limits.
 import { describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
@@ -38,7 +38,12 @@ describe("a solve's walled commands", () => {
         writeFileSync(join(dirs.host, "config"), "host-canary");
         const base = solveIsolationPolicy({ repoRoot, cap: { root: dirs.root, bytes: CAP_BYTES } });
         if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);
-        const wall: CommandWall = { base, dirs, toolTree: null };
+        const wall: CommandWall = {
+          base,
+          dirs,
+          toolTree: null,
+          limits: { shellDefaultSeconds: 1, shellMaxSeconds: 2 },
+        };
 
         const first = await run(wall, 'echo kept > "$HOME/note" && pwd && cat staged', (work) =>
           writeFileSync(join(work, "staged"), "staged-input"),
@@ -56,7 +61,10 @@ describe("a solve's walled commands", () => {
         const repo = await run(wall, `cat ${JSON.stringify(join(repoRoot, "secret"))} 2>&1; true`);
         expect(repo.output).not.toContain("repo-canary");
 
-        await expect(run(wall, "sleep 5", undefined, 1)).rejects.toThrow("timeout:1");
+        // Every command is held to the condition's shell limits here, whoever launched it: one that
+        // names no timeout runs for the default, and one that names too long a timeout for the maximum.
+        await expect(run(wall, "sleep 5")).rejects.toThrow("timeout:1");
+        await expect(run(wall, "sleep 5", undefined, 60)).rejects.toThrow("timeout:2");
       } finally {
         await release();
         rmSync(dirs.host, { recursive: true, force: true });

@@ -16,8 +16,8 @@
  *     --builder live|capture|/abs/turn.mts --built live|no-solve|/abs/solver.mts --review live|off \
  *     [--preset opus|sol|luna|astra|fable] [--built-model <model id>] [--capture /abs/capture-dir] \
  *     [--root /abs/tree] [--max-iterations N] [--max-builder-turns N] [--wall-ms N] \
- *     [--predictions /abs/note.md] [--dcg true|false] [--census-ms N] [--allow-dirty] \
- *     [--real-isolation] [--json]
+ *     [--predictions /abs/note.md] [--dcg true|false] [--answer-agent true|false] [--census-ms N] \
+ *     [--allow-dirty] [--real-isolation] [--json]
  *
  * Before any provider work it settles four things stewards did by hand on 2026-09-30:
  *   - the calling session's `CLAUDE*` variables leave this process (session-env.mts);
@@ -267,6 +267,8 @@ function captureRuntime(out: string, onCapture: (capture: Capture) => void): Bui
       webSearch: runtime.webSearch,
       trialIsolation: runtime.trialIsolation,
       recordSession: runtime.recordSession,
+      // A split build's answer agent: without it the capture opens a whole Builder.
+      ...keyIfDefined("answer", runtime.answer),
       open: async (tools, systemPrompt): Promise<HostSession> => {
         const toolNames = tools.map((tool) => tool.name);
         const capture: Capture = {
@@ -387,6 +389,7 @@ const parsed = parseOrDie(die, {
     "built",
     "review",
     "dcg",
+    "answer-agent",
     "census-ms",
     "preset",
     "built-model",
@@ -424,6 +427,10 @@ const censusMs = single.has("census-ms")
   : 2_000;
 const dcgValue = single.get("dcg");
 if (dcgValue !== undefined && dcgValue !== "true" && dcgValue !== "false") die("--dcg must be true or false");
+const answerAgent = single.get("answer-agent");
+if (answerAgent !== undefined && answerAgent !== "true" && answerAgent !== "false") {
+  die("--answer-agent must be true or false");
+}
 const campaign = campaignDir(root, project);
 if (!existsSync(campaign)) {
   die(`${campaign} does not exist — seed the campaign first (seed-campaign.mts); this runner never seeds`);
@@ -523,6 +530,8 @@ const fullRunArgv = [
   // A scripted or captured Builder opens no command shell, so the host guard has nothing to guard.
   "--dcg",
   dcgValue ?? (builder.kind === "live" ? "true" : "false"),
+  // The split build: applyLaunchSlots sets it false on every launch that does not pass it.
+  ...(answerAgent === undefined ? [] : ["--answer-agent", answerAgent]),
 ];
 
 /** Keep the production controller graph behind every provider-free refusal above. */

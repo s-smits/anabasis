@@ -1,18 +1,11 @@
-# Runtime settings of this harness, read from the submitted candidate. A change is a product change.
-# At submit the host refuses a solver or battery value more than ten times its seeded one, or a
-# solver value below a tenth of it; gate walls have no maximum. Anything between is this harness's
-# own choice, and a longer solve makes every measured round slower.
+# Runtime walls of this harness, in seconds, read from the submitted candidate. A change is a
+# product change. At submit the host refuses a solver wall more than ten times its seeded value
+# or below a tenth of it; gate walls have no maximum. Anything between is this harness's own
+# choice, and a longer solve makes every measured round slower.
 solver:
-  solve_minutes: 120 # whole solve time of one task
-  max_turns: 24 # model turns per task
-  shell_timeout_seconds: 300 # one shell command, when it passes no timeout
-  shell_timeout_max_seconds: 900 # the longest timeout a command may pass
+  solve_seconds: 7200 # one whole solve of one task
+  shell_command_seconds: 900 # one solver shell command, whatever timeout it passes
 gate:
   reference_solve_seconds: 120 # one reference solve of one task
-  census_minutes: 30 # all controls and reference solves of one check or submit
-  check_seconds: 600 # one check with its tool runs
-  tool_run_seconds: 300 # one verifier tool run
-battery:
-  solve_concurrency: 5 # tasks solved at once in a measured battery; the host has more cores than
-                       # this, and a wider battery finishes a round sooner, but every case in
-                       # flight holds a model session, a solver child and its tool children
+  check_seconds: 600 # one correctness check with its tool runs
+  tool_run_seconds: 300 # one verifier tool run inside a check

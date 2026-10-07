@@ -1,17 +1,21 @@
-/** `agent/config.yaml`: the runtime settings a Built Harness declares for itself, read from the
+/** `agent/config.yaml`: the runtime walls a Built Harness declares for itself, read from the
  *  submitted snapshot by the solver, the submit gate and measurement, so all three run the harness
  *  under the walls it asked for rather than three separate sets (operator decision).
  *
+ *  Every setting is one wall in seconds and bounds one thing no other setting bounds: a whole solve,
+ *  one solver shell command, one reference solve, one correctness check, one verifier tool run.
+ *  What the host owns stays out of the file: the Built turn guard (`BUILT_RUNAWAY_TURNS`), the census
+ *  wall, derived from the check and reference walls (`censusWallMs`), and the battery width
+ *  (`BUILT_SOLVE_CONCURRENCY`).
+ *
  *  The Builder is told the file exists, not what it holds. A gate wall has no maximum: the one
  *  recorded value that reached ten times its default was a reference solve, the wall a stronger
- *  witness needs longest. The solver's walls and the battery width keep that maximum, because a
- *  solve wall is part of the measured condition and the width is bounded by the host's cores, and
- *  the solver's walls also stop at a tenth of their defaults: below
- *  that the solver never sees a command return, and the wall's own submit of its first draft is what
- *  the battery grades. That floor is current policy for a new candidate or a new solve, so only
- *  `harnessConfigIssue` applies it: `harnessSettings` reads what a recorded bundle declared, and a
- *  replay that grades one never runs its solver. The gate's walls have no floor, since a short one
- *  costs only the Builder. */
+ *  witness needs longest. A solver wall keeps that maximum, because it is part of the measured
+ *  condition, and also stops at a tenth of its default: below that the solver never sees a command
+ *  return, and the wall's own submit of its first draft is what the battery grades. That floor is
+ *  current policy for a new candidate or a new solve, so only `harnessConfigIssue` applies it:
+ *  `harnessSettings` reads what a bundle declared, and a replay that grades one never runs its
+ *  solver. The gate's walls have no floor, since a short one costs only the Builder. */
 
 import { existsSync, readFileSync } from "../meta/filesystem.ts";
 import { isNumber, isRecord } from "../meta/json-shape.ts";
@@ -20,26 +24,13 @@ import { errorMessage } from "../meta/runtime-values.ts";
 
 export const HARNESS_CONFIG_FILE = "agent/config.yaml";
 
-/** Built Harness cases solved at once in a measured battery: the one place the width is set
- *  (operator, 2026-10-02). It seeds `battery.solve_concurrency`, which the starter's config.yaml must
- *  match, a harness may change and `ANA_BUILT_CONCURRENCY` overrides. */
-export const BUILT_SOLVE_CONCURRENCY = 5;
-
-/** Section, key and default of every setting, in the unit the key names.
- *
- *  `solver.max_turns` is the Built solver's per-case turn cap when the harness sets none. Four turns
- *  fit one write, one preview and one submit and nothing else; twelve leave room to build or run the
- *  draft, read the result and repair it; twenty-four leave room for a search or optimisation loop
- *  over several candidates (operator decision). The harness's own value sets the cap and this is only
- *  the default behind it, which is why `thresholds.frozen.yaml` holds no Built turn limit to disagree
- *  with. */
+/** Section, key and default of every setting, each a wall in seconds. */
 const SETTINGS = {
-  solver: { solve_minutes: 120, max_turns: 24, shell_timeout_seconds: 300, shell_timeout_max_seconds: 900 },
-  gate: { reference_solve_seconds: 120, census_minutes: 30, check_seconds: 600, tool_run_seconds: 300 },
-  battery: { solve_concurrency: BUILT_SOLVE_CONCURRENCY },
+  solver: { solve_seconds: 7200, shell_command_seconds: 900 },
+  gate: { reference_solve_seconds: 120, check_seconds: 600, tool_run_seconds: 300 },
 } as const;
 
-/** How far above its default the host accepts a solver or battery setting, and how far below it a solver wall. */
+/** How far above and below its default the host accepts a solver wall. */
 const HOST_LIMIT_FACTOR = 10;
 
 type Section = keyof typeof SETTINGS;
@@ -47,39 +38,33 @@ type Raw = { [S in Section]: { [K in keyof (typeof SETTINGS)[S]]: number } };
 
 export interface HarnessSettings {
   solveMs: number;
-  maxTurns: number;
-  shellDefaultSeconds: number;
-  shellMaxSeconds: number;
+  /** The wall of one solver shell command: a command runs for up to this, whatever it passes. */
+  shellCommandSeconds: number;
   referenceSolveMs: number;
-  censusWallMs: number;
   checkWallMs: number;
   toolRunMs: number;
-  solveConcurrency: number;
 }
 
 export class HarnessConfigError extends Error {}
 
-/** A solver or battery setting far above its default (`"above"`), or a solver wall far below it (`"below"`). */
+/** A solver wall far above its default (`"above"`) or far below it (`"below"`). */
 function hostLimitSide(section: Section, value: number, fallback: number): "above" | "below" | null {
-  if (section !== "gate" && value > fallback * HOST_LIMIT_FACTOR) return "above";
-  return section === "solver" && value * HOST_LIMIT_FACTOR < fallback ? "below" : null;
+  if (section !== "solver") return null;
+  if (value > fallback * HOST_LIMIT_FACTOR) return "above";
+  return value * HOST_LIMIT_FACTOR < fallback ? "below" : null;
 }
 
 const hostLimitMessage = (section: Section, key: string, value: number, side: "above" | "below") =>
   `${section}.${key} ${String(value)} is ${side} what this host allows; choose a value closer to the seeded one`;
 
 function settingsOf(raw: Raw): HarnessSettings {
-  const { solver, gate, battery } = raw;
+  const { solver, gate } = raw;
   return {
-    solveMs: solver.solve_minutes * 60_000,
-    maxTurns: solver.max_turns,
-    shellDefaultSeconds: solver.shell_timeout_seconds,
-    shellMaxSeconds: solver.shell_timeout_max_seconds,
+    solveMs: solver.solve_seconds * 1000,
+    shellCommandSeconds: solver.shell_command_seconds,
     referenceSolveMs: gate.reference_solve_seconds * 1000,
-    censusWallMs: gate.census_minutes * 60_000,
     checkWallMs: gate.check_seconds * 1000,
     toolRunMs: gate.tool_run_seconds * 1000,
-    solveConcurrency: battery.solve_concurrency,
   };
 }
 
@@ -128,14 +113,8 @@ function parseHarnessConfig(text: string): Raw {
   if (unknown.length > 0) throw new HarnessConfigError(`has no section ${unknown.join(", ")}`);
   const solver = checkedSection("solver", root.solver);
   const gate = checkedSection("gate", root.gate);
-  const battery = checkedSection("battery", root.battery);
-  if ((solver.shell_timeout_seconds ?? 0) > (solver.shell_timeout_max_seconds ?? 0)) {
-    throw new HarnessConfigError(
-      "solver.shell_timeout_seconds must not exceed solver.shell_timeout_max_seconds",
-    );
-  }
   /* SAFETY: checkedSection returned exactly the keys of each section's defaults, each a checked number. */
-  return { solver, gate, battery } as Raw;
+  return { solver, gate } as Raw;
 }
 
 function rawSettings(dir: string): Raw {
@@ -148,6 +127,17 @@ function rawSettings(dir: string): Raw {
 export function harnessSettings(dir: string): HarnessSettings {
   const file = join(dir, HARNESS_CONFIG_FILE);
   return existsSync(file) ? settingsOf(rawSettings(dir)) : DEFAULT_HARNESS_SETTINGS;
+}
+
+/** The settings a bundle declares, or null when its config is defective: a reader of records reports
+ *  one recorded under an earlier schema as unread rather than parsing around it. */
+export function readableHarnessSettings(dir: string): HarnessSettings | null {
+  try {
+    return harnessSettings(dir);
+  } catch (cause) {
+    if (cause instanceof HarnessConfigError) return null;
+    throw cause;
+  }
 }
 
 /** The finding that refuses admitting a candidate, or launching a solve, under this config, or null. */

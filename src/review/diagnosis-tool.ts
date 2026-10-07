@@ -56,7 +56,7 @@ const OWNER_MEANING: Record<DiagnosisOwner, string> = {
   [TOOLS_SPEC_FILE]:
     "a tool's parameters or description invited the wrong call, or the solve needed a computation no declared tool offers.",
   [GENERATED_TOOLS_FILE]: "a tool returned a wrong, incomplete or unusable result for a valid call.",
-  [HARNESS_CONFIG_FILE]: "the turn cap or solve wall ended a solve that was still progressing.",
+  [HARNESS_CONFIG_FILE]: "the solve wall or a shell command's wall ended a solve that was still progressing.",
   solver:
     "the harness offered what was needed and the solver's own reasoning failed; nothing in the harness to change.",
 };

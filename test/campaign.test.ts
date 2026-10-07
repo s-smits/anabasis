@@ -494,7 +494,7 @@ describe("scoreboard", () => {
       const acceptedSnapshot = join(f.repo, "accepted", battery);
       const source = { repoRoot: f.repo, slug: "truss", id: battery, acceptedSnapshot };
       const product = publishProduct(source, {
-        "agent/config.yaml": "solver:\n  solve_minutes: 60\n",
+        "agent/config.yaml": "solver:\n  solve_seconds: 3600\n",
         "agent/AGENTS.md": battery,
         "correctness-model/evaluator.ts": "export const rule = 1;\n",
         "correctness-model/brief.json": "{}",

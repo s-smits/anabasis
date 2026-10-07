@@ -290,7 +290,7 @@ describe("what one battery contributes to the reading", () => {
   it("counts a verified fail whose draft the wall stopped, and not one the solver submitted near it", () => {
     const tree = tmp();
     mkdirSync(join(tree, "agent"), { recursive: true });
-    writeFileSync(join(tree, "agent", "config.yaml"), "solver:\n  solve_minutes: 1\n");
+    writeFileSync(join(tree, "agent", "config.yaml"), "solver:\n  solve_seconds: 60\n");
     writeBattery(
       tree,
       "r1",
@@ -310,7 +310,7 @@ describe("what one battery contributes to the reading", () => {
   it("counts the unaccepted cases whose solve ran to the product's own wall", () => {
     const tree = tmp();
     mkdirSync(join(tree, "agent"), { recursive: true });
-    writeFileSync(join(tree, "agent", "config.yaml"), "solver:\n  solve_minutes: 12\n");
+    writeFileSync(join(tree, "agent", "config.yaml"), "solver:\n  solve_seconds: 720\n");
     writeBattery(
       tree,
       "r1",

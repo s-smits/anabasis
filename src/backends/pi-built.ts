@@ -58,6 +58,13 @@ import { buildWorkerBundle } from "../solve/worker-bundle.ts";
 import { canonicalForms } from "../verify/wall-policy.ts";
 import type { ProviderResourceBudget } from "../run/provider-resource-budget.ts";
 
+/** The most turns one Built solve runs: a runaway guard, not a budget. A turn is the first prompt or
+ *  one nudge after a turn that ended without an accepted submit, each with as many tool calls as the
+ *  solve wall allows, so the solve wall is what bounds a solve. No recorded solve used more than two
+ *  of 4,235 traces (2026-10-07); this stops a loop that keeps ending turns without submitting
+ *  after a hundred nudges, fifty times the most any solve has needed, rather than at the wall. */
+export const BUILT_RUNAWAY_TURNS = 100;
+
 export interface PiBuiltRuntime {
   profile: PiProfile;
   /** Read at each worker start rather than once for the run, so a battery that runs for hours hands
@@ -68,10 +75,10 @@ export interface PiBuiltRuntime {
   policy: SolveIsolationPolicy;
   fakeResponses?: PiWire.PiBuiltStart["fakeResponses"];
   /** Test option alongside `fakeResponses`: the per-turn silence wall in milliseconds. Production
-   *  derives it from the harness instead, as `builtTurnWallMs(settings.shellMaxSeconds)`, because a
-   *  Built turn is one model call plus one command at its ceiling: a wall shorter than the harness's
-   *  own `shell_timeout_max_seconds` would cut a solve that is waiting for a command it is allowed
-   *  to run. */
+   *  derives it from the harness instead, as `builtTurnWallMs(settings.shellCommandSeconds)`, because
+   *  a Built turn is one model call plus one command at its wall: a wall shorter than the harness's
+   *  own `shell_command_seconds` would cut a solve that is waiting for a command it is allowed to
+   *  run. */
   turnWallMs?: number;
   /** Test option: the ready-handshake wall in milliseconds; production keeps the process module's own. */
   readyWallMs?: number;
@@ -98,7 +105,7 @@ type BuiltCaseEvidence = BuiltTurnRecord & {
   readonly contractCondition: SolveInterfaceCondition;
 };
 
-/** What a Built solver is opened with beyond its runtime: the turn cap a test or the export path
+/** What a Built solver is opened with beyond its runtime: the turn guard a test or the export path
  *  overrides, the observer and phase its cases are recorded under, the provider budget each turn is
  *  reserved against, and the safeguard context its shell reports to. */
 type BuiltSolverOptions = {
@@ -392,11 +399,11 @@ const harnessRuntime = (
   maxTurns: number,
 ): PiBuiltRuntime => ({
   ...runtime,
-  turnWallMs: runtime.turnWallMs ?? builtTurnWallMs(settings.shellMaxSeconds),
+  turnWallMs: runtime.turnWallMs ?? builtTurnWallMs(settings.shellCommandSeconds),
   ...keyIfDefined("solveWallMs", runtime.solveWallMs ?? (maxTurns === 0 ? undefined : settings.solveMs)),
 });
 
-/** `maxTurns` overrides the harness's own `solver.max_turns` (tests and the export path). */
+/** `maxTurns` overrides `BUILT_RUNAWAY_TURNS` (tests and the export path). */
 export function piBuiltSolver(runtime: PiBuiltRuntime, options: BuiltSolverOptions = {}): Solver {
   const { maxTurns, observer, observationPhase, providerBudget, safeguardContext } = options;
   const signal = providerBudget?.cancellationSignal;
@@ -412,18 +419,15 @@ export function piBuiltSolver(runtime: PiBuiltRuntime, options: BuiltSolverOptio
     const recorder = createTraceRecorder({ backend: runtime.profile.transport });
     const turns: BuiltTurnRecord = { checkpoints: [], identities: [] };
     // The login is read at each solve, so one refused mid-battery is this case's provider non-result.
-    const opened = await openedCondition(
-      runtime,
-      task,
-      starter,
-      maxTurns ?? settingsOf(starter).maxTurns,
-    ).catch(async (cause: unknown) => {
-      await starter.close?.();
-      if (cause instanceof EnvironmentRefusal) {
-        return nonResultOutcome({ kind: "provider", message: cause.message });
-      }
-      throw cause;
-    });
+    const opened = await openedCondition(runtime, task, starter, maxTurns ?? BUILT_RUNAWAY_TURNS).catch(
+      async (cause: unknown) => {
+        await starter.close?.();
+        if (cause instanceof EnvironmentRefusal) {
+          return nonResultOutcome({ kind: "provider", message: cause.message });
+        }
+        throw cause;
+      },
+    );
     if (!("contractCondition" in opened)) return opened;
     const { start, contractCondition } = opened;
     let generatedWorker: GeneratedToolWorkerEvidence | null = null;

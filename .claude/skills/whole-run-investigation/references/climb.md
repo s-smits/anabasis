@@ -164,7 +164,7 @@ Inside the readout, read these fields and nothing looser:
 | `decision.evidence` | every battery the decision derives from, by `runId` and `batterySha256` |
 | a row's `zone`, `aim`, `toAim`, `wilson` | the zone `placeOnBand` gave, as AGENTS.md "Goals and the climb" defines the five under "The band and the placement"; `aim` the pass counts inside `band` at the row's size; `toAim` the signed distance in verified passes, negative above the aim; `wilson` the interval at `REPORTING_Z` (`src/claim/estimation.ts`) |
 | a row's `passed`, `verified`, `unaccepted`, `nonResults` | passes out of verified cases, with the other two kinds beside them; `passed` is null when the claim was refused |
-| a row's `effort`, `familyEffort`, `solveWallMinutes`, `wallBound` | solve effort against the Builder's own `solve_minutes`, and how many unaccepted cases ran to within `WALL_BOUND_SHARE` (`src/run/climb-history.ts`) of that wall |
+| a row's `effort`, `familyEffort`, `solveWallMinutes`, `wallBound` | solve effort against the Builder's own `solve_seconds`, and how many unaccepted cases ran to within `WALL_BOUND_SHARE` (`src/run/climb-history.ts`) of that wall |
 | a row's `regrade` | the earlier battery whose recorded solves this one graded again |
 
 There is no climb, hold or ease verb, no level label and no ladder to read, and a note naming one
@@ -239,8 +239,8 @@ way.
 
 Two consequences are easy to miss. A scored case includes an unaccepted one, so a probe whose
 solver submitted nothing on half its tasks and passed the rest has graduated, although it measured
-a door rather than a limit. And the solver's time is the Builder's own setting: `solve_minutes` in
-`agent/config.yaml` defaults to 120, and the host accepts anything from a tenth of that to ten
+a door rather than a limit. And the solver's time is the Builder's own setting: `solve_seconds` in
+`agent/config.yaml` defaults to 7200, and the host accepts anything from a tenth of that to ten
 times it (`HOST_LIMIT_FACTOR` in `src/correctness-bundle/harness-config.ts`), so a battery that
 reads too hard at a twelve-minute wall has measured the wall the Builder chose.
 
@@ -272,7 +272,7 @@ one that does not:
 | whether the tasks got harder | the edge labels and the tier histogram, with the task rows beside them | new task ids or a longer description |
 | whether the Builder read a starter file | the bundle bytes and the Builder's notes | read counts in `builder-path-record.jsonl`: the Builder reads through `bash`, so zero proves nothing |
 | whether a battery is hard or merely unsolvable | `artifact.json` beside `public-task.json` in the settled cases | a reviewer finding, a published limit or a zero score |
-| whether a slow solve met the wall | `solver.toolCalls` in `case-result.json`, and the row's `wallBound` | `max_turns` or the turn count, since every pi solve records one turn |
+| whether a slow solve met the wall | `solver.toolCalls` in `case-result.json`, and the row's `wallBound` | the turn count, since nearly every solve records one turn |
 
 ## Harder, or only different
 
@@ -327,7 +327,7 @@ reached anything is lane 21's. At the other end, a battery that fails everything
 
 ## Effort is not difficulty
 
-Each row states the solve effort — median and longest minutes against `solve_minutes`, median tool
+Each row states the solve effort — median and longest minutes against `solve_seconds`, median tool
 calls — by battery and by family. Within one battery, effort does not separate the passes from the
 fails, so it cannot stand in for difficulty. What it can do is expose a wall: a family whose
 unaccepted cases all ran to the wall was stopped by the Builder's own setting, and `wallBound`

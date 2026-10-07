@@ -886,13 +886,13 @@ describe("the public inputs a command finds on disk", () => {
  * command gets, and what it may leave running.
  */
 describe("the command Pi runs behind the wall", () => {
-  /** The shell under a deliberately tiny budget, so a real wall fires in test time. */
-  const bounded = (shellDefaultSeconds: number, shellMaxSeconds: number) =>
+  /** The shell under a deliberately tiny wall, so a real wall fires in test time. */
+  const bounded = (shellCommandSeconds: number) =>
     createBuiltBashTool({
       policy: session,
       port: null,
       home: sessionHome,
-      timeouts: { ...DEFAULT_HARNESS_SETTINGS, shellDefaultSeconds, shellMaxSeconds },
+      timeouts: { ...DEFAULT_HARNESS_SETTINGS, shellCommandSeconds },
     });
 
   it.concurrent("tells the solver what Pi's bash returns, under this shell's own timeout schema", () => {
@@ -902,7 +902,7 @@ describe("the command Pi runs behind the wall", () => {
     expect(tool.parameters).toHaveProperty("properties.command.description", "Bash command to execute");
     expect(tool.parameters).toHaveProperty(
       "properties.timeout.description",
-      `Timeout in seconds: ${DEFAULT_HARNESS_SETTINGS.shellDefaultSeconds} when omitted, at most ${DEFAULT_HARNESS_SETTINGS.shellMaxSeconds}; a value outside that range runs at the nearest end of it`,
+      `Timeout in seconds. Every command runs for up to this harness's ${DEFAULT_HARNESS_SETTINGS.shellCommandSeconds} s, whatever value is passed; bound a shorter step inside the command`,
     );
   });
 
@@ -959,35 +959,26 @@ describe("the command Pi runs behind the wall", () => {
   });
 
   it.concurrent("ends a command that would otherwise run forever at the harness's wall", async () => {
-    const result = await execute(bounded(2, 2), "sleep 60");
+    const result = await execute(bounded(2), "sleep 60");
     expect(result.threw).toBe(true);
     expect(result.text).toContain("Command timed out after 2 seconds");
   }, 180_000);
 
-  // Three states, and a command its own wall cut lands in exactly one. c1d2a7 passed timeout: 120 on
-  // 42 of the 74 calls its traces record and was cut 21 times in 18 solves, under a bundle granting
-  // 300 s by default and 900 s on request: "Command timed out after 120 seconds" names the number it
-  // chose and never the number it had.
-  it.concurrent("offers the seconds still available when the ask was below the maximum", async () => {
-    const { text } = await execute(bounded(1, 4), "sleep 30", 1);
-    expect(text).toContain(
-      "This harness allows 4 s for one command, and 1 s when you pass none, so there is more time to ask for.",
-    );
-    // The file holding those numbers is the Builder's lever, not the solver's.
-    expect(text).not.toContain("config.yaml");
-  });
-
-  it.concurrent("says an ask above the maximum was cut, instead of silently running a shorter one", async () => {
-    // The clamp was a bare Math.min: c1d2a7 asked once for 1500 s, got 900 and was told neither.
-    const { text } = await execute(bounded(1, 2), "sleep 30", 1500);
+  // One wall, two states for a command it cut. c1d2a7 passed timeout: 120 on 42 of the 74 calls its
+  // traces record and was cut 21 times in 18 solves under a bundle granting 300 s by default and 900 s
+  // on request, and once asked for 1500 s, got 900 and was told neither.
+  it.concurrent("clamps an ask above the wall to the wall, and says so", async () => {
+    const { text } = await execute(bounded(2), "sleep 30", 1500);
+    expect(text).toContain("Command timed out after 2 seconds");
     expect(text).toContain(
       "Your 1500 s is above the 2 s this harness allows one command, so it ran as 2 s — the most there is, and the move left is cheaper work rather than longer.",
     );
-    expect(text).not.toContain("more time to ask for");
+    // The file holding that number is the Builder's lever, not the solver's.
+    expect(text).not.toContain("config.yaml");
   });
 
-  it.concurrent("names the maximum once when the ask already was the maximum", async () => {
-    const { text } = await execute(bounded(1, 2), "sleep 30", 2);
+  it.concurrent("names the wall once when a command without an ask met it", async () => {
+    const { text } = await execute(bounded(2), "sleep 30");
     expect(text).toContain(
       "That is the whole 2 s this harness allows one command, so the move left is cheaper work rather than longer.",
     );
@@ -998,16 +989,15 @@ describe("the command Pi runs behind the wall", () => {
   });
 
   // Run de8b40 asked for 120 s beside an inner `timeout 880`, on a harness granting 900, and lost 13
-  // commands to its own number. A passed timeout is the lever for raising the wall, so below the
-  // default it only takes back work the harness had already granted.
-  it.concurrent("runs a command at the default when the ask was below it", async () => {
-    const { text } = await execute(bounded(4, 8), "sleep 2 && echo survived", 1);
+  // commands to its own number. An ask below the wall therefore takes back nothing the harness granted.
+  it.concurrent("runs a command at the whole wall when the ask was below it", async () => {
+    const { text } = await execute(bounded(4), "sleep 2 && echo survived", 1);
     expect(text).toContain("survived");
     expect(text).not.toContain("timed out");
   });
 
   it.concurrent("says nothing about the budget when the command failed on its own", async () => {
-    const { text } = await execute(bounded(1, 4), "exit 3");
+    const { text } = await execute(bounded(4), "exit 3");
     expect(text).toContain("Command exited with code 3");
     expect(text).not.toContain("This harness allows");
     expect(text).not.toContain("the move left is cheaper work");
@@ -1016,7 +1006,7 @@ describe("the command Pi runs behind the wall", () => {
   // A cancellation is the session's wall, not this one: asking for more seconds would not help.
   it.concurrent("reports a cancelled command as aborted, with no budget clause", async () => {
     const controller = new AbortController();
-    const pending = bounded(1, 4)
+    const pending = bounded(4)
       .execute("call-1", double({ command: "echo begun; sleep 30" }), controller.signal, undefined)
       .then(
         () => "returned",

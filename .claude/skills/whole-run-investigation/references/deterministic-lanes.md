@@ -124,8 +124,8 @@ command (`target: {}`). What a slow call ran is only in the Builder CLI transcri
 and `pi-session.ts` removes that directory when the session closes. So read it while the run is live:
 pair each `tool_use` with its `tool_result` and take the longest of the calls in one message.
 
-`walls` runs `walls.ts`, whose `boundOf` labels every case `unrecorded`, `time-bound`,
-`turn-bound`, `unstarted`, `submitted` or `no-submit`, and prints each bound's share against
+`walls` runs `walls.ts`, whose `boundOf` labels every case `unrecorded`, `submitted-at-wall`,
+`time-bound`, `unstarted`, `submitted` or `no-submit`, and prints each bound's share against
 `WALL_BOUND_SHARE`; a battery whose solves sit at a bound starts lane 22, and one whose solves
 all sit at a tiny share of it starts lane 8.
 

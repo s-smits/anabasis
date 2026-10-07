@@ -11,7 +11,7 @@ import { recordedEvidence, verifyRunDir } from "../../src/claim/evidence-log.ts"
 import { campaignTraceRoots } from "../../src/claim/trace-read.ts";
 import { capturedJsonParse } from "../../src/meta/json-runtime.ts";
 import { isRecord, isString, type JsonObject } from "../../src/meta/json-shape.ts";
-import { harnessSettings } from "../../src/correctness-bundle/harness-config.ts";
+import { readableHarnessSettings } from "../../src/correctness-bundle/harness-config.ts";
 import { BUNDLE_SNAPSHOT_DIRECTORY } from "../../src/claim/bundle-snapshot.ts";
 import { BATTERY_FILE } from "../../src/correctness-bundle/battery-record.ts";
 import type { CheckRun } from "../../src/verify/correctness-model-result.ts";
@@ -35,12 +35,13 @@ function caseFile(runDir: string, taskId: string, violations: ReturnType<typeof 
   return existsSync(path) ? { recorded: false, value: capturedJsonParse(readFileSync(path, "utf8")) } : null;
 }
 
-/** The snapshot's own `check_seconds`, which is the wall every row here ran under. */
+/** The snapshot's own `check_seconds`, which is the wall every row here ran under; null when the
+ *  snapshot is gone or the current schema refuses its config, as it does every pre-2026-10-07 one. */
 function checkWallMs(slugDir: string, battery: JsonObject | null): number | null {
   const snapshot = isRecord(battery?.bundleSnapshot) ? battery.bundleSnapshot.id : undefined;
   if (!isString(snapshot)) return null;
   const dir = join(slugDir, BUNDLE_SNAPSHOT_DIRECTORY, snapshot);
-  return existsSync(dir) ? harnessSettings(dir).checkWallMs : null;
+  return existsSync(dir) ? (readableHarnessSettings(dir)?.checkWallMs ?? null) : null;
 }
 
 function totalsOf(cases: readonly CaseChecks[], wallMs: number | null): CheckTotals[] {

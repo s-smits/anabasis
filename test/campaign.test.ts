@@ -475,9 +475,12 @@ describe("closure advisories", () => {
 
 describe("scoreboard", () => {
   // One run whose three claimed batteries each measured the product it published, as the controller
-  // publishes and binds one, with its own agent, recorded battery and case rows. The second carries
-  // `b` unchanged and passes it under a new agent, and drops `c`; nothing follows the third, whose
-  // completed review held `g` and settled `h` against its only check.
+  // publishes and binds one, with its own agent, recorded battery and case rows. The controller
+  // solves `b` twice more beside the first, failing both, which confirms it; the second carries it
+  // unchanged and passes it under a new agent, which answers it, and drops `c`, whose settlement
+  // predates dispositions naming their checks; nothing follows the third, whose completed review
+  // held `g` and settled `h` against its only check. `c`, `g` and `h` are fails the Judge contested,
+  // read apart from the earned fails.
   it("reads each run's wall share and follows its earned fails into the next battery", () => {
     const f = fixture("closed");
     const [third, START] = [`${RUN}-i03`, "2026-09-23T00:00:00.000Z"];
@@ -502,7 +505,14 @@ describe("scoreboard", () => {
       });
       bindProductMeasurement(f.repo, "truss", battery, product);
       const solved = tasks.map(({ taskId }) => solveRow({ taskId }, battery, !fails.includes(taskId)));
-      recordDigestBattery(product, [battery], { [battery]: solved });
+      // The first battery's remeasures solve `b` anew and grade every other task's solve again.
+      const again = hour === 0 ? [`${battery}-m1`, `${battery}-m2`] : [];
+      const remeasured = (id: string) =>
+        solved.map((row) => (row.taskId === "b" ? solveRow({ taskId: "b" }, id, false) : row));
+      recordDigestBattery(product, [battery, ...again], {
+        [battery]: solved,
+        ...Object.fromEntries(again.map((id) => [id, remeasured(id)])),
+      });
       const createdAt = `2026-09-23T0${hour + 1}:00:00.000Z`;
       writeFileSync(join(f.campaign, "claims", `${battery}.json`), JSON.stringify({ createdAt }));
       for (const [taskId, spent] of Object.entries(minutes)) {
@@ -513,7 +523,6 @@ describe("scoreboard", () => {
       }
     }
     writeCaseRecord(f.campaign, rows);
-    // A settlement recorded before dispositions named their checks still takes `c` out of the earned fails.
     writeSettledReview(join(f.campaign, "analysis"), RUN, [{ taskId: "c", checkIds: undefined }]);
     writeSettledReview(join(f.campaign, "analysis"), third, [
       { taskId: "g", disposition: "check-stands" },
@@ -523,7 +532,7 @@ describe("scoreboard", () => {
       execTextSync("bun", [join(SCRIPTS, "scoreboard.ts"), "--repo", f.repo, ...flags]);
     const [first8, followUp] = [
       { signal: 2, batteries: 3 },
-      { earned: 2, flips: 0, last: 1, carried: 1, passed: 1, answered: 1 },
+      { earned: 1, flips: 0, confirmed: 1, last: 0, carried: 1, passed: 1, answered: 1, contested: 3 },
     ];
     // The signal batteries are the first, whose `b` and `c` the controller keeps (it cannot scope `c`'s
     // settlement to one check), and the third at 1/2.
@@ -541,7 +550,7 @@ describe("scoreboard", () => {
       groups: [expect.objectContaining({ first8, wall: { median: 0.2, runs: 1 }, followUp })],
     });
     expect(board()).toContain(
-      "first-8 signal 2/3  wall 20.0% (n 1 runs)  earned fails 2 (0 flips), 1 carried unchanged, 1 answered",
+      "first-8 signal 2/3  wall 20.0% (n 1 runs)  earned fails 1 (0 flips, 1 confirmed), 1 carried unchanged, 1 of 1 confirmed answered  contested fails 3",
     );
   });
 });

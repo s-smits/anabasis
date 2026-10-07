@@ -10,7 +10,7 @@ import type { AdmissionLineage, CampaignFeedback, PriorEvidence } from "../autho
 import { readAdmission } from "./admission.ts";
 import type { AskManifest } from "./ask-manifest.ts";
 import { type ClimbReadout, readClimbReadout } from "./climb-readout.ts";
-import { type Remeasure, censoredRemeasure } from "./battery-reuse.ts";
+import { type Remeasure, remeasureOf } from "./battery-reuse.ts";
 import { isString } from "../meta/json-shape.ts";
 import type { SlotChoice } from "../backends/resolve.ts";
 import { endsSession } from "../gate/settlement.ts";
@@ -46,8 +46,9 @@ export function epochPassOf(decision: NextMove): string | undefined {
  * Thereafter the Builder chooses a hypothesis and a permitted scope from the actual evidence.
  * A host/environment blocker still stops before another authoring or measurement spend, unless all
  * it reports is reference solves the host cut short (`endsSession`), which the next round submits again. A battery
- * the environment cut short is measured again on unchanged bytes before any rebuild, because the
- * Builder would otherwise author against cases nothing measured. */
+ * the environment cut short, or holding a solve nothing confirms yet, is measured again on unchanged
+ * bytes before any rebuild, because the Builder would otherwise author against cases nothing
+ * measured, or against one solve the solver's own variance may have decided. */
 export function decideNextMove(
   product: "adopted" | "none",
   feedback: CampaignFeedback[] | null,
@@ -79,7 +80,7 @@ export function decideNextMove(
   if (!preAdoption && blocking.length === 0 && remeasure !== null) {
     return {
       move: "measure",
-      reason: `${remeasure.taskIds.length} case(s) of battery ${remeasure.of} ended in environment-owned non-results; rerun them without changing the harness and regrade the rest`,
+      reason: `${remeasure.taskIds.length} case(s) of battery ${remeasure.of} ended in environment-owned non-results or unconfirmed solves; rerun them without changing the harness and regrade the rest`,
     };
   }
   const reason = [
@@ -123,7 +124,7 @@ export function selectNextMoveFromDisk(input: {
   const fromPreAdoption = !blocks(measured?.feedback ?? null) && blocks(preAdoption);
   const adopted = existsSync(domainDir);
   const remeasure = adopted
-    ? censoredRemeasure({ repoRoot, slug: manifest.slug, runPin, built, candidateDir: domainDir }, readout)
+    ? remeasureOf({ repoRoot, slug: manifest.slug, runPin, built, candidateDir: domainDir }, readout)
     : "no adopted product";
   const decided = decideNextMove(
     adopted ? "adopted" : "none",

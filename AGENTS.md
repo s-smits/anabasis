@@ -298,17 +298,22 @@ Progress is read on that line (`wri.ts climb`, `climb-velocity/v2`), with five n
   fail whose task, posed the same way, passed another solve under the same solver (agent bytes, Built
   pin, run condition, tool tree) is a **flip**, the solver's variance and not a limit, and never counts
   as answered. In trusses-26, 13 tasks solved 59 times that way failed twice, and both fails passed in
-  the battery beside them (2026-10-02).
+  the battery beside them (2026-10-02). A fail that failed every other such solve, `AGREEING_SOLVES` (3)
+  in all, is **confirmed**; the controller makes those solves before the Builder reads the fail (rule
+  10). A confirmed fail whose task the next battery carries unchanged and that passes there after the
+  agent changed is **answered**, and the scoreboard reads answered per confirmed fail. A verified fail
+  the Judge contested, one the completed review disposed of or left unsettled, is no earned fail: it
+  is counted apart, as an instrument-dispute candidate (`contested`).
 
 A zone cannot stand in for these, since 3/3 places `over-aim` and passes everything. A change that raises
 a score, adds tasks or renames levels without moving the line has not served the goal.
 
-An **earned fail** is a verified fail that the review did not settle against its check and that the solve
-wall did not stop (`followUpOf`); the Judge sets no score and is not part of it. One swing of the line is a
-**climb step**: a battery with an earned fail, a harness change that answers it, the same task passing, a
-battery that asks more, and a partial battery again. No run completed one between 2026-09-23 and
-2026-10-01 ("Open gaps"). Signal counts only the first of those links, and it is too rare to settle a
-comparison at the size we run. Of the 322 batteries scored in that window, 11 held a fail nobody contested,
+An **earned fail** is a verified fail that the Judge did not contest and that the solve wall did not stop
+(`followUpOf`); the Judge sets no score, and a fail it contested is read apart. One swing of the line is a
+**climb step**: a battery with a confirmed earned fail, a harness change that answers it, the same task
+passing, a battery that asks more, and a partial battery again. No run completed one
+between 2026-09-23 and 2026-10-01 ("Open gaps"). Signal counts only the first of those links, and it is
+too rare to settle a comparison at the size we run. Of the 322 batteries scored in that window, 11 held a fail nobody contested,
 in a census that counted contests by the Judge as well, so an arm of eight batteries sees one with a
 probability near 0.24, and showing that a change doubled the rate would take about 650 batteries an arm.
 So read the share of the solve wall beside it (`wri.ts walls`), which moves on every battery. In truss it
@@ -384,10 +389,10 @@ say, and it read as a course (prior 10).
 
 The controller's next move (`decideNextMove`, `src/run/next-move.ts`) reads no placement at all. It
 builds when no product is adopted, stops on an environment fact that ends the session (`endsSession`),
-measures a condition that has not been measured, remeasures a battery the environment cut short on
-unchanged bytes, and otherwise opens a rebuild. `rebuild` is the retained name for authoring on the
-adopted product, not an order to redesign. The controller never stops on a reading of the tasks
-(`LoopState`), so stopping a flat run is the operator's call, which `bun run runs pulse` names when it
+measures a condition that has not been measured, remeasures on unchanged bytes a battery the environment
+cut short or one holding a solve that contradicts its task's reading (rule 10), and otherwise opens a
+rebuild. `rebuild` is the retained name for authoring on the adopted product, not an order to redesign.
+The controller never stops on a reading of the tasks (`LoopState`), so stopping a flat run is the operator's call, which `bun run runs pulse` names when it
 arrives.
 
 **Battery sizing** has one owner, `POLICY.battery` in `src/critic/policy.ts` (`floor 5`, `default 25`,
@@ -495,9 +500,9 @@ added up: three recorded campaigns rehearsed and shipped anyway with 12 of 16 ve
 
 **Measurement.** Recorded solves are reused where the exam did not move (rule 10): an evaluation
 correction under the same solving condition regrades the recorded submissions, a battery the environment
-cut short is remeasured on unchanged bytes before any rebuild, and a repeat of an exam an at-or-above-aim
-battery already sat is measured afresh and recorded as `repeat`. The readout marks regraded cases, because
-a regrade is an earlier solve graded again and not a new solve.
+cut short or holding an unconfirmed solve is remeasured on unchanged bytes before any rebuild, and a
+repeat of an exam an at-or-above-aim battery already sat is measured afresh and recorded as `repeat`. The
+readout marks regraded cases, because a regrade is an earlier solve graded again and not a new solve.
 
 **Review.** The Epoch Reviewer reads the placement as a reason to look and never an obligation to find
 something (rule 9). A finding about easy tasks names the request obligation they leave undemanded, owned
@@ -535,7 +540,8 @@ decision with the battery it reads, and the climb's `flat` line is the lead for 
 A run that has just measured an earned fail is the one worth keeping. Five of the 11 batteries with an
 uncontested fail since 2026-09-23 were the last their run measured, all four of Opus 5's among them, so
 the step each had opened was never read. Let such a run measure at least two more batteries before
-stopping it, and read whether the harness changed between them (the adopted fingerprint's `agentHash`).
+stopping it, past the remeasures that confirm the fail on unchanged bytes (rule 10), and read whether the
+harness changed between them (the adopted fingerprint's `agentHash`).
 
 ### Open gaps: the four blockers to a climb
 
@@ -591,9 +597,12 @@ and has not been re-derived here.
    task failed, since the passing solves reach it by task id and the failed task is the one without
    one, but not where or why, which is protected (rule 6): after a partial battery `renderReadout`
    gives it the counts, the families and the passing artifacts, and the no-limit line speaks only
-   after a full pass. Nothing asks it to keep that task, and the controller does not measure it again
-   (`decideNextMove` measures again only the cases the environment cut short). The climb reader's
-   follow-up line now shows what each run did with its earned fails. Owner:
+   after a full pass. Nothing asks it to keep that task. The controller now solves a verified fail
+   again while every solve in its group failed, three solves in all, before the Builder's next
+   round, unless blocking feedback stands (`unconfirmedSolves`, rule 10), so a fail that passes there
+   reads as the flip it is, and the climb reader's follow-up line counts each run's confirmed and
+   answered fails and, apart, the fails the Judge contested. What still binds is
+   keeping a confirmed task while the harness changes. Owner:
    `src/run/next-move.ts` and the battery the next round measures, and the operator's stop ("Reading
    the climb as the operator").
 3. **The measure cannot show a change at the size we run.** Eight batteries an arm cannot separate two
@@ -1417,10 +1426,20 @@ the battery was paid for.
     reused, changedPasses}`, because a correction moves the evaluator alone and a fresh solve would add the
     solver's own variance to that one variable. A battery the environment cut short, meaning every non-result
     solver-side and environment-owned, the hashes and the solving condition unchanged and fewer than
-    `environmentBlockedRounds` prior remeasures, is remeasured before any rebuild: `censoredRemeasure`
-    re-solves the censored cases and regrades the rest, and a moved condition sends the round to rebuild. A
-    *repeat* posing the exam an at-or-above-aim battery already sat is measured afresh and recorded as
-    `repeat`, because a second solve can show whether a full pass was reliable where a regrade only reads the
+    `environmentBlockedRounds` prior remeasures, is remeasured before any rebuild: `remeasureOf`
+    re-solves the censored cases and regrades the rest, and a moved condition sends the round to rebuild.
+    The same remeasure solves again each fresh fail not yet confirmed (`unconfirmedSolves`): a fail is
+    solved again while its group, the task's fresh solves on one pin, set of build inputs, run
+    condition, effort and tool tree, holds fewer than `AGREEING_SOLVES` solves and every one failed, so
+    the Builder never reads a fail on one solve alone, and an edit of the task, the agent or the tools
+    starts a group of its own. One pass in the group makes the fail a flip, and the case is not solved
+    again; a pass is never solved again. A case awaiting a solve is never regraded, so a round that
+    blocking feedback gives to the Builder first solves it afresh. Neither the Judge nor the review
+    chooses which fails are solved again, so a fail the review settled against its check is solved like
+    any other, and so is a fail the solve wall cut; an unaccepted attempt is not. A battery whose every
+    case failed or was cut short is measured again whole and records `regrade: {reused: 0}`, so its
+    chain of remeasures stays bounded. A *repeat* posing the exam an at-or-above-aim battery already sat is measured afresh and
+    recorded as `repeat`, because a second solve can show whether a full pass was reliable where a regrade only reads the
     same attempts again; the submit refusal it met until 2026-09-29 (`identical-exam-over-aim`) never fired in
     the recorded corpus. A repeat is the adopted product measured again, so promotion selects it like any
     measured candidate with a verified case and its packet becomes the next round's evidence, whether the

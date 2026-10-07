@@ -900,33 +900,60 @@ describe("climb velocity", () => {
 
   // A climb step is an earned fail, a harness change that answers it and the same task passing. The
   // battery after an earned fail says whether it kept the task, how the task came out and whether a
-  // changed agent solved it anew or the earlier solve was only graded again. A fail the solve wall
-  // stopped is not earned; one the review settled against its check is the scoreboard test's.
+  // changed agent solved it anew or the earlier solve was only graded again. The controller's
+  // remeasures sit in each version's runs beside its battery, and a fail they confirmed that then
+  // passed after the agent changed is an answer. A fail the solve wall stopped is not earned, and
+  // one the Judge contested is read on a line of its own, as an instrument-dispute candidate.
   it.concurrent("follows each earned fail into the battery measured after it", async () => {
     const first = [solveRow(heavy, "t1", false), solveRow(light, "t1", false, [SOLVE_WALL_MESSAGE])];
-    const follow = async (agents: string[], later: ReturnType<typeof solveRow>[], tasks = [heavy, light]) => {
+    // The remeasures of the first battery: `heavy` failing anew at each instant, `light` graded again.
+    const remeasures = (instants: string[]) =>
+      Object.fromEntries(
+        instants.map((at, n) => [`run-a-m${n + 1}`, [solveRow(heavy, at, false), first[1]!]]),
+      );
+    const follow = async (
+      agents: string[],
+      later: ReturnType<typeof solveRow>[],
+      tasks = [heavy, light],
+      { again = [], unsettled = [] }: { again?: string[]; unsettled?: string[] } = {},
+    ) => {
       const dir = twoVersions("ana-climb-follow-", [brief, brief], (model, index) => {
         mkdirSync(join(model, "..", "agent"), { recursive: true });
         writeFileSync(join(model, "..", "agent", "BUILT_AGENTS.md"), agents[index] ?? "", "utf8");
         if (index === 1) write(join(model, "tasks.json"), tasks);
       });
-      recordDigestBattery(join(dir, "versions", "run-a"), ["run-a"], { "run-a": first });
+      const runsA = { "run-a": first, ...remeasures(again) };
+      recordDigestBattery(join(dir, "versions", "run-a"), Object.keys(runsA), runsA);
       recordDigestBattery(join(dir, "versions", "run-b"), ["run-b"], { "run-b": later });
+      writeSettledReview(join(dir, "analysis"), "run-a", [], "completed", unsettled);
       return render(await readCampaign(dir, { embed: fakeEmbed }));
     };
-    const answered = await follow(["a", "b"], [solveRow(heavy, "t2", true), solveRow(light, "t2", true)]);
+    const passing = [solveRow(heavy, "t2", true), solveRow(light, "t2", true)];
+    const answered = await follow(["a", "b"], passing, [heavy, light], { again: ["t1b", "t1c"] });
     expect(answered).toContain(
-      "earned fail heavy-01 in run-a: carried unchanged into run-b, passed there on a new solve; agent changed between them",
+      "earned fail heavy-01 in run-a (passed 0 of 2 other solves under the same solver: confirmed): carried unchanged into run-b, passed there on a new solve; agent changed between them",
     );
     expect(answered).toContain(
-      "follow-up: 1 earned fail (0 passed another solve under the same solver), 0 with no battery after it; 1 carried unchanged into the next battery, 1 of them passed there and 1 of those after the agent changed",
+      "follow-up: 1 earned fail (0 passed another solve under the same solver, 1 confirmed by 2 more fails), 0 with no battery after it; 1 carried unchanged into the next battery, 1 of them passed there; 1 answered: confirmed, then passed after the agent changed",
+    );
+    expect(answered).not.toContain("contested");
+    // One pass after an unconfirmed fail is no answer.
+    expect(await follow(["a", "b"], passing)).toContain("1 of them passed there; 0 answered");
+    // A fail the Judge contested is no earned fail, whether or not the review settled it.
+    const contested = await follow(["a", "b"], passing, [heavy, light], { unsettled: ["heavy-01"] });
+    expect(contested).toContain("contested fail heavy-01 in run-a: an instrument-dispute candidate");
+    expect(contested).toContain("follow-up: no adopted battery recorded an earned fail");
+    expect(contested).toContain(
+      "contested: 1 verified fail the Judge contested, read apart from the earned fails as an instrument-dispute candidate",
     );
     // The same task bytes passing a new solve under the same agent make the fail a flip, never an answer.
     const flipped = await follow(["a", "a"], [solveRow(heavy, "t2", true), solveRow(light, "t2", true)]);
     expect(flipped).toContain(
       "earned fail heavy-01 in run-a (passed 1 of 1 other solves under the same solver: a flip, not a limit): carried unchanged into run-b, passed there on a new solve; agent unchanged between them",
     );
-    expect(flipped).toContain("follow-up: 1 earned fail (1 passed another solve under the same solver)");
+    expect(flipped).toContain(
+      "follow-up: 1 earned fail (1 passed another solve under the same solver, 0 confirmed",
+    );
     const regraded = await follow(["a", "a"], [solveRow(heavy, "t1", false), solveRow(light, "t2", true)]);
     expect(regraded).toContain(
       "earned fail heavy-01 in run-a: carried unchanged into run-b, failed there on its earlier solve graded again; agent unchanged between them",

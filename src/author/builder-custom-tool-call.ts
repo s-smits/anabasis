@@ -28,8 +28,6 @@ export interface BuilderCustomToolCall {
     contextId?: string;
     feedbackGroup?: number;
     feedbackField?: string;
-    callCount?: number;
-    toolNames?: string[];
   };
   /** Milliseconds from session start. The recorder states it on every call, so a live row always
    *  has one; null remains for the outcome reader, which reads recorded sessions where a call's end

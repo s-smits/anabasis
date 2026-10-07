@@ -85,9 +85,7 @@ function currentCustomTarget(value: unknown): boolean {
     optionalString(target.familyDigest) &&
     optionalString(target.contextId) &&
     optionalNumber(target.feedbackGroup) &&
-    optionalString(target.feedbackField) &&
-    optionalNumber(target.callCount) &&
-    (target.toolNames === undefined || (Array.isArray(target.toolNames) && target.toolNames.every(isString)))
+    optionalString(target.feedbackField)
   );
 }
 

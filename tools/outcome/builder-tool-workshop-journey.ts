@@ -98,10 +98,6 @@ function targetSuffix(target: BuilderCustomToolCall["target"]): string {
   if (target.contextId !== undefined) parts.push(`context=${target.contextId}`);
   if (target.feedbackGroup !== undefined) parts.push(`group=${String(target.feedbackGroup)}`);
   if (target.feedbackField !== undefined) parts.push(`field=${target.feedbackField}`);
-  if (target.callCount !== undefined) parts.push(`calls=${String(target.callCount)}`);
-  if (target.toolNames !== undefined && target.toolNames.length > 0) {
-    parts.push(`tools=${target.toolNames.join("+")}`);
-  }
   return parts.length === 0 ? "" : `[${parts.join(",")}]`;
 }
 

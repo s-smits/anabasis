@@ -42,8 +42,9 @@ hours before its battery scores. It is a reading and not a forecast (AGENTS.md "
 climb", under "Reading the climb as the operator"), so name the changed public requirement from the
 task rows beside it, and read the edge's novelty, numbers moved, delta and `carried` rows with it.
 `adjusted` names no direction, because a moved limit is a climb only when it moves inward, and
-`replaced` is no reading at all: fewer than half the task ids carried over, so the task bytes need
-reading by hand. A rule published in another `correctness-model/` file moves neither task-side row;
+`replaced` is no reading of demand: fewer than half the task ids carried over, so the task bytes need
+reading by hand; with none carried, the numbers row reads the batteries path by path, a coarser
+reading than a task join, and says so. A rule published in another `correctness-model/` file moves neither task-side row;
 the source row names which of those files changed digest.
 
 Three recorded edges show what the rows beside a label add. Truss c1d2a7's tier histogram held at

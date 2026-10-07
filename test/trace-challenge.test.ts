@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/files
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { caseRecordRow } from "./helpers/case-record-row.ts";
+import { required } from "./helpers/doubles.ts";
 import {
   collect,
   DEFAULT_MAX_CHARS,
@@ -72,7 +73,7 @@ describe("whole-run trace challenge packet", () => {
     expect(new TextEncoder().encode(selected.context).byteLength).toBeLessThanOrEqual(7);
   });
 
-  it("renders previews but excludes raw arguments, results and error messages", () => {
+  it("renders previews but excludes raw arguments, results and error messages of a solve that never submitted", () => {
     const rendered = renderTraceRecord(
       { seq: 1 },
       {
@@ -124,6 +125,57 @@ describe("whole-run trace challenge packet", () => {
     // Error and argument excerpts remain excluded from this WRI packet.
     expect(rendered.text).not.toContain("protected excerpt bytes");
     expect(rendered.text).not.toContain("protected args bytes");
+    expect(rendered.text).toContain("closingCalls=none (no submit call)");
+  });
+
+  it("shows the result preview and argument digest of the calls that recorded and submitted the answer", () => {
+    // Eight calls: two early ones, the bash that built the answer, its recording and the submit.
+    const call = (seq: number, toolName: string, isError = false) => ({
+      seq,
+      turn: 1,
+      toolName,
+      argsChars: 10,
+      argsDigest: `${String(seq).repeat(12)}ffff`,
+      resultPreview: `result ${seq}\n${"x".repeat(300)}`,
+      resultExcerpt: isError ? "error excerpt bytes" : null,
+      argsExcerpt: isError ? "error args bytes" : null,
+      isError,
+      timingMs: 5,
+    });
+    const names = ["read", "bash", "bash", "bash", "bash", "bash", "record_design", "submit"];
+    const rendered = renderTraceRecord(
+      { seq: 1 },
+      { runId: "run-1", taskId: "task-1", family: "family-1", traces: [{ path: "trace.json", sha256: "d" }] },
+      {
+        state: "recorded",
+        path: "trace.json",
+        trace: {
+          schema: "case-trace/v4",
+          backend: "pi",
+          turns: [],
+          toolCalls: names.map((name, at) => call(at + 1, name, at === 5)),
+          truncated: false,
+          droppedRawEvents: 0,
+        },
+      },
+      "pass",
+    );
+    const lines = rendered.text.split("\n");
+    expect(lines).toContain("closingCalls=3..8 (ending at the last submit)");
+    // The six closing calls carry a twelve-character digest prefix and a preview bounded at 240 bytes.
+    const submit = required(
+      lines.find((line) => line.startsWith("toolCall=8 ")),
+      "the submit line",
+    );
+    expect(submit).toContain("argsDigest=888888888888 resultPreview=result 8 xxx");
+    expect(submit).not.toContain("ffff");
+    expect(submit.length).toBeLessThan(400);
+    expect(rendered.text).toContain("argsDigest=333333333333");
+    // The earlier calls keep metadata alone, and no excerpt crosses even inside the window.
+    expect(rendered.text).not.toContain("argsDigest=111111111111");
+    expect(rendered.text).not.toContain("result 2");
+    expect(rendered.text).not.toContain("error excerpt bytes");
+    expect(rendered.text).not.toContain("error args bytes");
   });
 
   it("counts tools, sequences, families and paired changes over every recorded trace", () => {

@@ -259,22 +259,45 @@ describe("review-yield: harness-trial reader", () => {
 
   it("consumes the rehearsal when the accepted submit froze rehearsed bytes", () => {
     const root = campaign();
+    const edited = "e".repeat(64);
     epoch(root, [
       trialCall(1, "t1", candidate, "fail"),
-      trialCall(2, "t1", candidate, "pass"),
-      submitCall(3, candidate),
+      trialCall(2, "t1", edited, "pass"),
+      submitCall(3, edited),
     ]);
     const out: Yield = harnessTrial(root);
     expect(out.summary).toEqual({ iterations: 1, opportunities: 1, outputs: 1, consumed: 1, changed: 1 });
     expect(out.verdict).toBe("decision-bearing");
     expect(out.runs[0]).toMatchObject({
       runId: "epoch-aa",
-      consumer: { field: "customCalls[].semantic.candidateId", value: candidate },
+      consumer: { field: "customCalls[].semantic.candidateId", value: edited },
       note: "2 rehearsal(s); accepted submit was rehearsed",
     });
     expect(out.reasons).toEqual([
       "rehearsals 2 across 1 epoch(s), not-run 0; epochs whose accepted submit was never rehearsed: 0",
     ]);
+  });
+
+  // A change is the bytes moving after a verdict was read, whatever the verdict said.
+  it("counts an edit after a passing rehearsal, and not a failure re-rehearsed on the same bytes", () => {
+    const root = campaign();
+    const edited = "e".repeat(64);
+    epoch(root, [
+      trialCall(1, "t1", candidate, "pass"),
+      trialCall(2, "t2", edited, "pass"),
+      submitCall(3, edited),
+    ]);
+    expect(harnessTrial(root).summary.changed).toBe(1);
+    epoch(root, [trialCall(1, "t1", candidate, "pass"), submitCall(2, edited)]);
+    expect(harnessTrial(root).summary.changed).toBe(1);
+    epoch(root, [
+      trialCall(1, "t1", candidate, "fail"),
+      trialCall(2, "t1", candidate, "pass"),
+      submitCall(3, candidate),
+    ]);
+    const unchanged: Yield = harnessTrial(root);
+    expect(unchanged.summary.changed).toBe(0);
+    expect(unchanged.verdict).toBe("advisory-only");
   });
 
   it("does not consume a rehearsal of other bytes, and reads an absent record as unobservable", () => {

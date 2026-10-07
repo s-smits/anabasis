@@ -83,20 +83,11 @@ interface AdmissionFile {
 type ProjectedReview = ReturnType<typeof publicEpochReview>;
 type ProjectedFinding = ProjectedReview["findings"][number];
 
-interface TrialCall {
-  sequence: number;
+/** A rehearsal or an accepted submit, with the candidate bytes it ran on. */
+interface CandidateCall {
+  tool: "harness_trial" | "submit";
   candidateId: string | null;
   verdict: string | null;
-}
-
-interface SubmitCall {
-  sequence: number;
-  candidateId: string | null;
-}
-
-interface TrialCalls {
-  trials: TrialCall[];
-  submits: SubmitCall[];
 }
 
 /** Where a component's output was found consumed: the file, the field and what it held there. */
@@ -248,28 +239,27 @@ function admittedEpochFindings(
 }
 
 /** The harness_trial and accepted-submit rows of one execution record, in call order. */
-function trialCalls(record: BuilderExecutionEvidence): TrialCalls {
+function candidateCalls(record: BuilderExecutionEvidence): CandidateCall[] {
   const calls = Array.isArray(record.customCalls) ? record.customCalls : [];
-  const trials: TrialCall[] = [];
-  const submits: SubmitCall[] = [];
-  for (const call of calls) {
-    if (!isRecord(call)) continue;
+  return calls.flatMap((call): CandidateCall[] => {
+    if (!isRecord(call)) return [];
     const semantic = isRecord(call.semantic) ? call.semantic : undefined;
     const candidateId = isString(semantic?.candidateId) ? semantic.candidateId : null;
     if (call.tool === "harness_trial") {
-      trials.push({ sequence: call.sequence, candidateId, verdict: semantic?.truthVerdict ?? null });
-    } else if (call.tool === "submit" && semantic?.outcome === "accepted") {
-      submits.push({ sequence: call.sequence, candidateId });
+      return [{ tool: call.tool, candidateId, verdict: semantic?.truthVerdict ?? null }];
     }
-  }
-  return { trials, submits };
+    return call.tool === "submit" && semantic?.outcome === "accepted"
+      ? [{ tool: call.tool, candidateId, verdict: null }]
+      : [];
+  });
 }
 
 /**
  * One epoch's rehearsal use, over every execution record the epoch holds. The rehearsal is
- * consumed when the accepted submit's candidate was rehearsed, and it changed something when a
- * failed or not-run rehearsal was followed by another rehearsal or by a submit, since that is the
- * order in which a Builder reads a verdict and acts on it.
+ * consumed when the accepted submit's candidate was rehearsed, and it changed something when the
+ * next rehearsal or accepted submit after it carries other bytes: the Builder read a verdict and
+ * then edited, whatever the verdict said. A pass the Builder edited after counts, and a failure
+ * re-rehearsed on the same bytes does not. The order is recorded; the cause is not.
  */
 function trialRow(epochDir: string): TrialRow {
   const epoch = basename(epochDir);
@@ -280,13 +270,10 @@ function trialRow(epochDir: string): TrialRow {
   const listed = asRecord(tasks)?.tasks;
   const rows = Array.isArray(tasks) ? tasks : Array.isArray(listed) ? listed : null;
   const opportunities = rows === null ? null : rows.length;
-  const trials: TrialCall[] = [];
-  const submits: SubmitCall[] = [];
-  for (const record of read.records) {
-    const calls = trialCalls(record);
-    trials.push(...calls.trials);
-    submits.push(...calls.submits);
-  }
+  // Sessions are read in order, so the epoch's calls stay in the order the Builder made them.
+  const calls = read.records.flatMap(candidateCalls);
+  const trials = calls.filter((call) => call.tool === "harness_trial");
+  const submits = calls.filter((call) => call.tool === "submit");
   if (read.records.length === 0) {
     const note = "no execution record; rehearsal use unobservable";
     return {
@@ -305,11 +292,12 @@ function trialRow(epochDir: string): TrialRow {
   const consumedSubmit = submits.find(
     (submit) => submit.candidateId !== null && rehearsed.has(submit.candidateId),
   );
-  const acted = trials.some(
-    (trial, index) =>
-      (trial.verdict === "fail" || trial.verdict === "not-run") &&
-      (index < trials.length - 1 || submits.some((submit) => submit.sequence > trial.sequence)),
-  );
+  const acted = calls.some((call, index) => {
+    const next = calls[index + 1]?.candidateId ?? null;
+    return (
+      call.tool === "harness_trial" && call.candidateId !== null && next !== null && next !== call.candidateId
+    );
+  });
   const verdicts: Record<string, number> = {};
   for (const trial of trials) {
     verdicts[trial.verdict ?? "unrecorded"] = (verdicts[trial.verdict ?? "unrecorded"] ?? 0) + 1;

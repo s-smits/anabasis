@@ -397,6 +397,14 @@ export function judgeCensusLines({ judgeReviews }: JudgeCensusInput): string[] {
 }
 
 // --- 3b: family-wise coverage -----------------------------------------------------------------
+/** Whether every verified case of a family passed or every one failed; null when they split or none
+ *  was verified. */
+function oneWay({ passed, verified }: OutcomeTally): "all-pass" | "all-fail" | null {
+  if (verified === 0) return null;
+  if (passed === verified) return "all-pass";
+  return passed === 0 ? "all-fail" : null;
+}
+
 export function familyCoverageLines({ tallies }: TallyInput): string[] {
   const lines = ["", "## 3b family-wise coverage (case-record.jsonl, Wilson 95%)"];
   const graded = tallies.filter((tally) => tally.verified > 0);
@@ -420,41 +428,29 @@ export function familyCoverageLines({ tallies }: TallyInput): string[] {
         continue;
       }
       const familyBounds = wilsonInterval(bucket.passed, bucket.verified);
-      const flags: string[] = [];
-      if (bucket.passed === bucket.verified) flags.push("all-pass");
-      if (bucket.passed === 0) flags.push("all-fail");
-      if (
-        aggregate !== null &&
-        familyBounds !== null &&
-        tally.families.size > 1 &&
-        aggregate.lower > familyBounds.upper
-      ) {
-        flags.push("AGGREGATE HIDES FAMILY");
+      // A battery of one family has the family's own interval, so it never hides one.
+      const hides = aggregate !== null && familyBounds !== null && aggregate.lower > familyBounds.upper;
+      if (hides) {
         leads.push(
-          `${tally.runId} ${family} ${bucket.passed}/${bucket.verified} sits below the aggregate floor ${aggregate.lower.toFixed(2)}`,
+          `AGGREGATE HIDES FAMILY: ${tally.runId} ${family} ${bucket.passed}/${bucket.verified} sits below the aggregate floor ${aggregate.lower.toFixed(2)}`,
         );
       }
+      const flags = [oneWay(bucket), hides ? "AGGREGATE HIDES FAMILY" : null].filter((flag) => flag !== null);
       lines.push(
         `  ${pad(family, 24)}${pad(`${bucket.passed}/${bucket.verified}`, 8)}${pad(interval(bucket.passed, bucket.verified), 14)}${flags.join(" ")}`,
       );
     }
   }
-  for (let index = 1; index < graded.length; index += 1) {
+  for (const [index, current] of graded.entries()) {
     const previous = graded[index - 1];
-    const current = graded[index];
-    // Unreachable: both indices lie inside the array.
-    if (previous === undefined || current === undefined) continue;
+    if (previous === undefined) continue;
     for (const [family, bucket] of current.families) {
       const before = previous.families.get(family);
-      if (!before || before.verified === 0 || bucket.verified === 0) continue;
-      if (before.passed === 0 && bucket.passed === 0) {
+      if (before === undefined) continue;
+      const unmoved = oneWay(before);
+      if (unmoved !== null && unmoved === oneWay(bucket)) {
         leads.push(
-          `FAMILY UNMOVED all-fail: ${family} ${before.passed}/${before.verified} → ${bucket.passed}/${bucket.verified} (${previous.runId} → ${current.runId})`,
-        );
-      }
-      if (before.passed === before.verified && bucket.passed === bucket.verified) {
-        leads.push(
-          `FAMILY UNMOVED all-pass: ${family} ${before.passed}/${before.verified} → ${bucket.passed}/${bucket.verified} (${previous.runId} → ${current.runId})`,
+          `FAMILY UNMOVED ${unmoved}: ${family} ${before.passed}/${before.verified} → ${bucket.passed}/${bucket.verified} (${previous.runId} → ${current.runId})`,
         );
       }
     }
@@ -462,7 +458,7 @@ export function familyCoverageLines({ tallies }: TallyInput): string[] {
   if (tallies.every((tally) => tally.families.size === 1)) {
     lines.push("single family per battery: no family axis to cover, unobservable by construction");
   }
-  for (const lead of leads) lines.push(lead.startsWith("FAMILY") ? lead : `AGGREGATE HIDES FAMILY: ${lead}`);
+  lines.push(...leads);
   if (unobserved > 0) {
     lines.push(`UNOBSERVED FAMILIES: ${unobserved} battery/family rows have no capability evidence`);
   }
@@ -798,9 +794,9 @@ export function servedModelLines({ campaign, tallies, batteryOf }: ServedModelIn
     const { run } = recordedRunOrRefusal(campaign, controllerRunOfBattery(tally.runId));
     const pinned = asRecord(asRecord(run?.opening.modelSlots)?.built)?.model;
     const configured = isString(pinned) ? pinned : null;
+    // The binding's reader refuses a record without a case list, so a battery here carries one.
     const battery = batteryOf(tally.runId);
-    const cases = battery !== null && Array.isArray(battery.cases) ? battery.cases : null;
-    if (cases === null) {
+    if (battery === null) {
       lines.push(`${tally.runId}: battery record unavailable — attestation unobservable`);
       continue;
     }
@@ -808,7 +804,7 @@ export function servedModelLines({ campaign, tallies, batteryOf }: ServedModelIn
     let unattested = 0;
     let noTurn = 0;
     const served = new Map<string | null, number>();
-    for (const row of cases) {
+    for (const row of battery.cases) {
       const solver: Partial<CaseRecord["solver"]> = row?.solver ?? {};
       const identities = Array.isArray(solver.runtimeIdentities) ? solver.runtimeIdentities : [];
       if ((solver.completedTurns ?? 0) === 0 && identities.length === 0) {

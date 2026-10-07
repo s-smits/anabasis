@@ -34,6 +34,8 @@ import {
   adviceIssueId,
   type IssueDiagnosis,
   issueFacts,
+  type RebuildAdvicePacket,
+  renderRebuildAdvice,
 } from "#src/author/rebuild-advice.ts";
 import { readEpochRecord } from "#src/author/campaign-epoch.ts";
 import { ownerSide } from "#src/author/feedback-routing.ts";
@@ -57,62 +59,52 @@ export type ReadKind = "history" | "memory" | "context" | "traces";
 /** One channel a round can hand the next. */
 export interface Channel {
   name: string;
-  markers: readonly string[];
+  marker: string | null;
   read: ReadKind | null;
   alternative: string;
 }
 
 /**
- * The channels a round can hand the next. `markers` are sentences the current source renders into
- * the kickoff (grep-confirmed at the owner named beside it), and any one of them counts as served;
- * `read` names the tool evidence that counts as opening the channel, or null when no tool re-serves
- * it; `alternative` is the cheapest route a served-but-unread channel could take instead, stated as
- * a candidate for lane 17 to test.
+ * The channels a round can hand the next. `marker` is a sentence the current source renders into
+ * the kickoff (grep-confirmed at the owner named beside it), or null for the advice packet, which
+ * opens with no fixed sentence: it is served when the kickoff carries the prior battery's recorded
+ * packet as `renderRebuildAdvice` prints it. `read` names the tool evidence that counts as opening
+ * the channel, or null when no tool re-serves it; `alternative` is the cheapest route a
+ * served-but-unread channel could take instead, stated as a candidate for lane 17 to test.
  */
 export const CHANNELS: readonly Channel[] = [
   // src/run/battery-sizing.ts
   {
     name: "round-facts",
-    markers: ["Task count:"],
+    marker: "Task count:",
     read: null,
     alternative: "re-serve through an existing harness_inspect mode",
   },
   // src/run/climb-readout.ts
   {
     name: "climb-readout",
-    markers: ["Recorded batteries (controller-derived data"],
+    marker: "Recorded batteries (controller-derived data",
     read: "history",
     alternative: "the context tool's history source exists; name it where the target is chosen",
   },
   // src/author/rebuild-advice.ts
   {
     name: "rebuild-advice",
-    // One heading per section `renderRebuildAdvice` prints. A packet of only its findings has no
-    // fixed prefix, so it stays uncovered and reads as not served.
-    markers: [
-      "Standing issues",
-      "Unmeasured issues",
-      "Disputed issues",
-      "Settled Judge disagreements",
-      "Verified failures by declared check",
-      "Declared checks that blocked no shipping artifact",
-      "Declared checks no verified case posed",
-      "Judge review: ",
-    ],
+    marker: null,
     read: null,
     alternative: "return the current packet from harness_inspect feedback",
   },
   // src/author/rebuild-advice.ts
   {
     name: "diagnosis",
-    markers: ["First failure boundary "],
+    marker: "First failure boundary ",
     read: null,
     alternative: "ride the advice packet's inspect route",
   },
   // src/review/epoch-review-public.ts
   {
     name: "epoch-review",
-    markers: ["Epoch review ("],
+    marker: "Epoch review (",
     read: null,
     alternative: "return the latest public projection from harness_inspect feedback",
   },
@@ -120,7 +112,7 @@ export const CHANNELS: readonly Channel[] = [
   // round opening in a workspace the conversation has not worked in, resumed sessions included
   {
     name: "memory",
-    markers: ["Historical notes, model-authored"],
+    marker: "Historical notes, model-authored",
     read: "memory",
     alternative:
       "restate on a round that stays in the same workspace, the one round that receives no memory block",
@@ -128,14 +120,14 @@ export const CHANNELS: readonly Channel[] = [
   // src/builder/user-context.ts
   {
     name: "context",
-    markers: ["User context:"],
+    marker: "User context:",
     read: "context",
     alternative: "none when no files were supplied",
   },
   // src/run/climb-readout.ts
   {
     name: "traces",
-    markers: ["history source holds every row"],
+    marker: "history source holds every row",
     read: "traces",
     alternative: "name the context tool's traces source where the next limit is set",
   },
@@ -242,10 +234,6 @@ interface Round {
   prompts: string[];
   battery: string | null;
   prior: ClaimedBattery[];
-}
-
-interface AdvicePacket {
-  issues?: AdviceIssue[];
 }
 
 interface DiagnosesFile {
@@ -506,6 +494,10 @@ function analysis<T>(campaign: string, battery: string, kind: string): T | null 
   return readJsonAsOrNull<T | null>(join(campaign, "analysis", `${battery}-${kind}.json`));
 }
 
+/** The advice packet a battery recorded, or null for no battery or no packet. */
+const adviceOf = (campaign: string, battery: string | null): RebuildAdvicePacket | null =>
+  battery === null ? null : recordOf(analysis<RebuildAdvicePacket>(campaign, battery, "rebuild-advice"));
+
 /** Authoring-time reviews, timed by the UUIDv7 in their file name; battery reviews record no time. */
 function authoringReviewTimes(campaign: string): number[] {
   const dir = join(campaign, "analysis");
@@ -633,14 +625,13 @@ function readCount(round: Round, read: ReadKind | null, before = Infinity): numb
 
 function presentOf(campaign: string, round: Round, name: string): boolean {
   const last = round.prior.at(-1)?.runId ?? null;
-  const advice = last === null ? null : analysis<AdvicePacket>(campaign, last, "rebuild-advice");
   const diagnoses = last === null ? null : analysis<DiagnosesFile>(campaign, last, "diagnoses");
   switch (name) {
     case "round-facts":
     case "context":
       return true;
     case "rebuild-advice":
-      return records(recordOf(advice)?.issues).length > 0;
+      return records(adviceOf(campaign, last)?.issues).length > 0;
     case "diagnosis":
       return recordCount(recordOf(diagnoses)?.diagnoses) > 0;
     case "epoch-review":
@@ -677,8 +668,11 @@ function carriedDispositionsOf(campaign: string, round: Round): string[] {
 function census(campaign: string, rounds: readonly Round[]): CensusRow[] {
   return rounds.map((round) => {
     const text = round.prompts.join("\n");
+    const packet = adviceOf(campaign, round.prior.at(-1)?.runId ?? null);
+    const advice = packet === null ? "" : renderRebuildAdvice(packet);
     const channels = CHANNELS.map((channel) => {
-      let served = channel.markers.some((marker) => text.includes(marker));
+      let served =
+        channel.marker === null ? advice !== "" && text.includes(advice) : text.includes(channel.marker);
       if (channel.name === "traces") served ||= calls(round, TRIAL).length > 0;
       const read = readCount(round, channel.read);
       return {
@@ -754,17 +748,6 @@ function calibration(rounds: readonly Round[], rows: ReadonlyMap<string, Decisio
   };
 }
 
-/** The register's facts about a recorded issue. A packet recorded before a field existed leaves it
- *  out, and each absent one reads as the empty value the register writes. */
-function recordedFacts(issue: AdviceIssue): string {
-  return issueFacts({
-    ...issue,
-    dispute: issue.dispute ?? null,
-    unmeasured: issue.unmeasured ?? [],
-    rulesChangedRechecks: issue.rulesChangedRechecks ?? 0,
-  });
-}
-
 /** A diagnosis names a bundle file or `solver` (`DIAGNOSIS_OWNERS`), and a file's own prefix is the
  *  side its repair reopens, so `correctness-model/brief.json` is the evaluation's. */
 function diagnosisOf(value: IssueDiagnosis | null | undefined): DiagnosisReading | null {
@@ -807,8 +790,7 @@ function triage(
   reviewTimes: readonly number[],
 ): Triage {
   const families = batteries.flatMap((battery, index) => {
-    const packet = recordOf(analysis<AdvicePacket>(campaign, battery.runId, "rebuild-advice"));
-    const issues = records(packet?.issues).filter(
+    const issues = records(adviceOf(campaign, battery.runId)?.issues).filter(
       (issue) => issue.lastSeenRunId === battery.runId && issue.count > 0 && issue.retired !== true,
     );
     const next = batteries[index + 1] ?? null;
@@ -816,8 +798,7 @@ function triage(
       const review = reviewOf(campaign, battery.runId, issue.id);
       const operation = next === null ? null : (rows.get(next.runId)?.operation ?? null);
       const diagnosis = diagnosisOf(issue.diagnosis);
-      const disputeRecorded = issue.dispute !== null && issue.dispute !== undefined;
-      const disputed = disputeRecorded || review?.disputedThisIssue === true;
+      const disputed = issue.dispute !== null || review?.disputedThisIssue === true;
       const undiagnosed = issue.kind === "non-result" ? "environment" : "none";
       const side: TriagedSide = disputed ? "evaluation" : (diagnosis?.side ?? undiagnosed);
       const wanted = side === "harness" || side === "evaluation" ? REPAIR_OPERATION[side] : null;
@@ -828,10 +809,10 @@ function triage(
         detail: issue.detail ?? null,
         count: issue.count,
         denominator: issue.denominator ?? null,
-        status: recordedFacts(issue),
+        status: issueFacts(issue),
         diagnosis,
         review,
-        adviceWithheld: disputeRecorded,
+        adviceWithheld: issue.dispute !== null,
         triagedSide: side,
         successor: next?.runId ?? null,
         successorOperation: operation,
@@ -951,9 +932,7 @@ function joinFamilies(before: readonly TaskInput[], after: readonly TaskInput[])
  *  transitions each join carried. */
 function sameTask(campaign: string, batteries: readonly ClaimedBattery[]): SameTask {
   const inputs = new Map(batteries.map((b) => [b.runId, tasksOf(campaign, b.runId)]));
-  const packets = new Map(
-    batteries.map((b) => [b.runId, recordOf(analysis<AdvicePacket>(campaign, b.runId, "rebuild-advice"))]),
-  );
+  const packets = new Map(batteries.map((b) => [b.runId, adviceOf(campaign, b.runId)]));
   const pairs = batteries.slice(1).flatMap((after, index): BatteryPair[] => {
     const before = batteries[index];
     // The pair's earlier battery always exists: `after` is the one at index + 1.
@@ -969,7 +948,7 @@ function sameTask(campaign: string, batteries: readonly ClaimedBattery[]): SameT
       .flatMap((issue) => {
         const earlier = prior.get(issue.id);
         if (earlier === undefined) return [];
-        const [from, to] = [recordedFacts(earlier), recordedFacts(issue)];
+        const [from, to] = [issueFacts(earlier), issueFacts(issue)];
         const familyJoin = families.find((f) => f.family === issue.family)?.join ?? null;
         return [
           {

@@ -31,29 +31,27 @@ const write = (path: string, value: JsonValue) => writeText(path, JSON.stringify
 
 const jsonl = (rows: unknown[]) => `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`;
 
-function issue(family: string, dispute: string | null) {
-  return {
+const issue = (family: string, dispute: string | null) =>
+  adviceIssue({
     id: adviceIssueId("verified-fail", family, null),
-    kind: "verified-fail",
     family,
-    detail: null,
-    count: 2,
     denominator: 3,
     firstSeenRunId: RUN,
     lastSeenRunId: RUN,
-    absentBatteries: 0,
-    returned: false,
-    retired: false,
-    diagnosis: null,
     dispute,
-  };
-}
+  });
+
+const disputed = issue("alpha", "the check reads an unpublished rule");
 
 const input = (budget: number, genes = ["cds"]): JsonObject => ({ genes, budget });
 
 /** Two rounds and two batteries. Round 2's battery measures round 1's `alpha` inputs again under
- *  the family name `beta`, so the packet retires `alpha` on a comparison of names alone. */
-function campaign(options: { toolCalls?: boolean; advice?: string; reviewed?: boolean } = {}): string {
+ *  the family name `beta`, so the packet retires `alpha` on a comparison of names alone. Round 2's
+ *  kickoff carries the first battery's packet as rendered, unless `advice` replaces it. */
+function campaign(
+  options: { toolCalls?: boolean; advice?: string; packet?: RebuildAdvicePacket; reviewed?: boolean } = {},
+): string {
+  const packet = options.packet ?? advicePacket([disputed]);
   // Trace roots must match their realpath, and the host temp directory may sit behind a link.
   const root = realpathSync(scratchDir("wri-handoffs-"));
   const dir = join(root, "campaigns", "handoffs");
@@ -68,7 +66,7 @@ function campaign(options: { toolCalls?: boolean; advice?: string; reviewed?: bo
       `Work in ${dir}/${epochs[1].key}/workspace`,
       "Task count: 3",
       "Recorded batteries (controller-derived data, oldest first):",
-      options.advice ?? "Standing issues, largest first.",
+      options.advice ?? renderRebuildAdvice(packet),
     ].join("\n"),
   ];
   writeText(
@@ -170,15 +168,11 @@ function campaign(options: { toolCalls?: boolean; advice?: string; reviewed?: bo
       ],
     },
   });
-  const disputed = issue("alpha", "the check reads an unpublished rule");
-  write(join(dir, "analysis", `${RUN}-rebuild-advice.json`), {
-    schema: "rebuild-advice/v4",
-    issues: [disputed],
-  });
-  write(join(dir, "analysis", `${SECOND}-rebuild-advice.json`), {
-    schema: "rebuild-advice/v4",
-    issues: [{ ...disputed, retired: true, dispute: null }],
-  });
+  write(join(dir, "analysis", `${RUN}-rebuild-advice.json`), packet);
+  write(
+    join(dir, "analysis", `${SECOND}-rebuild-advice.json`),
+    advicePacket([{ ...disputed, retired: true, dispute: null }]),
+  );
   write(join(dir, "analysis", `${RUN}-epoch-review.json`), {
     status: "completed",
     findings: [{}],
@@ -357,49 +351,32 @@ describe("round hand-offs", () => {
   });
 });
 
-describe("the advice channel's served marker", () => {
-  const adviceCell = (advice: string) => {
-    const report = buildHandoffs({ campaign: campaign({ advice }), runId: RUN });
+describe("the advice channel's served cell", () => {
+  const adviceCell = (options: { advice?: string; packet?: RebuildAdvicePacket }) => {
+    const report = buildHandoffs({ campaign: campaign(options), runId: RUN });
     return required(
       required(report.census, "census")[1]?.channels.find((c) => c.name === "rebuild-advice"),
       "advice cell",
     );
   };
 
-  it("reads an all-unmeasured packet as served, though it prints no standing line", () => {
-    const advice = renderRebuildAdvice(advicePacket([adviceIssue({ unmeasured: ["task-inputs"] })]));
-    expect(advice).toContain("Unmeasured issues");
-    expect(advice).not.toContain("Standing issues");
-    expect(adviceCell(advice)).toMatchObject({ served: true });
-  });
-
-  const sections: [string, RebuildAdvicePacket][] = [
-    ["standing issues", advicePacket([adviceIssue()])],
-    ["disputed issues", advicePacket([adviceIssue({ dispute: "the check reads an unpublished rule" })])],
-    ["settled Judge disagreements", advicePacket([adviceIssue({ judgeSettled: true })])],
-    [
-      "failures by declared check",
-      { ...advicePacket([]), blockingByCheck: { "mass-check": 2 }, applicableByCheck: { "mass-check": 5 } },
-    ],
-    [
-      "checks that blocked nothing",
-      { ...advicePacket([]), blockingByCheck: { "mass-check": 0 }, applicableByCheck: { "mass-check": 5 } },
-    ],
-    [
-      "checks no case posed",
-      { ...advicePacket([]), blockingByCheck: { "mass-check": 0 }, applicableByCheck: { "mass-check": 0 } },
-    ],
-    [
-      "the Judge review",
-      {
-        ...advicePacket([]),
-        judge: { exit: "advisory", reason: "the Judge and the verifier disagreed", contestedFamilies: [] },
-      },
-    ],
+  // Neither packet opens with a section heading: the first prints only the rules-changed line, the
+  // second only its findings.
+  const packets: [string, RebuildAdvicePacket][] = [
+    ["rechecked issues", advicePacket([adviceIssue({ absentBatteries: 1, rulesChangedRechecks: 1 })])],
+    ["findings", { ...advicePacket([]), findings: [{ owner: null, claim: "no task reaches the limit" }] }],
   ];
-  it.each(sections)("reads a packet that prints only %s as served", (_section, packet) => {
-    const advice = renderRebuildAdvice(packet);
-    expect(advice).not.toBe("");
-    expect(adviceCell(advice)).toMatchObject({ served: true });
+  it.each(packets)(
+    "reads a packet of only %s as served where the kickoff carries its render",
+    (_, packet) => {
+      expect(adviceCell({ packet })).toMatchObject({ served: true });
+    },
+  );
+
+  it("reads a kickoff that carries no packet as not served, though one is present", () => {
+    expect(adviceCell({ advice: "Standing issues, largest first." })).toMatchObject({
+      present: true,
+      served: false,
+    });
   });
 });

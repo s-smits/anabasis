@@ -1,11 +1,12 @@
 // Review-component yield: did each advisory component's output reach something the controller
-// recorded? Three components exist. The Epoch Reviewer gets one row per measured iteration,
+// recorded? Four components exist. The Epoch Reviewer gets one row per measured iteration,
 // joining its public findings into the recorded admission and rebuild advice (read first by lanes
-// 12 and 14). The diagnosis reader gets one row per measured iteration too, joining each recorded
-// reading into the advice issue it was offered for (read first by lane 25). The Builder's own
-// rehearsal instrument, `harness_trial`, gets one row per epoch, joining each rehearsal to the
-// candidate the accepted submit froze (read first by lane 11). Campaign JSON only; nothing
-// executes.
+// 12 and 14), and the same reviewer run in the round, beside the Builder, gets one row per review,
+// joining what it showed to the Builder session it ran beside (read first by the same lanes). The
+// diagnosis reader gets one row per measured iteration too, joining each recorded reading into the
+// advice issue it was offered for (read first by lane 25). The Builder's own rehearsal instrument,
+// `harness_trial`, gets one row per epoch, joining each rehearsal to the candidate the accepted
+// submit froze (read first by lane 11). Campaign JSON only; nothing executes.
 //
 // Current schemas only. Matching an owner alone proves no use, and retention in advice is not
 // repair benefit, which needs later Builder and measurement evidence. An iteration whose
@@ -26,10 +27,12 @@ import {
 } from "#src/author/builder-execution.ts";
 import { readExecutionEvidenceDetails } from "#tools/outcome/builder-execution-facts.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
-import { asRecord, isRecord, isString } from "#src/meta/json-shape.ts";
+import { asRecord, isNumber, isRecord, isString } from "#src/meta/json-shape.ts";
 import type { JsonValue } from "#src/meta/json-shape.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { DIAGNOSIS_READING_SCHEMA } from "#src/review/diagnosis-reader.ts";
+import { authoringReviewText } from "#src/run/harness-build.ts";
+import { uuidV7Ms } from "../classifier/run-narrative.ts";
 import { readJsonAsOrNull } from "./run-overview.ts";
 
 /** One rebuild-advice issue, as far as this reader looks into it. */
@@ -83,20 +86,11 @@ interface AdmissionFile {
 type ProjectedReview = ReturnType<typeof publicEpochReview>;
 type ProjectedFinding = ProjectedReview["findings"][number];
 
-interface TrialCall {
-  sequence: number;
+/** A rehearsal or an accepted submit, with the candidate bytes it ran on. */
+interface CandidateCall {
+  tool: "harness_trial" | "submit";
   candidateId: string | null;
   verdict: string | null;
-}
-
-interface SubmitCall {
-  sequence: number;
-  candidateId: string | null;
-}
-
-interface TrialCalls {
-  trials: TrialCall[];
-  submits: SubmitCall[];
 }
 
 /** Where a component's output was found consumed: the file, the field and what it held there. */
@@ -153,6 +147,21 @@ export interface EpochRow extends YieldRow {
   conditionDigest: string;
   opportunity: boolean;
   output: { findings: number; kinds: Record<string, number>; disputes: number; opened: JsonValue } | null;
+}
+
+/** An in-round authoring review, joined to the Builder session it ran beside. */
+export interface AuthoringRow extends YieldRow {
+  status: EpochReviewEvidence["status"];
+  opportunity: boolean;
+  output: { findings: number; shown: number; blocking: number; disputes: number } | null;
+}
+
+/** One Builder session's wall-clock window and the advice each in-round review handed it. */
+interface BuilderSession {
+  where: string;
+  start: number;
+  end: number;
+  advice: (number | null)[];
 }
 
 /** A component's counts over its rows. */
@@ -248,28 +257,27 @@ function admittedEpochFindings(
 }
 
 /** The harness_trial and accepted-submit rows of one execution record, in call order. */
-function trialCalls(record: BuilderExecutionEvidence): TrialCalls {
+function candidateCalls(record: BuilderExecutionEvidence): CandidateCall[] {
   const calls = Array.isArray(record.customCalls) ? record.customCalls : [];
-  const trials: TrialCall[] = [];
-  const submits: SubmitCall[] = [];
-  for (const call of calls) {
-    if (!isRecord(call)) continue;
+  return calls.flatMap((call): CandidateCall[] => {
+    if (!isRecord(call)) return [];
     const semantic = isRecord(call.semantic) ? call.semantic : undefined;
     const candidateId = isString(semantic?.candidateId) ? semantic.candidateId : null;
     if (call.tool === "harness_trial") {
-      trials.push({ sequence: call.sequence, candidateId, verdict: semantic?.truthVerdict ?? null });
-    } else if (call.tool === "submit" && semantic?.outcome === "accepted") {
-      submits.push({ sequence: call.sequence, candidateId });
+      return [{ tool: call.tool, candidateId, verdict: semantic?.truthVerdict ?? null }];
     }
-  }
-  return { trials, submits };
+    return call.tool === "submit" && semantic?.outcome === "accepted"
+      ? [{ tool: call.tool, candidateId, verdict: null }]
+      : [];
+  });
 }
 
 /**
  * One epoch's rehearsal use, over every execution record the epoch holds. The rehearsal is
- * consumed when the accepted submit's candidate was rehearsed, and it changed something when a
- * failed or not-run rehearsal was followed by another rehearsal or by a submit, since that is the
- * order in which a Builder reads a verdict and acts on it.
+ * consumed when the accepted submit's candidate was rehearsed, and it changed something when the
+ * next rehearsal or accepted submit after it carries other bytes: the Builder read a verdict and
+ * then edited, whatever the verdict said. A pass the Builder edited after counts, and a failure
+ * re-rehearsed on the same bytes does not. The order is recorded; the cause is not.
  */
 function trialRow(epochDir: string): TrialRow {
   const epoch = basename(epochDir);
@@ -280,13 +288,10 @@ function trialRow(epochDir: string): TrialRow {
   const listed = asRecord(tasks)?.tasks;
   const rows = Array.isArray(tasks) ? tasks : Array.isArray(listed) ? listed : null;
   const opportunities = rows === null ? null : rows.length;
-  const trials: TrialCall[] = [];
-  const submits: SubmitCall[] = [];
-  for (const record of read.records) {
-    const calls = trialCalls(record);
-    trials.push(...calls.trials);
-    submits.push(...calls.submits);
-  }
+  // Sessions are read in order, so the epoch's calls stay in the order the Builder made them.
+  const calls = read.records.flatMap(candidateCalls);
+  const trials = calls.filter((call) => call.tool === "harness_trial");
+  const submits = calls.filter((call) => call.tool === "submit");
   if (read.records.length === 0) {
     const note = "no execution record; rehearsal use unobservable";
     return {
@@ -305,11 +310,12 @@ function trialRow(epochDir: string): TrialRow {
   const consumedSubmit = submits.find(
     (submit) => submit.candidateId !== null && rehearsed.has(submit.candidateId),
   );
-  const acted = trials.some(
-    (trial, index) =>
-      (trial.verdict === "fail" || trial.verdict === "not-run") &&
-      (index < trials.length - 1 || submits.some((submit) => submit.sequence > trial.sequence)),
-  );
+  const acted = calls.some((call, index) => {
+    const next = calls[index + 1]?.candidateId ?? null;
+    return (
+      call.tool === "harness_trial" && call.candidateId !== null && next !== null && next !== call.candidateId
+    );
+  });
   const verdicts: Record<string, number> = {};
   for (const trial of trials) {
     verdicts[trial.verdict ?? "unrecorded"] = (verdicts[trial.verdict ?? "unrecorded"] ?? 0) + 1;
@@ -508,6 +514,102 @@ function epochRow(campaignDir: string, runId: string): EpochRow | EpochGap {
   };
 }
 
+/** Every Builder session the campaign recorded, on the wall clock, with the advice each in-round
+ *  review handed it in the order the session recorded them. */
+function builderSessions(campaignDir: string): BuilderSession[] {
+  return campaignEpochs(campaignDir).flatMap((epoch) => {
+    const read = readExecutionEvidenceDetails(join(campaignDir, epoch));
+    if (read.unavailable.length > 0) throw new Error(`${epoch}: ${read.unavailable.join("; ")}`);
+    return read.records.flatMap((record, index) => {
+      if (!isString(record.writtenAt) || !isNumber(record.durationMs)) return [];
+      const end = Date.parse(record.writtenAt);
+      return [
+        {
+          where: `${epoch} session ${read.sessions[index] ?? index + 1}`,
+          start: end - record.durationMs,
+          end,
+          advice: record.authoringReviews.map((row) => row.adviceChars),
+        },
+      ];
+    });
+  });
+}
+
+/**
+ * The in-round reviews: the Epoch Reviewer run beside an authoring session, recorded as
+ * `analysis/authoring-<uuidv7>-epoch-review.json` with no condition, whose public findings return to
+ * the Builder inside a tool result rather than through admission. A review is placed in the session
+ * whose window holds the moment its id was minted, and the session's recorded reviews are taken in
+ * order, one per review, so a review that settled after its session closed reads as undelivered.
+ * Only what `authoringReviewText` lets cross counts as shown: a blocking finding, or an advisory one
+ * carrying a probe or a demand gap.
+ */
+function authoringRows(campaignDir: string): AuthoringRow[] {
+  const dir = join(campaignDir, "analysis");
+  const ids = existsSync(dir)
+    ? readdirSync(dir)
+        .flatMap((name) => /^(authoring-[0-9a-f-]{36})-epoch-review\.json$/.exec(name)?.[1] ?? [])
+        .sort()
+    : [];
+  if (ids.length === 0) return [];
+  const sessions = builderSessions(campaignDir);
+  const taken = new Map<BuilderSession, number>();
+  return ids.map((runId): AuthoringRow => {
+    const review = readAnalysis<EpochReviewFile>(campaignDir, runId, "epoch-review");
+    const { findings, disputes, status } = review ?? {};
+    if (
+      review?.schema !== EPOCH_REVIEW_SCHEMA ||
+      !Array.isArray(findings) ||
+      !Array.isArray(disputes) ||
+      status === undefined
+    ) {
+      throw new Error(`${runId}: epoch review is not valid ${EPOCH_REVIEW_SCHEMA}`);
+    }
+    const projected = publicEpochReview({ findings, disputes, status });
+    const { text, blocking } = authoringReviewText("backstop", status, "", projected.findings);
+    const shown = text.split("\n").filter((line) => /^- \[(?:advisory|blocking)\] /.test(line)).length;
+    const at = uuidV7Ms(runId.slice("authoring-".length));
+    const session = sessions.find((row) => at >= row.start && at <= row.end);
+    const order = session === undefined ? 0 : (taken.get(session) ?? 0);
+    if (session !== undefined) taken.set(session, order + 1);
+    const chars = session?.advice[order] ?? null;
+    const output =
+      projected.findings.length + projected.disputes.length > 0
+        ? { findings: projected.findings.length, shown, blocking, disputes: projected.disputes.length }
+        : null;
+    const delivery =
+      session === undefined
+        ? "no Builder session recorded around it"
+        : `${chars === null ? "no delivery recorded" : `${chars} chars delivered`} in ${session.where}`;
+    return {
+      runId,
+      status,
+      opportunity: status !== "skipped",
+      output,
+      consumer:
+        chars !== null && shown > 0 && session !== undefined
+          ? {
+              path: BUILDER_EXECUTION_EVIDENCE_FILE,
+              field: "authoringReviews[].adviceChars",
+              value: { session: session.where, adviceChars: chars, shown, blocking },
+            }
+          : null,
+      changed: status === "skipped" ? false : null,
+      unknown: output !== null && session === undefined,
+      note: `${shown} of ${projected.findings.length} finding(s) shown to the Builder, ${blocking} blocking; ${delivery}; repair benefit unmeasured`,
+    };
+  });
+}
+
+function authoringReasons(rows: readonly AuthoringRow[]): string[] {
+  if (rows.length === 0) return [];
+  const sum = (field: "findings" | "shown" | "blocking"): number =>
+    rows.reduce((total, row) => total + (row.output?.[field] ?? 0), 0);
+  return [
+    `in-round reviews ${rows.length}: findings ${sum("findings")}, shown to the Builder ${sum("shown")}, blocking ${sum("blocking")}; delivered with a shown finding ${count(rows, (row) => row.consumer !== null)}`,
+  ];
+}
+
 function diagnosisReasons(rows: readonly (DiagnosisRow | DiagnosisGap)[]): string[] {
   const current = rows.filter((row): row is DiagnosisRow => row.opportunity === true);
   if (current.length === 0) return [];
@@ -592,6 +694,7 @@ export const epochReviewer = collect(
   (campaignDir) => iterationRunIds(campaignDir).map((runId) => epochRow(campaignDir, runId)),
   epochReasons,
 );
+export const authoringReviewer = collect(authoringRows, authoringReasons);
 export const diagnosisReader = collect(
   (campaignDir) => iterationRunIds(campaignDir).map((runId) => diagnosisRow(campaignDir, runId)),
   diagnosisReasons,
@@ -603,6 +706,7 @@ export const harnessTrial = collect(
 
 const COMPONENTS: readonly (readonly [string, ComponentRead, string])[] = [
   ["epoch-reviewer", epochReviewer, "lanes 12 and 14"],
+  ["authoring-reviewer", authoringReviewer, "lanes 12 and 14"],
   ["diagnosis-reader", diagnosisReader, "lane 25"],
   ["harness-trial", harnessTrial, "lane 11"],
 ];

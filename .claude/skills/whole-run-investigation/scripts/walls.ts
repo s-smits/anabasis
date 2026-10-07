@@ -17,6 +17,11 @@
 // A product whose agent/config.yaml the current schema refuses — every one recorded before the
 // 2026-10-07 consolidation — has its walls reported as unread rather than guessed.
 //
+// The shell's per-command timeout is the other declared wall, and the one a solve meets most. Its cut
+// ends one command rather than the solve, so no case field records it: Pi's own line, "Command timed
+// out after N seconds", is read from the bash error rows of the case's verified trace. A battery with
+// a cut command no longer reads as one no wall reached.
+//
 // A case that reached no wall is reported by what the record says it did — the solve was accepted
 // as a submission, or it ended without one. Reading both as one cut-solve label describes a case
 // that simply finished as truncated. A case that passed on a wall is `submitted-at-wall`: the wall
@@ -24,7 +29,7 @@
 // Lane 22 reads this table.
 import { existsSync } from "#src/meta/filesystem.ts";
 import { basename, dirname, join } from "#src/meta/path.ts";
-import { campaignTraceRoots } from "#src/claim/trace-read.ts";
+import { campaignTraceRoots, readVerifiedTraceUnder } from "#src/claim/trace-read.ts";
 import { measuredProductId, productVersionDir } from "#src/run/product-versions.ts";
 import {
   CASE_RECORD_FILE,
@@ -47,6 +52,9 @@ import { readJsonAs } from "./run-overview.ts";
 export const WALLS_SCHEMA = "wri-solve-walls/v2";
 /** Below this, with no completed turn, the case spent no budget: the host stopped before the solve. */
 export const UNSTARTED_MS = 30_000;
+/** Pi's line for a command its timer killed (`vendor/pi-coding-agent/core/tools/bash.ts`), which a
+ *  trace keeps in the result excerpt of the failed call. */
+const SHELL_CUT = /Command timed out after \d+ seconds/;
 /** The bounds that say a declared wall was reached, whatever the verdict. */
 export const WALL_BOUNDS: ReadonlySet<string> = new Set(["time-bound", "submitted-at-wall"]);
 
@@ -174,7 +182,26 @@ function boundOf({ elapsedMs, timeShare, turns, acceptedSubmit, passed }: BoundI
   return acceptedSubmit ? "submitted" : "no-submit";
 }
 
-function caseOf(row: CaseRecordRow, solver: SolverFacts, settings: HarnessSettings | null) {
+/** The bash calls the shell's timeout cut in this case's solve, or null when the case has no trace
+ *  this reader can verify. */
+function shellCutsOf(row: CaseRecordRow, campaign: string, roots: readonly string[]): number | null {
+  const read = readVerifiedTraceUnder(row, campaign, roots);
+  if (read.trace === null) return null;
+  return read.trace.toolCalls.filter(
+    (call) =>
+      call.toolName === "bash" &&
+      call.isError === true &&
+      isString(call.resultExcerpt) &&
+      SHELL_CUT.test(call.resultExcerpt),
+  ).length;
+}
+
+function caseOf(
+  row: CaseRecordRow,
+  solver: SolverFacts,
+  settings: HarnessSettings | null,
+  shellCuts: number | null,
+) {
   const started = isString(row.solverStartedAt) ? Date.parse(row.solverStartedAt) : null;
   const ended = isString(row.solverEndedAt) ? Date.parse(row.solverEndedAt) : null;
   const elapsedMs = started === null || ended === null ? null : ended - started;
@@ -198,6 +225,7 @@ function caseOf(row: CaseRecordRow, solver: SolverFacts, settings: HarnessSettin
     timeShare,
     turns: solver.turns,
     toolCalls: solver.toolCalls,
+    shellCuts,
     errors: solver.errors,
   };
 }
@@ -209,7 +237,10 @@ function batteryOf(
   rows: readonly CaseRecordRow[],
 ) {
   const walls = wallsOf(campaign, runId);
-  const cases = rows.map((row) => caseOf(row, solverOf(roots, runId, row.taskId), walls.settings));
+  const cases = rows.map((row) =>
+    caseOf(row, solverOf(roots, runId, row.taskId), walls.settings, shellCutsOf(row, campaign, roots)),
+  );
+  const cut = cases.filter((row) => (row.shellCuts ?? 0) > 0);
   const times = cases.flatMap((row) => (row.timeShare === null ? [] : [row.timeShare]));
   const calls = cases.flatMap((row) => (isNumber(row.toolCalls) ? [row.toolCalls] : []));
   const bounds: Partial<Record<WallBound, number>> = {};
@@ -226,6 +257,12 @@ function batteryOf(
     // Tool calls, not turns: the calls are the work the turns carried.
     toolCalls: { median: median(calls), max: calls.length === 0 ? null : Math.max(...calls) },
     atWall: cases.filter((row) => WALL_BOUNDS.has(row.bound)),
+    shellCut: cut,
+    shellCuts: {
+      calls: cut.reduce((sum, row) => sum + (row.shellCuts ?? 0), 0),
+      cases: cut.length,
+      unread: cases.filter((row) => row.shellCuts === null).length,
+    },
     // `submitted-at-wall` already names the pass, so the truncating bound is the whole set.
     boundedWithoutPass: cases.flatMap((row) => (row.bound === "time-bound" ? [row.taskId] : [])),
     rows: cases,
@@ -279,8 +316,20 @@ function batteryLines(battery: WallBattery): string[] {
       `      at a wall: ${row.taskId} ${row.bound}, ${row.elapsedMinutes} min (${pct(row.timeShare)}), ${row.turns} turn(s), ${row.toolCalls ?? "n/a"} tool calls, ${row.outcome}, ${recorded}`,
     );
   }
-  if (battery.atWall.length === 0) {
-    lines.push("      no case reached a declared wall: this battery's outcomes are not explained by room");
+  for (const row of battery.shellCut) {
+    lines.push(`      shell wall cut: ${row.taskId} ${row.shellCuts} command(s), ${row.outcome}`);
+  }
+  const { calls, cases, unread } = battery.shellCuts;
+  const untraced =
+    unread === 0 ? "" : `, though ${unread} case(s) have no readable trace to show a shell cut`;
+  if (battery.atWall.length === 0 && calls > 0) {
+    lines.push(
+      `      no case reached its solve wall, but the shell wall cut ${calls} command(s) in ${cases} case(s): room per command is not ruled out`,
+    );
+  } else if (battery.atWall.length === 0) {
+    lines.push(
+      `      no case reached a declared wall: this battery's outcomes are not explained by room${untraced}`,
+    );
   } else if (battery.boundedWithoutPass.length === 0) {
     lines.push("      every case at a wall still passed: the wall cost this battery no verdict");
   } else {

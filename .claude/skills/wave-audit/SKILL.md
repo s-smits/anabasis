@@ -242,10 +242,14 @@ shown a fix.
 `wri.ts yield <campaign>` reports Epoch Reviewer findings and their routes;
 `analysis/<runId>-rebuild-advice.json` reports issue states. Count snapshot occurrences separately
 from unique issues and give the join key. Better is findings that name a real owner and change a
-later round, more `absentBatteries` in complete rechecks, and fewer `returned`. `retired` and
-`unmeasured` prove no fix. If Judge coverage is included, state the subject identity and
-deduplication rule, and reconcile offered, verdict and abstention counts before comparing rates. A
-schema refusal is unavailable evidence, not zero findings.
+later round, more `absentBatteries` in complete rechecks, and fewer `returned`. Report the
+`rulesChangedRechecks` inside `absentBatteries` apart: a recheck under changed public rules answers
+whether the repair held under the new rules, not whether the issue persists under the old, so it is
+a weaker count of fixes than one under the same rules. `returned` and `firstSeenRunId` hold only
+across the same task inputs, so a drop in `returned` after the tasks changed counts no fewer
+recurrences. `retired` and `unmeasured` prove no fix. If Judge coverage is included, state the
+subject identity and deduplication rule, and reconcile offered, verdict and abstention counts before
+comparing rates. A schema refusal is unavailable evidence, not zero findings.
 
 ### 5f. Case outcomes and terminal
 

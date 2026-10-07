@@ -134,4 +134,6 @@ lanes owns the question today. The `--consumer-hardware` flag is retired too: th
 `HARDWARE TARGET NAMED` trigger fires from the recorded request and brief and starts lanes 29 and 30.
 The hand composition of native lanes (`build-manifest.ts --transport native` per run, then
 `compose-native-pairs.py`) and the JSON template-and-values form of the shared instructions were
-replaced by `wri.ts start` and `wri.ts lanes` and the Markdown preset.
+replaced by `wri.ts start` and `wri.ts lanes` and the Markdown preset. `wri.ts review` went with
+them, `wri.ts collect` now validates reports rather than running the snapshot lanes, and the
+catalogue print once called `wri.ts lanes` is `wri.ts readers`.

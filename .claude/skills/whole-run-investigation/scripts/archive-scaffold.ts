@@ -291,7 +291,7 @@ function loadInputs(reviewDir: string) {
   if (review === null) throw new Error(`no ${REVIEW_STATE_FILE} under ${reviewDir}`);
   const snapshotDir = join(reviewDir, "snapshot");
   const status = readJson<SnapshotStatus>(join(snapshotDir, SNAPSHOT_STATUS_FILE));
-  if (status === null) throw new Error(`${SNAPSHOT_STATUS_FILE} is missing; run collect first`);
+  if (status === null) throw new Error(`${SNAPSHOT_STATUS_FILE} is missing; run wri.ts start first`);
   const controllerDir = dirname(status.opening.path);
   const lanesDir = join(reviewDir, "lanes");
   const outputDir = join(lanesDir, "luna-output");

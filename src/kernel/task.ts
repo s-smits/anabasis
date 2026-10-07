@@ -3,13 +3,19 @@
  *
  * The statement, the inputs, the rule ids and the family are what the solver reads. The check is a
  * program it never sees, with hidden values only the check's own runs receive. The reject controls
- * come last: three one-fact edits of the answer gate 2 accepted, each of which the check must fail.
+ * come last: three one-fact edits of the answer gate 2 accepted, each naming the check it must fail.
  *
  * Gate 1 checks the package's shape, gate 2 is a pass by the stronger condition, gate 3 reruns the
  * check on that pass, and gate 4 runs the controls. A task that clears gates 1 to 4 is feasible, and
  * gate 5 screens it: it is admitted when at least one of the two harnesses fails it under the test
  * condition. Screening only chooses what is scored, so its solves never count in a score. Each task
  * version's state is a view over the log.
+ *
+ * The gates run in order and a gate that does not pass ends them: gate n passes only after gates 1 to
+ * n - 1 have, and no gate is logged after one that did not pass. The task stays held until a state
+ * event moves it, and it can never be feasible, so `refused` or `too-hard` is where it can go. A
+ * reviewer's probe logged the four gates in reverse and then refused gate 3, and the old fold, which
+ * kept a set of cleared gates, still admitted the task.
  *
  * The pair is the model pair: the one thing the stronger condition changes is the solver. The budget
  * pair is cut as a bracket, since on truss no test-side solve passed within one budget and it
@@ -23,14 +29,21 @@
  */
 import { sha256OfFile } from "../meta/digest.ts";
 import { existsSync } from "../meta/filesystem.ts";
-import { type JsonValue, isString } from "../meta/json-shape.ts";
+import { type JsonObject, type JsonValue, isString } from "../meta/json-shape.ts";
 import { join } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hashJsonValue, stableJson } from "../meta/stable-json.ts";
-import type { Contract } from "./contract.ts";
-import type { LogEvent } from "./log.ts";
+import { answerFormatFault, type Contract } from "./contract.ts";
+import type { EventKind, LogEvent } from "./log.ts";
 import type { Counted } from "./solve.ts";
-import { applicableTruthChecks, decided, readBrief, type Task, type Verifier } from "./verify.ts";
+import {
+  applicableTruthChecks,
+  checkProgramFiles,
+  decided,
+  readBrief,
+  type Task,
+  type Verifier,
+} from "./verify.ts";
 
 /** The task's public part and its hidden values, as the verifier takes them, with the rest. */
 export interface TaskPackage extends Task {
@@ -38,13 +51,34 @@ export interface TaskPackage extends Task {
   readonly statement: string;
   /** The contract rules the check enforces. */
   readonly ruleIds: readonly string[];
-  /** The check program's directory: its `brief.json` and its `evaluator.ts`. */
+  /** The check program's directory: its `brief.json`, its `evaluator.ts` and whatever they read. */
   readonly checks: string;
+}
+
+/** A reject control: an edit of the accepted answer, and the check it must fail. v1 tied each of
+ *  its reject controls to one check the same way, by the `expectedCheckId` of its `controls.json`. */
+export interface RejectControl {
+  readonly answer: JsonValue;
+  readonly expectedCheckId: string;
 }
 
 /** A gate passes or refuses. A verifier's non-result is neither: it stops the run (see `decided`). */
 type Passed = { readonly outcome: "passed" };
 type Refused = { readonly outcome: "refused"; readonly reason: string };
+
+/** A task version as the fold holds it: its state, how many gates it passed in order, and whether a
+ *  gate that did not pass ended them. */
+interface Folded {
+  state: TaskState;
+  passed: number;
+  ended: boolean;
+}
+
+/** The fold so far: each task version, and the versions the anchor drew, null until it is drawn. */
+interface Fold {
+  readonly tasks: Map<string, Folded>;
+  drawn: Set<string> | null;
+}
 
 /** Gate 5's outcome. A task the stronger condition failed never reaches it: gate 2 marks it too hard. */
 export type Screening = "admitted" | "too-easy" | "wall-bound";
@@ -54,6 +88,9 @@ const DETERMINISM_RUNS = 2;
 
 /** Reject controls a task carries. */
 export const CONTROLS = 3;
+
+/** The gates logged as `task.gate`. Gate 5 is screening, and its outcome is the state it logs. */
+const LOGGED_GATES = 4;
 
 /**
  * The states of a task version. `wall-bound` is not one of the plan's: a task whose only screening
@@ -76,8 +113,9 @@ export type TaskState = (typeof TASK_STATES)[number];
 
 /**
  * Where each state may go. Round 0 releases feasible tasks unscreened, so a held task may be released,
- * though only once the anchor is drawn, so no anchor task is ever released. A released task is never
- * scored: the comparison, when it is built, refuses one.
+ * though only once the anchor is drawn and never one the draw named: `anchor.drawn` lists the task
+ * versions it drew, and the fold refuses a release of any of them. A released task is never scored:
+ * the comparison, when it is built, refuses one.
  */
 const NEXT: Readonly<Record<TaskState, readonly TaskState[]>> = {
   held: ["refused", "too-hard", "too-easy", "wall-bound", "admitted", "released", "stale"],
@@ -91,9 +129,8 @@ const NEXT: Readonly<Record<TaskState, readonly TaskState[]>> = {
   stale: [],
 };
 
-/** States only a feasible task reaches, and the gates that make it feasible. */
+/** States only a feasible task reaches, one that passed every logged gate. */
 const NEEDS_FEASIBLE: ReadonlySet<TaskState> = new Set(["too-easy", "wall-bound", "admitted", "released"]);
-const FEASIBLE_GATES = [1, 2, 3, 4];
 
 /**
  * Gate 1, shape: every part but the controls is present, and every rule id is in the contract. A check
@@ -117,6 +154,11 @@ function packageFault(contract: Contract, task: TaskPackage): string | null {
     ] as const
   ).find(([, missing]) => missing);
   if (absent !== undefined) return `no ${absent[0]}`;
+  try {
+    checkProgramFiles(task.checks);
+  } catch (error) {
+    return errorMessage(error);
+  }
   const rules = new Set(contract.rules.map((rule) => rule.id));
   const unknown = task.ruleIds.find((id) => !rules.has(id));
   if (unknown !== undefined) return `rule ${unknown} is not in the contract`;
@@ -142,17 +184,24 @@ function packageFault(contract: Contract, task: TaskPackage): string | null {
 }
 
 /**
- * The task version, taken when the package is proposed and gate 1 runs: its five parts, with the
- * check program as the digests of its two files. A package missing one still has a version, so its
+ * The task version, taken when the package is proposed and gate 1 runs: its five parts, with the check
+ * program as the sha256 of each of its files by its path under the directory. Every file counts,
+ * since the verifier copies them all into each check's cell: both check programs v1 wrote on 7
+ * October import `./reference/model.ts`, and a version over `evaluator.ts` alone missed it. A
+ * program that does not read, a symlink in it among the reasons, is versioned by why, so gate 1's
  * refusal is logged against what was proposed.
  */
 export function taskVersion(task: TaskPackage): string {
   const { checks, ...parts } = task;
-  const digest = (file: string) => {
-    const path = join(checks, file);
-    return existsSync(path) ? sha256OfFile(path) : null;
-  };
-  return hashJsonValue({ ...parts, brief: digest("brief.json"), evaluator: digest("evaluator.ts") });
+  let program: JsonValue;
+  try {
+    program = Object.fromEntries(
+      checkProgramFiles(checks).map((file) => [file, sha256OfFile(join(checks, file))]),
+    );
+  } catch (error) {
+    program = { unreadable: errorMessage(error) };
+  }
+  return hashJsonValue({ ...parts, checks: program });
 }
 
 /** Gate 3: the check returns the pass gate 2 gave the accepted answer, on each of two more runs. */
@@ -174,26 +223,36 @@ export async function determinismGate(
 }
 
 /**
- * Gate 4: three controls, each an edit of the accepted answer and no two alike, and the check fails
- * every one. Whether an edit changes exactly one fact is the Examiner's to get right; a control that
- * changes more only fails for more reasons. A pass names the controls by their digest.
+ * Gate 4: three controls, each an edit of the accepted answer in the contract's format and no two
+ * alike, and each failed by the check it names. Failing is not enough: a reviewer's probe passed the
+ * gate on three junk answers, which every check fails for a reason no control was written to test.
+ * A control outside the format is refused before any check reads it, since a check that throws on a
+ * malformed answer is a verifier non-result, which would stop the run over the Examiner's mistake.
+ * Whether an edit changes exactly one fact is the Examiner's to get right. A pass names the
+ * controls by their digest.
  */
 export async function controlsGate(
+  contract: Contract,
   verify: Verifier,
   task: Task,
   accepted: JsonValue,
-  controls: readonly JsonValue[],
+  controls: readonly RejectControl[],
 ): Promise<(Passed & { readonly controls: string }) | Refused> {
-  if (controls.length !== CONTROLS) {
-    return { outcome: "refused", reason: `controls: ${controls.length}, not ${CONTROLS}` };
-  }
-  const answers = [accepted, ...controls].map((answer) => stableJson(answer));
+  const refused = (reason: string): Refused => ({ outcome: "refused", reason });
+  if (controls.length !== CONTROLS) return refused(`controls: ${controls.length}, not ${CONTROLS}`);
+  const answers = [accepted, ...controls.map((control) => control.answer)].map((answer) =>
+    stableJson(answer),
+  );
   if (new Set(answers).size < answers.length) {
-    return { outcome: "refused", reason: "a control repeats the accepted answer or another control" };
+    return refused("a control repeats the accepted answer or another control");
   }
-  for (const [index, control] of controls.entries()) {
-    if ((await decided(verify, task, control)).kind === "pass") {
-      return { outcome: "refused", reason: `the check passed control ${index + 1}` };
+  const malformed = controls.findIndex((control) => answerFormatFault(contract, control.answer) !== null);
+  if (malformed !== -1) return refused(`control ${malformed + 1} does not follow the answer format`);
+  for (const [index, { answer, expectedCheckId }] of controls.entries()) {
+    const verdict = await decided(verify, task, answer);
+    if (verdict.kind === "pass") return refused(`the check passed control ${index + 1}`);
+    if (!verdict.blocking.includes(expectedCheckId)) {
+      return refused(`control ${index + 1} failed ${verdict.blocking.join(", ")}, not ${expectedCheckId}`);
     }
   }
   return { outcome: "passed", controls: hashJsonValue(controls) };
@@ -209,44 +268,82 @@ export function screen(tests: readonly [Counted, Counted]): Screening {
   return fails.every((kind) => kind === "wall-ended") ? "wall-bound" : "admitted";
 }
 
+/** Whether the task states read an event of this kind. The log folds these as they are appended,
+ *  so that no append can leave it unreadable. */
+export function foldsEvent(kind: EventKind): boolean {
+  return kind === "anchor.drawn" || kind.startsWith("task.");
+}
+
 /**
  * Each task version's state, folded from the log: `task.proposed` holds it, a passing `task.gate`
- * clears a gate, and `task.state` moves it. A history that moves a task where it cannot go, screens
- * a task that is not feasible, passes gate 4 on no named control set, or releases a task before
- * `anchor.drawn`, is refused, as a torn line is.
+ * clears the next gate, and `task.state` moves it. A history that moves a task where it cannot go,
+ * screens a task that is not feasible, logs its gates out of order or after one did not pass, passes
+ * gate 4 on no named control set, or releases a task before `anchor.drawn` or one the anchor drew, is
+ * refused, as a torn line is.
  */
 export function taskStates(events: readonly LogEvent[]): Map<string, TaskState> {
-  const tasks = new Map<string, { state: TaskState; readonly cleared: Set<number> }>();
-  let anchored = false;
-  for (const { at, kind, data } of events) {
-    if (kind === "anchor.drawn") anchored = true;
-    if (!kind.startsWith("task.")) continue;
-    const version = data.version;
-    if (!isString(version)) throw new Error(`${at}: ${kind} names no task version`);
-    const task = tasks.get(version);
-    if (kind === "task.proposed") {
-      if (task !== undefined) throw new Error(`${at}: task ${version} is proposed twice`);
-      tasks.set(version, { state: "held", cleared: new Set() });
-      continue;
-    }
-    if (task === undefined) throw new Error(`${at}: task ${version} is not proposed`);
-    if (kind === "task.gate" && data.outcome === "passed") {
-      const gate = Number(data.gate);
-      if (gate === 4 && !isString(data.controls)) {
-        throw new Error(`${at}: task ${version} passed gate 4 on no named control set`);
-      }
-      task.cleared.add(gate);
-    } else if (kind === "task.state") {
-      const to = TASK_STATES.find((state) => state === data.state);
-      const feasible = FEASIBLE_GATES.every((gate) => task.cleared.has(gate));
-      if (to === undefined || !NEXT[task.state].includes(to) || (NEEDS_FEASIBLE.has(to) && !feasible)) {
-        throw new Error(`${at}: task ${version} cannot go from ${task.state} to ${to ?? "no known state"}`);
-      }
-      if (to === "released" && !anchored) {
-        throw new Error(`${at}: task ${version} is released before the anchor is drawn`);
-      }
-      task.state = to;
-    }
+  const fold: Fold = { tasks: new Map(), drawn: null };
+  for (const event of events) step(fold, event);
+  return new Map([...fold.tasks].map(([version, task]) => [version, task.state]));
+}
+
+function step(fold: Fold, { at, kind, data }: LogEvent): void {
+  if (kind === "anchor.drawn") {
+    draw(fold, at, data);
+    return;
   }
-  return new Map([...tasks].map(([version, task]) => [version, task.state]));
+  if (!foldsEvent(kind)) return;
+  const version = data.version;
+  if (!isString(version)) throw new Error(`${at}: ${kind} names no task version`);
+  const task = fold.tasks.get(version);
+  if (kind === "task.proposed") {
+    if (task !== undefined) throw new Error(`${at}: task ${version} is proposed twice`);
+    fold.tasks.set(version, { state: "held", passed: 0, ended: false });
+    return;
+  }
+  if (task === undefined) throw new Error(`${at}: task ${version} is not proposed`);
+  const fault =
+    kind === "task.gate" ? gate(task, data) : kind === "task.state" ? move(fold, version, task, data) : null;
+  if (fault !== null) throw new Error(`${at}: task ${version} ${fault}`);
+}
+
+function draw(fold: Fold, at: string, data: JsonObject): void {
+  const versions = data.tasks;
+  if (!Array.isArray(versions) || !versions.every(isString)) {
+    throw new Error(`${at}: anchor.drawn names no task versions`);
+  }
+  const released = versions.find((version) => fold.tasks.get(version)?.state === "released");
+  if (released !== undefined) throw new Error(`${at}: task ${released} is drawn after its release`);
+  fold.drawn = new Set([...(fold.drawn ?? []), ...versions]);
+}
+
+/** A `task.gate` event on the task, or why the history may not log it. */
+function gate(task: Folded, data: JsonObject): string | null {
+  const number = Number(data.gate);
+  if (task.state !== "held" || task.ended) return `logs gate ${number} after its gates ended`;
+  if (number !== task.passed + 1 || number > LOGGED_GATES) {
+    return `logs gate ${number} out of order, after passing ${task.passed}`;
+  }
+  if (data.outcome !== "passed") {
+    task.ended = true;
+    return null;
+  }
+  if (number === LOGGED_GATES && !isString(data.controls)) return "passed gate 4 on no named control set";
+  task.passed = number;
+  return null;
+}
+
+/** A `task.state` event on the task, or why the history may not log it. */
+function move(fold: Fold, version: string, task: Folded, data: JsonObject): string | null {
+  const to = TASK_STATES.find((state) => state === data.state);
+  const feasible = task.passed === LOGGED_GATES;
+  if (to === undefined || !NEXT[task.state].includes(to) || (NEEDS_FEASIBLE.has(to) && !feasible)) {
+    return `cannot go from ${task.state} to ${to ?? "no known state"}`;
+  }
+  if (to === "released" && fold.drawn === null) return "is released before the anchor is drawn";
+  if (to === "released" && fold.drawn?.has(version) === true) {
+    return "is an anchor task, so it is never released";
+  }
+  task.state = to;
+  return null;
 }

@@ -27,6 +27,8 @@ export interface CheckChildInput {
   readonly request: EvaluationRequest;
   /** The tools the check declares; it may run no other. */
   readonly tools: readonly string[];
+  /** The verifier tool tree's search directories, the only place a declared tool is looked up. */
+  readonly toolPath: string;
   readonly toolCeilingMs: number;
 }
 
@@ -66,7 +68,10 @@ async function runTool(input: CheckChildInput, call: ToolCall, lapses: string[])
   if (!input.tools.includes(call.toolId)) {
     throw new Error(`check ${input.checkId} ran ${call.toolId}, which it does not declare`);
   }
-  const command = Bun.which(call.toolId);
+  // Only the tool tree is searched: the process's own PATH runs on into the host's toolchain, which
+  // a tool's interpreter needs and the tool itself must not come from. A name with a slash in it is
+  // never looked up, since `Bun.which` hands such a path back whatever the search path says.
+  const command = isSafePathSegment(call.toolId) ? Bun.which(call.toolId, { PATH: input.toolPath }) : null;
   if (command === null) {
     return lapse("verifierUnavailable", `${call.toolId} is not on the verifier's tool path`);
   }

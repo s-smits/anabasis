@@ -17,12 +17,17 @@
  * - A task's statement is its id under the brief's domain, since v1's tasks carry none, and its rule
  *   ids are those its family's checks cite.
  * - Gate 4's controls are the first three v1 wrote for the task, edited from the author's accepted
- *   answer rather than from the stronger solve's. A task v1 gave fewer than three is refused.
+ *   answer rather than from the stronger solve's, each with the check v1 named for it to fail. A
+ *   task v1 gave fewer than three is refused.
+ * - The check program is the bundle's `correctness-model` without `tasks.json` and `controls.json`,
+ *   copied once: the verifier hands a check its whole program, and those two hold every task's
+ *   hidden values and every control.
  */
 import type { Contract } from "#src/kernel/contract.ts";
 import { append, type EventKind, read } from "#src/kernel/log.ts";
 import {
   CONTROLS,
+  type RejectControl,
   controlsGate,
   determinismGate,
   packageGate,
@@ -33,11 +38,11 @@ import {
   taskVersion,
 } from "#src/kernel/task.ts";
 import { applicableTruthChecks, openVerifier, readBrief, type Task } from "#src/kernel/verify.ts";
-import { mkdtempSync, readFileSync, rmSync } from "#src/meta/filesystem.ts";
+import { cpSync, mkdtempSync, readFileSync, rmSync } from "#src/meta/filesystem.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import type { JsonObject, JsonValue } from "#src/meta/json-shape.ts";
 import { tmpdir } from "#src/meta/os.ts";
-import { join } from "#src/meta/path.ts";
+import { basename, join } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { type Row, storedAnswer, sweepRows } from "../m0/stored-sweep.ts";
@@ -59,11 +64,15 @@ interface PackBrief {
   readonly ruleDecisions: readonly { id: string; visibility: string; statement: string }[];
 }
 
-/** v1's `controls.json`: answers the check must accept, and edits of them it must reject. */
+/** v1's `controls.json`: answers the check must accept, and edits of them it must reject, each
+ *  naming the check that must reject it. */
 interface PackControls {
   readonly accept: readonly { taskId: string; artifact: JsonValue }[];
-  readonly reject: readonly { taskId: string; artifact: JsonValue }[];
+  readonly reject: readonly { taskId: string; artifact: JsonValue; expectedCheckId: string }[];
 }
+
+/** The files of a v1 `correctness-model` that are its battery rather than its check program. */
+const BATTERY_FILES = new Set(["tasks.json", "controls.json"]);
 
 function contractOf(brief: PackBrief): Contract {
   return {
@@ -81,11 +90,14 @@ async function main(): Promise<void> {
   if (root === undefined || sweep === undefined || bundle === undefined || stronger === undefined) {
     throw new Error("name --root, --sweep, --bundle and --stronger");
   }
-  const checks = join(bundle, "correctness-model");
-  const brief = parseJsonAs<PackBrief>(readFileSync(join(checks, "brief.json"), "utf8"));
-  const controls = parseJsonAs<PackControls>(readFileSync(join(checks, "controls.json"), "utf8"));
-  const tasks = parseJsonAs<Task[]>(readFileSync(join(checks, "tasks.json"), "utf8"));
+  const model = join(bundle, "correctness-model");
+  const brief = parseJsonAs<PackBrief>(readFileSync(join(model, "brief.json"), "utf8"));
+  const controls = parseJsonAs<PackControls>(readFileSync(join(model, "controls.json"), "utf8"));
+  const tasks = parseJsonAs<Task[]>(readFileSync(join(model, "tasks.json"), "utf8"));
   const contract = contractOf(brief);
+  const dir = mkdtempSync(join(tmpdir(), "ana-admit-"));
+  const checks = join(dir, "checks");
+  cpSync(model, checks, { recursive: true, filter: (path) => !BATTERY_FILES.has(basename(path)) });
   const verify = openVerifier({ checks, tools: join(bundle, ".toolchain") });
 
   const { rows } = sweepRows(root, sweep);
@@ -95,13 +107,15 @@ async function main(): Promise<void> {
   const solveIn = (taskId: string, cycle: string): Row | undefined => stored.get(`${taskId} ${cycle}`);
   console.log(`old ${old}, new ${fresh}, stronger ${stronger}`);
 
-  const v1Controls = (taskId: string): [JsonValue, JsonValue[]] => {
+  const v1Controls = (taskId: string): [JsonValue, RejectControl[]] => {
     const accepted = controls.accept.find((control) => control.taskId === taskId)?.artifact ?? null;
-    const rejects = controls.reject.filter((control) => control.taskId === taskId);
-    return [accepted, rejects.slice(0, CONTROLS).map((control) => control.artifact)];
+    const rejects = controls.reject.filter((control) => control.taskId === taskId).slice(0, CONTROLS);
+    return [
+      accepted,
+      rejects.map(({ artifact, expectedCheckId }) => ({ answer: artifact, expectedCheckId })),
+    ];
   };
 
-  const dir = mkdtempSync(join(tmpdir(), "ana-admit-"));
   const log = join(dir, "log.jsonl");
   /** One task through the gates, each step appended to the log. Returns why it stopped where it did. */
   const admit = async (task: TaskPackage, version: string): Promise<string> => {
@@ -126,7 +140,7 @@ async function main(): Promise<void> {
     if (accepted === undefined) return `the ${stronger} pass left no answer`;
     const gates = [
       [3, () => determinismGate(verify, task, accepted)],
-      [4, () => controlsGate(verify, task, ...v1Controls(task.taskId))],
+      [4, () => controlsGate(contract, verify, task, ...v1Controls(task.taskId))],
     ] as const;
     for (const [number, run] of gates) {
       const result = await run();

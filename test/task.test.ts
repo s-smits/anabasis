@@ -1,25 +1,31 @@
 import { afterAll, describe, expect, it } from "bun:test";
-import { type Contract, contractHash } from "../src/kernel/contract.ts";
+import { answerFormatFault, type Contract, contractHash } from "../src/kernel/contract.ts";
 import type { LogEvent } from "../src/kernel/log.ts";
 import type { Counted } from "../src/kernel/solve.ts";
 import {
   controlsGate,
   determinismGate,
   packageGate,
+  type RejectControl,
   screen,
   type TaskPackage,
   taskStates,
   taskVersion,
 } from "../src/kernel/task.ts";
 import type { Task, Verdict, Verifier } from "../src/kernel/verify.ts";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { hashJsonValue } from "../src/meta/stable-json.ts";
 import type { JsonObject, JsonValue } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 
 const CONTRACT: Contract = {
-  answerFormat: { type: "object" },
+  answerFormat: {
+    type: "object",
+    properties: { depth: { type: "number" }, steel: { type: "string" } },
+    required: ["depth"],
+    additionalProperties: false,
+  },
   tools: [{ name: "solver", version: "1.0" }],
   install: "true",
   conventions: "SI units",
@@ -97,6 +103,16 @@ describe("the contract", () => {
     const twice = { ...CONTRACT, rules: [...CONTRACT.rules, { id: "span-rule", statement: "Again." }] };
     expect(() => contractHash(twice)).toThrow("names rule span-rule twice");
   });
+
+  it("says why an answer is outside its format, and refuses one that fits only once coerced", () => {
+    expect(answerFormatFault(CONTRACT, { depth: 1, steel: "S355" })).toBeNull();
+    expect(answerFormatFault(CONTRACT, { steel: "S355" })).toContain("must have required properties depth");
+    expect(answerFormatFault(CONTRACT, [1])).toContain("root: must be object");
+    // pi-ai's validator would read "1" as 1 and drop the null; the caller's value stays as it was.
+    const coercible = { depth: "1", steel: null };
+    expect(answerFormatFault(CONTRACT, coercible)).toBe("the answer follows the format only once coerced");
+    expect(coercible).toEqual({ depth: "1", steel: null });
+  });
 });
 
 describe("gate 1, gate", () => {
@@ -110,6 +126,28 @@ describe("gate 1, gate", () => {
     const changed = program(["beams"], ["span-rule"], "export const checks = { spans: () => true };");
     expect(version({ checks: changed })).not.toBe(version({}));
     expect(version({ checks: join(root, "nowhere") })).not.toBe(version({}));
+  });
+
+  it("versions every file of the check program, in nested directories too", () => {
+    const version = (checks: string) => taskVersion(pkg({ checks }));
+    const nested = (model: string) => {
+      const checks = program(["beams"], ["span-rule"]);
+      mkdirSync(join(checks, "reference"));
+      writeFileSync(join(checks, "reference", "model.ts"), model);
+      return checks;
+    };
+    expect(version(nested("export const k = 1;"))).toBe(version(nested("export const k = 1;")));
+    expect(version(nested("export const k = 2;"))).not.toBe(version(nested("export const k = 1;")));
+  });
+
+  it("refuses a check program with a symlink in it, and still versions it", () => {
+    const linked = program(["beams"], ["span-rule"]);
+    symlinkSync("/etc/hosts", join(linked, "model.ts"));
+    expect(packageGate(CONTRACT, pkg({ checks: linked }))).toEqual({
+      outcome: "refused",
+      reason: "the check program's model.ts is neither a file nor a directory",
+    });
+    expect(taskVersion(pkg({ checks: linked }))).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it("refuses a missing part, a rule the contract lacks, and a check program that would pass anything", () => {
@@ -153,30 +191,43 @@ describe("gate 3, determinism", () => {
 
 describe("gate 4, controls", () => {
   const accepted = { depth: 1, steel: "S355" };
-  const controls = [{ depth: 0.5, steel: "S355" }, { depth: 1, steel: "S235" }, { depth: 1 }];
+  const spans = (answer: JsonObject): RejectControl => ({ answer, expectedCheckId: "spans" });
+  const answers: JsonObject[] = [{ depth: 0.5, steel: "S355" }, { depth: 1, steel: "S235" }, { depth: 1 }];
+  const controls = answers.map(spans);
 
-  it("passes three distinct edits the check fails, and names them by their digest", async () => {
+  it("passes three distinct edits each failed by the check it names, and names them by their digest", async () => {
     const verify = scripted(FAIL, FAIL, FAIL);
-    expect(await controlsGate(verify, pkg(), accepted, controls)).toEqual({
+    expect(await controlsGate(CONTRACT, verify, pkg(), accepted, controls)).toEqual({
       outcome: "passed",
       controls: hashJsonValue(controls),
     });
-    expect(verify.asked).toEqual(controls);
+    expect(verify.asked).toEqual(answers);
   });
 
+  const refused = async (given: RejectControl[], ...verdicts: Verdict[]) => {
+    const gate = await controlsGate(CONTRACT, scripted(...verdicts), pkg(), accepted, given);
+    return gate.outcome === "passed" ? "passed" : gate.reason;
+  };
+
   it("refuses the wrong count, a control that is no edit, and a control the check passes", async () => {
-    const refused = async (given: JsonObject[], ...verdicts: Verdict[]) => {
-      const gate = await controlsGate(scripted(...verdicts), pkg(), accepted, given);
-      return gate.outcome === "passed" ? "passed" : gate.reason;
-    };
     expect(await refused(controls.slice(0, 2))).toBe("controls: 2, not 3");
-    expect(await refused([...controls.slice(0, 2), { steel: "S355", depth: 1 }])).toBe(
+    expect(await refused([...controls.slice(0, 2), spans({ steel: "S355", depth: 1 })])).toBe(
       "a control repeats the accepted answer or another control",
     );
-    expect(await refused([...controls.slice(0, 2), controls[0] ?? {}])).toBe(
+    expect(await refused([...controls.slice(0, 2), spans(answers[0] ?? {})])).toBe(
       "a control repeats the accepted answer or another control",
     );
     expect(await refused(controls, FAIL, PASS)).toBe("the check passed control 2");
+  });
+
+  it("refuses junk the check fails for another reason, and junk outside the format before any check", async () => {
+    const other: Verdict = { kind: "fail", blocking: ["loads"] };
+    expect(await refused(controls, FAIL, other)).toBe("control 2 failed loads, not spans");
+    const junk = [...controls.slice(0, 2), spans({ depth: "deep" })];
+    const verify = scripted();
+    const gate = await controlsGate(CONTRACT, verify, pkg(), accepted, junk);
+    expect(gate).toEqual({ outcome: "refused", reason: "control 3 does not follow the answer format" });
+    expect(verify.asked).toEqual([]);
   });
 });
 
@@ -184,10 +235,15 @@ describe("a broken verifier", () => {
   it("stops the run at the first non-result, whichever gate asks", async () => {
     const stops = "the verifier could not decide beam-01, so the run stops: the wall broke";
     const accepted = { depth: 1 };
-    const controls = [{ depth: 0.5 }, { depth: 2 }, {}];
+    const controls = [{ depth: 0.5 }, { depth: 2 }, { depth: 3 }].map((answer) => ({
+      answer,
+      expectedCheckId: "spans",
+    }));
     expect(determinismGate(scripted(LOST, LOST), pkg(), accepted)).rejects.toThrow(stops);
     expect(determinismGate(scripted(PASS, LOST), pkg(), accepted)).rejects.toThrow(stops);
-    expect(controlsGate(scripted(FAIL, LOST, LOST), pkg(), accepted, controls)).rejects.toThrow(stops);
+    expect(controlsGate(CONTRACT, scripted(FAIL, LOST, LOST), pkg(), accepted, controls)).rejects.toThrow(
+      stops,
+    );
   });
 });
 
@@ -217,7 +273,7 @@ describe("the task states", () => {
     data: { version: "v1", gate: number, outcome, controls: "digest" },
   });
   const state = (to: string): LogEvent => ({ at, kind: "task.state", data: { version: "v1", state: to } });
-  const drawn: LogEvent = { at, kind: "anchor.drawn", data: {} };
+  const drawn: LogEvent = { at, kind: "anchor.drawn", data: { tasks: ["v0"] } };
   const feasible = [proposed, gate(1), gate(2), gate(3), gate(4)];
 
   it("holds a proposed task and follows it through screening, scoring and release", () => {
@@ -242,6 +298,34 @@ describe("the task states", () => {
     expect(() => taskStates([proposed, proposed])).toThrow("task v1 is proposed twice");
     expect(() => taskStates([{ at, kind: "task.state", data: { state: "held" } }])).toThrow(
       "task.state names no task version",
+    );
+  });
+
+  it("refuses gates logged out of order, and any gate after one that did not pass", () => {
+    const reversed = [proposed, gate(4), gate(3), gate(2), gate(1), gate(3, "refused"), state("admitted")];
+    expect(() => taskStates(reversed)).toThrow("task v1 logs gate 4 out of order, after passing 0");
+    expect(() => taskStates([proposed, gate(1), gate(3)])).toThrow(
+      "logs gate 3 out of order, after passing 1",
+    );
+    expect(() => taskStates([proposed, gate(1), gate(2, "refused"), gate(2)])).toThrow(
+      "task v1 logs gate 2 after its gates ended",
+    );
+    expect(() => taskStates([...feasible, gate(5)])).toThrow("logs gate 5 out of order, after passing 4");
+    const refusedAt3 = [proposed, gate(1), gate(2), gate(3, "refused")];
+    expect(taskStates([...refusedAt3, state("refused")]).get("v1")).toBe("refused");
+    expect(() => taskStates([...refusedAt3, state("admitted")])).toThrow("cannot go from held to admitted");
+  });
+
+  it("never releases a task the anchor drew, and refuses a draw that names no versions", () => {
+    const anchor: LogEvent = { at, kind: "anchor.drawn", data: { tasks: ["v1"] } };
+    expect(() => taskStates([anchor, ...feasible, state("released")])).toThrow(
+      "task v1 is an anchor task, so it is never released",
+    );
+    expect(() => taskStates([drawn, ...feasible, state("released"), anchor])).toThrow(
+      "task v1 is drawn after its release",
+    );
+    expect(() => taskStates([{ at, kind: "anchor.drawn", data: {} }])).toThrow(
+      "anchor.drawn names no task versions",
     );
   });
 

@@ -2,10 +2,12 @@ import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
 import { type Task, openVerifier } from "../src/kernel/verify.ts";
 import {
   chmodSync,
+  cpSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
@@ -14,8 +16,9 @@ import { join, relative } from "../src/meta/path.ts";
 import { osIsolationSupport } from "../src/verify/os-isolation.ts";
 
 const EVALUATOR = `import { readFileSync } from "node:fs";
+import { same } from "./reference/model.ts";
 export const checks = {
-  value: (req) => req.artifact.value === req.publicTask.publicInput.target,
+  value: (req) => same(req.artifact.value, req.publicTask.publicInput.target),
   tool: async (req) => {
     const run = await req.runtime.tools.run({ toolId: "double", args: [], stdin: String(req.artifact.value) });
     return run.exitCode === 0 && run.stdout.trim() === String(req.artifact.value * 2);
@@ -29,6 +32,7 @@ export const checks = {
   },
   projection: (req) => !("note" in req.artifact),
   throws: () => { throw new Error("no such rule"); },
+  host: async (req) => (await req.runtime.tools.run({ toolId: "sh", args: ["-c", "exit 0"] })).exitCode === 0,
   slow: async (_req, runtime) => {
     await runtime.tools.run({ toolId: "sleeper", args: [], timeoutMs: 100 });
     return true;
@@ -68,6 +72,7 @@ const BRIEF = {
     { id: "projection", execution: execution(["projection"], ["$.value"], []) },
     { id: "throws", execution: execution(["throws"], [], []) },
     { id: "slow", execution: execution(["slow"], [], [], ["sleeper"]) },
+    { id: "host", execution: execution(["host"], [], [], ["sh"]) },
   ],
 };
 
@@ -86,6 +91,9 @@ mkdirSync(join(root, "checks"));
 mkdirSync(join(root, "tools", "bin"), { recursive: true });
 writeFileSync(join(root, "checks", "brief.json"), JSON.stringify(BRIEF));
 writeFileSync(join(root, "checks", "evaluator.ts"), EVALUATOR);
+// As both check programs v1 wrote on 7 October do, the program imports a module from a directory.
+mkdirSync(join(root, "checks", "reference"));
+writeFileSync(join(root, "checks", "reference", "model.ts"), "export const same = (a, b) => a === b;\n");
 writeFileSync(secret, "another answer");
 tool("double", "read n; echo $((n * 2))");
 tool("sleeper", "sleep 30");
@@ -99,7 +107,7 @@ afterAll(async () => {
 describe.skipIf(!osIsolationSupport().ok)("the verifier", () => {
   const verify = openVerifier({ checks: join(root, "checks"), tools: join(root, "tools") });
 
-  it("passes an answer every check accepts, running a check's tool from the verifier's tree off the request", async () => {
+  it("passes an answer every check accepts, running a module the program imports and a tool from the verifier's tree", async () => {
     expect(await verify(task("plain", { target: 21 }), { value: 21 })).toEqual({ kind: "pass" });
   });
 
@@ -143,5 +151,21 @@ describe.skipIf(!osIsolationSupport().ok)("the verifier", () => {
       kind: "non-result",
       reason: "slow: sleeper ran past 100 ms",
     });
+  });
+
+  it("finds a check's tool only in the verifier's tree, never the host's copy", async () => {
+    expect(await verify(task("host"), {})).toEqual({
+      kind: "non-result",
+      reason: "host: sh is not on the verifier's tool path",
+    });
+  });
+
+  it("refuses a check program with a symlink in it when it opens", () => {
+    const linked = join(root, "linked");
+    cpSync(join(root, "checks"), linked, { recursive: true });
+    symlinkSync(secret, join(linked, "reference", "answer.json"));
+    expect(() => openVerifier({ checks: linked, tools: join(root, "tools") })).toThrow(
+      "the check program's reference/answer.json is neither a file nor a directory",
+    );
   });
 });

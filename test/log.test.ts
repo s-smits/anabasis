@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import { append, read } from "../src/kernel/log.ts";
-import { appendFileSync, mkdtempSync, rmSync } from "../src/meta/filesystem.ts";
+import { appendFileSync, mkdtempSync, readFileSync, rmSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 
@@ -32,5 +32,28 @@ describe("the log", () => {
     const path = fresh();
     appendFileSync(path, '{"at":"2026-10-07T00:00:00.000Z","kind":"solve.retried","data":{}}\n');
     expect(() => read(path)).toThrow(`${path}:1 is not a log event`);
+  });
+
+  it("appends nothing after a torn last line, whatever the event", () => {
+    const path = fresh();
+    append(path, "verdict", { pass: true });
+    appendFileSync(path, '{"at":"2026-10-07T00:00:00.000Z","kind":"verd');
+    const torn = readFileSync(path, "utf8");
+    expect(() => append(path, "solve.started", { task: "t1" })).toThrow("the last line is torn");
+    expect(() => append(path, "task.proposed", { version: "v1" })).toThrow("the last line is torn");
+    expect(readFileSync(path, "utf8")).toBe(torn);
+  });
+
+  it("refuses, writing nothing, a task event that would leave the log unreadable", () => {
+    const path = fresh();
+    const proposed = append(path, "task.proposed", { version: "v1" });
+    expect(() => append(path, "task.proposed", { version: "v1" })).toThrow("task v1 is proposed twice");
+    expect(() => append(path, "task.gate", { version: "v1", gate: 4, outcome: "passed" })).toThrow(
+      "logs gate 4 out of order",
+    );
+    expect(() => append(path, "anchor.drawn", { tasks: "v1" })).toThrow(
+      "anchor.drawn names no task versions",
+    );
+    expect(read(path)).toEqual([proposed]);
   });
 });

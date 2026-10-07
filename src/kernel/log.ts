@@ -5,13 +5,29 @@
  * An append is written and synced before it returns, so an event the host acted on survives a crash.
  * A read refuses a torn or unknown line instead of skipping it: a view over a log with a hole in it
  * would be a view over a different history.
+ *
+ * An append refuses, writing nothing, an event that would make the log unreadable: any event after a
+ * torn last line, and an event the task states read when folding it onto the log so far throws. A
+ * reviewer's probe appended a second `task.proposed` and every later read threw. Only those events
+ * can break the fold, so solves, verdicts and traces, the frequent ones, skip the read.
  */
-import { closeSync, existsSync, fsyncSync, openSync, readFileSync, writeSync } from "../meta/filesystem.ts";
+import {
+  closeSync,
+  existsSync,
+  fstatSync,
+  fsyncSync,
+  openSync,
+  readFileSync,
+  readSync,
+  writeSync,
+} from "../meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify } from "../meta/json-runtime.ts";
 import { asRecord, type JsonObject, type JsonValue, isString } from "../meta/json-shape.ts";
+import { foldsEvent, taskStates } from "./task.ts";
 
-/** The plan's events, and `anchor.drawn`, which is not among them: a task may be released straight
- *  from held only once the anchor is drawn, so the draw is an event the task states can see. */
+/** The plan's events, and `anchor.drawn`, which is not among them: it names the task versions the
+ *  anchor drew, which are never released, and a task may be released straight from held only once
+ *  it is drawn, so the draw is an event the task states can see. */
 export const EVENT_KINDS = [
   "world.accepted",
   "contract.frozen",
@@ -32,6 +48,8 @@ export const EVENT_KINDS = [
 
 export type EventKind = (typeof EVENT_KINDS)[number];
 
+const NEWLINE = 0x0a;
+
 export interface LogEvent {
   /** ISO 8601, as the host's clock read it at the append. */
   readonly at: string;
@@ -41,8 +59,14 @@ export interface LogEvent {
 
 export function append(path: string, kind: EventKind, data: JsonObject): LogEvent {
   const event: LogEvent = { at: new Date().toISOString(), kind, data };
-  const fd = openSync(path, "a");
+  if (foldsEvent(kind)) taskStates([...read(path), event]);
+  const fd = openSync(path, "a+");
   try {
+    const size = fstatSync(fd).size;
+    const last = Buffer.alloc(1);
+    if (size > 0 && readSync(fd, last, 0, 1, size - 1) === 1 && last[0] !== NEWLINE) {
+      throw new Error(`${path}: the last line is torn, so nothing is appended`);
+    }
     writeSync(fd, `${capturedJsonStringify(event)}\n`);
     fsyncSync(fd);
   } finally {

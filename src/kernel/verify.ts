@@ -9,10 +9,24 @@
  *
  * The contract is v1's check-program/v1, the format of the experiment's stored answers: a
  * `brief.json` declaring the checks and an `evaluator.ts` exporting them as `checks`. A check
- * program is that one file; it is copied into each check's cell, so the rest of its directory,
- * every task's hidden values among it, stays out of reach.
+ * program is its whole directory, nested directories included, and each check's cell gets a copy:
+ * both check programs v1 wrote on 7 October import `./reference/model.ts`, which a copy of
+ * `evaluator.ts` alone left behind. The hidden values are the task's, not the program's, so they
+ * reach a check only as its request carries them; a directory that keeps them, as a v1 bundle's
+ * `tasks.json` does, hands every task's to every check, and the caller leaves such files out.
+ *
+ * A check's tools resolve only from the verifier's tool tree. The condition pins that tree's digest,
+ * and a tool missing from it once ran the host's copy off the search path's later directories.
  */
-import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync } from "../meta/filesystem.ts";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+} from "../meta/filesystem.ts";
 import { jsonPathTokens } from "../meta/json-evidence.ts";
 import {
   capturedJsonParse,
@@ -22,13 +36,14 @@ import {
 } from "../meta/json-runtime.ts";
 import { asRecord, isBoolean, isRecord, isString, type JsonValue } from "../meta/json-shape.ts";
 import { tmpdir } from "../meta/os.ts";
-import { join, resolve } from "../meta/path.ts";
+import { dirname, join, resolve } from "../meta/path.ts";
 import { capturedExecPath, capturedSpawn } from "../meta/process.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
 import { killProcessGroupId, terminateAndReapProcessGroupId } from "../meta/subprocess.ts";
 import { engineCellEnv } from "../verify/engine-cell-env.ts";
 import { type VerifierOsIsolation, verifierOsIsolation } from "../verify/os-isolation.ts";
+import { toolTreeSearchDirs } from "../verify/solve-command-isolation.ts";
 import { type FrozenToolchainAccess, frozenToolchainAccess } from "../verify/wall-policy.ts";
 import type { CheckChildInput, CheckChildResult } from "./check-child.ts";
 
@@ -72,9 +87,9 @@ export type Task = PublicTask<JsonValue> & { readonly hidden: JsonValue };
 
 /** The verifier's side of a contract: the checks, and the tools only they run. */
 export interface VerifierTree {
-  /** The directory holding `brief.json` and the check program, `evaluator.ts`. */
+  /** The check program's directory: `brief.json`, `evaluator.ts` and whatever they read. */
   readonly checks: string;
-  /** The verifier's tool tree. Its `bin` heads the search path a check's tools are found on. */
+  /** The verifier's tool tree, the only place a check's tools are found. */
   readonly tools: string;
 }
 
@@ -88,6 +103,10 @@ export type Verifier = (task: Task, answer: JsonValue | undefined) => Promise<Ve
 
 interface Wall {
   readonly tree: VerifierTree;
+  /** The check program's files, as `checkProgramFiles` lists them. */
+  readonly program: readonly string[];
+  /** The tool tree's search directories, joined as a search path. */
+  readonly toolPath: string;
   readonly access: FrozenToolchainAccess;
   readonly isolation: VerifierOsIsolation;
   readonly readRoots: string[];
@@ -220,6 +239,23 @@ export function checkEvaluationRequest(
   });
 }
 
+/**
+ * A check program's files by their path under its directory, nested directories walked, in code-unit
+ * order. A program is plain files: a symlink, or anything else that is neither a file nor a
+ * directory, is refused rather than followed, since a link would let the program's version and its
+ * cell's copy read bytes from outside the directory the version names.
+ */
+export function checkProgramFiles(checks: string): string[] {
+  const walk = (under: string): string[] =>
+    readdirSync(join(checks, under), { withFileTypes: true }).flatMap((entry) => {
+      const path = under === "" ? entry.name : `${under}/${entry.name}`;
+      if (entry.isDirectory()) return walk(path);
+      if (entry.isFile()) return [path];
+      throw new Error(`the check program's ${path} is neither a file nor a directory`);
+    });
+  return walk("").sort(compareCodeUnits);
+}
+
 /** A check program's declaration of its checks, as its author wrote it. */
 export function readBrief(checks: string): Brief {
   return parseJsonAs<Brief>(readFileSync(join(checks, "brief.json"), "utf8"));
@@ -236,6 +272,8 @@ export function openVerifier(given: VerifierTree): Verifier {
   const access = frozenToolchainAccess(Bun.env.HOME);
   const wall: Wall = {
     tree,
+    program: checkProgramFiles(tree.checks),
+    toolPath: toolTreeSearchDirs(tree.tools).join(":"),
     access,
     isolation: verifierOsIsolation({}),
     readRoots: [...new Set([tree.tools, ...CHECK_CHILD_SOURCES, ...access.installRoots])].sort(
@@ -276,13 +314,18 @@ async function runCheck(
   // trees in it by prefix, so a concurrent check's cell is shut only under this one.
   const cell = mkdtempSync(join(tmpdir(), "ana-cell-"));
   try {
-    const program = join(cell, "evaluator.ts");
-    copyFileSync(join(wall.tree.checks, "evaluator.ts"), program);
+    // The program goes below the cell, so no file of it can stand as the check's `result.json`.
+    const copy = join(cell, "program");
+    for (const file of wall.program) {
+      mkdirSync(dirname(join(copy, file)), { recursive: true });
+      copyFileSync(join(wall.tree.checks, file), join(copy, file));
+    }
     const input: CheckChildInput = {
-      program,
+      program: join(copy, "evaluator.ts"),
       checkId: check.id,
       request: checkEvaluationRequest(check, request),
       tools: requiredToolsOf(check.execution),
+      toolPath: wall.toolPath,
       toolCeilingMs: TOOL_CEILING_MS,
     };
     const env = engineCellEnv({

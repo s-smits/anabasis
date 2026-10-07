@@ -6,8 +6,11 @@
  * Every check cites the rule ids it enforces, and the host confirms those ids exist here. Whether a
  * rule's statement says enough is not the host's to decide: it surfaces as a Referee dispute.
  */
-import type { JsonValue } from "../meta/json-shape.ts";
-import { hashJsonValue } from "../meta/stable-json.ts";
+import { validateToolArguments } from "@earendil-works/pi-ai/utils/validation";
+import type { TSchema } from "typebox";
+import type { JsonObject, JsonValue } from "../meta/json-shape.ts";
+import { errorMessage } from "../meta/runtime-values.ts";
+import { hashJsonValue, sameJsonValue } from "../meta/stable-json.ts";
 
 export interface Rule {
   readonly id: string;
@@ -35,4 +38,27 @@ export function contractHash(contract: Contract): string {
   const twice = ids.find((id, index) => ids.indexOf(id) !== index);
   if (twice !== undefined) throw new Error(`the contract names rule ${twice} twice`);
   return hashJsonValue(contract);
+}
+
+/**
+ * Why an answer does not follow the contract's answer format, or null when it does. The validator is
+ * pi-ai's own, the one a solver's record tool runs on its arguments, so the kernel and the tool agree
+ * on every answer. That validator coerces: it reads `"1"` as `1` where the format wants a number and
+ * drops a null the format does not allow. It coerces a clone, never the caller's value, and an
+ * answer that follows only once coerced does not follow here, since what a check would read is the
+ * answer as given. Coercion is idempotent, so what the record tool hands on always follows.
+ */
+export function answerFormatFault(contract: Contract, answer: JsonValue): string | null {
+  // SAFETY: the format is a JSON Schema, which pi-ai's validator compiles as TypeBox does its own.
+  const tool = { name: "answer", description: "", parameters: contract.answerFormat as TSchema };
+  let validated: unknown;
+  try {
+    // SAFETY: the validator reads any JSON value; only its type names the arguments an object.
+    const call = { type: "toolCall", id: "answer", name: "answer", arguments: answer as JsonObject } as const;
+    validated = validateToolArguments(tool, call);
+  } catch (error) {
+    // The validator ends its message with the whole answer, which the caller already holds.
+    return errorMessage(error).split("\n\nReceived arguments")[0] ?? "";
+  }
+  return sameJsonValue(validated, answer) ? null : "the answer follows the format only once coerced";
 }

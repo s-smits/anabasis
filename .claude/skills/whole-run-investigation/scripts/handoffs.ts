@@ -22,9 +22,10 @@
 // A channel is `no read route` only where no recorded call shape reaches its bytes at all. Every
 // channel the round's opening carried is re-served by the context tool's `round/opening` document,
 // and the round's own contract by `harness_inspect readiness` besides, so an unread cell on either
-// is this round's choice. A context question that names no document counts toward the user's files,
-// which leaves every document count a lower bound, and a `bash` row records only a working
-// directory, so each "never read" count carries that remainder too.
+// is this round's choice. A cited context question that names no document counts toward the user's
+// files, which leaves every document count a lower bound, while an overview lists document ids and
+// reads none; a `bash` row records only a working directory, so each "never read" count carries that
+// remainder too.
 import { existsSync, readdirSync, readFileSync } from "#src/meta/filesystem.ts";
 import { basename, join } from "#src/meta/path.ts";
 import { BUILDER_EXECUTION_SCHEMA } from "#src/author/builder-execution.ts";
@@ -54,6 +55,9 @@ export const HANDOFFS_SCHEMA = "wri-handoffs/v2";
 const TRIAL = "harness_trial";
 const PREVIEW = "correctness_check";
 const CONTEXT = "context";
+/** The context depth that returns lines from the documents; `overview` returns their ids and `page`
+ *  always names one (`src/builder/context-tool.ts`). */
+const CITED = "cited";
 const INSPECT = "harness_inspect";
 /** The inspect mode that returns the round's own contract beside the static view
  *  (`src/builder/harness-inspect.ts` `readinessResult`, bound at `src/run/builder-campaign.ts`). */
@@ -685,13 +689,15 @@ function routeReads(round: Round, route: ReadRoute, before: number): number {
       return calls(round, INSPECT, READINESS).filter(
         (c) => delivered(c, before) && c.target?.family === undefined,
       ).length;
-    // A context call that names no document asked across every source at once, which is the only
-    // recorded evidence that the user's files were opened, the one source no other channel reads. A
-    // `cited` question restricted to one source records the same empty target, so these count toward
-    // the user's files and leave every document count a lower bound.
+    // A cited context question that names no document asked across every source at once, which is
+    // the only recorded evidence that the user's files were opened, the one source no other channel
+    // reads. A question restricted to one source records the same empty target, so these count toward
+    // the user's files and leave every document count a lower bound. An overview names no document
+    // either, and returns only the ids of every document, so it read no user file.
     case "user-files":
-      return calls(round, CONTEXT).filter((c) => delivered(c, before) && !isString(c.target?.contextId))
-        .length;
+      return calls(round, CONTEXT, CITED).filter(
+        (c) => delivered(c, before) && !isString(c.target?.contextId),
+      ).length;
   }
 }
 

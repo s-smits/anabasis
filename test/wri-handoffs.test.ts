@@ -135,6 +135,9 @@ function campaign(
                 target: { contextId: `traces/${RUN}/t1/artifact` },
                 startedAtMs: 2_000,
               },
+              // A question across every source may reach the user's files; an overview lists ids.
+              { tool: "context", action: "cited", startedAtMs: 2_100 },
+              { tool: "context", action: "overview", startedAtMs: 2_200 },
               {
                 tool: "context",
                 action: "page",
@@ -256,9 +259,10 @@ describe("round hand-offs", () => {
     expect(cell("memory")).toMatchObject({ present: true, served: false, read: 1, acted: true });
     // The readout rides the opening page and the history source both.
     expect(cell("climb-readout")).toMatchObject({ served: true, read: 2, acted: null });
-    // Both traces were opened through the context tool, and neither counts as reading the user's files.
+    // Both traces were opened through the context tool, and neither counts as reading the user's
+    // files; of the two questions that named no document, only the cited one could have read them.
     expect(cell("traces")).toMatchObject({ read: 2 });
-    expect(cell("context")).toMatchObject({ read: 0 });
+    expect(cell("context")).toMatchObject({ read: 1 });
     expect(second.servedNotRead.map((u: { name: string }) => u.name)).not.toContain("rebuild-advice");
     expect(second.servedNotRead.every((u: { readRoute: boolean }) => u.readRoute)).toBe(true);
     // The prior epoch's projection opened this round and the opening page re-served it. The round's

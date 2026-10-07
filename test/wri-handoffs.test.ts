@@ -434,9 +434,9 @@ describe("the advice channel's served cell", () => {
     ["findings", { ...advicePacket([]), findings: [{ owner: null, claim: "no task reaches the limit" }] }],
   ];
   it.each(packets)(
-    "reads a packet of only %s as served where the kickoff carries its render",
+    "reads a packet of only %s as present, and served where the kickoff carries its render",
     (_, packet) => {
-      expect(adviceCell({ packet })).toMatchObject({ served: true });
+      expect(adviceCell({ packet })).toMatchObject({ present: true, served: true });
     },
   );
 

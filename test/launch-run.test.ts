@@ -444,6 +444,14 @@ describe("one-command run launcher", () => {
       CODEX_BUILT_REASONING_EFFORT: "high",
       CODEX_REVIEW_REASONING_EFFORT: "medium",
     });
+    expect(slotEnvironment("solhmm")).toMatchObject({
+      CODEX_BUILDER_MODEL: "gpt-6.1-sol",
+      CODEX_BUILT_MODEL: "gpt-6.1-sol",
+      CODEX_REVIEW_MODEL: "gpt-6.1-sol",
+      CODEX_BUILDER_REASONING_EFFORT: "high",
+      CODEX_BUILT_REASONING_EFFORT: "medium",
+      CODEX_REVIEW_REASONING_EFFORT: "medium",
+    });
     expect(slotEnvironment("luna")).toMatchObject({
       CODEX_BUILDER_MODEL: "gpt-5.6-luna",
       CODEX_BUILT_MODEL: "gpt-5.6-luna",
@@ -498,6 +506,14 @@ describe("one-command run launcher", () => {
     expect(plan?.runId).toBe("standard-opushmm-at");
     const args = plan === undefined ? [] : probeArgs(plan, options);
     expect(args[args.indexOf("--condition") + 1]).toBe("opus");
+  });
+
+  it("probes the Sol effort variant as the standard sol row", () => {
+    const options = parseOptions(["--prompt", "Write a CLI.", "--model", "solhmm"]);
+    const [plan] = planRuns(options, "/tmp/launch", "at");
+    expect(plan?.runId).toBe("standard-solhmm-at");
+    const args = plan === undefined ? [] : probeArgs(plan, options);
+    expect(args[args.indexOf("--condition") + 1]).toBe("sol");
   });
 
   it("probes the Sonnet effort variant as the standard sonnet row", () => {

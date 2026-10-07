@@ -35,6 +35,7 @@ export const SLOTS = ["builder", "built", "review"] as const;
  */
 export const CONDITIONS = {
   sol: { kind: "codex", model: "gpt-6.1-sol", efforts: ["high", "high", "medium"] },
+  solhmm: { kind: "codex", model: "gpt-6.1-sol", efforts: ["high", "medium", "medium"] },
   luna: { kind: "codex", model: "gpt-5.6-luna", efforts: ["max", "max", "max"] },
   astra: { kind: "codex", model: "gpt-6-astra", efforts: ["medium", "low", "low"] },
   opus: { kind: "claude", model: "claude-opus-5-5", efforts: ["medium", "medium", "medium"] },

@@ -42,6 +42,9 @@ subject, as `stack-hop` section 3 describes:
   pre-push hook refuses a new branch that does not. A change that depends on nothing in the stack
   still goes on top; say so in its body, as #26 did ("it sits on #25 only because a new pull
   request goes on the top of the open stack").
+- **A skill or documentation upgrade is the exception** (operator, 2026-10-07): it goes up as its
+  own PR with `--base main`, unasked, so main does not drift; one that describes a fix still on the
+  stack is appended to that fix's PR instead. AGENTS.md "Where changes go" owns the rule.
 - **A new PR carries only its own commits.** "brooo 49 commits, why not start from pr21?" and
   "properly remove all code that's not specific to pr21" (09-25) came from branches that dragged
   earlier PRs' code along. The operator counted it as "the third time or so", which is why the hook

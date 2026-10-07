@@ -18,6 +18,11 @@ export const FINDING_OWNERS: readonly string[] = [
   "judge",
 ];
 
+/** What a multi-run finding carries beside its owner: the pile the named runs sort it into, and
+ *  its typed outcome. compose-groups.ts asks for exactly these labels. */
+export const MULTI_RUN_PILES: readonly string[] = ["every", "absent", "unsaid"];
+export const MULTI_RUN_OUTCOMES: readonly string[] = ["patch", "decision", "prediction", "drop"];
+
 export function reportSectionLines(): string[] {
   return [
     `Under each of your \`## lane_NN\` headings write these \`###\` subsections, each exactly once and in this order: ${REPORT_SECTIONS.map((section) => `\`### ${section}\``).join(", ")}.`,

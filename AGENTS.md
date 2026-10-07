@@ -1920,7 +1920,8 @@ source-changing commit new to the remote runs `gate --static` over its own check
 head holding the newest of them gets the whole gate. A commit whose patch (`git patch-id --stable`) the
 remote already held under the refs the push replaces is a replay that a rebase carried to a new base, and
 it waits for `bun run land` (see "Where changes go"). The same hook refuses a source push to main that
-lacks `Hotfix:` trailers, a new branch that is not on top of the open stack, and a push that leaves an
+lacks `Hotfix:` trailers, a new branch that is not on top of the open stack (a side PR against main
+excepted, below), and a push that leaves an
 open PR listing another open PR's commits; one left listing old copies of its base's commits gets a
 warning naming the `git rebase --onto` that repairs it. **There is no hook bypass by any spelling**,
 neither `--no-verify` nor `-c core.hooksPath=…`.
@@ -2687,8 +2688,8 @@ was, because local `main` can hold documentation commits that were never pushed.
 
 ### Where changes go
 
-**Main takes two kinds of change directly, and everything else arrives as a stacked PR** (operator
-decision 2026-09-24). The first is documentation, meaning the documentation set: exactly the paths the
+**Main takes two kinds of change directly, a skill or documentation upgrade arrives as its own PR against
+main (below), and everything else arrives as a stacked PR** (operator decisions 2026-09-24 and 2026-10-07). The first is documentation, meaning the documentation set: exactly the paths the
 pre-push hook excludes when it decides a push is documentation-only, after which it runs `git diff
 --check` alone, so such a push needs nothing more. The second is a hotfix, a small fix to a defect on main
 that cannot wait for the stack. Each of its commits ends with a `Hotfix: <why>` trailer, the push is gated
@@ -2721,6 +2722,18 @@ behaviour checked by nothing until you run `bun test` from the script's own dire
 the file first. A document describing source that is not on main stays with that source. Everything under
 `src/`, `tools/` and `vendor/` is source, whatever the file type.
 
+**Open a skill or documentation upgrade as its own pull request against main, unasked** (operator decision
+2026-10-07). A change to a skill (its `SKILL.md`, references, scripts and the tests that import them), to
+`AGENTS.md` or to `docs/` goes up as a PR with `--base main` once its focused checks pass, without waiting
+for the operator to ask and without riding on the stack. Kept in a local branch, or carried by a stack PR it
+has nothing to do with, it drifts: the next session reads the stale copy on main, and the upgrade lands
+weeks later in a merge nobody reviews it in. On 2026-10-07 nine investigation-skill commits sat in local
+branches for a day while the skill on main still taught the procedure they replaced. The one exception is
+the rule just above: a document or skill change that describes or reads a fix still on the stack, such as an
+`AGENTS.md` paragraph about that fix or a skill reader for a record it adds, is true only once that fix
+lands, so it is appended to the stack PR that owns the fix. Such a side PR changes nothing under `src/`,
+`vendor/` or `starters/`, and the pre-push hook does not count it as a top of the stack.
+
 Every other change is a PR on top of the one open stack, never beside it: a single chain from the bottom
 PR to the head, each based on the one before. Two independent changes still go one above the other,
 because one chain has one review order, one gate path and one merge order, while a branch off its middle
@@ -2729,8 +2742,10 @@ working baseline, since main alone is not the current production-development sta
 open. "Add stacked PR" means a new PR on the latest head, with `--base` set to that head's branch.
 Pre-push reads the open PRs with `gh` and holds two things, and when GitHub cannot be read it says so and
 lets the push through. A push that creates a branch must contain the top's head, the top being the PR no
-other open PR is based on, and it is refused when there is more than one top; the hook cannot see
-`--base`. And a push must not leave an open PR listing commits that are not its own, whether old copies of
+other open PR is based on, and it is refused when there is more than one top, except that a side PR, one
+whose changes against main touch only `.claude/`, `docs/`, `AGENTS.md`, `README.md`, `test/`,
+`skills-lock.json` and `tools/oxlint/not-slop.tsv`, need not contain the top and never counts as one; the
+hook cannot see `--base`. And a push must not leave an open PR listing commits that are not its own, whether old copies of
 its base's commits, matched by author time and subject, or another open PR's head beyond its base. The
 refusal prints the `git rebase --onto` or `gh pr edit --base` that repairs it.
 

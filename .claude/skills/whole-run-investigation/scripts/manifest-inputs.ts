@@ -21,9 +21,6 @@ import { jsonText, readJsonAs, SNAPSHOT_STATUS_FILE, SNAPSHOT_STATUS_SCHEMA } fr
 import { TRACE_CHALLENGE_STATUS_FILE } from "./trace-challenge.ts";
 import { namedTargets } from "./hardware-target.ts";
 
-export const ORIENTATION_HEADING = "orientation";
-/** Maximum nonblank lines in the shared reviewer orientation. */
-const ORIENTATION_MAX_LINES = 20;
 /** A lane heading in the catalogue and in the session index: `**N. Title.**` at line start. */
 const ANGLE_HEADING = /^\*\*(\d+)\.\s+(.+?)\*\*/;
 /** A deterministic row heading in both files: `**A. Title.**` at line start. */
@@ -197,20 +194,14 @@ export interface Snapshot {
   failedViews: FailedView[];
 }
 
-export interface NotesOrientation {
-  custom: boolean;
-  text: string;
-}
-
 export interface SessionNote {
   name: string;
   custom: boolean;
   note: string;
 }
 
-/** The notes file: its orientation blocks and every other `## heading` block. */
+/** The notes file: one `## heading` block per session it directs. */
 export interface ParsedNotes {
-  orientations: NotesOrientation[];
   notes: SessionNote[];
 }
 
@@ -860,34 +851,10 @@ export function parseNotes(path: string): ParsedNotes {
       blocks.push(current);
     } else if (current) current.lines.push(line);
   }
-  const orientations = blocks.flatMap((block) =>
-    block.name === ORIENTATION_HEADING ? [{ custom: block.custom, text: block.lines.join("\n").trim() }] : [],
-  );
-  const notes = blocks.flatMap((block) =>
-    block.name === ORIENTATION_HEADING
-      ? []
-      : [{ name: block.name, custom: block.custom, note: unwrap(block.lines.join("\n")) }],
-  );
-  return { orientations, notes };
-}
-
-export function orientationProblems(orientations: readonly NotesOrientation[]): string[] {
-  const [orientation] = orientations;
-  if (orientation === undefined) {
-    return [
-      "the notes file has no `## orientation` block; controller counts alone do not tell a session what it is looking at",
-    ];
-  }
-  if (orientations.length > 1) {
-    return [`the notes file carries ${orientations.length} \`## orientation\` blocks`];
-  }
-  if (orientation.custom) return ["`custom:orientation` is the reserved orientation block, not a session"];
-  if (orientation.text.length === 0) return ["`## orientation` has no text under it"];
-  const lines = orientation.text.split("\n").filter((line) => line.trim().length > 0);
-  if (lines.length > ORIENTATION_MAX_LINES) {
-    return [
-      `\`## orientation\` carries ${lines.length} lines; the contract is at most ${ORIENTATION_MAX_LINES}, so cut it to what a session cannot read off the facts block`,
-    ];
-  }
-  return [];
+  const notes = blocks.map((block) => ({
+    name: block.name,
+    custom: block.custom,
+    note: unwrap(block.lines.join("\n")),
+  }));
+  return { notes };
 }

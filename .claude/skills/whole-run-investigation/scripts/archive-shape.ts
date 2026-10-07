@@ -80,6 +80,9 @@ const IDENTITY_PATTERNS = new Map<string, RegExp>([
 ]);
 
 /** A safeguard route the primary adjudicated; `inconclusive` is what the scaffold writes without one. */
+/** How the scaffold opens a lane reason it has no verdict for; the validator refuses it back. */
+export const UNADJUDICATED_LANE_REASON = "lane report not yet adjudicated";
+
 export const ADJUDICATED_ROUTES: ReadonlySet<string> = new Set(["routed", "held", "not-routed"]);
 export const ROUTE_STATES: ReadonlySet<string> = new Set([...ADJUDICATED_ROUTES, "inconclusive"]);
 

@@ -9,10 +9,19 @@
  *
  * The launches read a generated catalogue and index in the maintained shape, so a hostile variant
  * is one edit of a fixture the test owns; one test lists the live catalogue, which is where the
- * maintained references and this shape are proved to agree.
+ * maintained references and this shape are proved to agree. `compose-groups.ts` reads the native
+ * prompts a launch writes, for one run or across several, so its tests compose from them.
  */
 import { spawnTextSync as spawnSync } from "./helpers/bun-spawn-sync.ts";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "../src/meta/filesystem.ts";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  symlinkSync,
+  writeFileSync,
+} from "../src/meta/filesystem.ts";
 import { dirname, join, resolve } from "../src/meta/path.ts";
 import { afterEach, describe, expect, it } from "bun:test";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
@@ -33,7 +42,33 @@ import {
   scratchAuthority,
   TRACE_CHALLENGE_LANE,
 } from "../.claude/skills/whole-run-investigation/scripts/catalogue-shape.ts";
-import { REPORT_SECTIONS } from "../.claude/skills/whole-run-investigation/scripts/manifest-reporting.ts";
+import {
+  agentPrompt,
+  buildLanes,
+  collectReports,
+  type LanesOptions,
+  modelCheck,
+  renderSynthesis,
+} from "../.claude/skills/whole-run-investigation/scripts/investigation.ts";
+import {
+  type AcrossRuns,
+  availableLanes,
+  checkComposed,
+  type ComposedGroup,
+  composeLanes,
+  composeRuns,
+  type GroupSize,
+  loadLaneGroups,
+  planGroups,
+  readRun,
+  runsPreamble,
+  writeGroups,
+} from "../.claude/skills/whole-run-investigation/scripts/compose-groups.ts";
+import {
+  MULTI_RUN_OUTCOMES,
+  MULTI_RUN_PILES,
+  REPORT_SECTIONS,
+} from "../.claude/skills/whole-run-investigation/scripts/manifest-reporting.ts";
 
 type View = { label: string; file: string; status: string; required: boolean; bytes: number; sha256: string };
 type Status = {
@@ -73,13 +108,27 @@ type Edit = (text: string) => string;
 const REPO = resolve(import.meta.dirname, "..");
 const SKILL = join(REPO, ".claude/skills/whole-run-investigation");
 const SCRIPT = join(SKILL, "scripts/build-manifest.ts");
+const VALIDATOR = join(SKILL, "scripts/validate-reports.ts");
 const OPEN_LANES = ANGLE_COUNT - ISOLATED_ANGLES.size;
 const SCAN_VIEW = JSON.stringify({
   findings: [{ rule: "telemetry-constant", battery: "run-1-on", statement: "turns is 1." }],
 });
-/** Every launch carries one; the tests that are not about it use this one. */
-const ORIENTATION =
-  "## orientation\n1. The product is a link budget checker.\n2. Loose end: usb-pd is 0/6.\n\n";
+/** The shared instructions every launch carries; the tests that are not about them use these. */
+const SHARED = [
+  "## Orientation",
+  "",
+  "1. The product is a link budget checker.",
+  "2. Loose end: usb-pd is 0/6.",
+  "",
+  "## The moved variable and prior state",
+  "",
+  "none",
+  "",
+  "## Hard rules",
+  "",
+  "- HARD_RULE: never quote campaign text.",
+  "",
+].join("\n");
 /** The operator directive a firmware run's journal records, which names three boards. */
 const FIRMWARE_REQUEST =
   "Build a harness that writes firmware for ESP32, Raspberry Pi Pico and Arduino Uno, where the code must compile.";
@@ -225,11 +274,11 @@ function identityRepo() {
 
 /** The campaign a snapshot names: its journal records the operator directive, which names hardware
  *  unless the test says otherwise. */
-function recordedCampaign(request: string): string {
+function recordedCampaign(request: string, runId: string): string {
   const campaign = scratchDir("ana-build-campaign-");
   mkdirSync(join(campaign, "observability"), { recursive: true });
   writeFileSync(
-    join(campaign, "observability", "run-1.jsonl"),
+    join(campaign, "observability", `${runId}.jsonl`),
     `${JSON.stringify({ type: "prompt-ingested", contract: "builder", role: "user-directive", prompt: request })}\n`,
   );
   return campaign;
@@ -244,10 +293,12 @@ function snapshot(
     verified?: number;
     packet?: boolean;
     request?: string;
+    runId?: string;
   } = {},
 ) {
   const dir = scratchDir("ana-build-snapshot-");
-  const campaign = recordedCampaign(options.request ?? FIRMWARE_REQUEST);
+  const runId = options.runId ?? "run-1";
+  const campaign = recordedCampaign(options.request ?? FIRMWARE_REQUEST, runId);
   const repo = identityRepo();
   const views: View[] = [];
   const put = (label: string, body: string, file = `${label}.txt`, status = "ok"): void => {
@@ -261,8 +312,8 @@ function snapshot(
     "review-yield.json",
   );
   put("builder", JSON.stringify({ schema: "builder" }));
-  put("run-1-default", defaultView(options.verified ?? 25));
-  put("run-1-scan", SCAN_VIEW);
+  put(`${runId}-default`, defaultView(options.verified ?? 25));
+  put(`${runId}-scan`, SCAN_VIEW);
   for (const mode of [
     "scorecard",
     "observations-warning",
@@ -271,7 +322,7 @@ function snapshot(
     "cases-non-result",
     "cases-pass",
   ]) {
-    put(`run-1-${mode}`, "{}\n");
+    put(`${runId}-${mode}`, "{}\n");
   }
 
   const challenge = join(dir, "trace-challenge");
@@ -288,7 +339,7 @@ function snapshot(
         schema: "whole-run-trace-challenge-status/v1",
         complete: true,
         campaign,
-        runId: "run-1",
+        runId,
         telemetry: join(challenge, "trace-telemetry.json"),
         packet: join(challenge, "trace-challenge-packet.json"),
         prompt: join(challenge, "trace-challenge-prompt.md"),
@@ -303,7 +354,7 @@ function snapshot(
     capturedAt: "2026-08-14T07:51:39.654Z",
     campaign,
     repo: repo.path,
-    runIds: ["run-1"],
+    runIds: [runId],
     source: { commit: repo.head, dirty: false, sourceDigest: "d".repeat(64) },
     worktree: { path: repo.path, head: repo.head, dirty: false },
     runtime: { version: options.runtime ?? PINNED_BUN_VERSION, executable: Bun.argv[0]! },
@@ -339,10 +390,32 @@ function snapshot(
     },
   };
 }
-function notes(body: string, orientation: string = ORIENTATION): string {
+function notes(body: string): string {
   const path = join(scratchDir("ana-build-notes-"), "notes.md");
-  writeFileSync(path, `${orientation}${body}`);
+  writeFileSync(path, body);
   return path;
+}
+
+/** A shared-instructions file, as `wri.ts start` writes one and the primary edits it. */
+function sharedInstructions(text: string = SHARED): string {
+  const path = join(scratchDir("ana-build-shared-"), "shared-instructions.md");
+  writeFileSync(path, text);
+  return path;
+}
+
+/** A run overview whose one line is `fact`, as the `overview` lane writes one. */
+function runOverview(fact = "- RECORDED_FACT: the snapshot is complete."): string {
+  const path = join(scratchDir("ana-build-overview-"), "run-overview.md");
+  writeFileSync(path, `${fact}\n`);
+  return path;
+}
+
+/** The two instruction files a launch requires, unless the test passes its own. */
+function instructionArgs(args: readonly string[]): string[] {
+  return [
+    ...(args.includes("--shared-instructions") ? [] : ["--shared-instructions", sharedInstructions()]),
+    ...(args.includes("--run-overview") ? [] : ["--run-overview", runOverview()]),
+  ];
 }
 
 /** The builder against the fixture references, with the standing arguments every launch carries
@@ -351,7 +424,17 @@ function notes(body: string, orientation: string = ORIENTATION): string {
 function launch(snap: Snapshot | null, ...args: string[]) {
   const out = join(scratchDir("ana-build-out-"), "launch");
   const bound =
-    snap === null ? [] : ["--snapshot", snap.dir, "--worktree", snap.status.worktree.path, "--out", out];
+    snap === null
+      ? []
+      : [
+          "--snapshot",
+          snap.dir,
+          "--worktree",
+          snap.status.worktree.path,
+          "--out",
+          out,
+          ...instructionArgs(args),
+        ];
   const refs = args.includes("--angles") ? [] : references();
   const run = spawnSync(Bun.argv[0]!, [SCRIPT, ...bound, ...refs, ...args]);
   const read = (...path: string[]): string => readFileSync(join(out, ...path), "utf8");
@@ -502,8 +585,11 @@ describe("what a launch composes", () => {
     expect(instructions).toContain("usb-pd 0/6");
     expect(instructions).toContain("Wilson [0.524, 0.857]");
     expect(instructions).toContain("telemetry-constant");
-    // The moved variable is not in the evidence, so its absence is stated rather than inferred.
-    expect(instructions).toContain("was not supplied to the launcher");
+    // The shared instructions arrive whole, before the facts, and the run overview after them.
+    expect(instructions).toContain(SHARED.trim());
+    expect(instructions).toContain("## Run overview");
+    expect(instructions).toContain("RECORDED_FACT");
+    expect(instructions.indexOf("## Controller facts")).toBeLessThan(instructions.indexOf("## Run overview"));
     for (const verdict of DIGEST_VERDICTS) {
       expect(instructions.match(new RegExp(`^- ${verdict}:`, "gm"))).toHaveLength(1);
     }
@@ -579,9 +665,13 @@ describe("what a launch composes", () => {
         "Wilson [0.524",
         "telemetry-constant",
         "## Controller facts",
+        "Loose end",
+        "RECORDED_FACT",
       ]) {
         expect(prompt).not.toContain(forbidden);
       }
+      // The hard rules reach the blind lane although the rest of the shared instructions do not.
+      expect(prompt).toContain("HARD_RULE");
     }
     // The lane that is not public-only still receives the evidence, and no isolation rule.
     const open = tasks.find((row) => row.name === "lane_02")?.task;
@@ -659,15 +749,7 @@ describe("what a launch composes", () => {
   });
 
   it("seats each fired isolated lane alone under --auto and hands the packet to the trace lane only", () => {
-    const result = launch(
-      snapshot(),
-      "--auto",
-      String(FULL_SWEEP.length),
-      "--transport",
-      "native",
-      "--notes",
-      notes(""),
-    );
+    const result = launch(snapshot(), "--auto", String(FULL_SWEEP.length), "--transport", "native");
     const tasks = result.tasks();
     const traceLane = laneName(TRACE_CHALLENGE_LANE);
     const privateNote = `Private lane ${TRACE_CHALLENGE_LANE} trace evidence`;
@@ -694,15 +776,7 @@ describe("what a launch composes", () => {
 
   it("leaves an unfired isolated lane out of --auto and refuses selecting it by hand", () => {
     const unfired = snapshot({ verified: 0 });
-    const auto = launch(
-      unfired,
-      "--auto",
-      String(MIN_AUTO_SESSIONS),
-      "--transport",
-      "native",
-      "--notes",
-      notes(""),
-    );
+    const auto = launch(unfired, "--auto", String(MIN_AUTO_SESSIONS), "--transport", "native");
     expect(auto.status).toBe(0);
     // Contiguous open groups and no isolated seat: the exact cut is the partitioner's tie-break.
     expect(auto.tasks()).toHaveLength(MIN_AUTO_SESSIONS);
@@ -819,6 +893,7 @@ describe("what a launch composes", () => {
         `5,${HARDWARE_TARGET_LANE},${GROUND_TRUTH_LANE}`,
         "--notes",
         notes(""),
+        ...instructionArgs([]),
         "--launch",
       ],
       // Git looks no higher than the scratch root, so no work tree holds --out wherever tests run.
@@ -859,16 +934,47 @@ describe("what a launch composes", () => {
 });
 
 describe("what a launch refuses", () => {
-  it("refuses a launch with no orientation, and one that is longer than the contract", () => {
-    const missing = launch(snapshot(), "--notes", notes("## lane_05\nusb-pd is 0/6.\n", ""));
-    expect(missing.status).toBe(2);
-    expect(missing.stderr).toContain("no `## orientation` block");
+  it("refuses shared instructions with a section left blank, and a launch without them", () => {
+    const blank = sharedInstructions(SHARED.replace("none", "<!-- AUTHOR: what moved -->"));
+    const unfilled = launch(snapshot(), "--sessions", "5", "--shared-instructions", blank);
+    expect(unfilled.status).toBe(2);
+    expect(unfilled.stderr).toContain("## The moved variable and prior state");
+    expect(existsSync(unfilled.out)).toBe(false);
 
-    const long = `## orientation\n${Array.from({ length: 21 }, (_, i) => `${i + 1}. a fact.`).join("\n")}\n\n`;
-    const overLength = launch(snapshot(), "--notes", notes("## lane_05\nusb-pd is 0/6.\n", long));
-    expect(overLength.status).toBe(2);
-    expect(overLength.stderr).toContain("carries 21 lines");
-    expect(existsSync(overLength.out)).toBe(false);
+    // A comment is dropped from what the lanes read; the section it sits in still counts as filled.
+    const commented = sharedInstructions(SHARED.replace("none", "none\n<!-- PRIVATE_NOTE -->"));
+    const filled = launch(snapshot(), "--sessions", "5", "--shared-instructions", commented);
+    expect(filled.status).toBe(0);
+    expect(filled.instructions()).not.toContain("PRIVATE_NOTE");
+
+    const out = join(scratchDir("ana-build-out-"), "launch");
+    const snap = snapshot();
+    const bare = spawnSync(Bun.argv[0]!, [
+      SCRIPT,
+      "--snapshot",
+      snap.dir,
+      "--worktree",
+      snap.status.worktree.path,
+      "--out",
+      out,
+      ...references(),
+      "--sessions",
+      "5",
+    ]);
+    expect(bare.status).toBe(2);
+    expect(bare.stderr).toContain("--shared-instructions <shared-instructions.md> --run-overview");
+  });
+
+  it("refuses notes under --auto, which directs no lane", () => {
+    const result = launch(
+      snapshot(),
+      "--auto",
+      String(FULL_SWEEP.length),
+      "--notes",
+      notes("## lane_05\nx\n"),
+    );
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain("--auto takes no notes");
   });
 
   it("reports every refusal at once and writes nothing", () => {
@@ -911,14 +1017,14 @@ describe("what a launch refuses", () => {
   });
 
   it("rejects an auto review that cannot seat each isolated lane alone", () => {
-    const belowFloor = launch(snapshot(), "--auto", String(MIN_AUTO_SESSIONS - 1), "--notes", notes(""));
+    const belowFloor = launch(snapshot(), "--auto", String(MIN_AUTO_SESSIONS - 1));
     expect(belowFloor.status).toBe(2);
     expect(belowFloor.stderr).toContain(`at least ${MIN_AUTO_SESSIONS} semantic sessions`);
     expect(existsSync(belowFloor.out)).toBe(false);
 
     // Every isolated lane fired, and each needs a cut on each side it has a neighbour: fewer
     // sessions than the full sweep cannot seat them alone.
-    const tooFew = launch(snapshot(), "--auto", String(FULL_SWEEP.length - 1), "--notes", notes(""));
+    const tooFew = launch(snapshot(), "--auto", String(FULL_SWEEP.length - 1));
     expect(tooFew.status).toBe(2);
     expect(tooFew.stderr).toContain(
       `cannot seat each isolated lane alone; ask for at least ${FULL_SWEEP.length}`,
@@ -990,5 +1096,395 @@ describe("what a launch refuses", () => {
     );
     expect(staleResult.status).toBe(2);
     expect(staleResult.stderr).toContain("differs from worktree HEAD");
+  });
+});
+
+/** One run as `wri.ts read` leaves its review: the state naming the run, its campaign's opening
+ *  with the source commit, and, for a run with a snapshot, the native prompts a launch wrote. */
+function reviewedRun(runId: string, snap: Snapshot | null, ...launchArgs: string[]) {
+  const review = scratchDir("ana-build-review-");
+  const campaign = snap?.status.campaign ?? scratchDir("ana-build-campaign-");
+  const commit = snap?.status.source.commit ?? "f".repeat(40);
+  mkdirSync(join(campaign, "controller", runId), { recursive: true });
+  writeFileSync(
+    join(campaign, "controller", runId, "opening.json"),
+    JSON.stringify({ runId, source: { commit, dirty: false, sourceDigest: "d".repeat(64) } }),
+  );
+  if (snap === null) {
+    writeFileSync(join(review, "timeline.txt"), "timeline\n");
+  } else {
+    const result = launch(snap, "--transport", "native", ...launchArgs);
+    if (result.status !== 0) throw new Error(result.stderr);
+    renameSync(result.out, join(review, "lanes"));
+    symlinkSync(snap.dir, join(review, "snapshot"));
+  }
+  writeFileSync(
+    join(review, "wri-review.json"),
+    JSON.stringify({
+      schema: "wri-review/v2",
+      reviewDir: review,
+      campaign,
+      runId,
+      repo: snap?.status.worktree.path ?? campaign,
+      scope: {
+        tier: snap === null ? "probe" : "standard",
+        why: snap === null ? "no scored case yet" : "one battery",
+        terminal: { outcome: "aborted", reason: "stopped" },
+        batteries: snap === null ? [] : [{ battery: runId }],
+        cases: { verified: snap === null ? 0 : 25, unaccepted: 0, nonResult: 0 },
+      },
+    }),
+  );
+  return { review, campaign, commit, runId };
+}
+
+/** Plan and compose a reading across `reviews` the way `wri.ts lanes` does, into a fresh directory. */
+function composeAcross(reviews: readonly string[], size: GroupSize, reading: AcrossRuns = "cross-run") {
+  const outDir = scratchDir("ana-build-multi-");
+  const groups = loadLaneGroups();
+  const runs = reviews.map((review) => readRun(review));
+  const available = new Set(
+    runs.flatMap((run) => [...run.available]).filter((lane) => !groups.alone.has(lane)),
+  );
+  const preamble = runsPreamble(runs, [], reading);
+  const composed: ComposedGroup[] = planGroups(groups, available, size).map((group) => {
+    const made = composeRuns(runs, group.lanes, { outDir, preamble, remoteHost: null, reading });
+    return { ...group, ...made, problems: checkComposed(made.text, group.lanes, { shared: SHARED.trim() }) };
+  });
+  writeGroups(
+    outDir,
+    composed,
+    runs.map((run) => run.id),
+  );
+  return { outDir, composed };
+}
+
+describe("what the group composer makes of a launch", () => {
+  it("keeps the shared instructions in an open group when an isolated lane shared its launch, and the isolated lane blind", () => {
+    const result = launch(snapshot(), "--sessions", `2,3,${PUBLIC_ONLY_LANE}`, "--transport", "native");
+    expect(result.status).toBe(0);
+    // The launch held a blind lane, so every prompt opens with the blind file.
+    expect(result.prompt("lane_02").startsWith("# Independent blind review")).toBe(true);
+
+    const plan = planGroups(loadLaneGroups(), availableLanes(join(result.out, "prompts")), { agents: 2 });
+    expect(plan.map((group) => group.lanes)).toEqual([[PUBLIC_ONLY_LANE], [2, 3]]);
+    const open = composeLanes(result.out, [2, 3], null);
+    expect(checkComposed(open.text, [2, 3], { blind: open.blind, shared: SHARED.trim() })).toEqual([]);
+    expect(open.text).toContain("## Run overview");
+    expect(open.text).toContain("RECORDED_FACT");
+    expect(open.text).not.toContain("# Independent blind review");
+    expect(open.text.match(/^# Your assignment$/gm)).toHaveLength(1);
+    const blind = composeLanes(result.out, [PUBLIC_ONLY_LANE], null);
+    expect(blind.blind).toBe(true);
+    expect(checkComposed(blind.text, [PUBLIC_ONLY_LANE], { blind: true, shared: SHARED.trim() })).toEqual([]);
+    expect(blind.text).toContain("# Independent blind review");
+    expect(blind.text).not.toContain("RECORDED_FACT");
+  });
+
+  it("refuses a group whose prompt lost the shared instructions or carries a stale copy", () => {
+    const result = launch(snapshot(), "--sessions", "2,3", "--transport", "native");
+    const { text } = composeLanes(result.out, [2, 3], null);
+    expect(checkComposed(text, [2, 3], { shared: SHARED.trim() })).toEqual([]);
+    expect(checkComposed(text, [2, 3], { shared: `${SHARED.trim()}\n- EDITED_AFTER_BUILD.` })).toEqual([
+      "the prompt does not carry shared-instructions.md as it now reads; rebuild the per-run prompts",
+    ]);
+    const lost = text.replace(/^## Run overview[^\n]*$/m, "## Something else");
+    expect(checkComposed(lost, [2, 3])).toContain(
+      "no `## Run overview`: the shared instructions did not reach the composed prompt",
+    );
+  });
+
+  it("reads one lane group across named runs, each at its own source, a probe run named for what it can answer", () => {
+    const first = reviewedRun(
+      "run-a",
+      snapshot(),
+      "--sessions",
+      `2,3,31,34,${PUBLIC_ONLY_LANE}`,
+      "--run-overview",
+      runOverview("- FACT_OF_A."),
+    );
+    const second = reviewedRun(
+      "run-b",
+      snapshot(),
+      "--sessions",
+      "2,3,31,34",
+      "--run-overview",
+      runOverview("- FACT_OF_B."),
+    );
+    const probe = reviewedRun("run-p", null);
+    const lead = join(first.review, "lanes", "native-output", "lane_02.md");
+    mkdirSync(dirname(lead), { recursive: true });
+    writeFileSync(lead, "## lane_02\n");
+    const runs = [first, second, probe];
+
+    // Six components over three runs is two lanes a subagent, cut along the theme tree; the
+    // isolated lane stays with its own run.
+    const { outDir: multi, composed } = composeAcross(
+      runs.map((run) => run.review),
+      { components: 2 },
+    );
+    expect(composed.flatMap((group) => group.problems)).toEqual([]);
+    const groups = parseJsonAs<{ session: string; runs: string[] }[]>(
+      readFileSync(join(multi, "groups.json"), "utf8"),
+    );
+    expect(groups.map((group) => group.session)).toEqual(["lanes_02_34", "lanes_03_31"]);
+    expect(groups.every((group) => group.runs.join() === "run-a,run-b,run-p")).toBe(true);
+
+    const prompt = readFileSync(join(multi, "lanes_02_34.md"), "utf8");
+    for (const run of runs) {
+      for (const identity of [run.runId, run.campaign, realpathSync(run.review), run.commit]) {
+        expect(prompt).toContain(identity);
+      }
+    }
+    expect(probe.commit).not.toBe(first.commit);
+    expect(prompt).toContain("different source commits");
+    // The shared instructions both runs carry are said once; each run's own overview stays under that run.
+    expect(prompt.split(SHARED.trim())).toHaveLength(2);
+    expect(prompt.match(/^## Orientation$/gm)).toHaveLength(1);
+    expect(prompt.match(/^### Run overview/gm)).toHaveLength(2);
+    expect(prompt.indexOf("FACT_OF_A")).toBeLessThan(prompt.indexOf("## Run run-b"));
+    expect(prompt.indexOf("FACT_OF_B")).toBeGreaterThan(prompt.indexOf("## Run run-b"));
+    expect(prompt).toContain("## Run run-p (no snapshot)");
+    expect(prompt).not.toContain("## Assignments in this launch");
+    expect(prompt.match(/^# Your assignment$/gm)).toHaveLength(1);
+    // Each lane names its trigger, or why there is none, in every run, and an earlier report as a lead.
+    for (const lane of ["02", "34"]) {
+      const block = prompt.slice(prompt.indexOf(`Lane ${lane} in each run:`));
+      expect(block).toContain(`\`run-a\`: ${laneTrigger(Number(lane)).replace(/\.$/, "")}`);
+      expect(block).toContain(`\`run-b\`: ${laneTrigger(Number(lane)).replace(/\.$/, "")}`);
+      expect(block).toContain("`run-p`: no snapshot");
+    }
+    expect(prompt).toContain(`Earlier report: \`${realpathSync(lead)}\``);
+    // The report contract names exactly the labels the validator accepts.
+    for (const label of [...MULTI_RUN_PILES, ...MULTI_RUN_OUTCOMES]) expect(prompt).toContain(`\`${label}\``);
+
+    // The independent multi-run reading names no earlier report and opens no other reading.
+    const independent = composeAcross(
+      runs.map((run) => run.review),
+      { components: 2 },
+      "multi-run",
+    );
+    const alone = independent.composed[0]?.text ?? "";
+    expect(alone).not.toContain("Earlier report");
+    expect(alone).toContain("do not open the per-run or cross-run lane reports");
+    expect(alone).toContain("- Do not read any other lane's prompt or report.");
+
+    // One report per group in the asked shape is what the validator accepts.
+    const finding = "- One mechanism.\n  owner: controller-source\n  pile: every\n  outcome: patch";
+    const section = (lane: string): string =>
+      [
+        `## lane_${lane}`,
+        ...REPORT_SECTIONS.flatMap((name) => [`### ${name}`, name === "Findings" ? finding : "x"]),
+      ].join("\n");
+    mkdirSync(join(multi, "native-output"));
+    for (const [session, lanes] of [
+      ["lanes_02_34", ["02", "34"]],
+      ["lanes_03_31", ["03", "31"]],
+    ] as const) {
+      writeFileSync(
+        join(multi, "native-output", `${session}.md`),
+        [`# Multi-run: ${session}`, ...lanes.map(section)].join("\n\n"),
+      );
+    }
+    const validated = spawnSync(Bun.argv[0]!, [VALIDATOR, "--groups", join(multi, "groups.json")]);
+    expect(validated.stderr).toBe("");
+    expect(validated.status).toBe(0);
+  });
+
+  it("sizes each subagent by lanes, splitting a theme only when it does not fit", () => {
+    const runs = ["run-a", "run-b"].map(
+      (id) => reviewedRun(id, snapshot(), "--sessions", "2,3,31,34").review,
+    );
+    const sessions = (components: number): string[] =>
+      composeAcross(runs, { components }).composed.map((group) => group.name);
+    expect(sessions(4)).toEqual(["lanes_02_34_03_31"]);
+    expect(sessions(2)).toEqual(["lanes_02_34", "lanes_03_31"]);
+    expect(sessions(1)).toEqual(["lane_02", "lane_34", "lane_03", "lane_31"]);
+    const agents = (count: number): string[] =>
+      composeAcross(runs, { agents: count }).composed.map((group) => group.name);
+    expect(agents(1)).toEqual(["lanes_02_34_03_31"]);
+    // Two groups of two tie, and the left one is split first.
+    expect(agents(3)).toEqual(["lane_02", "lane_34", "lanes_03_31"]);
+  });
+});
+
+/** An investigation as `wri.ts start` leaves it once the primary filled the shared instructions:
+ *  each run's review under it, holding its snapshot, its state and its run overview. */
+function investigation(runIds: readonly string[], shared: string = SHARED) {
+  const out = scratchDir("ana-build-investigation-");
+  const runs = runIds.map((runId) => {
+    const snap = snapshot({ runId });
+    const review = join(out, runId);
+    const controller = join(snap.status.campaign, "controller", runId);
+    mkdirSync(controller, { recursive: true });
+    writeFileSync(
+      join(controller, "opening.json"),
+      JSON.stringify({
+        runId,
+        source: { commit: snap.status.source.commit, dirty: false, sourceDigest: "d".repeat(64) },
+      }),
+    );
+    mkdirSync(review, { recursive: true });
+    symlinkSync(snap.dir, join(review, "snapshot"));
+    writeFileSync(join(review, "run-overview.md"), `- OVERVIEW_OF_${runId}.\n`);
+    writeFileSync(
+      join(review, "wri-review.json"),
+      JSON.stringify({
+        schema: "wri-review/v2",
+        reviewDir: review,
+        campaign: snap.status.campaign,
+        runId,
+        repo: snap.status.worktree.path,
+        scope: {
+          tier: "standard",
+          why: "one battery",
+          terminal: { outcome: "aborted", reason: "stopped" },
+          batteries: [{ battery: runId }],
+          cases: { verified: 25, unaccepted: 0, nonResult: 0 },
+        },
+        steps: [],
+      }),
+    );
+    return { runId, review };
+  });
+  writeFileSync(join(out, "shared-instructions.md"), shared);
+  writeFileSync(
+    join(out, "wri-investigation.json"),
+    JSON.stringify({ schema: "wri-investigation/v1", preset: "test", runs }),
+  );
+  return { out, runs };
+}
+
+/** The lanes and readings the investigation tests build, with one difference each test states. */
+function lanesOptions(over: Partial<LanesOptions> = {}): LanesOptions {
+  return {
+    lanes: `2,3,31,34,${PUBLIC_ONLY_LANE}`,
+    tier: "all",
+    size: { agents: 3 },
+    readings: "per-run,multi-run",
+    remoteHost: null,
+    prior: null,
+    ...over,
+  };
+}
+
+/** A lane report in the shape the validator accepts, or one missing its sections. */
+function laneReport(lane: number, kind: "valid" | "torn" = "valid"): string {
+  if (kind === "torn") return `## ${laneName(lane)}\n\nnothing here\n`;
+  const finding = "- One mechanism.\n  owner: controller-source";
+  return [
+    `## ${laneName(lane)}`,
+    ...REPORT_SECTIONS.flatMap((name) => [`### ${name}`, name === "Findings" ? finding : "x"]),
+  ].join("\n");
+}
+
+function writeReport(review: string, lane: number, kind: "valid" | "torn" = "valid"): void {
+  const dir = join(review, "lanes", "native-output");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, `${laneName(lane)}.md`), laneReport(lane, kind));
+}
+
+const groupSessions = (path: string): string[] =>
+  parseJsonAs<{ session: string }[]>(readFileSync(path, "utf8")).map((row) => row.session);
+
+describe("an investigation, from its lanes to its synthesis", () => {
+  it("builds each run's open and isolated lanes apart, composes every reading and writes one launch entry per agent", () => {
+    const { out, runs } = investigation(["run-a", "run-b"]);
+    const { launch: launchPath } = buildLanes(out, lanesOptions());
+    const blindLane = laneName(PUBLIC_ONLY_LANE);
+
+    for (const run of runs) {
+      expect(existsSync(join(run.review, "lanes-isolated", "prompts", `${blindLane}.md`))).toBe(true);
+      expect(existsSync(join(run.review, "lanes", "prompts", `${blindLane}.md`))).toBe(false);
+      expect(groupSessions(join(run.review, "lanes", "groups", "groups.json"))).toEqual([
+        "lanes_02_34",
+        "lanes_03_31",
+      ]);
+      const open = readFileSync(join(run.review, "lanes", "groups", "lanes_02_34.md"), "utf8");
+      expect(open).toContain(SHARED.trim());
+      expect(open).toContain(`OVERVIEW_OF_${run.runId}`);
+      const blind = readFileSync(join(run.review, "lanes-isolated", "groups", `${blindLane}.md`), "utf8");
+      expect(blind).toContain("# Independent blind review");
+      expect(blind).not.toContain("Loose end");
+      expect(blind).toContain("HARD_RULE");
+    }
+    // The multi-run reading leaves the isolated lane per run, carries the shared instructions once,
+    // and names no other reading's report.
+    expect(groupSessions(join(out, "multi-run", "groups.json"))).toEqual([
+      "lane_02",
+      "lane_34",
+      "lanes_03_31",
+    ]);
+    const multi = readFileSync(join(out, "multi-run", "lanes_03_31.md"), "utf8");
+    expect(multi.split(SHARED.trim())).toHaveLength(2);
+    expect(multi).not.toContain("Earlier report");
+
+    const launchText = readFileSync(launchPath, "utf8");
+    const prompts = [
+      ...launchText.matchAll(/^Read (\S+) whole and do exactly what it says; it is your whole task\.$/gm),
+    ];
+    expect(prompts).toHaveLength(3 + 3 + 3);
+    for (const [line, prompt = ""] of prompts) {
+      expect(existsSync(prompt)).toBe(true);
+      expect(line).toBe(agentPrompt(prompt));
+      expect(launchText).toContain(modelCheck(prompt));
+    }
+    expect(launchText).toContain(
+      `- report: \`${join(runs[0]!.review, "lanes", "native-output", "lane_02.md")}\``,
+    );
+    expect(launchText).toContain(
+      `- report: \`${join(out, "multi-run", "native-output", "lanes_03_31.md")}\``,
+    );
+  });
+
+  it("refuses a blank authored section, a cross-run reading with no per-run report, and a group that outlived the shared instructions", () => {
+    const blank = investigation(["run-a"], SHARED.replace("none", "<!-- AUTHOR: what moved -->"));
+    expect(() => buildLanes(blank.out, lanesOptions({ readings: "per-run" }))).toThrow(
+      "fill or delete the blank section(s) ## The moved variable and prior state",
+    );
+
+    const { out, runs } = investigation(["run-a", "run-b"]);
+    buildLanes(out, lanesOptions({ readings: "per-run" }));
+    expect(() => buildLanes(out, lanesOptions({ readings: "cross-run" }))).toThrow(
+      "cross-run reads the per-run reports as leads, and run-a, run-b has none yet",
+    );
+    for (const run of runs) writeReport(run.review, 2);
+    writeFileSync(join(out, "shared-instructions.md"), `${SHARED}- EDITED_AFTER_BUILD.\n`);
+    expect(() => buildLanes(out, lanesOptions({ readings: "cross-run" }))).toThrow(
+      "refused, no launch.md written",
+    );
+    expect(existsSync(join(out, "launch.md"))).toBe(false);
+  });
+
+  it("collects every expected report as ok, missing or invalid, and renders the synthesis prompt from that index", () => {
+    const { out, runs } = investigation(["run-a", "run-b"]);
+    buildLanes(out, lanesOptions());
+    const first = runs[0]!.review;
+
+    const before = collectReports(out);
+    expect(before.readings).toEqual([
+      { reading: "per-run", ok: 0, of: 6 },
+      { reading: "multi-run", ok: 0, of: 3 },
+    ]);
+    expect(readFileSync(before.index, "utf8")).toContain("| lanes_02_34 | run-a | 2, 34 | missing |");
+
+    writeReport(first, 2);
+    writeReport(first, 34);
+    writeReport(first, 3, "torn");
+    const after = collectReports(out);
+    expect(after.readings[0]).toEqual({ reading: "per-run", ok: 1, of: 6 });
+    const index = readFileSync(after.index, "utf8");
+    expect(index).toContain("| lanes_02_34 | run-a | 2, 34 | ok |");
+    expect(index).toContain("| lanes_03_31 | run-a | 3, 31 | invalid |");
+    expect(index).toContain("- lanes_03_31: lane_03:");
+
+    const { prompt, incomplete } = renderSynthesis(out, null);
+    const text = readFileSync(prompt, "utf8");
+    expect(incomplete).toEqual(["per-run 1/6 ok", "multi-run 0/3 ok"]);
+    expect(text).toContain(SHARED.trim());
+    expect(text).toContain("| lanes_02_34 | run-a | 2, 34 | ok |");
+    expect(text).toContain("`finding | readings | runs | corpus count | owner | outcome`");
+    expect(text).toContain(join(out, "synthesis.md"));
+    expect(text).not.toMatch(/\{(out|synthesis|reports|sharedInstructions)\}|<!--/);
   });
 });

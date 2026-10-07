@@ -11,15 +11,43 @@ set -eu
 root=$(git rev-parse --show-toplevel)
 cd "$root"
 
-# These are surrounding text/evidence surfaces. Scripts, fixtures, configuration and every
-# source root remain outside the exception even if their extension happens to be Markdown.
-changes_source() {
-  ! git diff --quiet "$1" "$2" -- . \
+# Whether the diff from $1 to $2 touches anything beyond the documentation set, the surrounding
+# text/evidence surfaces; further arguments are pathspecs the caller excludes as well. Scripts,
+# fixtures, configuration and every source root remain outside the set even if their extension
+# happens to be Markdown.
+changes_source() (
+  from=$1 to=$2
+  shift 2
+  ! git diff --quiet "$from" "$to" -- . \
     ':(exclude)AGENTS.md' \
     ':(exclude)README.md' \
     ':(exclude)docs/**' \
-    ':(exclude).claude/**/*.md'
-}
+    ':(exclude).claude/**/*.md' \
+    "$@"
+)
+
+# Brings each named commit into this clone when it is not here yet. One that cannot be fetched stays
+# missing, and the check that needed it says so or steps aside.
+fetch_missing() (
+  for sha in "$@"; do
+    git cat-file -e "$sha^{commit}" 2>/dev/null || git fetch -q origin "$sha" 2>/dev/null || true
+  done
+)
+
+# A side pull request goes to main on its own, beside the open stack rather than on it (operator
+# decision 2026-10-07). From where it leaves main's head on the remote ($main_head), it changes nothing
+# beyond the documentation set, the skills, the tests, the skills' lock and the lint-exception register
+# their scripts' rows live in. While main's head is unread, nothing is one.
+side() (
+  [ -n "$main_head" ] || exit 1
+  fetch_missing "$main_head" "$1"
+  fork=$(git merge-base "$main_head" "$1" 2>/dev/null) || exit 1
+  ! changes_source "$fork" "$1" \
+    ':(exclude).claude/**' \
+    ':(exclude)test/**' \
+    ':(exclude)skills-lock.json' \
+    ':(exclude)tools/oxlint/not-slop.tsv'
+)
 
 # Git names the remote as the hook's two arguments; its URL is where a base branch's head is read.
 remote_url=${2:-}
@@ -57,17 +85,19 @@ while read -r local_ref local_sha remote_ref remote_sha; do
       echo "pre-push: so the gate would prove other bytes. Check that commit out and push from there." >&2
       exit 1
     fi
-    # Main takes documentation and hotfixes directly, and anything else reaches it as a pull request
-    # on the top of the open stack. A push to main that changes source is a hotfix only when every
-    # commit it adds says so in a `Hotfix:` trailer giving the reason it cannot wait for the stack.
+    # Main takes documentation and hotfixes directly, and anything else reaches it as a pull request:
+    # a side one on its own, the rest on the top of the open stack. A push to main that changes source
+    # is a hotfix only when every commit it adds says so in a `Hotfix:` trailer giving the reason it
+    # cannot wait for the stack.
     if [ "$remote_ref" = refs/heads/main ] && [ "$remote_sha" != "$zero" ] &&
       changes_source "$remote_sha" "$local_sha"; then
       for commit in $(git rev-list "$local_sha" --not "$remote_sha"); do
         [ -z "$(git log -1 --format='%(trailers:key=Hotfix,valueonly)' "$commit")" ] || continue
         echo "pre-push: main takes documentation and hotfixes alone; this push changes source, and" >&2
-        echo "pre-push: $(git rev-parse --short=9 "$commit") has no Hotfix: trailer. Send it as a pull request on the top of" >&2
-        echo "pre-push: the open stack, or, if it cannot wait for the stack, end each of its commits with" >&2
-        echo "pre-push: a line \`Hotfix: <why>\`. Nothing was pushed." >&2
+        echo "pre-push: $(git rev-parse --short=9 "$commit") has no Hotfix: trailer. Send it as a pull request, its own" >&2
+        echo "pre-push: against main for a skill, test or documentation change and on the top of the open" >&2
+        echo "pre-push: stack for any other, or, if it cannot wait for the stack, end each of its commits" >&2
+        echo "pre-push: with a line \`Hotfix: <why>\`. Nothing was pushed." >&2
         exit 1
       done
     fi
@@ -103,13 +133,25 @@ moved_to() {
   done
 }
 
-# A new branch is a new pull request, and a new pull request goes on the top of the one open stack:
-# it contains the head of the open pull request that no other open one is based on. The stack is
-# read from GitHub; when it cannot be read, the check says so and steps aside rather than block.
-if [ -n "$new_branches" ]; then
+# A new branch is a new pull request. A side one goes to main on its own, and every other one on the
+# top of the one open stack: it contains the head of the open pull request that no other open one is
+# based on, side pull requests on main aside. The stack is read from GitHub; when it cannot be read,
+# the check says so and steps aside rather than block.
+main_head=""
+[ -z "$new_branches" ] || [ -z "$remote_url" ] ||
+  main_head=$(git ls-remote -q "$remote_url" refs/heads/main 2>/dev/null | cut -f1)
+stacked=""
+for sha in $new_branches; do side "$sha" || stacked="$stacked $sha"; done
+if [ -n "$stacked" ]; then
   if tops=$(gh pr list --state open --limit 200 --json number,headRefName,baseRefName,headRefOid --jq \
     '[.[].baseRefName] as $bases | .[] | select(.headRefName as $h | $bases | any(. == $h) | not)
-      | "#\(.number) \(.headRefName) \(.headRefOid)"' 2>/dev/null); then
+      | "#\(.number) \(.headRefName) \(.headRefOid) \(.baseRefName)"' 2>/dev/null); then
+    tops=$(printf '%s\n' "$tops" | while read -r pr branch sha base; do
+      [ -n "$pr" ] || continue
+      head=$(moved_to "$branch")
+      [ "$base" = main ] && side "${head:-$sha}" && continue
+      echo "$pr $branch $sha"
+    done)
     case $(printf '%s' "$tops" | grep -c . || true) in
     0) ;;
     1)
@@ -118,7 +160,7 @@ $tops
 EOF
       top_moved=$(moved_to "$top_branch")
       top_sha=${top_moved:-$top_sha}
-      for sha in $new_branches; do
+      for sha in $stacked; do
         ! git merge-base --is-ancestor "$top_sha" "$sha" 2>/dev/null || continue
         echo "pre-push: a new pull request goes on the top of the open stack, $top_pr ($top_branch), and" >&2
         echo "pre-push: $(git rev-parse --short=9 "$sha") does not contain its head. Nothing was pushed. Rebase it on" >&2
@@ -158,9 +200,7 @@ if edges=$(gh pr list --state open --limit 200 --json number,headRefName,headRef
     # base branch's head on the remote is what the pull request lists its commits against.
     b=${new_base:-$([ -z "$remote_url" ] || git ls-remote -q "$remote_url" "refs/heads/$base" 2>/dev/null | cut -f1)}
     b=${b:-$base_sha}
-    for sha in "$h" "$b"; do
-      git cat-file -e "$sha^{commit}" 2>/dev/null || git fetch -q origin "$sha" 2>/dev/null || true
-    done
+    fetch_missing "$h" "$b"
     if ! git cat-file -e "$h^{commit}" 2>/dev/null || ! git cat-file -e "$b^{commit}" 2>/dev/null; then
       echo "pre-push: $pr ($head) was not checked: its head or its base is not in this clone." >&2
       continue

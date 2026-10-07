@@ -23,6 +23,7 @@ import {
 } from "../.claude/skills/whole-run-investigation/classifier/query-complexity.ts";
 import {
   type ClimbReport,
+  type NumericDrift,
   VELOCITY_SCHEMA,
   numericDriftOf,
   outcomeRowsOf,
@@ -254,39 +255,87 @@ describe("climb velocity", () => {
   const reading = (mass: number) => ({ rows: [{ taskId: "heavy-01", numerics: { "limits.mass": mass } }] });
   /** No structural count moved; one task joined and none of its numbers moved; two checks at a tier. */
   const zero = { checks: 0, limits: 0, coupled: 0, tooled: 0, rules: 0, roots: 0, inputs: 0, scenarios: 0 };
-  const still = { median: 0, moved: 0, joined: 1, tasks: 1 };
+  const still: NumericDrift = { median: 0, moved: 0, joined: 1, tasks: 1, basis: "tasks", paths: null };
   const tiers = (medium = 2, hard = 0) => ({ checkTiers: { easy: 0, medium, hard, frontier: 0 } });
+  const onTasks = (median: number, moved: number): NumericDrift => ({
+    median,
+    moved,
+    joined: 1,
+    tasks: 1,
+    basis: "tasks",
+    paths: null,
+  });
 
   // Direction is absent on purpose: a loosened limit moved just as far as a tightened one.
   it.concurrent.each([
-    [100, { median: 0, moved: 0, joined: 1, tasks: 1 }],
-    [90, { median: 0.1, moved: 1, joined: 1, tasks: 1 }],
-    [110, { median: 0.1, moved: 1, joined: 1, tasks: 1 }],
+    [100, onTasks(0, 0)],
+    [90, onTasks(0.1, 1)],
+    [110, onTasks(0.1, 1)],
   ])("measures how far a published number of 100 moved to %d", (after, drift) => {
     expect(numericDriftOf(reading(100), reading(after))).toEqual(drift);
   });
 
   // Renaming every task once read as "numbers moved 0" and so as `restated`, over batteries whose
-  // limits had moved 3.75 times: the join found nothing and reported nothing as no change. A
-  // renumbered battery keeps one id by chance, and that one task's unchanged numbers once read as the
-  // whole battery standing still: 1 of 25 joined, 0 moved, `restated`. A battery adding one new task
-  // to 24 unchanged ones still asked for something the last did not, so it is not restated.
-  it.concurrent("reads a renamed or mostly renumbered battery as replaced, and a partly new one as moved", () => {
+  // limits had moved 3.75 times: the join found nothing and reported nothing as no change. A full
+  // replacement is what a Builder told its battery was too easy produces, so the id join falls back
+  // to the whole battery, path by path, and the 275% move is read rather than lost. A renumbered
+  // battery keeps one id by chance, and that one task's unchanged numbers once read as the whole
+  // battery standing still: 1 of 25 joined, 0 moved, `restated`. A battery adding one new task to 24
+  // unchanged ones still asked for something the last did not, so it is not restated.
+  it.concurrent("reads a renamed battery over the whole battery, and a mostly renumbered one as replaced", () => {
     const rows = (ids: string[], mass = 100) => ({
       rows: ids.map((taskId) => ({ taskId, numerics: { "limits.mass": mass } })),
     });
     const ids = Array.from({ length: 25 }, (_, at) => `truss-${at}`);
     const renamed = numericDriftOf(rows(["heavy-01"]), rows(["heavy-02"], 375));
-    expect(renamed).toEqual({ median: 0, moved: 0, joined: 0, tasks: 1 });
+    expect(renamed).toEqual({
+      median: 2.75,
+      moved: 1,
+      joined: 0,
+      tasks: 1,
+      basis: "battery",
+      paths: { compared: 1, declared: 1 },
+    });
     const renumbered = numericDriftOf(
       rows(ids.slice(0, 5)),
       rows(["truss-0", ...ids.slice(5).map((id) => `${id}b`)]),
     );
-    expect(renumbered).toEqual({ median: 0, moved: 0, joined: 1, tasks: 21 });
-    const verdict = (drift: typeof still) => verdictOf(tiers(), tiers(), null, zero, drift);
+    expect(renumbered).toEqual({ ...still, joined: 1, tasks: 21 });
+    const verdict = (drift: NumericDrift) => verdictOf(tiers(), tiers(), null, zero, drift);
     expect([renamed, renumbered].map(verdict)).toEqual(["replaced", "replaced"]);
     expect(verdict(numericDriftOf(rows(ids.slice(0, 24)), rows(ids)))).toBe("adjusted");
     expect(verdict(numericDriftOf(rows(ids), rows(ids)))).toBe("restated");
+  });
+
+  // The whole-battery basis is each path's median over the tasks that carry it, so a replacement that
+  // doubled the tasks is not read as a sum, and a path only one side declares is not compared at all.
+  it.concurrent("reads a replaced battery per path, and says so when the two share no path", () => {
+    const battery = (ids: string[], masses: number[], path = "limits.mass") => ({
+      rows: ids.map((taskId, at) => ({ taskId, numerics: { [path]: masses[at] ?? 0 } })),
+    });
+    const widened = numericDriftOf(
+      battery(["a-1", "a-2", "a-3"], [100, 100, 200]),
+      battery(["b-1", "b-2", "b-3", "b-4"], [250, 250, 400, 250]),
+    );
+    expect(widened).toEqual({
+      median: 1.5,
+      moved: 1,
+      joined: 0,
+      tasks: 4,
+      basis: "battery",
+      paths: { compared: 1, declared: 1 },
+    });
+    // Nothing is shared, so nothing was read: the zero is the absence of a comparison, not a battery
+    // whose numbers stood still, and the row says which.
+    const unshared = numericDriftOf(battery(["a-1"], [100]), battery(["b-1"], [100], "limits.span"));
+    expect(unshared).toEqual({
+      median: 0,
+      moved: 0,
+      joined: 0,
+      tasks: 1,
+      basis: "none",
+      paths: { compared: 0, declared: 1 },
+    });
   });
 
   const counts = (passed: number, verified: number, unaccepted = 0) => ({
@@ -430,7 +479,7 @@ describe("climb velocity", () => {
             to: "i04",
             verdict,
             novelty: null,
-            drift: { median: 0, moved: 0 },
+            drift: { median: 0, moved: 0, joined: 2, tasks: 2, basis: "tasks", paths: null },
             delta: zero,
             source: null,
             carried: { unchanged: 0, tasks: 0, afterFullPass: false },
@@ -494,7 +543,15 @@ describe("climb velocity", () => {
   // structural count names a direction; checks, couplings and scenarios decide first, and only they
   // survive replaced tasks.
   it.concurrent("names a retreat and growth in any structural count, and keeps a replaced edge replaced", () => {
-    const swapped = { median: 0, moved: 0, joined: 0, tasks: 2 };
+    // A replacement whose one shared path held its value: read whole, and still a replacement.
+    const swapped: NumericDrift = {
+      median: 0,
+      moved: 0,
+      joined: 0,
+      tasks: 2,
+      basis: "battery",
+      paths: { compared: 1, declared: 1 },
+    };
     const edges = [
       ["eased", tiers(0, 2), tiers(2, 0), zero, still],
       ["escalated", tiers(2, 0), tiers(0, 2), zero, still],

@@ -1,8 +1,5 @@
 # Lane maintenance
 
-Formerly the personal `wri-lane-maintenance` skill; this reference owns it now, rewritten against
-today's catalogue.
-
 The question is whether the review catalogue still asks the right questions, with methods that can
 answer them. A clean verdict is neither proof that a lane is worth its cost nor a reason to retire
 it. Whether the product improved is not this question: one wave against its baseline is
@@ -22,8 +19,7 @@ each brief trigger to its lane, and `DEFAULT_LANES` and `STANDING_LANES` name wh
 (probe, standard, deep) opens without one. A lane is eligible on a run only when its trigger fired
 or its tier opened it.
 
-Blinded pairs, the diagnostic lanes and the other entries under [Retired](../SKILL.md#retired) are
-gone. Older notes use older numbers, and twelve former angles now sit under new ones, so join a
+Blinded pairs, the diagnostic lanes and the other entries under [Retired](#retired) are gone. Older notes use older numbers, and twelve former angles now sit under new ones, so join a
 historical lane to today's by its name, method, trigger and mechanism, never by its number or its
 position in an array. A catalogue's claim that a product component was removed needs proof in
 current source. Keep the deterministic rows and the three isolated seats: lane 23 alone receives
@@ -37,17 +33,6 @@ A durable review is the four-file `wri-archive/v2` archive (`main_synthesis.md`,
 already in `luna_syntheses.md`; do not add per-lane copies. `validate-archive.ts` refuses an
 archive written under an older shape, so an older archive is read by hand from its own
 `review.json` and manifest, with any unrecognised structure mapped explicitly and never inferred.
-
-The former skill carried a small Bun helper that built a retrieval index; it is not copied here.
-Its `index` step walked an absolute `notes/runs` and recorded, for each archive and each of the
-four files, the byte count, the sha256 and every ATX heading (ordinal, level, title, first and last
-line), skipping headings inside fenced blocks; from `review.json` it kept the identity, schema,
-procedure identity and each declared angle's number, session, state, mode and denominator state. It
-wrote to a fresh absolute path outside the archive root and refused an existing file. Its `read`
-step took a file, the recorded sha256 and a section ordinal, and refused if the bytes had changed.
-That index is a disposable view, not validation, lane assignment or a summary; read it
-programmatically and print only the records a question needs. Rebuild it for a pass that needs it,
-and keep it once a second pass uses it, under AGENTS.md's rule for helpers.
 
 Read `review.json` first (identity, angle states, pointers), then the main synthesis's
 adjudication, then single sections, and a whole lane report when an excerpt could hide its caveat.
@@ -101,7 +86,8 @@ bodies and skills first, and prefer one trigger, method or consumer correction. 
 one consequential missed decision, evidence it can reach, a distinct method, an output, a consumer
 and a falsifier, and a historical miss plus a normal control that show its marginal value. It is
 one declaration in `catalogue-shape.ts`, a body in `review-angles.md`, a matching heading in
-`session-index.md` (which `test/build-manifest.test.ts` checks) and its trigger in `brief.ts`.
+`session-index.md` (which `test/build-manifest.test.ts` checks), its trigger in `brief.ts` and a
+leaf in `lane-groups.json` beside the lanes that read the same bytes.
 Report domain and model blind spots, and what stays unknown when the archive population is narrow.
 
 ## Dormant-lane sweep
@@ -113,8 +99,8 @@ opportunity, record `no-opportunity` and credit no sweep. A missing raw source o
 clean.
 
 A retrospective spot-check reads the selected evidence before the old verdict, and is weaker than a
-fresh review; label it so. A fresh review is an ordinary `wri.ts launch --sessions <lane>` on that
-run, under the authority and session budget the invoking task already has; this reference grants
+fresh review; label it so. A fresh review is an ordinary investigation of that run with the lane named
+(`wri.ts lanes --lanes <lane>`), under the authority and session budget the invoking task already has; this reference grants
 none. An isolated lane can be launched only on a run where its trigger fired. The sweep stays
 pending until the result arrives. One missed material defect, a changed relevant source or
 contract, a new domain condition or a failed control reopens scrutiny at once; restore the earlier
@@ -133,3 +119,21 @@ in agreement.
 This work is analysis first. Apply a change only within the invoking task's authority. Do not edit
 controller output, rescore runs, launch product runs, decide the next experiment, or change the
 archive schema to suit a retrieval view.
+
+## Retired
+
+The catalogue once held forty numbered angles, intelligence and reference-comparison sessions, two
+diagnostic lanes and blinded pairs; it also read mechanisms the source no longer has: the repair
+engineer, the progress guard, the judge-prompt maintainer, the Judge control census and its bait,
+the paired promotion contest, the `DIFFICULTY.json` session, memory curation, the `climb`,
+`hold-limit` and `ease` verbs and the saturation ledger. None of it is read now, and none of it is a
+lane. The twelve former angles that kept a direct successor are renumbered and their evidence
+rewritten against the current source; a finding an older note gives under any other retired number
+is still a finding, and its mechanism is what to carry forward, under whichever of the thirty-eight
+lanes owns the question today. The `--consumer-hardware` flag is retired too: the `target` lane's
+`HARDWARE TARGET NAMED` trigger fires from the recorded request and brief and starts lanes 29 and 30.
+The hand composition of native lanes (`build-manifest.ts --transport native` per run, then
+`compose-native-pairs.py`) and the JSON template-and-values form of the shared instructions were
+replaced by `wri.ts start` and `wri.ts lanes` and the Markdown preset. `wri.ts review` went with
+them, `wri.ts collect` now validates reports rather than running the snapshot lanes, and the
+catalogue print once called `wri.ts lanes` is `wri.ts readers`.

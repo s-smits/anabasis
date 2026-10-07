@@ -32,7 +32,11 @@ export interface CheckChildInput {
   readonly toolCeilingMs: number;
 }
 
-export type CheckChildResult = { readonly passed: boolean } | { readonly nonResult: string };
+/** `faulty`: the check itself failed on this request, which drops the task rather than stopping the run. */
+export type CheckChildResult =
+  | { readonly passed: boolean }
+  | { readonly nonResult: string }
+  | { readonly faulty: string };
 
 /** A tool run as a check asks for it. A file name is one path segment in the run's directory. */
 interface ToolCall {
@@ -106,23 +110,32 @@ async function runTool(input: CheckChildInput, call: ToolCall, lapses: string[])
   return { nonResult: null, exitCode, stdout, stderr };
 }
 
+/** The check's answer. A check that throws, returns no boolean or is missing is at fault itself; a
+ *  program that does not load, or a tool that lapsed, leaves the verifier undecided. */
 async function decide(input: CheckChildInput): Promise<CheckChildResult> {
   const lapses: string[] = [];
+  let check: unknown;
   try {
     const program: unknown = await import(input.program);
-    const checks = isRecord(program) ? asRecord(program.checks) : null;
-    const check: unknown = checks?.[input.checkId];
-    if (!isFunction(check)) return { nonResult: `the check program has no check ${input.checkId}` };
-    const runtime: CheckRuntime = { tools: { run: (call) => runTool(input, call, lapses) } };
+    check = isRecord(program) ? asRecord(program.checks)?.[input.checkId] : undefined;
+  } catch (error) {
+    return { nonResult: `the check program did not load: ${errorMessage(error)}` };
+  }
+  if (!isFunction(check)) return { faulty: `the check program has no check ${input.checkId}` };
+  const runtime: CheckRuntime = { tools: { run: (call) => runTool(input, call, lapses) } };
+  let passed: unknown;
+  let threw: string | null = null;
+  try {
     // As in v1, the port rides on the request too, so a check that destructures it from there
     // reaches the same tools as one that takes it as the second argument.
     // SAFETY: a check program exports each check as a CheckFn; what it returns is narrowed below.
-    const passed: unknown = await (check as CheckFn)({ ...input.request, runtime }, runtime);
-    if (lapses.length > 0) return { nonResult: lapses.join("; ") };
-    return isBoolean(passed) ? { passed } : { nonResult: `the check returned ${typeName(passed)}` };
+    passed = await (check as CheckFn)({ ...input.request, runtime }, runtime);
   } catch (error) {
-    return { nonResult: `the check threw: ${errorMessage(error)}` };
+    threw = errorMessage(error);
   }
+  if (lapses.length > 0) return { nonResult: lapses.join("; ") };
+  if (threw !== null) return { faulty: `the check threw: ${threw}` };
+  return isBoolean(passed) ? { passed } : { faulty: `the check returned ${typeName(passed)}` };
 }
 
 const input = parseJsonAs<CheckChildInput>(await Bun.stdin.text());

@@ -62,7 +62,8 @@ export interface RejectControl {
   readonly expectedCheckId: string;
 }
 
-/** A gate passes or refuses. A verifier's non-result is neither: it stops the run (see `decided`). */
+/** A gate passes or refuses; a faulty check refuses. A verifier's non-result is neither: it stops the
+ *  run (see `decided`). */
 type Passed = { readonly outcome: "passed" };
 type Refused = { readonly outcome: "refused"; readonly reason: string };
 
@@ -212,6 +213,9 @@ export async function determinismGate(
 ): Promise<Passed | Refused> {
   for (let run = 1; run <= DETERMINISM_RUNS; run += 1) {
     const verdict = await decided(verify, task, accepted);
+    if (verdict.kind === "faulty") {
+      return { outcome: "refused", reason: `run ${run}: check ${verdict.check}: ${verdict.reason}` };
+    }
     if (verdict.kind === "fail") {
       return {
         outcome: "refused",
@@ -226,8 +230,8 @@ export async function determinismGate(
  * Gate 4: three controls, each an edit of the accepted answer in the contract's format and no two
  * alike, and each failed by the check it names. Failing is not enough: a reviewer's probe passed the
  * gate on three junk answers, which every check fails for a reason no control was written to test.
- * A control outside the format is refused before any check reads it, since a check that throws on a
- * malformed answer is a verifier non-result, which would stop the run over the Examiner's mistake.
+ * A control outside the format is refused before any check reads it, so a check that throws on it is
+ * not charged with the Examiner's mistake.
  * Whether an edit changes exactly one fact is the Examiner's to get right. A pass names the
  * controls by their digest.
  */
@@ -251,6 +255,9 @@ export async function controlsGate(
   for (const [index, { answer, expectedCheckId }] of controls.entries()) {
     const verdict = await decided(verify, task, answer);
     if (verdict.kind === "pass") return refused(`the check passed control ${index + 1}`);
+    if (verdict.kind === "faulty") {
+      return refused(`control ${index + 1}: check ${verdict.check}: ${verdict.reason}`);
+    }
     if (!verdict.blocking.includes(expectedCheckId)) {
       return refused(`control ${index + 1} failed ${verdict.blocking.join(", ")}, not ${expectedCheckId}`);
     }

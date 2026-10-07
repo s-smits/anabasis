@@ -32,6 +32,11 @@ export const checks = {
   },
   projection: (req) => !("note" in req.artifact),
   throws: () => { throw new Error("no such rule"); },
+  answers: () => "yes",
+  lapses: async (_req, runtime) => {
+    await runtime.tools.run({ toolId: "sleeper", args: [], timeoutMs: 100 });
+    throw new Error("no evidence");
+  },
   host: async (req) => (await req.runtime.tools.run({ toolId: "sh", args: ["-c", "exit 0"] })).exitCode === 0,
   slow: async (_req, runtime) => {
     await runtime.tools.run({ toolId: "sleeper", args: [], timeoutMs: 100 });
@@ -71,6 +76,8 @@ const BRIEF = {
     { id: "walled", execution: execution(["walled"], [], ["$.secret", "$.url"]) },
     { id: "projection", execution: execution(["projection"], ["$.value"], []) },
     { id: "throws", execution: execution(["throws"], [], []) },
+    { id: "answers", execution: execution(["answers"], [], []) },
+    { id: "lapses", execution: execution(["lapses"], [], [], ["sleeper"]) },
     { id: "slow", execution: execution(["slow"], [], [], ["sleeper"]) },
     { id: "host", execution: execution(["host"], [], [], ["sh"]) },
   ],
@@ -141,9 +148,24 @@ describe.skipIf(!osIsolationSupport().ok)("the verifier", () => {
     expect(await verify(task("projection"), { value: 1, note: "undeclared" })).toEqual({ kind: "pass" });
   });
 
-  it("reads a check that throws as a non-result, not a fail", async () => {
-    const verdict = await verify(task("throws"), {});
-    expect(verdict).toEqual({ kind: "non-result", reason: "throws: the check threw: no such rule" });
+  it("reads a check that throws or returns no boolean as faulty, neither a fail nor a non-result", async () => {
+    expect(await verify(task("throws"), {})).toEqual({
+      kind: "faulty",
+      check: "throws",
+      reason: "the check threw: no such rule",
+    });
+    expect(await verify(task("answers"), {})).toEqual({
+      kind: "faulty",
+      check: "answers",
+      reason: "the check returned string",
+    });
+  });
+
+  it("reads a check that throws after its tool lapsed as the verifier's non-result", async () => {
+    expect(await verify(task("lapses"), {})).toEqual({
+      kind: "non-result",
+      reason: "lapses: sleeper ran past 100 ms",
+    });
   });
 
   it("reads a tool that runs out its time as a non-result, whatever the check returns", async () => {

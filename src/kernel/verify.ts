@@ -4,8 +4,10 @@
  *
  * Every applicable check runs in a fresh cell inside the OS wall copied from v1, offline, as its own
  * process with only its declared projection of the answer and the task. A check's tools run in that
- * same wall. The verdict is a pass, a fail naming the checks that refused the answer, or a
- * non-result when the wall, a tool or the check itself could not decide. No answer is a fail.
+ * same wall. The verdict is a pass, a fail naming the checks that refused the answer, faulty when a
+ * check itself failed on the request (it threw, returned no boolean, or is missing), or a non-result
+ * when the wall, a tool or the program's loading could not decide. No answer is a fail. A faulty
+ * check is the task's defect and drops the task; a non-result is the verifier's and stops the run.
  *
  * The contract is v1's check-program/v1, the format of the experiment's stored answers: a
  * `brief.json` declaring the checks and an `evaluator.ts` exporting them as `checks`. A check
@@ -96,6 +98,7 @@ export interface VerifierTree {
 export type Verdict =
   | { readonly kind: "pass" }
   | { readonly kind: "fail"; readonly blocking: readonly string[] }
+  | { readonly kind: "faulty"; readonly check: string; readonly reason: string }
   | { readonly kind: "non-result"; readonly reason: string };
 
 /** Whether an answer passes a task's checks. No answer is a fail. */
@@ -286,6 +289,7 @@ export function openVerifier(given: VerifierTree): Verifier {
     for (const check of applicableTruthChecks(brief, task)) {
       const result = await runCheck(wall, check, { publicTask: task, artifact: answer, hidden: task.hidden });
       if ("nonResult" in result) return { kind: "non-result", reason: `${check.id}: ${result.nonResult}` };
+      if ("faulty" in result) return { kind: "faulty", check: check.id, reason: result.faulty };
       if (!result.passed) blocking.push(check.id);
     }
     return blocking.length === 0 ? { kind: "pass" } : { kind: "fail", blocking };
@@ -394,5 +398,6 @@ function writtenResult(path: string): CheckChildResult | null {
   const result = asRecord(written);
   if (isBoolean(result?.passed)) return { passed: result.passed };
   if (isString(result?.nonResult)) return { nonResult: result.nonResult };
+  if (isString(result?.faulty)) return { faulty: result.faulty };
   return null;
 }

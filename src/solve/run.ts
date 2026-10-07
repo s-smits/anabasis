@@ -2,7 +2,8 @@
  * One solve, start to ending: a capped home seeded with the public task, the harness's tools beside
  * the host's answer tools and its bash, pi's agent loop under the host's wall and turn cap, then the
  * ending typed and logged with the trace and the meter. A non-result from the solve's side is run
- * again, up to three times with backoff; one from the verifier stops the run.
+ * again, up to three times with backoff; one from the task's own check is returned for the caller to
+ * drop the task, and one from the verifier stops the run.
  *
  * The loop runs in this process and so does the model's own process: under the Claude backend,
  * Claude Code runs on the host with a home of its own outside the command wall. v1 confined the
@@ -114,7 +115,8 @@ const backoff = (rerun: number) => Bun.sleep(30_000 * 2 ** (rerun - 1));
 export async function solve(request: SolveRequest, wait = backoff): Promise<Ending> {
   for (let attempt = 1; ; attempt++) {
     const ending = await attemptSolve(request, `${request.id}-${String(attempt)}`);
-    if (ending.outcome !== "non-result" || attempt > RERUNS || request.kill?.aborted === true) return ending;
+    const solveSide = ending.outcome === "non-result" && ending.kind !== "check";
+    if (!solveSide || attempt > RERUNS || request.kill?.aborted === true) return ending;
     await wait(attempt);
   }
 }
@@ -319,6 +321,9 @@ export async function judge(request: SolveRequest, id: string, played: Played): 
     append(request.log, "verdict", { solve: id, task: request.task.taskId, ...logged });
     if (verdict?.kind === "non-result") {
       return { outcome: "non-result", kind: "verifier", reason: verdict.reason };
+    }
+    if (verdict?.kind === "faulty") {
+      return { outcome: "non-result", kind: "check", reason: `${verdict.check}: ${verdict.reason}` };
     }
     return verdict?.kind === "pass" ? { outcome: "pass" } : { outcome: "fail", kind: "rejected" };
   }

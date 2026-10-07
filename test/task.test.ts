@@ -39,6 +39,7 @@ const CONTRACT: Contract = {
 const PASS: Verdict = { kind: "pass" };
 const FAIL: Verdict = { kind: "fail", blocking: ["spans"] };
 const LOST: Verdict = { kind: "non-result", reason: "the wall broke" };
+const FAULTY: Verdict = { kind: "faulty", check: "spans", reason: "the check threw: no span" };
 
 const root = mkdtempSync(join(tmpdir(), "ana-task-"));
 let programs = 0;
@@ -232,6 +233,24 @@ describe("gate 4, controls", () => {
     const gate = await controlsGate(CONTRACT, verify, pkg(), accepted, junk);
     expect(gate).toEqual({ outcome: "refused", reason: "control 3 does not follow the answer format" });
     expect(verify.asked).toEqual([]);
+  });
+});
+
+describe("a faulty check", () => {
+  it("refuses the task at whichever gate meets it, and the run goes on", async () => {
+    const accepted = { depth: 1 };
+    const controls = [{ depth: 0.5 }, { depth: 2 }, { depth: 3 }].map((answer) => ({
+      answer,
+      expectedCheckId: "spans",
+    }));
+    expect(await determinismGate(scripted(PASS, FAULTY), pkg(), accepted)).toEqual({
+      outcome: "refused",
+      reason: "run 2: check spans: the check threw: no span",
+    });
+    expect(await controlsGate(CONTRACT, scripted(FAIL, FAULTY), pkg(), accepted, controls)).toEqual({
+      outcome: "refused",
+      reason: "control 2: check spans: the check threw: no span",
+    });
   });
 });
 

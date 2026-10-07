@@ -30,6 +30,7 @@ const { values } = parseArgs({
 
 function spelled(verdict: Verdict): string {
   if (verdict.kind === "fail") return `fail ${[...verdict.blocking].sort().join(",")}`;
+  if (verdict.kind === "faulty") return `faulty ${verdict.check}: ${verdict.reason}`;
   return verdict.kind === "pass" ? "pass" : `non-result ${verdict.reason}`;
 }
 

@@ -163,12 +163,22 @@ describe("an attempt's ending", () => {
     expect(events()[0]?.data.fault).toBeString();
   });
 
-  it("is the verifier's non-result when the checks cannot decide", async () => {
-    const verify = async (): Promise<Verdict> => ({ kind: "non-result", reason: "value: the check threw" });
-    expect(await ending({ submitted: { answer: "42" } }, { verify }).ending).toEqual({
+  it("is the verifier's non-result when the checks cannot decide, and the check's when one is faulty", async () => {
+    const lost = async (): Promise<Verdict> => ({ kind: "non-result", reason: "value: the wall broke" });
+    expect(await ending({ submitted: { answer: "42" } }, { verify: lost }).ending).toEqual({
       outcome: "non-result",
       kind: "verifier",
-      reason: "value: the check threw",
+      reason: "value: the wall broke",
+    });
+    const faulty = async (): Promise<Verdict> => ({
+      kind: "faulty",
+      check: "value",
+      reason: "the check threw: x",
+    });
+    expect(await ending({ submitted: { answer: "42" } }, { verify: faulty }).ending).toEqual({
+      outcome: "non-result",
+      kind: "check",
+      reason: "value: the check threw: x",
     });
   });
 
@@ -286,11 +296,19 @@ describe.skipIf(!darwin)("a solve end to end", () => {
 
   it.concurrent("stops the run on the verifier's non-result, once the solve is logged", async () => {
     const { request, finished } = setup(answer, {
-      verify: async () => ({ kind: "non-result", reason: "value: the check threw" }),
+      verify: async () => ({ kind: "non-result", reason: "value: the wall broke" }),
     });
     await expect(solve(request, noWait)).rejects.toThrow(
-      "the verifier could not decide t-1, so the run stops: value: the check threw",
+      "the verifier could not decide t-1, so the run stops: value: the wall broke",
     );
     expect(finished().at(-1)?.data.ending).toMatchObject({ outcome: "non-result", kind: "verifier" });
+  }, 120_000);
+
+  it.concurrent("returns a faulty check's ending once, neither rerun nor stopping the run", async () => {
+    const { request, finished } = setup(answer, {
+      verify: async () => ({ kind: "faulty", check: "value", reason: "the check threw: x" }),
+    });
+    expect(await solve(request, noWait)).toMatchObject({ outcome: "non-result", kind: "check" });
+    expect(finished()).toHaveLength(1);
   }, 120_000);
 });

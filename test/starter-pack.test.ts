@@ -239,8 +239,22 @@ describe("pi starter pack brief vocabulary", () => {
     expect(text).toContain("**The work at the size and in the environment the field works in.**");
     expect(text).toContain("a fail your harness's defect");
     expect(text).toContain("Some changes look harder and are not.");
-    // The very-hard aim reaches the Builder as a family's property, never as an aim sentence (prior 10).
+    // The very-hard aim reaches the Builder as a family's property, never as an aim sentence (prior 10),
+    // and the family is built to be the hardest: how hard it is gets measured against the solver, so
+    // the passage claims no difficulty of its own. Its budget sentences stay.
     expect(text).not.toContain("aimed at hard lands");
+    expect(text).toContain("The last family is built to be the hardest, by a property of its tasks:");
+    expect(text).not.toContain("What makes the last family very hard");
+    expect(text).toContain("How hard a family is gets measured against the solver, never claimed.");
+    expect(text).toContain(
+      "the budget sits less than one cheapest shift above the best roster the reference finds, so no rule can be settled on its own",
+    );
+    // A long search proposes a task and stores its answer; it does not place a limit, which only
+    // fresh solver attempts do.
+    expect(text).toContain(
+      "Use this to propose the next task; fresh solver attempts establish its difficulty.",
+    );
+    expect(text).not.toContain("The limit then sits between what the long search found");
     // A count of solves reads as a share to author towards (prior 10).
     expect(text).not.toContain("3 of 6 blind solves");
     expect(text).toContain(

@@ -502,8 +502,8 @@ function notePassEffort(tally: RoundRehearsals, row: RehearsalRow): void {
  * It is here because a per-call sentence is the wrong unit for the decision it feeds. A battery's
  * result is a count over the whole battery, and a Builder holding six separate sentences has to
  * add them up itself, from a conversation pi compacts as it goes, whose oldest turns are the first
- * to be cut. Each pass says, correctly, that a battery of tasks like this one scores near its size,
- * and a round that ships on several such passes has heard it once per call and never as a total.
+ * to be cut. A round that ships on several passes has heard each once per call and never as a
+ * total.
  *
  * Beside the count it states how hard the passes worked: the largest share of the solve wall any
  * pass took, and the most tool calls any pass made. It does not count turns, because on the pi
@@ -543,13 +543,16 @@ function trialNextAction(
   if (status === "unaccepted") {
     return `The solver submitted no accepted artifact, which a battery counts as a fail.${roundClause(tally, tellOnce)}`;
   }
+  // Neither sentence forecasts the battery. "Scores near its size" read one pass as a finished
+  // battery, and "scores near zero" read a miss as the solver's when 36 of 47 recorded rehearsal
+  // misses were a check or its instrument refusing a right answer and 4 were tasks that left the
+  // answer open. The miss names those readings, none first, and no next task: a battery locates a
+  // limit only through its misses, so a sentence steering towards an easier task would choose the
+  // course for the Builder.
   if (verdict === "pass") {
-    return `Your solver passed this task on its first unaided attempt, so a battery of tasks like it scores near its size.${roundClause(tally, tellOnce)}`;
+    return `Your solver passed this task on its first unaided attempt.${roundClause(tally, tellOnce)}`;
   }
-  // Stated as the mirror of the pass sentence, and with no next task: a battery locates a limit only
-  // through its misses, so a sentence steering towards an easier task would choose the course for
-  // the Builder.
-  return `Your solver missed this task on its first unaided attempt, so a battery of tasks like it scores near zero.${roundClause(tally, tellOnce)}`;
+  return `The checks rejected the answer your solver submitted on its first unaided attempt. This result does not say which of three things happened: the answer is wrong, a check refuses a right answer, or the task leaves the answer open.${roundClause(tally, tellOnce)}`;
 }
 
 /** Counts this call into the round before it reads the round back, so a result speaks for every
@@ -604,7 +607,7 @@ export function createHarnessTrialTool(binding: HarnessTrialBinding): AgentTool<
   return defineTool({
     name: "harness_trial",
     label: "Harness trial",
-    description: `Measure one of your own tasks against your own solver. The Built Harness you wrote solves the named task blind — public input and your registered tools only, no hidden expectations, no reference solve, under the same solve wall and confinement a measured battery uses — and the real check program then grades the bytes it submitted. You get one aggregate truth.verdict of pass, fail or not-run, whether it submitted at all, how many turns it took and what the solve spent (minutes against the solve wall, tool calls, cost): never which check decided, a counterexample, a failure location, the artifact or any verifier output. A task your solver passes on its first attempt will most likely pass in the battery too. Each rehearsal costs one measured case from the run's provider budget, and the accepted bytes are graded under the same per-check wall your agent/config.yaml sets for the battery. Use harness_inspect readiness to choose taskId; full battery and control coverage, candidate gates and adoption stay with submit.`,
+    description: `Measure one of your own tasks against your own solver. The Built Harness you wrote solves the named task blind — public input and your registered tools only, no hidden expectations, no reference solve, under the same solve wall and confinement a measured battery uses — and the real check program then grades the bytes it submitted. You get one aggregate truth.verdict of pass, fail or not-run, whether it submitted at all, how many turns it took and what the solve spent (minutes against the solve wall, tool calls, cost): never which check decided, a counterexample, a failure location, the artifact or any verifier output. Each rehearsal costs one measured case from the run's provider budget, and the accepted bytes are graded under the same per-check wall your agent/config.yaml sets for the battery. Use harness_inspect readiness to choose taskId; full battery and control coverage, candidate gates and adoption stay with submit.`,
     parameters: Params,
     executionMode: "sequential",
     run: async (params, signal) => {

@@ -93,21 +93,22 @@ function bashTimeoutMs(seconds: number | undefined): number {
  * `solver.shell_command_seconds` per command, `gate.check_seconds` per correctness check and
  * `solver.solve_seconds` for a whole solve — all three from the `agent/config.yaml` in this same
  * workspace, which the Builder wrote and can read. Nothing else in the loop states the exchange rate
- * between the two, so a Builder will happily spend an hour of wall clock settling a limit for a
- * solver it has given fifteen minutes a command, and carry that mismatch into the battery
- * unexamined.
+ * between the two, so a Builder can spend an hour of wall clock on a search without seeing what that
+ * is against the solver's fifteen minutes a command.
  *
- * This is a nudge, not a wall: the call already ran, and every number in it is the Builder's own.
- * Both levers are the Builder's too — the settings, and the installed tools whose accuracy-for-time
- * settings decide what those seconds buy. Silent at or below the smallest budget, because a call
- * the solver could itself have made needs no note.
+ * It states the measurements and asks for nothing: the call already ran, and every number in it is
+ * the Builder's own. Until 2026-10-07 it went on to say the solver might not repeat the work inside
+ * those numbers and to trade the installed tools' accuracy for time, which reads as advice to shorten
+ * the search to the solver's wall, while a search far past that wall is how examples.md stores an
+ * answer the solver cannot reach by rerunning it. Silent at or below the smallest budget, because a
+ * call the solver could itself have made needs no note.
  */
 function solverBudgetNotice(elapsedMs: number, settings: HarnessSettings): string | null {
   const commandMs = settings.shellCommandSeconds * 1000;
   if (elapsedMs <= Math.min(commandMs, settings.checkWallMs, settings.solveMs)) return null;
   const s = (ms: number) => String(Math.round(ms / 1000));
   const against = (budgetMs: number) => `${s(budgetMs)} s (${(elapsedMs / budgetMs).toFixed(1)}x)`;
-  return `This call ran ${s(elapsedMs)} s. ${HARNESS_CONFIG_FILE} gives one solver command ${against(commandMs)} (solver.shell_command_seconds), one correctness check ${against(settings.checkWallMs)} (gate.check_seconds) and a whole solve ${against(settings.solveMs)} (solver.solve_seconds). Work you calibrate with a call this long may be work your own solver cannot repeat inside those numbers. Both sides of that are yours to move: edit those settings, or tune what you installed under .toolchain, where a tolerance, iteration or resolution setting usually trades a little accuracy for a lot of time.`;
+  return `This call ran ${s(elapsedMs)} s. ${HARNESS_CONFIG_FILE} gives one solver command ${against(commandMs)} (solver.shell_command_seconds), one correctness check ${against(settings.checkWallMs)} (gate.check_seconds) and a whole solve ${against(settings.solveMs)} (solver.solve_seconds).`;
 }
 
 /** The same notice for a workspace, silent while its config is unreadable. The submit gate owns
@@ -200,9 +201,9 @@ export async function runBuilderBash(isolation: BuilderIsolation, call: BuilderB
     // half: it is a runtime fact the Builder cannot observe and cannot tell apart from a command that
     // is simply slow. A search killed at its deadline may have been running on a host loaded to
     // several times its core count, with a tenth of a core to itself, and no reading of the command
-    // explains that.
+    // explains that. It suggests no smaller search, for the reason `solverBudgetNotice` gives.
     killedNotice: outcome.timedOut
-      ? `Command killed after ${String(timeoutMs / 1000)} s while the host load average was ${(loadavg()[0] ?? 0).toFixed(1)} on ${String(availableParallelism())} cores; a CPU-bound command gets less than a core when load exceeds cores. Pass timeout (seconds, up to ${String(BASH_TIMEOUT_MAX_MS / 1000)}) for a longer build, or split it; give a search fewer iterations`
+      ? `Command killed after ${String(timeoutMs / 1000)} s while the host load average was ${(loadavg()[0] ?? 0).toFixed(1)} on ${String(availableParallelism())} cores; a CPU-bound command gets less than a core when load exceeds cores. Pass timeout (seconds, up to ${String(BASH_TIMEOUT_MAX_MS / 1000)}) for a longer build, or split it.`
       : null,
   };
 }

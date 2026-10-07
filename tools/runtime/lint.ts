@@ -278,7 +278,9 @@ async function main(): Promise<number> {
     "--type-aware",
     "--deny-warnings",
     "--report-unused-disable-directives",
-    ...(explicit.length > 0 ? explicit : roots),
+    // A commit may stage only files .oxlintrc.json ignores, such as the copied pi sources; without
+    // the flag oxlint refuses the empty set with no report, which reads as a failed lint.
+    ...(explicit.length > 0 ? ["--no-error-on-unmatched-pattern", ...explicit] : roots),
   ];
   // A caller naming its own format reads oxlint's output directly, ledger unapplied.
   if (extra.some((argument) => argument === "-f" || argument.startsWith("--format"))) {

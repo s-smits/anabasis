@@ -15,14 +15,15 @@ import {
 } from "../src/meta/filesystem.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
-import { openPathRecord, runIsolated } from "../src/builder/candidate-isolation-runtime.ts";
+import { runIsolated } from "../src/builder/candidate-isolation-runtime.ts";
+import { openPathRecord } from "../src/builder/path-record.ts";
 import {
   deriveBundleContract,
   deriveCandidateIsolation,
   guardPath,
-  HOST_SCRATCH_ROOTS,
   policyReadGrant,
 } from "../src/builder/candidate-isolation.ts";
+import { BUILDER_SCRATCH_ROOTS } from "../src/verify/wall-policy.ts";
 import { candidateIsolationProfile } from "../src/builder/candidate-isolation-profile.ts";
 import { osIsolationSupport } from "../src/verify/os-isolation.ts";
 import { makeIsolationRepo, seedFile } from "./helpers/isolation-fixture.ts";
@@ -60,6 +61,9 @@ describe("policy derivation", () => {
         ["src/verify/host.ts", false],
         ["src/correctness-bundle/contracts.ts", false],
         ["src/verify/verifier-lifetime.ts", false],
+        ["README.md", true],
+        // The repository's doctrine is closed to the Builder, whose guide is the starter's own.
+        ["AGENTS.md", false],
       ] as const) {
         const target = join(actualRoot, path);
         expect(guardPath(derived, "read", "read", target).decision).toBe(allowed ? "allow" : "deny");
@@ -77,6 +81,8 @@ describe("policy derivation", () => {
         });
         expect(outcome.status === 0).toBe(allowed);
       }
+      const guide = join(actualRoot, "starters", "pi-built-harness", "STARTER.md");
+      expect(guardPath(derived, "read", "read", guide).decision).toBe("allow");
     } finally {
       rmSync(epochDir, { recursive: true, force: true });
     }
@@ -189,7 +195,7 @@ describe("policy derivation", () => {
     expect(workshop.network).toBe("deny");
     expect(workshop.profile).toBe("isolated-workshop");
     expect(workshop.scratchWriteRoots[0]).toBe(join(binding.ossRoot, ".tmp"));
-    expect<unknown>(workshop.scratchWriteRoots.slice(1)).toEqual(HOST_SCRATCH_ROOTS);
+    expect<unknown>(workshop.scratchWriteRoots.slice(1)).toEqual(BUILDER_SCRATCH_ROOTS);
     expect(workshop.readDenyRoots).toEqual([]);
     if (onDarwin) {
       // The SBPL bytes are the Darwin mechanism's input; the Linux runtime builds its namespace

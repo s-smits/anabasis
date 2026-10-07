@@ -19,17 +19,18 @@ import {
   HARDWARE_LANES,
   ISOLATED_ANGLES,
   angleNumbers,
+  launcherTask,
   leafPrompt,
   NATIVE_OUTPUT,
   nativePrompt,
   SHA256,
 } from "./catalogue-shape.ts";
 import { FINDING_OWNERS, REPORT_SECTIONS } from "./manifest-reporting.ts";
+import { ADMISSION_SCHEMA, INSTRUCTIONS_FILE, LAUNCH_INPUT_FILE } from "./manifest-compose.ts";
 import { hasText } from "#src/meta/text.ts";
 import { readJsonFile, writeJsonFile } from "#src/meta/completed-json.ts";
 import { jsonText } from "./run-overview.ts";
 
-const ADMISSION_SCHEMA = "wri-progressive-admission/v2";
 const RECEIPT_SCHEMA = "wri-report-validation/v3";
 
 /** A task's admission row, returned whole so its digest covers every recorded field. */
@@ -298,10 +299,12 @@ function sectionIssues(heading: string, sectionText: string): string[] {
   const findings = found.get("Findings")?.[0];
   if (findings !== undefined && findings.length > 0 && findings !== "none") {
     // A report wraps the label or its value in code or bold marks, glosses the value, or leads a
-    // finding's own line with it, so the owner is the first word after `owner:` anywhere on a line
-    // once those marks and any closing punctuation are gone. That word is still checked below.
+    // finding's own line with it, so the owner is the first word after an `owner: ` label anywhere
+    // on a line once those marks and any closing punctuation are gone. That word is still checked
+    // below. The label is the instructed `owner: <owner>`, with the space: a finding that quotes a
+    // record field, as 350009's lane 14 quoted `owner:null`, is prose and names no owner.
     const owners = findings.split("\n").flatMap((line) => {
-      const owner = /\bowner:\s*(\S+)/i.exec(line.replaceAll(/[`*]/g, ""))?.[1];
+      const owner = /\bowner:\s+(\S+)/i.exec(line.replaceAll(/[`*]/g, ""))?.[1];
       return owner === undefined ? [] : [owner.replace(/[.;,:)]+$/, "")];
     });
     if (owners.length === 0) issues.push(`${heading}: findings name no owner`);
@@ -412,8 +415,7 @@ function inputBinding(
       const launcherTasks = capturedJsonParse(launcherBytes.toString("utf8"));
       if (
         !Array.isArray(launcherTasks) ||
-        JSON.stringify(launcherTasks) !==
-          JSON.stringify(tasks.map((task) => ({ name: task.name, task: task.task })))
+        JSON.stringify(launcherTasks) !== JSON.stringify(tasks.map(launcherTask))
       ) {
         issues.push("launcher task bytes differ from the WRI task projection");
       }
@@ -437,7 +439,11 @@ function inputBinding(
   if (isString(input.workdir)) {
     if (!isAbsolute(input.workdir)) issues.push("launch input workdir is not absolute");
     sessions.forEach((session, index) => {
-      if (asRecord(session)?.workdir !== input.workdir) {
+      // A hardware session runs inside its own scratch, which the launcher records resolved.
+      const scratch = tasks[index]?.scratch ?? null;
+      const workdir =
+        scratch === null ? input.workdir : existsSync(scratch) ? realpathSync(scratch) : scratch;
+      if (asRecord(session)?.workdir !== workdir) {
         issues.push(`launch.sessions[${index}].workdir differs from the recorded launch workdir`);
       }
     });
@@ -572,7 +578,7 @@ function launchBinding(
   // manifest-compose writes the launch input beside the launcher's record, which carries none.
   let input: JsonObject | null = null;
   let inputPath: string | null = null;
-  const sidecarPath = join(outputDir, "wri-launch-input.json");
+  const sidecarPath = join(outputDir, LAUNCH_INPUT_FILE);
   if (existsSync(sidecarPath) && statSync(sidecarPath).isFile()) {
     try {
       input = asRecord(readJsonFile(sidecarPath));
@@ -580,7 +586,7 @@ function launchBinding(
     } catch (error) {
       return {
         state: "invalid",
-        issues: [`wri-launch-input.json is not valid JSON: ${errorMessage(error)}`],
+        issues: [`${LAUNCH_INPUT_FILE} is not valid JSON: ${errorMessage(error)}`],
         promptDigestsBound: false,
       };
     }
@@ -666,7 +672,7 @@ function nativeReports(tasksPath: string): NativeReports | null {
   return {
     dir: realpathSync(dir),
     promptsDir: join(lanesDir, "prompts"),
-    instructions: readFileSync(join(lanesDir, "instructions.md")).toString("utf8"),
+    instructions: readFileSync(join(lanesDir, INSTRUCTIONS_FILE)).toString("utf8"),
   };
 }
 

@@ -1,13 +1,13 @@
 import { existsSync, mkdirSync } from "../meta/filesystem.ts";
 import { campaignDir } from "../meta/campaign-root.ts";
 import { basename, join, normalize } from "../meta/path.ts";
-import { writeCompleted } from "../author/campaign-epoch.ts";
+import { writeCompleted } from "../meta/completed-json.ts";
 import { type FingerprintEvidence, fingerprintSlug, taskSetDigest } from "../claim/fingerprint.ts";
 import type { HarnessExperiment } from "../critic/types.ts";
 import type { BundleSnapshotFact } from "../correctness-bundle/battery-record.ts";
 import { CLAIM_STAGES, type ClaimStage, claimStage } from "./claim-stages.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
-import { validateExperiment } from "./experiment-freeze.ts";
+import { experimentFreeze } from "./experiment-freeze.ts";
 import { ControllerLedger } from "./controller-ledger.ts";
 import {
   productVersionDir,
@@ -237,11 +237,11 @@ function preparePromotionState(input: {
   clauses.push(...candidateStateClauses(candidate, input.battery));
   if (existsSync(currentDir)) {
     clauses.push(
-      ...validateExperiment({
+      ...experimentFreeze({
         kind: input.experiment,
         baseDir: currentDir,
         candidateDir: input.candidateDir,
-      }),
+      }).clauses,
     );
   }
   return { current, candidate, clauses, expectedShippingBundle };

@@ -6,7 +6,7 @@
  * rows, so changes to those values must also update the declared policy.
  */
 import { describe, expect, it } from "bun:test";
-import { EVALUATOR_CALIBRATION_POLICY } from "../src/claim/calibration.ts";
+import { EVALUATOR_CALIBRATION_POLICY } from "../src/run/accept-control-independence.ts";
 import { frozenRow } from "../src/critic/manifest.ts";
 import { isNumber } from "../src/meta/json-shape.ts";
 import { POLICY } from "../src/critic/policy.ts";

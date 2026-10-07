@@ -7,7 +7,6 @@ import {
   OVERVIEW_SCHEMA,
   buildOverview,
   digestTriggers,
-  readOverview,
 } from "../.claude/skills/whole-run-investigation/scripts/run-overview.ts";
 import {
   buildSharedInstructions,
@@ -98,7 +97,6 @@ function snapshotFixture() {
       "FAMILY UNMOVED all-pass: beta 5/5 → 5/5 (i01 → i02)",
       "FAMILY UNMOVED all-pass: alpha 5/5 → 5/5 (i02 → i03)",
       "REVIEW TURNS EXCEED SOLVER TURNS (lane 24): review 37 > built 60",
-      "OFF-AIM STREAK (lane 10): 3 batteries under the aim",
       "ordinary prose line",
       "",
     ].join("\n"),
@@ -150,14 +148,22 @@ describe("run overview", () => {
     });
     expect(overview.snapshot.views.failed).toEqual([`${RUN}-default`]);
     expect(overview.orientation).toBe("");
-    const rendered = renderSharedInstructions(buildSharedInstructions(overview));
+    const flat = {
+      name: "CLIMB FLAT (lane 10)",
+      rows: 1,
+      examples: ["below the aim 4 in a row, and the 3 since 2/25 came no closer"],
+    };
+    const rendered = renderSharedInstructions(buildSharedInstructions(overview, [flat]));
     expect(rendered).toContain("Snapshot INCOMPLETE");
     expect(rendered).toContain("75 total = 70 verified + 2 unaccepted + 3 non-results");
     expect(rendered).toContain("100 of 100 turns used (builder 3, built 60, review 37)");
     expect(rendered).toContain("FAMILY UNMOVED all-pass [3 rows]: alpha 5/5");
     // A lane-suffixed trigger groups on the whole text before its colon, suffix included.
-    expect(rendered).toContain("OFF-AIM STREAK (lane 10) [1 row");
     expect(rendered).toContain("REVIEW TURNS EXCEED SOLVER TURNS (lane 24) [1 row");
+    // An in-process lane's trigger joins the digest's, with its own words as the example.
+    expect(rendered).toContain(
+      "CLIMB FLAT (lane 10) [1 rows]: below the aim 4 in a row, and the 3 since 2/25",
+    );
     expect(rendered).toContain("families alpha 5, beta 5");
     expect(rendered).not.toContain("census");
   });
@@ -197,10 +203,8 @@ describe("run overview", () => {
     expect(() => renderSharedInstructions(shared)).toThrow("{missing}");
   });
 
-  it("refuses an overview file of another schema", () => {
-    const path = join(scratchDir("ana-wri-overview-"), "overview.json");
-    writeFileSync(path, json({ schema: "something-else/v1" }));
-    expect(() => readOverview(path)).toThrow("wri-run-overview/v1");
+  it("refuses an overview of another schema", () => {
+    expect(() => buildSharedInstructions({ schema: "something-else/v1" })).toThrow("wri-run-overview/v1");
   });
 });
 

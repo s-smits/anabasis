@@ -58,8 +58,11 @@ import { readJsonFileOrNull } from "#src/meta/completed-json.ts";
 import { sha256 } from "#src/meta/digest.ts";
 import { canonicalJson, compareCodeUnits } from "#src/meta/stable-json.ts";
 import { commitPublicTask, type GeneratedTask } from "#src/correctness-bundle/task-split.ts";
+import { BATTERY_FILE } from "#src/correctness-bundle/battery-record.ts";
+import { CORRECTNESS_MODEL_DIR, TASKS_FILE } from "#src/meta/bundle-layout.ts";
 import type { BuilderExecutionEvidence, BuilderCustomToolSemantic } from "#src/author/builder-execution.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
+import { countBy } from "#src/meta/tally.ts";
 import { campaignEpochs } from "#src/author/campaign-epoch.ts";
 import { readControllerEvidence } from "#src/run/controller-evidence.ts";
 import { readExecutionEvidenceDetails } from "#tools/outcome/builder-execution-facts.ts";
@@ -81,7 +84,7 @@ import {
 
 export type GateRentReport = ReturnType<typeof buildGateRent>;
 
-const GATE_RENT_SCHEMA = "wri-gate-rent/v2";
+const GATE_RENT_SCHEMA = "wri-gate-rent/v3";
 /** An episode that spans this many refused receipts reads as a stall even if it later cleared. */
 const STALL_RECEIPTS = 3;
 /** Two holds in a row is a chain: the Builder resubmitted into a review that was still running. */
@@ -94,7 +97,6 @@ const REFUSED = new Set(["findings", "refused"]);
 const CLEARED = new Set(["clear", "accepted"]);
 /** The forms under which a component still refuses; a firing below the bar in one is a lead. */
 const LIVE_FORMS = new Set(["kept", "narrowed", "rewritten"]);
-const TASKS_FILE = "correctness-model/tasks.json";
 
 /** One gate receipt of a session, with the calls the Builder made since the previous one. */
 interface Receipt {
@@ -157,6 +159,8 @@ export interface GateSession {
   where: string;
   receipts: number;
   refused: number;
+  /** Submits the tool turned away before its gate ran, by the reason each receipt recorded. */
+  blocked: Record<string, number>;
   accepted: boolean;
 }
 
@@ -473,6 +477,10 @@ function sessionsOf(campaign: string): SessionsRead {
         where,
         receipts: receipts.length,
         refused: receipts.filter((receipt) => REFUSED.has(receipt.outcome)).length,
+        blocked: countBy(
+          receipts.filter((receipt) => receipt.tool === "submit" && receipt.outcome === "blocked"),
+          (receipt) => receipt.reason ?? "unrecorded",
+        ),
         accepted,
         episodes: episodesOf(receipts, where, accepted),
         holds: holdsOf(receipts, where),
@@ -491,13 +499,14 @@ export function componentRows(episodes: readonly Episode[]): ComponentRow[] {
     // Every episode carries at least one code: it opened on a receipt that named it.
     const firstCode = episode.codes[0] ?? "";
     const entry = componentOf(firstCode);
-    const unscored = entry === null ? (DELIBERATELY_UNLEDGERED.get(firstCode) ?? null) : null;
+    const unscored = DELIBERATELY_UNLEDGERED.get(firstCode) ?? null;
+    const prior =
+      entry === null
+        ? { component: null, id: null, form: unscored === null ? null : ("unscored" as const), unscored }
+        : { component: entry.code, id: entry.id, form: entry.form, unscored: null };
     const row: ComponentAccum = byKey.get(episode.component) ?? {
       key: episode.component,
-      component: entry?.code ?? null,
-      id: entry?.id ?? null,
-      form: entry?.form ?? (unscored === null ? null : "unscored"),
-      unscored,
+      ...prior,
       pRight: entry?.pRight ?? null,
       pStall: entry?.pStall ?? null,
       clearsBar: entry === null ? null : clearsBar(entry),
@@ -644,7 +653,7 @@ function recordedBatteries(campaign: string): Battery[] {
     if (!existsSync(runs)) continue;
     for (const runId of readdirSync(runs).sort(compareCodeUnits)) {
       if (byRun.has(runId)) continue;
-      const battery = readJsonFileOrNull(join(runs, runId, "battery.json"));
+      const battery = readJsonFileOrNull(join(runs, runId, BATTERY_FILE));
       if (!isRecord(battery) || !Array.isArray(battery.cases)) continue;
       const authoring = isRecord(battery.experimentAuthoring) ? battery.experimentAuthoring : null;
       const recordedOperation = authoring?.operation;
@@ -689,7 +698,7 @@ function generatedTask(task: TaskRow): GeneratedTask<JsonValue | undefined, Json
 }
 
 function tasksById(dir: string): Map<string, TaskRow> | null {
-  const tasks = readJsonFileOrNull(join(dir, "correctness-model/tasks.json"));
+  const tasks = readJsonFileOrNull(join(dir, TASKS_FILE));
   if (!Array.isArray(tasks)) return null;
   const rows = tasks.filter(isTaskRow);
   if (rows.length !== tasks.length) return null;
@@ -744,7 +753,7 @@ function bundleMoves(campaign: string, beforeRun: string, afterRun: string): Bun
   // A task file that cannot be split is counted as grading rather than cleared.
   const tasksGrade = changed.includes(TASKS_FILE) && (tasks === null || tasks.hidden > 0);
   const inClosure = (rel: string): boolean =>
-    scoring !== "unchanged" && rel.startsWith("correctness-model/") && rel !== TASKS_FILE;
+    scoring !== "unchanged" && rel.startsWith(CORRECTNESS_MODEL_DIR) && rel !== TASKS_FILE;
   const grading = changed.filter(inClosure);
   return {
     scoring,
@@ -883,6 +892,22 @@ function correctionLine(row: CorrectionRow): string {
   return `${head}; ${movedLine(row.moved)}${drift}; regrade: ${row.regrade}`;
 }
 
+/** The submits turned away before the gate ran, summed over the sessions and named by reason. */
+function blockedLine(sessions: readonly GateSession[]): string {
+  const byReason = new Map<string, number>();
+  for (const { blocked } of sessions) {
+    for (const [reason, n] of Object.entries(blocked)) {
+      byReason.set(reason, (byReason.get(reason) ?? 0) + n);
+    }
+  }
+  const total = [...byReason.values()].reduce((sum, n) => sum + n, 0);
+  const reasons = [...byReason]
+    .sort(([a], [b]) => compareCodeUnits(a, b))
+    .map(([reason, n]) => `${reason} ${n}`)
+    .join(", ");
+  return `${total} blocked before the gate${total === 0 ? "" : ` (${reasons})`}`;
+}
+
 export function renderGateRent(report: GateRentReport): string {
   if (report.state !== "recorded") return `${report.campaign}: ${report.reason}`;
   const receipts = report.sessions.reduce((sum, session) => sum + session.receipts, 0);
@@ -898,7 +923,7 @@ export function renderGateRent(report: GateRentReport): string {
     component === null ? "" : ` — ${component.code} ${component.id}, P(right) ${component.pRight}`;
   const sessions = `${count(report.sessions.length, "Builder session")}, ${count(receipts, "gate receipt")}`;
   const lines = [
-    `${sessions}, ${refused} refused; priors from the gate audit of ${report.ledgerDate}, bar P(right) ≥ ${report.refusalBar}`,
+    `${sessions}, ${refused} refused, ${blockedLine(report.sessions)}; priors from the gate audit of ${report.ledgerDate}, bar P(right) ≥ ${report.refusalBar}`,
     ...(report.components.length === 0
       ? ["  no gate component fired"]
       : report.components.map(componentLine)),

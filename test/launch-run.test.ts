@@ -12,9 +12,8 @@ import {
 } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 import { tmpdir } from "../src/meta/os.ts";
-import { parseFullRunArgs } from "../src/run/launch-arguments.ts";
+import { commandDigest, parseFullRunArgs } from "../src/run/launch-arguments.ts";
 import { hashJsonBytes } from "../src/meta/json-runtime.ts";
-import { hashJsonValue } from "../src/meta/stable-json.ts";
 import {
   CONDITIONS,
   type OpeningPlan,
@@ -25,6 +24,7 @@ import {
   openingProblems,
   parseOptions,
   planRuns,
+  probeArgs,
   slotEnvironment,
 } from "../.claude/skills/launch-run/scripts/options.ts";
 import {
@@ -39,7 +39,7 @@ import { serviceManager } from "../.claude/skills/launch-run/scripts/service.ts"
 import { solveIsolationPolicy, spawnUnderSolveIsolation } from "../src/verify/solve-sandbox.ts";
 import { sha256 } from "../src/meta/digest.ts";
 import { hasText } from "../src/meta/text.ts";
-import { double, required } from "./helpers/doubles.ts";
+import { double, rejectionOf, required } from "./helpers/doubles.ts";
 import { gitOutput } from "../.claude/skills/main/git.ts";
 
 type Context = Parameters<typeof launchBatch>[2];
@@ -51,6 +51,7 @@ interface BatchFixtureOptions {
   failWorker?: boolean;
   refuseAllowance?: boolean;
   args?: string[];
+  host?: Context["host"];
 }
 interface ModelSlot {
   kind: string;
@@ -124,7 +125,7 @@ function requestIdentity(argv: string[]) {
   const requestDigest = hashJsonBytes({ prompt: args.prompt, contextDigest });
   return {
     requestDigest,
-    commandDigest: hashJsonValue({ ...args, prompt: null, contextPaths: null, requestDigest }),
+    commandDigest: commandDigest(args, requestDigest),
   };
 }
 
@@ -156,6 +157,7 @@ function batchFixture({
   failWorker = false,
   refuseAllowance = false,
   args = [...CUSTOM, "truss"],
+  host = { load: 1.5, live: [] },
 }: BatchFixtureOptions = {}) {
   const options = parseOptions(args);
   const plans = planRuns(options, temp(), "fixture");
@@ -168,6 +170,7 @@ function batchFixture({
     uid: 501,
     sharedRoot: temp(),
     manager,
+    host,
     credentials: {
       claude: {
         kind: "claude",
@@ -420,11 +423,11 @@ describe("one-command run launcher", () => {
   });
 
   it("uses the exact presets and lets the product parse their full launch arguments", () => {
-    const options = parseOptions([...CUSTOM, "truss"]);
+    const options = parseOptions([...CUSTOM, "truss", "buffer"]);
     const plans = planRuns(options, "/tmp/launch", "unique");
     expect(options).toMatchObject({ source: "origin/main", condition: "opus", tasks: "25", budget: "1320" });
-    expect(plans.map((plan) => plan.prompt)).toEqual([CUSTOM[2], PRESETS.truss]);
-    expect(new Set(plans.map((plan) => plan.dir)).size).toBe(2);
+    expect(plans.map((plan) => plan.prompt)).toEqual([CUSTOM[2], PRESETS.truss, PRESETS.buffer]);
+    expect(new Set(plans.map((plan) => plan.dir)).size).toBe(3);
     for (const plan of plans) {
       const parsed = parseFullRunArgs(fullrunArgs(plan, options, source));
       expect(parsed).toMatchObject({
@@ -437,8 +440,16 @@ describe("one-command run launcher", () => {
       expect(parsed.backendSelections).toEqual({ builder: "claude", built: "claude", review: "claude" });
     }
     expect(slotEnvironment("sol")).toMatchObject({
-      CODEX_BUILDER_MODEL: "gpt-6-sol",
+      CODEX_BUILDER_MODEL: "gpt-6.1-sol",
       CODEX_BUILT_REASONING_EFFORT: "high",
+      CODEX_REVIEW_REASONING_EFFORT: "medium",
+    });
+    expect(slotEnvironment("solhmm")).toMatchObject({
+      CODEX_BUILDER_MODEL: "gpt-6.1-sol",
+      CODEX_BUILT_MODEL: "gpt-6.1-sol",
+      CODEX_REVIEW_MODEL: "gpt-6.1-sol",
+      CODEX_BUILDER_REASONING_EFFORT: "high",
+      CODEX_BUILT_REASONING_EFFORT: "medium",
       CODEX_REVIEW_REASONING_EFFORT: "medium",
     });
     expect(slotEnvironment("luna")).toMatchObject({
@@ -456,6 +467,68 @@ describe("one-command run launcher", () => {
       CLAUDE_BUILT_REASONING_EFFORT: "medium",
       CLAUDE_REVIEW_REASONING_EFFORT: "medium",
     });
+    expect(slotEnvironment("opushmm")).toMatchObject({
+      CLAUDE_BUILDER_MODEL: "claude-opus-5-5",
+      CLAUDE_BUILDER_REASONING_EFFORT: "high",
+      CLAUDE_BUILT_REASONING_EFFORT: "medium",
+      CLAUDE_REVIEW_REASONING_EFFORT: "medium",
+    });
+    expect(slotEnvironment("sonnetxhh")).toMatchObject({
+      CLAUDE_BUILDER_MODEL: "claude-sonnet-5-5",
+      CLAUDE_BUILT_MODEL: "claude-sonnet-5-5",
+      CLAUDE_REVIEW_MODEL: "claude-sonnet-5-5",
+      CLAUDE_BUILDER_REASONING_EFFORT: "xhigh",
+      CLAUDE_BUILT_REASONING_EFFORT: "high",
+      CLAUDE_REVIEW_REASONING_EFFORT: "high",
+    });
+    expect(slotEnvironment("haiku")).toMatchObject({
+      CLAUDE_BUILDER_MODEL: "claude-haiku-4-5-20251001",
+      CLAUDE_BUILT_MODEL: "claude-haiku-4-5-20251001",
+      CLAUDE_REVIEW_MODEL: "claude-haiku-4-5-20251001",
+      CLAUDE_BUILDER_REASONING_EFFORT: "medium",
+    });
+    expect(slotEnvironment("opus47")).toMatchObject({
+      CLAUDE_BUILDER_MODEL: "claude-opus-4-7",
+      CLAUDE_BUILT_MODEL: "claude-opus-4-7",
+      CLAUDE_REVIEW_MODEL: "claude-opus-4-7",
+    });
+    expect(slotEnvironment("gpt55")).toMatchObject({
+      CODEX_BUILDER_MODEL: "gpt-5.5",
+      CODEX_BUILT_MODEL: "gpt-5.5",
+      CODEX_BUILDER_REASONING_EFFORT: "high",
+      CODEX_REVIEW_REASONING_EFFORT: "medium",
+    });
+  });
+
+  it("names an effort variant in its run id and probes it as its model's standard row", () => {
+    const options = parseOptions(["--prompt", "Write a CLI.", "--model", "opushmm"]);
+    const [plan] = planRuns(options, "/tmp/launch", "at");
+    expect(plan?.runId).toBe("standard-opushmm-at");
+    const args = plan === undefined ? [] : probeArgs(plan, options);
+    expect(args[args.indexOf("--condition") + 1]).toBe("opus");
+  });
+
+  it("probes the Sol effort variant as the standard sol row", () => {
+    const options = parseOptions(["--prompt", "Write a CLI.", "--model", "solhmm"]);
+    const [plan] = planRuns(options, "/tmp/launch", "at");
+    expect(plan?.runId).toBe("standard-solhmm-at");
+    const args = plan === undefined ? [] : probeArgs(plan, options);
+    expect(args[args.indexOf("--condition") + 1]).toBe("sol");
+  });
+
+  it("probes the Sonnet effort variant as the standard sonnet row", () => {
+    const options = parseOptions(["--prompt", "Write a CLI.", "--model", "sonnetxhh"]);
+    const [plan] = planRuns(options, "/tmp/launch", "at");
+    expect(plan?.runId).toBe("standard-sonnetxhh-at");
+    const args = plan === undefined ? [] : probeArgs(plan, options);
+    expect(args[args.indexOf("--condition") + 1]).toBe("sonnet");
+  });
+
+  it("probes an older model as its own row, not as the newer model its name starts with", () => {
+    const options = parseOptions(["--prompt", "Write a CLI.", "--model", "opus47"]);
+    const [plan] = planRuns(options, "/tmp/launch", "at");
+    const args = plan === undefined ? [] : probeArgs(plan, options);
+    expect(args[args.indexOf("--condition") + 1]).toBe("opus47");
   });
 
   it("names a --prompt run standard, whether it is named standard, custom or not at all", () => {
@@ -495,12 +568,13 @@ describe("one-command run launcher", () => {
     [["unknown"], "unknown preset unknown; use --list"],
     [["truss", "--prompt", "replacement"], "standard runs the --prompt text, so each needs the other"],
     [["standard"], "standard runs the --prompt text, so each needs the other"],
-    [[], "give --prompt or name a preset: truss, standard"],
+    [[], "give --prompt or name a preset: truss, buffer, recode, standard"],
     [["--prompt", "three\nprompt\nlines"], PROMPT_REFUSAL],
     [["--prompt", "\nblank"], PROMPT_REFUSAL],
     [["--prompt", "text\0"], PROMPT_REFUSAL],
     [["--prompt", "text\r"], PROMPT_REFUSAL],
     [["truss", "--env-file", "relative"], "--env-file must be absolute"],
+    [["truss", "--over-capacity", " "], "--over-capacity needs the reason, in words"],
     [["truss", "--claim", "unsupported"], 'unknown option "--claim"'],
     [["truss", "truss", "--project", "old-project"], PROJECT_REFUSAL],
     [["truss", "--project", "../old"], PROJECT_REFUSAL],
@@ -759,7 +833,9 @@ describe("one-command run launcher", () => {
     for (const planned of fixture.plans) {
       const { environment, argv } = launchOf(fixture.calls, planned);
       expect(parseFullRunArgs(argv).stopAfterMs).toBe(14400000);
-      expect(environment.CODEX_BUILT_MODEL).toBe(planned.condition === "astra" ? "gpt-6-astra" : "gpt-6-sol");
+      expect(environment.CODEX_BUILT_MODEL).toBe(
+        planned.condition === "astra" ? "gpt-6-astra" : "gpt-6.1-sol",
+      );
       const plan = opened(planned, argv);
       const wrong = openingFor(plan);
       wrong.modelSlots.built.model = "unrequested-model";
@@ -848,6 +924,44 @@ describe("one-command run launcher", () => {
     expect(uncertain.calls.some((args) => args.includes("kill") || args.includes("bootout"))).toBe(false);
   });
 
+  // The operator's pace (AGENTS.md "Open gaps", blocker 4): a batch past either limit starts nothing.
+  const FIVE_LIVE = ["run-a", "run-b", "run-c", "run-d", "run-e"];
+  it.each([
+    [
+      "a load above 25",
+      { load: 31.2, live: ["run-a", "run-b"] },
+      'refused before preparing any tree: one-minute load 31.2 (limit 25); 4 runs live with this batch (limit 6), live now: run-a, run-b\nEach run added slows every run already there. Wait for the load to fall or a run to close, or pass --over-capacity "<reason>" to launch anyway.',
+    ],
+    [
+      "a batch that takes the live runs past six",
+      { load: 8, live: FIVE_LIVE },
+      "one-minute load 8 (limit 25); 7 runs live with this batch (limit 6), live now: run-a, run-b, run-c, run-d, run-e\n",
+    ],
+    [
+      "a load above 25 when the live runs could not be read",
+      { load: 25.1, live: "fixture reader failed" },
+      "one-minute load 25.1 (limit 25); live runs unread (fixture reader failed), so the load alone decides\n",
+    ],
+  ])("refuses %s before preparing any tree or asking any provider", async (_case, host, refusal) => {
+    const { plans, options, context, command, calls } = batchFixture({ host });
+    expect((await rejectionOf(launchBatch(plans, options, context, command))).message).toContain(refusal);
+    expect(calls).toEqual([]);
+    for (const plan of plans) expect(existsSync(plan.dir)).toBe(false);
+  });
+
+  it("launches at the limits, or past them, keeping the reading and the operator's reason in each receipt", async () => {
+    const reason = "operator: one arm replaces a stopped one";
+    for (const [args, host, overCapacity] of [
+      [["truss"], { load: 25, live: FIVE_LIVE }, null],
+      [["truss"], { load: 12, live: "fixture reader failed" }, null],
+      [["truss", "--over-capacity", reason], { load: 31.2, live: [...FIVE_LIVE, "run-f"] }, reason],
+    ] as const) {
+      const { plans, options, context, command } = batchFixture({ args: [...args], host });
+      expect(launched((await launchBatch(plans, options, context, command))[0]).started).toBe(true);
+      expect(readReport(required(plans[0], "plan")).pace).toEqual({ ...host, overCapacity });
+    }
+  });
+
   // The terminal is read only through the controller's strict reader, so one it refuses still ends
   // the startup, naming the refusal rather than a reason read leniently from the file.
   it("reports a terminal written just after the opening as a startup the reader refuses", async () => {
@@ -881,7 +995,7 @@ describe("one-command run launcher", () => {
       [{ ...valid, project: { ...valid.project, requestDigest: "wrong" } }, "prompt/request digest"],
       [{ ...valid, providerResourceBudget: { cap: 25 } }, "provider budget"],
       [
-        { ...valid, modelSlots: { ...valid.modelSlots, built: { kind: "codex", model: "gpt-5.6-sol" } } },
+        { ...valid, modelSlots: { ...valid.modelSlots, built: { kind: "codex", model: "gpt-6.1-sol" } } },
         "built model slot",
       ],
     ];

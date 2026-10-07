@@ -24,22 +24,25 @@ import { basename, join } from "#src/meta/path.ts";
 import { BUILDER_EXECUTION_SCHEMA } from "#src/author/builder-execution.ts";
 import { DIFFICULTY_DECISION_SCHEMA } from "#src/run/difficulty-decision.ts";
 import { readJsonFileOrNull } from "#src/meta/completed-json.ts";
-import { hashJsonValue } from "#src/meta/stable-json.ts";
-import { isNumber, isRecord, isString, type JsonValue } from "#src/meta/json-shape.ts";
+import { compareCodeUnits, hashJsonValue } from "#src/meta/stable-json.ts";
+import { keysIf } from "#src/meta/optional-key.ts";
+import { asRecord, isNumber, isRecord, isString, type JsonValue } from "#src/meta/json-shape.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { campaignTraceRoots } from "#src/claim/trace-read.ts";
+import { type RebuildAdvicePacket, renderRebuildAdvice } from "#src/author/rebuild-advice.ts";
 import {
   type AdviceIssue,
   adviceIssueId,
   type IssueDiagnosis,
   issueFacts,
-} from "#src/author/rebuild-advice.ts";
+} from "#src/author/issue-register.ts";
+import { readEpochRecord } from "#src/author/campaign-epoch.ts";
 import { ownerSide } from "#src/author/feedback-routing.ts";
 import { PATH_RECORD_FILE } from "#src/builder/path-record.ts";
 import { PUBLIC_TASK_FILE } from "#src/correctness-bundle/recorded-solve.ts";
 import { jsonText, readJsonAsOrNull } from "./run-overview.ts";
 
-export const HANDOFFS_SCHEMA = "wri-handoffs/v1";
+export const HANDOFFS_SCHEMA = "wri-handoffs/v2";
 
 /** The Builder tools this reader counts, spelled once. */
 const TRIAL = "harness_trial";
@@ -55,16 +58,18 @@ export type ReadKind = "history" | "memory" | "context" | "traces";
 /** One channel a round can hand the next. */
 export interface Channel {
   name: string;
-  marker: string;
+  marker: string | null;
   read: ReadKind | null;
   alternative: string;
 }
 
 /**
  * The channels a round can hand the next. `marker` is a sentence the current source renders into
- * the kickoff (grep-confirmed at the owner named beside it); `read` names the tool evidence that
- * counts as opening the channel, or null when no tool re-serves it; `alternative` is the cheapest
- * route a served-but-unread channel could take instead, stated as a candidate for lane 17 to test.
+ * the kickoff (grep-confirmed at the owner named beside it), or null for the advice packet, which
+ * opens with no fixed sentence: it is served when the kickoff carries the prior battery's recorded
+ * packet as `renderRebuildAdvice` prints it. `read` names the tool evidence that counts as opening
+ * the channel, or null when no tool re-serves it; `alternative` is the cheapest route a
+ * served-but-unread channel could take instead, stated as a candidate for lane 17 to test.
  */
 export const CHANNELS: readonly Channel[] = [
   // src/run/battery-sizing.ts
@@ -84,7 +89,7 @@ export const CHANNELS: readonly Channel[] = [
   // src/author/rebuild-advice.ts
   {
     name: "rebuild-advice",
-    marker: "Standing issues",
+    marker: null,
     read: null,
     alternative: "return the current packet from harness_inspect feedback",
   },
@@ -186,7 +191,6 @@ interface ExecutionRecord {
   writtenAt?: string;
   durationMs?: number;
   customCalls?: CustomCallRow[];
-  authoringReviews?: JsonValue;
   submits?: SubmitRow[];
   toolCalls?: ToolCallCounts | null;
 }
@@ -199,7 +203,6 @@ interface Session {
   start: number;
   end: number;
   calls: Call[];
-  reviews: number;
   submits: Submit[];
   bash: number | null;
 }
@@ -209,15 +212,6 @@ interface ObservabilityRow {
   contract?: string;
   role?: string;
   prompt?: string;
-}
-
-interface EpochRow {
-  key?: string;
-  createdAt?: string;
-}
-
-interface EpochsFile {
-  epochs?: EpochRow[];
 }
 
 interface PathRow {
@@ -239,10 +233,6 @@ interface Round {
   prompts: string[];
   battery: string | null;
   prior: ClaimedBattery[];
-}
-
-interface AdvicePacket {
-  issues?: AdviceIssue[];
 }
 
 interface DiagnosesFile {
@@ -277,6 +267,8 @@ export interface CensusCell {
 
 export interface UnreadChannel {
   name: string;
+  /** False when no tool re-serves the channel, so an unread one is structural, not a choice. */
+  readRoute: boolean;
   alternative: string;
 }
 
@@ -287,6 +279,8 @@ export interface CensusRow {
   bashCalls: number | null;
   channels: CensusCell[];
   servedNotRead: UnreadChannel[];
+  /** The round's battery review's disposition of each defect the earlier review left advisory. */
+  carriedDispositions: string[];
 }
 
 export interface BeforeAuthoring {
@@ -362,7 +356,7 @@ export interface Triage {
 export type FamilyJoin =
   | "absent-before"
   | "absent-after"
-  | "name-only"
+  | "no-shared-input"
   | "identical-tasks"
   | "partially-shared";
 
@@ -370,11 +364,15 @@ interface TaskInput {
   taskId: JsonValue | undefined;
   family: JsonValue | undefined;
   input: string;
+  /** The digest of each top-level key of the public input. */
+  fields: Record<string, string>;
 }
 
 export interface FamilyJoinRow {
   family: JsonValue | undefined;
   join: FamilyJoin;
+  /** On `no-shared-input`: the top-level public-input keys whose values differ across the family. */
+  changed?: string[];
 }
 
 export interface IssueTransition {
@@ -495,6 +493,10 @@ function analysis<T>(campaign: string, battery: string, kind: string): T | null 
   return readJsonAsOrNull<T | null>(join(campaign, "analysis", `${battery}-${kind}.json`));
 }
 
+/** The advice packet a battery recorded, or null for no battery or no packet. */
+const adviceOf = (campaign: string, battery: string | null): RebuildAdvicePacket | null =>
+  battery === null ? null : recordOf(analysis<RebuildAdvicePacket>(campaign, battery, "rebuild-advice"));
+
 /** Authoring-time reviews, timed by the UUIDv7 in their file name; battery reviews record no time. */
 function authoringReviewTimes(campaign: string): number[] {
   const dir = join(campaign, "analysis");
@@ -530,7 +532,6 @@ function sessionsOf(epochDir: string): Session[] {
           start,
           end: Date.parse(writtenAt),
           calls: records(record.customCalls).map((row) => ({ ...row, at: at(row) })),
-          reviews: recordCount(record.authoringReviews),
           submits: records(record.submits).map((row) => ({
             ...row,
             at: isNumber(row.atMs) ? start + row.atMs : null,
@@ -562,11 +563,8 @@ function promptsByEpoch(campaign: string, runId: string | null): Map<string, str
 
 /** One round per epoch: its sessions, path record, prompts and the battery its accepted submit fed. */
 function roundsOf(campaign: string, runId: string | null, batteries: readonly ClaimedBattery[]): Round[] {
-  const epochs = readJsonAsOrNull<EpochsFile | null>(join(campaign, "epochs.json"));
   const prompts = promptsByEpoch(campaign, runId);
-  const listed = records(recordOf(epochs)?.epochs).filter((epoch): epoch is EpochRow & { key: string } =>
-    isString(epoch.key),
-  );
+  const listed = readEpochRecord(campaign)?.epochs ?? [];
   const scoped = prompts.size === 0 ? listed : listed.filter((epoch) => prompts.has(epoch.key));
   return scoped.map((epoch, index) => {
     const dir = join(campaign, epoch.key);
@@ -577,7 +575,7 @@ function roundsOf(campaign: string, runId: string | null, batteries: readonly Cl
     const acceptedAt = accepted.length === 0 ? null : Math.max(...accepted.map((s) => s.at));
     const battery = acceptedAt === null ? null : (batteries.find((b) => b.at > acceptedAt) ?? null);
     const start =
-      sessions.length === 0 ? Date.parse(epoch.createdAt ?? "") : Math.min(...sessions.map((s) => s.start));
+      sessions.length === 0 ? Date.parse(epoch.createdAt) : Math.min(...sessions.map((s) => s.start));
     return {
       index: index + 1,
       epoch: epoch.key,
@@ -626,14 +624,13 @@ function readCount(round: Round, read: ReadKind | null, before = Infinity): numb
 
 function presentOf(campaign: string, round: Round, name: string): boolean {
   const last = round.prior.at(-1)?.runId ?? null;
-  const advice = last === null ? null : analysis<AdvicePacket>(campaign, last, "rebuild-advice");
   const diagnoses = last === null ? null : analysis<DiagnosesFile>(campaign, last, "diagnoses");
   switch (name) {
     case "round-facts":
     case "context":
       return true;
     case "rebuild-advice":
-      return records(recordOf(advice)?.issues).length > 0;
+      return records(adviceOf(campaign, last)?.issues).length > 0;
     case "diagnosis":
       return recordCount(recordOf(diagnoses)?.diagnoses) > 0;
     case "epoch-review":
@@ -651,13 +648,30 @@ function actedOf(round: Round, name: string): boolean | null {
   return null;
 }
 
+/** What the round's own battery review records of the earlier review's advisory defects
+ *  (src/review/review-carry.ts). `absent` means the finding did not recur, not that the Builder
+ *  acted on it, so it is reported as the successor's disposition and never as an acted mark. */
+function carriedDispositionsOf(campaign: string, round: Round): string[] {
+  if (round.battery === null) return [];
+  const review = analysis<{ earlierAdvisory?: { subject?: string | null; disposition?: string }[] }>(
+    campaign,
+    round.battery,
+    "epoch-review",
+  );
+  return records(recordOf(review)?.earlierAdvisory).map(
+    (row) => `${row.subject ?? "(no subject)"} ${row.disposition}`,
+  );
+}
+
 /** Lane 17: one row per round, one cell per channel. */
 function census(campaign: string, rounds: readonly Round[]): CensusRow[] {
   return rounds.map((round) => {
     const text = round.prompts.join("\n");
+    const packet = adviceOf(campaign, round.prior.at(-1)?.runId ?? null);
+    const advice = packet === null ? "" : renderRebuildAdvice(packet);
     const channels = CHANNELS.map((channel) => {
-      let served = text.includes(channel.marker);
-      if (channel.name === "epoch-review") served ||= round.sessions.some((s) => s.reviews > 0);
+      let served =
+        channel.marker === null ? advice !== "" && text.includes(advice) : text.includes(channel.marker);
       if (channel.name === "traces") served ||= calls(round, TRIAL).length > 0;
       const read = readCount(round, channel.read);
       return {
@@ -673,6 +687,7 @@ function census(campaign: string, rounds: readonly Round[]): CensusRow[] {
         ? [
             {
               name: cell.name,
+              readRoute: cell.read !== null,
               // Every cell is named after a channel, so the lookup always finds one.
               alternative: CHANNELS.find((c) => c.name === cell.name)?.alternative ?? "",
             },
@@ -687,6 +702,7 @@ function census(campaign: string, rounds: readonly Round[]): CensusRow[] {
       bashCalls: bash.length === 0 ? null : bash.reduce((a, b) => a + b, 0),
       channels,
       servedNotRead: unread,
+      carriedDispositions: carriedDispositionsOf(campaign, round),
     };
   });
 }
@@ -731,12 +747,6 @@ function calibration(rounds: readonly Round[], rows: ReadonlyMap<string, Decisio
   };
 }
 
-/** The register's facts about a recorded issue. A packet recorded before a field existed leaves it
- *  out, and each absent one reads as the empty value the register writes. */
-function recordedFacts(issue: AdviceIssue): string {
-  return issueFacts({ ...issue, dispute: issue.dispute ?? null, unmeasured: issue.unmeasured ?? [] });
-}
-
 /** A diagnosis names a bundle file or `solver` (`DIAGNOSIS_OWNERS`), and a file's own prefix is the
  *  side its repair reopens, so `correctness-model/brief.json` is the evaluation's. */
 function diagnosisOf(value: IssueDiagnosis | null | undefined): DiagnosisReading | null {
@@ -779,8 +789,7 @@ function triage(
   reviewTimes: readonly number[],
 ): Triage {
   const families = batteries.flatMap((battery, index) => {
-    const packet = recordOf(analysis<AdvicePacket>(campaign, battery.runId, "rebuild-advice"));
-    const issues = records(packet?.issues).filter(
+    const issues = records(adviceOf(campaign, battery.runId)?.issues).filter(
       (issue) => issue.lastSeenRunId === battery.runId && issue.count > 0 && issue.retired !== true,
     );
     const next = batteries[index + 1] ?? null;
@@ -788,8 +797,7 @@ function triage(
       const review = reviewOf(campaign, battery.runId, issue.id);
       const operation = next === null ? null : (rows.get(next.runId)?.operation ?? null);
       const diagnosis = diagnosisOf(issue.diagnosis);
-      const disputeRecorded = issue.dispute !== null && issue.dispute !== undefined;
-      const disputed = disputeRecorded || review?.disputedThisIssue === true;
+      const disputed = issue.dispute !== null || review?.disputedThisIssue === true;
       const undiagnosed = issue.kind === "non-result" ? "environment" : "none";
       const side: TriagedSide = disputed ? "evaluation" : (diagnosis?.side ?? undiagnosed);
       const wanted = side === "harness" || side === "evaluation" ? REPAIR_OPERATION[side] : null;
@@ -800,10 +808,10 @@ function triage(
         detail: issue.detail ?? null,
         count: issue.count,
         denominator: issue.denominator ?? null,
-        status: recordedFacts(issue),
+        status: issueFacts(issue),
         diagnosis,
         review,
-        adviceWithheld: disputeRecorded,
+        adviceWithheld: issue.dispute !== null,
         triagedSide: side,
         successor: next?.runId ?? null,
         successorOperation: operation,
@@ -856,6 +864,12 @@ function tasksOf(campaign: string, battery: string): TaskInput[] | null {
                 taskId: row.taskId,
                 family: row.family,
                 input: hashJsonValue(row.publicTask.publicInput ?? null),
+                fields: Object.fromEntries(
+                  Object.entries(asRecord(row.publicTask.publicInput) ?? {}).map(([key, value]) => [
+                    key,
+                    hashJsonValue(value),
+                  ]),
+                ),
               },
             ]
           : [],
@@ -864,11 +878,25 @@ function tasksOf(campaign: string, battery: string): TaskInput[] | null {
   return null;
 }
 
+/** The top-level public-input keys whose values differ between a family's tasks before and after.
+ *  Each side's values are compared as a sorted list, so the order the cases were read in decides
+ *  nothing, and a key one side lacks reads as a different value. */
+function changedKeys(before: readonly TaskInput[], after: readonly TaskInput[]): string[] {
+  const values = (tasks: readonly TaskInput[], key: string): string =>
+    tasks
+      .map((t) => t.fields[key] ?? "")
+      .sort(compareCodeUnits)
+      .join(",");
+  return [...new Set([...before, ...after].flatMap((t) => Object.keys(t.fields)))]
+    .filter((key) => values(before, key) !== values(after, key))
+    .sort(compareCodeUnits);
+}
+
 export function classifyFamily(before: readonly string[], after: readonly string[]): FamilyJoin {
   if (before.length === 0) return "absent-before";
   if (after.length === 0) return "absent-after";
   const shared = after.filter((digest) => before.includes(digest)).length;
-  if (shared === 0) return "name-only";
+  if (shared === 0) return "no-shared-input";
   return shared === after.length && before.length === after.length ? "identical-tasks" : "partially-shared";
 }
 
@@ -880,13 +908,30 @@ function byDefaultSortOrder(a: JsonValue | undefined, b: JsonValue | undefined):
   return x > y ? 1 : 0;
 }
 
+/** Each family either battery measured, joined on the digests of its public inputs; a family that
+ *  shares none on both sides names the top-level keys that moved. */
+function joinFamilies(before: readonly TaskInput[], after: readonly TaskInput[]): FamilyJoinRow[] {
+  const names = [...new Set([...before, ...after].map((t) => t.family))].sort(byDefaultSortOrder);
+  return names.map((family) => {
+    const ofFamily = (tasks: readonly TaskInput[]) => tasks.filter((t) => t.family === family);
+    const [earlier, later] = [ofFamily(before), ofFamily(after)];
+    const relation = classifyFamily(
+      earlier.map((t) => t.input),
+      later.map((t) => t.input),
+    );
+    return {
+      family,
+      join: relation,
+      ...keysIf(relation === "no-shared-input", () => ({ changed: changedKeys(earlier, later) })),
+    };
+  });
+}
+
 /** Lane 18: consecutive batteries joined per family on public-input digests, and the advice
  *  transitions each join carried. */
 function sameTask(campaign: string, batteries: readonly ClaimedBattery[]): SameTask {
   const inputs = new Map(batteries.map((b) => [b.runId, tasksOf(campaign, b.runId)]));
-  const packets = new Map(
-    batteries.map((b) => [b.runId, recordOf(analysis<AdvicePacket>(campaign, b.runId, "rebuild-advice"))]),
-  );
+  const packets = new Map(batteries.map((b) => [b.runId, adviceOf(campaign, b.runId)]));
   const pairs = batteries.slice(1).flatMap((after, index): BatteryPair[] => {
     const before = batteries[index];
     // The pair's earlier battery always exists: `after` is the one at index + 1.
@@ -895,20 +940,14 @@ function sameTask(campaign: string, batteries: readonly ClaimedBattery[]): SameT
     if (a === null || b === null) {
       return [{ before: before.runId, after: after.runId, families: null, transitions: [] }];
     }
-    const names = [...new Set([...a, ...b].map((t) => t.family))].sort(byDefaultSortOrder);
-    const digests = (tasks: readonly TaskInput[], family: JsonValue | undefined): string[] =>
-      tasks.flatMap((t) => (t.family === family ? [t.input] : []));
-    const families = names.map((family) => ({
-      family,
-      join: classifyFamily(digests(a, family), digests(b, family)),
-    }));
+    const families = joinFamilies(a, b);
     const renamed = b.filter((t) => a.some((p) => p.input === t.input && p.family !== t.family)).length;
     const prior = new Map(records(packets.get(before.runId)?.issues).map((issue) => [issue.id, issue]));
     const transitions = records(packets.get(after.runId)?.issues)
       .flatMap((issue) => {
         const earlier = prior.get(issue.id);
         if (earlier === undefined) return [];
-        const [from, to] = [recordedFacts(earlier), recordedFacts(issue)];
+        const [from, to] = [issueFacts(earlier), issueFacts(issue)];
         const familyJoin = families.find((f) => f.family === issue.family)?.join ?? null;
         return [
           {
@@ -917,7 +956,7 @@ function sameTask(campaign: string, batteries: readonly ClaimedBattery[]): SameT
             from,
             to,
             join: familyJoin,
-            onNamesAlone: familyJoin === "name-only" || familyJoin === "absent-after",
+            onNamesAlone: familyJoin === "no-shared-input" || familyJoin === "absent-after",
           },
         ];
       })
@@ -981,11 +1020,20 @@ function renderCensus(report: ReadHandoffs): string[] {
     );
   }
   for (const round of report.census) {
-    const unread = round.servedNotRead.map((u) => `${u.name} (${u.alternative})`).join("; ");
+    const unread = (route: boolean) =>
+      round.servedNotRead
+        .filter((u) => u.readRoute === route)
+        .map((u) => `${u.name} (${u.alternative})`)
+        .join("; ");
     lines.push(
       `  r${round.round} ${round.epoch}: bash ${shown(round.bashCalls)} (reads through it unobservable)${round.promptFound ? "" : "; kickoff prompt not found"}`,
     );
-    if (unread !== "") lines.push(`    served, never read: ${unread}`);
+    if (unread(true) !== "") lines.push(`    served, never read: ${unread(true)}`);
+    if (unread(false) !== "") lines.push(`    served, no read route: ${unread(false)}`);
+    const carried = round.carriedDispositions.join("; ");
+    if (carried !== "") {
+      lines.push(`    earlier review's advisory defects in this battery's review: ${carried}`);
+    }
   }
   return lines;
 }
@@ -1040,15 +1088,19 @@ function renderSameTask({ sameTask: s }: ReadHandoffs): string[] {
     }
     const counts = new Map<string, number>();
     for (const f of pair.families) counts.set(f.join, (counts.get(f.join) ?? 0) + 1);
+    const moves = pair.families
+      .flatMap(({ family, changed = [] }) =>
+        changed.length > 0 ? [`${shown(family)} changed ${changed.join(", ")}`] : [],
+      )
+      .join("; ");
+    const joins = [...counts]
+      .map(([k, v]) => (k === "no-shared-input" && moves !== "" ? `${k} ${v} (${moves})` : `${k} ${v}`))
+      .join(", ");
     const moved = pair.transitions
       .map((t) => `${t.family} ${t.from}->${t.to} on ${t.join}${t.onNamesAlone ? ", names alone" : ""}`)
       .join("; ");
     lines.push(
-      `${head} ${[...counts]
-        .map(([k, v]) => `${k} ${v}`)
-        .join(
-          ", ",
-        )}; ${pair.renamedTasks} tasks reappear under another family name${moved === "" ? "" : `; ${moved}`}`,
+      `${head} ${joins}; ${pair.renamedTasks} tasks reappear under another family name${moved === "" ? "" : `; ${moved}`}`,
     );
   }
   lines.push(

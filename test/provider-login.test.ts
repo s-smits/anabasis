@@ -1,7 +1,9 @@
 import {
   chmodSync,
+  closeSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readFileSync,
   rmSync,
   statSync,
@@ -123,6 +125,24 @@ describe("Codex auth.json storage", () => {
     expect(statSync(file).mode & 0o777).toBe(0o600);
   });
 
+  // The Codex CLI and every parallel solve read this file while one process refreshes it, and the
+  // refresh token rotates, so an in-place rewrite could hand a reader, or a killed writer, half a login.
+  it("replaces auth.json whole, so a reader holding the old file still reads all of it", () => {
+    const home = makeScratchDir("ana-login-codex-swap-");
+    const first = { access: "a1", refresh: "r1", expires: 1000, idToken: "i1", accountId: "acc-7" };
+    const file = writeCodexAuthJson(first, { CODEX_HOME: home });
+    const before = readFileSync(file, "utf8");
+    const reader = openSync(file, "r");
+    try {
+      writeCodexAuthJson({ ...first, access: "a2", refresh: "r2" }, { CODEX_HOME: home });
+      expect(readFileSync(reader, "utf8")).toBe(before);
+    } finally {
+      closeSync(reader);
+    }
+    expect(readFileSync(file, "utf8")).toContain('"refresh_token": "r2"');
+    expect(statSync(file).mode & 0o777).toBe(0o600);
+  });
+
   it("resolves the auth path through an absolute CODEX_HOME or ~/.codex", () => {
     const home = makeScratchDir("ana-login-codex2-");
     expect(codexAuthFile({ CODEX_HOME: home })).toBe(join(home, "auth.json"));
@@ -213,7 +233,7 @@ describe("Claude credential storage", () => {
       expect(resolvePiSlot(slot, claude, defaults, repoRoot, {}).profile.compaction).toBe("pi");
     }
     // A codex slot compacts through pi whatever the env says; it carries no mode.
-    const codex = { kind: "codex", model: "gpt-5.6-sol", reasoningEffort: "medium" } as const;
+    const codex = { kind: "codex", model: "gpt-6.1-sol", reasoningEffort: "medium" } as const;
     expect(resolvePiSlot("builder", codex, defaults, repoRoot, {}).profile).not.toHaveProperty("compaction");
 
     const unset = makeScratchDir("ana-slot-compaction-unset-");
@@ -339,7 +359,7 @@ describe("login-state owners", () => {
     const before = readFileSync(codexAuthFile({ CODEX_HOME: home }), "utf8");
     const slot = resolvePiSlot(
       "review",
-      { kind: "codex", model: "gpt-5.6-sol", reasoningEffort: "medium" },
+      { kind: "codex", model: "gpt-6.1-sol", reasoningEffort: "medium" },
       { webSearch: false },
       repoRoot,
       {},

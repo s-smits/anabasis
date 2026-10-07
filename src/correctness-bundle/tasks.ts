@@ -21,7 +21,7 @@ import {
   fieldFinding,
 } from "./brief.ts";
 import type { HiddenExpectation } from "./hidden-expectation.ts";
-import { resolvePredicatePath } from "./predicate.ts";
+import { resolveJsonPath } from "../meta/json-evidence.ts";
 import { unstatedLimitFindings } from "./numeric-boundary.ts";
 import type { GeneratedTask } from "./task-split.ts";
 import { isRecord, isString, type JsonValue } from "../meta/json-shape.ts";
@@ -49,7 +49,7 @@ export interface TaskBattery {
   tasks: BuildTask[];
 }
 
-export interface TaskValidationContext {
+interface TaskValidationContext {
   /** Battery size from the ask manifest, or its upper bound when `minTasks` opens a range. Check it
    *  while the Builder can still repair the candidate. The census gate repeats the count after
    *  fingerprinting as independent evidence, rather than being the first place a wrong count is
@@ -223,7 +223,7 @@ function declaredPathFindings(rows: readonly TaskRow[]): ContractFinding[] {
   );
   for (const { task, check, path } of declared) {
     const key = `${check.id}\u0000${path}`;
-    if (resolvePredicatePath(task.publicInput, path).found) {
+    if (resolveJsonPath(task.publicInput, path).found) {
       provided.add(key);
       unmet.delete(key);
     } else if (!provided.has(key)) unmet.set(key, { assertion: check.assertion, path });

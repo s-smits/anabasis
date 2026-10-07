@@ -3,7 +3,7 @@
  *
  * Pi owns the command (timeout, abort, process-tree kill, output truncation); this module owns only
  * the rules it runs under and, for the `files` preset, how the in-memory draft becomes a directory
- * and back. The wall is applied in Pi's `prepare` hook, as Pi's own sandbox extension does. The shell
+ * and back. The wall is applied in Pi's spawn hook, as Pi's own sandbox extension does. The shell
  * is a controller tool rather than a worker tool, so generated code keeps its stricter boundary.
  *
  * Each command gets three writable trees (`solve-command-isolation.ts` owns the rules): a work tree
@@ -25,21 +25,19 @@ import {
   writeFileSync,
 } from "../meta/filesystem.ts";
 import { dirname, join } from "../meta/path.ts";
-import {
-  type AgentTool,
-  type AgentToolResult,
-  FileError,
-  createBashTool,
-  err,
-  ok,
-} from "@earendil-works/pi-agent-core";
+import { runtimeProcess } from "../meta/process.ts";
+import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
-import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
+import {
+  type BashOperations,
+  type BashToolDetails,
+  createBashTool,
+  createLocalBashOperations,
+} from "../../vendor/pi-coding-agent/core/tools/bash.ts";
 import { refuseDestructiveCommand } from "../builder/command-guard.ts";
 import type { OptionalEnvValues } from "../backends/scrub-env.ts";
 import type { SafeguardContext } from "../meta/safeguard.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
-import { isRecord } from "../meta/json-shape.ts";
 import {
   BUILT_COMMAND_SCRATCH_ROOT,
   commandIsolationPolicy,
@@ -53,7 +51,6 @@ import { BUILT_SHELL_RULES } from "./dcg-rules.ts";
 import { ARTIFACT_JSON_MAX_BYTES } from "./draft-store.ts";
 import { FILE_MAP_MAX_ENTRIES, pathProblem } from "./file-map.ts";
 import { BUILT_FILE_MAX_CHARS } from "./generated-tool-worker-protocol.ts";
-import { executePiTool } from "./pi-tool-call.ts";
 import { asError } from "../meta/runtime-values.ts";
 
 export const BUILT_BASH_TOOL = "bash";
@@ -62,7 +59,8 @@ const LISTED_PROGRAMS = 20;
 
 /** Where a cut command's whole output is kept: the session home, which the next command of this
  *  session can read and every other session's command cannot, and which is removed with the
- *  session. Pi's own default is the host temporary directory, open to every later solve's reads. */
+ *  session. Pi's own default is the host temporary directory, open to every later solve's reads,
+ *  so this is the `tempDir` the copied tool is handed. */
 const SHELL_OUTPUT_DIR = ".shell-output";
 
 /** The worker side of the draft exchange, with the answer root the draft fills. */
@@ -102,9 +100,13 @@ const WALLS =
   "a separate folder that survives between commands and is never read back; $TMPDIR is fresh for " +
   "each command. It can write those places and /tmp, and read the host's own toolchains and public " +
   "runtime roots, but no repository or private data. It does not check whether your answer is " +
-  "correct. sh, bun, node, python3 and the system C and C++ compilers " +
+  "correct. Work a command leaves running in the background is killed when the command returns, so run " +
+  "a long search in the foreground, under the command's timeout. sh, bun, node, python3 and the system C and C++ compilers " +
   "run, with versions and libraries that differ by host: check one before building on it, and install " +
   "what is missing into your home directory.";
+/** The shell is the host's own `/bin/sh`, and a macOS host's `sed` is BSD: its errors in recorded
+ *  cases were often hidden by a later command's exit status. */
+const BSD_TOOLS = " On this host the system utilities, sed among them, are BSD, not GNU.";
 const SCRATCH_FOLDER =
   " The command runs in a fresh private folder that is removed when it ends; nothing there becomes " +
   "your answer, which you still record with the harness's own tools.";
@@ -115,27 +117,6 @@ interface ReadTree {
   leftOut: number;
   /** The agent's own paths whose new bytes cannot be carried, so their previous text was kept. */
   reverted: string[];
-}
-
-/** Pi's execution environment with its spill directory moved into the session home. Pi asks for a
- *  temporary directory only to store a cut command's output, so this is the one place to move. */
-class SessionHomeSpill extends NodeExecutionEnv {
-  constructor(
-    cwd: string,
-    shellEnv: OptionalEnvValues,
-    private readonly spillRoot: string,
-  ) {
-    super({ cwd, shellPath: "/bin/sh", shellEnv });
-  }
-
-  override async createTempDir(prefix: string | undefined): ReturnType<NodeExecutionEnv["createTempDir"]> {
-    try {
-      mkdirSync(this.spillRoot, { recursive: true, mode: 0o700 });
-      return ok(mkdtempSync(join(this.spillRoot, prefix ?? "tmp-")));
-    } catch (error) {
-      return err(new FileError("unknown", `cannot store the whole output: ${asError(error).message}`));
-    }
-  }
 }
 
 function draftFolder(root: string): string {
@@ -171,11 +152,12 @@ function shellParameters(timeouts: Pick<HarnessSettings, "shellDefaultSeconds" |
  * time it already owns — is the one it cannot see. The schema states both numbers at registration,
  * and that demonstrably is not where they decide anything.
  *
- * Whether this wall cut the command is the same question as what to say about it, so the two have
- * one owner here. Pi's own `code` answers it: Pi attaches `{ cause: result.error }` on a cut, throws
- * a bare Error on a non-zero exit, and separates "timeout" from "aborted", which is the session wall
- * rather than this one. Reading that code holds without an argument about when the runner kills
- * what, which an elapsed-time test would have needed. Empty means this wall did not cut the command.
+ * Whether this wall cut the command is decided by the process launch this shell hands Pi (`cut`
+ * below), not read back out of Pi's message: Pi's local launch throws `timeout:<seconds>` when its
+ * timer killed the command and `aborted` for a cancellation, which is the session wall rather than
+ * this one, and a non-zero exit throws nothing. That holds without an argument about when the
+ * runner kills what, which an elapsed-time test would have needed. Empty means this wall did not cut
+ * the command.
  *
  * Then three states, because there are three: time left to ask for, an ask above the maximum, and
  * the maximum already in hand. The config file is named in none of them, since the solver cannot
@@ -183,13 +165,12 @@ function shellParameters(timeouts: Pick<HarnessSettings, "shellDefaultSeconds" |
  * states it there.
  */
 function shellBudgetClause(
-  failure: Error | null,
+  cut: boolean,
   asked: number,
   seconds: number,
   { shellDefaultSeconds, shellMaxSeconds }: Pick<HarnessSettings, "shellDefaultSeconds" | "shellMaxSeconds">,
 ): string {
-  const cause = failure?.cause;
-  if (!isRecord(cause) || cause.code !== "timeout") return "";
+  if (!cut) return "";
   const cheaper = "the move left is cheaper work rather than longer";
   if (seconds < shellMaxSeconds) {
     return `\n\nThis harness allows ${shellMaxSeconds} s for one command, and ${shellDefaultSeconds} s when you pass none, so there is more time to ask for.`;
@@ -202,13 +183,7 @@ function shellBudgetClause(
 /** What the command printed, or why it failed. Pi's cut notice names the stored file and stops
  *  there, and the solver's read tool cannot open it, because that tool reaches the draft alone. So
  *  the notice also names the tool that can. */
-function shellReport(failure: Error | null, result: AgentToolResult<unknown> | null, store: string): string {
-  const text =
-    failure?.message ??
-    (result?.content ?? [])
-      .map((part) => (part.type === "text" ? part.text : ""))
-      .join("")
-      .trim();
+function shellReport(text: string, store: string): string {
   const at = text.lastIndexOf(`Full output: ${store}/`);
   const end = at < 0 ? -1 : text.indexOf("]", at);
   return end < 0 ? text : `${text.slice(0, end)} — read it with this shell.${text.slice(end)}`;
@@ -334,6 +309,13 @@ function readTree(root: string, before: Record<string, string>): ReadTree {
   return { files, leftOut, reverted };
 }
 
+function resultText(result: AgentToolResult<unknown>): string {
+  return result.content
+    .map((part) => (part.type === "text" ? part.text : ""))
+    .join("")
+    .trim();
+}
+
 function fileLine({ files, leftOut, reverted }: ReadTree): string {
   const left =
     leftOut === 0
@@ -344,6 +326,20 @@ function fileLine({ files, leftOut, reverted }: ReadTree): string {
       ? ""
       : ` The draft cannot carry what the command left at ${reverted.join(", ")}, so the previous content was kept — rewrite as text under the file bound if the change was wanted.`;
   return `Draft files now: ${Object.keys(files).length}.${left}${kept}`;
+}
+
+/** Pi's own local launch under `/bin/sh`, recording whether its timer cut the command. */
+function launch() {
+  const local = createLocalBashOperations({ shellPath: "/bin/sh" });
+  let cut = false;
+  const operations = {
+    exec: (command, cwd, options) =>
+      local.exec(command, cwd, options).catch((error: unknown) => {
+        cut = asError(error).message.startsWith("timeout:");
+        throw error;
+      }),
+  } satisfies BashOperations;
+  return { operations, cut: () => cut };
 }
 
 export function createBuiltBashTool({
@@ -357,15 +353,16 @@ export function createBuiltBashTool({
   safeguardContext,
   timeouts = DEFAULT_HARNESS_SETTINGS,
 }: BuiltBashOptions): AgentTool {
-  const base = createBashTool();
+  // Only the description is read from this instance; each command gets its own tool below.
+  const base = createBashTool(home);
   // What the session home already holds, stated once because the shell is the only tool that can
   // read it and the folder sits inside the home WALLS has already introduced.
   const publicFolder = ` Your home directory already holds this task as public/task.json${publicResourceFiles === 0 ? "" : ` and this domain's public rules under public/resources/ (${publicResourceFiles} file${publicResourceFiles === 1 ? "" : "s"})`}.`;
   return {
-    ...base,
+    label: base.label,
     name: BUILT_BASH_TOOL,
     parameters: shellParameters(timeouts),
-    description: `${base.description}${port === null ? SCRATCH_FOLDER : draftFolder(port.root)}${WALLS}${publicFolder}${installedPrograms(toolTree, withheld)} ${BUILT_SHELL_RULES.join(" ")}`,
+    description: `${base.description}${port === null ? SCRATCH_FOLDER : draftFolder(port.root)}${WALLS}${runtimeProcess.platform === "darwin" ? BSD_TOOLS : ""}${publicFolder}${installedPrograms(toolTree, withheld)} ${BUILT_SHELL_RULES.join(" ")}`,
     executionMode: "sequential",
     execute: async (callId, params, signal, onUpdate): Promise<AgentToolResult<unknown>> => {
       const { command, timeout } =
@@ -397,19 +394,20 @@ export function createBuiltBashTool({
           writeFileSync(join(answer, path), content, "utf8");
         }
         const isolation = commandIsolationPolicy(policy, { work, home, temp, toolTree, withheld });
-        const env = isolation.environment;
-        const shell = createBashTool({
-          prepare: (execution) => {
-            execution.command = stageCommandIsolation(
-              isolation,
-              join(outer, "isolation.sb"),
-              execution.command,
-            );
-            execution.cwd = work;
-            execution.env = env;
-            // Pi passes only these variables, so no provider credential reaches the command.
-            execution.inheritEnv = false;
-          },
+        const store = join(home, SHELL_OUTPUT_DIR);
+        mkdirSync(store, { recursive: true, mode: 0o700 });
+        const { operations, cut } = launch();
+        const shell = createBashTool(work, {
+          operations,
+          // Only the isolation's variables, so no provider credential and no Pi session variable
+          // reaches the command.
+          exposeSessionEnvironment: false,
+          spawnHook: (spawn) => ({
+            command: stageCommandIsolation(isolation, join(outer, "isolation.sb"), spawn.command),
+            cwd: work,
+            env: isolation.environment,
+          }),
+          tempDir: store,
         });
         const asked = Math.max(1, Math.floor(timeout ?? timeouts.shellDefaultSeconds));
         // A passed timeout may only raise the default, never lower it. A solver that passes a short
@@ -417,40 +415,30 @@ export function createBuiltBashTool({
         // for want of it; the clause above says so and gets the same short value again, so the
         // floor is enforced here rather than left to advice.
         const seconds = Math.min(Math.max(asked, timeouts.shellDefaultSeconds), timeouts.shellMaxSeconds);
-        const store = join(home, SHELL_OUTPUT_DIR);
-        const execution = { env: new SessionHomeSpill(work, env, store) };
-        // A non-zero exit throws, so it is caught into a value rather than left to unwind: the
-        // files the command wrote before failing are still its work, collected before the re-raise.
-        const outcome = await executePiTool(
-          shell,
-          callId,
-          { command, timeout: seconds },
-          {
-            signal,
-            onUpdate,
-            environment: execution,
-          },
-        ).then(
-          (result) => ({ result, failure: null }),
-          (error: unknown) => ({ result: null, failure: asError(error) }),
+        // Pi returns a non-zero exit as an error result and throws on a cut or a cancellation; both
+        // become one failed outcome, so the files the command wrote before failing are still
+        // collected before the call fails.
+        const outcome = await shell.execute(callId, { command, timeout: seconds }, signal, onUpdate).then(
+          (result: AgentToolResult<BashToolDetails | undefined>) => ({
+            failed: result.isError === true,
+            text: resultText(result),
+            details: result.details,
+          }),
+          (error: unknown) => ({ failed: true, text: asError(error).message, details: null }),
         );
-        const budget = shellBudgetClause(outcome.failure, asked, seconds, timeouts);
-        const reported = shellReport(outcome.failure, outcome.result, store) + budget;
+        const reported =
+          shellReport(outcome.text, store) + shellBudgetClause(cut(), asked, seconds, timeouts);
         if (port === null) {
-          // The shell preset once rethrew the runner's error untouched, which is how the budget
-          // clause missed the preset most solves are given. Rewrapped only when there is a clause.
-          if (outcome.failure !== null) {
-            throw budget === "" ? outcome.failure : new Error(reported, { cause: outcome.failure.cause });
-          }
-          return { content: [{ type: "text", text: reported }], details: outcome.result.details ?? null };
+          if (outcome.failed) throw new Error(reported);
+          return { content: [{ type: "text", text: reported }], details: outcome.details ?? null };
         }
         const tree = readTree(answer, before);
         await port.applyFiles(tree.files);
         const text = `${reported}\n\n${fileLine(tree)}`;
-        if (outcome.failure !== null) throw new Error(text, { cause: outcome.failure.cause });
+        if (outcome.failed) throw new Error(text);
         return {
           content: [{ type: "text", text }],
-          details: { ...outcome.result.details, fileCount: Object.keys(tree.files).length },
+          details: { ...outcome.details, fileCount: Object.keys(tree.files).length },
         };
       } finally {
         rmSync(outer, { recursive: true, force: true });

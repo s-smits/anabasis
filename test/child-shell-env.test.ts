@@ -16,7 +16,8 @@
  * The third is the budget notice the cell writes about a long authoring call. It reads the
  * harness's own `agent/config.yaml` rather than a fixed ceiling, because a harness that gives its
  * solver an hour per command has made that call cheap, and a notice quoting a constant would argue
- * against the settings the Builder chose.
+ * against the settings the Builder chose. `runBuilderBash` writes it from how long a real command
+ * ran, which no test can set, so these cases name the piece that reads the workspace instead.
  */
 import { afterAll, describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
@@ -24,12 +25,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { scrubSecretEnv } from "../src/backends/scrub-env.ts";
-import {
-  bashDescription,
-  bashEnv,
-  solverBudgetNotice,
-  workspaceSolverBudgetNotice,
-} from "../src/builder/bash-install-env.ts";
+import { bashDescription, bashEnv, workspaceSolverBudgetNotice } from "../src/builder/bash-install-env.ts";
 import { DEFAULT_HARNESS_SETTINGS, HARNESS_CONFIG_FILE } from "../src/correctness-bundle/harness-config.ts";
 import type { CandidateAccessPolicy } from "../src/builder/candidate-isolation.ts";
 import { DCG_RULES } from "../src/solve/dcg-rules.ts";
@@ -124,18 +120,14 @@ describe("the Builder bash cell's environment", () => {
     expect(env.XDG_CONFIG_HOME).toBe(join(home, ".config"));
     expect(env.XDG_DATA_HOME).toBe(join(home, ".local", "share"));
     expect(env.PATH).toContain(join(home, ".local", "bin"));
-    expect(env.PATH?.split(":").slice(0, 3)).toEqual([
+    expect(env.PATH?.split(":").slice(0, 4)).toEqual([
+      join(workDir, ".toolchain", "bin"),
       join(home, ".local", "bin"),
       join(home, ".cargo", "bin"),
       dirname(runtimeProcess.execPath),
     ]);
     // The host home is what the wall denies, so naming it here would be the defect itself.
     expect(env.HOME).not.toBe(Bun.env.HOME);
-  });
-
-  it("leaves per-tool configuration to the tool that needs it", () => {
-    const env = bashEnv(join(workDir, "builder's workspace"));
-    expect(Object.keys(env).filter((name) => name.startsWith("ARDUINO_"))).toEqual([]);
   });
 
   it("tells an offline session where HOME is, as the networked one already did", () => {
@@ -163,21 +155,21 @@ describe("the Builder bash cell's environment", () => {
 });
 
 describe("the authoring call's cost against the solver's own budget", () => {
-  const settings = { ...DEFAULT_HARNESS_SETTINGS };
-
   it("says nothing about a call the solver's own budget could have made", () => {
     // The smaller per-command budget decides: the seeded check wall is 600 s, below the 900 s
-    // command wall, so a ten-minute call is still one the solver could repeat.
-    expect(solverBudgetNotice(1000, settings)).toBeNull();
-    expect(solverBudgetNotice(settings.checkWallMs, settings)).toBeNull();
-    expect(solverBudgetNotice(settings.checkWallMs + 1, settings)).not.toBeNull();
+    // command wall, so a ten-minute call is still one the solver could repeat. `workDir` holds no
+    // config file, so the seeded settings apply, which is what a workspace is handed.
+    const { checkWallMs } = DEFAULT_HARNESS_SETTINGS;
+    expect(workspaceSolverBudgetNotice(workDir, 1000)).toBeNull();
+    expect(workspaceSolverBudgetNotice(workDir, checkWallMs)).toBeNull();
+    expect(workspaceSolverBudgetNotice(workDir, checkWallMs + 1)).not.toBeNull();
   });
 
   it("states what a long call cost against each budget the harness declared", () => {
     // Round 3 of truss c1d2a7: 61.0 minutes in one serial call, settling limits for a solver
     // holding 15 minutes per command. The ratios are the whole point — a bare "this was long"
     // tells the Builder nothing it did not already know.
-    const notice = solverBudgetNotice(61 * 60_000, settings) ?? "";
+    const notice = workspaceSolverBudgetNotice(workDir, 61 * 60_000) ?? "";
     expect(notice).toContain("This call ran 3660 s");
     expect(notice).toContain("one solver command 900 s (4.1x)");
     expect(notice).toContain("one correctness check 600 s (6.1x)");
@@ -186,25 +178,18 @@ describe("the authoring call's cost against the solver's own budget", () => {
     expect(notice).toContain(".toolchain");
   });
 
-  it("follows the harness's own settings rather than a fixed ceiling", () => {
+  it("follows the workspace's declared settings, and stays silent on a defective file", () => {
     // A harness that gives its solver an hour per command has made the same call cheap. The
     // nudge has to move with the file it names, or it argues against settings the Builder chose.
-    const generous = { ...settings, shellMaxSeconds: 3600, checkWallMs: 3600_000 };
-    expect(solverBudgetNotice(59 * 60_000, generous)).toBeNull();
-    expect(solverBudgetNotice(121 * 60_000, generous)).toContain("one solver command 3600 s (2.0x)");
-  });
-
-  it("reads the workspace's declared settings, and stays silent on a defective file", () => {
     const dir = mkdtempSync(join(tmpdir(), "ana-budget-notice-"));
     afterAll(() => rmSync(dir, { recursive: true, force: true }));
-    // No file: the seeded settings apply, which is what the workspace was handed.
-    expect(workspaceSolverBudgetNotice(dir, 61 * 60_000)).toContain("one solver command 900 s (4.1x)");
     mkdirSync(join(dir, "agent"), { recursive: true });
     writeFileSync(
       join(dir, HARNESS_CONFIG_FILE),
       "solver:\n  shell_timeout_max_seconds: 3600\ngate:\n  check_seconds: 3600\n",
     );
     expect(workspaceSolverBudgetNotice(dir, 59 * 60_000)).toBeNull();
+    expect(workspaceSolverBudgetNotice(dir, 121 * 60_000)).toContain("one solver command 3600 s (2.0x)");
     // A defective config is the submit gate's finding to report; a shell call must not fail on it.
     writeFileSync(join(dir, HARNESS_CONFIG_FILE), "solver:\n  shell_timeout_max_seconds: -4\n");
     expect(workspaceSolverBudgetNotice(dir, 59 * 60_000)).toBeNull();

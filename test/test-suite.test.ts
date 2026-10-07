@@ -11,6 +11,7 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { availableParallelism, tmpdir } from "../src/meta/os.ts";
+import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import {
@@ -155,11 +156,16 @@ describe("whose verdict the suite reports", () => {
     });
   });
 
-  it("runs them again when the host passed twice its cores in load while they ran", () => {
+  it("runs them again when the host passed its cores in load while they ran", () => {
     const failed = new Set([file(A_TEST_TS)]);
     const first = ran({ exitCode: 1, failures: 2, clockEnded: 1, failed, reported: failed, peakLoad: 28.9 });
     expect(attribute(first, [file(A_TEST_TS)], 8)).toMatchObject({
       rerun: [file(A_TEST_TS)],
+      because: "crowded-host",
+    });
+    // A host just past its cores is crowded too: the launch gate of 2026-10-01 failed six
+    // real-time cases at a load of 17 to 30 on 12 cores that all passed alone.
+    expect(attribute({ ...first, peakLoad: 9.2 }, [file(A_TEST_TS)], 8)).toMatchObject({
       because: "crowded-host",
     });
     // The same run on a machine those 28.9 do not oversubscribe is an ordinary failure.
@@ -407,11 +413,12 @@ describe("the wall itself", () => {
     return { host, fixture };
   }
 
-  /** The suite over one fixture, with a three-second wall, one worker and a stated host load.
-   *  The load is stated rather than read because the wall is proportional to it: on a machine
-   *  carrying a paid run these cases would otherwise wait two and a half times as long for the
-   *  same assertion, and the number in the sentence would be whatever the minute happened to be. */
-  const suiteOver = (host: string, fixture: string, load = "0") =>
+  /** The suite over one fixture, with a three-second wall and one worker. These cases read the
+   *  host's own load, as the gate does, so on a starved machine their wall widens with it. A
+   *  quiet load pinned for every case once ended a fixture still waiting for a core: the launch
+   *  gate of 2026-10-01 failed six of them at a load of 17 to 30 on 12 cores, and all six passed
+   *  alone at 12. Only the case about that widening states its load. */
+  const suiteOver = (host: string, fixture: string, load?: string) =>
     Bun.spawn(["bun", SUITE, fixture], {
       cwd: REPO_ROOT,
       env: {
@@ -420,7 +427,7 @@ describe("the wall itself", () => {
         ANA_TEST_TMPDIR: host,
         ANA_TEST_WORKERS: "1",
         ANA_TEST_IDLE_SECONDS: "3",
-        ANA_TEST_HOST_LOAD: load,
+        ...keyIfDefined("ANA_TEST_HOST_LOAD", load),
       },
       stdout: "ignore",
       stderr: "pipe",
@@ -448,13 +455,13 @@ describe("the wall itself", () => {
           .split(/\s+/)
           .map(Number)
           .filter((pid) => pid > 0);
-      expect(await until(() => rootOf() !== undefined && pidsOf().length === 2, 15_000)).toBe(true);
+      expect(await until(() => rootOf() !== undefined && pidsOf().length === 2, 60_000)).toBe(true);
       const root = join(host, rootOf()!);
       const pids = pidsOf();
       const [code, err] = await Promise.all([run.exited, new Response(run.stderr).text()]);
 
       expect(code).toBe(1);
-      expect(err).toContain("idle-wall: no output for 3 s at a load average of 0.0 on");
+      expect(err).toMatch(/idle-wall: no output for \d+ s at a load average of [\d.]+ on/u);
       // The report names the tree it ended, with each descendant's pid and command line.
       expect(err).toContain("idle-wall: descendants when the wall fired");
       expect(err).toMatch(new RegExp(`^\\s*${String(pids[0]!)}\\s+[\\d.]+\\s+\\S*bun -e`, "m"));
@@ -468,7 +475,7 @@ describe("the wall itself", () => {
     } finally {
       run.kill();
     }
-  }, 90_000);
+  }, 300_000);
 
   it("waits proportionally longer for the same silence when the host is carrying twice its cores", async () => {
     // The gate of 2026-09-20: a flat wall ended a push after 180 s with no file reported, one
@@ -486,7 +493,7 @@ describe("the wall itself", () => {
     } finally {
       run.kill();
     }
-  }, 60_000);
+  }, 300_000);
 
   it("runs a wedged file again in a fresh process, keeping the request's filter, and takes that verdict", async () => {
     // The tail wedge: the group goes silent with one file unfinished. That file passes on its own,
@@ -515,7 +522,6 @@ it("excluded by the filter", () => { throw new Error("the rerun dropped the requ
         ANA_TEST_TMPDIR: host,
         ANA_TEST_WORKERS: "1",
         ANA_TEST_IDLE_SECONDS: "3",
-        ANA_TEST_HOST_LOAD: "0",
       },
       stdout: "ignore",
       stderr: "pipe",
@@ -533,7 +539,7 @@ it("excluded by the filter", () => { throw new Error("the rerun dropped the requ
     } finally {
       run.kill("SIGKILL");
     }
-  }, 60_000);
+  }, 300_000);
 
   it("interrupts a run whose every worker has wedged, and runs all it left unfinished again", async () => {
     // With two workers, two wedges leave nothing to drain the queue, and every file behind them is
@@ -577,7 +583,6 @@ it("passes", () => {});
         ANA_TEST_TMPDIR: host,
         ANA_TEST_WORKERS: "2",
         ANA_TEST_IDLE_SECONDS: "3",
-        ANA_TEST_HOST_LOAD: "0",
       },
       stdout: "ignore",
       stderr: "pipe",
@@ -599,7 +604,7 @@ it("passes", () => {});
     } finally {
       run.kill("SIGKILL");
     }
-  }, 60_000);
+  }, 300_000);
 
   it("runs a file a clock failed again when launched by an agent or CI, which change Bun's output", async () => {
     // Bun prints no `(pass)` line when `CLAUDECODE`, `AGENT` or `REPL_ID` is set, and under
@@ -629,7 +634,6 @@ it("times out once, then passes", async () => {
         TMPDIR: host,
         ANA_TEST_TMPDIR: host,
         ANA_TEST_WORKERS: "2",
-        ANA_TEST_HOST_LOAD: "0",
         CLAUDECODE: "1",
         AGENT: "1",
         REPL_ID: "1",
@@ -646,7 +650,7 @@ it("times out once, then passes", async () => {
     } finally {
       run.kill("SIGKILL");
     }
-  }, 60_000);
+  }, 300_000);
   it("keeps a failure when a worker crashed beside a file a clock failed and that passes alone", async () => {
     const host = scratchDir("ana-suite-crash-");
     const fixture = join(host, "fixture"),
@@ -673,7 +677,6 @@ it("times out once, then passes", async () => {
         TMPDIR: host,
         ANA_TEST_TMPDIR: host,
         ANA_TEST_WORKERS: "2",
-        ANA_TEST_HOST_LOAD: "0",
       },
       stdout: "ignore",
       stderr: "pipe",
@@ -685,7 +688,7 @@ it("times out once, then passes", async () => {
     } finally {
       run.kill("SIGKILL");
     }
-  }, 60_000);
+  }, 300_000);
 
   it("takes a rerun's zero over a file that declares no test, which Bun prints nothing for", async () => {
     // One file wedges the first process and passes alone; the other holds no test, so neither
@@ -714,7 +717,6 @@ it("passes once the first process has wedged", async () => {
         ANA_TEST_TMPDIR: host,
         ANA_TEST_WORKERS: "1",
         ANA_TEST_IDLE_SECONDS: "3",
-        ANA_TEST_HOST_LOAD: "0",
       },
       stdout: "ignore",
       stderr: "pipe",
@@ -727,5 +729,5 @@ it("passes once the first process has wedged", async () => {
     } finally {
       run.kill("SIGKILL");
     }
-  }, 60_000);
+  }, 300_000);
 });

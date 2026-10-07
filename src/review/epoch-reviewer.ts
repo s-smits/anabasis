@@ -31,34 +31,32 @@ import { campaignDir } from "../meta/campaign-root.ts";
 import { join, relative } from "../meta/path.ts";
 import type { IterationAnalysis } from "../analyse/iteration-analysis.ts";
 import {
-  isStanding,
-  type AdviceIssue,
   type RebuildAdvicePacket,
   adviceTotals,
   blockingLine,
   diagnosisLine,
 } from "../author/rebuild-advice.ts";
+import { isStanding, type AdviceIssue } from "../author/issue-register.ts";
 import type { RehearsalRow } from "../builder/harness-trial.ts";
 import { familyTally } from "../claim/case-record.ts";
-import { FROZEN_MANIFEST_PATH } from "../critic/manifest.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { boundText } from "../meta/bounded-text.ts";
-import { writeCompleted } from "../author/campaign-epoch.ts";
-import { claimsDirFor } from "../run/claim-write.ts";
+import { writeCompleted } from "../meta/completed-json.ts";
 import { type ClimbReadout, readClimbReadout, readingSentence } from "../run/climb-readout.ts";
 import { selectedProductDir } from "../run/product-versions.ts";
-import { hashJsonValue } from "../meta/stable-json.ts";
+import { compareCodeUnits, hashJsonValue } from "../meta/stable-json.ts";
 import { keyIfDefined, keysIf } from "../meta/optional-key.ts";
 import { type ReviewChoice, backendConditionPin } from "../backends/resolve.ts";
 import type { RunObserver } from "../observe/run-observer.ts";
 import type { ProviderResourceBudget } from "../run/provider-resource-budget.ts";
-import { readerPhase, runReaderTurn } from "./review-reader.ts";
+import { type ReaderTurn, readerPhase, runReaderTurn } from "./review-reader.ts";
 import { emptyProbeState, probeTool } from "./review-probe.ts";
 import { type AdvisoryDefect, type Demonstrations, NOTHING_CARRIED, advisoryRecord } from "./review-carry.ts";
 import { EPOCH_REVIEW_PROMPT } from "./epoch-review-prompt.ts";
 import type { EnabledReview } from "./review-session.ts";
 import type { ContestedCase, ContestedKind } from "../analyse/judge-contested.ts";
 import {
+  type ReviewCoverage,
   type ReviewInventory,
   type ReviewVerifierEvidence,
   deliveredSource,
@@ -144,9 +142,6 @@ export interface RehearsalCase {
   artifact: string | null;
   current: boolean;
 }
-
-type ReaderTurn = Awaited<ReturnType<typeof runReaderTurn>>;
-type ReviewCoverage = ReturnType<typeof reviewCoverage>;
 
 /** A session that may read, carrying everything the read depends on, or one that may not and
  *  already knows what it owes its campaign. Both arms hold evidence, because a refused review still
@@ -260,7 +255,7 @@ function openSession(input: EpochReviewInput): OpenSession {
     reviewerEffort: input.review.enabled ? (input.review.reasoningEffort ?? null) : null,
     requestDigest: hashJsonValue({
       publicRequest: input.publicRequest,
-      policy: "review-probing-findings/v13",
+      policy: "review-probing-findings/v15",
       prompt: EPOCH_REVIEW_PROMPT,
     }),
     obligationsDigest: obligationsDigest(input, disputableIssues(input)),
@@ -439,7 +434,7 @@ function checkpointLines(input: EpochReviewInput): string[] {
   const total = adviceTotals(advice.families);
   const families =
     advice.families.map((row) => `${row.family} ${row.passed}/${row.verified}`).join(", ") || "none";
-  const counts = `measured ${total.passed} of ${total.verified} verified cases passed, ${total.unaccepted} unaccepted at submission, ${total.nonResults} runtime non-results; per family (passed/verified): ${families}`;
+  const counts = `measured ${total.passed} of ${total.verified} verified cases passed, ${total.unaccepted} unaccepted at submission, ${total.nonResults} runtime non-result${total.nonResults === 1 ? "" : "s"}; per family (passed/verified): ${families}`;
   return [
     head,
     whoseBattery(advice.runId, counts, input.priorAdviceOnSeededTree ?? null),
@@ -474,12 +469,7 @@ function aimLine(
 ): string {
   let readout: ClimbReadout | null;
   try {
-    readout = readClimbReadout(
-      domainDir(),
-      battery.pin,
-      claimsDirFor(input.repoRoot, input.slug),
-      join(input.repoRoot, FROZEN_MANIFEST_PATH),
-    );
+    readout = readClimbReadout(domainDir(), battery.pin, { repoRoot: input.repoRoot, slug: input.slug });
   } catch (cause) {
     return `Aim: the climb readout could not be read (${errorMessage(cause)}); read the counts alone.`;
   }
@@ -539,7 +529,7 @@ function orientation(
     ...(analysis === null
       ? checkpointLines(input)
       : [
-          `Battery: ${analysis.battery.summary.passed} of ${analysis.battery.summary.verified} verified cases passed; ${analysis.battery.summary.unaccepted} unaccepted at submission; ${analysis.battery.summary.nonResults} runtime non-results.`,
+          `Battery: ${analysis.battery.summary.passed} of ${analysis.battery.summary.verified} verified cases passed; ${analysis.battery.summary.unaccepted} unaccepted at submission; ${analysis.battery.summary.nonResults} runtime non-result${analysis.battery.summary.nonResults === 1 ? "" : "s"}.`,
           `Per family (passed/verified): ${familyLine(analysis)}.`,
           blockingLine(
             analysis.battery.blockingByCheck,
@@ -554,11 +544,18 @@ function orientation(
     ...rehearsalLines(input.rehearsals ?? []),
     ...demonstrationLines(input.demonstrations ?? NOTHING_CARRIED, measured.declared),
     ...standingIssueLines(issues),
-    `Read with read_source, then record findings. Files in the review (${inventory.files.length}, truncated: ${inventory.truncated}):`,
-    inventory.files.join("\n"),
+    `Read with read_source, then record findings. Held files, which the review is held to (${inventory.files.length}, truncated: ${inventory.truncated}):`,
+    // Listed in path order for the reader, while read_source reads them smallest first for the budget.
+    inventory.files.toSorted(compareCodeUnits).join("\n"),
     `Missing core files or unreadable entries: ${inventory.missing.join(", ") || "none"}.`,
+    ...(inventory.background.length === 0
+      ? []
+      : [
+          `Background files (${inventory.background.length}), the rest of the tree: not required reading, never read automatically, readable by name. A finding that rests on one cites it and says so. Sizes in bytes:`,
+          ...inventory.background.map(({ path, size }) => `${path} (${size})`),
+        ]),
     verifier.unavailable ??
-      "Recorded verifier entry points (binaries return provenance only; cell-produced programs are not installed tools):",
+      "Recorded verifier entry points (cell-produced programs are not installed tools):",
     ...Object.entries(verifier.tools).map(
       ([alias, tool]) => `${alias}: ${tool.kind}, ${tool.source}, ${tool.path}, sha256 ${tool.digest}`,
     ),
@@ -705,7 +702,6 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
   const state: ReviewState = {
     reads: [],
     readChars: 0,
-    refused: 0,
     delivered: [],
     probes: emptyProbeState(),
     dispositions: [],
@@ -721,7 +717,7 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
     (row) => contestedArtifact(input.treeRoot, row) ?? [],
   );
   // A rehearsal's bytes are read under its name and, like a contested artifact, lie outside the
-  // coverage the review is held to, which counts the tree and the verifier alone.
+  // coverage the review is held to, which counts the held tree files and the verifier alone.
   const rehearsed = new Map(
     (input.rehearsals ?? []).flatMap((row) =>
       row.artifact === null ? [] : [[rehearsalName(row), row.artifact] as const],
@@ -738,7 +734,7 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
   // held to, and not among the pages the unread prompt resumes the reader for, so the automatic
   // scan reads none of it: every tree file is read by name.
   const toolchain = toolchainReach(root, verifier.tools);
-  const readable = new Set(sourcePaths);
+  const named = namedTexts(rehearsed, toolchain, inventory.background);
   // The task ids a finding may not name, since a finding is about a family and a claim pinned to
   // one task cannot direct an authoring pass. A measured battery supplies them; at an authoring
   // checkpoint they come from the draft's own task file, and a partial draft still gets a reading.
@@ -764,7 +760,7 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
       repoRoot: input.repoRoot,
       role: "epoch-reviewer",
       tools: [
-        readSourceTool(root, readable, state, verifier.tools, namedTexts(rehearsed, toolchain)),
+        readSourceTool(root, sourcePaths, state, verifier.tools, named),
         probe.tool,
         recordFindingTool(
           issues,

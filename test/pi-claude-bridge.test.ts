@@ -73,7 +73,10 @@ await mock.module("claude-agent-sdk-bridge", () => ({
     const held = holdOpen;
     const { promise: closed, resolve: close } = Promise.withResolvers<void>();
     async function* response() {
-      for (const message of messages) yield message;
+      for (const message of messages) {
+        if (message instanceof Error) throw message;
+        yield message;
+      }
       if (held) await closed;
     }
     return Object.assign(response(), { interrupt: async () => {}, close });
@@ -516,6 +519,30 @@ describe("the Pi Claude bridge after a stopped query", () => {
       cliMessages = ANSWERED;
       await bridge(testModel(), { messages: retried }).result();
       expect(opened.options?.resume).toBeString();
+    } finally {
+      cliMessages = ANSWERED;
+    }
+  });
+
+  // A CLI that dies while its tool call runs leaves pi holding that call's result, which pi sends
+  // on as the history's tail. Read as the orphan of an aborted call, it ended the turn with an
+  // empty answer, so the failure never reached the Builder or pi's retry.
+  it.each([
+    ["exits", toolUse],
+    ["throws", [...toolUse, new Error("claude exited with code 1")]],
+  ])("opens a query for the tool result of a CLI that %s before answering", async (_, died) => {
+    const dir = mkdtempSync(join(tmpdir(), "ana-bridge-died-"));
+    const bridge = createClaudeBridge({ env: { CLAUDE_CONFIG_DIR: dir } });
+    const asked = [tools, { role: "user" as const, content: "go", timestamp: 0 }];
+    cliMessages = died;
+    try {
+      expect((await bridge(testModel(), { messages: asked }).result()).stopReason).toBe("toolUse");
+      await Bun.sleep(1);
+      cliMessages = ANSWERED;
+      const before = opened.count;
+      const next = await bridge(testModel(), { messages: [...asked, ...compacted.slice(2)] }).result();
+      expect(opened.count).toBe(before + 1);
+      expect(next.content).toEqual([{ type: "text", text: "ok" }]);
     } finally {
       cliMessages = ANSWERED;
     }

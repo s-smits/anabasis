@@ -3,7 +3,14 @@
   "options": {
     "typeAware": true
   },
-  "ignorePatterns": ["node_modules", "campaigns", "domains", "tmp"],
+  "ignorePatterns": [
+    "node_modules",
+    "campaigns",
+    "domains",
+    "tmp",
+    "vendor/pi-coding-agent",
+    "vendor/pi-agent-session"
+  ],
   "jsPlugins": [
     {
       "name": "anti-slop",
@@ -98,14 +105,6 @@
         "unicorn/prefer-array-flat": "off",
         "unicorn/prefer-at": "off",
         "unicorn/prefer-string-raw": "off"
-      }
-    },
-    {
-      "files": ["vendor/pi-agent-session/**"],
-      "rules": {
-        "ana/prefer-key-if-defined": "off",
-        "typescript/no-explicit-any": "off",
-        "typescript/no-unsafe-argument": "off"
       }
     },
     {

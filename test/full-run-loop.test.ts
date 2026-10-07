@@ -8,25 +8,23 @@
  */
 import { afterEach, describe, expect, it } from "bun:test";
 import { Database } from "bun:sqlite";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
-import { dirname, join } from "../src/meta/path.ts";
-import { type FullRunArgs, type FullRunDeps, runFullRun, slugForDirectInput } from "../src/run/full-run.ts";
+import { join } from "../src/meta/path.ts";
+import { type FullRunDeps, runFullRun } from "../src/run/full-run.ts";
+import type { FullRunArgs } from "../src/run/launch-arguments.ts";
+import { slugForDirectInput } from "../src/run/launch-project.ts";
 import { EMPTY_USER_CONTEXT } from "../src/builder/user-context.ts";
 import { fullRunExitStatus } from "../src/run/loop-terminal.ts";
 import { operatorBackendsPath } from "../src/backends/resolve.ts";
-import {
-  publishProductVersion,
-  selectInitialProduct,
-  selectedProductDir,
-} from "../src/run/product-versions.ts";
-import { fingerprintSlug } from "../src/claim/fingerprint.ts";
+import { selectInitialProduct, selectedProductDir } from "../src/run/product-versions.ts";
 import { campaignDir } from "../src/meta/campaign-root.ts";
 import { hashJsonValue } from "../src/meta/stable-json.ts";
 import { controllerLedgerPath } from "../src/run/controller-ledger.ts";
 import type { AskManifest } from "../src/run/ask-manifest.ts";
 import { writeFixtureThresholds } from "./helpers/thresholds.ts";
 import { double, rejectionOf, required } from "./helpers/doubles.ts";
+import { publishProduct } from "./helpers/digest-battery.ts";
 
 interface Drive {
   runId: string;
@@ -46,19 +44,13 @@ function repo(): string {
   const root = mkdtempSync(join(tmpdir(), "ana-fullrun-loop-"));
   scratch.push(root);
   writeFixtureThresholds(root);
-  const source = join(root, "domains", SLUG);
-  for (const [path, content] of Object.entries({
+  const source = { repoRoot: root, slug: SLUG, id: "current", acceptedSnapshot: join(root, "domains", SLUG) };
+  publishProduct(source, {
     "agent/index.ts": "export const agent = 1;\n",
     "agent/tools-spec.json": '{"tools":[]}',
     "correctness-model/evaluator.ts": "export const rule = 1;\n",
     "correctness-model/tasks.json": '["fixture-task"]',
-  })) {
-    mkdirSync(dirname(join(source, path)), { recursive: true });
-    writeFileSync(join(source, path), content);
-  }
-  const fingerprint = fingerprintSlug(source, { slug: SLUG });
-  if (!fingerprint.ok) throw new Error("the fixture product has no fingerprint");
-  publishProductVersion({ repoRoot: root, slug: SLUG, id: "current", acceptedSnapshot: source, fingerprint });
+  });
   selectInitialProduct(root, SLUG, "current");
   return root;
 }

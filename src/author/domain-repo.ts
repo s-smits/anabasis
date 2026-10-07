@@ -98,15 +98,10 @@ function git(dir: string, args: string[]): string {
  * every iteration open with a salvage commit of thousands of insertions of snapshot bytes.
  */
 const EXCLUDE = `${["/*", ...CANDIDATE_INTERFACE.map((entry) => `!/${entry}`), "node_modules/", ".bundle-snapshots/"].join("\n")}\n`;
-/** The workspace contract as the pack ships it, refreshed from the pack on every resume so the
+/** The workspace contract and the pack beside it, refreshed from the pack on every resume so the
  *  bytes a session reads are fixed by the recorded source commit rather than by whatever an earlier
- *  session left behind. It stays on disk for reading and out of tracking. */
-const STARTER_REFERENCES = [
-  "STARTER.md",
-  "starter-pack/contract.md",
-  "starter-pack/examples.md",
-  "starter-pack/add-ons.json",
-] as const;
+ *  session left behind. They stay on disk for reading and out of tracking. */
+export const STARTER_REFERENCES = ["STARTER.md", "starter-pack"] as const;
 
 /** Point the workspace's runtime link at this controller's interpreter, resolved rather than as
  *  named: a version manager's `bun` may be a per-shell shim that outlives no session, while the
@@ -201,7 +196,7 @@ function copySeedToolTree(dir: string, safeguard?: SafeguardContext): string | n
   }
   const copy = join(dir, `${WORKSPACE_TOOL_TREE}-${crypto.randomUUID()}`);
   const started = performance.now();
-  const counts = { files: 0, relinked: 0, rewritten: 0, singleQuoted: 0, installNames: 0 };
+  const counts = { files: 0, relinked: 0, rewritten: 0, installNames: 0 };
   const dropped: string[] = [];
   try {
     const source = realpathSync(path);
@@ -241,7 +236,6 @@ function copySeedToolTree(dir: string, safeguard?: SafeguardContext): string | n
         }
         if (relocated === "install-name") counts.installNames += 1;
         else if (relocated !== null) counts.rewritten += 1;
-        if (relocated === "rewritten-single-quoted") counts.singleQuoted += 1;
         continue;
       }
       const target = readlinkSync(link);
@@ -261,7 +255,7 @@ function copySeedToolTree(dir: string, safeguard?: SafeguardContext): string | n
     // it ran.
     safeguardTriggered(
       "54-rebuild-seed-tool-tree-copied",
-      `files=${String(counts.files)} relinked=${String(counts.relinked)} launchersRewritten=${String(counts.rewritten)} singleQuoted=${String(counts.singleQuoted)} installNames=${String(counts.installNames)} dropped=${String(dropped.length)}${dropped.length > 0 ? ` droppedFirst=${dropped.slice(0, 3).join(",")}` : ""} ms=${String(Math.round(performance.now() - started))}`,
+      `files=${String(counts.files)} relinked=${String(counts.relinked)} launchersRewritten=${String(counts.rewritten)} installNames=${String(counts.installNames)} dropped=${String(dropped.length)}${dropped.length > 0 ? ` droppedFirst=${dropped.slice(0, 3).join(",")}` : ""} ms=${String(Math.round(performance.now() - started))}`,
       safeguard,
     );
     // Safeguard 55: a venv names its interpreter's home by absolute path in pyvenv.cfg, and a home
@@ -328,7 +322,7 @@ export function initWorkspace(dir: string, seedFrom?: string, safeguard?: Safegu
   } else {
     for (const path of STARTER_REFERENCES) {
       mkdirSync(dirname(join(dir, path)), { recursive: true });
-      cpSync(new URL(`${PI_STARTER_PACK.href}/${path}`), join(dir, path));
+      cpSync(new URL(`${PI_STARTER_PACK.href}/${path}`), join(dir, path), { recursive: true });
     }
     settleTrackedInterface(dir);
     // Safeguard 56: a resumed repair keeps its in-flight edits by design. Name how many it carried,

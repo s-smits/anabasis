@@ -47,7 +47,7 @@ import type { Brief } from "#src/correctness-bundle/brief.ts";
 import { externalChecksOf } from "#src/correctness-bundle/brief.ts";
 import { type ControlCorpus, isControlCorpus } from "#src/correctness-bundle/controls.ts";
 import { loadCorrectnessModel } from "#src/correctness-bundle/contracts.ts";
-import { evaluateCheckProgram } from "#src/correctness-bundle/predicate.ts";
+import { evaluateCheckProgram } from "../../../../vendor/correctness-model-bundle/evaluate.ts";
 import { runControls } from "#src/correctness-bundle/run-controls.ts";
 import type { ControlReceipt } from "#src/correctness-bundle/battery-record.ts";
 import { primarySide, sideMatchesExpected } from "#src/correctness-bundle/control-receipts.ts";

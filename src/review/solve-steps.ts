@@ -49,7 +49,6 @@ export type SolveWalls = { maxTurns: number; solveMinutes: number };
 
 export type CompiledSolve = {
   label: string;
-  outcome: CaseOutcome;
   text: string;
   /** Every reference a diagnosis may cite in this solve, with the tool called at that step; the
    *  solve's end maps to null. Empty when no trace was readable. */
@@ -171,6 +170,9 @@ function endLine(trace: ReadCaseTrace, walls: SolveWalls, submission: Submission
   return { line: parts.join("; "), hit };
 }
 
+/** The line standing for `count` steps a packet leaves out between or after the shown groups. */
+const omitted = (count: number): string => `  … ${count} step${count === 1 ? "" : "s"} omitted, not citable`;
+
 /** One case's solve as addressable steps. `label` is the case's anonymous name in this packet; a
  *  solve whose outcome is not a pass shows no payload the failing artifact could ride in. */
 export function compileSolve(
@@ -184,7 +186,6 @@ export function compileSolve(
   if (trace === null) {
     return {
       label,
-      outcome,
       text: `${head}: no readable trace, so nothing in it can be cited`,
       refs: new Map(),
       calls: [],
@@ -205,7 +206,7 @@ export function compileSolve(
   }
   let next = 0;
   for (const group of shown) {
-    if (group.first > next) lines.push(`  … ${group.first - next} step(s) omitted, not citable`);
+    if (group.first > next) lines.push(omitted(group.first - next));
     for (let index = group.first; index <= group.last; index += 1) {
       refs.set(`${label}.s${index + 1}`, group.step.tool);
     }
@@ -216,14 +217,13 @@ export function compileSolve(
     lines.push(`  ${span} ${group.step.line}`);
     next = group.last + 1;
   }
-  if (steps.length > next) lines.push(`  … ${steps.length - next} step(s) omitted, not citable`);
+  if (steps.length > next) lines.push(omitted(steps.length - next));
   if (steps.length === 0) lines.push("  (no tool call recorded)");
   const end = endLine(trace, walls, submission, open);
   refs.set(`${label}.end`, null);
   lines.push(`  end ${end.line}`);
   return {
     label,
-    outcome,
     text: lines.join("\n"),
     refs,
     calls: steps.map((step) => ({ tool: step.tool, failed: step.status !== "ok" })),

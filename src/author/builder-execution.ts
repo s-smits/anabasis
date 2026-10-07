@@ -618,9 +618,7 @@ export class BuilderExecutionRecorder {
       failedCalls: failedCalls.rows,
       failedCallsOmitted: failedCalls.omitted,
       customCalls: this.customCalls.map((call) => {
-        const target = { ...call.target };
-        if (call.target.toolNames !== undefined) target.toolNames = [...call.target.toolNames];
-        const copied = { ...call, target };
+        const copied = { ...call, target: { ...call.target } };
         if (call.semantic !== undefined) copied.semantic = { ...call.semantic };
         return copied;
       }),

@@ -10,11 +10,20 @@ import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
 import { asRecord, isRecord, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
-import { isAbsolute, join, resolve } from "#src/meta/path.ts";
-import { absoluteOption, exitWith, parseOrDie, requiredOption } from "#skills/main/cli.ts";
-import { readJsonFileOrNull, writeJsonFile } from "#src/meta/completed-json.ts";
+import { join, resolve } from "#src/meta/path.ts";
+import { readJsonFileOrNull } from "#src/meta/completed-json.ts";
+import { DIGEST } from "./archive-shape.ts";
 
 export const OVERVIEW_SCHEMA = "wri-run-overview/v1";
+/** The overview `wri.ts collect` writes into the review directory, and the brief and the archive read. */
+export const OVERVIEW_FILE = "overview.json";
+/** The review directory's state, which `wri.ts` records each step in and the brief and archive read. */
+export const REVIEW_STATE_FILE = "wri-review.json";
+/** What trace-review.ts records of its own views in a snapshot directory, under its one schema. */
+export const SNAPSHOT_STATUS_FILE = "snapshot-status.json";
+export const SNAPSHOT_STATUS_SCHEMA = "outcome-snapshot-status/v2";
+/** The harness-evolution view trace-review.ts writes into a snapshot directory. */
+export const HARNESS_EVOLUTION_FILE = "harness-evolution.json";
 const TRIGGER_ROW = /^[A-Z][A-Z0-9 /()-]{5,}[A-Z)]:?\s/;
 
 /** One digest trigger name, how many rows carried it, and its first two distinct rows. */
@@ -142,6 +151,17 @@ export function digestTriggers(digest: string): DigestTrigger[] {
   return [...groups.values()];
 }
 
+/** The trigger rows of the in-process lanes' reports (`<lane>.json`), in step order, so a lead a
+ *  campaign-only read raises reaches the brief without a snapshot and the lanes through the shared
+ *  instructions. A lane that failed this read contributes none, whatever an earlier read left. */
+export function laneTriggers(reviewDir: string, steps: readonly { label: string; ok?: boolean | null }[]) {
+  return steps.flatMap((step) => {
+    if (step.ok !== true) return [];
+    const rows = readJsonAsOrNull<{ triggers?: DigestTrigger[] }>(join(reviewDir, `${step.label}.json`));
+    return Array.isArray(rows?.triggers) ? rows.triggers : [];
+  });
+}
+
 function evolutionFacts(recorded: JsonValue | null) {
   // Any falsy JSON document reads as absent, as the untyped reader's `!recorded` did.
   if (recorded === null || recorded === false || recorded === 0 || recorded === "") {
@@ -186,14 +206,14 @@ function viewStates(status: RecordedStatus): ViewStates {
 /** Derive the overview from a snapshot directory. Every absent source stays an explicit gap. */
 export function buildOverview(snapshotDir: string) {
   const dir = resolve(snapshotDir);
-  const status = readJsonAsOrNull<RecordedStatus>(join(dir, "snapshot-status.json"));
-  if (status === null) throw new Error(`no readable snapshot-status.json under ${dir}`);
+  const status = readJsonAsOrNull<RecordedStatus>(join(dir, SNAPSHOT_STATUS_FILE));
+  if (status === null) throw new Error(`no readable ${SNAPSHOT_STATUS_FILE} under ${dir}`);
   const scan = readJsonAsOrNull<{ findings?: readonly ScanFinding[] }>(
     join(dir, `${String(status.runIds?.[0])}-scan.txt`),
   );
   const timeline = readJsonAsOrNull<{ stalls?: readonly TimelineStall[] }>(join(dir, "timeline.json"));
   const facts = status.facts ?? {};
-  const digestPath = join(dir, "digest.md");
+  const digestPath = join(dir, DIGEST);
   return {
     schema: OVERVIEW_SCHEMA,
     generatedAt: new Date().toISOString(),
@@ -217,7 +237,7 @@ export function buildOverview(snapshotDir: string) {
       reason: "the snapshot recorded no terminal facts",
     },
     terminalAccounting: facts.terminalAccounting ?? null,
-    evolution: evolutionFacts(readJsonFileOrNull(join(dir, "harness-evolution.json"))),
+    evolution: evolutionFacts(readJsonFileOrNull(join(dir, HARNESS_EVOLUTION_FILE))),
     digestTriggers: digestTriggers(existsSync(digestPath) ? readFileSync(digestPath, "utf8") : ""),
     scanFindings: Array.isArray(scan?.findings)
       ? scan.findings.map((finding) => ({
@@ -230,37 +250,4 @@ export function buildOverview(snapshotDir: string) {
     orientation: "",
     movedVariable: "",
   };
-}
-
-export function readOverview(path: string): RunOverview {
-  if (!isAbsolute(path)) throw new Error("--overview must be an absolute path");
-  const overview = readJsonAsOrNull<RunOverview>(path);
-  if (!asRecord(overview) || overview?.schema !== OVERVIEW_SCHEMA) {
-    throw new Error(`${path} is not a ${OVERVIEW_SCHEMA} file`);
-  }
-  return overview;
-}
-
-/**
- * A one-input script's command line: the absolute path after `--<input>`, then the JSON `build`
- * makes of it, written to the absolute `--out` path and announced as `<label> written to <path>`,
- * or printed when `--out` is absent.
- */
-export function runJsonScript<T>(
-  script: string,
-  input: string,
-  build: (path: string) => T,
-  label: string,
-): void {
-  const die = exitWith(script);
-  const { single } = parseOrDie(die, { values: [input, "out"] });
-  const absolute = absoluteOption(die);
-  const result = build(absolute(input, requiredOption(die, single)(input)));
-  const out = single.get("out");
-  if (out === undefined) {
-    console.log(JSON.stringify(result, null, 2));
-    return;
-  }
-  writeJsonFile(absolute("out", out), result);
-  console.log(`${label} written to ${out}`);
 }

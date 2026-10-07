@@ -472,7 +472,7 @@ const { BuilderExecutionRecorder } = executionModule;
 const { builderSessionOpener, builderSlot } = backendModule;
 const { BUILDER_WORKSPACE_CARD } = startPromptModule;
 const { segmentActor } = actorModule;
-const { initWorkspace, writeExcludeRules } = workspaceModule;
+const { initWorkspace, STARTER_REFERENCES, writeExcludeRules } = workspaceModule;
 const { campaignBuilderMount } = runtimeModule;
 const { writeBuilderSessionEvidence } = sessionEvidenceModule;
 const mount = withTools ? campaignBuilderMount(REPO_ROOT, slug, campaignPath) : null;
@@ -481,9 +481,6 @@ const toolNames = tools.flatMap((tool) => {
   const named = asRecord(tool)?.name;
   return isString(named) ? [named] : [];
 });
-
-/** Production refreshes these on every resumed repository, so a seed's own copies are allowed to move. */
-const STARTER_REFRESHED = ["STARTER.md", "starter-pack/"] as const;
 
 /** Regular files under a tree with their digests, keyed by relative path. Links and the runtime,
  *  package and tool trees are left out: initWorkspace repoints them on purpose. */
@@ -497,7 +494,8 @@ function regularFileDigests(root: string): Map<string, string> {
   })) {
     if (
       /^(\.git|node_modules|\.toolchain)\//.test(name) ||
-      STARTER_REFRESHED.some((prefix) => name.startsWith(prefix))
+      // Production refreshes these on every resumed repository, so a seed's own copies may move.
+      STARTER_REFERENCES.some((reference) => name === reference || name.startsWith(`${reference}/`))
     ) {
       continue;
     }

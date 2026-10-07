@@ -20,11 +20,13 @@ import {
   type AgentMessage,
   type AgentTool,
   type AgentToolResult,
-  DEFAULT_COMPACTION_SETTINGS,
   type FinishTurn,
-  convertToLlm,
-  estimateContextTokens,
 } from "@earendil-works/pi-agent-core";
+import {
+  DEFAULT_COMPACTION_SETTINGS,
+  estimateContextTokens,
+} from "../../vendor/pi-agent-session/compaction/compaction.ts";
+import { convertToLlm } from "../../vendor/pi-agent-session/messages.ts";
 import {
   type AssistantMessage,
   type RetryPolicy,

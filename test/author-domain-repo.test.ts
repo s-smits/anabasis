@@ -51,8 +51,9 @@ import { MEMORY_FILE, builderMemoryBlock } from "../src/author/builder-memory.ts
 import { BUILT_PRESET_IDS, presetToolNames } from "../src/correctness-bundle/built-presets.ts";
 import { loadBuiltStarterFactory } from "../src/correctness-bundle/contracts.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
-import { SAFEGUARDS_LOG_FILE, createSafeguardContext } from "../src/meta/safeguard.ts";
+import { SAFEGUARDS_LOG_FILE } from "../src/meta/safeguard.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
+import { portableToolTreeDigest } from "../src/verify/tool-inventory.ts";
 const TOOLCHAIN = ".toolchain";
 const AGENT_TOOLS_TS = "agent/tools.ts";
 const STARTER_ROOT = join(import.meta.dir, "../starters/pi-built-harness");
@@ -68,7 +69,7 @@ const buildsMachO =
 
 /** One run-local safeguard log per test; absent file reads as no line, never as zero firings. */
 function safeguardLog() {
-  const context = createSafeguardContext(join(tmp(), "safeguards"));
+  const context = { logDir: join(tmp(), "safeguards") };
   const lines = () => {
     const file = join(context.logDir, SAFEGUARDS_LOG_FILE);
     return existsSync(file) ? readFileSync(file, "utf8").trim().split("\n") : [];
@@ -180,15 +181,95 @@ describe("the domain workspace repository", () => {
     expect(readlinkSync(join(dir, TOOLCHAIN))).toBe(inherited);
   });
 
-  it("relocates a uv console launcher, whose interpreter is single-quoted, into the repair tools", () => {
+  it("relocates a uv console launcher into the repair tools, keeping its single-quoted interpreter", () => {
     const seed = tmp();
     const python = seedWithUvVenv(seed, "/host");
     const dir = tmp();
     initWorkspace(dir, seed);
     const owned = readFileSync(join(dir, ".toolchain/venv/bin/f2py"), "utf8");
-    expect(owned).toContain(`'''exec' "${join(realpathSync(dir), ".toolchain/venv/bin/python3")}" "$0" "$@"`);
+    expect(owned).toContain(`'''exec' '${join(realpathSync(dir), ".toolchain/venv/bin/python3")}' "$0" "$@"`);
     expect(owned).not.toContain(python);
     expect(owned).toContain("from numpy.f2py.f2py2e import main");
+  });
+
+  it("counts the tool tree as the same one after each seed copy, whichever way a launcher names its interpreter", () => {
+    // The digest takes the tree's own path out of its bytes, so it holds across a copy only while
+    // the bytes around that path hold. A copy that respelled a launcher moved it at the first
+    // reseed and at no later one, and a task-only round read as scoring moved. The seed is a
+    // workspace the Builder installed into, so it holds the runtime link every copy carries too.
+    const launchers = [
+      ["uv", (python: string) => `#!/bin/sh\n'''exec' '${python}' "$0" "$@"\n' '''\nimport main\n`],
+      [
+        "double-quoted",
+        (python: string) => `#!/bin/sh\n'''exec' "${python}" "$0" "$@"\n' '''\nimport main\n`,
+      ],
+      ["bare", (python: string) => `#!/bin/sh\n'''exec' ${python} "$0" "$@"\n' '''\nimport main\n`],
+      ["direct shebang", (python: string) => `#!${python}\nimport main\n`],
+    ] as const;
+    for (const [style, launcher] of launchers) {
+      const seed = tmp();
+      initWorkspace(seed);
+      const python = seedWithUvVenv(seed, "/host");
+      writeFileSync(join(seed, ".toolchain/venv/bin/f2py"), launcher(python));
+      const first = tmp();
+      initWorkspace(first, seed);
+      const second = tmp();
+      initWorkspace(second, first);
+      const digest = (dir: string) => portableToolTreeDigest(join(dir, TOOLCHAIN));
+      expect(digest(first), style).toBe(digest(seed));
+      expect(digest(second), style).toBe(digest(seed));
+      const owned = join(realpathSync(second), ".toolchain/venv/bin/python3");
+      expect(readFileSync(join(second, ".toolchain/venv/bin/f2py"), "utf8"), style).toBe(launcher(owned));
+    }
+  });
+
+  it("takes the double-quoted wrapped header where a launcher cannot keep its own spelling at the repair path", () => {
+    // A bare path splits at a space, and a shebang line is cut at the kernel's limit, 127 bytes on
+    // Linux and 512 on macOS, so a direct shebang cannot name a path of any length. A bare wrapped
+    // path has no length limit.
+    const seed = tmp();
+    initWorkspace(seed);
+    const python = seedWithUvVenv(seed, "/host");
+    const bare = (path: string) => `#!/bin/sh\n'''exec' ${path} "$0" "$@"\n' '''\nimport main\n`;
+    const wrapped = (path: string) => `#!/bin/sh\n'''exec' "${path}" "$0" "$@"\n' '''\nimport main\n`;
+    const bin = join(seed, ".toolchain/venv/bin");
+    writeFileSync(join(bin, "bare"), bare(python));
+    writeFileSync(join(bin, "direct"), `#!${python}\nimport main\n`);
+    chmodSync(join(bin, "bare"), 0o755);
+    chmodSync(join(bin, "direct"), 0o755);
+    const read = (dir: string, name: string) => readFileSync(join(dir, ".toolchain/venv/bin", name), "utf8");
+    const owned = (dir: string) => join(realpathSync(dir), ".toolchain/venv/bin/python3");
+
+    const spaced = join(tmp(), "camp aign");
+    mkdirSync(spaced, { recursive: true });
+    initWorkspace(spaced, seed);
+    expect(read(spaced, "bare")).toBe(wrapped(owned(spaced)));
+    expect(read(spaced, "direct")).toBe(wrapped(owned(spaced)));
+
+    const long = join(tmp(), "a".repeat(200), "b".repeat(200), "c".repeat(200));
+    mkdirSync(long, { recursive: true });
+    initWorkspace(long, seed);
+    expect(read(long, "bare")).toBe(bare(owned(long)));
+    expect(read(long, "direct")).toBe(wrapped(owned(long)));
+  });
+
+  it("counts a copy's links as the seed's when the seed spells them through a linked ancestor", () => {
+    // A run worktree reaches its campaigns through a link, so an absolute link made inside the tool
+    // tree there is spelled through it, while the tree is counted by its real path. The copy
+    // relinks it by the real path, so the two have to count it alike.
+    const real = realpathSync(tmp());
+    const linked = join(tmp(), "campaigns");
+    symlinkSync(real, linked);
+    const seed = join(linked, "workspace");
+    initWorkspace(seed);
+    seedWithUvVenv(seed, "/host");
+    symlinkSync(join(seed, ".toolchain/venv/bin/f2py"), join(seed, ".toolchain/venv/bin/f2py-alias"));
+    const dir = tmp();
+    initWorkspace(dir, seed);
+    expect(readlinkSync(join(dir, ".toolchain/venv/bin/f2py-alias"))).toBe("f2py");
+    expect(portableToolTreeDigest(join(dir, TOOLCHAIN))).toBe(
+      portableToolTreeDigest(join(real, "workspace", TOOLCHAIN)),
+    );
   });
 
   it("records the seed copy once with its launcher counts, and the venv home only when it stays in the adopted tree", () => {
@@ -198,7 +279,7 @@ describe("the domain workspace repository", () => {
     initWorkspace(tmp(), outsideHome, outside.context);
     const copied = outside.lines().filter((line) => line.includes("54-rebuild-seed-tool-tree-copied"));
     expect(copied).toHaveLength(1);
-    expect(copied[0]).toContain("launchersRewritten=1 singleQuoted=1");
+    expect(copied[0]).toContain("launchersRewritten=1");
     // Nothing was dropped, so the line says so and names no first drop.
     expect(copied[0]).toContain("dropped=0");
     expect(copied[0]).not.toContain("droppedFirst");
@@ -249,7 +330,7 @@ describe("the domain workspace repository", () => {
     const config = readFileSync(join(dir, ".toolchain/venv/pyvenv.cfg"), "utf8");
     expect(config).toBe(`home = ${owned}/py/bin\n`);
     const launcher = readFileSync(join(dir, ".toolchain/venv/bin/f2py"), "utf8");
-    expect(launcher).toContain(`'''exec' "${owned}/venv/bin/python3" "$0" "$@"`);
+    expect(launcher).toContain(`'''exec' '${owned}/venv/bin/python3' "$0" "$@"`);
     expect(`${config}${launcher}`).not.toContain(linked);
   });
 
@@ -410,29 +491,32 @@ describe("the domain workspace repository", () => {
     );
     const copied = log.lines().filter((line) => line.includes("54-rebuild-seed-tool-tree-copied"));
     expect(copied).toHaveLength(1);
-    expect(copied[0]).toContain("launchersRewritten=1 singleQuoted=1");
+    expect(copied[0]).toContain("launchersRewritten=1");
     expect(copied[0]).toContain("dropped=1 droppedFirst=run");
   });
 
   it("drops a launcher whose destination cannot be quoted, rather than ending the rebuild", () => {
     // The rewritten header quotes the interpreter in a `sh` string, so a destination carrying a
-    // quote, a backtick, `$`, a backslash or a newline cannot be written into one. That path comes
-    // from the project slug and the campaign root, so it is the same for every launcher in the
-    // tree: throwing would abort the whole rebuild and tell its reader to recreate the environment
-    // in a workspace it had just prevented from existing.
-    const seed = tmp();
-    seedWithUvVenv(seed, "/host/python");
-    const dir = join(tmp(), "camp$aign");
-    mkdirSync(dir, { recursive: true });
-    const log = safeguardLog();
-    initWorkspace(dir, seed, log.context);
-    // The launcher is gone and the rest of the venv arrived, so the Builder has a tool to
-    // reinstall rather than no run to reinstall it in.
-    expect(existsSync(join(dir, ".toolchain/venv/bin/f2py"))).toBe(false);
-    expect(existsSync(join(dir, ".toolchain/venv/pyvenv.cfg"))).toBe(true);
-    const copied = log.lines().filter((line) => line.includes("54-rebuild-seed-tool-tree-copied"));
-    expect(copied).toHaveLength(1);
-    expect(copied[0]).toContain("dropped=1 droppedFirst=venv/bin/f2py");
+    // quote, a backtick, `$`, a backslash or a newline cannot be written into one; `camp'aign`
+    // pins that the guard covers uv's own single quote. That path comes from the project slug and
+    // the campaign root, so it is the same for every launcher in the tree: throwing would abort
+    // the whole rebuild and tell its reader to recreate the environment in a workspace it had
+    // just prevented from existing.
+    for (const name of ["camp$aign", "camp'aign"]) {
+      const seed = tmp();
+      seedWithUvVenv(seed, "/host/python");
+      const dir = join(tmp(), name);
+      mkdirSync(dir, { recursive: true });
+      const log = safeguardLog();
+      initWorkspace(dir, seed, log.context);
+      // The launcher is gone and the rest of the venv arrived, so the Builder has a tool to
+      // reinstall rather than no run to reinstall it in.
+      expect(existsSync(join(dir, ".toolchain/venv/bin/f2py")), name).toBe(false);
+      expect(existsSync(join(dir, ".toolchain/venv/pyvenv.cfg")), name).toBe(true);
+      const copied = log.lines().filter((line) => line.includes("54-rebuild-seed-tool-tree-copied"));
+      expect(copied, name).toHaveLength(1);
+      expect(copied[0], name).toContain("dropped=1 droppedFirst=venv/bin/f2py");
+    }
   });
 
   it.if(buildsMachO)("moves a Mach-O install name into the copy rather than refusing the seed", () => {

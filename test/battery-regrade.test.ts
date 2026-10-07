@@ -29,13 +29,13 @@ import { EMPTY_USER_CONTEXT } from "../src/builder/user-context.ts";
 import type { JsonValue } from "../src/meta/json-shape.ts";
 import type { JudgeSession } from "../src/review/judge.ts";
 import { analyseStep } from "../src/run/analyse-step.ts";
-import { type FullRunDeps, parseFullRunArgs, runFullRun, slugForDirectInput } from "../src/run/full-run.ts";
+import { type FullRunDeps, runFullRun } from "../src/run/full-run.ts";
+import { parseFullRunArgs } from "../src/run/launch-arguments.ts";
+import { slugForDirectInput } from "../src/run/launch-project.ts";
 import { buildHarness } from "../src/run/harness-build.ts";
 import { type HarnessMeasureOptions, measureHarness } from "../src/run/harness-measure.ts";
 import { measuredProductDir, productVersionDir, selectedProductDir } from "../src/run/product-versions.ts";
-import { claimsDirFor } from "../src/run/claim-write.ts";
 import { readClimbReadout } from "../src/run/climb-readout.ts";
-import { FROZEN_MANIFEST_PATH } from "../src/critic/manifest.ts";
 import { type Solver, nonResultOutcome } from "../src/correctness-bundle/solve.ts";
 import { readRecordedBatteryRecord, toolTreeDigestOf } from "../src/correctness-bundle/battery-record.ts";
 import { bundleSnapshotToolTree } from "../src/claim/bundle-snapshot.ts";
@@ -89,13 +89,7 @@ const CASE_BLIND_TOOL_EVALUATOR =
   'export const checks = { answer: async ({artifact, publicTask}, runtime) => { const result = await runtime.tools.run({ toolId: "uppercase-fixture", args: [] }); return result.exitCode === 0 && String(artifact.answer).toUpperCase() === publicTask.publicInput.input.toUpperCase(); } };';
 
 const scratch: string[] = [];
-const guard: BuilderCommandGuardResult = {
-  state: "skipped",
-  path: null,
-  dcgVersion: null,
-  binarySha256: null,
-  skippedReason: "explicit-off",
-};
+const guard: BuilderCommandGuardResult = { state: "skipped", path: null, skippedReason: "not-installed" };
 
 afterEach(() => {
   for (const dir of scratch.splice(0)) rmSync(dir, { recursive: true, force: true });
@@ -268,12 +262,10 @@ async function twoRounds(
   }));
   const withheld = records.flatMap((battery) => battery.condition.advisorsRemoved);
   // What the next round's author reads of each battery: the readout row, newest first.
-  const readout = readClimbReadout(
-    selectedProductDir(root, SLUG),
-    records[0]?.backendPin ?? "",
-    claimsDirFor(root, SLUG),
-    join(root, FROZEN_MANIFEST_PATH),
-  );
+  const readout = readClimbReadout(selectedProductDir(root, SLUG), records[0]?.backendPin ?? "", {
+    repoRoot: root,
+    slug: SLUG,
+  });
   const promotion = (runId: string) =>
     JSON.parse(readFileSync(join(root, "campaigns", SLUG, "promotions", `${runId}.json`), "utf8"));
   const selected = selectedProductDir(root, SLUG);

@@ -11,7 +11,8 @@ import { describe, expect, it } from "bun:test";
 import { BuildAgentTurnNonResult } from "../src/author/build-agent.ts";
 import { BuilderConversation, type OpenSession } from "../src/author/builder-conversation.ts";
 import { submitProjection } from "../src/author/builder-execution.ts";
-import { BUILDER_WORKSPACE_CARD, runBuilderSession } from "../src/author/builder-session.ts";
+import { runBuilderSession } from "../src/author/builder-session.ts";
+import { BUILDER_WORKSPACE_CARD } from "../src/author/builder-start-prompt.ts";
 import { BUILDER_TURN_SETTLE_MS } from "../src/author/builder-turn-loop.ts";
 import type { CandidateCheckOutcome } from "../src/author/candidate-check.ts";
 import type { HostSession, PiTool } from "../src/backends/pi-session.ts";
@@ -453,6 +454,26 @@ describe("BuilderConversation", () => {
     const next = await conversation.begin(SECOND, "framing", "/runs/two", recorded.open);
     expect(next.session).not.toBe(round.session);
     expect(recorded.configured).toEqual([]);
+  });
+
+  // The run's one conversation keeps its session across rounds, so a line a session is told once
+  // (the worked-examples pointer) belongs to the session, not to a round's tools.
+  it("tells a line once per session: a continued session keeps it, a fresh session starts again", async () => {
+    const recorded = recordingOpener();
+    const conversation = new BuilderConversation();
+    const first = await conversation.begin(FIRST, "framing", "/runs/one", recorded.open);
+    expect([conversation.tellOnce("examples"), conversation.tellOnce("examples")]).toEqual([true, false]);
+    await first.end("accepted");
+
+    const second = await conversation.begin(SECOND, "framing", "/runs/two", recorded.open);
+    expect(second.session).toBe(first.session);
+    expect(conversation.tellOnce("examples")).toBe(false);
+    expect(conversation.tellOnce("other")).toBe(true);
+    await second.end(null);
+
+    const third = await conversation.begin(FIRST, "framing", "/runs/three", recorded.open);
+    expect(third.session).not.toBe(first.session);
+    expect(conversation.tellOnce("examples")).toBe(true);
   });
 
   it("closes without throwing when disposing the waiting session fails", async () => {

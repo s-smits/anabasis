@@ -5,7 +5,7 @@ import { runSync, decodeOutput } from "../meta/subprocess.ts";
 import { runtimeProcess } from "../meta/process.ts";
 import { isString, type JsonValue } from "../meta/json-shape.ts";
 import { requireJsonValue } from "../meta/stable-json.ts";
-import { DATA_READER_TOOL } from "./data-session.ts";
+import { DATA_READER_TOOL } from "./built-presets.ts";
 import type { PublicBriefResource } from "./public-resources.ts";
 import type { PublicTask } from "./task-split.ts";
 

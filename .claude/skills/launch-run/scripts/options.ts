@@ -16,6 +16,10 @@ import type { JsonObject, JsonValue } from "#src/meta/json-shape.ts";
 export const PRESETS = {
   truss:
     "Design lightweight 3D steel trusses around irregular supports and forbidden volumes, choosing joint positions, connectivity and catalogue sections within strict mass limits.\nMeet strength, buckling and deflection requirements under self-weight, reversing wind and asymmetric live loads, including geometric nonlinearity and specified single-member-loss scenarios.",
+  buffer:
+    "Design aqueous buffer formulations from a published reagent catalogue, choosing components and concentrations within strict ionic-strength, osmolality and cost limits.\nMeet pH, buffer-capacity and precipitation-free requirements across temperature shifts, tenfold dilution and CO2 uptake, including activity corrections and specified single-reagent-substitution scenarios.",
+  recode:
+    "Design synonymous recodings of Escherichia coli protein-coding sequences from a published codon-usage table, choosing codons, GC content and site layout within strict encoded-protein-identity, repeat and homopolymer limits.\nMeet codon-adaptation, mRNA folding-energy and synthesis-feasibility requirements across expression-host shifts, start-region window changes and forbidden restriction sites, including rare-codon corrections and specified single-domain-substitution scenarios.",
 };
 const PRESET_PROMPTS: ReadonlyMap<string, string> = new Map(Object.entries(PRESETS));
 /**
@@ -24,15 +28,31 @@ const PRESET_PROMPTS: ReadonlyMap<string, string> = new Map(Object.entries(PRESE
  */
 export const STANDARD = "standard";
 export const SLOTS = ["builder", "built", "review"] as const;
-/** The model one `--model` name selects, and its effort on each slot in `SLOTS` order. */
+/**
+ * The model one `--model` name selects, and its effort on each slot in `SLOTS` order. A variant of a
+ * model's standard row is named for its efforts, one letter per slot (l, m, h, x for low to xhigh):
+ * `opushmm` is Opus 5.5 with only the Builder at high, and the Builder at xhigh would be `opusxmm`.
+ */
 export const CONDITIONS = {
-  sol: { kind: "codex", model: "gpt-6-sol", efforts: ["high", "high", "medium"] },
+  sol: { kind: "codex", model: "gpt-6.1-sol", efforts: ["high", "high", "medium"] },
+  solhmm: { kind: "codex", model: "gpt-6.1-sol", efforts: ["high", "medium", "medium"] },
   luna: { kind: "codex", model: "gpt-5.6-luna", efforts: ["max", "max", "max"] },
   astra: { kind: "codex", model: "gpt-6-astra", efforts: ["medium", "low", "low"] },
   opus: { kind: "claude", model: "claude-opus-5-5", efforts: ["medium", "medium", "medium"] },
   fable: { kind: "claude", model: "claude-fable-5-1", efforts: ["medium", "medium", "medium"] },
+  opushmm: { kind: "claude", model: "claude-opus-5-5", efforts: ["high", "medium", "medium"] },
+  haiku: { kind: "claude", model: "claude-haiku-4-5-20251001", efforts: ["medium", "medium", "medium"] },
+  sonnet: { kind: "claude", model: "claude-sonnet-5-5", efforts: ["medium", "medium", "medium"] },
+  sonnetxhh: { kind: "claude", model: "claude-sonnet-5-5", efforts: ["xhigh", "high", "high"] },
+  opus48: { kind: "claude", model: "claude-opus-4-8", efforts: ["medium", "medium", "medium"] },
+  opus47: { kind: "claude", model: "claude-opus-4-7", efforts: ["medium", "medium", "medium"] },
+  gpt55: { kind: "codex", model: "gpt-5.5", efforts: ["high", "high", "medium"] },
 } as const;
 export const DEFAULT_DISK_MIN_GIB = 20;
+/** The operator's launch pace, whose yield figures are AGENTS.md "Open gaps", blocker 4: no batch
+ *  starts above this one-minute load or past this many live controller runs, unless `--over-capacity`. */
+export const MAX_LAUNCH_LOAD = 25;
+export const MAX_LIVE_RUNS = 6;
 /** Where a launch keeps its receipts, logs and frozen environment, relative to the run tree. */
 export const SCRATCH = ".scratch/quick-run";
 /**
@@ -98,6 +118,7 @@ const OPTIONAL_VALUES = [
   "env-file",
   "codex-home",
   "output-dir",
+  "over-capacity",
 ] as const;
 
 /** The launcher's arguments, parsed by `.claude/skills/main/cli.ts`, so a misspelled flag refuses
@@ -123,7 +144,7 @@ export type LaunchOptions = Partial<Record<(typeof OPTIONAL_VALUES)[number], str
 
 const PRESET_NAMES = [...PRESET_PROMPTS.keys(), STANDARD].join("|");
 export const HELP = `Usage: bun .claude/skills/launch-run/scripts/launch.ts [${PRESET_NAMES}]... [options]
-  --model sol,luna,astra,opus,fable Standard model presets; default opus (legacy alias: --condition)
+  --model ${Object.keys(CONDITIONS).join(",")} Model presets; default opus (legacy alias: --condition)
   --source <ref|sha|pr:number>     Default current origin/main
   --budget N --tasks N            Defaults 1320 provider turns and 25 tasks per run
   --gate auto|run|skip            Default auto: skip bun run gate when the pre-push hook recorded a
@@ -137,6 +158,7 @@ export const HELP = `Usage: bun .claude/skills/launch-run/scripts/launch.ts [${P
   --env-file /path                Claude token; default main checkout/.env
   --codex-home /path              Codex auth; default current CODEX_HOME or ~/.codex
   --output-dir /path              Parent of fresh worktrees; default beside main checkout
+  --over-capacity REASON          Launch past the one-minute load ${MAX_LAUNCH_LOAD} or ${MAX_LIVE_RUNS} live runs; each receipt keeps the reason
   --dry-run                      Plan only: no setup, secrets or launch
   --list                         Exact preset prompts
   --help                         This help
@@ -164,6 +186,7 @@ function refuseValues(options: LaunchOptions, refuse: ExitWith): void {
     const value = options[key];
     if (value !== undefined && !isAbsolute(value)) refuse(`--${key} must be absolute`);
   }
+  if (options["over-capacity"]?.trim() === "") refuse("--over-capacity needs the reason, in words");
   const lines = options.prompt?.split("\n") ?? [];
   if (/[\r\0]/.test(options.prompt ?? "") || lines.length > 2 || lines.some((line) => !line.trim())) {
     refuse(PROMPT_REFUSAL);
@@ -307,7 +330,11 @@ export function probeArgs(plan: RunPlan, options: LaunchOptions): string[] {
     "--run",
     plan.runId,
     "--condition",
-    plan.condition,
+    // A variant probes as its model's standard row: the probe reads each slot's effort from the
+    // frozen env, and an older tree's table has no variants.
+    Object.entries(CONDITIONS).find(
+      ([base, row]) => plan.condition.startsWith(base) && row.model === CONDITIONS[plan.condition].model,
+    )?.[0] ?? plan.condition,
     "--budget",
     options.budget,
     "--tasks",

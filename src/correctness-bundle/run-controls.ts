@@ -10,6 +10,7 @@ import type { DiscriminationClaimabilityFinding } from "../claim/discrimination-
 import { compareCodeUnits } from "../meta/stable-json.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import type { CheckRun, CorrectnessModelResult } from "../verify/correctness-model-result.ts";
+import { SHELL_COULD_NOT_RUN } from "../verify/host.ts";
 import type {
   EvaluationScopeHandle,
   VerifierExecutionEvidence,
@@ -112,11 +113,6 @@ type Observation = Settled & { attempt: number };
 
 /** A declared-valid example the checks failed, as the accept loop settled it. */
 type RejectedAccept = { controlId: string; attempt: number; checkIds: string[]; issue: string };
-
-/** The shell's codes for a program it could not execute (126) or find (127). The host already
- *  types the run as a non-result when the shell's own launch line ends stderr; a wrapper whose
- *  launch line it did not recognise still reaches the census as an executed run with this exit. */
-const LAUNCH_EXIT_CODES = new Set<number | null>([126, 127]);
 
 // --- Checks that apply to each task ----------------------------------------------------------
 
@@ -513,9 +509,10 @@ const silentFailure = (row: VerifierExecutionEvidence): boolean =>
 /** The tools an accept's blocking checks failed on silently, and whether every one of those runs
  *  carries launch evidence, or null when some blocking check's failure rests on a tool that did
  *  work. A tool counts only when every run of it in the census, accepts and rejects alike, failed
- *  silently. Only a 126 or 127 exit says the program never started: a compiler rejecting every
- *  example on stderr with exit 1 looks the same as a library the cell lacks, so that case stays
- *  the correctness model's with both readings named. */
+ *  silently. Only a 126 or 127 exit says the program never started, and one reaches this census
+ *  when the host did not recognise the shell's launch line: a compiler rejecting every example on
+ *  stderr with exit 1 looks the same as a library the cell lacks, so that case stays the
+ *  correctness model's with both readings named. */
 function silentTools(
   run: ControlSession,
   rejected: RejectedAccept,
@@ -537,7 +534,7 @@ function silentTools(
     const culprit = own.find((row) => row.checkId === checkId && silentFailure(row) && !worked(row.toolId));
     if (culprit === undefined) return null;
     tools.add(culprit.toolId);
-    launch &&= LAUNCH_EXIT_CODES.has(culprit.exitCode);
+    launch &&= SHELL_COULD_NOT_RUN.has(culprit.exitCode);
   }
   return { tools: [...tools].sort(compareCodeUnits), launch };
 }
@@ -561,7 +558,7 @@ async function runAccepts(run: ControlSession, corpus: ControlCorpus): Promise<R
     rejected.push({
       controlId: control.id,
       attempt: observation.attempt,
-      checkIds: [...blockingFailedCheckIds(observed.result)].sort(compareCodeUnits),
+      checkIds: blockingFailedCheckIds(observed.result),
       issue: `"${control.id}": ${blockingIssueSummary(observed.result)}`,
     });
   }

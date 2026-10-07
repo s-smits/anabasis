@@ -1,4 +1,5 @@
 /** Exact process lifecycle for the confined Pi model worker. */
+import { SOLVE_WALL_MESSAGE } from "./backend-types.ts";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { attachJsonlLineReader, serializeJsonLine } from "../../vendor/pi-built/jsonl.ts";
 import { DEFAULT_HARNESS_SETTINGS } from "../correctness-bundle/harness-config.ts";
@@ -18,12 +19,7 @@ import { runtimeProcess } from "../meta/process.ts";
 import { cancellableByteStream } from "../meta/cancellable-stream.ts";
 import type { RuntimeSignal } from "../meta/runtime-values.ts";
 import type { ProviderTurnReservation } from "../run/provider-resource-budget.ts";
-import {
-  killProcessGroup,
-  killProcessGroupId,
-  terminateAndReapProcessGroup,
-  terminateAndReapProcessGroupId,
-} from "../meta/subprocess.ts";
+import { killProcessGroup, killProcessGroupId, terminateAndReapProcessGroupId } from "../meta/subprocess.ts";
 import { asError, errorMessage } from "../meta/runtime-values.ts";
 import { boundText } from "../meta/bounded-text.ts";
 
@@ -52,7 +48,6 @@ interface PiBuiltWorkerResult {
 const READY_TIMEOUT_MS = 120_000;
 const CLOSE_TIMEOUT_MS = 2_000;
 const TURN_TIMEOUT_MS = 300_000;
-const SOLVE_WALL_MESSAGE = "Pi Built worker exceeded its bounded solve time";
 /** A stopped worker's aborted tool calls settle within this; the shell kills its process tree on abort. */
 const DISPATCH_SETTLE_MS = 10_000;
 
@@ -355,6 +350,8 @@ function grantTurnPermit(
   reserveTurn: ((turn: number) => ProviderTurnReservation) | undefined,
   message: PermitRequest,
 ): void {
+  // A request still in flight when the worker was stopped opens no turn the run would pay for.
+  if (state.failure !== null) return;
   if (state.phase !== "running" || state.activeTurn !== null || message.turn !== state.nextPermitTurn) {
     stopWorker(child, state, "protocol", "Pi Built worker requested an unordered turn permit");
     return;
@@ -497,7 +494,7 @@ async function reapAndSettle(input: WorkerCompletion, code: number | null): Prom
     input.state.pid === null || input.state.pid === input.child.pid
       ? Promise.resolve(true)
       : terminateAndReapProcessGroupId(input.state.pid);
-  const reaped = await Promise.all([terminateAndReapProcessGroup(input.child), workerGroup])
+  const reaped = await Promise.all([terminateAndReapProcessGroupId(input.child.pid), workerGroup])
     .then((results) => results.every(Boolean))
     .catch(() => false);
   if (!reaped && input.state.failure === null) {

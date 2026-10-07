@@ -16,7 +16,7 @@
  */
 import type { BandZone } from "../../src/claim/battery-difficulty.ts";
 import { CASE_RECORD_FILE } from "../../src/claim/case-record.ts";
-import { FROZEN_MANIFEST_PATH } from "../../src/critic/manifest.ts";
+import { frozenManifestPath } from "../../src/critic/manifest.ts";
 import { statfsSync } from "../../src/meta/filesystem.ts";
 import { isNumber, isRecord, isString } from "../../src/meta/json-shape.ts";
 import { availableParallelism, loadavg } from "../../src/meta/os.ts";
@@ -54,7 +54,7 @@ const FAILED_BURST = 3;
  *  aim that came no closer to it than the closest before them, counted by side rather than zone
  *  (`offAimStreak`). The climb reader's `flat` (`climb-velocity.ts`) reads the same rule. The
  *  controller never stops on it (`LoopState`), so the stall is the operator's call. */
-export const STALL_BATTERIES = 3;
+const STALL_BATTERIES = 3;
 const MEASURING = new Set(["adopt", "controls", "solve", "measure-on", "grade"]);
 const REVIEWING = new Set(["judge", "claim", "analyse", "admission", "next"]);
 /** Top-level transitions that are the loop's ordinary machinery and would bury the rest. */
@@ -113,14 +113,15 @@ function sideOf(zone: BandZone | null): "above" | "below" | "on" | null {
   return zone === "too-easy" || zone === "over-aim" ? "above" : "below";
 }
 
-/** Consecutive batteries on one side of the aim, counted back from the latest placed one, and how
- *  many of them came after the one closest to the aim, which a tie does not replace. Above the aim a
- *  lower pass rate is closer, below it a higher one. */
+/** Consecutive batteries on one side of the aim, counted back from the latest placed one, how many
+ *  of them came after the one closest to the aim, which a tie does not replace, and whether that is
+ *  a stall. Above the aim a lower pass rate is closer, below it a higher one. */
 export function offAimStreak(batteries: readonly Pick<PulseBattery, "zone" | "placedOn">[]): {
   side: "above" | "below";
   rounds: number;
   flat: number;
   closest: { passes: number; n: number };
+  stalled: boolean;
 } | null {
   const placed = batteries.flatMap(({ zone, placedOn }) =>
     zone === null || placedOn === null ? [] : [{ side: sideOf(zone), ...placedOn }],
@@ -131,14 +132,15 @@ export function offAimStreak(batteries: readonly Pick<PulseBattery, "zone" | "pl
   const closeness = ({ passes, n }: { passes: number; n: number }) =>
     (side === "above" ? -1 : 1) * (passes / n);
   const closest = streak.reduce((best, battery) => (closeness(battery) > closeness(best) ? battery : best));
-  return { side, rounds: streak.length, flat: streak.length - 1 - streak.lastIndexOf(closest), closest };
+  const flat = streak.length - 1 - streak.lastIndexOf(closest);
+  return { side, rounds: streak.length, flat, closest, stalled: flat >= STALL_BATTERIES };
 }
 
 function streakText(batteries: readonly PulseBattery[]): string {
   const streak = offAimStreak(batteries);
   if (streak === null) return "";
   const text = `, ${streak.side} the aim ${String(streak.rounds)} in a row`;
-  if (streak.flat < STALL_BATTERIES) return text;
+  if (!streak.stalled) return text;
   const { passes, n } = streak.closest;
   return `${text}; the ${String(streak.flat)} since ${String(passes)}/${String(n)} came no closer, a stall`;
 }
@@ -520,7 +522,7 @@ function pulseTick(
   table: Parameters<typeof busyUnder>[0],
 ): string[] {
   const now = Date.now();
-  const band = climbThresholds(join(repoRoot, FROZEN_MANIFEST_PATH)).band;
+  const band = climbThresholds(frozenManifestPath(repoRoot)).band;
   const previous = memory.readings;
   const watched = new Set(Object.keys(previous));
   const rows = collectRows(repoRoot, { closedLimit: Number.MAX_SAFE_INTEGER, now }).filter((row) =>

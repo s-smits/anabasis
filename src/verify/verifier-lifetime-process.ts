@@ -2,7 +2,7 @@
 import { cancellableByteStream } from "../meta/cancellable-stream.ts";
 import { capturedSpawn } from "../meta/process.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
-import { terminateAndReapProcessGroup } from "../meta/subprocess.ts";
+import { terminateAndReapProcessGroupId } from "../meta/subprocess.ts";
 import type { GeneratedWorkerPolicy } from "../solve/generated-tool-source-policy.ts";
 import type { VerifierProcessLease, VerifierProcessSettlement } from "./verifier-lifetime.ts";
 
@@ -55,7 +55,7 @@ export function superviseVerifierProcess(
     if (closing !== null) return closing;
     clearTimeout(timer);
     closing = (async () => {
-      const groupReaped = await terminateAndReapProcessGroup(child).catch(() => false);
+      const groupReaped = await terminateAndReapProcessGroupId(child.pid).catch(() => false);
       await boundedDrain(Promise.all([exited, drained]));
       streams.cancel();
       const observation = { receiptId: lease.id, exit, groupReaped, outputComplete, timedOut };

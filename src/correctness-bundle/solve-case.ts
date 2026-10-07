@@ -67,7 +67,7 @@ import {
 } from "./tool-runs.ts";
 import { solverNonResultReason } from "./runtime-blocker.ts";
 import { blockingTruthFailure } from "./verdict-binding.ts";
-import { evaluateCheckProgram } from "./predicate.ts";
+import { evaluateCheckProgram } from "../../vendor/correctness-model-bundle/evaluate.ts";
 import { EvaluatorProcessFailure, isAuthoredEvaluatorFailure } from "./evaluator-process.ts";
 import { resolveVerifier } from "./verification-registry.ts";
 import { asError, errorMessage } from "../meta/runtime-values.ts";

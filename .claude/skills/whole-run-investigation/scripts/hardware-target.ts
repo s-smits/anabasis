@@ -22,6 +22,7 @@
 // it is not a Git tree. A missing reference is a recorded gap, never a failure.
 import { existsSync, readdirSync, readFileSync } from "#src/meta/filesystem.ts";
 import { dirname, join } from "#src/meta/path.ts";
+import { BRIEF_FILE } from "#src/meta/bundle-layout.ts";
 import { isRecord, isString } from "#src/meta/json-shape.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { readEpochRecord } from "#src/author/campaign-epoch.ts";
@@ -152,7 +153,7 @@ function briefDomain(campaign: string): string | null {
   const current = readEpochRecord(campaign)?.current;
   if (!isString(current)) return null;
   const brief = readJsonAsOrNull<{ domain?: unknown } | null>(
-    join(campaign, current, "workspace", "correctness-model", "brief.json"),
+    join(campaign, current, "workspace", BRIEF_FILE),
   );
   return isString(brief?.domain) ? brief.domain : null;
 }

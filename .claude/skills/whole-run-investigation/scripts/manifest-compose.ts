@@ -19,6 +19,7 @@ import {
   ISOLATED_ANGLES,
   HARDWARE_LANES,
   hardwareScratch,
+  launcherTask,
   leafPrompt,
   NATIVE_OUTPUT,
   nativePrompt,
@@ -46,6 +47,20 @@ import { renderSharedInstructions, type SharedInstructions } from "./shared-inst
 import { writeJsonFile } from "#src/meta/completed-json.ts";
 import { LAUNCH_FILE, SUMMARY_FILE } from "#skills/codex-luna-swarm/scripts/luna-receipts.ts";
 import { readJsonAs } from "./run-overview.ts";
+import {
+  TRACE_CHALLENGE_PACKET_FILE,
+  TRACE_CHALLENGE_PROMPT_FILE,
+  TRACE_CHALLENGE_STATUS_FILE,
+  TRACE_CHALLENGE_STATUS_SCHEMA,
+  TRACE_TELEMETRY_FILE,
+} from "./trace-challenge.ts";
+
+/** The admission row every manifest task carries, under the one schema `validate-reports.ts` reads. */
+export const ADMISSION_SCHEMA = "wri-progressive-admission/v2";
+/** The shared instructions the manifest writes beside `tasks.json`, which a native prompt is rebuilt from. */
+export const INSTRUCTIONS_FILE = "instructions.md";
+/** The sidecar beside the launcher's record that binds the launched prompts to the manifest bytes. */
+export const LAUNCH_INPUT_FILE = "wri-launch-input.json";
 
 const LAUNCH_RECORD_WAIT_MS = 30_000;
 const ISOLATION_RULE =
@@ -450,19 +465,20 @@ export function composeInstructions(input: InstructionInput): string {
   return lines.filter((line) => line !== null).join("\n");
 }
 
-/** The public-only and ground-truth lanes each freeze a result before joining outcomes. Shared
- *  orientation, scan and even aggregate verdicts are evidence from the other side of that boundary:
- *  given the run overview, the ground-truth lane of custom-opus 198d70 froze its compiler verdicts
- *  already knowing all 21 cases had passed, and had to call its comparison post-exposure
- *  (2026-09-30). */
+/** Each isolated lane keeps its own evidence boundary (`ISOLATED_ANGLES`), and shared orientation,
+ *  scan and even aggregate verdicts are evidence from the other side of it: given the run overview,
+ *  the ground-truth lane of custom-opus 198d70 froze its compiler verdicts already knowing all 21
+ *  cases had passed, and had to call its comparison post-exposure (2026-09-30), and the trace
+ *  challenge lane of 350009 received the orientation and called its own review contaminated
+ *  (2026-10-01). */
 export function blindSession(session: LaunchSession): boolean {
-  return session.lanes.some((lane) => lane.number === PUBLIC_ONLY_LANE || lane.number === GROUND_TRUTH_LANE);
+  return session.lanes.some((lane) => ISOLATED_ANGLES.has(lane.number));
 }
 
 export function publicReviewInstructions(input: InstructionInput): string {
   return [
     "# Independent blind review",
-    `This evidence boundary applies to lanes ${PUBLIC_ONLY_LANE} and ${GROUND_TRUTH_LANE}; other assignments use their own context below.`,
+    `This evidence boundary applies to lanes ${[...ISOLATED_ANGLES.keys()].join(", ")}; other assignments use their own context below.`,
     `Measured source: \`${input.revision}\` in \`${input.worktree}\`.`,
     `Campaign: \`${input.campaign}\`; run: \`${input.runId}\`.`,
     `Capture: \`${input.snapshot.status.capturedAt}\`.`,
@@ -475,6 +491,7 @@ export function publicReviewInstructions(input: InstructionInput): string {
     "Inspect only public fields when a storage file also contains protected fields; prefer recorded public-task.json.",
     "Freeze the public corpus of valid alternatives and plausibly wrong artifacts, with its identities, before any permitted later join.",
     `Lane ${GROUND_TRUTH_LANE} also runs the recorded toolchain over those artifacts and the control artifacts, and records its verdict file's digest before reading any recorded verdict.`,
+    `Lane ${TRACE_CHALLENGE_LANE} reads the trace telemetry and private packet its task names in place of that corpus; they are the one private trace it may read.`,
     "If forbidden information was already exposed, disclose contamination and do not claim a blinded result.",
     `Runtime: Bun ${input.bunPin}, \`${input.bun}\`. Web access: ${input.webAccess ? "available" : "unavailable"}.`,
     "Report only your assigned headings, method, frozen input identities, denominators, findings and limits.",
@@ -520,10 +537,10 @@ function verifiedTraceChallenge(
   challengeDir: string,
   expected: ChallengeIdentity | null = null,
 ): TraceChallengePaths {
-  const statusPath = join(challengeDir, "trace-challenge-status.json");
-  const telemetryPath = join(challengeDir, "trace-telemetry.json");
-  const packetPath = join(challengeDir, "trace-challenge-packet.json");
-  const promptPath = join(challengeDir, "trace-challenge-prompt.md");
+  const statusPath = join(challengeDir, TRACE_CHALLENGE_STATUS_FILE);
+  const telemetryPath = join(challengeDir, TRACE_TELEMETRY_FILE);
+  const packetPath = join(challengeDir, TRACE_CHALLENGE_PACKET_FILE);
+  const promptPath = join(challengeDir, TRACE_CHALLENGE_PROMPT_FILE);
   if (!existsSync(statusPath)) {
     manifestFail(`lane ${TRACE_CHALLENGE_LANE} is assigned but its trace-challenge status is missing`);
   }
@@ -533,7 +550,7 @@ function verifiedTraceChallenge(
   } catch (error) {
     manifestFail(`lane ${TRACE_CHALLENGE_LANE} trace-challenge status is unreadable: ${errorMessage(error)}`);
   }
-  if (status?.schema !== "whole-run-trace-challenge-status/v1" || status.complete !== true) {
+  if (status?.schema !== TRACE_CHALLENGE_STATUS_SCHEMA || status.complete !== true) {
     manifestFail(`lane ${TRACE_CHALLENGE_LANE} requires a complete whole-run trace-challenge packet`);
   }
   if (expected !== null) {
@@ -640,7 +657,7 @@ export function composeTasks(
       task: parts.join("\n"),
       scratch,
       admission: {
-        schema: "wri-progressive-admission/v2",
+        schema: ADMISSION_SCHEMA,
         mode: admissionMode,
         state: "active",
         identityKey: session.name,
@@ -694,7 +711,7 @@ function lunaArgs({
 export function writeAndDispatch(input: DispatchInput): void {
   const outPath = resolve(input.outDir);
   mkdirSync(outPath, { recursive: true });
-  const instructionsPath = join(outPath, "instructions.md");
+  const instructionsPath = join(outPath, INSTRUCTIONS_FILE);
   const tasksPath = join(outPath, "tasks.json");
   const launcherTasksPath = join(outPath, "luna-tasks.json");
   writeFileSync(instructionsPath, `${input.instructions.trimEnd()}\n`);
@@ -705,14 +722,7 @@ export function writeAndDispatch(input: DispatchInput): void {
   // metadata.
   // A hardware session runs inside its own scratch, the one root its workspace-write sandbox opens.
   for (const { scratch } of input.tasks) if (scratch !== null) mkdirSync(scratch, { recursive: true });
-  writeJsonFile(
-    launcherTasksPath,
-    input.tasks.map(({ name, task, scratch }) =>
-      scratch === null
-        ? { name, task }
-        : { name, task, workdir: scratch, sandbox: "workspace-write", ownedPaths: [scratch] },
-    ),
-  );
+  writeJsonFile(launcherTasksPath, input.tasks.map(launcherTask));
   const authored =
     input.orientationText.length + input.sessions.reduce((sum, session) => sum + session.direction.length, 0);
   const total = input.tasks.reduce((sum, task) => sum + task.task.length, 0) + input.instructions.length;
@@ -743,7 +753,7 @@ export function writeAndDispatch(input: DispatchInput): void {
     if (existsSync(join(outputDir, LAUNCH_FILE))) {
       // The launcher may have opened its immutable record before a provider failure. Keep the
       // source/input identity sidecar for an explicit incomplete collection rather than guessing.
-      writeJsonFile(join(outputDir, "wri-launch-input.json"), {
+      writeJsonFile(join(outputDir, LAUNCH_INPUT_FILE), {
         schema: "wri-luna-launch-input/v1",
         ...identity,
       });
@@ -759,7 +769,7 @@ function writeLaunchInput(
 ): void {
   const promptHash = ({ task, scratch }: ManifestTask): string =>
     sha256(new TextEncoder().encode(leafPrompt(input.instructions, task, scratch)));
-  writeJsonFile(join(outputDir, "wri-launch-input.json"), {
+  writeJsonFile(join(outputDir, LAUNCH_INPUT_FILE), {
     schema: "wri-luna-launch-input/v1",
     outputDir,
     workdir,

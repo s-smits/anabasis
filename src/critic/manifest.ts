@@ -1,10 +1,11 @@
 /** Re-read and digest the repository's frozen policy file; consumers select their own rows. */
 import { readFileSync } from "../meta/filesystem.ts";
+import { join } from "../meta/path.ts";
 import { sha256 } from "../meta/digest.ts";
 import { canonicalJson } from "../meta/stable-json.ts";
 import { type JsonValue, asRecord, isNumber, isRecord } from "../meta/json-shape.ts";
 
-/** Repository-root name of the frozen policy file; callers join it to their own root. */
+/** Repository-root name of the frozen policy file. */
 export const FROZEN_MANIFEST_PATH = "thresholds.frozen.yaml";
 
 interface FrozenManifest {
@@ -22,6 +23,12 @@ interface FieldSpec<T> {
   from?: string;
   bound: Bound<T>;
   fallback: T;
+}
+
+/** The frozen policy file under `repoRoot`: the one a battery records its threshold digest from and
+ *  the one a later read compares that digest and the climb band against. */
+export function frozenManifestPath(repoRoot: string): string {
+  return join(repoRoot, FROZEN_MANIFEST_PATH);
 }
 
 export function loadFrozenManifest(path = FROZEN_MANIFEST_PATH): FrozenManifest {

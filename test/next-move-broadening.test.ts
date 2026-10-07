@@ -139,12 +139,11 @@ it.each(["all", "unmeasured", "exhausted"] as const)(
       manifest: { slug: SLUG, domain: SLUG, expectedTasks: previous.length },
       baseKickoff: "assign parts to slots",
       runPin: RUN_PIN,
-      runId: "next-round",
       domainDir: join(root, "domains", SLUG),
       builder: { kind: "codex", model: "test-model", reasoningEffort: "low" },
       built: { reasoningEffort: "low" },
     });
-    expect(selected.decision).toMatchObject({ move: "rebuild", seed: "adopted" });
+    expect(selected.decision).toMatchObject({ move: "rebuild" });
     expect(selected.readout?.decision).toMatchObject({ placement: { zone: "too-easy" } });
     expect(selected.decision).not.toHaveProperty("final");
     expect(selected.kickoff).toBe("assign parts to slots");
@@ -232,7 +231,6 @@ it("keeps another pin's and another threshold's public tasks readable, outside t
       manifest: { slug: SLUG, domain: SLUG, expectedTasks: previous.length },
       baseKickoff: "assign parts to slots",
       runPin: RUN_PIN,
-      runId: "next-round",
       domainDir: join(root, "domains", SLUG),
       builder: { kind: "codex", model: "test-model", reasoningEffort: "low" },
       built: { reasoningEffort: "low" },
@@ -339,7 +337,7 @@ it("carries the host-derived operation and changed subset out of the build step"
       },
       observer: createRunObserver(root, SLUG, "next-round"),
     }),
-    { move: "rebuild", seed: "adopted", reason: "Choose the next experiment." },
+    { move: "rebuild", reason: "Choose the next experiment." },
     { kickoff: "assign parts", prior: null, lineage: null, difficulty: null },
   );
   expect(result.build).toBe("candidate");

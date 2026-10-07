@@ -11,7 +11,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { hostname, tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { type LockHolderState, lockHolderState, lockToken } from "../src/run/campaign-lock.ts";
-import { type FullRunArgs, parseFullRunArgs } from "../src/run/launch-arguments.ts";
+import { type FullRunArgs, commandDigest, parseFullRunArgs } from "../src/run/launch-arguments.ts";
 import { slugForDirectInput } from "../src/run/launch-project.ts";
 import { errorMessage } from "../src/meta/runtime-values.ts";
 
@@ -69,6 +69,17 @@ describe("the condition an operator may ask for", () => {
       message = errorMessage(error);
     }
     expect(message).toContain(named);
+  });
+
+  // A wave audit pairs runs by this digest, so a run's own id, source and project must not move it.
+  it("gives two runs of one condition one command digest, and a moved flag another", () => {
+    const digest = (extra: string[]) => commandDigest(parseFullRunArgs([...MIN, ...extra]), DIGEST);
+    const run = (id: string, commit: string, project: string) =>
+      digest(["--run", id, "--expected-source", `${commit}:${DIGEST}`, "--project", project]);
+    expect(run("run-a", COMMIT, "p-1")).toBe(run("run-b", "c".repeat(40), "p-2"));
+    expect(run("run-a", COMMIT, "p-1")).toBe(digest([]));
+    expect(digest(["--max-iterations", "1"])).not.toBe(digest([]));
+    expect(commandDigest(parseFullRunArgs(MIN), "d".repeat(64))).not.toBe(digest([]));
   });
 });
 

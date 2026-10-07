@@ -3,7 +3,7 @@
  * over bytes frozen the way the gate freezes a candidate, and the Builder keeps working while it
  * runs; what it found rides the first tool result after it finishes. Submit is the one call that
  * waits for it, and a blocking finding the Builder has not read comes back in place of that
- * submit's verdict; advisory findings ride the next tool result like any other review.
+ * submit's verdict; advisory findings backed by a probe or a demand gap ride the next tool result.
  * Each review is handed the round's blind rehearsals as well, as the bytes the solver submitted and
  * the one verdict they earned, which is more than the Builder that ran them is shown.
  */

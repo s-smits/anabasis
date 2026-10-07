@@ -41,9 +41,17 @@ import { existsSync, mkdirSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { dirname, isAbsolute, join, resolve } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { scaffoldArchive } from "./archive-scaffold.ts";
+import { MAIN, REVIEW } from "./archive-shape.ts";
 import { renderBrief, renderScope, type RunScope, runScope, SEMANTIC_LANES, snapshotGaps } from "./brief.ts";
 import { ANGLE_COUNT, NATIVE_OUTPUT } from "./catalogue-shape.ts";
-import { buildOverview, readJsonAs } from "./run-overview.ts";
+import {
+  buildOverview,
+  laneTriggers,
+  OVERVIEW_FILE,
+  readJsonAs,
+  REVIEW_STATE_FILE,
+  SNAPSHOT_STATUS_FILE,
+} from "./run-overview.ts";
 import { openRecordedRun, resolveSourceCheckout, sourceUnresolved } from "#skills/main/run.ts";
 import { buildSharedInstructions } from "./shared-instructions.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
@@ -148,13 +156,13 @@ export interface WriArgs {
 }
 
 /**
- * The deterministic readers, in the order a review reads them. `collect` runs the four the paid
- * lanes consume; the rest answer one question each and cost nothing but local compute. A lane
- * whose input this target does not carry is skipped with the reason, never silently. A lane with
- * `cmd` is a script of its own; one with `read` runs in-process as its own subcommand, which a
- * review asks of the measured checkout's copy of this file, and imports its module only when it
- * runs, because the classifier behind two of them loads an embedding runtime. `options` and
- * `flags` are what that subcommand takes beyond the target.
+ * The deterministic readers, in the order a review reads them. `collect` runs the five the paid
+ * lanes consume, `climb` before the `overview` that carries its trigger; the rest answer one
+ * question each and cost nothing but local compute. A lane whose input this target does not carry
+ * is skipped with the reason, never silently. A lane with `cmd` is a script of its own; one with
+ * `read` runs in-process as its own subcommand, which a review asks of the measured checkout's copy
+ * of this file, and imports its module only when it runs, because the classifier behind two of them
+ * loads an embedding runtime. `options` and `flags` are what that subcommand takes beyond the target.
  */
 export const LANES: readonly Lane[] = [
   {
@@ -197,29 +205,31 @@ export const LANES: readonly Lane[] = [
     },
   },
   {
-    name: "overview",
-    label: "shared brief",
-    collect: true,
-    needs: (c) =>
-      existsSync(join(c.snapshot, "snapshot-status.json"))
-        ? null
-        : `no snapshot-status.json under ${c.snapshot}; the snapshot lane recorded none`,
-    write: (c) => writeOverview(c),
-  },
-  {
     name: "climb",
     label: "climb velocity",
+    collect: true,
     needs: (c) => (existsSync(join(c.campaign, "versions")) ? null : "no adopted version, so no battery yet"),
     // The JSON drops each battery's family vectors, which only the verdict reads.
     read: async (c) => {
-      const { lineOf, readCampaign, render } = await import("./climb-velocity.ts");
+      const { flatTriggers, lineOf, readCampaign, render } = await import("./climb-velocity.ts");
       const report = await readCampaign(c.campaign);
       const batteries = report.batteries.map((battery) => ({
         ...battery,
         reading: { ...battery.reading, familyVectors: undefined },
       }));
-      return { report: { ...report, batteries, line: lineOf(report) }, text: render(report) };
+      const line = lineOf(report);
+      return { report: { ...report, batteries, line, triggers: flatTriggers(line) }, text: render(report) };
     },
+  },
+  {
+    name: "overview",
+    label: "shared brief",
+    collect: true,
+    needs: (c) =>
+      existsSync(join(c.snapshot, SNAPSHOT_STATUS_FILE))
+        ? null
+        : `no ${SNAPSHOT_STATUS_FILE} under ${c.snapshot}; the snapshot lane recorded none`,
+    write: (c) => writeOverview(c),
   },
   {
     name: "yield",
@@ -368,7 +378,7 @@ function resolveTarget(args: WriArgs, positional: string | null): RunSelection {
 function archiveFor(runId: string): string | null {
   const root = join(CHECKOUT, "notes", "runs");
   if (!existsSync(root)) return null;
-  for (const hit of new Bun.Glob(`*${runId}*/review.json`).scanSync({ cwd: root })) {
+  for (const hit of new Bun.Glob(`*${runId}*/${REVIEW}`).scanSync({ cwd: root })) {
     return join(root, dirname(hit));
   }
   return null;
@@ -484,9 +494,10 @@ function runLane(state: WriReviewState, lane: Lane, ctx: LaneContext): void {
 
 function writeOverview(ctx: LaneContext): string {
   const overview = buildOverview(ctx.snapshot);
-  writeJsonFile(join(ctx.reviewDir, "overview.json"), overview);
-  writeJsonFile(join(ctx.reviewDir, "shared-instructions.json"), buildSharedInstructions(overview));
-  return `overview.json and shared-instructions.json, from ${ctx.snapshot}`;
+  writeJsonFile(join(ctx.reviewDir, OVERVIEW_FILE), overview);
+  const lanes = laneTriggers(ctx.reviewDir, loadState(ctx.reviewDir).steps);
+  writeJsonFile(join(ctx.reviewDir, "shared-instructions.json"), buildSharedInstructions(overview, lanes));
+  return `${OVERVIEW_FILE} and shared-instructions.json, from ${ctx.snapshot}`;
 }
 
 export function renderLanes(): string {
@@ -515,7 +526,7 @@ export function selectLanes(args: WriArgs): readonly Lane[] | null {
 }
 
 function statePath(reviewDir: string): string {
-  return join(reviewDir, "wri-review.json");
+  return join(reviewDir, REVIEW_STATE_FILE);
 }
 
 function saveState(state: WriReviewState): void {
@@ -524,7 +535,7 @@ function saveState(state: WriReviewState): void {
 
 function loadState(reviewDir: string): WriReviewState {
   const path = statePath(reviewDir);
-  if (!existsSync(path)) throw new Error(`no wri-review.json under ${reviewDir}; run collect first`);
+  if (!existsSync(path)) throw new Error(`no ${REVIEW_STATE_FILE} under ${reviewDir}; run collect first`);
   return readJsonAs<WriReviewState>(path);
 }
 
@@ -734,7 +745,7 @@ function finish(args: WriArgs): void {
   console.log(`\n== archive scaffold\n${JSON.stringify(scaffold, null, 2)}`);
   if (scaffold.fresh) {
     console.log(
-      `\nverdicts template written: ${scaffold.verdictsPath}\n  record states and reasons there, write ${join(scaffold.archiveDir, "main_synthesis.md")}, then run finish again.`,
+      `\nverdicts template written: ${scaffold.verdictsPath}\n  record states and reasons there, write ${join(scaffold.archiveDir, MAIN)}, then run finish again.`,
     );
     return;
   }

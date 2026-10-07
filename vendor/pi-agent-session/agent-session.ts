@@ -1,8 +1,11 @@
 // Copied from pi coding-agent v0.86.1 (github.com/earendil-works/pi, 13cbf77df, MIT, see LICENSE),
-// checked against v0.87.0 (16787ad): AgentSession's prompt loop, auto-retry and auto-compaction
+// checked against v0.87.0 (16787ad) and v1.0.0 (a13d35a), where nothing in these ranges changed for
+// a non-virtual model: AgentSession's prompt loop, auto-retry and auto-compaction
 // from packages/coding-agent/src/core/agent-session.ts, plus getLatestCompactionEntry from
 // session-manager.ts, line ranges in order. The session log is held in memory and compaction runs
-// through pi-agent-core's compact(). Left out: the CLI's settings, session files, extensions,
+// through compact() from pi agent v0.99.2's harness, copied beside this file (compaction/), since
+// pi-agent-core 1.0.0 no longer carries it; the retry wait is pi-ai's own sleep. Left out: the CLI's
+// settings, session files, extensions,
 // templates and system-prompt builder, and 0.87.0's persisted projection and turn boundaries.
 // Added here, absent upstream through v0.87.0: an abort during prompt()'s pre-prompt compaction
 // cancels the prompt instead of starting the agent after it.
@@ -25,24 +28,21 @@ import type {
 	AgentEvent,
 	AgentMessage,
 	AgentState,
-	CompactionEntry,
-	CompactionSettings,
-	CompactResult,
-	Entry,
-	JsonValue,
 	PrepareNextTurnContext,
 	ThinkingLevel,
 } from "@earendil-works/pi-agent-core";
 import {
-	BACKGROUND_CONTEXT,
+	type CompactionSettings,
+	type CompactResult,
 	calculateContextTokens,
 	compact,
 	estimateContextTokens,
 	estimateTokens,
 	prepareCompaction,
 	shouldCompact,
-	withAbortSignal,
-} from "@earendil-works/pi-agent-core";
+} from "./compaction/compaction.ts";
+import { BACKGROUND_CONTEXT, withAbortSignal } from "./context.ts";
+import type { CompactionEntry, Entry, JsonValue } from "./types.ts";
 import {
 	type AssistantMessage,
 	type Model,
@@ -64,7 +64,7 @@ import {
 	type SessionEntry,
 	sessionEntryToContextMessages,
 } from "./session-context.ts";
-import { sleep } from "./sleep.ts";
+import { sleep } from "@earendil-works/pi-ai/utils/sleep";
 
 /** Session-specific events that extend the core AgentEvent */
 export type PiAgentSessionEvent =
@@ -149,7 +149,7 @@ function estimateMessagesTokens(messages: AgentMessage[]): number {
 }
 
 /**
- * The one Models method compact() calls (pi-agent-core 0.87.0, compaction.js
+ * The one Models method compact() calls (compaction/compaction.ts
  * completeSimpleWithRetries), answered the way pi coding-agent sends its summaries: through the
  * agent's own stream function and key.
  */
@@ -799,7 +799,7 @@ export class PiAgentSession {
 	}
 
 	/**
-	 * Execute threshold or overflow compaction through pi-agent-core's `compact()`, with the
+	 * Execute threshold or overflow compaction through the copied `compact()`, with the
 	 * session's own model, thinking level and stream function answering the summary request.
 	 *
 	 * @param reason Automatic trigger selected by `_checkCompaction()`

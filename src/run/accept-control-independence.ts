@@ -26,8 +26,8 @@ import { isString, type JsonValue } from "../meta/json-shape.ts";
 import { join } from "../meta/path.ts";
 import { compareCodeUnits, sameJsonValue } from "../meta/stable-json.ts";
 import type { CampaignFeedback } from "../author/campaign-types.ts";
-import { EVALUATOR_CALIBRATION_POLICY } from "../claim/calibration.ts";
 import { controllerValidatedFinding } from "../correctness-bundle/brief.ts";
+import { policyRow, posInt } from "../critic/manifest.ts";
 import type { Witness } from "./representation-census.ts";
 import { CONTROLS_FILE } from "../meta/bundle-layout.ts";
 import { readJsonFile } from "../meta/completed-json.ts";
@@ -54,6 +54,17 @@ export interface AcceptIndependence {
   /** Accept rows whose artifact equals the F2 witness for the same task, by control id. */
   copiedFromReference: string[];
 }
+
+/** The registered control corpus floors, read from the frozen manifest's `evaluatorCalibration` row:
+ *  how many known-correct and deliberately incorrect controls an authored corpus must carry, which
+ *  authoring states and checks too. A missing or invalid field takes the pilot default of five. The
+ *  row is read here rather than in the numeric policy table because reading a manifest row belongs
+ *  at the consumer that acts on it; src/critic/policy.ts names this file as the reader and keeps its
+ *  own values code-only. */
+export const EVALUATOR_CALIBRATION_POLICY = policyRow("evaluatorCalibration", {
+  minimumKnownPasses: { bound: posInt, fallback: 5 },
+  minimumKnownFailures: { bound: posInt, fallback: 5 },
+})();
 
 function recordedAccepts(slugDir: string): RecordedAccept[] {
   const file = join(slugDir, CONTROLS_FILE);

@@ -9,9 +9,9 @@ that string starts. Every reader is a lane of `scripts/wri.ts`, selected by name
 bun .claude/skills/whole-run-investigation/scripts/wri.ts <lane> <campaign>/<runId> [flags]
 ```
 
-The lanes are `snapshot`, `challenge`, `delta` and `overview`, which collect; `climb`, `yield`,
-`posture`, `timeline`, `walls`, `handoff`, `gates` and `target`, which read the campaign; and `archive`,
-which writes the record. `brief.ts` runs the eight campaign lanes as `CAMPAIGN_LANES` and renders
+The lanes are `snapshot`, `challenge`, `delta`, `climb` and `overview`, which collect, `climb` so
+the run overview carries its trigger; `climb`, `yield`, `posture`, `timeline`, `walls`, `handoff`,
+`gates` and `target`, which read the campaign; and `archive`, which writes the record. `brief.ts` runs the eight campaign lanes as `CAMPAIGN_LANES` and renders
 their trigger lines into the sweep brief, reading an in-process lane's triggers from the report it
 records at `<review>/<lane>.json`, so a trigger below is the same bytes whether it was read from a
 lane's own output or from the brief. Inside a review every lane runs from the run's measured
@@ -52,9 +52,8 @@ public condition recurs on a fixed product.
 
 Block 4, workshop and spend, reads the tool installs and the ledger. Block 4b, band placement,
 reads `difficulty-decisions/<runId>-<digest>.json` (`difficulty-decision/v10`) for the
-`placement.zone`: `OFF-AIM STREAK (lane 10)` where two or more consecutive placements sit on one
-side of the aim; an over-aim zone with no trigger of its own is
-read by lanes 5 and 12. Block 4c, role spend and censoring, reads `providerResourceBudget.byRole`
+`placement.zone` and prints no trigger of its own: an over-aim zone is read by lanes 5 and 12, and a
+run of placements on one side of the aim by the `climb` lane's `flat`. Block 4c, role spend and censoring, reads `providerResourceBudget.byRole`
 and the retry rows: `REVIEW TURNS EXCEED SOLVER TURNS (lane 24)`, `DECISION ON CENSORED BATTERY
 (lane 24)` where a decision was taken on a battery the environment cut short, and `EXPLICIT
 ALLOWANCE WAIT (lane 24)` where a `turnRetries[]` reason names an allowance reset clock. Block 4d,
@@ -96,10 +95,9 @@ lane suffix it carries, so the brief can say which lanes have something to read.
 edge `restated`, `adjusted`, `narrowed`, `widened`, `eased`, `escalated` or `replaced`; `adjusted`
 deliberately states no direction, and `replaced` means fewer than half the task ids carried over so
 the numbers could not be compared. Each edge also counts the tasks `carried` unchanged, which after a
-full pass re-measure a known pass. The lane closes on the line the claimed batteries draw:
-`velocity` (the batteries between 1/n and n−1/n and the mean swing), `horizon` (that count over the
-first 8 and 12), `flat` (the pulse's stall rule) and `carried`. Every label and line starts lanes 10
-and 20.
+full pass re-measure a known pass. The lane closes on the line the claimed batteries draw, whose
+rows [the climb reference](climb.md#the-line) lists. Every label and line starts lanes 10 and 20, and
+`CLIMB FLAT (lane 10)`, where `flat` meets the stall rule, starts lanes 10 and 36.
 
 `yield` runs `review-yield.ts` and gives each review component a status per finding —
 `consumed`, `unobservable`, `advisory-only` or `not-consumed`. The `epoch-reviewer` component is
@@ -128,8 +126,8 @@ pair each `tool_use` with its `tool_result` and take the longest of the calls in
 
 `walls` runs `walls.ts`, whose `boundOf` labels every case `unrecorded`, `time-bound`,
 `turn-bound`, `unstarted`, `submitted` or `no-submit`, and prints each bound's share against
-`BOUND_SHARE`; a battery whose solves sit at a bound starts lane 22, and one whose solves all sit
-at a tiny share of it starts lane 8.
+`WALL_BOUND_SHARE`; a battery whose solves sit at a bound starts lane 22, and one whose solves
+all sit at a tiny share of it starts lane 8.
 
 `handoff` runs `handoffs.ts` and prints four tables, each labelled with the lane it starts: the
 census per channel (present, served, read, acted) for lane 17, the calibration table for lane 10,

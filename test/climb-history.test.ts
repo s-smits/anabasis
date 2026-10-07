@@ -12,6 +12,7 @@
  * The band arithmetic belongs to `test/climb-decision.test.ts` and the rendered readout to
  * `test/climb-readout.test.ts`.
  */
+import { SOLVE_WALL_MESSAGE } from "../src/backends/backend-types.ts";
 import { describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
@@ -19,17 +20,16 @@ import { join } from "../src/meta/path.ts";
 import { type JsonValue, isString } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { EvidenceLog } from "../src/claim/evidence-log.ts";
-import { EPOCH_REVIEW_SCHEMA } from "../src/review/epoch-review-findings.ts";
 import { EXPERIMENT_AUTHORING_SCHEMA } from "../src/run/experiment-freeze.ts";
 import {
   type AdmittedClimbRow,
   type ClimbBatteriesRead,
   climbThresholds,
-  excludedSummary,
   readClimbBatteries,
 } from "../src/run/climb-history.ts";
 import { readClimbReadout, renderReadout } from "../src/run/climb-readout.ts";
 import { required } from "./helpers/doubles.ts";
+import { writeSettledReview } from "./helpers/review-fixtures.ts";
 import { fixtureThresholdDigest } from "./helpers/thresholds.ts";
 
 const RUN_PIN = "test/pin";
@@ -53,6 +53,8 @@ interface CaseRow {
   publicInput?: JsonValue;
   /** The recorded reason a case ended in a runtime non-result. */
   runtimeNonResult?: string;
+  /** The failures the solver's worker recorded, such as the solve wall's stop. */
+  errors?: string[];
 }
 
 type BatteryFields = { [field: string]: JsonValue | undefined };
@@ -65,6 +67,7 @@ function caseRecord(row: CaseRow): JsonValue {
   const solver = {
     ...keyIfDefined("toolCalls", row.toolCalls),
     ...keyIfDefined("turns", row.turns),
+    ...keyIfDefined("errors", row.errors),
     ...span,
   };
   return {
@@ -130,7 +133,7 @@ const passes = (n: number, verdict: boolean | null = true): CaseRow[] =>
   Array.from({ length: n }, (_, i) => ({ taskId: `t${String(i)}`, pass: verdict }));
 
 const read = (tree: string, pin: string | null = RUN_PIN): ClimbBatteriesRead =>
-  readClimbBatteries(tree, pin, join(tree, "claims"));
+  readClimbBatteries(tree, pin, { claimsDir: join(tree, "claims") });
 
 const runIds = (rows: readonly AdmittedClimbRow[]) => rows.map((row) => row.battery.runId);
 
@@ -138,7 +141,7 @@ describe("the population law — every directory accounted for exactly once", ()
   it("reads nothing for a tree no battery ever measured, and no readout either", () => {
     const tree = tmp();
     expect(read(tree)).toEqual({ history: [], admitted: [], excluded: [] });
-    expect(readClimbReadout(tree, RUN_PIN, join(tree, "claims"))).toBeNull();
+    expect(readClimbReadout(tree, RUN_PIN, { claimsDir: join(tree, "claims") })).toBeNull();
   });
 
   it("puts a claim-refused battery in the history and out of the rate, carrying its own refusal", () => {
@@ -284,6 +287,26 @@ describe("what one battery contributes to the reading", () => {
     expect(admittedOnly(tree)).toMatchObject(expected);
   });
 
+  it("counts a verified fail whose draft the wall stopped, and not one the solver submitted near it", () => {
+    const tree = tmp();
+    mkdirSync(join(tree, "agent"), { recursive: true });
+    writeFileSync(join(tree, "agent", "config.yaml"), "solver:\n  solve_minutes: 1\n");
+    writeBattery(
+      tree,
+      "r1",
+      [
+        // The recorded C-6 shape: one minute, the draft auto-accepted, the real compiler refusing it.
+        { taskId: "stopped", pass: false, acceptedSubmit: true, minutes: 1, errors: [SOLVE_WALL_MESSAGE] },
+        { taskId: "submitted-late", pass: false, acceptedSubmit: true, minutes: 1 },
+        { taskId: "stopped-but-passed", pass: true, minutes: 1, errors: [SOLVE_WALL_MESSAGE] },
+      ],
+      RECORDED_AT,
+    );
+    const { authoring } = admittedOnly(tree);
+    // The fail stays a verified fail; only the wall's share of it is named.
+    expect(authoring).toMatchObject({ solveWallMinutes: 1, wallBound: 1 });
+  });
+
   it("counts the unaccepted cases whose solve ran to the product's own wall", () => {
     const tree = tmp();
     mkdirSync(join(tree, "agent"), { recursive: true });
@@ -293,30 +316,21 @@ describe("what one battery contributes to the reading", () => {
       "r1",
       [
         { taskId: "cut", pass: false, acceptedSubmit: false, minutes: 12 },
+        // The worker's own receipt on an unaccepted case at the wall: still one case, not two.
+        {
+          taskId: "cut-with-receipt",
+          pass: false,
+          acceptedSubmit: false,
+          minutes: 12,
+          errors: [SOLVE_WALL_MESSAGE],
+        },
         // Unaccepted well inside the wall, and accepted at the wall: neither was cut by it.
         { taskId: "early", pass: false, acceptedSubmit: false, minutes: 3 },
         { taskId: "slow", pass: true, minutes: 12 },
       ],
       RECORDED_AT,
     );
-    expect(admittedOnly(tree).authoring).toMatchObject({ solveWallMinutes: 12, wallBound: 1 });
-  });
-
-  it("names a family every case of which ended in a non-result, and no family that kept one scored", () => {
-    const tree = tmp();
-    const cut = { pass: null, acceptedSubmit: false, runtimeNonResult: "usage limit reached" };
-    writeBattery(
-      tree,
-      "r1",
-      [
-        { taskId: "a", family: "span", pass: true },
-        { taskId: "b", family: "span", ...cut },
-        { taskId: "c", family: "joint", ...cut },
-        { taskId: "d", family: "joint", ...cut },
-      ],
-      RECORDED_AT,
-    );
-    expect(admittedOnly(tree).battery.censoredFamilies).toEqual(["joint"]);
+    expect(admittedOnly(tree).authoring).toMatchObject({ solveWallMinutes: 12, wallBound: 2 });
   });
 
   it("calls the failing set unknown, never empty, when one failing row carries no id", () => {
@@ -358,7 +372,7 @@ describe("what one battery contributes to the reading", () => {
       }
       evidence.record();
       writeClaim(tree, "r1", RECORDED_AT, true);
-      return renderReadout(readClimbReadout(tree, RUN_PIN, join(tree, "claims")), "next");
+      return renderReadout(readClimbReadout(tree, RUN_PIN, { claimsDir: join(tree, "claims") }), "next");
     };
     const a = rendered("secret-verifier-a");
     expect(rendered("secret-verifier-b")).toBe(a);
@@ -368,7 +382,7 @@ describe("what one battery contributes to the reading", () => {
 });
 
 describe("cases the battery's completed review settled against their check", () => {
-  type Disposition = { taskId: string; kind: string; disposition: string; checkIds?: string[] };
+  type Disposition = Parameters<typeof writeSettledReview>[2][number];
   /** Two passes and four fails over two families; `v` is the one veto, a verifier pass. */
   const CASES: CaseRow[] = [
     { taskId: "p1", family: "span", pass: true },
@@ -384,34 +398,17 @@ describe("cases the battery's completed review settled against their check", () 
       { item: "joint", attempts: 3, passes: 0 },
     ],
   };
-  const against = (taskId: string, kind = "disputed-pass", checkIds = ["bench"]): Disposition => ({
-    taskId,
-    kind,
-    disposition: "against-check",
-    checkIds,
-  });
-
   function reviewed(dispositions: Disposition[], status = "completed", overrides: BatteryFields = {}) {
     const tree = tmp();
     writeBattery(tree, "r1", CASES, RECORDED_AT, { measured: MEASURED, ...overrides });
-    mkdirSync(join(tree, "analysis"), { recursive: true });
-    writeFileSync(
-      join(tree, "analysis", "r1-epoch-review.json"),
-      JSON.stringify({
-        schema: EPOCH_REVIEW_SCHEMA,
-        runId: "r1",
-        status,
-        findings: [],
-        dispositions: dispositions.map((row) => ({ family: "joint", checkId: "bench", finding: 0, ...row })),
-      }),
-    );
+    writeSettledReview(join(tree, "analysis"), "r1", dispositions, status);
     return required(read(tree).admitted[0], "the admitted battery");
   }
 
   const UNTOUCHED = { n: 6, passed: 2, failedTaskIds: ["f1", "f2", "f3", "f4"] };
 
   it("leaves a settled disputed fail out of the sample, its family and its failing set", () => {
-    const row = reviewed([against("f2")]);
+    const row = reviewed([{ taskId: "f2" }]);
     expect(row.battery).toMatchObject({
       n: 5,
       passed: 2,
@@ -425,7 +422,11 @@ describe("cases the battery's completed review settled against their check", () 
   });
 
   it("drops a settled veto from both counts rather than turning it into a fail", () => {
-    expect(reviewed([against("v", "veto")]).battery).toMatchObject({ n: 5, passed: 1, settledAgainst: 1 });
+    expect(reviewed([{ taskId: "v", kind: "veto" }]).battery).toMatchObject({
+      n: 5,
+      passed: 1,
+      settledAgainst: 1,
+    });
   });
 
   it("subtracts a settled case from the changed subset it belongs to, and none it does not", () => {
@@ -437,56 +438,26 @@ describe("cases the battery's completed review settled against their check", () 
       changedTaskIds: ["f2", "f3", "p1"],
     };
     const changed = { ...MEASURED, changedSubset: { attempts: 3, passes: 1 } };
-    const row = reviewed([against("f2"), against("f1")], "completed", {
+    const row = reviewed([{ taskId: "f2" }, { taskId: "f1" }], "completed", {
       measured: changed,
       experimentAuthoring,
     });
     expect(row.battery.measured.changedSubset).toEqual({ attempts: 2, passes: 1 });
     // A subset whose members the record does not name gives way to the whole battery.
-    const unnamed = reviewed([against("f2")], "completed", { measured: changed });
+    const unnamed = reviewed([{ taskId: "f2" }], "completed", { measured: changed });
     expect(unnamed.battery.measured).not.toHaveProperty("changedSubset");
   });
 
   it.each<[string, Disposition[], string]>([
-    ["an incomplete review", [against("f2")], "incomplete"],
-    ["a failed review", [against("f2")], "failed"],
-    ["a settlement in the check's favour", [{ ...against("f2"), disposition: "check-stands" }], "completed"],
-    ["a case another check also decided", [against("f2", "disputed-pass", ["bench", "timing"])], "completed"],
-    [
-      "a disposition that recorded no checks",
-      [{ taskId: "f2", kind: "disputed-pass", disposition: "against-check" }],
-      "completed",
-    ],
+    ["an incomplete review", [{ taskId: "f2" }], "incomplete"],
+    ["a failed review", [{ taskId: "f2" }], "failed"],
+    ["a settlement in the check's favour", [{ taskId: "f2", disposition: "check-stands" }], "completed"],
+    ["a case another check also decided", [{ taskId: "f2", checkIds: ["bench", "timing"] }], "completed"],
+    ["a disposition that recorded no checks", [{ taskId: "f2", checkIds: undefined }], "completed"],
   ])("settles nothing on %s", (_name, dispositions, status) => {
     const { battery } = reviewed(dispositions, status);
     expect(battery).toMatchObject(UNTOUCHED);
     expect(battery).not.toHaveProperty("settledAgainst");
-  });
-});
-
-describe("the refusals, summarised for the author", () => {
-  it("says nothing without exclusions, names each battery, and groups one shared reason", () => {
-    expect(excludedSummary([], 3)).toBeNull();
-    expect(
-      excludedSummary(
-        [
-          { runId: "r1", reason: "not comparable", claimRefused: false },
-          { runId: "r2", reason: "claim refused", claimRefused: true },
-        ],
-        1,
-      ),
-    ).toBe(
-      "2 of 3 recorded batteries excluded from difficulty evidence: not comparable — r1; claim refused — r2",
-    );
-    // A whole campaign read at another pin shares one reason: it is stated once, not per run.
-    const shared = Array.from({ length: 6 }, (_, i) => ({
-      runId: `r${String(i)}`,
-      reason: "not comparable",
-      claimRefused: false,
-    }));
-    const summary = excludedSummary(shared, 0);
-    expect(summary).toContain("not comparable — r0, r1, r2, r3 and 2 more");
-    expect(summary?.match(/not comparable/g)).toHaveLength(1);
   });
 });
 
@@ -539,7 +510,13 @@ describe("the climb readout, read from recorded batteries", () => {
   }
 
   const readout = (tree: string, manifest?: string) =>
-    required(readClimbReadout(tree, RUN_PIN, join(tree, "claims"), manifest), "a climb readout");
+    required(
+      readClimbReadout(tree, RUN_PIN, {
+        claimsDir: join(tree, "claims"),
+        ...keyIfDefined("manifestPath", manifest),
+      }),
+      "a climb readout",
+    );
 
   it("places no battery whose every attempt was refused at submission", () => {
     // Every attempt refused at submission is no difficulty evidence, not a battery below the aim.

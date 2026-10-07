@@ -33,11 +33,11 @@ import {
   CandidateIsolationUnavailable,
   type IsolatedOutcome,
   type IsolatedRequest,
-  type PathRecord,
   decideGuardedPaths,
   recordAllowedPaths,
   spawnCollected,
 } from "./candidate-isolation-runtime.ts";
+import type { PathRecord } from "./path-record.ts";
 import type { CandidateAccessPolicy } from "./candidate-isolation.ts";
 import type { OptionalEnvValues } from "../backends/scrub-env.ts";
 import { errorMessage } from "../meta/runtime-values.ts";

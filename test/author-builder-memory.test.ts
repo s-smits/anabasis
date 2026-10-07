@@ -24,7 +24,9 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
@@ -34,6 +36,7 @@ import {
   MEMORY_CAP_BYTES,
   MEMORY_FILE,
   SCRATCHPAD_FILE,
+  SCRATCH_LIMITS,
   STARTER_MEMORY,
   WORKSPACE_DIR,
   builderMemoryBlock,
@@ -49,6 +52,9 @@ const CORRECTED_ASK = "design steel roof trusses to Eurocode 3, including connec
 /** The authoring passes of successive measured rounds, in the spelling the controller records. */
 const PASS_ONE = "experiment:1";
 const PASS_TWO = "experiment:2";
+/** The scratch carry's two limits, as the tests below cross them. */
+const PER_FILE = 256 * 1024;
+const IN_ALL = 4096 * 1024;
 const BYTES = (text: string) => new TextEncoder().encode(text).byteLength;
 const count = (text: string, part: string) => text.split(part).length - 1;
 
@@ -84,6 +90,13 @@ function campaign(memory: string, scratchpad?: string) {
     return epoch;
   };
   return { root, first, nextPass, nextAsk };
+}
+
+/** A campaign whose first epoch has authored memory for a carry to cross, and the `scratch/` path
+ *  that epoch's Builder would fill. */
+function scratchCampaign() {
+  const run = campaign("# Builder memory\n\nunits are kN\n");
+  return { ...run, prior: join(workspaceOf(run.first), "scratch") };
 }
 
 describe("the notes block a fresh session opens on", () => {
@@ -212,25 +225,124 @@ describe("the handover between measured rounds", () => {
     expect(carried).toContain(newest);
   });
 
-  it("carries small top-level scratch helpers and leaves output directories and large files", () => {
+  it("carries small top-level scratch helpers and leaves a file over the per-file limit", () => {
     const { first, nextPass } = campaign("# Builder memory\n\nunits are kN\n");
     const prior = workspaceOf(first);
-    mkdirSync(join(prior, "scratch", "run"), { recursive: true });
+    mkdirSync(join(prior, "scratch"), { recursive: true });
     writeFileSync(join(prior, "scratch", "gen.ts"), "export const gen = 1;\n");
-    writeFileSync(join(prior, "scratch", "run", "out.json"), "{}");
-    writeFileSync(join(prior, "scratch", "trace.bin"), new Uint8Array(512 * 1024));
+    writeFileSync(join(prior, "scratch", "trace.bin"), new Uint8Array(PER_FILE + 1));
     const next = nextPass(PASS_ONE);
     expect(readFileSync(join(workspaceOf(next), "scratch", "gen.ts"), "utf8")).toBe(
       "export const gen = 1;\n",
     );
-    expect(existsSync(join(workspaceOf(next), "scratch", "run"))).toBe(false);
     expect(existsSync(join(workspaceOf(next), "scratch", "trace.bin"))).toBe(false);
-    expect(read(next, MEMORY_FILE)).toContain(`scratch/ holds ${first.key}'s 1 helper files`);
-    expect(read(next, MEMORY_FILE)).toContain("gen.ts");
+    expect(read(next, MEMORY_FILE)).toContain(`scratch/ holds ${first.key}'s 1 helper file: gen.ts;`);
+    expect(read(next, MEMORY_FILE)).toContain("left behind, over the limit of");
+    expect(read(next, MEMORY_FILE)).toContain(": trace.bin. -->");
     // A second carry names only its own predecessor's helpers, in one line.
     const third = read(nextPass(PASS_TWO), MEMORY_FILE);
     expect(count(third, "scratch/ holds")).toBe(1);
-    expect(third).toContain(`scratch/ holds ${next.key}'s 1 helper files`);
+    expect(third).toContain(`scratch/ holds ${next.key}'s 1 helper file: gen.ts. -->`);
+  });
+
+  it("carries a nested helper beside its siblings, by path, and names a nested file that is too large", () => {
+    const { first, nextPass, prior } = scratchCampaign();
+    mkdirSync(join(prior, "build", "deep"), { recursive: true });
+    writeFileSync(join(prior, "build", "gen.py"), "print(1)\n");
+    writeFileSync(join(prior, "build", "deep", "more.py"), "print(2)\n");
+    writeFileSync(join(prior, "build", "big.json"), new Uint8Array(PER_FILE + 1));
+    const next = nextPass(PASS_ONE);
+    const carried = join(workspaceOf(next), "scratch", "build");
+    expect(readFileSync(join(carried, "gen.py"), "utf8")).toBe("print(1)\n");
+    expect(readFileSync(join(carried, "deep", "more.py"), "utf8")).toBe("print(2)\n");
+    expect(existsSync(join(carried, "big.json"))).toBe(false);
+    expect(read(next, MEMORY_FILE)).toContain(
+      `scratch/ holds ${first.key}'s 2 helper files: build/deep/more.py, build/gen.py; left behind`,
+    );
+    expect(read(next, MEMORY_FILE)).toContain(": build/big.json. -->");
+  });
+
+  it("leaves a tree over the ceiling behind whole and names it, keeping the small ones", () => {
+    const { first, nextPass, prior } = scratchCampaign();
+    mkdirSync(join(prior, "dump"), { recursive: true });
+    mkdirSync(join(prior, "lib"), { recursive: true });
+    // Each file is under the per-file limit; together they pass the ceiling by one file.
+    for (let i = 0; i <= IN_ALL / PER_FILE; i++) {
+      writeFileSync(join(prior, "dump", `part-${String(i).padStart(2, "0")}.bin`), new Uint8Array(PER_FILE));
+    }
+    writeFileSync(join(prior, "lib", "util.py"), "print(3)\n");
+    writeFileSync(join(prior, "gen.ts"), "export const gen = 1;\n");
+    const next = nextPass(PASS_ONE);
+    const carried = join(workspaceOf(next), "scratch");
+    expect(existsSync(join(carried, "dump"))).toBe(false);
+    expect(existsSync(join(carried, "lib", "util.py"))).toBe(true);
+    expect(existsSync(join(carried, "gen.ts"))).toBe(true);
+    expect(read(next, MEMORY_FILE)).toContain(
+      `scratch/ holds ${first.key}'s 2 helper files: gen.ts, lib/util.py; left behind, over the limit of ${SCRATCH_LIMITS}: dump/. -->`,
+    );
+  });
+
+  it("holds the whole carry to the ceiling, so a later tree that no longer fits stays behind", () => {
+    const { nextPass, prior } = scratchCampaign();
+    // Each tree fits alone; the second would take the carry past the ceiling.
+    for (const tree of ["a-first", "b-second"]) {
+      mkdirSync(join(prior, tree), { recursive: true });
+      for (let i = 0; i < (IN_ALL / PER_FILE) * 0.6; i++) {
+        writeFileSync(join(prior, tree, `part-${String(i)}.bin`), new Uint8Array(PER_FILE));
+      }
+    }
+    const next = nextPass(PASS_ONE);
+    expect(existsSync(join(workspaceOf(next), "scratch", "a-first", "part-0.bin"))).toBe(true);
+    expect(existsSync(join(workspaceOf(next), "scratch", "b-second"))).toBe(false);
+    expect(read(next, MEMORY_FILE)).toContain(": b-second/. -->");
+  });
+
+  it("takes the smaller top-level entry first, so a large folder sorting early cannot starve it", () => {
+    const { nextPass, prior } = scratchCampaign();
+    // Each fits alone, and together they pass the ceiling: whichever is taken first keeps the other out.
+    for (const [tree, files] of [
+      ["a-cache", IN_ALL / PER_FILE - 1],
+      ["z-scripts", 2],
+    ] as const) {
+      mkdirSync(join(prior, tree), { recursive: true });
+      for (let i = 0; i < files; i++) {
+        writeFileSync(join(prior, tree, `part-${String(i).padStart(2, "0")}.bin`), new Uint8Array(PER_FILE));
+      }
+    }
+    const next = nextPass(PASS_ONE);
+    expect(existsSync(join(workspaceOf(next), "scratch", "z-scripts", "part-01.bin"))).toBe(true);
+    expect(existsSync(join(workspaceOf(next), "scratch", "a-cache"))).toBe(false);
+    expect(read(next, MEMORY_FILE)).toContain(": a-cache/. -->");
+  });
+
+  it("says so when nothing in scratch fits, and carries no empty scratch directory", () => {
+    const { first, nextPass, prior } = scratchCampaign();
+    mkdirSync(prior, { recursive: true });
+    writeFileSync(join(prior, "trace.bin"), new Uint8Array(PER_FILE + 1));
+    const next = nextPass(PASS_ONE);
+    expect(existsSync(join(workspaceOf(next), "scratch"))).toBe(false);
+    expect(read(next, MEMORY_FILE)).toContain(`scratch/ holds none of ${first.key}'s files; left behind`);
+    expect(read(next, MEMORY_FILE)).toContain(": trace.bin. -->");
+  });
+
+  it("never follows a link out of scratch, whether the link is inside it or is scratch itself", () => {
+    const outside = mkdtempSync(join(tmpdir(), "ana-outside-"));
+    mkdirSync(join(outside, "tree"));
+    writeFileSync(join(outside, "tree", "secret.txt"), "not scratch\n");
+    const { nextPass, prior } = scratchCampaign();
+    mkdirSync(join(prior, "build"), { recursive: true });
+    writeFileSync(join(prior, "build", "gen.py"), "print(1)\n");
+    symlinkSync(join(outside, "tree"), join(prior, "linked-tree"));
+    symlinkSync(join(outside, "tree", "secret.txt"), join(prior, "linked-file.txt"));
+    symlinkSync(join(outside, "tree"), join(prior, "build", "inner-link"));
+    const next = nextPass(PASS_ONE);
+    const carried = join(workspaceOf(next), "scratch");
+    expect(readdirSync(carried)).toEqual(["build"]);
+    expect(readdirSync(join(carried, "build"))).toEqual(["gen.py"]);
+
+    const linked = scratchCampaign();
+    symlinkSync(outside, linked.prior);
+    expect(existsSync(join(workspaceOf(linked.nextPass(PASS_ONE)), "scratch"))).toBe(false);
   });
 
   it("names at most five helpers and counts the rest", () => {

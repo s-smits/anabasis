@@ -51,7 +51,8 @@ import { resolveToolInventory, toolTreeDigest } from "../verify/tool-inventory.t
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { commitAll } from "./domain-repo.ts";
 import { isString, type JsonValue } from "../meta/json-shape.ts";
-import { freshCandidateFindings, freshTaskValidationContext } from "./fresh-candidate-contract.ts";
+import { compilePublicArtifactSchema } from "../solve/public-artifact-schema.ts";
+import { errorMessage } from "../meta/runtime-values.ts";
 import { BRIEF_FILE, CONTROLS_FILE, TASKS_FILE, TOOLS_SPEC_FILE } from "../meta/bundle-layout.ts";
 
 /** Paths a guide may name that the solver's shell has no file at: anything inside the tool tree or
@@ -233,7 +234,7 @@ function validatedBattery(
     return null;
   }
   const taskContext = {
-    ...freshTaskValidationContext(context.exactTasks),
+    exactTasks: context.exactTasks ?? null,
     ...keyIfDefined("minTasks", context.minTasks),
   };
   const result = validateTasks(brief, { tasks: raw }, mode === "rehearsal" ? {} : taskContext);
@@ -361,9 +362,11 @@ export function fingerprintRefusal(
 }
 
 /** Agent code byte-identical to correctness-model code, as `[agent path, correctness-model path]`
- *  pairs. A solver tool running a check's own module analyses a candidate the way the check does,
- *  which the tools contract (`PUBLICATION_CLAUSE`) rules out, since a solver that can ask the grader
- *  passes its batteries whole (AGENTS.md "Goals and the climb"). */
+ *  pairs. A solver tool running a check's own module can do the check's work, analysing a candidate
+ *  or computing what the check expects, which `NO_GRADER_IN_REACH` rules out, since a solver that
+ *  can ask the grader passes its batteries whole (AGENTS.md "Goals and the climb"). Equal bytes
+ *  are a lead, not the finding: published constants and standard routines are shared legitimately,
+ *  and a rewritten expectation model matches no bytes. */
 export function agentCheckCodeCopies(
   fingerprint: Pick<FingerprintEvidence, "agentFiles" | "correctnessModelFiles">,
 ): Array<[string, string]> {
@@ -385,7 +388,7 @@ function agentCopiesOfCheckCode(fingerprint: FingerprintEvidence): ContractFindi
     controllerValidatedFinding({
       code: "agent-copies-check-code",
       path: `agent/${path}`,
-      detail: `agent/${path} is byte-identical to correctness-model/${original}: a solver tool running a check's own code analyses a candidate the way the check does. Leave the solver that analysis, and give it only what a candidate is`,
+      detail: `agent/${path} is byte-identical to correctness-model/${original}; read it against the publication rule on what the solver's tools may do. Shared published rules, constants and standard computation may stay`,
     }),
   );
 }
@@ -471,6 +474,34 @@ export function loadValidatedBundle(
     findings.push(...controllerValidatedFindings(freshCandidateFindings({ brief, corpus })));
   }
   return { findings, advisories, brief, battery, corpus, toolsSpec };
+}
+
+/**
+ * The controller contracts that apply to a fresh build alone, kept together so a continuation
+ * round cannot be measured against a rule written for a first one.
+ *
+ * Every finding this produces survives the author projection, because its caller wraps the whole
+ * result in `controllerValidatedFindings`. That is sound only because each producer here compares
+ * the brief and the controls against each other and reads no verifier result, counterexample or
+ * control artifact. A new producer inherits that marking rather than opting into it, so before
+ * adding one, read every finding it can emit and keep its detail to public authoring identities.
+ */
+export function freshCandidateFindings(loaded: {
+  brief: Brief;
+  corpus: ControlCorpus | null;
+}): ContractFinding[] {
+  if (loaded.corpus === null) return [];
+  try {
+    compilePublicArtifactSchema(
+      loaded.brief.artifactSchema,
+      loaded.corpus.accept.map((accept) => accept.artifact),
+    );
+    return [];
+  } catch (error) {
+    return [
+      { code: "controls-accept-public-schema-inconsistent", path: "accept", detail: errorMessage(error) },
+    ];
+  }
 }
 
 /**

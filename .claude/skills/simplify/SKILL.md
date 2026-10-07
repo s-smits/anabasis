@@ -238,6 +238,10 @@ not in each tool.
   valid result; name the one place that came closest to changing.
 - Working code that already sits near the super-Pareto form. A pass does not
   rewrite it only to move a ratio.
+- A pi-mono copy, `vendor/pi-coding-agent` or `vendor/pi-agent-session`. Lint
+  does not read it and a pass does not reshape it: upstream's spelling has more
+  use behind it than ours (AGENTS.md, "sed"). The files we wrote beside it are
+  in scope as usual.
 
 ## Finish
 

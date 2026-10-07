@@ -40,8 +40,6 @@ import type { PathRecord } from "./path-record.ts";
 import type { OptionalEnvValues } from "../backends/scrub-env.ts";
 import { decodeOutput, killProcessGroup, killProcessGroupId, runSync } from "../meta/subprocess.ts";
 
-export { type PathRecord, type PathRecordRow, openPathRecord, readPathRecordRows } from "./path-record.ts";
-
 export interface IsolatedRequest {
   capability: string;
   mode: IsolationMode;
@@ -190,9 +188,18 @@ const liveCommands = new Set<Bun.Subprocess>();
 /** Kills every isolated command still running. Each child is detached into its own process group
  *  below, which is what lets a timeout take its grandchildren with it, and that same detachment
  *  means a stop signal delivered to the controller never reaches any of them. The controller's
- *  closure in full-run.ts calls this instead, so a stopped run leaves no confined command behind. */
-export function stopIsolatedCommands(): void {
+ *  closure in full-run.ts calls this instead, so a stopped run leaves no confined command behind.
+ *  A process that left its group and then lost its parent is no one's descendant: run -35's QEMU
+ *  did, ran 2.5 h under launchd while its run lived and 4 h after the run's SIGTERM of
+ *  2026-10-01. So an orphan whose command line names the run's campaign directory goes too. */
+export function stopIsolatedCommands(campaign?: string): void {
   for (const child of liveCommands) killCommandTree(child.pid);
+  if (campaign === undefined || !existsSync(campaign)) return;
+  const roots = [campaign, realpathSync.native(campaign)].map((root) => `${root}${sep}`);
+  const ps = decodeOutput(runSync(["ps", "-Aww", "-o", "pid=,ppid=,command="]).stdout);
+  for (const [, pid, command = ""] of ps.matchAll(/^ *(\d+) +1 (.*)$/gmu)) {
+    if (roots.some((root) => command.includes(root))) killProcessGroupId(Number(pid), "SIGKILL");
+  }
 }
 
 /** Kills the group and each member's descendants, listed by parent pid before a kill orphans any, as Bun's

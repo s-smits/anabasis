@@ -32,7 +32,7 @@ import { isOneOf, isTestFile } from "../shared/file-role.ts";
  *
  * The two sites this left on 2026-09-20 were one of each. `generated-tool-worker-process.ts`
  * spawned a worker and ran its own SIGTERM, wait, SIGKILL, wait ladder over `child.kill`, which
- * is the owner's `terminateAndReapProcessGroup` rewritten one signal narrower: it reached the
+ * is the owner's `terminateAndReapProcessGroupId` rewritten one signal narrower: it reached the
  * worker and not its group, so a generated tool's own children outlived the close. Routing the
  * two signals through `killProcessGroup` fixed that and left the file with no kill of its own.
  *

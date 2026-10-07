@@ -2,8 +2,7 @@
  * Which isolation modes each Builder capability requests.
  *
  * Split from `tools.ts` so that file stays inside its size limit. This map describes the access
- * modes each tool requests; registering the tools themselves stays in `tools.ts`, which re-exports
- * it.
+ * modes each tool requests; registering the tools themselves stays in `tools.ts`.
  *
  * Declared here means isolated, absent means research, and `session-evidence.ts` reads exactly this
  * map to tell the two apart — so a new path capability that arrives without its declaration is

@@ -24,9 +24,8 @@ import {
   type VerifierLifetime,
   type VerifierProcessLease,
   VerifierOperationalStop,
-  superviseVerifierProcess,
 } from "../verify/verifier-lifetime.ts";
-import { launchConfinedChild } from "../verify/verifier-lifetime-process.ts";
+import { launchConfinedChild, superviseVerifierProcess } from "../verify/verifier-lifetime-process.ts";
 import {
   bundleReferenceSolve,
   retainEvaluatorBundle,

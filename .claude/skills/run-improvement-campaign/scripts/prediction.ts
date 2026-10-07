@@ -21,8 +21,9 @@ import { canonicalJson } from "#src/meta/stable-json.ts";
 export const PREDICTIONS_DIR = join(import.meta.dir, "..", "..", "..", "..", "notes", "predictions");
 
 const DIRECTIONS = ["up", "down", "none"];
-/** AGENTS.md resolves a prediction four ways; a run that left the variable untested is `untriggered`. */
-const OUTCOMES = ["sufficed", "partial", "refuted", "untriggered"];
+/** AGENTS.md resolves a prediction five ways. A run that never launched, or whose trigger never
+ *  occurred, is `untriggered`; one that launched and stopped before its outcome is `censored`. */
+const OUTCOMES = ["sufficed", "partial", "refuted", "untriggered", "censored"];
 
 export interface PredictionCore {
   claim: string;

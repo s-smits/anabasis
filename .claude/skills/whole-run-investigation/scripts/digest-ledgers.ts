@@ -16,18 +16,12 @@ import { existsSync, readdirSync, readFileSync, statSync } from "#src/meta/files
 import { basename, join } from "#src/meta/path.ts";
 import { wilsonInterval } from "#src/claim/estimation.ts";
 import { MEMORY_CAP_BYTES, MEMORY_FILE, WORKSPACE_DIR } from "#src/author/builder-memory.ts";
-import {
-  asRecord,
-  isNumber,
-  isRecord,
-  isString,
-  type JsonObject,
-  type JsonValue,
-} from "#src/meta/json-shape.ts";
+import { asRecord, isNumber, isRecord, isString, type JsonValue } from "#src/meta/json-shape.ts";
 import { readJsonFileOrNull } from "#src/meta/completed-json.ts";
 import { authorSessionOwner } from "#src/analyse/finding-owner.ts";
 import type { AnalysisFinding } from "#src/analyse/iteration-analysis.ts";
 import { DIFFICULTY_DECISION_SCHEMA } from "#src/run/difficulty-decision.ts";
+import type { DifficultyDecisions } from "#tools/runs/evidence.ts";
 import { fullPass } from "#src/run/climb-readout.ts";
 import { EPOCH_REVIEW_SCHEMA } from "#src/review/epoch-review-findings.ts";
 import { JUDGE_REVIEWS_SCHEMA } from "#src/analyse/judge-reviews.ts";
@@ -45,49 +39,10 @@ import { PROVIDER_ALLOWANCE } from "#src/correctness-bundle/runtime-blocker.ts";
 import { controllerRunOfBattery } from "#src/run/controller-battery-record-policy.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { openRecordedRun, type RecordedRun } from "../../main/run.ts";
-import { isBandZone } from "#tools/runs/evidence.ts";
-import { offAimStreak } from "#tools/runs/pulse.ts";
 import { jsonText, readJsonAsOrNull } from "./run-overview.ts";
 
-/** The placement a difficulty decision recorded, each field null where the record omits it. */
-export interface RecordedPlacement {
-  passes: number | null;
-  n: number | null;
-  zone: string | null;
-  aim: readonly number[] | null;
-  toAim: number | null;
-}
-
-/** One readout row a decision carries, as the ledger prints it. */
-export interface ReadoutRow {
-  runId: string;
-  passed: number | null;
-  verified: number | null;
-  zone: string | null;
-}
-
-/** One difficulty decision this reader opened. */
-export interface DecisionRow {
-  runId: string;
-  repeated: boolean;
-  conflict: boolean;
-  placement: RecordedPlacement | null;
-  zone: string | null;
-  rows: ReadoutRow[];
-  admitted: number | null;
-  excluded: number;
-  evidenceRunIds: string[];
-}
-
-export interface DifficultyDecisions {
-  rows: DecisionRow[];
-  refused: string[];
-}
-
-interface OffAimStreak {
-  side: "above" | "below";
-  runIds: string[];
-}
+/** One difficulty decision as `readDifficultyDecisions` returns it. */
+export type DecisionRow = DifficultyDecisions["rows"][number];
 
 /** One battery's outcome counts, overall and per family. */
 export type BatteryTally = OutcomeTally & {
@@ -96,10 +51,15 @@ export type BatteryTally = OutcomeTally & {
   families: Map<string, OutcomeTally & { total: number }>;
 };
 
-/** A truth check as the measured brief declares it. */
+/** A truth check as the measured brief declares it. The evidence kind and the installed tools it
+ *  names sit under `execution`: an external check lists its tools inside `evidence`, an authored one
+ *  beside it. */
 export interface DeclaredCheck {
   id: string;
-  grounding?: { kind?: string };
+  execution?: {
+    requiredToolIds?: readonly string[];
+    evidence?: { kind?: string; requiredToolIds?: readonly string[] };
+  };
 }
 
 /** A control row as the measured controls file records it. */
@@ -117,8 +77,8 @@ export interface CheckBucket {
 }
 
 /** The fields of a decision the check-informativeness and censoring blocks read. */
-export type ZoneDecision = Pick<DecisionRow, "runId" | "zone">;
-export type CensusDecision = Pick<DecisionRow, "runId" | "zone" | "evidenceRunIds">;
+export type ZoneDecision = Pick<DecisionRow, "runId" | "placement">;
+export type CensusDecision = Pick<DecisionRow, "runId" | "placement" | "evidenceRunIds">;
 
 export interface InformativenessInput {
   checks: readonly Pick<DeclaredCheck, "id">[];
@@ -250,129 +210,28 @@ function interval(passes: number, n: number): string {
 const minutes = (ms: number) => Math.round(ms / 6_000) / 10;
 
 // --- 4b: difficulty decisions and band placement ----------------------------------------------
-/** The recorded placement of the battery a decision read, or null when the decision placed none. */
-function placementOf(decision: JsonObject): RecordedPlacement | null {
-  const placement = decision.placement;
-  if (!isRecord(placement)) return null;
-  const aim = Array.isArray(placement.aim) ? placement.aim : null;
-  return {
-    passes: isNumber(placement.passes) ? placement.passes : null,
-    n: isNumber(placement.n) ? placement.n : null,
-    zone: isString(placement.zone) ? placement.zone : null,
-    aim: aim?.length === 2 && aim.every(isNumber) ? aim : null,
-    toAim: isNumber(placement.toAim) ? placement.toAim : null,
-  };
-}
-
-/** The readout rows a decision carries, keeping the fields the ledger prints: the battery's counts
- *  and the zone it read. */
-function readoutRowsOf(counters: JsonObject): ReadoutRow[] {
-  return (Array.isArray(counters.rows) ? counters.rows : []).flatMap((row) =>
-    isRecord(row) && isString(row.runId)
-      ? [
-          {
-            runId: row.runId,
-            passed: isNumber(row.passed) ? row.passed : null,
-            verified: isNumber(row.verified) ? row.verified : null,
-            zone: isString(row.zone) ? row.zone : null,
-          },
-        ]
-      : [],
-  );
-}
-
-/**
- * Difficulty decisions in file order; `runId` on each record names the battery the decision
- * authored, and `evidence[].runId` the batteries it read. `refused` carries one line per record
- * this reader would not open, because the digest is read as an inventory of the run: a battery
- * whose decision predates the current schema would otherwise be indistinguishable from a battery
- * that never had a decision recorded at all, which is the more alarming of the two.
- */
-export function readDifficultyDecisions(campaign: string): DifficultyDecisions {
-  const rows: DecisionRow[] = [];
-  const refused: string[] = [];
-  const dir = join(campaign, "difficulty-decisions");
-  if (!existsSync(dir)) return { rows, refused };
-  for (const name of readdirSync(dir)
-    .filter((file) => file.endsWith(".json"))
-    .sort()) {
-    const read = readJsonFileOrNull(join(dir, name));
-    if (read === null) {
-      refused.push(`${name}: unreadable`);
-      continue;
-    }
-    const record: JsonObject = asRecord(read) ?? {};
-    if (record.schema !== DIFFICULTY_DECISION_SCHEMA) {
-      refused.push(`${name}: ${isString(record.schema) ? record.schema : "no schema"}`);
-      continue;
-    }
-    const counters = isRecord(record.difficulty) ? record.difficulty : null;
-    if (counters === null) {
-      refused.push(`${name}: ${DIFFICULTY_DECISION_SCHEMA} without a difficulty reading`);
-      continue;
-    }
-    const decision: JsonObject = asRecord(counters.decision) ?? {};
-    rows.push({
-      runId: isString(record.runId) ? record.runId : name,
-      repeated: isRecord(decision.repeated),
-      conflict: isRecord(decision.conflict),
-      placement: placementOf(decision),
-      // Where the decision placed the battery it read, repeated at the top level because the
-      // check-informativeness block keys its perfect-battery lead on it.
-      zone: placementOf(decision)?.zone ?? null,
-      rows: readoutRowsOf(counters),
-      admitted: isNumber(counters.admitted) ? counters.admitted : null,
-      excluded: Array.isArray(counters.excluded) ? counters.excluded.length : 0,
-      evidenceRunIds: (Array.isArray(decision.evidence) ? decision.evidence : [])
-        .map((row) => asRecord(row)?.runId)
-        .filter((value) => isString(value)),
-    });
-  }
-  return { rows, refused };
-}
-
 function decisionLine(row: DecisionRow): string {
   const placement = row.placement;
   const placed =
     placement === null
       ? " unplaced"
-      : ` ${placement.zone ?? "?"} · ${placement.passes ?? "?"}/${placement.n ?? "?"}` +
-        ` aim [${placement.aim === null ? "?" : placement.aim.join(",")}] toAim ${placement.toAim ?? "?"}`;
+      : ` ${placement.zone} · ${placement.passes}/${placement.n}` +
+        ` aim [${placement.aim.join(",")}] toAim ${placement.toAim}`;
   const facts = `${row.repeated ? " · repeated failures" : ""}${row.conflict ? " · family conflict" : ""}`;
   // A decision is named after the round it opened, and it places the latest battery in its
   // evidence: without that id two WRI lanes read an i12 decision as a battery recorded after T0.
   const read = row.evidenceRunIds.at(-1);
   const label = read === undefined ? row.runId : `${row.runId} (reads ${read})`;
-  return `${label}:${placed}${facts} · admitted ${row.admitted ?? "-"} excluded ${row.excluded}`;
-}
-
-/** Every run of two or more placements on one side of the aim, each counted back from its last
- *  member by the streak `runs pulse` reads (`offAimStreak`), which passes over a decision that
- *  placed nothing. */
-function offAimStreaks(rows: readonly DecisionRow[]): OffAimStreak[] {
-  const placed = rows.flatMap(({ runId, placement: p }) =>
-    p !== null && isBandZone(p.zone) && p.passes !== null && p.n !== null
-      ? [{ runId, zone: p.zone, placedOn: { passes: p.passes, n: p.n } }]
-      : [],
-  );
-  const streaks: OffAimStreak[] = [];
-  for (let end = placed.length; end > 0; ) {
-    const streak = offAimStreak(placed.slice(0, end));
-    const rounds = streak?.rounds ?? 1;
-    const runIds = placed.slice(end - rounds, end).map((row) => row.runId);
-    if (streak !== null && rounds >= 2) streaks.unshift({ side: streak.side, runIds });
-    end -= rounds;
-  }
-  return streaks;
+  return `${label}:${placed}${facts} · admitted ${row.admitted} excluded ${row.excluded}`;
 }
 
 /**
- * Section 4b: one line per decision this reader opened, any run of placements on one side of the
- * aim, then one line per record it refused. The section reads the
- * placement the controller recorded and never re-derives one, so a lead here disagrees with the
- * controller only when the record does.
+ * Section 4b: one line per decision this reader opened, then one line per record it refused. The
+ * section reads the placement the controller recorded and never re-derives one, and leaves a run of
+ * placements on one side of the aim to the climb's `flat` (`climb-velocity.ts`).
  */
-export function bandPlacementLines({ rows, refused }: DifficultyDecisions): string[] {
+export function bandPlacementLines({ rows, refused: records }: DifficultyDecisions): string[] {
+  const refused = records.map(({ file, reason }) => `${file}: ${reason}`);
   const lines = ["", "## 4b band placement (difficulty decisions)"];
   // Absence proves only that no placement was recorded. The controller may still have chosen
   // build or rebuild, so the digest does not say "never ran"; the controller decision reasons in
@@ -383,11 +242,6 @@ export function bandPlacementLines({ rows, refused }: DifficultyDecisions): stri
     );
   }
   for (const row of rows) lines.push(decisionLine(row));
-  for (const streak of offAimStreaks(rows)) {
-    lines.push(
-      `OFF-AIM STREAK (lane 10): ${streak.runIds.length} consecutive placements ${streak.side} the aim (${streak.runIds.join(", ")})`,
-    );
-  }
   for (const line of refused) lines.push(`refused, not ${DIFFICULTY_DECISION_SCHEMA} — ${line}`);
   return lines;
 }
@@ -450,7 +304,7 @@ export function checkInformativenessLines({
   // battery placed above the aim: the round that answered an easy battery found no limit either.
   const overAim = new Set(
     decisions
-      .filter((decision) => decision.zone === "too-easy" || decision.zone === "over-aim")
+      .filter(({ placement }) => placement?.zone === "too-easy" || placement?.zone === "over-aim")
       .map((decision) => decision.runId),
   );
   const perfect = tallies.filter((tally) => overAim.has(tally.runId) && fullPass(tally));
@@ -543,6 +397,14 @@ export function judgeCensusLines({ judgeReviews }: JudgeCensusInput): string[] {
 }
 
 // --- 3b: family-wise coverage -----------------------------------------------------------------
+/** Whether every verified case of a family passed or every one failed; null when they split or none
+ *  was verified. */
+function oneWay({ passed, verified }: OutcomeTally): "all-pass" | "all-fail" | null {
+  if (verified === 0) return null;
+  if (passed === verified) return "all-pass";
+  return passed === 0 ? "all-fail" : null;
+}
+
 export function familyCoverageLines({ tallies }: TallyInput): string[] {
   const lines = ["", "## 3b family-wise coverage (case-record.jsonl, Wilson 95%)"];
   const graded = tallies.filter((tally) => tally.verified > 0);
@@ -566,41 +428,29 @@ export function familyCoverageLines({ tallies }: TallyInput): string[] {
         continue;
       }
       const familyBounds = wilsonInterval(bucket.passed, bucket.verified);
-      const flags: string[] = [];
-      if (bucket.passed === bucket.verified) flags.push("all-pass");
-      if (bucket.passed === 0) flags.push("all-fail");
-      if (
-        aggregate !== null &&
-        familyBounds !== null &&
-        tally.families.size > 1 &&
-        aggregate.lower > familyBounds.upper
-      ) {
-        flags.push("AGGREGATE HIDES FAMILY");
+      // A battery of one family has the family's own interval, so it never hides one.
+      const hides = aggregate !== null && familyBounds !== null && aggregate.lower > familyBounds.upper;
+      if (hides) {
         leads.push(
-          `${tally.runId} ${family} ${bucket.passed}/${bucket.verified} sits below the aggregate floor ${aggregate.lower.toFixed(2)}`,
+          `AGGREGATE HIDES FAMILY: ${tally.runId} ${family} ${bucket.passed}/${bucket.verified} sits below the aggregate floor ${aggregate.lower.toFixed(2)}`,
         );
       }
+      const flags = [oneWay(bucket), hides ? "AGGREGATE HIDES FAMILY" : null].filter((flag) => flag !== null);
       lines.push(
         `  ${pad(family, 24)}${pad(`${bucket.passed}/${bucket.verified}`, 8)}${pad(interval(bucket.passed, bucket.verified), 14)}${flags.join(" ")}`,
       );
     }
   }
-  for (let index = 1; index < graded.length; index += 1) {
+  for (const [index, current] of graded.entries()) {
     const previous = graded[index - 1];
-    const current = graded[index];
-    // Unreachable: both indices lie inside the array.
-    if (previous === undefined || current === undefined) continue;
+    if (previous === undefined) continue;
     for (const [family, bucket] of current.families) {
       const before = previous.families.get(family);
-      if (!before || before.verified === 0 || bucket.verified === 0) continue;
-      if (before.passed === 0 && bucket.passed === 0) {
+      if (before === undefined) continue;
+      const unmoved = oneWay(before);
+      if (unmoved !== null && unmoved === oneWay(bucket)) {
         leads.push(
-          `FAMILY UNMOVED all-fail: ${family} ${before.passed}/${before.verified} → ${bucket.passed}/${bucket.verified} (${previous.runId} → ${current.runId})`,
-        );
-      }
-      if (before.passed === before.verified && bucket.passed === bucket.verified) {
-        leads.push(
-          `FAMILY UNMOVED all-pass: ${family} ${before.passed}/${before.verified} → ${bucket.passed}/${bucket.verified} (${previous.runId} → ${current.runId})`,
+          `FAMILY UNMOVED ${unmoved}: ${family} ${before.passed}/${before.verified} → ${bucket.passed}/${bucket.verified} (${previous.runId} → ${current.runId})`,
         );
       }
     }
@@ -608,7 +458,7 @@ export function familyCoverageLines({ tallies }: TallyInput): string[] {
   if (tallies.every((tally) => tally.families.size === 1)) {
     lines.push("single family per battery: no family axis to cover, unobservable by construction");
   }
-  for (const lead of leads) lines.push(lead.startsWith("FAMILY") ? lead : `AGGREGATE HIDES FAMILY: ${lead}`);
+  lines.push(...leads);
   if (unobserved > 0) {
     lines.push(`UNOBSERVED FAMILIES: ${unobserved} battery/family rows have no capability evidence`);
   }
@@ -780,7 +630,7 @@ function censoringLines({ tallies, batteryOf, decisions }: CensoringInput): stri
     const hit = decision.evidenceRunIds.filter((runId) => censored.includes(runId));
     if (hit.length > 0) {
       lines.push(
-        `DECISION ON CENSORED BATTERY (lane 24): ${decision.runId} ${decision.zone ?? "unplaced"} read ${hit.join(", ")}`,
+        `DECISION ON CENSORED BATTERY (lane 24): ${decision.runId} ${decision.placement?.zone ?? "unplaced"} read ${hit.join(", ")}`,
       );
     }
   }
@@ -890,9 +740,7 @@ export function admissionLedgerLines({ campaign }: CampaignInput): string[] {
   const lines = ["", "## 4d admission and epoch-review ledger (counts and owners only)"];
   const dir = join(campaign, "analysis");
   const names = existsSync(dir) ? readdirSync(dir).sort() : [];
-  const admissions = names.filter(
-    (name) => name.endsWith("-admission.json") && name !== "latest-admission.json",
-  );
+  const admissions = names.filter((name) => name.endsWith("-admission.json"));
   const reviews = names.filter((name) => name.endsWith("-epoch-review.json"));
   if (admissions.length === 0 && reviews.length === 0) {
     lines.push("no admission or epoch-review records");
@@ -925,12 +773,15 @@ export function builderMemoryLines({ epochDirs }: MemoryInput): string[] {
 
 // --- 5b: served-model attestation -------------------------------------------------------------
 /** `runtime-model-identity/v2` is the only identity `pi-session.ts` writes, and the claim's own
- *  census (`inspectIdentity`) reads any other shape as incomplete, so this reader does the same. */
+ *  census (`inspectIdentity`) reads any other shape as incomplete, so this reader does the same.
+ *  The provider's `resultId` is the receipt. The Codex route reports no served model and still
+ *  carries one, so its model is unreported, which contradicts no pin: the truss rows read as "no
+ *  provider receipt" each carried a resultId (2026-10-01). */
 function identityAttestation(identity: RuntimeModelIdentity | null | undefined): Attestation {
   if (identity?.schema !== "runtime-model-identity/v2") return { attested: false, model: null };
   const model = identity.provider?.model ?? null;
   const resultId = identity.provider?.resultId ?? null;
-  return { attested: isString(model) && isString(resultId), model };
+  return { attested: isString(resultId), model };
 }
 
 export function servedModelLines({ campaign, tallies, batteryOf }: ServedModelInput): string[] {
@@ -943,9 +794,9 @@ export function servedModelLines({ campaign, tallies, batteryOf }: ServedModelIn
     const { run } = recordedRunOrRefusal(campaign, controllerRunOfBattery(tally.runId));
     const pinned = asRecord(asRecord(run?.opening.modelSlots)?.built)?.model;
     const configured = isString(pinned) ? pinned : null;
+    // The binding's reader refuses a record without a case list, so a battery here carries one.
     const battery = batteryOf(tally.runId);
-    const cases = battery !== null && Array.isArray(battery.cases) ? battery.cases : null;
-    if (cases === null) {
+    if (battery === null) {
       lines.push(`${tally.runId}: battery record unavailable — attestation unobservable`);
       continue;
     }
@@ -953,7 +804,7 @@ export function servedModelLines({ campaign, tallies, batteryOf }: ServedModelIn
     let unattested = 0;
     let noTurn = 0;
     const served = new Map<string | null, number>();
-    for (const row of cases) {
+    for (const row of battery.cases) {
       const solver: Partial<CaseRecord["solver"]> = row?.solver ?? {};
       const identities = Array.isArray(solver.runtimeIdentities) ? solver.runtimeIdentities : [];
       if ((solver.completedTurns ?? 0) === 0 && identities.length === 0) {
@@ -968,11 +819,14 @@ export function servedModelLines({ campaign, tallies, batteryOf }: ServedModelIn
       attested += 1;
       for (const reading of readings) served.set(reading.model, (served.get(reading.model) ?? 0) + 1);
     }
-    const servedText = [...served.entries()].map(([model, count]) => `${model} ×${count}`).join(", ") || "-";
+    const servedText =
+      [...served.entries()].map(([model, count]) => `${model ?? "unreported"} ×${count}`).join(", ") || "-";
     lines.push(
       `${tally.runId}: attested ${attested} · unattested ${unattested} · no completed turn ${noTurn} · configured ${configured ?? "?"} · served {${servedText}}`,
     );
-    const foreign = [...served.keys()].filter((model) => configured !== null && model !== configured);
+    const foreign = [...served.keys()].filter(
+      (model) => model !== null && configured !== null && model !== configured,
+    );
     if (foreign.length > 0) {
       lines.push(
         `  SERVED MODEL MISMATCH: provider attested ${foreign.join(", ")} against configured ${configured}`,

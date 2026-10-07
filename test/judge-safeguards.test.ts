@@ -15,7 +15,7 @@ import {
   safeguardJudgeReview,
 } from "../src/analyse/judge-safeguards.ts";
 import type { JudgeReviewsResult } from "../src/analyse/judge-reviews.ts";
-import { SAFEGUARDS_LOG_FILE, createSafeguardContext } from "../src/meta/safeguard.ts";
+import { SAFEGUARDS_LOG_FILE } from "../src/meta/safeguard.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 
 type Exit = JudgeReviewsResult["exit"];
@@ -67,7 +67,7 @@ describe("48: the former blocking floor", () => {
 
   it("writes one line naming the counts", () => {
     const dir = scratchDir("judge-safeguards-");
-    safeguardJudgeReview(review({ exit: exit(5, 1, 25) }), 8, createSafeguardContext(dir));
+    safeguardJudgeReview(review({ exit: exit(5, 1, 25) }), 8, { logDir: dir });
     const log = readLog(dir);
     expect(log).toContain("48-judge-disagreement-at-former-block-threshold");
     // The denominator is the verified battery, not the verifier fails, and the line says so.
@@ -94,7 +94,7 @@ describe("49: a Judge that passes everything", () => {
 
   it("writes its line beside 48 when both hold", () => {
     const dir = scratchDir("judge-safeguards-");
-    safeguardJudgeReview(review({ exit: exit(4, 0, 20) }), 4, createSafeguardContext(dir));
+    safeguardJudgeReview(review({ exit: exit(4, 0, 20) }), 4, { logDir: dir });
     const log = readLog(dir);
     expect(log).toContain("48-judge-disagreement-at-former-block-threshold");
     expect(log).toContain("49-judge-passed-every-reviewed-case");
@@ -103,7 +103,7 @@ describe("49: a Judge that passes everything", () => {
 
   it("stays quiet on agreement", () => {
     const dir = scratchDir("judge-safeguards-");
-    safeguardJudgeReview(review({ exit: exit(0, 0, 25) }), 6, createSafeguardContext(dir));
+    safeguardJudgeReview(review({ exit: exit(0, 0, 25) }), 6, { logDir: dir });
     expect(readLog(dir)).toBe("");
   });
 });
@@ -113,12 +113,7 @@ describe("50: evaluation-only repair right after Judge advice", () => {
    *  (test/experiment-freeze.e2e.test.ts pins that from bytes), so the line must say so. */
   it("fires on a rebuild whose packet carried Judge disagreement and whose accepted bytes were evaluation-only", () => {
     const dir = scratchDir("judge-safeguards-");
-    safeguardJudgeAdviceThenEvaluatorRepair(
-      "rebuild",
-      packet("advisory"),
-      "evaluation",
-      createSafeguardContext(dir),
-    );
+    safeguardJudgeAdviceThenEvaluatorRepair("rebuild", packet("advisory"), "evaluation", { logDir: dir });
     const log = readLog(dir);
     expect(log).toContain("50-judge-advice-then-evaluator-only-repair");
     expect(log).toContain("families: planar");
@@ -128,7 +123,7 @@ describe("50: evaluation-only repair right after Judge advice", () => {
 
   it("stays quiet without the Judge, on a full build, on a climb, or on a failed build", () => {
     const dir = scratchDir("judge-safeguards-");
-    const context = createSafeguardContext(dir);
+    const context = { logDir: dir };
     safeguardJudgeAdviceThenEvaluatorRepair("rebuild", packet("none"), "evaluation", context);
     safeguardJudgeAdviceThenEvaluatorRepair("rebuild", packet(null), "evaluation", context);
     safeguardJudgeAdviceThenEvaluatorRepair("rebuild", null, "evaluation", context);

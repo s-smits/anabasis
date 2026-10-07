@@ -14,8 +14,8 @@
  *
  * A run that exits and completes cleanup is `executed`, whatever the exit code, because a compiler
  * that rejects the artifact has answered and the evaluator reads that answer. Missing tool, wall
- * refusal, changed tool bytes, timeout, spawn failure, a program the tool's shell could not execute
- * and stdout past the host's cap are typed non-results: no answer exists, and the row says which kind. The evaluator's own returned result cannot turn a non-result into an
+ * refusal, changed tool bytes, timeout, spawn failure, a program the tool's shell or interpreter never
+ * started and stdout past the host's cap are typed non-results: no answer exists, and the row says which kind. The evaluator's own returned result cannot turn a non-result into an
  * answer, because the runner reads these rows directly (`src/correctness-bundle/tool-runs.ts`).
  */
 import {
@@ -66,12 +66,11 @@ import {
 import { type CellToolCache, engineCellEnv, withToolCache } from "./engine-cell-env.ts";
 import {
   createVerifierLifetime,
-  settleUnspawned,
-  superviseVerifierProcess,
   VerifierOperationalStop,
   type VerifierLifetime,
   type VerifierProcessSettlement,
 } from "./verifier-lifetime.ts";
+import { settleUnspawned, superviseVerifierProcess } from "./verifier-lifetime-process.ts";
 import { errorCode, errorMessage } from "../meta/runtime-values.ts";
 import { boundText } from "../meta/bounded-text.ts";
 
@@ -89,12 +88,15 @@ export const TOOL_TIMEOUT_CEILING_MS = DEFAULT_TOOL_TIMEOUT_MS;
  *  contract states this figure to the Builder, so a change here changes that text too. */
 export const STDOUT_MAX_BYTES = 1024 * 1024;
 /** The shell's own exit codes for a program it could not execute (126) or could not find (127). */
-const SHELL_COULD_NOT_RUN = new Set<number | null>([126, 127]);
+export const SHELL_COULD_NOT_RUN = new Set<number | null>([126, 127]);
 /** The shell's own launch-failure line, as bash (`w: line 2: p: cannot execute: …`), dash
  *  (`w: 2: p: not found`), zsh (`w:2: permission denied: p`) and `env` (`env: p: No such file or
  *  directory`) print it. A program may exit 126 or 127 itself; only this line says a shell did. */
 const SHELL_LAUNCH_FAILURE =
   /^(?:.*?: (?:line )?\d+: |.*?:\d+: |env: ).*(?:cannot execute|command not found|not found|[Pp]ermission denied|Operation not permitted|No such file or directory|bad interpreter)/;
+/** CPython's own line for an interpreter that died initialising itself, before the program's first
+ *  line ran (`init_fs_encoding: ...` for a home whose stdlib it cannot read); it then exits 1. */
+const PYTHON_START_FAILURE = /^Fatal Python error: init/m;
 const STDERR_MAX_BYTES = 256 * 1024;
 /** UTF-8 bytes of stderr's end kept in the evidence row as `stderrTail`. */
 const STDERR_TAIL_BYTES = 2000;
@@ -213,13 +215,14 @@ type ToolRunWall = {
   readonly plan: VerifierOsIsolationPlan | null;
 };
 
-/** Whether an installed tool's run is a shell that could not execute or find the program it names:
- *  126 or 127, nothing on stdout, and the shell's own launch-failure line last on stderr. */
-function shellCouldNotLaunch(run: EvidenceRun): boolean {
-  if (!SHELL_COULD_NOT_RUN.has(run.exitCode) || run.stdoutBytes > 0 || run.toolSource === "cell") {
-    return false;
-  }
-  return SHELL_LAUNCH_FAILURE.test(run.stderrTail.trimEnd().split("\n").at(-1) ?? "");
+/** Whether an installed tool's run never started the program it names: nothing on stdout, and
+ *  either a shell's 126 or 127 with its launch-failure line last on stderr or a failing exit with
+ *  CPython's start-up failure on stderr, which a program that ran and raised never prints. */
+function programNeverRan(run: EvidenceRun): boolean {
+  if (run.exitCode === 0 || run.stdoutBytes > 0 || run.toolSource === "cell") return false;
+  const tail = run.stderrTail.trimEnd();
+  if (PYTHON_START_FAILURE.test(tail)) return true;
+  return SHELL_COULD_NOT_RUN.has(run.exitCode) && SHELL_LAUNCH_FAILURE.test(tail.split("\n").at(-1) ?? "");
 }
 
 /** What moved in an inventory tool since its snapshot, or null when nothing did. A script's
@@ -439,14 +442,11 @@ function settledToolResult(
       `tool "${toolId}" ended by signal ${String(signal ?? wrappedSignal)} before exiting`,
     );
   }
-  // 126 and 127 are the shell's own codes for a program it could not execute or could not find, but
-  // a checker may exit with either after reading its input. Only with nothing on stdout and the
-  // shell's own launch-failure line last on stderr did the program the tool names never run.
-  if (shellCouldNotLaunch(run)) {
+  if (programNeverRan(run)) {
     return nonResult(
       run,
       "protocol",
-      `tool "${toolId}" exited ${String(run.exitCode)} without writing stdout, the shell's code for a program it could not execute (126) or find (127); inside the cell that is usually an interpreter the wall will not run, such as a virtualenv python linked out of .toolchain`,
+      `tool "${toolId}" exited ${String(run.exitCode)} without writing stdout, the shell's code for a program it could not execute (126) or find (127), or Python's failed start-up; inside the cell that is usually an interpreter the wall will not run, such as a virtualenv python linked out of .toolchain`,
     );
   }
   // A check handed the first megabyte of a longer document reads a different answer rather than a

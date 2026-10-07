@@ -19,14 +19,17 @@ source disagree the source wins and this file is the thing to correct.
 | battery solve concurrency | `SETTINGS.battery` (`src/correctness-bundle/harness-config.ts`), read by `src/correctness-bundle/verification-runner.ts` | 3 solves at once |
 | Builder bash | `ISOLATED_TIMEOUT_MS` (`src/builder/candidate-isolation-runtime.ts`), `BASH_TIMEOUT_MAX_MS` (`src/builder/bash-install-env.ts`) | 10 min default, 2 h at most, for builds |
 | trial bounds | the provider budget (`src/run/builder-campaign.ts`, `createHarnessTrialTool` in `src/builder/harness-trial.ts`) | no count of its own; each rehearsal is one measured case, graded under the battery's own `check_seconds` and `tool_run_seconds` |
-| control calibration | manifest row `evaluatorCalibration` (`thresholds.frozen.yaml`), read by `EVALUATOR_CALIBRATION_POLICY` (`src/claim/calibration.ts`) | at least 5 accepts and 5 rejects, told as an authoring requirement and measured by no gate |
+| control calibration | manifest row `evaluatorCalibration` (`thresholds.frozen.yaml`), read by `EVALUATOR_CALIBRATION_POLICY` (`src/run/accept-control-independence.ts`) | at least 5 accepts and 5 rejects, told as an authoring requirement and measured by no gate |
 | session and round strikes | `POLICY.loop` (`src/critic/policy.ts`) | `noopSubmitStrikes` 3 |
 | review clock and hold | `REVIEW_INTERVAL_MS` (`src/gate/review-clock.ts`), `READER_DEADLINE_MS` (`src/review/review-reader.ts`) | a review after 40 min without one; a held submit waits at most 1 h |
 | Epoch Reviewer probes | `PROBE_BUDGET`, `VALUE_MAX_CHARS` (`src/review/review-probe.ts`) | 8 probes per review, replacement values up to 4,000 characters |
+| Epoch Reviewer findings | `MAX_FINDINGS` (`src/review/epoch-review-findings.ts`) | 6 per review |
+| Judge rationale | `RATIONALE_MAX` (`src/review/judge-drivers.ts`) | 400 characters |
 
 The model-visible difficulty surfaces are `renderBatteryContract` and `renderReadout`
-(`src/run/climb-readout.ts`), and the size sentences `taskCountSentence` and `renderProbeSizing`
-(`src/run/battery-sizing.ts`). What each may state, and why the placement stays with the controller
+(`src/run/climb-readout.ts`), the size sentences `taskCountSentence` and `renderProbeSizing`
+(`src/run/battery-sizing.ts`), and, for the reviewer only, `readingSentence` with its `ZONE_WORDS`
+(`src/run/climb-readout.ts`). What each may state, and why the placement stays with the controller
 and the reviewer, is AGENTS.md "Goals and the climb", under "Who hears the placement, and what it
 drives". So flag any zone, aim, share or count to author towards on these surfaces, and any band or
 battery-size number a surface spells rather than derives from its owner.

@@ -19,7 +19,7 @@ import {
 } from "../src/meta/filesystem.ts";
 import { homedir, tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { SAFEGUARDS_LOG_FILE, createSafeguardContext } from "../src/meta/safeguard.ts";
+import { SAFEGUARDS_LOG_FILE } from "../src/meta/safeguard.ts";
 import { afterAll, describe, expect, it } from "bun:test";
 import { BUILT_BASH_TOOL, type BuiltFilePort, createBuiltBashTool } from "../src/solve/built-bash.ts";
 import { DEFAULT_HARNESS_SETTINGS } from "../src/correctness-bundle/harness-config.ts";
@@ -154,6 +154,7 @@ describe("the shell the solver is given", () => {
     // Every runtime the toolchain case below runs by name is named, and none is called complete.
     expect(tool.description).toContain("sh, bun, node, python3");
     expect(tool.description).toContain("check one before building on it");
+    expect(tool.description).toContain("killed when the command returns");
   });
 });
 
@@ -191,16 +192,6 @@ describe("a command over the draft files", () => {
     const { state, wired } = port({ "keep.txt": "keep\n", "drop.txt": "drop\n" });
     await run(wired, "rm drop.txt");
     expect(Object.keys(state.files)).toStrictEqual(["keep.txt"]);
-  });
-
-  // A failing command can still produce useful output. Keep the files it wrote before failing so
-  // the agent can inspect or continue that work.
-  it.concurrent("keeps the files a failing command wrote and still reports the failure", async () => {
-    const { state, wired } = port({});
-    const result = await run(wired, "echo partial > out.txt; exit 3");
-    expect(result.threw).toBe(true);
-    expect(result.text).toContain("exited with code 3");
-    expect(state.files["out.txt"]).toBe("partial\n");
   });
 
   it.concurrent("restores draft files in each command's fresh working directory", async () => {
@@ -604,31 +595,6 @@ describe("what a command cannot reach", () => {
     expect(existsSync(target)).toBe(false);
   });
 
-  // Serial on purpose: the case writes a fake credential into the process environment to prove the
-  // cell inherits nothing, and asserts the child's COMPLETE set of variable names. Both the write
-  // and that exact-set assertion are process-global facts a concurrent sibling can move.
-  it("receives no provider credential, because it inherits no environment at all", async () => {
-    Bun.env.ANA_BASH_TEST_TOKEN = "sk-must-not-leak";
-    try {
-      const result = await run(port({}).wired, "env");
-      for (const secret of ["sk-must-not-leak", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_AUTH_TOKEN"]) {
-        expect(result.text).not.toContain(secret);
-      }
-      // The whole environment is the set the isolation authors: four fixed names, plus the ones
-      // that point a toolchain at its own installation. Nothing is inherited.
-      const names = result.text
-        .split("\n")
-        .flatMap((line) => (line.includes("=") ? line.split("=").slice(0, 1) : []))
-        .filter((name) => name !== "_" && name !== "PWD" && name !== "SHLVL")
-        .sort();
-      expect(names).toStrictEqual(
-        ["HOME", "LANG", "PATH", "TMPDIR", ...Object.keys(hostToolchainEnv())].sort(),
-      );
-    } finally {
-      Bun.env.ANA_BASH_TEST_TOKEN = undefined;
-    }
-  });
-
   // Outbound network is open (operator decision 2026-08-15, reaffirmed 2026-09-06). The wall never
   // refuses the connection; a host without a route still fails, but not with the sandbox's own
   // refusal, and a reachable host returns the page.
@@ -637,68 +603,6 @@ describe("what a command cannot reach", () => {
     expect(result.text).not.toMatch(/Operation not permitted/);
     if (!result.threw) expect(result.text).toContain("Example Domain");
   }, 180_000);
-
-  it.concurrent("stops a command that would otherwise run forever", async () => {
-    // A passed timeout raises the harness's wall and no longer lowers it, so the wall is proved by
-    // bounding the harness rather than by asking two seconds of a three-hundred-second default.
-    const tool = createBuiltBashTool({
-      policy: session,
-      port: port({}).wired,
-      home: sessionHome,
-      timeouts: { ...DEFAULT_HARNESS_SETTINGS, shellDefaultSeconds: 2, shellMaxSeconds: 2 },
-    });
-    const result = await execute(tool, "sleep 60");
-    expect(result.threw).toBe(true);
-    expect(result.text).toContain("timed out");
-  }, 180_000);
-});
-
-describe("what a command leaves running", () => {
-  const alive = (pid: number): boolean => {
-    try {
-      runtimeProcess.kill(pid, 0);
-      return true;
-    } catch {
-      return false;
-    }
-  };
-  const startedPid = (text: string): number => Number(String(text.split("started ")[1]).split("\n")[0]);
-
-  const escapes: Array<[string, string, string]> = [
-    // truss-opus-20260915T160303030Z-298967: `nohup python3 r3.py > log 2>&1 & sleep 100` returned
-    // normally and the search ran on under launchd at 99 % CPU after its shell died; pi kills the
-    // process group only on timeout.
-    ["a plain background job", "sleep 300 >/dev/null 2>&1 & echo started $!; exit 0", ""],
-    // A command's `exec` once replaced the shell that owned the cleanup trap, so the trap never ran
-    // and the sleep outlived the command. The exit code of the replacing process still reports.
-    [
-      "a shell that replaced itself",
-      "sleep 300 >/dev/null 2>&1 & echo started $!; exec /bin/sh -c 'exit 4'",
-      "exited with code 4",
-    ],
-    // The group kill alone misses `setsid`: python's start_new_session puts the sleep in its own
-    // group and session, and only the walk from the shell through the live parent reaches it.
-    [
-      "a child that left the process group",
-      'python3 -c \'import subprocess,time; p=subprocess.Popen(["sleep","300"],start_new_session=True); print("started",p.pid,flush=True); time.sleep(300)\' & sleep 1; exit 0',
-      "",
-    ],
-  ];
-  for (const [name, command, failure] of escapes) {
-    it.concurrent(`ends what ${name} left behind`, async () => {
-      const result = await run(port({}).wired, command);
-      const pid = startedPid(result.text);
-      try {
-        expect(pid).toBeGreaterThan(1);
-        expect(result.threw).toBe(failure !== "");
-        if (failure !== "") expect(result.text).toContain(failure);
-        for (let waited = 0; waited < 40 && alive(pid); waited += 1) await Bun.sleep(50);
-        expect(alive(pid)).toBe(false);
-      } finally {
-        if (pid > 1 && alive(pid)) runtimeProcess.kill(pid, "SIGKILL");
-      }
-    });
-  }
 });
 
 describe("what the draft carries back", () => {
@@ -899,7 +803,7 @@ describe("the destructive-command guard", () => {
       port: mine.wired,
       home: sessionHome,
       guardEnv: { PATH: broken, HOME: home },
-      safeguardContext: createSafeguardContext(asking),
+      safeguardContext: { logDir: asking },
     });
     await unguarded.execute("call-1", double({ command: "rm -rf keep.txt" }), undefined, undefined);
     expect(mine.state.files["keep.txt"]).toBeUndefined();
@@ -914,7 +818,7 @@ describe("the destructive-command guard", () => {
       port: theirs.wired,
       home: sessionHome,
       guardEnv: { PATH: answering, HOME: home },
-      safeguardContext: createSafeguardContext(other),
+      safeguardContext: { logDir: other },
     });
     await guarded.execute("call-1", double({ command: "rm -rf keep.txt" }), undefined, undefined);
     expect(theirs.state.files["keep.txt"]).toBeUndefined();
@@ -975,7 +879,13 @@ describe("the public inputs a command finds on disk", () => {
   });
 });
 
-describe("a command its own wall cut", () => {
+/**
+ * The command itself is Pi's: its bash tool, handed this shell's process launch as its operations
+ * and the wall as its spawn hook. What these cases pin is what reaches the solver through that
+ * binding — how a failure, a cut, a cancellation and a long output read, which environment the
+ * command gets, and what it may leave running.
+ */
+describe("the command Pi runs behind the wall", () => {
   /** The shell under a deliberately tiny budget, so a real wall fires in test time. */
   const bounded = (shellDefaultSeconds: number, shellMaxSeconds: number) =>
     createBuiltBashTool({
@@ -984,73 +894,146 @@ describe("a command its own wall cut", () => {
       home: sessionHome,
       timeouts: { ...DEFAULT_HARNESS_SETTINGS, shellDefaultSeconds, shellMaxSeconds },
     });
-  const failing = async (tool: BuiltBashTool, command: string, timeout?: number) =>
-    (await execute(tool, command, timeout)).text;
 
-  // Three states, and a command must land in exactly one. c1d2a7 passed timeout: 120 on 42 of the
-  // 74 calls its traces record and was cut 21 times in 18 solves, under a bundle granting 300 s by
-  // default and 900 s on request: "Command timed out after 120 seconds" names the number it chose
-  // and never the number it had.
-  it("offers the seconds still available when the ask was below the maximum", async () => {
-    const text = await failing(bounded(1, 4), "sleep 30", 1);
+  it.concurrent("tells the solver what Pi's bash returns, under this shell's own timeout schema", () => {
+    const tool = createBuiltBashTool({ policy: session, port: null, home: sessionHome });
+    expect(tool.description).toStartWith("Execute a bash command in the current working directory.");
+    expect(tool.description).toContain("Returns stdout and stderr.");
+    expect(tool.parameters).toHaveProperty("properties.command.description", "Bash command to execute");
+    expect(tool.parameters).toHaveProperty(
+      "properties.timeout.description",
+      `Timeout in seconds: ${DEFAULT_HARNESS_SETTINGS.shellDefaultSeconds} when omitted, at most ${DEFAULT_HARNESS_SETTINGS.shellMaxSeconds}; a value outside that range runs at the nearest end of it`,
+    );
+  });
+
+  // The shell is the host's own `/bin/sh`, so a macOS host's sed is BSD, and its errors in recorded
+  // cases were often hidden by a later command's exit status.
+  it("tells the solver on a darwin host that the system utilities are BSD, and a linux host nothing", () => {
+    const describedOn = (platform: "darwin" | "linux") => {
+      const descriptor = Object.getOwnPropertyDescriptor(runtimeProcess, "platform");
+      Object.defineProperty(runtimeProcess, "platform", { ...descriptor, value: platform });
+      try {
+        return createBuiltBashTool({ policy: session, port: null, home: sessionHome }).description;
+      } finally {
+        if (descriptor) Object.defineProperty(runtimeProcess, "platform", descriptor);
+      }
+    };
+    expect(describedOn("darwin")).toContain("the system utilities, sed among them, are BSD, not GNU");
+    expect(describedOn("linux")).not.toContain("BSD");
+  });
+
+  // A failing command can still produce useful output. Keep the files it wrote before failing so
+  // the agent can inspect or continue that work, and still fail the call, so the solver cannot
+  // read a non-zero exit as success.
+  it.concurrent("fails the call on a non-zero exit, after carrying back what the command wrote", async () => {
+    const { state, wired } = port({});
+    const result = await run(wired, "echo partial > out.txt; echo said; exit 3");
+    expect(result.threw).toBe(true);
+    expect(result.text).toMatch(/said\n+Command exited with code 3/);
+    expect(result.text).toContain("Draft files now: 1.");
+    expect(state.files["out.txt"]).toBe("partial\n");
+  });
+
+  // Serial on purpose: the case writes a fake credential into the process environment to prove the
+  // command inherits nothing, and asserts the child's COMPLETE set of variable names. Both the write
+  // and that exact-set assertion are process-global facts a concurrent sibling can move.
+  it("receives exactly the isolation's environment: no credential and no Pi session variable", async () => {
+    Bun.env.ANA_BASH_TEST_TOKEN = "sk-must-not-leak";
+    try {
+      const result = await run(port({}).wired, "env");
+      for (const secret of ["sk-must-not-leak", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_AUTH_TOKEN"]) {
+        expect(result.text).not.toContain(secret);
+      }
+      // Four fixed names, plus the ones that point a toolchain at its own installation.
+      const names = result.text
+        .split("\n")
+        .flatMap((line) => (line.includes("=") ? line.split("=").slice(0, 1) : []))
+        .filter((name) => name !== "_" && name !== "PWD" && name !== "SHLVL")
+        .sort();
+      expect(names).toStrictEqual(
+        ["HOME", "LANG", "PATH", "TMPDIR", ...Object.keys(hostToolchainEnv())].sort(),
+      );
+    } finally {
+      Bun.env.ANA_BASH_TEST_TOKEN = undefined;
+    }
+  });
+
+  it.concurrent("ends a command that would otherwise run forever at the harness's wall", async () => {
+    const result = await execute(bounded(2, 2), "sleep 60");
+    expect(result.threw).toBe(true);
+    expect(result.text).toContain("Command timed out after 2 seconds");
+  }, 180_000);
+
+  // Three states, and a command its own wall cut lands in exactly one. c1d2a7 passed timeout: 120 on
+  // 42 of the 74 calls its traces record and was cut 21 times in 18 solves, under a bundle granting
+  // 300 s by default and 900 s on request: "Command timed out after 120 seconds" names the number it
+  // chose and never the number it had.
+  it.concurrent("offers the seconds still available when the ask was below the maximum", async () => {
+    const { text } = await execute(bounded(1, 4), "sleep 30", 1);
     expect(text).toContain(
       "This harness allows 4 s for one command, and 1 s when you pass none, so there is more time to ask for.",
     );
-    // The file holding those numbers is the Builder's lever, not the solver's; naming it would
-    // point the solver at something it cannot reach mid-battery.
+    // The file holding those numbers is the Builder's lever, not the solver's.
     expect(text).not.toContain("config.yaml");
   });
 
-  it("says an ask above the maximum was cut, instead of silently running a shorter one", async () => {
+  it.concurrent("says an ask above the maximum was cut, instead of silently running a shorter one", async () => {
     // The clamp was a bare Math.min: c1d2a7 asked once for 1500 s, got 900 and was told neither.
-    const text = await failing(bounded(1, 2), "sleep 30", 1500);
+    const { text } = await execute(bounded(1, 2), "sleep 30", 1500);
     expect(text).toContain(
       "Your 1500 s is above the 2 s this harness allows one command, so it ran as 2 s — the most there is, and the move left is cheaper work rather than longer.",
     );
     expect(text).not.toContain("more time to ask for");
   });
 
-  it("names the maximum once when the ask already was the maximum", async () => {
-    // Not a clamp: an exact ask is not an error to report back, and the seconds must be stated once
-    // rather than in both an "above the maximum" sentence and a "the whole maximum" one.
-    const text = await failing(bounded(1, 2), "sleep 30", 2);
+  it.concurrent("names the maximum once when the ask already was the maximum", async () => {
+    const { text } = await execute(bounded(1, 2), "sleep 30", 2);
     expect(text).toContain(
       "That is the whole 2 s this harness allows one command, so the move left is cheaper work rather than longer.",
     );
     expect(text).not.toContain("is above the");
-    // Counted inside the clause alone: the runner's own "after 2 seconds" contains "2 s" as well.
+    // Counted inside the clause alone: Pi's own "after 2 seconds" contains "2 s" as well.
     const clause = text.slice(text.indexOf("That is the whole"));
     expect(clause.match(/\b2 s\b/g)).toHaveLength(1);
   });
 
   // Run de8b40 asked for 120 s beside an inner `timeout 880`, on a harness granting 900, and lost 13
-  // commands to its own number across a six-case battery; both failing families were diagnosed as
-  // search budget spent on sweeps the solver had cut short itself. The clause above had already said
-  // so in the result of each one. A passed timeout is the lever for raising the wall, so below the
+  // commands to its own number. A passed timeout is the lever for raising the wall, so below the
   // default it only takes back work the harness had already granted.
-  it("runs a command at the default when the ask was below it", async () => {
-    const text = await failing(bounded(4, 8), "sleep 2 && echo survived", 1);
+  it.concurrent("runs a command at the default when the ask was below it", async () => {
+    const { text } = await execute(bounded(4, 8), "sleep 2 && echo survived", 1);
     expect(text).toContain("survived");
     expect(text).not.toContain("timed out");
   });
 
-  it("stays silent when the command failed on its own rather than on the wall", async () => {
-    // The runner separates its own "timeout" code from a non-zero exit, which carries no cause at
-    // all, and from "aborted", which is the session wall and not this one. Reading that code is why
-    // this holds without an argument about when the runner kills what.
-    const text = await failing(bounded(1, 4), "exit 3");
-    expect(text).toContain("exited with code 3");
+  it.concurrent("says nothing about the budget when the command failed on its own", async () => {
+    const { text } = await execute(bounded(1, 4), "exit 3");
+    expect(text).toContain("Command exited with code 3");
     expect(text).not.toContain("This harness allows");
     expect(text).not.toContain("the move left is cheaper work");
   });
-});
 
-describe("a command whose output the shell cut", () => {
+  // A cancellation is the session's wall, not this one: asking for more seconds would not help.
+  it.concurrent("reports a cancelled command as aborted, with no budget clause", async () => {
+    const controller = new AbortController();
+    const pending = bounded(1, 4)
+      .execute("call-1", double({ command: "echo begun; sleep 30" }), controller.signal, undefined)
+      .then(
+        () => "returned",
+        (error: unknown) => errorMessage(error),
+      );
+    await Bun.sleep(500);
+    controller.abort();
+    const text = await pending;
+    expect(text).toContain("Command aborted");
+    expect(text).not.toContain("This harness allows");
+  });
+
   // Pi stores a cut command's whole output and names the file, which is the right shape; what
   // matters is where. Left to itself it writes under the host's temporary directory, which the open
   // read default lets every later solve on this host read and nothing ever removes. The session home
   // is the one place the solver's next command can read and no other session's can.
-  it("keeps the whole output in the session home, where the next command reads it and another session cannot", async () => {
+  it.concurrent("keeps a cut output's whole text in the session home, readable by the next command and no other session", async () => {
     mkdirSync(BUILT_COMMAND_SCRATCH_ROOT, { recursive: true, mode: 0o700 });
     const own = mkdtempSync(join(BUILT_COMMAND_SCRATCH_ROOT, "home-"));
     const other = mkdtempSync(join(BUILT_COMMAND_SCRATCH_ROOT, "home-"));
@@ -1074,4 +1057,49 @@ describe("a command whose output the shell cut", () => {
       rmSync(other, { recursive: true, force: true });
     }
   });
+
+  const alive = (pid: number): boolean => {
+    try {
+      runtimeProcess.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const startedPid = (text: string): number => Number(String(text.split("started ")[1]).split("\n")[0]);
+  const escapes: Array<[string, string, string]> = [
+    // truss-opus-20260915T160303030Z-298967: `nohup python3 r3.py > log 2>&1 & sleep 100` returned
+    // normally and the search ran on under launchd at 99 % CPU after its shell died; Pi kills the
+    // process tree only on timeout or abort.
+    ["a plain background job", "sleep 300 >/dev/null 2>&1 & echo started $!; exit 0", ""],
+    // A command's `exec` once replaced the shell that owned the cleanup trap, so the trap never ran
+    // and the sleep outlived the command. The exit code of the replacing process still reports.
+    [
+      "a shell that replaced itself",
+      "sleep 300 >/dev/null 2>&1 & echo started $!; exec /bin/sh -c 'exit 4'",
+      "Command exited with code 4",
+    ],
+    // The group kill alone misses `setsid`: python's start_new_session puts the sleep in its own
+    // group and session, and only the walk from the shell through the live parent reaches it.
+    [
+      "a child that left the process group",
+      'python3 -c \'import subprocess,time; p=subprocess.Popen(["sleep","300"],start_new_session=True); print("started",p.pid,flush=True); time.sleep(300)\' & sleep 1; exit 0',
+      "",
+    ],
+  ];
+  for (const [name, command, failure] of escapes) {
+    it.concurrent(`ends what ${name} left behind`, async () => {
+      const result = await run(port({}).wired, command);
+      const pid = startedPid(result.text);
+      try {
+        expect(pid).toBeGreaterThan(1);
+        expect(result.threw).toBe(failure !== "");
+        if (failure !== "") expect(result.text).toContain(failure);
+        for (let waited = 0; waited < 40 && alive(pid); waited += 1) await Bun.sleep(50);
+        expect(alive(pid)).toBe(false);
+      } finally {
+        if (pid > 1 && alive(pid)) runtimeProcess.kill(pid, "SIGKILL");
+      }
+    });
+  }
 });

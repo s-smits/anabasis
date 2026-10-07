@@ -44,7 +44,7 @@ import { type Brief, externalChecksOf } from "../correctness-bundle/brief.ts";
 import { validateBrief } from "../correctness-bundle/brief-validator.ts";
 import type { ControlCorpus } from "../correctness-bundle/controls.ts";
 import { type EvaluatorFn, loadCorrectnessModel } from "../correctness-bundle/contracts.ts";
-import { evaluateCheckProgram } from "../correctness-bundle/predicate.ts";
+import { evaluateCheckProgram } from "../../vendor/correctness-model-bundle/evaluate.ts";
 import { applicableCheckIds, runControls } from "../correctness-bundle/run-controls.ts";
 import type { BuildTask } from "../correctness-bundle/tasks.ts";
 import type { ControlReceipt, ControlReceiptOutcome } from "../correctness-bundle/battery-record.ts";
@@ -380,7 +380,10 @@ async function runPair(
     { id: baselineId(probe), taskId, artifact },
     { id: mutatedId(probe), taskId, artifact: mutated },
   ];
-  const options = { brief: candidate.brief, lanes: 1, verifierLifetime: candidate.lifetime };
+  // The two sides run side by side. A probe on a compiling domain under load runs minutes per side,
+  // and 23 of 857 reviews since 2026-09-27 reached the reader's hour; the receipts settle in corpus
+  // order whatever the lane count.
+  const options = { brief: candidate.brief, lanes: 2, verifierLifetime: candidate.lifetime };
   const run = await runControls(
     candidate.evaluate,
     { accept, reject: [] },
@@ -407,7 +410,7 @@ function renderRow(row: ReviewProbeRow): string {
     side("changed", row.mutated),
     row.movedCheckIds.length === 0
       ? `  no declared check changed its verdict for this replacement. That alone does not show ${row.path} is unobserved: a check that reads it may simply accept the new value too. To record unobserved, say which public obligation the changed artifact breaks while the checks still accept it`
-      : `  ${row.movedCheckIds.length} declared check(s) moved: ${row.movedCheckIds.join(", ")}`,
+      : `  ${row.movedCheckIds.length} declared check${row.movedCheckIds.length === 1 ? "" : "s"} moved: ${row.movedCheckIds.join(", ")}`,
     ...(conclusive(row)
       ? []
       : [

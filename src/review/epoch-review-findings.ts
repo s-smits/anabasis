@@ -22,8 +22,7 @@ import {
   type FindingPlacement,
   PROBE_DIRECTIONS,
 } from "../analyse/iteration-analysis.ts";
-import type { AdviceIssue } from "../author/rebuild-advice.ts";
-import { readCompleted } from "../author/campaign-epoch.ts";
+import type { AdviceIssue } from "../author/issue-register.ts";
 import { BUNDLE_FILES, type BundleFile, ownerSide } from "../author/feedback-routing.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { mentionsTask } from "../meta/identifier-scan.ts";
@@ -40,15 +39,20 @@ import {
   probeShows,
   probeCitationRefusal,
 } from "./review-probe.ts";
-import { type ReviewVerifierEvidence, type SourceReadState, deliveredSource } from "./review-sources.ts";
+import {
+  type ReviewCoverage,
+  type ReviewVerifierEvidence,
+  type SourceReadState,
+  deliveredSource,
+} from "./review-sources.ts";
 import { contractDefect } from "../analyse/finding-owner.ts";
 import type { ContestedKind } from "../analyse/judge-contested.ts";
 import { BRIEF_FILE, TASKS_FILE } from "../meta/bundle-layout.ts";
-import { readJsonFile } from "../meta/completed-json.ts";
+import { readJsonFile, readCompleted } from "../meta/completed-json.ts";
 import { boundText } from "../meta/bounded-text.ts";
 import { type AdvisoryDefect, type AdvisoryDisposition, advisoryDefects } from "./review-carry.ts";
 
-export const EPOCH_REVIEW_SCHEMA = "epoch-review/v7";
+export const EPOCH_REVIEW_SCHEMA = "epoch-review/v8";
 /** Product identity; review procedure belongs to the review request. */
 export type MeasuredCondition = {
   /** Null when the recorded fields cannot establish a measured condition. */
@@ -89,17 +93,12 @@ export type EpochReviewEvidence = {
   /** The listed vetoes and disputed fails no finding settled. `status` says how far the reading
    *  got; this says what of the settlement work it left open, which a completed review can too. */
   unsettled: string[];
-  /** What the host returned against the inventory, in files and characters. This counts the host
+  /** What the host returned against the held files, in files and characters. This counts the host
    *  side alone, so a complete coverage row establishes that the source was offered, not that the
-   *  review saw it. */
-  coverage: {
-    files: number;
-    opened: number;
-    chars: number;
-    complete?: boolean;
-    truncated?: boolean;
-    missing?: string[];
-  };
+   *  review saw it. `background` is every other file of the tree, with its size in bytes and whether
+   *  the review read it through: the review is not held to it, and a finding that rests on one
+   *  cites it. A review that opened no session records the three counts alone. */
+  coverage: Partial<ReviewCoverage> & Pick<ReviewCoverage, "files" | "opened" | "chars">;
   /** Absent on a review that stopped before reading its source. Host-bound tool provenance is
    *  private, like everything else the verifier produced, so it never reaches authoring. */
   verifier?: ReviewVerifierEvidence;
@@ -695,8 +694,7 @@ export function recordFindingTool(
   return {
     name: "record_finding",
     label: "Record a finding",
-    description:
-      "Record one finding supported by evidence about the measured harness. Record defect true with the bundle file at fault when opened source shows it violates the request or a declared requirement — correctness-model/tasks.json when the task set is what is wrong. Record defect false for an observation the next pass would act differently for knowing: tasks that are harder than the harness, or evidence you could not decide. Name no owner when no file holds it. Set disputesIssue when this finding argues that a standing issue comes from the evaluation rather than the harness, which suspends that issue for the next authoring pass. The claim stays in controller evidence; the next Builder receives typed findings with public identities and the relevant published requirements. Fill checkId, artifactSchemaPath and publicInputPath whenever you know them so the next authoring pass can locate the affected contract. Write the claim about the family or contract and never name a task.",
+    description: `Record one finding supported by evidence about the measured harness; a review records at most ${MAX_FINDINGS}. Record defect true with the bundle file at fault when opened source shows it violates the request or a declared requirement — correctness-model/tasks.json when the task set is what is wrong. Record defect false for an observation the next pass would act differently for knowing: tasks that are harder than the harness, or evidence you could not decide. Name no owner when no file holds it. Set disputesIssue when this finding argues that a standing issue comes from the evaluation rather than the harness, which suspends that issue for the next authoring pass. Fill checkId, artifactSchemaPath and publicInputPath whenever you know them so the next authoring pass can locate the affected contract. Write the claim about the family or contract and never name a task.`,
     parameters: readerParameters(findingParameters([...byPrefix.keys()])),
     execute: (_id: string, args: Record<string, JsonValue>) => {
       const parsed = findingArgs(args);
@@ -713,7 +711,6 @@ export function recordFindingTool(
       const verdict = findingVerdict(subject);
       if ("why" in verdict) {
         if (verdict.why === CITATIONS_UNBOUND) state.admission.citationRefusals += 1;
-        state.refused += 1;
         return Promise.resolve(readerToolText(`refused: ${verdict.why}`));
       }
       const probes = probeBackedRows(state.probes, args.probeIds);

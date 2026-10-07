@@ -64,7 +64,7 @@ import { SUBMIT_MAX_ATTEMPTS, type ControlReceipt } from "./battery-record.ts";
 import { runControls } from "./run-controls.ts";
 import { timeoutReadout } from "./control-receipts.ts";
 import { discriminationDisclosure } from "./discrimination-author-detail.ts";
-import { evaluateCheckProgram } from "./predicate.ts";
+import { evaluateCheckProgram } from "../../vendor/correctness-model-bundle/evaluate.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { VerifierOperationalStop, type VerifierLifetime } from "../verify/verifier-lifetime.ts";
 import { readPublicResources } from "./public-resources.ts";

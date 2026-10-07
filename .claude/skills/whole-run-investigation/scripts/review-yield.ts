@@ -20,7 +20,10 @@ import { EPOCH_REVIEW_SCHEMA } from "#src/review/epoch-review-findings.ts";
 import type { EpochReviewEvidence } from "#src/review/epoch-review-findings.ts";
 import { REBUILD_ADVICE_SCHEMA } from "#src/author/rebuild-advice.ts";
 import { campaignEpochs } from "#src/author/campaign-epoch.ts";
-import type { BuilderExecutionEvidence } from "#src/author/builder-execution.ts";
+import {
+  BUILDER_EXECUTION_EVIDENCE_FILE,
+  type BuilderExecutionEvidence,
+} from "#src/author/builder-execution.ts";
 import { readExecutionEvidenceDetails } from "#tools/outcome/builder-execution-facts.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { asRecord, isRecord, isString } from "#src/meta/json-shape.ts";
@@ -117,6 +120,8 @@ export interface YieldRow {
 /** One epoch's rehearsal use. */
 export interface TrialRow extends YieldRow {
   output: { rehearsals: number; verdicts: Record<string, number> } | null;
+  /** An accepted submit froze bytes no rehearsal ran, including in an epoch with no rehearsal. */
+  unrehearsedSubmit?: boolean;
 }
 
 /** A measured iteration whose diagnosis evidence was read. */
@@ -317,11 +322,12 @@ function trialRow(epochDir: string): TrialRow {
       consumedSubmit === undefined
         ? null
         : {
-            path: "builder-execution.json",
+            path: BUILDER_EXECUTION_EVIDENCE_FILE,
             field: "customCalls[].semantic.candidateId",
             value: consumedSubmit.candidateId,
           },
     changed: acted,
+    unrehearsedSubmit: submits.length > 0 && consumedSubmit === undefined,
     note:
       submits.length === 0
         ? `${trials.length} rehearsal(s), no accepted submit`
@@ -513,7 +519,7 @@ function diagnosisReasons(rows: readonly (DiagnosisRow | DiagnosisGap)[]): strin
 function trialReasons(rows: readonly TrialRow[]): string[] {
   const rehearsals = rows.reduce((sum, row) => sum + (row.output?.rehearsals ?? 0), 0);
   const notRun = rows.reduce((sum, row) => sum + (row.output?.verdicts["not-run"] ?? 0), 0);
-  const unrehearsed = rows.filter((row) => row.consumer === null && row.output !== null).length;
+  const unrehearsed = rows.filter((row) => row.unrehearsedSubmit === true).length;
   if (rows.length === 0) return [];
   return [
     `rehearsals ${rehearsals} across ${rows.length} epoch(s), not-run ${notRun}; epochs whose accepted submit was never rehearsed: ${unrehearsed}`,

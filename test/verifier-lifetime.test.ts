@@ -88,7 +88,7 @@ describe("verifier settlement", () => {
       const spawn = spyOn(Bun, "spawn").mockReturnValue(
         double({ pid: 987654321, exited: exit.promise, signalCode: null, stdout, stderr, unref }),
       );
-      const reap = spyOn(subprocess, "terminateAndReapProcessGroup").mockResolvedValue(mode !== "unreaped");
+      const reap = spyOn(subprocess, "terminateAndReapProcessGroupId").mockResolvedValue(mode !== "unreaped");
       try {
         const { host, scope } = f.open(mode);
         const pending = scope.port.run({ toolId: "true", checkId: "c", timeoutMs: 20 });
@@ -158,7 +158,7 @@ describe("the cells a closed scope leaves", () => {
           unref,
         }),
       );
-    const reap = spyOn(subprocess, "terminateAndReapProcessGroup")
+    const reap = spyOn(subprocess, "terminateAndReapProcessGroupId")
       .mockResolvedValueOnce(true)
       .mockResolvedValue(false);
     const exists = spyOn(subprocess, "processGroupExists").mockReturnValue(true);
@@ -327,7 +327,7 @@ describe("durable verifier ownership", () => {
         ).toEqual(pending.sort());
       } finally {
         kill.mockRestore();
-        if (child.exitCode === null) await subprocess.terminateAndReapProcessGroup(child);
+        if (child.exitCode === null) await subprocess.terminateAndReapProcessGroupId(child.pid);
         await child.exited;
       }
     },

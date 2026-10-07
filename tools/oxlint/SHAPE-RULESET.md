@@ -2204,3 +2204,110 @@ with private helpers of its own, and the fourth is a five-line policy function. 
 private top-level declarations would separate them. It was shaped on this holdout, so it needs new
 sites before it counts. The unread-field, orphan-module, test-only-module and rule-without-fixture
 scans had no unjudged sites left in the replay.
+
+### Census precision on anabasis, and the stack top read to zero — 2026-10-01
+
+The rule digest is 973bcfb04bfc. The scans were replayed over anabasis's first-parent history
+and over each commit of PR #120. Blind Opus 5.5 judges then read the anabasis sites in two
+rounds.
+
+In round 1, three of four judges reached a not-slop ledger row or a labels.tsv row through a
+`git grep` over `tools` or `.claude`, so those verdicts were not blind. judge.md now excludes
+both files from every search. Round 2 used the fixed instruction on the unjudged remainder and
+reported no leaks.
+
+| shape | round 1 | round 2 (blind) | both |
+| --- | --- | --- | --- |
+| identity-without-owner | 16/20 | 35/49 (0.71, 0.58–0.82) | 51/69 (0.74, 0.62–0.83) |
+| superseded-schema-tag | 4/4 | 2/2 | 7/7 with one earlier label |
+| copied-block | 3/3 | – | 3/3 |
+| test-only-export | 3/3 | – | 3/3 |
+| single-reader-export | 0/1 | – | 1/3 with two earlier labels |
+
+The predictions written before the verdicts arrived were 0.55 for round 1 and 0.70 for round 2.
+
+**The judge said yes to all four ledger rows it met: two superseded-schema-tag, one copied-block
+and one single-reader-export.** The skill says to suspect the instrument first. Both
+superseded-schema-tag rows rest on "a deliberate reader of recorded campaigns", which AGENTS.md
+rule 8 no longer accepts. So in this case the stale side is the ledger, not the judge.
+
+**About half of the identity-without-owner no answers rejected the advice, not the site.** Of the
+15 no rows printed on the stack top (6a935aaf), 7 named a better repair than the one the detail
+implied:
+- an owner already held the name under a longer path, while the detail said "no file names it":
+  `brief.json` (BRIEF_FILE) and `tools-spec.json` (TOOLS_SPEC_FILE);
+- an owner was a function rather than a constant: `controller.sqlite` (controllerLedgerPath);
+- a reader existed to call: `epochs.json` (readEpochRecord);
+- a dead read or exclusion was due for deletion: `campaign.json` and `latest-admission.json`;
+- the name had siblings that had just gained owners: `trace-challenge-prompt.md`.
+
+Those were fixed as the judges said. The other 8 rows, under 7 ids, are answered in the ledger:
+- one name spelled for two records (`tasks.json`);
+- a lint rule's own match patterns;
+- two lint rules' independent exemptions;
+- two sibling standalone CLIs;
+- a display label;
+- an output path nothing reads back;
+- a cohesive adapter module.
+
+**The detail now names an owner that holds the name as a path suffix.** When no constant spells
+the name exactly, a constant whose value ends in `/<name>` is quoted with that value, so the
+`brief.json` and `tools-spec.json` rows point at `BRIEF_FILE` and `TOOLS_SPEC_FILE`, and the repair
+they ask for is a `basename`. No scan was narrowed in this round.
+
+#### PR #120 read as a simplification pass, and two readings it taught
+
+PR #120 is a hand-run simplification of the stack below it. Every surface it removed or kept on
+purpose is in `.claude/skills/simplify-precision/passes/pr120.tsv`, at its base `0b3e5927`: 102
+removed and 61 kept, in 13 classes. One row was relabelled. `DARWIN_SEATBELT_ID` in
+os-isolation.ts was a dead forward #120 never addressed; it is removed on this branch, so the kept
+column holds only surfaces kept on purpose. `precision.mts pass` scores a replay at that revision
+against the file.
+
+| rule at 0b3e5927 | removed printed | kept printed |
+| --- | --- | --- |
+| 973bcfb04bfc, before | 1/102 | 0/61 |
+| c09ec26199bc, after both readings | 17/102 | 0/61 |
+
+Two readings closed the gap without printing a kept surface:
+
+- **`unread-forward`, a new shape.** `export { a } from "./owner.ts"`, or `export { a }` of an
+  imported name, that no file imports from the forwarding module. No scan read a forward before:
+  the forwarder spells the name, so it counts as the owner's reader, and the forward declares
+  nothing. A forward counts as read when a file spells the name and also names the forwarder's
+  module in a quoted string. Two modules sharing a stem both count, which fails open; `brief.ts`
+  and `judge.ts` are missed this way. Left out: an `index` module, a declaration file (read through
+  its runtime twin, which is the one false class the replay over main showed), and a `node:`
+  forward.
+- **Comment-blind readers.** The reader count behind `single-reader-export` and
+  `test-only-export` now skips comment lines in code, as the module scan already did. A doc comment
+  had kept `checkerUnboundFinding` at two readers.
+
+The other 85 removed surfaces stay silent by design:
+- live forwards whose importers #120 repointed; printing those printed 26 kept forwards;
+- caller assembly under the copied-block floors;
+- module folds the 560-line headroom or a prose reader holds.
+
+**Replayed over main.** Main was replayed at every fourth first-parent commit since 2026-09-22.
+Against the rule before, the two readings add 24 sites and drop none. One of the 24 was the
+declaration-file forward, which is now excluded. Three blind judges (`opus-5.5-anabasis-r3`) read
+the other 23, and 22 were unlabelled:
+
+| shape | added | judged yes |
+| --- | --- | --- |
+| unread-forward | 19 | 19/19 (1.00, 0.83–1.00) |
+| test-only-export | 2 | 2/2 |
+| single-reader-export | 2 | 2/2 with the earlier labels |
+
+Most of these were in-sample: #120 removed 14 of the 19 forwards, and its verdicts shaped both
+readings. So the judge agreed with #120 on 14 of 14. These were out of sample:
+
+- forwards: `BudgetStatus` in campaign-budget.ts, `drainReports`/`runLunaSessions` in
+  luna-sessions.ts, and `ProjectBackendChoice`/`defaultBackendFor` in project-backends.ts;
+- test-only: `privateScratchRedirect`;
+- single-reader: `boundedDraftSummary`, which two earlier rounds judged yes and the old rule never
+  printed.
+
+All 6 out-of-sample sites were judged yes. The prediction was 0.85 for forwards and 0.75 for the
+reader change. At #120's head, the two readings printed `DARWIN_SEATBELT_ID` and
+`privateScratchRedirect`. Both are fixed on this branch, so the census reads zero again.

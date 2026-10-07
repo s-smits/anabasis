@@ -25,7 +25,7 @@ a failing check is first a question about the check.
 ## The census comes first
 
 ```text
-bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.ts census [--json] [--out <abs file>]
+bun .claude/skills/whole-run-investigation/scripts/wri.ts census [--json] [--out <abs file>]
 ```
 
 `census` runs the `gates` lane over every campaign in the main checkout's tree and groups the

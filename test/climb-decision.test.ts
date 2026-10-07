@@ -406,15 +406,3 @@ describe("decideDifficulty — two families pulling the pooled rate apart", () =
     expect(decision.placement).not.toBeNull();
   });
 });
-
-describe("decideDifficulty — a family the environment censored whole", () => {
-  it("states the family beside the placement and still places the battery", () => {
-    const decision = decideDifficulty([battery({ n: 4, passed: 4, censoredFamilies: ["wide-span"] })]);
-    expect(decision.censored).toEqual({ families: ["wide-span"] });
-    expect(decision.placement).not.toBeNull();
-  });
-
-  it("states nothing when every family kept a scored case", () => {
-    expect(decideDifficulty([battery({ n: 6, passed: 4 })])).not.toHaveProperty("censored");
-  });
-});

@@ -284,7 +284,7 @@ export function applyCompletedBlocks(
     input?: unknown;
     text?: string;
     thinking?: string;
-    signature?: string;
+    signature?: string | null;
   }[],
 ): void {
   for (const block of blocks) {

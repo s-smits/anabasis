@@ -35,9 +35,10 @@ import { existsSync, readFileSync, readdirSync, realpathSync } from "../meta/fil
 import { basename, dirname, extname, join, relative } from "../meta/path.ts";
 import { containsPath } from "../meta/path-containment.ts";
 import { sha256 } from "../meta/digest.ts";
-import { canonicalJson } from "../meta/stable-json.ts";
+import { canonicalJson, hashJsonValue } from "../meta/stable-json.ts";
 import { isBuiltin } from "../meta/modules.ts";
-import { EVALUATOR_FILE } from "../meta/bundle-layout.ts";
+import { BRIEF_FILE, EVALUATOR_FILE } from "../meta/bundle-layout.ts";
+import type { Brief } from "../correctness-bundle/brief.ts";
 
 /** What a package's program modules reach at run time from their entries. */
 interface RuntimeClosure {
@@ -127,19 +128,56 @@ export function runtimeClosure(root: string, entries: readonly string[]): Runtim
   return { files: [...files], complete, opaque };
 }
 
+/** The digest of every file the evaluator reaches, by its path in the package, or null when that
+ *  closure cannot be read: a package carrying build configuration, or an import the walk could not
+ *  follow. */
+function evaluatorDigests(root: string): Record<string, string> | null {
+  const files = readdirSync(root, { recursive: true, encoding: "utf8" });
+  if (files.some((path) => BUILD_CONFIGURATION.has(basename(path)))) return null;
+  const closure = runtimeClosure(root, [basename(EVALUATOR_FILE)]);
+  if (!closure.complete) return null;
+  return Object.fromEntries(closure.files.map((name) => [name, sha256(readFileSync(join(root, name)))]));
+}
+
 /** Null when the closure cannot be read; callers then compare the whole package's bytes. */
 export function scoringClosureHash(correctnessModelDir: string): string | null {
   try {
     const root = realpathSync(correctnessModelDir);
-    const files = readdirSync(root, { recursive: true, encoding: "utf8" });
-    if (files.some((path) => BUILD_CONFIGURATION.has(basename(path)))) return null;
-    const closure = runtimeClosure(root, [basename(EVALUATOR_FILE)]);
-    if (!closure.complete) return null;
-    const digests: Record<string, string> = {};
-    const brief = join(root, "brief.json");
-    if (existsSync(brief)) digests["brief.json"] = sha256(readFileSync(brief));
-    for (const name of closure.files) digests[name] = sha256(readFileSync(join(root, name)));
+    const digests = evaluatorDigests(root);
+    if (digests === null) return null;
+    const brief = join(root, basename(BRIEF_FILE));
+    if (existsSync(brief)) digests[basename(BRIEF_FILE)] = sha256(readFileSync(brief));
     return sha256(canonicalJson(digests));
+  } catch {
+    return null;
+  }
+}
+
+/** What executes to a verdict under `brief`, the brief a battery scored (`scoredBrief` reads and
+ *  vouches for it): the evaluator closure with the contract, each check's id and execution, and the
+ *  artifact fields a submission is read against, short of the `shape` sentence the solver reads.
+ *  Equal hashes mean an artifact replayed against the checks gets the same verdict however the public
+ *  rules were reworded or their numbers restated between, since an assertion, a rule decision, a
+ *  constant, a decision, a gate and a join run nothing. `scoringClosureHash` stays the identity the
+ *  task-probe freeze holds fixed, because there a changed public rule is exactly the change to
+ *  catch. Null when the evaluator closure cannot be read. */
+export function verdictClosureHash(correctnessModelDir: string, brief: Brief): string | null {
+  try {
+    const evaluator = evaluatorDigests(realpathSync(correctnessModelDir));
+    const checks = brief.truthChecks.map(({ id, execution }) => ({ id, execution }));
+    const fields = brief.artifactSchema.map(({ name, allowedValues, fileMap, openMapPaths }) => ({
+      name,
+      allowedValues,
+      fileMap,
+      openMapPaths,
+    }));
+    const mechanics = {
+      correctnessContract: brief.correctnessContract,
+      truthChecks: checks,
+      artifactSchema: fields,
+    };
+    // The identity encoding leaves out an optional field the brief leaves out.
+    return evaluator === null ? null : hashJsonValue({ evaluator, brief: mechanics });
   } catch {
     return null;
   }

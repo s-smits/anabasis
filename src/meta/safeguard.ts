@@ -21,7 +21,7 @@
  * sensor, because a recorded field is read with one query while a log line has to be counted by
  * hand across symlinked campaign copies.
  */
-import { appendFileSync, mkdirSync, opendirSync } from "./filesystem.ts";
+import { appendFileSync, existsSync, mkdirSync, opendirSync, readFileSync } from "./filesystem.ts";
 import { tmpdir } from "./os.ts";
 import { join } from "./path.ts";
 import { boundText } from "./bounded-text.ts";
@@ -138,8 +138,12 @@ export function parseSafeguardLog(text: string, prefix = ""): SafeguardLogReadin
   return { firings, counts, malformed };
 }
 
-export function createSafeguardContext(logDir: string): SafeguardContext {
-  return { logDir };
+/** One run's log, read back through `parseSafeguardLog`. Null when the run wrote none, which is
+ *  missing evidence rather than a run in which nothing fired, so each reader decides what an absent
+ *  log means to it. */
+export function readSafeguardLog(campaignDir: string, runId: string): SafeguardLogReading | null {
+  const file = safeguardLogFile(campaignDir, runId);
+  return existsSync(file) ? parseSafeguardLog(readFileSync(file, "utf8")) : null;
 }
 
 /** A caller with no resolved run context gets the stderr line and writes no file. Taking an

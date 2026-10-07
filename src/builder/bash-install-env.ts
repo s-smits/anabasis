@@ -1,9 +1,13 @@
 /**
- * Shell environment for a Builder authoring session. HOME points into the workspace's `.toolchain`
- * directory, the tree tool admission reads later, so HOME-based installers and tools — Arduino's
- * `~/Library/Arduino15`, Cargo, Go, PlatformIO, pip — write inside the workspace and leave files
- * admission can reuse. Two conventional user bin directories join PATH so Python, Rust and similar
- * installs run without extra flags.
+ * One Builder bash call and the shell environment it runs in. `runBuilderBash` is all the bash tool
+ * calls; the timeout, TMPDIR, environment and notices below are its own.
+ *
+ * HOME points into the workspace's `.toolchain` directory, the tree tool admission reads later, so
+ * HOME-based installers and tools — Arduino's `~/Library/Arduino15`, Cargo, Go, PlatformIO, pip —
+ * write inside the workspace and leave files admission can reuse. `.toolchain/bin`, which the
+ * candidate's checks and the solver's shell search first, leads PATH, so a tool installed there
+ * answers to its name here too; two conventional user bin directories follow, so Python, Rust and
+ * similar installs run without extra flags.
  *
  * The redirect used to depend on the network policy, on the reasoning that only an installer writes
  * to HOME. An offline session writes there too: a bare `arduino-cli version` answers `open
@@ -11,7 +15,7 @@
  * home that HOME still points at. A tool that reads as broken rather than as denied is the failure
  * `hostToolchainEnv` already exists to name, so the redirect holds under every policy.
  */
-import { mkdirSync, mkdtempSync } from "../meta/filesystem.ts";
+import { mkdirSync, mkdtempSync, rmSync } from "../meta/filesystem.ts";
 import {
   HARNESS_CONFIG_FILE,
   type HarnessSettings,
@@ -21,8 +25,18 @@ import { availableParallelism, loadavg, tmpdir } from "../meta/os.ts";
 import { dirname, join } from "../meta/path.ts";
 import { runtimeProcess } from "../meta/process.ts";
 import { type OptionalEnvValues, scrubSecretEnv } from "../backends/scrub-env.ts";
-import { ISOLATED_TIMEOUT_MS } from "./candidate-isolation-runtime.ts";
+import { ISOLATED_TIMEOUT_MS, runIsolated } from "./candidate-isolation-runtime.ts";
 import type { CandidateAccessPolicy } from "./candidate-isolation.ts";
+import type { BuilderIsolation } from "./tools.ts";
+
+/** One bash call as the tool resolved it: the command, the directory it runs in, the model's
+ *  `timeout` in seconds, and the abort of the prompt that asked for it. */
+interface BuilderBashCall {
+  command: string;
+  cwd: string;
+  timeout: number | undefined;
+  signal: AbortSignal | undefined;
+}
 
 /** The longest one bash call may run. Control generation with an FEA or a toolchain compile runs
  *  past a 10-minute default, and the alternative a Builder finds for itself is a background job
@@ -30,7 +44,7 @@ import type { CandidateAccessPolicy } from "./candidate-isolation.ts";
  *  hours, sized for a firmware toolchain build. A Builder given that will also spend most of an hour
  *  of it on a single search call, which is why the description reserves the raised ceiling for
  *  builds rather than offering it as the usual wall. */
-export const BASH_TIMEOUT_MAX_MS = 120 * 60_000;
+const BASH_TIMEOUT_MAX_MS = 120 * 60_000;
 
 /** The workspace-local environment for the host-dispatched Builder shell tool. */
 function builderHomeEnvironment(workDir: string, inheritedPath = Bun.env.PATH) {
@@ -52,24 +66,22 @@ function builderHomeEnvironment(workDir: string, inheritedPath = Bun.env.PATH) {
     NODE_PRESERVE_SYMLINKS: "1",
     // Use this run's admitted Bun before ambient wrappers (the operator's ~/.local/bin/bun
     // may sit outside the authoring wall). Workspace tool installs retain their usual precedence.
-    PATH: [localBin, cargoBin, dirname(runtimeProcess.execPath), inheritedPath].filter(Boolean).join(":"),
+    PATH: [
+      join(workDir, ".toolchain", "bin"),
+      localBin,
+      cargoBin,
+      dirname(runtimeProcess.execPath),
+      inheritedPath,
+    ]
+      .filter(Boolean)
+      .join(":"),
   };
 }
 
 /** The model's `timeout` is in seconds; absent, zero or invalid keeps the default, larger is capped. */
-export function bashTimeoutMs(seconds: number | undefined): number {
+function bashTimeoutMs(seconds: number | undefined): number {
   if (seconds === undefined || !Number.isFinite(seconds) || seconds <= 0) return ISOLATED_TIMEOUT_MS;
   return Math.min(BASH_TIMEOUT_MAX_MS, Math.round(seconds * 1000));
-}
-
-/** What a killed command tells the model. A bare exit 137 reads as memory pressure, so the Builder
- *  retries the same command and has the retry killed too. The host load is the other half: it is a
- *  runtime fact the Builder cannot observe and cannot tell apart from a command that is simply slow.
- *  A search killed at its deadline may have been running on a host loaded to several times its core
- *  count, with a tenth of a core to itself, and no reading of the command explains that. */
-export function bashKilledNotice(timeoutMs: number): string {
-  const load = (loadavg()[0] ?? 0).toFixed(1);
-  return `Command killed after ${String(timeoutMs / 1000)} s while the host load average was ${load} on ${String(availableParallelism())} cores; a CPU-bound command gets less than a core when load exceeds cores. Pass timeout (seconds, up to ${String(BASH_TIMEOUT_MAX_MS / 1000)}) for a longer build, or split it; give a search fewer iterations`;
 }
 
 /**
@@ -90,7 +102,7 @@ export function bashKilledNotice(timeoutMs: number): string {
  * settings decide what those seconds buy. Silent at or below the smallest budget, because a call
  * the solver could itself have made needs no note.
  */
-export function solverBudgetNotice(elapsedMs: number, settings: HarnessSettings): string | null {
+function solverBudgetNotice(elapsedMs: number, settings: HarnessSettings): string | null {
   const commandMs = settings.shellMaxSeconds * 1000;
   if (elapsedMs <= Math.min(commandMs, settings.checkWallMs, settings.solveMs)) return null;
   const s = (ms: number) => String(Math.round(ms / 1000));
@@ -154,5 +166,43 @@ export function bashEnv(workDir: string): OptionalEnvValues {
   return {
     ...scrubbed,
     ...builderHomeEnvironment(workDir, scrubbed.PATH),
+  };
+}
+
+/** Run one Builder bash call in the candidate cell, and return the command's outcome with the two
+ *  notices the tool adds to it, each null when it has nothing to say. The timeout is the model's,
+ *  bounded; the TMPDIR is this call's alone and is removed with it wherever the call made it. */
+export async function runBuilderBash(isolation: BuilderIsolation, call: BuilderBashCall) {
+  const timeoutMs = bashTimeoutMs(call.timeout);
+  const startedMs = Date.now();
+  const temp = bashCallTmpdir();
+  const outcome = await runIsolated(isolation.policy, isolation.record, {
+    capability: "bash",
+    mode: "exec",
+    command: "/bin/sh",
+    args: ["-lc", call.command],
+    cwd: call.cwd,
+    paths: [call.cwd],
+    env: { ...bashEnv(isolation.workDir), TMPDIR: temp.path },
+    osRefusalIsOutcome: true,
+    timeoutMs,
+    signal: call.signal, // An aborted prompt waits for running tools, so abort kills the command.
+  }).finally(() => {
+    if (temp.made) rmSync(temp.path, { recursive: true, force: true });
+  });
+  return {
+    outcome,
+    // A call that outran the solver's own per-command budget says so, whatever its exit was; the
+    // wall itself stays BASH_TIMEOUT_MAX_MS, since searching a domain is not solving a task.
+    budgetNotice: workspaceSolverBudgetNotice(isolation.workDir, Date.now() - startedMs),
+    // What a killed command tells the model. A bare exit 137 reads as memory pressure, so the
+    // Builder retries the same command and has the retry killed too. The host load is the other
+    // half: it is a runtime fact the Builder cannot observe and cannot tell apart from a command that
+    // is simply slow. A search killed at its deadline may have been running on a host loaded to
+    // several times its core count, with a tenth of a core to itself, and no reading of the command
+    // explains that.
+    killedNotice: outcome.timedOut
+      ? `Command killed after ${String(timeoutMs / 1000)} s while the host load average was ${(loadavg()[0] ?? 0).toFixed(1)} on ${String(availableParallelism())} cores; a CPU-bound command gets less than a core when load exceeds cores. Pass timeout (seconds, up to ${String(BASH_TIMEOUT_MAX_MS / 1000)}) for a longer build, or split it; give a search fewer iterations`
+      : null,
   };
 }

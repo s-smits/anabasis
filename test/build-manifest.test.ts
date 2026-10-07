@@ -613,6 +613,28 @@ describe("what a launch composes", () => {
     expect(result.task("lane_02")?.task).toContain("usb-pd 0/6");
   });
 
+  // The trace challenge lane of custom-opus 350009 was sent the run orientation under the blind file
+  // a ground-truth lane brought, and called its own review contaminated (2026-10-01).
+  it("keeps outcome context out of the trace challenge lane, which still reads its private packet", () => {
+    const traceLane = laneName(TRACE_CHALLENGE_LANE);
+    const result = launch(
+      snapshot(),
+      "--sessions",
+      `2,${TRACE_CHALLENGE_LANE}`,
+      "--notes",
+      notes(`## ${traceLane}\nFORBIDDEN_DIRECTION: all passed.\n`),
+    );
+    const prompt = leafPrompt(result.instructions(), result.task(traceLane)?.task ?? "");
+
+    expect(result.status).toBe(0);
+    expect(prompt).toContain("Independent blind review");
+    expect(prompt).toContain(`Private lane ${TRACE_CHALLENGE_LANE} trace evidence`);
+    for (const forbidden of ["FORBIDDEN_DIRECTION", "usb-pd 0/6", "Wilson [0.524", "## Controller facts"]) {
+      expect(prompt).not.toContain(forbidden);
+    }
+    expect(result.task("lane_02")?.task).toContain("usb-pd 0/6");
+  });
+
   it("groups a contiguous range under one heading and adds direction to it", () => {
     const result = launch(
       snapshot(),

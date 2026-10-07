@@ -15,12 +15,13 @@ import { errorMessage } from "./runtime-values.ts";
  * sidecar — and both cleaned up in `finally` rather than `catch`, which unlinks a path the
  * successful rename has already taken away and then swallows the ENOENT that follows. Neither
  * publishes JSON in the shape `writeCompleted` does: one adds a trailing newline, the other writes
- * JSONL, which is why the atomic part lives here on its own.
+ * JSONL, which is why the atomic part lives here on its own. `mode` is the published file's, since
+ * the rename carries the temporary's permissions over.
  */
-export function writeAtomic(path: string, bytes: string): void {
+export function writeAtomic(path: string, bytes: string, mode = 0o666): void {
   const temporary = `${path}.tmp-${runtimeProcess.pid}-${Date.now()}`;
   try {
-    writeFileSync(temporary, bytes, { flag: "wx" });
+    writeFileSync(temporary, bytes, { flag: "wx", mode });
     renameSync(temporary, path);
   } catch (error) {
     try {

@@ -16,9 +16,9 @@ import { basename, join } from "../meta/path.ts";
 import { writeAtomic } from "../meta/completed-json.ts";
 import { boundText } from "../meta/bounded-text.ts";
 
-const BUILDER_PROSE_FILE = "builder-prose.jsonl";
-const BUILDER_PROSE_SCHEMA = "builder-prose/v2";
-const BUILDER_PROSE_CAPTURE_SCHEMA = "builder-prose-capture/v1";
+export const BUILDER_PROSE_FILE = "builder-prose.jsonl";
+export const BUILDER_PROSE_SCHEMA = "builder-prose/v2";
+export const BUILDER_PROSE_CAPTURE_SCHEMA = "builder-prose-capture/v1";
 
 /** Rows beyond this are counted in `proseOmitted` and dropped; the count stays exact. */
 const MAX_PROSE_ROWS = 4000;

@@ -95,6 +95,23 @@ export function scratchAuthority(scratch: string): string {
   ].join("\n");
 }
 
+/** The row the Luna launcher reads for one task: `{name, task}`, plus the workdir, sandbox and owned
+ *  path of a hardware session, which runs inside its own scratch. The manifest writes these rows and
+ *  the report validator projects the manifest through this again to bind the launcher's bytes. */
+export function launcherTask({
+  name,
+  task,
+  scratch,
+}: {
+  name: string;
+  task: string;
+  scratch: string | null;
+}) {
+  return scratch === null
+    ? { name, task }
+    : { name, task, workdir: scratch, sandbox: "workspace-write", ownedPaths: [scratch] };
+}
+
 /** The exact prompt one lane receives: the manifest composes it, and the report validator hashes
  *  it again to prove the launch sent what the manifest recorded. A hardware session's prompt ends
  *  in its scratch authority; every other one ends read-only. */

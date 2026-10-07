@@ -29,7 +29,6 @@ import {
 import type { BundleSnapshotFact } from "../src/correctness-bundle/battery-record.ts";
 import {
   measuredSelectedProduct,
-  publishProductVersion,
   selectInitialProduct,
   selectedProductDir,
 } from "../src/run/product-versions.ts";
@@ -47,6 +46,7 @@ import { double, required } from "./helpers/doubles.ts";
 import type { FullRunDeps } from "../src/run/full-run.ts";
 import { writeBoundRepresentation } from "./helpers/bound-representation.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
+import { publishProduct } from "./helpers/digest-battery.ts";
 import { fixtureThresholdDigest, writeFixtureThresholds } from "./helpers/thresholds.ts";
 
 const SLUG = "bridge-truss";
@@ -80,36 +80,13 @@ function tree(
   writeFileSync(join(dir, "agent", "index.ts"), agent);
   writeBoundRepresentation(dir);
   for (const stage of stages) advanceClaimStage(dir, stage, "test");
-  if (rel.includes("/candidates/")) {
-    const fingerprint = fingerprintSlug(dir, { slug: SLUG });
-    if (!fingerprint.ok) throw new Error("invalid test product");
-    const version = publishProductVersion({
-      repoRoot: root,
-      slug: SLUG,
-      id: basename(dir),
-      acceptedSnapshot: dir,
-      fingerprint,
-      conformancePath: join(dir, "conformance.json"),
-    });
-    for (const stage of stages.slice(1)) advanceClaimStage(version, stage, "test");
-    return version;
-  }
-  if (rel.startsWith("domains/")) {
-    const fingerprint = fingerprintSlug(dir, { slug: SLUG });
-    if (!fingerprint.ok) throw new Error("invalid test product");
-    const version = publishProductVersion({
-      repoRoot: root,
-      slug: SLUG,
-      id: "current",
-      acceptedSnapshot: dir,
-      fingerprint,
-      conformancePath: join(dir, "conformance.json"),
-    });
-    for (const stage of stages.slice(1)) advanceClaimStage(version, stage, "test");
-    selectInitialProduct(root, SLUG, "current");
-    return version;
-  }
-  return dir;
+  const candidate = rel.includes("/candidates/");
+  if (!candidate && !rel.startsWith("domains/")) return dir;
+  const [id, conformancePath] = [candidate ? basename(dir) : "current", join(dir, "conformance.json")];
+  const version = publishProduct({ repoRoot: root, slug: SLUG, id, acceptedSnapshot: dir, conformancePath });
+  for (const stage of stages.slice(1)) advanceClaimStage(version, stage, "test");
+  if (!candidate) selectInitialProduct(root, SLUG, id);
+  return version;
 }
 
 /** The shipping bundle the candidate's own battery recorded: taken from the candidate tree, so the
@@ -246,13 +223,12 @@ describe("promoteCandidate — one battery, one decision", () => {
         manifest: { slug: SLUG, domain: SLUG, expectedTasks: 25 },
         baseKickoff: "build trusses",
         runPin: "fixture",
-        runId: "intermediate",
         domainDir: selectedProductDir(root, SLUG),
         builder: { kind: "codex", model: "fixture", reasoningEffort: "low" },
         built: { reasoningEffort: "low" },
       });
       expect(selected.readout?.decision).toMatchObject({ placement: { zone: "too-hard" } });
-      expect(selected.decision).toMatchObject({ move: "rebuild", seed: "adopted" });
+      expect(selected.decision).toMatchObject({ move: "rebuild" });
       expect(selected.kickoff).toBe("build trusses");
       let calls = 0;
       const build: FullRunDeps["build"] = async (_manifest, options) => {

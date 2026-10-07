@@ -720,8 +720,12 @@ function presentOf(campaign: string, round: Round, name: string): boolean {
     case "round-facts":
     case "context":
       return true;
-    case "rebuild-advice":
-      return records(adviceOf(campaign, last)?.issues).length > 0;
+    // A packet without issues still carries findings, the Judge's exit or the blocking checks, and
+    // its render is what the kickoff carries, so the channel holds bytes wherever the render does.
+    case "rebuild-advice": {
+      const packet = adviceOf(campaign, last);
+      return packet !== null && renderRebuildAdvice(packet) !== "";
+    }
     case "diagnosis":
       return recordCount(recordOf(diagnoses)?.diagnoses) > 0;
     case "epoch-review":

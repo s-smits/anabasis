@@ -30,7 +30,6 @@ export interface BundleValidationFinding {
 interface BundleValidationResult {
   ok: boolean;
   findings: BundleValidationFinding[];
-  scannedFiles: number;
 }
 
 /** The only packages an agent bundle may import; every other package is refused. */
@@ -179,11 +178,9 @@ export function validateAgentBundle(agentDir: string): BundleValidationResult {
         detail:
           "unsupported or excluded entry in the agent bundle; unhashed content could bypass the import check",
       })),
-      scannedFiles: 0,
     };
   }
 
-  let scannedFiles = 0;
   for (const file of files) {
     if (KEY_MATERIAL_RE.test(file.path)) {
       findings.push({
@@ -194,9 +191,8 @@ export function validateAgentBundle(agentDir: string): BundleValidationResult {
       });
     }
     if (!CODE_EXT.test(file.path)) continue;
-    scannedFiles += 1;
     findings.push(...importFindings(file.path, join(agentDir, file.path), agentDir));
   }
 
-  return { ok: findings.length === 0, findings, scannedFiles };
+  return { ok: findings.length === 0, findings };
 }

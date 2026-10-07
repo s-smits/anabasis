@@ -20,16 +20,25 @@
  * question it was quietly handed the answer to. The ids the packet records for a family's tasks are
  * the controller's, and the render names the families the tasks went to and never the tasks.
  *
+ * Between them sits what the packet says a failure is, which decides what the Builder does next.
+ * A list headed "Standing issues" read every verified fail as a defect to repair, and given six
+ * chances to follow an earned fail the Builder changed `agent/` once and dropped or eased the failed
+ * task three times. So a fail reads as an observation that may locate a limit, a diagnosis naming a
+ * file reads as a hypothesis, and a Judge disagreement reads as pending review until a review
+ * settles it. What evidence has shown keeps its place: a demonstrated defect reaches its bundle file
+ * through the feedback route, and environment failures, disputes, settled disagreements and each
+ * issue's history stay in the packet.
+ *
  * Deriving a packet end to end from recorded measurement evidence is a different question and lives
  * in test/harness-measure.test.ts and test/iteration-analysis.test.ts. Here the inputs are built
  * directly, so that each rule can be put under a case of its own.
  */
+import { afterEach, describe, expect, it } from "bun:test";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { hashJsonBytes } from "../src/meta/json-runtime.ts";
 import { mkdirSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { writeCompleted } from "../src/meta/completed-json.ts";
 import { join } from "../src/meta/path.ts";
-import { afterEach, describe, expect, it } from "bun:test";
 import {
   admitFindings,
   hostFindings,
@@ -38,10 +47,8 @@ import {
   type IterationAnalysis,
 } from "../src/analyse/iteration-analysis.ts";
 import { JUDGE_REVIEWS_SCHEMA, type JudgeReviewsResult } from "../src/analyse/judge-reviews.ts";
-import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import type { BatteryCondition } from "../src/author/issue-condition.ts";
-import { JOINTS, MEASURED_UNDER, READING, advicePacket, issue } from "./helpers/review-fixtures.ts";
-import { type AdviceIssue, isStanding } from "../src/author/issue-register.ts";
+import { adviceIssueId, isStanding } from "../src/author/issue-register.ts";
 import {
   type RebuildAdvicePacket,
   REBUILD_ADVICE_SCHEMA,
@@ -53,9 +60,22 @@ import {
   rebuildAdvicePath,
   renderRebuildAdvice,
 } from "../src/author/rebuild-advice.ts";
+import { expectNoRestatedDuty } from "./helpers/duty-overlap.ts";
+import { JOINTS, MEASURED_UNDER, READING, advicePacket, issue } from "./helpers/review-fixtures.ts";
+import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 
 const SLUG = "bridge-truss";
 const RUN = "base";
+
+/** The three leads the packet sorts its standing issues under, and the one-check sentence. Each is a
+ *  model-visible literal, so each is spelled out once here and asserted whole. */
+const FAILS =
+  "Fails, each an observation that may locate a limit and a defect only where evidence shows one, largest first:";
+const PENDING =
+  "Judge disagreements pending review, not issues to repair until a review settles them, largest first:";
+const STANDING = "Standing issues, largest first:";
+const ONE_CHECK =
+  "One check carrying every failure reads three ways: the answers are wrong, which may be a limit; the check refuses right answers; or the tasks leave the answer open.";
 
 afterEach(cleanupScratch);
 
@@ -204,9 +224,12 @@ function packet(analysisCases: IterationAnalysis["cases"], previous: RebuildAdvi
   return derive(analysis(analysisCases), judges(), admission(), previous);
 }
 
-/** One failure in two attempts; everything else about the issue is the shared fixture's. */
-const priorIssue = (overrides?: Partial<AdviceIssue>): AdviceIssue =>
-  issue({ count: 1, denominator: 2, ...overrides });
+/** A scratch repository holding the campaign's analysis directory, for the cases that write. */
+function repo(): string {
+  const root = scratchDir("ana-advice-");
+  mkdirSync(join(root, "campaigns", SLUG, "analysis"), { recursive: true });
+  return root;
+}
 
 describe("what one battery observes", () => {
   it("counts a verified failure, an unaccepted attempt and a non-result with their respective denominators", () => {
@@ -398,55 +421,18 @@ describe("what one battery observes", () => {
   });
 });
 
-describe("the packet and what the author reads of it", () => {
-  function repo(): string {
-    const root = scratchDir("ana-advice-");
-    mkdirSync(join(root, "campaigns", SLUG, "analysis"), { recursive: true });
-    return root;
-  }
+/** The issue lines, with any diagnosis under them, that follow `lead` in `text`; [] when the lead is
+ *  absent. A finding line also opens with "- ", so an issue line is told by its count. */
+function under(text: string, lead: string): string[] {
+  const lines = text.split("\n");
+  const start = lines.indexOf(lead);
+  if (start === -1) return [];
+  const rest = lines.slice(start + 1);
+  const end = rest.findIndex((line) => !/^- [^:]+: \d+\/\d+ /.test(line) && !line.startsWith("  "));
+  return end === -1 ? rest : rest.slice(0, end);
+}
 
-  it("routes placed findings to their file, renders the unplaced ones, and invents no admission refusal", () => {
-    const root = repo();
-    const data = analysis([caseRow("absent", { acceptedSubmit: false, pass: false, truthOk: null })]);
-    const evidence = `campaigns/${SLUG}/case-record.jsonl`;
-    writeFileSync(join(root, evidence), "");
-    const uncertain: AnalysisFinding = {
-      defect: false,
-      claim: "cause is unknown",
-      evidence,
-      owner: null,
-    };
-    const defect: AnalysisFinding = {
-      ...uncertain,
-      defect: true,
-      owner: "correctness-model/brief.json",
-      claim: "demonstrated defect",
-    };
-    const admitted = admitFindings(root, data, [
-      ...hostFindings(root, data),
-      uncertain,
-      defect,
-      { ...defect, claim: "advised defect", severity: "advisory" },
-      { ...uncertain, owner: "correctness-model/brief.json", claim: "placed observation" },
-    ]);
-    expect(admitted.feedback.map((row) => [row.severity, row.claim])).toEqual([
-      ["blocking", "demonstrated defect"],
-      ["advisory", "advised defect"],
-      ["advisory", "placed observation"],
-    ]);
-    const result = derive(data, judges(), admitted, null);
-    expect(result.findings.map((row) => [row.owner, row.hostRule ?? row.claim])).toEqual([
-      [null, "unaccepted-without-verdict"],
-      [null, "cause is unknown"],
-    ]);
-    const rendered = renderRebuildAdvice(result);
-    expect(rendered).toContain("1/1 attempts produced no accepted submission");
-    expect(rendered).toContain("- unplaced: cause is unknown");
-    expect(rendered).not.toContain("demonstrated defect");
-    expect(rendered).not.toContain("submission admission");
-    expect(rendered).not.toContain("final-submission.json");
-  });
-
+describe("the packet on disk", () => {
   it("reads the latest packet back, and reads a packet another schema wrote as no packet at all", () => {
     const root = repo();
     expect(readLatestRebuildAdvice(root, SLUG)).toBeNull();
@@ -454,12 +440,10 @@ describe("the packet and what the author reads of it", () => {
     writeFileSync(rebuildAdvicePath(root, SLUG, RUN), JSON.stringify(recorded));
     writeFileSync(latestRebuildAdvicePath(root, SLUG), JSON.stringify(recorded));
     expect(readLatestRebuildAdvice(root, SLUG)).toEqual(recorded);
-    // A packet from an earlier schema belongs to the source revision that measured it. The v5
-    // register recorded no condition an issue was observed under, so none of its issues could be
-    // told apart from one whose family reran on other inputs, and this source reads it as no
-    // register at all, which is what null already means everywhere it is read.
-    // Throwing instead would end the first analyse step of every campaign recorded under an older
-    // schema, so a supported `--project <existing>` continuation could not run at all.
+    // A packet from an earlier schema belongs to the source revision that measured it, and this
+    // source reads it as no register at all, which is what null already means everywhere it is
+    // read. Throwing instead would end the first analyse step of every campaign recorded under an
+    // older schema, so a supported `--project <existing>` continuation could not run at all.
     writeFileSync(
       latestRebuildAdvicePath(root, SLUG),
       JSON.stringify({ ...recorded, schema: "rebuild-advice/v5" }),
@@ -471,6 +455,9 @@ describe("the packet and what the author reads of it", () => {
   });
 
   it("keeps a host finding's rule across the write and read that separate two rounds", () => {
+    // Production puts a serializer and a parser between the two rounds, and the rule is the only
+    // thing keying this finding's recurrence. Deriving twice in memory would prove the count while
+    // leaving the field free to be dropped in transit.
     const root = repo();
     const evidence = `campaigns/${SLUG}/case-record.jsonl`;
     writeFileSync(join(root, evidence), "");
@@ -486,15 +473,198 @@ describe("the packet and what the author reads of it", () => {
       const data = analysis([caseRow("t1")], runId);
       return derive(data, judges(), admitFindings(root, data, [host]), previous);
     };
-    // Production puts a serializer and a parser between the two rounds, and the rule is the only
-    // thing keying this finding's recurrence. Deriving twice in memory proves the count while
-    // leaving the field free to be dropped in transit, with both sides of the join still green.
     writeCompleted(latestRebuildAdvicePath(root, SLUG), round("r1", null));
     const reread = readLatestRebuildAdvice(root, SLUG);
     expect(reread?.findings[0]).toMatchObject({ hostRule: "unaccepted-without-verdict" });
     expect(round("r2", reread).findings[0]).toMatchObject({ repeated: { count: 2, since: "r1" } });
   });
+});
 
+describe("what a failure reads as", () => {
+  it("presents a fail as an observation that may locate a limit, with its history, and never as a standing issue", () => {
+    const text = renderRebuildAdvice(
+      packet([
+        caseRow("t1"),
+        caseRow("t2", { family: "joints", truthOk: false, pass: false }),
+        caseRow("t3", { family: "joints", acceptedSubmit: false, truthOk: null, pass: null }),
+      ]),
+    );
+    // An unaccepted attempt is a fail as well: hard tasks may fail that way.
+    expect(under(text, FAILS)).toEqual([
+      "- joints: 1/2 attempts produced no accepted submission (first seen base, last seen base)",
+      "- joints: 1/1 verified cases failed (first seen base, last seen base)",
+    ]);
+    expect(text).not.toContain("Standing issues");
+    // The register's history crosses with the fail: one seen again after a complete recheck says so.
+    const returned = renderRebuildAdvice(advicePacket([issue({ returned: true, lastSeenRunId: "r2" })]));
+    expect(under(returned, FAILS)).toEqual([
+      "- beams: 2/5 verified cases failed (first seen r1, last seen r2, seen again after an absence)",
+    ]);
+  });
+
+  it("keeps a diagnosis a hypothesis: its owner, boundary and falsifier cross, its cause does not", () => {
+    const rendered = renderRebuildAdvice(advicePacket([issue({ diagnosis: READING })]));
+    expect(under(rendered, FAILS)[1]).toBe(
+      `  diagnosis, a hypothesis until evidence shows the defect (r2: holds for 2 of 3 sampled of 3 failing cases, 1 passing contrast): agent/tools-spec.json. First failure boundary at a call to write_layout: ${READING.boundary.reading}. Falsifier: ${READING.falsifier}`,
+    );
+    expect(rendered).not.toContain(READING.cause);
+    const atEnd = renderRebuildAdvice(
+      advicePacket([
+        issue({
+          diagnosis: {
+            ...READING,
+            boundary: { tool: null, reading: "the turn cap ended the solve mid-draft" },
+            support: { ...READING.support, contrasts: 0 },
+          },
+        }),
+      ]),
+    );
+    expect(atEnd).toContain("no passing contrast");
+    expect(atEnd).toContain(
+      "First failure boundary at the solve's end: the turn cap ended the solve mid-draft.",
+    );
+  });
+
+  it("routes a demonstrated defect to its bundle file, and carries only the findings no file holds", () => {
+    const root = repo();
+    const data = analysis([caseRow("absent", { acceptedSubmit: false, pass: false, truthOk: null })]);
+    const evidence = `campaigns/${SLUG}/case-record.jsonl`;
+    writeFileSync(join(root, evidence), "");
+    const uncertain: AnalysisFinding = { defect: false, claim: "cause is unknown", evidence, owner: null };
+    const defect: AnalysisFinding = {
+      ...uncertain,
+      defect: true,
+      owner: "correctness-model/brief.json",
+      claim: "demonstrated defect",
+    };
+    const admitted = admitFindings(root, data, [
+      ...hostFindings(root, data),
+      uncertain,
+      defect,
+      { ...defect, claim: "advised defect", severity: "advisory" },
+      { ...uncertain, owner: "correctness-model/brief.json", claim: "placed observation" },
+    ]);
+    // The defect reaches the file at fault, blocking, through the feedback route the rebuild reads.
+    expect(admitted.feedback.map((row) => [row.owner, row.severity, row.claim])).toEqual([
+      ["correctness-model/brief.json", "blocking", "demonstrated defect"],
+      ["correctness-model/brief.json", "advisory", "advised defect"],
+      ["correctness-model/brief.json", "advisory", "placed observation"],
+    ]);
+    const result = derive(data, judges(), admitted, null);
+    expect(result.findings.map((row) => [row.owner, row.hostRule ?? row.claim])).toEqual([
+      [null, "unaccepted-without-verdict"],
+      [null, "cause is unknown"],
+    ]);
+    const rendered = renderRebuildAdvice(result);
+    expect(under(rendered, FAILS)).toEqual([
+      "- beams: 1/1 attempts produced no accepted submission (first seen base, last seen base)",
+    ]);
+    expect(rendered).toContain("- unplaced: cause is unknown");
+    expect(rendered).not.toContain("demonstrated defect");
+    expect(rendered).not.toContain("submission admission");
+    expect(rendered).not.toContain("final-submission.json");
+  });
+
+  it("presents a Judge disagreement as pending review until a review settles it", () => {
+    const passedFailed = issue({
+      id: adviceIssueId("judge-passed-verifier-failed", "beams", null),
+      kind: "judge-passed-verifier-failed",
+      count: 1,
+    });
+    const failedPassed = issue({
+      id: adviceIssueId("judge-failed-verifier-passed", "roof", null),
+      kind: "judge-failed-verifier-passed",
+      family: "roof",
+      count: 1,
+    });
+    const pending = renderRebuildAdvice(advicePacket([passedFailed, failedPassed]));
+    expect(under(pending, PENDING)).toEqual([
+      "- beams: 1/5 verified cases the Judge passed and the verifier failed (first seen r1, last seen r1)",
+      "- roof: 1/5 verified cases the Judge failed and the verifier passed (first seen r1, last seen r1)",
+    ]);
+    expect(pending).not.toContain(FAILS);
+    expect(pending).not.toContain("Standing issues");
+    // Settled in the check's favour, it leaves the pending lead for the settled line.
+    const settled = renderRebuildAdvice(advicePacket([{ ...failedPassed, judgeSettled: true }]));
+    expect(settled).not.toContain(PENDING);
+    expect(settled).toContain(
+      "Settled Judge disagreements — an epoch review showed by execution that the check stands: roof (judge-failed-verifier-passed).",
+    );
+  });
+
+  it("keeps a disputed issue apart, without its prose", () => {
+    const rendered = renderRebuildAdvice(
+      advicePacket([issue({ dispute: "the check cannot fail on a real task" })]),
+    );
+    expect(rendered).toBe(
+      "Disputed issues — an epoch review argued these come from the evaluation rather than the harness: beams (verified-fail).",
+    );
+  });
+
+  it("keeps a non-result a standing issue, and names the environment as the owner of an environment failure only", () => {
+    const rendered = renderRebuildAdvice(
+      advicePacket([
+        issue({ kind: "non-result", detail: "provider" }),
+        issue({ id: JOINTS, kind: "non-result", detail: "verifier", family: "joints", count: 1 }),
+      ]),
+    );
+    expect(under(rendered, STANDING)).toEqual([
+      "- beams: 2/5 environment non-results of kind provider, owned by the environment (first seen r1, last seen r1)",
+      // A `verifier` kind is not an environment failure and must not read as one.
+      "- joints: 1/5 runtime non-results of kind verifier, a kind that does not establish an environment failure (first seen r1, last seen r1)",
+    ]);
+    expect(rendered).not.toContain(FAILS);
+  });
+
+  it("reads a failure one check carries three ways, and asks nothing of failures two checks share", () => {
+    const rows = [
+      caseRow("t1", { truthOk: false, pass: false }),
+      caseRow("t2", { truthOk: false, pass: false }),
+      caseRow("t3"),
+    ];
+    const counts = { "member-forces": 0, "response-report-accurate": 2, deflection: 1 };
+    const advice = derive(analysis(rows, RUN, counts), judges(), admission(), null);
+    expect(advice.blockingByCheck).toEqual(counts);
+    const shared = renderRebuildAdvice(advice);
+    expect(shared).toContain(
+      "Verified failures by declared check (2 failed; a case may block on several): response-report-accurate 2, deflection 1.\n",
+    );
+    // The check that blocked nothing is the other half of the same record, not a row to discard.
+    expect(shared).toContain(
+      "Declared checks that blocked no shipping artifact, with the verified cases each applied to (of 3): member-forces 3.",
+    );
+    expect(shared).not.toContain("One check carrying every failure");
+    // One check carrying every failure: a wrong answer, which may be a limit, a check refusing a
+    // right one, or a task that leaves the answer open, and no reading named first.
+    const alone = blockingLine({ "member-forces": 0, deflection: 2 }, { "member-forces": 3 }, 3, 1);
+    expect(alone).toContain(`deflection 2. ${ONE_CHECK}`);
+    expect(alone).not.toContain("public contract");
+    // A battery that declared no check records an empty map, and the packet says nothing.
+    const empty = renderRebuildAdvice(derive(analysis(rows, RUN, {}), judges(), admission(), null));
+    expect(empty).not.toContain("Verified failures by declared check");
+    expect(empty).not.toContain("blocked no shipping artifact");
+  });
+
+  it("restates no duty the system prompt carries, in any sentence it renders", () => {
+    const text = renderRebuildAdvice({
+      ...advicePacket([
+        issue({ diagnosis: READING }),
+        issue({ id: JOINTS, family: "joints", kind: "unaccepted" }),
+        issue({ id: "a".repeat(64), kind: "judge-passed-verifier-failed", family: "roof" }),
+        issue({ id: "b".repeat(64), kind: "non-result", detail: "provider", family: "slabs" }),
+        issue({ id: "c".repeat(64), family: "piers", dispute: "private" }),
+        issue({ id: "d".repeat(64), family: "decks", unmeasured: ["scoring"] }),
+        issue({ id: "e".repeat(64), family: "arches", absentBatteries: 1, rulesChangedRechecks: 1 }),
+      ]),
+      blockingByCheck: { deflection: 2 },
+      applicableByCheck: { deflection: 5 },
+    });
+    for (const lead of [FAILS, PENDING, STANDING, ONE_CHECK]) expect(text).toContain(lead);
+    expectNoRestatedDuty(text);
+  });
+});
+
+describe("what the packet must not say", () => {
   it("renders families, kinds and counts, and never a task id or verifier text", () => {
     const result = derive(
       analysis([
@@ -519,17 +689,76 @@ describe("the packet and what the author reads of it", () => {
     // this packet; a second copy here was a second owner of one count.
     expect(text).not.toContain("verified cases passed,");
     expect(text).not.toContain("Families that");
-    // The rendered advice excludes task ids and raw failure text, regardless of the recorded rows.
     for (const forbidden of ["t1", "t2", "t3", "sandbox refused the solve"]) {
       expect(text).not.toContain(forbidden);
+    }
+  });
+
+  it("renders the same text whatever protected detail the packet holds", () => {
+    // Rule 4's mechanical test over the one renderer: the packet records protected detail (a
+    // diagnosis's cause, a dispute's argument, the contested and failing task ids) beside the public
+    // rows, and changing only that detail must leave every rendered byte where it was.
+    const contested = judges({
+      census: reviewCensus(),
+      contested: [
+        {
+          taskId: "t7",
+          family: "joints",
+          kind: "disputed-pass",
+          rules: [],
+          rationale: null,
+          checkIds: [],
+          evidence: "campaigns/bridge-truss/analysis/base-judge/t7.json",
+          artifact: null,
+        },
+      ],
+      exit: {
+        kind: "advisory",
+        cases: { veto: 0, "unconfirmed-fail": 0, "disputed-pass": 3 },
+        verified: 10,
+        reason: "PUBLIC-REASON",
+      },
+    });
+    const finding: AnalysisFinding = {
+      defect: false,
+      claim: "PUBLIC-CLAIM",
+      evidence: "campaigns/bridge-truss/analysis/base-analysis.json",
+      owner: null,
+    };
+    const advice = derive(
+      analysis([caseRow("t1"), caseRow("t2", { truthOk: false, pass: false })], RUN, { deflection: 1 }),
+      contested,
+      admission([finding]),
+      null,
+    );
+    const withReadings = (secret: string): RebuildAdvicePacket => ({
+      ...advice,
+      families: advice.families.map((row) => ({ ...row, taskIds: [`${secret}-1`, `${secret}-2`] })),
+      issues: [
+        ...advice.issues.map((row) => ({
+          ...row,
+          observedUnder: { ...row.observedUnder, taskIds: [`${secret}-1`] },
+          diagnosis: { ...READING, cause: `${secret} cause`, runId: "r1" },
+        })),
+        issue({ id: JOINTS, family: "joints", dispute: `${secret} dispute` }),
+      ],
+    });
+    const a = withReadings("PRIVATE-A");
+    const b = withReadings("PRIVATE-B");
+    expect(hashJsonBytes(a)).not.toBe(hashJsonBytes(b));
+    const text = renderRebuildAdvice(a);
+    expect(renderRebuildAdvice(b)).toBe(text);
+    for (const hidden of ["PRIVATE-A", "t7", "t1", "t2"]) expect(text).not.toContain(hidden);
+    // What is public crosses: the finding's claim, the Judge's reason, the contested family, the
+    // diagnosis's located boundary and falsifier.
+    for (const shown of ["PUBLIC-CLAIM", "PUBLIC-REASON", "families: joints", READING.falsifier]) {
+      expect(text).toContain(shown);
     }
   });
 
   it("does not repeat a routed finding the author already reads through its owner group", () => {
     // A blocking finding with a Builder-owned owner reaches the rebuild session through
     // advisory(priorEvidence.feedback). Rendering it here too would repeat the claim in one prompt.
-    // A blocking Judge exit can also repeat it in the census line. This section adds only
-    // admitted findings that are not already routed to an owner.
     const routed: AnalysisFinding = {
       defect: true,
       claim: "the checker admitted 3 ungrounded verdicts",
@@ -554,58 +783,160 @@ describe("the packet and what the author reads of it", () => {
     expect(text).toContain("- unplaced: the checker admitted 3 ungrounded verdicts");
     expect(text.split("the checker admitted 3 ungrounded verdicts")).toHaveLength(2);
   });
+});
 
-  it("annotates an unplaced finding with its consecutive recurrence, keyed by what it named", () => {
-    const uncertain = (checkId?: string, artifactSchemaPath?: string, hostRule?: string): AnalysisFinding => {
-      const finding: AnalysisFinding = {
+describe("what the packet leaves out, and how much it shows", () => {
+  it("keeps complete rechecks and retired issues in the register and out of the render", () => {
+    const first = packet([caseRow("t1", { family: "beams", truthOk: false, pass: false })]);
+    const second = packet([caseRow("t1", { family: "beams" })], first);
+    const third = packet([caseRow("t1", { family: "beams" })], second);
+    expect(third.issues.map((row) => row.absentBatteries)).toEqual([2]);
+    // A family that already passes is the readout's family line, and something to raise rather than
+    // repair, so neither recheck count reaches the author.
+    expect(renderRebuildAdvice(second)).toBe("");
+    expect(renderRebuildAdvice(third)).toBe("");
+    // The family left the task set, so naming it asks the author for nothing it can do.
+    const rebuilt = packet([caseRow("t9", { family: "joints" })], first);
+    expect(rebuilt.issues.map((row) => row.retired)).toEqual([true]);
+    expect(renderRebuildAdvice(rebuilt)).toBe("");
+  });
+
+  it("tells the author an unmeasured issue is unmeasured, not fixed and not observed", () => {
+    const rendered = renderRebuildAdvice(
+      advicePacket([
+        issue({ unmeasured: ["task-inputs", "scoring"] }),
+        issue({ id: JOINTS, family: "joints" }),
+        issue({ id: "c".repeat(64), kind: "unaccepted", unmeasured: ["check-tools"] }),
+      ]),
+    );
+    expect(rendered).toContain(
+      "Unmeasured issues — absent from this battery, but their family did not rerun under the condition that observed them, so the absence is not a fix: beams (verified-fail: task inputs, scoring program changed); beams (unaccepted: check tools changed).",
+    );
+    expect(under(rendered, FAILS)).toEqual([
+      "- joints: 2/5 verified cases failed (first seen r1, last seen r1)",
+    ]);
+    expect(rendered).not.toContain("fixed");
+    // A family that kept its name has no tasks to say went elsewhere.
+    expect(rendered).not.toContain("now run under");
+  });
+
+  it("says where an unmeasured issue's tasks went when its family's name left the battery", () => {
+    const renamed = (families: Array<{ family: string; taskIds: string[] }>) => ({
+      ...advicePacket([issue({ unmeasured: ["task-inputs"] })]),
+      families: families.map((row) => ({ ...advicePacket([]).families[0]!, ...row })),
+    });
+    expect(renderRebuildAdvice(renamed([{ family: "girders", taskIds: ["t1", "t2"] }]))).toContain(
+      "beams (verified-fail: task inputs changed; its tasks now run under girders).",
+    );
+    // Split across two names, each is named, in order, and the tasks never are.
+    const split = renderRebuildAdvice(
+      renamed([
+        { family: "girders", taskIds: ["t1"] },
+        { family: "columns", taskIds: ["t2"] },
+      ]),
+    );
+    expect(split).toContain("task inputs changed; its tasks now run under columns, girders).");
+    for (const taskId of ["t1", "t2"]) expect(split).not.toContain(taskId);
+  });
+
+  it("names the issues rechecked under changed public rules, and only when every recheck followed a change", () => {
+    const rendered = renderRebuildAdvice(
+      advicePacket([
+        issue({ absentBatteries: 1, rulesChangedRechecks: 1 }),
+        issue({ id: JOINTS, family: "joints", absentBatteries: 2, rulesChangedRechecks: 1 }),
+      ]),
+    );
+    expect(rendered).toBe(
+      "Issues rechecked under unchanged checks, public rules changed — absent from every recheck, but the public rules, in words or numbers, differed from the battery that observed them, so the absence says whether the repair held under the new rules, not whether the issue persists: beams (verified-fail).",
+    );
+    expect(renderRebuildAdvice(advicePacket([issue({ absentBatteries: 1 })]))).toBe("");
+  });
+
+  it("separates a check no verified case posed from one that refused nothing over the whole battery", () => {
+    // Their repairs are opposite: raise the rule, or give the battery a task that reaches it.
+    expect(
+      blockingLine(
+        { lenient: 0, narrow: 0, unposed: 0, deflection: 1 },
+        { lenient: 3, narrow: 1, unposed: 0, deflection: 3 },
+        3,
+        2,
+      ),
+    ).toBe(
+      [
+        "Verified failures by declared check (1 failed; a case may block on several): deflection 1. " +
+          ONE_CHECK,
+        "Declared checks that blocked no shipping artifact, with the verified cases each applied to (of 3): lenient 3, narrow 1.",
+        "Declared checks no verified case posed, so this battery measured nothing about them: unposed.",
+      ].join("\n"),
+    );
+    // A saturated battery names every declared check, since none tripped; zero verified cases leave
+    // the roster silent, and a check with no applicable count recorded lands in no list at all.
+    const counts = { "geometry-and-clearance": 0, "mass-within-limit": 0 };
+    expect(blockingLine(counts, { "geometry-and-clearance": 2, "mass-within-limit": 2 }, 2, 2)).toBe(
+      "Declared checks that blocked no shipping artifact, with the verified cases each applied to (of 2): geometry-and-clearance 2, mass-within-limit 2.",
+    );
+    expect(blockingLine(counts, { "geometry-and-clearance": 0, "mass-within-limit": 0 }, 0, 0)).toBeNull();
+    expect(blockingLine({ legacy: 0 }, {}, 3, 3)).toBeNull();
+  });
+
+  it("renders unplaced findings in admitted order, says how many the cap left out, and annotates a recurrence", () => {
+    const findings = Array.from(
+      { length: 5 },
+      (_, index): AnalysisFinding => ({
         defect: false,
-        claim: "the reviewer could not attribute the equilibrium result",
+        claim: `observation-${index}`,
         evidence: "campaigns/bridge-truss/analysis/review.json",
         owner: null,
-        severity: "advisory",
-        ...keyIfDefined("checkId", checkId),
-        ...keyIfDefined("artifactSchemaPath", artifactSchemaPath),
-        ...keyIfDefined("hostRule", hostRule),
-      };
-      return finding;
-    };
-    const round = (runId: string, findings: AnalysisFinding[], previous: RebuildAdvicePacket | null) =>
-      derive(analysis([caseRow("t1")], runId), judges(), admission(findings), previous);
-    // The same unplaced finding can render to rebuild after rebuild. The claim stays visible every
-    // round; from the second round it carries the recurrence.
+      }),
+    );
+    const text = renderRebuildAdvice(derive(analysis([caseRow("t0")]), judges(), admission(findings), null));
+    expect(text).toContain("1 further admitted finding omitted from this packet.");
+    expect(text).not.toContain("observation-4");
+    const positions = [0, 1, 2, 3].map((index) => text.indexOf(`- unplaced: observation-${index}`));
+    expect(positions).toEqual(positions.toSorted((a, b) => a - b));
+    expect(positions.every((position) => position >= 0)).toBe(true);
+
+    const uncertain = (
+      checkId?: string,
+      artifactSchemaPath?: string,
+      hostRule?: string,
+    ): AnalysisFinding => ({
+      defect: false,
+      claim: "the reviewer could not attribute the equilibrium result",
+      evidence: "campaigns/bridge-truss/analysis/review.json",
+      owner: null,
+      severity: "advisory",
+      ...keyIfDefined("checkId", checkId),
+      ...keyIfDefined("artifactSchemaPath", artifactSchemaPath),
+      ...keyIfDefined("hostRule", hostRule),
+    });
+    const round = (runId: string, found: AnalysisFinding[], previous: RebuildAdvicePacket | null) =>
+      derive(analysis([caseRow("t1")], runId), judges(), admission(found), previous);
     const first = round("r1", [uncertain("equilibrium", "members")], null);
-    const second = round("r2", [uncertain("equilibrium", "members")], first);
-    const third = round("r3", [uncertain("equilibrium", "members")], second);
-    expect(first.findings[0]).not.toHaveProperty("repeated");
+    const third = round(
+      "r3",
+      [uncertain("equilibrium", "members")],
+      round("r2", [uncertain("equilibrium", "members")], first),
+    );
     expect(renderRebuildAdvice(first)).not.toContain("recurring");
-    expect(third.findings[0]).toMatchObject({ checkId: "equilibrium", repeated: { count: 3, since: "r1" } });
     expect(renderRebuildAdvice(third)).toContain(
       "the reviewer could not attribute the equilibrium result (recurring: 3 consecutive packets since r1)",
     );
-
     // A changed check id is new evidence and starts again.
-    const changed = round("r4", [uncertain("deflection", "members")], third);
-    expect(changed.findings[0]).toMatchObject({ checkId: "deflection" });
-    expect(changed.findings[0]).not.toHaveProperty("repeated");
-
-    // A host finding names no check, and the rule that produced it is what supports its
-    // recurrence: the same rule fired twice, which the host observed. A round without it ends the
-    // run of consecutive packets, so its return counts from one.
+    expect(round("r4", [uncertain("deflection", "members")], third).findings[0]).not.toHaveProperty(
+      "repeated",
+    );
+    // A host finding names no check, and the rule that produced it supports its recurrence; a round
+    // without it ends the run of consecutive packets, so its return counts from one.
     const host = () => uncertain(undefined, undefined, "unaccepted-without-verdict");
-    const hostFirst = round("h1", [host()], null);
-    const hostSecond = round("h2", [host()], hostFirst);
+    const hostSecond = round("h2", [host()], round("h1", [host()], null));
     expect(hostSecond.findings[0]).toMatchObject({ repeated: { count: 2, since: "h1" } });
-    const gap = round("h3", [], hostSecond);
-    expect(gap.findings).toEqual([]);
-    expect(round("h4", [host()], gap).findings[0]).not.toHaveProperty("repeated");
+    expect(round("h4", [host()], round("h3", [], hostSecond)).findings[0]).not.toHaveProperty("repeated");
   });
 
   it("reads no recurrence from evidence that cannot establish one", () => {
-    // Two reviewer observations that named nothing used to key on the kind itself, the one constant
-    // every finding here shares, so any two of them in consecutive packets rendered as one
-    // diagnosis recurring. The author was told "recurring: 3 consecutive packets" about three
-    // unrelated observations. Naming nothing now keys nothing, and the sentence is absent rather
-    // than wrong; the claims themselves still reach the author every round.
+    // Two observations that named nothing, or only a bare root, are not one observation recurring
+    // merely because both could not be placed. A path below a root does name a place, and recurs.
     const unattributed = (claim: string, artifactSchemaPath?: string): AnalysisFinding => ({
       defect: false,
       claim,
@@ -614,17 +945,16 @@ describe("the packet and what the author reads of it", () => {
       severity: "advisory",
       ...keyIfDefined("artifactSchemaPath", artifactSchemaPath),
     });
-    const round = (runId: string, findings: AnalysisFinding[], previous: RebuildAdvicePacket | null) =>
-      derive(analysis([caseRow("t1")], runId), judges(), admission(findings), previous);
-
-    const first = round("r1", [unattributed("the deflection result is unexplained")], null);
-    const second = round("r2", [unattributed("the mass budget result is unexplained")], first);
-    expect(second.findings[0]).not.toHaveProperty("repeated");
-    expect(renderRebuildAdvice(second)).toContain("the mass budget result is unexplained");
-    expect(renderRebuildAdvice(second)).not.toContain("recurring");
-
-    // A bare declared root is the same case: one word for the whole artifact tells two defects
-    // apart no better than naming nothing. A path below a root does name a place, and recurs.
+    const round = (runId: string, found: AnalysisFinding[], previous: RebuildAdvicePacket | null) =>
+      derive(analysis([caseRow("t1")], runId), judges(), admission(found), previous);
+    const named = round(
+      "r2",
+      [unattributed("the mass budget result is unexplained")],
+      round("r1", [unattributed("the deflection result is unexplained")], null),
+    );
+    expect(named.findings[0]).not.toHaveProperty("repeated");
+    expect(renderRebuildAdvice(named)).toContain("the mass budget result is unexplained");
+    expect(renderRebuildAdvice(named)).not.toContain("recurring");
     const bare = round("b2", [unattributed("a", "files")], round("b1", [unattributed("b", "files")], null));
     expect(bare.findings[0]).not.toHaveProperty("repeated");
     const below = round(
@@ -635,211 +965,8 @@ describe("the packet and what the author reads of it", () => {
     expect(below.findings[0]).toMatchObject({ repeated: { count: 2, since: "d1" } });
   });
 
-  it("keeps public aggregate claims while private diagnosis prose cannot change the author handover", () => {
-    // Findings and Judge exits have public aggregate producers. Diagnosis prose can identify a
-    // failed case without its task id, so only its typed owner and support counts cross.
-    const claim = "PLANTED-CLAIM";
-    const reason = "PLANTED-REASON";
-    const contested = judges({
-      census: reviewCensus(),
-      contested: [
-        {
-          taskId: "t7",
-          family: "joints",
-          kind: "disputed-pass",
-          rules: [],
-          rationale: null,
-          checkIds: [],
-          evidence: "campaigns/bridge-truss/analysis/base-judge/t7.json",
-          artifact: null,
-        },
-      ],
-      exit: {
-        kind: "advisory",
-        cases: { veto: 0, "unconfirmed-fail": 0, "disputed-pass": 3 },
-        verified: 10,
-        reason,
-      },
-    });
-    const finding: AnalysisFinding = {
-      defect: false,
-      claim,
-      evidence: "campaigns/bridge-truss/analysis/base-analysis.json",
-      owner: null,
-    };
-    const text = renderRebuildAdvice(
-      derive(analysis([caseRow("t1")]), contested, admission([finding]), null),
-    );
-    expect(text).toContain(claim);
-    expect(text).toContain(reason);
-    // The contested task id is not one of them: it reaches the packet only as its family.
-    expect(text).not.toContain("t7");
-    expect(text).toContain("families: joints");
-    const advice = derive(analysis([caseRow("t1")]), contested, admission([finding]), null);
-    const withReadings: RebuildAdvicePacket = {
-      ...advice,
-      issues: [
-        priorIssue({
-          diagnosis: { ...READING, cause: "PLANTED-CAUSE", runId: "r1" },
-        }),
-        priorIssue({ family: "joints", dispute: "PLANTED-DISPUTE" }),
-      ],
-    };
-    const diagnosed = renderRebuildAdvice(withReadings);
-    expect(diagnosed).toContain("diagnosis (r1: holds for 2 of 3 sampled");
-    // The reader's prompt holds no protected detail, so its located boundary and its falsifier
-    // reach the author; the cause is its free argument and stays recorded, as a dispute's prose does.
-    expect(diagnosed).toContain(READING.falsifier);
-    for (const planted of ["PLANTED-CAUSE", "PLANTED-DISPUTE"]) {
-      expect(diagnosed).not.toContain(planted);
-    }
-    const changed: RebuildAdvicePacket = {
-      ...withReadings,
-      analysisDigest: "f".repeat(64),
-      issues: withReadings.issues.map((row) => ({
-        // A dispute's presence is public (the render names the family); only its prose is private.
-        ...row,
-        dispute: row.dispute === null ? null : "different private dispute",
-        diagnosis: row.diagnosis === null ? null : { ...row.diagnosis, cause: "different private cause" },
-      })),
-    };
-    expect(hashJsonBytes(changed)).not.toBe(hashJsonBytes(withReadings));
-    expect(renderRebuildAdvice(changed)).toBe(diagnosed);
-  });
-
-  it("summarizes verified failures by declared check without task ids", () => {
-    // A battery where most verified cases fail and every failure blocks on one check is a fact the
-    // author needs; the packet carries it as a row rather than leaving it to a safeguard log.
-    const rows = [
-      caseRow("t1", { truthOk: false, pass: false }),
-      caseRow("t2", { truthOk: false, pass: false }),
-      caseRow("t3"),
-    ];
-    const counts = { "member-forces": 0, "response-report-accurate": 2, deflection: 1 };
-    const advice = derive(analysis(rows, RUN, counts), judges(), admission(), null);
-    expect(advice.blockingByCheck).toEqual(counts);
-    const text = renderRebuildAdvice(advice);
-    expect(text).toContain(
-      "Verified failures by declared check (2 failed; a case may block on several): response-report-accurate 2, deflection 1.",
-    );
-    // The check that blocked nothing is the other half of the same record, not a row to discard.
-    expect(text).toContain(
-      "Declared checks that blocked no shipping artifact, with the verified cases each applied to (of 3): member-forces 3.",
-    );
-    expect(text).not.toContain("t1");
-    // Two checks share the failures, so the one-check question is not asked.
-    expect(text).not.toContain("One check carrying every failure");
-    const alone = renderRebuildAdvice(
-      derive(analysis(rows, RUN, { "member-forces": 0, deflection: 2 }), judges(), admission(), null),
-    );
-    expect(alone).toContain("deflection 2. One check carrying every failure asks whether its rule is stated");
-    // A battery that declared no check records an empty map, and the packet says nothing.
-    const empty = renderRebuildAdvice(derive(analysis(rows, RUN, {}), judges(), admission(), null));
-    expect(empty).not.toContain("Verified failures by declared check");
-    expect(empty).not.toContain("blocked no shipping artifact");
-  });
-
-  it("separates a check no verified case posed from one that refused nothing over the whole battery", () => {
-    // Both read identically under one sentence, and their repairs are opposite: raise the rule, or
-    // give the battery a task that reaches it. Across the recorded corpus 74 of 670 untripped rows
-    // were not the shape that sentence implied — 54 applicable to some verified cases, 20 to none.
-    const rows = [caseRow("t1"), caseRow("t2"), caseRow("t3", { truthOk: false, pass: false })];
-    const text = renderRebuildAdvice(
-      derive(
-        analysis(
-          rows,
-          RUN,
-          { lenient: 0, narrow: 0, unposed: 0, deflection: 1 },
-          { lenient: 3, narrow: 1, unposed: 0, deflection: 3 },
-        ),
-        judges(),
-        admission(),
-        null,
-      ),
-    );
-    expect(text).toContain(
-      "Declared checks that blocked no shipping artifact, with the verified cases each applied to (of 3): lenient 3, narrow 1.",
-    );
-    expect(text).toContain(
-      "Declared checks no verified case posed, so this battery measured nothing about them: unposed.",
-    );
-  });
-
-  it("names every declared check when a saturated battery tripped none of them", () => {
-    // A battery that passes every case has declared checks firing on its controls and on no
-    // shipping artifact at all. Shown only the families that found no limit, the next battery moves
-    // its published magnitudes; the roster is the fact that asks for a requirement instead.
-    const rows = [caseRow("t1"), caseRow("t2")];
-    const counts = { "geometry-and-clearance": 0, "mass-within-limit": 0, "strength-and-buckling": 0 };
-    const text = renderRebuildAdvice(derive(analysis(rows, RUN, counts), judges(), admission(), null));
-    expect(text).not.toContain("Verified failures by declared check");
-    expect(text).toContain(
-      "Declared checks that blocked no shipping artifact, with the verified cases each applied to (of 2): geometry-and-clearance 2, mass-within-limit 2, strength-and-buckling 2.",
-    );
-    // Zero verified cases leave the roster silent: nothing was graded, so no check went untripped.
-    const ungraded = [caseRow("t1", { truthOk: null, pass: null, acceptedSubmit: false })];
-    const blank = renderRebuildAdvice(derive(analysis(ungraded, RUN, counts), judges(), admission(), null));
-    expect(blank).not.toContain("blocked no shipping artifact");
-  });
-
-  it("renders no roster, rather than an empty line, when every check lacks a recorded applicable count", () => {
-    // Untripped with no applicable row lands in none of the three lists; the orientation and the
-    // packet both drop a null line, and would have kept an empty one.
-    expect(blockingLine({ legacy: 0 }, {}, 3, 3)).toBeNull();
-    expect(blockingLine({ legacy: 0 }, { legacy: 3 }, 3, 3)).toContain("legacy 3");
-  });
-
-  it("keeps complete rechecks in the register and out of the render", () => {
-    const first = packet([caseRow("t1", { family: "beams", truthOk: false, pass: false })]);
-    const second = packet([caseRow("t1", { family: "beams" })], first);
-    const third = packet([caseRow("t1", { family: "beams" })], second);
-    expect(second.issues.map((row) => row.absentBatteries)).toEqual([1]);
-    expect(third.issues.map((row) => row.absentBatteries)).toEqual([2]);
-    // Neither count reaches the author: the render carries what is standing now, and a family
-    // that already passes is something to escalate rather than something to repair.
-    expect(renderRebuildAdvice(second)).toBe("");
-    const text = renderRebuildAdvice(third);
-    // Nothing stands, so the packet says nothing; the readout's family line says beams passed.
-    expect(text).toBe("");
-  });
-
-  it("drops a retired issue from the render and keeps its status in the register", () => {
-    const first = packet([caseRow("t1", { family: "beams", truthOk: false, pass: false })]);
-    const rebuilt = packet([caseRow("t9", { family: "joints" })], first);
-    expect(rebuilt.issues.map((row) => row.retired)).toEqual([true]);
-    // The family left the task set, so naming it asks the author for nothing it can do.
-    expect(renderRebuildAdvice(rebuilt)).toBe("");
-  });
-
-  it("renders unplaced findings in admitted order and says how many the cap left out", () => {
-    const findings = Array.from(
-      { length: 5 },
-      (_, index): AnalysisFinding => ({
-        defect: false,
-        claim: `observation-${index}`,
-        evidence: "campaigns/bridge-truss/analysis/review.json",
-        owner: null,
-      }),
-    );
-    const result = derive(
-      analysis([caseRow("t0", { truthOk: false, pass: false })]),
-      judges(),
-      admission(findings),
-      null,
-    );
-    expect(result.findings).toHaveLength(5);
-    const text = renderRebuildAdvice(result);
-    expect(text).toContain("- unplaced: observation-0");
-    expect(text).toContain("1 further admitted finding omitted from this packet.");
-    expect(text).not.toContain("observation-4");
-    const positions = [0, 1, 2, 3].map((index) => text.indexOf(`observation-${index}`));
-    expect(positions).toEqual(positions.toSorted((a, b) => a - b));
-  });
-
   it("bounds the render when the battery fails everywhere and its findings are enormous", () => {
-    // One unowned finding carrying a whole declared assertion can be most of a packet's characters
-    // by itself, and an author reading it rewrites the evaluator around it. The register keeps
-    // every row; the model-visible boundary is what is bounded.
+    // The register keeps every row; the model-visible boundary is what is bounded, six issues in all.
     const rows = Array.from({ length: 10 }, (_, index) =>
       caseRow(`t${index}`, { family: `family-${index}`, truthOk: false, pass: false }),
     );
@@ -855,14 +982,35 @@ describe("the packet and what the author reads of it", () => {
     );
     const result = derive(analysis(rows), judges(), admission(findings), null);
     expect(result.issues).toHaveLength(10);
-    expect(result.findings).toHaveLength(6);
     const text = renderRebuildAdvice(result);
+    expect(text).toContain(FAILS.replace(", largest first:", ", largest first (6 of 10 shown):"));
     expect(text.split("\n- family-")).toHaveLength(7);
-    expect(text).toContain("(6 of 10 shown)");
     expect(text).toContain(" bytes omitted]");
     expect(text).toContain("2 further admitted findings omitted from this packet.");
     expect(text.length).toBeLessThan(6_000);
-
+    // The six are shared in lead order, so the fails show whole and the non-results take what is left.
+    const mixed = renderRebuildAdvice(
+      derive(
+        analysis([
+          ...rows.slice(0, 4),
+          ...Array.from({ length: 4 }, (_, index) =>
+            caseRow(`n${index}`, {
+              family: `stalled-${index}`,
+              truthOk: null,
+              pass: null,
+              runtimeNonResult: "sandbox refused the solve",
+              runtimeNonResultKind: "sandbox",
+            }),
+          ),
+        ]),
+        judges(),
+        admission(),
+        null,
+      ),
+    );
+    expect(mixed).toContain(FAILS);
+    expect(mixed).toContain("Standing issues, largest first (2 of 4 shown):");
+    expect(mixed.split("\n- ").filter((line) => /^(family|stalled)-/.test(line))).toHaveLength(6);
     // One byte past the per-claim cap is still cut and marked.
     const tight = renderRebuildAdvice(
       derive(
@@ -881,110 +1029,5 @@ describe("the packet and what the author reads of it", () => {
       ),
     );
     expect(tight).toContain(`: ${"c".repeat(600)} […1 byte omitted]`);
-  });
-});
-
-describe("what the author reads", () => {
-  it("lists disputed issues separately from standing issues", () => {
-    const rendered = renderRebuildAdvice(
-      advicePacket([issue({ dispute: "the check cannot fail on a real task" })]),
-    );
-    expect(rendered).toContain("Disputed issues");
-    expect(rendered).toContain("beams (verified-fail)");
-    expect(rendered).not.toContain("the check cannot fail on a real task");
-    expect(rendered).not.toContain("- beams:");
-  });
-
-  it("a diagnosis publishes its owner, boundary and falsifier, and keeps its cause", () => {
-    const rendered = renderRebuildAdvice(advicePacket([issue({ diagnosis: READING })]));
-    expect(rendered).toContain(
-      "diagnosis (r2: holds for 2 of 3 sampled of 3 failing cases, 1 passing contrast): agent/tools-spec.json.",
-    );
-    expect(rendered).toContain(
-      `First failure boundary at a call to write_layout: ${READING.boundary.reading}. Falsifier:`,
-    );
-    expect(rendered).toContain(`Falsifier: ${READING.falsifier}`);
-    expect(rendered).not.toContain(READING.cause);
-    const atEnd = renderRebuildAdvice(
-      advicePacket([
-        issue({
-          diagnosis: {
-            ...READING,
-            boundary: { tool: null, reading: "the turn cap ended the solve mid-draft" },
-            support: { ...READING.support, contrasts: 0 },
-          },
-        }),
-      ]),
-    );
-    expect(atEnd).toContain("no passing contrast");
-    expect(atEnd).toContain(
-      "First failure boundary at the solve's end: the turn cap ended the solve mid-draft",
-    );
-  });
-
-  it("names the environment as the owner of an environment non-result, and only of one", () => {
-    const rendered = renderRebuildAdvice(advicePacket([issue({ kind: "non-result", detail: "provider" })]));
-    expect(rendered).toContain("environment non-results of kind provider, owned by the environment");
-    // A `verifier` kind is not an environment failure and must not read as one.
-    const verifier = renderRebuildAdvice(advicePacket([issue({ kind: "non-result", detail: "verifier" })]));
-    expect(verifier).toContain(
-      "runtime non-results of kind verifier, a kind that does not establish an environment failure",
-    );
-    expect(verifier).not.toContain("environment non-results of kind");
-  });
-
-  it("tells the author an unmeasured issue is unmeasured, not fixed and not standing", () => {
-    const rendered = renderRebuildAdvice(
-      advicePacket([
-        issue({ unmeasured: ["task-inputs", "scoring"] }),
-        issue({ id: JOINTS, family: "joints" }),
-        issue({ id: "c".repeat(64), kind: "unaccepted", unmeasured: ["check-tools"] }),
-      ]),
-    );
-    expect(rendered).toContain(
-      "Unmeasured issues — absent from this battery, but their family did not rerun under the condition that observed them, so the absence is not a fix: beams (verified-fail: task inputs, scoring program changed); beams (unaccepted: check tools changed).",
-    );
-    expect(rendered).toContain("- joints: 2/5");
-    expect(rendered).not.toContain("- beams:");
-    expect(rendered).not.toContain("fixed");
-    // A family that kept its name has no tasks to say went elsewhere.
-    expect(rendered).not.toContain("now run under");
-  });
-
-  it("says where an unmeasured issue's tasks went when its family's name left the battery", () => {
-    const renamed = (families: Array<{ family: string; taskIds: string[] }>) => ({
-      ...advicePacket([issue({ unmeasured: ["task-inputs"] })]),
-      families: families.map((row) => ({ ...advicePacket([]).families[0]!, ...row })),
-    });
-    expect(renderRebuildAdvice(renamed([{ family: "girders", taskIds: ["t1", "t2"] }]))).toContain(
-      "beams (verified-fail: task inputs changed; its tasks now run under girders).",
-    );
-    // Split across two names, each is named, in order.
-    const split = renderRebuildAdvice(
-      renamed([
-        { family: "girders", taskIds: ["t1"] },
-        { family: "columns", taskIds: ["t2"] },
-      ]),
-    );
-    expect(split).toContain("task inputs changed; its tasks now run under columns, girders).");
-    // The tasks are never named, only the families that now hold them.
-    for (const taskId of ["t1", "t2"]) expect(split).not.toContain(taskId);
-  });
-
-  it("names the issues rechecked under changed public rules, and only when every recheck followed a change", () => {
-    const rendered = renderRebuildAdvice(
-      advicePacket([
-        issue({ absentBatteries: 1, rulesChangedRechecks: 1 }),
-        issue({ id: JOINTS, family: "joints", absentBatteries: 2, rulesChangedRechecks: 1 }),
-      ]),
-    );
-    expect(rendered).toContain(
-      "Issues rechecked under unchanged checks, public rules changed — absent from every recheck, but the public rules, in words or numbers, differed from the battery that observed them, so the absence says whether the repair held under the new rules, not whether the issue persists: beams (verified-fail).",
-    );
-    expect(rendered).not.toContain("joints");
-    expect(rendered).not.toContain("Unmeasured");
-    expect(renderRebuildAdvice(advicePacket([issue({ absentBatteries: 1 })]))).not.toContain(
-      "public rules changed",
-    );
   });
 });

@@ -374,7 +374,7 @@ component hears what is the part most often misremembered, so here it is in one 
 
 | reader | what it receives | what it changes |
 | --- | --- | --- |
-| Builder | the readout: each of the newest 3 batteries' three counts, wall-bound misses, identity aliases, regrades and settled cases; the latest battery's families and where its passing artifacts are; the no-limit line on a full pass. Never a zone, aim, share or count to author towards (prior 10). | its next battery |
+| Builder | the readout: each of the newest 3 batteries' three counts, wall-bound misses, identity aliases, regrades and settled cases; the latest battery's families and where its passing artifacts are; the no-limit line on a full pass, and the keep line after a failed case. Never a zone, aim, share or count to author towards (prior 10). | its next battery |
 | battery sizing | the latest landing's placement | the next round's task count |
 | Epoch Reviewer | the placement in words (`readingSentence`), as a reason to look | its findings, and through them the advice |
 | controller's next move | nothing | — |
@@ -383,7 +383,11 @@ component hears what is the part most often misremembered, so here it is in one 
 So the prompt a too-easy battery gives the Builder is the no-limit line, and it fires on a full pass,
 not on the zone: the latest battery has at least one verified case, no unaccepted attempt, and every
 verified case passed (`noLimitLine`). A 9 of 10 reads significantly too easy, shrinks the next battery
-and orients the reviewer, and sends the Builder no line beyond its counts. The zone was kept from the
+and orients the reviewer, and sends the Builder its counts and the keep line (`keepFailedLine`), as any
+battery that failed a case, unaccepted attempts included, does: keep each failed task as it is, its public
+input and checks unchanged, unless a review shows a check refused a right answer. It names no task, check,
+location or cause. Until 2026-10-07 a partial battery read as counts alone, and in six chances to follow
+an earned fail the Builder changed `agent/` once and dropped or eased the failed task three times. The zone was kept from the
 Builder on purpose: a zone read back to the author decided nothing the counts beside it did not already
 say, and it read as a course (prior 10).
 
@@ -429,7 +433,15 @@ after read only that every case had passed. It ends with
 `MEASURE_SOLVES`, which sends the Builder to how the passing solves reached their answers, because a
 limit moved or an instance enlarged while the same steps would still find an answer asks nothing new.
 The rebuild advice packet sits beside it, and a finding that recurs says how many consecutive batteries
-have admitted it and since which.
+have admitted it and since which. It sorts the issues it shows by what is known of them (`LEAD_OF`): a
+fail, verified or unaccepted, is an observation that may locate a limit, a diagnosis is a hypothesis
+until evidence shows the defect, and a Judge disagreement is pending review until a review settles it.
+Only a non-result is shown under the "Standing issues" lead, the six issues shown are shared in lead
+order so a fail is never cut for a larger non-result, and a defect evidence has shown reaches its
+bundle file as feedback. Until 2026-10-07 every verified fail stood under one "Standing issues" list,
+which read an earned fail as a defect to repair. One check carrying every failure reads three ways,
+none first: the answers are wrong, which may be a limit; the check refuses right answers; or the
+tasks leave the answer open.
 
 **Authoring.** Ambitious is what the Builder does:
 
@@ -596,12 +608,13 @@ and has not been re-derived here.
    times in 6, and none of the 359 difficulty decisions on record eases. The Builder can tell which
    task failed, since the passing solves reach it by task id and the failed task is the one without
    one, but not where or why, which is protected (rule 6): after a partial battery `renderReadout`
-   gives it the counts, the families and the passing artifacts, and the no-limit line speaks only
-   after a full pass. Nothing asks it to keep that task. The controller now solves a verified fail
-   again while every solve in its group failed, three solves in all, before the Builder's next
-   round, unless blocking feedback stands (`unconfirmedSolves`, rule 10), so a fail that passes there
-   reads as the flip it is, and the climb reader's follow-up line counts each run's confirmed and
-   answered fails and, apart, the fails the Judge contested. What still binds is
+   gives it the counts, the families and the passing artifacts, and since 2026-10-07 asks it to keep
+   each failed task under the same task id unless a review shows a check refused a right answer or
+   the task leaves the answer open (`keepFailedLine`), not yet measured. The controller now solves a
+   verified fail again while every solve in its group failed, three solves in all, before the
+   Builder's next round, unless blocking feedback stands (`unconfirmedSolves`, rule 10), so a fail
+   that passes there reads as the flip it is, and the climb reader's follow-up line counts each
+   run's confirmed and answered fails and, apart, the fails the Judge contested. What still binds is
    keeping a confirmed task while the harness changes. Owner:
    `src/run/next-move.ts` and the battery the next round measures, and the operator's stop ("Reading
    the climb as the operator").
@@ -1282,7 +1295,7 @@ the battery was paid for.
    cites a contrast, and grades nothing from them: until 2026-09-29 it turned those counts into a
    confidence label. The reader opens no `verifier.json`, Judge record or accepted artifact, so
    protected detail cannot move its `promptDigest`, which is why its boundary and falsifier may reach
-   the author. The advice renders them with support counts, and the cause stays in the record for the
+   the author. The advice renders them with support counts, as a hypothesis, and the cause stays in the record for the
    Epoch Reviewer. The named owner routes nothing. Treat a timeout as diagnosable unless the evidence
    gives it to the environment.
 

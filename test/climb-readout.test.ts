@@ -405,16 +405,48 @@ describe("rendering", () => {
     expect(censored).not.toContain("demand more");
     expect(censored).not.toContain("Carry none of its tasks forward");
     expect(censored).not.toContain("read how its passing solves reached their answers");
-    // An unaccepted attempt is a fail, and a battery with no pass or a partial one says nothing more.
-    const silent = [
+    // An unaccepted attempt is a fail, so a battery holding one, like one with no pass or a partial
+    // one, found no limit to report as absent.
+    const failed = [
       row("r1", 0, { passed: 5, n: 6, unaccepted: 1 }),
       row("r1", 0, { passed: 0, n: 6 }),
       row("r1", 0, { passed: 3, n: 6 }),
     ];
-    for (const battery of silent) expect(render(readoutOf(battery))).not.toContain("found no limit");
+    for (const battery of failed) expect(render(readoutOf(battery))).not.toContain("found no limit");
     // Only the latest battery speaks: an earlier whole pass under a later partial one says nothing.
     const text = render(readoutOf(row("r1", 0, { passed: 6, n: 6 }), row("r2", 1, { passed: 3, n: 6 })));
     expect(text).not.toContain("found no limit");
+  });
+
+  it("asks to keep each task a battery failed, and names no task, check, location or cause", () => {
+    // In six chances to follow an earned fail, the Builder changed agent/ once and dropped or eased
+    // the failed task three times; the readout had given a partial battery its counts and families
+    // alone. Which task failed it already reads off the passing solves the traces source lists.
+    const keep =
+      "Keep each task that battery r2 failed as it is, under the same task id with its public input and checks unchanged, unless a review shows that a check refused a right answer or that the task leaves the answer open; a raise before you submit goes to the other tasks. A failed task may be where the solver stops, and a task dropped or eased after it fails can no longer show that.";
+    const failed = [
+      row("r2", 0, { passed: 3, n: 6, failed: ["secret-alpha"] }),
+      row("r2", 0, { passed: 0, n: 6 }),
+      // A battery whose every verified case passed still failed the attempt it could not submit.
+      row("r2", 0, { passed: 5, n: 6, unaccepted: 1 }),
+      row("r2", 0, { passed: 2, n: 3, slots: 6, wallBound: 1 }),
+    ];
+    for (const battery of failed) {
+      const text = render(readoutOf(battery));
+      expect(text).toContain(keep);
+      expect(text).not.toContain("secret-");
+      expectNoRestatedDuty(text);
+    }
+    // The latest battery decides: a full pass after a partial one asks for more, not to keep.
+    const passedAfter = render(
+      readoutOf(row("r1", 0, { passed: 3, n: 6 }), row("r2", 1, { passed: 6, n: 6 })),
+    );
+    expect(passedAfter).not.toContain("Keep each task");
+    expect(passedAfter).toContain("Battery r2 passed all 6 of its verified cases, so it found no limit.");
+    // A full pass, and one that lost cases only to non-results, failed nothing to keep.
+    for (const battery of [row("r2", 0, { passed: 6, n: 6 }), row("r2", 0, { passed: 1, n: 1, slots: 6 })]) {
+      expect(render(readoutOf(battery))).not.toContain("Keep each task");
+    }
   });
 
   it("summarises no exclusion, names each excluded battery, and states one shared reason once", () => {

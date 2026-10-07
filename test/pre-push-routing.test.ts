@@ -34,8 +34,9 @@ writeFileSync(
     '[ -z "${ANA_FAKE_GATE_OUTPUT:-}" ] || { printf \'%s\\n\' "$ANA_FAKE_GATE_OUTPUT"; exit 1; }\n',
 );
 chmodSync(join(fakeBin, "bun"), 0o755);
-// The open stack as the hook's two `gh pr list` queries print it, one pull request per line: its tops,
-// or every pull request's head and base, which is the query that asks for `baseRefOid`.
+// The open stack as the hook's two `gh pr list` queries print it, one pull request per line: its tops
+// and the branch each is based on, or every pull request's head and base, which is the query that asks
+// for `baseRefOid`.
 writeFileSync(
   join(fakeBin, "gh"),
   '#!/bin/sh\n[ -z "${ANA_FAKE_GH_FAILS:-}" ] || exit 1\n' +
@@ -63,7 +64,17 @@ git("add", "src/owner.ts");
 git("commit", "-qm", "source");
 const source = git("rev-parse", "HEAD");
 
-afterAll(() => rmSync(fixture, { recursive: true, force: true }));
+// The remote a side pull request is read against: a bare copy whose main is still `base`, behind the
+// fixture's own checked-out main.
+const remoteRepository = mkdtempSync(join(tmpdir(), "ana-pre-push-remote-"));
+execTextSync("git", ["clone", "-q", "--bare", fixture, remoteRepository]);
+execTextSync("git", ["update-ref", "refs/heads/main", base], { cwd: remoteRepository });
+const mainAtBase = ["origin", remoteRepository];
+
+afterAll(() => {
+  rmSync(fixture, { recursive: true, force: true });
+  rmSync(remoteRepository, { recursive: true, force: true });
+});
 
 function runHook(local: string, remote: string, markerName: string, gateOutput = "", hostWall = "") {
   const marker = join(fixture, markerName);
@@ -188,18 +199,55 @@ describe("pre-push proof routing", () => {
     expect(readFileSync(result.marker, "utf8")).toContain("9\trun gate");
   });
 
-  it("refuses a new branch beside the stack instead of on its top", () => {
+  it("refuses a new source branch beside the stack instead of on its top", () => {
     const result = runHookWithRefs(
-      [`refs/heads/beside ${docs} refs/heads/beside ${"0".repeat(40)}`],
+      [`refs/heads/beside ${source} refs/heads/beside ${"0".repeat(40)}`],
       "stack-beside-marker",
-      {
-        ANA_FAKE_STACK_TOPS: `#11 claude/top ${source}`,
-      },
+      { ANA_FAKE_STACK_TOPS: `#11 claude/top ${oldDocs} claude/lower` },
+      mainAtBase,
     );
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain(`${docs.slice(0, 9)} does not contain its head`);
+    expect(result.stderr).toContain(`${source.slice(0, 9)} does not contain its head`);
     expect(result.stderr).toContain("--base claude/top");
     expect(existsSync(result.marker)).toBe(false);
+  });
+
+  // A side pull request goes to main on its own: from where it leaves main it changes only the
+  // documentation set, the skills, the tests, the skills' lock and the lint-exception register.
+  it("takes a new side branch beside a one-pull-request stack", () => {
+    const result = runHookWithRefs(
+      [`refs/heads/side ${docs} refs/heads/side ${"0".repeat(40)}`],
+      "side-branch-marker",
+      { ANA_FAKE_STACK_TOPS: `#11 claude/top ${source} main` },
+      mainAtBase,
+    );
+    expect(result.status).toBe(0);
+    expect(result.stderr).not.toContain("does not contain its head");
+  });
+
+  it("leaves an open side pull request out of the stack's tops", () => {
+    const lock = git("commit-tree", withFile(base, "skills-lock.json"), "-p", base, "-m", "lock");
+    const result = runHookWithRefs(
+      [`refs/heads/next ${source} refs/heads/next ${"0".repeat(40)}`],
+      "side-open-marker",
+      { ANA_FAKE_STACK_TOPS: `#11 claude/top ${docs} claude/lower\n#12 claude/side ${lock} main` },
+      mainAtBase,
+    );
+    expect(result.status).toBe(0);
+    expect(readFileSync(result.marker, "utf8")).toContain("9\trun gate");
+  });
+
+  it("counts a pull request on main as a top once it changes source beside the side paths", () => {
+    const mixed = git("commit-tree", withFile(source, "skills-lock.json"), "-p", base, "-m", "mixed");
+    const result = runHookWithRefs(
+      [`refs/heads/next ${source} refs/heads/next ${"0".repeat(40)}`],
+      "side-source-marker",
+      { ANA_FAKE_STACK_TOPS: `#11 claude/top ${docs} claude/lower\n#12 claude/mixed ${mixed} main` },
+      mainAtBase,
+    );
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("more than one top");
+    expect(result.stderr).toContain("#12 claude/mixed");
   });
 
   it("refuses a new branch while the open pull requests have two tops", () => {

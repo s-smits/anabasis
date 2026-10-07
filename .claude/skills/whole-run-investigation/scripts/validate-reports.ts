@@ -3,7 +3,9 @@
 // the reports the primary saved from native Claude subagents under `native-output/` beside
 // tasks.json. A review may run some lanes on each. This validates collection identity, assigned lane
 // headings and the report sections each lane owes; it does not adjudicate findings or turn session
-// prose into evidence.
+// prose into evidence. `--groups` reads a cross-run or multi-run reading instead: the groups.json
+// `wri.ts lanes` wrote, and one report per group under `native-output/` beside it. `wri.ts collect`
+// calls both in-process for every reading of an investigation.
 
 import { sha256, sha256OfFile } from "#src/meta/digest.ts";
 import { existsSync, mkdirSync, readFileSync, realpathSync, statSync } from "#src/meta/filesystem.ts";
@@ -25,13 +27,19 @@ import {
   nativePrompt,
   SHA256,
 } from "./catalogue-shape.ts";
-import { FINDING_OWNERS, REPORT_SECTIONS } from "./manifest-reporting.ts";
+import {
+  FINDING_OWNERS,
+  MULTI_RUN_OUTCOMES,
+  MULTI_RUN_PILES,
+  REPORT_SECTIONS,
+} from "./manifest-reporting.ts";
 import { ADMISSION_SCHEMA, INSTRUCTIONS_FILE, LAUNCH_INPUT_FILE } from "./manifest-compose.ts";
 import { hasText } from "#src/meta/text.ts";
 import { readJsonFile, writeJsonFile } from "#src/meta/completed-json.ts";
 import { jsonText } from "./run-overview.ts";
 
 const RECEIPT_SCHEMA = "wri-report-validation/v3";
+const GROUPS_RECEIPT_SCHEMA = "wri-multi-run-report-validation/v1";
 
 /** A task's admission row, returned whole so its digest covers every recorded field. */
 type AdmissionRow = JsonObject & { mode: string; identityKey: string; lanes: number[] };
@@ -100,6 +108,22 @@ export interface ReportValidation {
   nativeOutput: string | null;
   complete: boolean;
   rows: ReportRow[];
+}
+
+/** A multi-run review's receipt: each group's one report, checked against the lanes it was given. */
+export interface GroupValidation {
+  schema: typeof GROUPS_RECEIPT_SCHEMA;
+  groupsPath: string;
+  groupsSha256: string;
+  nativeOutput: string;
+  complete: boolean;
+  rows: ReportRow[];
+}
+
+/** One group of a reading across runs, as `wri.ts lanes` planned it. */
+interface GroupRow {
+  session: string;
+  lanes: string[];
 }
 
 export interface ReportPaths {
@@ -277,6 +301,20 @@ function subsections(sectionText: string): Map<string, string[]> {
   return found;
 }
 
+/** The value of each `<label>: ` in a findings body. A report wraps the label or its value in code
+ *  or bold marks, glosses the value, or leads a finding's own line with it, so the value is the
+ *  first word after the label anywhere on a line once those marks and any closing punctuation are
+ *  gone; the caller still checks that word. The label is the instructed `owner: <owner>`, with the
+ *  space: a finding that quotes a record field, as 350009's lane 14 quoted `owner:null`, is prose
+ *  and names no owner. */
+function labelValues(findings: string, label: string): string[] {
+  const pattern = new RegExp(`\\b${label}:\\s+(\\S+)`, "i");
+  return findings.split("\n").flatMap((line) => {
+    const value = pattern.exec(line.replaceAll(/[`*]/g, ""))?.[1];
+    return value === undefined ? [] : [value.replace(/[.;,:)]+$/, "")];
+  });
+}
+
 /** What one lane section owes: every report section exactly once, in order and non-empty, and a
  *  `Findings` body that is either `none` or entries each naming one admitted owner. */
 function sectionIssues(heading: string, sectionText: string): string[] {
@@ -298,15 +336,7 @@ function sectionIssues(heading: string, sectionText: string): string[] {
   }
   const findings = found.get("Findings")?.[0];
   if (findings !== undefined && findings.length > 0 && findings !== "none") {
-    // A report wraps the label or its value in code or bold marks, glosses the value, or leads a
-    // finding's own line with it, so the owner is the first word after an `owner: ` label anywhere
-    // on a line once those marks and any closing punctuation are gone. That word is still checked
-    // below. The label is the instructed `owner: <owner>`, with the space: a finding that quotes a
-    // record field, as 350009's lane 14 quoted `owner:null`, is prose and names no owner.
-    const owners = findings.split("\n").flatMap((line) => {
-      const owner = /\bowner:\s+(\S+)/i.exec(line.replaceAll(/[`*]/g, ""))?.[1];
-      return owner === undefined ? [] : [owner.replace(/[.;,:)]+$/, "")];
-    });
+    const owners = labelValues(findings, "owner");
     if (owners.length === 0) issues.push(`${heading}: findings name no owner`);
     for (const owner of owners) {
       if (!FINDING_OWNERS.includes(owner)) {
@@ -327,37 +357,38 @@ function topSections(text: string): { name: string; body: string }[] {
   });
 }
 
-function reportContract(task: TaskRow, text: string, index: number): SectionContract {
+/** The headings a report owes: one `## lane_NN` per assigned lane, or the one `expected` heading
+ *  of a directed task, which has none. */
+function reportContract(lanes: readonly string[], expected: string | null, text: string): SectionContract {
   const sections = topSections(text);
   const names = sections.map((section) => section.name);
   const headings = names.flatMap((name) => /^lane_(\d{2})$/.exec(name)?.[1] ?? []);
-  const expected = expectedHeading(task.task, index);
   const issues: string[] = [];
   const unexpected =
-    task.lanes.length > 0
-      ? headings.filter((heading) => !task.lanes.includes(heading))
+    lanes.length > 0
+      ? headings.filter((heading) => !lanes.includes(heading))
       : names.filter((heading) => heading !== expected);
   const missing =
-    task.lanes.length > 0
-      ? task.lanes.filter((lane) => headings.filter((heading) => heading === lane).length !== 1)
+    lanes.length > 0
+      ? lanes.filter((lane) => headings.filter((heading) => heading === lane).length !== 1)
       : expected === null || names.filter((heading) => heading === expected).length !== 1
         ? [expected ?? "expected heading"]
         : [];
   if (unexpected.length > 0) {
     issues.push(
-      task.lanes.length > 0
+      lanes.length > 0
         ? `out-of-scope lane headings: ${[...new Set(unexpected)].join(", ")}`
         : `out-of-scope report headings: ${[...new Set(unexpected)].join(", ")}`,
     );
   }
   if (missing.length > 0) {
     issues.push(
-      task.lanes.length > 0
+      lanes.length > 0
         ? `assigned lane headings missing or repeated: ${missing.join(", ")}`
         : `expected heading missing or repeated: ${missing.join(", ")}`,
     );
   }
-  const owed = task.lanes.length > 0 ? task.lanes.map((lane) => `lane_${lane}`) : [expected];
+  const owed = lanes.length > 0 ? lanes.map((lane) => `lane_${lane}`) : [expected];
   for (const section of sections) {
     if (owed.includes(section.name)) issues.push(...sectionIssues(`## ${section.name}`, section.body));
   }
@@ -736,7 +767,11 @@ function reportRow(task: TaskRow, index: number, source: ReportSource): ReportRo
     const read = readFileSync(reportPath);
     reportBytes = read;
     if (reportBytes.byteLength === 0) issues.push("report is empty");
-    const checked = reportContract(task, read.toString("utf8"), index);
+    const checked = reportContract(
+      task.lanes,
+      task.lanes.length > 0 ? null : expectedHeading(task.task, index),
+      read.toString("utf8"),
+    );
     headings = checked.headings;
     issues.push(...checked.issues);
   }
@@ -754,7 +789,7 @@ function reportRow(task: TaskRow, index: number, source: ReportSource): ReportRo
   };
 }
 
-function validate(paths: ReportPaths): ReportValidation {
+export function validate(paths: ReportPaths): ReportValidation {
   const taskBytes = readFileSync(paths.tasksPath);
   const tasks = taskRows(capturedJsonParse(taskBytes.toString("utf8")));
   const luna =
@@ -776,45 +811,150 @@ function validate(paths: ReportPaths): ReportValidation {
   };
 }
 
-/** The receipt always lands at `--out` (beside the summary, else beside tasks.json, by default),
- *  even for a collection that could not be validated (exit 2), and the console names it; an
- *  incomplete one exits 1. */
-function validateCommand(args: CommandArgs): number {
-  const tasksPath = args.required("tasks");
-  const summaryPath = args.value("summary");
-  const paths = {
-    tasksPath,
-    summaryPath,
-    outPath: args.value("out") ?? join(dirname(summaryPath ?? tasksPath), "wri-report-validation.json"),
+function groupRows(value: JsonValue): GroupRow[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error("groups.json must hold at least one group");
+  }
+  return value.map((entry, index) => {
+    const row = asRecord(entry);
+    if (row === null || !isString(row.session) || !/^[a-z][a-z0-9_]{0,47}$/.test(row.session)) {
+      throw new Error(`groups[${index}].session is invalid`);
+    }
+    if (!Array.isArray(row.runs) || row.runs.length < 2 || !row.runs.every(isString)) {
+      throw new Error(`groups[${index}] names fewer than two runs, so it is not a multi-run group`);
+    }
+    const { lanes } = row;
+    if (
+      !Array.isArray(lanes) ||
+      lanes.length === 0 ||
+      lanes.some((lane) => !isNumber(lane) || !Number.isInteger(lane) || lane < 1 || lane > ANGLE_COUNT)
+    ) {
+      throw new Error(`groups[${index}].lanes must be integer lanes 1-${ANGLE_COUNT}`);
+    }
+    return { session: row.session, lanes: lanes.map((lane) => textOf(lane).padStart(2, "0")) };
+  });
+}
+
+/** What a multi-run lane section owes beyond a single run's: beside each finding's owner, one pile
+ *  from `MULTI_RUN_PILES` and one outcome from `MULTI_RUN_OUTCOMES`. */
+function multiRunIssues(heading: string, sectionText: string): string[] {
+  const findings = subsections(sectionText).get("Findings")?.[0];
+  if (findings === undefined || findings === "" || findings === "none") return [];
+  const owners = labelValues(findings, "owner").length;
+  const issues: string[] = [];
+  for (const [label, allowed] of [
+    ["pile", MULTI_RUN_PILES],
+    ["outcome", MULTI_RUN_OUTCOMES],
+  ] as const) {
+    const values = labelValues(findings, label);
+    if (values.length !== owners) {
+      issues.push(`${heading}: ${values.length} \`${label}:\` lines for ${owners} owned findings`);
+    }
+    for (const stray of values.filter((value) => !allowed.includes(value))) {
+      issues.push(`${heading}: ${label} \`${stray}\` is not one of ${allowed.join(", ")}`);
+    }
+  }
+  return issues;
+}
+
+/** One group's report: the file the subagent wrote under `native-output/`, its lane sections, and
+ *  the pile and outcome of every finding. */
+function groupReport(group: GroupRow, nativeDir: string): ReportRow {
+  const reportPath = containedReport(nativeDir, join(nativeDir, `${group.session}.md`));
+  const issues: string[] = [];
+  let bytes: Uint8Array = new Uint8Array();
+  let headings: string[] = [];
+  if (reportPath === null) {
+    issues.push(`${NATIVE_OUTPUT}/${group.session}.md is absent or not a regular file inside it`);
+  } else {
+    const read = readFileSync(reportPath);
+    bytes = read;
+    const text = read.toString("utf8");
+    const checked = reportContract(group.lanes, null, text);
+    headings = checked.headings;
+    issues.push(...checked.issues);
+    for (const section of topSections(text)) {
+      if (group.lanes.some((lane) => section.name === `lane_${lane}`)) {
+        issues.push(...multiRunIssues(`## ${section.name}`, section.body));
+      }
+    }
+  }
+  return {
+    name: group.session,
+    transport: "native",
+    assignedLanes: group.lanes,
+    reportedLanes: headings,
+    status: issues.length === 0 ? "accepted-for-adjudication" : "rejected",
+    issues,
+    reportPath,
+    reportBytes: bytes.byteLength,
+    reportSha256: reportPath === null ? null : sha256(bytes),
+    expectedHeading: null,
   };
-  mkdirSync(dirname(paths.outPath), { recursive: true });
-  let result: ReportValidation;
+}
+
+export function validateGroups(groupsPath: string): GroupValidation {
+  const groupBytes = readFileSync(groupsPath);
+  const groups = groupRows(capturedJsonParse(groupBytes.toString("utf8")));
+  const dir = join(realpathSync(dirname(groupsPath)), NATIVE_OUTPUT);
+  const nativeDir = existsSync(dir) ? realpathSync(dir) : dir;
+  const rows = groups.map((group) => groupReport(group, nativeDir));
+  return {
+    schema: GROUPS_RECEIPT_SCHEMA,
+    groupsPath,
+    groupsSha256: sha256(groupBytes),
+    nativeOutput: nativeDir,
+    complete: rows.every((row) => row.status === "accepted-for-adjudication"),
+    rows,
+  };
+}
+
+/** The receipt always lands at `--out` (beside groups.json, else beside the summary, else beside
+ *  tasks.json, by default), even for a collection that could not be validated (exit 2), and the
+ *  console names it; an incomplete one exits 1. */
+function validateCommand(args: CommandArgs): number {
+  const groupsPath = args.value("groups");
+  const summaryPath = args.value("summary");
+  if (groupsPath !== null && (args.value("tasks") !== null || summaryPath !== null)) {
+    throw new CommandFailure("--groups reads a multi-run review; pass it without --tasks or --summary", 2);
+  }
+  const tasksPath = groupsPath ?? args.required("tasks");
+  const outPath = args.value("out") ?? join(dirname(summaryPath ?? tasksPath), "wri-report-validation.json");
+  mkdirSync(dirname(outPath), { recursive: true });
+  let result: ReportValidation | GroupValidation;
   try {
-    result = validate(paths);
+    result = groupsPath === null ? validate({ tasksPath, summaryPath, outPath }) : validateGroups(groupsPath);
   } catch (error) {
     const message = errorMessage(error);
-    writeJsonFile(paths.outPath, {
-      schema: RECEIPT_SCHEMA,
-      tasksPath: paths.tasksPath,
-      summaryPath: paths.summaryPath,
+    writeJsonFile(outPath, {
+      ...(groupsPath === null
+        ? {
+            schema: RECEIPT_SCHEMA,
+            tasksPath,
+            summaryPath,
+            launchBinding: { state: "invalid", reason: message, promptDigestsBound: false },
+          }
+        : { schema: GROUPS_RECEIPT_SCHEMA, groupsPath }),
       complete: false,
-      launchBinding: { state: "invalid", reason: message, promptDigestsBound: false },
       rows: [],
       issues: [message],
     });
     throw new CommandFailure(message, 2);
   }
-  emitReport(result, { json: false, out: paths.outPath, render: () => paths.outPath });
+  emitReport(result, { json: false, out: outPath, render: () => outPath });
   return result.complete ? 0 : 1;
 }
 
-await runCommand(
-  {
-    name: "validate-reports",
-    usage:
-      "usage: bun validate-reports.ts --tasks <abs tasks.json> [--summary <abs Luna summary.json>] [--out <abs file>]\n" +
-      "  native reports are read from native-output/<name>.md beside tasks.json",
-    options: { tasks: "abs", summary: "abs", out: "abs" },
-  },
-  validateCommand,
-);
+if (import.meta.main) {
+  await runCommand(
+    {
+      name: "validate-reports",
+      usage:
+        "usage: bun validate-reports.ts --tasks <abs tasks.json> [--summary <abs Luna summary.json>] [--out <abs file>]\n" +
+        "       bun validate-reports.ts --groups <abs multi-run groups.json> [--out <abs file>]\n" +
+        "  native reports are read from native-output/<name>.md beside tasks.json or groups.json",
+      options: { tasks: "abs", summary: "abs", groups: "abs", out: "abs" },
+    },
+    validateCommand,
+  );
+}

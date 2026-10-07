@@ -19,6 +19,8 @@ const skillsRoot = join(repoRoot, ".claude", "skills");
 const LIBRARY_DIR = "main";
 const skillPathPattern = /\.claude\/skills\/([a-z0-9-]+)\//g;
 const linkPattern = /\]\(([^)\s#]+)(?:#[^)]*)?\)/g;
+// A link inside a fenced code block is example text a skill shows, not a reference it makes.
+const fencedBlockPattern = /^```[^\n]*\n[\s\S]*?^```/gm;
 
 function markdownFilesUnder(root: string): string[] {
   const found: string[] = [];
@@ -47,7 +49,7 @@ function frontmatterName(skillFile: string): string | null {
 }
 
 function brokenLinksIn(file: string): string[] {
-  const text = readFileSync(file, "utf8");
+  const text = readFileSync(file, "utf8").replace(fencedBlockPattern, "");
   const broken: string[] = [];
   for (const match of text.matchAll(linkPattern)) {
     const target = match[1];

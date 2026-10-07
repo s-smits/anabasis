@@ -30,20 +30,16 @@ import {
 import {
   type AngleSession,
   type LaneGate,
-  type NotesOrientation,
   type Snapshot,
-  ORIENTATION_HEADING,
   deterministicRowProblem,
   factsBlock,
   manifestFail,
-  orientationProblems,
   parseNotes,
   parseSessionSpec,
   partitionAngles,
   sessionGroupName,
 } from "./manifest-inputs.ts";
 import { reportingLines, snapshotLines } from "./manifest-reporting.ts";
-import { renderSharedInstructions, type SharedInstructions } from "./shared-instructions.ts";
 import { writeJsonFile } from "#src/meta/completed-json.ts";
 import { LAUNCH_FILE, SUMMARY_FILE } from "#skills/codex-luna-swarm/scripts/luna-receipts.ts";
 import { readJsonAs } from "./run-overview.ts";
@@ -90,15 +86,13 @@ export interface SessionRequest {
 
 interface SessionResolution {
   sessions: LaunchSession[];
-  orientations: NotesOrientation[];
   problems?: string[];
 }
 
-/** The proved session set and the orientation every session reads. */
+/** The proved session set. */
 export interface SessionSet {
   sessions: LaunchSession[];
   seen: Set<string>;
-  orientationText: string;
 }
 
 /** Everything the shared instructions and the public-only instructions are composed from. */
@@ -113,8 +107,10 @@ export interface InstructionInput extends SessionSet {
   title: string;
   live: boolean;
   webAccess: boolean;
-  contextText: string;
-  shared: SharedInstructions | null;
+  /** The investigation's shared instructions, as `readSharedInstructions` reads them. */
+  shared: string;
+  /** This run's recorded overview, `run-overview.md` as the `overview` lane wrote it. */
+  runOverview: string;
   reviewMode?: string;
 }
 
@@ -137,6 +133,7 @@ export interface ManifestTask {
 /** What `writeAndDispatch` writes and, with `launch`, starts. */
 export interface DispatchInput extends SessionSet {
   outDir: string;
+  shared: string;
   instructions: string;
   tasks: ManifestTask[];
   transport: string;
@@ -212,18 +209,7 @@ function laneSession(name: string, lanes: readonly AngleSession[], direction = "
 }
 
 function autoSessions({ autoCount, notesPath, declared, gate }: SessionRequest): SessionResolution {
-  let orientations: NotesOrientation[] = [];
-  if (hasText(notesPath)) {
-    const parsed = parseNotes(resolve(notesPath));
-    if (parsed.notes.length > 0) {
-      manifestFail("--auto takes notes carrying only `## orientation`; drop --auto for per-session headings");
-    }
-    orientations = parsed.orientations;
-  } else {
-    console.error(
-      "build-manifest: no orientation supplied; sessions orient only from verified controller facts",
-    );
-  }
+  if (hasText(notesPath)) manifestFail("--auto takes no notes; select lanes with --sessions to direct them");
   const lanes = [...declared.values()].sort((a, b) => a.number - b.number);
   const launchable = lanes.filter((lane) => {
     const problem = untriggeredProblem(lane, gate);
@@ -233,7 +219,7 @@ function autoSessions({ autoCount, notesPath, declared, gate }: SessionRequest):
   const sessions = partitionAngles(launchable, autoCount).map((group) =>
     laneSession(sessionGroupName(group.map((lane) => ({ name: lane.name, session: lane }))), group),
   );
-  return { sessions, orientations };
+  return { sessions };
 }
 
 function customSession(name: string, note: string): LaunchSession {
@@ -250,15 +236,13 @@ function customSession(name: string, note: string): LaunchSession {
   };
 }
 
-// `--sessions` selects declared lanes by number or range. Notes stay optional: an orientation block
-// alone is enough, and a `## <session>` heading adds direction to a session already selected.
+// `--sessions` selects declared lanes by number or range. Notes stay optional: a `## <session>`
+// heading adds direction to a session already selected.
 function specSessions({ sessionsSpec, notesPath, declared, gate }: SessionRequest): SessionResolution {
   const { groups, problems } = parseSessionSpec(sessionsSpec ?? "", declared);
-  let orientations: NotesOrientation[] = [];
   const directions = new Map<string, string>();
   if (hasText(notesPath)) {
     const parsed = parseNotes(resolve(notesPath));
-    orientations = parsed.orientations;
     for (const { name, note, custom } of parsed.notes) {
       if (custom) {
         problems.push(`\`custom:${name}\` needs the notes path without --sessions`);
@@ -281,7 +265,7 @@ function specSessions({ sessionsSpec, notesPath, declared, gate }: SessionReques
     }
     return laneSession(group.name, lanes, directions.get(group.name) ?? "");
   });
-  return { sessions, orientations, problems };
+  return { sessions, problems };
 }
 
 function manualSessions({ notesPath, declared, gate }: SessionRequest): SessionResolution {
@@ -311,46 +295,29 @@ function manualSessions({ notesPath, declared, gate }: SessionRequest): SessionR
     if (untriggered !== null) problems.push(untriggered);
     sessions.push(laneSession(name, [session], note));
   }
-  return { sessions, orientations: parsed.orientations, problems };
+  return { sessions, problems };
 }
 
-function validateSessionSet({
-  sessions,
-  orientations,
-  problems,
-  autoCount,
-  sessionsSpec,
-}: SessionRequest & Required<SessionResolution>): SessionSet {
+function validateSessionSet({ sessions, problems }: Required<SessionResolution>): SessionSet {
   const seen = new Set<string>();
   for (const session of sessions) {
     if (seen.has(session.name)) problems.push(`duplicate session heading: ${session.name}`);
     seen.add(session.name);
   }
-  const orientationIssues = orientationProblems(orientations);
-  // Every path that leaves this empty records a problem, and a problem exits below.
-  let orientationText = "";
-  if (orientationIssues.length === 0) orientationText = orientations[0]?.text ?? "";
-  else if ((autoCount > 0 || hasText(sessionsSpec)) && orientations.length === 0) {
-    orientationText =
-      "No reviewer orientation was supplied. Orient only from the verified controller facts below.";
-  } else problems.push(...orientationIssues);
   if (problems.length > 0) {
     for (const problem of problems) console.error(`build-manifest: ${problem}`);
     runtimeProcess.exit(2);
   }
-  return { sessions, seen, orientationText };
+  return { sessions, seen };
 }
 
 export function resolveSessions(requested: SessionRequest): SessionSet {
-  if (requested.declared.has(ORIENTATION_HEADING)) {
-    manifestFail(`this tree declares the reserved session name \`${ORIENTATION_HEADING}\``);
-  }
   const result = hasText(requested.sessionsSpec)
     ? specSessions(requested)
     : requested.autoCount > 0
       ? autoSessions(requested)
       : manualSessions(requested);
-  return validateSessionSet({ ...requested, ...result, problems: result.problems ?? [] });
+  return validateSessionSet({ ...result, problems: result.problems ?? [] });
 }
 
 function admissionLines(sessions: readonly LaunchSession[], mode: string): string[] {
@@ -426,29 +393,16 @@ export function composeInstructions(input: InstructionInput): string {
         "evidence ID or snapshot time."
       : `Snapshot captured \`${snapshot.status.capturedAt}\`.`,
     "",
-    "## Orientation",
-    "",
-    "The reviewer's reading of this run, from the same snapshot. It orients and does not conclude:",
-    "contradict any line with evidence and report that as the finding.",
-    "",
-    input.orientationText,
+    input.shared,
     "",
     "## Controller facts, already verified (do not rediscover; disagreement is a finding)",
     "",
     factsBlock(snapshot),
     "",
-    ...(input.shared
-      ? [
-          "## Run overview (recorded bytes rendered from shared-instructions.json; the primary may have edited it)",
-          "",
-          renderSharedInstructions(input.shared),
-          "",
-        ]
-      : []),
-    input.contextText
-      ? ["## The moved variable and prior state", "", input.contextText, ""].join("\n")
-      : "The moved variable for this run was not supplied to the launcher. Do not infer it from\n" +
-        "evidence; treat it as an open identity question.\n",
+    "## Run overview (recorded bytes from this run's snapshot and lanes)",
+    "",
+    input.runOverview.trim(),
+    "",
     "## Assignments in this launch",
     "",
     "Report headings outside your own assignment are invalid and dropped during collection.",
@@ -476,6 +430,9 @@ export function blindSession(session: LaunchSession): boolean {
 }
 
 export function publicReviewInstructions(input: InstructionInput): string {
+  // The shared instructions' hard rules reach an isolated lane although it is blind to the rest of
+  // them; nothing does when the primary deleted that section.
+  const hardRules = /^## Hard rules\b[^\n]*\n[\s\S]*?(?=^## |(?![\s\S]))/m.exec(input.shared)?.[0];
   return [
     "# Independent blind review",
     `This evidence boundary applies to lanes ${[...ISOLATED_ANGLES.keys()].join(", ")}; other assignments use their own context below.`,
@@ -486,7 +443,7 @@ export function publicReviewInstructions(input: InstructionInput): string {
     "Before freezing your result, read only the original request and configured model identities from opening.json,",
     "public rules and public task inputs, public agent tools, and accepted artifact bytes selected independently",
     "of their verdicts. Select all available artifacts or a public-family sample fixed before reading outcomes.",
-    "Do not read shared instructions, orientation, prior syntheses, scan, digest, case verdicts, controls,",
+    "Do not read the investigation's shared instructions (past the hard rules below), orientation, prior syntheses, scan, digest, case verdicts, controls,",
     "hidden expectations, evaluator/reference implementation, private traces or another reviewer's reports.",
     "Inspect only public fields when a storage file also contains protected fields; prefer recorded public-task.json.",
     "Freeze the public corpus of valid alternatives and plausibly wrong artifacts, with its identities, before any permitted later join.",
@@ -497,6 +454,7 @@ export function publicReviewInstructions(input: InstructionInput): string {
     "Report only your assigned headings, method, frozen input identities, denominators, findings and limits.",
     "Join recorded verdicts only after freezing the independent result and only when your assignment permits it.",
     "Never quote protected verifier output, private counterexamples or per-task failure locations in the report.",
+    ...(hardRules === undefined ? [] : ["", hardRules.trim(), ""]),
     ...reportingLines(),
   ].join("\n");
 }
@@ -724,7 +682,7 @@ export function writeAndDispatch(input: DispatchInput): void {
   for (const { scratch } of input.tasks) if (scratch !== null) mkdirSync(scratch, { recursive: true });
   writeJsonFile(launcherTasksPath, input.tasks.map(launcherTask));
   const authored =
-    input.orientationText.length + input.sessions.reduce((sum, session) => sum + session.direction.length, 0);
+    input.shared.length + input.sessions.reduce((sum, session) => sum + session.direction.length, 0);
   const total = input.tasks.reduce((sum, task) => sum + task.task.length, 0) + input.instructions.length;
   console.log(`instructions: ${instructionsPath}`);
   console.log(`tasks:        ${tasksPath}  (${input.tasks.length} sessions)`);

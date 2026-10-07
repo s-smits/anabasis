@@ -1,10 +1,10 @@
 #!/usr/bin/env bun
-// One editable run overview for every review lane. `buildOverview` derives it from recorded bytes
-// (snapshot status and the terminal trace-review read through the controller's strict reader, harness evolution, digest trigger rows, scan findings and
-// the timeline stalls) so the lanes get the same orientation even when the default outcome
-// view refused the run. It is the byte source for `shared-instructions.json` (see
-// shared-instructions.ts), which is the file the primary edits before launch; `wri.ts collect`
-// writes both.
+// One run overview for every review lane of a run. `buildOverview` derives it from recorded bytes
+// (snapshot status and the terminal trace-review read through the controller's strict reader,
+// harness evolution, digest trigger rows, scan findings and the timeline stalls) so the lanes get
+// the same facts even when the default outcome view refused the run. The `overview` lane of
+// `wri.ts read` writes it as `overview.json`, and renders it as `run-overview.md` (see
+// shared-instructions.ts), which every open lane prompt of the run carries as `## Run overview`.
 
 import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
 import { asRecord, isRecord, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
@@ -15,7 +15,7 @@ import { readJsonFileOrNull } from "#src/meta/completed-json.ts";
 import { DIGEST } from "./archive-shape.ts";
 
 export const OVERVIEW_SCHEMA = "wri-run-overview/v1";
-/** The overview `wri.ts collect` writes into the review directory, and the brief and the archive read. */
+/** The overview the `overview` lane writes into the review directory, and the brief and the archive read. */
 export const OVERVIEW_FILE = "overview.json";
 /** The review directory's state, which `wri.ts` records each step in and the brief and archive read. */
 export const REVIEW_STATE_FILE = "wri-review.json";
@@ -247,7 +247,5 @@ export function buildOverview(snapshotDir: string) {
         }))
       : null,
     timelineStalls: Array.isArray(timeline?.stalls) ? timeline.stalls.slice(0, 2) : null,
-    orientation: "",
-    movedVariable: "",
   };
 }

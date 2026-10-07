@@ -8,6 +8,7 @@ import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
 import { dirname, join, resolve } from "#src/meta/path.ts";
 import { type CommandArgs, type CommandResult, runCommand } from "#skills/main/cli.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
+import { errorMessage } from "#src/meta/runtime-values.ts";
 import { hasText } from "#src/meta/text.ts";
 import { ANGLE_FILES, GIT_SHA, ISOLATED_ANGLES, MIN_AUTO_SESSIONS } from "./catalogue-shape.ts";
 import {
@@ -25,17 +26,17 @@ import {
   resolveSessions,
   writeAndDispatch,
 } from "./manifest-compose.ts";
-import { readSharedInstructions, sharedAuthoredText } from "./shared-instructions.ts";
+import { readSharedInstructions } from "./shared-instructions.ts";
 
 const HERE = dirname(Bun.fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "..", "..", "..", "..");
 const USAGE = [
   "usage:",
   "  build-manifest.ts --snapshot <dir> --worktree <dir> --out <dir>",
+  "                     --shared-instructions <shared-instructions.md> --run-overview <run-overview.md>",
   "                     [--sessions 1-4,7] [--auto <sessions>] [--notes <file>]",
   "                     [--angles <file>] [--index <file>]",
-  "                     [--revision <40-char commit>] [--live] [--title <text>] [--context <file>]",
-  "                     [--shared-instructions <shared-instructions.json>] [--web-access]",
+  "                     [--revision <40-char commit>] [--live] [--title <text>] [--web-access]",
   "                     [--transport luna|native] [--effort high|xhigh|max] [--launch [--detach] [--max-active <n>]]",
   `Lanes ${[...ISOLATED_ANGLES.keys()].join(", ")} are isolated: each launches only when its deterministic trigger fired in the snapshot.`,
 ].join("\n");
@@ -50,10 +51,21 @@ interface ManifestOptions {
   worktree: string | null;
   notesPath: string | null;
   outDir: string | null;
+  sharedPath: string | null;
+  overviewPath: string | null;
   launch: boolean;
   detach: boolean;
   maxActive: string | null;
   revision: string | null;
+}
+
+/** The paths a launch requires, proved present, and the two instruction files read. */
+interface LaunchInputs {
+  snapshotDir: string;
+  worktree: string;
+  outDir: string;
+  shared: string;
+  runOverview: string;
 }
 
 interface Catalogue {
@@ -100,6 +112,8 @@ function parseOptions(args: CommandArgs): ManifestOptions {
     worktree: args.value("worktree"),
     notesPath: args.value("notes"),
     outDir: args.value("out"),
+    sharedPath: args.value("shared-instructions"),
+    overviewPath: args.value("run-overview"),
     launch: args.flag("launch"),
     detach: args.flag("detach"),
     maxActive,
@@ -107,22 +121,33 @@ function parseOptions(args: CommandArgs): ManifestOptions {
   };
 }
 
-/** Whether a launch lacks what it cannot start without, which prints the usage and exits 2. */
-function missingPaths(options: ManifestOptions): boolean {
+/** What a launch cannot start without, proved present and read; null prints the usage (exit 2). A
+ *  shared-instructions file with a section left blank refuses here, before the snapshot is read. */
+function launchInputs(options: ManifestOptions): LaunchInputs | null {
+  const { snapshotDir, worktree, outDir, sharedPath, overviewPath } = options;
   if (
-    !hasText(options.snapshotDir) ||
-    !hasText(options.worktree) ||
-    !hasText(options.outDir) ||
+    !hasText(snapshotDir) ||
+    !hasText(worktree) ||
+    !hasText(outDir) ||
+    !hasText(sharedPath) ||
+    !hasText(overviewPath) ||
     (!options.autoCount && !hasText(options.sessionsSpec) && !hasText(options.notesPath))
   ) {
     console.error(USAGE);
-    return true;
+    return null;
   }
-  if (!existsSync(options.worktree)) manifestFail(`--worktree does not exist: ${options.worktree}`);
+  if (!existsSync(worktree)) manifestFail(`--worktree does not exist: ${worktree}`);
+  if (!existsSync(overviewPath)) manifestFail(`--run-overview does not exist: ${overviewPath}`);
   if (hasText(options.notesPath) && !existsSync(options.notesPath)) {
     manifestFail(`--notes does not exist: ${options.notesPath}`);
   }
-  return false;
+  let shared: string;
+  try {
+    shared = readSharedInstructions(sharedPath);
+  } catch (error) {
+    manifestFail(errorMessage(error));
+  }
+  return { snapshotDir, worktree, outDir, shared, runOverview: readFileSync(overviewPath, "utf8") };
 }
 
 function loadCatalogue(args: CommandArgs): Catalogue {
@@ -154,11 +179,9 @@ function main(args: CommandArgs): CommandResult {
   const state = loadCatalogue(args);
   if (args.flag("list")) return printList(state);
   const parsed = parseOptions(args);
-  // `missingPaths` refuses an absent snapshot, worktree or output path, so the null tests after it
-  // only carry that proof into the types.
-  const { snapshotDir, worktree, outDir } = parsed;
-  if (missingPaths(parsed) || snapshotDir === null || worktree === null || outDir === null) return 2;
-  const options = { ...parsed, snapshotDir, worktree, outDir };
+  const inputs = launchInputs(parsed);
+  if (inputs === null) return 2;
+  const options = { ...parsed, ...inputs };
   const snapshot = loadSnapshot(resolve(options.snapshotDir), options.worktree);
   if (options.revision !== null && options.revision !== snapshot.status.source.commit) {
     manifestFail(
@@ -169,21 +192,6 @@ function main(args: CommandArgs): CommandResult {
   const runId = snapshot.runId ?? "unknown-run";
   const campaign = snapshot.status.campaign;
   const bun = snapshot.status.runtime?.executable ?? Bun.argv[0] ?? "";
-  const contextPath = args.value("context");
-  if (hasText(contextPath) && !existsSync(contextPath)) {
-    manifestFail(`--context does not exist: ${contextPath}`);
-  }
-  const sharedPath = args.value("shared-instructions");
-  const shared = hasText(sharedPath) ? readSharedInstructions(sharedPath) : null;
-  const authored = sharedAuthoredText(shared);
-  // The shared instructions' two authored values stand in for --context and the notes
-  // orientation when those were not supplied; explicit files still win.
-  const contextText = hasText(contextPath)
-    ? readFileSync(contextPath, "utf8").trim()
-    : authored.movedVariable;
-  if (authored.orientation !== "" && !hasText(options.notesPath)) {
-    sessionSet.orientationText = authored.orientation;
-  }
   const reviewMode = options.autoCount > 0 ? "exhaustive" : "targeted";
   const instructionInput = {
     ...sessionSet,
@@ -197,8 +205,8 @@ function main(args: CommandArgs): CommandResult {
     title: args.value("title") ?? `run ${runId}`,
     live: args.flag("live"),
     webAccess: args.flag("web-access"),
-    contextText,
-    shared,
+    shared: options.shared,
+    runOverview: options.runOverview,
     reviewMode,
   };
   const instructions = composeInstructions(instructionInput);
@@ -248,8 +256,8 @@ if (import.meta.main) {
         index: "text",
         revision: "text",
         title: "text",
-        context: "text",
-        "shared-instructions": "text",
+        "shared-instructions": "abs",
+        "run-overview": "abs",
         transport: "text",
         effort: "text",
         list: "flag",

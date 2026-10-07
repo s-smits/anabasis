@@ -1,0 +1,167 @@
+{
+  "schema": "wri-lane-groups/v2",
+  "about": "Which semantic lanes belong in one subagent, for a native (Claude subagent) review. The lanes are leaves of a binary tree whose internal nodes join lanes that read the same bytes, so a subagent opens each file once; `wri.ts lanes --agents N` (through compose-groups.ts) cuts the tree into exactly N total subagents per run by repeatedly splitting the group with the most lanes into its two children (ties go to the left one). Lanes in `alone` always run by themselves, each in its own subagent, and count toward N. Lanes with no prompt are pruned out first, so a tier's smaller lane set is grouped by the same themes. A lane whose report is another lane's trigger (1 and 31) never share a group until N is large enough to separate everything else. Fewer, larger groups trade independence and report depth for fewer launches; each lane still gets its own report.",
+  "alone": {
+    "7": "valid-alternative rejection challenge: isolated, opens on its own trigger",
+    "23": "trace challenge: reads the private trace-challenge packet",
+    "29": "hardware target coverage: owns a scratch directory",
+    "30": "ground-truth verdict comparison: isolated, opens on its own trigger"
+  },
+  "tree": {
+    "reads": "every lane that has a prompt",
+    "split": [
+      {
+        "reads": "the product surface and what a verdict rests on",
+        "split": [
+          {
+            "reads": "the product surface: tools, brief, contract, request, guide, memory",
+            "split": [
+              {
+                "reads": "tool bytes, check mirroring, brief against the request, host contract",
+                "split": [
+                  {
+                    "reads": "executable tool bytes and closure; check mirroring in solver tools",
+                    "split": [2, 34]
+                  },
+                  {
+                    "reads": "authoring-to-host contract; brief against the request",
+                    "split": [3, 31]
+                  }
+                ]
+              },
+              {
+                "reads": "request chain, public inputs, operating guide, Builder memory",
+                "split": [
+                  {
+                    "reads": "request-to-verdict chain; public disclosure and one-recipe",
+                    "split": [1, 8]
+                  },
+                  {
+                    "reads": "operating guide and roster; Builder memory and posture",
+                    "split": [4, 26]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "reads": "what a verdict rests on: references, checks, recomputed passes, the Judge",
+            "split": [
+              {
+                "reads": "limits and checks against the reference",
+                "split": [
+                  {
+                    "reads": "limit slack against the reference; reference provenance and witness strength",
+                    "split": [5, 33]
+                  },
+                  6
+                ]
+              },
+              {
+                "reads": "recomputed passes, false rejections, Judge decidability",
+                "split": [
+                  38,
+                  {
+                    "reads": "independent recomputation of passes; Judge pass decidability",
+                    "split": [35, 32]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "reads": "the Builder's loop, the review loop and the repairs",
+        "split": [
+          {
+            "reads": "the Builder's calibration loop",
+            "split": [
+              {
+                "reads": "rehearsals and the submit decision",
+                "split": [
+                  {
+                    "reads": "rehearsal reach; submit decision against rehearsal evidence",
+                    "split": [9, 11]
+                  },
+                  10
+                ]
+              },
+              {
+                "reads": "graduation, task movement and pressure",
+                "split": [
+                  37,
+                  {
+                    "reads": "task movement and attribution; difficulty pressure on the Builder",
+                    "split": [20, 36]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "reads": "the review loop, its repairs and the solver clock",
+            "split": [
+              {
+                "reads": "the review loop and its hand-offs",
+                "split": [
+                  {
+                    "reads": "reviewer duties and feedback; finding routing and triage",
+                    "split": [
+                      {
+                        "reads": "reviewer standing duties; public-safe feedback sufficiency",
+                        "split": [12, 13]
+                      },
+                      {
+                        "reads": "finding routing and recurrence; harness-versus-evaluation triage hand-off",
+                        "split": [14, 15]
+                      }
+                    ]
+                  },
+                  {
+                    "reads": "Judge disagreement, hand-off census, same-task repair, repair closure",
+                    "split": [
+                      {
+                        "reads": "Judge disagreement adjudication; round hand-off census",
+                        "split": [16, 17]
+                      },
+                      {
+                        "reads": "same-task repair measurement; semantic repair closure",
+                        "split": [18, 19]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "reads": "the solver clock, source delta and gates",
+                "split": [
+                  {
+                    "reads": "solver process and walls; time, spend and waits; failure mechanism",
+                    "split": [
+                      {
+                        "reads": "solver process and walls; time, spend and provider waits",
+                        "split": [22, 24]
+                      },
+                      25
+                    ]
+                  },
+                  {
+                    "reads": "source-delta reach; gate rent; evaluation-correction regrade",
+                    "split": [
+                      21,
+                      {
+                        "reads": "gate rent and confidence; evaluation-correction regrade",
+                        "split": [27, 28]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

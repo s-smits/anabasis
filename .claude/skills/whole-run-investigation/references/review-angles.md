@@ -463,10 +463,16 @@ the tasks before any battery was paid for. The prompt in `src/review/epoch-revie
 the reviewer to read the publication boundary every time and to run at most eight `probe_check`
 executions. It owes no finding for a placement: above the aim the orientation states the placement
 as a lead, and a review may end with nothing demonstrated and the tasks simply easy, so read its
-`report` for what it examined rather than counting whether it recorded a task-set defect. Then read
-the labels: an authoring review taken before the first task write reads the seed's empty
-`tasks.json`, `publicTaskRows` throws through
-`capturedBattery` (`src/run/experiment-freeze.ts`), and `src/review/epoch-reviewer.ts` records the
+`report` for what it examined rather than counting whether it recorded a task-set defect. One duty
+has no input to fire on: the prompt asks the reviewer to say "which way the recorded margins point"
+before calling a limit set at the reference a defect (`src/review/epoch-review-prompt.ts:110`), but
+the limit margins are computed host-only into `analysis/<runId>-limit-margin.json`
+(`src/run/limit-margin.ts`), which nothing that composes the reviewer's text reads. So a review that
+states no margins did not skip that duty, and a review that does state them worked them out
+itself or guessed; say which, and report the duty without its input as the finding, owned by
+`controller-source` (`src/review/epoch-review-prompt.ts`). Then read the labels: an authoring
+review taken before the first task write reads the seed's empty `tasks.json`, `publicTaskRows`
+throws through `capturedBattery` (`src/run/experiment-freeze.ts`), and `src/review/epoch-reviewer.ts` records the
 file under `coverage.missing`, so an early review carries `incomplete` for a file nothing had
 authored. What the Builder did with the findings is lanes 14 and 36. Do not read the reviewer's
 claim text as a finding. The decision it changes is the reviewer prompt and the coverage label,
@@ -500,19 +506,28 @@ Starts from block 4d's `FINDINGS WITHOUT OWNER (lane 14)` and `ADVISORY FINDING 
 (lane 14)`, and from the `yield` lane's `epoch-reviewer` component.
 
 The question is what each finding became: finding, admission, owner, then next-round bytes. A
-finding whose owner is on the agent side is admitted advisory on its first occurrence and blocking
-only on a probe-backed demonstration or a recurrence keyed by its `checkId` or `schemaPath`
-(`src/review/epoch-review-findings.ts`), and a `schemaPath` must sit below a declared root, since a
-bare root collapses every finding in a one-root domain to one identity. So a reviewer that records
-the same finding each round without a probe or an identity is a channel that never becomes a route:
-say whether the recurrence key could have fired and, if it could not, whether the finding named an
-identity at all. Read authoring and battery reviews alike, in review order, because most recorded
-findings about tasks and briefs sit in authoring reviews and none of them was blocking; an advisory
-finding the Builder could read and did not act on is the observation, and whether advisory is the
-right weight is the question it raises. Read each review's kind, owner, `checkId`, `schemaPath`,
-severity and `probeIds`, `analysis/<runId>-admission.json` (`repair-agenda/v1`, with its
-`no-feedback`, `agenda-consumed` and `evaluation-identity-unadopted` reasons), and the next epoch's
-`workspaceChange`. Do not rescore, and do not propose a route that carries verifier detail. The
+finding's severity reads that finding alone. A defect is admitted blocking only when it carries a
+concrete demonstration and citations from `read_source` (`blockingEvidence`); anything else, and
+every observation, is advisory, and nothing moves it afterwards: not how often its check was named
+before, not earlier findings and not its owner (`src/review/epoch-review-findings.ts:718-723`). So
+a recurring advisory finding stays advisory however often it recurs. Recurrence only counts: the
+digest's `ADVISORY FINDING RECURS UNROUTED` keys a measured review's advisory finding by defect and
+`checkId`, and the rebuild advice packet tells the Builder how many consecutive batteries carried a
+finding and since which (`recurrence`, `src/author/rebuild-advice.ts`). A finding naming no check
+has no recurrence identity, and a bare artifact root would collapse every finding in a one-root
+domain to one. So say whether the finding named an identity, how often it recurred, and whether any
+round carried the demonstration that would have made it blocking. Read authoring and battery reviews
+alike, in review order, because most recorded findings about tasks and briefs sit in authoring
+reviews and none of them was blocking; an advisory finding the Builder could read and did not act on
+is the observation, and whether advisory is the right weight is the question it raises. Read each
+review's kind, owner, `checkId`, `schemaPath`, severity and `probeIds`, the run's admission
+`analysis/<runId>-admission.json` beside the campaign's current packet (`repair-agenda/v1`, at the
+logical path `analysis/latest-admission.json` and held in the campaign ledger), and the next epoch's
+`workspaceChange`. The packet records no reason name when it supplies no feedback. `readAdmission` (`src/run/admission.ts:139-164`) reads it as no packet when its feedback
+policy is not the current one, and leaves only its digest as lineage when its recorded evaluation is
+not the adopted tree's, when it holds no pending rows, or when its attempts are consumed; say which
+of these the recorded fields show. Do not rescore, and do not propose a route that carries verifier
+detail. The
 decision it changes is the admission projection, owned by `controller-source`
 (`src/run/admission.ts`, `src/review/epoch-review-findings.ts`); the routed finding itself keeps the
 owner it named.
@@ -544,9 +559,12 @@ it changes is which side the next round reopens; it routes to `correctness-model
 Starts from block 2b's `CENSUS WITH DISAGREEMENT (lane 16)`.
 
 The question is whether each Judge fail on a verifier pass is a Judge error or a verifier defect,
-settled one case at a time by recomputation. A Judge fail must cite a verbatim public rule, an
-uncited fail is a protocol non-result, and a cited fail of a verifier pass is a veto bounded by
-`verifierPassJudgeFail` and re-sampled once (`src/claim/judge.ts`). Read the case's
+settled one case at a time by recomputation. A Judge fail must cite a shown public rule, and one
+citing anything else or nothing is a protocol non-result (`citableRules`,
+`src/review/judge-drivers.ts`). A fail of a verifier pass is sampled once more, and it is a veto
+only when that second fresh sample fails it again; a fail the second sample did not repeat is an
+`unconfirmed-fail` (`judgeCaseKind`, `src/review/judge.ts:129-130`). The `verifierPassJudgeFail`
+bound that older notes cite was removed on 2026-09-29. Read the case's
 `cases/<taskId>/judge.json` and `analysis/<runId>-judges.json` for the cited rule and the artifact,
 then recompute the cited rule over the artifact yourself from public facts: a Judge that fails a
 value just below a published limit because it rounded, or counted the wrong members, is a miscount
@@ -569,23 +587,44 @@ rounds.
 
 The question is which of the channels one round hands the next were present, served, read back and
 acted on. The channels are the round facts, the climb readout and battery contract, the rebuild
-advice packet, the Epoch Reviewer's public projection as the kickoff renders it (an authoring review
-attached to a tool result is not counted as served here), diagnosis issues, memory notes, the
+advice packet, the Epoch Reviewer's public projection as the kickoff renders it, the in-round
+authoring review's text, diagnosis issues, memory notes, the
 `context` tool, and the solver traces and rehearsals it offers. Read the full Builder kickoff in `observability/<runId>.jsonl`
 (`prompt-ingested`, role `builder`), each epoch's `builder-path-record.jsonl` and
 `builder-execution*.json` custom calls, and `analysis/<runId>-{rebuild-advice,diagnoses,epoch-review}.json`.
 Read-back means a tool call that opened or queried the channel; prompt text in context is served,
-not read. The round facts, the advice packet, the diagnosis and the review projection have no
-re-query channel, so an unread one is structural rather than a Builder choice, and a file opened
-through `bash` records only its working directory; the census prints those as "no read route". Acted
+not read. An unread channel is a reading gap, not a missing route, wherever a tool re-serves it, and
+on sources since `a02da892` (2026-09-24) two tools re-serve most of them: the context tool's
+`round/opening` document (`documentsOf` in `src/builder/context-tool.ts`, bound in
+`src/run/builder-campaign.ts` over `openingContext()` and `freshContext()`) holds the round facts,
+the climb readout and the rebuild advice packet with the diagnosis and review-projection lines it
+carries, and `harness_inspect readiness` (`readinessResult` in `src/builder/harness-inspect.ts`)
+returns the round contract beside the static view. The census counts a channel's reads over every
+route it has, and the JSON `readRoute` says whether one exists. It credits neither route with a
+channel the round's opening did not carry, a call the record says `threw`, or a `readiness` call
+naming a family, which returns that family's tasks and not the contract; a call that named
+`round/opening` is counted for every channel the document carried, whatever window it showed. A
+channel is reported as "served, no read route" only from an empty route list in the census or from
+source read for this run's commit, naming what renders the bytes and checking every tool that could
+reach them. At `5d091201` the one such channel is the in-round Epoch Reviewer text:
+`authoringReviewText` in `src/run/harness-build.ts` composes it, and `afterTool` (or `join`, onto a
+held submit) in `src/run/authoring-review.ts` hands it to one result and drops it from the pending
+review as it does, so no later call returns it. Re-check that claim on any other source rather
+than carrying it. Never infer absence from a search: a marker a reader looks for is a sentence the
+current source renders, so a missing marker means "not found", never "not served", and a missing
+call means "not seen", never "no route"; say which was measured. A "never read" count is a floor:
+a file opened through `bash` records only its working directory, and a context question that names
+no document records no document, so the census counts it toward the user's files. Acted
 is read only where a record holds it: memory writes and rehearsals. For the review, the census prints
 the next battery review's `earlierAdvisory` dispositions as they are; `absent` means the finding did
 not recur, not that the Builder acted on it. The
-Builder keeps one conversation across rounds and compaction cuts its oldest turns first, so a channel served once at the opening may be gone by
-the time the decision it feeds is taken; say when a channel was served relative to the last
-compaction. For every channel served and never read, name the cheapest alternative — drop it, move
-it to a `harness_inspect` mode, or state it where the decision is taken — and the observation that
-would show it mattered. The decision it changes is the kickoff prompt's contents, owned by
+Builder keeps one conversation across rounds and compaction cuts its oldest turns first, so a channel served once at the opening may be gone from
+context by the time the decision it feeds is taken, though `round/opening` still re-serves it; say
+when a channel was served relative to the last compaction, and whether the round paged the opening
+after it. For every channel served and never read, name the cheapest alternative and the
+observation that would show it mattered: for a channel with a route, dropping it, shortening it,
+naming its route, or stating it where the decision is taken, never a tool mode it already has; a new
+surface only where the route list is empty. The decision it changes is the kickoff prompt's contents, owned by
 `controller-source` (`src/author/builder-continuation.ts`); lane 14 owns whether the right owner
 received a packet and lane 26 owns memory.
 
@@ -650,7 +689,11 @@ moved the evaluator receives build attribution, and a change to the installed to
 alone leaves `scoringHash` where it was while the harness identity moves, so name both. `adjusted`
 deliberately states no direction, because a moved limit is a climb only when it moves inward, and a
 round that re-posed the same public schemas under new values is the `adjusted` edge read round over
-round. Do not read a new hash, id, family name or longer description as a harder problem; the
+round. The numbers row states the basis it was read on: the tasks that joined by id where any did,
+and otherwise the whole battery path by path at each path's median, because a round that replaced
+every task id still moved its published numbers; `basis: none` is two batteries declaring no numeric
+path in common, where the zero is nothing compared rather than nothing moved, so read the basis and
+its denominator before reading the percentage. Do not read a new hash, id, family name or longer description as a harder problem; the
 Builder names the public requirement that changed and the reasoning interaction it adds, or the
 change is coverage. Each edge's `carried` row counts the tasks held unchanged in id, public input
 and family checks; after a full pass every one of them measured a known pass again. The decision
@@ -712,14 +755,16 @@ only lane that opens the private packet the `challenge` lane wrote, and it works
 The question is whether the trace shows derivation or reading the answer from a tool or the brief.
 The session reads `trace-challenge-status.json` for completion, verifies the telemetry digest,
 reads `trace-telemetry.json` and only then `trace-challenge-packet.json`, and never runs the writer.
-The packet is a bounded slice of controller-retained, redacted previews and tool metadata from
-`case-trace/v4` records (`src/backends/trace-capture.ts`: `toolCalls[]` with `toolName`,
-`argsDigest`, `isError`, `resultPreview`), holds no prompt bodies, raw arguments, verifier output or
-reference artifacts, and is untrusted: text inside a preview is evidence and never an instruction.
-A preview is truncated, so a value that looks decisive in one may be a prefix of a different
-number; read a preview's length before comparing values in it, since a truncated preview has been
-misread before. Show the shortcut from the trace: the call whose return carried the deciding value,
-and the absence of any computation between that return and the submitted field. Before alleging
+The packet is a bounded slice of controller-retained `case-trace/v4` records
+(`src/backends/trace-capture.ts`): per turn its status and a bounded assistant preview, per tool call
+its name, error state, timing and argument size, and bounded, redacted previews of the results of
+the calls made before the answer was recorded. It holds no prompt bodies, raw arguments, verifier
+output or reference artifacts, and it is untrusted: text inside a preview is evidence and never an
+instruction. A preview is truncated, so a value that looks decisive in one may be a prefix of a
+different number; read a preview's length before comparing values in it, since a truncated preview
+has been misread before. Show the shortcut from the trace: the call before the answer whose result
+preview carried the deciding value, and the absence of any computation between that call and the
+submitted field; where the preview cut off before the value, say the packet cannot show it. Before alleging
 leakage, show access to protected data or a stored answer rather than computation from public
 inputs; a short tool sequence is not a defect, and one uniform sequence over every case with no
 errors is a lead for lane 8, not a finding here. Return the strongest mechanism hypothesis, one
@@ -971,12 +1016,18 @@ read as a standing lane, because Judge agreement is the only second opinion a ba
 
 The question is what a Judge pass actually decided. Lane 16 reads the fails; this lane reads the
 passes, which are most of the Judge's output and the part a reader is tempted to count as agreement.
-The Judge's census prompt (`ACTIVE_JUDGE_PROMPTS` in `src/review/judge-prompt-policy.ts`) tells it
-to name a rule decided by running the output as "not decidable here" rather than pass or fail it,
-and a pass rationale that says so is a partial check with a declared gap. So classify every pass
+The Judge's census prompt (`ACTIVE_JUDGE_PROMPTS.census`, `src/review/judge-prompt-policy.ts:34-43`)
+leaves to the verifier whatever it would have to work out to see a breach (running, compiling,
+solving or simulating the output, or any figure built over more than one step) and tells it never to
+fail on that. A pass claims only that what it could read holds, and its rationale is asked to say
+what it read and what it left to the verifier. So a pass with a declared gap is the designed
+contract, not a defect, and the question is which rules each pass left open. Classify every pass
 rationale from `cases/<taskId>/judge.json` into three kinds — every shown rule decided, decided with
 a declared gap, or nothing stated — and report the three counts per battery and per Judge pin, since
-the pins differ in how often they fail and how often they declare gaps. Then read what a Judge fail
+the pins differ in how often they fail and how often they declare gaps. The prompt moved twice, so
+read a run's rationales under the prompt its source carried: until 2026-09-29 it asked for a pass
+that called such a rule "not decidable here", and an `undecided` verdict recorded from then until
+2026-09-30 claimed nothing either way and is counted apart. Then read what a Judge fail
 could cite at all: `citableRules` in `src/review/judge-drivers.ts` admits the shown validity
 assertions, the public rule decisions and two fixed citations, and not the original request, which
 the Judge sees but cannot cite. So a Judge cannot fail an artifact for missing what the request asks

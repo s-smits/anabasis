@@ -1,7 +1,8 @@
 /**
  * What `validate-reports.ts` binds and what it rejects. A report is joined to its task by name,
  * to its launch by prompt digest, and to its assigned lanes by heading; under each lane heading it
- * owes the four report sections, and every finding names one owner from the closed set.
+ * owes the four report sections, and every finding names one owner from the closed set. A
+ * multi-run review's group report owes the same per lane, and a pile and an outcome per finding.
  */
 import { mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join, resolve } from "../src/meta/path.ts";
@@ -15,6 +16,8 @@ import {
 } from "../.claude/skills/whole-run-investigation/scripts/catalogue-shape.ts";
 import {
   FINDING_OWNERS,
+  MULTI_RUN_OUTCOMES,
+  MULTI_RUN_PILES,
   REPORT_SECTIONS,
 } from "../.claude/skills/whole-run-investigation/scripts/manifest-reporting.ts";
 import { afterAll, describe, expect, it } from "bun:test";
@@ -725,5 +728,64 @@ console.log(JSON.stringify({ type: "thread.started", thread_id: "thread_test_123
     const duplicate = run(f.tasks, f.summary);
     expect(duplicate.status).toBe(2);
     expect(duplicate.stderr).toContain("progressive admission assigns lane 05 more than once");
+  });
+  it("reads a multi-run review's one report per group, with a pile and an outcome beside every owner", () => {
+    const dir = scratchDir("ana-wri-groups-");
+    const groups = join(dir, "groups.json");
+    writeFileSync(
+      groups,
+      JSON.stringify([
+        { session: "lanes_02_34", lanes: [2, 34], reads: "tool bytes", runs: ["run-a", "run-b"] },
+      ]),
+    );
+    mkdirSync(join(dir, "native-output"));
+    const report = join(dir, "native-output", "lanes_02_34.md");
+    const validate = (lane02: string, lane34: string | null = laneReport("lane_34")) => {
+      writeFileSync(
+        report,
+        ["# Multi-run: lanes_02_34", laneReport("lane_02", lane02), lane34 ?? ""].join("\n"),
+      );
+      const result = spawnTextSync(Bun.argv[0]!, [script, "--groups", groups]);
+      return {
+        status: result.status,
+        issues: JSON.parse(readFileSync(join(dir, "wri-report-validation.json"), "utf8")).rows[0].issues,
+      };
+    };
+    const finding = (pile: string | null, outcome: string | null) =>
+      [
+        "- One mechanism in both runs.",
+        "  owner: controller-source",
+        pile === null ? "" : `  **pile:** \`${pile}\``,
+        outcome === null ? "" : `  outcome: ${outcome}.`,
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+    expect(validate(finding("every", "patch"))).toEqual({ status: 0, issues: [] });
+    const refused: [string, string | null, string][] = [
+      [finding("every", null), laneReport("lane_34"), "## lane_02: 0 `outcome:` lines for 1 owned findings"],
+      [
+        finding("both", "patch"),
+        laneReport("lane_34"),
+        `## lane_02: pile \`both\` is not one of ${MULTI_RUN_PILES.join(", ")}`,
+      ],
+      [
+        finding("absent", "fix"),
+        laneReport("lane_34"),
+        `## lane_02: outcome \`fix\` is not one of ${MULTI_RUN_OUTCOMES.join(", ")}`,
+      ],
+      [finding("every", "patch"), null, "assigned lane headings missing or repeated: 34"],
+    ];
+    for (const [lane02, lane34, issue] of refused) {
+      const { status, issues } = validate(lane02, lane34);
+      expect(status).toBe(1);
+      expect(issues).toContain(issue);
+    }
+    rmSync(report);
+    const absent = spawnTextSync(Bun.argv[0]!, [script, "--groups", groups]);
+    expect(absent.status).toBe(1);
+    expect(JSON.parse(readFileSync(join(dir, "wri-report-validation.json"), "utf8")).rows[0].issues).toEqual([
+      "native-output/lanes_02_34.md is absent or not a regular file inside it",
+    ]);
   });
 });

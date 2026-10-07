@@ -87,6 +87,10 @@ git("checkout", "-q", "-b", "b");
 const upper = commit("src/b.ts", "export const b = 1;\n", "b");
 git("checkout", "-q", "-b", "beside", "main");
 const beside = commit("src/c.ts", "export const c = 1;\n", "beside");
+git("checkout", "-q", "-b", "tests", "main");
+mkdirSync(join(work, "test"));
+const testOnly = commit("test/c.test.ts", "export {};\n", "a test");
+const testsTop = commit("src/d.ts", "export const d = 1;\n", "d");
 git("checkout", "-q", "b");
 execTextSync("git", ["init", "-q", "--bare", origin]);
 execTextSync("git", ["-C", origin, "config", "uploadpack.allowAnySHA1InWant", "true"]);
@@ -172,6 +176,14 @@ describe("bun run land", () => {
     const result = runLand(["12"], { ANA_FAKE_LITTER: "1" });
     expect(result.status).toBe(0);
     expect(logged(gateLog)).toEqual([`--static\t${lower}`, `--static\t${lowerMore}`, `--at\t${upper}`]);
+  });
+
+  // A side pull request may change tests beside documentation, but a test is not documentation: the
+  // hook passes those further paths to its documentation check, and land reads only the check's own.
+  it("gives a commit changing a test alone its static steps", () => {
+    const result = runLand(["13"], { ANA_FAKE_PULL: `open\tfalse\tmain\ttests\t${testsTop}\tnull` });
+    expect(result.status).toBe(0);
+    expect(logged(gateLog)).toEqual([`--static\t${testOnly}`, `--at\t${testsTop}`]);
   });
 
   it("stops at the first commit that fails and names where its fix goes", () => {

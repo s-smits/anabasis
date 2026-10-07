@@ -172,19 +172,23 @@ say from public facts whether each failing check could reject a valid answer.
 
 ## Tiers
 
-The tier is the size of the recorded run, decided by `brief.ts` from the elapsed time, the epoch
-count and the battery count, and it bounds how many lanes a sweep may be given. Lanes are chosen
-by trigger; the default set applies only when no trigger picks, and a tier's standing lanes
-(`STANDING_LANES` in `brief.ts`) join every sweep of that tier, triggered or not. Thirty-eight is
-the ceiling, and lanes 7, 23 and 30 are never counted in a tier: each is launched alone, and only
-when its own trigger fires.
+This section is the one owner of the tiers; the skill and the other references point here. The tier
+is the size of the recorded run, decided by `brief.ts` from the elapsed time, the epoch count and
+the battery count, and it says where a sweep starts. Lanes are chosen by trigger; the default set
+(`DEFAULT_LANES`) applies only when no trigger picks, and a tier's standing lanes (`STANDING_LANES`)
+join every sweep of that tier, triggered or not. Thirty-eight is the ceiling, and lanes 7, 23 and
+30 are never counted in a tier: each is launched alone, and only when its own trigger fires.
 
 | tier | run shape | lanes | default set | standing |
 | --- | --- | --- | --- | --- |
-| probe | not scored, or under two hours | 6 | 5, 8, 12, 25 | 31, 34 |
-| standard | anything between | 12 | probe plus 1, 9, 14, 24 | 31, 33, 34, 37 |
-| deep | twelve hours, three epochs or three batteries | 19 | standard plus 2, 6, 10, 11, 13, 22 | 31, 32, 33, 34, 37 |
+| probe | no case scored yet, or scored but under two hours and not deep | 6 | 5, 8, 12, 25 | 31, 34 |
+| standard | a scored case, two to twelve hours, under three epochs and three batteries | 12 | probe plus 1, 9, 14, 24 | 31, 33, 34, 37 |
+| deep | a scored case and twelve hours, three epochs or three batteries | 19 | standard plus 2, 6, 10, 11, 13, 22 | 31, 32, 33, 34, 37 |
 | isolated | a trigger for lane 7, 23 or 30 fired | that lane, alone | — | — |
+
+The tier is a default and not a gate. Naming lanes still selects whatever is asked for, a run the
+operator calls important earns the lanes its questions need rather than the ones its clock earns,
+and the count is where to start rather than a quota to fill.
 
 A default lane the tier names is still launched only when no trigger picks, so a standard run whose
 block 4d printed nothing gives lane 14 nothing to read and the sweep says so rather than launching

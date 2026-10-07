@@ -12,9 +12,9 @@ investigation answers none of the three by itself. Preserve useful mechanisms an
 successes alongside defects, because a review that finds only faults tells the next reader nothing
 about what to keep.
 
-This file owns the synthesis questions. [SKILL.md](SKILL.md) owns the sequence, the tiers and the
-archive, and [the catalogue](references/review-angles.md) owns rows A to I and the thirty-eight
-semantic lanes. A row here creates no lane and waives none the tier authorised; several rows may
+This file owns the synthesis questions. [SKILL.md](SKILL.md) owns the procedure,
+[the synthesis reference](references/synthesis.md) what the synthesis produces and the archive, and
+[the catalogue](references/review-angles.md) rows A to I and the thirty-eight semantic lanes. A row here creates no lane and waives none the tier authorised; several rows may
 share one lane. Lanes 7, 23 and 30 stay isolated until their reports are frozen, so a row naming
 one of them is answered by its report and never by the primary doing the same work first.
 
@@ -203,7 +203,7 @@ about the Builder's reach. Each has a lane — 5, 35 and 38; 31; 33 — and each
 observed, inferred, or not established.
 
 The archive is the four files under `wri-archive/v2` and the investigation note beside it, as
-SKILL.md describes. Publish safe findings and evidence pointers, never protected verifier detail,
+[the synthesis reference](references/synthesis.md#the-archive-and-the-note) describes. Publish safe findings and evidence pointers, never protected verifier detail,
 raw captured prose, counterexamples or reference artifacts. This checklist grants no model access,
 scoring authority, paid comparison or authority to edit controller output.
 

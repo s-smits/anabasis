@@ -19,6 +19,12 @@
 // record and the Builder's custom calls. A file opened through `bash` records only its working
 // directory, so every round states its bash count beside the reads as the unobservable remainder.
 // A field an older source never recorded is `null` and printed as unobservable, never as zero.
+// A channel is `no read route` only where no recorded call shape reaches its bytes at all. Every
+// channel the round's opening carried is re-served by the context tool's `round/opening` document,
+// and the round's own contract by `harness_inspect readiness` besides, so an unread cell on either
+// is this round's choice. A context question that names no document counts toward the user's files,
+// which leaves every document count a lower bound, and a `bash` row records only a working
+// directory, so each "never read" count carries that remainder too.
 import { existsSync, readdirSync, readFileSync } from "#src/meta/filesystem.ts";
 import { basename, join } from "#src/meta/path.ts";
 import { BUILDER_EXECUTION_SCHEMA } from "#src/author/builder-execution.ts";
@@ -47,19 +53,32 @@ export const HANDOFFS_SCHEMA = "wri-handoffs/v2";
 /** The Builder tools this reader counts, spelled once. */
 const TRIAL = "harness_trial";
 const PREVIEW = "correctness_check";
+const CONTEXT = "context";
+const INSPECT = "harness_inspect";
+/** The inspect mode that returns the round's own contract beside the static view
+ *  (`src/builder/harness-inspect.ts` `readinessResult`, bound at `src/run/builder-campaign.ts`). */
+const READINESS = "readiness";
 
 /** The operation each triaged side's repair is attributed as, from the accepted bytes
  *  (`experiment-admission.ts`): a task probe repairs neither side, a new baseline moved several. */
 const REPAIR_OPERATION = { harness: "harness-intervention", evaluation: "evaluation-correction" };
 
-/** The tool evidence that counts as opening a channel. */
-export type ReadKind = "history" | "memory" | "context" | "traces";
+/**
+ * One recorded call shape that re-serves a channel's bytes after the opening turn.
+ *
+ * `round-opening` is the context tool's own `round/opening` document
+ * (`src/builder/context-tool.ts` `documentsOf`), bound to `openingContext()` and `freshContext()`
+ * at `src/run/builder-campaign.ts`, so every channel the opening turn carried is re-readable
+ * through it; `readiness` is `harness_inspect readiness`, which returns the round's contract
+ * beside the static view. Both have existed since 2026-09-24.
+ */
+export type ReadRoute = "history" | "memory" | "user-files" | "traces" | "round-opening" | "readiness";
 
 /** One channel a round can hand the next. */
 export interface Channel {
   name: string;
   marker: string | null;
-  read: ReadKind | null;
+  read: readonly ReadRoute[];
   alternative: string;
 }
 
@@ -67,52 +86,64 @@ export interface Channel {
  * The channels a round can hand the next. `marker` is a sentence the current source renders into
  * the kickoff (grep-confirmed at the owner named beside it), or null for the advice packet, which
  * opens with no fixed sentence: it is served when the kickoff carries the prior battery's recorded
- * packet as `renderRebuildAdvice` prints it. `read` names the tool evidence that counts as opening
- * the channel, or null when no tool re-serves it; `alternative` is the cheapest route a
- * served-but-unread channel could take instead, stated as a candidate for lane 17 to test.
+ * packet as `renderRebuildAdvice` prints it, and for the in-round review, which is handed to a tool
+ * result rather than to the kickoff. `read` names every tool route that re-serves the channel, and
+ * is empty only where no recorded call shape reaches the bytes at all; `alternative` is the cheapest
+ * move a served-but-unread channel could take instead, stated as a candidate for lane 17 to test.
  */
 export const CHANNELS: readonly Channel[] = [
-  // src/run/battery-sizing.ts
+  // src/run/battery-sizing.ts, and roundContract in src/run/builder-campaign.ts, which is both the
+  // opening's first block and what harness_inspect readiness returns as `contract`
   {
     name: "round-facts",
     marker: "Task count:",
-    read: null,
-    alternative: "re-serve through an existing harness_inspect mode",
+    read: ["round-opening", "readiness"],
+    alternative: "name both routes in the kickoff, so a compacted session knows the ask is re-readable",
   },
   // src/run/climb-readout.ts
   {
     name: "climb-readout",
     marker: "Recorded batteries (controller-derived data",
-    read: "history",
-    alternative: "the context tool's history source exists; name it where the target is chosen",
+    read: ["round-opening", "history"],
+    alternative: "name the opening document and the history source where the target is chosen",
   },
   // src/author/rebuild-advice.ts
   {
     name: "rebuild-advice",
     marker: null,
-    read: null,
-    alternative: "return the current packet from harness_inspect feedback",
+    read: ["round-opening"],
+    alternative: "name the opening document where the packet is served, not only at the opening turn",
   },
   // src/author/rebuild-advice.ts
   {
     name: "diagnosis",
     marker: "First failure boundary ",
-    read: null,
-    alternative: "ride the advice packet's inspect route",
+    read: ["round-opening"],
+    alternative: "ride the advice packet's opening document",
   },
-  // src/review/epoch-review-public.ts
+  // src/review/epoch-review-public.ts, as the prior epoch's projection reaches the next round's
+  // opening through the admission packet (src/run/analyse-step.ts, src/run/admission.ts)
   {
     name: "epoch-review",
     marker: "Epoch review (",
-    read: null,
-    alternative: "return the latest public projection from harness_inspect feedback",
+    read: ["round-opening"],
+    alternative: "name the opening document where the projection is served",
+  },
+  // src/run/harness-build.ts authoringReviewText, handed to one tool result by afterTool in
+  // src/run/authoring-review.ts and cleared in the same statement. The round receives it, no later
+  // call returns it, and no recorded path row has ever named the review file beside it.
+  {
+    name: "review-in-round",
+    marker: null,
+    read: [],
+    alternative: "return the standing review text from a tool; a cleared review is re-served by nothing",
   },
   // src/author/builder-memory.ts, rendered by roundPrompt in src/author/builder-session.ts for any
   // round opening in a workspace the conversation has not worked in, resumed sessions included
   {
     name: "memory",
     marker: "Historical notes, model-authored",
-    read: "memory",
+    read: ["memory"],
     alternative:
       "restate on a round that stays in the same workspace, the one round that receives no memory block",
   },
@@ -120,14 +151,14 @@ export const CHANNELS: readonly Channel[] = [
   {
     name: "context",
     marker: "User context:",
-    read: "context",
+    read: ["user-files"],
     alternative: "none when no files were supplied",
   },
   // src/run/climb-readout.ts
   {
     name: "traces",
     marker: "history source holds every row",
-    read: "traces",
+    read: ["traces"],
     alternative: "name the context tool's traces source where the next limit is set",
   },
 ];
@@ -136,6 +167,10 @@ const READ_PATHS = {
   memory: /\/MEMORY\.md$/,
   traces: /\/(rehearsals|trials|cases)\/|trace/,
 };
+
+/** The context-tool document sources this reader joins by id prefix, as `documentsOf` spells them
+ *  (`src/builder/context-tool.ts`). */
+const DOCUMENT = { round: "round/", history: "history/", traces: "traces/" };
 
 /** The campaign and run whose hand-offs to read; a null or absent run reads every run. */
 export interface HandoffsTarget {
@@ -172,9 +207,13 @@ interface SemanticReading {
 interface CustomCallRow {
   tool?: string;
   action?: string;
-  target?: { contextId?: string } | null;
+  target?: { contextId?: string; family?: string } | null;
   startedAtMs?: number;
   semantic?: SemanticReading | null;
+  /** `in-flight`, `threw` or `returned` (`builder-execution.ts`). A call that threw handed the
+   *  session nothing, so it is no read; an older record that carries no outcome is unobservable and
+   *  counted as the call it says it is. */
+  dispatchOutcome?: string;
 }
 
 interface SubmitRow {
@@ -193,6 +232,7 @@ interface ExecutionRecord {
   customCalls?: CustomCallRow[];
   submits?: SubmitRow[];
   toolCalls?: ToolCallCounts | null;
+  authoringReviews?: { adviceChars?: number | null }[];
 }
 
 type Call = CustomCallRow & { at: number | null };
@@ -205,6 +245,9 @@ interface Session {
   calls: Call[];
   submits: Submit[];
   bash: number | null;
+  /** Characters of in-round review text each recorded review handed to a tool result, null where
+   *  the review failed and handed none. */
+  reviewChars: (number | null)[];
 }
 
 interface ObservabilityRow {
@@ -267,7 +310,8 @@ export interface CensusCell {
 
 export interface UnreadChannel {
   name: string;
-  /** False when no tool re-serves the channel, so an unread one is structural, not a choice. */
+  /** False only when no recorded call shape re-serves the channel at all, so an unread one is
+   *  structural; true where a route exists and this round did not take it, which is a choice. */
   readRoute: boolean;
   alternative: string;
 }
@@ -537,6 +581,9 @@ function sessionsOf(epochDir: string): Session[] {
             at: isNumber(row.atMs) ? start + row.atMs : null,
           })),
           bash: byName === null ? null : (byName.bash ?? 0),
+          reviewChars: records(record.authoringReviews).map((row) =>
+            isNumber(row.adviceChars) ? row.adviceChars : null,
+          ),
         },
       ];
     });
@@ -602,25 +649,63 @@ const pathHits = (round: Round, capability: string, pattern: RegExp, before = In
     (row) => row.capability === capability && pattern.test(row.resolved ?? "") && row.at < before,
   ).length;
 
-/** Context calls that opened one source's document (`traces/<run>/<task>/artifact`, `history/...`).
- *  A question asked across every source names no document, so it counts toward the user's files,
- *  the one source no other channel reads. */
-const contextReads = (round: Round, source: string, before: number): number =>
-  calls(round, "context").filter((c) => {
+/** One call this round made before `before` that the record does not say threw: a call that threw
+ *  handed the session nothing, so it opened no channel. An older record carrying no outcome is
+ *  unobservable and counted as the call it says it is. */
+const delivered = (c: Call, before: number): boolean => (c.at ?? 0) < before && c.dispatchOutcome !== "threw";
+
+/** Context calls that opened one source's document: `round/opening`, `history/...`,
+ *  `traces/<run>/<task>/artifact`. An id outside every source is a document the tool never served,
+ *  so it counts for nothing. */
+const documentReads = (round: Round, prefix: string, before: number): number =>
+  calls(round, CONTEXT).filter((c) => {
     const id = c.target?.contextId;
-    return (c.at ?? 0) < before && (isString(id) ? id.startsWith(`${source}/`) : source === "user");
+    return delivered(c, before) && isString(id) && id.startsWith(prefix);
   }).length;
 
 /** A battery's traces are read as files or, far more often, as context-tool documents. */
 const traceReads = (round: Round, before: number): number =>
-  pathHits(round, "read", READ_PATHS.traces, before) + contextReads(round, "traces", before);
+  pathHits(round, "read", READ_PATHS.traces, before) + documentReads(round, DOCUMENT.traces, before);
 
-function readCount(round: Round, read: ReadKind | null, before = Infinity): number | null {
-  if (read === null) return null;
-  if (read === "memory") return pathHits(round, "read", READ_PATHS.memory, before);
-  if (read === "traces") return traceReads(round, before);
-  return contextReads(round, read === "context" ? "user" : read, before);
+/** The calls one route recorded in this round before `before`. */
+function routeReads(round: Round, route: ReadRoute, before: number): number {
+  switch (route) {
+    case "memory":
+      return pathHits(round, "read", READ_PATHS.memory, before);
+    case "traces":
+      return traceReads(round, before);
+    case "history":
+      return documentReads(round, DOCUMENT.history, before);
+    case "round-opening":
+      return documentReads(round, DOCUMENT.round, before);
+    // A readiness call that names a family returns that family's tasks and never the contract
+    // (`readinessResult` returns the family view first), so only a call over the whole view is a read
+    // of the round's facts.
+    case "readiness":
+      return calls(round, INSPECT, READINESS).filter(
+        (c) => delivered(c, before) && c.target?.family === undefined,
+      ).length;
+    // A context call that names no document asked across every source at once, which is the only
+    // recorded evidence that the user's files were opened, the one source no other channel reads. A
+    // `cited` question restricted to one source records the same empty target, so these count toward
+    // the user's files and leave every document count a lower bound.
+    case "user-files":
+      return calls(round, CONTEXT).filter((c) => delivered(c, before) && !isString(c.target?.contextId))
+        .length;
+  }
 }
+
+/** How often this round opened any of the routes named. A channel's own cell reads `null` instead
+ *  only where the channel has no route at all: an unread channel with a route is a choice, and one
+ *  without a route is structural. */
+function readsOf(round: Round, routes: readonly ReadRoute[], before = Infinity): number {
+  return routes.reduce((sum, route) => sum + routeReads(round, route, before), 0);
+}
+
+/** The in-round reviews this round recorded, and the text each handed to a tool result. A review
+ *  that failed records no character count, so it is a review that produced nothing, not a zero. */
+const reviewsOf = (round: Round): number[] =>
+  round.sessions.flatMap((s) => s.reviewChars).filter((chars) => chars !== null);
 
 function presentOf(campaign: string, round: Round, name: string): boolean {
   const last = round.prior.at(-1)?.runId ?? null;
@@ -637,6 +722,8 @@ function presentOf(campaign: string, round: Round, name: string): boolean {
       return last !== null && analysis<JsonValue>(campaign, last, "epoch-review") !== null;
     case "memory":
       return round.index > 1;
+    case "review-in-round":
+      return reviewsOf(round).length > 0;
     default:
       return round.prior.length > 0 || (name === "traces" && calls(round, TRIAL).length > 0);
   }
@@ -673,7 +760,13 @@ function census(campaign: string, rounds: readonly Round[]): CensusRow[] {
       let served =
         channel.marker === null ? advice !== "" && text.includes(advice) : text.includes(channel.marker);
       if (channel.name === "traces") served ||= calls(round, TRIAL).length > 0;
-      const read = readCount(round, channel.read);
+      // The in-round review reaches no kickoff: it rides one tool result, so what it handed over is
+      // the record's own character count.
+      if (channel.name === "review-in-round") served = reviewsOf(round).some((chars) => chars > 0);
+      // The opening document is this round's opening text, so it re-serves a channel only where the
+      // opening carried one: an unserved channel is not read back by paging the document it is not in.
+      const routes = served ? channel.read : channel.read.filter((route) => route !== "round-opening");
+      const read = channel.read.length === 0 ? null : readsOf(round, routes);
       return {
         name: channel.name,
         present: presentOf(campaign, round, channel.name),
@@ -733,7 +826,7 @@ function calibration(rounds: readonly Round[], rows: ReadonlyMap<string, Decisio
       verified: isNumber(recordedVerified) ? recordedVerified : null,
       zone: row?.zone ?? null,
       beforeAuthoring: {
-        history: readCount(round, "history", mark),
+        history: readsOf(round, ["history"], mark),
         rehearsals: trials.filter((c) => c.at !== null && c.at < mark).length,
         traceReads: traceReads(round, mark),
       },
@@ -1003,10 +1096,10 @@ function renderCensus(report: ReadHandoffs): string[] {
   const lines = [
     "lane 17 round hand-off census (P present, S served, R read back, A acted; · no channel or no proxy)",
   ];
-  lines.push(`  ${"channel".padEnd(15)}${report.census.map((r) => `r${r.round}`.padEnd(6)).join("")}`);
+  lines.push(`  ${"channel".padEnd(16)}${report.census.map((r) => `r${r.round}`.padEnd(6)).join("")}`);
   for (const [i, channel] of CHANNELS.entries()) {
     lines.push(
-      `  ${channel.name.padEnd(15)}${report.census
+      `  ${channel.name.padEnd(16)}${report.census
         .map(({ channels }) => {
           const c = channels[i];
           // Every row holds one cell per channel, so the cell always exists.

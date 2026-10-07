@@ -63,6 +63,9 @@ function campaign(
       `Work in ${dir}/${epochs[1].key}/workspace`,
       "Task count: 3",
       "Recorded batteries (controller-derived data, oldest first):",
+      // The prior epoch's review reaches this round through the admission packet, so its public
+      // projection opens the round beside the readout.
+      "Epoch review (correctness-model/brief.json): an observation, not a demonstrated defect",
       options.advice ?? renderRebuildAdvice(packet),
     ].join("\n"),
   ];
@@ -94,6 +97,8 @@ function campaign(
           semantic: { truthVerdict: verdict },
         })),
         // The second round opens the history and one trace before its first preview, another after.
+        // It also pages its own opening context back, and calls readiness, which re-serves the
+        // round's task count and battery contract (src/builder/harness-inspect.ts).
         ...(index === 1
           ? [
               {
@@ -101,6 +106,28 @@ function campaign(
                 action: "page",
                 target: { contextId: "history/batteries" },
                 startedAtMs: 1_000,
+              },
+              {
+                tool: "context",
+                action: "page",
+                target: { contextId: "round/opening" },
+                startedAtMs: 1_500,
+              },
+              { tool: "harness_inspect", action: "readiness", startedAtMs: 1_800 },
+              // Neither of these re-serves the round's facts: a page that threw handed the session
+              // nothing, and readiness over one family returns that family's tasks, not the contract.
+              {
+                tool: "context",
+                action: "page",
+                target: { contextId: "round/opening" },
+                startedAtMs: 1_900,
+                dispatchOutcome: "threw",
+              },
+              {
+                tool: "harness_inspect",
+                action: "readiness",
+                target: { family: "alpha" },
+                startedAtMs: 1_950,
               },
               {
                 tool: "context",
@@ -223,23 +250,62 @@ describe("round hand-offs", () => {
     const census = required(report.census, "census");
     const second = required(census[1], "second round");
     const cell = (name: string) => second.channels.find((c: { name: string }) => c.name === name);
-    expect(cell("rebuild-advice")).toMatchObject({ present: true, served: true, read: null });
+    // One `round/opening` page re-serves every channel the round's opening carried, the advice
+    // packet among them, so no cell of this round is read-routeless.
+    expect(cell("rebuild-advice")).toMatchObject({ present: true, served: true, read: 1 });
     expect(cell("memory")).toMatchObject({ present: true, served: false, read: 1, acted: true });
-    expect(cell("climb-readout")).toMatchObject({ served: true, read: 1, acted: null });
+    // The readout rides the opening page and the history source both.
+    expect(cell("climb-readout")).toMatchObject({ served: true, read: 2, acted: null });
     // Both traces were opened through the context tool, and neither counts as reading the user's files.
     expect(cell("traces")).toMatchObject({ read: 2 });
     expect(cell("context")).toMatchObject({ read: 0 });
-    expect(second.servedNotRead).toContainEqual(
-      expect.objectContaining({ name: "rebuild-advice", readRoute: false }),
-    );
-    // The round's own battery review no longer finds the earlier review's defect. That is the
-    // successor's disposition, reported as such; it is not an acted mark.
-    expect(cell("epoch-review")).toMatchObject({ read: null, acted: null });
+    expect(second.servedNotRead.map((u: { name: string }) => u.name)).not.toContain("rebuild-advice");
+    expect(second.servedNotRead.every((u: { readRoute: boolean }) => u.readRoute)).toBe(true);
+    // The prior epoch's projection opened this round and the opening page re-served it. The round's
+    // own battery review no longer finds the earlier review's defect: that is the successor's
+    // disposition, reported as such, and it is not an acted mark.
+    expect(cell("epoch-review")).toMatchObject({ served: true, read: 1, acted: null });
     expect(second.carriedDispositions).toEqual(["span absent"]);
     expect(census[0]?.carriedDispositions).toEqual([]);
     // The first round's prompt carries no readout, and its memory note was written, not handed on.
     expect(census[0]?.channels.find((c: { name: string }) => c.name === "climb-readout")?.served).toBe(false);
     expect(second.bashCalls).toBe(6);
+  });
+
+  it("counts both routes that re-serve the round's own facts, and keeps the unread ones a choice", () => {
+    const census = required(report.census, "census");
+    const second = required(census[1], "second round");
+    // `round/opening` re-serves the contract the round opened with, and `harness_inspect readiness`
+    // returns it beside the static view, so the round's facts have two recorded routes, not none. The
+    // page that threw and the family-scoped readiness beside them are not counted: 2, not 4.
+    expect(second.channels.find((c) => c.name === "round-facts")).toMatchObject({ served: true, read: 2 });
+    const first = required(census[0], "first round");
+    // Round 1 opened neither route, so its facts are served and unread: a choice, not structure.
+    expect(first.channels.find((c) => c.name === "round-facts")).toMatchObject({ served: true, read: 0 });
+    expect(first.servedNotRead).toContainEqual(
+      expect.objectContaining({ name: "round-facts", readRoute: true }),
+    );
+    expect(renderHandoffs(report)).not.toContain("served, no read route");
+  });
+
+  it("names the in-round review text as the one channel no tool re-serves", () => {
+    const reviewed = buildHandoffs({ campaign: campaign({ reviewed: true }), runId: RUN });
+    const first = required(required(reviewed.census, "census")[0], "first round");
+    expect(first.channels.find((c) => c.name === "review-in-round")).toMatchObject({
+      present: true,
+      served: true,
+      read: null,
+    });
+    expect(first.servedNotRead).toContainEqual(
+      expect.objectContaining({ name: "review-in-round", readRoute: false }),
+    );
+    expect(renderHandoffs(reviewed)).toContain("served, no read route: review-in-round");
+    // Round 2 recorded no review, so the channel is absent there rather than served and unread.
+    const second = required(required(reviewed.census, "census")[1], "second round");
+    expect(second.channels.find((c) => c.name === "review-in-round")).toMatchObject({
+      present: false,
+      served: false,
+    });
   });
 
   it("reports each round's rehearsals and zone, and what was opened before the battery was authored", () => {
@@ -299,7 +365,7 @@ describe("round hand-offs", () => {
     expect(renderHandoffs(report)).toContain(
       "no-shared-input 2 (delta changed budget, genes; gamma changed budget)",
     );
-    expect(renderHandoffs(report)).toMatch(/served, no read route: round-facts .*; rebuild-advice/);
+    expect(renderHandoffs(report)).toMatch(/served, never read: .*round-facts/);
     expect(renderHandoffs(report)).toContain(
       "earlier review's advisory defects in this battery's review: span absent",
     );

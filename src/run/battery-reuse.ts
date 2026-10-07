@@ -4,8 +4,9 @@
  *
  *  One reading decides which (`posedSolves`): a solve of the latest battery is regraded exactly when
  *  it still poses this candidate's exam — the same agent bytes, the same solving condition, the same
- *  public task bytes and public rules — and did not end in a non-result, which measured nothing.
- *  Every other task is solved. No round kind is named, because the reading already tells them apart:
+ *  public task bytes and public rules — did not end in a non-result, which measured nothing, and
+ *  awaits no further solve (`unconfirmedSolves`). Every other task is solved. No round kind is
+ *  named, because the reading already tells them apart:
  *
  *  - An evaluation correction regrades every task under the corrected evaluator, wherever the
  *    battery sat on the band, so the comparison moves one variable; a fresh solve would add the
@@ -15,7 +16,9 @@
  *    solves to measure one.
  *  - A remeasure of a battery whose every non-result the environment owns, on the product still
  *    selected, solves exactly those cases, which is what the analysis finding "rerun without
- *    changing the harness" promises.
+ *    changing the harness" promises. It also solves again each fail that is not yet confirmed
+ *    (`unconfirmedSolves`), so the Builder never reads a fail on one solve alone; a battery whose
+ *    every case failed or was cut short is measured again whole.
  *  - A harness intervention moved the agent bytes, so nothing it reads was posed before.
  *
  *  An unaccepted attempt is a measured failure and is regraded like a pass: solving it again would
@@ -29,7 +32,7 @@ import { POLICY } from "../critic/policy.ts";
 import { isEnvironmentOwnedNonResult } from "../claim/record-events.ts";
 import { fingerprintSlug } from "../claim/fingerprint.ts";
 import { bundleSnapshotToolTree } from "../claim/bundle-snapshot.ts";
-import { CASE_RECORD_FILE, readCaseRecord } from "../claim/case-record.ts";
+import { CASE_RECORD_FILE, classifyCaseOutcome, readCaseRecord } from "../claim/case-record.ts";
 import type { SlotChoice } from "../backends/resolve.ts";
 import { campaignDir } from "../meta/campaign-root.ts";
 import { canonicalJson } from "../meta/stable-json.ts";
@@ -61,6 +64,11 @@ export interface Remeasure {
 }
 
 type RecordedBattery = Pick<BatteryRecord, "cases" | "regrade" | "discrimination" | "bundleSnapshot">;
+
+/** How many solves of one task in one group must all fail before the Builder reads the fail. In
+ *  trusses-26 the same solver solved 13 tasks 59 times; 57 passed, and both fails passed in the
+ *  battery beside them. */
+export const AGREEING_SOLVES = 3;
 
 /** The exam a candidate poses under this run's Built slot. */
 interface ExamInput {
@@ -125,10 +133,55 @@ export function solverConditionMoved(
   return null;
 }
 
+/** The tasks of battery `runId` to solve again before the Builder reads their fails: each fresh fail
+ *  whose group holds fewer than `AGREEING_SOLVES` solves, every one a fail. A group is one task under
+ *  one solver, as the case record pins it (backend, build inputs, condition, Built effort), and one
+ *  tool tree, read from each solve's battery, so an edit of the task, the agent or the tools starts
+ *  a group of its own. One pass in the group makes the fail the solver's variance, a flip, and
+ *  nothing is solved again. A row restating an earlier row's solve instant is a regrade, not a solve.
+ *  Neither the Judge nor the review chooses which fails are solved again; validity is read apart. */
+function unconfirmedSolves(input: ExamInput, runId: string): Set<string> {
+  const record = readCaseRecord(join(campaignDir(input.repoRoot, input.slug), CASE_RECORD_FILE));
+  const solves = [...Map.groupBy(record, ({ row }) => `${row.taskId} ${row.solverStartedAt}`).values()]
+    .flatMap((restated) =>
+      restated.slice(0, 1).map(({ row }) => ({ row, outcome: classifyCaseOutcome(row) })),
+    )
+    .filter(({ outcome }) => outcome === "pass" || outcome === "fail");
+  const product = selectedProductDir(input.repoRoot, input.slug);
+  const treeOf = (battery: string) => {
+    const runDir = retainedRunDir(product, battery);
+    try {
+      return runDir === null
+        ? null
+        : readRecordedBatteryRecord(runDir, battery).bundleSnapshot.toolTreeDigest;
+    } catch {
+      return null;
+    }
+  };
+  const trees = new Map([...new Set(solves.map(({ row }) => row.runId))].map((id) => [id, treeOf(id)]));
+  const groupOf = (row: (typeof solves)[number]["row"]) =>
+    canonicalJson([
+      row.taskId,
+      row.backendPin,
+      row.buildInputsHash,
+      row.condition,
+      recordedBuiltEffort([row]),
+      trees.get(row.runId) ?? null,
+    ]);
+  const groups = Map.groupBy(solves, ({ row }) => groupOf(row));
+  const unconfirmed = solves.filter(({ row, outcome }) => {
+    if (row.runId !== runId || outcome !== "fail") return false;
+    const group = groups.get(groupOf(row)) ?? [];
+    return group.length < AGREEING_SOLVES && group.every((solve) => solve.outcome === "fail");
+  });
+  return new Set(unconfirmed.map(({ row }) => row.taskId));
+}
+
 /** The latest battery's solves that still pose `candidateDir`'s exam, or null with the condition
- *  that moved. A solve is kept when its case reached no non-result and its public task bytes match
- *  the candidate's; the agent bytes, the solving condition and, when the scoring moved, the brief's
- *  public rules must match for any to be kept, because the solver read all of them. */
+ *  that moved. A solve is kept when its case reached no non-result, no further solve is due
+ *  (`unconfirmedSolves`) and its public task bytes match the candidate's; the agent bytes, the
+ *  solving condition and, when the scoring moved, the brief's public rules must match for any to be
+ *  kept, because the solver read all of them. */
 export function posedSolves(input: ExamInput): RecordedRegrade {
   const source = latestBattery(input.repoRoot, input.slug, input.runPin);
   if (isString(source)) return { reuse: null, reason: source };
@@ -152,8 +205,11 @@ export function posedSolves(input: ExamInput): RecordedRegrade {
   ) {
     return { reuse: null, reason: "the brief's public rules moved" };
   }
+  const again = unconfirmedSolves(input, source.runId);
   const measured = new Set(
-    battery.cases.flatMap((row) => (row.runtimeNonResultKind === null ? [row.taskId] : [])),
+    battery.cases.flatMap((row) =>
+      row.runtimeNonResultKind === null && !again.has(row.taskId) ? [row.taskId] : [],
+    ),
   );
   const tasks = loadRecordedTasks(input.candidateDir).filter((task) => measured.has(task.taskId));
   const read = readRecordedSolves(
@@ -168,7 +224,8 @@ export function posedSolves(input: ExamInput): RecordedRegrade {
       return solve !== undefined && recordedTaskMatches(task, solve) ? [[task.taskId, solve] as const] : [];
     }),
   );
-  if (solves.size === 0) return { reuse: null, reason: `no solve of ${source.runId} still poses this exam` };
+  // An empty reuse stays one: a remeasure of a battery whose every case failed or was cut short
+  // records the regrade it is, so `remeasureChain` counts it.
   return {
     reuse: { ...read.value, solves },
     reason: `${solves.size} solve(s) of battery ${source.runId} still pose this exam and are regraded; the other task(s) are solved`,
@@ -176,15 +233,17 @@ export function posedSolves(input: ExamInput): RecordedRegrade {
 }
 
 /** The recorded solves a candidate regrades instead of solving, or null when it measures a fresh
- *  battery, with the reason either way. It reads the solves a remeasure reads (`posedSolves`); only
- *  a repeat, which moved nothing, opts out and is solved afresh. */
+ *  battery, with the reason either way. It reads the solves a remeasure reads (`posedSolves`); a
+ *  repeat, which moved nothing, opts out and is solved afresh, and a reuse holding no solve is a
+ *  fresh battery. */
 export function recordedRegrade(
   input: ExamInput & { experimentAuthoring: ExperimentAuthoring | undefined },
 ): RecordedRegrade {
   if (input.experimentAuthoring?.operation.operation === "repeat") {
     return { reuse: null, reason: "a repeat is solved afresh" };
   }
-  return posedSolves(input);
+  const posed = posedSolves(input);
+  return posed.reuse?.solves.size === 0 ? { reuse: null, reason: posed.reason } : posed;
 }
 
 /** How many remeasures in a row led to `battery`, itself included. A chain the environment keeps
@@ -213,12 +272,11 @@ function remeasureChain(
   return count;
 }
 
-/** Why `battery` is not a remeasure's source, or null when it is: each censored case is a
+/** Why `battery` is not a remeasure's source, or null when it is: each censored case, if any, is a
  *  solver-side non-result of a kind the environment owns, no external check recorded an unbound
  *  result, and the product that measured it is the one selected now. */
 function notRemeasurable(domainDir: string, battery: RecordedBattery): string | null {
   const censored = battery.cases.filter((row) => row.runtimeNonResultKind !== null);
-  if (censored.length === 0) return "no case ended in a non-result";
   const environmentOwned = censored.every(
     (row) => row.solver.nonResult !== null && isEnvironmentOwnedNonResult(row.runtimeNonResultKind),
   );
@@ -243,13 +301,13 @@ function notRemeasurable(domainDir: string, battery: RecordedBattery): string | 
   return null;
 }
 
-/** The latest battery's environment-censored cases to solve again on the unchanged selected product
- *  (`candidateDir`) under the condition that battery solved under, or the reason it has none. */
-export function censoredRemeasure(input: ExamInput, readout: ClimbReadout | null): Remeasure | string {
+/** The latest battery's cases to solve again on the unchanged selected product (`candidateDir`)
+ *  under the condition that battery solved under: its environment-censored cases and its
+ *  unconfirmed solves. Or the reason it has none. */
+export function remeasureOf(input: ExamInput, readout: ClimbReadout | null): Remeasure | string {
   const domainDir = input.candidateDir;
   const latest = readout?.rows[0];
   if (latest === undefined) return "no measured battery";
-  if (latest.nonResults === 0) return "no case ended in a non-result";
   const runDir = retainedRunDir(domainDir, latest.runId);
   if (runDir === null) return `battery ${latest.runId} has no unique retained run directory`;
   let battery: BatteryRecord;
@@ -258,14 +316,11 @@ export function censoredRemeasure(input: ExamInput, readout: ClimbReadout | null
   } catch (error) {
     return errorMessage(error);
   }
-  const refused = notRemeasurable(domainDir, battery);
-  if (refused !== null) return refused;
   // Read the solves it would keep now, so a record that cannot be vouched for sends the round to
   // the Builder here rather than failing the battery it would have opened.
-  const posed = posedSolves(input);
-  if (posed.reuse === null) return posed.reason;
-  return {
-    of: latest.runId,
-    taskIds: battery.cases.flatMap((row) => (row.runtimeNonResultKind === null ? [] : [row.taskId])),
-  };
+  const { reuse, reason } = posedSolves(input);
+  if (reuse === null) return reason;
+  const taskIds = battery.cases.flatMap((row) => (reuse.solves.has(row.taskId) ? [] : [row.taskId]));
+  if (taskIds.length === 0) return "no case ended in a non-result or awaits another solve";
+  return notRemeasurable(domainDir, battery) ?? { of: latest.runId, taskIds };
 }

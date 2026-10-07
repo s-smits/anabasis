@@ -63,6 +63,7 @@ import { decideDifficulty, fullPass } from "#src/run/climb-readout.ts";
 import { BATTERY_FILE, readRecordedBatteryRecord } from "#src/correctness-bundle/battery-record.ts";
 import type { BatteryRecord } from "#src/correctness-bundle/battery-record.ts";
 import { SOLVE_WALL_MESSAGE } from "#src/backends/backend-types.ts";
+import { AGREEING_SOLVES } from "#src/run/battery-reuse.ts";
 import {
   type Bundle,
   type Structure,
@@ -296,19 +297,21 @@ export function outcomesOf(campaign: string): Map<string, OutcomeCounts> {
   );
 }
 
-/** The completed review of battery `runId`, or null when none is recorded. */
-function reviewOf(campaign: string, runId: string): CaseDisposition[] | null {
-  const review = readJsonAsOrNull<Pick<EpochReviewEvidence, "status"> & { dispositions?: CaseDisposition[] }>(
-    join(campaign, "analysis", `${runId}-epoch-review.json`),
-  );
-  return review?.status === "completed" ? (review.dispositions ?? []) : null;
+/** The completed review of battery `runId`: the cases it disposed of and the contested cases it left
+ *  unsettled. Null when none is recorded. */
+function reviewOf(campaign: string, runId: string) {
+  const review = readJsonAsOrNull<
+    Pick<EpochReviewEvidence, "status"> & { dispositions?: CaseDisposition[]; unsettled?: string[] }
+  >(join(campaign, "analysis", `${runId}-epoch-review.json`));
+  if (review?.status !== "completed") return null;
+  return { dispositions: review.dispositions ?? [], unsettled: review.unsettled ?? [] };
 }
 
 /** Null when no completed review of this battery is recorded, which is unread, never "nothing settled".
  *  Against the check means by the controller's rule (`settledAgainstCheck`): a case its climb drops. */
 export function settlementOf(campaign: string, runId: string): Settlement | null {
-  const rows = reviewOf(campaign, runId);
-  if (rows === null) return null;
+  const rows = reviewOf(campaign, runId)?.dispositions;
+  if (rows === undefined) return null;
   const settled = settledAgainstCheck(join(campaign, "analysis"), runId);
   const count = (veto: boolean, counted: (row: CaseDisposition) => boolean) =>
     rows.filter((row) => (row.kind === "veto") === veto && counted(row)).length;
@@ -577,17 +580,20 @@ const solverOf = ({ backendPin, condition, bundleSnapshot }: BatteryRecord) =>
     tools: bundleSnapshot.toolTreeDigest,
   });
 
-/** What `next`, the battery measured after `battery`, did with each of `battery`'s earned fails, or
- *  null when `battery` recorded no battery of its own. An earned fail is a verified fail that the
- *  review did not settle against its check and the solve wall did not stop; a climb step needs that
- *  task passing after a harness change (AGENTS.md "Its shape, and how progress is read"). Null
+/** What `next`, the battery measured after `battery`, did with each of `battery`'s earned fails, and
+ *  which of its verified fails the Judge contested; null when `battery` recorded no battery of its
+ *  own. An earned fail is a verified fail the Judge did not contest and the solve wall did not stop;
+ *  a climb step needs that task passing after a harness change (AGENTS.md "Its shape, and how
+ *  progress is read"). A contested fail is one the completed review disposed of or left unsettled,
+ *  read apart as an instrument-dispute candidate, since the instrument may have decided it. Null
  *  fields are unread: no next battery, or none recorded; `outcome` is also null when the next
  *  battery holds no case of the task, as when it dropped it. A regrade keeps the recorded solve's
  *  instants, so a case starting when the earlier one did is not new.
  *  `elsewhere` counts the task's other verified solves in any battery under the same solver
- *  (`solverOf`) that poses it exactly as this one did: a fail of a task that passed there is the
- *  solver's variance, not a limit. In trusses-26, 13 tasks were solved 59 times that way and both
- *  of its fails passed in the battery beside them (oracle review, 2026-10-02). */
+ *  (`solverOf`) that poses it exactly as this one did, the controller's remeasures included: a fail
+ *  of a task that passed there is the solver's variance, not a limit. In trusses-26, 13 tasks were
+ *  solved 59 times that way and both of its fails passed in the battery beside them (oracle review,
+ *  2026-10-02). */
 export function followUpOf(
   campaign: string,
   battery: Pick<VersionBattery, "dir" | "runId">,
@@ -599,21 +605,30 @@ export function followUpOf(
       : null;
   const record = recorded(battery);
   if (record === null) return null;
-  // A settlement recorded before dispositions named their checks stays in the controller's sample,
-  // since it cannot tell whether another check decided the case, and for that reason is no earned
-  // fail either (esp32-30 i02 and esp32-31 b1: six such fails).
-  const unscoped = (reviewOf(campaign, battery.runId) ?? []).filter(
-    (row) => row.disposition === "against-check" && row.checkIds === undefined,
-  );
-  const settled = new Set([
-    ...settledAgainstCheck(join(campaign, "analysis"), battery.runId),
-    ...unscoped.map((row) => row.taskId),
+  // A version's runs hold its own battery and each remeasure that graded it again.
+  const runsIn = (dir: string) =>
+    (existsSync(join(dir, "runs")) ? readdirSync(join(dir, "runs")) : []).flatMap((runId) => {
+      const solved = recorded({ dir, runId });
+      return solved === null ? [] : [solved];
+    });
+  // One count per solve: a regrade keeps the recorded solve's instants.
+  const tally = (rows: BatteryRecord["cases"]) => {
+    const outcomes = [
+      ...new Map(rows.map((row) => [row.solver.startedAt, classifyCaseOutcome(row)])).values(),
+    ];
+    return {
+      passed: outcomes.filter((each) => each === "pass").length,
+      failed: outcomes.filter((each) => each === "fail").length,
+    };
+  };
+  const review = reviewOf(campaign, battery.runId);
+  const disputed = new Set([
+    ...(review?.dispositions ?? []).map((row) => row.taskId),
+    ...(review?.unsettled ?? []),
   ]);
-  const earned = record.cases.filter(
-    (row) =>
-      classifyCaseOutcome(row) === "fail" &&
-      !settled.has(row.taskId) &&
-      !row.solver.errors.includes(SOLVE_WALL_MESSAGE),
+  const verified = record.cases.filter((row) => classifyCaseOutcome(row) === "fail");
+  const earned = verified.filter(
+    (row) => !disputed.has(row.taskId) && !row.solver.errors.includes(SOLVE_WALL_MESSAGE),
   );
   const later = next === undefined ? null : recorded(next);
   // Bundles are loaded only for a battery that holds an earned fail, which few do.
@@ -623,34 +638,31 @@ export function followUpOf(
     before === null
       ? []
       : batteriesOf(campaign).flatMap((other) => {
-          const solved = other.runId === battery.runId ? null : recorded(other);
-          if (solved === null || solverOf(solved) !== solverOf(record)) return [];
+          const same = runsIn(other.dir).filter(
+            (solved) => solved.runId !== battery.runId && solverOf(solved) === solverOf(record),
+          );
+          if (same.length === 0) return [];
           const bundle = loadBundle(other.dir);
-          return [{ solved, poses: (taskId: string) => taskMove(before, bundle, taskId) === "carried" }];
+          const poses = (taskId: string) => taskMove(before, bundle, taskId) === "carried";
+          return same.map((solved) => ({ solved, poses }));
         });
   return {
     next: next?.runId ?? null,
     agentChanged: later === null ? null : later.bundleSnapshot.agentHash !== record.bundleSnapshot.agentHash,
+    contested: verified.flatMap(({ taskId }) => (disputed.has(taskId) ? [taskId] : [])),
     fails: earned.map(({ taskId, solver }) => {
       const row = later?.cases.find((each) => each.taskId === taskId);
-      // Keyed by the solve's instants, so a regrade counts its solve once.
-      const others = new Map(
-        peers
-          .filter(({ poses }) => poses(taskId))
-          .flatMap(({ solved }) => solved.cases)
-          .filter((each) => each.taskId === taskId && each.solver.startedAt !== solver.startedAt)
-          .map((each) => [each.solver.startedAt, classifyCaseOutcome(each)] as const),
-      );
-      const outcomes = [...others.values()];
+      const of = (rows: BatteryRecord["cases"]) => rows.filter((each) => each.taskId === taskId);
       return {
         taskId,
         task: bundles === null ? null : taskMove(bundles.before, bundles.after, taskId),
         outcome: row === undefined ? null : classifyCaseOutcome(row),
         regraded: row?.solver.startedAt === solver.startedAt,
-        elsewhere: {
-          passed: outcomes.filter((each) => each === "pass").length,
-          failed: outcomes.filter((each) => each === "fail").length,
-        },
+        elsewhere: tally(
+          of(peers.filter(({ poses }) => poses(taskId)).flatMap(({ solved }) => solved.cases)).filter(
+            (each) => each.solver.startedAt !== solver.startedAt,
+          ),
+        ),
       };
     }),
   };
@@ -984,14 +996,15 @@ function carriedLine(report: ClimbReport): string {
 }
 
 /** Each earned fail of one battery as a climb step's evidence: the task, what the next battery did
- *  with it, how it came out there and whether the agent changed between the two. */
+ *  with it, how it came out there and whether the agent changed between the two; then each fail the
+ *  Judge contested. */
 function followUpLines({ runId, followUp }: ClimbBatteryRow): string[] {
   if (followUp === null) return [];
   const { next, agentChanged } = followUp;
   const agent = agentChanged === null ? "" : `; agent ${agentChanged ? "changed" : "unchanged"} between them`;
-  return followUp.fails.map(({ taskId, task, outcome, regraded, elsewhere }) => {
+  const earned = followUp.fails.map(({ taskId, task, outcome, regraded, elsewhere }) => {
     const solves = elsewhere.passed + elsewhere.failed;
-    const flip = elsewhere.passed > 0 ? ": a flip, not a limit" : "";
+    const flip = elsewhere.passed > 0 ? ": a flip, not a limit" : confirmedBy(elsewhere) ? ": confirmed" : "";
     const head = `earned fail ${taskId} in ${runId}${solves === 0 ? "" : ` (passed ${elsewhere.passed} of ${solves} other solves under the same solver${flip})`}`;
     if (next === null || task === null) return `${head}: no battery measured after it`;
     if (task === "dropped") return `${head}: dropped from ${next}${agent}`;
@@ -999,6 +1012,10 @@ function followUpLines({ runId, followUp }: ClimbBatteryRow): string[] {
     const result = outcome === null ? "not yet measured" : `${OUTCOME_WORDS[outcome]} there on ${solve}`;
     return `${head}: ${task === "carried" ? "carried unchanged" : "changed"} into ${next}, ${result}${agent}`;
   });
+  const contested = followUp.contested.map(
+    (taskId) => `contested fail ${taskId} in ${runId}: an instrument-dispute candidate`,
+  );
+  return [...earned, ...contested];
 }
 
 /** The numbers row of one edge, on the basis the two batteries allowed. A whole-battery reading says
@@ -1017,10 +1034,16 @@ function driftLine(drift: NumericDrift): string {
   return `${moved} over ${paths.compared} of ${paths.declared} numeric paths both batteries declare, read whole because ${joined}`;
 }
 
+/** Whether a fail's other solves under its solver failed with it often enough to confirm it: the
+ *  controller's own rule (`AGREEING_SOLVES`), read from what it recorded. */
+const confirmedBy = ({ passed, failed }: { passed: number; failed: number }) =>
+  passed === 0 && failed >= AGREEING_SOLVES - 1;
+
 /** The earned fails `followUpOf` read, the flips among them (the task passed another solve under
- *  the same solver), those with no battery after them, those the next battery carried unchanged,
- *  those that passed there, and those that passed after the agent changed and are no flip: a climb
- *  step answered. A changed agent means a new solve, since a regrade needs the same agent bytes. */
+ *  the same solver), those confirmed (`confirmedBy`), those with no battery after them, those the
+ *  next battery carried unchanged, those that passed there, and the confirmed ones that passed there
+ *  after the agent changed: a climb step answered. A changed agent means a new solve, since a
+ *  regrade needs the same agent bytes. The verified fails the Judge contested are counted apart. */
 export function followUpCounts(followUps: readonly ReturnType<typeof followUpOf>[]) {
   const fails = followUps.flatMap(
     (up) => up?.fails.map((fail) => ({ ...fail, agentChanged: up.agentChanged })) ?? [],
@@ -1030,18 +1053,29 @@ export function followUpCounts(followUps: readonly ReturnType<typeof followUpOf>
   return {
     earned: fails.length,
     flips: fails.filter(({ elsewhere }) => elsewhere.passed > 0).length,
+    confirmed: fails.filter(({ elsewhere }) => confirmedBy(elsewhere)).length,
     last: fails.filter(({ task }) => task === null).length,
     carried: carried.length,
     passed: passed.length,
-    answered: passed.filter(({ agentChanged, elsewhere }) => agentChanged === true && elsewhere.passed === 0)
+    answered: passed.filter(({ agentChanged, elsewhere }) => agentChanged === true && confirmedBy(elsewhere))
       .length,
+    contested: followUps.reduce((sum, up) => sum + (up?.contested.length ?? 0), 0),
   };
 }
 
-function followUpLine(report: ClimbReport): string {
+function followUpSummary(report: ClimbReport): string[] {
   const count = followUpCounts(report.batteries.map(({ followUp }) => followUp));
-  if (count.earned === 0) return "  follow-up: no adopted battery recorded an earned fail";
-  return `  follow-up: ${count.earned} earned fail${count.earned === 1 ? "" : "s"} (${count.flips} passed another solve under the same solver), ${count.last} with no battery after it; ${count.carried} carried unchanged into the next battery, ${count.passed} of them passed there and ${count.answered} of those after the agent changed`;
+  const contested =
+    count.contested === 0
+      ? []
+      : [
+          `  contested: ${count.contested} verified fail${count.contested === 1 ? "" : "s"} the Judge contested, read apart from the earned fails as an instrument-dispute candidate`,
+        ];
+  if (count.earned === 0) return ["  follow-up: no adopted battery recorded an earned fail", ...contested];
+  return [
+    `  follow-up: ${count.earned} earned fail${count.earned === 1 ? "" : "s"} (${count.flips} passed another solve under the same solver, ${count.confirmed} confirmed by ${AGREEING_SOLVES - 1} more fails), ${count.last} with no battery after it; ${count.carried} carried unchanged into the next battery, ${count.passed} of them passed there; ${count.answered} answered: confirmed, then passed after the agent changed`,
+    ...contested,
+  ];
 }
 
 export function render(report: ClimbReport): string {
@@ -1110,7 +1144,7 @@ export function render(report: ClimbReport): string {
       `  ${battery.createdAt ?? "undated"}  ${battery.runId}: ${battery.counts.passed}/${battery.counts.verified} passed, ${battery.counts.unaccepted} unaccepted, ${battery.counts.nonResult} non-result; claimed with no version of its own, so on the line and on no edge`,
     );
   }
-  lines.push(followUpLine(report));
+  lines.push(...followUpSummary(report));
   lines.push(...lineLines(lineOf(report)), carriedLine(report), latestEdgeLine(report));
   return lines.join("\n");
 }

@@ -59,8 +59,9 @@ comparison that signal cannot:
 - **The share of the solve wall** (`wri.ts walls`). Truss batteries that went on to fail a case used
   a median of 18.6% of the wall against 6.6% for full passes. A change that raises demand shows here
   first. The scoreboard prints it per run (median and latest battery) and per source and Builder,
-  beside the earned fails (`wri.ts climb`'s follow-up), how many the next battery carried unchanged,
-  and how many of those passed there after the agent changed.
+  beside the earned fails (`wri.ts climb`'s follow-up), how many the controller's further solves
+  confirmed, how many the next battery carried unchanged, how many confirmed fails then passed there
+  after the agent changed (answered), and, apart, the verified fails the Judge contested.
 - **One fixed pack.** Solve the same recorded hard tasks with both products through `harness-query`,
   but only for rounds of one campaign or a seeded continuation: a pack task is graded by its
   authoring product's correctness bundle, so it cannot compare two fresh campaigns (AGENTS.md "Open

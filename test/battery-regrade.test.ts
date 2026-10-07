@@ -10,9 +10,14 @@
  * and a probe over a battery holding an unaccepted attempt, reuse what they still pose instead of
  * each paying for a full battery.
  *
- * Two rounds, no provider: round one builds and measures, round two submits one change or
- * remeasures. The solver counts its calls per battery, so "no solve" is a count of zero rather than
- * an inference from timing.
+ * A verified fail is solved again on unchanged bytes, each time in a remeasure that regrades the
+ * other tasks, while every solve of its task in its group (one pin, set of build inputs, run
+ * condition, effort and tool tree) has failed and there are fewer than three. So a correction after
+ * a fail the solver repeats is the fourth battery, not the second.
+ *
+ * No provider: round one builds and measures, a later round submits one change or remeasures. The
+ * solver counts its calls per battery, so "no solve" is a count of zero rather than an inference
+ * from timing.
  */
 import { afterEach, describe, expect, it } from "bun:test";
 import {
@@ -43,6 +48,7 @@ import type { RunCondition } from "../src/claim/case-record.ts";
 import { solverConditionMoved } from "../src/run/battery-reuse.ts";
 import { batteryCondition } from "../src/run/run-driver.ts";
 import { builtSession, fullFakeHost, probeEvidence } from "./helpers/measure-doubles.ts";
+import { writeSettledReview } from "./helpers/review-fixtures.ts";
 import { scriptedBuilderRuntime } from "./helpers/scripted-builder-runtime.ts";
 import { writeFixtureThresholds } from "./helpers/thresholds.ts";
 import {
@@ -63,6 +69,8 @@ interface SecondRound {
   judge?: JudgeSession;
   /** Round two submits its entry tree as it found it, without even a note. */
   bare?: true;
+  /** A line round two adds to the Built agent's instructions: a harness change. */
+  agent?: string;
 }
 
 /** Where the first battery's solving condition differs from the run's Built slot: the effort its
@@ -70,6 +78,8 @@ interface SecondRound {
 interface FirstBattery {
   effort?: string;
   withheld?: true;
+  /** The cases the first battery's completed review settles against the one check that decided each. */
+  settled?: readonly string[];
 }
 
 /** How the solver meets one task of one battery: the right answer, the input unchanged, a provider
@@ -87,6 +97,12 @@ const CASE_BLIND_EVALUATOR =
 /** The same correction for a check that also runs its tool-tree instrument. */
 const CASE_BLIND_TOOL_EVALUATOR =
   'export const checks = { answer: async ({artifact, publicTask}, runtime) => { const result = await runtime.tools.run({ toolId: "uppercase-fixture", args: [] }); return result.exitCode === 0 && String(artifact.answer).toUpperCase() === publicTask.publicInput.input.toUpperCase(); } };';
+
+/** The two remeasures that confirm a fail of t5 in battery "rg", each solving t5 alone. */
+const CONFIRMED_T5 = [
+  [1, { of: "rg", reused: 5, changedPasses: 0 }],
+  [1, { of: "rg-i02", reused: 5, changedPasses: 0 }],
+];
 
 const scratch: string[] = [];
 const guard: BuilderCommandGuardResult = { state: "skipped", path: null, skippedReason: "not-installed" };
@@ -205,6 +221,9 @@ async function twoRounds(
       }
       if (second.inputs !== undefined) writeTasks(ctx.workspace, second.inputs);
       if (second.toolchainProgram !== undefined) putProgram(ctx.workspace, second.toolchainProgram);
+      if (second.agent !== undefined) {
+        writeFileSync(join(ctx.workspace, "agent/BUILT_AGENTS.md"), `# Built\n${second.agent}\n`);
+      }
       if (second.assertion !== undefined) {
         const file = join(ctx.workspace, "correctness-model/brief.json");
         const brief = JSON.parse(readFileSync(file, "utf8"));
@@ -250,7 +269,14 @@ async function twoRounds(
     ensureDcg: () => guard,
     build: (manifest, options) => buildHarness(manifest, { ...options, builderRuntime }),
     drive,
-    analyse: analyseStep,
+    analyse: async (repo, slug, runId, measuredDir, options) => {
+      const analysed = await analyseStep(repo, slug, runId, measuredDir, options);
+      if (runId === "rg" && first.settled !== undefined) {
+        const settled = first.settled.map((taskId) => ({ taskId }));
+        writeSettledReview(join(repo, "campaigns", slug, "analysis"), runId, settled);
+      }
+      return analysed;
+    },
   });
   const records = outcome.rounds.flatMap((row) => {
     const dir = measuredProductDir(root, SLUG, row.runId);
@@ -276,40 +302,51 @@ async function twoRounds(
 
 describe("an evaluation correction regrades instead of re-solving", () => {
   it("after a battery above the aim, schedules no solve and records the pass the correction flipped", async () => {
-    const { outcome, batteries } = await twoRounds(flubbing(new Set(["t5"])), {
-      evaluator: CASE_BLIND_EVALUATOR,
-    });
+    const { outcome, batteries } = await twoRounds(
+      flubbing(new Set(["t5"])),
+      { evaluator: CASE_BLIND_EVALUATOR },
+      {},
+      2,
+    );
     expect(outcome.rounds.map((row) => [row.move, row.build])).toEqual([
       ["build", "adopted"],
+      ["measure", "reused"],
+      ["measure", "reused"],
       ["rebuild", "candidate"],
     ]);
-    const [first, second] = batteries;
+    const [first, , , correction] = batteries;
     expect(first?.solves).toBe(TASKS);
     expect(first?.passes).toEqual([true, true, true, true, true, false]);
-    expect(second).toEqual({
-      runId: "rg-i02",
+    expect(correction).toEqual({
+      runId: "rg-i04",
       solves: 0,
       passes: [true, true, true, true, true, true],
-      regrade: { of: "rg", reused: TASKS, changedPasses: 1 },
+      regrade: { of: "rg-i03", reused: TASKS, changedPasses: 1 },
     });
   }, 180_000);
 
   it("after a battery below the aim, regrades too: the correction moved the evaluator alone", async () => {
-    const { batteries } = await twoRounds(flubbing(new Set(["t1", "t2", "t3", "t4", "t5"])), {
-      evaluator: CASE_BLIND_EVALUATOR,
-    });
+    const { batteries } = await twoRounds(
+      flubbing(new Set(["t1", "t2", "t3", "t4", "t5"])),
+      { evaluator: CASE_BLIND_EVALUATOR },
+      {},
+      2,
+    );
     expect(batteries.map((row) => [row.solves, row.regrade])).toEqual([
       [TASKS, null],
-      [0, { of: "rg", reused: TASKS, changedPasses: 5 }],
+      [5, { of: "rg", reused: 1, changedPasses: 0 }],
+      [5, { of: "rg-i02", reused: 1, changedPasses: 0 }],
+      [0, { of: "rg-i03", reused: TASKS, changedPasses: 5 }],
     ]);
   }, 180_000);
 
   it("a task probe solves only the task it changed and regrades the five it poses again", async () => {
     const inputs = [...UPPERCASE_TASK_INPUTS.slice(0, 5), "gh"];
-    const { batteries, readout } = await twoRounds(flubbing(new Set(["t5"])), { inputs });
+    const { batteries, readout } = await twoRounds(flubbing(new Set(["t5"])), { inputs }, {}, 2);
     expect(batteries.map((row) => [row.solves, row.regrade])).toEqual([
       [TASKS, null],
-      [1, { of: "rg", reused: 5, changedPasses: 0 }],
+      ...CONFIRMED_T5,
+      [1, { of: "rg-i03", reused: 5, changedPasses: 0 }],
     ]);
     // The changed task alone decides the probe, and the solver still flubs it: the five regraded
     // passes never enter its sample.
@@ -326,17 +363,25 @@ describe("an evaluation correction regrades instead of re-solving", () => {
   }, 180_000);
 
   it("a correction that also rewrites the public rule the solver reads measures a full battery", async () => {
-    const { batteries } = await twoRounds(flubbing(new Set(["t5"])), {
-      evaluator: CASE_BLIND_EVALUATOR,
-      assertion: "The answer equals the input in upper case, compared without regard to case.",
-    });
+    const { batteries } = await twoRounds(
+      flubbing(new Set(["t5"])),
+      {
+        evaluator: CASE_BLIND_EVALUATOR,
+        assertion: "The answer equals the input in upper case, compared without regard to case.",
+      },
+      {},
+      2,
+    );
     expect(batteries.map((row) => [row.solves, row.regrade])).toEqual([
       [TASKS, null],
+      ...CONFIRMED_T5,
       [TASKS, null],
     ]);
   }, 180_000);
 
   describe("measures a fresh battery when only the solver's own condition moved", () => {
+    // A first battery solved under another effort or another shell poses nothing the run's Built
+    // slot can solve again, so its fail goes to the Builder unconfirmed.
     const fresh = [
       [TASKS, null],
       [TASKS, null],
@@ -361,11 +406,17 @@ describe("an evaluation correction regrades instead of re-solving", () => {
     }, 180_000);
 
     it("a program added to the tool tree the solver's shell runs", async () => {
-      const { batteries } = await twoRounds(flubbing(new Set(["t5"])), {
-        evaluator: CASE_BLIND_EVALUATOR,
-        toolchainProgram: "analyser",
-      });
-      expect(batteries.map((row) => [row.solves, row.regrade])).toEqual(fresh);
+      const { batteries } = await twoRounds(
+        flubbing(new Set(["t5"])),
+        { evaluator: CASE_BLIND_EVALUATOR, toolchainProgram: "analyser" },
+        {},
+        2,
+      );
+      expect(batteries.map((row) => [row.solves, row.regrade])).toEqual([
+        [TASKS, null],
+        ...CONFIRMED_T5,
+        [TASKS, null],
+      ]);
     }, 180_000);
   });
 
@@ -387,12 +438,16 @@ describe("an evaluation correction regrades instead of re-solving", () => {
         };
       },
     };
-    const { batteries } = await twoRounds(flubbing(new Set(["t5"])), {
-      evaluator: CASE_BLIND_EVALUATOR,
-      judge,
-    });
+    const { batteries } = await twoRounds(
+      flubbing(new Set(["t5"])),
+      { evaluator: CASE_BLIND_EVALUATOR, judge },
+      {},
+      2,
+    );
     expect(batteries.map((row) => [row.solves, row.regrade?.reused ?? null])).toEqual([
       [TASKS, null],
+      [1, 5],
+      [1, 5],
       [0, TASKS],
     ]);
     expect(reviews).toBeGreaterThan(0);
@@ -400,13 +455,16 @@ describe("an evaluation correction regrades instead of re-solving", () => {
 
   it("a correction that also moves one task solves that task and regrades the five it poses again", async () => {
     const inputs = [...UPPERCASE_TASK_INPUTS.slice(0, 5), "gh"];
-    const { batteries } = await twoRounds(flubbing(new Set(["t5"])), {
-      evaluator: CASE_BLIND_EVALUATOR,
-      inputs,
-    });
+    const { batteries } = await twoRounds(
+      flubbing(new Set(["t5"])),
+      { evaluator: CASE_BLIND_EVALUATOR, inputs },
+      {},
+      2,
+    );
     expect(batteries.map((row) => [row.solves, row.regrade])).toEqual([
       [TASKS, null],
-      [1, { of: "rg", reused: 5, changedPasses: 0 }],
+      ...CONFIRMED_T5,
+      [1, { of: "rg-i03", reused: 5, changedPasses: 0 }],
     ]);
   }, 180_000);
 
@@ -416,13 +474,125 @@ describe("an evaluation correction regrades instead of re-solving", () => {
     const silentT2 = (runId: string, taskId: string): Answer =>
       runId === "rg" && taskId === "t2" ? "silent" : taskId === "t5" ? "flub" : "right";
     const inputs = [...UPPERCASE_TASK_INPUTS.slice(0, 5), "gh"];
-    const { batteries } = await twoRounds(silentT2, { inputs });
+    const { batteries } = await twoRounds(silentT2, { inputs }, {}, 2);
     expect(batteries.map((row) => [row.solves, row.regrade])).toEqual([
       [TASKS, null],
-      [1, { of: "rg", reused: 5, changedPasses: 0 }],
+      ...CONFIRMED_T5,
+      [1, { of: "rg-i03", reused: 5, changedPasses: 0 }],
     ]);
-    // An unaccepted attempt scores as a fail, fresh or regraded.
-    expect(batteries[1]?.passes).toEqual([true, true, false, true, true, false]);
+    // An unaccepted attempt scores as a fail, fresh or regraded, and is never solved again.
+    expect(batteries[3]?.passes).toEqual([true, true, false, true, true, false]);
+  }, 180_000);
+});
+
+describe("a fail is solved again while every solve in its group failed and there are fewer than three", () => {
+  it("confirms a fail with two more solves of that task alone, then hands the Builder the round", async () => {
+    const { outcome, batteries } = await twoRounds(flubbing(new Set(["t5"])), {}, {}, 2);
+    expect(outcome.rounds.map((row) => [row.move, row.build])).toEqual([
+      ["build", "adopted"],
+      ["measure", "reused"],
+      ["measure", "reused"],
+      ["rebuild", "candidate"],
+    ]);
+    expect(
+      batteries.slice(0, 3).map((row) => [row.solves, row.regrade?.reused ?? null, row.passes[5]]),
+    ).toEqual([
+      [TASKS, null, false],
+      [1, 5, false],
+      [1, 5, false],
+    ]);
+  }, 180_000);
+
+  it("stops at the solve that disagrees: a fail that passes on its second solve is a flip", async () => {
+    const flip = (runId: string, taskId: string): Answer =>
+      runId === "rg" && taskId === "t5" ? "flub" : "right";
+    const { outcome, batteries } = await twoRounds(flip, {}, {}, 1);
+    expect(outcome.rounds.map((row) => row.move)).toEqual(["build", "measure", "rebuild"]);
+    expect(batteries[1]).toMatchObject({ solves: 1, passes: [true, true, true, true, true, true] });
+  }, 180_000);
+
+  it("solves no fail again whose task passed in its group: a repeat's fail after a pass is a flip", async () => {
+    const failsAfterFirst = (runId: string, taskId: string): Answer =>
+      taskId === "t5" && runId !== "rg" ? "flub" : "right";
+    const { outcome, batteries } = await twoRounds(failsAfterFirst, { bare: true }, {}, 1);
+    expect(outcome.rounds.map((row) => row.move)).toEqual(["build", "rebuild", "rebuild"]);
+    expect(batteries[1]).toMatchObject({ runId: "rg-i02", solves: TASKS, regrade: null });
+    expect(batteries[1]?.passes[5]).toBe(false);
+  }, 180_000);
+
+  it("solves no pass again: a harness change's pass after a confirmed fail is read on its one solve", async () => {
+    const answered = (runId: string, taskId: string): Answer =>
+      taskId === "t5" && ["rg", "rg-i02", "rg-i03"].includes(runId) ? "flub" : "right";
+    const { outcome, batteries } = await twoRounds(answered, { agent: "Answer in upper case." }, {}, 3);
+    expect(outcome.rounds.map((row) => row.move)).toEqual([
+      "build",
+      "measure",
+      "measure",
+      "rebuild",
+      "rebuild",
+    ]);
+    expect(batteries[3]).toMatchObject({ runId: "rg-i04", solves: TASKS, regrade: null });
+    expect(batteries[3]?.passes[5]).toBe(true);
+  }, 180_000);
+
+  it("starts a group with each edit of a task: its fail after a confirmed fail of the old bytes is solved again", async () => {
+    const inputs = [...UPPERCASE_TASK_INPUTS.slice(0, 5), "gh"];
+    const { outcome, batteries } = await twoRounds(flubbing(new Set(["t5"])), { inputs }, {}, 3);
+    expect(outcome.rounds.map((row) => row.move)).toEqual([
+      "build",
+      "measure",
+      "measure",
+      "rebuild",
+      "measure",
+    ]);
+    expect(batteries[4]).toMatchObject({ solves: 1, regrade: { of: "rg-i04", reused: 5, changedPasses: 0 } });
+  }, 180_000);
+
+  it("starts a group with each tool tree: a fail after a pass under the earlier tree is solved again", async () => {
+    const failsUnderNewTree = (runId: string, taskId: string): Answer =>
+      runId === "rg-i02" && taskId === "t5" ? "flub" : "right";
+    const { outcome, batteries } = await twoRounds(
+      failsUnderNewTree,
+      { toolchainProgram: "analyser" },
+      {},
+      1,
+    );
+    expect(outcome.rounds.map((row) => [row.move, row.build])).toEqual([
+      ["build", "adopted"],
+      ["rebuild", "candidate"],
+      ["measure", "reused"],
+    ]);
+    expect(batteries.map((row) => [row.solves, row.regrade])).toEqual([
+      [TASKS, null],
+      [TASKS, null],
+      [1, { of: "rg-i02", reused: 5, changedPasses: 0 }],
+    ]);
+  }, 180_000);
+
+  it("measures again whole a battery whose every case failed or was cut short", async () => {
+    // Four fails the solver repeats beside two provider non-results: nothing is left to regrade, and
+    // the remeasure still records the regrade it is, so a chain of them stays bounded.
+    const lost = (runId: string, taskId: string): Answer => {
+      if (taskId !== "t4" && taskId !== "t5") return "flub";
+      return runId === "rg" ? "provider" : "right";
+    };
+    const { outcome, batteries } = await twoRounds(lost, {}, {}, 2);
+    expect(outcome.rounds.map((row) => row.move)).toEqual(["build", "measure", "measure", "rebuild"]);
+    expect(batteries.slice(0, 3).map((row) => [row.solves, row.regrade])).toEqual([
+      [TASKS, null],
+      [TASKS, { of: "rg", reused: 0, changedPasses: 0 }],
+      [4, { of: "rg-i02", reused: 2, changedPasses: 0 }],
+    ]);
+  }, 180_000);
+
+  it("solves again a fail the review settled against its check, like any other fail", async () => {
+    // The Judge and the review say nothing about which fails are confirmed: validity is read apart.
+    const { outcome, batteries } = await twoRounds(flubbing(new Set(["t5"])), {}, { settled: ["t5"] }, 1);
+    expect(outcome.rounds.map((row) => row.move)).toEqual(["build", "measure", "measure"]);
+    expect(batteries.slice(1).map((row) => [row.solves, row.regrade?.reused ?? null])).toEqual([
+      [1, 5],
+      [1, 5],
+    ]);
   }, 180_000);
 });
 

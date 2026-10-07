@@ -162,7 +162,8 @@ export function resumePlan(opening: OpeningFacts | null, launch: LaunchRecord | 
   // the word "resume". Each is carried when the recorded argv holds it, under the launcher's
   // spelling of the same flag; `--expected-tasks` is always recorded, the boundaries only when the
   // launch set them. Each boundary is the stopped run's own, so a continuation's remainder is the
-  // operator's to set.
+  // operator's to set. `--answer-agent` is the Builder condition itself: without it a resumed split
+  // run continues as a whole Builder.
   const carried: string[] = [];
   const carry = (flag: string, recorded: string) => {
     const value = recordedArg(receipt.argv, recorded);
@@ -173,6 +174,7 @@ export function resumePlan(opening: OpeningFacts | null, launch: LaunchRecord | 
   carry("--tasks", "--expected-tasks");
   carry("--max-iterations", "--max-iterations");
   carry("--max-batteries", "--max-batteries");
+  carry("--answer-agent", "--answer-agent");
   carry("--stop-after-ms", "--stop-after-ms");
   return {
     ok: true,

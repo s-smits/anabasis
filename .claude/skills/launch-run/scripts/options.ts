@@ -107,7 +107,7 @@ const ONE_RUN_IDS = [
 ] as const;
 
 /** The options the controller receives as given, and the probe with it, so both digest one command. */
-const CARRIED = ["max-iterations", "max-batteries", "stop-after-ms", "project"] as const;
+const CARRIED = ["max-iterations", "max-batteries", "stop-after-ms", "project", "answer-agent"] as const;
 /** The options that stay absent unless the operator passes them. */
 const OPTIONAL_VALUES = [
   ...CARRIED,
@@ -154,6 +154,7 @@ export const HELP = `Usage: bun .claude/skills/launch-run/scripts/launch.ts [${P
   --kill-after-ms N               Operator SIGTERM at N ms after launch begins; 30 s grace then service removal
   --run ID                       One preset and condition only
   --project ID                   Continue this existing project; one preset and condition only
+  --answer-agent true|false       Split build: an answer agent writes correctness-model/; default false
   --prompt TEXT                  Verbatim prompt of one or two lines; its runs are named standard
   --env-file /path                Claude token; default main checkout/.env
   --codex-home /path              Codex auth; default current CODEX_HOME or ~/.codex
@@ -194,6 +195,10 @@ function refuseValues(options: LaunchOptions, refuse: ExitWith): void {
     if (value !== undefined && !isAbsolute(value)) refuse(`--${key} must be absolute`);
   }
   if (options["over-capacity"]?.trim() === "") refuse("--over-capacity needs the reason, in words");
+  const answerAgent = options["answer-agent"];
+  if (answerAgent !== undefined && answerAgent !== "true" && answerAgent !== "false") {
+    refuse("--answer-agent must be true or false");
+  }
   const lines = options.prompt?.split("\n") ?? [];
   if (/[\r\0]/.test(options.prompt ?? "") || lines.length > 2 || lines.some((line) => !line.trim())) {
     refuse(PROMPT_REFUSAL);

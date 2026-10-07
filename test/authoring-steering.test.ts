@@ -199,7 +199,7 @@ const NO_SUBMIT_THROWER = (): never => {
   throw new Error("not scripted");
 };
 
-const REFUSER: BuilderSessionDeps["submit"] = () => ({
+const REFUSER: NonNullable<BuilderSessionDeps["submit"]> = () => ({
   ok: false as const,
   stage: "bundle" as const,
   findings: [{ code: "missing-bundle-file", path: "correctness-model/tasks.json", detail: "absent" }],

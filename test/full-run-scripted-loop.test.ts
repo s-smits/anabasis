@@ -22,8 +22,14 @@ import { campaignDir } from "../src/meta/campaign-root.ts";
 import { analyseStep } from "../src/run/analyse-step.ts";
 import { claimsDirFor } from "../src/run/claim-write.ts";
 import { readControllerEvidence } from "../src/run/controller-evidence.ts";
+import { OPENING_FILE, controllerEvidenceDir } from "../src/run/controller-lineage.ts";
 import { type FullRunDeps, runFullRun } from "../src/run/full-run.ts";
-import { parseFullRunArgs } from "../src/run/launch-arguments.ts";
+import { commandDigest, parseFullRunArgs } from "../src/run/launch-arguments.ts";
+import { ANSWER_AGENT_ENV } from "../src/run/builder-backend.ts";
+import { readEpochRecord } from "../src/author/campaign-epoch.ts";
+import { MEMORY_FILE } from "../src/author/builder-memory.ts";
+import { PUBLIC_TASKS_FILE } from "../src/author/split-prompts.ts";
+import { asRecord, isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { slugForDirectInput } from "../src/run/launch-project.ts";
 import { buildHarness } from "../src/run/harness-build.ts";
 import { measureHarness } from "../src/run/harness-measure.ts";
@@ -210,6 +216,81 @@ describe("the whole loop through the Builder runtime interface, with no provider
       keptTasks: TASKS,
       second: "refused",
     });
+  }, 120_000);
+
+  // A2 continues a project under the other build: the flag reaches the opening through the epoch it
+  // binds, and the continued round opens the answer agent first, then the Harness Builder, with
+  // none of the whole Builder's notes, which it wrote holding the answers.
+  it("continues a whole-Builder campaign with --answer-agent true as a split build", async () => {
+    const root = scratchRepo();
+    const MARKER = "whole-builder note written beside the answers";
+    const sessions: string[] = [];
+    const seen: Record<string, boolean> = {};
+    // Each session here runs one turn (--max-builder-turns 1), and a round counts its turns across
+    // sessions, so the script tells the sessions apart by the system prompt each opens with.
+    const turn: ScriptedTurn = async (ctx) => {
+      const memory = join(ctx.workspace, MEMORY_FILE);
+      if (ctx.systemPrompt.startsWith("You are the answer agent")) {
+        sessions.push("answer");
+        return "the adopted correctness model stands";
+      }
+      if (ctx.systemPrompt.startsWith("You are the Harness Builder")) {
+        sessions.push("harness");
+        seen.published = existsSync(join(ctx.workspace, PUBLIC_TASKS_FILE));
+        seen.carried = readFileSync(memory, "utf8").includes(MARKER);
+        await ctx.call("submit", {});
+        return "submitted agent/";
+      }
+      sessions.push("whole");
+      uppercaseFixture(ctx.workspace, false, false, TASKS);
+      writeFileSync(memory, `${readFileSync(memory, "utf8")}\n${MARKER}\n`);
+      await ctx.call("submit", {});
+      return "submitted the uppercase bundle";
+    };
+    const campaign = campaignDir(root, SLUG);
+    const run = async (runId: string, extra: string[]) => {
+      const { repoRoot, ...runArgs } = args(root, runId, 1, 1, extra);
+      const outcome = await runFullRun(runArgs, repoRoot, scriptedDeps(turn));
+      const evidence = readControllerEvidence(campaign, runId);
+      if (evidence.state !== "recorded") throw new Error(`controller evidence ${evidence.state}`);
+      const openingPath = join(controllerEvidenceDir(campaign, runId), OPENING_FILE);
+      const opening = required(asRecord(JSON.parse(readFileSync(openingPath, "utf8"))), "opening");
+      const epoch = required(asRecord(opening.epoch), "opening epoch");
+      return { outcome, runArgs, opening, epoch };
+    };
+    const prior = Bun.env[ANSWER_AGENT_ENV];
+    try {
+      const whole = await run("whole", []);
+      expect(whole.outcome.rounds.map((row) => [row.move, row.build, row.measured])).toEqual([
+        ["build", "adopted", true],
+      ]);
+      const split = await run("split", ["--answer-agent", "true"]);
+      expect(sessions).toEqual(["whole", "answer", "harness"]);
+      expect(seen).toEqual({ published: true, carried: false });
+      expect(split.outcome.rounds.map((row) => row.move)).toEqual(["rebuild"]);
+
+      // The opening binds the split condition's epoch, which supersedes the whole Builder's, and
+      // its command digest is the flagged command's.
+      const epochs = required(readEpochRecord(campaign), "epoch record").epochs;
+      const bound = (key: typeof whole.epoch.key) =>
+        required(
+          epochs.find((row) => row.key === key),
+          "a bound epoch",
+        );
+      expect(bound(whole.epoch.key).binding.builder?.answerWallMs).toBeUndefined();
+      expect(bound(split.epoch.key).binding.builder?.answerWallMs).toBe(4 * 3_600_000);
+      expect(split.epoch.supersedes).toBe(whole.epoch.key);
+      const digest = (opening: JsonObject) => asRecord(opening.command)?.digest;
+      const project = required(asRecord(split.opening.project), "project");
+      const requestDigest = isString(project.requestDigest) ? project.requestDigest : "";
+      expect(digest(split.opening)).toBe(commandDigest(split.runArgs, requestDigest));
+      expect(digest(split.opening)).not.toBe(
+        commandDigest({ ...split.runArgs, answerAgent: false }, requestDigest),
+      );
+    } finally {
+      if (prior === undefined) delete Bun.env[ANSWER_AGENT_ENV];
+      else Bun.env[ANSWER_AGENT_ENV] = prior;
+    }
   }, 120_000);
 
   it("keeps a session that never submits inadmissible and measures nothing", async () => {

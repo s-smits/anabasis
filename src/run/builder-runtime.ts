@@ -47,6 +47,10 @@ interface BuilderRuntime {
    *  and confinement a battery case solves under, so a rehearsal measures the battery's own
    *  condition rather than a cheaper stand-in. Absent for a scripted runtime with no Built slot. */
   builtSolver?: (providerBudget?: ProviderResourceBudget) => Solver;
+  /** A split build's answer agent: its toolkit, which writes the correctness model and its scratch
+   *  and holds the research and workshop tools, and its wall per pass. `tools` above is then the
+   *  Harness Builder's. */
+  answer?: { tools: PiTool[]; wallMs: number };
 }
 
 interface BuilderRuntimeCondition {
@@ -68,12 +72,15 @@ export type BuilderRuntimeFactory = (
 ) => Promise<BuilderRuntime>;
 
 /** Every backend uses the same policy-enforced filesystem tools, alongside public research and the
- *  correctness-model workshop. The host enforces each call, so a late evidence deny still holds. */
+ *  correctness-model workshop. The host enforces each call, so a late evidence deny still holds.
+ *  A split build mounts the file tools twice, once behind each side of its wall, and gives the
+ *  research and the workshop, whose exports land in the correctness model, to the answer agent. */
 export function campaignBuilderMount(
   repoRoot: string,
   slug: string,
   campaignDir: string,
   safeguardContext?: SafeguardContext,
+  split = false,
 ) {
   assertSupportedHostRuntime();
   const workspace = join(campaignDir, WORKSPACE_DIR);
@@ -97,7 +104,7 @@ export function campaignBuilderMount(
     ...keyIfDefined("sharedCellRoot", vmCell?.hostShareRoot),
   };
   const workshopPolicy = deriveCandidateIsolation(binding, "workshop");
-  const authorPolicy = deriveCandidateIsolation(binding, "author");
+  const authorPolicy = deriveCandidateIsolation(binding, split ? "harness" : "author");
   const exportBinding = workshopExportBinding(workspace, workshopPolicy);
   const record = openPathRecord(campaignDir, "builder-primary");
   const workshop = createVerifierWorkshop({
@@ -109,13 +116,18 @@ export function campaignBuilderMount(
     ...keyIfDefined("runner", vmCell === null ? undefined : createVmWorkshopRunner(vmCell)),
   });
   const custom = [createPublicSourceTool(workshop), createVerifierWorkshopTool(workshop)];
-  const fileTools = createBuilderTools({
-    policy: authorPolicy,
-    record,
-    workDir: workspace,
-    ...keyIfDefined("safeguardContext", safeguardContext),
-  });
-  const tools: PiTool[] = [...fileTools, ...custom];
+  const filesUnder = (policy: typeof authorPolicy) =>
+    createBuilderTools({
+      policy,
+      record,
+      workDir: workspace,
+      ...keyIfDefined("safeguardContext", safeguardContext),
+    });
+  const fileTools = filesUnder(authorPolicy);
+  const tools: PiTool[] = split ? fileTools : [...fileTools, ...custom];
+  const answerTools = split
+    ? [...filesUnder(deriveCandidateIsolation(binding, "answer")), ...custom]
+    : undefined;
   const evidenceInput = {
     epochDir: campaignDir,
     policy: authorPolicy,
@@ -128,7 +140,7 @@ export function campaignBuilderMount(
     framing: BUILDER_WORKSPACE_CARD,
   };
   writeBuilderSessionEvidence({ ...evidenceInput, tools });
-  return { tools, evidenceInput, authorPolicy };
+  return { tools, evidenceInput, authorPolicy, ...keyIfDefined("answerTools", answerTools) };
 }
 
 /** The production Builder session composition — mount, roster, search capability, trial wall and
@@ -147,7 +159,14 @@ export function composeBuilderRuntime(
   builtSolver: NonNullable<BuilderRuntime["builtSolver"]>;
 } {
   const { slots, builder } = condition;
-  const mount = campaignBuilderMount(repoRoot, manifest.slug, campaignDir, options.safeguardContext);
+  const { answerWallMs } = builder;
+  const mount = campaignBuilderMount(
+    repoRoot,
+    manifest.slug,
+    campaignDir,
+    options.safeguardContext,
+    answerWallMs !== undefined,
+  );
   const workspace = join(campaignDir, WORKSPACE_DIR);
   const trialIsolation = builtSolveIsolation(repoRoot, piBuiltReadAllowRoots(slots));
   const slot = builderSlot(builder, repoRoot);
@@ -168,6 +187,12 @@ export function composeBuilderRuntime(
     open: builderSessionOpener(slot, workspace),
     recordSession,
     tools: mount.tools,
+    ...keyIfDefined(
+      "answer",
+      mount.answerTools === undefined || answerWallMs === undefined
+        ? undefined
+        : { tools: mount.answerTools, wallMs: answerWallMs },
+    ),
     webSearch: slot.profile.webSearch === true,
     trialIsolation,
     // Resolved lazily: a session that never rehearses opens no Built runtime, and one that does
@@ -210,6 +235,7 @@ export async function productionBuilderRuntime(
     open: runtime.open,
     recordSession: runtime.recordSession,
     tools: runtime.tools,
+    ...keyIfDefined("answer", runtime.answer),
     webSearch: runtime.webSearch,
     builtSolver: runtime.builtSolver,
   };

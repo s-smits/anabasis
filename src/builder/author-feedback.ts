@@ -9,6 +9,7 @@
  */
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import type { CampaignFeedback } from "../author/campaign-types.ts";
+import { harnessOwned, markHarnessSide } from "../author/feedback-routing.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import {
   type ContractFinding,
@@ -305,15 +306,18 @@ export class BuilderAuthorFeedback {
  *  findings keeps its prose claim in the evidence and hands the author only the file it names,
  *  since an unvalidated claim is routing metadata rather than a finding. */
 export function gateFeedbackFindings(feedback: readonly CampaignFeedback[]): ContractFinding[] {
-  return feedback.flatMap((row) =>
-    row.findings !== undefined && row.findings.length > 0
-      ? row.findings
-      : [
-          controllerValidatedFinding({
-            code: "gate-unvalidated",
-            path: row.owner,
-            detail: "this gate produced no controller-validated finding; no public detail is available",
-          }),
-        ],
-  );
+  return feedback.flatMap((row) => {
+    const findings =
+      row.findings !== undefined && row.findings.length > 0
+        ? row.findings
+        : [
+            controllerValidatedFinding({
+              code: "gate-unvalidated",
+              path: row.owner,
+              detail: "this gate produced no controller-validated finding; no public detail is available",
+            }),
+          ];
+    if (harnessOwned(row.owner)) markHarnessSide(findings);
+    return findings;
+  });
 }

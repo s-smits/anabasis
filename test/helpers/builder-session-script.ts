@@ -136,7 +136,7 @@ export function scriptedOpener(turns: TurnScript[]) {
 
 export function deps(
   open: BuilderSessionDeps["open"],
-  submit: BuilderSessionDeps["submit"],
+  submit: NonNullable<BuilderSessionDeps["submit"]>,
   tools: readonly PiTool[] = [],
 ): BuilderSessionDeps {
   // A failed turn is retried on a growing backoff; no driver test spends that wall clock.

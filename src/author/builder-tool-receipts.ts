@@ -14,12 +14,15 @@ type BuilderToolReceiptSession = {
   readonly recorder: BuilderExecutionRecorder;
   readonly activeTurn: () => number;
   readonly checkpoint: () => void;
-  readonly closed: () => "accepted" | "terminal-refusal" | null;
+  readonly closed: () => Closure | null;
   readonly afterTool?: (() => Promise<string | null>) | undefined;
   readonly clock?: ((clearPreview: boolean) => string | null) | undefined;
 };
 
-function closedResult(reason: "accepted" | "terminal-refusal"): AgentToolResult<unknown> {
+/** Why a session's tools now refuse: its build settled, or an answer agent's wall passed. */
+type Closure = "accepted" | "terminal-refusal" | "wall";
+
+function closedResult(reason: Closure): AgentToolResult<unknown> {
   return {
     content: [
       {
@@ -27,7 +30,10 @@ function closedResult(reason: "accepted" | "terminal-refusal"): AgentToolResult<
         text: capturedJsonStringify({
           status: "terminal-closed",
           reason,
-          nextAction: "No further tool action belongs to the accepted or finally refused build.",
+          nextAction:
+            reason === "wall"
+              ? "Your wall has passed: end your turn now, and the controller takes the correctness model as it stands."
+              : "No further tool action belongs to the accepted or finally refused build.",
         }),
       },
     ],

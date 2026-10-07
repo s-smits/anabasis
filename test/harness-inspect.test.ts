@@ -12,7 +12,7 @@ import { controllerValidatedFindings } from "../src/correctness-bundle/brief.ts"
 import { mkdirSync, readFileSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { isRecord, type JsonValue } from "../src/meta/json-shape.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
-import { keyIfDefined } from "../src/meta/optional-key.ts";
+import { keyIfDefined, keyIfTruthy } from "../src/meta/optional-key.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
@@ -81,6 +81,38 @@ describe("the candidate check's on-disk task shape", () => {
 });
 
 describe("harness_inspect", () => {
+  it.concurrent("shows a split build's Harness Builder the findings on agent/ alone, and no coverage", async () => {
+    const dir = workspace("[]");
+    writeFileSync(join(dir, "agent/tools-spec.json"), JSON.stringify({ tools: "none" }));
+    writeFileSync(join(dir, "agent/tools.ts"), "export const tools: number = 'agent';\n");
+    writeFileSync(join(dir, "correctness-model/evaluator.ts"), "export const checks: number = 'model';\n");
+    const read = async (harnessView: boolean, action: "readiness" | "coverage") => {
+      const tool = createHarnessInspectTool({
+        workspace: dir,
+        context: CONTEXT,
+        ...keyIfTruthy("harnessView", harnessView),
+      });
+      const block = (await tool.execute("inspect", { action })).content[0];
+      return block?.type === "text" ? block.text : "";
+    };
+    const whole = await read(false, "readiness");
+    for (const code of [
+      "tasks-empty",
+      "controls-unknown-task",
+      "correctness-model/evaluator.ts:1",
+      "shape-mismatch",
+    ]) {
+      expect(whole).toContain(code);
+    }
+    const harness = await read(true, "readiness");
+    for (const code of ["tasks-empty", "controls-unknown-task", "correctness-model/evaluator.ts:1"]) {
+      expect(harness).not.toContain(code);
+    }
+    expect(harness).toContain("shape-mismatch");
+    expect(harness).toContain("agent/tools.ts:1");
+    expect(await read(true, "coverage")).toContain("Coverage joins the answer agent's checks and controls");
+  });
+
   it.concurrent("combines static readiness and chooses one sample trial task per family", async () => {
     const dir = workspace(fence("## Task battery contract", "json"), runtimeProcess.cwd());
     const blocked = await inspect<{

@@ -533,14 +533,10 @@ function spendLines(run: string, controller: ControllerEvidence): string[] {
   const budget = controller.providerResourceBudget?.terminal ?? null;
   if (budget === null) return [`${run}: no provider resource budget recorded`];
   const { byRole: roles, usage } = budget;
-  const lines = [
+  return [
     `${run}: provider turns ${budget.used} of cap ${budget.cap} · builder ${roles.builder} · built ${roles.built} · review ${roles.review}` +
       ` · reported ${usage.reportedTurns} unreported ${usage.unreportedTurns} · tokens ${usage.totalTokens ?? "null"} · costUsd ${usage.costUsd ?? "null"}`,
   ];
-  if (roles.review > roles.built) {
-    lines.push(`  REVIEW TURNS EXCEED SOLVER TURNS (lane 24): review ${roles.review} > built ${roles.built}`);
-  }
-  return lines;
 }
 
 /** The waits the Builder's transport recorded, one row per retried turn. A row whose reason is the

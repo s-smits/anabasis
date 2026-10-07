@@ -259,22 +259,45 @@ describe("review-yield: harness-trial reader", () => {
 
   it("consumes the rehearsal when the accepted submit froze rehearsed bytes", () => {
     const root = campaign();
+    const edited = "e".repeat(64);
     epoch(root, [
       trialCall(1, "t1", candidate, "fail"),
-      trialCall(2, "t1", candidate, "pass"),
-      submitCall(3, candidate),
+      trialCall(2, "t1", edited, "pass"),
+      submitCall(3, edited),
     ]);
     const out: Yield = harnessTrial(root);
     expect(out.summary).toEqual({ iterations: 1, opportunities: 1, outputs: 1, consumed: 1, changed: 1 });
     expect(out.verdict).toBe("decision-bearing");
     expect(out.runs[0]).toMatchObject({
       runId: "epoch-aa",
-      consumer: { field: "customCalls[].semantic.candidateId", value: candidate },
+      consumer: { field: "customCalls[].semantic.candidateId", value: edited },
       note: "2 rehearsal(s); accepted submit was rehearsed",
     });
     expect(out.reasons).toEqual([
       "rehearsals 2 across 1 epoch(s), not-run 0; epochs whose accepted submit was never rehearsed: 0",
     ]);
+  });
+
+  // A change is the bytes moving after a verdict was read, whatever the verdict said.
+  it("counts an edit after a passing rehearsal, and not a failure re-rehearsed on the same bytes", () => {
+    const root = campaign();
+    const edited = "e".repeat(64);
+    epoch(root, [
+      trialCall(1, "t1", candidate, "pass"),
+      trialCall(2, "t2", edited, "pass"),
+      submitCall(3, edited),
+    ]);
+    expect(harnessTrial(root).summary.changed).toBe(1);
+    epoch(root, [trialCall(1, "t1", candidate, "pass"), submitCall(2, edited)]);
+    expect(harnessTrial(root).summary.changed).toBe(1);
+    epoch(root, [
+      trialCall(1, "t1", candidate, "fail"),
+      trialCall(2, "t1", candidate, "pass"),
+      submitCall(3, candidate),
+    ]);
+    const unchanged: Yield = harnessTrial(root);
+    expect(unchanged.summary.changed).toBe(0);
+    expect(unchanged.verdict).toBe("advisory-only");
   });
 
   it("does not consume a rehearsal of other bytes, and reads an absent record as unobservable", () => {
@@ -411,6 +434,76 @@ describe("review-yield: diagnosis reader", () => {
   });
 });
 
+describe("review-yield: in-round authoring reviews", () => {
+  /** An authoring review's file name, carrying the UUIDv7 minted at `at`. */
+  const reviewId = (at: string, serial: number): string => {
+    const hex = Date.parse(at).toString(16).padStart(12, "0");
+    return `authoring-${hex.slice(0, 8)}-${hex.slice(8)}-7000-8000-00000000000${serial}`;
+  };
+  const finding = (severity: "advisory" | null) => ({
+    defect: true,
+    owner: "agent/tools.ts" as const,
+    claim: "private assessment",
+    evidence: "analysis/x.json",
+    severity,
+  });
+
+  it("joins what each in-round review showed to the Builder session it ran beside", () => {
+    const root = campaign();
+    mkdirSync(join(root, "epoch-aa"));
+    writeFileSync(
+      join(root, "epoch-aa", "builder-execution.json"),
+      executionRecord([], 0, {
+        durationMs: 60 * 60_000,
+        writtenAt: "2026-09-19T11:00:00.000Z",
+        authoringReviews: [{ turn: 1, tool: "bash", adviceChars: 400, reviewMs: 0 }],
+      }),
+    );
+    const review = (findings: RecordedEvidence[], schema = EPOCH_REVIEW_SCHEMA) => ({
+      schema,
+      status: "completed",
+      condition: null,
+      findings,
+      disputes: [],
+    });
+    // The first review shows its blocking finding and holds back the bare advisory one; the second
+    // settled after the session recorded its only delivery.
+    const first = reviewId("2026-09-19T10:30:00.000Z", 1);
+    const second = reviewId("2026-09-19T10:45:00.000Z", 2);
+    record(root, first, "epoch-review", review([finding(null), finding("advisory")]), 1);
+    record(root, second, "epoch-review", review([finding("advisory")]), 2);
+    const component = buildReviewYield(root).components.find((row) => row.component === "authoring-reviewer");
+    expect(component).toMatchObject({
+      status: "ok",
+      readBy: "lanes 12 and 14",
+      verdict: "advisory-only",
+      summary: { iterations: 2, opportunities: 2, outputs: 2, consumed: 1, changed: null },
+      reasons: [
+        "in-round reviews 2: findings 3, shown to the Builder 1, blocking 1; delivered with a shown finding 1",
+      ],
+    });
+    expect(component?.runs.map((row) => [row.runId, row.note])).toEqual([
+      [
+        first,
+        "1 of 2 finding(s) shown to the Builder, 1 blocking; 400 chars delivered in epoch-aa session 1; repair benefit unmeasured",
+      ],
+      [
+        second,
+        "0 of 1 finding(s) shown to the Builder, 0 blocking; no delivery recorded in epoch-aa session 1; repair benefit unmeasured",
+      ],
+    ]);
+    expect(JSON.stringify(component)).not.toContain("private assessment");
+    // Hostile: a review of another schema fails the component rather than being half-read.
+    record(root, second, "epoch-review", review([finding("advisory")], "epoch-review/v7"), 3);
+    expect(
+      buildReviewYield(root).components.find((row) => row.component === "authoring-reviewer"),
+    ).toMatchObject({
+      status: "failed",
+      reasons: [`${second}: epoch review is not valid ${EPOCH_REVIEW_SCHEMA}`],
+    });
+  });
+});
+
 describe("review-yield: composer", () => {
   it("reports every component as no-opportunity on an empty campaign and renders the table", () => {
     const root = campaign();
@@ -418,6 +511,7 @@ describe("review-yield: composer", () => {
     expect(report.complete).toBe(true);
     expect(report.components.map((row) => [row.component, row.verdict, row.status])).toEqual([
       ["epoch-reviewer", "no-opportunity", "ok"],
+      ["authoring-reviewer", "no-opportunity", "ok"],
       ["diagnosis-reader", "no-opportunity", "ok"],
       ["harness-trial", "no-opportunity", "ok"],
     ]);

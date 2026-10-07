@@ -22,10 +22,13 @@
 // the measured outcome when there is one. Per edge between consecutive batteries:
 //
 //   restated      the prose did not move and neither did the structure
-//   replaced      fewer than half the task ids carried over; with none left the numbers are read per path
+//   replaced      fewer than half the tasks carried over, by id or, renamed, by family and input
+//                 structure; with none left the numbers are read per path
 //   adjusted      the same structural counts at the same tier, with the published numbers moved
-//   narrowed      fewer of a structural count at the same tier; checks, coupled inputs and scenarios decide first
-//   widened       more of a structural count at the same tier; checks, coupled inputs and scenarios decide first
+//   narrowed      fewer of a structural count at the same tier, per task or over the battery;
+//                 checks, coupled inputs and scenarios decide first
+//   widened       more of a structural count at the same tier, per task or over the battery;
+//                 checks, coupled inputs and scenarios decide first
 //   eased         the checks moved down the tier order
 //   escalated     the checks moved up the tier order
 //
@@ -62,10 +65,12 @@ import type { BatteryRecord } from "#src/correctness-bundle/battery-record.ts";
 import { SOLVE_WALL_MESSAGE } from "#src/backends/backend-types.ts";
 import {
   type Bundle,
+  type Structure,
   MODEL_IDENTITY,
   STRUCTURE_KEYS,
   TIER_ORDER,
   appliesTo,
+  leafPaths,
   loadBundle,
   readVersionDir,
   renderBattery,
@@ -150,21 +155,33 @@ export interface Novelty {
   units: number;
 }
 
-/** What a numeric reading was measured over: the public inputs of the tasks the two batteries share
- *  by id, or, when they share none, every numeric path both batteries declare, each battery read at
- *  its own median over the tasks that carry the path. `none` is neither, and a zero there is nothing
- *  read rather than nothing moved. */
+/** What a numeric reading was measured over: the public inputs of the tasks the two batteries pair
+ *  (`partnersOf`), or, when they pair none, every numeric path both batteries declare, each battery
+ *  read at its own median over the tasks that carry the path. `none` is neither, and a zero there is
+ *  nothing read rather than nothing moved. */
 export type DriftBasis = "tasks" | "battery" | "none";
 
 export interface NumericDrift {
   median: number;
   moved: number;
+  /** The later tasks with a partner in the earlier battery (`partnersOf`), and how many of those
+   *  were paired by family and input structure because their id was new. */
   joined: number;
+  renamed: number;
   tasks: number;
   basis: DriftBasis;
   /** The numeric paths compared and the paths the later battery declares, on the two bases that
    *  read paths; null on the task basis, where no path aggregate was read. */
   paths: { compared: number; declared: number } | null;
+}
+
+/** How far each structural count moved between two batteries: the median over each battery's tasks,
+ *  and the total over them. A battery that adds tasks shaped like the ones it held leaves every
+ *  median where it was, so read on medians alone a battery grown from seven tasks to twenty-five read
+ *  `replaced`, because fewer than half its tasks had a partner. The totals name it widened. */
+interface StructureMoves {
+  medians: Readonly<Record<string, number>>;
+  totals: Readonly<Record<string, number>>;
 }
 
 /** The later battery's tasks that carry the same id, public input and family checks as the one
@@ -401,13 +418,39 @@ function noveltyOf(before: BatteryReading, after: BatteryReading): Novelty | nul
 }
 
 /** Every number one battery publishes, keyed by task and path, which is the key two batteries share
- *  exactly where the same task carries the same public input in both. */
-function numbersByTask(rows: BatteryRows): Map<string, number> {
+ *  exactly where paired tasks carry the same public input path. `idOf` names each row's task in the
+ *  earlier battery's ids, and a row it names nothing for is left out. */
+function numbersByTask(rows: BatteryRows, idOf: (taskId: string) => string | undefined): Map<string, number> {
   const found = new Map<string, number>();
   for (const row of rows) {
-    for (const [path, value] of Object.entries(row.numerics)) found.set(`${row.taskId}\u0000${path}`, value);
+    const id = idOf(row.taskId);
+    if (id === undefined) continue;
+    for (const [path, value] of Object.entries(row.numerics)) found.set(`${id}\u0000${path}`, value);
   }
   return found;
+}
+
+/**
+ * Each later task's partner in the earlier battery: the task of the same id, or else an earlier task
+ * no later id claimed, of the same family and with the same public-input leaf paths, taken in the
+ * order each battery lists them. A Builder that renames its tasks keeps both, and on the id join alone
+ * such a battery read `replaced` while every task was the one before it with its numbers moved.
+ */
+function partnersOf(before: Bundle, after: Bundle): Map<string, string> {
+  const inputKeyOf = (task: Bundle["tasks"][number]) =>
+    stableJson([task.family, leafPaths(task.publicInput ?? {}).toSorted(compareCodeUnits)]);
+  const laterIds = new Set(after.tasks.map((task) => task.taskId));
+  const earlierIds = new Set(before.tasks.map((task) => task.taskId));
+  const open = Map.groupBy(
+    before.tasks.filter((task) => !laterIds.has(task.taskId)),
+    inputKeyOf,
+  );
+  const partners = new Map<string, string>();
+  for (const task of after.tasks) {
+    const partner = earlierIds.has(task.taskId) ? task.taskId : open.get(inputKeyOf(task))?.shift()?.taskId;
+    if (partner !== undefined) partners.set(task.taskId, partner);
+  }
+  return partners;
 }
 
 /** Each numeric path the battery declares, at its median over whichever of its tasks carry it: the
@@ -445,23 +488,40 @@ function movesBetween(was: ReadonlyMap<string, number>, now: ReadonlyMap<string,
  *  boundary states which way is tighter and most do not declare one, so this answers "did the numbers
  *  move" and the check-tier histogram answers whether anything new has to be reasoned about.
  *
- *  `joined` counts the later tasks whose id the earlier battery also held, of `tasks` in all, and the
- *  reading is over those tasks' own public inputs while any id joins. A battery that replaced every
- *  task joins nothing, and that is exactly what a Builder told its battery was too easy writes: read
- *  on the id join alone it was a battery whose numbers stood still, which is the one thing it was
- *  not. So with no id joined the two batteries are compared whole, path by path, and `basis` says
- *  which comparison the numbers came from. `none` is two batteries that share no numeric path at
- *  all, where nothing was read and the zero means only that. */
+ *  `joined` counts the later tasks with a partner in the earlier battery, of `tasks` in all, and the
+ *  reading is over those pairs' own public inputs while any task pairs. The partners are the shared
+ *  ids unless `partners` (`partnersOf`) names more. A battery that replaced every task with new
+ *  families or new inputs pairs nothing, and that is exactly what a Builder told its battery was too
+ *  easy writes: read on the join alone it was a battery whose numbers stood still, which is the one
+ *  thing it was not. So with nothing paired the two batteries are compared whole, path by path, and
+ *  `basis` says which comparison the numbers came from. `none` is two batteries that share no numeric
+ *  path at all, where nothing was read and the zero means only that. */
 export function numericDriftOf(
   before: Pick<BatteryReading, "rows">,
   after: Pick<BatteryReading, "rows">,
+  partners?: ReadonlyMap<string, string>,
 ): NumericDrift {
   const tasks = after.rows.length;
   const ids = new Set(before.rows.map((row) => row.taskId));
-  const joined = after.rows.filter((row) => ids.has(row.taskId)).length;
+  const pairs =
+    partners ?? new Map(after.rows.flatMap((row) => (ids.has(row.taskId) ? [[row.taskId, row.taskId]] : [])));
+  const partnerOf = (taskId: string): string | undefined => pairs.get(taskId);
+  const joined = after.rows.filter((row) => partnerOf(row.taskId) !== undefined).length;
+  const renamed = after.rows.filter((row) => (partnerOf(row.taskId) ?? row.taskId) !== row.taskId).length;
   if (joined > 0) {
-    const reading = movesBetween(numbersByTask(before.rows), numbersByTask(after.rows));
-    return { median: reading.median, moved: reading.moved, joined, tasks, basis: "tasks", paths: null };
+    const reading = movesBetween(
+      numbersByTask(before.rows, (taskId) => taskId),
+      numbersByTask(after.rows, partnerOf),
+    );
+    return {
+      median: reading.median,
+      moved: reading.moved,
+      joined,
+      renamed,
+      tasks,
+      basis: "tasks",
+      paths: null,
+    };
   }
   const declared = numbersByPath(after.rows);
   const whole = movesBetween(numbersByPath(before.rows), declared);
@@ -469,6 +529,7 @@ export function numericDriftOf(
     median: whole.median,
     moved: whole.moved,
     joined,
+    renamed,
     tasks,
     basis: whole.compared === 0 ? "none" : "battery",
     paths: { compared: whole.compared, declared: declared.size },
@@ -608,38 +669,51 @@ export function topTierOf(checkTiers: Readonly<Record<string, number>>): number 
 
 /** The counts that name a widening or narrowing even across replaced tasks. The other structural
  *  counts are medians over whichever tasks a battery holds, so they name a direction only once
- *  most task ids carried over; before that the edge is `replaced` and read by hand. */
+ *  most tasks carried over; before that the edge is `replaced` and read by hand. */
 const LEADING_KEYS = ["checks", "coupled", "scenarios"] as const;
 
+/** Each structural count summed over a battery's tasks. */
+function structureTotals(rows: readonly { structure: Structure }[]): Record<string, number> {
+  return Object.fromEntries(
+    STRUCTURE_KEYS.map((key) => [key, rows.reduce((sum, row) => sum + row.structure[key], 0)]),
+  );
+}
+
 /** Which of the six ways the battery moved, named from the tier order first and the structural
- *  counts second. Exported so the directions can be read off literal readings. */
+ *  counts second: every median a battery's pairing lets name a direction, then the totals, the
+ *  leading counts before the rest. Exported so the directions can be read off literal readings. */
 export function verdictOf(
   before: Pick<BatteryReading, "checkTiers">,
   after: Pick<BatteryReading, "checkTiers">,
   novelty: Novelty | null,
-  delta: Readonly<Record<string, number>>,
+  moves: StructureMoves,
   drift: NumericDrift,
 ): EdgeVerdict {
   const was = topTierOf(before.checkTiers);
   const now = topTierOf(after.checkTiers);
   if (was !== null && now !== null && now !== was) return now > was ? "escalated" : "eased";
-  const directionOf = (keys: readonly string[]) =>
+  const directionOf = (keys: readonly string[], delta: Readonly<Record<string, number>>) =>
     keys.some((key) => (delta[key] ?? 0) > 0)
       ? "widened"
       : keys.some((key) => (delta[key] ?? 0) < 0)
         ? "narrowed"
         : null;
-  const led = directionOf(LEADING_KEYS);
+  const led = directionOf(LEADING_KEYS, moves.medians);
   if (led !== null) return led;
-  if (drift.joined * 2 < drift.tasks) return "replaced";
-  const other = directionOf(STRUCTURE_KEYS);
-  if (other !== null) return other;
+  const replaced = drift.joined * 2 < drift.tasks;
+  const keys = replaced ? LEADING_KEYS : STRUCTURE_KEYS;
+  const moved =
+    directionOf(keys, moves.medians) ??
+    directionOf(LEADING_KEYS, moves.totals) ??
+    directionOf(keys, moves.totals);
+  if (moved !== null) return moved;
+  if (replaced) return "replaced";
   const restatedProse = novelty === null || novelty.mean <= 1 - RESTATED_COSINE;
   const carried = drift.moved === 0 && drift.joined === drift.tasks;
-  if (restatedProse && carried && STRUCTURE_KEYS.every((key) => delta[key] === 0)) {
-    return "restated";
-  }
-  return "adjusted";
+  const still = [moves.medians, moves.totals].every((delta) =>
+    STRUCTURE_KEYS.every((key) => delta[key] === 0),
+  );
+  return restatedProse && carried && still ? "restated" : "adjusted";
 }
 
 /** The controller's own placement of each battery: the zone from the last difficulty decision that
@@ -742,23 +816,28 @@ export async function readCampaign(campaign: string, options: Parameters<typeof 
     const before = batteries[at - 1];
     if (before === undefined) continue;
     const delta: Record<string, number> = {};
+    const totals: Record<string, number> = {};
+    const [wasTotals, nowTotals] = [
+      structureTotals(before.reading.rows),
+      structureTotals(after.reading.rows),
+    ];
     for (const key of STRUCTURE_KEYS) {
       delta[key] = (after.reading.medians[key] ?? Number.NaN) - (before.reading.medians[key] ?? Number.NaN);
+      totals[key] = (nowTotals[key] ?? Number.NaN) - (wasTotals[key] ?? Number.NaN);
     }
+    const bundles = { before: loadBundle(before.dir), after: loadBundle(after.dir) };
     const novelty = noveltyOf(before.reading, after.reading);
-    const drift = numericDriftOf(before.reading, after.reading);
+    const drift = numericDriftOf(before.reading, after.reading, partnersOf(bundles.before, bundles.after));
     edges.push({
       from: before.runId,
       to: after.runId,
-      verdict: verdictOf(before.reading, after.reading, novelty, delta, drift),
+      verdict: verdictOf(before.reading, after.reading, novelty, { medians: delta, totals }, drift),
       novelty,
       drift,
       delta,
+      totals,
       source: sourceMovesOf(before.dir, after.dir),
-      carried: {
-        ...carriedOf(loadBundle(before.dir), loadBundle(after.dir)),
-        afterFullPass: fullPass(before.counts),
-      },
+      carried: { ...carriedOf(bundles.before, bundles.after), afterFullPass: fullPass(before.counts) },
       outcome:
         after.counts.verified === 0
           ? ("unobservable" as const)
@@ -926,7 +1005,9 @@ function followUpLines({ runId, followUp }: ClimbBatteryRow): string[] {
  *  so and names the paths it compared beside the id join it fell back from, so no reader takes it for
  *  a task-for-task comparison; `none` prints no number, because none was read. */
 function driftLine(drift: NumericDrift): string {
-  const joined = `${drift.joined} of ${drift.tasks} tasks joined by id`;
+  const renamed =
+    drift.renamed === 0 ? "" : `, ${drift.renamed} of them renamed and joined by family and input structure`;
+  const joined = `${drift.joined} of ${drift.tasks} tasks joined by id${renamed}`;
   const moved = `numbers moved ${drift.moved} by ${(drift.median * 100).toFixed(2)}% median`;
   const paths = drift.paths;
   if (paths === null) return `${moved} over ${joined}`;
@@ -995,12 +1076,17 @@ export function render(report: ClimbReport): string {
     lines.push(
       `      novelty ${edge.novelty === null ? "n/a" : edge.novelty.mean.toFixed(4)}   ${driftLine(edge.drift)}`,
     );
-    lines.push(
-      `      delta ${STRUCTURE_KEYS.map((key) => {
-        const change = edge.delta[key];
-        return `${key} ${change !== undefined && change >= 0 ? "+" : ""}${String(change)}`;
-      }).join("  ")}`,
-    );
+    for (const [label, delta] of [
+      ["delta", edge.delta],
+      ["total", edge.totals],
+    ] as const) {
+      lines.push(
+        `      ${label} ${STRUCTURE_KEYS.map((key) => {
+          const change = delta[key];
+          return `${key} ${change !== undefined && change >= 0 ? "+" : ""}${String(change)}`;
+        }).join("  ")}`,
+      );
+    }
     if (edge.source !== null) {
       const moved = [
         ...edge.source.changed,

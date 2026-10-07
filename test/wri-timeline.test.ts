@@ -4,6 +4,7 @@ import { afterAll, describe, expect, it } from "bun:test";
 import { campaignDir } from "../src/meta/campaign-root.ts";
 import { recordedController } from "./helpers/recorded-controller.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
+import { executionRecord, trialCall } from "./helpers/builder-execution-record.ts";
 import { buildTimeline, renderTimeline } from "../.claude/skills/whole-run-investigation/scripts/timeline.ts";
 
 const RUN = "run-20260919T000000000Z-aaaaaa";
@@ -157,6 +158,43 @@ describe("run timeline", () => {
       analyse: [80, { started: 1, completed: 1 }],
       build: [10, { started: 1, completed: 1 }],
     });
+  });
+
+  // The epochs sit beside the observation stream, so the reader must open them under the campaign
+  // and not under whatever directory the lane was started from.
+  it("attributes a gap to the rehearsal or the allowance wait an epoch's Builder record holds", () => {
+    const dir = campaign(RECORDED);
+    mkdirSync(join(dir, "epoch-aa"), { recursive: true });
+    writeFileSync(
+      join(dir, "epoch-aa", "builder-execution.json"),
+      executionRecord([], 0, {
+        durationMs: 50 * 60_000,
+        writtenAt: "2026-09-19T10:50:00.000Z",
+        turnRetries: [
+          {
+            role: "builder",
+            turn: 2,
+            attempt: 1,
+            of: 3,
+            status: "failed",
+            reason:
+              "Claude Code returned an error result: You've hit your limit · resets 9:10pm (Europe/Amsterdam)",
+            waitMs: 12 * 60_000,
+          },
+        ],
+        customCalls: [
+          { ...trialCall(1, "t1", "c1", "pass"), startedAtMs: 12 * 60_000, durationMs: 20 * 60_000 },
+        ],
+      }),
+    );
+    const timeline = buildTimeline({ campaign: dir, runId: RUN });
+    const allowance = "explicit allowance wait of 12 min recorded in epoch-aa session 1";
+    expect(timeline.stalls?.map((stall) => [stall.minutes, stall.cause])).toEqual([
+      [30, "harness_trial rehearsal in flight (epoch-aa session 1)"],
+      [15, allowance],
+      [10, allowance],
+      [5, allowance],
+    ]);
   });
 
   it("tallies prompts, hooks, steering and settled iterations from the rows alone", () => {

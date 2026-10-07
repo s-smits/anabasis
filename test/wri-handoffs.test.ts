@@ -6,6 +6,7 @@ import { type RebuildAdvicePacket, renderRebuildAdvice } from "../src/author/reb
 import { adviceIssueId } from "../src/author/issue-register.ts";
 import { required } from "./helpers/doubles.ts";
 import { advicePacket, issue as adviceIssue } from "./helpers/review-fixtures.ts";
+import { STARTER_MEMORY } from "../src/author/builder-memory.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import {
   CHANNELS,
@@ -135,6 +136,9 @@ function campaign(
                 target: { contextId: `traces/${RUN}/t1/artifact` },
                 startedAtMs: 2_000,
               },
+              // A question across every source may reach the user's files; an overview lists ids.
+              { tool: "context", action: "cited", startedAtMs: 2_100 },
+              { tool: "context", action: "overview", startedAtMs: 2_200 },
               {
                 tool: "context",
                 action: "page",
@@ -256,9 +260,10 @@ describe("round hand-offs", () => {
     expect(cell("memory")).toMatchObject({ present: true, served: false, read: 1, acted: true });
     // The readout rides the opening page and the history source both.
     expect(cell("climb-readout")).toMatchObject({ served: true, read: 2, acted: null });
-    // Both traces were opened through the context tool, and neither counts as reading the user's files.
+    // Both traces were opened through the context tool, and neither counts as reading the user's
+    // files; of the two questions that named no document, only the cited one could have read them.
     expect(cell("traces")).toMatchObject({ read: 2 });
-    expect(cell("context")).toMatchObject({ read: 0 });
+    expect(cell("context")).toMatchObject({ read: 1 });
     expect(second.servedNotRead.map((u: { name: string }) => u.name)).not.toContain("rebuild-advice");
     expect(second.servedNotRead.every((u: { readRoute: boolean }) => u.readRoute)).toBe(true);
     // The prior epoch's projection opened this round and the opening page re-served it. The round's
@@ -414,6 +419,40 @@ describe("round hand-offs", () => {
   });
 });
 
+describe("the memory channel's acted cell", () => {
+  const [first, second] = ["epoch-aaaaaaaaaaaa", "epoch-bbbbbbbbbbbb"];
+  /** The two rounds' acted cells once each workspace holds `memory`, and the path record names the
+   *  file only through `rows`, keyed by epoch. */
+  const acted = (memory: Record<string, string>, rows: Record<string, unknown[]> = {}) => {
+    const dir = campaign();
+    for (const epoch of [first, second]) {
+      writeText(join(dir, epoch, "builder-path-record.jsonl"), jsonl(rows[epoch] ?? []));
+      const text = memory[epoch];
+      if (text !== undefined) writeText(join(dir, epoch, "workspace", "MEMORY.md"), text);
+    }
+    const census = required(buildHandoffs({ campaign: dir, runId: RUN }).census, "census");
+    return census.map((row) => row.channels.find((c) => c.name === "memory")?.acted);
+  };
+  const noted = `${STARTER_MEMORY}\n- the tolerance check needs the raw units\n`;
+  const carried = `<!-- carried forward from ${first}, an earlier pass on this same request. Correct what no longer holds. -->\n\n${noted}`;
+
+  it("reads a memory a shell command changed, which no path row names", () => {
+    // Round 1 wrote its note through bash and round 2 kept the carried notes as they came.
+    expect(acted({ [first]: noted, [second]: carried })).toEqual([true, false]);
+    // A starter left as seeded, and a workspace that holds no memory file, say nothing was written.
+    expect(acted({ [first]: STARTER_MEMORY })).toEqual([false, null]);
+  });
+
+  it("reads an edit-tool row on the memory file as acting on it", () => {
+    const row = {
+      capability: "edit",
+      at: "2026-09-19T02:10:00.000Z",
+      resolved: `/w/${second}/workspace/MEMORY.md`,
+    };
+    expect(acted({ [first]: noted, [second]: carried }, { [second]: [row] })).toEqual([true, true]);
+  });
+});
+
 describe("the advice channel's served cell", () => {
   const adviceCell = (options: { advice?: string; packet?: RebuildAdvicePacket }) => {
     const report = buildHandoffs({ campaign: campaign(options), runId: RUN });
@@ -430,9 +469,9 @@ describe("the advice channel's served cell", () => {
     ["findings", { ...advicePacket([]), findings: [{ owner: null, claim: "no task reaches the limit" }] }],
   ];
   it.each(packets)(
-    "reads a packet of only %s as served where the kickoff carries its render",
+    "reads a packet of only %s as present, and served where the kickoff carries its render",
     (_, packet) => {
-      expect(adviceCell({ packet })).toMatchObject({ served: true });
+      expect(adviceCell({ packet })).toMatchObject({ present: true, served: true });
     },
   );
 

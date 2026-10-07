@@ -818,7 +818,10 @@ describe("digest", () => {
     );
 
     const digest = digestOf(paths);
-    expect(digest).toContain("REVIEW TURNS EXCEED SOLVER TURNS (lane 24): review 10 > built 5");
+    // Review turns hold a Judge review per solved case beside the epoch and in-round reviews, and a
+    // solve takes about one turn, so review exceeding built is how a reviewed run spends, not a row.
+    expect(digest).toContain("run-1: provider turns 20 of cap 21 · builder 5 · built 5 · review 10");
+    expect(digest).not.toContain("REVIEW TURNS EXCEED SOLVER TURNS");
     expect(digest).toContain('absent step "epoch review"');
     const censoredRow =
       "run-2: graded 0 · provider non-results 2 · first 2026-09-08T00:00:00.000Z last 2026-09-08T00:01:30.000Z" +
@@ -843,7 +846,6 @@ describe("digest", () => {
     record({ builder: 5, built: 10, review: 5 }, "epoch review — 429 too many requests");
     const generic = digestOf(paths);
     expect(generic).toContain("run-1: provider turns 20 of cap 21 · builder 5 · built 10 · review 5");
-    expect(generic).not.toContain("REVIEW TURNS EXCEED SOLVER TURNS");
     expect(generic).toContain(censoredRow);
 
     // A terminal the controller reader refuses prints no role counts or steps it cannot vouch for.

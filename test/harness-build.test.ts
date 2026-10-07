@@ -1,9 +1,10 @@
 import { afterAll, describe, expect, it } from "bun:test";
-import { existsSync, mkdirSync } from "../src/meta/filesystem.ts";
+import { existsSync, mkdirSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 import { campaignBudgetGate, setTurnBudget } from "../src/run/campaign-budget.ts";
 import { buildHarness, resolveBuilderCondition } from "../src/run/harness-build.ts";
 import { loadRepoEnv } from "../src/backends/env.ts";
+import { ANSWER_AGENT_ENV } from "../src/run/builder-backend.ts";
 import { resolveSlots } from "../src/backends/resolve.ts";
 import type { AskManifest } from "../src/run/ask-manifest.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
@@ -69,5 +70,26 @@ describe("the Builder condition a build records", () => {
     });
     expect(pinned.slots.builder).toMatchObject({ model: "pinned", reasoningEffort: "high" });
     expect(pinned.slots.built).toEqual(resolvedSlots.built);
+  });
+
+  // The launch sets the flag in the process environment on every run, as `applyLaunchSlots` does, and
+  // the process wins over a `.env` file; the body is synchronous, so no concurrent case sees it.
+  it.concurrent("records a split build's answer wall in the condition, and nothing when the split is off", () => {
+    const repoRoot = join(SCRATCH_ROOT, "split-condition");
+    mkdirSync(repoRoot, { recursive: true });
+    const resolvedSlots = resolveSlots(repoRoot, MANIFEST.slug, loadRepoEnv(repoRoot, {}));
+    writeFileSync(join(repoRoot, ".env"), `${ANSWER_AGENT_ENV}=true\nHARNESS_ANSWER_WALL_HOURS=2\n`);
+    const prior = Bun.env[ANSWER_AGENT_ENV];
+    try {
+      Bun.env[ANSWER_AGENT_ENV] = "false";
+      const whole = resolveBuilderCondition(MANIFEST, { resolvedSlots }, repoRoot);
+      expect(Object.keys(whole.builder)).not.toContain("answerWallMs");
+      Bun.env[ANSWER_AGENT_ENV] = "true";
+      const split = resolveBuilderCondition(MANIFEST, { resolvedSlots }, repoRoot);
+      expect(split.builder).toEqual({ ...whole.builder, answerWallMs: 7_200_000 });
+    } finally {
+      if (prior === undefined) delete Bun.env[ANSWER_AGENT_ENV];
+      else Bun.env[ANSWER_AGENT_ENV] = prior;
+    }
   });
 });

@@ -38,6 +38,8 @@ import { publishedMargins } from "../correctness-bundle/numeric-boundary.ts";
 import { builtStarterFactoryForSolver } from "../correctness-bundle/solve.ts";
 import type { Solver } from "../correctness-bundle/solve.ts";
 import { authorFindingOverview } from "./author-feedback.ts";
+import { onHarnessSide } from "../author/feedback-routing.ts";
+import type { ContractFinding } from "../correctness-bundle/brief.ts";
 import { visibleError } from "./read-window.ts";
 import type { VerifierLifetime } from "../verify/verifier-lifetime.ts";
 import {
@@ -84,6 +86,9 @@ interface HarnessTrialBinding {
    *  its session across rounds, so the round's first graded rehearsal names the worked examples only
    *  where the session has not been told them. Absent, the round is the session. */
   tellOnce?: (key: string) => boolean;
+  /** A split build's Harness Builder: the static findings a rehearsal reports are only those marked
+   *  its own (`onHarnessSide`), as `harness_inspect` and `correctness_check` show it. */
+  harnessView?: boolean;
 }
 
 /** One rehearsal as the authoring review reads it: the aggregate verdict rule 4 lets a rehearsal
@@ -163,6 +168,11 @@ interface RehearsalVerdict {
   truthOk: boolean | null;
 }
 
+/** The static findings this binding's reader may see. */
+function shownFindings(binding: HarnessTrialBinding, findings: readonly ContractFinding[]) {
+  return authorFindingOverview(binding.harnessView === true ? findings.filter(onHarnessSide) : findings);
+}
+
 function candidateId(binding: HarnessTrialBinding): string | null {
   const fingerprint = fingerprintSlug(binding.workspace, { slug: binding.context.slug });
   return fingerprint.ok ? bundleSnapshotIdOf(fingerprint) : null;
@@ -190,7 +200,7 @@ function loadTrialCandidate(binding: HarnessTrialBinding, taskId: string) {
       body: {
         status: "blocked",
         stage: "candidate",
-        findings: authorFindingOverview(findings),
+        findings: shownFindings(binding, findings),
         nextAction: "Use harness_inspect readiness, then repair the candidate before trial.",
       },
     };
@@ -242,14 +252,10 @@ export function verifierView(verifier: RehearsalResult): RehearsalVerdict {
 function candidateView(
   openedCandidateId: string | null,
   closedCandidateId: string | null,
-  findings: Parameters<typeof authorFindingOverview>[0],
+  staticFindings: ReturnType<typeof authorFindingOverview>,
 ) {
   const stable = openedCandidateId !== null && openedCandidateId === closedCandidateId;
-  return {
-    candidateId: stable ? openedCandidateId : null,
-    stable,
-    staticFindings: authorFindingOverview(findings),
-  };
+  return { candidateId: stable ? openedCandidateId : null, stable, staticFindings };
 }
 
 /** The directory this rehearsal's evidence goes in: its session ordinal, or the next free name
@@ -334,7 +340,7 @@ async function runTrial(
       return {
         status: "blocked",
         stage: "candidate",
-        findings: authorFindingOverview(fingerprintRefusal(fingerprint.findings)),
+        findings: shownFindings(binding, fingerprintRefusal(fingerprint.findings)),
       };
     }
     binding = { ...binding, workspace: ensureBundleSnapshot(binding.workspace, fingerprint).dir };
@@ -391,7 +397,11 @@ function rehearsalVerdict(
 
 async function gradeBlind(grade: BlindGrade, signal?: AbortSignal) {
   const { binding, sourceBinding, loaded, solved, openedCandidateId, ordinal, write, wallMinutes } = grade;
-  const candidate = candidateView(openedCandidateId, candidateId(sourceBinding), loaded.findings);
+  const candidate = candidateView(
+    openedCandidateId,
+    candidateId(sourceBinding),
+    shownFindings(binding, loaded.findings),
+  );
   // The battery's branch order decides this rather than convenience: `gradeOutcome` in
   // `src/correctness-bundle/solve-case.ts` returns the solver's non-result before it ever looks at the
   // accepted artifact, because a solve the environment cut short has no truth to read whatever bytes it left

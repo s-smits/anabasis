@@ -22,7 +22,8 @@ import { keyIfDefined } from "../meta/optional-key.ts";
 import { BUILDER_SESSION_EVIDENCE_FILE } from "./session-evidence.ts";
 import { CELL_RUNTIME_ROOT_NAMES } from "./verifier-workshop-input.ts";
 import { BUILDER_SCRATCH_ROOTS, WORKSPACE_TOOL_TREE } from "../verify/wall-policy.ts";
-import { WORKSPACE_DIR } from "../author/builder-memory.ts";
+import { ANSWER_DIR, WORKSPACE_DIR } from "../author/builder-memory.ts";
+import { CORRECTNESS_MODEL_DIR } from "../meta/bundle-layout.ts";
 import {
   BUNDLE_SNAPSHOT_DIRECTORY,
   EARLIER_BUNDLE_SNAPSHOT_DIRECTORY,
@@ -122,7 +123,11 @@ import { BACKENDS_FILE } from "../run/model-preflight.ts";
 import { ITERATION_FILE } from "./campaign-iterations.ts";
 
 export type IsolationMode = "read" | "write" | "exec";
-type IsolationPurpose = "author" | "workshop";
+/** `author` is the whole Builder. A split build divides it along the hash line: `answer` writes the
+ *  correctness model and its own scratch and nothing else, and `harness` works everywhere else in
+ *  the workspace but can neither read nor write what `answer` writes, nor the history that holds
+ *  it. */
+type IsolationPurpose = "author" | "workshop" | "answer" | "harness";
 
 export interface CandidateIsolationBinding {
   repoRoot: string;
@@ -446,8 +451,13 @@ export function deriveCandidateIsolation(
   const sub = (path: string, id: string): IsolationRule => ({ kind: "subpath", path, id });
   const lit = (path: string, id: string): IsolationRule => ({ kind: "literal", path, id });
   const repo = (path: string) => join(repoRoot, path);
-  const author = purpose === "author";
+  const author = purpose !== "workshop";
   const workshop = [sub(ossRoot, "verifier-workshop")];
+  const inWorkspace = (...names: string[]) => names.map((name) => resolve(iterationDir, name));
+  const answerOwned = inWorkspace(CORRECTNESS_MODEL_DIR, ANSWER_DIR);
+  // Denied both ways, so the Harness Builder can neither read a hidden expectation, a check or a
+  // reference artifact nor recover one from the workspace history, and cannot write around the wall.
+  const walled = purpose === "harness" ? [...answerOwned, ...inWorkspace(".git")] : [];
   const read: IsolationRule[] = author
     ? [
         sub(iterationDir, "candidate-tree"),
@@ -472,7 +482,11 @@ export function deriveCandidateIsolation(
         lit(repo("README.md"), "docs"),
       ]
     : workshop;
-  const write = author ? [sub(iterationDir, "iteration-write")] : workshop;
+  const ownWrites =
+    purpose === "answer"
+      ? [...answerOwned, ...inWorkspace(WORKSPACE_TOOL_TREE)].map((path) => sub(path, "answer-write"))
+      : [sub(iterationDir, "iteration-write")];
+  const write = author ? ownWrites : workshop;
   const identity = {
     schema: CANDIDATE_ISOLATION_SCHEMA,
     repoRoot,
@@ -489,8 +503,10 @@ export function deriveCandidateIsolation(
     scratchWriteRoots: author
       ? BUILDER_SCRATCH_ROOTS
       : [join(ossRoot, CELL_RUNTIME_ROOT_NAMES.tmp), ...BUILDER_SCRATCH_ROOTS],
-    readDenyRoots: author ? [ossRoot] : [],
-    writeDenyRoots: author ? WORKSPACE_SHADOW_ROOTS.map((root) => join(iterationDir, root)) : [],
+    readDenyRoots: author ? [ossRoot, ...walled] : [],
+    writeDenyRoots: author
+      ? [...WORKSPACE_SHADOW_ROOTS.map((root) => join(iterationDir, root)), ...walled]
+      : [],
     cellRuntimeRoots: author ? [] : Object.values(CELL_RUNTIME_ROOT_NAMES).map((name) => join(ossRoot, name)),
   };
   return { ...identity, digest: hashJsonBytes(identity) };
@@ -536,7 +552,9 @@ export function guardPath(
     return deny(null, "unresolvable", errorMessage(error));
   }
   const under = (roots: readonly string[]) => roots.some((root) => containsPath(resolved, root));
-  if (mode !== "write" && under(policy.readDenyRoots)) {
+  // A root denied both ways is another capability's material whichever way it is asked for, not a
+  // module shadow.
+  if (under(policy.readDenyRoots) && (mode !== "write" || under(policy.writeDenyRoots))) {
     return deny(resolved, "purpose-isolation", `${requested} belongs to another capability's isolated cell`);
   }
   if (mode === "write" && under(policy.writeDenyRoots)) {

@@ -623,6 +623,34 @@ describe("one-command run launcher", () => {
     expect(openingProblems(opening, plan)).toContain("continued project");
   });
 
+  // A2 launches a split arm and a whole-Builder arm from one tree; the flag is the only difference,
+  // so the launcher must hand it to fullrun and the probe alike, and the opening must carry it.
+  it("carries --answer-agent to fullrun and the probe, and checks the opening ran it", () => {
+    const split = parseOptions(["truss", "--model", "opushmm", "--answer-agent", "true"]);
+    const whole = parseOptions(["truss", "--model", "opushmm", "--answer-agent", "false"]);
+    const planned = required(planRuns(split, "/tmp/launch", "split")[0], "plan");
+    const splitArgv = fullrunArgs(planned, split, source);
+    expect(parseFullRunArgs(splitArgv).answerAgent).toBe(true);
+    expect(parseFullRunArgs(fullrunArgs(planned, whole, source)).answerAgent).toBe(false);
+    // The probe re-plans from its own arguments and digests the command it derives from them.
+    const probed = parseOptions(probeArgs(planned, split));
+    const probedPlan = required(planRuns(probed, "/tmp/launch", "probe")[0], "probe plan");
+    expect(fullrunArgs(probedPlan, probed, source)).toEqual(splitArgv);
+    // The opening's command digest is the flag's witness: a whole-Builder opening is not the
+    // split launch's opening, and the launcher's check says so.
+    const plan = opened(planned, splitArgv);
+    const unflagged = opened(
+      planned,
+      fullrunArgs(planned, parseOptions(["truss", "--model", "opushmm"]), source),
+    );
+    expect(plan.commandDigest).not.toBe(unflagged.commandDigest);
+    expect(openingProblems(openingFor(plan), plan)).toEqual([]);
+    expect(openingProblems(openingFor(unflagged), plan)).toContain("command digest");
+    expect(() => parseOptions(["truss", "--answer-agent", "yes"])).toThrow(
+      "--answer-agent must be true or false",
+    );
+  });
+
   it("captures the Claude token and nothing else, without shell, API-key or custom-route leakage", () => {
     const root = temp();
     writeFileSync(

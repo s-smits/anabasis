@@ -25,6 +25,7 @@ import { directKickoff } from "./direct-input.ts";
 import { type FullRunInput, openFullRunLaunch } from "./full-run-launch.ts";
 import { type FullRunArgs, parseFullRunArgs } from "./launch-arguments.ts";
 import type { ProjectIdentity } from "./launch-project.ts";
+import { ANSWER_AGENT_ENV } from "./builder-backend.ts";
 import { buildHarness, resolveBuilderCondition } from "./harness-build.ts";
 import { type HarnessMeasureResult, measureHarness } from "./harness-measure.ts";
 import type { ClaimStage } from "./claim-stages.ts";
@@ -344,6 +345,7 @@ function stopForAnotherSource(
 function applyLaunchSlots(args: FullRunArgs, repoRoot: string, projectId: string): void {
   // Set on every launch, off included, so the condition is the flag's and never a `.env` file's.
   Bun.env[WITHHOLD_INSTRUMENTS_ENV] = String(args.withholdInstruments === true);
+  Bun.env[ANSWER_AGENT_ENV] = String(args.answerAgent === true);
   for (const slot of ["builder", "built", "review"] as const) {
     const selection = args.backendSelections?.[slot];
     if (selection !== undefined) setProjectBackendSelection(repoRoot, projectId, slot, selection);

@@ -1,7 +1,7 @@
 /** Owner labels identify repair surfaces. The complete admitted feedback is the repair agenda;
  * an owner never limits which safe findings the Builder can read. */
 import { BUILT_AGENTS_FILE } from "../solve/built-starter.ts";
-import { projectFindingForAuthor } from "../correctness-bundle/brief.ts";
+import { type ContractFinding, projectFindingForAuthor } from "../correctness-bundle/brief.ts";
 import { REFERENCE_SOLVE_ENTRY } from "../correctness-bundle/evaluator-process-bundle.ts";
 import { HARNESS_CONFIG_FILE } from "../correctness-bundle/harness-config.ts";
 import type { CampaignFeedback, FeedbackOwner } from "./campaign-types.ts";
@@ -31,6 +31,13 @@ export const BUNDLE_FILES = [
 ] as const satisfies readonly (`agent/${string}` | `correctness-model/${string}`)[];
 export type BundleFile = (typeof BUNDLE_FILES)[number];
 
+/** The findings a split build's Harness Builder may read, marked by the producers that know their
+ *  side: the agent validators, the conformance probe and every gate row an agent file or the
+ *  environment owns. A finding's path cannot say it, being relative to its own file or naming
+ *  controller evidence, and a mark rides the finding object without changing a byte any reader
+ *  records. Unmarked is the answer agent's, so a producer nobody marked fails closed. */
+const harnessSide = new WeakSet<ContractFinding>();
+
 export function isBundleFile(owner: FeedbackOwner | null): owner is BundleFile {
   return owner !== null && owner !== "environment";
 }
@@ -38,6 +45,19 @@ export function isBundleFile(owner: FeedbackOwner | null): owner is BundleFile {
 /** The half of the bundle a repair of this file reopens. */
 export function ownerSide(file: BundleFile): "agent" | "correctness-model" {
   return file.startsWith(AGENT_DIR) ? "agent" : "correctness-model";
+}
+
+export function markHarnessSide(findings: readonly ContractFinding[]): void {
+  for (const finding of findings) harnessSide.add(finding);
+}
+
+export function onHarnessSide(finding: ContractFinding): boolean {
+  return harnessSide.has(finding);
+}
+
+/** Whether a gate row's owner is the Harness Builder's to hear in a split build. */
+export function harnessOwned(owner: FeedbackOwner): boolean {
+  return owner === "environment" || ownerSide(owner) === "agent";
 }
 
 /** Optional evidence label only. Null means an empty or mixed-owner agenda, never no work. */

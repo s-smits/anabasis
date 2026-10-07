@@ -153,3 +153,65 @@ describe("guardPath decisions", () => {
     expect(policy.digest).toBe(before);
   });
 });
+
+// A split build divides the Builder along the hash line. The Harness Builder must not be able to
+// read a hidden expectation, a check or a reference artifact, recover one from the workspace
+// history or write around the wall; the answer agent writes nothing the Harness Builder owns.
+describe("a split build's wall", () => {
+  const harness = deriveCandidateIsolation(binding, "harness");
+  const answer = deriveCandidateIsolation(binding, "answer");
+  const decide = (split: typeof harness, mode: Mode, path: string) => guardPath(split, mode, mode, path);
+  const at = (...parts: string[]) => join(iterationDir, ...parts);
+
+  it("keeps the Harness Builder out of the correctness model, the answer scratch and the history both ways", () => {
+    const walled = [
+      at("correctness-model", "tasks.json"),
+      at("correctness-model", "reference", "best-design.json"),
+      at("answer", "search", "log.txt"),
+      at(".git", "objects", "ab", "cdef"),
+    ];
+    for (const path of walled) {
+      for (const mode of ["read", "write"] as const) {
+        expect(decide(harness, mode, path), `${mode} ${path}`).toMatchObject({
+          decision: "deny",
+          reason: "deny/purpose-isolation",
+        });
+      }
+    }
+    expect(decide(harness, "write", at("agent", "tools.ts"))).toMatchObject({ decision: "allow" });
+    expect(decide(harness, "read", at("public", "tasks.json"))).toMatchObject({ decision: "allow" });
+    expect(decide(harness, "write", at("MEMORY.md"))).toMatchObject({ decision: "allow" });
+    expect(decide(harness, "write", at("agent", "node_modules", "x.js"))).toMatchObject({
+      reason: "deny/module-shadow",
+    });
+  });
+
+  it("lets the answer agent write only the correctness model, its scratch and the tool tree", () => {
+    for (const path of [
+      at("correctness-model", "tasks.json"),
+      at("answer", "search.py"),
+      at(".toolchain", "bin", "solver"),
+    ]) {
+      expect(decide(answer, "write", path), path).toMatchObject({ decision: "allow" });
+    }
+    for (const path of [
+      at("agent", "tools.ts"),
+      at("MEMORY.md"),
+      at("SCRATCHPAD.md"),
+      at("scratch", "x.py"),
+    ]) {
+      expect(decide(answer, "write", path), path).toMatchObject({
+        decision: "deny",
+        reason: "deny/outside-allow",
+      });
+    }
+    expect(decide(answer, "read", at("agent", "tools.ts"))).toMatchObject({ decision: "allow" });
+  });
+
+  it("leaves the whole Builder's policy as it was", () => {
+    expect(policy.readDenyRoots).toEqual([ossRoot]);
+    expect(policy.allow.write).toEqual([{ kind: "subpath", path: iterationDir, id: "iteration-write" }]);
+    expect(policy.writeDenyRoots.every((root) => root.endsWith("node_modules"))).toBe(true);
+    expect(new Set([policy.digest, harness.digest, answer.digest]).size).toBe(3);
+  });
+});

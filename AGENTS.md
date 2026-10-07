@@ -96,10 +96,14 @@ because moving it cost something.
    verifier-host and tool failures leave `truthOk` and `pass` `null`. A battery of them yields an
    operational result, never a capability rate and never a fail.
 5. **The Builder chooses task variance and complexity.** The loop prescribes no axis, step size, family
-   mix or parent bijection. Levels and bands describe recorded conditions and command nothing.
+   mix or parent bijection. Levels and bands describe recorded conditions and command nothing. In a split
+   build the choice is the answer agent's, since it writes the tasks; the Harness Builder never raises them.
 6. **Verifier output is protected.** Stdout, stderr, issue text, counterexamples, reference artifacts and
    per-task failure locations never reach the Builder, the Judge, the diagnosis reader or an authoring
-   prompt. Change only protected detail, and every prompt digest must come out unchanged (rule 4).
+   prompt. Change only protected detail, and every prompt digest must come out unchanged (rule 4). In a
+   split build this holds for both the answer agent and the Harness Builder. The Harness Builder also never
+   reads the correctness model: the candidate-isolation wall denies it correctness-model/, and it hears
+   only the findings its producers mark as agent/'s (`markHarnessSide`).
 7. **A task-only comparison keeps its product fixed.** The agent, the tools and the scoring program stay
    put while the battery, its controls and its reference solve change, and even then the comparison needs
    a matching measured model, isolation, thresholds and resources.
@@ -140,7 +144,11 @@ because moving it cost something.
 Four owners divide the work, and what each one never owns matters as much as what it does. The Harness
 Builder, a model, owns the reading of the request, the research, the representation, the task families,
 the controls, the tools, the verifier content and its own notes; it never owns the
-verifier pin, case truth or adoption. The Built Harness, also a model, owns solving the public tasks with
+verifier pin, case truth or adoption. In a split build (`--answer-agent true`, `src/run/split-build.ts`)
+an answer agent, also a model, takes the correctness model from it: the brief, the task families with
+their hidden expectations, the evaluator and its checks, the reference solve and the controls. The
+Harness Builder keeps `agent/` and reads only the public projection the controller writes to
+`public/tasks.json` and `public/resources.json`. The Built Harness, also a model, owns solving the public tasks with
 its closed roster, through one draft and one submit path, and never sees the hidden tasks, the controls,
 the verifier source or the claim state. The measurement kernel is code, and it owns identity, verifier
 acquisition, isolation, the controls census, verification, non-results, denominators, claims, rollback,
@@ -596,9 +604,10 @@ and has not been re-derived here.
    had before its first simulation. So neither the size of the search nor the solver's hold on the
    check is what these tasks lack; they ask for work the public text settles. Two kinds remain
    unmeasured. One is an answer the field already recorded, such as a merged fix or a published result,
-   which `examples.md` offers as a construction since 2026-10-07. The other is a second author: a split build, in which an answer agent writes
-   the correctness model behind a wall from the author of `agent/`, was written on 2026-09-30
-   (`claude/answer-builder`, three local commits) and has neither landed nor run. Owner: the witness
+   which `examples.md` offers as a construction since 2026-10-07. The other is a second author: a
+   split build, in which an answer agent writes the correctness model behind a wall from the author
+   of `agent/`, is in the source behind the launch option `--answer-agent` (default false) and has
+   not run. Owner: the witness
    route, in `starter-pack/examples.md`.
 2. **An earned fail is not followed up.** Of the 322 batteries, 33 were partial and 11 held a fail
    nobody contested, 8 in truss and 3 in firmware (those three are the one-minute-wall drafts below).

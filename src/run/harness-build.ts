@@ -31,7 +31,7 @@ import { makeProbeControls } from "../correctness-bundle/probes.ts";
 import type { VerifierHostHandle } from "../verify/verifier-port.ts";
 import type { AskManifest } from "./ask-manifest.ts";
 import type { AuthoringAdvice, ReviewAuthoring } from "./authoring-review.ts";
-import { builderSessionCapMs } from "./builder-backend.ts";
+import { answerWallMs, builderSessionCapMs } from "./builder-backend.ts";
 import { runBuilderCampaign, type BuilderCampaignInput } from "./builder-campaign.ts";
 import { type BuilderRuntimeFactory, productionBuilderRuntime } from "./builder-runtime.ts";
 import { campaignBudgetGate, setTurnBudget } from "./campaign-budget.ts";
@@ -145,6 +145,7 @@ export function resolveBuilderCondition(
     ...slots,
     builder: { ...slots.builder, reasoningEffort: effort, ...keyIfDefined("model", options.model) },
   };
+  const { env } = loadRepoEnv(repoRoot);
   return {
     slots: denominated,
     builder: {
@@ -152,11 +153,12 @@ export function resolveBuilderCondition(
       model: denominated.builder.model ?? null,
       reasoningEffort: effort,
       ...keyIfTruthy("providerPin", denominated.builder.providerPin),
+      ...keyIfDefined("answerWallMs", answerWallMs(env)),
     },
     // A sibling of `builder`, never a member: the epoch is keyed on the builder condition, and an
     // operational timeout must not change the epoch. Resolving here makes a malformed
     // HARNESS_BUILDER_SESSION_CAP_MS refuse at resolution — fullrun preflight — before any epoch exists.
-    ...keyIfDefined("turnTimeoutMs", builderSessionCapMs(options.turnTimeoutMs, loadRepoEnv(repoRoot).env)),
+    ...keyIfDefined("turnTimeoutMs", builderSessionCapMs(options.turnTimeoutMs, env)),
   };
 }
 
@@ -369,6 +371,7 @@ async function runEpochBuild(
       ...keyIfDefined("recordSession", runtime.recordSession),
       ...keyIfDefined("conversation", options.builderConversation),
       tools: runtime.tools,
+      ...keyIfDefined("answer", runtime.answer),
       ...keyIfDefined("builtSolver", runtime.builtSolver),
       verifierLifetime,
       ...keysIf(builderCondition.slots.review.enabled, () => ({

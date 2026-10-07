@@ -266,6 +266,20 @@ describe.if(DARWIN)("executed OS enforcement", () => {
     expect(sh(`cat ${join(binding.iterationDir, "census.json")}`).stdout).not.toContain("remedy");
   });
 
+  it("hides the correctness model and the workspace history from a Harness Builder's shell", () => {
+    const at = (...parts: string[]) => join(binding.iterationDir, ...parts);
+    seedFile(at("correctness-model", "tasks.json"), "HIDDEN-EXPECTATION\n");
+    seedFile(at(".git", "HEAD"), "ref: refs/heads/main\n");
+    mkdirSync(at("agent"), { recursive: true });
+    const harness = deriveCandidateIsolation(binding, "harness");
+    const { profile } = candidateIsolationProfile(harness, "exec", ["/bin/sh"]);
+    const sh = (command: string) => sandboxed(profile, "/bin/sh", "-c", command);
+    expect(sh(`cat ${at("correctness-model", "tasks.json")}`).stdout).not.toContain("HIDDEN-EXPECTATION");
+    expect(sh(`cat ${at(".git", "HEAD")}`).stdout).not.toContain("refs/heads");
+    expect(sh(`echo planted > ${at("correctness-model", "planted.json")}`).status).not.toBe(0);
+    expect(sh(`echo tool > ${at("agent", "tools.ts")}`).status).toBe(0);
+  });
+
   it("writes the launch's temporary directory, which the wall only ever sees resolved", () => {
     // A detached launch freezes TMPDIR under `/var/tmp`, and Seatbelt evaluates the resolved
     // `/private/var/tmp`: a scratch grant naming only the spelling refused every mktemp and

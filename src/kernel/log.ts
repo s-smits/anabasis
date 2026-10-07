@@ -10,6 +10,8 @@ import { closeSync, existsSync, fsyncSync, openSync, readFileSync, writeSync } f
 import { capturedJsonParse, capturedJsonStringify } from "../meta/json-runtime.ts";
 import { asRecord, type JsonObject, type JsonValue, isString } from "../meta/json-shape.ts";
 
+/** The plan's events, and `anchor.drawn`, which is not among them: a task may be released straight
+ *  from held only once the anchor is drawn, so the draw is an event the task states can see. */
 export const EVENT_KINDS = [
   "world.accepted",
   "contract.frozen",
@@ -23,6 +25,7 @@ export const EVENT_KINDS = [
   "referee.finding",
   "referee.dispute",
   "comparison.reported",
+  "anchor.drawn",
   "anchor.scored",
   "task.released",
 ] as const;

@@ -9,8 +9,8 @@
  * which this meter needs none of, since it charges the two alike.
  */
 import { backends } from "#src/backends/models.ts";
-import type { Solve } from "#src/kernel/bracket.ts";
 import { dollars, freezePrices, type PriceTable } from "#src/kernel/meter.ts";
+import type { Counted } from "#src/kernel/solve.ts";
 import type { Verdict } from "#src/kernel/verify.ts";
 import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, parseJsonAs } from "#src/meta/json-runtime.ts";
@@ -21,10 +21,10 @@ import { join } from "#src/meta/path.ts";
 interface StoredSolve {
   readonly provider: string;
   readonly model: string;
-  readonly wallSeconds: number;
-  /** Every process in the solve's tree, sampled each second, including tool runs in sessions of
-   *  their own. The kernel's rusage figure beside it misses those once they are reparented away. */
-  readonly cpuSampledSeconds: number;
+  /** Whether the outer timeout ended the run. The harness's own wall, inside it, leaves a turn open. */
+  readonly timedOut: boolean;
+  readonly answerPresent: boolean;
+  readonly answerParses: boolean;
 }
 
 /** The fields of v1's `case-trace/v3` trace read here. A turn the wall cut is left `open`, with its
@@ -51,10 +51,13 @@ export interface Row extends StoredSolve {
   readonly solve: string;
   /** v1's verdict, as the new verifier would spell it. */
   readonly expected: Verdict;
+  /** How the solve ended, as this host types it. */
+  readonly ending: Counted;
+  readonly turns: readonly StoredTurn[];
 }
 
 /** A row and its two dollar readings. */
-export interface Priced {
+interface Priced {
   readonly row: Row;
   readonly v1: number;
   readonly meter: number;
@@ -83,9 +86,31 @@ export function sweepRows(root: string, sweep: string) {
     const cycle = `c${number.padStart(2, "0")}`;
     const solve = join(root, "runs", sweep, cycle, taskId);
     const stored = parseJsonAs<StoredSolve>(readFileSync(join(solve, "result.json"), "utf8"));
-    rows.push({ ...stored, sweep, cycle, taskId, solve, expected });
+    const { turns } = parseJsonAs<StoredTrace>(
+      readFileSync(join(solve, "harness", "cases", taskId, "trace.json"), "utf8"),
+    );
+    rows.push({
+      ...stored,
+      sweep,
+      cycle,
+      taskId,
+      solve,
+      expected,
+      ending: endingOf(stored, turns, expected),
+      turns,
+    });
   }
   return { rows, apart };
+}
+
+/** A stored solve's ending. v1 recorded no kinds, so they are read back from what the solve left. */
+function endingOf(stored: StoredSolve, turns: readonly StoredTurn[], expected: Verdict): Counted {
+  if (expected.kind === "pass") return { outcome: "pass" };
+  if (stored.timedOut || turns.some((turn) => turn.status === "open")) {
+    return { outcome: "fail", kind: "wall-ended" };
+  }
+  if (!stored.answerPresent || !stored.answerParses) return { outcome: "fail", kind: "no-answer" };
+  return { outcome: "fail", kind: "rejected" };
 }
 
 /** The answer the solve left, or none when it left no file or one that does not read as JSON. */
@@ -117,11 +142,8 @@ function rowPrices(rows: readonly Row[]): PriceTable {
  * turn never ended, since what it spent was never reported: that solve's cost is unknown, not zero.
  */
 function spend(row: Row, prices: PriceTable) {
-  const { turns } = parseJsonAs<StoredTrace>(
-    readFileSync(join(row.solve, "harness", "cases", row.taskId, "trace.json"), "utf8"),
-  );
-  const ended = turns.filter((turn) => turn.status === "ended");
-  if (ended.length < turns.length) return null;
+  const ended = row.turns.filter((turn) => turn.status === "ended");
+  if (ended.length < row.turns.length) return null;
   const sum = (field: "inputTokens" | "outputTokens" | "costUsd") =>
     ended.reduce((total, turn) => total + turn[field], 0);
   const tokens = { input: sum("inputTokens"), cached: 0, output: sum("outputTokens") };
@@ -142,14 +164,4 @@ export function pricedRows(rows: readonly Row[]) {
     }
   }
   return { priced, unpriced };
-}
-
-/** A stored solve as the bracket reads it, under one of the two dollar readings. */
-export function solveOf(solve: Priced, reading: "v1" | "meter"): Solve {
-  return {
-    passed: solve.row.expected.kind === "pass",
-    dollars: solve[reading],
-    cpuSeconds: solve.row.cpuSampledSeconds,
-    wallSeconds: solve.row.wallSeconds,
-  };
 }

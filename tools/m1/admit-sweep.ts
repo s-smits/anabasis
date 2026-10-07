@@ -6,11 +6,12 @@
  *   bun tools/m1/admit-sweep.ts --root ../anabasis-cycles-4c67fc --sweep veryhard-hb-4c67fc \
  *     --bundle ../anabasis-cycles-4c67fc/fixture/round4-veryhard-workspace --stronger c05
  *
- * The first cycle is the old harness and the last the new, and `--stronger` names the cycle whose
- * solve is gate 2's. The pair is the budget pair, with B and C set from the sweep's passes and the
- * dollars as this meter reads them. Gate 3 reruns the check on the stronger solve's stored answer.
+ * The first cycle is the old harness and the last the new. Gate 3 reruns the check on the stronger
+ * solve's stored answer. A verifier non-result stops the run, as it would a live one.
  *
- * The sweep predates the plan, so three parts are stood in for:
+ * The sweep predates the plan, so four parts are stood in for:
+ * - The pair is the model pair, but the sweep ran one solver, so `--stronger` names the cycle whose
+ *   solve stands in for the stronger condition's.
  * - The contract is the check program's brief: its public rule decisions are the rules and its
  *   artifact schema the answer format.
  * - A task's statement is its id under the brief's domain, since v1's tasks carry none, and its rule
@@ -18,7 +19,6 @@
  * - Gate 4's controls are the first three v1 wrote for the task, edited from the author's accepted
  *   answer rather than from the stronger solve's. A task v1 gave fewer than three is refused.
  */
-import { calibrate, type Pair, screen, strongerPasses } from "#src/kernel/bracket.ts";
 import type { Contract } from "#src/kernel/contract.ts";
 import { append, type EventKind, read } from "#src/kernel/log.ts";
 import {
@@ -26,6 +26,7 @@ import {
   controlsGate,
   determinismGate,
   packageGate,
+  screen,
   type TaskPackage,
   type TaskState,
   taskStates,
@@ -39,7 +40,7 @@ import { tmpdir } from "#src/meta/os.ts";
 import { join } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { countBy } from "#src/meta/tally.ts";
-import { type Priced, pricedRows, solveOf, storedAnswer, sweepRows } from "../m0/stored-sweep.ts";
+import { type Row, storedAnswer, sweepRows } from "../m0/stored-sweep.ts";
 
 const { values } = parseArgs({
   options: {
@@ -88,16 +89,11 @@ async function main(): Promise<void> {
   const verify = openVerifier({ checks, tools: join(bundle, ".toolchain") });
 
   const { rows } = sweepRows(root, sweep);
-  const { priced } = pricedRows(rows);
-  const pair: Pair = { kind: "budget", budget: calibrate(priced.map((solve) => solveOf(solve, "meter"))) };
   const cycles = [...new Set(rows.map((row) => row.cycle))].sort();
   const [old = "", fresh = ""] = [cycles[0], cycles.at(-1)];
-  const stored = new Map(priced.map((solve) => [`${solve.row.taskId} ${solve.row.cycle}`, solve]));
-  const solveIn = (taskId: string, cycle: string): Priced | undefined => stored.get(`${taskId} ${cycle}`);
-  console.log(
-    `B $${pair.budget.dollars.toFixed(2)}, C ${pair.budget.cpuSeconds.toFixed(0)} CPU s; ` +
-      `old ${old}, new ${fresh}, stronger ${stronger}`,
-  );
+  const stored = new Map(rows.map((row) => [`${row.taskId} ${row.cycle}`, row]));
+  const solveIn = (taskId: string, cycle: string): Row | undefined => stored.get(`${taskId} ${cycle}`);
+  console.log(`old ${old}, new ${fresh}, stronger ${stronger}`);
 
   const v1Controls = (taskId: string): [JsonValue, JsonValue[]] => {
     const accepted = controls.accept.find((control) => control.taskId === taskId)?.artifact ?? null;
@@ -120,13 +116,13 @@ async function main(): Promise<void> {
     gated(1, packaged);
     if (packaged.outcome === "refused") return settle("refused", `gate 1: ${packaged.reason}`);
     const strong = solveIn(task.taskId, stronger);
-    if (strong === undefined) return `no priced solve in ${stronger}`;
-    if (!strongerPasses(pair, solveOf(strong, "meter"))) {
+    if (strong === undefined) return `no verified solve in ${stronger}`;
+    if (strong.ending.outcome !== "pass") {
       gated(2, { outcome: "too-hard" });
-      return settle("too-hard");
+      return settle("too-hard", strong.ending.kind);
     }
     gated(2, { outcome: "passed" });
-    const accepted = storedAnswer(strong.row);
+    const accepted = storedAnswer(strong);
     if (accepted === undefined) return `the ${stronger} pass left no answer`;
     const gates = [
       [3, () => determinismGate(verify, task, accepted)],
@@ -136,11 +132,10 @@ async function main(): Promise<void> {
       const result = await run();
       gated(number, result);
       if (result.outcome === "refused") return settle("refused", `gate ${number}: ${result.reason}`);
-      if (result.outcome === "non-result") return `gate ${number}: ${result.reason}`;
     }
     const [before, after] = [old, fresh].map((cycle) => solveIn(task.taskId, cycle));
     if (before === undefined || after === undefined) return "feasible, unscreened";
-    return settle(screen(pair, [solveOf(before, "meter"), solveOf(after, "meter")]));
+    return settle(screen([before.ending, after.ending]));
   };
 
   try {

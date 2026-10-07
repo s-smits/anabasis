@@ -1,0 +1,26 @@
+/**
+ * A solve's ending: every solve ends in exactly one, and the log records which.
+ *
+ * A pass is an answer the verifier accepted. A fail is any other ending the solver owns, by kind:
+ * the verifier rejected the submitted answer, the host's wall ended the solve, or the solve stopped
+ * without submitting one, at the turn cap or by giving up. On 7 October every solver checked its
+ * answer with the grading engine before submitting, so rejected answers are expected to be the rare
+ * kind, and a report that counts fails without their kinds would hide where supply comes from.
+ *
+ * A non-result is an ending the solver does not own: the provider refused, the sandbox crashed, the
+ * run was killed, files or tools moved during the solve, or the verifier could not decide. It is
+ * never counted as a pass or a fail. One from the solve's side is run again, up to three times with
+ * backoff. One from the verifier stops the run, since a broken verifier makes one of every check:
+ * a relative tree path once turned every verdict of a regrade into one.
+ */
+type Ending =
+  | { readonly outcome: "pass" }
+  | { readonly outcome: "fail"; readonly kind: "rejected" | "wall-ended" | "no-answer" }
+  | {
+      readonly outcome: "non-result";
+      readonly kind: "refusal" | "sandbox-crash" | "killed" | "moved-files" | "verifier";
+      readonly reason: string;
+    };
+
+/** An ending a score or a screening can count: a pass or a fail. */
+export type Counted = Exclude<Ending, { readonly outcome: "non-result" }>;

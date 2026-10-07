@@ -254,6 +254,19 @@ export function openVerifier(given: VerifierTree): Verifier {
   };
 }
 
+/**
+ * A verdict that decides, for the host to act on. A non-result stops the run instead: it comes from
+ * the verifier, never the task, and a non-result is never counted, so a run on a broken verifier, one
+ * that returns one for every check, would count nothing and look clean.
+ */
+export async function decided(verify: Verifier, task: Task, answer: JsonValue | undefined) {
+  const verdict = await verify(task, answer);
+  if (verdict.kind === "non-result") {
+    throw new Error(`the verifier could not decide ${task.taskId}, so the run stops: ${verdict.reason}`);
+  }
+  return verdict;
+}
+
 async function runCheck(
   wall: Wall,
   check: BriefTruthCheck,

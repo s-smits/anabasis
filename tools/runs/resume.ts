@@ -186,7 +186,7 @@ export function resumePlan(opening: OpeningFacts | null, launch: LaunchRecord | 
         `provider turns: opening.json providerResourceBudget.cap = ${cap}`,
         `project: opening.json project.id = ${project}`,
         `source: opening.json source.commit = ${commit ?? "none"}`,
-        `battery and boundary: ${carried.length === 0 ? "launch.json argv recorded none, so the launcher's defaults apply" : carried.join(", ")}`,
+        `carried flags: ${carried.length === 0 ? "launch.json argv recorded none, so the launcher's defaults apply" : carried.join(", ")}`,
       ],
       warnings,
     },

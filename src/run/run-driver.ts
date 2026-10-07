@@ -6,7 +6,7 @@
  * being checked.
  *
  * The driver restates nothing the runner owns: buildInputsHash and backendPin are read back from
- * the battery evidence, the tri-state verdict fields are copied verbatim from the runner's
+ * the battery evidence, each row's `examHash` joins the battery's bundle hashes to that task's bytes, the tri-state verdict fields are copied verbatim from the runner's
  * CaseRecord vocabulary, and the isolation check result arrives from the caller, which owns the
  * isolation probe. `isolation: null` explicitly records that isolation has not been proved, rather
  * than leaving a reader to infer it from an absent field.
@@ -32,10 +32,11 @@ import {
 import { fingerprintSlug } from "../claim/fingerprint.ts";
 import { assertPathSegment } from "../meta/path-segment.ts";
 import { hashJsonBytes, parseJsonAs } from "../meta/json-runtime.ts";
-import { sameJsonValue } from "../meta/stable-json.ts";
+import { hashJsonValue, sameJsonValue } from "../meta/stable-json.ts";
 import type { VerificationReport } from "../correctness-bundle/build-deps.ts";
 import { type BuiltPresetId, isBuiltPresetId, presetToolNames } from "../correctness-bundle/built-presets.ts";
 import {
+  type BundleSnapshotFact,
   type CaseRecord,
   batteryPath,
   readRecordedBatteryRecord,
@@ -92,6 +93,7 @@ interface BatteryCaseSlice {
   backendPin: string;
   condition: RunCondition;
   cases: CaseRecord[];
+  bundleSnapshot: Pick<BundleSnapshotFact, "agentHash" | "correctnessModelHash" | "toolTreeDigest">;
 }
 
 /** The stored condition name of the one battery a round measures. */
@@ -108,11 +110,14 @@ function readBatterySlice(slugDir: string, runId: string): BatteryCaseSlice {
     !isString(record?.buildInputsHash) ||
     !isString(record.backendPin) ||
     !Array.isArray(record.cases) ||
-    !isRecord(record.condition)
+    !isRecord(record.condition) ||
+    !isRecord(record.bundleSnapshot)
   ) {
-    throw new Error(`${path}: battery record is missing buildInputsHash, backendPin, cases, or condition`);
+    throw new Error(
+      `${path}: battery record is missing buildInputsHash, backendPin, cases, condition or bundleSnapshot`,
+    );
   }
-  return /* SAFETY: the check above threw unless buildInputsHash, backendPin, cases and condition are all present. */ record as BatteryCaseSlice;
+  return /* SAFETY: the check above threw unless buildInputsHash, backendPin, cases, condition and bundleSnapshot are all present. */ record as BatteryCaseSlice;
 }
 
 export function summarizeRun(runId: string, rows: readonly CaseRecordRow[]): RunSummary {
@@ -143,6 +148,8 @@ function discriminationOf(passed: number, scored: number): RunSummary["discrimin
  *  one writer, and the rows come from the run records on disk, never from process memory. */
 async function appendRecordedCaseRows(options: DriveBatteryOptions): Promise<void> {
   const battery = readBatterySlice(options.slugDir, options.runId);
+  const { agentHash, correctnessModelHash, toolTreeDigest } = battery.bundleSnapshot;
+  const tasks = new Map(options.tasks.map((task) => [task.taskId, task] as const));
   const record = CaseRecordStore.open(options.recordPath);
   try {
     for (const caseResult of battery.cases) {
@@ -163,6 +170,13 @@ async function appendRecordedCaseRows(options: DriveBatteryOptions): Promise<voi
         builderId: options.builderId,
         slug: options.slug,
         buildInputsHash: battery.buildInputsHash,
+        // The exam this task posed, without the other tasks' bytes, which no solver of it reads.
+        examHash: hashJsonValue([
+          agentHash,
+          correctnessModelHash,
+          toolTreeDigest,
+          tasks.get(caseResult.taskId) ?? null,
+        ]),
         backendPin: battery.backendPin,
         taskId: caseResult.taskId,
         family: caseResult.family,

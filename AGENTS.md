@@ -1462,11 +1462,12 @@ the battery was paid for.
     `environmentBlockedRounds` prior remeasures, is remeasured before any rebuild: `remeasureOf`
     re-solves the censored cases and regrades the rest, and a moved condition sends the round to rebuild.
     The same remeasure solves again each fresh fail not yet confirmed (`unconfirmedSolves`): a fail is
-    solved again while its group, the task's fresh solves on one pin, set of build inputs, run
-    condition, effort and tool tree, holds fewer than `AGREEING_SOLVES` solves and every one failed, so
-    the Builder never reads a fail on one solve alone. The build inputs (`buildInputsHash`) hash the
-    agent, the correctness model and the whole task set, so an edit of any task, of the agent, of the
-    correctness model or of the tools starts a new group for every task. One pass in the group makes
+    solved again while its group, the task's fresh solves of one exam (the case row's `examHash`:
+    the agent, the correctness model, the tool tree and that task's own bytes) on one pin, run
+    condition and effort, holds fewer than `AGREEING_SOLVES` solves and every one failed, so the
+    Builder never reads a fail on one solve alone. An edit of the task, the agent, the correctness
+    model or the tools starts a new group; another task's edit does not, so a fail the Builder keeps
+    (`keepFailedLine`) keeps the solves that confirmed it. One pass in the group makes
     the fail a flip, and the case is not solved again; a pass is never solved again. A case awaiting a
     solve is never regraded, so a round that blocking feedback gives to the Builder first solves it
     afresh. Neither the Judge nor the review chooses which fails are solved again, so a fail the review

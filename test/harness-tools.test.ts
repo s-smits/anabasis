@@ -12,6 +12,7 @@ import {
   mkdtempSync,
   realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
@@ -82,6 +83,8 @@ describe("a v1 harness state", () => {
       const bin = join(dir, ".toolchain", "bin");
       mkdirSync(bin, { recursive: true });
       writeFileSync(join(bin, "tool"), "#!/bin/sh\necho one\n");
+      // A link back up the tree, as a v1 state's node_modules links into its run: listed, not entered.
+      symlinkSync("..", join(bin, "loop"));
       const digests = [(await openHarness(dir)).digest];
       writeFileSync(join(bin, "tool"), "#!/bin/sh\necho two\n");
       digests.push((await openHarness(dir)).digest);

@@ -43,7 +43,7 @@ import { dollars, freezePrices, priceKey, tokensOf } from "../kernel/meter.ts";
 import type { Ending } from "../kernel/solve.ts";
 import type { Task, Verifier } from "../kernel/verify.ts";
 import { boundText } from "../meta/bounded-text.ts";
-import { lstatSync, mkdirSync, readdirSync, rmSync } from "../meta/filesystem.ts";
+import { lstatSync, mkdirSync, rmSync } from "../meta/filesystem.ts";
 import { asRecord, isNumber, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { loadavg } from "../meta/os.ts";
 import { join } from "../meta/path.ts";
@@ -60,7 +60,7 @@ import {
   recordTool,
 } from "./answer.ts";
 import { type CommandWall, solveDirs } from "./command.ts";
-import { type Harness, harnessTools, openHarness } from "./harness.ts";
+import { type Harness, harnessTools, openHarness, pathsUnder } from "./harness.ts";
 import { firstTurn, seedHome, systemPrompt } from "./prompt.ts";
 import { shellTool } from "./shell.ts";
 
@@ -377,12 +377,10 @@ export async function judge(request: SolveRequest, id: string, played: Played): 
 
 /** Each entry under `dir` by path, size and modification time, links unfollowed. */
 function entries(dir: string) {
-  return readdirSync(dir, { recursive: true, encoding: "utf8" })
-    .sort()
-    .map((path) => {
-      const stat = lstatSync(join(dir, path));
-      return { path, size: stat.size, mtime: stat.mtimeMs };
-    });
+  return pathsUnder(dir).map((path) => {
+    const stat = lstatSync(join(dir, path));
+    return { path, size: stat.size, mtime: stat.mtimeMs };
+  });
 }
 
 /** What moved-files compares: a file added, removed, resized or rewritten changes it. */

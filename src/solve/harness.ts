@@ -18,7 +18,7 @@
 import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { TSchema } from "@earendil-works/pi-ai";
 import { sha256OfFile } from "../meta/digest.ts";
-import { existsSync, lstatSync, readdirSync, readlinkSync, writeFileSync } from "../meta/filesystem.ts";
+import { existsSync, lstatSync, readlinkSync, writeFileSync } from "../meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "../meta/json-runtime.ts";
 import { type JsonValue, asRecord, isRecord, isString } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
@@ -130,16 +130,24 @@ export async function openHarness(dir: string): Promise<Harness> {
   return { guide, presets, kinds, toolTree, module, digest: hashJsonValue({ module, spec, guide, tree }) };
 }
 
+/**
+ * Every path under `dir`, sorted, hidden ones too, a link listed but never entered. Bun's recursive
+ * `readdirSync` enters linked directories, and a v1 harness state links its `node_modules` entries into
+ * the run that built it, so one loop there ended a live solve with ELOOP before its first turn.
+ */
+export function pathsUnder(dir: string): string[] {
+  const glob = new Bun.Glob("**");
+  return [...glob.scanSync({ cwd: dir, dot: true, onlyFiles: false, followSymlinks: false })].sort();
+}
+
 /** Each entry under `dir` by path, mode and content: a file by its sha256, a link by its target. */
 export function treeContent(dir: string) {
-  return readdirSync(dir, { recursive: true, encoding: "utf8" })
-    .sort()
-    .map((path) => {
-      const full = join(dir, path);
-      const stat = lstatSync(full);
-      const content = stat.isSymbolicLink() ? readlinkSync(full) : stat.isFile() ? sha256OfFile(full) : null;
-      return { path, mode: stat.mode, content };
-    });
+  return pathsUnder(dir).map((path) => {
+    const full = join(dir, path);
+    const stat = lstatSync(full);
+    const content = stat.isSymbolicLink() ? readlinkSync(full) : stat.isFile() ? sha256OfFile(full) : null;
+    return { path, mode: stat.mode, content };
+  });
 }
 
 /** v1's bundling (generated-tool-worker-process.ts:103-112), with the two imports a harness makes

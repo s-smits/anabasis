@@ -27,10 +27,10 @@ import { read } from "#src/kernel/log.ts";
 import { freezePrices, priceKey } from "#src/kernel/meter.ts";
 import { taskVersion } from "#src/kernel/task.ts";
 import { openVerifier } from "#src/kernel/verify.ts";
-import { mkdtempSync, readFileSync, rmSync } from "#src/meta/filesystem.ts";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "#src/meta/filesystem.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { tmpdir } from "#src/meta/os.ts";
-import { join, resolve } from "#src/meta/path.ts";
+import { dirname, join, resolve } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
@@ -147,7 +147,8 @@ async function main(): Promise<number> {
     for (const line of parity) console.log(line);
     if (!live) return parity.every((line) => line.startsWith("same")) ? 0 : 1;
 
-    const log = join(REPO, "runs", "live", `${row.taskId}-${row.cycle}.jsonl`);
+    const log = join(REPO, ".ana", "live", `${row.taskId}-${row.cycle}.jsonl`);
+    mkdirSync(dirname(log), { recursive: true });
     const ending = await solve({
       id: `${row.taskId}-${row.cycle}`,
       condition: id,

@@ -5,8 +5,9 @@
 // fired, or changed without a matching recorded firing (labelled unreached). A call the change
 // left alone is not the change's to reach, however much else its file moved, and an id is `new`
 // only when the previous source declared it nowhere, so a call that moved between files or lines
-// is changed, not new. A changed model-visible text (author prompts, starters, judge framing) is
-// flagged for lane 21.
+// is changed, not new. A changed file inside the prompt surface the measured source's own
+// `.prompt-surface.json` declares (the files the prompt-surface census reads, under the audience it
+// names) is flagged for lane 21; a source without that file names no model-visible change.
 //
 // Reads Git objects and recorded campaign text only; never executes reviewed source and prints
 // no source content. A commit the checkout cannot resolve is `source-unresolved`, never guessed.
@@ -80,6 +81,20 @@ export interface SafeguardReach {
   firings: number;
 }
 
+/** A changed file the measured source's prompt surface declares, and the audience it names. */
+export interface VisibleChange {
+  path: string;
+  audience: string;
+}
+
+/** What `.prompt-surface.json` declares a model can read: source under `dirs`, documents under or
+ *  named by `doc`, and an audience per path prefix. */
+interface PromptSurface {
+  dirs: string[];
+  doc: string[];
+  audiences: [string, string][];
+}
+
 /** The source delta of one run against the previous source. */
 export interface SourceDelta {
   schema: string;
@@ -93,7 +108,9 @@ export interface SourceDelta {
   changed: ChangedPath[];
   safeguards: SafeguardReach[];
   firedElsewhere: { id: string; firings: number }[];
-  modelVisibleChanged: string[];
+  /** Where the model-visible flag came from, once the delta resolves. */
+  promptSurface?: string;
+  modelVisibleChanged: VisibleChange[];
 }
 
 const GIT_SHA = /^[0-9a-f]{40}$/;
@@ -105,15 +122,15 @@ const SAFEGUARD_SOURCE = /\.(?:ts|mts|js|mjs)$/;
 /** A test calls safeguardTriggered with fixture ids and template placeholders that no run fires,
  *  so its calls are not declarations; the path still counts as changed. */
 const TEST_SOURCE = /^test\/|\.test\.[cm]?[jt]s$/;
-/** Broad path heuristic for possible model-visible changes; verify delivery before making a claim.
- *  The Judge's files moved from src/truth to src/review, and a recorded run may sit on either side. */
-const MODEL_VISIBLE = [
-  /^src\/author\//,
-  /^src\/builder\//,
-  /^starters\//,
-  /prompt/i,
-  /^src\/(truth|review)\/judge/,
-];
+/** The repo's declaration of what a model can read, which the prompt-surface census scans. A path
+ *  inside it is a lead to verify delivery for, not proof that a model read the change. */
+const PROMPT_SURFACE = ".prompt-surface.json";
+/** The census's own reading rules: the source it parses, the tests and declarations it skips, the
+ *  documents it reads whole from a `doc` directory, and the directories it never walks. */
+const SURFACE_SOURCE = /\.[mc]?[jt]sx?$/;
+const SURFACE_SKIPPED_SOURCE = /\.d\.ts$|\.(?:test|spec)\.[a-z]+$|(?:^|\/)(?:test|tests|__tests__)\//;
+const SURFACE_DOCUMENT = /\.(?:md|markdown|txt|json|ya?ml|py|sh)$/;
+const SURFACE_UNWALKED = /(?:^|\/)(?:node_modules|\.[^/]+)\//;
 
 /** Git's name-status letter for the change a path underwent; anything else is a modification. */
 const CHANGE_BY_STATUS = new Map([
@@ -325,6 +342,48 @@ function unresolved(
   return previousCommit === commit ? { state: "identical-source" } : null;
 }
 
+/** The prompt surface the source at `commit` declares, or null when it holds no readable one. */
+function promptSurfaceAt(repo: string, commit: string): PromptSurface | null {
+  const text = textAt(repo, commit, PROMPT_SURFACE);
+  if (text === null) return null;
+  let config: JsonObject | null;
+  try {
+    config = asRecord(JSON.parse(text));
+  } catch {
+    return null;
+  }
+  if (config === null) return null;
+  const listed = (value: JsonValue | undefined): string[] =>
+    Array.isArray(value) ? value.filter(isString) : [];
+  return {
+    // The census reads `src` when the config names no directory.
+    dirs: config.dirs === undefined ? ["src"] : listed(config.dirs),
+    doc: listed(config.doc),
+    audiences: Object.entries(asRecord(config.audiences) ?? {}).flatMap(([prefix, name]) =>
+      isString(name) ? [[prefix, name] satisfies [string, string]] : [],
+    ),
+  };
+}
+
+/** The audience a model reading `path` belongs to, by the census's rule that the longest prefix
+ *  ending at a `/`, `-` or `.` wins; null when the census would not read the file at all. */
+function surfaceAudience(surface: PromptSurface, path: string): string | null {
+  if (SURFACE_UNWALKED.test(path)) return null;
+  const inside = (entry: string): boolean => path.startsWith(`${entry}/`);
+  const source = SURFACE_SOURCE.test(path) && !SURFACE_SKIPPED_SOURCE.test(path) && surface.dirs.some(inside);
+  const document = surface.doc.some(
+    (entry) => path === entry || (inside(entry) && SURFACE_DOCUMENT.test(path)),
+  );
+  if (!source && !document) return null;
+  let best = { prefix: "", name: "unclassified" };
+  for (const [prefix, name] of surface.audiences) {
+    const boundary = path.startsWith(prefix) ? path[prefix.length] : null;
+    const matches = path === prefix || boundary === "/" || boundary === "-" || boundary === ".";
+    if (matches && prefix.length > best.prefix.length) best = { prefix, name };
+  }
+  return best.name;
+}
+
 /** Each safeguard whose call changed, fired or unreached in this run, and each one the run fired
  *  that no changed call names. */
 function addReach(
@@ -360,7 +419,7 @@ export function buildSourceDelta(named: SourceDeltaInput): SourceDelta {
     commit,
   );
   const result: SourceDelta = {
-    schema: "wri-source-delta/v1",
+    schema: "wri-source-delta/v2",
     campaign,
     runId: found.runId,
     commit,
@@ -383,11 +442,16 @@ export function buildSourceDelta(named: SourceDeltaInput): SourceDelta {
     before: declaredAt(repo, previousSha),
     now: declaredAt(repo, commit),
   };
+  const surface = promptSurfaceAt(repo, commit);
+  result.promptSurface =
+    surface === null
+      ? `this source holds no readable ${PROMPT_SURFACE}, so no change is named model-visible`
+      : `${PROMPT_SURFACE} at this source`;
   for (const line of status.split("\n").filter((row) => row.length > 0)) {
     const entry = changedPath(repo, sides, line);
     for (const id of entry.safeguardIds) declaredInChanged.add(id);
-    const { path } = entry;
-    if (MODEL_VISIBLE.some((pattern) => pattern.test(path))) result.modelVisibleChanged.push(path);
+    const audience = surface === null ? null : surfaceAudience(surface, entry.path);
+    if (audience !== null) result.modelVisibleChanged.push({ path: entry.path, audience });
     result.changed.push(entry);
   }
   addReach(result, declaredInChanged, firedSafeguards(campaign, found.runId));
@@ -413,7 +477,10 @@ export function renderSourceDelta(delta: SourceDelta): string {
     "",
     `## changed files: ${delta.changed.length} (${[...byTop.entries()].map(([top, count]) => `${top} ${count}`).join(", ") || "none"})`,
   );
+  const audienceOf = new Map(delta.modelVisibleChanged.map((row) => [row.path, row.audience]));
   for (const entry of delta.changed) {
+    const audience = audienceOf.get(entry.path);
+    const visible = audience === undefined ? "" : ` · model-visible (${audience})`;
     const ids = entry.safeguardIds.length > 0 ? ` · safeguards {${entry.safeguardIds.join(",")}}` : "";
     const fresh =
       entry.newSafeguardIds !== undefined && entry.newSafeguardIds.length > 0
@@ -423,7 +490,7 @@ export function renderSourceDelta(delta: SourceDelta): string {
       entry.removedSafeguardIds !== undefined && entry.removedSafeguardIds.length > 0
         ? ` · removed {${entry.removedSafeguardIds.join(",")}}`
         : "";
-    lines.push(`${entry.change.padEnd(9)}${entry.path}${ids}${fresh}${gone}`);
+    lines.push(`${entry.change.padEnd(9)}${entry.path}${visible}${ids}${fresh}${gone}`);
   }
   lines.push("", "## safeguard reach of changed calls");
   if (delta.safeguards.length === 0) lines.push("no safeguard call on a changed line");
@@ -441,8 +508,18 @@ export function renderSourceDelta(delta: SourceDelta): string {
       `fired outside changed calls: ${delta.firedElsewhere.map((row) => `${row.id} ×${row.firings}`).join(", ")}`,
     );
   }
-  if (delta.modelVisibleChanged.length > 0) {
-    lines.push("", `MODEL-VISIBLE SURFACE CHANGED (lane 21): ${delta.modelVisibleChanged.join(", ")}`);
-  }
+  lines.push("", ...surfaceLines(delta));
   return `${lines.join("\n")}\n`;
+}
+
+/** Where the model-visible flag came from, and the changed files it names by audience. */
+function surfaceLines(delta: SourceDelta): string[] {
+  const lines = [`prompt surface: ${delta.promptSurface ?? "unread"}`];
+  if (delta.modelVisibleChanged.length === 0) return lines;
+  const byAudience = Map.groupBy(delta.modelVisibleChanged, (row) => row.audience);
+  const counts = [...byAudience.entries()].map(([audience, rows]) => `${audience} ${rows.length}`);
+  lines.push(
+    `MODEL-VISIBLE SURFACE CHANGED (lane 21): ${delta.modelVisibleChanged.length} file(s) the prompt surface declares — ${counts.join(", ")}; each is marked model-visible above`,
+  );
+  return lines;
 }

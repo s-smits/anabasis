@@ -87,7 +87,7 @@ export type ArtifactField = {
   openMapPaths?: string[];
 };
 
-export type DesignRuleConstant = {
+type DesignRuleConstant = {
   name: string;
   value: number | string;
   unit?: string;
@@ -100,7 +100,7 @@ export type DesignRuleConstant = {
 /** A declared set of permitted values with an external citation, alongside DesignRuleConstant.
  *  Without it a kickoff naming a closed value set has nowhere to declare it, and no check can
  *  express which values are legal for each mode. */
-export type DesignRuleSet = {
+type DesignRuleSet = {
   name: string;
   values: Array<string | number>;
   unit?: string;

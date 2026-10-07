@@ -435,7 +435,7 @@ function withheldKey(withheld: string[]): { withheld?: string[] } {
 
 /** Escapes one argument for a `/bin/sh -c` command line. A single quote ends the literal, so the
  *  quote itself is spliced back in outside it — the standard transformation. */
-function shellQuote(value: string): string {
+export function shellQuote(value: string): string {
   return `'${value.replaceAll("'", String.raw`'\''`)}'`;
 }
 

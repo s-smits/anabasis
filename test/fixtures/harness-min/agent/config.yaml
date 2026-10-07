@@ -1,0 +1,7 @@
+# Nothing reads this: the host owns every limit.
+solver:
+  solve_minutes: 1
+  max_turns: 2
+shell:
+  default_seconds: 1
+  max_seconds: 1

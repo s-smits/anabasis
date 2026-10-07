@@ -1,9 +1,12 @@
 #!/usr/bin/env bun
 // Source-delta reach (lane 21, deterministic half). Diff the measured source of this run against
 // the measured source of the previous run in the same lane, list the changed files, and join the
-// safeguard ids declared in changed source files to the run's SAFEGUARDS_LOG: fired, or declared
-// in a changed file without a matching recorded firing (labelled unreached). A changed model-visible text (author prompts,
-// starters, judge framing) is flagged for lane 21.
+// safeguard ids whose `safeguardTriggered` call sits on a changed line to the run's SAFEGUARDS_LOG:
+// fired, or changed without a matching recorded firing (labelled unreached). A call the change
+// left alone is not the change's to reach, however much else its file moved, and an id is `new`
+// only when the previous source declared it nowhere, so a call that moved between files or lines
+// is changed, not new. A changed model-visible text (author prompts, starters, judge framing) is
+// flagged for lane 21.
 //
 // Reads Git objects and recorded campaign text only; never executes reviewed source and prints
 // no source content. A commit the checkout cannot resolve is `source-unresolved`, never guessed.
@@ -16,7 +19,7 @@
 
 import { existsSync, readdirSync } from "#src/meta/filesystem.ts";
 import { basename, dirname, join, resolve } from "#src/meta/path.ts";
-import { gitMaybe, gitText } from "#skills/main/git.ts";
+import { gitMaybe, gitOutput, gitText } from "#skills/main/git.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
 import type { JsonObject, JsonValue } from "#src/meta/json-shape.ts";
 import { readJsonFileOrNull } from "#src/meta/completed-json.ts";
@@ -55,7 +58,22 @@ export interface ChangedPath {
   removedSafeguardIds?: string[];
 }
 
-/** A safeguard declared in a changed file, and whether the run's log recorded it firing. */
+/** One `safeguardTriggered` call in a source text: its id and the lines from the call to the id. */
+interface SafeguardCall {
+  id: string;
+  first: number;
+  last: number;
+}
+
+/** The two sources a delta compares, and every safeguard id each declares in its run source. */
+interface DeltaSides {
+  previous: string;
+  commit: string;
+  before: ReadonlySet<string>;
+  now: ReadonlySet<string>;
+}
+
+/** A safeguard whose call changed, and whether the run's log recorded it firing. */
 export interface SafeguardReach {
   id: string;
   state: string;
@@ -80,6 +98,8 @@ export interface SourceDelta {
 
 const GIT_SHA = /^[0-9a-f]{40}$/;
 const SAFEGUARD_CALL = /safeguardTriggered\s*\(\s*["'`]([^"'`]+)["'`]/g;
+/** A `git diff -U0` hunk header: the removed lines' start and count, then the added lines'. */
+const HUNK = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
 /** A file whose safeguard calls the run can reach. */
 const SAFEGUARD_SOURCE = /\.(?:ts|mts|js|mjs)$/;
 /** A test calls safeguardTriggered with fixture ids and template placeholders that no run fires,
@@ -156,10 +176,72 @@ export function previousCampaign(
   return candidates[0] ?? null;
 }
 
-function safeguardIds(repo: string, commit: string, path: string): Set<string> {
-  const text = gitMaybe(repo, "show", `${commit}:${path}`);
-  if (text === null) return new Set();
-  return new Set([...text.matchAll(SAFEGUARD_CALL)].map((match) => match[1] ?? ""));
+/** A file's exact bytes at a commit, untrimmed so line numbers hold; null when it is not there. */
+function textAt(repo: string, commit: string, path: string): string | null {
+  try {
+    return gitOutput(repo, "show", `${commit}:${path}`);
+  } catch {
+    return null;
+  }
+}
+
+function isRunSource(path: string): boolean {
+  return SAFEGUARD_SOURCE.test(path) && !TEST_SOURCE.test(path);
+}
+
+/** Each safeguard call in a text, with the 1-based lines it spans from its name to its id. */
+function callsIn(text: string | null): SafeguardCall[] {
+  if (text === null) return [];
+  return [...text.matchAll(SAFEGUARD_CALL)].map((match) => {
+    const first = text.slice(0, match.index).split("\n").length;
+    return { id: match[1] ?? "", first, last: first + match[0].split("\n").length - 1 };
+  });
+}
+
+/** Every safeguard id the run source of `commit` declares, in any file. */
+function declaredAt(repo: string, commit: string): Set<string> {
+  const listed = gitMaybe(repo, "grep", "-l", "-F", "safeguardTriggered", commit, "--") ?? "";
+  const paths = listed
+    .split("\n")
+    .map((row) => row.slice(commit.length + 1))
+    .filter(isRunSource);
+  return new Set(paths.flatMap((path) => callsIn(textAt(repo, commit, path)).map((call) => call.id)));
+}
+
+/** The lines `git diff -U0` removes from the previous file and adds to the current one. */
+function changedLines(repo: string, sides: DeltaSides, oldPath: string, path: string) {
+  const diff = gitText(
+    repo,
+    "diff",
+    "--no-ext-diff",
+    "--no-color",
+    "-U0",
+    `${sides.previous}:${oldPath}`,
+    `${sides.commit}:${path}`,
+  );
+  const removed = new Set<number>();
+  const added = new Set<number>();
+  for (const hunk of diff.split("\n").map((row) => HUNK.exec(row))) {
+    if (hunk === null) continue;
+    addLines(removed, hunk[1], hunk[2]);
+    addLines(added, hunk[3], hunk[4]);
+  }
+  return { removed, added };
+}
+
+/** A hunk side's lines, from its start for its count; git omits a count of one. */
+function addLines(into: Set<number>, start = "0", count = "1"): void {
+  for (let line = Number(start); line < Number(start) + Number(count); line += 1) into.add(line);
+}
+
+/** The ids of the calls that meet a changed line; every call when the whole side is new or gone. */
+function touchedIds(calls: readonly SafeguardCall[], changed: ReadonlySet<number> | null): Set<string> {
+  const touched = calls.filter((call) => {
+    if (changed === null) return true;
+    for (let line = call.first; line <= call.last; line += 1) if (changed.has(line)) return true;
+    return false;
+  });
+  return new Set(touched.map((call) => call.id));
 }
 
 export function firedSafeguards(campaign: string, runId: string): Map<string, number> {
@@ -204,20 +286,25 @@ function previousSource(
   };
 }
 
-/** One `--name-status` line as a changed path, with the safeguard ids a run-reachable source
- *  file declares at each side. */
-function changedPath(repo: string, previousCommit: string, commit: string, line: string): ChangedPath {
+/** One `--name-status` line as a changed path, with the safeguard ids whose calls a run-reachable
+ *  source file changed: `new` when the previous source declared the id nowhere, `removed` when the
+ *  current source declares it nowhere. A renamed file is read at its old path on the previous side. */
+function changedPath(repo: string, sides: DeltaSides, line: string): ChangedPath {
   const [code = "", ...paths] = line.split("\t");
   const path = paths.at(-1);
   if (path === undefined) throw new Error(`name-status line ${JSON.stringify(line)} names no path`);
   const change = CHANGE_BY_STATUS.get(code.charAt(0)) ?? "modified";
   const entry: ChangedPath = { path, change, safeguardIds: [] };
-  if (!SAFEGUARD_SOURCE.test(path) || TEST_SOURCE.test(path) || change === "deleted") return entry;
-  const now = safeguardIds(repo, commit, path);
-  const before = change === "added" ? new Set<string>() : safeguardIds(repo, previousCommit, path);
-  entry.safeguardIds = [...now].sort();
-  entry.newSafeguardIds = [...now].filter((id) => !before.has(id)).sort();
-  entry.removedSafeguardIds = [...before].filter((id) => !now.has(id)).sort();
+  if (!isRunSource(path)) return entry;
+  const oldPath = paths[0] ?? path;
+  const before = change === "added" ? null : textAt(repo, sides.previous, oldPath);
+  const now = change === "deleted" ? null : textAt(repo, sides.commit, path);
+  const lines = before === null || now === null ? null : changedLines(repo, sides, oldPath, path);
+  const added = touchedIds(callsIn(now), lines?.added ?? null);
+  const removed = touchedIds(callsIn(before), lines?.removed ?? null);
+  entry.safeguardIds = [...added].sort();
+  entry.newSafeguardIds = [...added].filter((id) => !sides.before.has(id)).sort();
+  entry.removedSafeguardIds = [...removed].filter((id) => !sides.now.has(id)).sort();
   return entry;
 }
 
@@ -238,8 +325,8 @@ function unresolved(
   return previousCommit === commit ? { state: "identical-source" } : null;
 }
 
-/** Each safeguard a changed file declares, fired or unreached in this run, and each one the run
- *  fired that no changed file declares. */
+/** Each safeguard whose call changed, fired or unreached in this run, and each one the run fired
+ *  that no changed call names. */
 function addReach(
   result: SourceDelta,
   declared: ReadonlySet<string>,
@@ -290,8 +377,14 @@ export function buildSourceDelta(named: SourceDeltaInput): SourceDelta {
   if (settled !== null || previousSha === null) return { ...result, ...settled };
   const status = gitText(repo, "diff", "--name-status", `${previousSha}..${commit}`);
   const declaredInChanged = new Set<string>();
+  const sides: DeltaSides = {
+    previous: previousSha,
+    commit,
+    before: declaredAt(repo, previousSha),
+    now: declaredAt(repo, commit),
+  };
   for (const line of status.split("\n").filter((row) => row.length > 0)) {
-    const entry = changedPath(repo, previousSha, commit, line);
+    const entry = changedPath(repo, sides, line);
     for (const id of entry.safeguardIds) declaredInChanged.add(id);
     const { path } = entry;
     if (MODEL_VISIBLE.some((pattern) => pattern.test(path))) result.modelVisibleChanged.push(path);
@@ -332,8 +425,8 @@ export function renderSourceDelta(delta: SourceDelta): string {
         : "";
     lines.push(`${entry.change.padEnd(9)}${entry.path}${ids}${fresh}${gone}`);
   }
-  lines.push("", "## safeguard reach in changed files");
-  if (delta.safeguards.length === 0) lines.push("no safeguard declared in a changed file");
+  lines.push("", "## safeguard reach of changed calls");
+  if (delta.safeguards.length === 0) lines.push("no safeguard call on a changed line");
   for (const row of delta.safeguards) {
     lines.push(`${row.id}: ${row.state}${row.firings > 0 ? ` ×${row.firings}` : ""}`);
   }
@@ -345,7 +438,7 @@ export function renderSourceDelta(delta: SourceDelta): string {
   }
   if (delta.firedElsewhere.length > 0) {
     lines.push(
-      `fired outside changed files: ${delta.firedElsewhere.map((row) => `${row.id} ×${row.firings}`).join(", ")}`,
+      `fired outside changed calls: ${delta.firedElsewhere.map((row) => `${row.id} ×${row.firings}`).join(", ")}`,
     );
   }
   if (delta.modelVisibleChanged.length > 0) {

@@ -83,6 +83,7 @@ function setup(responses: FauxResponseStep[], overrides: Partial<SolveRequest> =
   const log = join(scratch, "log.jsonl");
   const request: SolveRequest = {
     id: `run-${String(runtimeProcess.pid)}-${scratch.slice(-6)}`,
+    condition: "c-fixture",
     task: { taskId: "t-1", family: "fixture", publicInput: { base: 7 }, hidden: { expect: CANARY } },
     contract: CONTRACT,
     harness: join(scratch, "harness"),
@@ -120,6 +121,7 @@ describe("an attempt's ending", () => {
     crash: null,
     broken: null,
     harness: null,
+    cpu: { seconds: 0, unmeasured: 0 },
     turns: [],
     submitted: undefined,
     wallEnded: false,
@@ -239,6 +241,10 @@ describe.skipIf(!darwin)("a solve end to end", () => {
     expect(done?.data.billed).toBeGreaterThan(0);
     expect(done?.data.metered).toBeGreaterThan(0);
     expect(done?.data.harness).toMatch(/^[0-9a-f]{64}$/);
+    expect(done?.data.cpu).toMatchObject({ unmeasured: 0 });
+    const record = (kind: string) => events().find((event) => event.kind === kind)?.data;
+    expect(record("solve.started")?.condition).toBe("c-fixture");
+    expect(record("verdict")?.answer).toEqual({ answer: "42" });
 
     // Exit test 5: the hidden value reaches nothing the solver reads: the prompt, the tool rows,
     // the first turn and every tool result among them, the harness's process, and its home.

@@ -43,6 +43,7 @@ describe("a solve's walled commands", () => {
           dirs,
           toolTree: null,
           limits: { shellDefaultSeconds: 1, shellMaxSeconds: 2 },
+          cpu: { seconds: 0, unmeasured: 0 },
         };
 
         const first = await run(wall, 'echo kept > "$HOME/note" && pwd && cat staged', (work) =>

@@ -67,6 +67,8 @@ import { shellTool } from "./shell.ts";
 export interface SolveRequest {
   /** Names the solve in the log; each attempt is `<id>-<attempt>`. */
   readonly id: string;
+  /** The condition's id (`conditionId`), which every attempt's log names. */
+  readonly condition: string;
   readonly task: Task;
   readonly contract: Contract;
   /** The harness state's directory, v1's format (`harness.ts`). */
@@ -92,6 +94,8 @@ export interface Played {
   readonly broken: string | null;
   /** The harness's digest, null when it did not open. */
   readonly harness: string | null;
+  /** The CPU time of the solve's commands, the solver's and the harness's (`command.ts`). */
+  readonly cpu: { readonly seconds: number; readonly unmeasured: number };
   readonly turns: readonly AssistantMessage[];
   readonly submitted: JsonValue | undefined;
   readonly wallEnded: boolean;
@@ -130,6 +134,7 @@ async function attemptSolve(request: SolveRequest, id: string): Promise<Ending> 
   const started = performance.now();
   append(log, "solve.started", {
     solve: id,
+    condition: request.condition,
     task: request.task.taskId,
     model: priceKey(model),
     effort: request.effort,
@@ -154,6 +159,7 @@ async function attemptSolve(request: SolveRequest, id: string): Promise<Ending> 
     reportedCost: isNumber(reportedCost) ? reportedCost : null,
     responseModels: [...new Set(played.turns.flatMap((turn) => turn.responseModel ?? []))],
     harness: played.harness,
+    cpu: played.cpu,
     homeBytes: played.homeBytes,
     seconds: (performance.now() - started) / 1000,
     load: loadavg(),
@@ -189,6 +195,7 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
   let crash: string | null = null;
   let broken: string | null = null;
   let digest: string | null = null;
+  const cpu = { seconds: 0, unmeasured: 0 };
   try {
     release = await mountDiskCap({ root: dirs.root, bytes: limits.diskBytes });
     for (const dir of [dirs.home, dirs.runs, dirs.host]) mkdirSync(dir, { recursive: true });
@@ -200,7 +207,7 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
     const files = seedHome(dirs.home, request.task, request.resources);
     const harness = await openHarness(request.harness).catch(brokenHarness);
     digest = harness.digest;
-    const commandWall: CommandWall = { base, dirs, toolTree: harness.toolTree, limits };
+    const commandWall: CommandWall = { base, dirs, toolTree: harness.toolTree, limits, cpu };
     const tools = await solverTools(request, harness, commandWall, desk, files).catch(brokenHarness);
     const prompt = systemPrompt(
       limits.wallSeconds,
@@ -242,6 +249,7 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
     crash,
     broken,
     harness: digest,
+    cpu,
     turns,
     submitted: desk.submitted,
     wallEnded: wall.signal.aborted,
@@ -318,7 +326,8 @@ function traceText(content: readonly { type: string; text?: string }[]): string 
 }
 
 /** The ending of what was played. A submitted answer is checked against the contract's format by
- *  the host before any check reads it, then judged; a verdict is logged either way. */
+ *  the host before any check reads it, then judged; a verdict is logged either way, with the answer,
+ *  so that a fail can be read and regraded from the log alone. */
 export async function judge(request: SolveRequest, id: string, played: Played): Promise<Ending> {
   if (played.crash !== null) return { outcome: "non-result", kind: "sandbox-crash", reason: played.crash };
   if (request.kill?.aborted === true) {
@@ -336,7 +345,12 @@ export async function judge(request: SolveRequest, id: string, played: Played): 
     const verdict = fault === null ? await request.verify(request.task, played.submitted) : null;
     // SAFETY: a verdict is strings alone.
     const logged = (verdict ?? { kind: "fail", fault }) as unknown as JsonObject;
-    append(request.log, "verdict", { solve: id, task: request.task.taskId, ...logged });
+    append(request.log, "verdict", {
+      solve: id,
+      task: request.task.taskId,
+      answer: played.submitted,
+      ...logged,
+    });
     if (verdict?.kind === "non-result") {
       return { outcome: "non-result", kind: "verifier", reason: verdict.reason };
     }

@@ -10,19 +10,27 @@
  *   never read back, and `runs`, where each command gets a fresh `run-*` with `work`, its working
  *   directory, and `tmp`, its `TMPDIR`, both removed when it ends. That is v1's shape
  *   (built-bash.ts:293-298), with the runs moved onto the cap.
- * - `host`, beside it and outside the cap, which no command can read: the staged profiles, and the
- *   model backend's own state, such as Claude Code's configuration and transcripts.
+ * - `host`, beside it and outside the cap, which no command can read: the staged profiles, the
+ *   commands' CPU records, and the model backend's own state, such as Claude Code's configuration
+ *   and transcripts.
+ *
+ * Each command's CPU time is its waited-for descendants' user and system time, as the host's shell
+ * around the wall reads it with `times` once the walled launch exits. A command killed at its
+ * timeout or by an abort takes that shell with it, so it is counted as unmeasured rather than as
+ * zero, and a process that outlived its command is in neither. v1 read CPU per run, not per solve,
+ * from `rusage.py`.
  */
 import {
   createLocalBashOperations,
   type BashOperations,
 } from "../../vendor/pi-coding-agent/core/tools/bash.ts";
 import type { Limits } from "../kernel/condition.ts";
-import { mkdirSync, mkdtempSync, rmSync } from "../meta/filesystem.ts";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "../meta/filesystem.ts";
 import { basename, join } from "../meta/path.ts";
 import {
   BUILT_COMMAND_SCRATCH_ROOT,
   commandIsolationPolicy,
+  shellQuote,
   stageCommandIsolation,
 } from "../verify/solve-command-isolation.ts";
 import type { SolveIsolationPolicy } from "../verify/solve-sandbox.ts";
@@ -46,6 +54,8 @@ export interface CommandWall {
   readonly toolTree: string | null;
   /** The condition's; every command is held to them here, whoever launches it. */
   readonly limits: ShellLimits;
+  /** The CPU seconds of the solve's commands so far, and how many ended unmeasured. */
+  readonly cpu: { seconds: number; unmeasured: number };
 }
 
 /** A command's own two directories, for a caller that stages input files before it runs. */
@@ -91,6 +101,7 @@ export async function runWalled(
   mkdirSync(work);
   mkdirSync(temp);
   const profile = join(wall.dirs.host, `${basename(run)}.sb`);
+  const times = join(wall.dirs.host, `${basename(run)}.times`);
   try {
     options.stage?.({ work, temp });
     const policy = commandIsolationPolicy(wall.base, {
@@ -99,16 +110,34 @@ export async function runWalled(
       temp,
       toolTree: wall.toolTree,
     });
-    return await SHELL.exec(stageCommandIsolation(policy, profile, command), work, {
+    const staged = stageCommandIsolation(policy, profile, command);
+    return await SHELL.exec(`(\n${staged}\n)\ns=$?\ntimes > ${shellQuote(times)}\nexit $s`, work, {
       onData: options.onData,
       signal: options.signal,
       timeout: shellSeconds(options.timeout, wall.limits).seconds,
       env: policy.environment,
     });
   } finally {
+    const seconds = childSeconds(times);
+    if (seconds === null) wall.cpu.unmeasured++;
+    else wall.cpu.seconds += seconds;
     rmSync(run, { recursive: true, force: true });
     rmSync(profile, { force: true });
+    rmSync(times, { force: true });
   }
+}
+
+/** The children's user and system seconds from a `times` record, its second line; null when the
+ *  shell that writes it did not live to. */
+function childSeconds(path: string): number | null {
+  let text: string;
+  try {
+    text = readFileSync(path, "utf8");
+  } catch {
+    return null;
+  }
+  const spans = [...text.matchAll(/(\d+)m([\d.]+)s/g)].map(([, m, s]) => Number(m) * 60 + Number(s));
+  return spans.length === 4 ? (spans[2] ?? 0) + (spans[3] ?? 0) : null;
 }
 
 /** pi's bash tool on the wall. The tool's own working directory and environment are the host's, so

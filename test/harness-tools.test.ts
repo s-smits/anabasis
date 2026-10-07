@@ -40,7 +40,13 @@ async function withWall(body: (wall: CommandWall) => Promise<void>, toolTree: st
     for (const dir of [dirs.home, dirs.runs, dirs.host]) mkdirSync(dir, { recursive: true });
     const base = solveIsolationPolicy({ repoRoot, cap: { root: dirs.root, bytes: CAP_BYTES } });
     if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);
-    await body({ base, dirs, toolTree, limits: { shellDefaultSeconds: 60, shellMaxSeconds: 60 } });
+    await body({
+      base,
+      dirs,
+      toolTree,
+      limits: { shellDefaultSeconds: 60, shellMaxSeconds: 60 },
+      cpu: { seconds: 0, unmeasured: 0 },
+    });
   } finally {
     await release();
     rmSync(dirs.host, { recursive: true, force: true });

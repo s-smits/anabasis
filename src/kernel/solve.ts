@@ -2,8 +2,10 @@
  * A solve's ending: every solve ends in exactly one, and the log records which.
  *
  * A pass is an answer the verifier accepted. A fail is any other ending the solver owns, by kind:
- * the verifier rejected the submitted answer, the host's wall ended the solve, or the solve stopped
- * without submitting one, at the turn cap or by giving up. On 7 October every solver checked its
+ * the verifier rejected the submitted answer, the host's wall ended the solve, the model's context
+ * ran out, or the solve stopped without submitting one, at the turn cap or by giving up. A context
+ * that outgrows the model is the solver's own ending, never the provider's, though the provider
+ * reports it as an error. On 7 October every solver checked its
  * answer with the grading engine before submitting, so rejected answers are expected to be the rare
  * kind, and a report that counts fails without their kinds would hide where supply comes from.
  *
@@ -13,9 +15,9 @@
  * backoff. One from the verifier stops the run, since a broken verifier makes one of every check:
  * a relative tree path once turned every verdict of a regrade into one.
  */
-type Ending =
+export type Ending =
   | { readonly outcome: "pass" }
-  | { readonly outcome: "fail"; readonly kind: "rejected" | "wall-ended" | "no-answer" }
+  | { readonly outcome: "fail"; readonly kind: "rejected" | "wall-ended" | "context-ended" | "no-answer" }
   | {
       readonly outcome: "non-result";
       readonly kind: "refusal" | "sandbox-crash" | "killed" | "moved-files" | "verifier";

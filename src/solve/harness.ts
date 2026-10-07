@@ -26,6 +26,7 @@ import { capturedExecPath } from "../meta/process.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { shellQuote } from "../verify/solve-command-isolation.ts";
 import { type CommandWall, runWalled } from "./command.ts";
+import { type PublicTask, publicView } from "./prompt.ts";
 
 export type ToolKind = "reader" | "advisor" | "artifact-writer";
 
@@ -46,12 +47,6 @@ export interface Harness {
 export interface DomainTool {
   readonly kind: ToolKind;
   readonly tool: AgentTool;
-}
-
-interface PublicTask {
-  readonly taskId: string;
-  readonly family: string;
-  readonly publicInput: JsonValue;
 }
 
 /** A tool's result as the shim's `call` returns it (v1's `Evidence`, define-tool.ts:13). */
@@ -175,8 +170,9 @@ export async function harnessTools(
   task: PublicTask,
   wall: CommandWall,
 ): Promise<DomainTool[]> {
+  const view = publicView(task);
   const call = <T>(name: string | null, params: unknown, signal?: AbortSignal) =>
-    callHarness<T>({ harness, wall, input: { task, name, params }, signal });
+    callHarness<T>({ harness, wall, input: { task: view, name, params }, signal });
   const { tools: rows } = await call<{ tools: ToolRow[] }>(null, null);
   const actual = rows.map(({ name }) => name).sort();
   const expected = [...harness.kinds.keys()].sort();

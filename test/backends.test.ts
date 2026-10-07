@@ -8,7 +8,9 @@ import { join } from "../src/meta/path.ts";
 const HOUR_S = 60 * 60;
 const home = mkdtempSync(join(tmpdir(), "ana-backends-"));
 const previous = Bun.env.CODEX_HOME;
-const options: BackendOptions = { claude: { executable: claudeExecutable(), compaction: "off" } };
+const options: BackendOptions = {
+  claude: { executable: claudeExecutable(), compaction: "off", home: tmpdir() },
+};
 
 function login(expiresInSeconds: number): string {
   const claims = { exp: Math.floor(Date.now() / 1000) + expiresInSeconds, "https://api.openai.com/auth": {} };

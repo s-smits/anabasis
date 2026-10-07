@@ -25,9 +25,11 @@ import { capturedJsonParse, capturedJsonStringify } from "../meta/json-runtime.t
 import { asRecord, type JsonObject, type JsonValue, isString } from "../meta/json-shape.ts";
 import { foldsEvent, taskStates } from "./task.ts";
 
-/** The plan's events, and `anchor.drawn`, which is not among them: it names the task versions the
+/** The plan's events, and three that are not among them. `anchor.drawn` names the task versions the
  *  anchor drew, which are never released, and a task may be released straight from held only once
- *  it is drawn, so the draw is an event the task states can see. */
+ *  it is drawn, so the draw is an event the task states can see. `solve.turn` and `solve.call` are
+ *  a solve's trace, one per model turn and one per tool call, so the trace is in the log rather than
+ *  in a file beside it. */
 export const EVENT_KINDS = [
   "world.accepted",
   "contract.frozen",
@@ -36,6 +38,8 @@ export const EVENT_KINDS = [
   "task.gate",
   "task.state",
   "solve.started",
+  "solve.turn",
+  "solve.call",
   "solve.finished",
   "verdict",
   "referee.finding",

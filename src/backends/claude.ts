@@ -141,6 +141,9 @@ export interface ClaudeOptions {
   /** The Claude Code binary the query runs, as `claudeExecutable()` resolved it on the host. */
   readonly executable: string;
   readonly compaction: ClaudeCompaction;
+  /** Claude Code's HOME, which holds its configuration and transcripts: one per solve, outside the
+   *  command wall, so no command reads them and no host Claude state reaches the query. */
+  readonly home: string;
 }
 
 /**
@@ -254,14 +257,7 @@ async function runTurn(
     session = open(claude, model, context, options, key);
     await session.prompt.push(userMessage(promptText(context)));
   }
-  const done = new AbortController();
-  const live = session;
-  options.signal?.addEventListener("abort", () => close(key, live), { once: true, signal: done.signal });
-  try {
-    return await readTurn(key, live, model, turn);
-  } finally {
-    done.abort();
-  }
+  return await readTurn(key, session, model, turn);
 }
 
 function open(
@@ -315,11 +311,17 @@ function open(
       persistSession: false,
       includePartialMessages: true,
       abortController: abort,
-      env: claudeEnv(claude.compaction, options.apiKey),
+      env: claudeEnv(claude, options.apiKey),
     },
   });
   const session: Session = { query: live, prompt, abort, parked, early };
   sessions.set(key, session);
+  // The signal is the solve's, the same on every turn, so its abort ends the query whether it comes
+  // inside a turn, at the wall, or after the loop stopped with the query still open: on a submit,
+  // which ends pi's loop while Claude Code waits on the result, or at the turn cap.
+  options.signal?.addEventListener("abort", () => sessions.get(key) === session && close(key, session), {
+    once: true,
+  });
   return session;
 }
 
@@ -331,13 +333,11 @@ function effort(level: ThinkingLevel | undefined): EffortLevel | undefined {
 }
 
 /**
- * The whole environment Claude Code runs in. The solve worker holds only HOME, a home of the solve's
- * own, PATH and TMPDIR; nothing else of the host's reaches the CLI, so no host variable can move its
- * compaction, its account or its MCP servers.
+ * The whole environment Claude Code runs in: HOME, the solve's own, PATH and TMPDIR; nothing else of
+ * the host's reaches the CLI, so no host variable can move its compaction, its account or its MCP
+ * servers.
  */
-function claudeEnv(compaction: ClaudeCompaction, token: string | undefined): Record<string, string> {
-  const home = Bun.env.HOME;
-  if (home === undefined) throw new Error("Claude Code needs a HOME to keep its configuration under");
+function claudeEnv({ compaction, home }: ClaudeOptions, token: string | undefined): Record<string, string> {
   if (token === undefined) throw new Error("the Claude backend needs a Claude Code OAuth token");
   // One configuration directory per solve home, as v1 kept one per worker (`pi-built-child.ts:178-183`),
   // so no host Claude state is read. It is not `.claude`, so a run on the host's own HOME still reads none.

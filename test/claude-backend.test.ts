@@ -3,7 +3,7 @@
 // served its tools as `mcp__custom-tools__*`; the replay renames them to this backend's `mcp__pi__*`.
 // The real Agent SDK runs; the binary it launches is test/fixtures/fake-claude-cli.ts, passed the way
 // the host passes the real one, which plays the stream back and records what the SDK launched it with.
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test";
+import { afterAll, beforeEach, describe, expect, it } from "bun:test";
 import {
   type Api,
   type AssistantMessage,
@@ -44,23 +44,17 @@ const home = mkdtempSync(join(tmpdir(), "ana-claude-backend-"));
 const executable = join(home, "claude");
 const fake = join(import.meta.dir, "fixtures", "fake-claude-cli.ts");
 writeFileSync(executable, `#!/bin/sh\nexec '${runtimeProcess.execPath}' '${fake}' "$@"\n`, { mode: 0o755 });
-const previousHome = Bun.env.HOME;
-const sweep = claudeProvider({ executable, compaction: { window: SWEEP_COMPACT_WINDOW } });
+const sweep = claudeProvider({ executable, compaction: { window: SWEEP_COMPACT_WINDOW }, home });
 // The model the fixtures were recorded on, so its list prices are the ones Claude Code billed.
 const haiku = sweep.getModels().find((entry) => entry.id === "claude-haiku-4-5");
 if (haiku === undefined) throw new Error("pi's Anthropic catalog has no claude-haiku-4-5");
 const recorded: Model<Api> = haiku;
-
-beforeAll(() => {
-  Bun.env.HOME = home;
-});
 
 beforeEach(() => {
   writeFileSync(join(home, "launch.jsonl"), "");
 });
 
 afterAll(() => {
-  Bun.env.HOME = previousHome;
   rmSync(home, { recursive: true, force: true });
 });
 
@@ -93,7 +87,7 @@ function turn(
   reasoning?: ThinkingLevel,
   compaction?: ClaudeCompaction,
 ): Promise<AssistantMessage> {
-  const provider = compaction === undefined ? sweep : claudeProvider({ executable, compaction });
+  const provider = compaction === undefined ? sweep : claudeProvider({ executable, compaction, home });
   const context = normalizeContext({ systemPrompt: "You are a solver.", messages, tools: [read] });
   const options = { sessionId: "solve-1", apiKey: "token", ...keyIfDefined("reasoning", reasoning) };
   return provider.streamSimple(recorded, context, options).result();
@@ -178,7 +172,9 @@ describe("the Claude backend", () => {
     const { env } = launched();
     expect(env.DISABLE_AUTO_COMPACT).toBe("1");
     expect(env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBeUndefined();
-    expect(() => claudeProvider({ executable, compaction: { window: 50_000 } })).toThrow("100000 to 1000000");
+    expect(() => claudeProvider({ executable, compaction: { window: 50_000 }, home })).toThrow(
+      "100000 to 1000000",
+    );
   });
 
   it("bills the turns' token classes at what Claude Code reported the query cost", async () => {
@@ -204,6 +200,24 @@ describe("the Claude backend", () => {
     const refused = await turn([opening]);
     expect(refused.stopReason).toBe("error");
     expect(refused.errorMessage).toContain("refusal");
+  });
+
+  // A submit ends pi's loop while Claude Code still waits on the call's result; the solve's abort,
+  // not a later turn, is what ends that query.
+  it("ends a query left open when the solve's signal aborts between turns", async () => {
+    replay("parallel-tools.jsonl");
+    const solve = new AbortController();
+    const context = (messages: Message[]) =>
+      normalizeContext({ systemPrompt: "You are a solver.", messages, tools: [read] });
+    const options = { sessionId: "solve-open", apiKey: "token", signal: solve.signal };
+    const first = await sweep.streamSimple(recorded, context([opening]), options).result();
+    expect(first.stopReason).toBe("toolUse");
+    solve.abort();
+    const next = { ...options, signal: new AbortController().signal };
+    const after = await sweep
+      .streamSimple(recorded, context([opening, first, ...answered(first)]), next)
+      .result();
+    expect(after.errorMessage).toContain("no live Claude Code query");
   });
 
   it("refuses a second prompt once Claude Code holds the conversation", async () => {

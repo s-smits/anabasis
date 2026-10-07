@@ -16,6 +16,7 @@ import type { Verdict } from "#src/kernel/verify.ts";
 import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, parseJsonAs } from "#src/meta/json-runtime.ts";
 import type { JsonValue } from "#src/meta/json-shape.ts";
+import { homedir } from "#src/meta/os.ts";
 import { join } from "#src/meta/path.ts";
 
 /** The fields of v1's `cycle-solve/v1` result read here. */
@@ -148,7 +149,7 @@ export function storedAnswer(row: Row): JsonValue | undefined {
  */
 function rowPrices(rows: readonly Row[]): PriceTable {
   const models = backends({
-    claude: { executable: claudeExecutable(), compaction: { window: SWEEP_COMPACT_WINDOW } },
+    claude: { executable: claudeExecutable(), compaction: { window: SWEEP_COMPACT_WINDOW }, home: homedir() },
   });
   const named = new Map(rows.map((row) => [`${row.provider}/${row.model}`, row]));
   return freezePrices(

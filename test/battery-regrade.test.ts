@@ -145,12 +145,14 @@ function flubbing(flub: ReadonlySet<string>): (runId: string, taskId: string) =>
   return (_runId, taskId) => (flub.has(taskId) ? "flub" : "right");
 }
 
-/** Two rounds, the solver answering each battery's task as `answer` says and the second round
- *  applying `second`. Returns each battery's solver calls, its passes and its regrade fact. */
+/** The Builder's two rounds, the solver answering each battery's task as `answer` says and the
+ *  second round applying `second`, with `remeasures` rounds more for the controller's remeasures
+ *  between or after them. Returns each battery's solver calls, its passes and its regrade fact. */
 async function twoRounds(
   answer: (runId: string, taskId: string) => Answer,
   second: SecondRound = {},
   first: FirstBattery = {},
+  remeasures = 0,
 ) {
   const root = scratchRepo();
   const calls = new Map<string, number>();
@@ -232,7 +234,7 @@ async function twoRounds(
       "--dcg",
       "false",
       "--max-iterations",
-      "2",
+      String(2 + remeasures),
       "--max-builder-turns",
       "2",
       "--expected-tasks",
@@ -442,6 +444,30 @@ describe("a battery the environment cut short is remeasured before any rebuild",
       passes: [true, true, true, true, true, true],
       regrade: { of: "rg", reused: 4, changedPasses: 0 },
     });
+  }, 180_000);
+
+  it("re-solves a repeat's two provider non-results and regrades the other four", async () => {
+    // The repeat's battery carries its own experiment on the bytes the first battery measured, and
+    // the remeasure carries the one it measures again: a repeat's, which regrades, since the
+    // controller chose the cases to solve.
+    const repeatCensored = (runId: string, taskId: string): Answer =>
+      runId === "rg-i02" && (taskId === "t4" || taskId === "t5") ? "provider" : "right";
+    const { outcome, batteries, readout } = await twoRounds(repeatCensored, { bare: true }, {}, 1);
+    expect(outcome.rounds.map((row) => [row.move, row.build])).toEqual([
+      ["build", "adopted"],
+      ["rebuild", "candidate"],
+      ["measure", "reused"],
+    ]);
+    expect(batteries.map((row) => [row.solves, row.regrade])).toEqual([
+      [TASKS, null],
+      [TASKS, null],
+      [2, { of: "rg-i02", reused: 4, changedPasses: 0 }],
+    ]);
+    expect(readout?.rows.map((row) => [row.runId, row.operation])).toEqual([
+      ["rg-i03", "repeat"],
+      ["rg-i02", "repeat"],
+      ["rg", "new-baseline"],
+    ]);
   }, 180_000);
 
   it("rebuilds when the censored battery solved under another Built effort", async () => {

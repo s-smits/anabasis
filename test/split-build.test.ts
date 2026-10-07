@@ -2,21 +2,28 @@
  * A split build: an answer agent writes the correctness model, the controller hands its public
  * projection to a Harness Builder, and the Harness Builder's submit runs every gate. The wall
  * between the two halves is candidate-isolation-guard.test.ts; this file proves the prompts, the
- * answer pass, the sequencing and that no correctness-model finding reaches the Harness Builder.
- * The sessions are scripted, so these prove routing and recording, not authoring.
+ * answer pass, the sequencing and that no correctness-model finding reaches the Harness Builder,
+ * and that each side opens through the production entry gate against its own roster, both sides
+ * checked before the first answer pass. The sessions are scripted, so these prove routing and
+ * recording, not authoring.
  */
 import { afterAll, describe, expect, it } from "bun:test";
 import { answerSystemPrompt, harnessSystemPrompt, wallHours } from "../src/author/split-prompts.ts";
 import { builderSystemPrompt } from "../src/author/builder-start-prompt.ts";
 import { runBuilderSession } from "../src/author/builder-session.ts";
+import type { CampaignFeedback } from "../src/author/campaign-types.ts";
 import type { PiTool } from "../src/backends/pi-session.ts";
 import { controllerValidatedFindings } from "../src/correctness-bundle/brief.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
+import type { ResolvedSlots } from "../src/backends/resolve.ts";
 import { answerWallMs } from "../src/run/builder-backend.ts";
 import { runBuilderCampaign } from "../src/run/builder-campaign.ts";
+import { composeBuilderRuntime } from "../src/run/builder-runtime.ts";
+import type { AskManifest } from "../src/run/ask-manifest.ts";
 import { FRESH_BUILD, namedTool, replyText } from "./helpers/builder-campaign.ts";
-import { scriptedSession, toolDouble } from "./helpers/doubles.ts";
+import { mountRepo } from "./helpers/builder-mount-repo.ts";
+import { double, scriptedSession, toolDouble } from "./helpers/doubles.ts";
 import {
   MATCHING_ACCEPTS,
   MATCHING_BRIEF,
@@ -35,6 +42,15 @@ const HOUR = 3_600_000;
 
 /** A detail only the correctness model holds, as a census row would quote it. */
 const PROTECTED_DETAIL = "reference member load 41.7 kN at node 3";
+
+/** Every tool a side registers, as the production composition mounts it and the campaign adds the
+ *  round's own: the Harness Builder submits and neither researches nor runs the workshop, the
+ *  answer agent researches and never submits, and neither side has a reset. */
+const ROSTERS = {
+  harness: "bash context correctness_check edit find grep harness_inspect harness_trial ls read submit write",
+  answer:
+    "bash context correctness_check edit find grep harness_inspect harness_trial ls public_source read verifier_workshop write",
+};
 
 type Role = "answer" | "harness";
 type Turn = { pass: number; prompt: string; tools: readonly PiTool[] };
@@ -164,11 +180,31 @@ describe("an answer pass", () => {
   });
 });
 
+/** The gate that refuses a starter correctness model once, as a census row would. */
+function refusesOnce() {
+  let calls = 0;
+  const gates = async (): Promise<CampaignFeedback[]> =>
+    calls++ === 0
+      ? [
+          {
+            owner: "correctness-model/evaluator.ts",
+            severity: "blocking",
+            claim: "the reference solve fails a check",
+            evidence: "census.json",
+            findings: controllerValidatedFindings([
+              { code: "reference-solve-failed", path: "census.json", detail: PROTECTED_DETAIL },
+            ]),
+          },
+        ]
+      : [];
+  return { gates, calls: () => calls };
+}
+
 describe("a split build's round", () => {
   it("hands the Harness Builder the projection, and hands a correctness-model refusal back unread", async () => {
     const campaignDir = scratchDir("ana-split-round-");
     const workspace = join(campaignDir, "workspace");
-    let gateCalls = 0;
+    const gate = refusesOnce();
     const replies: string[] = [];
     const { open, turns } = splitSessions({
       answer: ({ pass }) => {
@@ -188,20 +224,7 @@ describe("a split build's round", () => {
         answer: { tools: [], wallMs: HOUR },
         toolsProbes: () => ({}),
         waitMs: async () => {},
-        gates: async () =>
-          gateCalls++ === 0
-            ? [
-                {
-                  owner: "correctness-model/evaluator.ts",
-                  severity: "blocking",
-                  claim: "the reference solve fails a check",
-                  evidence: "census.json",
-                  findings: controllerValidatedFindings([
-                    { code: "reference-solve-failed", path: "census.json", detail: PROTECTED_DETAIL },
-                  ]),
-                },
-              ]
-            : [],
+        gates: gate.gates,
         open,
       },
     );
@@ -228,7 +251,7 @@ describe("a split build's round", () => {
     expect(resubmit?.prompt).toContain(
       "The answer agent revised the correctness model after your last submit",
     );
-    expect(gateCalls).toBe(2);
+    expect(gate.calls()).toBe(2);
   });
 
   it("ends as stalled when the correctness model never validates within its passes", async () => {
@@ -246,5 +269,95 @@ describe("a split build's round", () => {
     );
     expect(turns.map((turn) => turn.role)).toEqual(["answer", "answer", "answer"]);
     expect(outcome).toMatchObject({ buildAdmissible: false, clause: "authoring-stalled" });
+  });
+});
+
+/** The production split composition, mount and session recorder, on a minimal repository. */
+function productionSplit(label: string) {
+  const { repoRoot, campaignDir } = mountRepo(scratchDir("ana-split-production-"), label);
+  const slot = { kind: "openrouter", model: "vendor/model", reasoningEffort: "high", source: "default" };
+  const runtime = composeBuilderRuntime(double<AskManifest>({ slug: "hw" }), {}, repoRoot, campaignDir, {
+    slots: double<ResolvedSlots>({
+      slug: "hw",
+      builder: slot,
+      built: slot,
+      review: slot,
+      operatorConfig: null,
+    }),
+    builder: { kind: "openrouter", model: "vendor/model", reasoningEffort: "high", answerWallMs: HOUR },
+  });
+  const answer = runtime.answer;
+  if (answer === undefined) throw new Error("a split condition composed no answer agent");
+  return { campaignDir, workspace: join(campaignDir, "workspace"), runtime, answer };
+}
+
+const evidenceAt = (campaignDir: string, file: string) =>
+  JSON.parse(readFileSync(join(campaignDir, file), "utf8"));
+
+describe("a split round on the production composition", () => {
+  it("opens each side through the entry gate against its own roster and leaves each side's evidence", async () => {
+    const { campaignDir, workspace, runtime, answer } = productionSplit("round");
+    const gate = refusesOnce();
+    const { open, turns } = splitSessions({
+      answer: ({ pass }) => {
+        if (pass === 2) writeAnswerHalf(workspace);
+        if (pass === 3) writeFileSync(join(workspace, "correctness-model/NOTES.md"), "revised\n");
+      },
+      harness: async ({ tools }) => {
+        writeHarnessHalf(workspace);
+        await replyText(namedTool(tools, "submit"), "submit");
+      },
+    });
+    const outcome = await runBuilderCampaign(
+      { campaignDir, ...FRESH_BUILD },
+      {
+        tools: runtime.tools,
+        answer,
+        recordSession: runtime.recordSession,
+        toolsProbes: () => ({}),
+        waitMs: async () => {},
+        gates: gate.gates,
+        open,
+      },
+    );
+    expect(outcome.buildAdmissible).toBe(true);
+    expect(turns.map((turn) => turn.role)).toEqual(["answer", "answer", "harness", "answer", "harness"]);
+    for (const turn of turns) expect(names(turn.tools).sort().join(" ")).toBe(ROSTERS[turn.role]);
+    const harness = evidenceAt(campaignDir, "builder-session.json");
+    const answered = evidenceAt(campaignDir, "builder-session-answer.json");
+    expect(harness.contract.catalogued.join(" ")).toBe(ROSTERS.harness);
+    expect(harness.contract.registered).toEqual(harness.contract.catalogued);
+    expect(answered.contract.catalogued.join(" ")).toBe(ROSTERS.answer);
+    expect(answered.contract.registered).toEqual(answered.contract.catalogued);
+    // Each side records the wall its own file tools run behind.
+    const filePolicy = (evidence: { isolations: Array<{ policyDigest: string; capabilities: string[] }> }) =>
+      evidence.isolations.find((row) => row.capabilities.includes("write"))?.policyDigest;
+    expect(filePolicy(answered)).toMatch(/^[0-9a-f]{64}$/);
+    expect(filePolicy(answered)).not.toBe(filePolicy(harness));
+    expect(answered.framingDigest).not.toBe(harness.framingDigest);
+  });
+
+  // Seconds before the answer pass, not hours after it.
+  it.each([
+    ["harness", "the Harness Builder's roster"],
+    ["answer", "the answer agent's roster"],
+  ] as const)("refuses %s drift before any session opens (%s)", async (side) => {
+    const { campaignDir, runtime, answer } = productionSplit(`drift-${side}`);
+    const { open, turns } = splitSessions({ answer: () => {}, harness: () => {} });
+    const drop = (tools: typeof runtime.tools) => tools.filter((tool) => tool.name !== "grep");
+    const run = runBuilderCampaign(
+      { campaignDir, ...FRESH_BUILD },
+      {
+        tools: side === "harness" ? drop(runtime.tools) : runtime.tools,
+        answer: side === "answer" ? { ...answer, tools: drop(answer.tools) } : answer,
+        recordSession: runtime.recordSession,
+        toolsProbes: () => ({}),
+        waitMs: async () => {},
+        gates: refusesOnce().gates,
+        open,
+      },
+    );
+    await expect(run).rejects.toThrow(new RegExp(`^Builder entry gate \\(${side}\\): `));
+    expect(turns).toEqual([]);
   });
 });

@@ -630,7 +630,12 @@ const openBuilder = builderSessionOpener(builderSlot(condition, REPO_ROOT), work
 /** The captured system bytes replace the workspace card, and the session evidence names them. */
 function openSegmentSession() {
   if (systemPrompt !== null && mount !== null) {
-    writeBuilderSessionEvidence({ ...mount.evidenceInput, tools: mount.tools, framing: systemPrompt.text });
+    writeBuilderSessionEvidence({
+      ...mount.evidenceInput,
+      role: "whole",
+      tools: mount.tools,
+      framing: systemPrompt.text,
+    });
   }
   return openBuilder(tools, systemPrompt?.text ?? BUILDER_WORKSPACE_CARD);
 }

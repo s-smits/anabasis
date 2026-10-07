@@ -10,7 +10,12 @@ import { piBuiltReadAllowRoots, piBuiltSolver, resolvePiBuiltRuntime } from "../
 import type { PiTool } from "../backends/pi-session.ts";
 import type { BackendKind, ResolvedSlots } from "../backends/resolve.ts";
 import { openPathRecord } from "../builder/path-record.ts";
-import { deriveCandidateIsolation, policyReadGrant } from "../builder/candidate-isolation.ts";
+import type { BuilderRole } from "../builder/builder-tool-interface.ts";
+import {
+  type CandidateAccessPolicy,
+  deriveCandidateIsolation,
+  policyReadGrant,
+} from "../builder/candidate-isolation.ts";
 import { writeBuilderSessionEvidence } from "../builder/session-evidence.ts";
 import { createBuilderTools } from "../builder/tools.ts";
 import { createVerifierWorkshopTool, createPublicSourceTool } from "../builder/verifier-workshop-tool.ts";
@@ -123,24 +128,31 @@ export function campaignBuilderMount(
       workDir: workspace,
       ...keyIfDefined("safeguardContext", safeguardContext),
     });
-  const fileTools = filesUnder(authorPolicy);
-  const tools: PiTool[] = split ? fileTools : [...fileTools, ...custom];
-  const answerTools = split
-    ? [...filesUnder(deriveCandidateIsolation(binding, "answer")), ...custom]
-    : undefined;
-  const evidenceInput = {
-    epochDir: campaignDir,
-    policy: authorPolicy,
-    capabilityPolicies: {
-      public_source: [workshopPolicy],
-      verifier_workshop: [workshopPolicy, exportBinding.policy],
-      ...Object.fromEntries(fileTools.map(({ name }) => [name, [authorPolicy]])),
-    },
-    record,
-    framing: BUILDER_WORKSPACE_CARD,
+  /** One side's mount: its file tools under its own policy beside `beside`, and the session
+   *  evidence it records, each capability against the policy it uses. */
+  const sideUnder = (policy: CandidateAccessPolicy, beside: readonly PiTool[]) => {
+    const files = filesUnder(policy);
+    const evidenceInput = {
+      epochDir: campaignDir,
+      policy,
+      capabilityPolicies: {
+        public_source: [workshopPolicy],
+        verifier_workshop: [workshopPolicy, exportBinding.policy],
+        ...Object.fromEntries(files.map(({ name }) => [name, [policy]])),
+      },
+      record,
+      framing: BUILDER_WORKSPACE_CARD,
+    };
+    return { tools: [...files, ...beside], evidenceInput };
   };
-  writeBuilderSessionEvidence({ ...evidenceInput, tools });
-  return { tools, evidenceInput, authorPolicy, ...keyIfDefined("answerTools", answerTools) };
+  const author = sideUnder(authorPolicy, split ? [] : custom);
+  writeBuilderSessionEvidence({
+    ...author.evidenceInput,
+    role: split ? "harness" : "whole",
+    tools: author.tools,
+  });
+  const answer = split ? sideUnder(deriveCandidateIsolation(binding, "answer"), custom) : undefined;
+  return { ...author, ...keyIfDefined("answer", answer) };
 }
 
 /** The production Builder session composition — mount, roster, search capability, trial wall and
@@ -170,12 +182,16 @@ export function composeBuilderRuntime(
   const workspace = join(campaignDir, WORKSPACE_DIR);
   const trialIsolation = builtSolveIsolation(repoRoot, piBuiltReadAllowRoots(slots));
   const slot = builderSlot(builder, repoRoot);
-  const shellWall = builderShellWall(builder.kind, workspace, policyReadGrant(mount.authorPolicy));
+  const shellWall = builderShellWall(builder.kind, workspace, policyReadGrant(mount.evidenceInput.policy));
   // Every round records what its session exposes, whether the round opened the session or continued
-  // the run's conversation: the registered roster against the declarations the provider receives.
-  const recordSession = (roster: readonly PiTool[], systemPrompt: string): void => {
+  // the run's conversation: the registered roster against the declarations the provider receives,
+  // and the catalogue of the role it opens in, with that role's own isolation.
+  const recordSession = (roster: readonly PiTool[], systemPrompt: string, role: BuilderRole): void => {
+    const side = role === "answer" ? mount.answer : mount;
+    if (side === undefined) throw new Error("an answer session on a Builder mount with no answer side");
     writeBuilderSessionEvidence({
-      ...mount.evidenceInput,
+      ...side.evidenceInput,
+      role,
       shellWall,
       tools: roster,
       framing: systemPrompt,
@@ -189,9 +205,9 @@ export function composeBuilderRuntime(
     tools: mount.tools,
     ...keyIfDefined(
       "answer",
-      mount.answerTools === undefined || answerWallMs === undefined
+      mount.answer === undefined || answerWallMs === undefined
         ? undefined
-        : { tools: mount.answerTools, wallMs: answerWallMs },
+        : { tools: mount.answer.tools, wallMs: answerWallMs },
     ),
     webSearch: slot.profile.webSearch === true,
     trialIsolation,

@@ -15,7 +15,7 @@
  */
 import type { PiTool } from "../backends/pi-session.ts";
 import { BuilderConversation } from "../author/builder-conversation.ts";
-import { type BuilderSessionDeps, runBuilderSession } from "../author/builder-session.ts";
+import { type BuilderSessionDeps, checkRoundEntry, runBuilderSession } from "../author/builder-session.ts";
 import type { CampaignFeedback } from "../author/campaign-types.ts";
 import { type CandidateCheckContext, loadValidatedBundle } from "../author/candidate-check.ts";
 import { harnessOwned, onHarnessSide } from "../author/feedback-routing.ts";
@@ -164,13 +164,13 @@ function handOff(workspace: string, context: CandidateCheckContext): ContractFin
   return [];
 }
 
-/** One answer pass: one turn under the wall, in the answer agent's own conversation, opening on the
- *  findings that returned the model, which its feedback store also pages. */
-function answerPass(
+/** One answer pass's session: one turn under the wall, in the answer agent's own conversation,
+ *  opening on the findings that returned the model, which its feedback store also pages. */
+function answerSession(
   split: SplitBuild,
   conversation: BuilderConversation,
   returned: readonly ContractFinding[],
-) {
+): Parameters<typeof runBuilderSession> {
   const feedback = new BuilderAuthorFeedback();
   if (returned.length > 0) feedback.recordCheck("gates", returned);
   const side = split.side("answer", feedback, conversation);
@@ -178,8 +178,8 @@ function answerPass(
     returned.length === 0
       ? ""
       : `The correctness model came back with these findings:\n${capturedJsonStringify(authorFindingOverview(returned, undefined, undefined, "feedback"))}`;
-  const { submit, beforeSubmit, recordSession, conversation: harnessConversation, ...shared } = split.deps;
-  return runBuilderSession(
+  const { submit, beforeSubmit, conversation: harnessConversation, ...shared } = split.deps;
+  return [
     {
       ...split.input,
       split: { role: "answer", wallMs: split.wallMs },
@@ -194,28 +194,43 @@ function answerPass(
       tools: [...split.files.answer, ...side.tools],
       feedback,
     },
-  );
+  ];
 }
 
-/** One Harness Builder pass in the run's conversation, with no review beside it: the review reads
- *  the whole tree, correctness model included. Returns the findings its submit handed back, empty
- *  when the pass ended any other way. */
-async function harnessPass(split: SplitBuild, pass: number) {
+/** One Harness Builder pass's session in the run's conversation, with no review beside it: the
+ *  review reads the whole tree, correctness model included. Its submit reports what it hands back. */
+function harnessSession(
+  split: SplitBuild,
+  pass: number,
+  handBack: (findings: ContractFinding[]) => void,
+): Parameters<typeof runBuilderSession> {
   const feedback = new BuilderAuthorFeedback();
   const side = split.side("harness", feedback, split.deps.conversation);
   const { afterTool, beforeSubmit, ...shared } = split.deps;
-  let handedBack: ContractFinding[] = [];
-  const submit = harnessSubmit(split.deps.submit, (findings) => {
-    handedBack = findings;
-  });
-  const outcome = await runBuilderSession(
+  return [
     {
       ...split.input,
       split: { role: "harness" },
       advisory: [pass > 1 ? REVISED : "", side.advisory].filter(Boolean).join("\n\n"),
       freshContext: side.freshContext,
     },
-    { ...shared, tools: [...split.files.harness, ...side.tools], submit, feedback },
+    {
+      ...shared,
+      tools: [...split.files.harness, ...side.tools],
+      submit: harnessSubmit(split.deps.submit, handBack),
+      feedback,
+    },
+  ];
+}
+
+/** One Harness Builder pass. Returns the findings its submit handed back, empty when the pass
+ *  ended any other way. */
+async function harnessPass(split: SplitBuild, pass: number) {
+  let handedBack: ContractFinding[] = [];
+  const outcome = await runBuilderSession(
+    ...harnessSession(split, pass, (findings) => {
+      handedBack = findings;
+    }),
   );
   return { outcome, handedBack };
 }
@@ -226,8 +241,12 @@ export async function runSplitBuild(split: SplitBuild): Promise<SessionOutcome> 
   let returned: ContractFinding[] = [];
   let last: SessionOutcome | null = null;
   try {
+    // Both sides through their entry gates first: a roster fault refuses in seconds, not after
+    // an answer pass has spent its wall.
+    checkRoundEntry(...answerSession(split, conversation, returned));
+    checkRoundEntry(...harnessSession(split, 1, () => {}));
     for (let pass = 1; pass <= ANSWER_PASSES; pass += 1) {
-      const answered = await answerPass(split, conversation, returned);
+      const answered = await runBuilderSession(...answerSession(split, conversation, returned));
       if (answered.terminalClause !== null) return answered;
       returned = handOff(split.input.workspace, split.context);
       if (returned.length > 0) continue;

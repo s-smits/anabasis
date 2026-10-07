@@ -11,13 +11,13 @@
 import { claudeExecutable, SWEEP_COMPACT_WINDOW } from "#src/backends/claude.ts";
 import { backends } from "#src/backends/models.ts";
 import { dollars, freezePrices, type PriceTable } from "#src/kernel/meter.ts";
-import type { Counted } from "#src/kernel/solve.ts";
+import type { Ending } from "#src/kernel/solve.ts";
 import type { Verdict } from "#src/kernel/verify.ts";
-import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
+import { cpSync, existsSync, readFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, parseJsonAs } from "#src/meta/json-runtime.ts";
 import type { JsonValue } from "#src/meta/json-shape.ts";
 import { homedir } from "#src/meta/os.ts";
-import { join } from "#src/meta/path.ts";
+import { basename, join } from "#src/meta/path.ts";
 
 /** The fields of v1's `cycle-solve/v1` result read here. */
 interface StoredSolve {
@@ -51,10 +51,10 @@ export interface Row extends StoredSolve {
   readonly taskId: string;
   /** The solve's directory under `runs/`. */
   readonly solve: string;
-  /** v1's verdict, as the new verifier would spell it. */
-  readonly expected: Verdict;
+  /** v1's verdict, as the new verifier would spell it; null when v1's verifier did not decide. */
+  readonly expected: Verdict | null;
   /** How the solve ended, as this host types it. */
-  readonly ending: Counted;
+  readonly ending: Ending;
   readonly turns: readonly StoredTurn[];
 }
 
@@ -65,26 +65,33 @@ interface Priced {
   readonly metered: number;
 }
 
-const VERIFIED = new Set(["verified-pass", "verified-fail"]);
+/** v1's non-result kinds (the sweep's `grade.py`, `solver_kind`), as this host types them. */
+const NON_RESULTS: Readonly<Record<string, Extract<Ending, { outcome: "non-result" }>["kind"]>> = {
+  "non-result:provider": "refusal",
+  "non-result:provider-stall": "refusal",
+  "non-result:built": "sandbox-crash",
+  "non-result:grader": "verifier",
+};
 
-/** The rows v1's verifier decided, and how many it did not (unaccepted, over budget, a non-result). */
-export function sweepRows(root: string, sweep: string) {
+/**
+ * Every solve the sweep graded, each typed. v1's verifier decided only some: the rest it graded
+ * `unaccepted`, `wall-timeout` or a `non-result:<kind>`, and those are fails and non-results a count
+ * by kind must not miss.
+ */
+export function sweepRows(root: string, sweep: string): Row[] {
   const lines = readFileSync(join(root, "grades", sweep, "grades.tsv"), "utf8")
     .trim()
     .split("\n")
     .slice(1);
   const rows: Row[] = [];
-  let apart = 0;
   for (const line of lines) {
     const [number = "", taskId = "", kind = "", blocking = ""] = line.split("\t");
-    if (!VERIFIED.has(kind)) {
-      apart += 1;
-      continue;
-    }
-    const expected: Verdict =
+    const expected: Verdict | null =
       kind === "verified-pass"
         ? { kind: "pass" }
-        : { kind: "fail", blocking: blocking.split(",").filter(Boolean) };
+        : kind === "verified-fail"
+          ? { kind: "fail", blocking: blocking.split(",").filter(Boolean) }
+          : null;
     const cycle = `c${number.padStart(2, "0")}`;
     const solve = join(root, "runs", sweep, cycle, taskId);
     const stored = parseJsonAs<StoredSolve>(readFileSync(join(solve, "result.json"), "utf8"));
@@ -98,21 +105,45 @@ export function sweepRows(root: string, sweep: string) {
       taskId,
       solve,
       expected,
-      ending: endingOf(stored, turns, expected),
+      ending: endingOf(stored, turns, kind, expected),
       turns,
     });
   }
-  return { rows, apart };
+  return rows;
 }
 
-/** A stored solve's ending. v1 recorded no kinds, so they are read back from what the solve left. */
-function endingOf(stored: StoredSolve, turns: readonly StoredTurn[], expected: Verdict): Counted {
-  if (expected.kind === "pass") return { outcome: "pass" };
+/** A stored solve's ending. v1 recorded no fail kinds, so they are read back from what the solve left. */
+function endingOf(
+  stored: StoredSolve,
+  turns: readonly StoredTurn[],
+  kind: string,
+  expected: Verdict | null,
+): Ending {
+  if (kind.startsWith("non-result:")) {
+    const typed = NON_RESULTS[kind];
+    if (typed === undefined) throw new Error(`v1 graded a solve ${kind}, which this reader does not know`);
+    return { outcome: "non-result", kind: typed, reason: kind };
+  }
+  if (expected?.kind === "pass") return { outcome: "pass" };
   if (stored.timedOut || turns.some((turn) => turn.status === "open")) {
     return { outcome: "fail", kind: "wall-ended" };
   }
   if (!stored.answerPresent || !stored.answerParses) return { outcome: "fail", kind: "no-answer" };
   return { outcome: "fail", kind: "rejected" };
+}
+
+/** The files of a v1 `correctness-model` that are its battery rather than its check program. */
+const BATTERY_FILES = new Set(["tasks.json", "controls.json"]);
+
+/**
+ * A v1 bundle's check program, copied to `to` without its battery: the verifier hands a check its
+ * whole program, and `tasks.json` and `controls.json` hold every task's hidden values and every
+ * control. Returns `to`.
+ */
+export function checkProgram(bundle: string, to: string): string {
+  const filter = (path: string) => !BATTERY_FILES.has(basename(path));
+  cpSync(join(bundle, "correctness-model"), to, { recursive: true, filter });
+  return to;
 }
 
 /**

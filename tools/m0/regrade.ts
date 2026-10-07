@@ -7,16 +7,18 @@
  *
  * A row matches when both say pass, or both say fail and name the same blocking checks. The answer
  * is the solve's own `work/answer.json`, and the tree is the fixture v1's report names as its
- * candidate. A row v1 decided without its verifier is counted apart, since there is no verdict of
- * v1's verifier to compare. Exits 1 on any mismatch. The dollars are compared, not matched: see
+ * candidate, without its battery (`checkProgram`). A solve v1's verifier did not decide is counted by
+ * its ending apart, since there is no verdict of v1's verifier to compare. Exits 1 on any mismatch. The dollars are compared, not matched: see
  * `stored-sweep.ts` for why the two differ.
  */
 import { openVerifier, type Task, type Verdict, type Verifier } from "#src/kernel/verify.ts";
-import { readFileSync } from "#src/meta/filesystem.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
-import { pricedRows, type Row, storedAnswer, sweepRows } from "./stored-sweep.ts";
+import { mkdtempSync, readFileSync, rmSync } from "#src/meta/filesystem.ts";
+import { tmpdir } from "#src/meta/os.ts";
+import { countBy } from "#src/meta/tally.ts";
+import { checkProgram, pricedRows, type Row, storedAnswer, sweepRows } from "./stored-sweep.ts";
 
 const { values } = parseArgs({
   options: {
@@ -37,13 +39,20 @@ async function main(): Promise<number> {
   if (root === undefined || sweeps.length === 0) throw new Error("name --root and at least one --sweep");
   const verifiers = new Map<string, Verifier>();
   const tasks = new Map<string, Task[]>();
-  const queue: Row[] = [];
+  const queue: (Row & { readonly expected: Verdict })[] = [];
+  const scratch = mkdtempSync(join(tmpdir(), "ana-regrade-"));
   for (const sweep of sweeps) {
-    const { rows, apart } = sweepRows(root, sweep);
+    const all = sweepRows(root, sweep);
+    const rows = all.flatMap(({ expected, ...row }) => (expected === null ? [] : [{ ...row, expected }]));
+    const apart = countBy(
+      all.filter((row) => row.expected === null),
+      ({ ending }) => (ending.outcome === "pass" ? "pass" : `${ending.outcome} ${ending.kind}`),
+    );
     const { priced } = pricedRows(rows);
     const billed = priced.reduce((total, solve) => total + solve.billed, 0);
     const metered = priced.reduce((total, solve) => total + solve.metered, 0);
-    console.log(`${sweep}: ${rows.length} verifier rows, ${apart} decided apart`);
+    const spelledApart = Object.entries(apart).map(([kind, count]) => `${count} ${kind}`);
+    console.log(`${sweep}: ${rows.length} verifier rows; apart: ${spelledApart.join(", ") || "none"}`);
     console.log(
       `  ${priced.length} with a recorded cost: billed $${billed.toFixed(2)}, ` +
         `metered $${metered.toFixed(2)} (${(metered / billed).toFixed(2)}x)`,
@@ -58,12 +67,13 @@ async function main(): Promise<number> {
       const report = parseJsonAs<{ candidate: string }>(
         readFileSync(join(root, "grades", row.sweep, row.taskId, "report", "report.json"), "utf8"),
       );
-      const checks = join(report.candidate, "correctness-model");
       let verify = verifiers.get(report.candidate);
       if (verify === undefined) {
+        const checks = checkProgram(report.candidate, join(scratch, String(verifiers.size)));
         verify = openVerifier({ checks, tools: join(report.candidate, ".toolchain") });
         verifiers.set(report.candidate, verify);
-        tasks.set(report.candidate, parseJsonAs<Task[]>(readFileSync(join(checks, "tasks.json"), "utf8")));
+        const battery = join(report.candidate, "correctness-model", "tasks.json");
+        tasks.set(report.candidate, parseJsonAs<Task[]>(readFileSync(battery, "utf8")));
       }
       const task = tasks.get(report.candidate)?.find((candidate) => candidate.taskId === row.taskId);
       if (task === undefined) throw new Error(`${report.candidate} has no task ${row.taskId}`);
@@ -77,7 +87,11 @@ async function main(): Promise<number> {
     }
   };
   const total = queue.length;
-  await Promise.all(Array.from({ length: Number(values.jobs) }, work));
+  try {
+    await Promise.all(Array.from({ length: Number(values.jobs) }, work));
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
   for (const line of mismatches.sort()) console.log(line);
   const seconds = ((performance.now() - started) / 1000).toFixed(0);
   console.log(`${matched} of ${total} verdicts match v1's, in ${seconds} s`);

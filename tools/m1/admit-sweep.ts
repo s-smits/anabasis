@@ -20,9 +20,7 @@
  * - Gate 4's controls are the first three v1 wrote for the task, edited from the author's accepted
  *   answer rather than from the stronger solve's, each with the check v1 named for it to fail. A
  *   task v1 gave fewer than three is refused.
- * - The check program is the bundle's `correctness-model` without `tasks.json` and `controls.json`,
- *   copied once: the verifier hands a check its whole program, and those two hold every task's
- *   hidden values and every control.
+ * - The check program is the bundle's, copied once without its battery (`checkProgram`).
  */
 import type { Contract } from "#src/kernel/contract.ts";
 import { append, type EventKind, read } from "#src/kernel/log.ts";
@@ -39,14 +37,14 @@ import {
   taskVersion,
 } from "#src/kernel/task.ts";
 import { applicableTruthChecks, openVerifier, readBrief, type Task } from "#src/kernel/verify.ts";
-import { cpSync, mkdtempSync, readFileSync, rmSync } from "#src/meta/filesystem.ts";
+import { mkdtempSync, readFileSync, rmSync } from "#src/meta/filesystem.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import type { JsonObject, JsonValue } from "#src/meta/json-shape.ts";
 import { tmpdir } from "#src/meta/os.ts";
-import { basename, join } from "#src/meta/path.ts";
+import { join } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { countBy } from "#src/meta/tally.ts";
-import { recordedAnswerFormat, type Row, storedAnswer, sweepRows } from "../m0/stored-sweep.ts";
+import { checkProgram, recordedAnswerFormat, storedAnswer, sweepRows } from "../m0/stored-sweep.ts";
 
 const { values } = parseArgs({
   options: {
@@ -71,9 +69,6 @@ interface PackControls {
   readonly reject: readonly { taskId: string; artifact: JsonValue; expectedCheckId: string }[];
 }
 
-/** The files of a v1 `correctness-model` that are its battery rather than its check program. */
-const BATTERY_FILES = new Set(["tasks.json", "controls.json"]);
-
 function contractOf(brief: PackBrief, answerFormat: JsonValue): Contract {
   return {
     answerFormat,
@@ -95,18 +90,24 @@ async function main(): Promise<void> {
   const controls = parseJsonAs<PackControls>(readFileSync(join(model, "controls.json"), "utf8"));
   const tasks = parseJsonAs<Task[]>(readFileSync(join(model, "tasks.json"), "utf8"));
   const dir = mkdtempSync(join(tmpdir(), "ana-admit-"));
-  const checks = join(dir, "checks");
-  cpSync(model, checks, { recursive: true, filter: (path) => !BATTERY_FILES.has(basename(path)) });
+  const checks = checkProgram(bundle, join(dir, "checks"));
   const verify = openVerifier({ checks, tools: join(bundle, ".toolchain") });
 
-  const { rows } = sweepRows(root, sweep);
+  const rows = sweepRows(root, sweep);
   const [first] = rows;
   if (first === undefined) throw new Error(`${sweep} has no decided solve`);
   const contract = contractOf(brief, recordedAnswerFormat(first));
   const cycles = [...new Set(rows.map((row) => row.cycle))].sort();
   const [old = "", fresh = ""] = [cycles[0], cycles.at(-1)];
-  const stored = new Map(rows.map((row) => [`${row.taskId} ${row.cycle}`, row]));
-  const solveIn = (taskId: string, cycle: string): Row | undefined => stored.get(`${taskId} ${cycle}`);
+  // A non-result is no solve at all, so a task whose only solve in a cycle is one stays unscreened.
+  const stored = new Map(
+    rows.flatMap((row) =>
+      row.ending.outcome === "non-result"
+        ? []
+        : [[`${row.taskId} ${row.cycle}`, { ...row, ending: row.ending }]],
+    ),
+  );
+  const solveIn = (taskId: string, cycle: string) => stored.get(`${taskId} ${cycle}`);
   console.log(`old ${old}, new ${fresh}, stronger ${stronger}`);
 
   const v1Controls = (taskId: string): [JsonValue, RejectControl[]] => {
@@ -132,7 +133,7 @@ async function main(): Promise<void> {
     gated(1, packaged);
     if (packaged.outcome === "refused") return settle("refused", `gate 1: ${packaged.reason}`);
     const strong = solveIn(task.taskId, stronger);
-    if (strong === undefined) return `no verified solve in ${stronger}`;
+    if (strong === undefined) return `no counted solve in ${stronger}`;
     if (strong.ending.outcome !== "pass") {
       gated(2, { outcome: "too-hard" });
       return settle("too-hard", strong.ending.kind);

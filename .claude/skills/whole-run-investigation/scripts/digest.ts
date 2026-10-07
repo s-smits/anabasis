@@ -101,12 +101,6 @@ interface ClaimGroundings {
   groundingSources: Map<JsonValue | undefined, Set<string>>;
 }
 
-/** What decided one declared check, and where each tool that did came from. */
-interface CheckGrounding {
-  grounding: JsonObject;
-  sources: string[];
-}
-
 /** The check programs the claims resolved inside the Builder's tool tree, and how many claims could
  *  say: a refused claim carries clauses and no statement, so it records no verifier tool at all. */
 interface ToolTreeReach {
@@ -406,11 +400,7 @@ function contestedEvidence(
 /** What decided one check. The claim's grounding row and launches say so where it holds a row for
  *  the check. A refused claim carries no statement, so its checks read the brief, which every
  *  battery has, and print the kind and tools it declares rather than `?` and none. */
-function groundingOf(
-  check: DeclaredCheck,
-  groundingByCheck: ClaimGroundings["groundingByCheck"],
-  groundingSources: ClaimGroundings["groundingSources"],
-): CheckGrounding {
+function groundingOf(check: DeclaredCheck, { groundingByCheck, groundingSources }: ClaimGroundings) {
   const row = groundingByCheck.get(check.id);
   if (row !== undefined) return { grounding: row, sources: [...(groundingSources.get(check.id) ?? [])] };
   const { evidence, requiredToolIds } = check.execution ?? {};
@@ -452,7 +442,7 @@ function checkMatrix({
   // sat hard against the published limits the checks enforce.
   const inert: string[] = [];
   for (const check of checks) {
-    const { grounding, sources } = groundingOf(check, groundingByCheck, groundingSources);
+    const { grounding, sources } = groundingOf(check, { groundingByCheck, groundingSources });
     const isolating = rejectRows.filter((row) => row.expectedCheckId === check.id);
     const mutations = new Set(isolating.map((row) => row.mutationClass));
     const shipping = perCheck.get(check.id) ?? { rejections: 0, classes: new Set<string>() };

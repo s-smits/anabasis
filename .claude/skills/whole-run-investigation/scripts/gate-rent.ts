@@ -62,6 +62,7 @@ import { BATTERY_FILE } from "#src/correctness-bundle/battery-record.ts";
 import { CORRECTNESS_MODEL_DIR, TASKS_FILE } from "#src/meta/bundle-layout.ts";
 import type { BuilderExecutionEvidence, BuilderCustomToolSemantic } from "#src/author/builder-execution.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
+import { countBy } from "#src/meta/tally.ts";
 import { campaignEpochs } from "#src/author/campaign-epoch.ts";
 import { readControllerEvidence } from "#src/run/controller-evidence.ts";
 import { readExecutionEvidenceDetails } from "#tools/outcome/builder-execution-facts.ts";
@@ -458,18 +459,6 @@ function holdsOf(receipts: readonly Receipt[], where: string): HoldChain[] {
   return chains;
 }
 
-/** The submits turned away before the gate ran, tallied by recorded reason. None of them is a
- *  refusal, so `refused` never sees them, and `holdsOf` ledgers only the reasons the ledger names. */
-function blockedSubmits(receipts: readonly Receipt[]) {
-  const byReason = new Map<string, number>();
-  for (const receipt of receipts) {
-    if (receipt.tool !== "submit" || receipt.outcome !== "blocked") continue;
-    const reason = receipt.reason ?? "unrecorded";
-    byReason.set(reason, (byReason.get(reason) ?? 0) + 1);
-  }
-  return Object.fromEntries(byReason);
-}
-
 /** Every session of every epoch, with its receipts, episodes and holds. */
 function sessionsOf(campaign: string): SessionsRead {
   const sessions: SessionRead[] = [];
@@ -488,7 +477,10 @@ function sessionsOf(campaign: string): SessionsRead {
         where,
         receipts: receipts.length,
         refused: receipts.filter((receipt) => REFUSED.has(receipt.outcome)).length,
-        blocked: blockedSubmits(receipts),
+        blocked: countBy(
+          receipts.filter((receipt) => receipt.tool === "submit" && receipt.outcome === "blocked"),
+          (receipt) => receipt.reason ?? "unrecorded",
+        ),
         accepted,
         episodes: episodesOf(receipts, where, accepted),
         holds: holdsOf(receipts, where),
@@ -507,13 +499,14 @@ export function componentRows(episodes: readonly Episode[]): ComponentRow[] {
     // Every episode carries at least one code: it opened on a receipt that named it.
     const firstCode = episode.codes[0] ?? "";
     const entry = componentOf(firstCode);
-    const unscored = entry === null ? (DELIBERATELY_UNLEDGERED.get(firstCode) ?? null) : null;
+    const unscored = DELIBERATELY_UNLEDGERED.get(firstCode) ?? null;
+    const prior =
+      entry === null
+        ? { component: null, id: null, form: unscored === null ? null : ("unscored" as const), unscored }
+        : { component: entry.code, id: entry.id, form: entry.form, unscored: null };
     const row: ComponentAccum = byKey.get(episode.component) ?? {
       key: episode.component,
-      component: entry?.code ?? null,
-      id: entry?.id ?? null,
-      form: entry?.form ?? (unscored === null ? null : "unscored"),
-      unscored,
+      ...prior,
       pRight: entry?.pRight ?? null,
       pStall: entry?.pStall ?? null,
       clearsBar: entry === null ? null : clearsBar(entry),

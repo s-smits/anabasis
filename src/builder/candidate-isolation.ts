@@ -114,11 +114,6 @@ export const BUILDER_PRIVATE_KEY_DENY_GLOB_STEMS: readonly string[] = [
 export const CANDIDATE_ISOLATION_GUARD_ID = "candidate-isolation/guardPath@v1";
 export const CANDIDATE_ISOLATION_SCHEMA = "candidate-isolation/v1" as const;
 
-/** The host scratch roots an authoring session may write: the OS temp trees. Re-exported under the
- *  isolation's own name so a reader of this policy need not know the list is kept beside the
- *  solve-side wall policy; both walls reach it through `scratchWriteRoots` below, so there is one
- *  list and not a Darwin copy and a Linux copy. */
-export { BUILDER_SCRATCH_ROOTS as HOST_SCRATCH_ROOTS } from "../verify/wall-policy.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { CONFORMANCE_FILE } from "../claim/conformance-evidence.ts";
 import { CODEX_AUTH_FILE } from "../backends/login-state.ts";

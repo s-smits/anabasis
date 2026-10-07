@@ -212,14 +212,11 @@ export function darwinToolchainInstallRoots(home: string | undefined = Bun.env.H
 }
 
 /** The Darwin platform roots the verifier wall opens: the system roots that are present, plus the
- *  toolchain install roots under `home`. A verifier host reads this once at construction and hands
- *  the list to every plan, so a root appearing on the shared machine mid-census cannot move the
- *  policy hash and discard exit-0 verdicts for a wall that never changed. */
-export function darwinPlatformReadRoots(home: string | undefined = Bun.env.HOME): string[] {
-  return [
-    ...DARWIN_SYSTEM_READ_ROOTS.filter((root) => existsSync(root)),
-    ...darwinToolchainInstallRoots(home),
-  ];
+ *  toolchain install roots under the process home. A verifier host reads this once at construction
+ *  and hands the list to every plan, so a root appearing on the shared machine mid-census cannot
+ *  move the policy hash and discard exit-0 verdicts for a wall that never changed. */
+export function darwinPlatformReadRoots(): string[] {
+  return [...DARWIN_SYSTEM_READ_ROOTS.filter((root) => existsSync(root)), ...darwinToolchainInstallRoots()];
 }
 
 /**
@@ -396,7 +393,7 @@ export function userTempRules(
  *
  * `shims` is here for pyenv and rbenv, which put no binaries in `bin` at all.
  */
-export function toolchainPathDirs(home: string | undefined = Bun.env.HOME): string[] {
+export function toolchainPathDirs(): string[] {
   // Both /opt entries sit under the granted /opt read root, so neither needs a read rule of its
   // own. This host may have its only system Node under zerobrew, so the derived toolchain owner has
   // to retain that executable directory rather than assume /usr/bin holds one.
@@ -409,10 +406,7 @@ export function toolchainPathDirs(home: string | undefined = Bun.env.HOME): stri
     "/opt/homebrew/bin",
     "/opt/zerobrew/bin",
   ];
-  const installed = darwinToolchainInstallRoots(home).flatMap((root) => [
-    join(root, "bin"),
-    join(root, "shims"),
-  ]);
+  const installed = darwinToolchainInstallRoots().flatMap((root) => [join(root, "bin"), join(root, "shims")]);
   // Every entry is checked for existence, the fixed ones included: /opt/homebrew/bin exists on this
   // Darwin host and not in the Linux VM, so an unchecked list would put a directory that is not
   // there on PATH.

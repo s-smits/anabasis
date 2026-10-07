@@ -11,11 +11,10 @@
  * policy with explicit denials, which it constructs separately in `solve-command-isolation.ts`.
  *
  * `shared` holds what both mechanisms express, so a change there cannot reach one host and not the
- * other. `seatbelt` holds what only Seatbelt has: its move guards are string rules against a rename,
- * while a bwrap bind stays attached to its dentry and needs no counterpart. Bubblewrap gets no
- * matching section because its own additions are not per-caller — `bwrapIsolationArgs` gives every
- * launch a private PID namespace and the rest of its namespace posture unconditionally — and the one
- * thing callers do differ on, the network, sits in `IsolationPosture` below.
+ * other. `seatbelt` holds what only Seatbelt has, the rules its last-match ordering decides.
+ * Bubblewrap gets no section, because `bwrapIsolationArgs` gives every launch its private PID
+ * namespace and the rest of its posture unconditionally, and the one thing callers do differ on,
+ * the network, sits in `IsolationPosture` below.
  *
  * The Built Harness session isolation and the Builder's candidate isolation are the opposite
  * construction: they open the host and hide protected roots behind empty mounts, and share no policy
@@ -49,20 +48,14 @@ interface SharedIsolationRules extends IsolationPosture {
   metadata: IsolationPaths;
   reads: IsolationPaths;
   writes: IsolationPaths;
-  /** Emitted after the allows, so a denial wins over a root that would otherwise open it. */
-  deniedReads?: readonly string[];
-  deniedWrites?: readonly string[];
 }
 
 /** Seatbelt's own rules. Order is the policy here, because Seatbelt takes the last matching rule,
  *  so these are emitted after everything `shared` produces. */
 interface SeatbeltOnlyRules {
-  /** Verbatim rules that need Seatbelt's last-match ordering. Emitted after the shared denies and
-   *  before move guards; callers keep their own re-allows adjacent to the exception they close. */
+  /** Verbatim rules that need Seatbelt's last-match ordering. Callers keep their own re-allows
+   *  adjacent to the exception they close. */
   finalRules?: readonly string[];
-  /** Rendered `moveBlockingRules` output: a rename cannot relocate a protected root out from under
-   *  the path strings a denial names. Bubblewrap needs no counterpart. */
-  moveGuards?: readonly string[];
 }
 
 interface IsolationDescription {
@@ -97,9 +90,6 @@ export function seatbeltProfile({ shared, seatbelt }: IsolationDescription): str
     ...allowRules("allow file-read-metadata", shared.metadata),
     ...allowRules("allow file-read*", shared.reads),
     ...allowRules("allow file-write*", shared.writes),
-    ...sbRule("deny file-read*", "subpath", shared.deniedReads ?? []),
-    ...sbRule("deny file-write*", "subpath", shared.deniedWrites ?? []),
     ...(seatbelt?.finalRules ?? []),
-    ...(seatbelt?.moveGuards ?? []),
   ].join("\n");
 }

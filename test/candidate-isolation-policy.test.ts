@@ -21,9 +21,9 @@ import {
   deriveBundleContract,
   deriveCandidateIsolation,
   guardPath,
-  HOST_SCRATCH_ROOTS,
   policyReadGrant,
 } from "../src/builder/candidate-isolation.ts";
+import { BUILDER_SCRATCH_ROOTS } from "../src/verify/wall-policy.ts";
 import { candidateIsolationProfile } from "../src/builder/candidate-isolation-profile.ts";
 import { osIsolationSupport } from "../src/verify/os-isolation.ts";
 import { makeIsolationRepo, seedFile } from "./helpers/isolation-fixture.ts";
@@ -195,7 +195,7 @@ describe("policy derivation", () => {
     expect(workshop.network).toBe("deny");
     expect(workshop.profile).toBe("isolated-workshop");
     expect(workshop.scratchWriteRoots[0]).toBe(join(binding.ossRoot, ".tmp"));
-    expect<unknown>(workshop.scratchWriteRoots.slice(1)).toEqual(HOST_SCRATCH_ROOTS);
+    expect<unknown>(workshop.scratchWriteRoots.slice(1)).toEqual(BUILDER_SCRATCH_ROOTS);
     expect(workshop.readDenyRoots).toEqual([]);
     if (onDarwin) {
       // The SBPL bytes are the Darwin mechanism's input; the Linux runtime builds its namespace

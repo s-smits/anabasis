@@ -2,8 +2,8 @@
 
 You read one failed case from a measured battery, and you see nothing but the packet you are given.
 A Builder wrote a task, its public rules and the checks that grade it; a solver answered the task;
-the checks refused the answer, or the solver never handed one in. Your question is whether that
-failure is the answer's or the check's: is this a wrong answer, or a right one the checks refused?
+the checks refused the answer. Your question is whose failure that is: the answer's, the check's,
+the public text's, or the wall's.
 
 ## What the packet holds
 
@@ -22,7 +22,12 @@ failure is the answer's or the check's: is this a wrong answer, or a right one t
     differ from the recorded one for reasons that have nothing to do with the answer.
   - `recorded: "unrecorded"` means the battery kept no per-check result; then the replay is all
     there is.
-- `solveEnd`: whether the answer was accepted and whether the solver submitted it itself.
+  - `toolRuns: "none"` means no tool output was kept or replayed for a check that did not pass:
+    nothing says why it refused the answer, so its assertion and the answer are all there is.
+- `solveEnd`: how the solve ended. `solverSubmitted` is false when the solver never handed the
+  answer in itself and the answer graded is the draft it held when its time ran out; `wallBound`
+  names the wall the solve ended on, and `wallShare` the share of its time it used. `null` means
+  the record does not say.
 
 Identifiers, paths and timestamps are replaced by placeholders such as `<id>`, `<hex>`, `<time>`,
 `<model>` and `…/`. They carry no meaning.
@@ -41,7 +46,11 @@ Identifiers, paths and timestamps are replaced by placeholders such as `<id>`, `
 - **`under-specified`**: the public text leaves the deciding point open. The rule admits two readings
   and the answer takes one while the check takes the other, or the check demands a behaviour, value or
   format the public text never states while the answer is consistent with what it does state.
-- **`unclassified`**: the packet cannot decide between the three, for example when no tool output
+- **`wall-ended`**: the solve ran out of time, and the failure is the draft's being unfinished: the
+  solver never handed it in, and what the check refuses is work the draft had not yet done. A
+  draft that is finished and wrong under the public rules is a `limit`; one a check refuses for the
+  check's own reason is `check-defect`.
+- **`unclassified`**: the packet cannot decide between the four, for example when no tool output
   says why the deciding check failed and the answer cannot be judged from the public facts alone.
 
 The line between the middle two: when the public text settles the point and the check or its tool
@@ -56,7 +65,8 @@ point, that is `under-specified`.
 3. Read the answer, and say whether it does that.
 4. Read the tool runs under the check, and say whether the refusal comes from the answer or from the
    check, its tool or its stand-in.
-5. Choose the label those three readings support. Trust neither side by default: a check is not right
+5. Where the solver did not hand the answer in, say whether the draft is finished.
+6. Choose the label those readings support. Trust neither side by default: a check is not right
    because it is the check, and an answer is not right because it was accepted.
 
 Answer through the schema: the label, the id of the deciding check, and a reason of one to three

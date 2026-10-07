@@ -23,13 +23,12 @@
 import { type CommandArgs, runCommand } from "../../main/cli.ts";
 import { readFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
-import type { M2Label } from "./m2-packets.ts";
-import { parseLabels } from "./m2-read.ts";
+import { FAIL_LABELS, type FailLabel, parseLabels } from "./climb-outcome.ts";
 
 export interface TruthRow {
   caseKey: string;
   caseId: string;
-  label: M2Label;
+  label: FailLabel;
   stratum: "primary" | "added" | "contested" | "no-output" | "no-answer";
   /** The three-way class a domain-only rule gets wrong for this case, where it does. */
   domainRuleBreaker?: ThreeWay;
@@ -37,13 +36,6 @@ export interface TruthRow {
 
 type ThreeWay = "limit" | "check-side" | "wall-ended" | "unclassified";
 
-export const LABELS: readonly M2Label[] = [
-  "limit",
-  "check-defect",
-  "under-specified",
-  "wall-ended",
-  "unclassified",
-];
 const BAR = { p3Hits: 65, p3Of: 68, falseLimits: 1, unclassified: 3 } as const;
 /** z for a two-sided 95% interval. */
 const Z = 1.959_963_985;
@@ -53,7 +45,7 @@ const USAGE = `usage: m2-calibrate.ts --truth <abs truth.jsonl> --labels <abs la
 Prints P1–P5 over the primary cases (and over primary plus added cases when any exist), the
 confusion table, per-class agreement with Wilson intervals, and the other strata.`;
 
-export function threeWay(label: M2Label): ThreeWay {
+export function threeWay(label: FailLabel): ThreeWay {
   return label === "check-defect" || label === "under-specified" ? "check-side" : label;
 }
 
@@ -68,8 +60,8 @@ export function wilson(hits: number, n: number): [number, number] {
 }
 
 /** P1–P5 over `rows`, each case's label read from `labels` (a missing one is `unclassified`). */
-export function scoreBar(rows: readonly TruthRow[], labels: ReadonlyMap<string, M2Label>) {
-  const read = (row: TruthRow): M2Label => labels.get(row.caseKey) ?? "unclassified";
+export function scoreBar(rows: readonly TruthRow[], labels: ReadonlyMap<string, FailLabel>) {
+  const read = (row: TruthRow): FailLabel => labels.get(row.caseKey) ?? "unclassified";
   const limits = rows.filter((row) => row.label === "limit");
   const recalled = limits.filter((row) => read(row) === "limit").length;
   const falseLimits = rows.filter((row) => row.label !== "limit" && read(row) === "limit");
@@ -98,13 +90,13 @@ export function scoreBar(rows: readonly TruthRow[], labels: ReadonlyMap<string, 
 
 /** Counts of truth label (rows) against read label (columns), with each truth class's four-way
  *  agreement and its interval. */
-export function confusion(rows: readonly TruthRow[], labels: ReadonlyMap<string, M2Label>) {
-  const read = (row: TruthRow): M2Label => labels.get(row.caseKey) ?? "unclassified";
-  return LABELS.flatMap((truth) => {
+export function confusion(rows: readonly TruthRow[], labels: ReadonlyMap<string, FailLabel>) {
+  const read = (row: TruthRow): FailLabel => labels.get(row.caseKey) ?? "unclassified";
+  return FAIL_LABELS.flatMap((truth) => {
     const ofClass = rows.filter((row) => row.label === truth);
     if (ofClass.length === 0) return [];
     const cells = Object.fromEntries(
-      LABELS.map((label) => [label, ofClass.filter((row) => read(row) === label).length]),
+      FAIL_LABELS.map((label) => [label, ofClass.filter((row) => read(row) === label).length]),
     );
     const hits = cells[truth] ?? 0;
     return [
@@ -137,12 +129,12 @@ function render(report: ReturnType<typeof calibrate>): string {
       lines.push(`  miss ${miss.caseId}: truth ${miss.truth}, read ${miss.read}`);
     }
   }
-  lines.push("", `truth \\ read\t${LABELS.join("\t")}\tagreement (95% Wilson)`);
+  lines.push("", `truth \\ read\t${FAIL_LABELS.join("\t")}\tagreement (95% Wilson)`);
   for (const row of report.confusion) {
     const pct = (value: number) => `${(value * 100).toFixed(1)}%`;
     const interval = `${pct(row.wilson95[0])}–${pct(row.wilson95[1])}`;
     lines.push(
-      `${row.truth}\t${LABELS.map((label) => row.cells[label]).join("\t")}\t${pct(row.agreement)} (${interval})`,
+      `${row.truth}\t${FAIL_LABELS.map((label) => row.cells[label]).join("\t")}\t${pct(row.agreement)} (${interval})`,
     );
   }
   for (const [stratum, rows] of Object.entries(report.reported)) {
@@ -151,7 +143,7 @@ function render(report: ReturnType<typeof calibrate>): string {
   return lines.join("\n");
 }
 
-export function calibrate(truth: readonly TruthRow[], labels: ReadonlyMap<string, M2Label>) {
+export function calibrate(truth: readonly TruthRow[], labels: ReadonlyMap<string, FailLabel>) {
   const primary = truth.filter((row) => row.stratum === "primary");
   const added = truth.filter((row) => row.stratum === "added");
   const bars = new Map([["primary", scoreBar(primary, labels)]]);

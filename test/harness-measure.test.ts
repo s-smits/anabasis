@@ -4,7 +4,8 @@ import { join } from "../src/meta/path.ts";
 import { isString } from "../src/meta/json-shape.ts";
 import { hashJsonBytes, parseJsonAs } from "../src/meta/json-runtime.ts";
 import { admitFindings, deriveIterationAnalysis, hostFindings } from "../src/analyse/iteration-analysis.ts";
-import { type AdviceIssue, latestRebuildAdvicePath } from "../src/author/rebuild-advice.ts";
+import { latestRebuildAdvicePath } from "../src/author/rebuild-advice.ts";
+import { type AdviceIssue } from "../src/author/issue-register.ts";
 import { loadRepoEnv } from "../src/backends/env.ts";
 import { resolveSlots } from "../src/backends/resolve.ts";
 import { readCaseRecord } from "../src/claim/case-record.ts";
@@ -128,16 +129,33 @@ describe("measureHarness", () => {
     ).rejects.toThrow("provider interrupted the epoch review");
     const interrupted = JSON.parse(readFileSync(ledger, "utf8"));
     expect(interrupted.runId).toBe("m4-ledger");
-    // Each family's tasks are digested from the measured tree, vouched for by the task-set hash
-    // the battery recorded, and the two families ran different tasks, so their digests differ.
+    // Each family's tasks are named from the cases the battery ran and digested from the measured
+    // tree, vouched for by the task-set hash the battery recorded; the two families ran different
+    // tasks, so their ids and their digests differ.
     const digest = expect.stringMatching(/^[0-9a-f]{64}$/);
     expect(interrupted.families).toEqual([
-      { family: "single-part", verified: 2, passed: 2, unaccepted: 0, nonResults: 0, taskInputs: digest },
-      { family: "two-part", verified: 2, passed: 2, unaccepted: 0, nonResults: 0, taskInputs: digest },
+      {
+        family: "single-part",
+        verified: 2,
+        passed: 2,
+        unaccepted: 0,
+        nonResults: 0,
+        taskIds: ["t1", "t1b"],
+        taskInputs: digest,
+      },
+      {
+        family: "two-part",
+        verified: 2,
+        passed: 2,
+        unaccepted: 0,
+        nonResults: 0,
+        taskIds: ["t2", "t2b"],
+        taskInputs: digest,
+      },
     ]);
     expect(interrupted.families[0].taskInputs).not.toBe(interrupted.families[1].taskInputs);
-    expect(interrupted.scoringHash).toMatch(/^[0-9a-f]{64}$/);
-    expect(interrupted.measuredCondition).toMatch(/^[0-9a-f]{64}$/);
+    expect(interrupted.condition.scoringHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(interrupted.condition.measuredCondition).toMatch(/^[0-9a-f]{64}$/);
     // The complete step republishes the same battery's ledger with what the readers attached.
     const complete = await analyseStep(repo, "bridge-truss", "m4-ledger", measured, { resolvedSlots });
     expect(JSON.parse(readFileSync(ledger, "utf8"))).toEqual(complete.advice);

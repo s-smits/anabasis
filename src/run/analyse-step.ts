@@ -38,15 +38,13 @@ import {
 import { type JudgeReviewsResult, runJudgeReviews } from "../analyse/judge-reviews.ts";
 import { reviewerContested } from "../analyse/judge-contested.ts";
 import {
-  type AdviceIssue,
   type RebuildAdvicePacket,
-  attachIssueReadings,
   deriveRebuildAdvice,
-  isStanding,
   latestRebuildAdvicePath,
   readLatestRebuildAdvice,
   rebuildAdvicePath,
 } from "../author/rebuild-advice.ts";
+import { type AdviceIssue, attachIssueReadings, isStanding } from "../author/issue-register.ts";
 import { batteryCondition } from "../author/issue-condition.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { loadRepoEnv } from "../backends/env.ts";

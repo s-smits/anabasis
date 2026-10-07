@@ -21,12 +21,8 @@ import type { ReadCaseTrace } from "../src/claim/trace-read.ts";
 import type { JsonValue } from "../src/meta/json-shape.ts";
 import type { CaseEvidence } from "../src/analyse/iteration-analysis.ts";
 import type { ReaderTool, runReaderTurn } from "../src/review/review-reader.ts";
-import {
-  adviceIssueId,
-  attachIssueReadings,
-  isStanding,
-  renderRebuildAdvice,
-} from "../src/author/rebuild-advice.ts";
+import { renderRebuildAdvice } from "../src/author/rebuild-advice.ts";
+import { adviceIssueId, attachIssueReadings, isStanding } from "../src/author/issue-register.ts";
 import {
   type DiagnosisReaderEvidence,
   diagnosableIssues,

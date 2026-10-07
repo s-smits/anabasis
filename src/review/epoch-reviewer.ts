@@ -31,13 +31,12 @@ import { campaignDir } from "../meta/campaign-root.ts";
 import { join, relative } from "../meta/path.ts";
 import type { IterationAnalysis } from "../analyse/iteration-analysis.ts";
 import {
-  isStanding,
-  type AdviceIssue,
   type RebuildAdvicePacket,
   adviceTotals,
   blockingLine,
   diagnosisLine,
 } from "../author/rebuild-advice.ts";
+import { isStanding, type AdviceIssue } from "../author/issue-register.ts";
 import type { RehearsalRow } from "../builder/harness-trial.ts";
 import { familyTally } from "../claim/case-record.ts";
 import { errorMessage } from "../meta/runtime-values.ts";

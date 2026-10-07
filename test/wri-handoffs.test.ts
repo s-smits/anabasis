@@ -2,11 +2,8 @@ import { mkdirSync, readFileSync, realpathSync, writeFileSync } from "../src/met
 import type { JsonObject, JsonValue } from "../src/meta/json-shape.ts";
 import { join } from "../src/meta/path.ts";
 import { afterAll, describe, expect, it } from "bun:test";
-import {
-  adviceIssueId,
-  type RebuildAdvicePacket,
-  renderRebuildAdvice,
-} from "../src/author/rebuild-advice.ts";
+import { type RebuildAdvicePacket, renderRebuildAdvice } from "../src/author/rebuild-advice.ts";
+import { adviceIssueId } from "../src/author/issue-register.ts";
 import { required } from "./helpers/doubles.ts";
 import { advicePacket, issue as adviceIssue } from "./helpers/review-fixtures.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";

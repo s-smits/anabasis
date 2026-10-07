@@ -598,17 +598,20 @@ The question is whether an issue's complete rechecks (`absentBatteries`) or its 
 comparison of task identity or of family names alone. Read each battery's
 `cases/*/public-task.json` digested over the public input, the consecutive
 `analysis/<runId>-rebuild-advice.json` packets, and `deriveRebuildAdvice` in
-`src/author/rebuild-advice.ts`, whose `advanceIssues` keys every issue with `adviceIssueId`. Join
+`src/author/rebuild-advice.ts`, whose `advanceIssues` (in `src/author/issue-register.ts`) keys every issue with `adviceIssueId`. Join
 per family before and after each repair and classify it `identical-tasks`, `partially-shared` or
 `no-shared-input`, or absent on one side, counting inputs that reappear under another family name.
 `no-shared-input` says only that no whole public input is shared; the table names the top-level
 public-input keys that changed, and a family that kept some keys and changed others is a
 re-parameterised task, not a replaced one. Report every change in an issue's recorded
-facts and flag those resting on a `no-shared-input` or absent join: renaming every family retires
-every issue without a failing task being measured again, and `retired` proves no fix. Say whether the producer keys on task identity or family name by
+facts and flag those resting on a `no-shared-input` or absent join: renaming every family used to
+retire every issue without a failing task being measured again, and `retired` proves no fix. Since
+2026-10-07 the register holds an issue unmeasured while any task id it was observed under (`observedUnder.taskIds`)
+runs under another family name (`continuedUnder`), so a `retired` row at a join that shares an input is a defect to
+report, and an unmeasured row says where the tasks went. Say whether the producer keys on task identity or family name by
 recomputing the recorded issue ids. Do not read what the task change means for difficulty, which
 lane 20 owns. The decision it changes is whether an issue's recorded absence speaks about the task
-that exposed it; it routes to `controller-source` (`src/author/rebuild-advice.ts`) for the key and
+that exposed it; it routes to `controller-source` (`src/author/issue-register.ts`) for the key and
 to `correctness-model/tasks.json` when the failing task was never measured again.
 
 **19. Semantic repair closure.**

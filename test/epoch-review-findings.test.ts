@@ -25,14 +25,16 @@ import {
 } from "./helpers/review-fixtures.ts";
 import { authoringReviewText, recordAuthoringDisputes } from "../src/run/harness-build.ts";
 import {
-  adviceIssueId,
-  attachIssueReadings,
-  isStanding,
   latestRebuildAdvicePath,
   readLatestRebuildAdvice,
   renderRebuildAdvice,
 } from "../src/author/rebuild-advice.ts";
-import type { AdviceIssue } from "../src/author/rebuild-advice.ts";
+import {
+  type AdviceIssue,
+  adviceIssueId,
+  attachIssueReadings,
+  isStanding,
+} from "../src/author/issue-register.ts";
 import { EPOCH_REVIEW_PROMPT } from "../src/review/epoch-review-prompt.ts";
 import { publicEpochReview } from "../src/review/epoch-review-public.ts";
 import {

@@ -1,47 +1,52 @@
 # The synthesis
 
-Load this when turning the readings into one adjudicated result: when writing or checking
-`<dir>/synthesis.md`, filling a run's `main_synthesis.md`, or answering the operator's "what do we
-change next". It guides the primary and adds no gate and no campaign authority. `wri.ts synthesis`
-renders the synthesis agent's prompt from a template in this directory, and the first section below
-is what that prompt must ask for, so a change to what the synthesis produces is made here and in the
-template together.
+Load this when turning the readings into one adjudicated result: when checking `<dir>/synthesis.md`,
+filling a run's `main_synthesis.md`, or answering the operator's "what do we change next". It guides
+the primary and adds no gate and no campaign authority.
 
 ## What the synthesis must produce
 
-The synthesis merges every complete reading (per-run, cross-run, multi-run) and the primary's own
-rows A to I into one document. Its first lines name the source commit and checkout each run was read
-at, the readings merged with their report paths, and the reports that are missing. It quotes no
-campaign text: counts, ids, digests, paths and line numbers only. Then, in this order:
+`wri.ts synthesis` renders the synthesis agent's prompt from
+[synthesis.template.md](synthesis.template.md), filling in the investigation directory, the note's
+path, a fresh report index and the shared instructions; `--template <abs file>` renders an edited
+copy instead. The template owns what the note owes, and this section says why each part is there,
+so change the two together.
 
-1. **A chain per run.** One line per link the orientation asks for, per run. By default these are
-   the four links of 2026-10-07: the build harness ran on the shipped bytes; all feedback was
-   produced and gathered; the review feedback was used; everything was handed over. Each link is
-   `happened`, `did not happen` or `undeterminable`, with a path and a count.
-2. **One findings table**, one row per mechanism after collapsing repeats under their earliest
-   demonstrated owner:
+The agent reads every report `collect` marked ok, names every missing or invalid one as a gap rather
+than filling it from memory, re-checks each finding it carries against the run's source at its own
+commit, and quotes no campaign text. The note owes, in this order:
+
+1. **The operator's question, per run.** By default the four links: the build harness ran on the
+   shipped bytes; all feedback was produced and gathered; the review feedback was used; everything
+   was handed over. Each cell is `happened`, `did not happen` or `undeterminable`, with a path and a
+   count. The readings do not answer these links; the synthesis does, from what they found. When the
+   orientation asks a different question, edit the template copy to match.
+2. **The binding constraint**: the one mechanism that most limits the next run, and why it outranks
+   the rest.
+3. **One merged findings table**, one row per mechanism after collapsing repeats under their
+   earliest demonstrated owner, ranked by consequence for the binding constraint and the four links:
 
    | finding | readings | runs | corpus count | owner | outcome |
    | --- | --- | --- | --- | --- | --- |
 
-   `readings` names which of per-run, cross-run and multi-run reached it, since a mechanism the
-   multi-run reading found alone and the per-run lanes also found is corroborated, and one only a
-   single reading found is a lead. `runs` names where it holds and where it was checked absent.
-   `corpus count` is distinct campaigns and domains with the reader named, or `—` for a finding the
-   corpus cannot count. `owner` is `file:line` at the run's commit or a bundle file. `outcome` is
-   `patch`, `decision`, `prediction` or `drop`, as the readings define them.
-3. **Conflicts resolved.** Every place two readings or two lanes disagree, which instrument could
-   see the property, and the verdict; or the unresolved alternatives and the observation that would
-   separate them.
-4. **Branch verdicts.** For each change under test, the moved variable and every earlier fix the
-   prior state names: whether its branch had an eligible opportunity in these runs, whether it ran,
-   and what it changed. A branch with no opportunity or never reached is unexercised, not failed.
-5. **Build clusters.** The `patch` outcomes grouped into clusters whose file sets are disjoint, so
-   each can be built by its own agent in its own worktree, each naming the open PR that owns its
-   area. A fix goes onto that PR, never into a new one.
-6. **Decisions** for the operator: one owner, the missing evidence, the decision it changes.
-7. **Predictions:** one falsifiable row per change worth relaunching on (moved variable, claim,
-   direction, falsifier), for `run-improvement-campaign` to freeze before any launch.
+   `readings` names which of per-run (P), cross-run (C) and multi-run (M) raised it; agreement counts
+   only between readings reached independently, so a mechanism M found alone that P also found is
+   corroborated, and one only a single reading found is a lead. `runs` names where it holds and where
+   it was checked absent. `corpus count` is the readings' count of distinct campaigns and domains,
+   both counts where two readings differ. `owner` is `file:line` at the run's commit, saying when it
+   has moved on main since. `outcome` is exactly one of `patch`, `decision`, `prediction` or `drop`,
+   and only a fix whose shape recurs across campaigns is a `patch`.
+4. **Conflicts resolved**: where readings disagree, the bytes that settle it, or the unresolved
+   alternatives and the observation that would separate them.
+5. **Verdicts on existing branch commits**: for each open branch commit the findings touch, keep,
+   amend (how) or drop (why). A change whose branch had no eligible opportunity in these runs, or
+   was never reached, is unexercised, not failed.
+6. **Build plan**: clusters whose file sets are disjoint, so each can be built in parallel by its own
+   agent in its own worktree; per cluster the owners, the mechanism, the test that fails without it,
+   and the open PR it appends to. A fix goes onto that PR, never into a new one.
+7. **Operator decisions**, each with one owner, the missing evidence and the decision it changes.
+8. **Predictions**: falsifiable rows for the next run (moved variable, claim, direction,
+   falsifier), for `run-improvement-campaign` to freeze before any launch.
 
 ## Adjudicating
 
@@ -175,15 +180,18 @@ authority.
 
 ## The archive and the note
 
-A per-run archive is four files under `<dir>/<run-short>/archive/`, scaffolded by `finish` and copied
-to `notes/runs/<runName>/` when durable: `main_synthesis.md` (the adjudicated findings, with the
-headings `MAIN_HEADINGS` in `scripts/archive-shape.ts` fixes), `luna_syntheses.md` (the accepted
-reports in manifest order), `digest.md` (the sanitised deterministic digest) and `review.json`
-(`wri-archive/v2`). The first `finish` writes a `verdicts.json` template with every state
-`inconclusive`; record the states and reasons, fill `main_synthesis.md` from the synthesis's sections
-for that run, and run `finish` again until the validator passes. It proves shape and bindings, not
-that the prose is true. Safeguard rows count firings from the run's `SAFEGUARDS_LOG.txt`; with no log
-the count is unavailable, never zero. A targeted answer needs no archive unless asked for.
+A per-run archive is four files under `<dir>/<runId>/archive/`, scaffolded by `finish` and copied to
+`notes/runs/<runName>/` when durable. It records the run's `lanes/` reports only; the isolated
+lanes' reports and the cross-run and multi-run readings reach the record through the synthesis. The
+files are `main_synthesis.md` (the adjudicated findings, with the headings `MAIN_HEADINGS` in
+`scripts/archive-shape.ts` fixes), `luna_syntheses.md` (the accepted reports in manifest order),
+`digest.md` (the sanitised deterministic digest) and `review.json` (`wri-archive/v2`). The first
+`finish` writes a `verdicts.json` template with every state `inconclusive`; record the states and
+reasons (a reason still reading as the scaffold wrote it is refused, so an unadjudicated lane cannot
+pass as settled), fill `main_synthesis.md` from the synthesis's sections for that run, and run
+`finish` again until the validator passes. It proves shape and bindings, not that the prose is true.
+Safeguard rows count firings from the run's `SAFEGUARDS_LOG.txt`; with no log the count is
+unavailable, never zero. A targeted answer needs no archive unless asked for.
 
 The note, `notes/investigation-YYYYMMDD-<topic>.md` (local and ignored), is where a reader who was
 not there starts: what the runs showed, why that is not what they would have expected, and what each

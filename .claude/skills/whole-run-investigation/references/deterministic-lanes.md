@@ -9,8 +9,8 @@ that string starts. Every reader is a lane of `scripts/wri.ts`, selected by name
 bun .claude/skills/whole-run-investigation/scripts/wri.ts <lane> <campaign>/<runId> [flags]
 ```
 
-The lanes are `snapshot`, `challenge`, `delta`, `climb` and `overview`, which collect, `climb` so
-the run overview carries its trigger; `climb`, `yield`, `posture`, `timeline`, `walls`, `handoff`,
+The lanes are `snapshot`, `challenge`, `delta`, `climb` and `overview`, the five the paid lanes
+consume, `climb` before the overview that carries its trigger; `climb`, `yield`, `posture`, `timeline`, `walls`, `handoff`,
 `gates` and `target`, which read the campaign; and `archive`, which writes the record. `brief.ts` runs the eight campaign lanes as `CAMPAIGN_LANES` and renders
 their trigger lines into the sweep brief, reading an in-process lane's triggers from the report it
 records at `<review>/<lane>.json`, so a trigger below is the same bytes whether it was read from a
@@ -100,7 +100,7 @@ bytes, and `REHEARSAL NOT-RUN (lane 9)` where a verdict is `not-run`. Block 6b, 
 `VERSION TOOLCHAIN DANGLING (lane 2)`, and `WRAPPER-ONLY TOOL DIGEST (lane 2)` where a
 `verifierTools[]` entry of `kind: "script"` hashes a wrapper and nothing behind it.
 
-## The other collect lanes
+## The other lanes the paid lanes consume
 
 `challenge` runs `trace-challenge.ts`, which writes `trace-telemetry.json`
 (`whole-run-trace-telemetry/v1`), `trace-challenge-packet.json` and
@@ -115,7 +115,7 @@ CHANGED SAFEGUARDS (lane 21)` where a `safeguardTriggered("id")` call changed an
 touching `src/solve` starts lane 3 and one touching `src/review/epoch-review-public.ts` starts
 lane 13.
 
-`overview` runs `run-overview.ts`, which groups every trigger the collect lanes printed by the
+`overview` runs `run-overview.ts`, which groups every trigger those lanes printed by the
 lane suffix it carries, so the brief can say which lanes have something to read.
 
 ## The campaign lanes

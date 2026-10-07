@@ -8,25 +8,34 @@ import { compilePublicArtifactSchema } from "../src/solve/public-artifact-schema
 import { commitPublicTask } from "../src/correctness-bundle/task-split.ts";
 import type { ReplayToolRun } from "../tools/replay/cli.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
-import { MATCHING_ACCEPTS, MATCHING_BRIEF, MATCHING_TASKS } from "./helpers/matching-fixture.ts";
+import {
+  MATCHING_ACCEPTS,
+  MATCHING_BRIEF,
+  MATCHING_TASKS,
+  writeMatchingSlug,
+} from "./helpers/matching-fixture.ts";
 import {
   type CaseReplay,
-  type M2Label,
+  type M2Case,
   batteryCases,
   buildPacket,
-  deterministicLabel,
+  packetFromStaged,
 } from "#skills/run-improvement-campaign/scripts/m2-packets.ts";
-import { caseKey } from "#skills/run-improvement-campaign/scripts/climb-outcome.ts";
+import {
+  type FailLabel,
+  caseKey,
+  parseLabels,
+} from "#skills/run-improvement-campaign/scripts/climb-outcome.ts";
 import {
   type ReadResult,
   aggregate,
   labelLines,
-  parseLabels,
   readOfTranscript,
 } from "#skills/run-improvement-campaign/scripts/m2-read.ts";
 import { type TruthRow, calibrate, scoreBar } from "#skills/run-improvement-campaign/scripts/m2-calibrate.ts";
 
 const TASK = MATCHING_TASKS[0]!;
+const UNACCEPTED_TASK = MATCHING_TASKS[1]!;
 const CHECK = "parts-assigned";
 
 /** One arm of a comparison: everything that names whose run a case came from. */
@@ -42,7 +51,7 @@ interface Arm {
 /** One check's row as a packet renders it. */
 interface PacketCheck {
   checkId: string;
-  toolRuns: { graded: string; instrument?: string }[];
+  toolRuns: { graded: string; instrument?: string }[] | "none";
 }
 
 const OPUS: Arm = {
@@ -87,12 +96,14 @@ function toolRun(arm: Arm, campaignDir: string): ReplayToolRun {
   };
 }
 
-/** A recorded battery holding t1's accepted answer, failed on one check, under `arm`'s names. */
+/** A recorded battery under `arm`'s names: t1's accepted answer failed on one check, and t1b's
+ *  solve never handed an answer in. */
 function recordArm(arm: Arm): string {
   const campaignDir = join(realpathSync(scratchDir("m2-arm-")), "campaigns", arm.slug);
   const runDir = join(campaignDir, "versions", arm.runId, "runs", arm.runId);
   mkdirSync(runDir, { recursive: true });
   const log = new EvidenceLog(runDir);
+  const verdict = { runtimeNonResult: null, runtimeNonResultKind: null };
   log.write("battery.json", {
     runId: arm.runId,
     bundleSnapshot: { id: "snapshot-1", agentHash: "a", correctnessModelHash: "b", taskSetHash: "c" },
@@ -103,8 +114,15 @@ function recordArm(arm: Arm): string {
         acceptedSubmit: true,
         truthOk: false,
         pass: false,
-        runtimeNonResult: null,
-        runtimeNonResultKind: null,
+        ...verdict,
+      },
+      {
+        taskId: UNACCEPTED_TASK.taskId,
+        family: UNACCEPTED_TASK.family,
+        acceptedSubmit: false,
+        truthOk: null,
+        pass: false,
+        ...verdict,
       },
     ],
     executionEvidence: [{ ...toolRun(arm, campaignDir), subjectId: TASK.taskId }],
@@ -136,8 +154,7 @@ function recordArm(arm: Arm): string {
 /** The case as the packet step reads it from `arm`'s record, and its packet. */
 function packetOf(arm: Arm) {
   const campaignDir = recordArm(arm);
-  const [one, ...rest] = batteryCases(campaignDir, arm.runId);
-  expect(rest).toEqual([]);
+  const one = batteryCases(campaignDir, arm.runId).find((row) => row.taskId === TASK.taskId);
   if (one?.final?.artifactJson === null || one?.final?.artifactJson === undefined) {
     throw new Error("no answer");
   }
@@ -192,34 +209,51 @@ describe("m2 packets are blind", () => {
       caseKey(sol.one.campaignDir, sol.one.locator, TASK.taskId),
     );
   });
+});
 
-  it("leave a wall's draft and an unanswered case to the record", () => {
-    const { one } = opus;
-    expect(deterministicLabel(one, null)).toBeNull();
-    expect(deterministicLabel({ ...one, solveEnd: { ...one.solveEnd, solverSubmitted: false } }, null)).toBe(
-      "wall-ended",
-    );
-    const unanswered = { ...one, final: null, recorded: { outcomes: null, toolRuns: [] } };
-    expect(deterministicLabel({ ...unanswered, solveEnd: { ...one.solveEnd, accepted: false } }, null)).toBe(
-      "unclassified",
-    );
+describe("m2 labels come from a reader for every case with a packet", () => {
+  const { one, campaignDir } = packetOf(OPUS);
+  const staged = scratchDir("m2-staged-");
+  writeMatchingSlug(staged);
+
+  it("list the verified fails only, the cases the outcome join reads", () => {
+    expect(batteryCases(campaignDir, OPUS.runId).map((row) => row.taskId)).toEqual([TASK.taskId]);
+  });
+
+  it("send a wall's draft to the reader with the solve-end facts in its packet", async () => {
+    const draft: M2Case = { ...one, solveEnd: { ...one.solveEnd, solverSubmitted: false } };
+    const { row, packet } = await packetFromStaged(draft, staged);
+    expect(row.packet).not.toBeNull();
+    expect(row).not.toHaveProperty("deterministic");
+    expect(parseJsonAs<{ solveEnd: unknown }>(packet ?? "{}").solveEnd).toEqual({
+      solverSubmitted: false,
+      wallBound: null,
+      wallShare: null,
+    });
+  });
+
+  it("write no packet, so the label is unclassified, for a case with no answer", async () => {
+    const { row, packet } = await packetFromStaged({ ...one, final: null }, staged);
+    expect(packet).toBeNull();
+    expect(row).toMatchObject({ packet: null, why: "no task or answer to read" });
+    expect(row).not.toHaveProperty("deterministic");
   });
 });
 
 describe("m2 packet checks", () => {
   const { one, campaignDir } = packetOf(OPUS);
   const run = toolRun(OPUS, campaignDir);
-  const checkOf = (recorded: typeof one.recorded, outcome: "pass" | "fail") => {
+  const checkOf = (recorded: typeof one.recorded, outcome: "pass" | "fail" | "not-run", runs = [run]) => {
     const packet = buildPacket({
       brief: MATCHING_BRIEF,
       task: TASK,
       answer: capturedJsonParse(one.final?.artifactJson ?? "null"),
       recorded,
       replay: {
-        verdict: outcome,
+        verdict: outcome === "not-run" ? "non-result" : outcome,
         nonResultKind: null,
         checkRuns: [{ seq: 0, checkId: CHECK, outcome, errorKind: null, startedAt: OPUS.at, durationMs: 9 }],
-        toolRuns: [run],
+        toolRuns: runs,
         missingTools: [],
       },
       solveEnd: one.solveEnd,
@@ -231,11 +265,19 @@ describe("m2 packet checks", () => {
   it("list no tool run under a check that passed on every side it has", () => {
     expect(checkOf({ outcomes: null, toolRuns: [] }, "pass")?.toolRuns).toEqual([]);
     expect(checkOf({ outcomes: { [CHECK]: "fail" }, toolRuns: [] }, "pass")?.toolRuns).toHaveLength(1);
+    // A replay that never reached the check says nothing about it, like a replay never made.
+    expect(checkOf({ outcomes: { [CHECK]: "pass" }, toolRuns: [] }, "not-run")?.toolRuns).toEqual([]);
+  });
+
+  it("say plainly when a check that did not pass has no tool output on any side", () => {
+    expect(checkOf({ outcomes: { [CHECK]: "fail" }, toolRuns: [] }, "fail", [])?.toolRuns).toBe("none");
   });
 
   it("compare a replayed tool with the recorded runs of that tool only", () => {
-    const replayed = (recorded: typeof one.recorded) =>
-      checkOf(recorded, "fail")?.toolRuns.find((row) => row.graded === "replayed")?.instrument;
+    const replayed = (recorded: typeof one.recorded) => {
+      const runs = checkOf(recorded, "fail")?.toolRuns;
+      return runs === "none" ? undefined : runs?.find((row) => row.graded === "replayed")?.instrument;
+    };
     expect(replayed({ outcomes: { [CHECK]: "fail" }, toolRuns: [] })).toBe("no recorded run of this tool");
     expect(replayed({ outcomes: { [CHECK]: "fail" }, toolRuns: [{ ...run, toolId: "other" }] })).toBe(
       "no recorded run of this tool",
@@ -277,15 +319,16 @@ describe("m2 reads", () => {
     );
     expect(aggregate([read("limit"), read("limit")], 3)).toEqual({ label: "limit", agreement: 2 / 3 });
     expect(aggregate([read("limit")], 3).label).toBe("unclassified");
+    expect(aggregate([read("wall-ended"), read("wall-ended"), read("limit")], 3).label).toBe("wall-ended");
   });
 
-  const transcript = (model: string, tool: string) => [
+  const transcript = (model: string, tool: string, label: FailLabel = "check-defect") => [
     JSON.stringify({ type: "system", subtype: "init", model, tools: ["StructuredOutput"] }),
     JSON.stringify({ type: "assistant", message: { model, content: [{ type: "tool_use", name: tool }] } }),
     JSON.stringify({
       type: "result",
       modelUsage: { [model]: {} },
-      structured_output: { label: "check-defect", decidingCheck: CHECK, reason: "r" },
+      structured_output: { label, decidingCheck: CHECK, reason: "r" },
     }),
   ];
 
@@ -307,7 +350,13 @@ describe("m2 reads", () => {
     });
   });
 
-  it("round-trip the label file and refuse a line it cannot score", () => {
+  it("accept wall-ended from the reader", () => {
+    expect(
+      readOfTranscript(transcript("claude-opus-5-5", "StructuredOutput", "wall-ended"), "claude-opus-5-5"),
+    ).toMatchObject({ label: "wall-ended", error: null });
+  });
+
+  it("write the label file the outcome join parses", () => {
     const lines = [
       { caseKey: "ab34525a7220203a", label: "limit" },
       { caseKey: "eea537148320f304", label: "wall-ended" },
@@ -316,12 +365,7 @@ describe("m2 reads", () => {
     expect(text).toBe(
       '{"caseKey":"ab34525a7220203a","label":"limit"}\n{"caseKey":"eea537148320f304","label":"wall-ended"}\n',
     );
-    const parsed = parseLabels(text);
-    const lineOf = ([key, label]: [string, M2Label]) => ({ caseKey: key, label });
-    expect([...parsed].map(lineOf)).toEqual([...lines]);
-    expect(labelLines([...parsed].map(lineOf))).toBe(text);
-    expect(() => parseLabels('{"caseKey":"k","label":"real"}\n')).toThrow("known label");
-    expect(() => parseLabels(`${text}${text}`)).toThrow("labelled twice");
+    expect([...parseLabels(text)].map(([key, label]) => ({ caseKey: key, label }))).toEqual([...lines]);
   });
 });
 

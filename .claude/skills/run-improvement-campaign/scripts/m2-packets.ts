@@ -1,24 +1,27 @@
 #!/usr/bin/env bun
 
 /**
- * M2's packet step: one blind evidence packet per verified fail or unaccepted case of the named
- * batteries, for the tool-less reader in `m2-read.ts` to label as a limit, a check defect, an
- * under-specified task, a wall-ended solve or unclassified.
+ * M2's packet step: one blind evidence packet per verified fail of the named batteries, the cases
+ * the outcome join (`climb-outcome.ts`) reads, for the tool-less reader in `m2-read.ts` to label as
+ * a limit, a check defect, an under-specified task, a wall-ended solve or unclassified.
  *
  * A packet is the case as a practitioner would need it and nothing that says whose run it was: the
  * public task with its published validity rules, the domain's public resources, the accepted
  * answer, every applicable check with its published assertion, and, for each check that did not
- * pass, the tool runs under it with their provenance, exit code and stderr tail. The recorded rows
+ * pass, the tool runs under it with their provenance, exit code and stderr tail, or `"none"` where
+ * no side has any, and how the solve ended (whether the solver handed the answer in itself, and the
+ * wall it ended on). The recorded rows
  * are the primary evidence. The replay corroborates them: the case's own program, recovered by
  * recomputing its fingerprint rather than trusted by path, is copied outside `campaigns/` and the
  * answer is graded again through the replay core (`tools/replay/cli.ts`), so no Builder-written
  * check ever runs inside a campaign. Run ids, campaign slugs, source shas, model names, absolute
  * paths and timestamps are removed, so two arms' packets for the same case are the same bytes.
  *
- * Two labels need no reader. `wall-ended` is an accepted answer the solver never submitted itself
- * (the wall's draft), or an unaccepted case whose solve ran to the wall. `unclassified` is a case
- * with no answer and no per-check result. Every case a packet cannot be built for is also written
- * as `unclassified`, so a reader counting labels sees the unlabelled cases rather than losing them.
+ * The reader labels every case that has a packet, `wall-ended` included: whether a wall's draft
+ * failed because the time ran out or because it is wrong is a judgement the solve-end facts inform
+ * and do not decide. The record decides one label alone: a case no packet can be built for (no
+ * program, task or answer) is `unclassified`, so a reader counting labels sees it rather than
+ * losing it.
  *
  * Each case is keyed by `caseKey` over the real campaign directory, the battery run id and the task
  * id, the key the outcome join reads, so this file never needs the key back from the reader. The
@@ -66,8 +69,6 @@ import type { FinalSubmission } from "#src/solve/final-submission.ts";
 import type { CheckRun, CorrectnessModelResult } from "#src/verify/correctness-model-result.ts";
 import { type ReplayToolRun, loadContract, replayCases } from "#tools/replay/cli.ts";
 
-export type M2Label = "limit" | "check-defect" | "under-specified" | "wall-ended" | "unclassified";
-
 /** Where a case's program may be: a directory holding `agent/` and `correctness-model/` (a bundle
  *  snapshot or a retained version), or a workspace's own git store, optionally narrowed to commits. */
 export type ProgramSource =
@@ -83,9 +84,8 @@ export interface RecordedChecks {
   toolRuns: readonly ReplayToolRun[];
 }
 
-/** How the solve ended, as far as the record says. */
+/** How the solve of a verified fail ended, as far as the record says. */
 export interface SolveEnd {
-  accepted: boolean;
   /** Whether the solver called `submit` itself; null when no trace could be read. */
   solverSubmitted: boolean | null;
   /** The walls reader's bound for the case (`time-bound`, `submitted`, …); null when unread. */
@@ -128,17 +128,16 @@ export interface PacketInput {
   identity: readonly string[];
 }
 
-/** One row of `m2-cases.jsonl`: the case's key, a label the record decides alone, and where its
- *  packet is. No reader sees this row. */
+/** One row of `m2-cases.jsonl`: the case's key and where its packet is, null when none could be
+ *  built, which labels the case `unclassified`. No reader sees this row. */
 export interface CaseRow {
   caseKey: string;
-  deterministic: M2Label | null;
   packet: string | null;
   why: string;
   replay: { verdict: CaseReplay["verdict"]; nonResultKind: string | null; missingTools: number } | null;
 }
 
-/** One case's row, its packet when a reader is needed, and the replay behind both. */
+/** One case's row, its packet, and the replay behind both. */
 export interface CaseResult {
   row: CaseRow;
   packet: string | null;
@@ -159,7 +158,7 @@ const RUN_ID_PART = /^(?:[0-9a-f]{6,}|\d{8}T\d+Z)$/;
 
 const USAGE = `usage: m2-packets.ts --battery <abs campaign dir>/<runId> [--battery …] --out <abs dir> [--stage <abs dir>]
 
-Builds one blind packet per verified fail and unaccepted case of each battery, replays each answer
+Builds one blind packet per verified fail of each battery, replays each answer
 under its own program staged outside campaigns/, writes <out>/packets/<caseKey>.json and
 <out>/m2-cases.jsonl.`;
 
@@ -264,7 +263,7 @@ export function stageProgram(
 
 /** Grade the case's accepted answer again under its staged program; null without an answer. */
 export async function replayStaged(staged: string, one: M2Case): Promise<CaseReplay | null> {
-  if (one.final?.accepted !== true || one.publicTaskDigest === null) return null;
+  if (one.final === null || one.publicTaskDigest === null) return null;
   const replayed = await replayCases({ candidateDir: staged, runId: "m2-replay" }, [
     { taskId: one.taskId, publicTaskDigest: one.publicTaskDigest, finalSubmission: one.final },
   ]);
@@ -324,35 +323,35 @@ function toolRow(graded: "recorded" | "replayed", run: ReplayToolRun, recorded: 
   };
 }
 
-/** One check's row: its published assertion, the recorded and replayed outcome, and the tool runs
- *  of a check that did not pass on both sides. */
-function checkRow(check: Brief["truthChecks"][number], input: PacketInput) {
-  const { recorded, replay } = input;
-  const recordedOutcome =
-    recorded.outcomes === null ? "unrecorded" : (recorded.outcomes[check.id] ?? "no result");
-  const replayedOutcome =
-    replay === null
-      ? "not replayed"
-      : (replay.checkRuns.find((run) => run.checkId === check.id)?.outcome ?? "no result");
-  // A side that was never recorded or replayed says nothing; every side present must pass.
-  const sides = [
-    ...(recorded.outcomes === null ? [] : [recordedOutcome]),
-    ...(replay === null ? [] : [replayedOutcome]),
-  ];
-  const passed = sides.length > 0 && sides.every((outcome) => outcome === "pass");
-  const own = (runs: readonly ReplayToolRun[]) =>
-    passed ? [] : runs.filter((run) => run.checkId === check.id);
-  const recordedRuns = own(recorded.toolRuns);
-  return {
-    checkId: check.id,
-    assertion: check.assertion,
-    recorded: recordedOutcome,
-    replayed: replayedOutcome,
-    toolRuns: [
-      ...recordedRuns.map((run) => toolRow("recorded", run, recordedRuns)),
-      ...own(replay?.toolRuns ?? []).map((run) => toolRow("replayed", run, recordedRuns)),
-    ],
+/** A check's recorded and replayed outcome, and whether it passed: a side never recorded,
+ *  replayed or run says nothing, and every other side must pass. */
+function sidesOf(checkId: string, { recorded, replay }: PacketInput) {
+  const replayed = replay?.checkRuns.find((run) => run.checkId === checkId)?.outcome ?? "no result";
+  const sides = {
+    recorded: recorded.outcomes === null ? null : (recorded.outcomes[checkId] ?? "no result"),
+    replayed: replay === null ? null : replayed,
   };
+  const present = Object.values(sides).filter((side) => side !== null && side !== "not-run");
+  return {
+    recorded: sides.recorded ?? "unrecorded",
+    replayed: sides.replayed ?? "not replayed",
+    passed: present.length > 0 && present.every((side) => side === "pass"),
+  };
+}
+
+/** One check's row: its published assertion, the recorded and replayed outcome, and the tool runs
+ *  of a check that did not pass on both sides, `"none"` when no side has one. */
+function checkRow(check: Brief["truthChecks"][number], input: PacketInput) {
+  const { passed, ...outcomes } = sidesOf(check.id, input);
+  const row = { checkId: check.id, assertion: check.assertion, ...outcomes };
+  if (passed) return { ...row, toolRuns: [] };
+  const own = (runs: readonly ReplayToolRun[]) => runs.filter((run) => run.checkId === check.id);
+  const recordedRuns = own(input.recorded.toolRuns);
+  const toolRuns = [
+    ...recordedRuns.map((run) => toolRow("recorded", run, recordedRuns)),
+    ...own(input.replay?.toolRuns ?? []).map((run) => toolRow("replayed", run, recordedRuns)),
+  ];
+  return { ...row, toolRuns: toolRuns.length === 0 ? "none" : toolRuns };
 }
 
 /** The packet's bytes: stable JSON with every identity string replaced. */
@@ -385,16 +384,6 @@ export function buildPacket(input: PacketInput): string {
     .filter((value) => value.length >= 4)
     .toSorted((a, b) => b.length - a.length);
   return `${literals.reduce((text, value) => text.replaceAll(value, REDACTED), stableJson(packet))}\n`;
-}
-
-/** The label the record decides without a reader, or null when the case needs one. */
-export function deterministicLabel(one: M2Case, replay: CaseReplay | null): M2Label | null {
-  const { accepted, solverSubmitted, wallBound } = one.solveEnd;
-  if (accepted && solverSubmitted === false) return "wall-ended";
-  if (!accepted && wallBound === "time-bound") return "wall-ended";
-  const recorded = one.recorded.outcomes !== null || one.recorded.toolRuns.length > 0;
-  if (!accepted && !recorded && replay === null) return "unclassified";
-  return null;
 }
 
 // --- Reading a battery --------------------------------------------------------------------------
@@ -450,7 +439,7 @@ function batterySources(campaignDir: string, runDir: string, programId: string):
   return [...snapshots, { kind: "dir", dir: dirname(dirname(runDir)) }];
 }
 
-/** Every verified fail and unaccepted case of one battery, read from its recorded evidence. */
+/** Every verified fail of one battery, read from its recorded evidence. */
 export function batteryCases(campaignDir: string, runId: string): M2Case[] {
   const realCampaign = realpathSync(campaignDir);
   const runDir = campaignTraceRoots(realCampaign)
@@ -467,8 +456,7 @@ export function batteryCases(campaignDir: string, runId: string): M2Case[] {
   const programId = battery.bundleSnapshot.id;
   const identity = identityOf(realCampaign, runId, basename(dirname(dirname(runDir))));
   return battery.cases.flatMap((row): M2Case[] => {
-    const outcome = classifyCaseOutcome(row);
-    if (outcome !== "fail" && outcome !== "unaccepted") return [];
+    if (classifyCaseOutcome(row) !== "fail") return [];
     const prefix = `cases/${row.taskId}`;
     const final = recordedJson<FinalSubmission>(runDir, `${prefix}/final-submission.json`, violations);
     const wall = walls.get(row.taskId);
@@ -488,7 +476,6 @@ export function batteryCases(campaignDir: string, runId: string): M2Case[] {
           toolRuns: battery.executionEvidence.filter((run) => run.subjectId === row.taskId),
         },
         solveEnd: {
-          accepted: row.acceptedSubmit,
           solverSubmitted: solverSubmittedOf(recordedJson(runDir, `${prefix}/trace.json`, violations)),
           wallBound: wall?.bound ?? null,
           wallShare: wall?.timeShare ?? null,
@@ -501,24 +488,37 @@ export function batteryCases(campaignDir: string, runId: string): M2Case[] {
 
 // --- One case, end to end -----------------------------------------------------------------------
 
-/** Stage, replay and render one case; the packet is null when the record decides the label or the
- *  program could not be recovered. */
+/** Stage, replay and render one case; the packet is null when the program could not be recovered. */
 export async function packetFor(one: M2Case, stageRoot: string): Promise<CaseResult> {
   const staged = stageProgram(one.programId, one.programSources, stageRoot);
   if (staged !== null) return packetFromStaged(one, staged);
-  const caseKeyOf = caseKey(one.campaignDir, one.locator, one.taskId);
-  const deterministic = deterministicLabel(one, null) ?? "unclassified";
-  return {
-    row: { caseKey: caseKeyOf, deterministic, packet: null, why: "program not recoverable", replay: null },
-    packet: null,
-    replay: null,
-  };
+  return { row: rowOf(one, null, "program not recoverable", null), packet: null, replay: null };
 }
 
 /** The second half of {@link packetFor}, for a caller that adapted the staged copy first. */
 export async function packetFromStaged(one: M2Case, staged: string): Promise<CaseResult> {
-  const key = caseKey(one.campaignDir, one.locator, one.taskId);
   const replay = await replayStaged(staged, one);
+  const { brief, tasks } = loadContract(staged);
+  const task = tasks.find((candidate) => candidate.taskId === one.taskId);
+  const artifactJson = one.final?.artifactJson;
+  if (task === undefined || artifactJson == null) {
+    return { row: rowOf(one, null, "no task or answer to read", replay), packet: null, replay };
+  }
+  const packet = buildPacket({
+    brief,
+    task,
+    answer: capturedJsonParse(artifactJson),
+    recorded: one.recorded,
+    replay,
+    solveEnd: one.solveEnd,
+    identity: one.identity,
+  });
+  return { row: rowOf(one, `packets/${caseKeyOf(one)}.json`, "read", replay), packet, replay };
+}
+
+const caseKeyOf = (one: M2Case) => caseKey(one.campaignDir, one.locator, one.taskId);
+
+function rowOf(one: M2Case, packet: string | null, why: string, replay: CaseReplay | null): CaseRow {
   const summary =
     replay === null
       ? null
@@ -527,37 +527,7 @@ export async function packetFromStaged(one: M2Case, staged: string): Promise<Cas
           nonResultKind: replay.nonResultKind,
           missingTools: replay.missingTools.length,
         };
-  const decided = deterministicLabel(one, replay);
-  const { brief, tasks } = loadContract(staged);
-  const task = tasks.find((candidate) => candidate.taskId === one.taskId);
-  if (decided !== null || task === undefined || one.final?.artifactJson == null) {
-    const why = decided === null ? "no task or answer to read" : "decided by the record";
-    const row = {
-      caseKey: key,
-      deterministic: decided ?? "unclassified",
-      packet: null,
-      why,
-      replay: summary,
-    };
-    return { row, packet: null, replay };
-  }
-  const packet = buildPacket({
-    brief,
-    task,
-    answer: capturedJsonParse(one.final.artifactJson),
-    recorded: one.recorded,
-    replay,
-    solveEnd: one.solveEnd,
-    identity: one.identity,
-  });
-  const row = {
-    caseKey: key,
-    deterministic: null,
-    packet: `packets/${key}.json`,
-    why: "read",
-    replay: summary,
-  };
-  return { row, packet, replay };
+  return { caseKey: caseKeyOf(one), packet, why, replay: summary };
 }
 
 /** Write each case's packet and the case rows, and return the rows. */
@@ -585,8 +555,8 @@ async function main(args: CommandArgs): Promise<void> {
     }
   }
   const rows = writePackets(out, results);
-  const counts = Map.groupBy(rows, (row) => row.deterministic ?? "to read");
-  console.log([...counts].map(([label, group]) => `${label} ${group.length}`).join(", "));
+  const read = rows.filter((row) => row.packet !== null).length;
+  console.log(`to read ${read}, unclassified without a packet ${rows.length - read}`);
 }
 
 if (import.meta.main) {

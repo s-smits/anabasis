@@ -3,8 +3,8 @@
 /**
  * M2's reads: each packet `m2-packets.ts` wrote goes to a reader with no tools at all, three times,
  * and the majority label becomes the case's label in `labels.jsonl`, the file the outcome join
- * reads (`{"caseKey", "label"}` per line). A label the record decided needs no read and is copied
- * across, so every case the packet step listed has exactly one line.
+ * reads (`{"caseKey", "label"}` per line). A case the packet step could build no packet for is
+ * `unclassified` without a read, so every case it listed has exactly one line.
  *
  * The reader is `claude -p` with every built-in tool disabled, no MCP server, no session kept, safe
  * mode on and an empty working directory, and the packet on stdin. It cannot open a file, so it
@@ -24,11 +24,12 @@ import { tmpdir } from "#src/meta/os.ts";
 import { sha256 } from "#src/meta/digest.ts";
 import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { isRecord, isString } from "#src/meta/json-shape.ts";
-import type { CaseRow, M2Label } from "./m2-packets.ts";
+import { FAIL_LABELS, type FailLabel } from "./climb-outcome.ts";
+import type { CaseRow } from "./m2-packets.ts";
 
 /** One reader's answer, with what its transcript showed. A read that failed carries `error`. */
 export interface ReadResult {
-  label: ReaderLabel | null;
+  label: FailLabel | null;
   decidingCheck: string | null;
   reason: string | null;
   models: string[];
@@ -36,21 +37,12 @@ export interface ReadResult {
   error: string | null;
 }
 
-export type ReaderLabel = Exclude<M2Label, "wall-ended">;
-
 /** A case's label from its reads, and the share of the replicates asked for that agreed on it. */
 export interface Aggregate {
-  label: M2Label;
+  label: FailLabel;
   agreement: number;
 }
 
-export interface LabelLine {
-  caseKey: string;
-  label: M2Label;
-}
-
-const READER_LABELS: readonly ReaderLabel[] = ["limit", "check-defect", "under-specified", "unclassified"];
-const ALL_LABELS: ReadonlySet<string> = new Set<M2Label>([...READER_LABELS, "wall-ended"]);
 const STRUCTURED_OUTPUT = "StructuredOutput";
 const DEFAULT_MODEL = "claude-opus-5-5";
 const READ_TIMEOUT_MS = 15 * 60 * 1000;
@@ -58,7 +50,7 @@ const PROMPT_FILE = join(import.meta.dir, "..", "references", "m2-reader.md");
 const LABEL_SCHEMA = {
   type: "object",
   properties: {
-    label: { type: "string", enum: READER_LABELS },
+    label: { type: "string", enum: FAIL_LABELS },
     decidingCheck: { type: "string" },
     reason: { type: "string" },
   },
@@ -79,7 +71,7 @@ export function aggregate(reads: readonly ReadResult[], replicates: number): Agg
     reads.flatMap((read) => (read.label === null ? [] : [read.label])),
     (label) => label,
   );
-  const [label, votes] = [...counts].reduce<[ReaderLabel | null, number]>(
+  const [label, votes] = [...counts].reduce<[FailLabel | null, number]>(
     (best, [candidate, group]) => (group.length > best[1] ? [candidate, group.length] : best),
     [null, 0],
   );
@@ -120,7 +112,7 @@ export function readOfTranscript(lines: readonly string[], model: string): ReadR
       ? `the transcript names models ${seen.models.join(", ") || "none"}, not ${model}`
       : null;
   const answer = isRecord(output) ? output : {};
-  const label = READER_LABELS.find((candidate) => candidate === answer.label) ?? null;
+  const label = FAIL_LABELS.find((candidate) => candidate === answer.label) ?? null;
   const error = refusal ?? (label === null ? "no structured label in the result" : null);
   return {
     label: error === null ? label : null,
@@ -166,24 +158,10 @@ async function readOnce(packet: string, prompt: string, model: string): Promise<
   return code === 0 ? read : { ...read, label: null, error: read.error ?? `reader exited ${code}` };
 }
 
-/** The label file's text: one `{"caseKey","label"}` line per case. */
-export function labelLines(lines: readonly LabelLine[]): string {
+/** The label file's text, one `{"caseKey","label"}` line per case, the shape `climb-outcome.ts`'s
+ *  `parseLabels` reads. */
+export function labelLines(lines: readonly { caseKey: string; label: FailLabel }[]): string {
   return lines.map(({ caseKey, label }) => `${capturedJsonStringify({ caseKey, label })}\n`).join("");
-}
-
-/** Parse a label file, refusing an unknown label or a case keyed twice. */
-export function parseLabels(text: string): Map<string, M2Label> {
-  const labels = new Map<string, M2Label>();
-  for (const line of text.split("\n")) {
-    if (line.trim() === "") continue;
-    const row = parseJsonAs<Partial<LabelLine>>(line);
-    if (!isString(row.caseKey) || !isString(row.label) || !ALL_LABELS.has(row.label)) {
-      throw new Error(`label line is not {"caseKey","label"} with a known label: ${line}`);
-    }
-    if (labels.has(row.caseKey)) throw new Error(`case ${row.caseKey} is labelled twice`);
-    labels.set(row.caseKey, row.label);
-  }
-  return labels;
 }
 
 async function eachInParallel<T>(items: readonly T[], width: number, work: (item: T) => Promise<void>) {
@@ -219,7 +197,7 @@ async function main(args: CommandArgs): Promise<void> {
   });
   const reads = rows.map((row) => {
     if (row.packet === null) {
-      return { caseKey: row.caseKey, label: row.deterministic ?? "unclassified", reads: [] };
+      return { caseKey: row.caseKey, label: "unclassified" as const, reads: [] };
     }
     const packet = readFileSync(join(dir, row.packet), "utf8");
     const all = parseJsonAs<ReadResult[]>(

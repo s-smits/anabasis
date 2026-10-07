@@ -218,10 +218,13 @@ function checkChain(root: string, landing: Landing): void {
   }
 }
 
-/** The documentation set is the pre-push hook's: the paths its `changes_source` excludes. */
+/** The documentation set is the pre-push hook's: the paths its `changes_source` excludes in its own
+ *  body. The further paths a side pull request may change are passed to it by a caller, and are not
+ *  documentation. */
 function documentationPathspecs(): string[] {
   const hook = readFileSync(join(import.meta.dir, "..", "..", ".githooks", "pre-push"), "utf8");
-  const pathspecs = [...hook.matchAll(/'(:\(exclude\)[^']+)'/g)].map((match) => match[1] ?? "");
+  const body = /^changes_source\(\) [({]\n([\s\S]*?)^[)}]$/m.exec(hook)?.[1] ?? "";
+  const pathspecs = [...body.matchAll(/'(:\(exclude\)[^']+)'/g)].map((match) => match[1] ?? "");
   if (pathspecs.length === 0) throw new Error("the pre-push hook names no documentation paths");
   return pathspecs;
 }

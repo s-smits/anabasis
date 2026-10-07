@@ -26,6 +26,9 @@ export interface FullRunArgs {
   /** Operator interruption after N completed rounds, separate from a difficulty decision.
    *  When absent, there is no round cap; typed terminal reasons still record each stop. */
   maxIterations?: number;
+  /** Operator interruption once this run has measured N new batteries of its own and no remeasure of
+   *  the last one is pending, so paired runs stop at one count. A remeasure never counts. */
+  maxBatteries?: number;
   /** Operator interruption once the loop has run this long: no new round opens after it, and the
    *  round in flight still records its battery, so nothing is killed. The alternative is a manual
    *  kill, which discards every accepted artifact the round has not yet verified. */
@@ -55,7 +58,7 @@ export interface FullRunArgs {
 }
 
 const FULL_RUN_USAGE =
-  'usage: fullrun --prompt "<request>" --provider-turn-budget N [--project <id>] [--context <path> ...] [--expected-source <commit>:<digest>] [--run <runId>] [--max-iterations N] [--stop-after-ms N] [--max-builder-turns N] [--expected-tasks N] [--iteration-budget N|none] [--product-policy fixed] [--dcg true|false] [--withhold-instruments true|false] [--builder-backend <kind>] [--built-backend <kind>] [--review-backend <kind|disabled|inherit>]';
+  'usage: fullrun --prompt "<request>" --provider-turn-budget N [--project <id>] [--context <path> ...] [--expected-source <commit>:<digest>] [--run <runId>] [--max-iterations N] [--max-batteries N] [--stop-after-ms N] [--max-builder-turns N] [--expected-tasks N] [--iteration-budget N|none] [--product-policy fixed] [--dcg true|false] [--withhold-instruments true|false] [--builder-backend <kind>] [--built-backend <kind>] [--review-backend <kind|disabled|inherit>]';
 
 /** What one flag does to the arguments. The flag name is passed back in so the appliers below
  *  can stay one line each and still name themselves in their refusals. */
@@ -99,9 +102,15 @@ function sourceIdentity(value: string): NonNullable<FullRunArgs["expectedSource"
   return { commit: value.slice(0, 40), sourceDigest: value.slice(41) };
 }
 
-/** The five flags that are a plain count. */
+/** The six flags that are a plain count. */
 function counted(
-  field: "maxIterations" | "stopAfterMs" | "maxBuilderTurns" | "expectedTasks" | "providerTurnBudget",
+  field:
+    | "maxIterations"
+    | "maxBatteries"
+    | "stopAfterMs"
+    | "maxBuilderTurns"
+    | "expectedTasks"
+    | "providerTurnBudget",
 ): Apply {
   return (args, value, flag) => {
     args[field] = count(flag, value);
@@ -129,6 +138,7 @@ const FLAGS = new Map<string, Apply>([
   ["--project", text("project")],
   ["--run", text("runId")],
   ["--max-iterations", counted("maxIterations")],
+  ["--max-batteries", counted("maxBatteries")],
   ["--stop-after-ms", counted("stopAfterMs")],
   ["--max-builder-turns", counted("maxBuilderTurns")],
   ["--expected-tasks", counted("expectedTasks")],

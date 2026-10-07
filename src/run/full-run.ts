@@ -216,6 +216,21 @@ function roundCapTerminal(round: number, roundLimit: number): string | null {
     : null;
 }
 
+/** The battery cap: the run ends once it has measured `cap` new batteries of its own and the next
+ *  move is no `measure`, so the last battery's remeasures on unchanged bytes (cases the environment
+ *  cut short, solves awaiting their confirmation) run before it. A remeasure poses no new battery and
+ *  never counts. A continuation counts only its own rounds, so it names the batteries it has left. */
+function batteryCapTerminal(
+  round: number,
+  batteries: number,
+  cap: number | undefined,
+  next: NextMove | null,
+): string | null {
+  return cap !== undefined && batteries >= cap && next?.move !== "measure"
+    ? `operator-interrupted: battery cap ${cap} reached after completed round ${round} (--max-batteries sets it)`
+    : null;
+}
+
 /** The soft time boundary: read after a round records, so the battery in flight always finishes
  *  and the run overruns the boundary by at most one round. */
 function softBoundaryTerminal(
@@ -393,6 +408,7 @@ async function runUnderLock(run: LockedRun): Promise<FullRunOutcome> {
   const rounds: FullRunRound[] = [];
   const loopStartedMs = Date.now();
   let blockedRounds = 0,
+    batteries = 0,
     completed: IterationResult | null = null;
   let authoringStall: UnresolvedAuthoringStall | null = null;
   for (let round = 1; ; round += 1) {
@@ -427,6 +443,8 @@ async function runUnderLock(run: LockedRun): Promise<FullRunOutcome> {
       report: roundReporter(project, manifest.slug, round, roundLimit, runId),
     });
     completed = result;
+    // A new battery is one a build or rebuild measured; a `measure` round solves unchanged bytes again.
+    if (pendingIteration.measured && result.decision.move !== "measure") batteries += 1;
     blockedRounds = nextBlockedRounds(blockedRounds, result);
     authoringStall = nextUnresolvedAuthoringStall(authoringStall, result);
     const curriculumTerminal = loopTerminal(result, {
@@ -437,6 +455,7 @@ async function runUnderLock(run: LockedRun): Promise<FullRunOutcome> {
     const terminal =
       curriculumTerminal ??
       softBoundaryTerminal(round, Date.now() - loopStartedMs, args.stopAfterMs) ??
+      batteryCapTerminal(round, batteries, args.maxBatteries, result.nextDecision) ??
       roundCapTerminal(round, roundLimit);
     recordRound(rounds, pendingIteration, terminal, result, manifest.slug);
     // No loop-end summary here: the recorded terminal evidence is the one owner of the ending, and

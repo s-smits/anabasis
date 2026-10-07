@@ -43,6 +43,7 @@ export const CONDITIONS = {
   opushmm: { kind: "claude", model: "claude-opus-5-5", efforts: ["high", "medium", "medium"] },
   sonnet: { kind: "claude", model: "claude-sonnet-5-5", efforts: ["medium", "medium", "medium"] },
   sonnetxhh: { kind: "claude", model: "claude-sonnet-5-5", efforts: ["xhigh", "high", "high"] },
+  opus5: { kind: "claude", model: "claude-opus-5", efforts: ["medium", "medium", "medium"] },
   opus48: { kind: "claude", model: "claude-opus-4-8", efforts: ["medium", "medium", "medium"] },
   opus47: { kind: "claude", model: "claude-opus-4-7", efforts: ["medium", "medium", "medium"] },
 } as const;
@@ -106,7 +107,7 @@ const ONE_RUN_IDS = [
 ] as const;
 
 /** The options the controller receives as given, and the probe with it, so both digest one command. */
-const CARRIED = ["max-iterations", "stop-after-ms", "project"] as const;
+const CARRIED = ["max-iterations", "max-batteries", "stop-after-ms", "project"] as const;
 /** The options that stay absent unless the operator passes them. */
 const OPTIONAL_VALUES = [
   ...CARRIED,
@@ -148,6 +149,7 @@ export const HELP = `Usage: bun .claude/skills/launch-run/scripts/launch.ts [${P
   --gate auto|run|skip            Default auto: skip bun run gate when the pre-push hook recorded a
                                   whole-gate pass of the resolved commit, run it otherwise
   --max-iterations N              Optional controller round cap
+  --max-batteries N               Optional: the run stops after its Nth new battery and that battery's remeasures
   --stop-after-ms N               Optional time boundary: the controller stops after the first completed round past N ms
   --kill-after-ms N               Operator SIGTERM at N ms after launch begins; 30 s grace then service removal
   --run ID                       One preset and condition only
@@ -174,7 +176,14 @@ function conditionName(value: string, refuse: ExitWith): Condition {
 /** What the parser cannot see for itself: the option values that must be numbers, paths, a prompt or
  *  an id naming exactly one run. */
 function refuseValues(options: LaunchOptions, refuse: ExitWith): void {
-  for (const key of ["budget", "tasks", "max-iterations", "stop-after-ms", "kill-after-ms"] as const) {
+  for (const key of [
+    "budget",
+    "tasks",
+    "max-iterations",
+    "max-batteries",
+    "stop-after-ms",
+    "kill-after-ms",
+  ] as const) {
     const value = options[key];
     if (value !== undefined && (!/^[1-9]\d*$/.test(value) || !Number.isSafeInteger(Number(value)))) {
       refuse(`--${key} must be a positive integer`);

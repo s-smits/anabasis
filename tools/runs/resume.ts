@@ -160,8 +160,9 @@ export function resumePlan(opening: OpeningFacts | null, launch: LaunchRecord | 
   // and neither boundary has a default at all, so a continuation of a 60-task run stopped at a
   // soft wall silently became an unbounded 25-task one — a changed measurement condition under
   // the word "resume". Each is carried when the recorded argv holds it, under the launcher's
-  // spelling of the same flag; `--expected-tasks` is always recorded, the two boundaries only
-  // when the launch set them.
+  // spelling of the same flag; `--expected-tasks` is always recorded, the boundaries only when the
+  // launch set them. Each boundary is the stopped run's own, so a continuation's remainder is the
+  // operator's to set.
   const carried: string[] = [];
   const carry = (flag: string, recorded: string) => {
     const value = recordedArg(receipt.argv, recorded);
@@ -171,6 +172,7 @@ export function resumePlan(opening: OpeningFacts | null, launch: LaunchRecord | 
   };
   carry("--tasks", "--expected-tasks");
   carry("--max-iterations", "--max-iterations");
+  carry("--max-batteries", "--max-batteries");
   carry("--stop-after-ms", "--stop-after-ms");
   return {
     ok: true,

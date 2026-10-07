@@ -1,11 +1,1 @@
-{
-  "vendor/pi-coding-agent/core/tools/bash.ts": {
-    "exec": 25
-  },
-  "vendor/pi-coding-agent/core/tools/edit-diff.ts": {
-    "generateDiffString": 23
-  },
-  "vendor/pi-coding-agent/core/tools/read.ts": {
-    "(anonymous)": 30
-  }
-}
+{}

@@ -2,6 +2,8 @@
 // packages/coding-agent/src/core/tools/bash.ts. Departures: the TUI renderers are left out, since no
 // terminal UI draws these calls, so their update throttle is copied here as a constant; and a
 // `tempDir` option is passed through to OutputAccumulator (see there).
+// The shell exec's spawn and exit-code steps are split out as spawnShell and shellExitCode, so it sits
+// under the cyclomatic ceiling rather than in the baseline; what it runs and returns is unchanged.
 // Strict compiler options force the `!` on indexed reads and the `| undefined` on optional fields.
 import { constants } from "node:fs";
 import { access as fsAccess } from "node:fs/promises";
@@ -99,6 +101,29 @@ export interface BashOperations {
 	) => Promise<{ exitCode: number | null }>;
 }
 
+/** The shell child for one command, which reads the command from stdin when its config says so. */
+function spawnShell(shellConfig: ShellConfig, command: string, cwd: string, env: NodeJS.ProcessEnv | undefined) {
+	const commandFromStdin = shellConfig.commandTransport === "stdin";
+	const child = spawn(shellConfig.shell, commandFromStdin ? shellConfig.args : [...shellConfig.args, command], {
+		cwd,
+		detached: process.platform !== "win32",
+		env: env ?? getShellEnv(),
+		stdio: [commandFromStdin ? "pipe" : "ignore", "pipe", "pipe"],
+		windowsHide: true,
+	});
+	if (commandFromStdin) {
+		child.stdin?.on("error", () => {});
+		child.stdin?.end(command);
+	}
+	return child;
+}
+
+/** A signal-killed shell has no exit code. Use the standard shell convention so callers do not
+ *  mistake the termination for a successful command. */
+function shellExitCode(exitCode: number | null, signalCode: NodeJS.Signals | null): number {
+	return exitCode ?? (signalCode ? 128 + (osConstants.signals[signalCode] ?? 0) : 1);
+}
+
 /** Shared process execution used by the built-in shell tools. */
 export function createLocalShellOperations(shellName: string, resolveShellConfig: () => ShellConfig): BashOperations {
 	return {
@@ -114,18 +139,7 @@ export function createLocalShellOperations(shellName: string, resolveShellConfig
 				throw new Error(`Working directory does not exist: ${cwd}\nCannot execute ${shellName} commands.`);
 			}
 
-			const commandFromStdin = shellConfig.commandTransport === "stdin";
-			const child = spawn(shellConfig.shell, commandFromStdin ? shellConfig.args : [...shellConfig.args, command], {
-				cwd,
-				detached: process.platform !== "win32",
-				env: env ?? getShellEnv(),
-				stdio: [commandFromStdin ? "pipe" : "ignore", "pipe", "pipe"],
-				windowsHide: true,
-			});
-			if (commandFromStdin) {
-				child.stdin?.on("error", () => {});
-				child.stdin?.end(command);
-			}
+			const child = spawnShell(shellConfig, command, cwd, env);
 			if (child.pid) trackDetachedChildPid(child.pid);
 			let timedOut = false;
 			let timeoutHandle: NodeJS.Timeout | undefined;
@@ -158,10 +172,7 @@ export function createLocalShellOperations(shellName: string, resolveShellConfig
 				if (timedOut) {
 					throw new Error(`timeout:${timeout}`);
 				}
-				// A signal-killed shell has no exit code. Use the standard shell convention so
-				// callers do not mistake the termination for a successful command.
-				const signalCode = child.signalCode;
-				return { exitCode: exitCode ?? (signalCode ? 128 + (osConstants.signals[signalCode] ?? 0) : 1) };
+				return { exitCode: shellExitCode(exitCode, child.signalCode) };
 			} finally {
 				if (child.pid) untrackDetachedChildPid(child.pid);
 				if (timeoutHandle) clearTimeout(timeoutHandle);

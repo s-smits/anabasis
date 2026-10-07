@@ -43,7 +43,7 @@ interface BuilderRuntime {
    *  the session actually has. A search tool the Builder was never told about is the same as not
    *  having one: the session spends its rounds without ever reaching for it. */
   webSearch: boolean;
-  /** The measured Built solver, for `harness_trial`'s blind rehearsal: the same runtime, turn cap
+  /** The measured Built solver, for `harness_trial`'s blind rehearsal: the same runtime, turn guard
    *  and confinement a battery case solves under, so a rehearsal measures the battery's own
    *  condition rather than a cheaper stand-in. Absent for a scripted runtime with no Built slot. */
   builtSolver?: (providerBudget?: ProviderResourceBudget) => Solver;

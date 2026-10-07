@@ -310,7 +310,6 @@ describe("the census disclosure", () => {
       ),
     );
     expect(projected.detail).toContain("gate.reference_solve_seconds");
-    expect(projected.detail).toContain("gate.census_minutes");
     expect(projected.detail).toContain("reference/");
     expect(projected.detail).not.toContain("120000");
     expect(projected.path).toBe("generated-execution");

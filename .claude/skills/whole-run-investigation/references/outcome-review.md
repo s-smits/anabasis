@@ -92,7 +92,7 @@ evidence is never repaired.
 | external tool exits non-zero | completed execution; the check decides its meaning |
 | the correctness-model evaluator throws | `verifier-throw`, a product defect |
 | a completed turn with no accepted submission | unaccepted task failure |
-| the solve ran to the Builder's `solve_minutes` after calling a tool | unaccepted, and the wall is the Builder's setting |
+| the solve ran to the Builder's `solve_seconds` after calling a tool | unaccepted, and the wall is the Builder's setting |
 | submit rejects the public schema | representation or solve-side failure |
 | accepted bytes evaluate false | a wrong answer, or a right one the checks refused, which lane 38 separates |
 | event stream and stored hash differ | evidence integrity defect |

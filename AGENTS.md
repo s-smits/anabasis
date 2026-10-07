@@ -244,7 +244,7 @@ also lost cases to non-results found no limit among the cases it scored and did 
 so it asks for no harder demand.
 
 A miss the wall caused measures the wall rather than the task. The readout therefore names the
-unaccepted cases whose solve ran to within 0.95 of the harness's `solve_minutes`
+unaccepted cases whose solve ran to within 0.95 of the harness's `solve_seconds`
 (`WALL_BOUND_SHARE`, `wallBound` in `src/run/climb-history.ts`) beside each battery's counts, as "(k ran
 to the N-minute solve wall)". They stay fails in the count, since the solver did not deliver, but a
 battery whose every miss is wall-bound has located the wall. truss cb274b's 54 misses were all
@@ -1003,7 +1003,7 @@ Builder wrapper a check declares, like its bench simulator `firmware-sim`, and c
 solvers' only check before submitting in 8 verified fails. So `--withhold-instruments true` (added
 2026-09-27), the strict operator mode that withholds every check's required tool inside `.toolchain` and
 travels as `HARNESS_BUILT_WITHHOLD_INSTRUMENTS`, stays off by default. Two retired flags are refused by name
-(`src/run/launch-arguments.ts`): `--max-turns`, since the Built cap is the harness's `solver.max_turns`, and
+(`src/run/launch-arguments.ts`): `--max-turns`, since the Built turn count is the host's runaway guard, and
 `--turn-budget`, renamed `--iteration-budget`. `tools/fullrun-launchd.zsh` (macOS) and
 `tools/fullrun-systemd.sh` (Linux) detach a run through `env -i` from one frozen environment map with
 absolute `HOME`, `CODEX_HOME`, `TMPDIR` and `PATH`.
@@ -1598,7 +1598,7 @@ the battery was paid for.
     2026-09-23 it read the `--context` files alone, and it was called six times in 160 sessions, always
     over an empty corpus.
 
-    `harness_trial` solves one `taskId` blind with the measured Built solver — its runtime, turn cap,
+    `harness_trial` solves one `taskId` blind with the measured Built solver — its runtime, turn guard,
     solve wall and confinement — graded under the harness's own `check_seconds` and `tool_run_seconds`. It
     returns the rule-4 verdict, whether it submitted, the turns used, the minutes against the wall, tool
     calls, cost and any typed non-result. Each costs one measured case from the provider budget, which is
@@ -1626,12 +1626,27 @@ the battery was paid for.
 
     **`agent/config.yaml` owns each harness's runtime walls**
     (`src/correctness-bundle/harness-config.ts`). The Builder is told it exists, not its content.
+    Every setting is one wall in seconds and bounds one thing no other setting bounds.
 
-    | section | defaults | host limits |
-    | --- | --- | --- |
-    | solver | `solve_minutes 120`, `max_turns 24`, `shell_timeout_seconds 300`, `shell_timeout_max_seconds 900` | ≤10×, ≥0.1× |
-    | gate | `reference_solve_seconds 120`, `census_minutes 30`, `check_seconds 600`, `tool_run_seconds 300` | none |
-    | battery | `solve_concurrency 5`, the one variable `BUILT_SOLVE_CONCURRENCY` | ≤10× |
+    | section | defaults (seconds) | the one wall | host limits |
+    | --- | --- | --- | --- |
+    | solver | `solve_seconds 7200` | one whole solve of one task | ≤10×, ≥0.1× |
+    | solver | `shell_command_seconds 900` | one solver shell command, whatever timeout it passes | ≤10×, ≥0.1× |
+    | gate | `reference_solve_seconds 120` | one reference solve of one task | none |
+    | gate | `check_seconds 600` | one correctness check with its tool runs | none |
+    | gate | `tool_run_seconds 300` | one verifier tool run inside a check | none |
+
+    The host owns the rest (2026-10-07). The Built turn count is `BUILT_RUNAWAY_TURNS` (100,
+    `src/backends/pi-built.ts`), a runaway guard: a turn is the first prompt or one nudge, each with
+    unlimited tool calls, and no recorded solve used more than two of 4,235 traces, while Builders
+    raised `max_turns` believing it bounded steps. The census wall is `censusWallMs`
+    (`src/run/census-gate.ts`), the sum of the check and reference walls inside it run twice over:
+    as `census_minutes` it met 11 of 766 recorded gate runs, every item inside its own wall, and
+    the Builder's answer in 5 of the 8 sequences was to raise it. The battery width is
+    `BUILT_SOLVE_CONCURRENCY` (`src/run/session-pool.ts`), which `ANA_BUILT_CONCURRENCY` overrides:
+    it is host capacity, and Builders changed it in 3 of 363 versions. The two shell settings became
+    one: the 300 s default cut commands in 121 recorded solves while 900 s was there to ask for,
+    and only one of them asked, while an ask below the wall only took back time already granted.
 
     The solve wall is part of the measured condition. Below a tenth of the default the solver never sees a
     command return, so the battery would grade the wall's submit of a first draft. The floor

@@ -128,12 +128,15 @@ describe("measuredConditionDigest", () => {
     );
   });
 
-  // agent/config.yaml is harness bytes the Builder owns: raising solve_minutes for a family that kept
+  // agent/config.yaml is harness bytes the Builder owns: raising solve_seconds for a family that kept
   // timing out is a fix, and a digest that moved with it would call that fix unmeasured forever.
   it("leaves out the walls agent/config.yaml declares, which a fix may change", () => {
     const tree = scratchDir("ana-condition-");
     mkdirSync(join(tree, "agent"), { recursive: true });
-    writeFileSync(join(tree, "agent", "config.yaml"), "solver:\n  max_turns: 48\n  solve_minutes: 240\n");
+    writeFileSync(
+      join(tree, "agent", "config.yaml"),
+      "solver:\n  shell_command_seconds: 1800\n  solve_seconds: 14400\n",
+    );
     const recorded = double<Parameters<typeof batteryCondition>[0]>({
       runId: "run-walls",
       cases: [],
@@ -145,7 +148,10 @@ describe("measuredConditionDigest", () => {
       battery: { condition: facts.runCondition },
     });
     const before = batteryCondition(recorded, tree).measuredCondition;
-    writeFileSync(join(tree, "agent", "config.yaml"), "solver:\n  max_turns: 24\n  solve_minutes: 120\n");
+    writeFileSync(
+      join(tree, "agent", "config.yaml"),
+      "solver:\n  shell_command_seconds: 900\n  solve_seconds: 7200\n",
+    );
     expect(batteryCondition(recorded, tree).measuredCondition).toBe(before);
   });
 });

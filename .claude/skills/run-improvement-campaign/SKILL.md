@@ -75,7 +75,7 @@ change aims at beside the scoreboard, from the newest tree:
 | link | reader | the number it gives |
 | --- | --- | --- |
 | what the round asked | `wri.ts climb <campaign>` | each edge's label and novelty; `carried` after a full pass |
-| the solve and its wall | `wri.ts walls <campaign>` | misses at the solve wall; solver minutes against `solve_minutes` |
+| the solve and its wall | `wri.ts walls <campaign>` | misses at the solve wall; solver minutes against `solve_seconds` |
 | rehearsal and submit | `wri.ts timeline <campaign>`; `runs pulse` | rehearsals before the first submit; minutes to the first clear preview |
 | the checks and corrections | `wri.ts gates <campaign>`; `bun run replay -- … --under …` | correction rounds; verdicts a correction flipped |
 | the readout back to the Builder | `wri.ts handoff <campaign>` | readings the next round received |
@@ -402,7 +402,7 @@ that verified cases carries no act at all.
 
 A Built solve writes nothing between the case starting and its verdict, and a `harness_trial` holds
 every checkpoint until its rehearsal is graded. So the watch reads the **cases the battery has
-open** against the harness's own `solve_minutes`, and the newest rehearsal against the workspace's
+open** against the harness's own `solve_seconds`, and the newest rehearsal against the workspace's
 solve wall: under the wall the silence is work, and past it the host stopped enforcing its ceiling.
 The status also prints what the bundle declares (files, tasks, families, checks, controls, tools,
 presets; `?` where the gate's validator refuses a file) and `authoring N commits: R rehearsal(s),

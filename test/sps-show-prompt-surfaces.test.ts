@@ -29,7 +29,7 @@ describe("production prompt text", () => {
     expect(result.stdout).toContain(`${builtSystemPrompt(DEFAULT_HARNESS_SETTINGS.solveMs)}\n`);
     expect(result.stdout).toContain(`${BUILT_NUDGE}\n`);
     expect(result.stdout).toContain(
-      `${DEFAULT_HARNESS_SETTINGS.shellDefaultSeconds} when omitted, at most ${DEFAULT_HARNESS_SETTINGS.shellMaxSeconds}`,
+      `Every command runs for up to this harness's ${DEFAULT_HARNESS_SETTINGS.shellCommandSeconds} s`,
     );
   });
 

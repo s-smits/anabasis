@@ -3,7 +3,8 @@ import { gateFeedbackFindings } from "../src/builder/author-feedback.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 import type { BuiltHarness } from "../src/author/campaign-types.ts";
-import { makeCensusGate } from "../src/run/census-gate.ts";
+import { censusWallMs, makeCensusGate } from "../src/run/census-gate.ts";
+import { DEFAULT_HARNESS_SETTINGS } from "../src/correctness-bundle/harness-config.ts";
 import type { ContractFinding } from "../src/correctness-bundle/brief.ts";
 import type { ControlReceipt } from "../src/correctness-bundle/battery-record.ts";
 import { double } from "./helpers/doubles.ts";
@@ -191,6 +192,21 @@ describe("the census gate", () => {
     expect(census.verdict).toMatchObject({ kind: "non-result" });
     // The controls that completed before the refusal keep their recorded evidence.
     expect(census.controlReceipts).toEqual(cleanProbeResult(censusHarness({}).corpus).controlReceipts);
+  });
+
+  // 11 of 766 recorded gate runs met the census wall the harness set, in 8 sequences: each item had
+  // already finished inside its own check or reference wall, and in 5 the Builder answered by raising
+  // the census wall. So the host derives it from those walls: every check of every control, the
+  // module load, every reference solve with its checks, each once more alone, one after another.
+  it.concurrent("derives the census wall from the per-check and per-reference walls, so no item inside its own wall meets it", () => {
+    const harness = censusHarness({ tasks: 7 });
+    const { checkWallMs, referenceSolveMs } = DEFAULT_HARNESS_SETTINGS;
+    const items = 3 + 7 + 1;
+    expect(censusWallMs(harness, DEFAULT_HARNESS_SETTINGS)).toBe(
+      2 * (items * 2 * checkWallMs + 7 * referenceSolveMs),
+    );
+    const slower = { ...DEFAULT_HARNESS_SETTINGS, checkWallMs: 2 * checkWallMs };
+    expect(censusWallMs(harness, slower)).toBeGreaterThan(censusWallMs(harness, DEFAULT_HARNESS_SETTINGS));
   });
 
   it.concurrent("returns a census that exceeds its wall to the Builder as a blocking finding naming the stage, never accepting the candidate", async () => {

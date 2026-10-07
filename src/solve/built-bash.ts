@@ -91,8 +91,8 @@ interface BuiltBashOptions {
   /** Where the destructive-command guard is looked up: the controller's environment. */
   guardEnv?: OptionalEnvValues;
   safeguardContext?: SafeguardContext;
-  /** The harness's shell walls; the config defaults when absent. */
-  timeouts?: Pick<HarnessSettings, "shellDefaultSeconds" | "shellMaxSeconds">;
+  /** The harness's shell command wall; the config default when absent. */
+  timeouts?: Pick<HarnessSettings, "shellCommandSeconds">;
 }
 
 const WALLS =
@@ -128,29 +128,27 @@ function draftFolder(root: string): string {
   );
 }
 
-/** Pi's bash has no default timeout and its own schema says so, but this shell does: the walls come
- *  from the harness's `agent/config.yaml` as `solver.shell_timeout_seconds` and
- *  `solver.shell_timeout_max_seconds`. The schema the solver reads therefore states those two
- *  numbers in place of Pi's sentence, because the sentence it would otherwise read is true of Pi
- *  and false here. */
-function shellParameters(timeouts: Pick<HarnessSettings, "shellDefaultSeconds" | "shellMaxSeconds">) {
+/** Pi's bash has no default timeout and its own schema says so, but this shell has one wall: the
+ *  harness's `solver.shell_command_seconds`. The schema the solver reads states that number in
+ *  place of Pi's sentence, because the sentence it would otherwise read is true of Pi and false
+ *  here. The parameter stays, so a solver passing one by habit is not refused for it. */
+function shellParameters({ shellCommandSeconds }: Pick<HarnessSettings, "shellCommandSeconds">) {
   return Type.Object({
     command: Type.String({ description: "Bash command to execute" }),
     timeout: Type.Optional(
       Type.Number({
-        description: `Timeout in seconds: ${timeouts.shellDefaultSeconds} when omitted, at most ${timeouts.shellMaxSeconds}; a value outside that range runs at the nearest end of it`,
+        description: `Timeout in seconds. Every command runs for up to this harness's ${shellCommandSeconds} s, whatever value is passed; bound a shorter step inside the command`,
       }),
     ),
   });
 }
 /**
- * What the harness would have allowed, appended to a command its own wall cut.
+ * What the harness allowed, appended to a command its own wall cut.
  *
- * "Command timed out after 120 seconds" names the number the solver chose and never the number it
- * had, so a solver that passes a short `timeout` keeps being cut while the harness grants several
- * times that by default and more again on request. The cheapest move available to it — asking for
- * time it already owns — is the one it cannot see. The schema states both numbers at registration,
- * and that demonstrably is not where they decide anything.
+ * "Command timed out after 900 seconds" names the number the command ran under and never says it
+ * was the most there is, so a solver cut there keeps asking for more. Every command runs at the one
+ * wall, so the move left is always cheaper work, and an ask above the wall is named as the reason
+ * the number it chose did not hold.
  *
  * Whether this wall cut the command is decided by the process launch this shell hands Pi (`cut`
  * below), not read back out of Pi's message: Pi's local launch throws `timeout:<seconds>` when its
@@ -159,26 +157,16 @@ function shellParameters(timeouts: Pick<HarnessSettings, "shellDefaultSeconds" |
  * runner kills what, which an elapsed-time test would have needed. Empty means this wall did not cut
  * the command.
  *
- * Then three states, because there are three: time left to ask for, an ask above the maximum, and
- * the maximum already in hand. The config file is named in none of them, since the solver cannot
- * change it mid-battery — raising those numbers is the Builder's lever, and `solverBudgetNotice`
- * states it there.
+ * The config file is named in neither state, since the solver cannot change it mid-battery —
+ * raising the wall is the Builder's lever, and `solverBudgetNotice` states it there.
  */
-function shellBudgetClause(
-  cut: boolean,
-  asked: number,
-  seconds: number,
-  { shellDefaultSeconds, shellMaxSeconds }: Pick<HarnessSettings, "shellDefaultSeconds" | "shellMaxSeconds">,
-): string {
+function shellBudgetClause(cut: boolean, asked: number | undefined, seconds: number): string {
   if (!cut) return "";
   const cheaper = "the move left is cheaper work rather than longer";
-  if (seconds < shellMaxSeconds) {
-    return `\n\nThis harness allows ${shellMaxSeconds} s for one command, and ${shellDefaultSeconds} s when you pass none, so there is more time to ask for.`;
+  if (asked !== undefined && asked > seconds) {
+    return `\n\nYour ${asked} s is above the ${seconds} s this harness allows one command, so it ran as ${seconds} s — the most there is, and ${cheaper}.`;
   }
-  if (asked > shellMaxSeconds) {
-    return `\n\nYour ${asked} s is above the ${shellMaxSeconds} s this harness allows one command, so it ran as ${seconds} s — the most there is, and ${cheaper}.`;
-  }
-  return `\n\nThat is the whole ${shellMaxSeconds} s this harness allows one command, so ${cheaper}.`;
+  return `\n\nThat is the whole ${seconds} s this harness allows one command, so ${cheaper}.`;
 }
 /** What the command printed, or why it failed. Pi's cut notice names the stored file and stops
  *  there, and the solver's read tool cannot open it, because that tool reaches the draft alone. So
@@ -409,12 +397,11 @@ export function createBuiltBashTool({
           }),
           tempDir: store,
         });
-        const asked = Math.max(1, Math.floor(timeout ?? timeouts.shellDefaultSeconds));
-        // A passed timeout may only raise the default, never lower it. A solver that passes a short
-        // timeout beside a much longer inner one cuts its own search budget short and then fails
-        // for want of it; the clause above says so and gets the same short value again, so the
-        // floor is enforced here rather than left to advice.
-        const seconds = Math.min(Math.max(asked, timeouts.shellDefaultSeconds), timeouts.shellMaxSeconds);
+        // One wall, whatever was passed. An ask above it cannot hold; one below it only takes back
+        // time the harness granted — run de8b40 asked for 120 s beside an inner `timeout 880` on a
+        // harness granting 900 and lost 13 commands to its own number.
+        const seconds = timeouts.shellCommandSeconds;
+        const asked = timeout === undefined ? undefined : Math.floor(timeout);
         // Pi returns a non-zero exit as an error result and throws on a cut or a cancellation; both
         // become one failed outcome, so the files the command wrote before failing are still
         // collected before the call fails.
@@ -426,8 +413,7 @@ export function createBuiltBashTool({
           }),
           (error: unknown) => ({ failed: true, text: asError(error).message, details: null }),
         );
-        const reported =
-          shellReport(outcome.text, store) + shellBudgetClause(cut(), asked, seconds, timeouts);
+        const reported = shellReport(outcome.text, store) + shellBudgetClause(cut(), asked, seconds);
         if (port === null) {
           if (outcome.failed) throw new Error(reported);
           return { content: [{ type: "text", text: reported }], details: outcome.details ?? null };

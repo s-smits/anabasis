@@ -208,7 +208,7 @@ const UNCLASSIFIED: ContractFinding = {
 const CLASSIFICATION_HINTS: Partial<Record<GeneratedExecutionClassification, string>> = {
   ...VERIFIER_CONTRACT_HINTS,
   "generated-solve-timeout":
-    "The reference solve hit the gate.reference_solve_seconds wall this candidate's agent/config.yaml sets. Record the search's best artifact per task under reference/ so solve replays it inside the wall, or raise that wall and gate.census_minutes with it.",
+    "The reference solve hit the gate.reference_solve_seconds wall this candidate's agent/config.yaml sets. Record the search's best artifact per task under reference/ so solve replays it inside the wall, or raise that wall.",
 };
 
 export interface ValidationResult {

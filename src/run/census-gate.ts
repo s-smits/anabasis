@@ -33,7 +33,11 @@ import {
 import type { VerifierExecutionEvidence } from "../verify/verifier-port.ts";
 import type { SubjectCheckRun } from "../verify/correctness-model-result.ts";
 import type { SolvabilityCensusGate } from "./solvability-gate.ts";
-import { DEFAULT_HARNESS_SETTINGS, harnessSettings } from "../correctness-bundle/harness-config.ts";
+import {
+  DEFAULT_HARNESS_SETTINGS,
+  type HarnessSettings,
+  harnessSettings,
+} from "../correctness-bundle/harness-config.ts";
 import type { SolvabilityStageCache } from "../correctness-bundle/solvability-stages.ts";
 import { VerifierOperationalStop, type VerifierLifetime } from "../verify/verifier-lifetime.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
@@ -57,7 +61,7 @@ interface CensusGateOptions {
   solvability?: SolvabilityCensusGate;
   /** Wait before the one retry an environment-owned refusal earns; tests pass 0. */
   toolRetryWaitMs?: number;
-  /** Census wall in milliseconds; unset reads ANA_CENSUS_WALL_MS, then agent/config.yaml. */
+  /** Census wall in milliseconds; unset reads ANA_CENSUS_WALL_MS, then `censusWallMs`. */
   censusWallMs?: number;
 }
 
@@ -145,9 +149,25 @@ interface CensusFailure {
   completed: Completed;
 }
 
+/** The census wall: the sum of every wall inside it, run one after another and twice over, since a
+ *  timed-out control or reference task reruns alone. That is the module load and every check of
+ *  every control and of every reference artifact at `gate.check_seconds`, and every reference solve
+ *  at `gate.reference_solve_seconds`. A census whose every item keeps inside its own wall therefore
+ *  never meets it, so it stops only work that escaped an item's wall.
+ *
+ *  Until 2026-10-07 the harness set it as `gate.census_minutes`, a wall over walls it already set:
+ *  11 of 766 recorded gate runs met it, every item inside its own wall, and in 5 of those 8
+ *  sequences the Builder's answer was to raise it. */
+export function censusWallMs(harness: BuiltHarness, settings: HarnessSettings): number {
+  const controls = harness.corpus.accept.length + harness.corpus.reject.length;
+  const tasks = harness.battery.tasks.length;
+  const checksMs = harness.brief.truthChecks.length * settings.checkWallMs;
+  return 2 * ((controls + tasks + 1) * checksMs + tasks * settings.referenceSolveMs);
+}
+
 /** The operator's wall override, resolved once when the gate is made rather than when it first
  *  runs, so a malformed value throws before the session spends anything on a candidate it cannot
- *  census. Null leaves the wall to the candidate's own `gate.census_minutes`, the ordinary case. */
+ *  census. Null leaves the wall to `censusWallMs`, the ordinary case. */
 function censusWallOverrideMs(explicit: number | undefined): number | null {
   const raw = Bun.env.ANA_CENSUS_WALL_MS;
   if (explicit === undefined && raw === undefined) return null;
@@ -544,7 +564,7 @@ function settleCensusWall(
   completed: Completed,
 ): CampaignFeedback[] {
   const { harness } = context;
-  const minutes = error.wallMs / 60_000;
+  const minutes = Math.ceil(error.wallMs / 60_000);
   const size = `${harness.corpus.accept.length} accept and ${harness.corpus.reject.length} reject examples over ${harness.battery.tasks.length} tasks`;
   const feedback: CampaignFeedback[] = [
     {
@@ -556,7 +576,7 @@ function settleCensusWall(
         {
           code: "census-wall-exceeded",
           path: error.stage === "controls" ? EVALUATOR_FILE : REFERENCE_SOLVE_ENTRY,
-          detail: `The census stopped at its ${minutes}-minute wall during the ${error.stage} stage (${size}). Time one example's checks and one reference task, then cut the repeated tool work until the whole run fits with room to spare on a busy host.`,
+          detail: `The census stopped at its ${minutes}-minute wall during the ${error.stage} stage (${size}). That wall is every check and reference solve at its own gate.check_seconds or gate.reference_solve_seconds, one after another and twice over, so work in this stage ran past its own wall: time one example's checks and one reference task alone, and find the step that does not stop when its wall does.`,
         },
       ]),
     },
@@ -586,7 +606,7 @@ export function makeCensusGate(
 ) => Promise<CampaignFeedback[]> {
   const override = censusWallOverrideMs(options.censusWallMs);
   return async (harness, iterationDir, slugDir, stages, scope = { referenceSolve: true }) => {
-    const wallMs = override ?? harnessSettings(slugDir).censusWallMs;
+    const wallMs = override ?? censusWallMs(harness, harnessSettings(slugDir));
     const context: CensusContext = { options, harness, iterationDir, slugDir, stages, scope };
     for (let attempt = 0; ; attempt += 1) {
       const wall = censusWall(wallMs);

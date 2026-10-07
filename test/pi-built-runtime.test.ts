@@ -24,7 +24,7 @@ import { type AssistantMessage, fauxAssistantMessage, fauxToolCall } from "@eare
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
 import { EnvironmentRefusal } from "../src/backends/environment-refusal.ts";
 import { startPiBuiltWorker } from "../src/backends/pi-built-process.ts";
-import { type PiBuiltRuntime, piBuiltSolver } from "../src/backends/pi-built.ts";
+import { BUILT_RUNAWAY_TURNS, type PiBuiltRuntime, piBuiltSolver } from "../src/backends/pi-built.ts";
 import { builtSolveIsolation } from "../src/run/built-agent-runtime.ts";
 import {
   BUILT_NUDGE,
@@ -60,7 +60,8 @@ interface FauxRow {
 }
 
 interface SolveOptions {
-  maxTurns?: number;
+  /** The turn cap a test sets; null opens the solver as production does, under the host's guard. */
+  maxTurns?: number | null;
   slug?: string;
   runtime?: Partial<PiBuiltRuntime>;
   budget?: ProviderResourceBudget;
@@ -183,7 +184,7 @@ function runtimeFor(rows: FauxRow[], extra: Partial<PiBuiltRuntime> = {}): PiBui
 /** One solve through the production starter factory, exactly as the run driver opens it. */
 async function solve(rows: FauxRow[], options: SolveOptions = {}) {
   const solver = piBuiltSolver(runtimeFor(rows, options.runtime ?? {}), {
-    maxTurns: options.maxTurns ?? 4,
+    maxTurns: options.maxTurns === null ? undefined : (options.maxTurns ?? 4),
     observer: options.observer,
     observationPhase: options.observer === undefined ? undefined : "measure-on",
     providerBudget: options.budget,
@@ -368,6 +369,14 @@ describe("the solve loop", () => {
     const { outcome, accepted } = await solve([WRITE, SUBMIT], { runtime: { auth } });
     expect(accepted).toBe(false);
     expect(outcome.nonResult).toMatchObject({ kind: "provider", message: refused.message });
+  });
+
+  // No recorded solve used more than two turns (4,235 traces, 2026-10-07), so the turn count is a
+  // host guard against a runaway nudge loop rather than a budget a harness declares.
+  it("opens a solve under the host's runaway turn guard, whatever the harness declares", async () => {
+    const { outcome, accepted } = await solve([WRITE, SUBMIT], { maxTurns: null });
+    expect(accepted).toBe(true);
+    expect(outcome.runtimeBoundary?.contractCondition.maxTurns).toBe(BUILT_RUNAWAY_TURNS);
   });
 
   it("ends the solve at two failures in a row", async () => {

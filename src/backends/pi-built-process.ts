@@ -152,7 +152,8 @@ export class PiBuiltWorkerNonResult extends Error {
  *  a wall on the whole turn cuts a solver that has made a dozen traced tool calls inside one native
  *  turn and records it as a runtime non-result, which calls a working solver an environment
  *  failure. */
-export const builtTurnWallMs = (shellMaxSeconds: number): number => TURN_TIMEOUT_MS + shellMaxSeconds * 1000;
+export const builtTurnWallMs = (shellCommandSeconds: number): number =>
+  TURN_TIMEOUT_MS + shellCommandSeconds * 1000;
 
 function dispatchTool(
   write: (message: PiWire.PiBuiltParentMessage, end?: boolean) => void,
@@ -577,7 +578,7 @@ export function startPiBuiltWorker(opening: PiBuiltWorkerOpening): Promise<PiBui
       calledTool: false,
       dispatches: new Set(),
       toolAbort: new AbortController(),
-      turnWallMs: runtime.turnWallMs ?? builtTurnWallMs(DEFAULT_HARNESS_SETTINGS.shellMaxSeconds),
+      turnWallMs: runtime.turnWallMs ?? builtTurnWallMs(DEFAULT_HARNESS_SETTINGS.shellCommandSeconds),
       readyWallMs: runtime.readyWallMs ?? READY_TIMEOUT_MS,
       solveWallMs: runtime.solveWallMs ?? null,
       mechanismId: runtime.policy.mechanismId,

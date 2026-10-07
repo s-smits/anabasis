@@ -8,7 +8,7 @@
  */
 import { validateToolArguments } from "@earendil-works/pi-ai/utils/validation";
 import type { TSchema } from "typebox";
-import type { JsonObject, JsonValue } from "../meta/json-shape.ts";
+import { asRecord, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hashJsonValue, sameJsonValue } from "../meta/stable-json.ts";
 
@@ -34,6 +34,7 @@ export interface Contract {
 /** The contract's identity: the hash of its canonical JSON. A rule id named twice would let a
  *  citation mean two requirements, so such a contract has none. */
 export function contractHash(contract: Contract): string {
+  answerSchema(contract);
   const ids = contract.rules.map((rule) => rule.id);
   const twice = ids.find((id, index) => ids.indexOf(id) !== index);
   if (twice !== undefined) throw new Error(`the contract names rule ${twice} twice`);
@@ -49,8 +50,7 @@ export function contractHash(contract: Contract): string {
  * answer as given. Coercion is idempotent, so what the record tool hands on always follows.
  */
 export function answerFormatFault(contract: Contract, answer: JsonValue): string | null {
-  // SAFETY: the format is a JSON Schema, which pi-ai's validator compiles as TypeBox does its own.
-  const tool = { name: "answer", description: "", parameters: contract.answerFormat as TSchema };
+  const tool = { name: "answer", description: "", parameters: answerSchema(contract) };
   let validated: unknown;
   try {
     // SAFETY: the validator reads any JSON value; only its type names the arguments an object.
@@ -61,4 +61,17 @@ export function answerFormatFault(contract: Contract, answer: JsonValue): string
     return errorMessage(error).split("\n\nReceived arguments")[0] ?? "";
   }
   return sameJsonValue(validated, answer) ? null : "the answer follows the format only once coerced";
+}
+
+/**
+ * The answer format as the schema pi-ai's validator and a record tool's parameters take. A format
+ * that is not a JSON Schema object is refused: the validator reads one as no constraint at all, so
+ * the M1 stand-in contract, which carried v1's prose `artifactSchema` rows, passed every answer.
+ */
+export function answerSchema(contract: Contract): TSchema {
+  if (!isString(asRecord(contract.answerFormat)?.type)) {
+    throw new Error("the contract's answer format is not a JSON Schema with a type");
+  }
+  // SAFETY: a JSON Schema, which pi-ai's validator compiles as TypeBox does its own.
+  return contract.answerFormat as TSchema;
 }

@@ -114,6 +114,23 @@ function endingOf(stored: StoredSolve, turns: readonly StoredTurn[], expected: V
   return { outcome: "fail", kind: "rejected" };
 }
 
+/**
+ * The answer format a solve's record tool took, as v1 recorded it byte for byte in the solve's
+ * `built-runtime.json`: the artifact-writer's parameters, which v1 compiled from the brief's prose
+ * `artifactSchema` rows (H public-artifact-writer.ts:57-64) and which a v2 contract holds as its
+ * answer format.
+ */
+export function recordedAnswerFormat(row: Row): JsonValue {
+  const runtime = parseJsonAs<{
+    contractCondition: { tools: { description: string; parameters: JsonValue }[] };
+  }>(readFileSync(join(row.solve, "harness", "cases", row.taskId, "built-runtime.json"), "utf8"));
+  const writer = runtime.contractCondition.tools.find((tool) =>
+    tool.description.startsWith("Role: artifact-writer."),
+  );
+  if (writer === undefined) throw new Error(`${row.solve} records no artifact-writer`);
+  return writer.parameters;
+}
+
 /** The answer the solve left, or none when it left no file or one that does not read as JSON. */
 export function storedAnswer(row: Row): JsonValue | undefined {
   const path = join(row.solve, "work", "answer.json");

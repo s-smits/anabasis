@@ -102,6 +102,10 @@ describe("the contract", () => {
     expect(contractHash({ ...CONTRACT, scope: "Cantilevers." })).not.toBe(contractHash(CONTRACT));
     const twice = { ...CONTRACT, rules: [...CONTRACT.rules, { id: "span-rule", statement: "Again." }] };
     expect(() => contractHash(twice)).toThrow("names rule span-rule twice");
+    // v1's prose artifact rows, which the validator would read as no constraint at all.
+    const prose = { ...CONTRACT, answerFormat: [{ name: "design", shape: "object {joints}" }] };
+    expect(() => contractHash(prose)).toThrow("not a JSON Schema");
+    expect(() => answerFormatFault(prose, { junk: 1 })).toThrow("not a JSON Schema");
   });
 
   it("says why an answer is outside its format, and refuses one that fits only once coerced", () => {

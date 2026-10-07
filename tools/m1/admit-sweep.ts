@@ -12,8 +12,9 @@
  * The sweep predates the plan, so four parts are stood in for:
  * - The pair is the model pair, but the sweep ran one solver, so `--stronger` names the cycle whose
  *   solve stands in for the stronger condition's.
- * - The contract is the check program's brief: its public rule decisions are the rules and its
- *   artifact schema the answer format.
+ * - The contract is the check program's brief: its public rule decisions are the rules. Its answer
+ *   format is the schema the sweep's record tool took, as the first decided solve recorded it, since
+ *   the brief's own `artifactSchema` is prose that v1 compiled.
  * - A task's statement is its id under the brief's domain, since v1's tasks carry none, and its rule
  *   ids are those its family's checks cite.
  * - Gate 4's controls are the first three v1 wrote for the task, edited from the author's accepted
@@ -45,7 +46,7 @@ import { tmpdir } from "#src/meta/os.ts";
 import { basename, join } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { countBy } from "#src/meta/tally.ts";
-import { type Row, storedAnswer, sweepRows } from "../m0/stored-sweep.ts";
+import { recordedAnswerFormat, type Row, storedAnswer, sweepRows } from "../m0/stored-sweep.ts";
 
 const { values } = parseArgs({
   options: {
@@ -60,7 +61,6 @@ const { values } = parseArgs({
 /** The parts of v1's `brief.json` the stand-in contract is made from. */
 interface PackBrief {
   readonly domain: string;
-  readonly artifactSchema: JsonValue;
   readonly ruleDecisions: readonly { id: string; visibility: string; statement: string }[];
 }
 
@@ -74,9 +74,9 @@ interface PackControls {
 /** The files of a v1 `correctness-model` that are its battery rather than its check program. */
 const BATTERY_FILES = new Set(["tasks.json", "controls.json"]);
 
-function contractOf(brief: PackBrief): Contract {
+function contractOf(brief: PackBrief, answerFormat: JsonValue): Contract {
   return {
-    answerFormat: brief.artifactSchema,
+    answerFormat,
     tools: [],
     install: "",
     conventions: "",
@@ -94,13 +94,15 @@ async function main(): Promise<void> {
   const brief = parseJsonAs<PackBrief>(readFileSync(join(model, "brief.json"), "utf8"));
   const controls = parseJsonAs<PackControls>(readFileSync(join(model, "controls.json"), "utf8"));
   const tasks = parseJsonAs<Task[]>(readFileSync(join(model, "tasks.json"), "utf8"));
-  const contract = contractOf(brief);
   const dir = mkdtempSync(join(tmpdir(), "ana-admit-"));
   const checks = join(dir, "checks");
   cpSync(model, checks, { recursive: true, filter: (path) => !BATTERY_FILES.has(basename(path)) });
   const verify = openVerifier({ checks, tools: join(bundle, ".toolchain") });
 
   const { rows } = sweepRows(root, sweep);
+  const [first] = rows;
+  if (first === undefined) throw new Error(`${sweep} has no decided solve`);
+  const contract = contractOf(brief, recordedAnswerFormat(first));
   const cycles = [...new Set(rows.map((row) => row.cycle))].sort();
   const [old = "", fresh = ""] = [cycles[0], cycles.at(-1)];
   const stored = new Map(rows.map((row) => [`${row.taskId} ${row.cycle}`, row]));

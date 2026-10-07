@@ -136,9 +136,11 @@ export function solverConditionMoved(
 /** The tasks of battery `runId` to solve again before the Builder reads their fails: each fresh fail
  *  whose group holds fewer than `AGREEING_SOLVES` solves, every one a fail. A group is one task under
  *  one solver, as the case record pins it (backend, build inputs, condition, Built effort), and one
- *  tool tree, read from each solve's battery, so an edit of the task, the agent or the tools starts
- *  a group of its own. One pass in the group makes the fail the solver's variance, a flip, and
- *  nothing is solved again. A row restating an earlier row's solve instant is a regrade, not a solve.
+ *  tool tree, read from each solve's battery. The build inputs hash the agent, the correctness model
+ *  and the whole task set, so an edit of any task, of the agent, of the correctness model or of the
+ *  tools starts a new group for every task. One pass in the group makes the fail the solver's
+ *  variance, a flip, and nothing is solved again. A row restating an earlier row's solve instant is a
+ *  regrade, not a solve.
  *  Neither the Judge nor the review chooses which fails are solved again; validity is read apart. */
 function unconfirmedSolves(input: ExamInput, runId: string): Set<string> {
   const record = readCaseRecord(join(campaignDir(input.repoRoot, input.slug), CASE_RECORD_FILE));

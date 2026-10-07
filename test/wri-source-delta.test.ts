@@ -3,7 +3,7 @@ import {
   buildSourceDelta,
   renderSourceDelta,
 } from "../.claude/skills/whole-run-investigation/scripts/source-delta.ts";
-import { mkdirSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { mkdirSync, readFileSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import { join } from "../src/meta/path.ts";
 import { runTextSyncOrThrow } from "../src/meta/subprocess.ts";
@@ -25,8 +25,8 @@ function git(repo: string, args: string[]): string {
   return runTextSyncOrThrow([hostTool("git"), "-C", repo, ...args], { env: GIT_ENV }).trim();
 }
 
-/** Two commits: the older declares safeguard `old-one`; the newer adds `new-one` to that run
- *  file and changes a starter file. Neither commit deletes a file. */
+/** Two commits: the older declares safeguard `old-one`; the newer edits that call, adds `new-one`
+ *  to the same run file and changes a starter file. Neither commit deletes a file. */
 function repoWithTwoCommits() {
   const repo = scratchDir("ana-source-delta-repo-");
   git(repo, ["init", "-q", "-b", "main"]);
@@ -39,7 +39,7 @@ function repoWithTwoCommits() {
   const older = git(repo, ["rev-parse", "HEAD"]);
   writeFileSync(
     join(repo, "src", "run", "loop.ts"),
-    'safeguardTriggered("old-one", "x");\nsafeguardTriggered("new-one", "y");\n',
+    'safeguardTriggered("old-one", "x, edited");\nsafeguardTriggered("new-one", "y");\n',
   );
   writeFileSync(join(repo, "starters", "card.md"), "v2\n");
   git(repo, ["add", "."]);
@@ -91,6 +91,54 @@ describe("source-delta reach", () => {
     expect(text).toContain("UNREACHED CHANGED SAFEGUARDS (lane 21): new-one");
     expect(text).toContain("MODEL-VISIBLE SURFACE CHANGED (lane 21): starters/card.md");
     expect(text).not.toContain("safeguardTriggered(");
+  });
+
+  it("counts a safeguard only where its call changed, and one moved or carried by a rename as not new", () => {
+    const { repo } = repoWithTwoCommits();
+    const other = [
+      'safeguardTriggered("stays", "s");',
+      "",
+      "safeguardTriggered(",
+      '  "moves",',
+      '  "m",',
+      ");",
+      "",
+    ];
+    writeFileSync(join(repo, "src", "run", "other.ts"), other.join("\n"));
+    writeFileSync(join(repo, "src", "run", "rename-me.ts"), 'safeguardTriggered("carried", "c");\n');
+    git(repo, ["add", "."]);
+    git(repo, ["commit", "-q", "-m", "three"]);
+    const before = git(repo, ["rev-parse", "HEAD"]);
+    // The file around `stays` moves and its call does not; `moves` leaves this file for loop.ts;
+    // `carried` rides a rename whose bytes are unchanged.
+    writeFileSync(
+      join(repo, "src", "run", "other.ts"),
+      ["export const unrelated = 1;", ...other.slice(0, 2)].join("\n"),
+    );
+    const loop = join(repo, "src", "run", "loop.ts");
+    writeFileSync(loop, `${readFileSync(loop, "utf8")}safeguardTriggered("moves", "m");\n`);
+    git(repo, ["mv", "src/run/rename-me.ts", "src/run/renamed.ts"]);
+    git(repo, ["add", "."]);
+    git(repo, ["commit", "-q", "-m", "four"]);
+    const after = git(repo, ["rev-parse", "HEAD"]);
+    const root = scratchDir("ana-source-delta-campaigns-");
+    campaign(root, "lane-1", "run-a", before, "2026-09-01T00:00:00.000Z");
+    const current = campaign(root, "lane-2", "run-b", after, "2026-09-02T00:00:00.000Z");
+
+    const delta = buildSourceDelta({ campaign: current, runId: "run-b", repo });
+    expect(
+      delta.changed.map((entry) => [
+        entry.path,
+        entry.safeguardIds,
+        entry.newSafeguardIds,
+        entry.removedSafeguardIds,
+      ]),
+    ).toEqual([
+      ["src/run/loop.ts", ["moves"], [], []],
+      ["src/run/other.ts", [], [], []],
+      ["src/run/renamed.ts", [], [], []],
+    ]);
+    expect(delta.safeguards).toEqual([{ id: "moves", state: "unreached", firings: 0 }]);
   });
 
   it("reads a sibling campaign's latest run by its opening instant, not its directory name", () => {

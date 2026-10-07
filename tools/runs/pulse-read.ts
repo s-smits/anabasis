@@ -112,8 +112,15 @@ export function topLevel(observations: readonly Observation[]): Observation[] {
   return observations.filter((row) => row.parentId === null && row.type === PHASE_TRANSITION);
 }
 
+/** The instant each round opened: its top-level build starting. */
+export function roundStarts(observations: readonly Observation[]): string[] {
+  return topLevel(observations).flatMap((row) =>
+    row.phase === "build" && row.state === "started" ? [row.at] : [],
+  );
+}
+
 export function roundsOpened(observations: readonly Observation[]): number {
-  return topLevel(observations).filter((row) => row.phase === "build" && row.state === "started").length;
+  return roundStarts(observations).length;
 }
 
 /** A round nothing has been recorded for yet. */

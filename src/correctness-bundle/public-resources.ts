@@ -23,6 +23,7 @@ import { canonicalJson } from "../meta/stable-json.ts";
 import { validateBrief } from "./brief-validator.ts";
 import { type ArtifactField, type Brief, applicableTruthChecks } from "./brief.ts";
 import { type BriefRuleDecision, isPublicRule } from "./rule-decisions.ts";
+import { publishedMargins } from "./numeric-boundary.ts";
 import { scoringClosureHash } from "../claim/scoring-closure.ts";
 import type { JudgePublicDomain, JudgePublicTask } from "../review/judge.ts";
 import type { GeneratedTask } from "./task-split.ts";
@@ -115,11 +116,13 @@ export function briefPublicResources(brief: Brief): PublicBriefResource[] {
   return resources;
 }
 
-/** What the brief told the solver, as one digest over the public resources it reads. A reworded or
- *  renumbered public rule, rule decision, artifact field, constant or value set moves it, and a
- *  private row, a decision, a gate and a join, which no solver reads, do not. */
+/** What the brief told the solver, as one digest over the public resources it reads and the margin
+ *  table it is shown. A reworded or renumbered public rule, rule decision, artifact field, constant,
+ *  value set or published margin moves it, and a private row, a decision, a gate and a join, which no
+ *  solver reads, do not. */
 export function briefPublicationHash(brief: Brief): string {
-  return sha256(canonicalJson(briefPublicResources(brief).map(({ digest }) => digest)));
+  const resources = briefPublicResources(brief).map(({ digest }) => digest);
+  return sha256(canonicalJson({ resources, margins: publishedMargins(brief) }));
 }
 
 /** The brief a battery was scored under: the tree's valid brief while it still scores to the

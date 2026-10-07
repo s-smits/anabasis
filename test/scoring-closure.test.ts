@@ -212,6 +212,20 @@ const BRIEF_EDITS: ReadonlyArray<readonly [string, Brief, { checks: boolean; rul
     schemaField({ "shape": "array of {part, slot} objects" }),
     { checks: false, rules: true },
   ],
+  [
+    "a published margin, which no public resource carries",
+    firstCheck({
+      numericBoundaries: [
+        {
+          publicInputPath: "$.parts",
+          constantName: "parts",
+          artifactPath: "$.assignments",
+          direction: "atMost",
+        },
+      ],
+    }),
+    { checks: false, rules: true },
+  ],
   ["a check id", firstCheck({ id: "parts-bound" }), { checks: true, rules: false }],
   ["a check's hidden declaration", firstExecution({ hidden: "none" }), { checks: true, rules: false }],
   [

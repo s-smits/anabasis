@@ -352,6 +352,24 @@ and run `finish` again until the archive validator passes. Safeguard rows count 
 run's `SAFEGUARDS_LOG.txt` and the launcher stderr the verdicts name; with neither file the count
 is unavailable, never zero, and a count proves a firing rather than that its owner received it.
 
+## Several runs at once
+
+A review reads one run, and that stays the default. When the operator names several runs ("the
+latest truss, buffer and recode runs") or asks which findings recur, the same lane groups read
+all of them at once, because a mechanism that recurs across domains is stronger evidence than one
+run's finding. The operator names the runs; resolve each to its full id with `bun run runs list
+--closed 30`, which lists runs newest first, where a run id's head names its launch preset and the
+project column its campaign, so "the latest truss run" is the first row whose id starts `truss-`,
+or whose project names that domain when the preset was a tier such as `standard`; `wri.ts read
+truss` refuses a head that names several runs. `read` each into its own review, which resolves each run's own measured checkout,
+and build each snapshot run's native prompts; a probe-tier run needs none and is named with the
+captures it can answer from. `scripts/compose-native-pairs.py --runs` then names every run once in
+the shared instructions, with its campaign, review, source commit and checkout, terminal and
+batteries, and writes one prompt per lane group that reads each lane in every run. Each group
+writes one report that sorts each finding as `every`, `absent` or `unsaid` across the runs and ends
+it in a typed outcome, and `validate-reports.ts --groups` checks those reports. The commands are in
+[native lanes](references/native-lanes.md#several-runs).
+
 ## The lanes that read one thing each
 
 Eight lanes run in-process and are subcommands of their own, printing the view, its JSON under

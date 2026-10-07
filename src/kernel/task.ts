@@ -278,8 +278,8 @@ export function foldsEvent(kind: EventKind): boolean {
  * Each task version's state, folded from the log: `task.proposed` holds it, a passing `task.gate`
  * clears the next gate, and `task.state` moves it. A history that moves a task where it cannot go,
  * screens a task that is not feasible, logs its gates out of order or after one did not pass, passes
- * gate 4 on no named control set, or releases a task before `anchor.drawn` or one the anchor drew, is
- * refused, as a torn line is.
+ * gate 4 on no named control set, draws a task not yet feasible into the anchor, or releases a task
+ * before `anchor.drawn` or one the anchor drew, is refused, as a torn line is.
  */
 export function taskStates(events: readonly LogEvent[]): Map<string, TaskState> {
   const fold: Fold = { tasks: new Map(), drawn: null };
@@ -312,6 +312,8 @@ function draw(fold: Fold, at: string, data: JsonObject): void {
   if (!Array.isArray(versions) || !versions.every(isString)) {
     throw new Error(`${at}: anchor.drawn names no task versions`);
   }
+  const unfit = versions.find((version) => fold.tasks.get(version)?.passed !== LOGGED_GATES);
+  if (unfit !== undefined) throw new Error(`${at}: task ${unfit} is drawn before it is feasible`);
   const released = versions.find((version) => fold.tasks.get(version)?.state === "released");
   if (released !== undefined) throw new Error(`${at}: task ${released} is drawn after its release`);
   fold.drawn = new Set([...(fold.drawn ?? []), ...versions]);

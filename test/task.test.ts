@@ -270,22 +270,32 @@ describe("gate 5, screening", () => {
 
 describe("the task states", () => {
   const at = "2026-10-07T00:00:00.000Z";
-  const proposed: LogEvent = { at, kind: "task.proposed", data: { version: "v1" } };
-  const gate = (number: number, outcome = "passed"): LogEvent => ({
+  const proposedAs = (version: string): LogEvent => ({ at, kind: "task.proposed", data: { version } });
+  const gateAs = (version: string, number: number, outcome = "passed"): LogEvent => ({
     at,
     kind: "task.gate",
-    data: { version: "v1", gate: number, outcome, controls: "digest" },
+    data: { version, gate: number, outcome, controls: "digest" },
   });
+  const feasibleAs = (version: string) => [
+    proposedAs(version),
+    ...[1, 2, 3, 4].map((n) => gateAs(version, n)),
+  ];
+  const proposed = proposedAs("v1");
+  const gate = (number: number, outcome = "passed") => gateAs("v1", number, outcome);
   const state = (to: string): LogEvent => ({ at, kind: "task.state", data: { version: "v1", state: to } });
-  const drawn: LogEvent = { at, kind: "anchor.drawn", data: { tasks: ["v0"] } };
-  const feasible = [proposed, gate(1), gate(2), gate(3), gate(4)];
+  const draw = (...tasks: string[]): LogEvent => ({ at, kind: "anchor.drawn", data: { tasks } });
+  const drawn = [...feasibleAs("v0"), draw("v0")];
+  const feasible = feasibleAs("v1");
 
   it("holds a proposed task and follows it through screening, scoring and release", () => {
     expect(taskStates([proposed])).toEqual(new Map([["v1", "held"]]));
-    expect(taskStates([drawn, ...feasible, state("admitted"), state("released")])).toEqual(
-      new Map([["v1", "released"]]),
+    expect(taskStates([...drawn, ...feasible, state("admitted"), state("released")])).toEqual(
+      new Map([
+        ["v0", "held"],
+        ["v1", "released"],
+      ]),
     );
-    expect(taskStates([drawn, ...feasible, state("released")]).get("v1")).toBe("released");
+    expect(taskStates([...drawn, ...feasible, state("released")]).get("v1")).toBe("released");
     expect(taskStates([proposed, gate(1), gate(2, "too-hard"), state("too-hard")]).get("v1")).toBe(
       "too-hard",
     );
@@ -295,7 +305,7 @@ describe("the task states", () => {
     expect(() =>
       taskStates([proposed, gate(1), gate(2), gate(3), gate(4, "refused"), state("admitted")]),
     ).toThrow("task v1 cannot go from held to admitted");
-    expect(() => taskStates([drawn, ...feasible, state("released"), state("held")])).toThrow(
+    expect(() => taskStates([...drawn, ...feasible, state("released"), state("held")])).toThrow(
       "task v1 cannot go from released to held",
     );
     expect(() => taskStates([state("held")])).toThrow("task v1 is not proposed");
@@ -320,16 +330,19 @@ describe("the task states", () => {
     expect(() => taskStates([...refusedAt3, state("admitted")])).toThrow("cannot go from held to admitted");
   });
 
-  it("never releases a task the anchor drew, and refuses a draw that names no versions", () => {
-    const anchor: LogEvent = { at, kind: "anchor.drawn", data: { tasks: ["v1"] } };
-    expect(() => taskStates([anchor, ...feasible, state("released")])).toThrow(
+  it("never releases a task the anchor drew, and draws only proposed, feasible tasks", () => {
+    expect(() => taskStates([...feasible, draw("v1"), state("released")])).toThrow(
       "task v1 is an anchor task, so it is never released",
     );
-    expect(() => taskStates([drawn, ...feasible, state("released"), anchor])).toThrow(
+    expect(() => taskStates([...drawn, ...feasible, state("released"), draw("v1")])).toThrow(
       "task v1 is drawn after its release",
     );
     expect(() => taskStates([{ at, kind: "anchor.drawn", data: {} }])).toThrow(
       "anchor.drawn names no task versions",
+    );
+    expect(() => taskStates([draw("v1")])).toThrow("task v1 is drawn before it is feasible");
+    expect(() => taskStates([proposed, gate(1), gate(2, "too-hard"), draw("v1")])).toThrow(
+      "task v1 is drawn before it is feasible",
     );
   });
 
@@ -341,7 +354,7 @@ describe("the task states", () => {
     expect(() => taskStates([...feasible, state("released")])).toThrow(
       "task v1 is released before the anchor is drawn",
     );
-    expect(() => taskStates([...feasible, state("admitted"), state("released"), drawn])).toThrow(
+    expect(() => taskStates([...feasible, state("admitted"), state("released"), ...drawn])).toThrow(
       "task v1 is released before the anchor is drawn",
     );
   });

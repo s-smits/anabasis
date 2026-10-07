@@ -3,8 +3,9 @@
 // the reports the primary saved from native Claude subagents under `native-output/` beside
 // tasks.json. A review may run some lanes on each. This validates collection identity, assigned lane
 // headings and the report sections each lane owes; it does not adjudicate findings or turn session
-// prose into evidence. `--groups` reads a multi-run review instead: the groups.json
-// `compose-native-pairs.py --runs` wrote, and one report per group under `native-output/` beside it.
+// prose into evidence. `--groups` reads a cross-run or multi-run reading instead: the groups.json
+// `wri.ts lanes` wrote, and one report per group under `native-output/` beside it. `wri.ts collect`
+// calls both in-process for every reading of an investigation.
 
 import { sha256, sha256OfFile } from "#src/meta/digest.ts";
 import { existsSync, mkdirSync, readFileSync, realpathSync, statSync } from "#src/meta/filesystem.ts";
@@ -110,7 +111,7 @@ export interface ReportValidation {
 }
 
 /** A multi-run review's receipt: each group's one report, checked against the lanes it was given. */
-interface GroupValidation {
+export interface GroupValidation {
   schema: typeof GROUPS_RECEIPT_SCHEMA;
   groupsPath: string;
   groupsSha256: string;
@@ -119,7 +120,7 @@ interface GroupValidation {
   rows: ReportRow[];
 }
 
-/** One group of a multi-run review, as `compose-native-pairs.py --runs` planned it. */
+/** One group of a reading across runs, as `wri.ts lanes` planned it. */
 interface GroupRow {
   session: string;
   lanes: string[];
@@ -788,7 +789,7 @@ function reportRow(task: TaskRow, index: number, source: ReportSource): ReportRo
   };
 }
 
-function validate(paths: ReportPaths): ReportValidation {
+export function validate(paths: ReportPaths): ReportValidation {
   const taskBytes = readFileSync(paths.tasksPath);
   const tasks = taskRows(capturedJsonParse(taskBytes.toString("utf8")));
   const luna =
@@ -892,7 +893,7 @@ function groupReport(group: GroupRow, nativeDir: string): ReportRow {
   };
 }
 
-function validateGroups(groupsPath: string): GroupValidation {
+export function validateGroups(groupsPath: string): GroupValidation {
   const groupBytes = readFileSync(groupsPath);
   const groups = groupRows(capturedJsonParse(groupBytes.toString("utf8")));
   const dir = join(realpathSync(dirname(groupsPath)), NATIVE_OUTPUT);
@@ -944,14 +945,16 @@ function validateCommand(args: CommandArgs): number {
   return result.complete ? 0 : 1;
 }
 
-await runCommand(
-  {
-    name: "validate-reports",
-    usage:
-      "usage: bun validate-reports.ts --tasks <abs tasks.json> [--summary <abs Luna summary.json>] [--out <abs file>]\n" +
-      "       bun validate-reports.ts --groups <abs multi-run groups.json> [--out <abs file>]\n" +
-      "  native reports are read from native-output/<name>.md beside tasks.json or groups.json",
-    options: { tasks: "abs", summary: "abs", groups: "abs", out: "abs" },
-  },
-  validateCommand,
-);
+if (import.meta.main) {
+  await runCommand(
+    {
+      name: "validate-reports",
+      usage:
+        "usage: bun validate-reports.ts --tasks <abs tasks.json> [--summary <abs Luna summary.json>] [--out <abs file>]\n" +
+        "       bun validate-reports.ts --groups <abs multi-run groups.json> [--out <abs file>]\n" +
+        "  native reports are read from native-output/<name>.md beside tasks.json or groups.json",
+      options: { tasks: "abs", summary: "abs", groups: "abs", out: "abs" },
+    },
+    validateCommand,
+  );
+}

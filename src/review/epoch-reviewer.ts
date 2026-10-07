@@ -57,6 +57,7 @@ import { EPOCH_REVIEW_PROMPT } from "./epoch-review-prompt.ts";
 import type { EnabledReview } from "./review-session.ts";
 import type { ContestedCase, ContestedKind } from "../analyse/judge-contested.ts";
 import {
+  type ReviewCoverage,
   type ReviewInventory,
   type ReviewVerifierEvidence,
   deliveredSource,
@@ -142,8 +143,6 @@ export interface RehearsalCase {
   artifact: string | null;
   current: boolean;
 }
-
-type ReviewCoverage = ReturnType<typeof reviewCoverage>;
 
 /** A session that may read, carrying everything the read depends on, or one that may not and
  *  already knows what it owes its campaign. Both arms hold evidence, because a refused review still
@@ -553,7 +552,7 @@ function orientation(
     ...(inventory.background.length === 0
       ? []
       : [
-          `Background files (${inventory.background.length}${inventory.backgroundTruncated ? ", list cut at its cap" : ""}), the rest of the tree: not required reading, never read automatically, readable by name. A finding that rests on one cites it and says so. Sizes in bytes:`,
+          `Background files (${inventory.background.length}), the rest of the tree: not required reading, never read automatically, readable by name. A finding that rests on one cites it and says so. Sizes in bytes:`,
           ...inventory.background.map(({ path, size }) => `${path} (${size})`),
         ]),
     verifier.unavailable ??

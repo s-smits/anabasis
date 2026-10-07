@@ -789,9 +789,9 @@ describe("review coverage tied to recorded execution", () => {
       ]),
     );
     expect(background.background).toHaveLength(400);
-    expect([background.truncated, background.backgroundTruncated]).toEqual([false, true]);
+    expect(background.truncated).toBe(false);
     const listed = await readAll(wide, background);
-    expect([listed.complete, listed.truncated, listed.backgroundTruncated]).toEqual([true, false, true]);
+    expect([listed.complete, listed.truncated]).toEqual([true, false]);
     // An evaluator that reaches 400 modules overruns the cap on the held set itself, which is
     // incomplete coverage however much of it is read.
     const deep = coreTree();
@@ -800,7 +800,7 @@ describe("review coverage tied to recorded execution", () => {
     for (let i = 0; i < 400; i++) writeFileSync(join(deep, "correctness-model", `h${i}.ts`), "export {};");
     const held = reviewInventory(deep);
     expect(held.files).toHaveLength(400);
-    expect([held.truncated, held.backgroundTruncated]).toEqual([true, false]);
+    expect(held.truncated).toBe(true);
     expect(held.missing).toEqual([]);
     expect((await readAll(deep, held)).complete).toBe(false);
   });

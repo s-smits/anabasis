@@ -456,28 +456,16 @@ EOF`,
 });
 
 describe("the fullrun dcg presence check", () => {
-  it.concurrent("names an existing protocol-compatible guard with its version and digest", () => {
+  it.concurrent("names an existing protocol-compatible guard", () => {
     const bin = fakeGuard("dcg");
     const result = ensureBuilderCommandGuard({ PATH: bin, HOME: temp("ana-home-") });
-    expect(result).toEqual({
-      state: "existing",
-      path: join(bin, "dcg"),
-      dcgVersion: "9.9.9",
-      binarySha256: expect.stringMatching(/^[0-9a-f]{64}$/),
-      skippedReason: null,
-    });
+    expect(result).toEqual({ state: "existing", path: join(bin, "dcg"), skippedReason: null });
   });
 
   it.concurrent("reports a host with no guard as not installed and installs nothing", () => {
     const home = temp("ana-home-");
     const result = ensureBuilderCommandGuard({ PATH: temp("ana-empty-"), HOME: home });
-    expect(result).toEqual({
-      state: "skipped",
-      path: null,
-      dcgVersion: null,
-      binarySha256: null,
-      skippedReason: "not-installed",
-    });
+    expect(result).toEqual({ state: "skipped", path: null, skippedReason: "not-installed" });
     expect(existsSync(join(home, LOCAL))).toBe(false);
   });
 

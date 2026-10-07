@@ -22,10 +22,9 @@
  * trees through a third the policy allows, and this guard must not be written about as though it
  * could prevent that.
  */
-import { readFileSync, statSync } from "../meta/filesystem.ts";
+import { statSync } from "../meta/filesystem.ts";
 import { isRegularFile } from "../verify/exact-read-attestation.ts";
 import { delimiter, isAbsolute, join } from "../meta/path.ts";
-import { sha256 } from "../meta/digest.ts";
 import { parseJsonAs, capturedJsonStringify } from "../meta/json-runtime.ts";
 import { boundText } from "../meta/bounded-text.ts";
 import { asRecord, isString } from "../meta/json-shape.ts";
@@ -130,21 +129,12 @@ const SCRATCH_REASSIGNED =
 const EXPANSION = /\$\(|`|<\(|>\(/;
 const SEGMENTS = /(\s*(?:\|\||&&|;|\||\n)\s*)/;
 
-/** What full-run launch records about the selected command guard. */
+/** What the full-run launch line says about the selected command guard. */
 export type BuilderCommandGuardResult = {
   state: "existing" | "skipped";
   /** Absolute regular-file path when one was present; null for a launch-level skip. */
   path: string | null;
-  dcgVersion: string | null;
-  binarySha256: string | null;
-  skippedReason:
-    | "existing-unresponsive"
-    | "existing-not-refusing"
-    | "not-installed"
-    | "explicit-off"
-    | "codex-builder"
-    | "not-requested"
-    | null;
+  skippedReason: "existing-unresponsive" | "existing-not-refusing" | "not-installed" | null;
 };
 
 const UNRESPONSIVE_GUARDS = new Map<string, BuilderCommandGuardFileIdentity>();
@@ -443,15 +433,6 @@ function builderCommandGuardIsUnresponsive(path: string): boolean {
   return false;
 }
 
-/** Read a guard's self-reported version without running a path that is not a regular file. */
-function builderCommandVersion(guard: string, env: OptionalEnvValues = Bun.env): string | null {
-  if (!isRegularFile(guard)) return null;
-  const run = runGuard(guard, ["--version"], { PATH: env.PATH ?? "", HOME: env.HOME ?? "" });
-  if (run === null || run.exitedDueToTimeout === true || !run.success) return null;
-  const value = `${run.stdout.toString()}${run.stderr.toString()}`.trim();
-  return value === "" ? null : (value.split(/\r?\n/, 1)[0] ?? null);
-}
-
 /**
  * The shared in-process check: ask every installed guard about one command and return the first
  * refusal, or `null` when all of them allow it.
@@ -493,21 +474,10 @@ export function refuseDestructiveCommand(
 const PROBE = ["git", "reset", "--hard", "HEAD~1"].join(" ");
 
 function describeGuard(path: string, env: OptionalEnvValues, timeoutMs?: number): BuilderCommandGuardResult {
-  let binarySha256: string | null;
-  try {
-    binarySha256 = sha256(readFileSync(path));
-  } catch {
-    binarySha256 = null;
-  }
   const probe = inspectBuilderCommandGuard(path, PROBE, env, timeoutMs);
-  if (!probe.answered) {
-    return { state: "skipped", path, dcgVersion: null, binarySha256, skippedReason: "existing-unresponsive" };
-  }
-  const dcgVersion = builderCommandVersion(path, env);
-  if (probe.refusal === null) {
-    return { state: "skipped", path, dcgVersion, binarySha256, skippedReason: "existing-not-refusing" };
-  }
-  return { state: "existing", path, dcgVersion, binarySha256, skippedReason: null };
+  if (!probe.answered) return { state: "skipped", path, skippedReason: "existing-unresponsive" };
+  if (probe.refusal === null) return { state: "skipped", path, skippedReason: "existing-not-refusing" };
+  return { state: "existing", path, skippedReason: null };
 }
 
 /**
@@ -523,12 +493,6 @@ export function ensureBuilderCommandGuard(
   const inspected = builderCommandGuards(env).map((path) => describeGuard(path, env, probeTimeoutMs));
   return (
     inspected.find((result) => result.state === "existing") ??
-    inspected[0] ?? {
-      state: "skipped",
-      path: null,
-      dcgVersion: null,
-      binarySha256: null,
-      skippedReason: "not-installed",
-    }
+    inspected[0] ?? { state: "skipped", path: null, skippedReason: "not-installed" }
   );
 }

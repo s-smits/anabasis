@@ -201,16 +201,10 @@ export async function runFullRun(
  *  a launch condition, so the command digest stays what the operator typed. */
 function ensureDcgForBuilder(args: FullRunArgs, deps: FullRunDeps, builder: CampaignBuilderCondition): void {
   if (args.dcg !== true || builder.kind === "codex") return;
-  const supplied = (deps.ensureDcg ?? ensureBuilderCommandGuard)();
-  const guard: BuilderCommandGuardResult = {
-    ...supplied,
-    path: supplied.path === null ? null : resolve(supplied.path),
-  };
-  if (guard.path === null) {
-    fullrunLine(`dcg ${guard.state}: ${guard.skippedReason ?? "no path"}`);
-  } else {
-    fullrunLine(`dcg ${guard.state}: ${guard.path}`);
-  }
+  const guard = (deps.ensureDcg ?? ensureBuilderCommandGuard)();
+  fullrunLine(
+    `dcg ${guard.state}: ${guard.path === null ? (guard.skippedReason ?? "no path") : resolve(guard.path)}`,
+  );
 }
 
 /** An unset --max-iterations reads as Infinity, so there is no default round cap (operator

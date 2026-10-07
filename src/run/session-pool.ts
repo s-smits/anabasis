@@ -15,9 +15,12 @@
  *
  * A concurrency limit does not establish an independent measurement condition by itself.
  */
-import { BUILT_SOLVE_CONCURRENCY } from "../correctness-bundle/harness-config.ts";
-
 export const JUDGE_MAX_CONCURRENCY = 5;
+
+/** Built Harness cases solved at once in a measured battery: the one place the width is set
+ *  (operator, 2026-10-02), and host capacity rather than a harness setting. Every case in flight
+ *  holds a model session, a solver child and its tool children. `ANA_BUILT_CONCURRENCY` overrides it. */
+export const BUILT_SOLVE_CONCURRENCY = 5;
 
 /**
  * A failing call ends the map with the first error, as a one-at-a-time loop would, but every call
@@ -50,17 +53,13 @@ interface EarliestFailure {
   failure: WorkerFailure | null;
 }
 
-/** The Built case width that ran. The harness declares it in `agent/config.yaml`, because the
- *  harness is what knows how heavy one of its cases is and what the host has to run it on.
- *
- *  `ANA_BUILT_CONCURRENCY` still wins where it is set, because the width also spends the
- *  provider's session limit, which is the operator's to bound and not the harness's to see. The
- *  battery record states the width that actually ran. */
-export function builtSolveConcurrency(
-  declared: number = BUILT_SOLVE_CONCURRENCY,
-  env: Record<string, string | undefined> = Bun.env,
-): number {
-  return operatorWidth("ANA_BUILT_CONCURRENCY", declared, env);
+/** The Built case width that runs: `ANA_BUILT_CONCURRENCY` where the operator sets it, because the
+ *  width also spends the provider's session limit, and `BUILT_SOLVE_CONCURRENCY` otherwise. It left
+ *  `agent/config.yaml` on 2026-10-07: a Builder had changed it in 3 of 363 recorded versions, and
+ *  the host's cores and the provider's sessions are nothing a harness can see. The battery record
+ *  states the width that actually ran. */
+export function builtSolveConcurrency(env: Record<string, string | undefined> = Bun.env): number {
+  return operatorWidth("ANA_BUILT_CONCURRENCY", BUILT_SOLVE_CONCURRENCY, env);
 }
 
 /** The Judge batch width: `ANA_REVIEW_CONCURRENCY` where the operator sets it, the default otherwise. */

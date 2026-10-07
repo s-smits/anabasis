@@ -67,7 +67,7 @@ interface HarnessTrialBinding {
   workspace: string;
   /** The same authoring contract static inspection and submit use. */
   context: CandidateCheckContext;
-  /** The measured Built solver, under the battery's own runtime, isolation and turn cap. Absent for
+  /** The measured Built solver, under the battery's own runtime, isolation and turn guard. Absent for
    *  a scripted runtime with no Built slot, and the tool then refuses rather than substituting a
    *  different solver, because a rehearsal against another agent measures nothing about the battery
    *  the round is authoring. */
@@ -280,7 +280,7 @@ function rehearsalWriter(dir: string | undefined, ordinal: number) {
 }
 
 /** Solves the selected task once, exactly as a measured case solves it: the Built runtime's own
- *  turn cap and solve wall, the generated tools as registered, the controller's submission
+ *  turn guard and solve wall, the generated tools as registered, the controller's submission
  *  authority. Nothing here tells the solver it is rehearsing, because a solver that knew would be
  *  answering a different question from the one the battery will ask. */
 async function solveBlind(
@@ -604,7 +604,7 @@ export function createHarnessTrialTool(binding: HarnessTrialBinding): AgentTool<
   return defineTool({
     name: "harness_trial",
     label: "Harness trial",
-    description: `Measure one of your own tasks against your own solver. The Built Harness you wrote solves the named task blind — public input and your registered tools only, no hidden expectations, no reference solve, under the same turn cap, solve wall and confinement a measured battery uses — and the real check program then grades the bytes it submitted. You get one aggregate truth.verdict of pass, fail or not-run, whether it submitted at all, how many turns it took and what the solve spent (minutes against the solve wall, tool calls, cost): never which check decided, a counterexample, a failure location, the artifact or any verifier output. A task your solver passes on its first attempt will most likely pass in the battery too. Each rehearsal costs one measured case from the run's provider budget, and the accepted bytes are graded under the same per-check wall your agent/config.yaml sets for the battery. Use harness_inspect readiness to choose taskId; full battery and control coverage, candidate gates and adoption stay with submit.`,
+    description: `Measure one of your own tasks against your own solver. The Built Harness you wrote solves the named task blind — public input and your registered tools only, no hidden expectations, no reference solve, under the same solve wall and confinement a measured battery uses — and the real check program then grades the bytes it submitted. You get one aggregate truth.verdict of pass, fail or not-run, whether it submitted at all, how many turns it took and what the solve spent (minutes against the solve wall, tool calls, cost): never which check decided, a counterexample, a failure location, the artifact or any verifier output. A task your solver passes on its first attempt will most likely pass in the battery too. Each rehearsal costs one measured case from the run's provider budget, and the accepted bytes are graded under the same per-check wall your agent/config.yaml sets for the battery. Use harness_inspect readiness to choose taskId; full battery and control coverage, candidate gates and adoption stay with submit.`,
     parameters: Params,
     executionMode: "sequential",
     run: async (params, signal) => {

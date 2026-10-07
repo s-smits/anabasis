@@ -278,7 +278,7 @@ Keep unknown host facts unknown.
 
 ### 5h. Context only: solver effort and margin
 
-`case-result.json` `solver.toolCalls`, elapsed time against `solve_minutes`, and accepted-artifact
+`case-result.json` `solver.toolCalls`, elapsed time against `solve_seconds`, and accepted-artifact
 margin against the task limit describe the exam, not the product. Report them beside a placement
 when useful, never as a verdict row. A longer solve on a harder exam is not a regression.
 

@@ -65,7 +65,7 @@ type Apply = (args: FullRunArgs, value: string, flag: string) => void;
 const RETIRED = new Map<string, string>([
   [
     "--max-turns",
-    "was removed: the Built solver keeps its per-case turn cap (the harness's solver.max_turns, defaulted in src/correctness-bundle/harness-config.ts), and --max-builder-turns caps the Builder session",
+    "was removed: the Built solver's turn count is the host's runaway guard (BUILT_RUNAWAY_TURNS in src/backends/pi-built.ts), and --max-builder-turns caps the Builder session",
   ],
   [
     "--turn-budget",

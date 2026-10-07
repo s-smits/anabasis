@@ -90,8 +90,8 @@ function bashTimeoutMs(seconds: number | undefined): number {
  *
  * The Builder's own shell runs for up to two hours and nothing shortens it, because searching a
  * domain is not solving one of its tasks. The solver it is writing those limits for gets
- * `solver.shell_timeout_max_seconds` per command, `gate.check_seconds` per correctness check and
- * `solver.solve_minutes` for a whole solve — all three from the `agent/config.yaml` in this same
+ * `solver.shell_command_seconds` per command, `gate.check_seconds` per correctness check and
+ * `solver.solve_seconds` for a whole solve — all three from the `agent/config.yaml` in this same
  * workspace, which the Builder wrote and can read. Nothing else in the loop states the exchange rate
  * between the two, so a Builder will happily spend an hour of wall clock settling a limit for a
  * solver it has given fifteen minutes a command, and carry that mismatch into the battery
@@ -103,11 +103,11 @@ function bashTimeoutMs(seconds: number | undefined): number {
  * the solver could itself have made needs no note.
  */
 function solverBudgetNotice(elapsedMs: number, settings: HarnessSettings): string | null {
-  const commandMs = settings.shellMaxSeconds * 1000;
+  const commandMs = settings.shellCommandSeconds * 1000;
   if (elapsedMs <= Math.min(commandMs, settings.checkWallMs, settings.solveMs)) return null;
   const s = (ms: number) => String(Math.round(ms / 1000));
   const against = (budgetMs: number) => `${s(budgetMs)} s (${(elapsedMs / budgetMs).toFixed(1)}x)`;
-  return `This call ran ${s(elapsedMs)} s. ${HARNESS_CONFIG_FILE} gives one solver command ${against(commandMs)}, one correctness check ${against(settings.checkWallMs)} and a whole solve ${against(settings.solveMs)}. Work you calibrate with a call this long may be work your own solver cannot repeat inside those numbers. Both sides of that are yours to move: edit those settings, or tune what you installed under .toolchain, where a tolerance, iteration or resolution setting usually trades a little accuracy for a lot of time.`;
+  return `This call ran ${s(elapsedMs)} s. ${HARNESS_CONFIG_FILE} gives one solver command ${against(commandMs)} (solver.shell_command_seconds), one correctness check ${against(settings.checkWallMs)} (gate.check_seconds) and a whole solve ${against(settings.solveMs)} (solver.solve_seconds). Work you calibrate with a call this long may be work your own solver cannot repeat inside those numbers. Both sides of that are yours to move: edit those settings, or tune what you installed under .toolchain, where a tolerance, iteration or resolution setting usually trades a little accuracy for a lot of time.`;
 }
 
 /** The same notice for a workspace, silent while its config is unreadable. The submit gate owns

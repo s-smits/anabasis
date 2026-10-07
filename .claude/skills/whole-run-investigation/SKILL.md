@@ -199,7 +199,7 @@ against a row of the brief: the trigger, the question it settles and the decisio
 | the `handoff` same-task table | 18 |
 | 3c `REPEATED CONDITION`; a `climb` edge label | 20 |
 | source-delta `UNREACHED CHANGED SAFEGUARDS` or `MODEL-VISIBLE SURFACE CHANGED` | 21 |
-| a `walls` case `time-bound` or `turn-bound`, or a pass at a wall; passes at a tiny share of the solve wall | 22 |
+| a `walls` case `time-bound`, or a pass at a wall; passes at a tiny share of the solve wall | 22 |
 | 1b `CHECK TOOL IN SOLVER TRACE` or `CHECK CODE IN SOLVER REACH`; verified cases with lane 1, 4, 8, 22 or 34 suspecting a shortcut | 23, isolated |
 | a `timeline` gap over thirty minutes; 4c `REVIEW TURNS EXCEED SOLVER TURNS`, `EXPLICIT ALLOWANCE WAIT` or `DECISION ON CENSORED BATTERY` | 24 |
 | any unaccepted case; any non-result; a terminal other than `completed`; submit strikes | 25 |

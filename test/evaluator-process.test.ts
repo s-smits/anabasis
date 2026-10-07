@@ -86,7 +86,7 @@ describe("generated evaluation in a confined child", () => {
   it("loads a recorded bundle whose solver wall is below the current floor", async () => {
     const dir = fixture("function evaluate(request) { return request.artifact.text === 'real artifact'; }");
     mkdirSync(join(dir, "agent"), { recursive: true });
-    writeFileSync(join(dir, "agent/config.yaml"), "solver:\n  solve_minutes: 1\n");
+    writeFileSync(join(dir, "agent/config.yaml"), "solver:\n  solve_seconds: 60\n");
     expect(await (await loadCorrectnessModel(dir, LIFETIME))("text", REQUEST)).toBe(true);
   });
 

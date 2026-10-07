@@ -99,7 +99,7 @@ type ReadoutRow = {
   effort: ClimbEffort | null;
   /** Null when the claim was refused; empty when no case named a family and recorded a solver block. */
   familyEffort: FamilyEffort[] | null;
-  /** The `solve_minutes` wall the effort is read against; null when the product's config did not parse. */
+  /** The `solve_seconds` wall, in minutes, the effort is read against; null when the product's config did not parse. */
   solveWallMinutes: number | null;
   /** Unaccepted cases whose solve ran to that wall; null when the claim was refused. */
   wallBound: number | null;

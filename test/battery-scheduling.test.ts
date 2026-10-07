@@ -27,7 +27,7 @@ import {
   TURN_PERMIT_REFUSED_PREFIX,
   nonResultOutcome,
 } from "../src/correctness-bundle/solve.ts";
-import { BUILT_SOLVE_CONCURRENCY } from "../src/correctness-bundle/harness-config.ts";
+import { BUILT_SOLVE_CONCURRENCY } from "../src/run/session-pool.ts";
 import type { BuildTask } from "../src/correctness-bundle/tasks.ts";
 import { commitPublicTask } from "../src/correctness-bundle/task-split.ts";
 import { createVerifierLifetime } from "../src/verify/verifier-lifetime.ts";

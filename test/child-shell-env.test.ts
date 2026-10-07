@@ -171,9 +171,9 @@ describe("the authoring call's cost against the solver's own budget", () => {
     // tells the Builder nothing it did not already know.
     const notice = workspaceSolverBudgetNotice(workDir, 61 * 60_000) ?? "";
     expect(notice).toContain("This call ran 3660 s");
-    expect(notice).toContain("one solver command 900 s (4.1x)");
-    expect(notice).toContain("one correctness check 600 s (6.1x)");
-    expect(notice).toContain("a whole solve 7200 s (0.5x)");
+    expect(notice).toContain("one solver command 900 s (4.1x) (solver.shell_command_seconds)");
+    expect(notice).toContain("one correctness check 600 s (6.1x) (gate.check_seconds)");
+    expect(notice).toContain("a whole solve 7200 s (0.5x) (solver.solve_seconds)");
     // The second lever: the tools it installed, not only the numbers it wrote.
     expect(notice).toContain(".toolchain");
   });
@@ -186,12 +186,14 @@ describe("the authoring call's cost against the solver's own budget", () => {
     mkdirSync(join(dir, "agent"), { recursive: true });
     writeFileSync(
       join(dir, HARNESS_CONFIG_FILE),
-      "solver:\n  shell_timeout_max_seconds: 3600\ngate:\n  check_seconds: 3600\n",
+      "solver:\n  shell_command_seconds: 3600\ngate:\n  check_seconds: 3600\n",
     );
     expect(workspaceSolverBudgetNotice(dir, 59 * 60_000)).toBeNull();
-    expect(workspaceSolverBudgetNotice(dir, 121 * 60_000)).toContain("one solver command 3600 s (2.0x)");
+    expect(workspaceSolverBudgetNotice(dir, 121 * 60_000)).toContain(
+      "one solver command 3600 s (2.0x) (solver.shell_command_seconds)",
+    );
     // A defective config is the submit gate's finding to report; a shell call must not fail on it.
-    writeFileSync(join(dir, HARNESS_CONFIG_FILE), "solver:\n  shell_timeout_max_seconds: -4\n");
+    writeFileSync(join(dir, HARNESS_CONFIG_FILE), "solver:\n  shell_command_seconds: -4\n");
     expect(workspaceSolverBudgetNotice(dir, 59 * 60_000)).toBeNull();
   });
 });

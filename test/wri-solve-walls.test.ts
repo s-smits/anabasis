@@ -19,9 +19,14 @@ import { required } from "./helpers/doubles.ts";
 const SLUG = "walls";
 const RUN = "run-20260919T000000000Z-aaaaaa";
 const OTHER = "run-20260919T060000000Z-bbbbbb";
-const CONFIG = ["solver:", "  solve_minutes: 60", "  max_turns: 4", "gate:", "  check_seconds: 600", ""].join(
-  "\n",
-);
+const CONFIG = [
+  "solver:",
+  "  solve_seconds: 3600",
+  "  shell_command_seconds: 300",
+  "gate:",
+  "  check_seconds: 600",
+  "",
+].join("\n");
 
 interface Spec {
   taskId: string;
@@ -123,16 +128,15 @@ describe("solve budget against the declared walls", () => {
     const dir = campaign([{ runId: RUN, config: CONFIG, cases: PRESSED }]);
     const report: Report = buildWalls({ campaign: dir });
     const battery = required(report.batteries[0], "the battery");
-    expect(battery.walls.settings).toMatchObject({ solveMs: 3_600_000, maxTurns: 4 });
-    expect(battery.walls.moved.map((row) => row.key).sort()).toEqual(["maxTurns", "solveMs"]);
+    expect(battery.walls.settings).toMatchObject({ solveMs: 3_600_000, shellCommandSeconds: 300 });
+    expect(battery.walls.moved.map((row) => row.key).sort()).toEqual(["shellCommandSeconds", "solveMs"]);
     // A case short of every wall is reported by what it did — `submitted` or `no-submit` — because
     // no recorded field says a solve that finished and submitted was cut short.
     expect(battery.bounds).toEqual({
       "time-bound": 1,
       "submitted-at-wall": 1,
       submitted: 1,
-      "no-submit": 1,
-      "turn-bound": 1,
+      "no-submit": 2,
       unstarted: 1,
     });
     expect(battery.outcomes).toEqual({ fail: 1, pass: 2, unaccepted: 2, "non-result": 1 });
@@ -141,32 +145,28 @@ describe("solve budget against the declared walls", () => {
       ["passed-at-wall", "submitted-at-wall", 0.983],
       ["quick", "submitted", 0.1],
       ["gave-up", "no-submit", 0.15],
-      ["turns", "turn-bound", 0.333],
+      ["turns", "no-submit", 0.333],
       ["never", "unstarted", 0.001],
     ]);
-    expect(battery.boundedWithoutPass).toEqual(["at-wall", "turns"]);
-    // Tool calls, not a turn share: one turn of twenty-four is what an uninterrupted solve records.
+    expect(battery.boundedWithoutPass).toEqual(["at-wall"]);
+    // Tool calls, not turns: one turn is what an uninterrupted solve records.
     expect(battery.toolCalls).toEqual({ median: 3, max: 12 });
     // Six shares, so the median is the mean of the third and fourth (0.15 and 0.333), not the fourth.
     expect(battery.time.median).toBeCloseTo(0.2415, 6);
     const text: string = renderWalls(report);
-    expect(text).toContain("moved from the seeded default: solveMs 7200000 to 3600000, maxTurns 24 to 4");
+    expect(text).toContain(
+      "moved from the seeded default: solveMs 7200000 to 3600000, shellCommandSeconds 900 to 300",
+    );
+    expect(text).toContain("walls: solve 60 min, shell 300 s per command");
     expect(text).toContain("tool calls: median 3, max 12");
     expect(text).not.toContain("turns used");
     // The wall reading quotes the host's own sentence rather than resting on the elapsed share.
     expect(text).toContain(
-      'at a wall: at-wall time-bound, 58 min (96.7%), 1 turn(s) of 4, 3 tool calls, fail, "Pi Built worker exceeded its bounded solve time"',
-    );
-    expect(text).toContain(
-      "turns turn-bound, 20 min (33.3%), 4 turn(s) of 4, 12 tool calls, unaccepted, no solver error recorded",
+      'at a wall: at-wall time-bound, 58 min (96.7%), 1 turn(s), 3 tool calls, fail, "Pi Built worker exceeded its bounded solve time"',
     );
     // A pass at the wall is reported at the wall and never as a truncated verdict.
-    expect(text).toContain(
-      "passed-at-wall submitted-at-wall, 59 min (98.3%), 1 turn(s) of 4, 3 tool calls, pass",
-    );
-    expect(text).toContain(
-      "at-wall, turns reached a wall without passing: that verdict rests on a truncated solve",
-    );
+    expect(text).toContain("passed-at-wall submitted-at-wall, 59 min (98.3%), 1 turn(s), 3 tool calls, pass");
+    expect(text).toContain("at-wall reached a wall without passing: that verdict rests on a truncated solve");
   });
 
   it("states plainly when no case came near a wall, and reads the seeded walls when the bundle is gone", () => {
@@ -175,7 +175,7 @@ describe("solve budget against the declared walls", () => {
     const battery = required(report.batteries[0], "the battery");
     expect(battery.walls.moved).toEqual([]);
     expect(battery.walls.source).toContain("binds this battery to no retained product");
-    expect(battery.rows[0]?.turnShare).toBe(0.042);
+    expect(battery.rows[0]?.timeShare).toBe(0.05);
     expect(renderWalls(report)).toContain("no case reached a declared wall");
   });
 
@@ -188,9 +188,20 @@ describe("solve budget against the declared walls", () => {
       buildWalls({ campaign: dir, runId: OTHER }).batteries[0],
       "the probe battery",
     );
-    expect(probe.walls.settings).toMatchObject({ solveMs: 3_600_000, maxTurns: 4 });
+    expect(probe.walls.settings).toMatchObject({ solveMs: 3_600_000 });
     expect(probe.walls.source).toBe("the measured product's agent/config.yaml");
-    expect(probe.rows.map((row) => [row.taskId, row.bound, row.turns])).toEqual([["probe", "turn-bound", 4]]);
+    expect(probe.rows.map((row) => [row.taskId, row.timeShare, row.turns])).toEqual([["probe", 0.5, 4]]);
+  });
+
+  // No backwards compatibility: a product recorded under the earlier schema is a record, and its
+  // config is reported unread rather than parsed around.
+  it("reports the walls of a product whose config the current schema refuses as unread", () => {
+    const dir = campaign([{ runId: RUN, config: "solver:\n  solve_minutes: 60\n", cases: [QUICK] }]);
+    const report: Report = buildWalls({ campaign: dir });
+    const battery = required(report.batteries[0], "the battery");
+    expect(battery.walls.settings).toBeNull();
+    expect(battery.rows.map((row) => [row.bound, row.timeShare])).toEqual([["submitted", null]]);
+    expect(renderWalls(report)).toContain("walls: unread; the current schema refuses");
   });
 
   it("reads the walls of a product an earlier source recorded, which the controller would not continue", () => {
@@ -201,7 +212,7 @@ describe("solve budget against the declared walls", () => {
       readFileSync(manifest, "utf8").replace("product-version/v2", "product-version/v1"),
     );
     const battery: Battery = required(buildWalls({ campaign: dir, runId: RUN }).batteries[0], "the battery");
-    expect(battery.walls.settings).toMatchObject({ solveMs: 3_600_000, maxTurns: 4 });
+    expect(battery.walls.settings).toMatchObject({ solveMs: 3_600_000 });
     expect(battery.walls.source).toBe("the measured product's agent/config.yaml");
   });
 

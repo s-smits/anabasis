@@ -10,13 +10,8 @@
 import { mkdirSync, writeFileSync } from "../../src/meta/filesystem.ts";
 import type { JsonValue } from "../../src/meta/json-shape.ts";
 import { join } from "../../src/meta/path.ts";
-import {
-  type AdviceIssue,
-  type IssueDiagnosis,
-  type RebuildAdvicePacket,
-  REBUILD_ADVICE_SCHEMA,
-  adviceIssueId,
-} from "../../src/author/rebuild-advice.ts";
+import { type RebuildAdvicePacket, REBUILD_ADVICE_SCHEMA } from "../../src/author/rebuild-advice.ts";
+import { type AdviceIssue, type IssueDiagnosis, adviceIssueId } from "../../src/author/issue-register.ts";
 import {
   type CaseDisposition,
   EPOCH_REVIEW_SCHEMA,
@@ -30,12 +25,13 @@ import { double } from "./doubles.ts";
 export const BEAMS = adviceIssueId("verified-fail", "beams", null);
 export const JOINTS = adviceIssueId("unaccepted", "joints", null);
 
-/** The condition every fixture battery measured under: one family's public inputs, the scoring
- *  program (its bytes, its verdict closure and the public wording), the tools its checks ran and the
- *  Built model and resource condition. An absence counts as a complete recheck only across batteries
- *  that share the inputs, the closure, the tools and the Built condition, so a test that means a
- *  different condition says which part moved. */
+/** The condition every fixture battery measured under: one family's tasks and their public inputs,
+ *  the scoring program (its bytes, its verdict closure and the public wording), the tools its checks
+ *  ran and the Built model and resource condition. An absence counts as a complete recheck only
+ *  across batteries that share the inputs, the closure, the tools and the Built condition, so a test
+ *  that means a different condition says which part moved. */
 export const MEASURED_UNDER = {
+  taskIds: ["t1", "t2"],
   taskInputs: "1".repeat(64),
   scoringHash: "2".repeat(64),
   verdictClosureHash: "5".repeat(64),
@@ -102,11 +98,13 @@ export function advicePacket(issues: AdviceIssue[]): RebuildAdvicePacket {
     runId: "r2",
     backendPin: "codex:built-model:high",
     analysisDigest: "d".repeat(64),
-    scoringHash: MEASURED_UNDER.scoringHash,
-    verdictClosureHash: MEASURED_UNDER.verdictClosureHash,
-    publicationHash: MEASURED_UNDER.publicationHash,
-    checkTools: MEASURED_UNDER.checkTools,
-    measuredCondition: MEASURED_UNDER.measuredCondition,
+    condition: {
+      scoringHash: MEASURED_UNDER.scoringHash,
+      verdictClosureHash: MEASURED_UNDER.verdictClosureHash,
+      publicationHash: MEASURED_UNDER.publicationHash,
+      checkTools: MEASURED_UNDER.checkTools,
+      measuredCondition: MEASURED_UNDER.measuredCondition,
+    },
     families: [
       {
         family: "beams",
@@ -114,6 +112,7 @@ export function advicePacket(issues: AdviceIssue[]): RebuildAdvicePacket {
         passed: 3,
         unaccepted: 0,
         nonResults: 0,
+        taskIds: MEASURED_UNDER.taskIds,
         taskInputs: MEASURED_UNDER.taskInputs,
       },
     ],

@@ -22,7 +22,7 @@ import {
   type FindingPlacement,
   PROBE_DIRECTIONS,
 } from "../analyse/iteration-analysis.ts";
-import type { AdviceIssue } from "../author/rebuild-advice.ts";
+import type { AdviceIssue } from "../author/issue-register.ts";
 import { BUNDLE_FILES, type BundleFile, ownerSide } from "../author/feedback-routing.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { mentionsTask } from "../meta/identifier-scan.ts";

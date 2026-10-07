@@ -1437,7 +1437,8 @@ the battery was paid for.
     says how many consecutive batteries have admitted it and since which. Until 2026-09-29 each
     recurrence read as a fresh finding: 48 of the 171 routed findings then recorded repeated the battery
     before, and one on `correctness-model/brief.json`'s `wiring-behavior` check ran twelve. It states each issue's owner, not what to rebuild. Each issue keeps a stable id
-    and states its recorded facts rather than a verdict on them (`issueFacts`):
+    and states its recorded facts rather than a verdict on them (`issueFacts` in
+    `src/author/issue-register.ts`, which holds the register, and `rebuild-advice/v13` for the packet):
     where it was first and last seen, how many complete rechecks have not observed it since and how many
     of those ran under changed public rules, whether it was seen again after an absence, which condition moved when a recheck was not comparable, and
     whether its family left the set, a review disputed it or a review settled it. Until 2026-09-29 the
@@ -1468,7 +1469,15 @@ the battery was paid for.
     battery an issue line names and the one its diagnosis read are always the same. First seen and seen
     again hold only across the same task inputs, with the id kept: one id names a failure on other task
     records as a first sighting there, which until 2026-10-07 read "first seen baseline" for a failure the
-    baseline never had, and a return means a return on the same tasks.
+    baseline never had, and a return means a return on the same tasks. A family is the label the author
+    gave its tasks, so a name missing from a battery is not an issue going away while a task the issue was
+    observed under still runs under another name (`continuedUnder`): the issue is held unmeasured, with the
+    label among what moved, and the render says which families the tasks went to; it is retired only once
+    none of its tasks runs, and stays retired until its own name returns. Until 2026-10-07 a rename retired
+    it. Over the recorded campaigns, 4 of 277 consecutive version pairs renamed a family and kept its
+    tasks, in 2 of the campaigns, and one of them (firmware-23, i04 to i05) retired 2 of the 21 advice rows
+    retired at any pair; the other 19 were real removals. The packet records each family's task ids for
+    this, and the render never prints one.
 
     `--product-policy fixed` permits measure or stop and refuses build and rebuild. A campaign runs
     uncapped unless the operator sets `--iteration-budget N`; there is no launch default (2026-08-19).

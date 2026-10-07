@@ -11,7 +11,7 @@
  * Confidence is neither asked for nor derived: the support is recorded as counts and graded into
  * nothing, because a grade drawn from those counts would claim a calibration no measurement made.
  */
-import { DIAGNOSIS_OWNERS, type DiagnosisOwner } from "../author/rebuild-advice.ts";
+import { DIAGNOSIS_OWNERS, type DiagnosisOwner } from "../author/issue-register.ts";
 import { BRIEF_FILE, GENERATED_TOOLS_FILE, TOOLS_SPEC_FILE } from "../meta/bundle-layout.ts";
 import { mentionsTask } from "../meta/identifier-scan.ts";
 import { type JsonValue, isString } from "../meta/json-shape.ts";

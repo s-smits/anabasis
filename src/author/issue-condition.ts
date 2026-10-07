@@ -33,9 +33,15 @@
  * leaves the issue unmeasured, which loses a measurement but never counts a changed checker's
  * silence towards a fix.
  *
+ * A family is a label the author gave its tasks, and the author relabels. The issue register
+ * therefore also keeps the ids of the tasks a family ran, which are not part of any comparison: an
+ * id set says whether the tasks went on under another name, and the digest says whether they were
+ * the same tasks when they did.
+ *
  * Every value here is read from what the battery already recorded: the scoring hash from the
- * bundle snapshot the analysis names, each family's tasks from the measured tree's tasks.json while
- * that tree still hashes to the task-set hash the same snapshot recorded, the check tools from its
+ * bundle snapshot the analysis names, each family's task ids from its cases and their digest from
+ * the measured tree's tasks.json while that tree still hashes to the task-set hash the same
+ * snapshot recorded, the check tools from its
  * digest-bound `battery.json`, the measured condition from the analysis's identities, and the
  * verdict closure and the public rules from the brief `scoredBrief` vouches the battery scored.
  */
@@ -58,12 +64,19 @@ import { recordedVerifierHash } from "../correctness-bundle/verifier-environment
 const CONDITION_GAPS = ["task-inputs", "scoring", "check-tools", "built-condition"] as const;
 export type ConditionGap = (typeof CONDITION_GAPS)[number];
 
-/** The condition one battery measured one family under. */
-export type IssueCondition = {
+/** The tasks one family ran in one battery. */
+export type FamilyTasks = {
+  /** The ids, sorted, read off the cases the battery ran, so they need no tree to vouch for them. A
+   *  later battery that finds these tasks under another family's name knows the family was renamed. */
+  taskIds: readonly string[];
   /** sha256 over the family's whole task records in that battery, public input and hidden
    *  expectations alike; null when the measured tree could not be vouched for, which compares
    *  with nothing. */
   taskInputs: string | null;
+};
+
+/** What every family of one battery ran under. */
+export type SharedCondition = {
   scoringHash: string;
   /** `verdictClosureHash` of the scored brief; null when the measured tree could not be vouched
    *  for, which compares with nothing. */
@@ -79,15 +92,11 @@ export type IssueCondition = {
   measuredCondition: string;
 };
 
+/** The condition one battery measured one family under. */
+export type IssueCondition = SharedCondition & FamilyTasks;
+
 /** One battery's condition, for every family it ran. */
-export type BatteryCondition = {
-  scoringHash: string;
-  verdictClosureHash: string | null;
-  publicationHash: string | null;
-  checkTools: string | null;
-  measuredCondition: string;
-  familyInputs: ReadonlyMap<string, string | null>;
-};
+export type BatteryCondition = SharedCondition & { familyTasks: ReadonlyMap<string, FamilyTasks> };
 
 /** The host-imposed condition a battery solved under, as one digest. The Built pin names the backend
  *  kind and the model, and on OpenRouter the providers, but no effort, so the reasoning effort the
@@ -142,16 +151,16 @@ export function publicRulesMoved(was: IssueCondition, now: IssueCondition): bool
   );
 }
 
-/** Each family's task digest: sha256 over its whole task records, sorted by task id, from the
- *  measured tree's tasks.json. The hidden expectations are in because they are half the question a
- *  check asks. The tree is vouched for by the task-set hash the battery's snapshot recorded; a tree
- *  that no longer hashes to it, or that lacks one of the family's tasks, gives null rather than a
- *  digest over whatever is there now. */
-function familyTaskDigests(
+/** Each family's tasks: the ids from the cases the battery ran, and the digest of its whole task
+ *  records, sorted by task id, from the measured tree's tasks.json. The hidden expectations are in
+ *  because they are half the question a check asks. The tree is vouched for by the task-set hash the
+ *  battery's snapshot recorded; a tree that no longer hashes to it, or that lacks one of the family's
+ *  tasks, gives a null digest rather than a digest over whatever is there now, and the ids stand. */
+function familyTasks(
   measuredDir: string,
   taskSetHash: string | null,
   cases: IterationAnalysis["cases"],
-): Map<string, string | null> {
+): Map<string, FamilyTasks> {
   const byFamily = new Map<string, string[]>();
   for (const row of cases) byFamily.set(row.family, [...(byFamily.get(row.family) ?? []), row.taskId]);
   const file = join(measuredDir, TASKS_FILE);
@@ -163,12 +172,14 @@ function familyTaskDigests(
       return isString(id) ? [[id, task] as const] : [];
     }),
   );
-  const digests = new Map<string, string | null>();
-  for (const [family, ids] of byFamily) {
-    const tasks = ids.toSorted(compareCodeUnits).map((id) => records.get(id));
-    digests.set(family, tasks.every((task) => task !== undefined) ? hashJsonValue(tasks) : null);
-  }
-  return digests;
+  return new Map(
+    [...byFamily].map(([family, ids]) => {
+      const taskIds = ids.toSorted(compareCodeUnits);
+      const tasks = taskIds.map((id) => records.get(id));
+      const taskInputs = tasks.every((task) => task !== undefined) ? hashJsonValue(tasks) : null;
+      return [family, { taskIds, taskInputs }];
+    }),
+  );
 }
 
 /** The tools the battery's verifier launched, from the `execution` summary its record carries. The
@@ -221,6 +232,6 @@ export function batteryCondition(analysis: IterationAnalysis, measuredDir: strin
       isolationStrength: identities.isolationStrength,
       runCondition: battery.condition,
     }),
-    familyInputs: familyTaskDigests(measuredDir, identities.bundleSnapshot.taskSetHash, analysis.cases),
+    familyTasks: familyTasks(measuredDir, identities.bundleSnapshot.taskSetHash, analysis.cases),
   };
 }

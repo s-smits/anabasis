@@ -35,14 +35,8 @@ import { join } from "../meta/path.ts";
 import { existsSync, readFileSync } from "../meta/filesystem.ts";
 import { sha256 } from "../meta/digest.ts";
 import type { IterationAnalysis } from "../analyse/iteration-analysis.ts";
-import {
-  type AdviceIssue,
-  type IssueDiagnosis,
-  type RebuildAdvicePacket,
-  environmentOwned,
-  isStanding,
-  issueFacts,
-} from "../author/rebuild-advice.ts";
+import { type RebuildAdvicePacket, environmentOwned } from "../author/rebuild-advice.ts";
+import { type AdviceIssue, type IssueDiagnosis, isStanding, issueFacts } from "../author/issue-register.ts";
 import { type VerifiedTraceRead, campaignTraceRoots, readVerifiedTraceUnder } from "../claim/trace-read.ts";
 import { classifyCaseOutcome } from "../claim/case-record.ts";
 import { type EvidenceLogViolation, recordedEvidence, verifyRunDir } from "../claim/evidence-log.ts";

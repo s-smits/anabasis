@@ -103,6 +103,7 @@ PROMPT_FILES = (
     "src/run/climb-readout.ts",
     "src/run/battery-sizing.ts",
     "src/author/rebuild-advice.ts",
+    "src/author/issue-register.ts",  # issueFacts and the unmeasured gap words, split out of rebuild-advice
     "src/review/epoch-review-public.ts",  # also the Epoch Reviewer
     # Builder: tool descriptions and ordinary results
     "src/builder/tools.ts",

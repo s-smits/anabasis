@@ -29,14 +29,13 @@ import { keysIf } from "#src/meta/optional-key.ts";
 import { asRecord, isNumber, isRecord, isString, type JsonValue } from "#src/meta/json-shape.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { campaignTraceRoots } from "#src/claim/trace-read.ts";
+import { type RebuildAdvicePacket, renderRebuildAdvice } from "#src/author/rebuild-advice.ts";
 import {
   type AdviceIssue,
   adviceIssueId,
   type IssueDiagnosis,
   issueFacts,
-  type RebuildAdvicePacket,
-  renderRebuildAdvice,
-} from "#src/author/rebuild-advice.ts";
+} from "#src/author/issue-register.ts";
 import { readEpochRecord } from "#src/author/campaign-epoch.ts";
 import { ownerSide } from "#src/author/feedback-routing.ts";
 import { PATH_RECORD_FILE } from "#src/builder/path-record.ts";

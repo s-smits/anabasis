@@ -5,7 +5,7 @@ import type { AnalysisFinding, DemandGap, ProbeDirection } from "../analyse/iter
 import type { Brief } from "../correctness-bundle/brief.ts";
 import { publicRuleDecisions } from "../correctness-bundle/public-resources.ts";
 import type { CaseDisposition, EpochReviewEvidence } from "./epoch-review-findings.ts";
-import { adviceIssueId } from "../author/rebuild-advice.ts";
+import { adviceIssueId } from "../author/issue-register.ts";
 
 /** What the reviewed candidate supplies: the public contract its findings are read against. */
 type ReviewContract = { brief: Brief | null };

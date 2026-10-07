@@ -7,11 +7,8 @@ import type { BuilderConversation } from "../author/builder-conversation.ts";
 import { carryMemoryForward } from "../author/builder-memory.ts";
 import { type CampaignEpochEvidence, selectCampaignEpoch } from "../author/campaign-epoch.ts";
 import { writeCompleted } from "../meta/completed-json.ts";
-import {
-  attachIssueReadings,
-  latestRebuildAdvicePath,
-  readLatestRebuildAdvice,
-} from "../author/rebuild-advice.ts";
+import { latestRebuildAdvicePath, readLatestRebuildAdvice } from "../author/rebuild-advice.ts";
+import { attachIssueReadings } from "../author/issue-register.ts";
 import { type EpochReviewInput, runEpochReview } from "../review/epoch-reviewer.ts";
 import { NOTHING_CARRIED, carriedDemonstrations } from "../review/review-carry.ts";
 import { publicEpochReview } from "../review/epoch-review-public.ts";

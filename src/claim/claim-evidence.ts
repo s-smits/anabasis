@@ -82,9 +82,9 @@ export type TruthCheckFiringEvidence = {
   executedByCheck: Record<string, number>;
   /**
    * checkId → number of verified failed cases that failed this check. Every declared check
-   * appears, 0 when it blocked nothing. One check carrying every failure of a battery is the
-   * reading that prompts a review: establish that the public contract states the rule before
-   * attributing those failures to solver capability.
+   * appears, 0 when it blocked nothing. One check carrying every failure of a battery reads three
+   * ways, none first: the answers are wrong, which may be a limit; the check refuses right answers;
+   * or the tasks leave the answer open.
    */
   blockingByCheck: Record<string, number>;
   /**

@@ -16,11 +16,16 @@
  * totals, and how many consecutive packets have carried an unplaced finding.
  *
  * `renderRebuildAdvice` is the model-visible boundary, bounded by construction rather than by a
- * ceiling that cuts mid-sentence: `RENDERED_ISSUES` standing issues, `RENDERED_FINDINGS` findings
- * and `FINDING_CLAIM_BYTES` per claim. A diagnosis crosses as its owner, boundary and falsifier,
- * which the diagnosis reader drew from solver traces and public context alone; its causal argument
- * stays recorded here. The packet records the ids of the tasks each family ran, so that a renamed
- * family can be found; the render never prints one, and names the families the tasks went to.
+ * ceiling that cuts mid-sentence: `RENDERED_ISSUES` issues in all, `RENDERED_FINDINGS`
+ * findings and `FINDING_CLAIM_BYTES` per claim. It sorts the issues it shows by what is known of
+ * them (`LEAD_OF`). A fail is an observation that may locate a limit, because a checker refusing a
+ * valid answer and a task the solver could not do leave the same count, and a defect that evidence
+ * has shown already reaches its bundle file as routed feedback. A Judge disagreement waits on the
+ * review that settles it. A diagnosis crosses as its owner, boundary and falsifier, read as a
+ * hypothesis, which the diagnosis reader drew from solver traces and public context alone; its
+ * causal argument stays recorded here. The packet records the ids of the tasks each family ran, so
+ * that a renamed family can be found; the render never prints one, and names the families the tasks
+ * went to.
  */
 import { boundText } from "../meta/bounded-text.ts";
 import { existsSync, readFileSync } from "../meta/filesystem.ts";
@@ -99,13 +104,45 @@ export type RebuildAdvicePacket = {
   findings: AdviceFinding[];
 };
 
-/** Standing issues the render shows, and the findings and claim length beside them. Unbounded, one
- *  unowned finding alone can run to fifteen thousand characters, and an author reading a defect
- *  list that long writes a defect fix. These three hold the packet at a few thousand characters
- *  whatever the battery did, while the register goes on recording every issue it derived. */
+/** Issues the render shows in all, shared in lead order, and the findings and claim length beside
+ *  them.
+ *  Unbounded, one unowned finding alone can run to fifteen thousand characters, and an author
+ *  reading a defect list that long writes a defect fix. These three hold the packet at a few
+ *  thousand characters whatever the battery did, while the register goes on recording every issue
+ *  it derived. */
 const RENDERED_ISSUES = 6;
 const RENDERED_FINDINGS = 4;
 const FINDING_CLAIM_BYTES = 600;
+
+const ISSUE_WORDS = {
+  "verified-fail": "verified cases failed",
+  unaccepted: "attempts produced no accepted submission",
+  "judge-passed-verifier-failed": "verified cases the Judge passed and the verifier failed",
+  "judge-failed-verifier-passed": "verified cases the Judge failed and the verifier passed",
+} as const;
+
+const FAILS = "Fails, each an observation that may locate a limit and a defect only where evidence shows one";
+const PENDING = "Judge disagreements pending review, not issues to repair until a review settles them";
+
+/** The lead each kind of standing issue is shown under, in render order. A battery counts an
+ *  unaccepted attempt as a fail like a verified one, so both read as observations; listed as
+ *  standing issues they read as defects, and in six chances to follow an earned fail the Builder
+ *  changed `agent/` once and dropped or eased the failed task three times. A non-result is the one
+ *  kind that stays a standing issue, since it measured nothing either way. Keyed by kind, so a new
+ *  kind has to choose its lead. */
+const LEAD_OF: Record<AdviceIssue["kind"], string> = {
+  "verified-fail": FAILS,
+  unaccepted: FAILS,
+  "judge-passed-verifier-failed": PENDING,
+  "judge-failed-verifier-passed": PENDING,
+  "non-result": "Standing issues",
+};
+
+/** Appended to the per-check line when one declared check carries every failure. It names the three
+ *  readings that count leaves open, none first: it once asked only whether the rule was published,
+ *  which met a located limit by pointing at the Builder's own contract. */
+const ONE_CHECK =
+  "One check carrying every failure reads three ways: the answers are wrong, which may be a limit; the check refuses right answers; or the tasks leave the answer open.";
 
 /** The battery's totals over its family rows. */
 export function adviceTotals(families: readonly AdviceFamilyRow[]) {
@@ -314,13 +351,6 @@ export function readLatestRebuildAdvice(repoRoot: string, slug: string): Rebuild
   return parsed.schema === REBUILD_ADVICE_SCHEMA ? parsed : null;
 }
 
-const ISSUE_WORDS = {
-  "verified-fail": "verified cases failed",
-  unaccepted: "attempts produced no accepted submission",
-  "judge-passed-verifier-failed": "verified cases the Judge passed and the verifier failed",
-  "judge-failed-verifier-passed": "verified cases the Judge failed and the verifier passed",
-} as const;
-
 /** An issue whose whole content is an environment failure. Rule 15 gives a provider limit, a
  *  missing credential, a sandbox refusal and their relatives to the environment owner, and the
  *  kinds are taken from the existing set beside that vocabulary rather than restated here. A crash,
@@ -349,10 +379,11 @@ function issueLine(issue: AdviceIssue): string {
 }
 
 /** The diagnosis as the author reads it: which file the failure points to, where the solve failed,
- *  and what would prove it wrong. The cause stays in review evidence, because the boundary and
- *  the falsifier are the parts a next pass can check against its own traces, and a causal paragraph
- *  is the part an author adopts without checking. The support counts say how far one reading was
- *  sampled, so a reading drawn from one case does not read like a pattern. */
+ *  and what would prove it wrong, said as a hypothesis, since the reader located a boundary in a few
+ *  sampled traces and showed no defect. The cause stays in review evidence, because the boundary
+ *  and the falsifier are the parts a next pass can check against its own traces, and a causal
+ *  paragraph is the part an author adopts without checking. The support counts say how far one
+ *  reading was sampled, so a reading drawn from one case does not read like a pattern. */
 export function diagnosisLine(diagnosis: IssueDiagnosis): string {
   const { support, boundary } = diagnosis;
   const contrasts =
@@ -361,57 +392,43 @@ export function diagnosisLine(diagnosis: IssueDiagnosis): string {
       : `, ${support.contrasts} passing contrast${support.contrasts === 1 ? "" : "s"}`;
   const where = boundary.tool === null ? "at the solve's end" : `at a call to ${boundary.tool}`;
   const reading = /[.!?]$/.test(boundary.reading) ? boundary.reading : `${boundary.reading}.`;
-  return `diagnosis (${diagnosis.runId}: holds for ${support.cases} of ${support.shown} sampled of ${support.matching} failing cases${contrasts}): ${diagnosis.owner}. First failure boundary ${where}: ${reading} Falsifier: ${diagnosis.falsifier}`;
+  return `diagnosis, a hypothesis until evidence shows the defect (${diagnosis.runId}: holds for ${support.cases} of ${support.shown} sampled of ${support.matching} failing cases${contrasts}): ${diagnosis.owner}. First failure boundary ${where}: ${reading} Falsifier: ${diagnosis.falsifier}`;
 }
 
-/** What is failing now, largest first, capped. An issue a complete recheck did not observe is
- *  deliberately absent: which families passed every verified case is the climb readout's family
- *  line, and naming them here as well asks opposite things of one family — keep it, and harden it as
- *  a sentinel. A retired issue names a family that left the task set, which the author can neither
- *  move nor keep. The register records both either way, so an issue observed again says it returned. */
+/** What stands now, under the lead its kind takes, largest first. Six are shown in all, taken in
+ *  lead order, so fails come first and a larger non-result cannot push a fail out of view. An issue a
+ *  complete recheck did not observe is deliberately absent: which families passed every verified
+ *  case is the climb readout's family line, and naming them here as well asks opposite things of one
+ *  family — keep it, and harden it as a sentinel. A retired issue names a family that left the task
+ *  set, which the author can neither move nor keep. The register records both either way, so an
+ *  issue observed again says it returned. */
 function standingLines(issues: readonly AdviceIssue[]): string[] {
-  const standing = [...issues]
+  const standing = issues
     .filter(isStanding)
     .sort((a, b) => b.count - a.count || a.family.localeCompare(b.family) || a.kind.localeCompare(b.kind));
-  if (standing.length === 0) return [];
-  const shown = standing.slice(0, RENDERED_ISSUES);
-  const omitted = standing.length > shown.length ? ` (${shown.length} of ${standing.length} shown)` : "";
-  return [`Standing issues, largest first${omitted}:`, ...shown.map(issueLine)];
-}
-
-/** Issues the latest battery could not measure, named as such. Left out, an issue that vanished
- *  when its family's tasks, its evaluator or its Built condition changed reads exactly like one a
- *  complete recheck did not observe, because that one is also absent from the standing lines. A
- *  family whose name left the battery says where its tasks went, so the author reads a relabelled
- *  family as one and not as a failure that disappeared. */
-function unmeasuredLine(issues: readonly AdviceIssue[], families: readonly AdviceFamilyRow[]): string | null {
-  const unmeasured = issues.filter((issue) => !issue.retired && issue.unmeasured.length > 0);
-  if (unmeasured.length === 0) return null;
-  const shown = unmeasured.slice(0, RENDERED_ISSUES).map((issue) => {
-    const moved = continuedUnder(issue, families);
-    const where = moved.length === 0 ? "" : `; its tasks now run under ${moved.join(", ")}`;
-    return `${issue.family} (${issue.kind}: ${gapWords(issue)} changed${where})`;
+  const leads = [...new Set(Object.values(LEAD_OF))];
+  const ordered = leads.flatMap((lead) => standing.filter((issue) => LEAD_OF[issue.kind] === lead));
+  const shown = new Set(ordered.slice(0, RENDERED_ISSUES));
+  return leads.flatMap((lead) => {
+    const under = ordered.filter((issue) => LEAD_OF[issue.kind] === lead);
+    if (under.length === 0) return [];
+    const listed = under.filter((issue) => shown.has(issue));
+    const omitted = listed.length < under.length ? ` (${listed.length} of ${under.length} shown)` : "";
+    return [`${lead}, largest first${omitted}:`, ...listed.map(issueLine)];
   });
-  const more = unmeasured.length - shown.length;
-  return `Unmeasured issues — absent from this battery, but their family did not rerun under the condition that observed them, so the absence is not a fix: ${shown.join("; ")}${more > 0 ? `; ${String(more)} more` : ""}.`;
 }
 
-/** Issues every one of whose complete rechecks followed a change of the public rules, with the latest
- *  battery on unchanged checks. They stay out of the standing lines like any rechecked issue, and the
- *  change is named here because it changes what the absence answers: whether the repair held under the
- *  new rules, not whether the issue persists under the old. */
-function rulesChangedLine(issues: readonly AdviceIssue[]): string | null {
-  const changed = issues.filter(
-    (issue) =>
-      !issue.retired &&
-      issue.unmeasured.length === 0 &&
-      issue.rulesChangedRechecks > 0 &&
-      issue.rulesChangedRechecks === issue.absentBatteries,
-  );
-  if (changed.length === 0) return null;
-  const shown = changed.slice(0, RENDERED_ISSUES).map((issue) => `${issue.family} (${issue.kind})`);
-  const more = changed.length - shown.length;
-  return `Issues ${RULES_CHANGED_WORDS} — absent from every recheck, but the public rules, in words or numbers, differed from the battery that observed them, so the absence says whether the repair held under the new rules, not whether the issue persists: ${shown.join("; ")}${more > 0 ? `; ${String(more)} more` : ""}.`;
+/** One line naming issues after `lead`, each as its family and kind unless `name` says more, capped
+ *  like the leads above. */
+function namedLine(
+  lead: string,
+  issues: readonly AdviceIssue[],
+  name = (issue: AdviceIssue) => `${issue.family} (${issue.kind})`,
+): string | null {
+  if (issues.length === 0) return null;
+  const shown = issues.slice(0, RENDERED_ISSUES).map(name);
+  const more = issues.length - shown.length;
+  return `${lead}: ${shown.join("; ")}${more > 0 ? `; ${String(more)} more` : ""}.`;
 }
 
 /** Public finding text, capped in count and in length, in admitted order. A finding no bundle file
@@ -460,13 +477,13 @@ export function blockingLine(
   // A recorded zero, never an absent row: "no verified case posed it" is a measurement, and the
   // packet may state it only where the battery measured it.
   const unposed = untripped.filter((checkId) => applicableByCheck[checkId] === 0);
-  // The sentence is appended only when one check really does carry every failure; beside a single
-  // failed case and six checks it would say nothing.
+  // The readings are appended only when one check really does carry every failure; beside a single
+  // failed case and six checks they would say nothing.
   const alone = blocked.length === 1 && blocked[0]?.[1] === verified - passed;
   const lines = [
     blocked.length === 0
       ? null
-      : `Verified failures by declared check (${verified - passed} failed; a case may block on several): ${blocked.map(([checkId, count]) => `${checkId} ${count}`).join(", ")}.${alone ? " One check carrying every failure asks whether its rule is stated in the public contract before the count reads as solver capability." : ""}`,
+      : `Verified failures by declared check (${verified - passed} failed; a case may block on several): ${blocked.map(([checkId, count]) => `${checkId} ${count}`).join(", ")}.${alone ? ` ${ONE_CHECK}` : ""}`,
     applied.length === 0
       ? null
       : `Declared checks that blocked no shipping artifact, with the verified cases each applied to (of ${verified}): ${applied.map((checkId) => `${checkId} ${applicableByCheck[checkId]}`).join(", ")}.`,
@@ -481,21 +498,47 @@ export function blockingLine(
 
 /** The one model-visible projection of the issue register: kinds and counts, ordered by what the
  *  next experiment decides. Each battery's measured counts belong to the climb readout, which
- *  renders above this packet, so they are not repeated here. */
+ *  renders above this packet, so they are not repeated here.
+ *
+ *  Beside the standing leads, four lines name issues the latest battery did not observe as they
+ *  stand. An unmeasured one vanished when its family's tasks, its checks or its Built condition
+ *  changed, and left out it would read exactly like one a complete recheck did not observe; a family
+ *  whose name left the battery says where its tasks went, so a relabelled family reads as one. One
+ *  every recheck of which followed a change of the public rules answers whether the repair held
+ *  under the new rules, not whether the issue persists. A disputed one an epoch review argued is the
+ *  evaluation's, and a settled one the review showed by execution the check stands on. */
 export function renderRebuildAdvice(packet: RebuildAdvicePacket): string {
   const totals = adviceTotals(packet.families);
-  const disputed = packet.issues.filter((issue) => issue.dispute !== null && !issue.retired);
-  const settled = packet.issues.filter((issue) => unrechecked(issue) && issue.judgeSettled === true);
+  const live = packet.issues.filter((issue) => !issue.retired);
+  const unmeasured = (issue: AdviceIssue) => {
+    const moved = continuedUnder(issue, packet.families);
+    const where = moved.length === 0 ? "" : `; its tasks now run under ${moved.join(", ")}`;
+    return `${issue.family} (${issue.kind}: ${gapWords(issue)} changed${where})`;
+  };
   return [
     ...standingLines(packet.issues),
-    unmeasuredLine(packet.issues, packet.families),
-    rulesChangedLine(packet.issues),
-    disputed.length === 0
-      ? null
-      : `Disputed issues — an epoch review argued these come from the evaluation rather than the harness: ${disputed.map((issue) => `${issue.family} (${issue.kind})`).join("; ")}.`,
-    settled.length === 0
-      ? null
-      : `Settled Judge disagreements — an epoch review showed by execution that the check stands: ${settled.map((issue) => `${issue.family} (${issue.kind})`).join("; ")}.`,
+    namedLine(
+      "Unmeasured issues — absent from this battery, but their family did not rerun under the condition that observed them, so the absence is not a fix",
+      live.filter((issue) => issue.unmeasured.length > 0),
+      unmeasured,
+    ),
+    namedLine(
+      `Issues ${RULES_CHANGED_WORDS} — absent from every recheck, but the public rules, in words or numbers, differed from the battery that observed them, so the absence says whether the repair held under the new rules, not whether the issue persists`,
+      live.filter(
+        (issue) =>
+          issue.unmeasured.length === 0 &&
+          issue.rulesChangedRechecks > 0 &&
+          issue.rulesChangedRechecks === issue.absentBatteries,
+      ),
+    ),
+    namedLine(
+      "Disputed issues — an epoch review argued these come from the evaluation rather than the harness",
+      live.filter((issue) => issue.dispute !== null),
+    ),
+    namedLine(
+      "Settled Judge disagreements — an epoch review showed by execution that the check stands",
+      packet.issues.filter((issue) => unrechecked(issue) && issue.judgeSettled === true),
+    ),
     blockingLine(packet.blockingByCheck, packet.applicableByCheck, totals.verified, totals.passed),
     packet.judge === null || packet.judge.exit === "none"
       ? null

@@ -16,9 +16,20 @@ import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { capturedJsonParse } from "../meta/json-runtime.ts";
 import { homedir } from "../meta/os.ts";
 import { join } from "../meta/path.ts";
-import { claudeProvider } from "./claude.ts";
+import { CLAUDE_PROVIDER, type ClaudeOptions, claudeCompactionMode, claudeProvider } from "./claude.ts";
 
 const CODEX = "openai-codex";
+
+/**
+ * pi's own loop, which serves Codex and OpenRouter, never compacts: a context that outgrows the model
+ * ends the solve.
+ */
+const PI_LOOP_COMPACTION = "off";
+
+/** What the host decides about the backends a process serves. */
+export interface BackendOptions {
+  readonly claude: ClaudeOptions;
+}
 
 /**
  * The Codex CLI's login, read afresh on every request and never refreshed here. Codex rotates the
@@ -39,12 +50,17 @@ const codexLogin: CredentialStore = {
   },
 };
 
-export function backends(): MutableModels {
+export function backends(options: BackendOptions): MutableModels {
   const models = createModels({ credentials: codexLogin });
   models.setProvider(openaiCodexProvider());
   models.setProvider(openrouterProvider());
-  models.setProvider(claudeProvider());
+  models.setProvider(claudeProvider(options.claude));
   return models;
+}
+
+/** The compaction a solve on `provider` runs under, as the condition pins it. */
+export function compactionMode(provider: string, options: BackendOptions): string {
+  return provider === CLAUDE_PROVIDER ? claudeCompactionMode(options.claude.compaction) : PI_LOOP_COMPACTION;
 }
 
 function codexAuthFile(): string {

@@ -8,6 +8,7 @@
  * with its cached part inside and no split, so billed cannot be recomputed from it; metered needs
  * no split, since it charges the classes alike.
  */
+import { claudeExecutable, SWEEP_COMPACT_WINDOW } from "#src/backends/claude.ts";
 import { backends } from "#src/backends/models.ts";
 import { dollars, freezePrices, type PriceTable } from "#src/kernel/meter.ts";
 import type { Counted } from "#src/kernel/solve.ts";
@@ -124,9 +125,14 @@ export function storedAnswer(row: Row): JsonValue | undefined {
   }
 }
 
-/** The list prices of the models the rows ran, frozen from the backends this system runs on. */
+/**
+ * The list prices of the models the rows ran, frozen from the backends this system runs on, set as the
+ * sweep ran its Claude solves.
+ */
 function rowPrices(rows: readonly Row[]): PriceTable {
-  const models = backends();
+  const models = backends({
+    claude: { executable: claudeExecutable(), compaction: { window: SWEEP_COMPACT_WINDOW } },
+  });
   const named = new Map(rows.map((row) => [`${row.provider}/${row.model}`, row]));
   return freezePrices(
     [...named.values()].map((row) => {

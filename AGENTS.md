@@ -1920,7 +1920,8 @@ source-changing commit new to the remote runs `gate --static` over its own check
 head holding the newest of them gets the whole gate. A commit whose patch (`git patch-id --stable`) the
 remote already held under the refs the push replaces is a replay that a rebase carried to a new base, and
 it waits for `bun run land` (see "Where changes go"). The same hook refuses a source push to main that
-lacks `Hotfix:` trailers, a new branch that is not on top of the open stack, and a push that leaves an
+lacks `Hotfix:` trailers, a new branch that is not on top of the open stack (a side PR against main
+excepted, below), and a push that leaves an
 open PR listing another open PR's commits; one left listing old copies of its base's commits gets a
 warning naming the `git rebase --onto` that repairs it. **There is no hook bypass by any spelling**,
 neither `--no-verify` nor `-c core.hooksPath=…`.
@@ -2741,8 +2742,10 @@ working baseline, since main alone is not the current production-development sta
 open. "Add stacked PR" means a new PR on the latest head, with `--base` set to that head's branch.
 Pre-push reads the open PRs with `gh` and holds two things, and when GitHub cannot be read it says so and
 lets the push through. A push that creates a branch must contain the top's head, the top being the PR no
-other open PR is based on, and it is refused when there is more than one top; the hook cannot see
-`--base`. And a push must not leave an open PR listing commits that are not its own, whether old copies of
+other open PR is based on, and it is refused when there is more than one top, except that a side PR, one
+whose changes against main touch only `.claude/`, `docs/`, `AGENTS.md`, `README.md`, `test/`,
+`skills-lock.json` and `tools/oxlint/not-slop.tsv`, need not contain the top and never counts as one; the
+hook cannot see `--base`. And a push must not leave an open PR listing commits that are not its own, whether old copies of
 its base's commits, matched by author time and subject, or another open PR's head beyond its base. The
 refusal prints the `git rebase --onto` or `gh pr edit --base` that repairs it.
 

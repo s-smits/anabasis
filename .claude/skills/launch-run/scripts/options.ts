@@ -41,12 +41,10 @@ export const CONDITIONS = {
   opus: { kind: "claude", model: "claude-opus-5-5", efforts: ["medium", "medium", "medium"] },
   fable: { kind: "claude", model: "claude-fable-5-1", efforts: ["medium", "medium", "medium"] },
   opushmm: { kind: "claude", model: "claude-opus-5-5", efforts: ["high", "medium", "medium"] },
-  haiku: { kind: "claude", model: "claude-haiku-4-5-20251001", efforts: ["medium", "medium", "medium"] },
   sonnet: { kind: "claude", model: "claude-sonnet-5-5", efforts: ["medium", "medium", "medium"] },
   sonnetxhh: { kind: "claude", model: "claude-sonnet-5-5", efforts: ["xhigh", "high", "high"] },
   opus48: { kind: "claude", model: "claude-opus-4-8", efforts: ["medium", "medium", "medium"] },
   opus47: { kind: "claude", model: "claude-opus-4-7", efforts: ["medium", "medium", "medium"] },
-  gpt55: { kind: "codex", model: "gpt-5.5", efforts: ["high", "high", "medium"] },
 } as const;
 export const DEFAULT_DISK_MIN_GIB = 20;
 /** The operator's launch pace, whose yield figures are AGENTS.md "Open gaps", blocker 4: no batch

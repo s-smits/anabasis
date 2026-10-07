@@ -481,22 +481,10 @@ describe("one-command run launcher", () => {
       CLAUDE_BUILT_REASONING_EFFORT: "high",
       CLAUDE_REVIEW_REASONING_EFFORT: "high",
     });
-    expect(slotEnvironment("haiku")).toMatchObject({
-      CLAUDE_BUILDER_MODEL: "claude-haiku-4-5-20251001",
-      CLAUDE_BUILT_MODEL: "claude-haiku-4-5-20251001",
-      CLAUDE_REVIEW_MODEL: "claude-haiku-4-5-20251001",
-      CLAUDE_BUILDER_REASONING_EFFORT: "medium",
-    });
     expect(slotEnvironment("opus47")).toMatchObject({
       CLAUDE_BUILDER_MODEL: "claude-opus-4-7",
       CLAUDE_BUILT_MODEL: "claude-opus-4-7",
       CLAUDE_REVIEW_MODEL: "claude-opus-4-7",
-    });
-    expect(slotEnvironment("gpt55")).toMatchObject({
-      CODEX_BUILDER_MODEL: "gpt-5.5",
-      CODEX_BUILT_MODEL: "gpt-5.5",
-      CODEX_BUILDER_REASONING_EFFORT: "high",
-      CODEX_REVIEW_REASONING_EFFORT: "medium",
     });
   });
 

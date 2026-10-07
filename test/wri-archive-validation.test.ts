@@ -430,6 +430,14 @@ describe("WRI four-file archive contract", () => {
       ["authorCalls.budget must be"],
     ],
     [
+      "a decided angle whose reason is still the scaffold's",
+      (value) => {
+        value.angleStates[0].state = "pass";
+        value.angleStates[0].reason = "lane report not yet adjudicated";
+      },
+      ["reason is still the scaffold's"],
+    ],
+    [
       "an invalid denominator without its reason",
       (value) => {
         value.terminal.capabilityResult = "inconclusive";

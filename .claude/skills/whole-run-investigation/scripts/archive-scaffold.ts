@@ -34,6 +34,7 @@ import {
   REVIEW,
   SAFEGUARD_DEFINITION_FILE,
   sourceSafeguardCallers,
+  UNADJUDICATED_LANE_REASON,
 } from "./archive-shape.ts";
 import {
   ANGLE_COUNT,
@@ -261,7 +262,7 @@ function verdictsTemplate(runId: string, laneNames: readonly string[]): Verdicts
     if (/^lane_\d{2}$/.test(name)) {
       angles[Number(name.slice(5))] = {
         state: "inconclusive",
-        reason: "lane report not yet adjudicated",
+        reason: UNADJUDICATED_LANE_REASON,
         anchor: "#findings",
       };
     }
@@ -542,7 +543,7 @@ function angleRows(lanes: readonly LaneRow[], verdicts: Verdicts, ptr: Ptr, shor
         identity: shortIdentity,
         denominator: {
           state: "inconclusive",
-          reason: "lane report not yet adjudicated by the primary",
+          reason: `${UNADJUDICATED_LANE_REASON} by the primary`,
           evidencePointers: [ptr(`#${lane.name}`, LUNA)],
         },
         reason: `Session ${lane.name} ${lane.status}; the primary has not recorded a verdict in verdicts.json.`,

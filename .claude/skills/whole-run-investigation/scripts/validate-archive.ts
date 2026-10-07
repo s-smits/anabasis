@@ -49,6 +49,7 @@ import {
   type StateEvidence,
   terminalAccounting,
   terminalOutcome,
+  UNADJUDICATED_LANE_REASON,
   verifyPointerFiles,
 } from "./archive-shape.ts";
 import {
@@ -166,10 +167,16 @@ function angleRow(
   if (denominator) {
     const denominatorStates = states("recorded", "absent", "unknown", "inconclusive");
     oneOf(denominator.state, `${label}.denominator.state`, denominatorStates, issues);
-    requiredString(denominator.reason, `${label}.denominator.reason`, issues);
+    const why = requiredString(denominator.reason, `${label}.denominator.reason`, issues);
+    if (why.startsWith(UNADJUDICATED_LANE_REASON)) {
+      issues.push(`${label}.denominator.reason is still the scaffold's; write what this lane settled`);
+    }
     pointers(denominator.evidencePointers, `${label}.denominator.evidencePointers`, issues);
   }
-  requiredString(row.reason, `${label}.reason`, issues);
+  const reason = requiredString(row.reason, `${label}.reason`, issues);
+  if (reason.startsWith(UNADJUDICATED_LANE_REASON)) {
+    issues.push(`${label}.reason is still the scaffold's; write what this lane settled`);
+  }
   pointers(row.evidencePointers, `${label}.evidencePointers`, issues);
   return Number(row.angle);
 }

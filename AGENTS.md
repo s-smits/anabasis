@@ -2687,8 +2687,8 @@ was, because local `main` can hold documentation commits that were never pushed.
 
 ### Where changes go
 
-**Main takes two kinds of change directly, and everything else arrives as a stacked PR** (operator
-decision 2026-09-24). The first is documentation, meaning the documentation set: exactly the paths the
+**Main takes two kinds of change directly, a skill or documentation upgrade arrives as its own PR against
+main (below), and everything else arrives as a stacked PR** (operator decisions 2026-09-24 and 2026-10-07). The first is documentation, meaning the documentation set: exactly the paths the
 pre-push hook excludes when it decides a push is documentation-only, after which it runs `git diff
 --check` alone, so such a push needs nothing more. The second is a hotfix, a small fix to a defect on main
 that cannot wait for the stack. Each of its commits ends with a `Hotfix: <why>` trailer, the push is gated
@@ -2720,6 +2720,18 @@ of 93 scripts across eleven skills, plus a few more transitively. The rest are h
 behaviour checked by nothing until you run `bun test` from the script's own directory, so grep `test/` for
 the file first. A document describing source that is not on main stays with that source. Everything under
 `src/`, `tools/` and `vendor/` is source, whatever the file type.
+
+**Open a skill or documentation upgrade as its own pull request against main, unasked** (operator decision
+2026-10-07). A change to a skill (its `SKILL.md`, references, scripts and the tests that import them), to
+`AGENTS.md` or to `docs/` goes up as a PR with `--base main` once its focused checks pass, without waiting
+for the operator to ask and without riding on the stack. Kept in a local branch, or carried by a stack PR it
+has nothing to do with, it drifts: the next session reads the stale copy on main, and the upgrade lands
+weeks later in a merge nobody reviews it in. On 2026-10-07 nine investigation-skill commits sat in local
+branches for a day while the skill on main still taught the procedure they replaced. The one exception is
+the rule just above: a document or skill change that describes or reads a fix still on the stack, such as an
+`AGENTS.md` paragraph about that fix or a skill reader for a record it adds, is true only once that fix
+lands, so it is appended to the stack PR that owns the fix. Such a side PR changes nothing under `src/`,
+`vendor/` or `starters/`, and the pre-push hook does not count it as a top of the stack.
 
 Every other change is a PR on top of the one open stack, never beside it: a single chain from the bottom
 PR to the head, each based on the one before. Two independent changes still go one above the other,

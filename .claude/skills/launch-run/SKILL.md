@@ -136,5 +136,9 @@ reads `closed`.
 - No timed stop. v1's launcher armed one through the service manager; a v2 round ends by its own
   limits (`--minutes`, `--turns`).
 - No probe turn before spend: a session or usage limit shows at the first turn, in the pulse.
+  What it costs is bounded. A session whose own turn the provider fails ends `crashed` with the
+  provider's words. A round stops once the provider has written nothing for the solves of three
+  tasks in a row, writes no report, and goes on from its log when launched again with the same
+  `--session`: wait for the reset the provider names, or pass another `--env-file`.
 - One round a command. A model pair is two commands, and what makes two rounds a comparison is
   model-condition-comparison's to say.

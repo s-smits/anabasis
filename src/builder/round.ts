@@ -44,6 +44,11 @@
  * is a whole session and is compared. One that left a harness no solve can open is reported as no
  * change, with why.
  *
+ * A round also stops, to go on the same way, when the provider has stopped answering: `SILENT`
+ * tasks in a row whose solve ended, after its reruns, with nothing written for it. A login at its
+ * session limit does that to every solve in seconds. Solved on, the round would report every task
+ * short and be finished, with its Builder session and its counted solves spent on that report.
+ *
  * A scored task is never diagnosed and its trace never shown: the Diagnoser's reading goes to the
  * Builder, and a reading of a scored fail would carry the task to it.
  *
@@ -167,6 +172,10 @@ interface Had {
 /** Passes over what is still unscored. A solve's own non-result is run again inside `solve`, so a
  *  second pass covers what outlasted that, and a task still short after it is reported short. */
 const PASSES = 2;
+/** Tasks in a row the provider wrote nothing for, at which the round stops and waits to be run
+ *  again. Tasks and not solves: one task its provider refuses at the first turn is that task's
+ *  fault, and is reported short. */
+const SILENT = 3;
 /** The pooled gain, in points, below which the plan's three-session rule stops the experiment. */
 const STOP_POINTS = 10;
 const STOP_SESSIONS = 3;
@@ -424,6 +433,15 @@ function flaggedIn(events: readonly LogEvent[], here: ReadonlySet<string>): Set<
   return new Set([...here, ...ruled]);
 }
 
+/** What the provider said of a solve it wrote nothing for, or null: no output token in the solve's
+ *  last attempt's record. A solve the provider cut after an hour's work holds thousands (the Sol
+ *  rounds of 2026-10-08), and is a non-result the round solves on from. */
+function unanswered(log: string, { solve, ending }: Practised): string | null {
+  if (ending.outcome !== "non-result" || ending.kind !== "provider") return null;
+  const record = read(log).findLast(({ kind, data }) => kind === "solve.finished" && data.solve === solve);
+  return asRecord(record?.data.tokens)?.output === 0 ? ending.reason : null;
+}
+
 /**
  * What runs a round's solves: the jobs' pool, the Referee's part, and the reasons it stops taking
  * jobs. A solve that throws ends the pool and is thrown again by `settle` once every solve in
@@ -458,9 +476,18 @@ function floor(request: RoundRequest) {
     dropped.add(version);
     append(log, "task.state", { version, state: "disputed", session: id, solve, reason });
   };
+  const silent = new Set<string>();
   const run = async ({ task, under }: Job): Promise<void> => {
     if (dropped.has(task)) return;
-    const { solve, ending } = await request.solve(task, under.dir, under.digest, kill);
+    const solved = await request.solve(task, under.dir, under.digest, kill);
+    const { solve, ending } = solved;
+    const why = unanswered(log, solved);
+    if (why === null) silent.clear();
+    else if (silent.add(task).size >= SILENT) {
+      throw new Error(
+        `the provider answered no solve of ${String(SILENT)} tasks in a row, so the round stops: ${why}. Run it again and it goes on from its log`,
+      );
+    }
     if (ending.outcome === "non-result" && ending.kind === "check") {
       dispute(task, solve, "its own check could not run on an answer");
     }

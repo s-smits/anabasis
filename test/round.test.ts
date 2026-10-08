@@ -59,6 +59,8 @@ const CANDIDATES = ["c1", "c2", "c3", "c4"];
 const ANCHOR = ["a1", "a2", "a3"];
 const PASS: Ending = { outcome: "pass" };
 const FAIL: Ending = { outcome: "fail", kind: "rejected" };
+/** A solve a login at its session limit turned away, after its reruns. */
+const LIMITED: Ending = { outcome: "non-result", kind: "provider", reason: "You've hit your session limit" };
 const scratches: string[] = [];
 const toolUse = { stopReason: "toolUse" } as const;
 const call = (name: string, args: JsonObject) => fauxAssistantMessage(fauxToolCall(name, args), toolUse);
@@ -119,7 +121,9 @@ async function setup(responses: FauxResponseStep[], table: Table, more: readonly
     const ending = table(version, fresh, nth);
     const id = `r-${String(asked.length)}-${String(read(log).length)}`;
     record("solve.started", { solve: id, condition: recordCondition(log, condition(version, digest)) });
-    record("solve.finished", { solve: id, ending, seconds: fresh ? 30 : 60 });
+    // What the provider wrote for the solve: nothing, when it turned the solve away.
+    const output = ending === LIMITED ? 0 : 900;
+    record("solve.finished", { solve: id, ending, tokens: { output }, seconds: fresh ? 30 : 60 });
     return { solve: id, ending };
   };
   const faux = fauxProvider({
@@ -400,6 +404,34 @@ describe("a round", () => {
     expect(s.of(COMPARISON_REPORTED)[0]).toMatchObject({ target: 0, reading: "not-scored" });
     // It counts among the sessions of the three-session rule, with no task to pool.
     expect(stopRule(read(s.log))).toMatchObject({ sessions: 1, tasks: 0, stop: false });
+  });
+
+  it("stops, to go on from its log, when the provider answers no solve of three tasks in a row", async () => {
+    // exam-1, 2026-10-08: the login reached its session limit mid-run and every solve after it
+    // ended in three seconds. A round that solved on would have reported every task short.
+    let left = 9;
+    const s = await setup([edit, finish], (version, fresh, nth) => {
+      left -= 1;
+      return left < 0 ? LIMITED : step(version, fresh, nth);
+    });
+    await expect(round(s.request)).rejects.toThrow(
+      "the provider answered no solve of 3 tasks in a row, so the round stops: You've hit your session limit",
+    );
+    expect(s.of(COMPARISON_REPORTED)).toEqual([]);
+    expect(s.asked.length).toBeLessThan(28);
+    // The limit lifted: the round goes on, with the session it had and the nine solves it counted.
+    left = 99;
+    const report = await round(s.request);
+    expect(report).toMatchObject({ scored: { wins: 4, losses: 0 }, short: [], reading: "step" });
+    expect(s.sessions()).toBe(1);
+    expect(s.of("solve.finished").filter(({ ending }) => ending !== undefined)).toHaveLength(s.asked.length);
+
+    // A solve the provider cut after it had written something is a non-result of that task alone.
+    const cut: Ending = { outcome: "non-result", kind: "provider", reason: "WebSocket closed 1000" };
+    const worked = await setup([edit, finish], (version, fresh, nth) =>
+      fresh ? cut : step(version, fresh, nth),
+    );
+    expect(await round(worked.request)).toMatchObject({ short: expect.arrayContaining(SCORED) });
   });
 
   it("reports a task short when its solves end in nothing countable, and leaves it out", async () => {

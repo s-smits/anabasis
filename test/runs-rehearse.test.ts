@@ -25,6 +25,7 @@ import type { Campaign } from "../tools/d2/round.ts";
 import { passedOn } from "../tools/runs/launch.ts";
 import { answersOf, rehearse, scriptedSeats, sidesOf } from "../tools/runs/rehearse.ts";
 import { SEED_FILE } from "../tools/runs/pulse.ts";
+import { replayed } from "../tools/runs/replay.ts";
 import { keptLines, seedCampaign } from "../tools/runs/seed.ts";
 
 const FIXTURE = new URL("fixtures/harness-min", import.meta.url).pathname;
@@ -106,6 +107,21 @@ describe("a seed", () => {
     const strange = campaignAt("source-3", [...LINES, line("round.imagined", {})]);
     expect(() => seedCampaign(strange, join(root, "seed-4"), {})).toThrow("is not a log event");
     expect(existsSync(join(root, "seed-4"))).toBe(false);
+  });
+});
+
+describe("a replay", () => {
+  it("says what this tree's readers make of a log, and refuses one they do not read", () => {
+    const at = (name: string, lines: readonly string[]) => join(campaignAt(name, lines), "log.jsonl");
+    const gates = [1, 2, 3, 4].map((gate) =>
+      line("task.gate", { version: "v1", gate, outcome: "passed", controls: "d" }),
+    );
+    expect(replayed(at("replayed", [LINES[0] ?? "", ...gates, ...LINES.slice(1, 3)]))).toBe(
+      "7 events · 0 conditions · 0 anchor, 0 released, 1 held, 0 admitted · 0 written and feasible, 0 waiting for controls · 0 reported",
+    );
+    expect(() => replayed(at("strange", [line("round.imagined", {})]))).toThrow("is not a log event");
+    // A gate for a task the log never proposed is a fold's refusal, not a line's.
+    expect(() => replayed(at("unfolded", gates))).toThrow("task v1 is not proposed");
   });
 });
 

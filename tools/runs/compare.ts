@@ -60,6 +60,7 @@ const SET_OF = new Map([
 ]);
 const OUTCOMES = ["pass", "fail", "non-result", "unfinished"];
 const ANCHOR_DRAWN = "anchor.drawn";
+const TASK_STATE = "task.state";
 const REPORTED = "comparison.reported";
 /** What a round is given beside its solves' conditions. Its harness is none of them: a Builder
  *  makes it, so it differs wherever these do, and between two sessions that were given the same. */
@@ -84,13 +85,24 @@ const strings = (value: JsonValue | undefined) => (Array.isArray(value) ? value.
 const brief = (digest: string) => digest.slice(0, 8);
 
 /**
- * Every test-side solve the log holds: its condition, the set its task was in when the solve
- * started, and how it ended. A task is the anchor's from its draw on, practice once released and
- * scored once admitted; any other is being screened. The anchor is topped up before each round
- * (`tools/d2/prepare.ts`), so a task a round screened and left held may be drawn after it, and its
- * screening solves are that round's screening still.
+ * Every test-side solve the log holds, as the round of `session` counts it: its condition, the set
+ * its task was in when the solve started, and how it ended. A task is the anchor's from its draw
+ * on, practice once released and scored once admitted; any other is being screened. The anchor is
+ * topped up before each round (`tools/d2/prepare.ts`), so a task a round screened and left held may
+ * be drawn after it, and its screening solves are that round's screening still.
+ *
+ * A round screens the whole pool, the tasks earlier rounds admitted among them, and scores a task
+ * from its own admission on (`src/builder/round.ts`). So an earlier round's admission leaves a task
+ * this round goes on to place among the screened: read as scored, a simulated round's 21 solves
+ * that screened seven such tasks were said with the 18 that scored its six (2026-10-08). A task
+ * the round never places is scored on the earlier admission, as a round before that date did.
  */
-function solvesOf(events: readonly LogEvent[]) {
+function solvesOf(events: readonly LogEvent[], session: string) {
+  const placed = new Set(
+    events.flatMap(({ kind, data }) =>
+      kind === TASK_STATE && data.session === session ? [word(data.version)] : [],
+    ),
+  );
   const conditions = conditionsOf(events);
   const endings = new Map(
     events.flatMap(({ kind, data }) => {
@@ -104,7 +116,11 @@ function solvesOf(events: readonly LogEvent[]) {
   for (const { kind, data } of events) {
     const under = conditions.get(word(data.condition));
     if (kind === ANCHOR_DRAWN) for (const task of strings(data.tasks)) sets.set(task, "anchor");
-    if (kind === "task.state") sets.set(word(data.version), SET_OF.get(word(data.state)) ?? "screened");
+    if (kind === TASK_STATE) {
+      const version = word(data.version);
+      const others = data.session !== session && placed.has(version);
+      sets.set(version, (others ? undefined : SET_OF.get(word(data.state))) ?? "screened");
+    }
     if (kind === "solve.started" && under?.side === "test") {
       const ending = endings.get(word(data.solve)) ?? "unfinished";
       solves.push({ under, set: sets.get(under.task) ?? "screened", ending });
@@ -156,7 +172,7 @@ export function roundOf(
     .slice(0, until)
     .flatMap(({ kind, data }) => (kind === ANCHOR_DRAWN ? strings(data.tasks) : [])).length;
 
-  const solves = solvesOf(own);
+  const solves = solvesOf(own, session);
   const condition = solves.at(-1)?.under;
   if (condition === undefined) throw new Error(`${name} has started no solve yet: nothing to compare`);
   // Passes, fails by kind, non-results by kind and solves with no ending yet, each counted apart: a

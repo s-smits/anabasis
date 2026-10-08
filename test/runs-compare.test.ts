@@ -286,6 +286,27 @@ describe("the runs comparison", () => {
     ]);
   });
 
+  it("counts a task an earlier round admitted as screened until the round admits it itself", () => {
+    // The second round screens t1 again under its child, reads its parent's side from the log, and
+    // admits the task itself before the two solves that score it.
+    const next = { ...OPUS, parent: "h-a", fresh: "h-x" };
+    const log = round("b-2", next, round("b-1", OPUS), {
+      screening: ({ record, solve }) => {
+        solve("t1", "h-x", "p");
+        solve("t1", "h-x", "f");
+        record("task.state", { version: "t1", state: "admitted", session: "b-2", carried: true });
+      },
+    });
+    const counted = roundOf("r:b-2", log, "b-2", writes).said.filter((line) =>
+      /^(screened|scored) /.test(line),
+    );
+    expect(counted).toEqual([
+      "screened fresh: 1 pass, 1 fail rejected",
+      "scored old: 1 fail rejected",
+      "scored fresh: 1 pass",
+    ]);
+  });
+
   it("reads two rounds given the same as replicas, and a task one of them did not decide as unresolved", () => {
     const b = read("b", { ...OPUS, fresh: "h-b", old: "ppfn", made: "pf-p" });
     expect(compared(read("a", OPUS), b)).toEqual([

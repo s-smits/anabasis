@@ -117,21 +117,32 @@ export type TaskState = (typeof TASK_STATES)[number];
  * though only once the anchor is drawn and never one the draw named: `anchor.drawn` lists the task
  * versions it drew, and the fold refuses a release of any of them. A released task is never scored:
  * the comparison, when it is built, refuses one.
+ *
+ * A check defect shows wherever a task is solved, so a feasible task may be disputed from any state
+ * it is solved in: held, when a screening fail is ruled one, admitted, and released, where practice
+ * solves fail on it. In v1, 36 of 47 rehearsal misses were check defects, so practice is where most
+ * will show. A disputed task is neither scored nor practised on.
  */
 const NEXT: Readonly<Record<TaskState, readonly TaskState[]>> = {
-  held: ["refused", "too-hard", "too-easy", "wall-bound", "admitted", "released", "stale"],
+  held: ["refused", "too-hard", "too-easy", "wall-bound", "admitted", "released", "disputed", "stale"],
   admitted: ["released", "disputed", "stale"],
   refused: [],
   "too-hard": [],
   "too-easy": [],
   "wall-bound": [],
-  released: [],
+  released: ["disputed"],
   disputed: [],
   stale: [],
 };
 
 /** States only a feasible task reaches, one that passed every logged gate. */
-const NEEDS_FEASIBLE: ReadonlySet<TaskState> = new Set(["too-easy", "wall-bound", "admitted", "released"]);
+const NEEDS_FEASIBLE: ReadonlySet<TaskState> = new Set([
+  "too-easy",
+  "wall-bound",
+  "admitted",
+  "released",
+  "disputed",
+]);
 
 /**
  * Gate 1, shape: every part but the controls is present, and every rule id is in the contract. A check

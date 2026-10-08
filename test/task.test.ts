@@ -339,6 +339,20 @@ describe("the task states", () => {
     );
   });
 
+  it("disputes a feasible task from screening, scoring or practice, and nothing follows a dispute", () => {
+    const disputed = (...before: LogEvent[]) =>
+      taskStates([...drawn, ...feasible, ...before, state("disputed")]).get("v1");
+    expect(disputed()).toBe("disputed");
+    expect(disputed(state("admitted"))).toBe("disputed");
+    expect(disputed(state("released"))).toBe("disputed");
+    expect(() => taskStates([...drawn, ...feasible, state("disputed"), state("admitted")])).toThrow(
+      "task v1 cannot go from disputed to admitted",
+    );
+    expect(() => taskStates([proposed, gate(1), state("disputed")])).toThrow(
+      "task v1 cannot go from held to disputed",
+    );
+  });
+
   it("refuses gates logged out of order, and any gate after one that did not pass", () => {
     const reversed = [proposed, gate(4), gate(3), gate(2), gate(1), gate(3, "refused"), state("admitted")];
     expect(() => taskStates(reversed)).toThrow("task v1 logs gate 4 out of order, after passing 0");

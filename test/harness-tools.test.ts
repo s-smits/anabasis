@@ -83,7 +83,10 @@ describe("a v1 harness state", () => {
       cpSync(FIXTURE, dir, { recursive: true });
       const spec = join(dir, "agent", "tools-spec.json");
       const { tools } = parseJsonAs<{ tools: { kind: string }[] }>(readFileSync(spec, "utf8"));
-      const readers = tools.map((row) => ({ ...row, kind: row.kind === "artifact-writer" ? "reader" : row.kind }));
+      const readers = tools.map((row) => ({
+        ...row,
+        kind: row.kind === "artifact-writer" ? "reader" : row.kind,
+      }));
       writeFileSync(spec, JSON.stringify({ presets: ["shell"], tools: readers }));
       await expect(openHarness(dir)).rejects.toThrow("declares no artifact-writer");
     } finally {

@@ -80,6 +80,10 @@ export const SYSTEM_SERVICE_RULES = `(allow mach-lookup)
  */
 export const WORKSPACE_TOOL_TREE = ".toolchain";
 
+/** Where a split build's answer agent installs: inside the tool tree, so the verifier's tool search
+ *  and check cell reach its instruments, and the one part of it the Harness Builder is walled from. */
+export const ANSWER_TOOL_TREE = `${WORKSPACE_TOOL_TREE}/answer`;
+
 /** Disposable host locations a Builder cell may write outside its own workspace. What lands there
  *  remains Builder-influenceable even when the controller has pinned one exact executable for
  *  candidate measurement, which is why a path from this list is never independent operator

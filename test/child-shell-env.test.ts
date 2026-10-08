@@ -113,7 +113,7 @@ describe("scrubSecretEnv", () => {
 
 describe("the Builder bash cell's environment", () => {
   it("keeps HOME and every cache inside the admitted tool tree", () => {
-    const env = bashEnv(workDir);
+    const env = bashEnv(workDir, ".toolchain");
     const home = join(workDir, ".toolchain", "home");
     expect(env.HOME).toBe(home);
     expect(env.XDG_CACHE_HOME).toBe(join(home, ".cache"));
@@ -130,15 +130,31 @@ describe("the Builder bash cell's environment", () => {
     expect(env.HOME).not.toBe(Bun.env.HOME);
   });
 
+  it("keeps a split answer agent's HOME and installs in its own tree, ahead of the workspace's", () => {
+    const env = bashEnv(workDir, ".toolchain/answer");
+    const home = join(workDir, ".toolchain", "answer", "home");
+    expect(env.HOME).toBe(home);
+    expect(env.PATH?.split(":").slice(0, 3)).toEqual([
+      join(workDir, ".toolchain", "answer", "bin"),
+      join(workDir, ".toolchain", "bin"),
+      join(home, ".local", "bin"),
+    ]);
+    expect(bashDescription(policy("allow"), "", ".toolchain/answer")).toContain(
+      "HOME is .toolchain/answer/home inside it",
+    );
+  });
+
   it("tells an offline session where HOME is, as the networked one already did", () => {
     for (const network of ["allow", "deny"] as const) {
-      expect(bashDescription(policy(network), "")).toContain("HOME is .toolchain/home inside it");
+      expect(bashDescription(policy(network), "", ".toolchain")).toContain(
+        "HOME is .toolchain/home inside it",
+      );
     }
   });
 
   it("states the default deadline and the timeout ceiling once, on both cells", () => {
     for (const network of ["allow", "deny"] as const) {
-      const text = bashDescription(policy(network), "");
+      const text = bashDescription(policy(network), "", ".toolchain");
       expect(text).toContain("up to 600 s");
       expect(text.match(/at most 7200/g)?.length).toBe(1);
       // Background jobs die with the call's process group, so the long timeout is for builds.

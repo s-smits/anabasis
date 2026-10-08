@@ -37,6 +37,9 @@ import {
   padToCalibrationFloor,
 } from "./helpers/matching-fixture.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
+import { errorMessage } from "../src/meta/runtime-values.ts";
+import { osIsolationSupport } from "../src/verify/os-isolation.ts";
+import { toolTreeSearchDirs } from "../src/verify/solve-command-isolation.ts";
 
 const HOUR = 3_600_000;
 
@@ -102,6 +105,17 @@ function splitSessions(script: Record<Role, (turn: Turn) => Promise<void> | void
 }
 
 const names = (tools: readonly PiTool[]) => tools.map((tool) => tool.name);
+
+/** What one tool call returned to the model, a refusal's message included. */
+async function callText(tools: readonly PiTool[], name: string, args: Record<string, string>) {
+  try {
+    return await namedTool(tools, name)
+      .execute(name, args)
+      .then((result) => result.content.map((part) => part.text).join("\n"));
+  } catch (error) {
+    return `refused: ${errorMessage(error)}`;
+  }
+}
 
 describe("the split prompts", () => {
   const answer = answerSystemPrompt({ webSearch: false, wallMs: 4 * HOUR });
@@ -360,4 +374,64 @@ describe("a split round on the production composition", () => {
     await expect(run).rejects.toThrow(new RegExp(`^Builder entry gate \\(${side}\\): `));
     expect(turns).toEqual([]);
   });
+
+  // The answer agent's instruments run in the verifier's cell from the tool tree, so they cannot
+  // live in correctness-model/; they live in the tool tree's answer subtree, behind the wall.
+  it.if(osIsolationSupport().ok)(
+    "keeps an instrument the answer agent installed from the Harness Builder's file tools and shell",
+    async () => {
+      const { campaignDir, workspace, runtime, answer } = productionSplit("install");
+      const instrument = ".toolchain/answer/bin/truss-verify";
+      const body = `#!/bin/sh\necho "${PROTECTED_DETAIL}"\n`;
+      const seen: Record<string, string> = {};
+      const { open, turns } = splitSessions({
+        answer: async ({ tools }) => {
+          writeAnswerHalf(workspace);
+          seen.install = await callText(tools, "write", { path: instrument, content: body });
+          seen.run = await callText(tools, "bash", { command: `chmod +x ${instrument} && ${instrument}` });
+          seen.stray = await callText(tools, "write", {
+            path: ".toolchain/lib/truss_verify.py",
+            content: body,
+          });
+        },
+        harness: async ({ tools }) => {
+          writeHarnessHalf(workspace);
+          seen.read = await callText(tools, "read", { path: instrument });
+          seen.cat = await callText(tools, "bash", { command: `cat ${instrument}` });
+          seen.append = await callText(tools, "bash", { command: `echo tampered >> ${instrument}` });
+          seen.own = await callText(tools, "write", {
+            path: ".toolchain/bin/harness-tool",
+            content: "#!/bin/sh\n",
+          });
+          seen.submit = await callText(tools, "submit", {});
+        },
+      });
+      const outcome = await runBuilderCampaign(
+        { campaignDir, ...FRESH_BUILD },
+        {
+          tools: runtime.tools,
+          answer,
+          recordSession: runtime.recordSession,
+          toolsProbes: () => ({}),
+          waitMs: async () => {},
+          gates: async () => [],
+          open,
+        },
+      );
+      expect(turns.map((turn) => turn.role)).toEqual(["answer", "harness"]);
+      expect(outcome.buildAdmissible).toBe(true);
+      expect(seen.read).toStartWith("refused:");
+      for (const reply of [seen.read, seen.cat, seen.append]) expect(reply).not.toContain(PROTECTED_DETAIL);
+      expect(seen.cat).toContain("Operation not permitted");
+      expect(seen.append).toContain("Operation not permitted");
+      expect(seen.own).not.toStartWith("refused:");
+      expect(seen.stray).toStartWith("refused:");
+      expect(seen.run).toContain(PROTECTED_DETAIL);
+      expect(readFileSync(join(workspace, instrument), "utf8")).toBe(body);
+      // The verifier's tool search, which the check cell and the Built shell share, finds it.
+      expect(toolTreeSearchDirs(join(workspace, ".toolchain"))).toContain(
+        join(workspace, ".toolchain/answer/bin"),
+      );
+    },
+  );
 });

@@ -28,6 +28,7 @@ import {
   vmWorkshopCellFromEnv,
 } from "../builder/vm-workshop-cell.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
+import { ANSWER_TOOL_TREE, WORKSPACE_TOOL_TREE } from "../verify/wall-policy.ts";
 import type { SafeguardContext } from "../meta/safeguard.ts";
 import type { Solver } from "../correctness-bundle/solve.ts";
 import type { ProviderResourceBudget } from "./provider-resource-budget.ts";
@@ -121,17 +122,16 @@ export function campaignBuilderMount(
     ...keyIfDefined("runner", vmCell === null ? undefined : createVmWorkshopRunner(vmCell)),
   });
   const custom = [createPublicSourceTool(workshop), createVerifierWorkshopTool(workshop)];
-  const filesUnder = (policy: typeof authorPolicy) =>
-    createBuilderTools({
+  /** One side's mount: its file tools under its own policy, installing into its own tree, beside
+   *  `beside`, and the session evidence it records, each capability against the policy it uses. */
+  const sideUnder = (policy: CandidateAccessPolicy, installTree: string, beside: readonly PiTool[]) => {
+    const files = createBuilderTools({
       policy,
       record,
       workDir: workspace,
+      installTree,
       ...keyIfDefined("safeguardContext", safeguardContext),
     });
-  /** One side's mount: its file tools under its own policy beside `beside`, and the session
-   *  evidence it records, each capability against the policy it uses. */
-  const sideUnder = (policy: CandidateAccessPolicy, beside: readonly PiTool[]) => {
-    const files = filesUnder(policy);
     const evidenceInput = {
       epochDir: campaignDir,
       policy,
@@ -145,13 +145,15 @@ export function campaignBuilderMount(
     };
     return { tools: [...files, ...beside], evidenceInput };
   };
-  const author = sideUnder(authorPolicy, split ? [] : custom);
+  const author = sideUnder(authorPolicy, WORKSPACE_TOOL_TREE, split ? [] : custom);
   writeBuilderSessionEvidence({
     ...author.evidenceInput,
     role: split ? "harness" : "whole",
     tools: author.tools,
   });
-  const answer = split ? sideUnder(deriveCandidateIsolation(binding, "answer"), custom) : undefined;
+  const answer = split
+    ? sideUnder(deriveCandidateIsolation(binding, "answer"), ANSWER_TOOL_TREE, custom)
+    : undefined;
   return { ...author, ...keyIfDefined("answer", answer) };
 }
 

@@ -193,7 +193,7 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
   const before = treeStamp(request.harness);
   let timer: ReturnType<typeof setTimeout> | undefined;
   let release: ReleaseDiskCap | null = null;
-  let homeBytes: number | null = null;
+  let homeBytes: number | null;
   let crash: string | null = null;
   let broken: string | null = null;
   let digest: string | null = null;
@@ -241,13 +241,14 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
       signal,
       (model, context, options) => models.streamSimple(model, context, options),
     );
-    homeBytes = bytesUnder(dirs.home);
   } catch (error) {
     if (error instanceof BrokenHarness) broken = error.message;
     else crash = errorMessage(error);
   } finally {
     clearTimeout(timer);
     done.abort();
+    // Read apart from the loop, before the volume goes: a walk that fails voids no solve.
+    homeBytes = bytesUnder(dirs.home);
     await release?.();
     rmSync(dirs.host, { recursive: true, force: true });
   }
@@ -340,11 +341,12 @@ function traceText(content: readonly { type: string; text?: string }[]): string 
   return boundText(text, TRACE_TEXT_BYTES).text;
 }
 
-/** The ending of what was played. A submitted answer is checked against the contract's format by
- *  the host before any check reads it, then judged; a verdict is logged either way, with the answer,
- *  so that a fail can be read and regraded from the log alone. */
+/** The ending of what was played. A kill or a harness that moved voids it; otherwise an answer the
+ *  host holds is judged whatever failed after it was submitted, as v1's close rule had it. The
+ *  answer is checked against the contract's format by the host before any check reads it, then
+ *  judged; a verdict is logged either way, with the answer, so that a fail can be read and regraded
+ *  from the log alone. */
 export async function judge(request: SolveRequest, id: string, played: Played): Promise<Ending> {
-  if (played.crash !== null) return { outcome: "non-result", kind: "sandbox-crash", reason: played.crash };
   if (request.kill?.aborted === true) {
     return { outcome: "non-result", kind: "killed", reason: "the run was killed" };
   }
@@ -374,6 +376,7 @@ export async function judge(request: SolveRequest, id: string, played: Played): 
     }
     return verdict?.kind === "pass" ? { outcome: "pass" } : { outcome: "fail", kind: "rejected" };
   }
+  if (played.crash !== null) return { outcome: "non-result", kind: "sandbox-crash", reason: played.crash };
   if (played.broken !== null) return { outcome: "fail", kind: "broken-harness", reason: played.broken };
   if (played.wallEnded) return { outcome: "fail", kind: "wall-ended" };
   const last = played.turns.at(-1);
@@ -403,6 +406,11 @@ function treeStamp(dir: string): string {
   return hashJsonValue(entries(dir));
 }
 
-function bytesUnder(dir: string): number {
-  return entries(dir).reduce((total, { size }) => total + size, 0);
+/** The bytes under `dir`, or null when the walk fails, as it does when a file goes during it. */
+function bytesUnder(dir: string): number | null {
+  try {
+    return entries(dir).reduce((total, { size }) => total + size, 0);
+  } catch {
+    return null;
+  }
 }

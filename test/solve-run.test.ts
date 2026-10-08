@@ -137,16 +137,18 @@ describe("an attempt's ending", () => {
     return { ending: judge(request, "t-1-1", { ...PLAYED, ...played }), events };
   }
 
-  it("is the sandbox's crash, then a kill, then moved files, before anything the solver did", async () => {
+  it("is a kill, then moved files, then a held answer, before the sandbox's crash", async () => {
     const kill = AbortSignal.abort();
-    const all = { crash: "mount failed", moved: true, submitted: { answer: "42" } };
-    expect(await ending(all, { kill }).ending).toEqual({
+    const all = { crash: "the model process died", moved: true, submitted: { answer: "42" } };
+    expect(await ending(all, { kill }).ending).toMatchObject({ kind: "killed" });
+    expect(await ending(all).ending).toMatchObject({ kind: "moved-files" });
+    // Once the host holds the answer, what failed after it is cleanup and voids nothing.
+    expect(await ending({ ...all, moved: false }).ending).toEqual({ outcome: "pass" });
+    expect(await ending({ ...all, moved: false, submitted: undefined }).ending).toEqual({
       outcome: "non-result",
       kind: "sandbox-crash",
-      reason: "mount failed",
+      reason: "the model process died",
     });
-    expect(await ending({ ...all, crash: null }, { kill }).ending).toMatchObject({ kind: "killed" });
-    expect(await ending({ ...all, crash: null }).ending).toMatchObject({ kind: "moved-files" });
   });
 
   it("judges a submitted answer even when the wall fell after it, and logs the verdict", async () => {
@@ -326,6 +328,37 @@ describe.skipIf(!darwin)("a solve end to end", () => {
       "the verifier could not decide t-1, so the run stops: value: the wall broke",
     );
     expect(finished().at(-1)?.data.ending).toMatchObject({ outcome: "non-result", kind: "verifier" });
+  }, 120_000);
+
+  it.concurrent("judges an answer held before the model process crashed", async () => {
+    // Submit beside a call that does not end the batch, so the loop asks for one more turn, and the
+    // model process dies on it.
+    const record = fauxAssistantMessage(fauxToolCall("record_answer", { answer: "42" }), toolUse);
+    const submit = fauxAssistantMessage(
+      [fauxToolCall("submit", {}), fauxToolCall("bash", { command: "true" })],
+      toolUse,
+    );
+    const { request, finished } = setup([record, submit]);
+    const models = request.models("");
+    const stream = models.streamSimple.bind(models);
+    let requests = 0;
+    models.streamSimple = (model, context, options) => {
+      requests += 1;
+      if (requests === 3) throw new Error("the model process died");
+      return stream(model, context, options);
+    };
+    expect(await solve(request, noWait)).toEqual({ outcome: "pass" });
+    expect(finished()).toHaveLength(1);
+  }, 120_000);
+
+  it.concurrent("judges an answer whose home cannot be walked, its size unknown", async () => {
+    const lock = fauxAssistantMessage(
+      fauxToolCall("bash", { command: 'mkdir -p "$HOME/locked/x" && chmod 0 "$HOME/locked"' }),
+      toolUse,
+    );
+    const { request, finished } = setup([lock, ...answer]);
+    expect(await solve(request, noWait)).toEqual({ outcome: "pass" });
+    expect(finished().map(({ data }) => data.homeBytes)).toEqual([null]);
   }, 120_000);
 
   it.concurrent("fails a harness whose tools do not bundle once, with no rerun", async () => {

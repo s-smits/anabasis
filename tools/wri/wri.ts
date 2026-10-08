@@ -33,7 +33,8 @@ import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { plural } from "#src/meta/text.ts";
 import { treeContent } from "#src/solve/harness.ts";
-import { stagedChecks, writtenTasks } from "../d2/campaign.ts";
+import { writtenTasks } from "#src/kernel/history.ts";
+import { stagedChecks } from "../d2/campaign.ts";
 import { readPack } from "../m0/stored-sweep.ts";
 import { catalogueText, lanesOf, ownersOf, REFERENCES } from "./catalogue.ts";
 import {

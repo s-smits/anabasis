@@ -17,8 +17,9 @@
  * stands.
  */
 import { toldOf } from "../kernel/binding.ts";
+import { gatesOf, lastGate, proposalsOf } from "../kernel/history.ts";
 import type { LogEvent } from "../kernel/log.ts";
-import { isNumber, isString } from "../meta/json-shape.ts";
+import { isString } from "../meta/json-shape.ts";
 import { countBy } from "../meta/tally.ts";
 
 /** The plan's supply rule: the feasible tasks it is read over, and the reading each count of
@@ -44,25 +45,14 @@ export function supply(events: readonly LogEvent[], of = FEASIBLE) {
   const reached = THRESHOLDS.find(([least]) => bracketed >= least)?.[1] ?? "stop";
   const reading: SupplyReading = read.length < of ? "unfinished" : reached;
   const written = new Set(
-    events.flatMap(({ kind, data }) =>
-      kind === "task.proposed" && isString(data.session) ? [data.version] : [],
-    ),
+    proposalsOf(events).flatMap(({ session, version }) => (session === null ? [] : [version])),
   );
-  /** The gate events of the sessions' own tasks that ended in `outcome` at `gate`. */
+  /** The gates the sessions' own tasks were put to, and those that ended in `outcome` at `gate`. */
+  const own = gatesOf(events).filter(({ version }) => written.has(version));
   const gates = (gate: number, outcome: string) =>
-    events.flatMap(({ kind, data }) =>
-      kind === "task.gate" && data.gate === gate && data.outcome === outcome && written.has(data.version)
-        ? [data]
-        : [],
-    );
+    own.filter((each) => each.gate === gate && each.outcome === outcome);
   /** Each task's last gate 2, the stronger solve it stands on. */
-  const witness = new Map(
-    events.flatMap(({ kind, data }) =>
-      kind === "task.gate" && data.gate === 2 && written.has(data.version)
-        ? [[data.version, data] as const]
-        : [],
-    ),
-  );
+  const witness = lastGate(own, 2);
   return {
     proposed: written.size,
     words: countBy(tasks, ({ word }) => word),
@@ -72,12 +62,8 @@ export function supply(events: readonly LogEvent[], of = FEASIBLE) {
     // fault and not the author's. v1 never had this count for its submit gate: "whether the gate
     // buys protection is not measured" (v1 #113).
     refusedAt: countBy(
-      events.flatMap(({ kind, data }) =>
-        kind === "task.gate" && data.outcome === "refused" && written.has(data.version) && isNumber(data.gate)
-          ? [data.gate]
-          : [],
-      ),
-      (gate) => `gate ${String(gate)}`,
+      own.filter(({ outcome }) => outcome === "refused"),
+      ({ gate }) => `gate ${String(gate)}`,
     ),
     // Why the two gates that cost most said no. `tooHard` is how the stronger solve that closed a
     // task ended: a check refused its answer, or its wall, its context or no answer ended it. A
@@ -88,14 +74,14 @@ export function supply(events: readonly LogEvent[], of = FEASIBLE) {
     // counted by its last such solve, and one that has passed since is not counted.
     tooHard: countBy(
       [...witness.values()].filter(({ outcome }) => outcome === "too-hard"),
-      ({ kind }) => (isString(kind) ? kind : "unrecorded"),
+      ({ data }) => (isString(data.kind) ? data.kind : "unrecorded"),
     ),
     // The too-hard tasks whose refusal an advising Referee ruled a check defect: tasks a repair of
     // the checker might give back (an adoption tries each one's refused answer, `tools/c/accept.ts`).
     tooHardFlagged: tasks.filter(({ word, flagged }) => word === "too hard" && flagged).length,
     controls: countBy(
-      gates(4, "refused").flatMap(({ kinds }) =>
-        Array.isArray(kinds) && kinds.length > 0 ? kinds.filter(isString) : ["unrecorded"],
+      gates(4, "refused").flatMap(({ data }) =>
+        Array.isArray(data.kinds) && data.kinds.length > 0 ? data.kinds.filter(isString) : ["unrecorded"],
       ),
       (kind) => kind,
     ),

@@ -75,6 +75,7 @@ import type { Stand } from "../kernel/ladder.ts";
 import { append, type EventKind, type LogEvent, read } from "../kernel/log.ts";
 import { dollars, freezePrices, priceKey, tokensOf } from "../kernel/meter.ts";
 import type { Counted } from "../kernel/solve.ts";
+import { verdictsOf } from "../kernel/solves.ts";
 import {
   CONTROLS,
   controlsGate,
@@ -329,8 +330,7 @@ async function witnessed(
     const how = stoppedBy(read(log), [{ solve, ending }]);
     return `${task.taskId}: too hard for now: the stronger solver did not pass it${how === "" ? "" : ` (${how})`}.`;
   }
-  const accepted = read(log).findLast(({ kind, data }) => kind === "verdict" && data.solve === solve)?.data
-    .answer;
+  const accepted = verdictsOf(read(log)).get(solve)?.answer;
   if (accepted === undefined) throw new Error(`solve ${solve} passed and left no answer in the log`);
   record(GATE, { gate: 2, outcome: "passed", solve });
 

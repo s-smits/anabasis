@@ -43,6 +43,7 @@
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
 import { examine } from "#src/examiner/session.ts";
 import { supply } from "#src/examiner/supply.ts";
+import { writtenTasks } from "#src/kernel/history.ts";
 import { read } from "#src/kernel/log.ts";
 import { readBrief } from "#src/kernel/verify.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
@@ -55,7 +56,6 @@ import {
   SCREENING_OPTIONS,
   screeningRule,
   stayAwake,
-  writtenTasks,
 } from "../d2/campaign.ts";
 import { SETTING_OPTIONS, settingNamed } from "../d2/setting.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";

@@ -40,6 +40,7 @@ import {
 } from "#src/kernel/condition.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { controlOf, epochsOf, unfinished } from "#src/kernel/epoch.ts";
+import { writtenTasks } from "#src/kernel/history.ts";
 import { frontierOf, type Rule, type Stand } from "#src/kernel/ladder.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
 import { freezePrices, priceKey } from "#src/kernel/meter.ts";
@@ -47,7 +48,7 @@ import { type RejectControl, type TaskPackage, taskSets, taskStates, taskVersion
 import { checkProgramVersion, openVerifier, type Task } from "#src/kernel/verify.ts";
 import { existsSync, mkdirSync, readFileSync } from "#src/meta/filesystem.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
-import { asRecord, isString, type JsonValue } from "#src/meta/json-shape.ts";
+import { isString, type JsonValue } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { join, resolve } from "#src/meta/path.ts";
 import { capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
@@ -160,27 +161,9 @@ export function setsOf(events: readonly LogEvent[]) {
   };
 }
 
-/** The tasks a log holds whole in a proposal: an Examiner's instances, which no pack holds, and
- *  every task an adoption carried into a later checker. Each is given once, as the last proposal
- *  of its id holds it: a carried task is proposed again under the id it had. */
-export function writtenTasks(events: readonly LogEvent[]): Task[] {
-  const whole = events.flatMap(({ kind, data }): [string, Task][] => {
-    const task = asRecord(kind === "task.proposed" ? data.task : null);
-    return task !== null && isString(task.taskId) && isString(task.family)
-      ? [
-          [
-            task.taskId,
-            {
-              taskId: task.taskId,
-              family: task.family,
-              publicInput: task.publicInput ?? null,
-              hidden: task.hidden ?? null,
-            },
-          ],
-        ]
-      : [];
-  });
-  return [...new Map(whole).values()];
+/** The live pool of those sets: what is held outside the anchor, and what a round admitted. */
+export function poolOf(sets: Pick<ReturnType<typeof setsOf>, "candidates" | "admitted">): string[] {
+  return [...sets.candidates, ...sets.admitted];
 }
 
 /** A task a session wrote that stood feasible in its log, with what gates it again under another

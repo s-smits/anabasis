@@ -20,6 +20,7 @@
 import type { Regraded } from "../kernel/acceptance.ts";
 import { draw } from "../kernel/compare.ts";
 import type { LogEvent } from "../kernel/log.ts";
+import { refusedBy, verdictsOf } from "../kernel/solves.ts";
 import { asRecord, isString, type JsonValue } from "../meta/json-shape.ts";
 import { plural } from "../meta/text.ts";
 import { RULINGS } from "./agreement.ts";
@@ -54,19 +55,9 @@ export interface RepairReading {
 /** Every solve whose logged verdict is an answer some check refused. An answer outside the
  *  contract's format reached no check, and is not a rejection of the checker's. */
 function refused(events: readonly LogEvent[]): string[] {
-  return [
-    ...new Set(
-      events.flatMap(({ kind, data }) =>
-        kind === "verdict" &&
-        data.kind === "fail" &&
-        isString(data.solve) &&
-        Array.isArray(data.blocking) &&
-        data.blocking.length > 0
-          ? [data.solve]
-          : [],
-      ),
-    ),
-  ];
+  return [...verdictsOf(events).values()].flatMap((verdict) =>
+    refusedBy(verdict).length > 0 ? [verdict.solve] : [],
+  );
 }
 
 /** The refused answers and what the Referee has ruled of them so far. */

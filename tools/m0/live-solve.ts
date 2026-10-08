@@ -32,6 +32,7 @@ import { backends, compactionMode } from "#src/backends/models.ts";
 import { type Condition, conditionId, type Limits, recordCondition } from "#src/kernel/condition.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { read } from "#src/kernel/log.ts";
+import { ended, solvesIn } from "#src/kernel/solves.ts";
 import { freezePrices, priceKey } from "#src/kernel/meter.ts";
 import { taskVersion } from "#src/kernel/task.ts";
 import { openVerifier } from "#src/kernel/verify.ts";
@@ -341,7 +342,7 @@ function resourceParity(trace: string, text: string): string {
 function readBack(log: string, outcome: string, storedOutcome: string): number {
   const events = read(log);
   console.log(`log: ${JSON.stringify(countBy(events, (event) => event.kind))}`);
-  const finished = events.findLast((event) => event.kind === "solve.finished")?.data;
+  const finished = ended(solvesIn(events)).at(-1)?.end;
   const billed = Number(finished?.billed);
   const reported = finished?.reportedCost;
   console.log(`${outcome}, stored ${storedOutcome}`);

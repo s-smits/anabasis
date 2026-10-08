@@ -33,6 +33,7 @@
  * and a model login.
  */
 import type { Api, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
+import { writtenTasks } from "#src/kernel/history.ts";
 import { binding } from "#src/kernel/binding.ts";
 import { sweepOf } from "#src/kernel/compare.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
@@ -49,7 +50,6 @@ import {
   SCREENING_OPTIONS,
   screeningRule,
   stayAwake,
-  writtenTasks,
 } from "../d2/campaign.ts";
 import { ROUND_OPTIONS } from "../d2/round.ts";
 import {

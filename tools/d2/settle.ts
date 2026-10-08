@@ -29,14 +29,16 @@
  * It starts no solve and calls no model. Not run here: see `campaign.ts`.
  */
 import { settleReading, stopRule, toLabel } from "#src/builder/round.ts";
+import { writtenTasks } from "#src/kernel/history.ts";
 import { read } from "#src/kernel/log.ts";
+import { refusedBy, verdictsOf } from "#src/kernel/solves.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
 import { labelled } from "#src/review/rejections.ts";
-import { openCampaign, writtenTasks } from "./campaign.ts";
+import { openCampaign } from "./campaign.ts";
 
 const { values } = parseArgs({
   options: {
@@ -83,14 +85,15 @@ async function main(): Promise<number> {
   // The tasks an Examiner session wrote are in the log and in no pack.
   const tasks = [...writtenTasks(events), ...campaign.tasks];
   mkdirSync(dir, { recursive: true });
+  const verdicts = verdictsOf(events);
   for (const solve of solves) {
-    const verdict = events.findLast(({ kind, data }) => kind === "verdict" && data.solve === solve)?.data;
+    const verdict = verdicts.get(solve);
     const packet = {
       solve,
       task: tasks.find((task) => task.taskId === verdict?.task) ?? null,
       rules: campaign.contract.rules,
       answer: verdict?.answer ?? null,
-      refusedBy: verdict?.blocking ?? [],
+      refusedBy: refusedBy(verdict),
     };
     writeFileSync(join(dir, `${solve}.json`), `${capturedJsonStringify(packet, null, 2)}\n`);
   }

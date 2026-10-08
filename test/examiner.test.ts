@@ -13,6 +13,7 @@ import type { Practised } from "../src/builder/session.ts";
 import { type ExamRequest, examine } from "../src/examiner/session.ts";
 import { supply } from "../src/examiner/supply.ts";
 import type { Contract } from "../src/kernel/contract.ts";
+import { writtenTasks } from "../src/kernel/history.ts";
 import { append, type EventKind, read } from "../src/kernel/log.ts";
 import type { Ending } from "../src/kernel/solve.ts";
 import { type TaskPackage, taskStates, taskVersion } from "../src/kernel/task.ts";
@@ -22,7 +23,7 @@ import { asRecord, isFunction, type JsonObject, type JsonValue } from "../src/me
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import type { RefereeFinding } from "../src/review/referee.ts";
-import { carriable, writtenTasks } from "../tools/d2/campaign.ts";
+import { carriable } from "../tools/d2/campaign.ts";
 
 /** A solver-side secret no Examiner may be shown: the text of a measured solve's answer. */
 const SOLVER = "solver-canary-7f3a";

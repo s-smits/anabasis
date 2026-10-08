@@ -69,7 +69,7 @@ import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
 import type { Ruling } from "#src/review/referee.ts";
 import { type RepairReading, repairReading } from "#src/review/rejections.ts";
-import { writtenTasks } from "../d2/campaign.ts";
+import { writtenTasks } from "#src/kernel/history.ts";
 import { packSet } from "../m0/stored-sweep.ts";
 
 /** A checker as an adoption reads it: its contract, its staged check program and a verifier over

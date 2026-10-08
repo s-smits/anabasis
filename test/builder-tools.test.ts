@@ -120,6 +120,7 @@ describe.if(osIsolationSupport().ok)("the seven capabilities through the isolati
     policy,
     record: openPathRecord(binding.epochDir, "toolkit-test"),
     workDir: binding.iterationDir,
+    installTree: ".toolchain",
   };
   const byName = new Map<string, AgentTool>(createBuilderTools(isolation).map((tool) => [tool.name, tool]));
   const run = async (name: string, params: Record<string, JsonValue>): Promise<string> => {

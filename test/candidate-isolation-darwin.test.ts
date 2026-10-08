@@ -314,7 +314,7 @@ describe.if(DARWIN)("executed OS enforcement", () => {
     }
     const bun = runtimeProcess.execPath;
     const { profile } = candidateIsolationProfile(policy, "exec", [bun]);
-    const env = bashEnv(binding.iterationDir);
+    const env = bashEnv(binding.iterationDir, ".toolchain");
     const load = (childEnv: OptionalEnvValues) =>
       spawnSync(
         "/usr/bin/sandbox-exec",

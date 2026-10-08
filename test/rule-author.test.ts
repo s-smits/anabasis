@@ -84,6 +84,8 @@ const CANARIES = [SOLVER, HARNESS, BUILDER, TRACE, SWEEP, CONTROL];
 const CHECK_CHILD = join(import.meta.dir, "..", "src", "kernel", "check-child.ts");
 /** The check program's entry, as `verify.ts` names it. */
 const ENTRY = "evaluator.ts";
+/** The event a session's record ends on. */
+const FINISHED: EventKind = "rule.finished";
 const RULES = [
   { id: "R1", statement: "The answer is the base times six.", visibility: "public" },
   { id: "R2", statement: "The unit is the newton.", visibility: "public" },
@@ -499,7 +501,7 @@ describe("a Rule Author session", () => {
       witnessed: ["x-1-001", "x-1-002", "x-1-003"],
       stored: { witness: 3, solve: 2, control: 1, sweep: 1 },
     });
-    expect(s.of("rule.finished")[0]).toMatchObject({ ended: "finished", tries: 0, candidate: null });
+    expect(s.of(FINISHED)[0]).toMatchObject({ ended: "finished", tries: 0, candidate: null });
     // A session that adds nothing leaves nothing on disk.
     expect(readdirSync(s.candidates)).toEqual([]);
   });
@@ -601,7 +603,7 @@ describe("a Rule Author session", () => {
         note: authored.candidate?.interference.note ?? "",
       },
     ]);
-    expect(s.of("rule.finished")[0]).toMatchObject({
+    expect(s.of(FINISHED)[0]).toMatchObject({
       ended: "finished",
       tries: 1,
       candidate: "candidates/r-1",
@@ -759,7 +761,7 @@ describe("a Rule Author session", () => {
     const cut = setup([propose()]);
     const ended = await authorRule({ ...cut.request, limits: { ...LIMITS, turns: 1 } });
     expect(ended).toEqual({ ended: "turns", tries: 1, candidate: null });
-    expect(cut.of("rule.finished")[0]).toMatchObject({ candidate: null, unfinished: "check-note" });
+    expect(cut.of(FINISHED)[0]).toMatchObject({ candidate: null, unfinished: "check-note" });
     expect(cut.of("rule.candidate")).toEqual([]);
     expect(existsSync(join(cut.candidates, "r-1"))).toBe(false);
     expect(existsSync(join(cut.candidates, "r-1.tries"))).toBe(false);
@@ -779,6 +781,63 @@ describe("a Rule Author session", () => {
     );
     expect(authored).toMatchObject({ ended: "finished", candidate: { check: "check-note" } });
     expect(s.of("rule.turn")).toHaveLength(2);
+
+    // The other way round the session is over before the addition is read by any gate: gated
+    // there, it held and became the candidate with its author told nothing of it.
+    const first = setup([
+      fauxAssistantMessage(
+        [
+          fauxToolCall("finish", { note: "Done." }),
+          fauxToolCall("propose_rule", { rule: RULE, check: CHECK, code: NOTE_CODE, controls: CONTROLS }),
+        ],
+        toolUse,
+      ),
+    ]);
+    expect(await authorRule(first.request)).toEqual({ ended: "finished", tries: 0, candidate: null });
+    expect(first.gates()).toEqual([]);
+    expect(JSON.stringify(first.of("rule.call").at(-1))).toContain(
+      "The session has finished. Nothing was put to the gates.",
+    );
+    expect(existsSync(join(first.candidates, "r-1"))).toBe(false);
+  });
+
+  it("keeps the addition that held when the next is a slip or refused for want of a try, and none a refused one replaced", async () => {
+    // A slip beside finish: the author meant to replace what held, and reads that it did not.
+    const slip = fauxAssistantMessage(
+      [
+        fauxToolCall("propose_rule", {
+          rule: RULE,
+          check: CHECK,
+          code: NOTE_CODE,
+          controls: [noted("e-1", "reject", "base 9")],
+        }),
+        fauxToolCall("finish", { note: "Done." }),
+      ],
+      toolUse,
+    );
+    const kept = setup([propose(), slip, finish]);
+    const authored = await authorRule(kept.request);
+    expect(kept.sent[2]).toContain(
+      "Nothing was put to the gates, and the addition that held before this one stands. Send the addition again.",
+    );
+    expect(kept.sent[2]).toContain("propose_rule returned in this same turn.");
+    expect(authored).toMatchObject({ ended: "finished", tries: 1, candidate: { check: "check-note" } });
+
+    // With no try left the call is refused before any gate, and what held stands.
+    const spent = setup([propose(), propose({ code: "export const check = () => true;\n" }), finish]);
+    const last = await authorRule({ ...spent.request, limits: { ...LIMITS, tries: 1 } });
+    expect(JSON.stringify(spent.of("rule.call")[1])).toContain("no attempt left at the gates");
+    expect(last).toMatchObject({ tries: 1, candidate: { check: "check-note" } });
+    expect(readFileSync(join(modelOf(last.candidate?.dir ?? ""), "added", "check-note.ts"), "utf8")).toBe(
+      NOTE_CODE,
+    );
+
+    // An addition put to the gates replaces the one before it, held or not.
+    const replaced = setup([propose(), propose({ code: "export const check = () => true;\n" }), finish]);
+    expect(await authorRule(replaced.request)).toEqual({ ended: "finished", tries: 2, candidate: null });
+    expect(replaced.gates()).toEqual([...HELD, [2, "shape", "passed"], [2, "controls", "refused"]]);
+    expect(replaced.of(FINISHED)[0]).toMatchObject({ candidate: null, unfinished: null });
+    expect(readdirSync(replaced.candidates)).toEqual([]);
   });
 
   it("puts its check to no answer its author cannot read while the session can still be told", async () => {
@@ -825,6 +884,85 @@ describe("a Rule Author session", () => {
     left.expectWalled();
   });
 
+  it("leaves no candidate whose check program is not the one the gates ran", async () => {
+    // A verifier with no wall, under which a check's run rewrites its own module where the host
+    // built it: the candidate still only adds, and is not what was gated.
+    const s = setup([propose(), finish]);
+    const rewriting = (checks: string): Verifier => {
+      const verify = verifierOver(checks);
+      const built = join(modelOf(checks.replace(/-checks$/, "")), "added", "check-note.ts");
+      return (given, submitted) => {
+        if (submitted === SWEEP_ANSWER) writeFileSync(built, "export const check = () => true;\n");
+        return verify(given, submitted);
+      };
+    };
+    await expect(authorRule({ ...s.request, verifier: rewriting })).rejects.toThrow(
+      "is not the contract and the check program the gates ran",
+    );
+    expect(s.gates()).toEqual([...HELD, [1, "interference", "reported", "record"]]);
+    expect(s.of("rule.candidate")).toEqual([]);
+    expect(s.of(FINISHED)[0]).toMatchObject({
+      ended: "crashed",
+      candidate: null,
+      unfinished: "check-note",
+    });
+    expect(readdirSync(s.candidates)).toEqual([]);
+  });
+
+  it("ends crashed, at its wall or killed with nothing kept, and gates the addition in flight to its end", async () => {
+    // The provider fails the turn after an addition held.
+    const limit = "You have hit your session limit";
+    const failed = setup([propose(), fauxAssistantMessage("", { stopReason: "error", errorMessage: limit })]);
+    expect(await authorRule(failed.request)).toEqual({ ended: "crashed", tries: 1, candidate: null });
+    expect(failed.of(FINISHED)[0]).toMatchObject({
+      ended: "crashed",
+      crash: limit,
+      candidate: null,
+      unfinished: "check-note",
+    });
+    expect(readdirSync(failed.candidates)).toEqual([]);
+
+    // The wall and a kill come while the verifier runs: the limits are read between calls.
+    const slow = (checks: string): Verifier => {
+      const verify = verifierOver(checks);
+      return async (given, submitted) => {
+        await Bun.sleep(40);
+        return verify(given, submitted);
+      };
+    };
+    const walled = setup([propose(), finish]);
+    const atWall = await authorRule({
+      ...walled.request,
+      verifier: slow,
+      limits: { ...LIMITS, wallSeconds: 0.1 },
+    });
+    expect(atWall).toEqual({ ended: "wall", tries: 1, candidate: null });
+    expect(walled.gates()).toEqual(HELD);
+    expect(walled.sent).toHaveLength(1);
+    expect(walled.of(FINISHED)[0]).toMatchObject({ ended: "wall", unfinished: "check-note" });
+    // The try was gated to its end before the session's record was written, and nothing follows it.
+    await Bun.sleep(100);
+    expect(read(walled.log).at(-1)?.kind).toBe(FINISHED);
+
+    const stopped = setup([propose(), finish]);
+    const kill = new AbortController();
+    setTimeout(() => kill.abort(), 100);
+    const killed = await authorRule({ ...stopped.request, verifier: slow, kill: kill.signal });
+    expect(killed).toEqual({ ended: "killed", tries: 1, candidate: null });
+    expect(stopped.of(FINISHED)[0]).toMatchObject({ ended: "killed", unfinished: "check-note" });
+    expect(readdirSync(stopped.candidates)).toEqual([]);
+  });
+
+  it("starts under no id that cannot name a directory, and over no candidate already there", async () => {
+    const s = setup([finish]);
+    await expect(authorRule({ ...s.request, id: "../r-1" })).rejects.toThrow("is not a safe single path");
+    mkdirSync(join(s.candidates, "r-1"), { recursive: true });
+    await expect(authorRule(s.request)).rejects.toThrow("is there already, and no session of this log");
+    // Neither left a line in the log or took a turn.
+    expect(s.of("rule.started")).toEqual([]);
+    expect(s.sent).toEqual([]);
+  });
+
   it("runs its addition as the verifier does, each check in a process and a cell of its own", async () => {
     const s = setup([propose(), finish]);
     const authored = await authorRule({ ...s.request, verifier: cellVerifier });
@@ -844,7 +982,7 @@ describe("a Rule Author session", () => {
     await expect(authorRule({ ...s.request, verifier: () => undecided })).rejects.toThrow(
       "the verifier could not decide x-1-001, so the run stops",
     );
-    expect(s.of("rule.finished")[0]).toMatchObject({ ended: "crashed", candidate: null });
+    expect(s.of(FINISHED)[0]).toMatchObject({ ended: "crashed", candidate: null });
     expect(JSON.stringify(s.of("rule.call"))).toContain("The host could not go on");
     expect(s.sent).toHaveLength(1);
     expect(existsSync(join(s.candidates, "r-1.tries"))).toBe(false);

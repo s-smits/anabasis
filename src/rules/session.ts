@@ -44,13 +44,17 @@
  *
  * It stops at a candidate. When the session ends by `finish` with an addition that held, the rest
  * of the record is graded, the candidate is moved to `<candidates>/<session>`, the pack's tool
- * tree is copied into it, the proof is run once more over the whole directory, and
- * `rule.candidate` logs what it is. Nothing is adopted, frozen or moved: the campaign's checker
- * is the one it was, and whether the exam takes the candidate is the operator's, by another
- * command. An addition the session had not finished on, at its limits or at a crash, is not
- * kept, since its author was told what it refuses and had not said it stands by it. The controls
- * are kept whole in the log and not in the candidate's `controls.json`: they stand on tasks a
- * session wrote, which no pack holds, and an answer is written to no file outside the log.
+ * tree is copied into it, the proof is run once more over the whole directory, its check program
+ * is held to the digest the gates ran, and `rule.candidate` logs what it is. Nothing is adopted,
+ * frozen or moved: the campaign's checker is the one it was, and whether the exam takes the
+ * candidate is the operator's, by another command. An addition the session had not finished on,
+ * at its limits or at a crash, is not kept, since its author was told what it refuses and had not
+ * said it stands by it. `finish` beside `propose_rule` in one turn is refused for the same
+ * reason, whichever came first: its author has not read what that call returned. The limits are
+ * read between calls, so an addition at the gates when the wall or a kill comes is gated to its
+ * end, and then not kept. The controls are kept whole in the log and not in the candidate's
+ * `controls.json`: they stand on tasks a session wrote, which no pack holds, and an answer is
+ * written to no file outside the log.
  *
  * One session writes one requirement. A verifier that cannot decide stops the session, as it stops
  * any run (`decided`): the session writes its record and throws.
@@ -86,6 +90,7 @@ import { existsSync, mkdirSync, mkdtempSync, renameSync, rmSync } from "../meta/
 import { asRecord, isNumber, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { tmpdir } from "../meta/os.ts";
 import { dirname, join, relative } from "../meta/path.ts";
+import { assertPathSegment } from "../meta/path-segment.ts";
 import { pooled } from "../meta/pool.ts";
 import { asError, errorMessage } from "../meta/runtime-values.ts";
 import { compareCodeUnits, hashJsonValue, stableJson } from "../meta/stable-json.ts";
@@ -216,8 +221,8 @@ interface Desk {
   readonly stored: readonly Stored[];
   tries: number;
   held: Held | null;
-  /** Whether `held` was set in the turn still running, so that its author has not yet read what
-   *  the gates and the interference said of it. */
+  /** Whether `propose_rule` was called in the turn still running, so that its author has not yet
+   *  read what the call returned. */
   unread: boolean;
   /** Aborted when the verifier threw, which ends the session. */
   readonly halt: AbortController;
@@ -231,6 +236,9 @@ const REFUSED = "refused";
 const PASSED = "passed";
 /** The most of an added check's module one addition carries. */
 const CODE_MAX_CHARS = 60_000;
+/** The most controls one addition carries: the three rejects and room for accepts over several
+ *  tasks. Each is two runs of the whole program, and a try in flight is not cut short. */
+const CONTROLS_MAX = 24;
 const ENDINGS = ["finished", "killed", "wall", "turns"] as const;
 
 /** Stop the session on what the verifier threw, and tell its author only that. */
@@ -473,11 +481,17 @@ function proposeTool(desk: Desk): AgentTool {
             }),
           ),
         }),
-        { minItems: 1 },
+        { minItems: 1, maxItems: CONTROLS_MAX },
       ),
     }),
     executionMode: "sequential",
     execute: async (_id, args) => {
+      // After `finish` in the same turn the session is over, and what this call returned would be
+      // read by nobody: an addition gated here once became the candidate unread.
+      if (desk.note !== null) {
+        throw new Error("The session has finished. Nothing was put to the gates.");
+      }
+      desk.unread = true;
       if (desk.tries >= limits.tries) {
         throw new Error("This session has no attempt left at the gates. Call finish.");
       }
@@ -487,7 +501,9 @@ function proposeTool(desk: Desk): AgentTool {
         given = controlsOf(desk, check.id, args.controls);
       } catch (error) {
         // A control that is none is a slip of the pen, and costs no try.
-        return text(`${errorMessage(error)}. Nothing was put to the gates. Send the addition again.`);
+        return text(
+          `${errorMessage(error)}. Nothing was put to the gates${desk.held === null ? "" : ", and the addition that held before this one stands"}. Send the addition again.`,
+        );
       }
       const addition: Addition = {
         rule,
@@ -503,9 +519,7 @@ function proposeTool(desk: Desk): AgentTool {
         code,
       };
       try {
-        const told = await tried(desk, addition, given);
-        desk.unread = desk.held !== null;
-        return text(told);
+        return text(await tried(desk, addition, given));
       } catch (error) {
         throw halted(desk, error);
       }
@@ -545,7 +559,8 @@ function finishTool(desk: Desk): AgentTool {
     parameters: Type.Object({ note: Type.String({ minLength: 1, maxLength: 700 }) }),
     executionMode: "sequential",
     execute: async (_id, args) => {
-      // An addition is left as the candidate by an author that has read what was said of it.
+      // An addition is left as the candidate by an author that has read what was said of it, and
+      // of whatever it sent to replace it.
       if (desk.unread) {
         throw new Error("propose_rule returned in this same turn. Read what it said, then call finish.");
       }
@@ -573,6 +588,8 @@ export function taken(events: readonly LogEvent[], id: string): string | null {
 export async function authorRule(request: RuleRequest): Promise<Authored> {
   const { log, limits, model, pack } = request;
   const began = performance.now();
+  // The id names a directory, so it is one path segment.
+  assertPathSegment("session", request.id);
   const why = taken(read(log), request.id);
   if (why !== null) throw new Error(why);
   const final = join(request.candidates, request.id);
@@ -700,7 +717,8 @@ export async function authorRule(request: RuleRequest): Promise<Authored> {
   crash ??= desk.fatal?.message ?? (cut ? null : failedTurn(turns));
   // The candidate is left only by a session that finished on an addition that held. The session
   // is over, so its check is now put to the rest of the record. Then the candidate is moved into
-  // place, given the pack's tool tree, and proven once more as it stands on disk.
+  // place, given the pack's tool tree, and proven once more as it stands on disk: the pack with
+  // one addition, and the check program the gates ran.
   let candidate: Candidate | null = null;
   if (desk.note !== null && crash === null && desk.held !== null) {
     const { dir, added, checker, verify, graded, bases } = desk.held;
@@ -718,6 +736,13 @@ export async function authorRule(request: RuleRequest): Promise<Authored> {
       copyTools(pack, final);
       const proof = additive(pack, final, "with-tools");
       if ("faults" in proof) throw new Error(`${final} is not proven: ${proof.faults.join("; ")}`);
+      const left = {
+        contract: contractHash({ ...request.contract, rules: proof.rules }),
+        checks: hashJsonValue(checkProgramVersion(request.stage(final, join(work, "left")))),
+      };
+      if (left.contract !== checker.contract || left.checks !== checker.checks) {
+        throw new Error(`${final} is not the contract and the check program the gates ran`);
+      }
       candidate = { dir: final, rule: added.rule.id, check: added.check.id, checker, interference: reading };
       append(log, "rule.candidate", {
         session: request.id,

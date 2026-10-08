@@ -774,8 +774,14 @@ that does not repeat, and `harness/guide` or `harness/tools` for a repair on the
 **30. Rulings, routing and what each role was told.**
 
 Starts from `FLAGGED AND STILL COUNTED (lane 30)`, `READING MOVES WITHOUT FLAGGED (lane 30)`,
-`FLAGGED FAILS BY SIDE (lane 30)`, `SETTLED BY HAND (lane 30)`, `REVIEW FAULTS (lane 30)` and
-`EARNED WITHOUT A PROBE (lane 30)`.
+`FLAGGED FAILS BY SIDE (lane 30)`, `RULINGS AGAINST THE EFFECT (lane 30)`,
+`SETTLED BY HAND (lane 30)`, `REVIEW FAULTS (lane 30)` and `EARNED WITHOUT A PROBE (lane 30)`.
+`RULINGS AGAINST THE EFFECT` sets a report's scored test against its reviewers
+(`src/review/weight.ts`): how many of its informative pairs hold a fail no reviewer ruled on, and
+how many of its wins, or of its losses when it did not clear, would have to rest on a mistaken
+ruling for the test to read the other way. Read the second count against the first and against
+the Referee's error, which the line gives as `unmeasured` unless hand labels measured it: a
+reading two mistaken rulings would move, on rulings nobody measured, is no firmer than those two.
 
 The question is what became of each ruling, and whether each role was told enough to act and no
 more than it may know. A check-defect ruling disputes its task only when the Referee decides,

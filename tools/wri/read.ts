@@ -13,17 +13,18 @@
  * bytes has done its job. A trigger that did not fire says this arithmetic found nothing, and not
  * that the property is absent. No trigger carries an answer, a task's text or a hidden value.
  */
-import { screeningOrder } from "#src/builder/round.ts";
+import { pairsReported, screeningOrder } from "#src/builder/round.ts";
 import { binding, toldOf } from "#src/kernel/binding.ts";
 import { signP, sweepOf } from "#src/kernel/compare.ts";
 import { type Condition, conditionsOf, settingId } from "#src/kernel/condition.ts";
-import { frontierOf, ladder, type Stand } from "#src/kernel/ladder.ts";
+import { frontierOf, ladder, lastReports, type Stand } from "#src/kernel/ladder.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { taskStates } from "#src/kernel/task.ts";
 import { wallShare } from "#src/kernel/wall.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
+import { weight, weightLine } from "#src/review/weight.ts";
 
 export interface Trigger {
   readonly lane: number;
@@ -217,6 +218,7 @@ export const TRIGGERS = {
   "FLAGGED AND STILL COUNTED": 30,
   "READING MOVES WITHOUT FLAGGED": 30,
   "FLAGGED FAILS BY SIDE": 30,
+  "RULINGS AGAINST THE EFFECT": 30,
   "SETTLED BY HAND": 30,
   "REVIEW FAULTS": 30,
   "EARNED WITHOUT A PROBE": 30,
@@ -1144,6 +1146,23 @@ function reviewTriggers(log: Index): Trigger[] {
               ),
             ]),
       ];
+    }),
+    // What each report's scored test rests on, set against the Referee's error. A log holds no
+    // hand label, so read from here that error is unmeasured (`src/review/weight.ts`).
+    ...lastReports(log.events).flatMap((report) => {
+      try {
+        const read = weight(log.events, pairsReported(log.events, report), {
+          level: count(report.data.level),
+          measured: null,
+        });
+        return read.informative === 0
+          ? []
+          : [fired("RULINGS AGAINST THE EFFECT", `${report.session}: ${weightLine(read)}`)];
+      } catch {
+        // A round whose solves differ in more than the harness has no pairs to read, and lane 20
+        // names it.
+        return [];
+      }
     }),
     ...(faults > 0 ? [fired("REVIEW FAULTS", plural(faults, "reviewer failure"))] : []),
     ...(unprobed > 0 ? [fired("EARNED WITHOUT A PROBE", share(unprobed, log.rulings.size))] : []),

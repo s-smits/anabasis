@@ -339,7 +339,7 @@ function whole(pairs: readonly Paired[], solves: number) {
   const cut = <T>(list: readonly T[] = []) => list.slice(0, solves);
   return {
     pairs: pairs.flatMap((pair) => {
-      const { task, old, fresh, seconds } = pair;
+      const { task, old, fresh, seconds, solves: named } = pair;
       if (!enough(pair)) return [];
       return [
         {
@@ -347,6 +347,7 @@ function whole(pairs: readonly Paired[], solves: number) {
           old: cut(old),
           fresh: cut(fresh),
           seconds: { old: cut(seconds?.old), fresh: cut(seconds?.fresh) },
+          solves: { old: cut(named?.old), fresh: cut(named?.fresh) },
         },
       ];
     }),

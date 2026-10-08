@@ -204,6 +204,8 @@ describe("the whole-run investigation's reader", () => {
       "FLIPS",
       "NOTHING SCORED",
       "ANCHOR RATE BY ROUND",
+      // The report names neither its parent nor its solves a side, as an older log's does not.
+      "RULINGS AGAINST THE EFFECT",
     ]) {
       expect(names).not.toContain(absent);
     }
@@ -388,5 +390,82 @@ describe("the reader on a campaign whose exam follows its harness", () => {
     expect(of("WHAT BINDS")).toEqual([
       "tasks: 1 of the pool can be scored and a step takes 4: no Examiner session has written against this harness",
     ]);
+  });
+});
+
+describe("the reader on what a round's reading rests on", () => {
+  const log: LogEvent[] = [];
+  const put = (kind: EventKind, data: JsonObject) => {
+    log.push({ at: new Date(START + log.length * 1_000).toISOString(), kind, data });
+  };
+  let made = 0;
+  /** One finished solve under `harness`, with the host's code as `host` names it. */
+  const ran = (task: string, harness: string, outcome: "pass" | "fail", host = "host-1") => {
+    const under = { ...condition(task, harness), host };
+    const id = `w${String((made += 1))}`;
+    put("condition.recorded", { id: conditionId(under), condition: requireJsonValue(under) });
+    put("solve.started", { solve: id, condition: conditionId(under), limits: { wallSeconds: 100 } });
+    put("solve.finished", {
+      solve: id,
+      ending: outcome === "pass" ? { outcome } : { outcome, kind: "rejected" },
+      seconds: 50,
+    });
+    return id;
+  };
+  const WON = ["v1", "v2", "v3", "v4"];
+  for (const version of [...WON, "l1", "a1"]) {
+    put("task.proposed", { version });
+    for (const gate of [1, 2, 3, 4]) put("task.gate", { version, gate, outcome: "passed", controls: "d" });
+  }
+  put("anchor.drawn", { tasks: ["a1"] });
+  const report = { level: 0.1, solves: 1, screening: { solves: 3, fails: 2 }, short: [], unscreened: [] };
+  // Round one, at one solve a side: the child wins four tasks and loses one. The Referee read the
+  // fails behind two of the wins and behind the loss, and let each stand.
+  put("build.started", { session: "b-1", parent: "hp", tasks: [] });
+  put("build.finished", { session: "b-1", ended: "finished", harness: "hc", changed: true });
+  for (const version of [...WON, "l1"]) put("task.state", { version, state: "admitted", session: "b-1" });
+  const fails = WON.map((version) => {
+    const failed = ran(version, "hp", "fail");
+    ran(version, "hc", "pass");
+    return failed;
+  });
+  ran("l1", "hp", "pass");
+  for (const read of [...fails.slice(0, 2), ran("l1", "hc", "fail")]) {
+    put("referee.finding", { solve: read, ruling: "earned", probes: [] });
+  }
+  put("comparison.reported", {
+    ...report,
+    session: "b-1",
+    old: "hp",
+    fresh: "hc",
+    versions: [...WON, "l1"],
+    scored: { wins: 4, losses: 1, ties: 0 },
+    reading: "no-step",
+  });
+  // Round two scores one task whose two sides ran under different host code: no pair to read.
+  put("build.started", { session: "b-2", parent: "hp", tasks: [] });
+  put("build.finished", { session: "b-2", ended: "finished", harness: "hd", changed: true });
+  put("task.state", { version: "v1", state: "admitted", session: "b-2" });
+  ran("v1", "hp", "fail");
+  ran("v1", "hd", "pass", "host-2");
+  put("comparison.reported", {
+    ...report,
+    session: "b-2",
+    old: "hp",
+    fresh: "hd",
+    versions: ["v1"],
+    scored: { wins: 1, losses: 0, ties: 0 },
+    reading: "no-step",
+  });
+  const of = (name: keyof typeof TRIGGERS) =>
+    overview(log).triggers.flatMap((trigger) => (trigger.name === name ? [trigger.detail] : []));
+
+  it("sets each report's scored test against its reviewers, with their error unmeasured", () => {
+    // 4-1 is 6 in 32 and does not clear; with the loss gone, 4-0 does. Two wins were read by nobody.
+    expect(of("RULINGS AGAINST THE EFFECT")).toEqual([
+      "b-1: 2 of 5 informative pairs rest on a fail no reviewer read; the scored test does not clear its level, and 1 of its 1 losses resting on a mistaken ruling would move it; the Referee's error is unmeasured",
+    ]);
+    // The round with no pairs to read is named by the lane that owns why.
+    expect(of("PAIR DIFFERS BEYOND HARNESS")).toEqual(["b-2: host"]);
   });
 });

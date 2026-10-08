@@ -6,9 +6,8 @@
  *
  *   light    the log and each launch's receipt and output, each harness a session kept
  *            (`states/<digest>/`) and the brief
- *   medium   and the checker (`checks/`, each one the campaign adopted since under `epochs/`, and
- *            the copy a harness holds when its Builder was given one) and the toolchain's own
- *            files (`states/tree-*`)
+ *   medium   and the checker (`checks/`, and the copy a harness holds when its Builder was given
+ *            one) and the toolchain's own files (`states/tree-*`)
  *   verbose  and whatever else the run's folder holds, and the source each worktree ran at its commit
  *
  * With no names, every run log in the repository's worktrees, as the pulse finds them. In the zip a
@@ -44,9 +43,7 @@ const GROUPS: readonly (readonly [name: string, holds: string, level: Level, pat
     "light",
     /^([^/]+\.jsonl|launch-[^/]+)$/,
   ],
-  // A campaign that adopted a checker stages it beside the first (`tools/d2/campaign.ts`), and the
-  // last one adopted is the one its tasks answer now.
-  ["brief", "the brief the tasks answer", "light", /^(checks|epochs\/[0-9a-f]{16})\/brief\.json$/],
+  ["brief", "the brief the tasks answer", "light", /^checks\/brief\.json$/],
   [
     "harness",
     "each harness a session kept: guide, tools, tool spec, memory",
@@ -57,7 +54,7 @@ const GROUPS: readonly (readonly [name: string, holds: string, level: Level, pat
     "checker",
     "the checks, their tests and their reference, and a harness's own copy of them",
     "medium",
-    /^(checks|epochs\/[0-9a-f]{16}|states\/[0-9a-f]{64}\/correctness-model)\//,
+    /^(checks|states\/[0-9a-f]{64}\/correctness-model)\//,
   ],
   ["toolchain", "what a harness installed, less the packages", "medium", /^states\/tree-[^/]+\//],
   ["source", "the tracked src, tools and docs of the worktree at its commit", "verbose", /^source\//],

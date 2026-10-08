@@ -28,7 +28,6 @@
  */
 import { Type } from "typebox";
 import type { Contract } from "../kernel/contract.ts";
-import { epochsOf } from "../kernel/epoch.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import {
   applicableTruthChecks,
@@ -181,7 +180,7 @@ function packet(fail: RefereeCase, verdict: LoggedVerdict, accepted: JsonValue |
 }
 
 /** A window of one check-program file, or the list of them with no path. */
-export function readProgramTool(checks: string) {
+function readProgramTool(checks: string) {
   return tool({
     name: "read_check_program",
     label: "Read the check program",
@@ -297,9 +296,7 @@ function rulingTool(
  *  the reader rules the rest; one that never rules leaves the fail unclear. The reader's first
  *  probe reuses the replay as its original side, so a reading costs no second run of the checks.
  *  The accepted answer is the last the log holds for the task's id, which is how a verdict names
- *  its task. In a campaign that adopted a checker (`src/kernel/epoch.ts`) only a pass logged since
- *  the last adoption is one these checks gave: the adoption's own copy of each witness it kept is
- *  among them, and a task whose witness it lost has no accepted answer until it is solved again. */
+ *  its task. */
 export async function referee(reader: Reader, fail: RefereeCase): Promise<RefereeFinding> {
   const events = read(fail.log);
   const verdict = loggedVerdict(events, fail.solve);
@@ -307,12 +304,9 @@ export async function referee(reader: Reader, fail: RefereeCase): Promise<Refere
   const host = hostRuling(verdict, replay);
   const rows: ProbeRow[] = [];
   const found: RefereeFinding[] = [];
-  const epochs = epochsOf(events);
-  const accepted = events
-    .slice(epochs.length > 1 ? (epochs.at(-1)?.index ?? 0) : 0)
-    .findLast(
-      ({ kind, data }) => kind === "verdict" && data.task === fail.task.taskId && data.kind === "pass",
-    )?.data.answer;
+  const accepted = events.findLast(
+    ({ kind, data }) => kind === "verdict" && data.task === fail.task.taskId && data.kind === "pass",
+  )?.data.answer;
   const meter =
     verdict === null || host !== null
       ? null

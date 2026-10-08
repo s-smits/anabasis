@@ -35,9 +35,6 @@ function round(root: string): Run {
   file("launch-b-1.json", "{}");
   file("checks/brief.json", "{}");
   file("checks/evaluator.ts", "export const check = 1;\n");
-  // A checker the campaign adopted since, staged beside the first by its digest.
-  file(`epochs/${DIGEST.slice(0, 16)}/brief.json`, "{}");
-  file(`epochs/${DIGEST.slice(0, 16)}/evaluator.ts`, "export const check = 2;\n");
   file(`states/${DIGEST}/agent/tools-spec.json`, "{}");
   file(`states/${DIGEST}/correctness-model/controls.json`, "[]");
   file(`states/${DIGEST}/node_modules/dep/index.js`, "module.exports = 1;\n");
@@ -84,7 +81,6 @@ describe("the runs zip", () => {
       };
       const light = [
         "brief tree/r1/checks/brief.json",
-        `brief tree/r1/epochs/${DIGEST.slice(0, 16)}/brief.json`,
         "log tree/r1/launch-b-1.json",
         "log tree/r1/log.jsonl",
         `harness tree/r1/states/${DIGEST}/agent/tools-spec.json`,
@@ -92,7 +88,6 @@ describe("the runs zip", () => {
       const medium = [
         ...light,
         "checker tree/r1/checks/evaluator.ts",
-        `checker tree/r1/epochs/${DIGEST.slice(0, 16)}/evaluator.ts`,
         `checker tree/r1/states/${DIGEST}/correctness-model/controls.json`,
         "toolchain tree/r1/states/tree-abc/bin/solver",
       ];
@@ -142,8 +137,7 @@ describe("the runs zip", () => {
       const read = (name: string) => runTextSyncOrThrow(["unzip", "-p", out, `handover/${name}`]);
       expect(read("NOTES.md")).toBe("# What the sender saw\n");
       expect(read("README.md")).toContain("| tree/r1/log.jsonl |");
-      // The first checker's brief and the adopted one's.
-      expect(read("README.md")).toContain("| brief | the brief the tasks answer | light | 2 files, 0 KB |");
+      expect(read("README.md")).toContain("| brief | the brief the tasks answer | light | 1 file, 0 KB |");
       expect(read("README.md")).toContain("| checker |");
       expect(read("README.md")).toContain("| medium | not at this level |");
       expect(read("GUIDE.md")).toContain("## How to read this bundle");

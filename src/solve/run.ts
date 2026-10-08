@@ -109,10 +109,6 @@ export interface Played {
   readonly homeBytes: number | null;
 }
 
-/** Whose turns and calls a trace holds, as the prefix of its event kinds: a solve's, or a
- *  Builder's, an Examiner's or a Rule Author's session. */
-type TraceOf = "solve" | "build" | "exam" | "rule";
-
 const RERUNS = 3;
 /** The text of a result or a turn the trace keeps: more than pi's own tools return of an output
  *  (50 KB), so the trace holds what the solver read. At 4 KB it held the head of a long result, and
@@ -319,9 +315,9 @@ export function failedTurn(turns: readonly AssistantMessage[]): string | null {
 }
 
 /** Every model turn and every tool call into the log, as they end: a solve's as `solve.turn` and
- *  `solve.call` under `solve`, a Builder's, an Examiner's or a Rule Author's session as `build.`,
- *  `exam.` or `rule.turn` and `.call` under `session`. */
-export function traceSink(log: string, of: TraceOf, id: string, turn: () => number) {
+ *  `solve.call` under `solve`, a Builder's or an Examiner's session as `build.` or `exam.turn` and
+ *  `.call` under `session`. */
+export function traceSink(log: string, of: "solve" | "build" | "exam", id: string, turn: () => number) {
   const named = of === "solve" ? { solve: id } : { session: id };
   const calls = new Map<string, { args: JsonValue; at: number }>();
   return (event: AgentEvent) => {
@@ -369,7 +365,7 @@ export function traceSink(log: string, of: TraceOf, id: string, turn: () => numb
  *  summary's usage into `summaries`, which the session's spend counts. */
 export function loopCompaction(
   log: string,
-  of: TraceOf,
+  of: "solve" | "build" | "exam",
   id: string,
   stream: StreamFn,
   summaries: Usage[],

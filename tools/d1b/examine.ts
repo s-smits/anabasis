@@ -132,12 +132,8 @@ export async function examineCommand(args: readonly string[], session = examine)
       families: check.execution.families,
     })),
     // The pack's tasks, and the ones earlier sessions wrote, which the opening message says the
-    // standing of. A pack's task an adoption carried is in the log too, and is listed once.
-    examples: [
-      ...new Map(
-        [...campaign.tasks, ...writtenTasks(before)].map((task) => [task.taskId, task] as const),
-      ).values(),
-    ],
+    // standing of.
+    examples: [...campaign.tasks, ...writtenTasks(before)],
     waiting: carriable(before).waiting,
     reach: reachOf(before, { harness: harness.digest, setting: campaign.setting(stronger) }).slice(0, reach),
     standsOn: { harness: harness.digest, setting: campaign.setting(campaign.test) },

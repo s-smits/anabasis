@@ -27,7 +27,7 @@ import { capturedJsonParse, capturedJsonStringify } from "../meta/json-runtime.t
 import { asRecord, type JsonObject, type JsonValue, isString } from "../meta/json-shape.ts";
 import { foldsEvent, taskStates } from "./task.ts";
 
-/** The plan's events, and twenty-six that are not among them. `anchor.drawn` names the task versions the
+/** The plan's events, and seventeen that are not among them. `anchor.drawn` names the task versions the
  *  anchor drew, which are never released, and a task may be released straight from held only once
  *  it is drawn, so the draw is an event the task states can see. `solve.turn` and `solve.call` are
  *  a solve's trace, one per model turn and one per tool call, so the trace is in the log rather than
@@ -39,20 +39,11 @@ import { foldsEvent, taskStates } from "./task.ts";
  *  and `exam.word`, the one word a task's author is told of it, with the solves it rests on
  *  (`src/examiner/session.ts`). `checker.read` is what a campaign's check program was seen to do, by
  *  the version it was read at (`acceptance.ts`); `contract.frozen` is the operator's word that the
- *  contract and that version stand, and a campaign whose own differ from it does not open. It may be
- *  logged again: the last one is the campaign's checker, and each later one opens a checker epoch
- *  (`epoch.ts`). `checker.adopted` closes an epoch's adoption with what it carried, and
- *  `verdict.regraded` is a stored solve under the adopted checker: its answer's verdict there, and
- *  the task version it stands for where the solver was asked the same thing (`ladder.ts`). The seven
- *  `rule.*` kinds are a Rule Author session's (`src/rules/session.ts`): the same four as a Builder's
- *  or an Examiner's, `rule.gate`, one for each gate a proposed addition met, and `rule.candidate`,
- *  the reading of the candidate pack a session left for the operator. They move no task and no
- *  checker: a candidate is adopted elsewhere or not at all. */
+ *  contract and that version stand, and a campaign whose own differ from it does not open. */
 export const EVENT_KINDS = [
   "world.accepted",
   "checker.read",
   "contract.frozen",
-  "checker.adopted",
   "condition.recorded",
   "harness.version",
   "build.started",
@@ -66,13 +57,6 @@ export const EVENT_KINDS = [
   "exam.compacted",
   "exam.word",
   "exam.finished",
-  "rule.started",
-  "rule.turn",
-  "rule.call",
-  "rule.compacted",
-  "rule.gate",
-  "rule.candidate",
-  "rule.finished",
   "task.proposed",
   "task.gate",
   "task.state",
@@ -82,7 +66,6 @@ export const EVENT_KINDS = [
   "solve.compacted",
   "solve.finished",
   "verdict",
-  "verdict.regraded",
   "referee.finding",
   "referee.dispute",
   "diagnosis.recorded",
@@ -103,36 +86,9 @@ export interface LogEvent {
   readonly data: JsonObject;
 }
 
-/** An event before it is appended: the log's clock gives it its time. */
-export interface Entry {
-  readonly kind: EventKind;
-  readonly data: JsonObject;
-}
-
 export function append(path: string, kind: EventKind, data: JsonObject): LogEvent {
   const event: LogEvent = { at: new Date().toISOString(), kind, data };
   if (foldsEvent(kind)) taskStates([...read(path), event]);
-  written(path, [event]);
-  return event;
-}
-
-/**
- * Several events as one append: folded together onto the log so far, written in one write and
- * synced once. An adoption of a changed checker carries every live task at a time (`epoch.ts`),
- * some hundreds of task events, and appended one by one each would read the whole log to fold it.
- * A crash inside the write leaves whole lines and at most one torn one, as any append does, so
- * what a batch must not leave half done it closes with an event of its own.
- */
-export function appendAll(path: string, entries: readonly Entry[]): LogEvent[] {
-  const at = new Date().toISOString();
-  const events = entries.map(({ kind, data }): LogEvent => ({ at, kind, data }));
-  if (events.some(({ kind }) => foldsEvent(kind))) taskStates([...read(path), ...events]);
-  written(path, events);
-  return events;
-}
-
-/** The lines of `events` at the end of the log, synced before it returns. */
-function written(path: string, events: readonly LogEvent[]): void {
   const fd = openSync(path, "a+");
   try {
     const size = fstatSync(fd).size;
@@ -140,11 +96,12 @@ function written(path: string, events: readonly LogEvent[]): void {
     if (size > 0 && readSync(fd, last, 0, 1, size - 1) === 1 && last[0] !== NEWLINE) {
       throw new Error(`${path}: the last line is torn, so nothing is appended`);
     }
-    writeSync(fd, events.map((event) => `${capturedJsonStringify(event)}\n`).join(""));
+    writeSync(fd, `${capturedJsonStringify(event)}\n`);
     fsyncSync(fd);
   } finally {
     closeSync(fd);
   }
+  return event;
 }
 
 /** Every event in append order. A missing log is an empty history. */

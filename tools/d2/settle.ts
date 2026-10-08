@@ -22,9 +22,7 @@
  * These labels are made beside a log that holds the Referee's rulings, so they are not blind and
  * measure nothing of the Referee: its bar is cleared on labels drawn before it reads
  * (`tools/c/rejections.ts`). A task disputed here on a check's fault is a repair owed to the
- * checker's owner, and the labels file is what `tools/c/accept.ts --labels` takes when the
- * repaired pack is read and adopted. A round is settled before the campaign adopts another
- * checker: the adoption waits for it, since its tasks go stale and could no longer be disputed.
+ * checker's owner, and the labels file is what `tools/c/repaired.ts --labels` takes.
  *
  * It starts no solve and calls no model. Not run here: see `campaign.ts`.
  */

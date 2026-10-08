@@ -17,14 +17,6 @@
  * stand now (`src/examiner/record.ts`), and practice is drawn from what the frontier fails
  * (`tools/d2/prepare.ts`).
  *
- * A campaign may adopt a changed checker (`epoch.ts`), and each live task then goes on as a new
- * version. Where the solver was asked the same thing, the task and every public rule as they were,
- * a solve of the old version stands for the new one: its stored answer was graded again under the
- * adopted checks, with no model, and logged as `verdict.regraded` under the version it stands for.
- * Those are read here beside the version's own solves, so a repair of the evaluator leaves every
- * task placed. Where a public rule changed, the old answers answered another question, the
- * adoption logs none for the new versions, and those tasks are unplaced until they are solved.
- *
  * Nothing here decides a comparison. A standing only chooses what is solved next, as screening
  * does: the solves that score a task are made fresh, after its admission, and never the ones that
  * placed it.
@@ -97,50 +89,48 @@ export function lastReports(
     });
 }
 
-/** An ending a standing reads, from the record a `solve.finished` or a `verdict.regraded` holds of
- *  it; null for a non-result and for anything else. */
-function countedOf(ending: JsonObject | null): Counted | null {
-  if (ending?.outcome === "pass") return { outcome: "pass" };
-  if (ending?.outcome !== "fail") return null;
-  if (ending.kind === "broken-harness") {
-    return { outcome: "fail", kind: "broken-harness", reason: isString(ending.reason) ? ending.reason : "" };
-  }
-  const failed = FAILS.find((known) => known === ending.kind);
-  return failed === undefined ? null : { outcome: "fail", kind: failed };
-}
-
 /** A task version's counted solves where a solver stands, each with how it ended, oldest first. A
- *  setting holds its side, so a test solver's stand reads no stronger solve. A solve of the
- *  version it continues, graded again under an adopted checker, is read as that grading left it,
- *  under the stand the solve itself ran at. */
+ *  setting holds its side, so a test solver's stand reads no stronger solve. */
 export function solvesOf(
   events: readonly LogEvent[],
   version: string,
   stand: Stand,
 ): { readonly solve: string; readonly ending: Counted }[] {
-  const here = new Map(
+  const under = new Set(
     [...conditionsOf(events)].flatMap(([id, condition]) =>
-      condition.harness === stand.harness && settingId(condition) === stand.setting
-        ? [[id, condition.task] as const]
+      condition.task === version &&
+      condition.harness === stand.harness &&
+      settingId(condition) === stand.setting
+        ? [id]
         : [],
     ),
   );
-  /** Each solve made where the solver stands, by the task version it was a solve of. */
-  const ran = new Map(
-    events.flatMap(({ kind, data }) => {
-      const made = here.get(isString(data.condition) ? data.condition : "");
-      return kind === "solve.started" && isString(data.solve) && made !== undefined
-        ? [[data.solve, made] as const]
-        : [];
-    }),
+  const ran = new Set(
+    events.flatMap(({ kind, data }) =>
+      kind === "solve.started" &&
+      isString(data.solve) &&
+      isString(data.condition) &&
+      under.has(data.condition)
+        ? [data.solve]
+        : [],
+    ),
   );
   return events.flatMap(({ kind, data }) => {
     const { solve } = data;
-    if (!isString(solve)) return [];
-    const own = kind === "solve.finished" && ran.get(solve) === version;
-    const stood = kind === "verdict.regraded" && data.version === version && ran.has(solve);
-    const ending = own || stood ? countedOf(asRecord(data.ending)) : null;
-    return ending === null ? [] : [{ solve, ending }];
+    const ending = asRecord(data.ending);
+    if (kind !== "solve.finished" || !isString(solve) || !ran.has(solve)) return [];
+    const counted = (told: Counted) => [{ solve, ending: told }];
+    if (ending?.outcome === "pass") return counted({ outcome: "pass" });
+    if (ending?.outcome !== "fail") return [];
+    if (ending.kind === "broken-harness") {
+      return counted({
+        outcome: "fail",
+        kind: "broken-harness",
+        reason: isString(ending.reason) ? ending.reason : "",
+      });
+    }
+    const failed = FAILS.find((known) => known === ending.kind);
+    return failed === undefined ? [] : counted({ outcome: "fail", kind: failed });
   });
 }
 

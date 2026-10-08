@@ -31,6 +31,7 @@ import { contractHash } from "#src/kernel/contract.ts";
 import { gatesOf } from "#src/kernel/history.ts";
 import { append, type EventKind, read } from "#src/kernel/log.ts";
 import {
+  CONTROLS,
   type RejectControl,
   controlsGate,
   determinismGate,
@@ -54,7 +55,6 @@ import {
   contractOf,
   packageOf,
   packControls,
-  packSet,
   readPack,
   recordedAnswerFormat,
   storedAnswer,
@@ -102,8 +102,12 @@ async function main(): Promise<void> {
   console.log(`old ${old}, new ${fresh}, stronger ${stronger}`);
 
   const v1Controls = (taskId: string): [JsonValue, RejectControl[]] => {
-    const own = packSet(controls, taskId);
-    return own === null ? [null, []] : [own.accepted, own.set];
+    const own = controls.filter((control) => control.taskId === taskId);
+    const accepted = own.find((control) => control.refusedBy === null)?.answer ?? null;
+    const rejects = own.flatMap(({ answer, refusedBy }) =>
+      refusedBy === null ? [] : [{ answer, expectedCheckId: refusedBy }],
+    );
+    return [accepted, rejects.slice(0, CONTROLS)];
   };
 
   const log = values.log ?? join(dir, "log.jsonl");

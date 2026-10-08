@@ -103,10 +103,7 @@ line is the metered dollars by role, which lane 28 starts from.
 hashes, the contract's and the check program's; a task version holds the second. A campaign with
 nothing frozen has no checker on record, only whichever one each task version names. A reading at
 other hashes than the frozen ones is of another checker. `despite` on a freeze is the operator's
-reason for freezing over named faults: quote the count, not the reason's text. A log may hold
-several freezes: the last is the checker the campaign stands on, each later one is an epoch the
-operator adopted (`tools/c/accept.ts --freeze` over a changed pack), and the row gives one line
-an adoption with what it carried.
+reason for freezing over named faults: quote the count, not the reason's text.
 
 **C. conditions.** List the conditions by side and model, and the number of distinct values of
 each field. One contract, one sandbox, one verifier tool tree and one host hash is the clean case.
@@ -114,9 +111,8 @@ More than one host hash means the code was edited inside the campaign; a round c
 in its own window for that reason. Say how many finished solves name no response model: there the
 served model is the provider's word and nothing attests it.
 
-**D. task sets.** Partition the tasks: the pack's, a session's, carried in from another campaign's
-log (before 2026-10-08), and count apart the later versions an adopted checker gave them, whose
-earlier versions are stale. Then by state, and name the anchor, the released practice tasks, the admitted
+**D. task sets.** Partition the task versions: the pack's, a session's, carried from another
+checker's campaign. Then by state, and name the anchor, the released practice tasks, the admitted
 set and what is still held. The sets a round uses must be disjoint: a version both practised and
 measured is lane 18's finding and is settled here first. The row's last line counts the feasible
 tasks still held outside the anchor, never yet admitted. A round screens the whole pool, those
@@ -179,11 +175,8 @@ verdicts may be compared at all; it routes to `host` (`src/kernel/verify.ts`,
 
 **3. Check discrimination and controls.**
 
-Starts from `NO CHECKER READING (lane 3)`, `CHECKER READ WITH FAULTS (lane 3)`,
-`CONTROL COVERAGE (lane 3)` and `RULE ADDITION REFUSED (lane 3)`. The last counts the additions a
-Rule Author session put to its gates and had refused (`rule.gate`), by gate and by the kind of
-control fault. Read it as what a session-written check got wrong before it could be left as a
-candidate; no refused addition touched the campaign's checker.
+Starts from `NO CHECKER READING (lane 3)`, `CHECKER READ WITH FAULTS (lane 3)` and
+`CONTROL COVERAGE (lane 3)`.
 
 The question is whether each check has been seen to refuse what it should and pass what it should,
 and whether the controls that would show it are still right. Read the last `checker.read`: its
@@ -202,12 +195,7 @@ the checker can be frozen as it stands; it routes to `pack/controls` for a stale
 
 **4. False rejection among fails.**
 
-Starts from `REFUSED UNREAD (lane 4)`, `CHECK DEFECT RULED (lane 4)`, `RULED UNCLEAR (lane 4)` and
-`CANDIDATE INTERFERENCE (lane 4)`. The last is a Rule Author's candidate graded over every
-accepted answer on record once its session was over (`rule.gate` with `over: record`). Each
-refusal is an answer the campaign's checks accept and the added check would not: decide from the
-new rule's statement alone whether it settles that refusal, and take `refuses-all`, an answer the
-check could not run on, or `refuses-none` as a reason to read the check before anyone adopts it.
+Starts from `REFUSED UNREAD (lane 4)`, `CHECK DEFECT RULED (lane 4)` and `RULED UNCLEAR (lane 4)`.
 
 The question is whether a refused answer was wrong or a right one the checks refused. Every
 reading of a comparison rests on it: a refusal that is the check's fault makes a win when it falls
@@ -247,46 +235,22 @@ the checker's owner as the repair's accept controls.
 **6. Checker identity, freeze and repair closure.**
 
 Starts from `CHECKER NOT FROZEN (lane 6)`, `FROZEN DESPITE FAULTS (lane 6)`,
-`READ AT ANOTHER VERSION (lane 6)`, `TASKS CARRIED (lane 6)`, `REFUSALS WITHDRAWN (lane 6)`,
-`ACCEPTED NEWLY REFUSED (lane 6)`, `ADOPTION CUT SHORT (lane 6)`, `RULE CANDIDATE LEFT (lane 6)`
-and `RULE SESSION ENDED (lane 6)`. A candidate is the campaign's pack with one rule and one check
-added, kept under the campaign's `candidates/`, and no event of its session adopts it: every result is still
-counted under the check program the candidate names as its base, and a candidate over another
-base than the campaign runs under now is stale. `RULE SESSION ENDED` names the Rule Author
-sessions that left no candidate and how each ended; one that finished after no addition is its
-author's reading that the checks already judge what the field asks.
-`TASKS CARRIED`, `REFUSALS WITHDRAWN`, `ACCEPTED NEWLY REFUSED` and `ADOPTION CUT SHORT` are a
-campaign that changed its checker inside its log, one line an adoption. `REFUSALS WITHDRAWN`
-counts the answers refused before and accepted now, by what was ruled of each: only those ruled a
-check defect were the adoption's to withdraw, so one ruled earned or read by nobody is a
-loosening the operator overruled, and `FROZEN DESPITE FAULTS` names that adoption too.
-`ACCEPTED NEWLY REFUSED` counts the reverse: where the solver was asked another thing it is what
-an added requirement does, and where it was asked the same thing it is a repair that tightened
-what nobody asked it to. `ADOPTION CUT SHORT` is a freeze with no `checker.adopted` after it: no
-command opens the campaign until `tools/c/accept.ts --freeze` is run again over the same pack.
+`READ AT ANOTHER VERSION (lane 6)` and `TASKS CARRIED (lane 6)`.
 
 The question is under which checker each result was counted, and whether a repair closed what it
 was made for. A campaign whose checker is not frozen can have its staged `checks/` edited between
 two rounds with nothing refusing it; only the task versions would show it, as tasks that silently
-stop matching. A campaign that adopted a checker holds each one as an epoch of the same log
-(`src/kernel/epoch.ts`), and a round is read under the checker frozen before its report. For each
-adoption read the `checker.read` logged just before its freeze: its `repair` gives the verdicts
-that moved and the reading of them, withdrawn refusals by what was ruled of each, accepted
-answers newly refused, and ruled defects still refused, and its `faults` the controls the pack
-broke. Say whether the adoption moved only answers that were read and ruled the old checker's
-fault, and what it left: `unrepaired` is a defect ruled and not fixed, `unread` a withdrawal
-nobody can defend. Then read what its `checker.adopted` says it carried: tasks feasible again
-with no solve, tasks that wait for controls, tasks whose witness the adopted checks no longer
-accept, which wait for the stronger solver as any reach task does, and how many solves on record
-stand for the carried versions by regrade (`verdict.regraded` with a `version`). Those standings
-place a task and score none: confirm that no report's pairs count a solve made before its task's
-carried version was proposed. `tools/c/accept.ts` over the log and a pack, without `--freeze`,
-gives the same reading of a pack not yet adopted and writes nothing. A log from before
-2026-10-08 took a repaired checker's tasks from another campaign's log instead: its proposals
-name the old log's solve in `carried`, and the two campaigns are read together only on that
-reading. The decision it changes is whether results on both sides of a checker's change may be
-read together; it routes to `operator` for a freeze not given or a pack adopted against its
-reading, and `pack/evaluator` for a defect left standing.
+stop matching. For a campaign whose tasks were carried, read the campaign they came from:
+`tools/c/repaired.ts` over the old log and the repaired pack gives the verdicts that moved and
+the reading of them, withdrawn refusals by what was ruled of each, accepted answers newly refused,
+ruled defects still refused, and the controls the repair broke. Say whether the repair moved only
+answers that were read and ruled the old checker's fault, and what it left: `unrepaired` is a
+defect ruled and not fixed, `unread` a withdrawal nobody can defend. Then read what `carry.ts`
+did: tasks feasible again with no solve, tasks refused because the repaired checks no longer
+accept their witness, and tasks closed as too hard that the repaired checks would accept, which
+have no controls and are in neither campaign's sets. The decision it changes is whether results
+of the two campaigns may be read together; it routes to `operator` for a freeze not given or a
+repair adopted against its reading, and `pack/evaluator` for a defect left standing.
 
 ### The tasks
 

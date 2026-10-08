@@ -350,25 +350,6 @@ describe("the Referee", () => {
     );
   });
 
-  it("sets no answer an earlier checker accepted beside a fail, once the campaign has adopted another", async () => {
-    const unclear = ruling({ ruling: "unclear", reason: "Not settled.", probes: [] });
-    const s = setup([unclear, unclear]);
-    // The first checker accepted an answer of the task; the campaign then adopted a second.
-    s.record("contract.frozen", { contract: "c-1", checks: "k-1" });
-    s.record("verdict", { solve: "s-0", task: "t-1", answer: { span: 9, members: [] }, kind: "pass" });
-    s.record("contract.frozen", { contract: "c-1", checks: "k-2", epoch: 2 });
-    failed(s.record);
-    await referee(s.reader, fail(s));
-    expect(s.sent[0]).toContain("No answer the checks accepted for this task is recorded.");
-    // The copy of a witness the adoption kept is an answer the adopted checks accepted.
-    const kept = { solve: "carried-s-0", task: "t-1", answer: { span: 8, members: [] }, kind: "pass" };
-    s.record("verdict", { ...kept, carried: true });
-    await referee(s.reader, fail(s));
-    expect(s.sent[1]).toContain(
-      String.raw`An answer the checks accepted for this task: {\"span\":8,\"members\":[]}`,
-    );
-  });
-
   it("ends a reading at its wall, and says so in the finding", async () => {
     // The replay is the host's and runs before the reading; the probe's second run outlasts the wall.
     const s = setup([

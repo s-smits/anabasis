@@ -86,13 +86,6 @@ export interface Regraded {
   readonly now: string;
 }
 
-/** The same with the two verdicts as they were given: the log's, and the other checker's, which
- *  is null where it holds no such task. */
-export interface Regrade extends Regraded {
-  readonly before: Verdict;
-  readonly verdict: Verdict | null;
-}
-
 /** Every control through the checks, twice, `width` at once. A control of a task the pack does not
  *  hold is the caller's error, not the checker's, and a verifier that cannot decide stops the run,
  *  as it stops a gate (`decided`): a wall that is not there is no fault of a check's. */
@@ -213,9 +206,8 @@ export function frozenChecker(events: readonly LogEvent[]): Checker | null {
 }
 
 /** Why `own` is not the checker the log froze, or null when it is, or when none is frozen. A frozen
- *  contract changes only through the operator (`contract.ts`), and so does a repaired check
- *  program: the operator adopts either into the campaign, which freezes it as the log's next
- *  checker and carries the tasks over (`epoch.ts`). Until then nothing is counted under it. */
+ *  contract changes only through the operator (`contract.ts`), and a repaired check program is
+ *  another checker: its campaign is another campaign, with nothing of this one's counted under it. */
 export function departure(events: readonly LogEvent[], own: Checker): string | null {
   const frozen = frozenChecker(events);
   if (frozen === null) return null;
@@ -225,7 +217,7 @@ export function departure(events: readonly LogEvent[], own: Checker): string | n
   ];
   return moved.length === 0
     ? null
-    : `the log froze another ${moved.join(" and ")}; a changed checker is adopted into the campaign by the operator (tools/c/accept.ts --freeze)`;
+    : `the log froze another ${moved.join(" and ")}; a changed checker takes a campaign of its own`;
 }
 
 /** The verdict a `verdict` event holds, when a check gave it. An answer outside the contract's
@@ -242,43 +234,34 @@ function loggedVerdict(data: JsonObject): Verdict | null {
 
 /**
  * Every answer the log holds a checker's verdict for, graded again by `verify` over `tasks`, a
- * changed checker's own: the verdict each solve's answer has under the campaign's checker beside
- * the changed checker's of the same bytes, `width` at once. No solve is run, since the log holds
- * each answer whole.
+ * repaired checker's own: the last verdict of each solve beside the repaired checker's of the same
+ * bytes, `width` at once. No solve is run, since the log holds each answer whole.
  *
- * It is what a change costs before it is adopted. A verdict that moves is a task whose state rested
- * on the old checker, and one that stays is a refusal the change did not touch. A task the changed
+ * It is what a repair costs before it is adopted. A verdict that moves is a task whose state rested
+ * on the old checker, and one that stays is a refusal the repair did not touch. A task the repaired
  * pack no longer holds is reported so, and a verifier that cannot decide stops the run (`decided`).
- *
- * The verdict a solve's answer has under the campaign's checker is the last the log holds of it:
- * its own `verdict`, or the `verdict.regraded` a later adoption logged when it moved. So a second
- * adoption is read against the checker it replaces and not against the first one. An adoption's
- * copy of a witness answer (`carried`) is the same bytes as its solve's and is not read twice.
  */
 export function regraded(
   events: readonly LogEvent[],
   tasks: readonly Task[],
   verify: Verifier,
   width: number,
-): Promise<Regrade[]> {
+): Promise<Regraded[]> {
   const byId = new Map(tasks.map((task) => [task.taskId, task]));
-  const held = new Map<string, { task: string; answer: JsonValue; before: Verdict }>();
-  for (const { kind, data } of events) {
-    const { solve, task, answer } = data;
-    if (!isString(solve) || data.carried === true) continue;
-    const before = loggedVerdict(data);
-    const earlier = held.get(solve);
-    if (kind === "verdict") {
-      if (before === null || !isString(task) || answer === undefined) held.delete(solve);
-      else held.set(solve, { task, answer, before });
-    } else if (kind === "verdict.regraded" && before !== null && earlier !== undefined) {
-      held.set(solve, { ...earlier, before });
-    }
-  }
-  return pooled([...held], width, async ([solve, { task, answer, before }]) => {
+  const last = new Map(
+    events.flatMap(({ kind, data }) =>
+      kind === "verdict" && isString(data.solve) ? [[data.solve, data]] : [],
+    ),
+  );
+  const held = [...last].flatMap(([solve, data]) => {
+    const verdict = loggedVerdict(data);
+    return verdict === null || !isString(data.task) || data.answer === undefined
+      ? []
+      : [{ solve, task: data.task, answer: data.answer, was: spelled(verdict) }];
+  });
+  return pooled(held, width, async ({ solve, task, answer, was }) => {
     const own = byId.get(task);
-    const verdict = own === undefined ? null : await decided(verify, own, answer);
-    const now = verdict === null ? "no task" : spelled(verdict);
-    return { solve, task, was: spelled(before), now, before, verdict };
+    const now = own === undefined ? "no task" : spelled(await decided(verify, own, answer));
+    return { solve, task, was, now };
   });
 }

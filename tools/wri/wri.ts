@@ -34,7 +34,6 @@ import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { plural } from "#src/meta/text.ts";
 import { treeContent } from "#src/solve/harness.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
-import { stagedChecks } from "../d2/campaign.ts";
 import { readPack } from "../m0/stored-sweep.ts";
 import { catalogueText, lanesOf, ownersOf, REFERENCES } from "./catalogue.ts";
 import {
@@ -213,14 +212,12 @@ function synthesis(): number {
 
 async function grade(): Promise<number> {
   const [log, bundle, taskId] = [needed("log"), needed("bundle"), needed("task")];
-  // The campaign's staged check program stands beside its log, the one its last freeze names; the
-  // tasks an Examiner wrote are in the log and in no pack.
-  const events = read(log);
-  const tasks = [...writtenTasks(events), ...readPack(bundle).tasks];
+  // The campaign's staged check program stands beside its log; the tasks an Examiner wrote are in
+  // the log and in no pack.
+  const tasks = [...writtenTasks(read(log)), ...readPack(bundle).tasks];
   const task = tasks.find((each) => each.taskId === taskId);
   if (task === undefined) throw new Error(`neither the log nor the pack holds task ${taskId}`);
-  const checks = stagedChecks(dirname(log), events);
-  const verify = openVerifier({ checks, tools: join(bundle, ".toolchain") });
+  const verify = openVerifier({ checks: join(dirname(log), "checks"), tools: join(bundle, ".toolchain") });
   console.log(spelled(await verify(task, capturedJsonParse(readFileSync(needed("answer"), "utf8")))));
   return 0;
 }

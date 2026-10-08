@@ -76,9 +76,9 @@ export function proposalsOf(events: readonly LogEvent[]): Proposal[] {
   });
 }
 
-/** The tasks a log holds whole in a proposal: an Examiner's instances, which no pack holds, and
- *  every task an adoption carried into a later checker. Each is given once, as the last proposal
- *  of its id holds it: a carried task is proposed again under the id it had. */
+/** The tasks a log holds whole in a proposal: an Examiner's instances and the ones carried from
+ *  another campaign, which no pack holds. Each is given once, as the last proposal of its id holds
+ *  it. */
 export function writtenTasks(events: readonly LogEvent[]): Task[] {
   return [
     ...new Map(

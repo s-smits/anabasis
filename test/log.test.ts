@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from "bun:test";
-import { append, appendAll, read, repair } from "../src/kernel/log.ts";
+import { append, read, repair } from "../src/kernel/log.ts";
 import { appendFileSync, mkdtempSync, readFileSync, rmSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
@@ -72,39 +72,5 @@ describe("the log", () => {
       "anchor.drawn names no task versions",
     );
     expect(read(path)).toEqual([proposed]);
-  });
-});
-
-describe("several events as one append", () => {
-  const gate = (number: number) => ({
-    kind: "task.gate" as const,
-    data: { version: "v1", gate: number, outcome: "passed", controls: "d" },
-  });
-  const proposed = { kind: "task.proposed" as const, data: { version: "v1" } };
-
-  it("are written in order under one time, and read back as their own lines", () => {
-    const path = fresh();
-    const first = append(path, "verdict", { pass: true });
-    const batch = appendAll(path, [proposed, gate(1), { kind: "verdict", data: { pass: false } }]);
-    expect(read(path)).toEqual([first, ...batch]);
-    expect(new Set(batch.map(({ at }) => at)).size).toBe(1);
-    expect(appendAll(path, [])).toEqual([]);
-    expect(read(path)).toHaveLength(4);
-  });
-
-  it("are folded together, and none is written when one of them breaks the fold", () => {
-    const path = fresh();
-    append(path, "task.proposed", { version: "v0" });
-    const before = readFileSync(path, "utf8");
-    // The second gate is out of order only because of the batch's own first one.
-    expect(() => appendAll(path, [proposed, gate(1), gate(3)])).toThrow(
-      "task v1 logs gate 3 out of order, after passing 1",
-    );
-    expect(() => appendAll(path, [{ kind: "task.proposed", data: { version: "v0" } }])).toThrow(
-      "task v0 is proposed twice",
-    );
-    expect(readFileSync(path, "utf8")).toBe(before);
-    appendFileSync(path, '{"at":"2026-10-07T00:00:00.000Z","kind":"verd');
-    expect(() => appendAll(path, [{ kind: "verdict", data: {} }])).toThrow("the last line is torn");
   });
 });

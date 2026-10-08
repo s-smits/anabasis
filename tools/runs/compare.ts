@@ -24,7 +24,6 @@
 import { type Paired, pairsOf } from "#src/kernel/compare.ts";
 import { type Condition, conditionsOf, fieldsApart } from "#src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "#src/kernel/log.ts";
-import { taskSets } from "#src/kernel/task.ts";
 import { TOOLS_SPEC_FILE } from "#src/meta/bundle-layout.ts";
 import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
@@ -166,10 +165,12 @@ export function roundOf(
   const [built, anchored, report] = [mine("build.finished"), mine("anchor.scored"), mine(REPORTED)];
   const parent = word(started.parent);
   const fresh = built?.changed === true && isString(built.harness) ? built.harness : "";
-  // The anchor's versions as the fold names them: the drawn ones, and each version that continues
-  // one under an adopted checker (`src/kernel/task.ts`).
-  const anchor = [...taskSets(events).anchor];
-  const drawnThen = taskSets(events.slice(0, until)).anchor.size;
+  // The anchor is the log's, every draw of it: two rounds of one campaign are then read on the
+  // tasks both solved, and a task drawn after a round is one that round left unresolved.
+  const anchor = events.flatMap(({ kind, data }) => (kind === ANCHOR_DRAWN ? strings(data.tasks) : []));
+  const drawnThen = events
+    .slice(0, until)
+    .flatMap(({ kind, data }) => (kind === ANCHOR_DRAWN ? strings(data.tasks) : [])).length;
 
   const solves = solvesOf(own, session);
   const condition = solves.at(-1)?.under;

@@ -60,6 +60,19 @@ export function supply(events: readonly LogEvent[], of = FEASIBLE) {
   return {
     proposed: written.size,
     words: countBy(tasks, ({ word }) => word),
+    // What each gate refused, so that a gate's cost is read beside what it let through. Gates 1 and
+    // 4 refuse what the Examiner wrote, a package or its controls; gates 2 and 3 refuse a task for
+    // its checks, one that could not run on an answer or did not repeat, which is the checker's
+    // fault and not the author's. v1 never had this count for its submit gate: "whether the gate
+    // buys protection is not measured" (v1 #113).
+    refusedAt: countBy(
+      events.flatMap(({ kind, data }) =>
+        kind === "task.gate" && data.outcome === "refused" && written.has(data.version) && isNumber(data.gate)
+          ? [data.gate]
+          : [],
+      ),
+      (gate) => `gate ${String(gate)}`,
+    ),
     feasible: feasible.length,
     once: read.filter(({ fails }) => fails >= 1).length,
     twice: read.filter(({ fails }) => fails >= 2).length,

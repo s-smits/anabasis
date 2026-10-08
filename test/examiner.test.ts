@@ -446,6 +446,8 @@ describe("D1b's supply reading", () => {
     expect(supply(read(s.log))).toEqual({
       proposed: 4,
       words: { scored: 1, "too hard": 1, refused: 1, "too easy": 1 },
+      // The instance with no base is no package: gate 1 refused it before any solve.
+      refusedAt: { "gate 1": 1 },
       feasible: 2,
       once: 2,
       twice: 1,

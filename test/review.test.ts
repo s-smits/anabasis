@@ -1,6 +1,7 @@
 // The two reviewers on the faux provider: the probe's field replacement and refusals, the Referee's
-// three rulings with a check-defect standing only on a probe that decided both sides, and the
-// Diagnoser reading only earned fails on released tasks, quoting what it saw or abstaining.
+// three rulings with a check-defect standing only on a probe that decided both sides and reached the
+// named check, its replay of the checks before any reading, and the Diagnoser reading only earned
+// fails on released tasks, against a pass under the same condition, quoting what it read or abstaining.
 import { afterAll, describe, expect, it } from "bun:test";
 import { createModels, fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai";
 import type { Contract } from "../src/kernel/contract.ts";
@@ -155,10 +156,56 @@ describe("the Referee", () => {
     expect(s.sent[1]).toContain("cites at least one probe whose two sides both reached a verdict");
     expect(s.sent[2]).toContain("// span <= 10");
     expect(s.sent[0]).toContain(CANARY);
-    expect(s.sent[0]).toContain(String.raw`span, citing R1 (\"A span is at most 12 m.\")`);
+    expect(s.sent[0]).toContain(String.raw`span, citing R1 (\"A span is at most 12 m.\"); reads $.span`);
     const logged = read(s.log).findLast((event) => event.kind === "referee.finding")?.data;
     expect(logged).toMatchObject({ solve: "s-1", task: "t-1", ruling: "check-defect", turns: 4 });
     expect(logged?.probeRows).toEqual([expect.objectContaining({ id: 1, moved: ["span"] })]);
+    expect(logged?.replay).toEqual({ kind: "fail", blocking: ["span"] });
+  });
+
+  it("refuses a check-defect on a probe the named check never receives", async () => {
+    const s = setup([
+      fauxAssistantMessage(fauxToolCall("probe_check", { path: "$.members[0].area", value: "5" }), toolUse),
+      ruling({ ruling: "check-defect", check: "span", reason: "The check is too strict.", probes: [1] }),
+      ruling({ ruling: "unclear", reason: "No probe on the span yet.", probes: [1] }),
+    ]);
+    failed(s.record);
+    expect((await referee(s.reader, fail(s))).ruling).toBe("unclear");
+    expect(s.sent[2]).toContain("span reads $.span, and no cited probe changed that");
+  });
+
+  it("replays the checks once, and the first probe reuses that run", async () => {
+    const s = setup([
+      fauxAssistantMessage(fauxToolCall("probe_check", { path: "$.span", value: "10" }), toolUse),
+      ruling({ ruling: "earned", reason: "12 m is over the check's 10.", probes: [1] }),
+    ]);
+    failed(s.record);
+    const answers: JsonValue[] = [];
+    await referee(s.reader, {
+      ...fail(s),
+      verify: async (task, answer) => {
+        answers.push(answer ?? null);
+        return verify(task, answer);
+      },
+    });
+    expect(answers).toEqual([ANSWER, { ...ANSWER, span: 10 }]);
+  });
+
+  it("rules a check that does not repeat a check-defect, and an undecided replay unclear, unread", async () => {
+    const s = setup([]);
+    failed(s.record);
+    expect(await referee(s.reader, { ...fail(s), verify: async () => ({ kind: "pass" }) })).toMatchObject({
+      ruling: "check-defect",
+      check: "span",
+      probes: [],
+    });
+    expect(read(s.log).at(-1)?.data).toMatchObject({ ruling: "check-defect", replay: { kind: "pass" } });
+    const undecided = async (): Promise<Verdict> => ({ kind: "non-result", reason: "the cell timed out" });
+    expect(await referee(s.reader, { ...fail(s), verify: undecided })).toMatchObject({
+      ruling: "unclear",
+      reason: "the replay reached no verdict: the cell timed out",
+    });
+    expect(s.calls()).toBe(0);
   });
 
   it("rules earned with no reading when no answer reached a check", async () => {
@@ -252,6 +299,7 @@ describe("the Diagnoser", () => {
 
   it("records a cause whose divergence quotes the trace, beside the passing solve", async () => {
     const recorded = {
+      owner: "guide" as const,
       cause: "The guide never says numpy is missing, so the script fails and the solver guesses.",
       falsifier: "A later solve that imports numpy without error and still answers 12.",
       firstDivergence: "ModuleNotFoundError:   numpy",
@@ -270,14 +318,96 @@ describe("the Diagnoser", () => {
       firstDivergence: "ModuleNotFoundError:   numpy",
     });
     expect(s.sent[0]).toContain("call 1 failed bash: ModuleNotFoundError: numpy");
-    expect(s.sent[0]).toContain("Passing solve of the same task");
+    expect(s.sent[0]).toContain("Passing solve of the same task under the same condition");
+    expect(s.sent[0]).toContain("2 counted solve(s) of this task, 1 passed");
     expect(s.sent[0]).toContain(String.raw`ending: {\"outcome\":\"fail\",\"kind\":\"rejected\"}`);
     expect(s.sent[0]).not.toContain(CANARY);
     expect(s.sent[1]).toContain("firstDivergence must quote the failed solve's excerpt");
     expect(read(s.log).findLast((event) => event.kind === "diagnosis.recorded")?.data).toMatchObject({
       solve: "s-1",
       version: "v1",
+      owner: "guide",
       confidence: "medium",
+      record: { solves: 2, passed: 1 },
+    });
+    expect(read(s.log).some((event) => event.kind === "referee.dispute")).toBe(false);
+  });
+
+  it("contrasts only with a pass under the failed solve's own condition", async () => {
+    const s = setup([diagnosis({ abstainReason: "Nothing to compare." })]);
+    released(s.record);
+    s.record("solve.started", { solve: "s-strong", condition: "stronger", task: "t-1" });
+    s.record("solve.call", {
+      solve: "s-strong",
+      turn: 1,
+      tool: "bash",
+      isError: false,
+      text: "stronger path",
+    });
+    s.record("solve.finished", { solve: "s-strong", ending: { outcome: "pass" } });
+    s.record("solve.started", { solve: "s-1", condition: "test", task: "t-1" });
+    s.record("solve.finished", { solve: "s-1", ending: { outcome: "fail", kind: "wall-ended" } });
+    s.record("referee.finding", { solve: "s-1", ruling: "earned" });
+    await diagnose(s.reader, fail(s));
+    expect(s.sent[0]).toContain("No passing solve of this task is recorded under this condition.");
+    expect(s.sent[0]).toContain("1 counted solve(s) of this task, 0 passed");
+    expect(s.sent[0]).not.toContain("stronger path");
+  });
+
+  it("reads a call the excerpt left out, and only then may quote it", async () => {
+    const quoting = {
+      owner: "solver",
+      cause: "The solver saw the breach at call 20 and submitted anyway.",
+      falsifier: "A later solve that reads the same breach and revises before it submits.",
+      firstDivergence: "margin -0.2 at call 20",
+      confidence: "low",
+    };
+    const s = setup([
+      diagnosis(quoting),
+      fauxAssistantMessage(fauxToolCall("read_trace", { solve: "failed" }), toolUse),
+      fauxAssistantMessage(fauxToolCall("read_trace", { solve: "failed", call: 20 }), toolUse),
+      diagnosis(quoting),
+    ]);
+    released(s.record);
+    s.record("solve.started", { solve: "s-1", task: "t-1" });
+    for (let call = 1; call <= 40; call += 1) {
+      s.record("solve.call", {
+        solve: "s-1",
+        turn: call,
+        tool: "bash",
+        args: { command: `step ${String(call)}` },
+        isError: false,
+        text: `margin -0.2 at call ${String(call)}`,
+      });
+    }
+    s.record("solve.finished", { solve: "s-1", ending: { outcome: "fail", kind: "rejected" } });
+    s.record("referee.finding", { solve: "s-1", ruling: "earned" });
+    expect(await diagnose(s.reader, fail(s))).toMatchObject({ owner: "solver", contrastSuccess: null });
+    expect(s.sent[0]).toContain("tool result excerpts: 3/40; 37 omitted");
+    expect(s.sent[1]).toContain(
+      "firstDivergence must quote the failed solve's excerpt, a call of it you read",
+    );
+    expect(s.sent[2]).toContain(String.raw`20 bash\n21 bash`);
+    expect(s.sent[3]).toContain("result: margin -0.2 at call 20");
+  });
+
+  it("logs a diagnosis that lays the fail on the public rules as a dispute", async () => {
+    const s = setup([
+      diagnosis({
+        owner: "public-rules",
+        cause: "R1 gives a span and no unit for the load, and the solver read 5 as kN.",
+        falsifier: "A later solve of a task whose load states its unit and still answers 12.",
+        firstDivergence: "Done: span 12.",
+        confidence: "low",
+      }),
+    ]);
+    released(s.record);
+    solved(s.record);
+    s.record("referee.finding", { solve: "s-1", ruling: "earned" });
+    await diagnose(s.reader, fail(s));
+    expect(read(s.log).at(-1)).toMatchObject({
+      kind: "referee.dispute",
+      data: { solve: "s-1", task: "t-1", version: "v1", by: "diagnoser", boundary: "Done: span 12." },
     });
   });
 

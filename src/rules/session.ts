@@ -26,24 +26,31 @@
  *    program (`gates.ts`). A control is an edit of an accepted answer, made by the host from the
  *    change the session names, as an Examiner's reject control is (`changedAnswer`);
  * 3. determinism: a second run of every control gives the same verdict;
- * 4. interference: every accepted answer on record is graded under the candidate. This one is
+ * 4. interference: the accepted answers on record are graded under the candidate. This one is
  *    reported and refuses nothing.
  *
  * A gate that refuses says why, and the session may send the addition again while it has tries
- * left. A slip of the pen, a control that names no answer or changes nothing, costs no try. Of
- * the interference the session is told only what its check makes of the answers it can read: the
- * check is its own code, and a verdict of that code on a measured solver's answer, told back,
- * would be a way to read that answer a bit at a time.
+ * left. A slip of the pen, a control that names no answer or changes nothing, costs no try.
  *
- * It stops at a candidate. When the session ends by `finish` with an addition that held, the
- * candidate is moved to `<candidates>/<session>`, the pack's tool tree is copied into it, the
- * proof is run once more over the whole directory, and `rule.candidate` logs what it is. Nothing
- * is adopted, frozen or moved: the campaign's checker is the one it was, and whether the exam
- * takes the candidate is the operator's, by another command. An addition the session had not
- * finished on, at its limits or at a crash, is not kept, since its author was told what it
- * refuses and had not said it stands by it. The controls are kept whole in the log and not in the
- * candidate's `controls.json`: they stand on tasks a session wrote, which no pack holds, and an
- * answer is written to no file outside the log.
+ * The interference is read in two parts, because the check is the session's own code. While the
+ * session runs, that code is put only to answers its author can read anyway: the stronger solves'
+ * witnesses. A measured solver's accepted answer, a pack's accept control and a stored sweep's
+ * pass are graded once, when the session is over and can be told nothing more. Put to them
+ * sooner, the code could carry one back: a verdict told of a control is a bit, what a check
+ * throws on a control is told whole, and the Darwin wall leaves a check's cell the user's
+ * temporary directory to write in (`userTempRules` in `src/verify/wall-policy.ts`), so a run on
+ * a measured answer could leave it there for a later try's run on a control to find. The scan
+ * of an added module's imports is no wall against that (`candidate.ts`).
+ *
+ * It stops at a candidate. When the session ends by `finish` with an addition that held, the rest
+ * of the record is graded, the candidate is moved to `<candidates>/<session>`, the pack's tool
+ * tree is copied into it, the proof is run once more over the whole directory, and
+ * `rule.candidate` logs what it is. Nothing is adopted, frozen or moved: the campaign's checker
+ * is the one it was, and whether the exam takes the candidate is the operator's, by another
+ * command. An addition the session had not finished on, at its limits or at a crash, is not
+ * kept, since its author was told what it refuses and had not said it stands by it. The controls
+ * are kept whole in the log and not in the candidate's `controls.json`: they stand on tasks a
+ * session wrote, which no pack holds, and an answer is written to no file outside the log.
  *
  * One session writes one requirement. A verifier that cannot decide stops the session, as it stops
  * any run (`decided`): the session writes its record and throws.
@@ -134,7 +141,8 @@ export interface RuleRequest {
   readonly candidates: string;
   /** The existing tasks, shown whole on request: the pack's and the ones sessions wrote. */
   readonly tasks: readonly Task[];
-  /** Every accepted answer on record. The session reads the witnesses among them and no other. */
+  /** Every accepted answer on record. The session reads the witnesses among them and no other, and
+   *  its check is put to the others only when the session is over. */
   readonly stored: readonly Stored[];
   /** Where the measured solver stands, and the rule its solves are read by: what the opening
    *  message says was measured of the campaign's tasks is read against both. */
@@ -189,7 +197,11 @@ interface Held {
   readonly dir: string;
   readonly added: Added;
   readonly checker: Checker;
-  readonly reading: Interference;
+  /** The verifier over the program the gates ran, which grades the rest of the record. */
+  readonly verify: Verifier;
+  /** What that program made of the witnesses, and the answers the controls start from. */
+  readonly graded: readonly Regraded[];
+  readonly bases: readonly NamedControl[];
 }
 
 /** What a session's tools share. */
@@ -199,6 +211,9 @@ interface Desk {
   readonly work: string;
   /** The answer a stronger solve was accepted on, by task: the last on record for each. */
   readonly witnesses: ReadonlyMap<string, JsonValue>;
+  /** The accepted answers on record, the witnesses first, so that an answer a witness shares with
+   *  another solve is read as the witness it is. */
+  readonly stored: readonly Stored[];
   tries: number;
   held: Held | null;
   /** Whether `held` was set in the turn still running, so that its author has not yet read what
@@ -263,14 +278,40 @@ function controlsOf(desk: Desk, checkId: string, edits: readonly ControlEdit[]) 
   return { bases, controls: [...bases, ...changed] };
 }
 
+/** The accepted answers the session reads, and the ones it does not. */
+const readable = ({ from }: Stored) => from === WITNESS;
+
+/** The candidate program's verdict of each stored answer, `width` at once. A verifier that cannot
+ *  decide stops the run (`decided`). */
+function gradedBy(verify: Verifier, stored: readonly Stored[], width: number): Promise<Regraded[]> {
+  return pooled(stored, width, async (each) => ({
+    stored: each,
+    verdict: await decided(verify, each.task, each.answer),
+  }));
+}
+
+/** An interference reading as `rule.gate` holds it: what it was taken over, the counts, and where
+ *  the graded answers are from. */
+function loggedReading(
+  over: "witnesses" | "record",
+  reading: Interference,
+  graded: readonly Regraded[],
+): JsonObject {
+  return {
+    outcome: "reported",
+    over,
+    ...reading,
+    tasks: reading.tasks.map((task) => ({ ...task })),
+    from: countBy(graded, ({ stored }) => stored.from),
+  };
+}
+
 /** What the session is told of an addition that held: what its check makes of the other accepted
- *  answers it can read, and nothing of any it cannot. */
-function heldLines(checkId: string, graded: readonly Regraded[], bases: readonly NamedControl[]) {
-  const mine = graded.filter(({ stored }) => stored.from === WITNESS);
-  const told = interference(checkId, mine, bases);
+ *  answers it can read. */
+function heldLines(told: Interference, checkId: string, graded: readonly Regraded[]) {
   const named = (pick: (task: Interference["tasks"][number]) => number) =>
     told.tasks.flatMap((task) => (pick(task) > 0 ? [task.taskId] : [])).join(", ");
-  const why = mine.flatMap(({ stored, verdict }) =>
+  const why = graded.flatMap(({ stored, verdict }) =>
     verdict.kind === "faulty" && verdict.check === checkId
       ? [`${stored.task.taskId}: ${verdict.reason}`]
       : [],
@@ -343,21 +384,15 @@ async function tried(desk: Desk, addition: Addition, given: ReturnType<typeof co
   if (moved.length > 0) return refused("determinism", moved.join("; "));
   gate("determinism", { outcome: PASSED, runs: 2 });
 
-  const graded = await pooled(interfering(proof, request.stored), limits.concurrency, async (stored) => ({
-    stored,
-    verdict: await decided(verify, stored.task, stored.answer),
-  }));
+  // Only the answers its author can read. The rest of the record is graded when the session is
+  // over (`authorRule`): until then this code is put to no answer its author may not see.
+  const graded = await gradedBy(verify, interfering(proof, desk.stored).filter(readable), limits.concurrency);
   const reading = interference(check.id, graded, given.bases);
-  gate("interference", {
-    outcome: "reported",
-    ...reading,
-    tasks: reading.tasks.map((task) => ({ ...task })),
-    from: countBy(graded, ({ stored }) => stored.from),
-  });
-  desk.held = { dir, added: proof, checker, reading };
+  gate("interference", loggedReading("witnesses", reading, graded));
+  desk.held = { dir, added: proof, checker, verify, graded, bases: given.bases };
   return [
     `The addition holds at every gate: rule ${rule.id} and check ${check.id}, on ${plural(counts.accepts ?? 0, "accept control")} and ${plural(counts.rejects ?? 0, "reject control")}, each run twice.`,
-    ...heldLines(check.id, graded, given.bases),
+    ...heldLines(reading, check.id, graded),
   ].join("\n");
 }
 
@@ -535,15 +570,6 @@ export function taken(events: readonly LogEvent[], id: string): string | null {
     : null;
 }
 
-/**
- * The candidates a log holds, in the order they were left: each `rule.candidate`, which a session
- * logs once, when it has finished on an addition that held. Nothing in the log adopts one, so
- * each stands until the operator takes it up or leaves it.
- */
-export function candidatesOf(events: readonly LogEvent[]): JsonObject[] {
-  return events.flatMap(({ kind, data }) => (kind === "rule.candidate" ? [data] : []));
-}
-
 export async function authorRule(request: RuleRequest): Promise<Authored> {
   const { log, limits, model, pack } = request;
   const began = performance.now();
@@ -582,6 +608,7 @@ export async function authorRule(request: RuleRequest): Promise<Authored> {
     witnesses: new Map(
       request.stored.flatMap(({ task, answer, from }) => (from === WITNESS ? [[task.taskId, answer]] : [])),
     ),
+    stored: [...request.stored.filter(readable), ...request.stored.filter((each) => !readable(each))],
     tries: 0,
     held: null,
     unread: false,
@@ -671,12 +698,22 @@ export async function authorRule(request: RuleRequest): Promise<Authored> {
   }
   const cut = wall.signal.aborted || desk.halt.signal.aborted || request.kill?.aborted === true;
   crash ??= desk.fatal?.message ?? (cut ? null : failedTurn(turns));
-  // The candidate is left only by a session that finished on an addition that held. It is moved
-  // into place, given the pack's tool tree, and proven once more as it stands on disk.
+  // The candidate is left only by a session that finished on an addition that held. The session
+  // is over, so its check is now put to the rest of the record. Then the candidate is moved into
+  // place, given the pack's tool tree, and proven once more as it stands on disk.
   let candidate: Candidate | null = null;
   if (desk.note !== null && crash === null && desk.held !== null) {
-    const { dir, added, checker, reading } = desk.held;
+    const { dir, added, checker, verify, graded, bases } = desk.held;
     try {
+      const rest = interfering(added, desk.stored).filter((each) => !readable(each));
+      const all = [...graded, ...(await gradedBy(verify, rest, limits.concurrency))];
+      const reading = interference(added.check.id, all, bases);
+      append(log, GATE, {
+        session: request.id,
+        try: desk.tries,
+        gate: "interference",
+        ...loggedReading("record", reading, all),
+      });
       renameSync(dir, final);
       copyTools(pack, final);
       const proof = additive(pack, final, "with-tools");

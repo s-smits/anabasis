@@ -15,12 +15,13 @@
  * - The repeat. Every control is run twice, and a second verdict that differs is a check that
  *   decides nothing (`controlFault` in `src/kernel/acceptance.ts`, whose runs these are).
  * - The interference, which is reported and refuses nothing. Every accepted answer on record for
- *   a task the new check applies to is graded under the candidate. A new requirement is expected
- *   to refuse some of them, and each task it leaves without an accepted answer waits for a new
- *   witness once the candidate is adopted. A check that refuses every one of them, or cannot run
- *   on one, is suspect; one that refuses none has so far been seen to refuse only its author's own
- *   edits, and whether a solver could make one of those is a person's to read. The reading says
- *   which, and adopting is the operator's.
+ *   a task the new check applies to is graded under the candidate: the witnesses while the
+ *   session runs, and the rest when it is over (`session.ts` says why). A new requirement is
+ *   expected to refuse some of them, and each task it leaves without an accepted answer waits for
+ *   a new witness once the candidate is adopted. A check that refuses every one of them, or cannot
+ *   run on one, is suspect; one that refuses none has so far been seen to refuse only its author's
+ *   own edits, and whether a solver could make one of those is a person's to read. The reading
+ *   says which, and adopting is the operator's.
  *
  * An answer no longer accepted by the existing checks says nothing of the addition: those checks
  * are the pack's own bytes. Such an answer is counted apart as stale, as `tools/c/repaired.ts`

@@ -21,9 +21,9 @@
  * verifier runs in flight at once.
  *
  * The interference grades every accepted answer on record under the candidate: each answer the
- * log holds a pass for, the pack's accept controls, and the stored sweep's passes. The session is
- * told of the first kind only where a stronger solve's witness is concerned, and of the others
- * nothing.
+ * log holds a pass for, the pack's accept controls, and the stored sweep's passes. While the
+ * session runs its check is put only to the stronger solves' witnesses, which it may read, and it
+ * is told what the check makes of those. The others are graded when the session is over.
  *
  * What it leaves is `.ana/d2/<name>/candidates/<session>/`, a pack laid out as `--bundle` is,
  * and `rule.candidate` in the log. The campaign goes on under the checker it had. Taking a

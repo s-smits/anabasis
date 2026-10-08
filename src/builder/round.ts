@@ -539,6 +539,8 @@ export async function round(request: RoundRequest): Promise<RoundReport> {
     const told_: RoundReport = { old: old.digest, fresh: built.kept?.digest ?? null, ...told };
     append(log, REPORTED, {
       session: id,
+      // The eight truss rounds of 2026-10-08 asked for no scored task, and their logs could not say so.
+      target: request.target,
       solves,
       level: request.level,
       broken: built.broken,

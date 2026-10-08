@@ -229,6 +229,7 @@ describe("a round", () => {
     expect(s.of(COMPARISON_REPORTED)).toEqual([
       {
         session: "b-1",
+        target: 4,
         solves: 2,
         level: 0.1,
         broken: null,

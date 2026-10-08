@@ -616,9 +616,9 @@ export async function round(request: RoundRequest): Promise<RoundReport> {
  * of every compared session, and whether the experiment stops on it. It stops when at least three
  * sessions were compared, none read a step, and the gain stays under ten points at 90% confidence
  * over at least one scored set's worth of tasks: on fewer, tasks that all tied would bound the gain
- * at nothing with no evidence to speak of. A session that left no changed harness is a session
- * spent, and counts among the three with no task to pool; three sessions with no task between them
- * changed nothing, which stops it too.
+ * at nothing with no evidence to speak of. A session that left no changed harness, or a round an
+ * outage left with no scored task, counts among the three with no task to pool, and so is never
+ * flat by itself: no tasks is no evidence of a flat gain.
  *
  * Each round is read as its report found it: from the log up to that report, so a task released or
  * gone stale since is still the scored task it was, and within the round's own window of solves.
@@ -640,7 +640,7 @@ export function stopRule(events: readonly LogEvent[]) {
   });
   const pooled = gain(pairs);
   const stepped = reports.some(({ data }) => data.reading === "step");
-  const flat = pairs.length === 0 || (pairs.length >= STOP_TASKS && pooled.upper < STOP_POINTS);
+  const flat = pairs.length >= STOP_TASKS && pooled.upper < STOP_POINTS;
   return {
     sessions: reports.length,
     tasks: pairs.length,

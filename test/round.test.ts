@@ -463,7 +463,7 @@ describe("a round", () => {
     expect(s.asked).toHaveLength(3 * 2 * 2 * 11);
   });
 
-  it("does not stop on a bound over too few tasks, and does stop on three sessions that changed nothing", async () => {
+  it("stops neither on a bound over too few tasks nor on three sessions with no task", async () => {
     const flat: Table = (_version, _fresh, nth) => (nth % 2 === 0 ? PASS : FAIL);
     const few = await setup([edit, finish, edit, finish, edit, finish], flat);
     for (const id of ["b-1", "b-2", "b-3"]) {
@@ -476,7 +476,7 @@ describe("a round", () => {
       const report = await round({ ...idle.request, session: { ...idle.request.session, id } });
       expect(report.reading).toBe("no-change");
     }
-    expect(stopRule(read(idle.log))).toMatchObject({ sessions: 3, tasks: 0, stop: true });
+    expect(stopRule(read(idle.log))).toMatchObject({ sessions: 3, tasks: 0, stop: false });
   });
 
   it("counts a task once when its own admissions are handed back as scored, and an anchor dispute as the anchor's", async () => {

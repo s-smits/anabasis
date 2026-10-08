@@ -237,7 +237,7 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
         getFollowUpMessages: async () =>
           desk.submitted !== undefined || prompts++ >= limits.turns ? [] : [user(NUDGE)],
       },
-      traceSink(request.log, id, () => turns.length),
+      traceSink(request.log, "solve", id, () => turns.length),
       signal,
       (model, context, options) => models.streamSimple(model, context, options),
     );
@@ -290,8 +290,10 @@ export async function solverTools(
   }));
 }
 
-/** Every model turn and every tool call into the log, as they end. */
-function traceSink(log: string, id: string, turn: () => number) {
+/** Every model turn and every tool call into the log, as they end: a solve's as `solve.turn` and
+ *  `solve.call` under `solve`, a Builder session's as `build.turn` and `build.call` under `session`. */
+export function traceSink(log: string, of: "solve" | "build", id: string, turn: () => number) {
+  const named = of === "solve" ? { solve: id } : { session: id };
   const calls = new Map<string, { args: JsonValue; at: number }>();
   return (event: AgentEvent) => {
     if (event.type === "tool_execution_start") {
@@ -300,8 +302,8 @@ function traceSink(log: string, id: string, turn: () => number) {
     } else if (event.type === "tool_execution_end") {
       const call = calls.get(event.toolCallId);
       calls.delete(event.toolCallId);
-      append(log, "solve.call", {
-        solve: id,
+      append(log, `${of}.call`, {
+        ...named,
         turn: turn(),
         tool: event.toolName,
         args: call?.args ?? null,
@@ -312,8 +314,8 @@ function traceSink(log: string, id: string, turn: () => number) {
       });
     } else if (event.type === "turn_end" && event.message.role === "assistant") {
       const { stopReason, errorMessage: error, responseModel, usage, content } = event.message;
-      append(log, "solve.turn", {
-        solve: id,
+      append(log, `${of}.turn`, {
+        ...named,
         turn: turn(),
         stopReason,
         error: error ?? null,

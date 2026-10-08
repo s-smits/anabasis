@@ -25,7 +25,7 @@ import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { availableParallelism, loadavg } from "#src/meta/os.ts";
 import { basename, join } from "#src/meta/path.ts";
-import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
+import { parseArgs } from "#src/meta/process.ts";
 import { decodeOutput, runSync, runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
@@ -184,7 +184,7 @@ export function pulse(
 }
 
 /** The whole lines of a log an append may be writing to: a torn last line is an append in flight. */
-function logEvents(path: string): LogEvent[] {
+export function logEvents(path: string): LogEvent[] {
   const text = readFileSync(path, "utf8");
   return text
     .slice(0, text.lastIndexOf("\n") + 1)
@@ -194,7 +194,7 @@ function logEvents(path: string): LogEvent[] {
 }
 
 /** Every run log in the repository's worktrees. */
-function runs(): Run[] {
+export function runs(): Run[] {
   const porcelain = runTextSyncOrThrow(["git", "worktree", "list", "--porcelain"]);
   const trees = porcelain
     .split("\n")
@@ -286,8 +286,10 @@ function look(state: string, names: readonly string[]): void {
   renameSync(`${state}.tmp`, state);
 }
 
-if (import.meta.main) {
-  const { values, positionals } = parseArgs({
+/** `bun run runs pulse`. */
+export async function watch(args: readonly string[]): Promise<void> {
+  const { values, positionals: names } = parseArgs({
+    args: [...args],
     allowPositionals: true,
     options: {
       once: { type: "boolean", default: false },
@@ -295,14 +297,9 @@ if (import.meta.main) {
       state: { type: "string", default: join(".ana", "runs-pulse.json") },
     },
   });
-  const [verb, ...names] = positionals;
-  if (verb !== "pulse") {
-    throw new Error("usage: bun run runs pulse [<name> ...] [--once] [--every S] [--state FILE]");
-  }
   for (;;) {
     look(values.state, names);
     if (values.once) break;
     await Bun.sleep(Number(values.every) * 1000);
   }
-  runtimeProcess.exit(0);
 }

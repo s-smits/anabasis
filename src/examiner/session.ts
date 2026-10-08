@@ -132,8 +132,8 @@ export interface ExamRequest {
   readonly examples: readonly Task[];
   /** Tasks earlier sessions left past gate 3, each with the answer the checks accepted. */
   readonly waiting: readonly { readonly task: Task; readonly accepted: JsonValue }[];
-  /** Reach tasks to put to the stronger solver again: ones whose last stronger solve ran under
-   *  another harness than this session's. */
+  /** Reach tasks to put to the stronger solver again: ones no stronger solve of which ran under
+   *  this session's harness and stronger setting. */
   readonly reach: readonly Task[];
   /** Where the measured solver stands in this session: the harness its solves run under and their
    *  setting. The campaign's earlier tasks are read against it. */

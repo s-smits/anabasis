@@ -210,10 +210,12 @@ export function carriable(events: readonly LogEvent[]) {
 
 /**
  * The reach tasks an Examiner session puts to the stronger solver again: the tasks a session wrote
- * that wait in `too-hard`, whose last stronger solve ran elsewhere than where the stronger solver
- * stands now. So a task is tried again when the harness has moved, and also when the stronger
- * solver itself is another model or runs at another effort, which is the other way a witness
- * grows. One that solve already failed where the solver stands is not paid for twice.
+ * that wait in `too-hard`, none of whose stronger solves ran where the stronger solver stands
+ * now. So a task is tried again when the harness has moved, and also when the stronger solver
+ * itself is another model or runs at another effort, which is the other way a witness grows. One
+ * a solve already failed where the solver stands is not paid for twice, whatever was tried
+ * between: read by its last solve alone, a task was put to the same solver under the same harness
+ * a second time once the host's code had been edited and restored (simulated, 2026-10-08).
  */
 export function reachOf(events: readonly LogEvent[], stand: Stand): Task[] {
   const states = taskStates(events);
@@ -234,10 +236,15 @@ export function reachOf(events: readonly LogEvent[], stand: Stand): Task[] {
   return events.flatMap(({ kind, data }) => {
     const task = kind === "task.proposed" && isString(data.taskId) ? written.get(data.taskId) : undefined;
     if (task === undefined || !isString(data.version) || states.get(data.version) !== "too-hard") return [];
-    const last = events.findLast(
-      (event) => event.kind === "task.gate" && event.data.version === data.version && event.data.gate === 2,
-    )?.data.solve;
-    return isString(last) && here.has(last) ? [] : [task];
+    const tried = events.some(
+      (event) =>
+        event.kind === "task.gate" &&
+        event.data.version === data.version &&
+        event.data.gate === 2 &&
+        isString(event.data.solve) &&
+        here.has(event.data.solve),
+    );
+    return tried ? [] : [task];
   });
 }
 

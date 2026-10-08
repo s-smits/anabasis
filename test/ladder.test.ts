@@ -209,7 +209,7 @@ describe("the reach tasks a session tries again", () => {
     ];
   };
 
-  it("are the tasks whose last stronger solve ran under another harness than the session's", () => {
+  it("are the tasks no stronger solve of which ran where the session's stronger solver stands", () => {
     const log = [
       ...unwitnessed("r1", "h1"),
       ...unwitnessed("r2", "h1"),
@@ -231,6 +231,9 @@ describe("the reach tasks a session tries again", () => {
     ];
     expect(reachOf(again, on("h2", "strong")).map(({ taskId }) => taskId)).toEqual(["r2"]);
     expect(reachOf(again, on("h3", "strong")).map(({ taskId }) => taskId)).toEqual(["r1", "r2"]);
+    // Back where its first solve ran, as after a host edit made and undone or a step settled away,
+    // r1 is not paid for a second time there.
+    expect(reachOf(again, on("h1", "strong"))).toEqual([]);
   });
 });
 

@@ -3,7 +3,7 @@
 // keeps a person's labels blind.
 import { describe, expect, it } from "bun:test";
 import type { LogEvent } from "../src/kernel/log.ts";
-import { drawn, labelled, rejections } from "../src/review/rejections.ts";
+import { drawn, labelled, rejections, repairReading } from "../src/review/rejections.ts";
 
 const at = "2026-10-08T00:00:00.000Z";
 const refused = (solve: string, ...blocking: string[]): LogEvent => ({
@@ -61,5 +61,40 @@ describe("a checker's refused answers", () => {
       ["c", "check-defect"],
     ]);
     expect(open).toEqual(["b", "d"]);
+  });
+
+  it("holds a repair to what was read: only an answer ruled a check defect may be let through", () => {
+    const row = (solve: string, was: string, now: string) => ({ solve, task: `task-${solve}`, was, now });
+    const rows = [
+      row("a", "fail mass", "pass"),
+      row("b", "fail mass,span", "pass"),
+      row("c", "fail span", "pass"),
+      row("d", "fail mass", "pass"),
+      row("e", "fail mass", "fail mass"),
+      row("f", "pass", "fail span"),
+      row("g", "pass", "pass"),
+      row("h", "fail mass", "fail mass"),
+    ];
+    const events = [
+      ruled("a", "check-defect", "mass"),
+      ruled("b", "earned"),
+      ruled("c", "unclear"),
+      ruled("e", "check-defect", "mass"),
+      // A person's label stands over the Referee's ruling of the same answer.
+      ruled("h", "check-defect", "mass"),
+    ];
+    const reading = repairReading(rows, events, new Map([["h", "earned"]]));
+    expect(reading).toEqual({
+      withdrawn: { "check-defect": ["a"], earned: ["b"], unread: ["c", "d"] },
+      tightened: ["f"],
+      unrepaired: ["e"],
+      against: [
+        "1 answer ruled an earned fail would pass: b",
+        "2 answers refused before and read by nobody would pass: c, d",
+        "1 answer accepted before would be refused: f",
+      ],
+    });
+    // A repair that moves only what was ruled the old checker's fault has nothing against it.
+    expect(repairReading(rows.slice(0, 1), events, new Map()).against).toEqual([]);
   });
 });

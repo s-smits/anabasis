@@ -28,11 +28,9 @@
 import { acceptance, frozenChecker, runControls } from "#src/kernel/acceptance.ts";
 import { append, read } from "#src/kernel/log.ts";
 import { readBrief } from "#src/kernel/verify.ts";
-import { join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
-import { toolTreeSearchDirs } from "#src/verify/solve-command-isolation.ts";
 import { openCampaign } from "../d2/campaign.ts";
-import { packControls, sweepRows } from "../m0/stored-sweep.ts";
+import { packControls, sweepRows, toolOnPath } from "../m0/stored-sweep.ts";
 
 const { values } = parseArgs({
   options: {
@@ -61,9 +59,7 @@ async function main(): Promise<number> {
     return task === undefined || expected === null ? [] : [{ task, verdict: expected }];
   });
   const runs = await runControls(campaign.verify, tasks, packControls(bundle), Number(values.jobs));
-  const path = toolTreeSearchDirs(join(bundle, ".toolchain")).join(":");
-  const found = (toolId: string) => Bun.which(toolId, { PATH: path }) !== null;
-  const { checks, faults } = acceptance(readBrief(campaign.checks), tasks, runs, stored, found);
+  const { checks, faults } = acceptance(readBrief(campaign.checks), tasks, runs, stored, toolOnPath(bundle));
   append(log, "checker.read", {
     ...checker,
     controls: runs.length,

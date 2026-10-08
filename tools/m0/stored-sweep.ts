@@ -24,6 +24,7 @@ import type { JsonObject, JsonValue } from "#src/meta/json-shape.ts";
 import { homedir } from "#src/meta/os.ts";
 import { basename, join } from "#src/meta/path.ts";
 import { type PublicResource, publicResource } from "#src/solve/answer.ts";
+import { toolTreeSearchDirs } from "#src/verify/solve-command-isolation.ts";
 
 /** The fields of v1's `cycle-solve/v1` result read here. */
 interface StoredSolve {
@@ -282,6 +283,12 @@ export function readPack(bundle: string) {
   const read = <T>(file: string) =>
     parseJsonAs<T>(readFileSync(join(bundle, "correctness-model", file), "utf8"));
   return { brief: read<PackBrief>("brief.json"), tasks: read<Task[]>("tasks.json") };
+}
+
+/** Whether the bundle's tool tree holds a tool on the path a check is given, by its id. */
+export function toolOnPath(bundle: string): (toolId: string) => boolean {
+  const path = toolTreeSearchDirs(join(bundle, ".toolchain")).join(":");
+  return (toolId) => Bun.which(toolId, { PATH: path }) !== null;
 }
 
 /** A pack's controls, each with the label its author gave it: the accept controls, then the reject

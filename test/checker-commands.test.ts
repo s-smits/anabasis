@@ -272,7 +272,16 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
     expect(said).not.toContain("s-c02-t-1\t");
     expect(said).toContain("tasks with a moved verdict: t-2");
     expect(said).toContain("check program: the log froze none, this one is ");
-    expect(code).toBe(0);
+    // Nobody ruled on the answer the repair lets through, so the repair does not stand on it.
+    expect(said).toContain('"unread": [\n      "s-c02-t-2"');
+    expect(said).toContain("1 finding against the repair");
+    expect(code).toBe(1);
+    // Labelled a check defect by a person, it is what a repair is for, and the pack's controls hold.
+    const labels = join(root, "repair-labels.json");
+    writeFileSync(labels, JSON.stringify({ "s-c02-t-2": "check-defect" }));
+    const stands = command("tools/c/repaired.ts", { log, bundle: repaired, labels });
+    expect(stands.said).toContain("the repair stands on what was read");
+    expect(stands.code).toBe(0);
     expect(readFileSync(log, "utf8")).toBe(before);
   });
 });

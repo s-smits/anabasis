@@ -107,7 +107,7 @@ export function runControls(
 }
 
 /** Why a control's run is not what its label says, or null when it is. */
-function mislabelled({ taskId, refusedBy, verdicts: [first, second] }: ControlRun): string | null {
+export function controlFault({ taskId, refusedBy, verdicts: [first, second] }: ControlRun): string | null {
   const named = refusedBy === null ? `the accept control of ${taskId}` : `a reject control of ${taskId}`;
   if (spelled(first) !== spelled(second)) {
     return `${named} got two verdicts from one answer: ${spelled(first)}, then ${spelled(second)}`;
@@ -116,6 +116,17 @@ function mislabelled({ taskId, refusedBy, verdicts: [first, second] }: ControlRu
   return first.kind === "fail" && first.blocking.includes(refusedBy)
     ? null
     : `${named} names ${refusedBy}, which did not refuse it: ${spelled(first)}`;
+}
+
+/** The tools a check names that the verifier's tool path does not hold, a sentence each. A check
+ *  whose tool is missing decides nothing, so a caller asks this before it runs a control: put to
+ *  the verifier first, such a check stops the run and the missing tool is never named. */
+export function toolFaults(brief: Brief, found: (toolId: string) => boolean): string[] {
+  return brief.truthChecks.flatMap(({ id, execution }) =>
+    requiredToolsOf(execution)
+      .filter((tool) => !found(tool))
+      .map((tool) => `${id} names ${tool}, which is not on the verifier's tool path`),
+  );
 }
 
 /**
@@ -169,7 +180,7 @@ export function acceptance(
       .map(({ check, reason }) => [check, reason]),
   );
   const faults = [
-    ...runs.flatMap((run) => mislabelled(run) ?? []),
+    ...runs.flatMap((run) => controlFault(run) ?? []),
     ...checks.flatMap(({ id, missing, passed, refused, caught }) => [
       ...missing.map((tool) => `${id} names ${tool}, which is not on the verifier's tool path`),
       ...(unrun.has(id)

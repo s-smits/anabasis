@@ -30,7 +30,7 @@
  */
 import { contractHash } from "#src/kernel/contract.ts";
 import { append, read } from "#src/kernel/log.ts";
-import { decided } from "#src/kernel/verify.ts";
+import { decided, spelled } from "#src/kernel/verify.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { isString } from "#src/meta/json-shape.ts";
@@ -82,29 +82,45 @@ async function main(): Promise<void> {
   // pack's own accept control. Each is logged as this verifier grades it now, so that a check's
   // replay is held to this verifier's own verdict and not to v1's.
   const solveId = (row: Row) => `${row.sweep}-${row.cycle}-${row.taskId}`;
-  const stored = (row: Row, expected: string) => ({
+  const stored = (row: Row) => ({
     solve: solveId(row),
     taskId: row.taskId,
     answer: storedAnswer(row),
-    expected,
+    expected: row.expected === null ? "" : spelled(row.expected),
+    control: false,
   });
   const rejected = rows.filter((row) => row.expected?.kind === "fail");
   const controls = packControls(bundle).filter((control) => control.refusedBy === null);
   const accepted = [...new Set(rejected.map((row) => row.taskId))].flatMap((taskId) => {
     const passed = rows.find((row) => row.taskId === taskId && row.expected?.kind === "pass");
-    if (passed !== undefined) return [stored(passed, "pass")];
+    if (passed !== undefined) return [stored(passed)];
     const control = controls.find((each) => each.taskId === taskId);
     return control === undefined
       ? []
-      : [{ solve: `${sweep}-control-${taskId}`, taskId, answer: control.answer, expected: "pass" }];
+      : [
+          {
+            solve: `${sweep}-control-${taskId}`,
+            taskId,
+            answer: control.answer,
+            expected: "pass",
+            control: true,
+          },
+        ];
   });
   const held = new Set(read(log).flatMap(({ kind, data }) => (kind === "verdict" ? [data.solve] : [])));
   const apart = await pooled(
-    [...accepted, ...rejected.map((row) => stored(row, "fail"))].filter(({ solve }) => !held.has(solve)),
+    [...accepted, ...rejected.map(stored)].filter(({ solve }) => !held.has(solve)),
     jobs,
-    async ({ solve, taskId, answer, expected }) => {
+    async ({ solve, taskId, answer, expected, control }) => {
       if (answer === undefined) return `${solve}: no answer on disk`;
       const verdict = await decided(campaign.verify, taskOf(taskId), answer);
+      // An accept control the checks refuse is no answer a solver gave and no accepted answer to
+      // set beside one: it is a fault of the pack's controls, which `accept.ts` names. Logged, it
+      // stood among the refused answers and was read and counted as one: on the truss pack, 10 of
+      // the 74 the Referee ruled on 8 October were such controls.
+      if (control && verdict.kind !== "pass") {
+        return `${solve}: the pack's accept control does not pass (${spelled(verdict)}), so it is not logged`;
+      }
       const fields =
         verdict.kind === "fail"
           ? { kind: verdict.kind, blocking: [...verdict.blocking] }
@@ -112,7 +128,10 @@ async function main(): Promise<void> {
             ? { kind: verdict.kind, check: verdict.check, reason: verdict.reason }
             : { kind: verdict.kind };
       append(log, "verdict", { solve, task: taskId, answer, ...fields });
-      return verdict.kind === expected ? null : `${solve}: on record ${expected}, now ${verdict.kind}`;
+      // The whole verdict is compared, the refusing checks with it: a fail that names other checks
+      // than v1's record is a verifier that differs, though both say fail.
+      const now = spelled(verdict);
+      return now === expected ? null : `${solve}: on record ${expected}, now ${now}`;
     },
   );
   for (const line of apart) if (line !== null) console.log(`apart: ${line}`);

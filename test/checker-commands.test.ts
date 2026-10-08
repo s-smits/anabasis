@@ -17,6 +17,7 @@ import {
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
+import { isString } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
@@ -35,6 +36,9 @@ const accepted = join(REPO, ".ana", "d2", ACCEPTED);
 /** The campaign of the repaired checker, which the old one's written tasks are carried into. */
 const CARRIED = `${NAME}-carried`;
 const carried = join(REPO, ".ana", "d2", CARRIED);
+/** Two campaigns over a pack with something wrong: a tool no path holds, and controls gone stale. */
+const LOST = `${NAME}-lost`;
+const STALE = `${NAME}-stale`;
 const FORMAT = { type: "object", properties: { answer: { type: "string" } }, required: ["answer"] };
 const EVALUATOR = `export const checks = {
   "check-product": (req) => req.artifact.answer === String(req.publicTask.publicInput.base * 6),
@@ -56,6 +60,7 @@ afterAll(() => {
   rmSync(campaign, { recursive: true, force: true });
   rmSync(accepted, { recursive: true, force: true });
   rmSync(carried, { recursive: true, force: true });
+  for (const name of [LOST, STALE]) rmSync(join(REPO, ".ana", "d2", name), { recursive: true, force: true });
 });
 
 /** One stored solve as v1 left it: its result, its trace, its answer and what its record tool took. */
@@ -84,15 +89,15 @@ function solve(cycle: string, taskId: string, answer: string): void {
   );
 }
 
-/** The pack's controls: both tasks' accepted answers, and one reject control of t-1 whose edit is
- *  `answer`. */
-function controls(answer: string): void {
+/** A pack's controls: both tasks' accepted answers, and one reject control of t-1 whose edit is
+ *  `answer`. `second` is t-2's accepted answer, which a stale pack no longer has right. */
+function controls(answer: string, at = model, second = "18"): void {
   writeFileSync(
-    join(model, "controls.json"),
+    join(at, "controls.json"),
     JSON.stringify({
       accept: [
         { taskId: "t-1", artifact: { answer: "12" } },
-        { taskId: "t-2", artifact: { answer: "18" } },
+        { taskId: "t-2", artifact: { answer: second } },
       ],
       reject: [{ taskId: "t-1", artifact: { answer }, expectedCheckId: "check-product" }],
     }),
@@ -224,6 +229,70 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
     expect(admitted.said).toContain("the log froze another check program");
     expect(admitted.code).not.toBe(0);
     expect(readFileSync(log, "utf8")).toBe(before);
+  });
+
+  it("names a missing tool before any control runs, and freezes over a named fault on the operator's word", () => {
+    // A pack whose one check names a tool no path holds: the verifier could decide nothing with it.
+    const tooled = join(root, "tooled");
+    cpSync(bundle, tooled, { recursive: true });
+    const brief = join(tooled, "correctness-model", "brief.json");
+    writeFileSync(
+      brief,
+      readFileSync(brief, "utf8").replace(
+        '"evidence":{"kind":"authored"}',
+        '"evidence":{"kind":"external","requiredToolIds":["no-such-tool"]}',
+      ),
+    );
+    const lost = command("tools/c/accept.ts", { root, sweep: "s", bundle: tooled, name: LOST });
+    expect(lost.said).toContain(
+      "fault: check-product names no-such-tool, which is not on the verifier's tool path",
+    );
+    expect(lost.said).toContain("no control was run");
+    expect(lost.code).toBe(1);
+
+    // A pack whose accept control of t-2 has gone stale, while its check is as sound as before.
+    const stale = (...bare: string[]) => run("tools/c/accept.ts", { name: STALE }, ...bare);
+    const frozen = () =>
+      read(join(REPO, ".ana", "d2", STALE, "log.jsonl")).flatMap((event) =>
+        event.kind === "contract.frozen" ? [event.data] : [],
+      );
+    controls("13", model, "19");
+    try {
+      const refused = stale("--freeze");
+      expect(refused.said).toContain("fault: the accept control of t-2 did not pass: fail check-product");
+      expect(refused.said).toContain("not frozen: the reading holds a fault");
+      expect(refused.code).toBe(1);
+      expect(frozen()).toEqual([]);
+      const given = stale("--freeze", "--despite", "the accept control of t-2 is stale");
+      expect(given.said).toContain("frozen despite 1 fault: contract ");
+      expect(given.code).toBe(0);
+      expect(frozen()).toMatchObject([{ despite: "the accept control of t-2 is stale", faults: 1 }]);
+
+      // The stale control is no refused answer: the reading of the rejections leaves it out. And a
+      // fail on record under another check than this verifier names is told apart, though both fail.
+      const grades = join(root, "grades", "s", "grades.tsv");
+      const recorded = readFileSync(grades, "utf8");
+      writeFileSync(
+        grades,
+        recorded.replace("2\tt-1\tverified-fail\tcheck-product", "2\tt-1\tverified-fail\tcheck-old"),
+      );
+      try {
+        const logged = run("tools/c/rejections.ts", { name: STALE });
+        expect(logged.said).toContain(
+          "apart: s-control-t-2: the pack's accept control does not pass (fail check-product), so it is not logged",
+        );
+        expect(logged.said).toContain("apart: s-c02-t-1: on record fail check-old, now fail check-product");
+        expect(logged.code).toBe(0);
+      } finally {
+        writeFileSync(grades, recorded);
+      }
+      const solves = read(join(REPO, ".ana", "d2", STALE, "log.jsonl")).flatMap(({ kind, data }) =>
+        kind === "verdict" && isString(data.solve) ? [data.solve] : [],
+      );
+      expect(solves.sort((a, b) => a.localeCompare(b))).toEqual(["s-c01-t-1", "s-c02-t-1", "s-c02-t-2"]);
+    } finally {
+      controls("13");
+    }
   });
 
   it("logs the stored rejections, draws the fails to label, and holds the Referee until they are", () => {

@@ -14,7 +14,10 @@
  * as `checker.read`, under the contract's hash and the check program's digest. Exits 1 on any fault.
  *
  * `--freeze` is the operator's word that this checker stands: with no fault in the reading, it
- * writes `contract.frozen` for the same two hashes. It is to be given once the refused answers have
+ * writes `contract.frozen` for the same two hashes. With a fault it writes nothing, unless the
+ * operator says why the checker stands all the same: `--despite "<reason>"`, which the event keeps
+ * beside the count of faults. A pack's controls can go stale while its checks are sound, as the
+ * truss pack's accept controls had by 8 October, and the reading reports that without deciding it. It is to be given once the refused answers have
  * been read too (`rejections.ts`), which this command cannot see. From then on a campaign of this
  * name whose contract or check program is another does not open (`tools/d2/campaign.ts`): a
  * repaired checker takes a campaign of its own.
@@ -25,10 +28,11 @@
  *
  * It needs the pack and its tool tree on disk, and the Mac's verifier wall.
  */
-import { acceptance, frozenChecker, runControls } from "#src/kernel/acceptance.ts";
+import { acceptance, frozenChecker, runControls, toolFaults } from "#src/kernel/acceptance.ts";
 import { append, read } from "#src/kernel/log.ts";
 import { readBrief } from "#src/kernel/verify.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
+import { plural } from "#src/meta/text.ts";
 import { openCampaign } from "../d2/campaign.ts";
 import { packControls, sweepRows, toolOnPath } from "../m0/stored-sweep.ts";
 
@@ -40,6 +44,7 @@ const { values } = parseArgs({
     name: { type: "string" },
     jobs: { type: "string", default: "4" },
     freeze: { type: "boolean", default: false },
+    despite: { type: "string" },
   },
 });
 
@@ -58,6 +63,15 @@ async function main(): Promise<number> {
     const task = byId.get(taskId);
     return task === undefined || expected === null ? [] : [{ task, verdict: expected }];
   });
+  // A tool a check names and the path lacks is named before any control runs: the verifier cannot
+  // decide such a check, and a run that stopped on it never reached the fault that says why.
+  const lost = toolFaults(readBrief(campaign.checks), toolOnPath(bundle));
+  if (lost.length > 0) {
+    append(log, "checker.read", { ...checker, controls: 0, stored: 0, rows: [], faults: lost });
+    for (const fault of lost) console.log(`fault: ${fault}`);
+    console.log("no control was run: a check whose tool is missing decides nothing");
+    return 1;
+  }
   const runs = await runControls(campaign.verify, tasks, packControls(bundle), Number(values.jobs));
   const { checks, faults } = acceptance(readBrief(campaign.checks), tasks, runs, stored, toolOnPath(bundle));
   append(log, "checker.read", {
@@ -76,12 +90,27 @@ async function main(): Promise<number> {
   }
   for (const fault of faults) console.log(`fault: ${fault}`);
   console.log(faults.length === 0 ? "no fault" : `${String(faults.length)} faults`);
-  if (values.freeze && faults.length > 0) {
-    console.log("not frozen: a checker with a fault in its reading does not stand");
-  } else if (values.freeze) {
+  const despite = values.despite?.trim() ?? "";
+  if (values.freeze && faults.length > 0 && despite === "") {
+    console.log(
+      "not frozen: the reading holds a fault. It is yours to freeze all the same: say why with --despite",
+    );
+    return 1;
+  }
+  if (values.freeze) {
     // `openCampaign` has refused a checker the log froze otherwise, so one frozen here is this one.
-    if (frozenChecker(read(log)) === null) append(log, "contract.frozen", { ...checker });
-    console.log(`frozen: contract ${checker.contract}, check program ${checker.checks}`);
+    // Frozen over faults, the word carries its reason: a fault is reported and never decided on,
+    // and a pack whose controls have gone stale is no reason to leave its checker unpinned.
+    if (frozenChecker(read(log)) === null) {
+      append(log, "contract.frozen", {
+        ...checker,
+        ...(faults.length > 0 ? { despite, faults: faults.length } : {}),
+      });
+    }
+    console.log(
+      `frozen${faults.length > 0 ? ` despite ${plural(faults.length, "fault")}` : ""}: contract ${checker.contract}, check program ${checker.checks}`,
+    );
+    return 0;
   }
   return faults.length === 0 ? 0 : 1;
 }

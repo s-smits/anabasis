@@ -5,9 +5,9 @@
  *
  * A tool the check runs starts here, in a directory of its own under the cell, so it runs inside the
  * same wall: the Seatbelt profile follows every child on Darwin, and the namespaces do on Linux. A
- * tool that could not start or ran out its time leaves the check deciding without its evidence, so
- * the result is a non-result whatever the check returned. A tool that ran and failed is evidence:
- * the check reads its exit code and decides.
+ * tool that is missing, never started its program, was ended by a signal or ran out its time leaves
+ * the check deciding without its evidence, so the result is a non-result whatever the check returned.
+ * A tool that ran and failed is evidence: the check reads its exit code and decides.
  */
 import { mkdtempSync, writeFileSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify, lockJsonGlobals, parseJsonAs } from "../meta/json-runtime.ts";
@@ -58,6 +58,17 @@ interface CheckRuntime {
   readonly tools: { run(call: ToolCall): Promise<ToolRun> };
 }
 
+/** The shell's own exit codes for a program it could not execute (126) or could not find (127). */
+const SHELL_COULD_NOT_RUN = new Set<number>([126, 127]);
+/** The shell's own launch-failure line, as bash (`w: line 2: p: cannot execute: …`), dash
+ *  (`w: 2: p: not found`), zsh (`w:2: permission denied: p`) and `env` (`env: p: No such file or
+ *  directory`) print it. A program may exit 126 or 127 itself; only this line says a shell did. */
+const SHELL_LAUNCH_FAILURE =
+  /^(?:.*?: (?:line )?\d+: |.*?:\d+: |env: ).*(?:cannot execute|command not found|not found|[Pp]ermission denied|Operation not permitted|No such file or directory|bad interpreter)/;
+/** CPython's own line for an interpreter that died initialising itself, before the program's first
+ *  line ran (`init_fs_encoding: ...` for a home whose stdlib it cannot read); it then exits 1. */
+const PYTHON_START_FAILURE = /^Fatal Python error: init/m;
+
 /** v1's `CheckFn` (src/correctness-bundle/correctness-model-contract.ts, 3f93d06b). */
 type CheckFn = (
   request: EvaluationRequest & { runtime?: CheckRuntime },
@@ -107,7 +118,25 @@ async function runTool(input: CheckChildInput, call: ToolCall, lapses: string[])
   // What the tool left running must not outlive its directory.
   await terminateAndReapProcessGroupId(child.pid);
   if (timedOut) return lapse("timeout", `${call.toolId} ran past ${timeoutMs} ms`);
+  // A signal the host did not send is no answer either; Bun reports it as the signal, not 128 + n.
+  if (child.signalCode !== null) return lapse("crash", `${call.toolId} was ended by ${child.signalCode}`);
+  if (programNeverRan(exitCode, stdout, stderr)) {
+    return lapse(
+      "protocol",
+      `${call.toolId} exited ${exitCode} before its program ran: ${stderr.slice(-500)}`,
+    );
+  }
   return { nonResult: null, exitCode, stdout, stderr };
+}
+
+/** v1's reading (`src/verify/host.ts`, 74b10d9) of a run whose program never started: a failing exit
+ *  with nothing on stdout, and either a shell's 126 or 127 with its launch-failure line last on stderr
+ *  or CPython's start-up failure, which a program that ran and raised never prints. */
+function programNeverRan(exitCode: number, stdout: string, stderr: string): boolean {
+  if (exitCode === 0 || stdout !== "") return false;
+  const tail = stderr.trimEnd();
+  if (PYTHON_START_FAILURE.test(tail)) return true;
+  return SHELL_COULD_NOT_RUN.has(exitCode) && SHELL_LAUNCH_FAILURE.test(tail.split("\n").at(-1) ?? "");
 }
 
 /** The check's answer. A check that throws, returns no boolean or is missing is at fault itself; a

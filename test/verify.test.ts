@@ -42,6 +42,7 @@ export const checks = {
     await runtime.tools.run({ toolId: "sleeper", args: [], timeoutMs: 100 });
     return true;
   },
+  ran: async (req) => (await req.runtime.tools.run({ toolId: req.publicTask.publicInput.tool })).exitCode === 0,
 };
 `;
 
@@ -80,6 +81,10 @@ const BRIEF = {
     { id: "lapses", execution: execution(["lapses"], [], [], ["sleeper"]) },
     { id: "slow", execution: execution(["slow"], [], [], ["sleeper"]) },
     { id: "host", execution: execution(["host"], [], [], ["sh"]) },
+    {
+      id: "ran",
+      execution: execution(["ran"], [], ["$.tool"], ["killed", "unlaunched", "unstarted", "refuses"]),
+    },
   ],
 };
 
@@ -104,6 +109,10 @@ writeFileSync(join(root, "checks", "reference", "model.ts"), "export const same 
 writeFileSync(secret, "another answer");
 tool("double", "read n; echo $((n * 2))");
 tool("sleeper", "sleep 30");
+tool("killed", "kill -KILL $$");
+tool("unlaunched", 'exec "$(dirname "$0")/missing"');
+tool("unstarted", "echo 'Fatal Python error: init_fs_encoding: failed to get the Python codec' >&2; exit 1");
+tool("refuses", "echo no; exit 127");
 const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("open") });
 
 afterAll(async () => {
@@ -173,6 +182,19 @@ describe.skipIf(!osIsolationSupport().ok)("the verifier", () => {
       kind: "non-result",
       reason: "slow: sleeper ran past 100 ms",
     });
+  });
+
+  it("reads a tool a signal ended, or whose program never started, as a non-result, not a refusal", async () => {
+    const ran = async (toolId: string) => await verify(task("ran", { tool: toolId }), {});
+    expect(await ran("killed")).toEqual({ kind: "non-result", reason: "ran: killed was ended by SIGKILL" });
+    for (const toolId of ["unlaunched", "unstarted"]) {
+      expect(await ran(toolId)).toMatchObject({
+        kind: "non-result",
+        reason: expect.stringMatching(new RegExp(`^ran: ${toolId} exited 1\\d* before its program ran: `)),
+      });
+    }
+    // A program may exit 127 itself; having printed, it answered.
+    expect(await ran("refuses")).toEqual({ kind: "fail", blocking: ["ran"] });
   });
 
   it("finds a check's tool only in the verifier's tree, never the host's copy", async () => {

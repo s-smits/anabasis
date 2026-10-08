@@ -52,9 +52,9 @@ A second Builder on the local branch `claude/builder-session` did the same job a
 
 | v1 part | v1 location | does | v2 | v2 owner, or why |
 |---|---|---|---|---|
-| campaign entry | run/builder-campaign.ts:555 | runs a Builder campaign | deferred | M4; one round's driver is `tools/d2/round.ts` (open #10) |
+| campaign entry | run/builder-campaign.ts:555 | runs a Builder campaign | deferred | M4; one round's driver is `tools/d2/round.ts` (open #10). Its session starts from the cycle's harness, or with `--parent <digest>` from one an earlier session kept |
 | pre-session refusal | run/builder-campaign-preflight.ts | refuses before a paid session | deferred | M4. `session()` refuses an id already in the log and a practice task not released (open #5), and the round refuses task sets the log would refuse (open #8); nothing checks the model or a budget. |
-| workspace seeding | author/domain-repo.ts:168, relocation :127 | seeds from the starter or the adopted product | replaced | `session()` copies the parent whole, links verbatim, and its tool tree as the session's own (open #13); nothing is relocated (section 6) |
+| workspace seeding | author/domain-repo.ts:168, relocation :127 | seeds from the starter or the adopted product | replaced | `session()` copies the parent whole, links verbatim, and its tool tree as the session's own (open #13); nothing is relocated (section 6). The public resources every solve's home holds are in the Builder's home as `resources.json` |
 | starter | starters/pi-built-harness/ | seed tree | unsure | v2 starts from a v1 harness state; the correctness-model half became the fixed contract (plan:68) |
 | mount, runtime | run/builder-runtime.ts | the Builder's tools, isolation and backend | replaced | `build()`: a capped disk, the solver's command wall, pi's loop, the backends of `src/backends/models.ts` |
 | read, grep, find, ls, bash, edit, write | builder/tools.ts:75 | workspace file tools | replaced | bash on the command wall, and `write_file`, which copies through a walled `cp`; no tool reads a path in the host's name |
@@ -115,7 +115,10 @@ A second Builder on the local branch `claude/builder-session` did the same job a
 | Judge | truth/judge*.ts and others | second grading | dropped | plan:72, plan:47 |
 | diagnosis reader, review probe | review/*.ts | reads failed traces; reviewer loop | ported | `src/review/diagnoser.ts`, `probe.ts`, `reader.ts`; M3 waits on G4. The reader's and the Examiner's Claude homes are named `ana-claude-cli-`, which every solver's wall denies; the tool examples name no task domain |
 | Referee | none in v1 | rules on disputes | open #8, #11 | `src/review/referee.ts`; the round's Referee advises on screening and scoring fails, and disputes a task only with `--referee-decides` |
-| outcome and triage reports | tools/outcome, tools/runs, tools/run-triage | run reports | missing | fail kinds, flip and repeat rates, supply (plan:254-255, :297, :332) |
+| outcome and triage reports | tools/outcome, tools/runs, tools/run-triage | run reports | missing | fail kinds, flip and repeat rates, supply (plan:254-255, :297, :332). The round's report carries each harness's mean solve seconds over the scored set, beside the tally |
+| export | run/bundle-export.ts | an adopted harness as a directory with its own `solve` and `check` | deferred | M4: an export follows adoption. It is also the input format a second domain would take (v1's documented output) |
+| Harbor task format | `harbor/` in v1 at `3f93d06`, after 7af7315 | each exported task in Harbor's format | unsure | no plan line |
+| outside baseline | v1's README at `3f93d06`: 25 held-out tasks against Prime-agent | a yardstick outside the loop | unsure | v2 claims only child beats parent, under the model pair's ceiling (plan:378); the pilot retests v1's yardstick on the sweep's scripts (plan:12) |
 | replay, UI | tools/replay; packages/ui | replay; live UI | unsure | engine replay before the second domain (plan:165); no v2 UI |
 
 ## 6. Config, toolchain, models, resume

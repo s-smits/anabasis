@@ -40,7 +40,7 @@ A row marked **open #N** is built on the open stack #2 to #14 (`claude/review-fi
 | ControllerLedger | run/controller-ledger.ts:98 | controller.sqlite | replaced | `src/kernel/log.ts` JSONL |
 | iteration analysis, Judge reviews | run/analyse-step.ts:88; analyse/*.ts | findings after the battery | dropped | reviewers deferred, audit by hand (plan:72, :160) |
 | admission pointer, rebuild advice | run/admission.ts:142, :174 | points at the admitted battery; advises the rebuild | replaced | task states in task.ts; the Builder's feedback is its practice solves and the reviewers' readings (decision 16) |
-| campaign and provider budgets | run/campaign-budget.ts:55; run/provider-resource-budget.ts:194 | dollar gate, provider limits | missing | decision 10 gates on billed dollars; the meter computes them, nothing gates |
+| campaign and provider budgets | run/campaign-budget.ts:55; run/provider-resource-budget.ts:194 | dollar gate, provider limits | dropped | the operator declined a campaign cap on 2026-10-08 (PR #16 closed); the meter reports billed dollars and nothing gates on them |
 | close, deadline, observer | run/full-run-close.ts:35; run/full-run-deadline.ts:34; observe/run-observer.ts | closes the run; live observation | deferred | M4 |
 | solve concurrency | run/session-pool.ts:32, :81 | limits concurrent solves | open #8, #9 | `pooled()`: the round's and the Examiner's solves at most `concurrency` at once (decision 18) |
 
@@ -93,12 +93,12 @@ A second Builder on the local branch `claude/builder-session` did the same job a
 | solver prompt, nudge | solve/built-starter.ts:47-153 | system prompt, first turn | ported | `src/solve/prompt.ts` |
 | record and submit desk | built-starter.ts:539 and the draft and submission modules | writes, checks, submits the answer | ported | `src/solve/answer.ts` |
 | published margin | solve/published-margin.ts | spare margin against limits | unsure | plan:38 names it as a cause; no line keeps or cuts it. A solver has no clock: on 2026-10-08 one said "time is nearly up" and submitted at 56 of 120 minutes (reversing-wind-02), and v1's solve of that task stopped at 43. |
-| built bash | solve/built-bash.ts:268 | solver shell | ported | `src/solve/shell.ts`, `src/solve/command.ts` plus the disk cap |
+| built bash | solve/built-bash.ts:268 | solver shell | ported | `src/solve/shell.ts`, `src/solve/command.ts` plus the disk cap. A cut command's full output goes to `<home>/.shell-output`, not the host's temp dir, through an optional dir in vendor `output-files.ts` |
 | dcg rules | solve/dcg-rules.ts | refuses destructive commands | dropped | V7 (plan:140) |
 | generated-tool worker, define-tool | solve/generated-tool-worker*.ts, define-tool.ts | harness tool process and helpers | replaced | `src/solve/harness.ts`, one process per call; `harness-shim.ts` |
 | task access trace | solve/task-access-trace.ts | traces task-file access | unsure | the nearest is the moved-files non-result |
-| pi-built runtime and child | backends/pi-built*.ts | solver loop in a child | replaced | `play()` in `src/solve/run.ts`, in this process; only commands are walled; 3 reruns |
-| Claude bridge | vendor/pi-claude-bridge | pi model via Claude Code | ported | `src/backends/claude.ts` |
+| pi-built runtime and child | backends/pi-built*.ts | solver loop in a child | replaced | `play()` in `src/solve/run.ts`, in this process; only commands are walled; 3 reruns. `judge` grades a submitted answer before a crash; only a kill and moved files come first |
+| Claude bridge | vendor/pi-claude-bridge | pi model via Claude Code | ported | `src/backends/claude.ts`; Opus 5.5 and Sonnet 5.5 run at a million tokens beside the 5.0 models |
 | compaction, usage | backends/pi-compaction.ts, pi-usage.ts | context, tokens | replaced | Claude Code's compaction or off; `src/kernel/meter.ts` |
 | battery runtime isolation | run/built-agent-runtime.ts | sandbox per solve | ported | `src/verify/solve-sandbox.ts`, `solve-command-isolation.ts` |
 | Codex, OpenRouter | backends/codex-backend.ts and others | other providers | ported | `src/backends/models.ts`; parked (plan:157) |
@@ -107,13 +107,13 @@ A second Builder on the local branch `claude/builder-session` did the same job a
 
 | v1 part | v1 location | does | v2 | v2 owner, or why |
 |---|---|---|---|---|
-| verifier host, evaluator | verify/host.ts:120; truth/verification-runner.ts:510 | runs the evaluator | replaced | `openVerifier` plus check-child.ts; `tools/m0/regrade.ts` matches v1 on 114 of 114 verdicts |
+| verifier host, evaluator | verify/host.ts:120; truth/verification-runner.ts:510 | runs the evaluator | replaced | `openVerifier` plus check-child.ts; `tools/m0/regrade.ts` matches v1 on 114 of 114 verdicts. A check tool a signal ended, or whose program never started, is a non-result, not a refusal (v1 74b10d9) |
 | verifier lifetime | verify/verifier-lifetime.ts | one verifier per campaign | replaced | a cell per check; a verifier non-result stops the run |
 | tool inventory, self-grounding, host inputs | verify/*.ts | host tools; evaluator inputs | unsure | no v2 importer |
 | OS sandbox | verify/*.ts | Seatbelt and bwrap walls | ported | `src/verify/*` plus `disk-cap.ts` |
 | meter, records | pi-usage; claim and truth records | cost; case records | replaced | `meter.ts` (billed beside metered, decision 10); `log.ts` events |
 | Judge | truth/judge*.ts and others | second grading | dropped | plan:72, plan:47 |
-| diagnosis reader, review probe | review/*.ts | reads failed traces; reviewer loop | ported | `src/review/diagnoser.ts`, `probe.ts`, `reader.ts`; M3 waits on G4 |
+| diagnosis reader, review probe | review/*.ts | reads failed traces; reviewer loop | ported | `src/review/diagnoser.ts`, `probe.ts`, `reader.ts`; M3 waits on G4. The reader's and the Examiner's Claude homes are named `ana-claude-cli-`, which every solver's wall denies; the tool examples name no task domain |
 | Referee | none in v1 | rules on disputes | open #8, #11 | `src/review/referee.ts`; the round's Referee advises on screening and scoring fails, and disputes a task only with `--referee-decides` |
 | outcome and triage reports | tools/outcome, tools/runs, tools/run-triage | run reports | missing | fail kinds, flip and repeat rates, supply (plan:254-255, :297, :332) |
 | replay, UI | tools/replay; packages/ui | replay; live UI | unsure | engine replay before the second domain (plan:165); no v2 UI |
@@ -139,7 +139,7 @@ Ranked by how much each delays a live round once the open stack lands.
 
 1. **Toolchain install (`.oss`)** (plan:261, :154). The fixed checker and the solvers need the pack's engines.
 2. **The first live round.** `tools/d2/round.ts`, `tools/d1b/examine.ts` and `admit-sweep --log` have never run against a model, and #5's Builder has not run live either.
-3. **Model preflight and a billed-dollar budget gate** (decision 10).
+3. **Model preflight.**
 4. **Run reports:** fail kinds, flip and repeat rates, supply.
 5. **The unsure rows** above, to decide.
 

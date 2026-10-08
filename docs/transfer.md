@@ -111,7 +111,7 @@ A second Builder on the local branch `claude/builder-session` did the same job a
 | verifier lifetime | verify/verifier-lifetime.ts | one verifier per campaign | replaced | a cell per check; a verifier non-result stops the run |
 | tool inventory, self-grounding, host inputs | verify/*.ts | host tools; evaluator inputs | unsure | no v2 importer |
 | OS sandbox | verify/*.ts | Seatbelt and bwrap walls | ported | `src/verify/*` plus `disk-cap.ts` |
-| meter, records | pi-usage; claim and truth records | cost; case records | replaced | `meter.ts` (billed beside metered, decision 10); `log.ts` events |
+| meter, records | pi-usage; claim and truth records | cost; case records | replaced | `meter.ts` (billed beside metered, decision 10); `log.ts` events. Claude Code reports its cost only in a query's `result`, and a submit closes the query before one comes, so a solve that submits logs `reportedCost: null` (the smoke round, 2026-10-08): billed against reported can be read only on a solve that ends otherwise. pi's Responses provider sets no `responseModel`, so a Codex solve's `responseModels` is empty |
 | Judge | truth/judge*.ts and others | second grading | dropped | plan:72, plan:47 |
 | diagnosis reader, review probe | review/*.ts | reads failed traces; reviewer loop | ported | `src/review/diagnoser.ts`, `probe.ts`, `reader.ts`; M3 waits on G4. The reader's and the Examiner's Claude homes are named `ana-claude-cli-`, which every solver's wall denies; the tool examples name no task domain |
 | Referee | none in v1 | rules on disputes | open #8, #11 | `src/review/referee.ts`; the round's Referee advises on screening and scoring fails, and disputes a task only with `--referee-decides` |
@@ -129,7 +129,7 @@ A second Builder on the local branch `claude/builder-session` did the same job a
 | model preflight | run/model-preflight.ts:86 | checks the model answers before spending | missing | before the first live D1b solve (plan:264) |
 | host identity | run/host-runtime-policy.ts, source-identity.ts | pins the host source | replaced | `condition.host`: the digest of `src/` and `vendor/` as they stand (open #3) |
 | toolchain relocation | author/domain-repo.ts:127 | rewrites launchers after a copy | replaced | nothing is relocated (open #13). A harness runs where it is kept. Its `.toolchain` links to a copy of the session's tree kept beside the states, made again only when the tree has changed, so practice after practice reads one copy. A freeze refuses a link or a script that names the Builder's home, so a launcher finds its files from `$(dirname "$0")`, as the stored truss launchers do. |
-| solver `.toolchain` | built-bash PATH | first on PATH, hashed | ported | `command.ts`; `harness.ts` hashes the tree |
+| solver `.toolchain` | built-bash PATH | first on PATH, hashed | ported | `command.ts`; `harness.ts` hashes the tree. The wall keeps it read-only, where v1's solver could write it: the sweep's `pynite-python` points matplotlib at `.toolchain/mplcache`, which now warns on each run and falls back to a temp cache |
 | toolchain install (`.oss`) | builder/verifier-workshop.ts | installs engines | missing | plan:261, :154; a Builder installs into its harness's `.toolchain` (open #13) |
 | temp-root sweep, safeguards | meta/temp-scratch-clean.ts, safeguard.ts | stale temp roots; safeguard refusals | ported | both in `src/meta/`, no importer |
 | resume | author/campaign-memory.ts:180; tools/runs/resume.ts | resumes a campaign | deferred | M4; the only primitive is the log's repair |

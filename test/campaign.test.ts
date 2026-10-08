@@ -2,7 +2,7 @@
 // opens, names its sets from the log, finds a task a session wrote beside the pack's own, and
 // `prepare.ts`, run as the operator runs it, draws the anchor and releases the practice tasks once.
 import { afterAll, describe, expect, it } from "bun:test";
-import { append, read } from "../src/kernel/log.ts";
+import { append, type LogEvent, read } from "../src/kernel/log.ts";
 import { taskStates, taskVersion } from "../src/kernel/task.ts";
 import {
   cpSync,
@@ -15,7 +15,7 @@ import {
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
-import { openCampaign, setsOf } from "../tools/d2/campaign.ts";
+import { carriable, openCampaign, setsOf } from "../tools/d2/campaign.ts";
 
 const REPO = resolve(import.meta.dir, "..");
 const FIXTURE = new URL("fixtures/harness-min", import.meta.url).pathname;
@@ -146,5 +146,48 @@ describe("a campaign", () => {
     expect(prepare()).toBe(summary);
     expect(read(campaign.log).filter((event) => event.kind === "anchor.drawn")).toHaveLength(1);
     expect(setsOf(read(campaign.log)).released).toEqual(sets.released);
+  });
+
+  it("reads from a log what a campaign under a repaired checker can take with no solve", () => {
+    const at = "2026-10-08T00:00:00.000Z";
+    const event = (kind: LogEvent["kind"], data: LogEvent["data"]): LogEvent => ({ at, kind, data });
+    /** A task a session wrote, as far as gate 2: its proposal, and its stronger solve's verdict. */
+    const written = (id: string, version: string, solved: LogEvent["data"]): LogEvent[] => [
+      event("task.proposed", {
+        version,
+        taskId: id,
+        session: "x-1",
+        task: { taskId: id, family: "fixture", publicInput: { base: 4 }, hidden: null },
+      }),
+      event("task.gate", { version, gate: 1, outcome: "passed" }),
+      event("verdict", { solve: `s-${id}`, task: id, answer: { answer: id }, kind: "pass" }),
+      event("task.gate", { version, gate: 2, solve: `s-${id}`, ...solved }),
+    ];
+    const set = [{ answer: { answer: "0" }, expectedCheckId: "check-product" }];
+    const events = [
+      // Feasible, its controls whole in the log.
+      ...written("x-1-001", "v1", { outcome: "passed" }),
+      event("task.gate", { version: "v1", gate: 4, outcome: "passed", controls: "d", set }),
+      // Feasible in a log written before the controls were kept: only their digest is there.
+      ...written("x-1-002", "v2", { outcome: "passed" }),
+      event("task.gate", { version: "v2", gate: 4, outcome: "passed", controls: "d" }),
+      // Closed as too hard on an answer a check refused, which a repair may accept; and at the
+      // wall, which no repair changes.
+      ...written("x-1-003", "v3", { outcome: "too-hard", kind: "rejected" }),
+      ...written("x-1-004", "v4", { outcome: "too-hard", kind: "wall-ended" }),
+      // A pack's task is no session's: its proposal holds no instance.
+      event("task.proposed", { version: "v5" }),
+    ];
+    const { feasible, recovered, bare } = carriable(events);
+    expect(feasible).toEqual([
+      {
+        task: { taskId: "x-1-001", family: "fixture", publicInput: { base: 4 }, hidden: null },
+        solve: "s-x-1-001",
+        accepted: { answer: "x-1-001" },
+        controls: set,
+      },
+    ]);
+    expect(recovered.map(({ task, solve }) => [task.taskId, solve])).toEqual([["x-1-003", "s-x-1-003"]]);
+    expect(bare).toBe(1);
   });
 });

@@ -1,10 +1,11 @@
-// Phase C's three commands, run as the operator runs them over a sweep laid out as v1's left one: a
+// Phase C's four commands, run as the operator runs them over a sweep laid out as v1's left one: a
 // pack of two tasks and one check, three stored solves, and the pack's controls. The verifier runs
 // behind its wall, so the suite is skipped where the host has none. No model is called: the
 // Referee's reading stops at its guard. The tests run in order: the second freezes what the first
 // read, and the last regrades what the third logged.
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
 import { append, read } from "../src/kernel/log.ts";
+import { taskStates } from "../src/kernel/task.ts";
 import {
   cpSync,
   existsSync,
@@ -31,6 +32,9 @@ const campaign = join(REPO, ".ana", "d2", NAME);
  *  logged in. */
 const ACCEPTED = `${NAME}-accepted`;
 const accepted = join(REPO, ".ana", "d2", ACCEPTED);
+/** The campaign of the repaired checker, which the old one's written tasks are carried into. */
+const CARRIED = `${NAME}-carried`;
+const carried = join(REPO, ".ana", "d2", CARRIED);
 const FORMAT = { type: "object", properties: { answer: { type: "string" } }, required: ["answer"] };
 const EVALUATOR = `export const checks = {
   "check-product": (req) => req.artifact.answer === String(req.publicTask.publicInput.base * 6),
@@ -51,6 +55,7 @@ afterAll(() => {
   rmSync(root, { recursive: true, force: true });
   rmSync(campaign, { recursive: true, force: true });
   rmSync(accepted, { recursive: true, force: true });
+  rmSync(carried, { recursive: true, force: true });
 });
 
 /** One stored solve as v1 left it: its result, its trace, its answer and what its record tool took. */
@@ -283,5 +288,50 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
     expect(stands.said).toContain("the repair stands on what was read");
     expect(stands.code).toBe(0);
     expect(readFileSync(log, "utf8")).toBe(before);
+  });
+
+  it("carries a session's tasks into the repaired checker's campaign with no solve, once", () => {
+    // An old campaign's log, written by hand: two tasks a session wrote, feasible with their
+    // controls on record. The repaired check accepts the first one's answer and not the second's.
+    const old = join(root, "old.jsonl");
+    const set = ["0", "1", "100"].map((answer) => ({ answer: { answer }, expectedCheckId: "check-product" }));
+    for (const [id, version, answer] of [
+      ["x-1-001", "o1", "24"],
+      ["x-1-002", "o2", "30"],
+    ] as const) {
+      const task = { taskId: id, family: "fixture", publicInput: { base: 4 }, hidden: null };
+      append(old, "task.proposed", { version, taskId: id, session: "x-1", task });
+      append(old, "task.gate", { version, gate: 1, outcome: "passed" });
+      append(old, "verdict", { solve: `s-${id}`, task: id, answer: { answer }, kind: "pass" });
+      append(old, "task.gate", { version, gate: 2, outcome: "passed", solve: `s-${id}` });
+      append(old, "task.gate", { version, gate: 3, outcome: "passed" });
+      append(old, "task.gate", { version, gate: 4, outcome: "passed", controls: "d", set });
+    }
+    const carry = () =>
+      command("tools/c/carry.ts", {
+        from: old,
+        root,
+        sweep: "s",
+        cycle: "c01",
+        bundle: join(root, "repaired"),
+        name: CARRIED,
+      });
+    const first = carry();
+    expect(first.said).toContain("2 tasks with their controls on record: 1 feasible here, 1 refused");
+    expect(first.said).toContain("x-1-002\trefused at gate 2");
+    expect(first.code).toBe(0);
+    const events = read(join(carried, "log.jsonl"));
+    const states = [...taskStates(events).values()].sort();
+    expect(states).toEqual(["held", "refused"]);
+    // The feasible one passed all four gates here, its controls kept whole for the next repair.
+    const gates = events.flatMap(({ kind, data }) =>
+      kind === "task.gate" && data.outcome === "passed" ? [Number(data.gate)] : [],
+    );
+    expect(gates.toSorted((a, b) => a - b)).toEqual([1, 1, 2, 3, 4]);
+    expect(events.find(({ kind, data }) => kind === "task.gate" && data.gate === 4)?.data.set).toEqual(set);
+    expect(events.filter(({ kind }) => kind === "verdict")).toHaveLength(1);
+    // Run again, nothing is taken twice.
+    expect(carry().said).toContain("0 feasible here, 0 refused, 2 already there");
+    expect(read(join(carried, "log.jsonl"))).toHaveLength(events.length);
   });
 });

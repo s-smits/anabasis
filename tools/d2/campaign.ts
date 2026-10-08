@@ -28,11 +28,11 @@ import { type Condition, type Limits, recordCondition } from "#src/kernel/condit
 import { contractHash } from "#src/kernel/contract.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
 import { freezePrices, priceKey } from "#src/kernel/meter.ts";
-import { type TaskPackage, taskStates, taskVersion } from "#src/kernel/task.ts";
+import { type RejectControl, type TaskPackage, taskStates, taskVersion } from "#src/kernel/task.ts";
 import { checkProgramVersion, openVerifier, type Task } from "#src/kernel/verify.ts";
 import { existsSync, mkdirSync, readFileSync } from "#src/meta/filesystem.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
-import { asRecord, isString } from "#src/meta/json-shape.ts";
+import { asRecord, isString, type JsonValue } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { join, resolve } from "#src/meta/path.ts";
 import { capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
@@ -139,6 +139,58 @@ export function writtenTasks(events: readonly LogEvent[]): Task[] {
         ]
       : [];
   });
+}
+
+/** A task a session wrote that stood feasible in its log, with what gates it again under another
+ *  checker and no solve: the answer its stronger solve was accepted on, and its controls. */
+export interface Carriable {
+  readonly task: Task;
+  /** The stronger solve that passed gate 2, as the log names it. */
+  readonly solve: string;
+  readonly accepted: JsonValue;
+  readonly controls: readonly RejectControl[];
+}
+
+/**
+ * What a log holds of its sessions' tasks for a campaign under a repaired checker. `feasible` are
+ * the tasks that passed gate 4 with their controls on record. `recovered` are the tasks gate 2
+ * closed as too hard on an answer a check refused: a repair may accept that answer, and the task
+ * then lacks only its controls. A task whose controls were written before a log held them whole
+ * (`examiner/session.ts`) is counted in `bare`, and takes a session to write them again.
+ */
+export function carriable(events: readonly LogEvent[]) {
+  const written = new Map(writtenTasks(events).map((task) => [task.taskId, task]));
+  const answerOf = (solve: JsonValue | undefined) =>
+    events.findLast(({ kind, data }) => kind === "verdict" && data.solve === solve)?.data.answer;
+  const gate = (version: JsonValue | undefined, number: number) =>
+    events.findLast(
+      ({ kind, data }) => kind === "task.gate" && data.version === version && data.gate === number,
+    )?.data;
+  const feasible: Carriable[] = [];
+  const recovered: Omit<Carriable, "controls">[] = [];
+  let bare = 0;
+  for (const { kind, data } of events) {
+    const task = kind === "task.proposed" && isString(data.taskId) ? written.get(data.taskId) : undefined;
+    if (task === undefined) continue;
+    const second = gate(data.version, 2);
+    const accepted = answerOf(second?.solve);
+    if (!isString(second?.solve) || accepted === undefined) continue;
+    const witness = { task, solve: second.solve, accepted };
+    const fourth = gate(data.version, 4);
+    if (second.outcome === "too-hard" && second.kind === "rejected") recovered.push(witness);
+    else if (fourth?.outcome === "passed" && Array.isArray(fourth.set)) {
+      feasible.push({ ...witness, controls: fourth.set.flatMap(controlOf) });
+    } else if (fourth?.outcome === "passed") bare += 1;
+  }
+  return { feasible, recovered, bare };
+}
+
+/** A control as gate 4 logged it, or none where the row is not one. */
+function controlOf(row: JsonValue): RejectControl[] {
+  const control = asRecord(row);
+  return control?.answer !== undefined && isString(control.expectedCheckId)
+    ? [{ answer: control.answer, expectedCheckId: control.expectedCheckId }]
+    : [];
 }
 
 export async function openCampaign(args: CampaignArgs) {

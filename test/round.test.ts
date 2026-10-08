@@ -18,6 +18,7 @@ import type { Contract } from "../src/kernel/contract.ts";
 import { append, type EventKind, read } from "../src/kernel/log.ts";
 import type { Ending } from "../src/kernel/solve.ts";
 import { taskStates } from "../src/kernel/task.ts";
+import { returning } from "../src/kernel/wall.ts";
 import {
   cpSync,
   mkdirSync,
@@ -720,6 +721,18 @@ describe("a round", () => {
       "wall-bound",
       "admitted",
     ]);
+    // The wall-bound verdict names the setting and the limits its solves ran under, so that a
+    // longer wall returns the task to the pool and nothing else does (`src/kernel/limits.ts`).
+    const verdicts = s.of("task.state");
+    expect(verdicts.find((moved) => moved.state === "wall-bound")).toMatchObject({
+      version: "c3",
+      setting: s.request.setting,
+      limits: LIMITS,
+    });
+    expect(returning(read(s.log), LIMITS)).toEqual([]);
+    expect(returning(read(s.log), { ...LIMITS, wallSeconds: 2 * LIMITS.wallSeconds })).toEqual(["c3"]);
+    // No other verdict names limits: only this one rests on them.
+    expect(verdicts.filter((moved) => moved.limits !== undefined)).toHaveLength(1);
     // Two at a time while two are wanted, then one at a time: no candidate past the set's need.
     const order = s.asked.map(({ version }) => version).filter((version) => version.startsWith("c"));
     expect(order.slice(0, 12).every((version) => version === "c1" || version === "c2")).toBe(true);
@@ -734,7 +747,7 @@ describe("a round", () => {
       reading: "no-step",
     });
     expect(order).toHaveLength(24 + 8);
-    expect(s.of("task.state").filter((moved) => moved.session === "b-1")).toHaveLength(4);
+    expect(verdicts.filter((moved) => moved.session === "b-1")).toHaveLength(4);
     // Run again, it screens nothing and solves nothing.
     expect(await round({ ...s.request, candidates: CANDIDATES, target: 2 })).toEqual(report);
     expect(s.asked.filter(({ version }) => version.startsWith("c"))).toHaveLength(32);

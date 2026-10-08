@@ -72,12 +72,12 @@
  * operator's, behind gate G4.
  */
 import { anchor, draw, gain, type Paired, pairsOf, scored, solveSeconds } from "../kernel/compare.ts";
-import { conditionsOf } from "../kernel/condition.ts";
+import { conditionsOf, settingId } from "../kernel/condition.ts";
 import { endingsOf, lastReports, standing } from "../kernel/ladder.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { screen, taskSets, taskStates } from "../kernel/task.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
-import { keyIfTruthy } from "../meta/optional-key.ts";
+import { keyIfTruthy, keysIf } from "../meta/optional-key.ts";
 import { join } from "../meta/path.ts";
 import { asError, errorMessage } from "../meta/runtime-values.ts";
 import type { RefereeFinding, Ruling } from "../review/referee.ts";
@@ -380,7 +380,7 @@ function whole(pairs: readonly Paired[], solves: number) {
   const cut = <T>(list: readonly T[] = []) => list.slice(0, solves);
   return {
     pairs: pairs.flatMap((pair) => {
-      const { task, old, fresh, seconds } = pair;
+      const { task, old, fresh, seconds, solves: named } = pair;
       if (!enough(pair)) return [];
       return [
         {
@@ -388,6 +388,7 @@ function whole(pairs: readonly Paired[], solves: number) {
           old: cut(old),
           fresh: cut(fresh),
           seconds: { old: cut(seconds?.old), fresh: cut(seconds?.fresh) },
+          solves: { old: cut(named?.old), fresh: cut(named?.fresh) },
         },
       ];
     }),
@@ -751,7 +752,20 @@ async function screenPool(
           throw new Error("its screening solves did not all end in a pass or a fail");
         }
         const state = screen([tests.old, tests.fresh], fails);
-        append(log, TASK_STATE, { version, state, session: id });
+        append(log, TASK_STATE, {
+          version,
+          state,
+          session: id,
+          // A wall-bound verdict is evidence about the limits its solves ran under, so it names
+          // them: under a longer wall the task returns to the pool (`src/kernel/limits.ts`).
+          ...keysIf(state === "wall-bound", () => ({
+            setting: request.setting,
+            limits:
+              conditionsOf(after)
+                .values()
+                .find((ran) => settingId(ran) === request.setting)?.limits ?? null,
+          })),
+        });
       } catch (error) {
         unscreened.push(version);
         work.faults.push(`${version}: ${errorMessage(error)}`);
@@ -992,6 +1006,22 @@ export function settleReading(log: string, id: string, labels: ReadonlyMap<strin
 }
 
 /**
+ * The scored pairs a report tallied, read as the report found them: from the log up to that report,
+ * so a task released or gone stale since is still the scored task it was, and within its round's own
+ * window of solves. None for a report that compared nothing. `report` is one of `lastReports`.
+ */
+export function pairsReported(
+  events: readonly LogEvent[],
+  report: { readonly session: string; readonly index: number; readonly data: JsonObject },
+): Paired[] {
+  const { session, index, data } = report;
+  const versions = Array.isArray(data.versions) ? data.versions.filter(isString) : [];
+  if (!isString(data.old) || !isString(data.fresh) || !isNumber(data.solves)) return [];
+  const then = asReported(events.slice(0, index + 1), session);
+  return whole(pairsOf(then, versions, data.old, data.fresh).pairs, data.solves).pairs;
+}
+
+/**
  * The plan's three-session rule over the rounds a log holds: the pooled gain of every scored task
  * of every compared session, and whether the experiment stops on it. It stops when at least three
  * sessions were compared, none read a step, and the gain stays under ten points at 90% confidence
@@ -1000,18 +1030,11 @@ export function settleReading(log: string, id: string, labels: ReadonlyMap<strin
  * outage left with no scored task, counts among the three with no task to pool, and so is never
  * flat by itself: no tasks is no evidence of a flat gain.
  *
- * Each round is read as its own report found it (`asReported`): from the log up to that report, so
- * a task released, admitted again, retired or gone stale since is still the scored task it was,
- * and within the round's own window of solves. A settled round's tasks are its last report's.
+ * Each round is read as its own report found it (`pairsReported`).
  */
 export function stopRule(events: readonly LogEvent[]) {
   const reports = lastReports(events).filter(({ data }) => data.reading !== "check-defects");
-  const pairs = reports.flatMap(({ session, index, data }) => {
-    const versions = Array.isArray(data.versions) ? data.versions.filter(isString) : [];
-    if (!isString(data.old) || !isString(data.fresh) || !isNumber(data.solves)) return [];
-    const then = asReported(events.slice(0, index + 1), session);
-    return whole(pairsOf(then, versions, data.old, data.fresh).pairs, data.solves).pairs;
-  });
+  const pairs = reports.flatMap((report) => pairsReported(events, report));
   const pooled = gain(pairs);
   const stepped = reports.some(({ data }) => data.reading === "step");
   const flat = pairs.length >= STOP_TASKS && pooled.upper < STOP_POINTS;

@@ -15,6 +15,12 @@
  * many of the solves read failed, and which checks refused them. The checks are the Examiner's to
  * know, since it names them in its controls. Nothing of a solver's answer or trace is here, and
  * nothing of the harness.
+ *
+ * A wall-bound task is said to be so at the time limit it was measured under, and no more: the
+ * verdict holds under those limits alone (`src/kernel/limits.ts`), and once the campaign runs
+ * under a longer wall the task is back in the pool and reads `not yet measured` until it is solved
+ * again. The limit is never given as a number, nor how near a solve came to it, for the reason
+ * above.
  */
 import { type Rule, type Stand, solvesOf, standing } from "../kernel/ladder.ts";
 import type { LogEvent } from "../kernel/log.ts";
@@ -27,7 +33,10 @@ import { countBy } from "../meta/tally.ts";
 const SETTLED = new Map([
   ["too-hard", "too hard for now: no stronger solve of it has passed"],
   ["too-easy", "too easy: the solver passes it"],
-  ["wall-bound", "wall-bound: the solver only ran out of time on it"],
+  [
+    "wall-bound",
+    "wall-bound: the solver only ran out of time on it, at the time limit it was measured under",
+  ],
   ["released", "in use as practice, and so never scored"],
   ["disputed", "set aside: a check was at fault on a solver's answer"],
 ]);

@@ -38,6 +38,9 @@ export interface Paired {
   readonly fresh: readonly boolean[];
   /** Each of those solves' seconds, in the same order; null where the log has none. */
   readonly seconds?: { readonly old: readonly (number | null)[]; readonly fresh: readonly (number | null)[] };
+  /** Each of those solves as the log names it, in the same order: what a reading of the fails
+   *  behind a pair starts from (`src/review/weight.ts`). */
+  readonly solves?: { readonly old: readonly string[]; readonly fresh: readonly string[] };
 }
 
 export interface Tally {
@@ -226,7 +229,13 @@ export function pairsOf(
         return kind === "solve.finished" &&
           under?.harness === harness &&
           (outcome === "pass" || outcome === "fail")
-          ? [{ pass: outcome === "pass", seconds: isNumber(data.seconds) ? data.seconds : null }]
+          ? [
+              {
+                solve: isString(data.solve) ? data.solve : "",
+                pass: outcome === "pass",
+                seconds: isNumber(data.seconds) ? data.seconds : null,
+              },
+            ]
           : [];
       });
     const [before, after] = [counted(old), counted(fresh)];
@@ -236,6 +245,7 @@ export function pairsOf(
         old: before.map(({ pass }) => pass),
         fresh: after.map(({ pass }) => pass),
         seconds: { old: before.map(({ seconds }) => seconds), fresh: after.map(({ seconds }) => seconds) },
+        solves: { old: before.map(({ solve }) => solve), fresh: after.map(({ solve }) => solve) },
       },
     ];
   });

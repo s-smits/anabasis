@@ -29,7 +29,11 @@
  * (`src/review/agreement.ts`).
  *
  * Every solve is the cycle's own model at its effort, unless `--solver` and `--solver-effort` name
- * another to solve in its place.
+ * another to solve in its place. Every solve is held to the sweep's wall and turns, unless
+ * `--solve-minutes` and `--solve-turns` name others. The four are the campaign's, and every
+ * command of it takes them from one owner (`setting.ts`): another solver or a longer wall is
+ * another setting, under which every standing restarts, and that file says what it costs in
+ * solves. `--minutes` and `--turns` are the Builder session's own.
  *
  * The session starts from the frontier: the harness the campaign's last step left, or the cycle's
  * while no round has stepped (`src/kernel/ladder.ts`). So a step is built on without being asked
@@ -40,7 +44,8 @@
  * that is none of those is refused with the ones there are.
  *
  * Run again with the same `--session`, a round goes on from its log. Its report and the plan's
- * three-session reading are printed from the log.
+ * three-session reading are printed from the log, and after them what the rounds that fell short
+ * of a step show together and what a repeat would need (`src/kernel/size.ts`).
  *
  * A simulation runs this same command with a script in each of its two model seats
  * (`tools/runs/rehearse.ts`), so that what it walks is what a paid round walks.
@@ -50,8 +55,10 @@
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
 import { type RoundReport, round, screeningOrder, stopRule } from "#src/builder/round.ts";
 import type { BuildRequest, Practised } from "#src/builder/session.ts";
+import { shortOfAStep } from "#src/builder/short.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { read } from "#src/kernel/log.ts";
+import { shortLines } from "#src/kernel/size.ts";
 import type { TaskPackage } from "#src/kernel/task.ts";
 import { existsSync, readdirSync } from "#src/meta/filesystem.ts";
 import { isString } from "#src/meta/json-shape.ts";
@@ -61,13 +68,13 @@ import { modelNamed } from "../m0/stored-sweep.ts";
 import {
   frontier,
   type Kept,
-  LIMITS,
   openCampaign,
   SCREENING_OPTIONS,
   screeningRule,
   setsOf,
   stayAwake,
 } from "./campaign.ts";
+import { SETTING_OPTIONS, settingNamed } from "./setting.ts";
 
 export type Campaign = Awaited<ReturnType<typeof openCampaign>>;
 
@@ -96,8 +103,7 @@ export const ROUND_OPTIONS = {
   session: { type: "string" },
   builder: { type: "string" },
   "builder-effort": { type: "string", default: "high" },
-  solver: { type: "string" },
-  "solver-effort": { type: "string", default: "high" },
+  ...SETTING_OPTIONS,
   reviewer: { type: "string" },
   "reviewer-effort": { type: "string", default: "high" },
   "referee-decides": { type: "boolean", default: false },
@@ -140,11 +146,9 @@ export async function roundCommand(args: readonly string[], seated: Seated = hos
   }
   // SAFETY: an effort is one of pi's levels, and a backend refuses one it does not serve.
   const effort = (flag: string) => flag as ThinkingLevel;
-  const solver =
-    values.solver === undefined
-      ? undefined
-      : { model: values.solver, effort: effort(values["solver-effort"]) };
-  const campaign = await openCampaign({ root, sweep, cycle, bundle, name, solver });
+  const setting = settingNamed(values);
+  const { limits } = setting;
+  const campaign = await openCampaign({ root, sweep, cycle, bundle, name, ...setting });
   const sets = setsOf(read(campaign.log));
   const packages = campaign.packages();
   const packageOf = (version: string): TaskPackage => {
@@ -198,7 +202,7 @@ export async function roundCommand(args: readonly string[], seated: Seated = hos
       ...seats.builder,
       effort: effort(values["builder-effort"]),
       limits: {
-        ...LIMITS,
+        ...limits,
         wallSeconds: Number(values.minutes) * 60,
         turns: Number(values.turns),
         practiceSolves: Number(values["practice-solves"]),
@@ -226,7 +230,7 @@ export async function roundCommand(args: readonly string[], seated: Seated = hos
     anchorLevel: Number(values["anchor-level"] ?? values.level),
     anchorFloor: Number(values["anchor-floor"]),
     defects: Number(values.defects),
-    concurrency: LIMITS.concurrency,
+    concurrency: limits.concurrency,
     solve: (version, dir, digest, kill) => seats.solve(packageOf(version), { dir, digest }, kill),
     setting: seats.setting,
     ...(reviewers === null
@@ -236,6 +240,9 @@ export async function roundCommand(args: readonly string[], seated: Seated = hos
   });
   console.log(JSON.stringify(report, null, 2));
   console.log(JSON.stringify(stopRule(read(campaign.log)), null, 2));
+  // The rule's companion: what the rounds that fell short show together (`src/kernel/size.ts`).
+  const fell = shortOfAStep(read(campaign.log), Number(values.level));
+  for (const line of shortLines(fell.together, fell.bought)) console.log(line);
   return report;
 }
 

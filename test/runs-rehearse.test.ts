@@ -208,6 +208,7 @@ describe("a rehearsal's seats", () => {
     const campaign = {
       log,
       test: { effort: "medium", side: "test" },
+      limits: { turns: 24 },
       setting: () => "scripted",
       solveOnce: async (_task: TaskPackage, _harness: Kept, by: Parameters<Campaign["solveOnce"]>[2]) => {
         const context = normalizeContext({ messages: [{ role: "user", content: "Solve.", timestamp: 0 }] });

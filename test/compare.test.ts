@@ -191,10 +191,25 @@ describe("the pairs a comparison reads from the log", () => {
     ];
     const untimed = { old: [null], fresh: [null] };
     const counted = pairsOf(log, ["v1", "v0"], "old", "new");
+    // Each counted solve is named, in the order its pass or fail is listed: the non-result and the
+    // stronger side's solve, s-4 and s-6, are not among them.
+    const anchored = {
+      task: "v0",
+      old: [P],
+      fresh: [F],
+      seconds: untimed,
+      solves: { old: ["s-9"], fresh: ["s-10"] },
+    };
     expect(counted).toEqual({
       pairs: [
-        { task: "v1", old: [P, F], fresh: [P, P], seconds: { old: [600, 900], fresh: [300, null] } },
-        { task: "v0", old: [P], fresh: [F], seconds: untimed },
+        {
+          task: "v1",
+          old: [P, F],
+          fresh: [P, P],
+          seconds: { old: [600, 900], fresh: [300, null] },
+          solves: { old: ["s-3", "s-7"], fresh: ["s-5", "s-8"] },
+        },
+        anchored,
       ],
       disputed: [],
     });
@@ -204,7 +219,7 @@ describe("the pairs a comparison reads from the log", () => {
     // A check defect ruled on the scored task takes it out on both sides, and it is named.
     const disputed = [...log, event("task.state", { version: "v1", state: "disputed" })];
     expect(pairsOf(disputed, ["v1", "v0"], "old", "new")).toEqual({
-      pairs: [{ task: "v0", old: [P], fresh: [F], seconds: untimed }],
+      pairs: [anchored],
       disputed: ["v1"],
     });
   });

@@ -12,7 +12,16 @@ import {
 import { spent } from "../src/builder/round.ts";
 import { claimed } from "../src/examiner/session.ts";
 import { append, type LogEvent } from "../src/kernel/log.ts";
-import { type Asked, examPreflight, family, leftOpen, preflight, start } from "../tools/runs/launch.ts";
+import {
+  type Asked,
+  examPreflight,
+  family,
+  launch,
+  leftOpen,
+  preflight,
+  start,
+} from "../tools/runs/launch.ts";
+import { LIMITS } from "../tools/d2/campaign.ts";
 import { seedCampaign } from "../tools/runs/seed.ts";
 
 const SETS = {
@@ -33,14 +42,24 @@ const ASKED: Asked = {
   running: [],
   missing: null,
   spent: null,
+  solves: 3,
+  named: { solver: undefined, limits: LIMITS },
+  ran: null,
 };
 
 describe("a launch's preflight", () => {
-  it("lets a round start that has an anchor and a task to screen, and says its sets", () => {
-    expect(preflight(SETS, ASKED)).toEqual({
-      refusals: [],
-      notes: ["2 anchor · 1 released for practice · 1 held to screen · 0 admitted"],
-    });
+  it("lets a round start that has an anchor and a task to screen, and says its sets and its size", () => {
+    const { refusals, notes } = preflight(SETS, ASKED);
+    expect(refusals).toEqual([]);
+    expect(notes).toHaveLength(3);
+    expect(notes.slice(0, 2)).toEqual([
+      "2 anchor · 1 released for practice · 1 held to screen · 0 admitted",
+      "at most 1 task can be scored; at --level 0.5 the smallest results that clear are 1-0",
+    ]);
+    // One task, won outright 12 times in 100: the chance is the effect's own share.
+    expect(notes[2]).toStartWith(
+      "the chance that the scored test clears on 1 task at 3 solves a side, were the true effect: 12 points as 12 tasks in 100 turned from failed to passed, 0.12; ",
+    );
   });
 
   it("refuses a scoring round with nothing to screen, and lets an anchor-only one say it cannot step", () => {
@@ -63,8 +82,20 @@ describe("a launch's preflight", () => {
       "at most 1 task(s) can be scored, and at --level 0.1 a step takes 4, all won: this round cannot read step. Its screening still retires each candidate both harnesses pass, as too-easy",
       "the anchor holds 2 task(s) and --anchor-floor is 8: the anchor cannot be tested, so the round reads neither step nor anchor-lost",
     ]);
+    // Four tasks to screen can read a step, and the launch says what it takes and how likely it is:
+    // all four won, which a quarter of the tasks turned gives 1 time in 256.
     const four = { ...SETS, candidates: ["c1", "c2", "c3", "c4"] };
-    expect(preflight(four, { ...small, anchorFloor: 2 }).notes).toHaveLength(1);
+    const able = preflight(four, { ...small, anchorFloor: 2 }).notes;
+    expect(able).toHaveLength(3);
+    expect(able[1]).toBe(
+      "at most 4 tasks can be scored; at --level 0.1 the smallest results that clear are 4-0",
+    );
+    expect(able[2]).toContain("25 points as 25 tasks in 100 turned, 0.00;");
+    // The solves a side move the chance of an effect spread over every task, and of no other.
+    const once = preflight(four, { ...small, anchorFloor: 2, solves: 1 }).notes[2] ?? "";
+    expect(once).toContain("at 1 solve a side");
+    expect(once.split("; ")[0]).toBe((able[2] ?? "").split("; ")[0]?.replace("3 solves", "1 solve"));
+    expect(once.split("; ")[3]).not.toBe((able[2] ?? "").split("; ")[3]);
     // A target under the sweep caps the scored set as few candidates do.
     expect(preflight(four, { ...small, anchorFloor: 2, target: "3" }).notes[1]).toContain("at most 3");
     expect(preflight(four, { ...small, anchorFloor: 2, level: 0.05 }).notes[1]).toContain("a step takes 5");
@@ -83,7 +114,7 @@ describe("a launch's preflight", () => {
       "this campaign's log is already being written here, by pid 41",
     ]);
     expect(preflight(SETS, { ...ASKED, missing: "gone.env" }).refusals).toEqual(["gone.env is not there"]);
-    expect(preflight({ ...SETS, released: [] }, ASKED).notes[1]).toContain("nothing to practise on");
+    expect(preflight({ ...SETS, released: [] }, ASKED).notes.at(-1)).toContain("nothing to practise on");
   });
 
   it("refuses a session whose Builder started and did not end whole, in the round's own words", () => {
@@ -108,6 +139,44 @@ describe("a launch's preflight", () => {
     expect(preflight(SETS, { ...ASKED, spent: "session b-1 was cut" }).refusals).toEqual([
       "session b-1 was cut. Pass another --session",
     ]);
+  });
+});
+
+describe("a launch under limits the log's last solves did not run under", () => {
+  const longer = { ...LIMITS, wallSeconds: 4 * 3600 };
+
+  it("says that every standing restarts, for a round and for an Examiner session", () => {
+    // No solve on record, or the same limits: nothing restarts, and nothing is said.
+    expect(preflight(SETS, ASKED).notes.join("\n")).not.toContain("no standing carries over");
+    const ran = { model: "p/m", effort: "high", limits: LIMITS };
+    expect(preflight(SETS, { ...ASKED, ran }).notes.join("\n")).not.toContain("carries over");
+    const note =
+      "a solve here is held to 240 minutes and 24 turns, and the log's last test-side solves ran under 120 minutes and 24 turns: under other limits no standing carries over, so each task screened is solved under both harnesses and each reach task is put to the stronger solver again (tools/d2/setting.ts)";
+    const under = (limits: typeof LIMITS) => ({ solver: undefined, limits });
+    expect(preflight(SETS, { ...ASKED, named: under(longer), ran }).notes.at(-1)).toBe(note);
+    const exam = examPreflight([], { ...ASKED, named: under(longer), ran, reviewer: true });
+    expect(exam.notes.at(-1)).toBe(note);
+    // More turns are other limits too.
+    expect(preflight(SETS, { ...ASKED, named: under({ ...LIMITS, turns: 48 }), ran }).notes.at(-1)).toContain(
+      "held to 120 minutes and 48 turns",
+    );
+    // Another solver than the log's last is said the same way, and the same one is not.
+    const other = { solver: { model: "p/other", effort: "high" as const }, limits: LIMITS };
+    expect(preflight(SETS, { ...ASKED, named: other, ran }).notes.at(-1)).toContain(
+      "solves here are p/other at high, and the log's last test-side solves were p/m at high: another solver's standings do not carry over",
+    );
+    const same = { solver: { model: "p/m", effort: "high" as const }, limits: LIMITS };
+    expect(preflight(SETS, { ...ASKED, named: same, ran }).notes.join("\n")).not.toContain("carry over");
+  });
+
+  it("refuses a wall the command itself would refuse, before anything starts", async () => {
+    const flags = ["--name", "no-such-campaign", "--session", "b-1"];
+    await expect(launch([...flags, "--solve-minutes", "0"])).rejects.toThrow(
+      "--solve-minutes 0 --solve-turns 24: a solve's wall and its turns are whole numbers of at least one",
+    );
+    await expect(launch([...flags, "--examiner", "m", "--solve-turns", "2.5"])).rejects.toThrow(
+      "--solve-minutes 120 --solve-turns 2.5",
+    );
   });
 });
 

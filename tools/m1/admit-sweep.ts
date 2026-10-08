@@ -9,6 +9,11 @@
  * The first cycle is the old harness and the last the new. Gate 3 reruns the check on the stronger
  * solve's stored answer. A verifier non-result stops the run, as it would a live one.
  *
+ * With `--log` the history is appended to that log and kept, and a task the log already holds goes
+ * on from the gate it reached: a run the verifier stopped part way strands no task half gated. With `--feasible` a task stops after gate 4 and stays held: that is how a pack's
+ * tasks enter a campaign's log (`tools/d2/campaign.ts`), where a round screens them under its own
+ * two harnesses and a stored cycle's solves choose nothing.
+ *
  * The sweep predates the plan, so four parts are stood in for:
  * - The pair is the model pair, but the sweep ran one solver, so `--stronger` names the cycle whose
  *   solve stands in for the stronger condition's.
@@ -36,11 +41,11 @@ import {
   taskVersion,
 } from "#src/kernel/task.ts";
 import { openVerifier } from "#src/kernel/verify.ts";
-import { mkdtempSync, readFileSync, rmSync } from "#src/meta/filesystem.ts";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "#src/meta/filesystem.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import type { JsonObject, JsonValue } from "#src/meta/json-shape.ts";
 import { tmpdir } from "#src/meta/os.ts";
-import { join } from "#src/meta/path.ts";
+import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { countBy } from "#src/meta/tally.ts";
 import {
@@ -60,6 +65,8 @@ const { values } = parseArgs({
     bundle: { type: "string" },
     stronger: { type: "string" },
     jobs: { type: "string", default: "4" },
+    log: { type: "string" },
+    feasible: { type: "boolean", default: false },
   },
 });
 
@@ -109,16 +116,32 @@ async function main(): Promise<void> {
     ];
   };
 
-  const log = join(dir, "log.jsonl");
+  const log = values.log ?? join(dir, "log.jsonl");
+  mkdirSync(dirname(log), { recursive: true });
+  // What the log already holds of each task, so a run a verifier stopped part way goes on from the
+  // gate it reached and a task is never proposed twice.
+  const logged = read(log);
+  const known = taskStates(logged);
+  const gatesOf = (version: string) =>
+    logged.flatMap(({ kind, data }) => (kind === "task.gate" && data.version === version ? [data] : []));
   /** One task through the gates, each step appended to the log. Returns why it stopped where it did. */
   const admit = async (task: TaskPackage, version: string): Promise<string> => {
     const record = (kind: EventKind, data: JsonObject) => append(log, kind, { version, ...data });
-    const gated = (gate: number, result: JsonObject) => record("task.gate", { gate, ...result });
     const settle = (state: TaskState, why = "") => {
       record("task.state", { state });
       return why;
     };
-    record("task.proposed", { taskId: task.taskId });
+    const state = known.get(version);
+    const earlier = gatesOf(version);
+    if (state !== undefined && state !== "held") return `already ${state}`;
+    // A gate an earlier run logged as not passed, with the state that follows it never written.
+    const ended = earlier.find((gate) => gate.outcome !== "passed");
+    if (ended !== undefined) return settle(ended.outcome === "too-hard" ? "too-hard" : "refused", "settled");
+    const reached = earlier.length;
+    const gated = (gate: number, result: JsonObject) => {
+      if (gate > reached) record("task.gate", { gate, ...result });
+    };
+    if (state === undefined) record("task.proposed", { taskId: task.taskId });
     const packaged = packageGate(contract, task);
     gated(1, packaged);
     if (packaged.outcome === "refused") return settle("refused", `gate 1: ${packaged.reason}`);
@@ -136,13 +159,15 @@ async function main(): Promise<void> {
       [4, () => controlsGate(contract, verify, task, ...v1Controls(task.taskId))],
     ] as const;
     for (const [number, run] of gates) {
+      if (number <= reached) continue;
       const result = await run();
       gated(number, result);
       if (result.outcome === "refused") return settle("refused", `gate ${number}: ${result.reason}`);
     }
+    if (values.feasible) return "feasible, left held";
     const [before, after] = [old, fresh].map((cycle) => solveIn(task.taskId, cycle));
     if (before === undefined || after === undefined) return "feasible, unscreened";
-    return settle(screen([before.ending, after.ending]));
+    return settle(screen([[before.ending], [after.ending]], 1));
   };
 
   try {

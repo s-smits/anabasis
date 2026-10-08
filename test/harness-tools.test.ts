@@ -10,6 +10,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   realpathSync,
   rmSync,
   symlinkSync,
@@ -98,6 +99,97 @@ describe("a v1 harness state", () => {
   });
 
   // The shim drops v1's nullable-number rewrite on this behaviour of the pinned pi.
+  it("has one digest wherever it sits, though the bundle names where each file was read", async () => {
+    const root = mkdtempSync(join(tmpdir(), "ana-harness-place-"));
+    try {
+      const places = [join(root, "a"), join(root, "deeper", "b")];
+      for (const place of places) cpSync(FIXTURE, place, { recursive: true });
+      const [here, there] = await Promise.all(places.map((place) => openHarness(place)));
+      expect(here?.module).not.toBe(there?.module);
+      expect(here?.digest).toBe(there?.digest ?? "");
+      expect(here?.digest).toBe((await openHarness(FIXTURE)).digest);
+      // A changed line of a tool is still another harness.
+      writeFileSync(
+        join(places[0] ?? "", "agent", "helper.ts"),
+        "export function scaled(base: number, factor: number): number {\n  return base * factor + 1;\n}\n",
+      );
+      expect((await openHarness(places[0] ?? "")).digest).not.toBe(there?.digest ?? "");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("builds a harness's tools from its own files alone: no macro, no file outside it", async () => {
+    const root = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-harness-wall-")));
+    try {
+      const secret = join(root, "host-secret.txt");
+      const mark = join(root, "macro-ran");
+      writeFileSync(secret, "host-canary-4e1b");
+      const tools = (name: string, source: string) => {
+        const dir = join(root, name);
+        cpSync(FIXTURE, dir, { recursive: true });
+        const fixture = join(dir, "agent", "tools.ts");
+        writeFileSync(fixture, `${source}\n${readFileSync(fixture, "utf8")}`);
+        return dir;
+      };
+      // A macro would run in the host as it bundles; this one would leave a file behind.
+      const macro = tools(
+        "macro",
+        'import { ran } from "./macro.ts" with { type: "macro" };\nexport const RAN = ran();',
+      );
+      writeFileSync(
+        join(macro, "agent", "macro.ts"),
+        `import { writeFileSync } from "node:fs";\nexport function ran() { writeFileSync(${JSON.stringify(mark)}, "x"); return 1; }\n`,
+      );
+      await expect(openHarness(macro)).rejects.toThrow("Macros are disabled");
+      expect(existsSync(mark)).toBe(false);
+      // A text import would inline a host file into the module the solver's tools run.
+      const text = tools(
+        "text",
+        `import secret from ${JSON.stringify(secret)} with { type: "text" };\nexport const SECRET = secret;`,
+      );
+      await expect(openHarness(text)).rejects.toThrow("which is outside the harness");
+      // So would an import of a file that is a link out of the harness, and so would a linked guide.
+      const linked = tools(
+        "linked",
+        'import leak from "./leak.txt" with { type: "text" };\nexport const LEAK = leak;',
+      );
+      symlinkSync(secret, join(linked, "agent", "leak.txt"));
+      await expect(openHarness(linked)).rejects.toThrow("host-secret.txt, which is outside the harness");
+      // A package under the harness is the Builder's to write, so its imports are held to the same
+      // rule: one that reaches out of the harness is refused, whoever the importer is.
+      const packaged = tools("packaged", 'import leak from "leaky";\nexport const LEAK = leak;');
+      const leaky = join(packaged, "node_modules", "leaky");
+      mkdirSync(leaky, { recursive: true });
+      writeFileSync(join(leaky, "package.json"), '{"name":"leaky","version":"1.0.0","main":"index.ts"}');
+      writeFileSync(
+        join(leaky, "index.ts"),
+        'import secret from "../../../host-secret.txt" with { type: "text" };\nexport default secret;\n',
+      );
+      await expect(openHarness(packaged)).rejects.toThrow("host-secret.txt, which is outside the harness");
+      const guide = tools("guide", "");
+      rmSync(join(guide, "agent", "BUILT_AGENTS.md"));
+      symlinkSync(secret, join(guide, "agent", "BUILT_AGENTS.md"));
+      await expect(openHarness(guide)).rejects.toThrow("agent/BUILT_AGENTS.md links outside the harness");
+      // Its own files and a package installed under it still bundle.
+      const honest = tools("honest", 'import six from "sixfold";\nexport const SIX = six;');
+      const sixfold = join(honest, "node_modules", "sixfold");
+      mkdirSync(sixfold, { recursive: true });
+      writeFileSync(join(sixfold, "package.json"), '{"name":"sixfold","version":"1.0.0","main":"index.cjs"}');
+      writeFileSync(join(sixfold, "index.cjs"), "module.exports = { six: 6, from: __dirname };\n");
+      const opened = await openHarness(honest);
+      expect(opened.module).not.toContain("host-canary-4e1b");
+      // A CommonJS file's `__dirname` is written into the module whole, and the digest reads past it:
+      // the same harness somewhere else is the same harness.
+      expect(opened.module).toContain(sixfold);
+      const moved = join(root, "moved");
+      cpSync(honest, moved, { recursive: true });
+      expect((await openHarness(moved)).digest).toBe(opened.digest);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("needs no nullable-number rewrite: pi keeps null and zero exact through the union", () => {
     const parameters = Type.Object({
       a: Type.Union([Type.Number(), Type.Null()]),

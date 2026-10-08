@@ -13,7 +13,14 @@ import {
   taskVersion,
 } from "../src/kernel/task.ts";
 import type { Task, Verdict, Verifier } from "../src/kernel/verify.ts";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "../src/meta/filesystem.ts";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "../src/meta/filesystem.ts";
 import { hashJsonValue } from "../src/meta/stable-json.ts";
 import type { JsonObject, JsonValue } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
@@ -131,6 +138,21 @@ describe("gate 1, gate", () => {
     const changed = program(["beams"], ["span-rule"], "export const checks = { spans: () => true };");
     expect(version({ checks: changed })).not.toBe(version({}));
     expect(version({ checks: join(root, "nowhere") })).not.toBe(version({}));
+  });
+
+  it("refuses a task that gives a check no hidden value of the check's own to run on", () => {
+    // A check that declares its hidden operand required, as v1's reference-comparing checks do.
+    const dir = program(["beams"], ["span-rule"]);
+    const brief = JSON.parse(readFileSync(join(dir, "brief.json"), "utf8"));
+    brief.truthChecks[0].execution.hidden = "required";
+    writeFileSync(join(dir, "brief.json"), JSON.stringify(brief));
+    expect(packageGate(CONTRACT, pkg({ checks: dir, hidden: [] }))).toEqual({
+      outcome: "refused",
+      reason: "the task gives check spans nothing to run on: check-hidden-operand-missing: spans",
+    });
+    expect(packageGate(CONTRACT, pkg({ checks: dir, hidden: { spans: 4 } })).outcome).toBe("refused");
+    const served = [{ checkId: "spans", expectation: { depthM: 0.4 } }];
+    expect(packageGate(CONTRACT, pkg({ checks: dir, hidden: served }))).toEqual({ outcome: "passed" });
   });
 
   it("versions every file of the check program, in nested directories too", () => {
@@ -275,20 +297,47 @@ describe("gate 5, screening", () => {
   const fail = (kind: "rejected" | "wall-ended" | "no-answer"): Counted => ({ outcome: "fail", kind });
 
   it("admits a task either harness fails, and leaves one both pass as too easy", () => {
-    expect(screen([pass, pass])).toBe("too-easy");
-    expect(screen([pass, fail("rejected")])).toBe("admitted");
-    expect(screen([fail("no-answer"), pass])).toBe("admitted");
+    expect(screen([[pass], [pass]], 1)).toBe("too-easy");
+    expect(screen([[pass], [fail("rejected")]], 1)).toBe("admitted");
+    expect(screen([[fail("no-answer")], [pass]], 1)).toBe("admitted");
   });
 
   it("holds a task whose only fails ended at the wall", () => {
-    expect(screen([pass, fail("wall-ended")])).toBe("wall-bound");
-    expect(screen([fail("wall-ended"), fail("wall-ended")])).toBe("wall-bound");
-    expect(screen([fail("wall-ended"), fail("rejected")])).toBe("admitted");
+    expect(screen([[pass], [fail("wall-ended")]], 1)).toBe("wall-bound");
+    expect(screen([[fail("wall-ended")], [fail("wall-ended")]], 1)).toBe("wall-bound");
+    expect(screen([[fail("wall-ended")], [fail("rejected")]], 1)).toBe("admitted");
   });
 
   it("refuses to screen with a broken harness, whose fail says nothing of the task", () => {
     const broken: Counted = { outcome: "fail", kind: "broken-harness", reason: "no tools" };
-    expect(() => screen([pass, broken])).toThrow("a broken harness cannot screen a task: no tools");
+    expect(() => screen([[pass], [broken]], 1)).toThrow("a broken harness cannot screen a task: no tools");
+  });
+
+  it("screens on as many solves and fails as it is asked for, each harness counted alone", () => {
+    const [slip, miss] = [fail("rejected"), fail("no-answer")];
+    // Decision 26: three solves a harness, two fails by one of them.
+    expect(
+      screen(
+        [
+          [pass, slip, pass],
+          [pass, pass, slip],
+        ],
+        2,
+      ),
+    ).toBe("too-easy");
+    expect(
+      screen(
+        [
+          [pass, slip, miss],
+          [pass, pass, pass],
+        ],
+        2,
+      ),
+    ).toBe("admitted");
+    // The harness that reached two fails did so at the wall; the other's one fail does not count.
+    const walled = [fail("wall-ended"), fail("wall-ended"), pass];
+    expect(screen([walled, [slip, pass, pass]], 2)).toBe("wall-bound");
+    expect(() => screen([[pass], [slip]], 2)).toThrow("1 solve(s) of a harness cannot show 2 fail(s)");
   });
 });
 
@@ -339,6 +388,20 @@ describe("the task states", () => {
     );
   });
 
+  it("disputes a feasible task from screening, scoring or practice, and nothing follows a dispute", () => {
+    const disputed = (...before: LogEvent[]) =>
+      taskStates([...drawn, ...feasible, ...before, state("disputed")]).get("v1");
+    expect(disputed()).toBe("disputed");
+    expect(disputed(state("admitted"))).toBe("disputed");
+    expect(disputed(state("released"))).toBe("disputed");
+    expect(() => taskStates([...drawn, ...feasible, state("disputed"), state("admitted")])).toThrow(
+      "task v1 cannot go from disputed to admitted",
+    );
+    expect(() => taskStates([proposed, gate(1), state("disputed")])).toThrow(
+      "task v1 cannot go from held to disputed",
+    );
+  });
+
   it("refuses gates logged out of order, and any gate after one that did not pass", () => {
     const reversed = [proposed, gate(4), gate(3), gate(2), gate(1), gate(3, "refused"), state("admitted")];
     expect(() => taskStates(reversed)).toThrow("task v1 logs gate 4 out of order, after passing 0");
@@ -354,12 +417,18 @@ describe("the task states", () => {
     expect(() => taskStates([...refusedAt3, state("admitted")])).toThrow("cannot go from held to admitted");
   });
 
-  it("never releases a task the anchor drew, and draws only proposed, feasible tasks", () => {
+  it("never releases or admits a task the anchor drew, and draws only proposed, feasible tasks", () => {
     expect(() => taskStates([...feasible, draw("v1"), state("released")])).toThrow(
       "task v1 is an anchor task, so it is never released",
     );
     expect(() => taskStates([...drawn, ...feasible, state("released"), draw("v1")])).toThrow(
       "task v1 is drawn after its release",
+    );
+    expect(() => taskStates([...feasible, draw("v1"), state("admitted")])).toThrow(
+      "task v1 is an anchor task, so it is never admitted",
+    );
+    expect(() => taskStates([...feasible, state("admitted"), draw("v1")])).toThrow(
+      "task v1 is drawn after its admission",
     );
     expect(() => taskStates([{ at, kind: "anchor.drawn", data: {} }])).toThrow(
       "anchor.drawn names no task versions",

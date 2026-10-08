@@ -38,6 +38,7 @@ import type { EventKind, LogEvent } from "./log.ts";
 import type { Counted } from "./solve.ts";
 import {
   applicableTruthChecks,
+  checkEvaluationRequest,
   checkProgramFiles,
   decided,
   readBrief,
@@ -115,28 +116,42 @@ export type TaskState = (typeof TASK_STATES)[number];
 /**
  * Where each state may go. Round 0 releases feasible tasks unscreened, so a held task may be released,
  * though only once the anchor is drawn and never one the draw named: `anchor.drawn` lists the task
- * versions it drew, and the fold refuses a release of any of them. A released task is never scored:
- * the comparison, when it is built, refuses one.
+ * versions it drew, and the fold refuses a release of any of them, and an admission too: the anchor
+ * is the one set no screening chose, and an anchor task in the scored set would be chosen by its
+ * fails after all (the plan's decision 27, as recommended). A released task is never scored: the
+ * comparison, when it is built, refuses one.
+ *
+ * A check defect shows wherever a task is solved, so a feasible task may be disputed from any state
+ * it is solved in: held, when a screening fail is ruled one, admitted, and released, where practice
+ * solves fail on it. In v1, 36 of 47 rehearsal misses were check defects, so practice is where most
+ * will show. A disputed task is neither scored nor practised on.
  */
 const NEXT: Readonly<Record<TaskState, readonly TaskState[]>> = {
-  held: ["refused", "too-hard", "too-easy", "wall-bound", "admitted", "released", "stale"],
+  held: ["refused", "too-hard", "too-easy", "wall-bound", "admitted", "released", "disputed", "stale"],
   admitted: ["released", "disputed", "stale"],
   refused: [],
   "too-hard": [],
   "too-easy": [],
   "wall-bound": [],
-  released: [],
+  released: ["disputed"],
   disputed: [],
   stale: [],
 };
 
 /** States only a feasible task reaches, one that passed every logged gate. */
-const NEEDS_FEASIBLE: ReadonlySet<TaskState> = new Set(["too-easy", "wall-bound", "admitted", "released"]);
+const NEEDS_FEASIBLE: ReadonlySet<TaskState> = new Set([
+  "too-easy",
+  "wall-bound",
+  "admitted",
+  "released",
+  "disputed",
+]);
 
 /**
  * Gate 1, shape: every part but the controls is present, and every rule id is in the contract. A check
  * program none of whose checks applies to the family would pass any answer, and a check that
- * enforces a rule the task does not list holds the solver to a rule it was never shown.
+ * enforces a rule the task does not list holds the solver to a rule it was never shown. A check that
+ * declares a hidden value of its own must find one in the task, and a declared path must read.
  */
 export function packageGate(contract: Contract, task: TaskPackage): Passed | Refused {
   const reason = packageFault(contract, task);
@@ -179,6 +194,13 @@ function packageFault(contract: Contract, task: TaskPackage): string | null {
     const unlisted = cited.find((id) => !task.ruleIds.includes(id));
     if (unlisted !== undefined) {
       return `check ${check.id} enforces ${unlisted}, which the task does not list`;
+    }
+    // A check that needs a hidden value of its own and finds none cannot run, and the verifier
+    // reads that as its own failure, which stops a run: the task's fault is caught here instead.
+    try {
+      checkEvaluationRequest(check, { publicTask: task, artifact: null, hidden: task.hidden });
+    } catch (error) {
+      return `the task gives check ${check.id} nothing to run on: ${errorMessage(error)}`;
     }
   }
   return null;
@@ -266,16 +288,32 @@ export async function controlsGate(
 }
 
 /**
- * Gate 5: each harness's solve under the test condition. A task is admitted when at least one fails,
- * and is wall-bound when every fail ended at the wall. A broken harness fails every task alike, so
- * its fail says nothing of this one, and it may not screen.
+ * Gate 5: each harness's solves under the test condition. A task is admitted when at least one
+ * harness fails it `needed` times, and is wall-bound when every fail of every harness that did
+ * ended at the wall. A broken harness fails every task alike, so its fail says nothing of this one,
+ * and it may not screen.
+ *
+ * How many solves a harness gets and how many of them must fail are the caller's. One and one is
+ * what the stored sweep can replay. The plan's decision 26 is three and two: at the recorded 5.3%
+ * slip rate, one fail in one solve a harness admits about one easy task in ten by chance.
  */
-export function screen(tests: readonly [Counted, Counted]): Screening {
-  const broken = tests.find((solve) => solve.outcome === "fail" && solve.kind === "broken-harness");
-  if (broken !== undefined) throw new Error(`a broken harness cannot screen a task: ${broken.reason}`);
-  const fails = tests.flatMap((solve) => (solve.outcome === "fail" ? [solve.kind] : []));
-  if (fails.length === 0) return "too-easy";
-  return fails.every((kind) => kind === "wall-ended") ? "wall-bound" : "admitted";
+export function screen(tests: readonly [readonly Counted[], readonly Counted[]], needed: number): Screening {
+  const short = tests.find((solves) => needed < 1 || solves.length < needed);
+  if (short !== undefined) {
+    throw new Error(`${String(short.length)} solve(s) of a harness cannot show ${String(needed)} fail(s)`);
+  }
+  const fails = tests.map((solves) =>
+    solves.flatMap((solve) => {
+      if (solve.outcome !== "fail") return [];
+      if (solve.kind === "broken-harness") {
+        throw new Error(`a broken harness cannot screen a task: ${solve.reason}`);
+      }
+      return [solve.kind];
+    }),
+  );
+  const failing = fails.filter((kinds) => kinds.length >= needed).flat();
+  if (failing.length === 0) return "too-easy";
+  return failing.every((kind) => kind === "wall-ended") ? "wall-bound" : "admitted";
 }
 
 /** Whether the task states read an event of this kind. The log folds these as they are appended,
@@ -326,6 +364,8 @@ function draw(fold: Fold, at: string, data: JsonObject): void {
   if (unfit !== undefined) throw new Error(`${at}: task ${unfit} is drawn before it is feasible`);
   const released = versions.find((version) => fold.tasks.get(version)?.state === "released");
   if (released !== undefined) throw new Error(`${at}: task ${released} is drawn after its release`);
+  const admitted = versions.find((version) => fold.tasks.get(version)?.state === "admitted");
+  if (admitted !== undefined) throw new Error(`${at}: task ${admitted} is drawn after its admission`);
   fold.drawn = new Set([...(fold.drawn ?? []), ...versions]);
 }
 
@@ -353,8 +393,8 @@ function move(fold: Fold, version: string, task: Folded, data: JsonObject): stri
     return `cannot go from ${task.state} to ${to ?? "no known state"}`;
   }
   if (to === "released" && fold.drawn === null) return "is released before the anchor is drawn";
-  if (to === "released" && fold.drawn?.has(version) === true) {
-    return "is an anchor task, so it is never released";
+  if ((to === "released" || to === "admitted") && fold.drawn?.has(version) === true) {
+    return `is an anchor task, so it is never ${to}`;
   }
   task.state = to;
   return null;

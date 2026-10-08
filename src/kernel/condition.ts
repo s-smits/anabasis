@@ -6,7 +6,9 @@
  * host's, which a Built Harness used to declare for itself: on 7 October each harness state carried
  * its own `config.yaml` naming its wall, turn cap, shell timeouts and concurrency.
  */
-import { hashJsonValue } from "../meta/stable-json.ts";
+import type { JsonObject } from "../meta/json-shape.ts";
+import { hashJsonValue, sameJsonValue } from "../meta/stable-json.ts";
+import { append, type LogEvent, read } from "./log.ts";
 import type { PriceTable } from "./meter.ts";
 
 /**
@@ -57,7 +59,9 @@ export interface Condition {
   /** The digest of the sandbox's policy: what a solve may read, write, run and fill on disk. */
   readonly sandbox: string;
   readonly limits: Limits;
-  /** The host's own code version. */
+  /** The host's code a solve runs through, by content: `src` and `vendor` as the files stand. A
+   *  commit that touches neither opens no new condition, and an uncommitted change to either does,
+   *  where a commit id did the opposite on both counts. */
   readonly host: string;
   /** Which side of the pair: the test condition, or the stronger one. */
   readonly side: "test" | "strong";
@@ -69,4 +73,41 @@ export function conditionId(condition: Condition): string {
     throw new Error(`the condition runs ${condition.model} but prices no such model`);
   }
   return hashJsonValue(condition);
+}
+
+/** The fields two conditions differ in, by name: what a comparison of their solves compares. */
+export function fieldsApart(a: Condition, b: Condition): string[] {
+  const other: Readonly<Record<string, unknown>> = { ...b };
+  return Object.entries(a).flatMap(([field, value]) => (sameJsonValue(value, other[field]) ? [] : [field]));
+}
+
+/**
+ * Log the condition under its id, once, and return the id. A solve's events name their condition by
+ * id alone, so without the record the log could not say which harness, task version or side a solve
+ * ran under, nor whether two conditions differ in the one thing being compared. The id is the
+ * record's hash, so a second record of it would say nothing new.
+ */
+export function recordCondition(log: string, condition: Condition): string {
+  const id = conditionId(condition);
+  if (!read(log).some((event) => event.kind === "condition.recorded" && event.data.id === id)) {
+    // SAFETY: a condition is strings, numbers and records of them.
+    append(log, "condition.recorded", { id, condition: condition as unknown as JsonObject });
+  }
+  return id;
+}
+
+/** Every condition the log records, by id. A record that does not hash to its id is refused: the id
+ *  is what every solve names, and a record edited under it would describe solves it never ran. */
+export function conditionsOf(events: readonly LogEvent[]): Map<string, Condition> {
+  const conditions = new Map<string, Condition>();
+  for (const event of events) {
+    if (event.kind === "condition.recorded") {
+      // SAFETY: only `recordCondition` writes the event, and the hash proves the record whole.
+      const condition = event.data.condition as unknown as Condition;
+      const id = conditionId(condition);
+      if (id !== event.data.id) throw new Error(`${event.at}: a condition does not hash to its id`);
+      conditions.set(id, condition);
+    }
+  }
+  return conditions;
 }

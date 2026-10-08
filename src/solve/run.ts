@@ -103,8 +103,11 @@ export interface Played {
 }
 
 const RERUNS = 3;
-/** The text of a result or a turn the trace keeps. */
-const TRACE_TEXT_BYTES = 4096;
+/** The text of a result or a turn the trace keeps: more than pi's own tools return of an output
+ *  (50 KB), so the trace holds what the solver read. At 4 KB it held the head of a long result, and
+ *  whoever read a fail afterwards, a person or the Diagnoser, read less than the solver had. v1 cut
+ *  its traces the same way and its own investigation named that as a loss. */
+const TRACE_TEXT_BYTES = 64 * 1024;
 /** Each tool's authority, as v1's prompt named it (built-starter.ts:518-522, built-presets.ts:20-24). */
 const ROLES: Readonly<Record<string, string>> = {
   read_public_resources: "reader",
@@ -234,7 +237,7 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
         getFollowUpMessages: async () =>
           desk.submitted !== undefined || prompts++ >= limits.turns ? [] : [user(NUDGE)],
       },
-      traceSink(request.log, id, () => turns.length),
+      traceSink(request.log, "solve", id, () => turns.length),
       signal,
       (model, context, options) => models.streamSimple(model, context, options),
     );
@@ -261,6 +264,13 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
   };
 }
 
+/** A v2 solve serves the shell preset alone, so a harness that names another fails every solve. The
+ *  Builder's freeze asks the same question, before a practice solve is spent on the answer. */
+export function refuseOtherPresets(harness: Pick<Harness, "presets">): void {
+  const other = harness.presets.filter((preset) => preset !== "shell");
+  if (other.length > 0) throw new Error(`a v2 solve serves the shell preset alone, not ${other.join(", ")}`);
+}
+
 /** The harness's domain tools, its artifact-writer bound to the contract, then the host's own, each
  *  description led by its authority as v1's prompt gave it (built-starter.ts:120-153). */
 export async function solverTools(
@@ -270,8 +280,7 @@ export async function solverTools(
   desk: Desk,
   files: number,
 ): Promise<AgentTool[]> {
-  const other = harness.presets.filter((preset) => preset !== "shell");
-  if (other.length > 0) throw new Error(`a v2 solve serves the shell preset alone, not ${other.join(", ")}`);
+  refuseOtherPresets(harness);
   const domain = (await harnessTools(harness, request.task, wall)).map(({ kind, tool }) => ({
     role: kind,
     tool: kind === "artifact-writer" ? recordTool(tool, request.contract, desk) : tool,
@@ -287,8 +296,11 @@ export async function solverTools(
   }));
 }
 
-/** Every model turn and every tool call into the log, as they end. */
-function traceSink(log: string, id: string, turn: () => number) {
+/** Every model turn and every tool call into the log, as they end: a solve's as `solve.turn` and
+ *  `solve.call` under `solve`, a Builder's or an Examiner's session as `build.` or `exam.turn` and
+ *  `.call` under `session`. */
+export function traceSink(log: string, of: "solve" | "build" | "exam", id: string, turn: () => number) {
+  const named = of === "solve" ? { solve: id } : { session: id };
   const calls = new Map<string, { args: JsonValue; at: number }>();
   return (event: AgentEvent) => {
     if (event.type === "tool_execution_start") {
@@ -297,8 +309,8 @@ function traceSink(log: string, id: string, turn: () => number) {
     } else if (event.type === "tool_execution_end") {
       const call = calls.get(event.toolCallId);
       calls.delete(event.toolCallId);
-      append(log, "solve.call", {
-        solve: id,
+      append(log, `${of}.call`, {
+        ...named,
         turn: turn(),
         tool: event.toolName,
         args: call?.args ?? null,
@@ -309,8 +321,8 @@ function traceSink(log: string, id: string, turn: () => number) {
       });
     } else if (event.type === "turn_end" && event.message.role === "assistant") {
       const { stopReason, errorMessage: error, responseModel, usage, content } = event.message;
-      append(log, "solve.turn", {
-        solve: id,
+      append(log, `${of}.turn`, {
+        ...named,
         turn: turn(),
         stopReason,
         error: error ?? null,

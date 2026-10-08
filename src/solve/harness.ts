@@ -18,11 +18,12 @@
 import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { TSchema } from "@earendil-works/pi-ai";
 import { sha256OfFile } from "../meta/digest.ts";
-import { existsSync, lstatSync, readlinkSync, writeFileSync } from "../meta/filesystem.ts";
+import { existsSync, lstatSync, readlinkSync, realpathSync, writeFileSync } from "../meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "../meta/json-runtime.ts";
 import { type JsonValue, asRecord, isRecord, isString } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
-import { join, resolve } from "../meta/path.ts";
+import { basename, dirname, join, resolve, sep } from "../meta/path.ts";
+import { containsPath } from "../meta/path-containment.ts";
 import { capturedExecPath } from "../meta/process.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { shellQuote } from "../verify/solve-command-isolation.ts";
@@ -70,6 +71,8 @@ interface ToolRow {
 
 const KINDS: ReadonlySet<string> = new Set(["reader", "advisor", "artifact-writer"]);
 const SHIM = Bun.fileURLToPath(new URL("./harness-shim.ts", import.meta.url));
+/** The host's own source, which the shim imports from. */
+const HOST_SOURCE = dirname(dirname(SHIM));
 const MARKER = "@@ana-harness-result@@";
 /** The tail of a call's output kept for the result line and an error's context; a tool printing
  *  without end is cut by the command's timeout, not by the host's memory. */
@@ -105,7 +108,33 @@ try {
 }
 `;
 
+/** Bun writes each bundled file's path, relative to where the host was started, on a comment line
+ *  of its own. The digest leaves those lines out: with them, one harness had another digest in every
+ *  directory it was copied to and from every directory the host was run in, and a condition names
+ *  its harness by this digest. The module that runs keeps them. */
+const BUNDLED_PATH = /^\/\/ .+\.(?:[cm]?[jt]sx?|json)$/gm;
+
+/** A harness's module as its digest reads it: without the path comments, and with the harness's own
+ *  directory, which Bun writes out whole wherever a bundled CommonJS file reads `__dirname` or
+ *  `__filename`, replaced by one name. Otherwise a harness with such a package had one digest where
+ *  it was edited, another where it was frozen and a third where it was kept. */
+function located(module: string, dir: string): string {
+  const places = [...new Set([realpathSync(dir), resolve(dir)])].sort((a, b) => b.length - a.length);
+  return places
+    .reduce((text, place) => text.replaceAll(place, "<harness>"), module)
+    .replace(BUNDLED_PATH, "");
+}
+
 export async function openHarness(dir: string): Promise<Harness> {
+  // The three files the host reads by name are the harness's own: a guide or a spec linked to a host
+  // file would be read here, outside every wall, and handed to the solver.
+  const root = realpathSync(dir);
+  for (const name of ["BUILT_AGENTS.md", "tools-spec.json", "tools.ts"]) {
+    const file = join(dir, "agent", name);
+    if (existsSync(file) && !containsPath(realpathSync(file), root)) {
+      throw new Error(`agent/${name} links outside the harness`);
+    }
+  }
   const guideFile = join(dir, "agent", "BUILT_AGENTS.md");
   const guide = existsSync(guideFile) ? await Bun.file(guideFile).text() : null;
   const spec = capturedJsonParse(await Bun.file(join(dir, "agent", "tools-spec.json")).text());
@@ -126,8 +155,15 @@ export async function openHarness(dir: string): Promise<Harness> {
   const module = await bundle(join(dir, "agent", "tools.ts"));
   const toolchain = resolve(dir, ".toolchain");
   const toolTree = existsSync(toolchain) ? toolchain : null;
-  const tree = toolTree === null ? null : treeContent(toolTree);
-  return { guide, presets, kinds, toolTree, module, digest: hashJsonValue({ module, spec, guide, tree }) };
+  const tree = toolTree === null ? null : keptTreeContent(toolTree);
+  return {
+    guide,
+    presets,
+    kinds,
+    toolTree,
+    module,
+    digest: hashJsonValue({ module: located(module, dir), spec, guide, tree }),
+  };
 }
 
 /**
@@ -150,16 +186,65 @@ export function treeContent(dir: string) {
   });
 }
 
-/** v1's bundling (generated-tool-worker-process.ts:103-112), with the two imports a harness makes
- *  of the host resolved to the shim, and the output kept in memory rather than in a temporary
- *  directory, since every call stages it afresh. */
+/** Each tool tree's content by where it really is, with the stamp it was read under. */
+const TREES = new Map<string, { stamp: string; content: ReturnType<typeof treeContent> }>();
+
+/** What a tool tree is read under: a file in it added, removed, resized, rewritten or with its mode
+ *  changed changes it. It is what the runner's own moved-files check trusts (`run.ts`, `treeStamp`). */
+export function toolTreeStamp(real: string): string {
+  return hashJsonValue(
+    pathsUnder(real).map((path) => {
+      const stat = lstatSync(join(real, path));
+      return [path, stat.size, stat.mtimeMs, stat.mode, stat.ino];
+    }),
+  );
+}
+
+/**
+ * A tool tree's content, read once for as long as its stamp holds. Every solve opens its harness,
+ * and a tool tree runs to thousands of files and gigabytes, so hashing it afresh each time was a
+ * full read of it per solve.
+ */
+function keptTreeContent(toolTree: string) {
+  const real = realpathSync(toolTree);
+  const stamp = toolTreeStamp(real);
+  const kept = TREES.get(real);
+  if (kept?.stamp === stamp) return kept.content;
+  const content = treeContent(real);
+  TREES.set(real, { stamp, content });
+  return content;
+}
+
+/**
+ * v1's bundling (generated-tool-worker-process.ts:103-112), with the two imports a harness makes of
+ * the host resolved to the shim, and the output kept in memory rather than in a temporary directory,
+ * since every call stages it afresh.
+ *
+ * The bundle is built by the host, outside every wall, from files a Builder wrote. Left alone, Bun
+ * runs a macro import in this process as it bundles, and inlines any file an import names, a text
+ * import of a check program among them, into the module the solver's tools then run. So macros are
+ * off, and every file the bundle loads must sit, links followed, inside the harness, inside an
+ * installed package, or in the host's own source, which the shim imports.
+ *
+ * The question is asked of each file as it is loaded and not of each import as it is resolved. A
+ * guard on resolution has to trust some importers, an installed package's among them, and a Builder
+ * writes `node_modules` under its harness: a package there importing `../../../log.jsonl` as text
+ * passed such a guard, and the log, with every hidden value in it, was bundled into the solver's
+ * tools. Whatever names a file, by whatever route it resolves, it is loaded here or not at all.
+ */
 async function bundle(entry: string): Promise<string> {
+  const root = realpathSync(dirname(dirname(entry)));
+  const inPackage = (path: string) => path.split(sep).includes("node_modules");
   const result = await Bun.build({
     entrypoints: [entry],
     target: "bun",
     format: "esm",
     splitting: false,
     sourcemap: "none",
+    // SAFETY: Bun 1.4.2 takes `macros: false` and fails a build that imports one, though its types do
+    // not declare the option; `test/harness-tools.test.ts` fails if a later Bun stops honouring it.
+    ...({ macros: false } as object),
+    throw: false,
     plugins: [
       {
         name: "harness-shim",
@@ -167,6 +252,14 @@ async function bundle(entry: string): Promise<string> {
           build.onResolve({ filter: /^(@ana\/agent-bundle|@earendil-works\/pi-ai)$/ }, () => ({
             path: SHIM,
           }));
+          build.onLoad({ filter: /.*/ }, ({ path }) => {
+            const file = realpathSync(path);
+            const own = containsPath(file, root) || containsPath(file, HOST_SOURCE) || inPackage(file);
+            if (own) return undefined;
+            throw new Error(
+              `an import reaches ${basename(file)}, which is outside the harness: its tools are built from its own files and installed packages`,
+            );
+          });
         },
       },
     ],

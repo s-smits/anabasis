@@ -55,7 +55,9 @@
  * provider turn among the crashes: what it froze is half a session's work, and comparing it would
  * spend a comparison on a harness nobody meant to measure. A session cut at its wall or its turns
  * is a whole session and is compared. One that left a harness no solve can open is reported as no
- * change, with why.
+ * change, with why. A round with no report is refused as well once another Builder session has
+ * started in the log: its window ends where that session starts, so what it solved from then on
+ * would be counted nowhere (`spent`).
  *
  * A round also stops, to go on the same way, when the provider has stopped answering: `SILENT`
  * tasks in a row whose solve ended, after its reruns, with nothing written for it. A login at its
@@ -230,6 +232,7 @@ const STOP_SESSIONS = 3;
 /** The fewest pooled tasks the rule's bound is trusted on: one scored set of the plan's size. */
 const STOP_TASKS = 24;
 const REPORTED = "comparison.reported";
+const BUILD_STARTED = "build.started";
 /** A report's fields, as its event carries them beside the round's own. */
 const REPORT_KEYS = [
   "old",
@@ -263,17 +266,33 @@ export function screeningOrder(candidates: readonly string[], contract: string, 
   return draw(candidates, candidates.length, `${contract}:${session}`);
 }
 
-/** Why a round will not go on with session `id` from this log, or null when it never started or
- *  ended whole. A launcher asks before it starts the round, and a stop to say what it cut. */
+/**
+ * Why a round will not go on with session `id` from this log, or null when it never started, or
+ * ended whole with nothing in its way. A launcher asks before it starts the round, and a stop to
+ * say what it cut.
+ *
+ * A session that ended whole is still refused when it has no report and another Builder session
+ * has started since. A round counts the solves made from its session's start to the next
+ * session's (`since`), so every solve it made from here on would fall outside its own window. On
+ * 2026-10-08 a simulated round killed in its screening and run again after another round had run
+ * made 156 solves, counted none of them and reported `not-scored` with 13 tasks short of solves:
+ * a reading of where the window ended and of neither harness.
+ */
 export function spent(events: readonly LogEvent[], id: string): string | null {
   const mine = events.filter(({ data }) => data.session === id);
-  if (!mine.some(({ kind }) => kind === "build.started")) return null;
+  const began = events.findIndex(({ kind, data }) => kind === BUILD_STARTED && data.session === id);
+  if (began === -1) return null;
   const ended = mine.findLast(({ kind }) => kind === "build.finished")?.data.ended;
   if (ended === undefined) {
     return `session ${id} started and never finished; a round does not run a second session under one id`;
   }
-  if (ended !== "killed" && ended !== "crashed") return null;
-  return `session ${id} ${ended === "killed" ? "was killed" : "crashed"}, so what it froze is not compared; a round under a new session id starts again`;
+  if (ended === "killed" || ended === "crashed") {
+    return `session ${id} ${ended === "killed" ? "was killed" : "crashed"}, so what it froze is not compared; a round under a new session id starts again`;
+  }
+  const next = events.slice(began).find(({ kind, data }) => kind === BUILD_STARTED && data.session !== id)
+    ?.data.session;
+  if (!isString(next) || mine.some(({ kind }) => kind === REPORTED)) return null;
+  return `session ${id} has no report and session ${next} started after it. A round counts the solves made before the next session starts, so what ${id} solved now would not be counted and its tasks would be reported short; a round under a new session id starts again`;
 }
 
 /** What session `id` left, from the log: undefined when it never ran, and otherwise the harness to
@@ -282,7 +301,7 @@ export function spent(events: readonly LogEvent[], id: string): string | null {
  *  a harness and a `broken` may come back together. */
 async function left(events: readonly LogEvent[], request: BuildRequest, old: string) {
   const mine = events.filter(({ data }) => data.session === request.id);
-  const started = mine.find(({ kind }) => kind === "build.started")?.data;
+  const started = mine.find(({ kind }) => kind === BUILD_STARTED)?.data;
   const finished = mine.findLast(({ kind }) => kind === "build.finished")?.data;
   if (started === undefined) return undefined;
   if (started.parent !== old) {
@@ -303,12 +322,18 @@ async function left(events: readonly LogEvent[], request: BuildRequest, old: str
  * The log as a round counts it: every event, but of the solves only those made in the round's own
  * window, from its session's start to the next session's. Rounds run one after another in a log, so
  * the window is the round: an earlier round's solves under the same old harness are not this
- * round's, and neither are a later round's when this one is read again.
+ * round's, and neither are a later round's when this one is read again. A round that would go on
+ * past the next session's start is refused before it solves (`spent`).
+ *
+ * An Examiner session may start inside a window, between a round's stop and its going on, and its
+ * solves stay in it. They are of tasks that were not yet feasible when they were made, and a task
+ * counts from its admission or the anchor's draw (`pairsOf`), which follow them: screening reads
+ * them as the parent's side on record, as it reads any, and no tally counts one.
  */
 function since(events: readonly LogEvent[], session: string): LogEvent[] {
   const starts = (index: number, mine: boolean) => {
     const event = events[index];
-    return event?.kind === "build.started" && (event.data.session === session) === mine;
+    return event?.kind === BUILD_STARTED && (event.data.session === session) === mine;
   };
   const began = events.findIndex((_event, index) => starts(index, true));
   const next = events.findIndex((_event, index) => index > began && starts(index, false));

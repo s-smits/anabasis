@@ -10,7 +10,7 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
-import { type RoundRequest, round, settleReading, stopRule, toLabel } from "../src/builder/round.ts";
+import { type RoundRequest, round, settleReading, spent, stopRule, toLabel } from "../src/builder/round.ts";
 import { type BuildRequest, type Built, type Practised, session } from "../src/builder/session.ts";
 import type { Bench } from "../src/builder/tools.ts";
 import { type Condition, recordCondition, settingId } from "../src/kernel/condition.ts";
@@ -375,6 +375,34 @@ describe("a round", () => {
     // Nine solves counted before the stop, the tenth thrown, and nineteen after it.
     expect(s.solved()).toHaveLength(28);
     expect(s.asked).toHaveLength(29);
+  });
+
+  it("refuses to go on with a round once another Builder session has started", async () => {
+    // b-1 is stopped while it scores, and b-2 runs whole from the same parent before b-1 is run
+    // again. A round's window ends where the next session starts, so nothing b-1 solved now would
+    // be counted: simulated on 2026-10-08, such a round made 156 solves and read `not-scored` with
+    // 13 tasks short.
+    let stop = 10;
+    const s = await setup([edit, finish, again, finish], (version, fresh, nth) => {
+      stop -= 1;
+      if (stop === 0) throw new Error("the run stops");
+      return step(version, fresh, nth);
+    });
+    await expect(round(s.request)).rejects.toThrow("the run stops");
+    const second = { ...s.request, session: { ...s.request.session, id: "b-2" } };
+    const other = await round(second);
+    expect(other).toMatchObject({ versions: SCORED, scored: { wins: 4, losses: 0 }, short: [] });
+    const asked = s.asked.length;
+    await expect(round(s.request)).rejects.toThrow(
+      "session b-1 has no report and session b-2 started after it",
+    );
+    expect(spent(read(s.log), "b-1")).toContain("a round under a new session id starts again");
+    // It solved nothing and wrote no report, and the round that ran whole says what it said.
+    expect(s.asked).toHaveLength(asked);
+    expect(s.of(COMPARISON_REPORTED).map((report) => report.session)).toEqual(["b-2"]);
+    expect(spent(read(s.log), "b-2")).toBeNull();
+    expect(await round(second)).toEqual(other);
+    expect(s.sessions()).toBe(2);
   });
 
   it("leaves out a task the Referee rules a check defect on, and one whose check could not run", async () => {

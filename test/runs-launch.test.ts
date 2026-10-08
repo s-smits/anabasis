@@ -96,6 +96,15 @@ describe("a launch's preflight", () => {
     expect(spent([started], "b-1")).toContain("started and never finished");
     expect(spent([started, ended("killed")], "b-1")).toContain("was killed");
     expect(spent([started, ended("wall")], "b-1")).toBeNull();
+    // A whole session with no report, and another Builder session started after it: the round's
+    // window has ended. Once it has reported, a later session is nothing to it.
+    const later = { at, kind: "build.started", data: { session: "b-2" } } as const;
+    const report = { at, kind: "comparison.reported", data: { session: "b-1" } } as const;
+    expect(spent([started, ended("wall"), later], "b-1")).toContain(
+      "has no report and session b-2 started after it",
+    );
+    expect(spent([later, started, ended("wall")], "b-1")).toBeNull();
+    expect(spent([started, ended("wall"), report, later], "b-1")).toBeNull();
     expect(preflight(SETS, { ...ASKED, spent: "session b-1 was cut" }).refusals).toEqual([
       "session b-1 was cut. Pass another --session",
     ]);

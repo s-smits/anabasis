@@ -18,7 +18,8 @@
  *   - the same round already running here;
  *   - a host whose load is over its cores, unless `--loaded` says its times will not be compared;
  *   - an `--env-file` that is not there. The path is Bun's to read and is never opened here;
- *   - a `--session` whose Builder started and did not end whole, as the round itself would.
+ *   - a `--session` whose Builder started and did not end whole, or whose round has no report
+ *     while another Builder session has started since, as the round itself would (`spent`).
  *
  * An Examiner session meets the last four of these, its id being one the log holds already, and
  * needs the campaign's log and no set in it. Its notes say what it is handed and where its tasks

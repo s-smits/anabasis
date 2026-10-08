@@ -275,20 +275,47 @@ describe("gate 5, screening", () => {
   const fail = (kind: "rejected" | "wall-ended" | "no-answer"): Counted => ({ outcome: "fail", kind });
 
   it("admits a task either harness fails, and leaves one both pass as too easy", () => {
-    expect(screen([pass, pass])).toBe("too-easy");
-    expect(screen([pass, fail("rejected")])).toBe("admitted");
-    expect(screen([fail("no-answer"), pass])).toBe("admitted");
+    expect(screen([[pass], [pass]], 1)).toBe("too-easy");
+    expect(screen([[pass], [fail("rejected")]], 1)).toBe("admitted");
+    expect(screen([[fail("no-answer")], [pass]], 1)).toBe("admitted");
   });
 
   it("holds a task whose only fails ended at the wall", () => {
-    expect(screen([pass, fail("wall-ended")])).toBe("wall-bound");
-    expect(screen([fail("wall-ended"), fail("wall-ended")])).toBe("wall-bound");
-    expect(screen([fail("wall-ended"), fail("rejected")])).toBe("admitted");
+    expect(screen([[pass], [fail("wall-ended")]], 1)).toBe("wall-bound");
+    expect(screen([[fail("wall-ended")], [fail("wall-ended")]], 1)).toBe("wall-bound");
+    expect(screen([[fail("wall-ended")], [fail("rejected")]], 1)).toBe("admitted");
   });
 
   it("refuses to screen with a broken harness, whose fail says nothing of the task", () => {
     const broken: Counted = { outcome: "fail", kind: "broken-harness", reason: "no tools" };
-    expect(() => screen([pass, broken])).toThrow("a broken harness cannot screen a task: no tools");
+    expect(() => screen([[pass], [broken]], 1)).toThrow("a broken harness cannot screen a task: no tools");
+  });
+
+  it("screens on as many solves and fails as it is asked for, each harness counted alone", () => {
+    const [slip, miss] = [fail("rejected"), fail("no-answer")];
+    // Decision 26: three solves a harness, two fails by one of them.
+    expect(
+      screen(
+        [
+          [pass, slip, pass],
+          [pass, pass, slip],
+        ],
+        2,
+      ),
+    ).toBe("too-easy");
+    expect(
+      screen(
+        [
+          [pass, slip, miss],
+          [pass, pass, pass],
+        ],
+        2,
+      ),
+    ).toBe("admitted");
+    // The harness that reached two fails did so at the wall; the other's one fail does not count.
+    const walled = [fail("wall-ended"), fail("wall-ended"), pass];
+    expect(screen([walled, [slip, pass, pass]], 2)).toBe("wall-bound");
+    expect(() => screen([[pass], [slip]], 2)).toThrow("1 solve(s) of a harness cannot show 2 fail(s)");
   });
 });
 

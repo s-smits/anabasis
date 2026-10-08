@@ -142,7 +142,7 @@ async function main(): Promise<void> {
     }
     const [before, after] = [old, fresh].map((cycle) => solveIn(task.taskId, cycle));
     if (before === undefined || after === undefined) return "feasible, unscreened";
-    return settle(screen([before.ending, after.ending]));
+    return settle(screen([[before.ending], [after.ending]], 1));
   };
 
   try {

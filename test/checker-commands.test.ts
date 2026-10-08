@@ -1,11 +1,12 @@
-// Phase C's two commands, run as the operator runs them over a sweep laid out as v1's left one: a
+// Phase C's three commands, run as the operator runs them over a sweep laid out as v1's left one: a
 // pack of two tasks and one check, three stored solves, and the pack's controls. The verifier runs
 // behind its wall, so the suite is skipped where the host has none. No model is called: the
-// Referee's reading stops at its guard. The two tests of the checker's acceptance run in order: the
-// second freezes what the first read.
+// Referee's reading stops at its guard. The tests run in order: the second freezes what the first
+// read, and the last regrades what the third logged.
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
 import { read } from "../src/kernel/log.ts";
 import {
+  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -33,6 +34,14 @@ const accepted = join(REPO, ".ana", "d2", ACCEPTED);
 const FORMAT = { type: "object", properties: { answer: { type: "string" } }, required: ["answer"] };
 const EVALUATOR = `export const checks = {
   "check-product": (req) => req.artifact.answer === String(req.publicTask.publicInput.base * 6),
+};
+`;
+/** The check repaired: an answer within six in a hundred of the product stands. */
+const REPAIRED = `export const checks = {
+  "check-product": (req) => {
+    const product = req.publicTask.publicInput.base * 6;
+    return Math.abs(Number(req.artifact.answer) - product) <= product * 0.06;
+  },
 };
 `;
 
@@ -133,15 +142,15 @@ function layOut(): void {
 
 /** A command as the operator runs it: its exit code and everything it printed. `bare` are flags
  *  that take no value. */
-function run(command: string, flags: Record<string, string>, ...bare: string[]) {
-  const args = Object.entries({ root, sweep: "s", bundle, ...flags }).flatMap(([flag, value]) => [
-    `--${flag}`,
-    value,
-  ]);
-  const ran = Bun.spawnSync({ cmd: [capturedExecPath, command, ...args, ...bare], cwd: REPO });
+function command(file: string, flags: Record<string, string>, ...bare: string[]) {
+  const args = Object.entries(flags).flatMap(([flag, value]) => [`--${flag}`, value]);
+  const ran = Bun.spawnSync({ cmd: [capturedExecPath, file, ...args, ...bare], cwd: REPO });
   return { code: ran.exitCode, said: `${ran.stdout.toString()}${ran.stderr.toString()}` };
 }
 
+/** A command over the stored sweep and its pack. */
+const run = (file: string, flags: Record<string, string>, ...bare: string[]) =>
+  command(file, { root, sweep: "s", bundle, ...flags }, ...bare);
 const accept = (...bare: string[]) => run("tools/c/accept.ts", { name: ACCEPTED }, ...bare);
 /** What the accepted campaign's log holds of one kind. */
 const held = (kind: string) =>
@@ -225,5 +234,23 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
     expect(early.said).toContain("the Referee reads nothing before the drawn fails are labelled");
     expect(early.code).not.toBe(0);
     expect(read(join(campaign, "log.jsonl")).some((event) => event.kind === "referee.finding")).toBe(false);
+  });
+
+  it("shows which of the logged verdicts a repaired checker moves, and writes nothing", () => {
+    const repaired = join(root, "repaired");
+    cpSync(bundle, repaired, { recursive: true });
+    writeFileSync(join(repaired, "correctness-model", "evaluator.ts"), REPAIRED);
+    const log = join(campaign, "log.jsonl");
+    const before = readFileSync(log, "utf8");
+    const { code, said } = command("tools/c/repaired.ts", { log, bundle: repaired });
+    // Of the two refused answers, 17 for 18 is within the repaired check's margin and 11 for 12
+    // is not; both accepted answers stand.
+    expect(said).toContain("4 logged verdicts, 1 moved");
+    expect(said).toContain("s-c02-t-2\tt-2\tfail check-product\tpass");
+    expect(said).not.toContain("s-c02-t-1\t");
+    expect(said).toContain("tasks with a moved verdict: t-2");
+    expect(said).toContain("check program: the log froze none, this one is ");
+    expect(code).toBe(0);
+    expect(readFileSync(log, "utf8")).toBe(before);
   });
 });

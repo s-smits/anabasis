@@ -8,11 +8,12 @@ import {
   departure,
   frozenChecker,
   type Graded,
+  regraded,
   runControls,
 } from "../src/kernel/acceptance.ts";
 import type { LogEvent } from "../src/kernel/log.ts";
 import type { Brief, Task, Verifier } from "../src/kernel/verify.ts";
-import { asRecord, isNumber } from "../src/meta/json-shape.ts";
+import { asRecord, isNumber, type JsonObject } from "../src/meta/json-shape.ts";
 
 const brief: Brief = {
   correctnessContract: "check-program/v1",
@@ -144,5 +145,40 @@ describe("a frozen checker", () => {
     expect(departure([froze("c-0", "p-0")], own)).toBe(
       `the log froze another contract and check program; ${repaired}`,
     );
+  });
+});
+
+describe("a log's answers under a repaired checker", () => {
+  const at = "2026-10-08T00:00:00.000Z";
+  const logged = (solve: string, task: string, answer: JsonObject, verdict: JsonObject): LogEvent => ({
+    at,
+    kind: "verdict",
+    data: { solve, task, answer, ...verdict },
+  });
+  /** The repair: `mass` refuses past 60 and no longer past 10. */
+  const repaired: Verifier = async (_task, answer) => {
+    const mass = asRecord(answer)?.mass;
+    return isNumber(mass) && mass > 60 ? { kind: "fail", blocking: ["mass"] } : { kind: "pass" };
+  };
+
+  it("grades the last verdict of each solve again, and leaves out what no check decided", async () => {
+    const events = [
+      logged("a", "roof-1", { mass: 50 }, { kind: "non-result", reason: "the wall" }),
+      logged("a", "roof-1", { mass: 50 }, { kind: "fail", blocking: ["mass"] }),
+      logged("b", "roof-1", { mass: 70 }, { kind: "fail", blocking: ["mass"] }),
+      logged("c", "mast-1", { mass: 5 }, { kind: "pass" }),
+      logged("d", "roof-1", { mass: 5 }, { kind: "faulty", check: "span", reason: "threw" }),
+      logged("gone", "hall-1", { mass: 5 }, { kind: "pass" }),
+      // No check ran on an answer outside the format, and a non-result decided nothing.
+      logged("format", "roof-1", { mass: "5" }, { kind: "fail", fault: "mass is no number" }),
+      logged("wall", "roof-1", { mass: 5 }, { kind: "non-result", reason: "the wall" }),
+    ];
+    expect(await regraded(events, [roof, mast], repaired, 2)).toEqual([
+      { solve: "a", task: "roof-1", was: "fail mass", now: "pass" },
+      { solve: "b", task: "roof-1", was: "fail mass", now: "fail mass" },
+      { solve: "c", task: "mast-1", was: "pass", now: "pass" },
+      { solve: "d", task: "roof-1", was: "faulty span: threw", now: "pass" },
+      { solve: "gone", task: "hall-1", was: "pass", now: "no task" },
+    ]);
   });
 });

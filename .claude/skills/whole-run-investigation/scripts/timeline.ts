@@ -2,17 +2,17 @@
 // other lane opens. Phase spans, the longest gaps between consecutive rows, prompts by role, the
 // hooks that actually activated, steering by authority and settled iterations. Rows only: an
 // absent row proves nothing about behaviour, and a gap is elapsed time, not a stall diagnosis.
-// Each of the longest gaps carries the one recorded cause that overlaps it, where one does: a
-// Builder turn retry whose recorded wait covers the gap and whose reason is the provider's own
-// allowance clause, a `harness_trial` call in flight across it, or an authoring review timed
-// inside it. Lane 24 reads the gaps; a gap with no overlapping record stays `unattributed`.
+// Each of the longest gaps carries what held it, where a record says: a Builder turn retry whose
+// recorded wait covers the gap, or else the Builder's own calls in flight across it (any tool, a
+// rehearsal among them), the largest first until they cover most of the gap, each with its share.
+// Lane 24 reads the gaps; a gap no record covers for the most part stays `unattributed`.
 //
 // `--classify` adds the embedding reading: what each slot was doing minute by minute, and every
 // stretch of consecutive units where a slot stopped progressing, resolved to the phase the run held
 // at that moment. Without it the lane loads no model and stays deterministic.
 //
 //   bun wri.ts timeline <target> [--run <runId>] [--classify] [--json] [--out <abs file>]
-import { existsSync, readFileSync, readdirSync } from "#src/meta/filesystem.ts";
+import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
 import { join, resolve } from "#src/meta/path.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
@@ -81,10 +81,22 @@ interface Wait extends Interval {
   explicit: boolean;
 }
 
+/** One of the Builder's own calls, as the record numbers it. */
+interface Call extends Interval {
+  tool: string;
+  sequence: string;
+}
+
+/** The calls one tool had in flight across a gap, largest first, and the ms they covered. */
+interface ToolShare {
+  tool: string;
+  rows: ReadonlyArray<{ call: Call; ms: number }>;
+  ms: number;
+}
+
 interface CauseSources {
   waits: Wait[];
-  trials: Interval[];
-  reviews: number[];
+  calls: Call[];
 }
 
 /** Which run of which campaign the timeline reads. */
@@ -238,14 +250,15 @@ function stalls(rows: readonly ObservationRow[]): Gap[] {
 }
 
 /**
- * The recorded intervals a gap can be attributed to, across every epoch's execution records and
- * authoring reviews. A session's window is `writtenAt` back through `durationMs`, and a custom
- * call sits at its `startedAtMs` offset inside it. A turn retry records how long it waited and
- * why, but not when, so it is placed on its session window alone.
+ * The recorded intervals a gap can be attributed to, across every epoch's execution records. A
+ * session's window is `writtenAt` back through `durationMs`, and a custom call sits at its
+ * `startedAtMs` offset inside it. A turn retry records how long it waited and why, but not when, so
+ * it is placed on its session window alone. An authoring review records an instant and no span, and
+ * one that held the Builder is its `submit` call's duration, so reviews add nothing here.
  */
 function causeSources(campaign: string): CauseSources {
   const waits: Wait[] = [];
-  const trials: Interval[] = [];
+  const calls: Call[] = [];
   for (const epoch of campaignEpochs(campaign)) {
     const read = readExecutionEvidenceDetails(join(campaign, epoch));
     read.records.forEach((record, index) => {
@@ -264,38 +277,67 @@ function causeSources(campaign: string): CauseSources {
         });
       }
       for (const call of Array.isArray(record.customCalls) ? record.customCalls : []) {
-        if (call?.tool !== "harness_trial" || !isNumber(call.startedAtMs)) continue;
+        if (!isString(call?.tool) || !isNumber(call.startedAtMs) || !isNumber(call.durationMs)) continue;
         const at = start + call.startedAtMs;
-        trials.push({ start: at, end: at + (isNumber(call.durationMs) ? call.durationMs : 0), where });
+        calls.push({
+          start: at,
+          end: at + call.durationMs,
+          where,
+          tool: call.tool,
+          sequence: textOf(call.sequence),
+        });
       }
     });
   }
-  const analysis = join(campaign, "analysis");
-  const reviews = existsSync(analysis)
-    ? readdirSync(analysis)
-        .map((name) => /^authoring-([0-9a-f-]{36})-epoch-review\.json$/.exec(name)?.[1])
-        .filter((id) => id !== undefined)
-        .map((id) => Number.parseInt(id.replaceAll("-", "").slice(0, 12), 16))
-    : [];
-  return { waits, trials, reviews };
+  return { waits, calls };
 }
 
-const overlaps = (interval: Interval, from: number, to: number): boolean =>
-  interval.start <= to && interval.end >= from;
+/** How much of `from`..`to` the interval covers, in ms. */
+const covered = (interval: Interval, from: number, to: number): number =>
+  Math.max(0, Math.min(interval.end, to) - Math.max(interval.start, from));
 
-/** The one recorded cause a gap is attributed to, in the order a reader would check them. */
+/** One tool's share of a gap, naming its longest call when it made several. */
+function heldBy({ tool, rows, ms }: ToolShare, span: number): string {
+  const share = `${minutes(ms)} min (${Math.round((100 * ms) / span)}%`;
+  const [first] = rows;
+  if (first === undefined) return tool;
+  const longest = `${tool} seq ${first.call.sequence}`;
+  return rows.length === 1
+    ? `${longest}, ${share}, ${first.call.where})`
+    : `${tool} ${rows.length} calls, ${share}; longest ${longest}, ${minutes(first.ms)} min; ${first.call.where})`;
+}
+
+/** What held a gap: a turn retry wait that covers it, or else the Builder's calls in flight across
+ *  it, by tool, the largest share first until together they cover most of it. */
 function causeOf(gap: Gap, sources: CauseSources): string {
   const from = Date.parse(textOf(gap.at));
   const to = from + gap.minutes * 60_000;
-  const wait = sources.waits.find((row) => overlaps(row, from, to) && row.waitMs >= WAIT_COVER * (to - from));
+  const wait = sources.waits.find(
+    (row) => covered(row, from, to) > 0 && row.waitMs >= WAIT_COVER * (to - from),
+  );
   if (wait !== undefined) {
     return `${wait.explicit ? "explicit allowance wait" : "turn retry wait"} of ${minutes(wait.waitMs)} min recorded in ${wait.where}`;
   }
-  const trial = sources.trials.find((row) => overlaps(row, from, to));
-  if (trial !== undefined) return `harness_trial rehearsal in flight (${trial.where})`;
-  const review = sources.reviews.find((at) => at >= from && at <= to);
-  if (review !== undefined) return `authoring review timed at ${new Date(review).toISOString()}`;
-  return "unattributed";
+  const byTool = Map.groupBy(
+    sources.calls
+      .map((call) => ({ call, ms: covered(call, from, to) }))
+      .filter((row) => row.ms > 0)
+      .sort((a, b) => b.ms - a.ms),
+    (row) => row.call.tool,
+  );
+  const ranked = [...byTool].map(([tool, rows]) => ({
+    tool,
+    rows,
+    ms: rows.reduce((sum, row) => sum + row.ms, 0),
+  }));
+  const held: string[] = [];
+  let sum = 0;
+  for (const group of ranked.sort((a, b) => b.ms - a.ms)) {
+    if (2 * sum > to - from) break;
+    sum += group.ms;
+    held.push(heldBy(group, to - from));
+  }
+  return 2 * sum > to - from ? held.join("; ") : "unattributed";
 }
 
 /** One entry per recorded phase change, which is what places any other evidence in a phase: a

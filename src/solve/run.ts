@@ -10,17 +10,16 @@
  * model process too (`src/backends/pi-built-child.ts` at 7af7315); here only the commands are walled,
  * the solver's bash and every harness tool call alike (`command.ts`).
  *
- * Departures from the sweep's runner, beside those named in the tools and the prompt:
- * - No nudge. v1 opened a further pi turn with "Finish the task with the available tools, then
- *   submit your answer." when a turn ended without a submit, which 1 of the sweep's 100 solves
- *   reached. Claude Code holds the conversation and takes one prompt, so a solve whose model stops
- *   without submitting ends there, as a no-answer fail.
+ * The loop is v1's (`src/backends/pi-built-child.ts:476-498` at 7af7315): tools run one at a time, a
+ * model that stops without submitting is nudged, and the turn cap counts the prompts, the opening one
+ * and each nudge. Departures, beside those named in the tools and the prompt:
  * - No submit at the wall: a solve the wall ends is a wall-ended fail.
- * - The turn cap counts model turns, one per API message; v1 counted pi turns and had no cap on API
- *   messages. The condition sets it high enough never to bind on the sweep's solves.
+ * - A failed model turn ends the attempt as the provider's non-result, which `solve` runs again whole;
+ *   v1 nudged once more into the same session unless the failure repeated (`pi-built-child.ts:344-363`).
  */
 import {
   type AgentEvent,
+  type AgentMessage,
   type AgentTool,
   type AgentToolResult,
   runAgentLoop,
@@ -61,7 +60,7 @@ import {
 } from "./answer.ts";
 import { type CommandWall, solveDirs } from "./command.ts";
 import { type Harness, harnessTools, openHarness, pathsUnder } from "./harness.ts";
-import { firstTurn, seedHome, systemPrompt } from "./prompt.ts";
+import { firstTurn, NUDGE, seedHome, systemPrompt } from "./prompt.ts";
 import { shellTool } from "./shell.ts";
 
 export interface SolveRequest {
@@ -216,20 +215,24 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
     );
     const system = createInitialSystemMessage(prompt, tools.map(toToolDeclaration));
     const models = request.models(join(dirs.host, "model"));
+    const user = (content: string): AgentMessage => ({ role: "user", content, timestamp: Date.now() });
+    let prompts = 1;
     // The wall is the solver's time, so it starts with the first turn rather than the setup.
     timer = setTimeout(() => wall.abort(), limits.wallSeconds * 1000);
     await runAgentLoop(
-      [{ role: "user", content: firstTurn(request.task), timestamp: Date.now() }],
+      [user(firstTurn(request.task))],
       { messages: system === undefined ? [] : [system], tools },
       {
         model: request.model,
         reasoning: request.effort,
         sessionId: id,
         convertToLlm: (messages) => messages,
+        toolExecution: "sequential",
         finishTurn: ({ message }) => {
           if (message.role === "assistant") turns.push(message);
-          return turns.length >= limits.turns ? { action: "end" } : undefined;
         },
+        getFollowUpMessages: async () =>
+          desk.submitted !== undefined || prompts++ >= limits.turns ? [] : [user(NUDGE)],
       },
       traceSink(request.log, id, () => turns.length),
       signal,
@@ -260,8 +263,8 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
 
 /** The harness's domain tools, its artifact-writer bound to the contract, then the host's own, each
  *  description led by its authority as v1's prompt gave it (built-starter.ts:120-153). */
-async function solverTools(
-  request: SolveRequest,
+export async function solverTools(
+  request: Pick<SolveRequest, "task" | "contract" | "resources">,
   harness: Harness,
   wall: CommandWall,
   desk: Desk,

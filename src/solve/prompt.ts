@@ -60,6 +60,9 @@ export function publicView({ taskId, family, publicInput }: PublicTask): PublicT
   return { taskId, family, publicInput };
 }
 
+/** built-starter.ts:67-68: the prompt a turn that ended without a submit is followed by. */
+export const NUDGE = "Finish the task with the available tools, then submit your answer.";
+
 /** built-starter.ts:72-77. */
 export function firstTurn(task: PublicTask): string {
   return `Task ${task.taskId} (family ${task.family}).\n\nPublic input:\n${capturedJsonStringify(task.publicInput, null, 2)}`;

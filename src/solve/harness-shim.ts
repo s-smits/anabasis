@@ -11,8 +11,7 @@
  *   state across calls in v2.
  * - `prepareArguments` is refused rather than carried: a function cannot cross the listing to the
  *   host, and no recorded harness declares one.
- * - `piSafeDraftParameters` is gone: it rewrote `number | null` unions because pi 0.82.1 coerced
- *   null to zero inside them, and pi-ai 1.0.4's `validateToolArguments` keeps both exact
+ * - `piSafeDraftParameters` is gone: pi-ai's `validateToolArguments` keeps `number | null` exact
  *   (`test/harness-tools.test.ts` holds that), so the declared schema is what pi receives.
  * - From pi-ai only `Type` and the two schema types are exported. A harness importing anything else
  *   from it fails to bundle, which says so, rather than pulling pi into the wall.

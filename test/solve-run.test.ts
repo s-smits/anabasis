@@ -18,6 +18,7 @@ import { cpSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../src
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
+import { NUDGE } from "../src/solve/prompt.ts";
 import { judge, type Played, solve, type SolveRequest } from "../src/solve/run.ts";
 
 const FIXTURE = new URL("fixtures/harness-min", import.meta.url).pathname;
@@ -254,9 +255,12 @@ describe.skipIf(!darwin)("a solve end to end", () => {
     expect(sent[0]).toContain("Role: submission.");
   }, 120_000);
 
-  it.concurrent("holds the host's limits whatever the harness's config asks for", async () => {
+  it.concurrent("nudges a model that stops, up to the host's prompts whatever the harness asks", async () => {
+    // The cap counts prompts, as v1's maxTurns did: the opening one and one nudge here, each
+    // answered by a turn that calls a tool and then stops without submitting.
     const scale = fauxAssistantMessage(fauxToolCall("scale_base", { factor: 1 }), toolUse);
-    const { scratch, sent, request, finished } = setup([scale, scale, scale, scale], {
+    const stop = fauxAssistantMessage("Done.");
+    const { scratch, sent, request, finished } = setup([scale, stop, scale, stop, scale, stop], {
       limits: { ...LIMITS, wallSeconds: 300, turns: 2 },
     });
     writeFileSync(
@@ -264,8 +268,11 @@ describe.skipIf(!darwin)("a solve end to end", () => {
       "solver:\n  solve_minutes: 999\n  max_turns: 9999\nshell:\n  default_seconds: 900\n  max_seconds: 9000\n",
     );
     expect(await solve(request, noWait)).toEqual({ outcome: "fail", kind: "no-answer" });
-    expect(finished()[0]?.data.turns).toBe(2);
+    expect(finished()[0]?.data.turns).toBe(4);
+    expect(sent).toHaveLength(4);
     expect(sent[0]).toContain("the case has 5 minutes of it");
+    expect(sent[1]).not.toContain(NUDGE);
+    expect(sent[2]).toContain(JSON.stringify(NUDGE));
   }, 120_000);
 
   it.concurrent("ends wall-ended when the wall falls mid-command", async () => {
@@ -279,7 +286,7 @@ describe.skipIf(!darwin)("a solve end to end", () => {
   }, 120_000);
 
   it.concurrent("ends no-answer when the model stops without submitting", async () => {
-    const { request } = setup([fauxAssistantMessage("I am done.")]);
+    const { request } = setup([fauxAssistantMessage("I am done.")], { limits: { ...LIMITS, turns: 1 } });
     expect(await solve(request, noWait)).toEqual({ outcome: "fail", kind: "no-answer" });
   }, 120_000);
 
@@ -302,7 +309,7 @@ describe.skipIf(!darwin)("a solve end to end", () => {
       writeFileSync(join(harness, "agent", "planted.ts"), "export {};\n");
       return fauxAssistantMessage("Planted.");
     };
-    const { request, finished } = setup([move, ...answer]);
+    const { request, finished } = setup([move, ...answer], { limits: { ...LIMITS, turns: 1 } });
     harness = request.harness;
     expect(await solve(request, noWait)).toEqual({ outcome: "pass" });
     expect(finished().map(({ data }) => data.ending)).toEqual([

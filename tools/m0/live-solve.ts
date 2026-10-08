@@ -6,19 +6,23 @@
  *     --task forbidden-volumes-01 --bundle ../anabasis-cycles-4c67fc/fixture/round4-veryhard-workspace
  *
  * Without `--live` no model is called. The condition is built and printed, and what the solver would
- * read is held against what the stored solve read: the system prompt, which may differ only in the
- * wall clause `prompt.ts` names, and the public resources, against the head of the stored
- * `read_public_resources` result, the part of it v1's trace kept. With `--live` the solve runs, and
+ * read is held against what the stored solve read: the tools, built on a mounted wall as a solve
+ * builds them, row by row in order (name, label, description, parameters, execution mode); the
+ * system prompt, which may differ only in the wall clause `prompt.ts` names; the first turn's
+ * template, the nudge and the turn cap, against the digests and `maxTurns` v1 recorded; and the
+ * public resources, against the head of the stored `read_public_resources` result, the part of it
+ * v1's trace kept. With `--live` the solve runs, and
  * its log is read back: the ending, the meter's billed dollars against Claude Code's reported cost
  * (exit test 2 asks within 1%), and the events the solve wrote (exit test 3).
  *
  * The solve is the stored one's: its harness state is `hb-bundles/<sweep>-<cycle>`, its model and
  * effort are those it recorded, and its contract, task and resources are the bundle's, as
- * `admit-sweep.ts` reads them. The limits are the sweep's `config.yaml`, but for the turn cap, which
- * counts model turns here and is set never to bind, and the disk cap, which the sweep did not have.
+ * `admit-sweep.ts` reads them. The limits are the sweep's `config.yaml` and `maxTurns`, but for the
+ * disk cap, which the sweep did not have.
  * The harness's digest binds its tool tree, so it is the condition's `solverTools` too. The condition's `sandbox` stands in for the policy's digest with its profile, platform and cap,
  * since the policy names each solve's own directories.
  */
+import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
 import { backends, compactionMode } from "#src/backends/models.ts";
 import { type Condition, conditionId, type Limits } from "#src/kernel/condition.ts";
@@ -27,18 +31,23 @@ import { read } from "#src/kernel/log.ts";
 import { freezePrices, priceKey } from "#src/kernel/meter.ts";
 import { taskVersion } from "#src/kernel/task.ts";
 import { openVerifier } from "#src/kernel/verify.ts";
+import { sha256 } from "#src/meta/digest.ts";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "#src/meta/filesystem.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
+import type { JsonValue } from "#src/meta/json-shape.ts";
 import { tmpdir } from "#src/meta/os.ts";
 import { dirname, join, resolve } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
-import { hashJsonValue } from "#src/meta/stable-json.ts";
+import { canonicalJson, hashJsonValue } from "#src/meta/stable-json.ts";
 import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { countBy } from "#src/meta/tally.ts";
-import { openHarness, treeContent } from "#src/solve/harness.ts";
-import { systemPrompt } from "#src/solve/prompt.ts";
-import { solve } from "#src/solve/run.ts";
-import { HOST_SOLVE_ISOLATION_PROFILE_ID } from "#src/verify/solve-sandbox.ts";
+import { openDesk } from "#src/solve/answer.ts";
+import { solveDirs } from "#src/solve/command.ts";
+import { type Harness, openHarness, treeContent } from "#src/solve/harness.ts";
+import { firstTurn, NUDGE, seedHome, systemPrompt } from "#src/solve/prompt.ts";
+import { type SolveRequest, solve, solverTools } from "#src/solve/run.ts";
+import { mountDiskCap } from "#src/verify/disk-cap.ts";
+import { HOST_SOLVE_ISOLATION_PROFILE_ID, solveIsolationPolicy } from "#src/verify/solve-sandbox.ts";
 import {
   checkProgram,
   contractOf,
@@ -62,15 +71,24 @@ const { values } = parseArgs({
   },
 });
 
-/** The sweep's `config.yaml`: 120 minutes, shell 300 s by default and 900 at most, one solve at a time. */
+/** The sweep's `config.yaml`: 120 minutes, shell 300 s by default and 900 at most, one solve at a
+ *  time; and its solves' `maxTurns`, 24 prompts. */
 const LIMITS: Limits = {
   wallSeconds: 7200,
-  turns: 1000,
+  turns: 24,
   shellDefaultSeconds: 300,
   shellMaxSeconds: 900,
   concurrency: 1,
   diskBytes: 2 * 1024 ** 3,
 };
+/** The four sentences of v1's command guard that `shell.ts` leaves out, as there is no guard here
+ *  (src/solve/dcg-rules.ts:54-56 and 59 at 7af7315). */
+const GUARD = [
+  "Refused: rm -r outside the command's own folder, find -delete, git clean, git reset --hard.",
+  "Delete a tree with rm -rf <relative path>; for anything else move a tree into a literal /tmp/<name> instead.",
+  "Write with > to $HOME/<name>, ~/<name>, a relative name or a literal /tmp/<name>; a redirect to any other $VAR/… is refused; make temp dirs with mktemp -d.",
+  "A refused command runs nothing: change the spelling and run it again.",
+];
 const REPO = resolve(import.meta.dir, "..", "..");
 /** The agent runtime's packages, pinned in `package.json`; the SDK pins the Claude Code binary. */
 const RUNTIME = ["@anthropic-ai/claude-agent-sdk", "@earendil-works/pi-agent-core", "@earendil-works/pi-ai"];
@@ -78,7 +96,22 @@ const RUNTIME = ["@anthropic-ai/claude-agent-sdk", "@earendil-works/pi-agent-cor
 /** What v1 recorded of the stored solve's starting state (`built-runtime.json`). */
 interface StoredRuntime {
   readonly modelWorker: { modelSelection: { effort: ThinkingLevel } };
-  readonly contractCondition: { systemPrompt: string; tools: { name: string }[] };
+  readonly contractCondition: {
+    systemPrompt: string;
+    tools: StoredTool[];
+    firstTurnTemplateDigest: string;
+    nudgeDigest: string;
+    maxTurns: number;
+  };
+}
+
+/** One tool as v1 sent it to the model (`BuiltAgentInterfaceTool`, built-starter.ts:83-86). */
+interface StoredTool {
+  readonly name: string;
+  readonly label: string;
+  readonly description: string;
+  readonly parameters: JsonValue;
+  readonly executionMode?: string;
 }
 
 /** The head of what the stored solve's first `read_public_resources` call returned. */
@@ -140,8 +173,11 @@ async function main(): Promise<number> {
     const id = conditionId(condition);
     console.log(JSON.stringify({ id, ...condition, prices: undefined }, null, 2));
 
+    const tools = await walledTools({ task, contract, resources }, harness);
     const parity = [
-      promptParity(stored, harness.guide),
+      toolParity(stored.contractCondition.tools, tools),
+      promptParity(stored, tools, harness.guide),
+      turnParity(stored),
       resourceParity(join(caseDir, "trace.json"), JSON.stringify({ resources }, null, 2)),
     ];
     for (const line of parity) console.log(line);
@@ -170,9 +206,95 @@ async function main(): Promise<number> {
   }
 }
 
-/** The stored system prompt against this host's, given the stored tool names: the sentences apart. */
-function promptParity(stored: StoredRuntime, guide: string | null): string {
-  const names = stored.contractCondition.tools.map((tool) => tool.name);
+/**
+ * The tools a solve of this request would be given, built as `play` builds them: on a mounted wall,
+ * with the home seeded, so the bash description counts the files and programs it names.
+ */
+async function walledTools(
+  request: Pick<SolveRequest, "task" | "contract" | "resources">,
+  harness: Harness,
+): Promise<AgentTool[]> {
+  const dirs = solveDirs(`dry-${String(runtimeProcess.pid)}-${String(Date.now())}`);
+  const cap = { root: dirs.root, bytes: LIMITS.diskBytes };
+  const release = await mountDiskCap(cap);
+  try {
+    for (const dir of [dirs.home, dirs.runs, dirs.host]) mkdirSync(dir, { recursive: true });
+    const base = solveIsolationPolicy({ repoRoot: REPO, cap });
+    if ("unsupported" in base) throw new Error(`this host cannot wall a solve: ${base.unsupported}`);
+    const files = seedHome(dirs.home, request.task, request.resources);
+    const cpu = { seconds: 0, unmeasured: 0 };
+    const wall = { base, dirs, toolTree: harness.toolTree, limits: LIMITS, cpu };
+    return await solverTools(request, harness, wall, openDesk(), files);
+  } finally {
+    await release();
+    rmSync(dirs.host, { recursive: true, force: true });
+  }
+}
+
+/** This host's tools against the stored rows, in order, field by field; parameters compare as
+ *  canonical JSON, and a description apart shows where it parts. */
+function toolParity(storedTools: readonly StoredTool[], tools: readonly AgentTool[]): string {
+  const stored = storedTools.map((tool) =>
+    tool.name === "bash"
+      ? { ...tool, description: GUARD.reduce((text, rule) => text.replace(` ${rule}`, ""), tool.description) }
+      : tool,
+  );
+  const row = (tool: StoredTool | AgentTool | undefined) =>
+    tool === undefined
+      ? null
+      : {
+          name: tool.name,
+          label: tool.label,
+          description: tool.description,
+          parameters: canonicalJson(JSON.parse(JSON.stringify(tool.parameters))),
+          executionMode: tool.executionMode ?? null,
+        };
+  const apart: string[] = [];
+  for (let index = 0; index < Math.max(stored.length, tools.length); index++) {
+    const before = row(stored[index]);
+    const after = row(tools[index]);
+    if (before === null || after === null) {
+      apart.push(`#${String(index)}: stored ${before?.name ?? "none"}, here ${after?.name ?? "none"}`);
+      continue;
+    }
+    for (const key of Object.keys(before) as (keyof typeof before)[]) {
+      const [was, is] = [String(before[key]), String(after[key])];
+      if (was === is) continue;
+      let at = 0;
+      while (was[at] === is[at]) at++;
+      apart.push(
+        `${before.name}.${key} parts at ${String(at)}:\n  stored ${was.slice(at, at + 160)}\n  here   ${is.slice(at, at + 160)}`,
+      );
+    }
+  }
+  return apart.length === 0
+    ? `same tools: ${String(tools.length)} rows, in order, by name, label, description, parameters and execution mode, but for the bash guard's sentences`
+    : `tools apart:\n${apart.join("\n")}`;
+}
+
+/** The first turn's template and the nudge against the digests v1 recorded of its own constants
+ *  (pi-built.ts:482-483), and the turn cap against its `maxTurns`. The template is recovered from
+ *  `firstTurn` by rendering its placeholders as themselves. */
+function turnParity(stored: StoredRuntime): string {
+  const { firstTurnTemplateDigest, nudgeDigest, maxTurns } = stored.contractCondition;
+  const input = "{publicInput}";
+  const template = firstTurn({ taskId: "{taskId}", family: "{family}", publicInput: input }).replace(
+    JSON.stringify(input),
+    input,
+  );
+  const apart = [
+    ...(sha256(template) === firstTurnTemplateDigest ? [] : [`first turn ${JSON.stringify(template)}`]),
+    ...(sha256(NUDGE) === nudgeDigest ? [] : [`nudge ${JSON.stringify(NUDGE)}`]),
+    ...(LIMITS.turns === maxTurns ? [] : [`turn cap ${String(LIMITS.turns)}, stored ${String(maxTurns)}`]),
+  ];
+  return apart.length === 0
+    ? `same first turn, nudge and turn cap (${String(maxTurns)} prompts)`
+    : `turns apart: ${apart.join("; ")}`;
+}
+
+/** The stored system prompt against this host's, given this host's tool names: the sentences apart. */
+function promptParity(stored: StoredRuntime, tools: readonly AgentTool[], guide: string | null): string {
+  const names = tools.map((tool) => tool.name);
   const sentences = (text: string) => new Set(text.split(/(?<=[.:;])\s+/));
   const before = sentences(stored.contractCondition.systemPrompt);
   const after = sentences(systemPrompt(LIMITS.wallSeconds, names, guide));

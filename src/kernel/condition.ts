@@ -15,7 +15,8 @@ import type { PriceTable } from "./meter.ts";
  */
 export interface Limits {
   readonly wallSeconds: number;
-  /** Model turns before the solve stops without an answer of its own. */
+  /** The prompts a solver is given, the opening one and each nudge after a turn that ended without a
+   *  submit, before the solve stops without an answer of its own: v1's `maxTurns`. */
   readonly turns: number;
   /** How long one shell command runs when the solver names no timeout. A timeout it names only
    *  raises this, up to `shellMaxSeconds`, as v1's Built shell clamped it (built-bash.ts:316-321). */

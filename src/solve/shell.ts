@@ -3,13 +3,8 @@
  * veryhard-hb-4c67fc saw v1's `shell` preset. Sed from harness-builder-v4 7af7315
  * src/solve/built-bash.ts (the `port === null` path) and src/solve/dcg-rules.ts:53-60.
  *
- * Departures, each named where it lands:
- * - The base description is pi 1.0.4's, which says "Returns stdout and stderr." where pi 0.85.1's,
- *   the one the sweep read, said "Returns combined stdout and stderr."
- * - v2 has no destructive-command guard, so the four rule sentences that described its refusals are
- *   left out. In the sweep it refused 83 calls; here those commands run.
- * - A non-zero exit is pi 1.0.4's error result ("Command exited with code N") rather than 0.85.1's
- *   thrown error; the text is pi's either way.
+ * One departure: v2 has no destructive-command guard, so the four rule sentences that described its
+ * refusals are left out. In the sweep it refused 83 calls; here those commands run.
  */
 import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
@@ -21,8 +16,8 @@ import { compareCodeUnits } from "../meta/stable-json.ts";
 import { toolTreeSearchDirs } from "../verify/solve-command-isolation.ts";
 import { type CommandWall, shellSeconds, wallOperations } from "./command.ts";
 
-/** pi 1.0.4's own (vendor/pi-coding-agent/core/tools/bash.ts, `createShellToolDefinition`), read
- *  from the tool rather than copied, so it moves with the vendored pi. */
+/** pi's own (vendor/pi-coding-agent/core/tools/bash.ts, `createShellToolDefinition`), read from the
+ *  tool rather than copied, so it moves with the vendored pi. */
 const BASE_DESCRIPTION = createBashTool("/").description;
 
 type ShellLimits = CommandWall["limits"];

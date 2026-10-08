@@ -1,9 +1,9 @@
 // The Claude backend replayed against Claude Code streams pi-claude-bridge recorded (e870bc89, MIT:
 // tests/fixtures/sdk-streams/, copied verbatim into test/fixtures/claude-sdk-streams/). The recording
-// served its tools as `mcp__custom-tools__*`; the replay renames them to this backend's `mcp__pi__*`.
-// The real Agent SDK runs; the binary it launches is test/fixtures/fake-claude-cli.ts, passed the way
+// served its tools as `mcp__custom-tools__*`, as v1 and this backend do. Each test is its own solve,
+// whose signal ends the query it left open. The real Agent SDK runs; the binary it launches is test/fixtures/fake-claude-cli.ts, passed the way
 // the host passes the real one, which plays the stream back and records what the SDK launched it with.
-import { afterAll, beforeEach, describe, expect, it } from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   type Api,
   type AssistantMessage,
@@ -15,12 +15,13 @@ import {
 } from "@earendil-works/pi-ai";
 import {
   type ClaudeCompaction,
+  claudeEffort,
   claudeProvider,
   REPORTED_COST,
   SWEEP_COMPACT_WINDOW,
 } from "../src/backends/claude.ts";
 import { dollars, freezePrices, priceKey, tokensOf } from "../src/kernel/meter.ts";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { capturedJsonParse } from "../src/meta/json-runtime.ts";
 import { asRecord, isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
@@ -33,6 +34,7 @@ interface Launch {
   argv: string[];
   env: JsonObject;
   stdin: JsonObject[];
+  cwd: string;
 }
 
 const FIXTURES = join(import.meta.dir, "fixtures", "claude-sdk-streams");
@@ -50,25 +52,38 @@ const haiku = sweep.getModels().find((entry) => entry.id === "claude-haiku-4-5")
 if (haiku === undefined) throw new Error("pi's Anthropic catalog has no claude-haiku-4-5");
 const recorded: Model<Api> = haiku;
 
+let solve = new AbortController();
+let solves = 0;
 beforeEach(() => {
   writeFileSync(join(home, "launch.jsonl"), "");
+  solve = new AbortController();
+  solves += 1;
 });
+afterEach(() => {
+  solve.abort();
+});
+
+/** The options of one turn of this test's solve. */
+function solveOptions() {
+  return { sessionId: `solve-${String(solves)}`, apiKey: "token", signal: solve.signal };
+}
 
 afterAll(() => {
   rmSync(home, { recursive: true, force: true });
 });
 
 function replay(name: string, edit: (text: string) => string = (text) => text): void {
-  const text = readFileSync(join(FIXTURES, name), "utf8").replaceAll("mcp__custom-tools__", "mcp__pi__");
+  const text = readFileSync(join(FIXTURES, name), "utf8");
   writeFileSync(join(home, "replay.jsonl"), edit(text));
 }
 
 /** The one launch since the test began. */
 function launched(): Launch {
-  const launch: Launch = { argv: [], env: {}, stdin: [] };
+  const launch: Launch = { argv: [], env: {}, stdin: [], cwd: "" };
   for (const line of readFileSync(join(home, "launch.jsonl"), "utf8").trim().split("\n")) {
     const entry = asRecord(capturedJsonParse(line));
-    const { argv, env, stdin } = entry ?? {};
+    const { argv, env, stdin, cwd } = entry ?? {};
+    if (isString(cwd)) launch.cwd = cwd;
     if (Array.isArray(argv)) launch.argv = argv.filter(isString);
     launch.env = asRecord(env) ?? launch.env;
     const sent = asRecord(stdin);
@@ -89,7 +104,7 @@ function turn(
 ): Promise<AssistantMessage> {
   const provider = compaction === undefined ? sweep : claudeProvider({ executable, compaction, home });
   const context = normalizeContext({ systemPrompt: "You are a solver.", messages, tools: [read] });
-  const options = { sessionId: "solve-1", apiKey: "token", ...keyIfDefined("reasoning", reasoning) };
+  const options = { ...solveOptions(), ...keyIfDefined("reasoning", reasoning) };
   return provider.streamSimple(recorded, context, options).result();
 }
 
@@ -131,9 +146,15 @@ describe("the Claude backend", () => {
     const launch = launched();
     expect(flag(launch, "--model")).toBe("claude-haiku-4-5");
     expect(flag(launch, "--effort")).toBe("high");
-    expect(flag(launch, "--tools")).toBe("");
-    expect(flag(launch, "--allowedTools")).toBe("mcp__pi__read");
-    expect(flag(launch, "--permission-mode")).toBe("dontAsk");
+    // v1's options (provider.ts:384-450 at 7af7315): WebSearch beside the pi tools, permissions
+    // bypassed, thinking summarized under an effort.
+    expect(flag(launch, "--tools")).toBe("WebSearch");
+    expect(flag(launch, "--allowedTools")).toBeUndefined();
+    expect(flag(launch, "--permission-mode")).toBe("bypassPermissions");
+    expect(launch.argv).toContain("--allow-dangerously-skip-permissions");
+    expect(flag(launch, "--thinking-display")).toBe("summarized");
+    // Claude Code writes its cwd and git state into its prompt; its home is outside any repository.
+    expect(realpathSync.native(launch.cwd)).toBe(realpathSync.native(home));
     expect(launch.argv).toContain("--strict-mcp-config");
     expect(launch.argv).toContain("--setting-sources=");
     // The preset prompt is the CLI's own, so the SDK sends only what is appended to it.
@@ -143,7 +164,7 @@ describe("the Claude backend", () => {
     expect(init?.appendSystemPrompt).toBe("You are a solver.");
     expect(init?.systemPrompt).toBeUndefined();
     expect(init?.skills).toEqual([]);
-    expect(init?.sdkMcpServers).toEqual(["pi"]);
+    expect(init?.sdkMcpServers).toEqual(["custom-tools"]);
     const { env } = launch;
     expect(env.CLAUDE_CONFIG_DIR).toBe(join(home, "claude-config"));
     expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBe("token");
@@ -162,7 +183,7 @@ describe("the Claude backend", () => {
       messages: [opening],
       tools: [read],
     });
-    await sweep.streamSimple(opus, context, { sessionId: "solve-1", apiKey: "token" }).result();
+    await sweep.streamSimple(opus, context, solveOptions()).result();
     expect(flag(launched(), "--model")).toBe("claude-opus-5[1m]");
   });
 
@@ -206,10 +227,9 @@ describe("the Claude backend", () => {
   // not a later turn, is what ends that query.
   it("ends a query left open when the solve's signal aborts between turns", async () => {
     replay("parallel-tools.jsonl");
-    const solve = new AbortController();
     const context = (messages: Message[]) =>
       normalizeContext({ systemPrompt: "You are a solver.", messages, tools: [read] });
-    const options = { sessionId: "solve-open", apiKey: "token", signal: solve.signal };
+    const options = solveOptions();
     const first = await sweep.streamSimple(recorded, context([opening]), options).result();
     expect(first.stopReason).toBe("toolUse");
     solve.abort();
@@ -220,13 +240,38 @@ describe("the Claude backend", () => {
     expect(after.errorMessage).toContain("no live Claude Code query");
   });
 
-  it("refuses a second prompt once Claude Code holds the conversation", async () => {
+  it("takes a nudge into the live query, as v1 did (provider.ts:525-560)", async () => {
     replay("text.jsonl");
     const answer = await turn([opening]);
     expect(answer.stopReason).toBe("stop");
-    const follow: Message = { role: "user", content: "Again.", timestamp: 0 };
-    const refused = await turn([opening, answer, follow]);
+    const nudge: Message = { role: "user", content: "Again.", timestamp: 0 };
+    const again = await turn([opening, answer, nudge]);
+    expect(again.stopReason).toBe("stop");
+    const launch = launched();
+    expect(
+      launch.stdin.filter((line) => line.type === "user").map((line) => asRecord(line.message)?.content),
+    ).toEqual(["Read the three files.", "Again."]);
+  });
+
+  it("refuses a later prompt with no live query to hold the conversation", async () => {
+    replay("text.jsonl");
+    const answer = await turn([opening]);
+    solve.abort();
+    solve = new AbortController();
+    const nudge: Message = { role: "user", content: "Again.", timestamp: 0 };
+    const refused = await turn([opening, answer, nudge]);
     expect(refused.stopReason).toBe("error");
-    expect(refused.errorMessage).toContain("one prompt");
+    expect(refused.errorMessage).toContain("holds this conversation");
+  });
+
+  it("asks for v1's effort: the model's own map, then the bridge's table", () => {
+    const opus = sweep.getModels().find((entry) => entry.id === "claude-opus-5");
+    if (opus === undefined) throw new Error("pi's Anthropic catalog has no claude-opus-5");
+    expect(claudeEffort(opus, "xhigh")).toBe("xhigh");
+    expect(claudeEffort(recorded, "xhigh")).toBe("max");
+    expect(claudeEffort(recorded, "max")).toBeUndefined();
+    expect(claudeEffort(opus, "medium")).toBe("medium");
+    expect(claudeEffort(opus, "minimal")).toBe("low");
+    expect(claudeEffort(opus, undefined)).toBeUndefined();
   });
 });

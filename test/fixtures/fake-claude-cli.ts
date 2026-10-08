@@ -1,8 +1,9 @@
 // A stand-in for the Claude Code binary, which the Agent SDK runs as `pathToClaudeCodeExecutable`.
 // It records what the SDK launched it with, its arguments, its whole environment and every line the
 // SDK writes to it, in `$HOME/launch.jsonl`, answers each control request with an empty success, and
-// answers the opening prompt with the recorded stream in `$HOME/replay.jsonl`. HOME is the one place
-// it can find both, because the backend hands the CLI no other variable a test could set.
+// answers each prompt with the recorded stream in `$HOME/replay.jsonl`. HOME is the one place
+// it can find both, because the backend hands the CLI no other variable a test could set. It records
+// its cwd too.
 import { appendFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -26,7 +27,7 @@ function answer(line: string): void {
   }
 }
 
-record(JSON.stringify({ argv: process.argv.slice(2), env: process.env }));
+record(JSON.stringify({ argv: process.argv.slice(2), env: process.env, cwd: process.cwd() }));
 let pending = "";
 process.stdin.on("data", (chunk: Buffer) => {
   pending += chunk.toString("utf8");

@@ -2,18 +2,23 @@
  * The Claude backend: Claude Code, run through the Agent SDK, served to pi as a provider.
  *
  * One pi session is one live SDK query. pi's tools reach Claude Code as an in-process MCP server whose
- * handlers park until pi has run the call and sent the result back, and one pi turn is one API message,
- * which ends at the stream's `message_stop`. That design is pi-claude-bridge's (e870bc89), and its four
- * leaf modules come over verbatim; its index.ts does not. A headless solve has no steering, session
- * resume or UI, so the glue a solve needs is this file.
+ * handlers park until pi has run the call and sent the result back, and one pi turn is one API message
+ * with a pi tool call in it, or the last of the query's prompt. That design is pi-claude-bridge's
+ * (e870bc89), and its four leaf modules come over verbatim; its index.ts does not. A headless solve has
+ * no steering or UI, so the glue a solve needs is this file.
  *
  * The query runs under the options sweep veryhard-hb-4c67fc's solves did (harness-builder-v4 at 7af7315,
- * `vendor/pi-claude-bridge/provider.ts:384-450`), wherever an option changes what the solver sees or how
- * its context behaves. Three departures are deliberate. WebSearch is gone: the sweep's Built solves ran
- * with the CLI's server-side WebSearch on (`src/backends/pi-built-child.ts:193-196`) and called it 0
- * times, and here `tools: []` leaves the harness's pi tools as the only tools. Permissions are
- * `dontAsk` over the named pi tools, not `bypassPermissions`. And the child's environment is built from
- * HOME, PATH and TMPDIR alone, where v1 spread the whole host environment into it (`provider.ts:420`).
+ * `vendor/pi-claude-bridge/provider.ts:384-450`), wherever an option changes what the solver sees: the
+ * MCP server's name, which every tool name carries (`turn-translation.ts:19-20`); the CLI's WebSearch
+ * beside the pi tools (`src/backends/pi-built-child.ts:193-196`); bypassed permissions; summarized
+ * thinking; the effort each model was served; and a working directory outside any repository, as v1's
+ * worker bundle directory was (`src/backends/pi-built.ts:236-238`), since Claude Code writes its
+ * directory and git state into its prompt. A nudge is a further user message into the same query, where v1 resumed the session in a
+ * fresh one (`provider.ts:525-560`); the model reads the same history either way.
+ *
+ * One difference is left, and it reaches no model: v1 spawned its worker with an empty environment
+ * (`pi-built-process.ts:529-533`) and spread that into Claude Code's (`provider.ts:420`); here HOME, the
+ * solve's own, PATH and TMPDIR are set as well.
  */
 import {
   type EffortLevel,
@@ -25,6 +30,7 @@ import {
   type Api,
   type AssistantMessage,
   type AssistantMessageEventStream,
+  calculateCost,
   createAssistantMessageEventStream,
   createProvider,
   envApiKeyAuth,
@@ -36,6 +42,7 @@ import {
   type StopReason,
   type ThinkingLevel,
   type TranscriptContext,
+  type Usage,
   type UserMessage,
 } from "@earendil-works/pi-ai";
 import { getBuiltinModels } from "@earendil-works/pi-ai/providers/all";
@@ -56,14 +63,19 @@ import { errorMessage } from "../meta/runtime-values.ts";
 
 export const CLAUDE_PROVIDER = "claude";
 const API = "claude-agent-sdk";
-const SERVER = "pi";
+/** turn-translation.ts:19-20. */
+const SERVER = "custom-tools";
 const TOOL_PREFIX = `mcp__${SERVER}__`;
+/** The CLI's own tools the solver is given, all server-side: pi-built-child.ts:193-196, under the
+ *  `webSearch: true` every Claude profile set (`src/backends/pi-built.ts:136`). */
+const CLI_TOOLS = ["WebSearch"];
+/** provider.ts:222-224: the bridge's table, for a level the model's own map does not name. */
 const EFFORTS: Readonly<Partial<Record<ThinkingLevel, EffortLevel>>> = {
+  minimal: "low",
   low: "low",
   medium: "medium",
   high: "high",
-  xhigh: "xhigh",
-  max: "max",
+  xhigh: "max",
 };
 
 interface Session {
@@ -249,12 +261,11 @@ async function runTurn(
     if (!session) throw new Error(`no live Claude Code query in session ${key} takes these tool results`);
     for (const result of results) deliver(session, result);
   } else {
-    if (session || context.messages.some((message) => message.role === "assistant")) {
-      throw new Error(
-        "Claude Code holds the conversation: a session takes one prompt, then only tool results",
-      );
+    // A later prompt, a nudge, goes into the live query, which holds the history itself.
+    if (!session && context.messages.some((message) => message.role === "assistant")) {
+      throw new Error(`no live Claude Code query in session ${key} holds this conversation`);
     }
-    session = open(claude, model, context, options, key);
+    session ??= open(claude, model, context, options, key);
     await session.prompt.push(userMessage(promptText(context)));
   }
   return await readTurn(key, session, model, turn);
@@ -283,12 +294,18 @@ function open(
   }));
   const prompt = makePromptStream();
   const abort = new AbortController();
+  const effort = claudeEffort(model, options.reasoning);
+  // Claude Code's working directory, which its prompt names: the solve's own, as v1's was its worker's.
+  mkdirSync(claude.home, { recursive: true });
   const live = query({
     prompt: prompt.stream,
     options: {
       pathToClaudeCodeExecutable: claude.executable,
+      cwd: claude.home,
       model: LONG_CONTEXT.has(model.id) ? `${model.id}[1m]` : model.id,
-      ...keyIfDefined("effort", effort(options.reasoning)),
+      ...keyIfDefined("effort", effort),
+      // Thinking arrives summarized rather than omitted whenever an effort is set (`provider.ts:405-408`).
+      ...keyIfDefined("extraArgs", effort && { "thinking-display": "summarized" }),
       // Claude Code's own prompt with the harness's appended, as the sweep ran (`provider.ts:439-442`):
       // the solver reads the same preamble around the same Built prompt.
       systemPrompt: {
@@ -296,16 +313,13 @@ function open(
         preset: "claude_code",
         ...keyIfTruthy("append", getCurrentSystemPrompt(context.messages).trim()),
       },
-      // The harness's pi tools are the only tools: no built-in, no setting file, no skill, no other MCP
-      // server. The sweep named its skills and setting sources the same way (`provider.ts:434,445`).
-      tools: [],
+      // The harness's pi tools and the CLI's WebSearch are the only tools: no other built-in, no setting
+      // file, no skill, no other MCP server (`provider.ts:430-434,445`).
+      tools: CLI_TOOLS,
       skills: [],
       mcpServers: { [SERVER]: createToolServer(SERVER, tools) },
-      allowedTools: tools.map((tool) => TOOL_PREFIX + tool.name),
-      // The sweep bypassed every check (`provider.ts:435-437`). `dontAsk` is narrower and is enough: the
-      // pi tools named above run unasked and anything else is refused, where `default` would route a
-      // prompt to this process, which answers none, and `bypassPermissions` would let any tool run.
-      permissionMode: "dontAsk",
+      permissionMode: "bypassPermissions",
+      allowDangerouslySkipPermissions: true,
       strictMcpConfig: true,
       settingSources: [],
       persistSession: false,
@@ -318,18 +332,22 @@ function open(
   sessions.set(key, session);
   // The signal is the solve's, the same on every turn, so its abort ends the query whether it comes
   // inside a turn, at the wall, or after the loop stopped with the query still open: on a submit,
-  // which ends pi's loop while Claude Code waits on the result, or at the turn cap.
+  // which ends pi's loop while Claude Code waits on the result, or once the last nudge is answered,
+  // which leaves the query open for a prompt that never comes.
   options.signal?.addEventListener("abort", () => sessions.get(key) === session && close(key, session), {
     once: true,
   });
   return session;
 }
 
-function effort(level: ThinkingLevel | undefined): EffortLevel | undefined {
+/**
+ * The effort v1 asked Claude Code for at `level` (`provider.ts:396-400`): the model's own map, then the
+ * table; none, so the CLI's default, where neither names one.
+ */
+export function claudeEffort(model: Model<Api>, level: ThinkingLevel | undefined): EffortLevel | undefined {
   if (level === undefined) return undefined;
-  const served = EFFORTS[level];
-  if (served === undefined) throw new Error(`Claude Code takes no "${level}" effort`);
-  return served;
+  // SAFETY: a catalog map spells its levels in the effort set Claude Code takes, as v1 relied on.
+  return (model.thinkingLevelMap?.[level] as EffortLevel | null | undefined) ?? EFFORTS[level];
 }
 
 /**
@@ -385,12 +403,32 @@ function deliver(session: Session, result: McpResult): void {
   resolve(result);
 }
 
-/** Read one API message into `turn`, and say how it stopped. */
+/**
+ * Read the next API message with a pi tool call into `turn`, or the last of the prompt, and say how it
+ * stopped. A message that stopped on WebSearch alone is Claude Code's to run, so the turn reads on
+ * into the next, as v1's ended only on a pi call (`turn-translation.ts:128-135`), and bills both.
+ */
 async function readTurn(
   key: string,
   session: Session,
   model: Model<Api>,
   turn: AssistantMessage,
+): Promise<TurnEnd> {
+  const spent: Usage[] = [];
+  try {
+    return await readMessages(key, session, model, turn, spent);
+  } finally {
+    for (const usage of spent) addUsage(turn.usage, usage);
+    calculateCost(model, turn.usage);
+  }
+}
+
+async function readMessages(
+  key: string,
+  session: Session,
+  model: Model<Api>,
+  turn: AssistantMessage,
+  spent: Usage[],
 ): Promise<TurnEnd> {
   let apiStop: string | null = null;
   for (;;) {
@@ -406,23 +444,34 @@ async function readTurn(
       message.event.type === "message_stop" &&
       apiStop === "tool_use"
     ) {
-      return "toolUse";
+      if (turn.content.some((block) => block.type === "toolCall")) return "toolUse";
+      spent.push(turn.usage);
+      turn.usage = emptyUsage();
     } else if (message.type === "result") {
-      close(key, session);
+      // The query stays open for a later prompt; the cost Claude Code reports is the query's so far.
       turn.diagnostics = [
         { type: REPORTED_COST, timestamp: Date.now(), details: { totalCostUsd: message.total_cost_usd } },
       ];
+      const end = apiStop === null ? undefined : FINAL_STOPS.get(apiStop);
+      if (message.subtype === "success" && !message.is_error && end !== undefined) return end;
+      close(key, session);
       if (message.subtype !== "success") {
         throw new Error(`Claude Code: ${message.subtype}: ${message.errors.join("; ")}`);
       }
       if (message.is_error) throw new Error(`Claude Code: ${message.result}`);
-      const end = apiStop === null ? undefined : FINAL_STOPS.get(apiStop);
-      if (end === undefined) {
-        throw new Error(`Claude Code: the model stopped on ${apiStop ?? "no stop reason"}`);
-      }
-      return end;
+      throw new Error(`Claude Code: the model stopped on ${apiStop ?? "no stop reason"}`);
     }
   }
+}
+
+function addUsage(into: Usage, usage: Usage): void {
+  into.input += usage.input;
+  into.output += usage.output;
+  into.cacheRead += usage.cacheRead;
+  into.cacheWrite += usage.cacheWrite;
+  into.totalTokens += usage.totalTokens;
+  if (usage.cacheWrite1h !== undefined) into.cacheWrite1h = (into.cacheWrite1h ?? 0) + usage.cacheWrite1h;
+  if (usage.reasoning !== undefined) into.reasoning = (into.reasoning ?? 0) + usage.reasoning;
 }
 
 /**
@@ -473,15 +522,19 @@ function emptyTurn(model: Model<Api>): AssistantMessage {
     api: model.api,
     provider: model.provider,
     model: model.id,
-    usage: {
-      input: 0,
-      output: 0,
-      cacheRead: 0,
-      cacheWrite: 0,
-      totalTokens: 0,
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-    },
+    usage: emptyUsage(),
     stopReason: "stop",
     timestamp: Date.now(),
+  };
+}
+
+function emptyUsage(): Usage {
+  return {
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    totalTokens: 0,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
   };
 }

@@ -36,8 +36,7 @@ import { sha256 } from "#src/meta/digest.ts";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "#src/meta/filesystem.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import type { JsonValue } from "#src/meta/json-shape.ts";
-import { tmpdir } from "#src/meta/os.ts";
-import { dirname, join, resolve } from "#src/meta/path.ts";
+import { join, resolve } from "#src/meta/path.ts";
 import { capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { canonicalJson, hashJsonValue } from "#src/meta/stable-json.ts";
 import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
@@ -139,7 +138,11 @@ async function main(): Promise<number> {
   const task = tasks.find((each) => each.taskId === taskId);
   if (task === undefined) throw new Error(`${bundle} has no task ${taskId}`);
 
-  const dir = mkdtempSync(join(tmpdir(), "ana-live-"));
+  // The check program is staged inside the repository, which a solve's sandbox denies, as v1 kept
+  // it: a copy in the temp folder would be open to the solver's shell.
+  const scratch = join(REPO, ".ana", "live");
+  mkdirSync(scratch, { recursive: true });
+  const dir = mkdtempSync(join(scratch, "checks-"));
   try {
     const checks = checkProgram(bundle, join(dir, "checks"));
     const contract = contractOf(brief, recordedAnswerFormat(row));
@@ -189,8 +192,7 @@ async function main(): Promise<number> {
       capturedSpawn(["caffeinate", "-s", "-w", String(runtimeProcess.pid)]).unref();
     }
 
-    const log = join(REPO, ".ana", "live", `${row.taskId}-${row.cycle}.jsonl`);
-    mkdirSync(dirname(log), { recursive: true });
+    const log = join(scratch, `${row.taskId}-${row.cycle}.jsonl`);
     const ending = await solve({
       id: `${row.taskId}-${row.cycle}`,
       condition: id,

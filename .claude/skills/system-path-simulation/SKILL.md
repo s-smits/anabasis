@@ -105,7 +105,9 @@ Measured on the truss campaign `exam-1` on 2026-10-08, at `--screen 1 --fails 1 
 | any | a Builder whose edit does not land | `no-change` | the harness froze to its parent's digest |
 
 `check-defects` has not been walked: a scripted fail is a clean rejection, and it takes a Referee or
-a check that cannot run to dispute a task.
+a check that cannot run to dispute a task. `flags-decide` is out of a rehearsal's reach for the same
+reason: it is a reading that differs with and without the tasks an advising Referee flagged, and a
+rehearsal seats no Referee.
 
 ## What the first rehearsals settled
 
@@ -153,7 +155,9 @@ What the product did:
   parked `submit`, Claude Code lived two to three seconds more and called `submit` twice again,
   each a model request no meter read. An abort closes its stdin and gives it two seconds, which it
   spends on its turn. The close now interrupts the turn first, and the same probe then called
-  nothing and was gone inside a second. A leftover nobody asked about was the lead.
+  nothing and was gone inside a second. One whole solve on that model, its logs copied out five
+  times a second, then ended on its `submit` with no call after it, Claude Code gone within 0.56 s
+  and no folder left. A leftover nobody asked about was the lead.
 - **The pulse read a seed as a paid run**, with its source's dollars and its source's solves in
   flight. It now says `(a seed)`.
 - **A reader caught a planted contradiction.** Two rehearsed rounds made one harness pass the anchor

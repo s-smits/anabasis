@@ -1,6 +1,7 @@
 // Copied from pi coding-agent v1.0.4 (github.com/earendil-works/pi, 7c10bd43, MIT, see LICENSE):
 // packages/coding-agent/src/core/tools/bash.ts. Departure: the TUI renderers are left out, since no terminal UI draws these calls.
 // Their update throttle, BASH_UPDATE_THROTTLE_MS = 100 in renderers/bash.ts, is copied here as a constant.
+// Departure: `tempDir` in the options, where a cut command's full output goes (see utils/output-files.ts).
 // Strict compiler options force the `!` on indexed reads and the `| undefined` on optional fields.
 import { constants } from "node:fs";
 import { access as fsAccess } from "node:fs/promises";
@@ -227,6 +228,8 @@ export interface BashToolOptions {
 	exposeSessionEnvironment?: boolean;
 	/** Hook to adjust command, cwd, or env before execution */
 	spawnHook?: BashSpawnHook;
+	/** Where a cut command's full output goes. Default: the OS temp directory */
+	tempDir?: string | undefined;
 }
 
 export type BashRenderState = {
@@ -278,7 +281,7 @@ export function createShellToolDefinition(
 				exposeSessionEnvironment,
 				ctx,
 			);
-			const output = new OutputAccumulator({ tempFilePrefix: config.tempFilePrefix });
+			const output = new OutputAccumulator({ tempFilePrefix: config.tempFilePrefix, tempDir: options?.tempDir });
 			let acceptingOutput = true;
 			let updateTimer: NodeJS.Timeout | undefined;
 			let updateDirty = false;

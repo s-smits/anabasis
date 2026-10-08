@@ -1,5 +1,7 @@
 // Copied from pi coding-agent v1.0.4 (github.com/earendil-works/pi, 7c10bd43, MIT, see LICENSE):
-// packages/coding-agent/src/utils/output-files.ts, verbatim.
+// packages/coding-agent/src/utils/output-files.ts. Departure: a file may go to a directory the caller
+// names, which is made when the first file is, so a solver's cut output stays in its own home (v1 kept
+// this in its vendored copy; the OS temp directory is shared across walls).
 /**
  * Output files: files pi writes so the model can use output it was not shown in full, such as the
  * full text of truncated tool output, binary MCP resources, and images shown by codemode scripts.
@@ -8,7 +10,7 @@
  */
 
 import { randomBytes } from "node:crypto";
-import { createWriteStream, type WriteStream } from "node:fs";
+import { createWriteStream, mkdirSync, type WriteStream } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -17,8 +19,9 @@ import { join } from "node:path";
 const OUTPUT_FILE_MODE = 0o600;
 
 /** A new, unused path: `<dir>/<prefix>-<random hex><extension>`. `extension` includes the dot. */
-function createOutputFilePath(prefix: string, extension: string): string {
-	return join(tmpdir(), `${prefix}-${randomBytes(8).toString("hex")}${extension}`);
+function createOutputFilePath(prefix: string, extension: string, dir?: string): string {
+	if (dir !== undefined) mkdirSync(dir, { recursive: true, mode: 0o700 });
+	return join(dir ?? tmpdir(), `${prefix}-${randomBytes(8).toString("hex")}${extension}`);
 }
 
 /** Write `data` to a new output file and return its path. */
@@ -30,7 +33,11 @@ export async function writeOutputFile(prefix: string, extension: string, data: s
 }
 
 /** Open a new output file for streamed output. */
-export function createOutputFileStream(prefix: string, extension: string): { path: string; stream: WriteStream } {
-	const path = createOutputFilePath(prefix, extension);
+export function createOutputFileStream(
+	prefix: string,
+	extension: string,
+	dir?: string,
+): { path: string; stream: WriteStream } {
+	const path = createOutputFilePath(prefix, extension, dir);
 	return { path, stream: createWriteStream(path, { mode: OUTPUT_FILE_MODE, flags: "wx" }) };
 }

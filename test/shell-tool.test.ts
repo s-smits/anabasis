@@ -1,6 +1,6 @@
 // The solver's bash tool: the description the sweep's solves read, less what v2 no longer does; the
 // v1 timeout clamp; and, on the real command wall, the three timeout clauses, a failing exit, the
-// output and a home that outlives one command.
+// output, a home that outlives one command and a cut command's full output kept in that home.
 import { describe, expect, it } from "bun:test";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import {
@@ -63,7 +63,7 @@ describe("the solver's bash tool", () => {
   });
 
   it.skipIf(runtimeProcess.platform !== "darwin")(
-    "names what the wall allowed on a cut, fails a failing exit, and keeps the home",
+    "names what the wall allowed on a cut, fails a failing exit, and keeps the home and cut output",
     async () => {
       const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-shell-repo-")));
       const dirs = solveDirs(`shell-${String(runtimeProcess.pid)}-${String(Date.now())}`);
@@ -100,6 +100,12 @@ describe("the solver's bash tool", () => {
 
         expect(text(await call('echo kept > "$HOME/note" && echo wrote'))).toBe("wrote\n");
         expect(text(await call('cat "$HOME/note"'))).toBe("kept\n");
+
+        // A cut command's full output stays in this wall's home, where the solver can read it back.
+        const cut = text(await call("seq 1 3000"));
+        const full = /Full output: (\S+)\]$/.exec(cut)?.[1] ?? "";
+        expect(full.startsWith(join(dirs.home, ".shell-output", "pi-bash-"))).toBe(true);
+        expect(text(await call(`wc -l < ${full}`)).trim()).toBe("3000");
       } finally {
         rmSync(dirs.root, { recursive: true, force: true });
         rmSync(dirs.host, { recursive: true, force: true });

@@ -146,6 +146,9 @@ export function shellTool(wall: CommandWall, publicResourceFiles: number): Agent
       // because the wall's environment replaces pi's.
       const shell = createBashTool(wall.dirs.home, {
         exposeSessionEnvironment: false,
+        // A cut command's full output, which the notice names, stays inside this wall's home: the OS
+        // temp directory is every wall's, and another solve's could be read there.
+        tempDir: join(wall.dirs.home, ".shell-output"),
         operations: {
           exec: (line, cwd, options) =>
             operations.exec(line, cwd, options).catch((error: unknown) => {

@@ -10,7 +10,7 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
-import { type RoundRequest, round, stopRule } from "../src/builder/round.ts";
+import { type RoundRequest, round, settleReading, stopRule, toLabel } from "../src/builder/round.ts";
 import { type BuildRequest, type Built, type Practised, session } from "../src/builder/session.ts";
 import type { Bench } from "../src/builder/tools.ts";
 import { type Condition, recordCondition } from "../src/kernel/condition.ts";
@@ -208,6 +208,16 @@ const step: Table = (version, fresh, nth) => {
   return PASS;
 };
 
+/** An advising Referee that rules every fail of s1 a check defect and logs its rulings, as
+ *  `src/review/referee.ts` does. */
+const logging =
+  (log: string) =>
+  async (solve: string, version: string): Promise<RefereeFinding> => {
+    const ruling = version === "s1" ? "check-defect" : "earned";
+    append(log, "referee.finding", { solve, ruling });
+    return { ruling, check: null, rule: "R1", field: "answer", reason: "r", probes: [] };
+  };
+
 describe("a round", () => {
   it("runs the session, solves every task under both harnesses in turn, and reads a step", async () => {
     const s = await setup([edit, finish], step);
@@ -257,7 +267,9 @@ describe("a round", () => {
         unflagged: null,
         short: [],
         unscreened: [],
+        counted: "step",
         reading: "step",
+        settled: null,
       },
     ]);
     expect(stopRule(read(s.log))).toMatchObject({ sessions: 1, tasks: 4, points: 100, stop: false });
@@ -348,7 +360,7 @@ describe("a round", () => {
     const report = await round({ ...s.request, referee, refereeDecides: false });
     // The fail stands and the task is counted: a person reads it before the reading is read. The
     // second reading leaves the flagged task out, and three wins clear no test at 0.10: the step
-    // rests on the one fail a reviewer laid to a check.
+    // rests on the one fail a reviewer laid to a check, and the round claims neither reading.
     expect(report).toMatchObject({
       scored: { wins: 4, losses: 0 },
       disputed: [],
@@ -358,12 +370,14 @@ describe("a round", () => {
         anchor: { reading: "held" },
         reading: "no-step",
       },
-      reading: "step",
+      counted: "step",
+      reading: "flags-decide",
     });
     expect(taskStates(read(s.log)).get("s1")).toBe("admitted");
     expect(s.of(COMPARISON_REPORTED)[0]).toMatchObject({
       flagged: ["s1"],
       unflagged: { reading: "no-step" },
+      reading: "flags-decide",
     });
   });
 
@@ -390,7 +404,89 @@ describe("a round", () => {
       referee: async () => ({ ...earned, ruling: "earned" }),
       refereeDecides: false,
     });
-    expect(report).toMatchObject({ flagged: ["s1"], unflagged: { reading: "no-step" }, reading: "step" });
+    expect(report).toMatchObject({
+      flagged: ["s1"],
+      unflagged: { reading: "no-step" },
+      counted: "step",
+      reading: "flags-decide",
+    });
+  });
+
+  it("settles a reading the flags decide on a person's labels, and writes the report once more", async () => {
+    const flagged = async (labelled: "check-defect" | "earned") => {
+      const s = await setup([edit, finish], step);
+      const report = await round({ ...s.request, referee: logging(s.log), refereeDecides: false });
+      expect(report).toMatchObject({
+        flagged: ["s1"],
+        counted: "step",
+        reading: "flags-decide",
+        settled: null,
+      });
+      // The two fails of s1 under the old harness are what a person is asked to label.
+      const asked = toLabel(read(s.log), "b-1");
+      expect(asked.flagged).toHaveLength(2);
+      const [one = "", two = ""] = asked.flagged;
+      // One label is not enough, and an unclear one settles nothing.
+      expect(() => settleReading(s.log, "b-1", new Map([[one, labelled]]))).toThrow("1 of 2 flagged fails");
+      expect(() =>
+        settleReading(
+          s.log,
+          "b-1",
+          new Map([
+            [one, labelled],
+            [two, "unclear"],
+          ]),
+        ),
+      ).toThrow("1 of 2 flagged fails");
+      expect(() => settleReading(s.log, "b-1", new Map([["r-0-0", labelled]]))).toThrow(
+        "is no refused answer",
+      );
+      return {
+        s,
+        settled: settleReading(
+          s.log,
+          "b-1",
+          new Map([
+            [one, labelled],
+            [two, labelled],
+          ]),
+        ),
+      };
+    };
+    // Labelled a check defect, the task is disputed and leaves the comparison: three wins clear no
+    // test at 0.10.
+    const defect = await flagged("check-defect");
+    expect(defect.settled).toMatchObject({
+      scored: { wins: 3, losses: 0, p: 0.125 },
+      versions: ["s2", "s3", "s4"],
+      disputed: ["s1"],
+      flagged: [],
+      unflagged: null,
+      counted: "no-step",
+      reading: "no-step",
+      settled: { labelled: 2, defects: 2, disputed: ["s1"] },
+    });
+    expect(taskStates(read(defect.s.log)).get("s1")).toBe("disputed");
+    // The round's own report stays, and the settled one is the last: the round says it when run again.
+    expect(defect.s.of(COMPARISON_REPORTED).map(({ reading }) => reading)).toEqual([
+      "flags-decide",
+      "no-step",
+    ]);
+    expect(defect.s.of(COMPARISON_REPORTED)[1]).toMatchObject({ target: 4, solves: 2, level: 0.1 });
+    expect(await round(defect.s.request)).toEqual(defect.settled);
+    expect(settleReading(defect.s.log, "b-1", new Map())).toEqual(defect.settled);
+    expect(stopRule(read(defect.s.log))).toMatchObject({ sessions: 1, tasks: 3 });
+    // Labelled earned, the fails stand on a person's word and the step is read.
+    const earned = await flagged("earned");
+    expect(earned.settled).toMatchObject({
+      scored: { wins: 4, losses: 0 },
+      disputed: [],
+      flagged: [],
+      counted: "step",
+      reading: "step",
+      settled: { labelled: 2, defects: 0, disputed: [] },
+    });
+    expect(taskStates(read(earned.s.log)).get("s1")).toBe("admitted");
   });
 
   it("reads a round that scored no task as not scored, which is not a test that found no gain", async () => {

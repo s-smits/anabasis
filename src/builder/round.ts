@@ -25,8 +25,11 @@
  * have cleared the operator's bar against hand labels (`src/review/agreement.ts`). Deciding, a fail
  * it rules a check defect disputes the task; advising, the fail stands and the task is reported as
  * flagged, for the person who reads the fails before the reading is read. The report then holds a
- * second reading beside the first, `unflagged`: the same tests with the flagged tasks left out, so
- * that whoever reads it sees at once whether the reading rests on fails a reviewer laid to a check.
+ * second reading beside the first, `unflagged`: the same tests with the flagged tasks left out.
+ * Where the two differ the round reads `flags-decide` and claims neither: counted, the reading
+ * rests on fails a reviewer laid to a check, and left out, on one reviewer's word. A person's labels
+ * of those fails settle it (`settleReading`): a fail labelled a check defect disputes its task, one
+ * labelled earned stands, and the report is written once more as the labels leave it.
  * A check that could not run disputes its task either way. A disputed task is neither admitted nor compared. The Referee
  * reads both harnesses' fails: a defect on the old side would make a win as surely as one on the
  * new side makes a loss. Past `defects` disputed tasks outside the anchor the round stops, which is
@@ -61,10 +64,10 @@ import { conditionsOf } from "../kernel/condition.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import type { Counted } from "../kernel/solve.ts";
 import { screen, taskStates } from "../kernel/task.ts";
-import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
+import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
 import { join } from "../meta/path.ts";
 import { asError, errorMessage } from "../meta/runtime-values.ts";
-import type { RefereeFinding } from "../review/referee.ts";
+import type { RefereeFinding, Ruling } from "../review/referee.ts";
 import { openHarness } from "../solve/harness.ts";
 import { type BuildRequest, type Built, build, type Practised } from "./session.ts";
 
@@ -109,13 +112,16 @@ export interface RoundRequest {
  * anchor held. An anchor too thin to test is named apart, since not tested is not held, and whether
  * a step may rest on it is the operator's. A round that scored no task is named apart for the same
  * reason: it tested nothing, and `no-step` would say a test was made and found no gain. The eight
- * truss rounds of 2026-10-08 scored no task and read `no-step` eight times. `check-defects` is the
- * round stopped on its disputes, and `no-change` a session that left the harness it started from.
+ * truss rounds of 2026-10-08 scored no task and read `no-step` eight times. `flags-decide` is a
+ * reading that differs with and without the tasks an advising Referee flagged: no step is claimed
+ * on it and none denied, until the flagged fails are read by hand. `check-defects` is the round
+ * stopped on its disputes, and `no-change` a session that left the harness it started from.
  */
 export type RoundReading =
   | "step"
   | "no-step"
   | "not-scored"
+  | "flags-decide"
   | "anchor-lost"
   | "anchor-not-tested"
   | "check-defects"
@@ -147,7 +153,36 @@ export interface RoundReport {
   } | null;
   readonly short: readonly string[];
   readonly unscreened: readonly string[];
+  /** The reading with every task counted, flagged or not: `reading`, unless the flags decide. */
+  readonly counted: RoundReading;
   readonly reading: RoundReading;
+  /** What a person's labels settled, in the report `settleReading` writes after the round's own: how many
+   *  fails were labelled, how many of them a check defect, and the tasks those disputed. */
+  readonly settled: {
+    readonly labelled: number;
+    readonly defects: number;
+    readonly disputed: readonly string[];
+  } | null;
+}
+
+/** A comparison's fixed terms: the round's window of the log, the two harnesses and the tests'. */
+interface Terms {
+  readonly log: string;
+  readonly id: string;
+  readonly old: string;
+  readonly fresh: string;
+  readonly solves: number;
+  readonly level: number;
+  readonly anchorLevel: number;
+  readonly anchorFloor: number;
+}
+
+/** What a person is asked to label before a round's reading is settled. */
+export interface ToLabel {
+  /** Fails of the round an advising Referee ruled a check defect, on tasks the report counts. */
+  readonly flagged: readonly string[];
+  /** Every other answer of the round some check refused, on those tasks and the anchor's. */
+  readonly others: readonly string[];
 }
 
 /** A harness as a solve is handed it. */
@@ -194,8 +229,14 @@ const REPORT_KEYS = [
   "unflagged",
   "short",
   "unscreened",
+  "counted",
   "reading",
+  "settled",
 ] as const satisfies readonly (keyof RoundReport)[];
+const ANCHOR_SCORED = "anchor.scored";
+const TASK_STATE = "task.state";
+const NOTHING_TO_LABEL: ToLabel = { flagged: [], others: [] };
+const DEFECT = "check-defect";
 /** The kinds of fail a solver owns outright, as `solve.ts` types them. */
 const FAILS = ["rejected", "wall-ended", "context-ended", "no-answer"] as const;
 
@@ -342,18 +383,21 @@ function readingOf(p: number, level: number, guard: ReturnType<typeof anchor>["r
 function movedBy(events: readonly LogEvent[], id: string): Map<string, string> {
   return new Map(
     events.flatMap(({ kind, data }): [string, string][] =>
-      kind === "task.state" && data.session === id && isString(data.version) && isString(data.state)
+      kind === TASK_STATE && data.session === id && isString(data.version) && isString(data.state)
         ? [[data.version, data.state]]
         : [],
     ),
   );
 }
 
-/** The report a round already wrote for session `id`, or null: a round that reported is finished. */
+/** The last report the log holds for session `id`, the round's own or its settling, or null: a
+ *  round that reported is finished. A report written before a field existed reads as that field's
+ *  absence: counted as it read, and neither flagged nor settled. */
 function reported(events: readonly LogEvent[], id: string): RoundReport | null {
-  const data = events.findLast((event) => event.kind === REPORTED && event.data.session === id)?.data;
-  if (data === undefined) return null;
-  // SAFETY: only `round` writes this event, from the report it returns.
+  const found = events.findLast((event) => event.kind === REPORTED && event.data.session === id)?.data;
+  if (found === undefined) return null;
+  const data: JsonObject = { counted: found.reading ?? null, unflagged: null, settled: null, ...found };
+  // SAFETY: only `round` and `settleReading` write this event, from the report each returns.
   return Object.fromEntries(REPORT_KEYS.map((key) => [key, data[key]])) as unknown as RoundReport;
 }
 
@@ -418,15 +462,10 @@ function refuseUnscorable(request: RoundRequest, old: string): void {
   pairsOf(bare, [...request.scored, ...request.anchor], old, old);
 }
 
-/**
- * The task versions an advising Referee ruled a check defect on: those this run of the round flagged,
- * and those the log holds a ruling for on a solve of the round's window. A round that was stopped and
- * run again keeps the first run's rulings in its log alone, and a report that listed only the second
- * run's would count a flagged task as clean.
- */
-function flaggedIn(events: readonly LogEvent[], here: ReadonlySet<string>): Set<string> {
+/** Each solve of `events` by the task version its condition names. */
+function versionBySolve(events: readonly LogEvent[]): Map<string, string> {
   const conditions = conditionsOf(events);
-  const versionOf = new Map(
+  return new Map(
     events.flatMap(({ kind, data }): [string, string][] => {
       const version = conditions.get(isString(data.condition) ? data.condition : "")?.task;
       return kind === "solve.started" && isString(data.solve) && version !== undefined
@@ -434,13 +473,81 @@ function flaggedIn(events: readonly LogEvent[], here: ReadonlySet<string>): Set<
         : [];
     }),
   );
-  const ruled = events.flatMap(({ kind, data }) => {
-    const version = versionOf.get(isString(data.solve) ? data.solve : "");
-    return kind === "referee.finding" && data.ruling === "check-defect" && version !== undefined
-      ? [version]
+}
+
+/** The solves of a round's window the log holds a check-defect ruling for, each with its task
+ *  version. */
+function flaggedFails(events: readonly LogEvent[]): { solve: string; version: string }[] {
+  const versionOf = versionBySolve(events);
+  return events.flatMap(({ kind, data }) => {
+    const solve = isString(data.solve) ? data.solve : "";
+    const version = versionOf.get(solve);
+    return kind === "referee.finding" && data.ruling === DEFECT && version !== undefined
+      ? [{ solve, version }]
       : [];
   });
-  return new Set([...here, ...ruled]);
+}
+
+/**
+ * The comparison of a round, read from its window of the log: the scored set's test and the
+ * anchor's over `lists`, and how the plan reads them, once with every task counted and, where
+ * `flagged` names any of the compared tasks, once more with those left out. It logs the anchor's
+ * reading and returns the report's fields a comparison gives. Where the two readings differ the
+ * reading is `flags-decide`.
+ */
+function compared(
+  terms: Terms,
+  lists: { readonly scored: readonly string[]; readonly anchor: readonly string[] },
+  flagged: (among: ReadonlySet<string>) => string[],
+) {
+  const { log, id, old, fresh, solves } = terms;
+  const events = since(read(log), id);
+  const setOf = (listed: readonly string[]) => {
+    const { pairs, disputed } = pairsOf(events, listed, old, fresh);
+    return { ...whole(pairs, solves), disputed };
+  };
+  const test = setOf(lists.scored);
+  const guard = setOf(lists.anchor);
+  /** The two tests over the tasks `kept` keeps, and how the plan reads them. */
+  const readings = (kept: (task: string) => boolean) => {
+    const pairs = test.pairs.filter(({ task }) => kept(task));
+    const tested = scored(pairs);
+    const guarded = anchor(
+      guard.pairs.filter(({ task }) => kept(task)),
+      terms.anchorLevel,
+      terms.anchorFloor,
+    );
+    const reading: RoundReading =
+      pairs.length === 0 ? "not-scored" : readingOf(tested.p, terms.level, guarded.reading);
+    return { scored: tested, anchor: guarded, reading };
+  };
+  const first = readings(() => true);
+  append(log, ANCHOR_SCORED, {
+    session: id,
+    old,
+    fresh,
+    solves,
+    level: terms.anchorLevel,
+    floor: terms.anchorFloor,
+    ...first.anchor,
+    tasks: guard.pairs.length,
+    disputed: guard.disputed,
+    short: guard.short,
+  });
+  const marked = flagged(new Set([...test.pairs, ...guard.pairs].map(({ task }) => task)));
+  const unflagged = marked.length === 0 ? null : readings((task) => !marked.includes(task));
+  const reading: RoundReading =
+    unflagged !== null && unflagged.reading !== first.reading ? "flags-decide" : first.reading;
+  return {
+    scored: { ...first.scored, ...gain(test.pairs), seconds: solveSeconds(test.pairs) },
+    anchor: first.anchor,
+    versions: test.pairs.map(({ task }) => task),
+    flagged: marked,
+    unflagged,
+    short: [...test.short, ...guard.short],
+    counted: first.reading,
+    reading,
+  };
 }
 
 /** What the provider said of a solve it wrote nothing for, or null: no output token in the solve's
@@ -484,7 +591,7 @@ function floor(request: RoundRequest) {
   const dispute = (version: string, solve: string, reason: string) => {
     if (dropped.has(version) || taskStates(read(log)).get(version) === "disputed") return;
     dropped.add(version);
-    append(log, "task.state", { version, state: "disputed", session: id, solve, reason });
+    append(log, TASK_STATE, { version, state: "disputed", session: id, solve, reason });
   };
   const silent = new Set<string>();
   const run = async ({ task, under }: Job): Promise<void> => {
@@ -582,7 +689,7 @@ async function screenCandidates(
           throw new Error("its screening solves did not all end in a pass or a fail");
         }
         const state = screen([tests.old, tests.fresh], fails);
-        append(log, "task.state", { version, state, session: id });
+        append(log, TASK_STATE, { version, state, session: id });
       } catch (error) {
         unscreened.push(version);
         work.faults.push(`${version}: ${errorMessage(error)}`);
@@ -612,9 +719,15 @@ export async function round(request: RoundRequest): Promise<RoundReport> {
   const built = await left(read(log), session, old.digest);
   if (built === undefined) throw new Error(`session ${id} ran and left no record in the log`);
   const work = floor(request);
-  /** Write the round's one report and return it. */
-  const report = (told: Omit<RoundReport, "old" | "fresh">): RoundReport => {
-    const told_: RoundReport = { old: old.digest, fresh: built.kept?.digest ?? null, ...told };
+  /** Write the round's own report and return it. */
+  const report = (told: Omit<RoundReport, "old" | "fresh" | "counted" | "settled">): RoundReport => {
+    const told_: RoundReport = {
+      old: old.digest,
+      fresh: built.kept?.digest ?? null,
+      counted: told.reading,
+      settled: null,
+      ...told,
+    };
     append(log, REPORTED, {
       session: id,
       // The eight truss rounds of 2026-10-08 asked for no scored task, and their logs could not say so.
@@ -654,10 +767,13 @@ export async function round(request: RoundRequest): Promise<RoundReport> {
   };
 
   const practised = new Set(session.tasks.map(({ version }) => version));
-  /** The flagged task versions among those `kept` keeps. The session's Referee rules on practice
-   *  fails in the same window, and a practice task is in no comparison. */
+  /** The flagged task versions among those `kept` keeps: those this run of the round flagged, and
+   *  those the log holds a ruling for on a solve of the round's window. A round that was stopped and
+   *  run again keeps the first run's rulings in its log alone, and a report that listed only the
+   *  second run's would count a flagged task as clean. The session's Referee rules on practice fails
+   *  in the same window, and a practice task is in no comparison. */
   const flagged = (kept: (version: string) => boolean) =>
-    [...flaggedIn(counted(), work.flagged)].filter(kept);
+    [...new Set([...work.flagged, ...flaggedFails(counted()).map(({ version }) => version)])].filter(kept);
 
   const unscreened = await screenCandidates(request, work, { old, fresh }, admitted);
   for (let pass = 0; pass < PASSES && work.going(); pass += 1) {
@@ -675,52 +791,134 @@ export async function round(request: RoundRequest): Promise<RoundReport> {
     });
   }
 
-  const events = counted();
-  const setOf = (listed: readonly string[]) => {
-    const { pairs, disputed } = pairsOf(events, listed, old.digest, fresh.digest);
-    return { ...whole(pairs, solves), disputed };
-  };
-  const test = setOf(admitted());
-  const guard = setOf(request.anchor);
-  /** The two tests over the tasks `kept` keeps, and how the plan reads them. */
-  const readings = (kept: (task: string) => boolean) => {
-    const pairs = test.pairs.filter(({ task }) => kept(task));
-    const tested = scored(pairs);
-    const guarded = anchor(
-      guard.pairs.filter(({ task }) => kept(task)),
-      request.anchorLevel,
-      request.anchorFloor,
-    );
-    const reading: RoundReading =
-      pairs.length === 0 ? "not-scored" : readingOf(tested.p, request.level, guarded.reading);
-    return { scored: tested, anchor: guarded, reading };
-  };
-  const first = readings(() => true);
-  append(log, "anchor.scored", {
-    session: id,
+  const terms: Terms = {
+    log,
+    id,
     old: old.digest,
     fresh: fresh.digest,
     solves,
-    level: request.anchorLevel,
-    floor: request.anchorFloor,
-    ...first.anchor,
-    tasks: guard.pairs.length,
-    disputed: guard.disputed,
-    short: guard.short,
-  });
-  const compared = new Set([...test.pairs, ...guard.pairs].map(({ task }) => task));
-  const marked = flagged((version) => compared.has(version));
+    level: request.level,
+    anchorLevel: request.anchorLevel,
+    anchorFloor: request.anchorFloor,
+  };
   return report({
-    scored: { ...first.scored, ...gain(test.pairs), seconds: solveSeconds(test.pairs) },
-    anchor: first.anchor,
-    versions: test.pairs.map(({ task }) => task),
+    ...compared(terms, { scored: admitted(), anchor: request.anchor }, (among) =>
+      flagged((version) => among.has(version)),
+    ),
     disputed: [...work.dropped],
-    flagged: marked,
-    unflagged: marked.length === 0 ? null : readings((task) => !marked.includes(task)),
-    short: [...test.short, ...guard.short],
     unscreened,
-    reading: first.reading,
   });
+}
+
+/** The fails of session `id`'s round a person may label, from its log: none when the round has no
+ *  report with a scored set. */
+export function toLabel(events: readonly LogEvent[], id: string): ToLabel {
+  const report = reported(events, id);
+  if (report === null) return NOTHING_TO_LABEL;
+  if (report.scored === null) return NOTHING_TO_LABEL;
+  const window = since(events, id);
+  const anchored = window.flatMap(({ kind, data }) =>
+    kind === "anchor.drawn" && Array.isArray(data.tasks) ? data.tasks.filter(isString) : [],
+  );
+  const counted = new Set([...report.versions, ...anchored]);
+  const flagged = new Set(
+    flaggedFails(window).flatMap(({ solve, version }) => (report.flagged.includes(version) ? [solve] : [])),
+  );
+  const version = versionBySolve(window);
+  const refused = window.flatMap(({ kind, data }) =>
+    kind === "verdict" &&
+    data.kind === "fail" &&
+    isString(data.solve) &&
+    Array.isArray(data.blocking) &&
+    data.blocking.length > 0 &&
+    counted.has(version.get(data.solve) ?? "")
+      ? [data.solve]
+      : [],
+  );
+  return { flagged: [...flagged], others: [...new Set(refused)].filter((solve) => !flagged.has(solve)) };
+}
+
+/**
+ * Settle a round's reading on a person's labels of its fails, and write its report once more.
+ *
+ * The plan keeps the hand reading as the gate while the Referee advises, and until now that reading
+ * left no record. `labels` holds a ruling a solve. Every flagged fail must carry `earned` or
+ * `check-defect`: an `unclear` settles nothing. A fail labelled a check defect disputes its task,
+ * which leaves every comparison from then on, as a deciding Referee's ruling would have; a flagged
+ * fail labelled earned stands, on a person's word over a reviewer's. The two tests are then read
+ * again from the same solves, with no task flagged, and logged as the round's last report with
+ * what was settled. Run again it returns that report.
+ */
+export function settleReading(log: string, id: string, labels: ReadonlyMap<string, Ruling>): RoundReport {
+  const before = read(log);
+  const last = before.findLast((event) => event.kind === REPORTED && event.data.session === id)?.data;
+  const report = reported(before, id);
+  if (last === undefined || report === null) throw new Error(`session ${id} has no report to settle`);
+  if (report.settled !== null) return report;
+  if (report.scored === null || report.fresh === null) {
+    throw new Error(
+      `session ${id} reads ${report.reading} and compared nothing, so there is nothing to settle`,
+    );
+  }
+  const { flagged, others } = toLabel(before, id);
+  const known = new Set([...flagged, ...others]);
+  const stray = [...labels.keys()].find((solve) => !known.has(solve));
+  if (stray !== undefined) throw new Error(`${stray} is no refused answer of session ${id}'s comparison`);
+  const open = flagged.filter((solve) => labels.get(solve) !== "earned" && labels.get(solve) !== DEFECT);
+  const unruled = report.flagged.length > 0 && flagged.length === 0;
+  if (open.length > 0 || unruled) {
+    throw new Error(
+      unruled
+        ? `session ${id} flags ${String(report.flagged.length)} task(s) and its log holds no ruling for them`
+        : `${String(open.length)} of ${String(flagged.length)} flagged fails are not labelled earned or check-defect: ${open.join(", ")}`,
+    );
+  }
+  const versionOf = versionBySolve(since(before, id));
+  const defects = [...labels].flatMap(([solve, label]) => (label === DEFECT ? [solve] : []));
+  const disputed: string[] = [];
+  for (const solve of defects) {
+    const version = versionOf.get(solve) ?? "";
+    if (taskStates(read(log)).get(version) === "disputed") continue;
+    disputed.push(version);
+    append(log, TASK_STATE, {
+      version,
+      state: "disputed",
+      session: id,
+      solve,
+      reason: "a person labelled the fail a check defect",
+    });
+  }
+  const scoredAt = before.findLast(
+    (event) => event.kind === ANCHOR_SCORED && event.data.session === id,
+  )?.data;
+  const numbered = (value: unknown, name: string): number => {
+    if (!isNumber(value)) throw new Error(`session ${id}'s records hold no ${name}`);
+    return value;
+  };
+  const terms: Terms = {
+    log,
+    id,
+    old: report.old,
+    fresh: report.fresh,
+    solves: numbered(last.solves, "count of solves"),
+    level: numbered(last.level, "level"),
+    anchorLevel: numbered(scoredAt?.level, "anchor level"),
+    anchorFloor: numbered(scoredAt?.floor, "anchor floor"),
+  };
+  const anchored = before.flatMap(({ kind, data }) =>
+    kind === "anchor.drawn" && Array.isArray(data.tasks) ? data.tasks.filter(isString) : [],
+  );
+  const settled: RoundReport = {
+    old: report.old,
+    fresh: report.fresh,
+    ...compared(terms, { scored: report.versions, anchor: anchored }, () => []),
+    disputed: [...new Set([...report.disputed, ...disputed])],
+    unscreened: report.unscreened,
+    settled: { labelled: labels.size, defects: defects.length, disputed },
+  };
+  // The round's own terms are carried, so the settled report reads alone as the first one did.
+  append(log, REPORTED, { ...last, ...asRecord(settled) });
+  return settled;
 }
 
 /**

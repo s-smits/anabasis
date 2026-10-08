@@ -91,7 +91,7 @@ export function supply(events: readonly LogEvent[], of = FEASIBLE) {
       ({ kind }) => (isString(kind) ? kind : "unrecorded"),
     ),
     // The too-hard tasks whose refusal an advising Referee ruled a check defect: tasks a repair of
-    // the checker might give back (`tools/c/carry.ts` counts those it would).
+    // the checker might give back (an adoption tries each one's refused answer, `tools/c/accept.ts`).
     tooHardFlagged: tasks.filter(({ word, flagged }) => word === "too hard" && flagged).length,
     controls: countBy(
       gates(4, "refused").flatMap(({ kinds }) =>

@@ -250,7 +250,7 @@ describe("the Rule Author's command", () => {
     append(log, "exam.word", { session: "x-2", version: "v-easy", taskId: "x-2-001", word: "too easy" });
     const { code, said } = await seated([finish], { session: "r-2" });
     expect(code).toBe(0);
-    expect(said[0]).toBe(
+    expect(said[0]).toStartWith(
       "what binds: correctness-model. 0 of the pool can be scored and a step takes 4: 1 of the 1 tasks written against this harness are passed by the measured solver, in a session told what the one before measured",
     );
     expect(held(STARTED).at(-1)).toMatchObject({

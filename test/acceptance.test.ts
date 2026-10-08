@@ -153,7 +153,8 @@ describe("a frozen checker", () => {
   });
 
   it("names what of a campaign's checker is not what the log froze", () => {
-    const repaired = "a changed checker takes a campaign of its own";
+    const repaired =
+      "a changed checker is adopted into the campaign by the operator (tools/c/accept.ts --freeze)";
     expect(departure([froze("c-1", "p-0")], own)).toBe(`the log froze another check program; ${repaired}`);
     expect(departure([froze("c-0", "p-0")], own)).toBe(
       `the log froze another contract and check program; ${repaired}`,
@@ -186,12 +187,33 @@ describe("a log's answers under a repaired checker", () => {
       logged("format", "roof-1", { mass: "5" }, { kind: "fail", fault: "mass is no number" }),
       logged("wall", "roof-1", { mass: 5 }, { kind: "non-result", reason: "the wall" }),
     ];
+    const pass = { kind: "pass" } as const;
+    const fail = { kind: "fail", blocking: ["mass"] } as const;
+    const faulty = { kind: "faulty", check: "span", reason: "threw" } as const;
     expect(await regraded(events, [roof, mast], repaired, 2)).toEqual([
-      { solve: "a", task: "roof-1", was: "fail mass", now: "pass" },
-      { solve: "b", task: "roof-1", was: "fail mass", now: "fail mass" },
-      { solve: "c", task: "mast-1", was: "pass", now: "pass" },
-      { solve: "d", task: "roof-1", was: "faulty span: threw", now: "pass" },
-      { solve: "gone", task: "hall-1", was: "pass", now: "no task" },
+      { solve: "a", task: "roof-1", was: "fail mass", now: "pass", before: fail, verdict: pass },
+      { solve: "b", task: "roof-1", was: "fail mass", now: "fail mass", before: fail, verdict: fail },
+      { solve: "c", task: "mast-1", was: "pass", now: "pass", before: pass, verdict: pass },
+      { solve: "d", task: "roof-1", was: "faulty span: threw", now: "pass", before: faulty, verdict: pass },
+      { solve: "gone", task: "hall-1", was: "pass", now: "no task", before: pass, verdict: null },
+    ]);
+  });
+
+  it("reads an answer against the checker the campaign stands on, not the one that first judged it", async () => {
+    // An earlier adoption moved a's verdict to a pass and logged it; the witness copy it wrote of
+    // c's answer is the same bytes as c's own and is read once.
+    const events: LogEvent[] = [
+      logged("a", "roof-1", { mass: 50 }, { kind: "fail", blocking: ["mass"] }),
+      logged("c", "mast-1", { mass: 5 }, { kind: "pass" }),
+      { at, kind: "verdict.regraded", data: { solve: "a", task: "roof-1", checks: "p-2", kind: "pass" } },
+      logged("carried-c", "mast-1", { mass: 5 }, { kind: "pass", carried: true }),
+      // A regrading of a solve the log holds no answer for names nothing to grade.
+      { at, kind: "verdict.regraded", data: { solve: "lost", task: "roof-1", checks: "p-2", kind: "pass" } },
+    ];
+    const rows = await regraded(events, [roof, mast], repaired, 2);
+    expect(rows.map(({ solve, was, now }) => `${solve}: ${was} > ${now}`)).toEqual([
+      "a: pass > pass",
+      "c: pass > pass",
     ]);
   });
 });

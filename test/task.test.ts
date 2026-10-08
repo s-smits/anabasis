@@ -9,6 +9,7 @@ import {
   type RejectControl,
   screen,
   type TaskPackage,
+  taskSets,
   taskStates,
   taskVersion,
 } from "../src/kernel/task.ts";
@@ -480,6 +481,85 @@ describe("the task states", () => {
     expect(() => taskStates([proposed, gate(1), gate(2, "too-hard"), draw("v1")])).toThrow(
       "task v1 is drawn before it is feasible",
     );
+  });
+
+  it("keeps the anchor's task the anchor's when a later checker's version continues it", () => {
+    const continued = (version: string, from: string): LogEvent => ({
+      at,
+      kind: "task.proposed",
+      data: { version, continues: from },
+    });
+    const stale: LogEvent = { at, kind: "task.state", data: { version: "v1", state: "stale" } };
+    const to = (next: string): LogEvent => ({ at, kind: "task.state", data: { version: "v2", state: next } });
+    const anchored = [...feasible, draw("v1"), continued("v2", "v1"), stale];
+    // The new version is the anchor's from its proposal, before it has passed a gate.
+    expect(taskSets(anchored).anchor).toEqual(new Set(["v1", "v2"]));
+    expect(taskSets(anchored).states.get("v1")).toBe("stale");
+    const again = [...anchored, ...[1, 2, 3, 4].map((n) => gateAs("v2", n))];
+    expect(() => taskStates([...again, to("admitted")])).toThrow(
+      "task v2 is an anchor task, so it is never admitted",
+    );
+    expect(() => taskStates([...again, to("released")])).toThrow(
+      "task v2 is an anchor task, so it is never released",
+    );
+    // It stays the anchor's while it waits for a witness under the new checks, and after.
+    const waiting = [...anchored, gateAs("v2", 1), gateAs("v2", 2, "too-hard"), to("too-hard")];
+    expect(taskSets(waiting).anchor.has("v2")).toBe(true);
+    const witnessed = [...waiting, gateAs("v2", 2), gateAs("v2", 3), to("held"), gateAs("v2", 4)];
+    expect(() => taskStates([...witnessed, to("admitted")])).toThrow("so it is never admitted");
+    // A third checker's version continues the second, and is the anchor's too.
+    expect(taskSets([...anchored, continued("v3", "v2")]).anchor.has("v3")).toBe(true);
+    expect(() => taskStates([continued("v2", "v9")])).toThrow("task v2 continues v9, which is not proposed");
+  });
+
+  it("releases a version that continues a practice task once it is feasible, and never admits it", () => {
+    const continued = (version: string, from: string): LogEvent => ({
+      at,
+      kind: "task.proposed",
+      data: { version, continues: from },
+    });
+    const old = (next: string): LogEvent => ({
+      at,
+      kind: "task.state",
+      data: { version: "v1", state: next },
+    });
+    const to = (next: string): LogEvent => ({ at, kind: "task.state", data: { version: "v2", state: next } });
+    const practised = [...drawn, ...feasible, old("released")];
+    // Marked stale before or after the new version is proposed, the old one was practised on.
+    for (const carried of [
+      [...practised, continued("v2", "v1"), old("stale")],
+      [...practised, old("stale"), continued("v2", "v1")],
+    ]) {
+      expect(taskStates(carried).get("v1")).toBe("stale");
+      expect(taskStates([...carried, gateAs("v2", 1), gateAs("v2", 2), gateAs("v2", 3)]).get("v2")).toBe(
+        "held",
+      );
+      const again = [...carried, ...[1, 2, 3, 4].map((n) => gateAs("v2", n))];
+      expect(taskStates(again).get("v2")).toBe("released");
+      expect(() => taskStates([...again, to("admitted")])).toThrow(
+        "task v2 cannot go from released to admitted",
+      );
+      expect(() => taskStates([...again, draw("v2")])).toThrow("task v2 is drawn after its release");
+      // Short of feasible it can be screened by nothing, and it is practice the moment it is.
+      const reach = [...carried, gateAs("v2", 1), gateAs("v2", 2, "too-hard"), to("too-hard")];
+      const back = [...reach, gateAs("v2", 2), gateAs("v2", 3), to("held"), gateAs("v2", 4)];
+      expect(taskStates(reach).get("v2")).toBe("too-hard");
+      expect(taskStates(back).get("v2")).toBe("released");
+      expect(
+        taskStates([...reach, continued("v3", "v2"), ...[1, 2, 3, 4].map((n) => gateAs("v3", n))]),
+      ).toEqual(
+        new Map([
+          ["v0", "held"],
+          ["v1", "stale"],
+          ["v2", "too-hard"],
+          ["v3", "released"],
+        ]),
+      );
+    }
+    // A task that was never released is held like any other when it is continued.
+    const plain = [...drawn, ...feasible, continued("v2", "v1"), ...[1, 2, 3, 4].map((n) => gateAs("v2", n))];
+    expect(taskStates(plain).get("v2")).toBe("held");
+    expect(taskStates([...plain, to("admitted")]).get("v2")).toBe("admitted");
   });
 
   it("refuses a gate 4 pass on no named control set, and a release before the anchor is drawn", () => {

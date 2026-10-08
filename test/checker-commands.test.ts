@@ -1,16 +1,18 @@
-// Phase C's four commands, run as the operator runs them over a sweep laid out as v1's left one: a
-// pack of two tasks and one check, three stored solves, and the pack's controls. The verifier runs
+// Phase C's commands, run as the operator runs them over a sweep laid out as v1's left one: a pack
+// of two tasks and one check, three stored solves, and the pack's controls. The verifier runs
 // behind its wall, so the suite is skipped where the host has none. No model is called: the
 // Referee's reading stops at its guard. The tests run in order: the second freezes what the first
-// read, and the last regrades what the third logged.
+// read, and the last two read a repaired pack against a frozen campaign and adopt it.
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
+import { epochsOf, unfinished } from "../src/kernel/epoch.ts";
 import { append, read } from "../src/kernel/log.ts";
-import { taskStates } from "../src/kernel/task.ts";
+import { taskStates, taskVersion } from "../src/kernel/task.ts";
 import {
   cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -24,6 +26,7 @@ import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
 import { osIsolationSupport } from "../src/verify/os-isolation.ts";
 
 const REPO = resolve(import.meta.dir, "..");
+const FIXTURE = new URL("fixtures/harness-min", import.meta.url).pathname;
 const NAME = `test-check-${String(runtimeProcess.pid)}`;
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-checker-")));
 const bundle = join(root, "bundle");
@@ -33,9 +36,9 @@ const campaign = join(REPO, ".ana", "d2", NAME);
  *  logged in. */
 const ACCEPTED = `${NAME}-accepted`;
 const accepted = join(REPO, ".ana", "d2", ACCEPTED);
-/** The campaign of the repaired checker, which the old one's written tasks are carried into. */
-const CARRIED = `${NAME}-carried`;
-const carried = join(REPO, ".ana", "d2", CARRIED);
+/** The campaign that adopts a repaired checker in its own log. */
+const ADOPTED = `${NAME}-adopted`;
+const adopted = join(REPO, ".ana", "d2", ADOPTED);
 /** Two campaigns over a pack with something wrong: a tool no path holds, and controls gone stale. */
 const LOST = `${NAME}-lost`;
 const STALE = `${NAME}-stale`;
@@ -59,7 +62,7 @@ afterAll(() => {
   rmSync(root, { recursive: true, force: true });
   rmSync(campaign, { recursive: true, force: true });
   rmSync(accepted, { recursive: true, force: true });
-  rmSync(carried, { recursive: true, force: true });
+  rmSync(adopted, { recursive: true, force: true });
   for (const name of [LOST, STALE]) rmSync(join(REPO, ".ana", "d2", name), { recursive: true, force: true });
 });
 
@@ -100,6 +103,24 @@ function controls(answer: string, at = model, second = "18"): void {
         { taskId: "t-2", artifact: { answer: second } },
       ],
       reject: [{ taskId: "t-1", artifact: { answer }, expectedCheckId: "check-product" }],
+    }),
+  );
+}
+
+/** The same controls with three reject controls of t-1, as a task's gate 4 takes them. */
+function rejects(answers: readonly string[], at = model): void {
+  writeFileSync(
+    join(at, "controls.json"),
+    JSON.stringify({
+      accept: [
+        { taskId: "t-1", artifact: { answer: "12" } },
+        { taskId: "t-2", artifact: { answer: "18" } },
+      ],
+      reject: answers.map((answer) => ({
+        taskId: "t-1",
+        artifact: { answer },
+        expectedCheckId: "check-product",
+      })),
     }),
   );
 }
@@ -207,7 +228,7 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
     writeFileSync(evaluator, EVALUATOR.replace("* 6", "* 7"));
     const repaired = accept();
     expect(repaired.said).toContain(
-      "the log froze another check program; a changed checker takes a campaign of its own",
+      "the log froze another check program; a changed checker is adopted into the campaign by the operator (tools/c/accept.ts --freeze)",
     );
     expect(repaired.code).not.toBe(0);
     writeFileSync(evaluator, EVALUATOR);
@@ -327,98 +348,183 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
     expect(read(join(campaign, "log.jsonl")).some((event) => event.kind === "referee.finding")).toBe(false);
   });
 
-  it("shows which of the logged verdicts a repaired checker moves, and writes nothing", () => {
+  it("reads a repaired pack against a frozen campaign: what it moves, what counts against it, and writes nothing", () => {
+    // The campaign: the checker frozen, the stored verdicts logged, the pack's tasks through their
+    // gates, and two tasks as a session leaves them, written here by hand. The pack is given the
+    // three reject controls a task's gate 4 takes.
+    rejects(["13", "0", "1"]);
+    const over = (pack: string, ...bare: string[]) =>
+      command("tools/c/accept.ts", { root, sweep: "s", bundle: pack, name: ADOPTED }, ...bare);
+    expect(over(bundle, "--freeze").said).toContain("frozen: contract ");
+    expect(run("tools/c/rejections.ts", { name: ADOPTED }).code).toBe(0);
+    const log = join(adopted, "log.jsonl");
+    const admitted = run("tools/m1/admit-sweep.ts", { stronger: "c01", log }, "--feasible");
+    expect(admitted.said).toContain("t-1\theld\tfeasible, left held");
+    const checks = join(adopted, "checks");
+    const set = ["0", "1", "100"].map((answer) => ({ answer: { answer }, expectedCheckId: "check-product" }));
+    for (const [id, answer] of [
+      ["x-1-001", "24"],
+      ["x-1-002", "23"],
+    ] as const) {
+      const task = { taskId: id, family: "fixture", publicInput: { base: 4 }, hidden: null };
+      const version = taskVersion({ ...task, ruleIds: ["R1"], checks });
+      append(log, "task.proposed", { version, taskId: id, session: "x-1", task });
+      append(log, "task.gate", { version, gate: 1, outcome: "passed" });
+      // The second task's stronger solve was a hair off, and the frozen check refused it.
+      const passed = answer === "24";
+      const verdict = passed ? { kind: "pass" } : { kind: "fail", blocking: ["check-product"] };
+      append(log, "verdict", { solve: `s-${id}`, task: id, answer: { answer }, ...verdict });
+      if (!passed) {
+        append(log, "task.gate", {
+          version,
+          gate: 2,
+          outcome: "too-hard",
+          solve: `s-${id}`,
+          kind: "rejected",
+        });
+        append(log, "task.state", { version, state: "too-hard" });
+        continue;
+      }
+      append(log, "task.gate", { version, gate: 2, outcome: "passed", solve: `s-${id}` });
+      append(log, "task.gate", { version, gate: 3, outcome: "passed" });
+      append(log, "task.gate", { version, gate: 4, outcome: "passed", controls: "d", set });
+    }
+    const before = readFileSync(log, "utf8");
+
     const repaired = join(root, "repaired");
     cpSync(bundle, repaired, { recursive: true });
-    writeFileSync(join(repaired, "correctness-model", "evaluator.ts"), REPAIRED);
-    const log = join(campaign, "log.jsonl");
-    // A task an Examiner session wrote is in the log and in no pack, and its verdicts are read too.
-    const written = { taskId: "x-1-001", family: "fixture", publicInput: { base: 4 }, hidden: null };
-    append(log, "task.proposed", { version: "vx", taskId: "x-1-001", session: "x-1", task: written });
-    append(log, "verdict", { solve: "x-solve", task: "x-1-001", answer: { answer: "24" }, kind: "pass" });
-    const before = readFileSync(log, "utf8");
-    const { code, said } = command("tools/c/repaired.ts", { log, bundle: repaired });
-    // Of the two refused answers, 17 for 18 is within the repaired check's margin and 11 for 12
-    // is not; the three accepted answers stand, the written task's among them.
-    expect(said).toContain("5 logged verdicts, 1 moved");
-    expect(said).not.toContain("no task");
-    expect(said).toContain("s-c02-t-2\tt-2\tfail check-product\tpass");
-    expect(said).not.toContain("s-c02-t-1\t");
-    expect(said).toContain("tasks with a moved verdict: t-2");
-    expect(said).toContain("check program: the log froze none, this one is ");
-    // Nobody ruled on the answer the repair lets through, so the repair does not stand on it.
-    expect(said).toContain('"unread": [\n      "s-c02-t-2"');
-    expect(said).toContain("1 finding against the repair");
-    expect(code).toBe(1);
-    // Labelled a check defect by a person, it is what a repair is for, and the pack's controls hold.
+    const repairedModel = join(repaired, "correctness-model");
+    writeFileSync(join(repairedModel, "evaluator.ts"), REPAIRED);
+    const reading = over(repaired);
+    // Of the refused answers, 17 for 18 and 23 for 24 are within the repaired check's margin and
+    // 11 for 12 is not; the accepted answers stand.
+    expect(reading.said).toContain("which would be epoch 2");
+    expect(reading.said).toContain("6 logged verdicts, 2 moved");
+    expect(reading.said).toContain("s-c02-t-2\tt-2\tfail check-product\tpass");
+    expect(reading.said).toContain("s-x-1-002\tx-1-002\tfail check-product\tpass");
+    expect(reading.said).not.toContain("s-c02-t-1\t");
+    expect(reading.said).toContain("a solver is asked the same thing");
+    // The task that waited for a witness has one now, in the answer the frozen check refused.
+    expect(reading.said).toContain(
+      "3 live tasks: 2 feasible under the pack's checks, 0 to wait for a witness, 1 to wait for controls",
+    );
+    expect(reading.said).toContain("x-1-002\twaiting\tits controls are not on record");
+    // Nobody ruled on the two answers the repair lets through, so it does not stand on them.
+    expect(reading.said).toContain(
+      "against: 2 answers refused before and read by nobody would pass: s-c02-t-2, s-x-1-002",
+    );
+    expect(reading.said).toContain("1 finding against the pack, 0 refusals");
+    expect(reading.code).toBe(1);
+    expect(over(repaired, "--freeze").said).toContain(
+      "not adopted: 1 finding against the pack. It is yours to adopt all the same: say why with --despite",
+    );
+    // Labelled check defects by a person, they are what a repair is for.
     const labels = join(root, "repair-labels.json");
-    writeFileSync(labels, JSON.stringify({ "s-c02-t-2": "check-defect" }));
-    const stands = command("tools/c/repaired.ts", { log, bundle: repaired, labels });
-    expect(stands.said).toContain("the repair stands on what was read");
+    writeFileSync(labels, JSON.stringify({ "s-c02-t-2": "check-defect", "s-x-1-002": "check-defect" }));
+    const stands = over(repaired, "--labels", labels);
+    expect(stands.said).toContain("nothing counts against the pack: --freeze adopts it");
     expect(stands.code).toBe(0);
     // A control that held under neither checker is stale, and says nothing of the repair.
-    const repairedModel = join(repaired, "correctness-model");
     controls("13", repairedModel, "25");
-    const stale = command("tools/c/repaired.ts", { log, bundle: repaired, labels });
+    const stale = over(repaired, "--labels", labels);
     expect(stale.said).toContain(
-      "1 control did not hold under the old checker either, and says nothing of the repair",
+      "standing fault, shared with the checker the log froze: the accept control of t-2 did not pass: fail check-product",
     );
-    expect(stale.said).toContain("the repair stands on what was read");
     expect(stale.code).toBe(0);
-    // One the old checker refused and the repaired one lets through is the repair's own fault.
-    controls("12.5", repairedModel);
-    const broke = command("tools/c/repaired.ts", { log, bundle: repaired, labels });
+    // One the frozen checker refused and the repaired one lets through is the repair's own fault.
+    rejects(["12.5", "0", "1"], repairedModel);
+    const broke = over(repaired, "--labels", labels);
     expect(broke.said).toContain(
       "fault: a reject control of t-1 names check-product, which did not refuse it: pass",
     );
-    expect(broke.said).toContain("1 finding against the repair");
     expect(broke.code).toBe(1);
-    controls("13", repairedModel);
+    rejects(["13", "0", "1"], repairedModel);
+    // Nothing was written, and the pack's check program is staged nowhere in the campaign.
     expect(readFileSync(log, "utf8")).toBe(before);
+    const epochs = join(adopted, "epochs");
+    expect(existsSync(epochs) ? readdirSync(epochs) : []).toEqual([]);
   });
 
-  it("carries a session's tasks into the repaired checker's campaign with no solve, once", () => {
-    // An old campaign's log, written by hand: two tasks a session wrote, feasible with their
-    // controls on record. The repaired check accepts the first one's answer and not the second's.
-    const old = join(root, "old.jsonl");
-    const set = ["0", "1", "100"].map((answer) => ({ answer: { answer }, expectedCheckId: "check-product" }));
-    for (const [id, version, answer] of [
-      ["x-1-001", "o1", "24"],
-      ["x-1-002", "o2", "30"],
-    ] as const) {
-      const task = { taskId: id, family: "fixture", publicInput: { base: 4 }, hidden: null };
-      append(old, "task.proposed", { version, taskId: id, session: "x-1", task });
-      append(old, "task.gate", { version, gate: 1, outcome: "passed" });
-      append(old, "verdict", { solve: `s-${id}`, task: id, answer: { answer }, kind: "pass" });
-      append(old, "task.gate", { version, gate: 2, outcome: "passed", solve: `s-${id}` });
-      append(old, "task.gate", { version, gate: 3, outcome: "passed" });
-      append(old, "task.gate", { version, gate: 4, outcome: "passed", controls: "d", set });
-    }
-    const carry = () =>
-      command("tools/c/carry.ts", {
-        from: old,
-        root,
-        sweep: "s",
-        cycle: "c01",
-        bundle: join(root, "repaired"),
-        name: CARRIED,
-      });
-    const first = carry();
-    expect(first.said).toContain("2 tasks with their controls on record: 1 feasible here, 1 refused");
-    expect(first.said).toContain("x-1-002\trefused at gate 2");
+  it("adopts the repaired pack into the campaign's own log, finishes an adoption cut short, and goes on under it", () => {
+    const repaired = join(root, "repaired");
+    const log = join(adopted, "log.jsonl");
+    const labels = join(root, "repair-labels.json");
+    const before = read(log);
+    const flags = { root, sweep: "s", bundle: repaired, name: ADOPTED };
+    const adopt = () => command("tools/c/accept.ts", { ...flags, labels }, "--freeze");
+    const first = adopt();
+    expect(first.said).toContain("adopted: epoch 2, contract ");
+    expect(first.said).toContain("name this pack as --bundle from here on");
     expect(first.code).toBe(0);
-    const events = read(join(carried, "log.jsonl"));
-    const states = [...taskStates(events).values()].sort();
-    expect(states).toEqual(["held", "refused"]);
-    // The feasible one passed all four gates here, its controls kept whole for the next repair.
-    const gates = events.flatMap(({ kind, data }) =>
-      kind === "task.gate" && data.outcome === "passed" ? [Number(data.gate)] : [],
+    const whole = read(log);
+    // One log: what was there stays, and the checker is the last one frozen.
+    expect(whole.slice(0, before.length)).toEqual(before);
+    const [, epoch] = epochsOf(whole);
+    expect(epoch).toMatchObject({ asked: "same", despite: null });
+    expect(epoch?.adopted).toMatchObject({
+      epoch: 2,
+      tasks: { feasible: 2, waiting: 1, reach: 0 },
+      waiting: ["x-1-002"],
+      recovered: ["x-1-002"],
+      moved: 2,
+      withdrawn: { "check-defect": 2, earned: 0, unread: 0 },
+      against: 0,
+    });
+    // Both check programs stand on disk: the old versions and their verdicts name the first.
+    expect(existsSync(join(adopted, "checks", "evaluator.ts"))).toBe(true);
+    expect(
+      readFileSync(join(adopted, "epochs", epoch?.checker.checks.slice(0, 16) ?? "", "evaluator.ts"), "utf8"),
+    ).toBe(REPAIRED);
+    // Each live task has a new version and the old one is stale; the pack's second task never had
+    // a witness in the sweep's first cycle, was no part of the exam, and stays as it was.
+    const states = [...taskStates(whole).values()].sort();
+    expect(states).toEqual(["held", "held", "held", "held", "stale", "stale", "stale"]);
+    // The feasible ones passed all four gates here, their controls kept whole for the next change.
+    const sets = whole
+      .slice(before.length)
+      .flatMap(({ kind, data }) => (kind === "task.gate" && data.gate === 4 ? [data.set] : []));
+    expect(sets).toHaveLength(2);
+    // The stored verdicts are no solves of the campaign's: none ran under a recorded condition,
+    // so none stands for a version, and the two that moved are logged as moved.
+    const regraded = whole.flatMap(({ kind, data }) =>
+      kind === "verdict.regraded" ? [[data.solve, data.version ?? null, data.kind]] : [],
     );
-    expect(gates.toSorted((a, b) => a - b)).toEqual([1, 1, 2, 3, 4]);
-    expect(events.find(({ kind, data }) => kind === "task.gate" && data.gate === 4)?.data.set).toEqual(set);
-    expect(events.filter(({ kind }) => kind === "verdict")).toHaveLength(1);
-    // Run again, nothing is taken twice.
-    expect(carry().said).toContain("0 feasible here, 0 refused, 2 already there");
-    expect(read(join(carried, "log.jsonl"))).toHaveLength(events.length);
+    expect(regraded).toEqual([
+      ["s-c02-t-2", null, "pass"],
+      ["s-x-1-002", null, "pass"],
+    ]);
+
+    // The pack the campaign stood on before is no longer its pack, for any command.
+    const old = command("tools/d2/prepare.ts", { root, sweep: "s", cycle: "c01", bundle, name: ADOPTED });
+    expect(old.said).toContain("holds another check program than the one the log froze");
+    expect(old.code).not.toBe(0);
+    const again = command("tools/c/accept.ts", { root, sweep: "s", bundle, name: ADOPTED }, "--freeze");
+    expect(again.said).toContain("refused: the log froze this check program before");
+    expect(again.said).toContain("not adopted: what is refused is not the operator's to overrule here");
+    expect(again.code).toBe(1);
+    expect(read(log)).toHaveLength(whole.length);
+
+    // An adoption a crash cut short: the freeze and three events after it are in the log.
+    const lines = readFileSync(log, "utf8").split("\n");
+    writeFileSync(log, `${lines.slice(0, before.length + 5).join("\n")}\n`);
+    expect(unfinished(read(log))).not.toBeNull();
+    const prepare = () =>
+      command("tools/d2/prepare.ts", { ...flags, cycle: "c01", anchor: "0", practice: "0" });
+    expect(prepare().said).toContain("was cut short; run it again (tools/c/accept.ts --freeze)");
+    // Read with other labels it would count otherwise, and is not finished on that reading.
+    const unlabelled = command("tools/c/accept.ts", flags, "--freeze");
+    expect(unlabelled.said).toContain("froze the pack over 0 findings and this reading counts 1");
+    expect(unlabelled.code).not.toBe(0);
+    const finished = adopt();
+    expect(finished.said).toContain("adopted: the adoption that was cut short is finished");
+    expect(finished.code).toBe(0);
+    const strip = (events: ReturnType<typeof read>) => events.map(({ kind, data }) => ({ kind, data }));
+    expect(strip(read(log))).toEqual(strip(whole));
+
+    // The campaign goes on under the adopted pack with no flag about the epoch.
+    cpSync(FIXTURE, join(root, "hb-bundles", "s-c01"), { recursive: true });
+    const prepared = prepare();
+    expect(prepared.said).toContain("2 feasible: 0 anchor, 0 released for practice");
+    expect(prepared.code).toBe(0);
   });
 });

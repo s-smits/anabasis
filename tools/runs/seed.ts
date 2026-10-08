@@ -77,7 +77,8 @@ export function seedCampaign(from: string, to: string, cut: Cut) {
         .map((line) => `${line}\n`)
         .join(""),
     );
-    for (const part of ["checks", "states"]) {
+    // The check programs: the one the campaign was opened over, and each adopted since.
+    for (const part of ["checks", "epochs", "states"]) {
       if (existsSync(join(from, part))) {
         cpSync(join(from, part), join(to, part), { recursive: true, verbatimSymlinks: true });
       }

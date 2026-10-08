@@ -36,6 +36,15 @@
  * limits with a longer wall and nothing tighter (`limits.ts`). A state logged before limits were
  * recorded was measured under the campaign's first, the first test-side condition its log holds.
  *
+ * A task's version holds its check program, so a campaign that adopts a changed checker
+ * (`epoch.ts`) proposes each live task again: the new version names the one it `continues`, and
+ * the old one goes `stale`. What the old version was set apart for goes with the task and is no
+ * choice of the adoption's. A version that continues an anchor task is the anchor's from its
+ * proposal, and one that continues a released task is released as soon as it is feasible: so the
+ * rule that an anchor task is never admitted or released, and the rule that a task a Builder
+ * practised on is never scored, hold for a task whatever checker judges it, also for one that
+ * waits for a witness or for controls under the new checks.
+ *
  * The pair is the model pair: the one thing the stronger condition changes is the solver. The budget
  * pair is cut as a bracket, since on truss no test-side solve passed within one budget and it
  * admitted every task that reached it; cost stays a reported column.
@@ -95,12 +104,14 @@ export type ControlFault = "count" | "repeat" | "format" | "passed" | "faulty" |
 type ControlsRefused = Refused & { readonly kinds: readonly ControlFault[] };
 
 /** A task version as the fold holds it: its state, how many gates it passed in order, whether a
- *  gate that did not pass ended them, and, while it is wall-bound, the limits the event that bound
- *  it named: null where it named none. */
+ *  gate that did not pass ended them, whether it was ever released for practice, itself or as
+ *  a version it continues, and, while it is wall-bound, the limits the event that bound it named:
+ *  null where it named none. */
 interface Folded {
   state: TaskState;
   passed: number;
   ended: boolean;
+  practised: boolean;
   bound: Limits | null;
 }
 
@@ -178,7 +189,7 @@ const NEXT: Readonly<Record<TaskState, readonly TaskState[]>> = {
   "too-hard": ["held", "refused", "stale"],
   "too-easy": [],
   "wall-bound": ["held"],
-  released: ["disputed"],
+  released: ["disputed", "stale"],
   disputed: [],
   stale: [],
 };
@@ -387,8 +398,9 @@ export function foldsEvent(kind: EventKind): boolean {
  * clears the next gate, and `task.state` moves it. A history that moves a task where it cannot go,
  * screens a task that is not feasible, logs its gates out of order or after one did not pass, passes
  * gate 4 on no named control set, draws a task not yet feasible into the anchor, releases a task
- * before `anchor.drawn` or one the anchor drew, or takes a task out of `wall-bound` under limits no
- * roomier than bound it, is refused, as a torn line is.
+ * before `anchor.drawn` or one the anchor drew, takes a task out of `wall-bound` under limits no
+ * roomier than bound it, or proposes a version that continues one the log does not hold, is
+ * refused, as a torn line is.
  */
 export function taskStates(events: readonly LogEvent[]): Map<string, TaskState> {
   return taskSets(events).states;
@@ -429,7 +441,20 @@ function step(fold: Fold, { at, kind, data }: LogEvent): void {
   const task = fold.tasks.get(version);
   if (kind === "task.proposed") {
     if (task !== undefined) throw new Error(`${at}: task ${version} is proposed twice`);
-    fold.tasks.set(version, { state: "held", passed: 0, ended: false, bound: null });
+    const { continues } = data;
+    const before = isString(continues) ? fold.tasks.get(continues) : undefined;
+    if (isString(continues) && before === undefined) {
+      throw new Error(`${at}: task ${version} continues ${continues}, which is not proposed`);
+    }
+    // The set a task was in goes with it into a later checker's version of it.
+    if (isString(continues) && fold.drawn?.has(continues) === true) fold.drawn.add(version);
+    fold.tasks.set(version, {
+      state: "held",
+      passed: 0,
+      ended: false,
+      practised: before?.practised === true,
+      bound: null,
+    });
     return;
   }
   if (task === undefined) throw new Error(`${at}: task ${version} is not proposed`);
@@ -468,6 +493,8 @@ function gate(task: Folded, data: JsonObject): string | null {
   }
   if (number === LOGGED_GATES && !isString(data.controls)) return "passed gate 4 on no named control set";
   task.passed = number;
+  // A task a Builder practised on under an earlier checker is practice again once it is feasible.
+  if (number === LOGGED_GATES && task.practised) task.state = "released";
   return null;
 }
 
@@ -492,5 +519,6 @@ function move(fold: Fold, version: string, task: Folded, data: JsonObject): stri
   }
   task.bound = to === WALL_BOUND ? named : null;
   task.state = to;
+  task.practised ||= to === "released";
   return null;
 }

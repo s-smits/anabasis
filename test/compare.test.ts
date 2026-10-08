@@ -224,6 +224,34 @@ describe("the pairs a comparison reads from the log", () => {
     });
   });
 
+  it("scores a version that continues an anchor task from its own proposal, on its own solves alone", () => {
+    const next: Condition = { ...base, task: "v0b" };
+    const log = [
+      ...admitted,
+      // The old version's solves were made under the checker the campaign left.
+      ...solve({ ...base, task: "v0" }, "fail"),
+      ...solve({ ...fresh, task: "v0" }, "fail"),
+      event("task.proposed", { version: "v0b", continues: "v0" }),
+      ...[1, 2, 3, 4].map((gate) =>
+        event("task.gate", { version: "v0b", gate, outcome: "passed", controls: "d" }),
+      ),
+      event("task.state", { version: "v0", state: "stale" }),
+      // One of them graded again for the new version places it and scores nothing.
+      event("verdict.regraded", { solve: "s-1", version: "v0b", ending: { outcome: "pass" } }),
+      ...solve(next, "pass"),
+      ...solve({ ...next, harness: "new", solverTools: "new" }, "fail"),
+    ];
+    expect(pairsOf(log, ["v0b"], "old", "new").pairs).toMatchObject([
+      { task: "v0b", old: [P], fresh: [F], seconds: { old: [null], fresh: [null] } },
+    ]);
+    expect(() => pairsOf(log, ["v0"], "old", "new")).toThrow(
+      "task v0 is stale; only an admitted task or an anchor task is scored",
+    );
+    // A version that continues a task outside the anchor is scored only once a round admits it.
+    const outside = [...log, event("task.proposed", { version: "v1b", continues: "v1" })];
+    expect(() => pairsOf(outside, ["v1b"], "old", "new")).toThrow("task v1b is held; only an admitted task");
+  });
+
   it("refuses a released task, and solves that differ in more than the harness", () => {
     const released = [...admitted, event("task.state", { version: "v1", state: "released" })];
     expect(() => pairsOf(released, ["v1"], "old", "new")).toThrow(

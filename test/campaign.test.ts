@@ -309,7 +309,7 @@ describe("a campaign", () => {
     expect(read(plain.log).some(({ data }) => data.session === "z-9")).toBe(false);
   });
 
-  it("reads from a log what a campaign under a repaired checker can take with no solve", () => {
+  it("reads from a log how far each task it holds whole got, and a stale version as the one that continues it", () => {
     const at = "2026-10-08T00:00:00.000Z";
     const event = (kind: LogEvent["kind"], data: LogEvent["data"]): LogEvent => ({ at, kind, data });
     /** A task a session wrote, as far as gate 2: its proposal, and its stronger solve's verdict. */
@@ -325,12 +325,15 @@ describe("a campaign", () => {
       event("task.gate", { version, gate: 2, solve: `s-${id}`, ...solved }),
     ];
     const set = [{ answer: { answer: "0" }, expectedCheckId: "check-product" }];
+    const third = (version: string) => event("task.gate", { version, gate: 3, outcome: "passed" });
     const events = [
       // Feasible, its controls whole in the log.
       ...written("x-1-001", "v1", { outcome: "passed" }),
+      third("v1"),
       event("task.gate", { version: "v1", gate: 4, outcome: "passed", controls: "d", set }),
       // Feasible in a log written before the controls were kept: only their digest is there.
       ...written("x-1-002", "v2", { outcome: "passed" }),
+      third("v2"),
       event("task.gate", { version: "v2", gate: 4, outcome: "passed", controls: "d" }),
       // Closed as too hard on an answer a check refused, which a repair may accept; and at the
       // wall, which no repair changes.
@@ -358,5 +361,32 @@ describe("a campaign", () => {
     ]);
     expect(recovered.map(({ task, solve }) => [task.taskId, solve])).toEqual([["x-1-003", "s-x-1-003"]]);
     expect(bare).toBe(1);
+
+    // The campaign adopts another checker, and the task that waited goes on as the version that
+    // continues it: it is handed over once, with the copy of its answer the adoption logged.
+    const adopted = [
+      ...events,
+      event("task.proposed", {
+        version: "v6b",
+        taskId: "x-1-006",
+        continues: "v6",
+        wrote: "x-1",
+        task: { taskId: "x-1-006", family: "fixture", publicInput: { base: 4 }, hidden: null },
+      }),
+      event("task.gate", { version: "v6b", gate: 1, outcome: "passed" }),
+      event("verdict", {
+        solve: "carried-s-x-1-006",
+        task: "x-1-006",
+        answer: { answer: "x-1-006" },
+        kind: "pass",
+        carried: true,
+      }),
+      event("task.gate", { version: "v6b", gate: 2, outcome: "passed", solve: "carried-s-x-1-006" }),
+      third("v6b"),
+      event("task.state", { version: "v6", state: "stale", continued: "v6b" }),
+    ];
+    expect(carriable(adopted).waiting.map(({ task, solve }) => [task.taskId, solve])).toEqual([
+      ["x-1-006", "carried-s-x-1-006"],
+    ]);
   });
 });

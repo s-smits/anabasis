@@ -3,7 +3,7 @@
  * `.ana/d2/<name>`, over a stored sweep's pack. It is what the D1b and D2 commands share, so that
  * each builds its conditions, its solves and its reviewers the same way:
  *
- *   bun tools/c/accept.ts      ... --name <name> [--freeze]                     what the checker has been seen to do; the operator's word that it stands
+ *   bun tools/c/accept.ts      ... --name <name> [--freeze]                     what the checker has been seen to do; the operator's word that it stands, or that a changed one is adopted
  *   bun tools/m1/admit-sweep.ts ... --log .ana/d2/<name>/log.jsonl --feasible   the pack's tasks, gates 1 to 4
  *   bun tools/d1b/examine.ts   ... --name <name> --session x-1                  an Examiner session
  *   bun tools/d2/prepare.ts    ... --name <name>                                the anchor's draw, the releases
@@ -11,6 +11,12 @@
  *
  * The campaign folder is inside the repository, which every solve's and every Builder's wall denies,
  * as `live-solve.ts` keeps its check program: the log holds hidden values and the checks' verdicts.
+ *
+ * The check program a campaign was first opened over is staged at `checks`. A changed one the
+ * operator adopts is staged beside it under `epochs/`, by its digest, and the log's last freeze
+ * says which of them the campaign runs under (`src/kernel/epoch.ts`). The earlier ones stay on
+ * disk, since the task versions and the verdicts of their epochs name them. `--bundle` is the pack
+ * the campaign stands on: after an adoption, the adopted one.
  *
  * What is stood in for is what `admit-sweep.ts` and `live-solve.ts` stand in: the contract is the
  * check program's brief with the answer format the sweep's record tool took, and the limits are the sweep's `config.yaml` with a disk cap. The
@@ -23,7 +29,7 @@
 import type { Api, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
 import { backends, compactionMode } from "#src/backends/models.ts";
 import { type Practised, practised } from "#src/builder/session.ts";
-import { departure } from "#src/kernel/acceptance.ts";
+import { departure, frozenChecker } from "#src/kernel/acceptance.ts";
 import {
   type Condition,
   conditionsOf,
@@ -33,6 +39,7 @@ import {
   settingId,
 } from "#src/kernel/condition.ts";
 import { contractHash } from "#src/kernel/contract.ts";
+import { controlOf, epochsOf, unfinished } from "#src/kernel/epoch.ts";
 import { frontierOf, type Rule, type Stand } from "#src/kernel/ladder.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
 import { freezePrices, priceKey } from "#src/kernel/meter.ts";
@@ -54,6 +61,7 @@ import {
   checkProgram,
   contractOf,
   packageOf,
+  packProgram,
   readPack,
   recordedAnswerFormat,
   modelNamed,
@@ -77,6 +85,10 @@ export interface CampaignArgs {
   /** What every solve of this command is held to, when not `LIMITS`: a command's `--solve-minutes`
    *  and `--solve-turns` (`setting.ts`). */
   readonly limits?: Limits | undefined;
+  /** A directory to stage the pack's check program in, to open the campaign over that program
+   *  whatever its log froze: how an adoption reads a changed pack before it is the campaign's
+   *  (`tools/c/accept.ts`). Nothing else passes it. */
+  readonly candidate?: string;
 }
 
 /** A harness as a solve is handed it. */
@@ -134,32 +146,41 @@ export function setsOf(events: readonly LogEvent[]) {
   const { states, feasible, anchor } = taskSets(events);
   const inState = (state: string) => [...feasible].filter((version) => states.get(version) === state);
   return {
-    feasible: [...feasible],
+    // A version an adopted checker's version of the task continues is stale, and is in no set.
+    feasible: [...feasible].filter((version) => states.get(version) !== "stale"),
     // A disputed anchor task is in no comparison and is an anchor task still: a round counts its
-    // check defects outside the anchor, and must know this one was inside.
-    anchor: [...anchor].filter((version) => ["held", "disputed"].includes(states.get(version) ?? "")),
+    // check defects outside the anchor, and must know this one was inside. An anchor task carried
+    // into an adopted checker is the anchor's before it is feasible there, and is scored once it is.
+    anchor: [...anchor].filter(
+      (version) => feasible.has(version) && ["held", "disputed"].includes(states.get(version) ?? ""),
+    ),
     released: inState("released"),
     admitted: inState("admitted"),
     candidates: inState("held").filter((version) => !anchor.has(version)),
   };
 }
 
-/** The tasks a log's sessions wrote, each whole in its proposal: an Examiner's instances, which no
- *  pack holds. */
+/** The tasks a log holds whole in a proposal: an Examiner's instances, which no pack holds, and
+ *  every task an adoption carried into a later checker. Each is given once, as the last proposal
+ *  of its id holds it: a carried task is proposed again under the id it had. */
 export function writtenTasks(events: readonly LogEvent[]): Task[] {
-  return events.flatMap(({ kind, data }) => {
+  const whole = events.flatMap(({ kind, data }): [string, Task][] => {
     const task = asRecord(kind === "task.proposed" ? data.task : null);
     return task !== null && isString(task.taskId) && isString(task.family)
       ? [
-          {
-            taskId: task.taskId,
-            family: task.family,
-            publicInput: task.publicInput ?? null,
-            hidden: task.hidden ?? null,
-          },
+          [
+            task.taskId,
+            {
+              taskId: task.taskId,
+              family: task.family,
+              publicInput: task.publicInput ?? null,
+              hidden: task.hidden ?? null,
+            },
+          ],
         ]
       : [];
   });
+  return [...new Map(whole).values()];
 }
 
 /** A task a session wrote that stood feasible in its log, with what gates it again under another
@@ -173,11 +194,12 @@ export interface Carriable {
 }
 
 /**
- * What a log holds of its sessions' tasks for a campaign under a repaired checker. `feasible` are
- * the tasks that passed gate 4 with their controls on record. `recovered` are the tasks gate 2
- * closed as too hard on an answer a check refused: a repair may accept that answer, and the task
- * then lacks only its controls. A task whose controls were written before a log held them whole
- * (`examiner/session.ts`) is counted in `bare`, and takes a session to write them again.
+ * What a log holds of the tasks it holds whole, by how far each got. `feasible` are the tasks that
+ * passed gate 4 with their controls on record. `recovered` are the tasks gate 2 closed as too hard
+ * on an answer a check refused: a repair may accept that answer, and the task then lacks only its
+ * controls. A task whose controls were written before a log held them whole
+ * (`examiner/session.ts`) is counted in `bare`, and takes a session to write them again. A stale
+ * version is none of these: its task goes on as the version that continues it.
  *
  * `waiting` are the tasks past gate 3 that gate 4 never saw: their session ended before its
  * Examiner wrote controls. The next session of the same campaign takes them up (`examine.ts`), since
@@ -185,6 +207,7 @@ export interface Carriable {
  * turn after such a solve passed, 15 minutes and $3.15 in.
  */
 export function carriable(events: readonly LogEvent[]) {
+  const states = taskStates(events);
   const written = new Map(writtenTasks(events).map((task) => [task.taskId, task]));
   const answerOf = (solve: JsonValue | undefined) =>
     events.findLast(({ kind, data }) => kind === "verdict" && data.solve === solve)?.data.answer;
@@ -198,7 +221,7 @@ export function carriable(events: readonly LogEvent[]) {
   let bare = 0;
   for (const { kind, data } of events) {
     const task = kind === "task.proposed" && isString(data.taskId) ? written.get(data.taskId) : undefined;
-    if (task === undefined) continue;
+    if (task === undefined || states.get(isString(data.version) ? data.version : "") === "stale") continue;
     const second = gate(data.version, 2);
     const accepted = answerOf(second?.solve);
     if (!isString(second?.solve) || accepted === undefined) continue;
@@ -253,20 +276,40 @@ export function reachOf(events: readonly LogEvent[], stand: Stand): Task[] {
   });
 }
 
-/** A control as gate 4 logged it, or none where the row is not one. */
-function controlOf(row: JsonValue): RejectControl[] {
-  const control = asRecord(row);
-  return control?.answer !== undefined && isString(control.expectedCheckId)
-    ? [{ answer: control.answer, expectedCheckId: control.expectedCheckId }]
-    : [];
+/** Where a campaign keeps its log, its staged check programs and its harness states. */
+export function campaignFolder(name: string): string {
+  return join(REPO, ".ana", "d2", name);
+}
+
+/** Where an adopted check program is staged in a campaign's folder, by its digest. */
+export function epochChecks(dir: string, checks: string): string {
+  return join(dir, "epochs", checks.slice(0, 16));
+}
+
+/** The staged check program a campaign's log runs under: the one it was first opened over, at
+ *  `checks`, until the log holds an adoption, and from then on the last one adopted. */
+export function stagedChecks(dir: string, events: readonly LogEvent[]): string {
+  const epochs = epochsOf(events);
+  const last = epochs.at(-1);
+  return last === undefined || epochs.length === 1
+    ? join(dir, "checks")
+    : epochChecks(dir, last.checker.checks);
 }
 
 export async function openCampaign(args: CampaignArgs) {
-  const dir = join(REPO, ".ana", "d2", args.name);
+  const dir = campaignFolder(args.name);
   mkdirSync(dir, { recursive: true });
-  const checks = join(dir, "checks");
-  if (!existsSync(checks)) checkProgram(args.bundle, checks);
   const log = join(dir, "log.jsonl");
+  const before = read(log);
+  const frozen = args.candidate === undefined ? frozenChecker(before) : null;
+  const checks = args.candidate ?? stagedChecks(dir, before);
+  // A pack that is not the one the log froze is never staged in the frozen one's place.
+  if (!existsSync(checks) && frozen !== null && packProgram(args.bundle) !== frozen.checks) {
+    throw new Error(
+      `${log}: the check program the log froze is not staged at ${checks}, and the pack at ${args.bundle} holds another`,
+    );
+  }
+  if (!existsSync(checks)) checkProgram(args.bundle, checks);
   const { brief, tasks } = readPack(args.bundle);
   const row = sweepRows(args.root, args.sweep).find((each) => each.cycle === args.cycle);
   if (row === undefined) throw new Error(`${args.sweep} graded no solve in ${args.cycle}`);
@@ -274,10 +317,25 @@ export async function openCampaign(args: CampaignArgs) {
   const contract = contractOf(brief, recordedAnswerFormat(row));
   // The checker this campaign runs under: its contract and its staged check program. Once the
   // operator has frozen one in the log (`tools/c/accept.ts --freeze`), a campaign whose own is
-  // another does not open, since what the log counted was counted under the frozen one.
+  // another does not open, since what the log counted was counted under the frozen one. Neither
+  // does one opened over another pack than the frozen checker's: the brief a solver and an
+  // Examiner are shown and the tasks' hidden values are the pack's, and the staged program alone
+  // would not show that they had moved. A changed pack is the operator's to adopt.
   const checker = { contract: contractHash(contract), checks: hashJsonValue(checkProgramVersion(checks)) };
-  const moved = departure(read(log), checker);
-  if (moved !== null) throw new Error(`${log}: ${moved}`);
+  if (args.candidate === undefined) {
+    const half = unfinished(before);
+    if (half !== null) {
+      throw new Error(
+        `${log}: the adoption of check program ${half.checks.slice(0, 8)} was cut short; run it again (tools/c/accept.ts --freeze) before anything else reads the campaign`,
+      );
+    }
+    const moved =
+      departure(before, checker) ??
+      (frozen !== null && packProgram(args.bundle) !== frozen.checks
+        ? `the pack at ${args.bundle} holds another check program than the one the log froze; name the pack the campaign stands on, or adopt this one (tools/c/accept.ts --freeze)`
+        : null);
+    if (moved !== null) throw new Error(`${log}: ${moved}`);
+  }
   const resources = sweepResources(brief);
   const tools = join(args.bundle, ".toolchain");
   const verify = openVerifier({ checks, tools });
@@ -353,6 +411,7 @@ export async function openCampaign(args: CampaignArgs) {
   });
   return {
     repo: REPO,
+    dir,
     log,
     states: join(dir, "states"),
     checks,

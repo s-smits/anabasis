@@ -25,6 +25,23 @@ Start each through `bun run runs launch`, so the preflight reads the seed as it 
 and the receipt keeps the commit. `--dry-run` first: a seed that would be refused is a finding
 before a dollar is spent.
 
+## Smaller than a solve
+
+A backend can be seated with no campaign at all: its own provider (`claudeProvider` in
+`src/backends/claude.ts`), one prompt, one tool and the small model, in a script kept outside the
+tree. It costs cents and answers what the backend's child does around one turn. On 2026-10-08 such
+a probe closed a query on a parked `submit` and counted the child's calls and its lifetime, on the
+tree before a fix and on the tree after. What it proves goes into the backend's test
+(`test/claude-backend.test.ts`), since the probe itself is not kept.
+
+One step up is one whole solve on the small model: `bun tools/m0/live-solve.ts … --live --solver
+claude/<small model>`, which walks the wall, the tools, the verifier and the teardown for under a
+dollar (343 s and $0.46 on 2026-10-08). Two things to know. The sweep's compaction window is refused
+for a model served a smaller context, rightly, so that solve ran from a scratch copy of the command
+with compaction off, and said so. And the teardown removes what Claude Code wrote: to read its own
+record of its calls, copy `<solve>.host/model/Library/Caches/` out several times a second while the
+solve runs. The solve's folders are under the system temp folder's `ana-built-bash`.
+
 ## Rules that are only this case's
 
 - **The prompt is production's.** Nothing is added to tell the model it is in a simulation or what

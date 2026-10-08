@@ -2,9 +2,11 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { fauxAssistantMessage, fauxProvider, normalizeContext } from "@earendil-works/pi-ai";
 import { claudeExecutable, SWEEP_COMPACT_WINDOW } from "../src/backends/claude.ts";
 import { type BackendOptions, backends, compactionMode, retried } from "../src/backends/models.ts";
+import { read } from "../src/kernel/log.ts";
 import { mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
+import { traceSink } from "../src/solve/run.ts";
 
 const HOUR_S = 60 * 60;
 const home = mkdtempSync(join(tmpdir(), "ana-backends-"));
@@ -94,6 +96,15 @@ describe("a pi-served provider's calls", () => {
     const message = await retried(faux.provider).streamSimple(faux.getModel(), context).result();
     expect(message.stopReason).toBe("stop");
     expect(faux.state.callCount).toBe(2);
+
+    // The turn's line in the log says what the attempt before it said; a call made once says nothing.
+    const log = join(home, "retried.jsonl");
+    const sink = traceSink(log, "solve", "s-1", () => 1);
+    sink({ type: "turn_end", message, toolResults: [] });
+    sink({ type: "turn_end", message: fauxAssistantMessage("Done."), toolResults: [] });
+    const [again, once] = read(log).map(({ data }) => data);
+    expect(again?.retried).toEqual(["WebSocket closed 1000"]);
+    expect(once).not.toHaveProperty("retried");
   });
 
   it("are not tried again on a failure no retry would mend", async () => {

@@ -208,8 +208,13 @@ export function pulse(
   const quiet = open && last !== undefined && now - Date.parse(last.at) > QUIET_MS;
   if (quiet && before?.quiet !== true) lines.push(`⚠ quiet for ${minutes(now - Date.parse(last.at))}`);
   if (!quiet && before?.quiet === true) lines.push("· not quiet any more");
-  const ended = count(log, run.end) > 0 && solves.every(({ finished }) => finished !== null);
-  if (before?.open === true && !open && !ended) lines.push(`⚠ the process is gone before ${run.end}`);
+  // A run's end is its last session's: an Examiner session writes no report, and the second on
+  // exam-1 (2026-10-08) ended whole and was said to be gone before one.
+  const from = log.findLastIndex(({ kind }) => kind === "build.started" || kind === "exam.started");
+  const end = log[from]?.kind === "exam.started" ? "exam.finished" : run.end;
+  const ended =
+    count(log.slice(Math.max(from, 0)), end) > 0 && solves.every(({ finished }) => finished !== null);
+  if (before?.open === true && !open && !ended) lines.push(`⚠ the process is gone before ${end}`);
   // An anchor starts each task on the old harness and the fresh one, so a line may come twice.
   const told = Object.entries(countBy(lines, (line) => line)).map(([line, n]) =>
     n === 1 ? line : `${line} (×${String(n)})`,

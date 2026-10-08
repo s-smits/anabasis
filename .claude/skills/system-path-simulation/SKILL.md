@@ -105,12 +105,14 @@ Measured on the truss campaign `exam-1` on 2026-10-08, at `--screen 1 --fails 1 
 | any | a Builder whose edit does not land | `no-change` | the harness froze to its parent's digest |
 
 `check-defects` has not been walked: a scripted fail is a clean rejection, and it takes a Referee or
-a check that cannot run to dispute a task.
+a check that cannot run to dispute a task. `flags-decide` is out of a rehearsal's reach for the same
+reason: it is a reading that differs with and without the tasks an advising Referee flagged, and a
+rehearsal seats no Referee.
 
 ## What the first rehearsals settled
 
-About fifteen rounds run to their report, one kill and five stops on 2026-10-08, under ten minutes
-of host time and no model call.
+About seventeen rounds run to their report, one kill and five stops on 2026-10-08, with no model
+call.
 
 What a round of this size can read:
 
@@ -128,6 +130,10 @@ What a round of this size can read:
 - **A step does not move the parent.** The next round starts from the cycle's harness again unless
   `--parent <digest>` names the stepped one, and scores the tasks already admitted only with
   `--admitted`.
+- **An Examiner session's "too easy" retires nothing.** After its second session `exam-1` held two
+  candidates, the two that session was told were too easy. A seed of the final log, rehearsed at
+  the round's defaults: 36 solves, `not-scored` when both pass again, `no-step` when both are won.
+  The prediction had said one candidate, from a count taken while the session ran.
 
 What the product did:
 
@@ -143,6 +149,15 @@ What the product did:
   root: three had a folder and an image and no volume, and a detach of that exits 1. A release now
   passes over a root with nothing mounted. Four more stops, from a third of a second in to after the
   solves ended, left nothing, and a stopped round went on under its session and read `step`.
+- **Claude Code went on after its solve closed.** The host folders the day's solves left behind
+  each held a log Claude Code wrote after its solve's teardown, and 14 of 35 held a call made after
+  the one that ended the solve. A live seat on the small model showed why for cents: closed on a
+  parked `submit`, Claude Code lived two to three seconds more and called `submit` twice again,
+  each a model request no meter read. An abort closes its stdin and gives it two seconds, which it
+  spends on its turn. The close now interrupts the turn first, and the same probe then called
+  nothing and was gone inside a second. One whole solve on that model, its logs copied out five
+  times a second, then ended on its `submit` with no call after it, Claude Code gone within 0.56 s
+  and no folder left. A leftover nobody asked about was the lead.
 - **The pulse read a seed as a paid run**, with its source's dollars and its source's solves in
   flight. It now says `(a seed)`.
 - **A reader caught a planted contradiction.** Two rehearsed rounds made one harness pass the anchor

@@ -74,6 +74,8 @@ const TOOL_PREFIX = `mcp__${SERVER}__`;
 /** The CLI's own tools the solver is given, all server-side: pi-built-child.ts:193-196, under the
  *  `webSearch: true` every Claude profile set (`src/backends/pi-built.ts:136`). */
 const CLI_TOOLS = ["WebSearch"];
+/** How long a closing query waits on its interrupt. One answered mid-turn in 16 ms. */
+const INTERRUPT_MS = 1000;
 /** provider.ts:222-224: the bridge's table, for a level the model's own map does not name. */
 const EFFORTS: Readonly<Partial<Record<ThinkingLevel, EffortLevel>>> = {
   minimal: "low",
@@ -487,6 +489,8 @@ async function readMessages(
       ];
       const end = apiStop === null ? undefined : FINAL_STOPS.get(apiStop);
       if (message.subtype === "success" && !message.is_error && end !== undefined) return end;
+      // Claude Code reports the turn the host's own close interrupted as a run that failed.
+      if (sessions.get(key) !== session) throw new Error("the host closed the query");
       close(key, session);
       if (message.subtype !== "success") {
         throw new Error(`Claude Code: ${message.subtype}: ${message.errors.join("; ")}`);
@@ -536,11 +540,22 @@ function take(message: SDKAssistantMessage, model: Model<Api>, turn: AssistantMe
   updateUsage(turn, message.message.usage, model);
 }
 
-/** End the query and answer every parked handler, so no Claude Code call is left waiting on pi. */
+/**
+ * End the query and answer every parked handler, so no Claude Code call is left waiting on pi.
+ *
+ * The turn is interrupted before the query is aborted. An abort alone closes Claude Code's stdin and
+ * gives it two seconds before a signal, and Claude Code spends them on its turn: with a call still
+ * parked it asks the model again, and no meter reads that request. On 2026-10-08 a query closed on a
+ * parked `submit` called it again 975 ms and 1,812 ms after, and Claude Code's own logs of that
+ * day's solves hold such a call after 14 of 35. Interrupted first, it called nothing and was gone
+ * inside a second. The timer is for a child that never answers the interrupt.
+ */
 function close(key: string, session: Session): void {
   sessions.delete(key);
   session.prompt.end();
-  session.abort.abort();
+  const end = () => session.abort.abort();
+  void session.query.interrupt().then(end, end);
+  setTimeout(end, INTERRUPT_MS).unref();
   for (const resolve of session.parked.values()) {
     resolve({ content: [{ type: "text", text: "the query was closed" }] });
   }

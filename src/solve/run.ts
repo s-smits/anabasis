@@ -38,6 +38,7 @@ import {
   type Usage,
 } from "@earendil-works/pi-ai";
 import { CLAUDE_COMPACTED, REPORTED_COST } from "../backends/claude.ts";
+import { CALL_RETRIED } from "../backends/models.ts";
 import { type Compacted, compactBeforeRequest } from "../backends/pi-compaction.ts";
 import type { Limits } from "../kernel/condition.ts";
 import { answerFormatFault, type Contract } from "../kernel/contract.ts";
@@ -356,6 +357,8 @@ export function traceSink(log: string, of: TraceOf, id: string, turn: () => numb
         responseModel: responseModel ?? null,
         usage: { ...usage },
         text: traceText(content),
+        // `retried`, on a turn whose call a pi-served provider made again (`CALL_RETRIED`).
+        ...diagnostics?.find(({ type }) => type === CALL_RETRIED)?.details,
       });
     }
   };

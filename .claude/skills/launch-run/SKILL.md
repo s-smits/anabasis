@@ -100,6 +100,9 @@ Its notes say three things worth reading before spend.
   second session on exam-1 was launched with no reviewer and closed five of six candidates so, for
   $34.54 of stronger solves. A launch with none now says so.
 
+A task the session is told is too easy is not retired: it stays held, and a round screens it again
+under its own `--screen` and `--fails`. A task told too hard is closed.
+
 A session ended by its provider reads `crashed` in `exam.finished`, with what the provider said. A
 solve the provider failed leaves its task `undecided`, which says nothing of the task and is not
 taken up again: only a task past gate 3 is.
@@ -116,7 +119,8 @@ ran it. Beside the campaign's log:
 
 Starting proves the process stayed up for eight seconds. It proves no model turn and no outcome.
 Watch with `bun run runs pulse <name>`: its first `build.started` is the first sign of model work,
-and "the process is gone before comparison.reported" is a round to read in its `.err`.
+and "the process is gone before comparison.reported" is a round to read in its `.err`. For an
+Examiner session the same line names `exam.finished`.
 
 `bun run runs zip` carries the receipts and outputs at every level.
 

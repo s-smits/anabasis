@@ -69,6 +69,15 @@ describe("the runs pulse", () => {
     const done = pulse(round, reported, false, { lines: 5, open: true, quiet: false }, START + 6 * 60_000);
     expect(done.status).toStartWith("r1  reported held");
     expect(done.said).toEqual(["◆ reported held"]);
+    // An Examiner session writes no report: its own end is the run's, and a round's report before it
+    // is not.
+    const examining = [...reported, event(6, "exam.started", { session: "x-1" })];
+    const seen = { lines: 7, open: true, quiet: false };
+    expect(pulse(round, examining, false, seen, START + 7 * 60_000).said).toEqual([
+      "⚠ the process is gone before exam.finished",
+    ]);
+    const examined = [...examining, event(7, "exam.finished", { session: "x-1", ended: "finished" })];
+    expect(pulse(round, examined, false, seen, START + 8 * 60_000).said).toEqual(["◆ exam x-1 ended"]);
     // A reading that does not stand without its flagged tasks, and a round that scored nothing, are
     // each something to look at.
     const says = (data: JsonObject) =>

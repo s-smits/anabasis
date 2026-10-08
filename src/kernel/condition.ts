@@ -7,7 +7,7 @@
  * its own `config.yaml` naming its wall, turn cap, shell timeouts and concurrency.
  */
 import type { JsonObject } from "../meta/json-shape.ts";
-import { hashJsonValue } from "../meta/stable-json.ts";
+import { hashJsonValue, sameJsonValue } from "../meta/stable-json.ts";
 import { append, type LogEvent, read } from "./log.ts";
 import type { PriceTable } from "./meter.ts";
 
@@ -73,6 +73,12 @@ export function conditionId(condition: Condition): string {
     throw new Error(`the condition runs ${condition.model} but prices no such model`);
   }
   return hashJsonValue(condition);
+}
+
+/** The fields two conditions differ in, by name: what a comparison of their solves compares. */
+export function fieldsApart(a: Condition, b: Condition): string[] {
+  const other: Readonly<Record<string, unknown>> = { ...b };
+  return Object.entries(a).flatMap(([field, value]) => (sameJsonValue(value, other[field]) ? [] : [field]));
 }
 
 /**

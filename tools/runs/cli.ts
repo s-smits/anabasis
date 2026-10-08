@@ -1,14 +1,16 @@
 /**
  * `bun run runs <verb>`, over every run log in the repository's worktrees: `pulse` says what each
  * gained since the last look (`pulse.ts`), `zip` bundles them for handover (`zip.ts`), `launch`
- * starts a round once its log says it can report something and `stop` ends a run (`launch.ts`).
+ * starts a round once its log says it can report something and `stop` ends a run (`launch.ts`),
+ * `compare` reads named rounds against one another (`compare.ts`).
  */
 import { runtimeProcess } from "#src/meta/process.ts";
+import { compareRuns } from "./compare.ts";
 import { launch, stop } from "./launch.ts";
 import { watch } from "./pulse.ts";
 import { zipRuns } from "./zip.ts";
 
-const VERBS = { pulse: watch, zip: zipRuns, launch, stop };
+const VERBS = { pulse: watch, zip: zipRuns, launch, stop, compare: compareRuns };
 const [verb, ...args] = Bun.argv.slice(2);
 const run = Object.entries(VERBS).find(([name]) => name === verb)?.[1];
 if (run === undefined) {

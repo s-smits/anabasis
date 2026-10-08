@@ -77,7 +77,7 @@ const short = (value: unknown) => (isString(value) ? value.replace(/\s+/g, " ").
 const count = (log: readonly LogEvent[], kind: EventKind) =>
   log.filter((event) => event.kind === kind).length;
 /** A string or number field as written, and "?" for a field the event does not hold. */
-const word = (value: unknown) => (isString(value) || isNumber(value) ? String(value) : "?");
+export const word = (value: unknown) => (isString(value) || isNumber(value) ? String(value) : "?");
 
 /** The dollars a turn or a compaction spent, by the usage its event records. */
 function spent({ kind, data }: LogEvent): number {
@@ -235,6 +235,12 @@ export function runs(): Run[] {
         end: "solve.finished" as const,
       })),
   ]);
+}
+
+/** Where a worktree stands: its commit, and whether it holds a change no commit names. */
+export function standing(tree: string) {
+  const git = (...args: string[]) => runTextSyncOrThrow(["git", "-C", tree, ...args]).trim();
+  return { commit: git("rev-parse", "HEAD"), dirty: git("status", "--porcelain") !== "" };
 }
 
 /** Each running round, Examiner session and live solve: its process, its arguments and the worktree

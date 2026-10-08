@@ -28,8 +28,8 @@
  * is launched again with the same `--session`, unless the stop fell inside its Builder session: that
  * session never finished, the round refuses a second one under its id, and so does `launch`.
  */
-import { existsSync, writeFileSync } from "#src/meta/filesystem.ts";
-import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
+import { existsSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
+import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { availableParallelism, loadavg } from "#src/meta/os.ts";
 import { dirname, join } from "#src/meta/path.ts";
@@ -37,7 +37,7 @@ import { capturedExecPath, capturedSpawn, parseArgs, runtimeProcess } from "#src
 import { runTextSyncOrThrow, terminateAndReapProcessGroupId } from "#src/meta/subprocess.ts";
 import { spent } from "#src/builder/round.ts";
 import { setsOf } from "../d2/campaign.ts";
-import { logEvents, processes, ROUND, runs, writers } from "./pulse.ts";
+import { logEvents, processes, ROUND, runs, standing, writers } from "./pulse.ts";
 
 const START_MS = 8000;
 /** The launcher's own flags; every other one is the round's. */
@@ -57,6 +57,28 @@ export interface Asked {
   readonly missing: string | null;
   /** Why the round would refuse this session's id (`spent`), or null. */
   readonly spent: string | null;
+}
+
+/** What a launch keeps of a round's start, in `launch-<session>.json` beside its log. The log holds
+ *  the host's code by content and no commit, so this is where a round's commit is on record. */
+export interface Receipt {
+  readonly at: string;
+  readonly pid: number;
+  readonly flags: readonly string[];
+  readonly envFile: string | null;
+  readonly commit: string;
+  readonly dirty: boolean;
+  readonly load: number;
+  readonly cores: number;
+}
+
+/** Where a launch of `session` keeps its receipt and its output, less the extension. */
+const kept = (log: string, session: string) => join(dirname(log), `launch-${session}`);
+
+/** The receipt of the launch of `session` beside `log`, or null for a round started by hand. */
+export function receiptOf(log: string, session: string): Receipt | null {
+  const file = `${kept(log, session)}.json`;
+  return existsSync(file) ? parseJsonAs<Receipt>(readFileSync(file, "utf8")) : null;
 }
 
 /** Why a round should not start, and what its reader should know when it does. */
@@ -173,16 +195,14 @@ export async function launch(args: readonly string[]): Promise<void> {
     console.log(`would start: ${cmd.join(" ")}`);
     return;
   }
-  const git = (...rest: string[]) => runTextSyncOrThrow(["git", ...rest]).trim();
-  const base = join(dirname(run.path), `launch-${session}`);
+  const base = kept(run.path, session);
   const child = start(cmd, base);
-  const receipt = {
+  const receipt: Receipt = {
     at: new Date().toISOString(),
     pid: child.pid,
     flags,
     envFile: isString(envFile) ? envFile : null,
-    commit: git("rev-parse", "HEAD"),
-    dirty: git("status", "--porcelain") !== "",
+    ...standing(tree),
     load,
     cores,
   };

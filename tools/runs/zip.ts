@@ -28,7 +28,7 @@ import { parseArgs } from "#src/meta/process.ts";
 import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
-import { logEvents, type Run, runs } from "./pulse.ts";
+import { logEvents, type Run, runs, standing } from "./pulse.ts";
 
 const LEVELS = ["light", "medium", "verbose"] as const;
 export type Level = (typeof LEVELS)[number];
@@ -190,13 +190,11 @@ function gather(chosen: readonly Run[], level: Level, stage: string) {
     const log = logEvents(run.path);
     const last = log.findLast(({ kind }) => kind === run.end)?.data;
     const ended = last?.reading ?? asRecord(last?.ending)?.outcome;
-    const git = (...args: string[]) => runTextSyncOrThrow(["git", "-C", run.tree, ...args]).trim();
     return {
       name: run.name,
       log: join(basename(run.tree), folder, basename(run.path)),
       worktree: run.tree,
-      commit: git("rev-parse", "HEAD"),
-      dirty: git("status", "--porcelain") !== "",
+      ...standing(run.tree),
       events: log.length,
       ended: isString(ended) ? ended : null,
     };

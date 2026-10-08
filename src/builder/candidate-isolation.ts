@@ -21,8 +21,9 @@ import { hashJsonBytes } from "../meta/json-runtime.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { BUILDER_SESSION_EVIDENCE_FILE } from "./session-evidence.ts";
 import { CELL_RUNTIME_ROOT_NAMES } from "./verifier-workshop-input.ts";
-import { BUILDER_SCRATCH_ROOTS, WORKSPACE_TOOL_TREE } from "../verify/wall-policy.ts";
-import { WORKSPACE_DIR } from "../author/builder-memory.ts";
+import { ANSWER_TOOL_TREE, BUILDER_SCRATCH_ROOTS, WORKSPACE_TOOL_TREE } from "../verify/wall-policy.ts";
+import { ANSWER_DIR, WORKSPACE_DIR } from "../author/builder-memory.ts";
+import { CORRECTNESS_MODEL_DIR } from "../meta/bundle-layout.ts";
 import {
   BUNDLE_SNAPSHOT_DIRECTORY,
   EARLIER_BUNDLE_SNAPSHOT_DIRECTORY,
@@ -122,7 +123,11 @@ import { BACKENDS_FILE } from "../run/model-preflight.ts";
 import { ITERATION_FILE } from "./campaign-iterations.ts";
 
 export type IsolationMode = "read" | "write" | "exec";
-type IsolationPurpose = "author" | "workshop";
+/** `author` is the whole Builder. A split build divides it along the hash line: `answer` writes the
+ *  correctness model, its own scratch and its own installs and nothing else, and `harness` works
+ *  everywhere else in the workspace but can neither read nor write what `answer` writes, nor the
+ *  history that holds it. */
+type IsolationPurpose = "author" | "workshop" | "answer" | "harness";
 
 export interface CandidateIsolationBinding {
   repoRoot: string;
@@ -446,8 +451,17 @@ export function deriveCandidateIsolation(
   const sub = (path: string, id: string): IsolationRule => ({ kind: "subpath", path, id });
   const lit = (path: string, id: string): IsolationRule => ({ kind: "literal", path, id });
   const repo = (path: string) => join(repoRoot, path);
-  const author = purpose === "author";
+  const author = purpose !== "workshop";
   const workshop = [sub(ossRoot, "verifier-workshop")];
+  // Where each name physically lands, so a linked tool tree is walled where it is read.
+  const inWorkspace = (...names: string[]) =>
+    names.map((name) => resolveRequested(repoRoot, resolve(iterationDir, name)));
+  // The answer agent writes these roots and nothing else, and the Harness Builder is denied each of
+  // them both ways, so nothing the answer agent writes or installs is a file the Harness Builder
+  // reads or rewrites: no hidden expectation, check, reference artifact or instrument. The history
+  // is walled too, since it holds them.
+  const answerOwned = inWorkspace(CORRECTNESS_MODEL_DIR, ANSWER_DIR, ANSWER_TOOL_TREE);
+  const walled = purpose === "harness" ? [...answerOwned, ...inWorkspace(".git")] : [];
   const read: IsolationRule[] = author
     ? [
         sub(iterationDir, "candidate-tree"),
@@ -472,14 +486,20 @@ export function deriveCandidateIsolation(
         lit(repo("README.md"), "docs"),
       ]
     : workshop;
-  const write = author ? [sub(iterationDir, "iteration-write")] : workshop;
+  const answering = purpose === "answer";
+  const ownWrites = answering
+    ? answerOwned.map((path) => sub(path, "answer-write"))
+    : [sub(iterationDir, "iteration-write")];
+  const write = author ? ownWrites : workshop;
+  // A shell opens at the workspace root unless told otherwise, and its writes are the OS wall's.
+  const exec = answering ? [...write, lit(iterationDir, "workspace-root")] : write;
   const identity = {
     schema: CANDIDATE_ISOLATION_SCHEMA,
     repoRoot,
     epochDir,
     // Left out when unset, so every binding without a shared cell keeps the digest it always had.
     ...keyIfDefined("sharedCellRoot", sharedCellRoot),
-    allow: { read, write, exec: write },
+    allow: { read, write, exec },
     measuredNamePrefixes: MEASURED_EVIDENCE_NAME_PREFIXES,
     network: author ? ("allow" as const) : ("deny" as const),
     profile: author ? ("candidate" as const) : ("isolated-workshop" as const),
@@ -489,8 +509,10 @@ export function deriveCandidateIsolation(
     scratchWriteRoots: author
       ? BUILDER_SCRATCH_ROOTS
       : [join(ossRoot, CELL_RUNTIME_ROOT_NAMES.tmp), ...BUILDER_SCRATCH_ROOTS],
-    readDenyRoots: author ? [ossRoot] : [],
-    writeDenyRoots: author ? WORKSPACE_SHADOW_ROOTS.map((root) => join(iterationDir, root)) : [],
+    readDenyRoots: author ? [ossRoot, ...walled] : [],
+    writeDenyRoots: author
+      ? [...WORKSPACE_SHADOW_ROOTS.map((root) => join(iterationDir, root)), ...walled]
+      : [],
     cellRuntimeRoots: author ? [] : Object.values(CELL_RUNTIME_ROOT_NAMES).map((name) => join(ossRoot, name)),
   };
   return { ...identity, digest: hashJsonBytes(identity) };
@@ -536,7 +558,9 @@ export function guardPath(
     return deny(null, "unresolvable", errorMessage(error));
   }
   const under = (roots: readonly string[]) => roots.some((root) => containsPath(resolved, root));
-  if (mode !== "write" && under(policy.readDenyRoots)) {
+  // A root denied both ways is another capability's material whichever way it is asked for, not a
+  // module shadow.
+  if (under(policy.readDenyRoots) && (mode !== "write" || under(policy.writeDenyRoots))) {
     return deny(resolved, "purpose-isolation", `${requested} belongs to another capability's isolated cell`);
   }
   if (mode === "write" && under(policy.writeDenyRoots)) {

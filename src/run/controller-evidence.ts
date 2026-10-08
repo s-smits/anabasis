@@ -281,6 +281,12 @@ function writeControllerOpening(input: {
     budget: loadBudget(campaign),
     providerResourceBudget: input.providerBudget?.snapshot() ?? null,
     command: { name: "fullrun", digest: commandDigest(input.args, input.project.requestDigest) },
+    // The battery cap the run stops itself at, legible here and not only inside the digest, so the
+    // reader of a paired arm or of a continuation reads the count each run was given.
+    ...keyIfDefined("maxBatteries", input.args.maxBatteries),
+    // Whether an answer agent wrote the correctness model (--answer-agent), so a reader can tell a
+    // split run from a whole one without the command digest. Absent means false, as at launch.
+    answerAgent: input.args.answerAgent === true,
   };
   mkdirSync(dir, { recursive: true });
   writeCompleted(path, evidence);

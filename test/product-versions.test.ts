@@ -1,3 +1,15 @@
+/**
+ * A product version is published once, selected or held by one decision, and bound to each battery
+ * that measures it. The history every climb reader walks is the set of versions a battery measured,
+ * with the version being read: a battery is history from the moment it is bound, and whether it is
+ * difficulty evidence is `admitBattery`'s decision.
+ *
+ * Hypothesis (commit-R, 2026-10-07): history read from the decision rows misses a version a run
+ * measured and then stopped before its claim and promotion. In the reserve campaign (run 6a8ca0) the
+ * i17 battery was recorded 31 s before the run took SIGTERM; its version has a measurement binding
+ * and no decision row, so no reader saw it: not admitted, not excluded, not on the history page.
+ * Reading the measurement bindings instead puts that battery where admission already sends it.
+ */
 import { afterEach, expect, test } from "bun:test";
 import {
   existsSync,
@@ -107,16 +119,22 @@ test("published bytes remain available; selection, decision and admission commit
   expect(() => bindProductMeasurement(root, slug, "second-battery", first)).toThrow("different product");
 });
 
-test("a version under measurement reads its own battery before its decision row exists", () => {
+test("a measured version is history whether or not its decision row exists", () => {
   const { root, source } = fixture();
   const first = publishProductVersion(source("first"));
   selectInitialProduct(root, slug, "first");
   const second = publishProductVersion(source("second"));
-  // The review of the second version's battery runs before promotion records its decision, so a
-  // history read from the ledger alone would hold no row for the battery under review.
+  // The review of the second version's battery runs before promotion records its decision, so the
+  // version being read is its own history.
   expect(productHistoryDirs(second)).toContain(second);
   expect(productHistoryDirs(second).filter((dir) => dir === first)).toHaveLength(1);
   expect(productHistoryDirs(first).filter((dir) => dir === first)).toHaveLength(1);
+  // Published and never measured, it holds no battery and is no one else's history.
+  expect(productHistoryDirs(first)).not.toContain(second);
+  // A run stopped after the battery and before the claim leaves it measured and undecided: still
+  // history to the selected product, for admission to refuse for want of a claim.
+  bindProductMeasurement(root, slug, "second-battery", second);
+  expect(productHistoryDirs(first)).toContain(second);
 });
 
 test("zero verified cases keep the selected product and leave the advice packet unadmitted", () => {

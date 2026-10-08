@@ -25,6 +25,7 @@ import { directKickoff } from "./direct-input.ts";
 import { type FullRunInput, openFullRunLaunch } from "./full-run-launch.ts";
 import { type FullRunArgs, parseFullRunArgs } from "./launch-arguments.ts";
 import type { ProjectIdentity } from "./launch-project.ts";
+import { ANSWER_AGENT_ENV } from "./builder-backend.ts";
 import { buildHarness, resolveBuilderCondition } from "./harness-build.ts";
 import { type HarnessMeasureResult, measureHarness } from "./harness-measure.ts";
 import type { ClaimStage } from "./claim-stages.ts";
@@ -216,6 +217,21 @@ function roundCapTerminal(round: number, roundLimit: number): string | null {
     : null;
 }
 
+/** The battery cap: the run ends once it has measured `cap` new batteries of its own and the next
+ *  move is no `measure`, so the last battery's remeasures on unchanged bytes (cases the environment
+ *  cut short, solves awaiting their confirmation) run before it. A remeasure poses no new battery and
+ *  never counts. A continuation counts only its own rounds, so it names the batteries it has left. */
+function batteryCapTerminal(
+  round: number,
+  batteries: number,
+  cap: number | undefined,
+  next: NextMove | null,
+): string | null {
+  return cap !== undefined && batteries >= cap && next?.move !== "measure"
+    ? `operator-interrupted: battery cap ${cap} reached after completed round ${round} (--max-batteries sets it)`
+    : null;
+}
+
 /** The soft time boundary: read after a round records, so the battery in flight always finishes
  *  and the run overruns the boundary by at most one round. */
 function softBoundaryTerminal(
@@ -329,6 +345,7 @@ function stopForAnotherSource(
 function applyLaunchSlots(args: FullRunArgs, repoRoot: string, projectId: string): void {
   // Set on every launch, off included, so the condition is the flag's and never a `.env` file's.
   Bun.env[WITHHOLD_INSTRUMENTS_ENV] = String(args.withholdInstruments === true);
+  Bun.env[ANSWER_AGENT_ENV] = String(args.answerAgent === true);
   for (const slot of ["builder", "built", "review"] as const) {
     const selection = args.backendSelections?.[slot];
     if (selection !== undefined) setProjectBackendSelection(repoRoot, projectId, slot, selection);
@@ -393,6 +410,7 @@ async function runUnderLock(run: LockedRun): Promise<FullRunOutcome> {
   const rounds: FullRunRound[] = [];
   const loopStartedMs = Date.now();
   let blockedRounds = 0,
+    batteries = 0,
     completed: IterationResult | null = null;
   let authoringStall: UnresolvedAuthoringStall | null = null;
   for (let round = 1; ; round += 1) {
@@ -427,6 +445,8 @@ async function runUnderLock(run: LockedRun): Promise<FullRunOutcome> {
       report: roundReporter(project, manifest.slug, round, roundLimit, runId),
     });
     completed = result;
+    // A new battery is one a build or rebuild measured; a `measure` round solves unchanged bytes again.
+    if (pendingIteration.measured && result.decision.move !== "measure") batteries += 1;
     blockedRounds = nextBlockedRounds(blockedRounds, result);
     authoringStall = nextUnresolvedAuthoringStall(authoringStall, result);
     const curriculumTerminal = loopTerminal(result, {
@@ -437,6 +457,7 @@ async function runUnderLock(run: LockedRun): Promise<FullRunOutcome> {
     const terminal =
       curriculumTerminal ??
       softBoundaryTerminal(round, Date.now() - loopStartedMs, args.stopAfterMs) ??
+      batteryCapTerminal(round, batteries, args.maxBatteries, result.nextDecision) ??
       roundCapTerminal(round, roundLimit);
     recordRound(rounds, pendingIteration, terminal, result, manifest.slug);
     // No loop-end summary here: the recorded terminal evidence is the one owner of the ending, and

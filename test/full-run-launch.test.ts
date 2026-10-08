@@ -25,6 +25,7 @@ describe("the condition an operator may ask for", () => {
     [["--dcg", "false"], { dcg: false }],
     [["--withhold-instruments", "true"], { withholdInstruments: true }],
     [["--withhold-instruments", "false"], { withholdInstruments: false }],
+    [["--answer-agent", "true"], { answerAgent: true }],
     [["--context", "a.md", "--context", "b.md"], { contextPaths: ["a.md", "b.md"] }],
     [["--iteration-budget", "none"], { turnBudget: null }],
     [["--iteration-budget", "4"], { turnBudget: 4 }],
@@ -52,6 +53,7 @@ describe("the condition an operator may ask for", () => {
       "true | false",
     ]),
     [[...MIN, "--withhold-instruments", "yes"], "true | false"],
+    [[...MIN, "--answer-agent", "1"], "true | false"],
     // The digest is compared byte for byte against the recorded identity, so an uppercase spelling
     // accepted here would mismatch at launch, after the composed gate has already run.
     ...["abc", `${COMMIT}:${"b".repeat(63)}`, `${"A".repeat(40)}:${DIGEST}`, COMMIT].map(

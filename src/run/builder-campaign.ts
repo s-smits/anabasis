@@ -78,6 +78,7 @@ import { keyIfDefined, keyIfTruthy } from "../meta/optional-key.ts";
 import type { ProviderResourceBudget } from "./provider-resource-budget.ts";
 import type { Solver } from "../correctness-bundle/solve.ts";
 import { readableFingerprint, type ExperimentScope } from "./experiment-freeze.ts";
+import { type SplitSide, runSplitBuild, sideRows, sideView } from "./split-build.ts";
 
 export interface BuilderCampaignInput {
   campaignDir: string;
@@ -127,6 +128,9 @@ export interface BuilderCampaignDeps {
    */
   reviewIntervalMs?: number;
   open: BuilderSessionDeps["open"];
+  /** A split build's answer agent: its file tools and its wall per pass. `tools` is then the
+   *  Harness Builder's (split-build.ts). */
+  answer?: { tools: BuilderSessionDeps["tools"]; wallMs: number };
   recordSession?: BuilderSessionDeps["recordSession"];
   /** The run's one Builder conversation, paused between this campaign's round and the next. */
   conversation?: BuilderSessionDeps["conversation"];
@@ -232,12 +236,15 @@ class BuilderCampaignController {
   }
 
   /** What every opening turn carries, in the order the author reads it: what the round asks for,
-   *  then what the measured evidence advises without choosing its repair scope. */
-  openingContext(): string {
+   *  then what the measured evidence advises without choosing its repair scope. A split build's
+   *  Harness Builder reads only the rows its half owns: the ask, the advice and the earlier
+   *  attempts are about the whole tree, correctness model included. */
+  openingContext(side?: SplitSide): string {
+    const whole = side !== "harness";
     return [
-      roundContract(this.input),
-      this.input.advisoryNote,
-      advisory(this.input.priorEvidence?.feedback ?? []),
+      whole ? roundContract(this.input) : undefined,
+      whole ? this.input.advisoryNote : undefined,
+      advisory(sideRows(side, this.input.priorEvidence?.feedback ?? [])),
     ]
       .filter(Boolean)
       .join("\n\n");
@@ -246,11 +253,14 @@ class BuilderCampaignController {
   /** What only a fresh session's opening carries: the campaign's earlier attempts and the refusals
    *  still standing from them. A continued conversation read each refusal as the result that ended
    *  its round, so the session states this block only when it opens without one. */
-  freshContext(): string {
-    const history = iterationMemoryFindings(this.input.campaignDir)
-      .map((finding) => finding.detail)
-      .join("\n");
-    return [history, advisory(this.memory.carried)].filter(Boolean).join("\n\n");
+  freshContext(side?: SplitSide): string {
+    const history =
+      side === "harness"
+        ? ""
+        : iterationMemoryFindings(this.input.campaignDir)
+            .map((finding) => finding.detail)
+            .join("\n");
+    return [history, advisory(sideRows(side, this.memory.carried))].filter(Boolean).join("\n\n");
   }
 
   recordNonResult(error: BuildAgentTurnNonResult): void {
@@ -388,7 +398,7 @@ class BuilderCampaignController {
     return { ordinal, dir, iterationDir: join(this.input.campaignDir, dir) };
   }
 
-  private candidateCheckContext() {
+  candidateCheckContext() {
     return {
       slug: this.input.slug,
       exactTasks: this.input.expectedTasks,
@@ -514,8 +524,14 @@ class BuilderCampaignController {
   /** The advisory tools the session mounts beside submit: static inspection, one bounded
    *  solve-side rehearsal, the reopen reset and the pre-adoption validation sequence. None is an
    *  acceptance authority. A method rather than a free function because every context it hands a
-   *  tool is the controller's own, and passing them back in let a caller compose a different one. */
-  authoringTools(feedback: BuilderAuthorFeedback) {
+   *  tool is the controller's own, and passing them back in let a caller compose a different one.
+   *  A split build's answer agent holds its own conversation, so what its session has been told
+   *  once is that conversation's and never the Harness Builder's. */
+  authoringTools(
+    feedback: BuilderAuthorFeedback,
+    side?: SplitSide,
+    conversation: BuilderCampaignDeps["conversation"] = this.deps.conversation,
+  ) {
     const { input, deps } = this;
     // Compose inspection and trial where the candidate-check context is available. Both must use
     // the same slug, task count and fresh-candidate contract as submit; a check under different
@@ -526,26 +542,28 @@ class BuilderCampaignController {
       workspace: this.workspace,
       context: toolContext,
       feedback,
-      contract: roundContract(input),
+      ...keyIfDefined("contract", side === "harness" ? undefined : roundContract(input)),
+      ...keyIfTruthy("harnessView", side === "harness"),
     });
     // The round's own opening is the context tool's round source, so a session whose opening turn
     // compaction cut asks for it rather than guessing. It holds the fresh-session block too, which
     // is how a continued conversation reaches refusals compaction has since cut.
     const context = createContextTool({
-      round: [this.openingContext(), this.freshContext()].filter(Boolean).join("\n\n"),
+      round: [this.openingContext(side), this.freshContext(side)].filter(Boolean).join("\n\n"),
       workspace: this.workspace,
       ...keyIfDefined("history", input.measured?.history),
       ...keyIfDefined("traces", input.measured?.traces),
       rehearsals: this.rehearsals,
       user: input.userContext ?? EMPTY_USER_CONTEXT,
     });
-    const { builtSolver, conversation } = deps;
+    const { builtSolver } = deps;
     const trial = createHarnessTrialTool({
       workspace: this.workspace,
       context: toolContext,
       rehearsalDir: join(input.campaignDir, "rehearsals"),
       rehearsals: this.rehearsals,
       onRehearsal: (row, submitted) => this.reviews?.rehearsed(row, submitted),
+      ...keyIfTruthy("harnessView", side === "harness"),
       ...keyIfDefined(
         "builtSolver",
         builtSolver === undefined ? undefined : () => builtSolver(deps.providerBudget),
@@ -556,22 +574,26 @@ class BuilderCampaignController {
         conversation === undefined ? undefined : (key: string) => conversation.tellOnce(key),
       ),
     });
-    const reset = createHarnessResetTool({
-      workspace: this.workspace,
-      ...keyIfDefined("resetKey", input.resetKey),
-    });
+    // A split build mounts no reset, which can return either half to the seed from either side.
+    const reset =
+      side === undefined
+        ? [createHarnessResetTool({ workspace: this.workspace, ...keyIfDefined("resetKey", input.resetKey) })]
+        : [];
     // Submit without adoption: the controller's own validation sequence on the same workspace, candidate-check context, probe
     // pack and gate, so the rows the Builder reads here are the rows a submit refusal would carry. A
     // scripted session that mounts no gate has no validation sequence to preview and gets no such tool.
     const { gates } = deps;
-    if (gates === undefined) return [context, inspect, trial, reset];
+    if (gates === undefined) return [context, inspect, trial, ...reset];
     const correctnessCheck = createCorrectnessCheckTool({
-      preview: () => this.preview(gates),
+      preview: async () => {
+        const report = await this.preview(gates);
+        return side === undefined ? report : sideView(report, side);
+      },
       expectedTasks: input.expectedTasks,
       ...keyIfDefined("minTasks", input.minTasks),
       feedback,
     });
-    return [context, inspect, trial, reset, correctnessCheck];
+    return [context, inspect, trial, ...reset, correctnessCheck];
   }
 }
 
@@ -632,49 +654,70 @@ export async function runBuilderCampaign(
   // One writer for checkpoints and the settled record, so a host kill between two writes leaves
   // the last checkpoint standing as evidence instead of a half-written pair.
   const writeExecution = builderExecutionEvidenceWriter(input.campaignDir);
+  // The execution record survives a host kill at this boundary; the authoring tree does not.
+  // A run that dies between gates leaves an epoch holding only its seed commit, so hours of
+  // authored bytes exist in no history and no cycle series can read them. The salvage commit
+  // `beginIteration` makes here is the same one the next iteration would have made, it
+  // returns null on a clean tree, and `attributableChange` already spans the round base, so a
+  // gate's changed paths and its unchanged reading are untouched.
+  const recording = (write: typeof writeExecution) => ({
+    onExecution: write,
+    onCheckpoint: (evidence: Parameters<typeof writeExecution>[0]) => {
+      write(evidence);
+      beginIteration(controller.workspace, "checkpoint");
+    },
+  });
+  const sessionInput: Parameters<typeof runBuilderSession>[0] = {
+    slug: input.slug,
+    kickoff: input.kickoff,
+    workspace: controller.workspace,
+    seed,
+    advisory: controller.openingContext(),
+    freshContext: controller.freshContext(),
+    ...keyIfDefined("maxTurns", input.maxTurns),
+    ...keyIfDefined("webSearch", input.webSearch),
+  };
   let outcome: Awaited<ReturnType<typeof runBuilderSession>>;
   try {
-    outcome = await runBuilderSession(
-      {
-        slug: input.slug,
-        kickoff: input.kickoff,
-        workspace: controller.workspace,
-        seed,
-        advisory: controller.openingContext(),
-        freshContext: controller.freshContext(),
-        ...keyIfDefined("maxTurns", input.maxTurns),
-        ...keyIfDefined("webSearch", input.webSearch),
-      },
-      {
-        open: deps.open,
-        ...keyIfDefined("recordSession", deps.recordSession),
-        ...keyIfDefined("conversation", deps.conversation),
-        // The review beside the session: its advice at a completed call, its join at submit. A
-        // settled round runs neither, because the session stops calling both once submit has
-        // accepted or finally refused. An adopted product is reviewed after measurement instead.
-        ...keyIfDefined("afterTool", controller.reviews?.afterTool),
-        ...keyIfDefined("beforeSubmit", controller.reviews?.join),
-        tools: [...deps.tools, ...authoringTools],
-        ...keyIfDefined("turnTimeoutMs", deps.turnTimeoutMs),
-        ...keyIfDefined("observer", deps.observer),
-        submit: (request) => controller.submit(request),
-        feedback,
-        onExecution: writeExecution,
-        // The execution record survives a host kill at this boundary; the authoring tree does not.
-        // A run that dies between gates leaves an epoch holding only its seed commit, so hours of
-        // authored bytes exist in no history and no cycle series can read them. The salvage commit
-        // `beginIteration` makes here is the same one the next iteration would have made, it
-        // returns null on a clean tree, and `attributableChange` already spans the round base, so a
-        // gate's changed paths and its unchanged reading are untouched.
-        onCheckpoint: (evidence) => {
-          writeExecution(evidence);
-          beginIteration(controller.workspace, "checkpoint");
-        },
-        ...keyIfDefined("attemptGate", attemptGate),
-        ...keyIfDefined("providerBudget", deps.providerBudget),
-        ...keyIfDefined("waitMs", deps.waitMs),
-      },
-    );
+    const sessionDeps: BuilderSessionDeps & { submit: NonNullable<BuilderSessionDeps["submit"]> } = {
+      open: deps.open,
+      ...keyIfDefined("recordSession", deps.recordSession),
+      ...keyIfDefined("conversation", deps.conversation),
+      // The review beside the session: its advice at a completed call, its join at submit. A
+      // settled round runs neither, because the session stops calling both once submit has
+      // accepted or finally refused. An adopted product is reviewed after measurement instead.
+      ...keyIfDefined("afterTool", controller.reviews?.afterTool),
+      ...keyIfDefined("beforeSubmit", controller.reviews?.join),
+      tools: [...deps.tools, ...authoringTools],
+      ...keyIfDefined("turnTimeoutMs", deps.turnTimeoutMs),
+      ...keyIfDefined("observer", deps.observer),
+      submit: (request) => controller.submit(request),
+      feedback,
+      ...recording(writeExecution),
+      ...keyIfDefined("attemptGate", attemptGate),
+      ...keyIfDefined("providerBudget", deps.providerBudget),
+      ...keyIfDefined("waitMs", deps.waitMs),
+    };
+    const { answer } = deps;
+    outcome =
+      answer === undefined
+        ? await runBuilderSession(sessionInput, sessionDeps)
+        : await runSplitBuild({
+            wallMs: answer.wallMs,
+            files: { harness: deps.tools, answer: answer.tools },
+            input: sessionInput,
+            deps: sessionDeps,
+            context: controller.candidateCheckContext(),
+            side: (side, sideFeedback, conversation) => ({
+              tools: controller.authoringTools(sideFeedback, side, conversation),
+              advisory: controller.openingContext(side),
+              freshContext: controller.freshContext(side),
+            }),
+            record: () => recording(builderExecutionEvidenceWriter(input.campaignDir)),
+            stall: () => {
+              controller.terminalClause ??= "authoring-stalled";
+            },
+          });
   } catch (error) {
     if (error instanceof BuildAgentTurnNonResult) controller.recordNonResult(error);
     throw error;

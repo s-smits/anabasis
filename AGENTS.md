@@ -96,10 +96,14 @@ because moving it cost something.
    verifier-host and tool failures leave `truthOk` and `pass` `null`. A battery of them yields an
    operational result, never a capability rate and never a fail.
 5. **The Builder chooses task variance and complexity.** The loop prescribes no axis, step size, family
-   mix or parent bijection. Levels and bands describe recorded conditions and command nothing.
+   mix or parent bijection. Levels and bands describe recorded conditions and command nothing. In a split
+   build the choice is the answer agent's, since it writes the tasks; the Harness Builder never raises them.
 6. **Verifier output is protected.** Stdout, stderr, issue text, counterexamples, reference artifacts and
    per-task failure locations never reach the Builder, the Judge, the diagnosis reader or an authoring
-   prompt. Change only protected detail, and every prompt digest must come out unchanged (rule 4).
+   prompt. Change only protected detail, and every prompt digest must come out unchanged (rule 4). In a
+   split build this holds for both the answer agent and the Harness Builder. The Harness Builder also never
+   reads the correctness model: the candidate-isolation wall denies it correctness-model/, and it hears
+   only the findings its producers mark as agent/'s (`markHarnessSide`).
 7. **A task-only comparison keeps its product fixed.** The agent, the tools and the scoring program stay
    put while the battery, its controls and its reference solve change, and even then the comparison needs
    a matching measured model, isolation, thresholds and resources.
@@ -140,7 +144,11 @@ because moving it cost something.
 Four owners divide the work, and what each one never owns matters as much as what it does. The Harness
 Builder, a model, owns the reading of the request, the research, the representation, the task families,
 the controls, the tools, the verifier content and its own notes; it never owns the
-verifier pin, case truth or adoption. The Built Harness, also a model, owns solving the public tasks with
+verifier pin, case truth or adoption. In a split build (`--answer-agent true`, `src/run/split-build.ts`)
+an answer agent, also a model, takes the correctness model from it: the brief, the task families with
+their hidden expectations, the evaluator and its checks, the reference solve and the controls. The
+Harness Builder keeps `agent/` and reads only the public projection the controller writes to
+`public/tasks.json` and `public/resources.json`. The Built Harness, also a model, owns solving the public tasks with
 its closed roster, through one draft and one submit path, and never sees the hidden tasks, the controls,
 the verifier source or the claim state. The measurement kernel is code, and it owns identity, verifier
 acquisition, isolation, the controls census, verification, non-results, denominators, claims, rollback,
@@ -298,17 +306,22 @@ Progress is read on that line (`wri.ts climb`, `climb-velocity/v2`), with five n
   fail whose task, posed the same way, passed another solve under the same solver (agent bytes, Built
   pin, run condition, tool tree) is a **flip**, the solver's variance and not a limit, and never counts
   as answered. In trusses-26, 13 tasks solved 59 times that way failed twice, and both fails passed in
-  the battery beside them (2026-10-02).
+  the battery beside them (2026-10-02). A fail that failed every other such solve, `AGREEING_SOLVES` (3)
+  in all, is **confirmed**; the controller makes those solves before the Builder reads the fail (rule
+  10). A confirmed fail whose task the next battery carries unchanged and that passes there after the
+  agent changed is **answered**, and the scoreboard reads answered per confirmed fail. A verified fail
+  the Judge contested, one the completed review disposed of or left unsettled, is no earned fail: it
+  is counted apart, as an instrument-dispute candidate (`contested`).
 
 A zone cannot stand in for these, since 3/3 places `over-aim` and passes everything. A change that raises
 a score, adds tasks or renames levels without moving the line has not served the goal.
 
-An **earned fail** is a verified fail that the review did not settle against its check and that the solve
-wall did not stop (`followUpOf`); the Judge sets no score and is not part of it. One swing of the line is a
-**climb step**: a battery with an earned fail, a harness change that answers it, the same task passing, a
-battery that asks more, and a partial battery again. No run completed one between 2026-09-23 and
-2026-10-01 ("Open gaps"). Signal counts only the first of those links, and it is too rare to settle a
-comparison at the size we run. Of the 322 batteries scored in that window, 11 held a fail nobody contested,
+An **earned fail** is a verified fail that the Judge did not contest and that the solve wall did not stop
+(`followUpOf`); the Judge sets no score, and a fail it contested is read apart. One swing of the line is a
+**climb step**: a battery with a confirmed earned fail, a harness change that answers it, the same task
+passing, a battery that asks more, and a partial battery again. No run completed one
+between 2026-09-23 and 2026-10-01 ("Open gaps"). Signal counts only the first of those links, and it is
+too rare to settle a comparison at the size we run. Of the 322 batteries scored in that window, 11 held a fail nobody contested,
 in a census that counted contests by the Judge as well, so an arm of eight batteries sees one with a
 probability near 0.24, and showing that a change doubled the rate would take about 650 batteries an arm.
 So read the share of the solve wall beside it (`wri.ts walls`), which moves on every battery. In truss it
@@ -369,7 +382,7 @@ component hears what is the part most often misremembered, so here it is in one 
 
 | reader | what it receives | what it changes |
 | --- | --- | --- |
-| Builder | the readout: each of the newest 3 batteries' three counts, wall-bound misses, identity aliases, regrades and settled cases; the latest battery's families and where its passing artifacts are; the no-limit line on a full pass. Never a zone, aim, share or count to author towards (prior 10). | its next battery |
+| Builder | the readout: each of the newest 3 batteries' three counts, wall-bound misses, identity aliases, regrades and settled cases; the latest battery's families and where its passing artifacts are; the no-limit line on a full pass, and the keep line after a failed case. Never a zone, aim, share or count to author towards (prior 10). | its next battery |
 | battery sizing | the latest landing's placement | the next round's task count |
 | Epoch Reviewer | the placement in words (`readingSentence`), as a reason to look | its findings, and through them the advice |
 | controller's next move | nothing | — |
@@ -378,16 +391,23 @@ component hears what is the part most often misremembered, so here it is in one 
 So the prompt a too-easy battery gives the Builder is the no-limit line, and it fires on a full pass,
 not on the zone: the latest battery has at least one verified case, no unaccepted attempt, and every
 verified case passed (`noLimitLine`). A 9 of 10 reads significantly too easy, shrinks the next battery
-and orients the reviewer, and sends the Builder no line beyond its counts. The zone was kept from the
+and orients the reviewer, and sends the Builder its counts and the keep line (`keepFailedLine`), as any
+battery that failed a case, unaccepted attempts included, does: keep each failed task as it is, its public
+input and checks unchanged, unless a review shows a check refused a right answer. Before it, one sentence
+counts the battery's verified fails by group, the solves of each task under the same bytes and solver that
+decided whether it was solved again (`failGroups`, "1 task failed 3 of 3 solves"), and names the battery
+whose completed review settled any of them against its check, since a remeasure on a reviewed condition is
+not reviewed again and its own row carries no settlement. It names no task, check, location or cause. Until 2026-10-07 a partial battery read as counts alone, and in six chances to follow
+an earned fail the Builder changed `agent/` once and dropped or eased the failed task three times. The zone was kept from the
 Builder on purpose: a zone read back to the author decided nothing the counts beside it did not already
 say, and it read as a course (prior 10).
 
 The controller's next move (`decideNextMove`, `src/run/next-move.ts`) reads no placement at all. It
 builds when no product is adopted, stops on an environment fact that ends the session (`endsSession`),
-measures a condition that has not been measured, remeasures a battery the environment cut short on
-unchanged bytes, and otherwise opens a rebuild. `rebuild` is the retained name for authoring on the
-adopted product, not an order to redesign. The controller never stops on a reading of the tasks
-(`LoopState`), so stopping a flat run is the operator's call, which `bun run runs pulse` names when it
+measures a condition that has not been measured, remeasures on unchanged bytes a battery the environment
+cut short or one holding a solve that contradicts its task's reading (rule 10), and otherwise opens a
+rebuild. `rebuild` is the retained name for authoring on the adopted product, not an order to redesign.
+The controller never stops on a reading of the tasks (`LoopState`), so stopping a flat run is the operator's call, which `bun run runs pulse` names when it
 arrives.
 
 **Battery sizing** has one owner, `POLICY.battery` in `src/critic/policy.ts` (`floor 5`, `default 25`,
@@ -424,7 +444,15 @@ after read only that every case had passed. It ends with
 `MEASURE_SOLVES`, which sends the Builder to how the passing solves reached their answers, because a
 limit moved or an instance enlarged while the same steps would still find an answer asks nothing new.
 The rebuild advice packet sits beside it, and a finding that recurs says how many consecutive batteries
-have admitted it and since which.
+have admitted it and since which. It sorts the issues it shows by what is known of them (`LEAD_OF`): a
+fail, verified or unaccepted, is an observation that may locate a limit, a diagnosis is a hypothesis
+until evidence shows the defect, and a Judge disagreement is pending review until a review settles it.
+Only a non-result is shown under the "Standing issues" lead, the six issues shown are shared in lead
+order so a fail is never cut for a larger non-result, and a defect evidence has shown reaches its
+bundle file as feedback. Until 2026-10-07 every verified fail stood under one "Standing issues" list,
+which read an earned fail as a defect to repair. One check carrying every failure reads three ways,
+none first: the answers are wrong, which may be a limit; the check refuses right answers; or the
+tasks leave the answer open.
 
 **Authoring.** Ambitious is what the Builder does:
 
@@ -473,8 +501,9 @@ epoch, one copy and one independent accept per task, so it stayed silent; confor
 independent accept of six in five of six epochs, and the Builder carried it anyway.
 
 **Rehearsal and submit.** `harness_trial` solves one task blind with the measured Built solver (rule 14),
-so a passing rehearsal shows that task is within the solver's reach, and the task the Builder expects to
-be hardest is the one whose rehearsal says most. The round prompt (`src/author/builder-session.ts`) says
+so a passing rehearsal shows that task is within the solver's reach. Its result forecasts no battery,
+and a miss says the checks rejected the answer without saying whether the answer is wrong, a check
+refuses a right answer or the task leaves the answer open. The round prompt (`src/author/builder-session.ts`) says
 that a battery whose every rehearsal passed is on course to pass every case, so before submitting it the
 Builder raises what its hardest tasks demand once, by depth (prior 10) rather than more tasks, families
 or inputs, and rehearses one of them again. The route is named there because the no-limit line
@@ -487,7 +516,7 @@ rehearsal fails: nothing holds a submit on rehearsals, because the measured batt
 lands (`WITNESS`, in the battery contract), and a rehearsal hold of that kind cost whole rounds (96 of 99 predicted passes at ≤0.3 did pass;
 "What has cost whole rounds"). Across 241 batteries from 2026-09-25 on, the rehearsed task had sat at
 chance in its battery's solve-time order: in 111 single-rehearsal rounds it was the slowest in 18, at a
-mean rank of 0.48 against 0.50. The two Sol runs on 887c163ee each submitted on one rehearsal that passed
+mean rank of 0.48 against 0.50, so since 2026-10-07 the round prompt names no task to rehearse. The two Sol runs on 887c163ee each submitted on one rehearsal that passed
 in its first turn, citing "submit once a clear preview says it works" as the user's instruction with the
 sentence on a pass's reach already in front of them (primary lanes, 2026-09-30). Each `harness_trial`
 result also totals the round's graded rehearsals, because verdicts read one call at a time were never
@@ -495,9 +524,9 @@ added up: three recorded campaigns rehearsed and shipped anyway with 12 of 16 ve
 
 **Measurement.** Recorded solves are reused where the exam did not move (rule 10): an evaluation
 correction under the same solving condition regrades the recorded submissions, a battery the environment
-cut short is remeasured on unchanged bytes before any rebuild, and a repeat of an exam an at-or-above-aim
-battery already sat is measured afresh and recorded as `repeat`. The readout marks regraded cases, because
-a regrade is an earlier solve graded again and not a new solve.
+cut short or holding an unconfirmed solve is remeasured on unchanged bytes before any rebuild, and a
+repeat of an exam an at-or-above-aim battery already sat is measured afresh and recorded as `repeat`. The
+readout marks regraded cases, because a regrade is an earlier solve graded again and not a new solve.
 
 **Review.** The Epoch Reviewer reads the placement as a reason to look and never an obligation to find
 something (rule 9). A finding about easy tasks names the request obligation they leave undemanded, owned
@@ -535,7 +564,8 @@ decision with the battery it reads, and the climb's `flat` line is the lead for 
 A run that has just measured an earned fail is the one worth keeping. Five of the 11 batteries with an
 uncontested fail since 2026-09-23 were the last their run measured, all four of Opus 5's among them, so
 the step each had opened was never read. Let such a run measure at least two more batteries before
-stopping it, and read whether the harness changed between them (the adopted fingerprint's `agentHash`).
+stopping it, past the remeasures that confirm the fail on unchanged bytes (rule 10), and read whether the
+harness changed between them (the adopted fingerprint's `agentHash`).
 
 ### Open gaps: the four blockers to a climb
 
@@ -577,9 +607,10 @@ and has not been re-derived here.
    had before its first simulation. So neither the size of the search nor the solver's hold on the
    check is what these tasks lack; they ask for work the public text settles. Two kinds remain
    unmeasured. One is an answer the field already recorded, such as a merged fix or a published result,
-   which no surface names. The other is a second author: a split build, in which an answer agent writes
-   the correctness model behind a wall from the author of `agent/`, was written on 2026-09-30
-   (`claude/answer-builder`, three local commits) and has neither landed nor run. Owner: the witness
+   which `examples.md` offers as a construction since 2026-10-07. The other is a second author: a
+   split build, in which an answer agent writes the correctness model behind a wall from the author
+   of `agent/`, is in the source behind the launch option `--answer-agent` (default false) and has
+   not run. Owner: the witness
    route, in `starter-pack/examples.md`.
 2. **An earned fail is not followed up.** Of the 322 batteries, 33 were partial and 11 held a fail
    nobody contested, 8 in truss and 3 in firmware (those three are the one-minute-wall drafts below).
@@ -590,10 +621,14 @@ and has not been re-derived here.
    times in 6, and none of the 359 difficulty decisions on record eases. The Builder can tell which
    task failed, since the passing solves reach it by task id and the failed task is the one without
    one, but not where or why, which is protected (rule 6): after a partial battery `renderReadout`
-   gives it the counts, the families and the passing artifacts, and the no-limit line speaks only
-   after a full pass. Nothing asks it to keep that task, and the controller does not measure it again
-   (`decideNextMove` measures again only the cases the environment cut short). The climb reader's
-   follow-up line now shows what each run did with its earned fails. Owner:
+   gives it the counts, the families and the passing artifacts, and since 2026-10-07 asks it to keep
+   each failed task under the same task id unless a review shows a check refused a right answer or
+   the task leaves the answer open (`keepFailedLine`), not yet measured. The controller now solves a
+   verified fail again while every solve in its group failed, three solves in all, before the
+   Builder's next round, unless blocking feedback stands (`unconfirmedSolves`, rule 10), so a fail
+   that passes there reads as the flip it is, and the climb reader's follow-up line counts each
+   run's confirmed and answered fails and, apart, the fails the Judge contested. What still binds is
+   keeping a confirmed task while the harness changes. Owner:
    `src/run/next-move.ts` and the battery the next round measures, and the operator's stop ("Reading
    the climb as the operator").
 3. **The measure cannot show a change at the size we run.** Eight batteries an arm cannot separate two
@@ -615,8 +650,8 @@ and has not been re-derived here.
    1.5 depending on the domain. Each Opus run also yields less as runs are added: 0.160 batteries per
    run-hour at about two live runs, 0.094 at about six and 0.067 at about nine. The launcher now holds
    the load and the live runs (`launch-run`, "Launch a run"); the rate of change has no such guard.
-   Owner: the Super Loop's pace (`run-improvement-campaign`), one measured change at a time on a tree
-   that holds still.
+   Owner: the Super Loop's pace (`run-improvement-campaign`), one measured change, or one bundle while
+   task sets sit at a full pass ("Ablated components"), at a time on a tree that holds still.
 
 The first is model-visible where it changes `examples.md` or opens a split build. The second, third
 and fourth are the controller's, the readers' and the operator's, and move no prompt.
@@ -665,16 +700,8 @@ Beneath the four, the task side still has these gaps. Delete a bullet in the com
   easy. The added tasks are not isolated as the cause: 10 of the 11 former-limit tasks carried unchanged
   passed again, and 11 of the 13 transitions changed the scoring program. The Builder heard only "Task count: exactly N tasks". Owner:
   `renderProbeSizing`, which now names the hardest families' demand at graduation, not yet measured.
-- **The worked example is a toy.** The one worked domain in `starter-pack/examples.md` is a duty
-  roster: one or two shifts, one public rule, a greedy reference, and families that differ in size. Its
-  list of targets the solver does not reliably meet leads with three limit-tightening routes and puts
-  demand last. At least 52 of 310 Builder sessions since 2026-09-23 read it (13 through the read tool,
-  39 in prose or compaction read-lists; reads through bash are unrecorded). Replace it with families
-  that differ by which requirements interact under one shared limit, an obvious answer that fails, and a
-  very hard family, which is where the operator's aim at very hard reaches the Builder, with no count
-  (prior 10).
 - **The Epoch Reviewer could not name requirements exercised one at a time.** `DEMAND_GAPS` now holds
-  `requirements-one-at-a-time`, not yet measured; its orientation still reads easy tasks as a result.
+  `requirements-one-at-a-time`, not yet measured.
 - **The expected-output oracle is unmeasured.** The firmware `rules.ts` is both the check's expectation
   and the solver's `expected_behaviour`, so the solver can compute every expected value before it
   submits, which `PUBLICATION_CLAUSE` calls the field's own work.
@@ -759,7 +786,15 @@ to 80. Each prediction is frozen before its arm launches.
 Arms are compared on a discovery seed first. A confirmation seed, from another campaign, is launched
 only after every arm's source is fixed, and nothing read from it revises an arm.
 
-No component is ablated in the landed source at present. Nine arms wait on refs:
+While task sets sit at a full pass, changes that pull the same way run as one bundle against main,
+and the bundle is split into its arms only after it climbs (operator, 2026-10-07): an arm alone
+cannot be separated at the size we run ("Open gaps", the third blocker), and a full pass leaves it
+no fail to move. The arm protocol above stays for single-change comparisons. The blockers in "Open
+gaps" are worked in their ranked order, so a gate is not the first lever.
+
+No component is ablated in the landed source at present. Nine arms wait on refs. The five marked
+folded landed on 2026-10-07 in the climb bundle rather than alone, as their entries say, under review
+policy v17 rather than an arm's name; each keeps its ref for that split:
 
 - **`held-findings` (arm, added, 2026-10-01).** `harness_trial` starts no solve while the round's
   latest gate result is a `correctness_check` that found blocking rows on the very bytes being
@@ -774,25 +809,28 @@ No component is ablated in the landed source at present. Nine arms wait on refs:
   misses. Grep: `rg "ADDED\(held-findings\)"`. Prediction and run: filled when this arm launches.
   Ref `refs/arms/held-findings`: the stack top plus this one commit.
 
-- **`miss-reading` (arm, 2026-10-01).** The sentence `harness_trial` returns with a graded miss, "so a
+- **`miss-reading` (arm, 2026-10-01; folded).** The sentence `harness_trial` returns with a graded miss, "so a
   battery of tasks like it scores near zero" (`trialNextAction` in `src/builder/harness-trial.ts`). In
   its place the result says the checks rejected the submitted answer, that either the answer is wrong,
   which is a limit, or a check refuses a right answer, and that the result does not say which. Of 47
   recorded rehearsal misses (1,064 rehearsals since 2026-09-23), 36 were a check or its instrument
   refusing a right answer, 7 were real and 4 were under-specified tasks; 23 were never rehearsed again
   and 3 kept the task with its public text unchanged. The pass sentence and the round tally stay.
+  Folded with a third reading, a task that leaves the answer open, and with the pass sentence's and
+  the tool description's forecasts of the battery taken out too.
   Grep: `rg "ABLATED\(miss-reading\)|ADDED\(miss-reading\)"`. Prediction and run: filled when this
   arm launches.
   Ref `refs/arms/miss-reading`: the stack top plus this one commit.
 
-- **`hardest-guess` (arm, 2026-10-01).** The round prompt's "A passing rehearsal is a blind solve of
+- **`hardest-guess` (arm, 2026-10-01; folded).** The round prompt's "A passing rehearsal is a blind solve of
   its task, so it shows that task is within the solver's reach, and the task you expect to be hardest
   is the one whose rehearsal says most about the battery", and the word "hardest" in the raise that
   follows it (`roundPrompt` in `src/author/builder-session.ts`). The sentence relies on the Builder
   predicting which task is hardest: its predicted pass probability averaged 0.41 against an observed
   0.94, and the rehearsed task sat at chance in its battery's solve-time order (mean rank 0.48 against
   0.50). Its first half restates the witness line the round opens with. The raise, its route "act
-  together" and the one rehearsal after it stay. Grep:
+  together" and the one rehearsal after it stay. Folded without the second change: "hardest" stays in
+  the raise. Grep:
   `rg "ABLATED\(hardest-guess\)|ADDED\(hardest-guess\)"`. Prediction and run: filled when this arm
   launches.
   Ref `refs/arms/hardest-guess`: the stack top plus this one commit.
@@ -819,7 +857,7 @@ No component is ablated in the landed source at present. Nine arms wait on refs:
   arm launches.
   Ref `refs/arms/rehearsal-price`: the stack top plus this one commit.
 
-- **`hardness-observation` (arm, 2026-10-01).** In the Epoch Reviewer's lead for a battery on or below
+- **`hardness-observation` (arm, 2026-10-01; folded).** In the Epoch Reviewer's lead for a battery on or below
   the aim, "and hardness is the last of its readings rather than the first" and the closing "Record an
   observation of hardness, owned by correctness-model/tasks.json, once you have read the brief and the
   writer schema against the artifact and neither holds" (`PLACEMENT_LEADS.below` in
@@ -827,12 +865,14 @@ No component is ablated in the landed source at present. Nine arms wait on refs:
   and "or hardness" (`src/review/epoch-review-findings.ts`). The observation reaches the Builder as
   "no check or path named; an observation, not a demonstrated defect" on the task set, so an earned
   fail, on the battery the climb wants, arrived as an advisory against its tasks. The lead, both
-  probes and their owners stay. The review policy string carries the arm's name while it is on. Grep:
+  probes and their owners stay. Folded with the lead naming real difficulty, valid answers the checks
+  reject, too little checking and an answer the tools cannot represent as competing explanations,
+  none first. The review policy string carries the arm's name while it is on. Grep:
   `rg "ABLATED\(hardness-observation\)|ADDED\(hardness-observation\)"`. Prediction and run: filled
   when this arm launches.
   Ref `refs/arms/hardness-observation`: the stack top plus this one commit.
 
-- **`easy-result` (arm, 2026-10-01).** In the Epoch Reviewer's lead for a battery above the aim, "and
+- **`easy-result` (arm, 2026-10-01; folded).** In the Epoch Reviewer's lead for a battery above the aim, "and
   tasks that were easy while leaving none undemanded are a result to report, not a defect to record"
   (`PLACEMENT_LEADS.above` in `src/review/epoch-reviewer.ts`). A battery that passes whole found no
   limit, and "Evidence and implementation status" records this clause as an open gap: the orientation
@@ -843,13 +883,14 @@ No component is ablated in the landed source at present. Nine arms wait on refs:
   launches.
   Ref `refs/arms/easy-result`: the stack top plus this one commit.
 
-- **`one-check-question` (arm, 2026-10-01).** The rebuild advice's "One check carrying every failure
+- **`one-check-question` (arm, 2026-10-01; folded).** The rebuild advice's "One check carrying every failure
   asks whether its rule is stated in the public contract before the count reads as solver capability"
   (`blockingLine` in `src/author/rebuild-advice.ts`), appended after a partial battery whose verified
   failures all sat on one declared check; the Epoch Reviewer's battery block renders the same line. It
   met a located limit by pointing at the Builder's own contract, which the publication clause already
   asks about once, and 11 of 47 rehearsal misses came back with their public text changed. The
-  per-check counts stay. Grep: `rg "ABLATED\(one-check-question\)|ADDED\(one-check-question\)"`.
+  per-check counts stay. Folded as three readings, none first, in place of the question. Grep:
+  `rg "ABLATED\(one-check-question\)|ADDED\(one-check-question\)"`.
   Prediction and run: filled when this arm launches.
   Ref `refs/arms/one-check-question`: the stack top plus this one commit.
 
@@ -945,8 +986,9 @@ select product bytes and nothing else.
 ### Before launch
 
 1. Choose one change from a recorded failure, wasted work or an open decision, and name its owner and a
-   falsifier before writing code. Prefer deleting the competing owner, then reusing the existing one, then
-   adding the minimum.
+   falsifier before writing code. While task sets sit at a full pass, the change may be one bundle of
+   changes that pull the same way ("Ablated components"), each part with its owner. Prefer deleting
+   the competing owner, then reusing the existing one, then adding the minimum.
 2. Prove the path cheaply (`system-path-simulation`). The strongest cheap proof is a script in gitignored
    `.scratch/` that imports the exported production function and replays it over every recorded campaign
    on disk. Before adding a refusal or a gate, count the recorded rounds on which it would have fired,
@@ -975,13 +1017,15 @@ select product bytes and nothing else.
    round ceiling: they continue until a typed terminal, an exhausted budget, required user input or a
    direct stop. `--stop-after-ms` is a soft boundary, in that the round in flight finishes and records
    before the stop, and provider reset waits count against it, so give a generous one, or none, when the
-   question needs several rounds. "Proof run", "one epoch" and "at least one" set a minimum, not a
-   maximum.
+   question needs several rounds. `--max-batteries N` ends a run once it has measured N new batteries
+   of its own (a build or rebuild that measured) and its next move is no `measure`, so the last
+   battery's remeasures run first; a remeasure never counts, and the opening records N. "Proof run",
+   "one epoch" and "at least one" set a minimum, not a maximum.
 
 ```text
 bun run fullrun -- --prompt "<request>" --provider-turn-budget N [--project <id>]
   [--context <path> ...] [--expected-source <commit>:<digest>] [--run <runId>]
-  [--max-iterations N] [--stop-after-ms N] [--max-builder-turns N] [--expected-tasks N]
+  [--max-iterations N] [--max-batteries N] [--stop-after-ms N] [--max-builder-turns N] [--expected-tasks N]
   [--iteration-budget N|none] [--product-policy fixed] [--dcg true|false]
   [--withhold-instruments true|false]
   [--builder-backend <kind>] [--built-backend <kind>] [--review-backend <kind|disabled|inherit>]
@@ -1054,7 +1098,8 @@ every identity except the tested variable, and grade the attribution `proven`, `
 
 Give each valid defect one owner, and then pick **one** move: retain and measure, fix the demonstrated
 owner, delete a mechanism with no consumer, investigate a consequential ambiguity, or stop. Keep the next
-comparison to a single variable, and batch related fixes one PR per owner, one gate per batch.
+comparison to a single variable, or to one bundle while task sets sit at a full pass ("Ablated
+components"), and batch related fixes one PR per owner, one gate per batch.
 
 ### What has cost whole rounds here
 
@@ -1271,7 +1316,7 @@ the battery was paid for.
    cites a contrast, and grades nothing from them: until 2026-09-29 it turned those counts into a
    confidence label. The reader opens no `verifier.json`, Judge record or accepted artifact, so
    protected detail cannot move its `promptDigest`, which is why its boundary and falsifier may reach
-   the author. The advice renders them with support counts, and the cause stays in the record for the
+   the author. The advice renders them with support counts, as a hypothesis, and the cause stays in the record for the
    Epoch Reviewer. The named owner routes nothing. Treat a timeout as diagnosable unless the evidence
    gives it to the environment.
 
@@ -1417,10 +1462,23 @@ the battery was paid for.
     reused, changedPasses}`, because a correction moves the evaluator alone and a fresh solve would add the
     solver's own variance to that one variable. A battery the environment cut short, meaning every non-result
     solver-side and environment-owned, the hashes and the solving condition unchanged and fewer than
-    `environmentBlockedRounds` prior remeasures, is remeasured before any rebuild: `censoredRemeasure`
-    re-solves the censored cases and regrades the rest, and a moved condition sends the round to rebuild. A
-    *repeat* posing the exam an at-or-above-aim battery already sat is measured afresh and recorded as
-    `repeat`, because a second solve can show whether a full pass was reliable where a regrade only reads the
+    `environmentBlockedRounds` prior remeasures, is remeasured before any rebuild: `remeasureOf`
+    re-solves the censored cases and regrades the rest, and a moved condition sends the round to rebuild.
+    The same remeasure solves again each fresh fail not yet confirmed (`unconfirmedSolves`): a fail is
+    solved again while its group, the task's fresh solves of one exam (the case row's `examHash`:
+    the agent, the correctness model, the tool tree and that task's own bytes) on one pin, run
+    condition and effort, holds fewer than `AGREEING_SOLVES` solves and every one failed, so the
+    Builder never reads a fail on one solve alone. An edit of the task, the agent, the correctness
+    model or the tools starts a new group; another task's edit does not, so a fail the Builder keeps
+    (`keepFailedLine`) keeps the solves that confirmed it. One pass in the group makes
+    the fail a flip, and the case is not solved again; a pass is never solved again. A case awaiting a
+    solve is never regraded, so a round that blocking feedback gives to the Builder first solves it
+    afresh. Neither the Judge nor the review chooses which fails are solved again, so a fail the review
+    settled against its check is solved like any other, and so is a fail the solve wall cut; an
+    unaccepted attempt is not. A battery whose every case failed or was cut short is measured again
+    whole and records `regrade: {reused: 0}`, so its chain of remeasures stays bounded.
+    A *repeat* posing the exam an at-or-above-aim battery already sat is measured afresh and
+    recorded as `repeat`, because a second solve can show whether a full pass was reliable where a regrade only reads the
     same attempts again; the submit refusal it met until 2026-09-29 (`identical-exam-over-aim`) never fired in
     the recorded corpus. A repeat is the adopted product measured again, so promotion selects it like any
     measured candidate with a verified case and its packet becomes the next round's evidence, whether the
@@ -1504,7 +1562,7 @@ the battery was paid for.
     or easier by itself; blind measurement decides, and its one reading of the third, six truss tasks, did
     not show it (prior 10). Tightening stays legitimate, since a slack limit is a finding about its
     reference, and a longer search stays an optional method; what the evidence does not support is
-    leading with it as the route to difficulty, as `examples.md`'s list still does ("Open gaps"). Each
+    leading with it as the route to difficulty. Each
     prompt says it once: the Builder system prompt owns the clauses, publication and the definition of
     depth among them, `examples.md` the optional routes to a target the solver does not reliably meet,
     `roundPrompt` and `renderBatteryContract` when to submit and what a witness proves, and the climb

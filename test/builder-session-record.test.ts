@@ -9,11 +9,12 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { toToolDeclaration } from "@earendil-works/pi-ai";
 
-import { mkdtempSync, readFileSync, rmSync } from "../src/meta/filesystem.ts";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { submitProjection } from "../src/author/builder-execution.ts";
 import { runBuilderSession } from "../src/author/builder-session.ts";
+import type { BuilderRole } from "../src/builder/builder-tool-interface.ts";
 import type { PathRecord } from "../src/builder/path-record.ts";
 import type { CandidateAccessPolicy } from "../src/builder/candidate-isolation.ts";
 import { writeBuilderSessionEvidence } from "../src/builder/session-evidence.ts";
@@ -292,6 +293,7 @@ describe("the Builder entry gate evidence", () => {
     epochDir: string,
     roster = NAMES,
     exposed?: (tool: { name: string; description: string }) => string,
+    role: BuilderRole = "whole",
   ) {
     const tools = roster.map((name) => ({
       name,
@@ -300,6 +302,7 @@ describe("the Builder entry gate evidence", () => {
     }));
     return {
       epochDir,
+      role,
       tools,
       policy: double<CandidateAccessPolicy>({ digest: "a".repeat(64), network: "deny" }),
       capabilityPolicies: {},
@@ -347,8 +350,28 @@ describe("the Builder entry gate evidence", () => {
     ],
   ])("refuses %s", (_, roster, exposed, refusal) => {
     const dir = epoch();
-    expect(() => writeBuilderSessionEvidence(input(dir, roster, exposed))).toThrow(/^Builder entry gate: /);
+    expect(() => writeBuilderSessionEvidence(input(dir, roster, exposed))).toThrow(
+      /^Builder entry gate \(whole\): /,
+    );
     expect(() => writeBuilderSessionEvidence(input(dir, roster, exposed))).toThrow(refusal);
+  });
+
+  // A split side registers what its mount declares, and a roster drift there still fails.
+  it.each([
+    ["harness", ["harness_reset", "public_source", "verifier_workshop"], "builder-session.json"],
+    ["answer", ["harness_reset", "submit"], "builder-session-answer.json"],
+  ] as const)("holds the %s side to its own catalogue, in its own file", (role, unmounted, file) => {
+    const dir = epoch();
+    const roster = NAMES.filter((name) => !unmounted.some((tool) => tool === name));
+    const evidence = writeBuilderSessionEvidence(input(dir, roster, undefined, role));
+    expect(evidence.contract?.catalogued).toEqual([...roster].sort());
+    expect(existsSync(join(dir, file))).toBe(true);
+    expect(() => writeBuilderSessionEvidence(input(dir, NAMES, undefined, role))).toThrow(
+      `Builder entry gate (${role}): `,
+    );
+    expect(() => writeBuilderSessionEvidence(input(dir, roster.slice(1), undefined, role))).toThrow(
+      `Builder entry gate (${role}): `,
+    );
   });
 
   it("names every walled path with its verb, and records no wall where no backend was built", () => {

@@ -94,6 +94,10 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
       if ((await call(tool, hardness)).includes("records at most")) break;
     }
     expect(tool.description).toContain(`a review records at most ${state.findings.length}.`);
+    // Hardness is not a finding kind: a real limit is a result, and an observation of it reached the
+    // Builder as an advisory against the tasks that earned it.
+    expect(tool.description).not.toContain("harder than the harness");
+    expect(JSON.stringify(tool.parameters)).not.toContain("hardness");
   });
 
   // The publication paragraph once required a decision a passing answer needs to stay private,

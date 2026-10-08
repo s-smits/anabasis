@@ -50,6 +50,7 @@ import { type ToolsSpec, normalizeToolsSpec, validateToolsSpec } from "../correc
 import { resolveToolInventory, toolTreeDigest } from "../verify/tool-inventory.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { commitAll } from "./domain-repo.ts";
+import { markHarnessSide } from "./feedback-routing.ts";
 import { isString, type JsonValue } from "../meta/json-shape.ts";
 import { compilePublicArtifactSchema } from "../solve/public-artifact-schema.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
@@ -397,6 +398,16 @@ function agentCopiesOfCheckCode(fingerprint: FingerprintEvidence): ContractFindi
  *  admission needs the findings and the declared tools; loading an adopted harness needs the parsed
  *  values instead. Each returned value is non-null only when its own file passed validation, which
  *  is what lets a caller reuse adopted content without revalidating or rewriting it. */
+/** Run validators of the agent half, marking what they add to either list as the Harness Builder's
+ *  (`markHarnessSide`); every other validator here reads the correctness model. */
+function agentSide<T>(lists: BatteryFindings, run: () => T): T {
+  const from = { findings: lists.findings.length, advisories: lists.advisories.length };
+  const result = run();
+  markHarnessSide(lists.findings.slice(from.findings));
+  markHarnessSide(lists.advisories.slice(from.advisories));
+  return result;
+}
+
 export function loadValidatedBundle(
   workspace: string,
   context: CandidateCheckContext,
@@ -407,24 +418,28 @@ export function loadValidatedBundle(
   const [briefRaw, tasksRaw, controlsRaw] = CORRECTNESS_MODEL_FILES.map((f) =>
     readJson(workspace, f, findings),
   );
-  const specRaw = readJson(workspace, TOOLS_SPEC_FILE, findings);
-  const configIssue = harnessConfigIssue(workspace);
-  if (configIssue !== null) {
-    findings.push(
-      controllerValidatedFinding({
-        code: "harness-config-invalid",
-        path: HARNESS_CONFIG_FILE,
-        detail: configIssue,
-      }),
-    );
-  }
+  const agent = { findings, advisories };
+  const specRaw = agentSide(agent, () => {
+    const raw = readJson(workspace, TOOLS_SPEC_FILE, findings);
+    const configIssue = harnessConfigIssue(workspace);
+    if (configIssue !== null) {
+      findings.push(
+        controllerValidatedFinding({
+          code: "harness-config-invalid",
+          path: HARNESS_CONFIG_FILE,
+          detail: configIssue,
+        }),
+      );
+    }
+    return raw;
+  });
 
   const brief = validatedBrief(briefRaw, findings);
   // Without a valid brief the task and control contracts have nothing to check against, but the
   // tools spec, the operating guide and the controls envelope do not read the brief at all, so they
   // are still reported: otherwise an author spends one check per validator meeting them in turn.
   if (brief === null) {
-    validatedToolsSpec(specRaw, findings);
+    agentSide(agent, () => validatedToolsSpec(specRaw, findings));
     if (controlsRaw !== undefined && !isControlCorpus(controlsRaw)) {
       findings.push(
         controllerValidatedFinding(
@@ -432,7 +447,7 @@ export function loadValidatedBundle(
         ),
       );
     }
-    guideFindings(workspace, { findings, advisories });
+    agentSide(agent, () => guideFindings(workspace, agent));
     return { findings, advisories, brief: null, battery: null, corpus: null, toolsSpec: null };
   }
 
@@ -463,9 +478,12 @@ export function loadValidatedBundle(
     }
   }
 
-  const toolsSpec = validatedToolsSpec(specRaw, findings);
-  filesPresetCapabilityCheck(workspace, brief, toolsSpec, findings);
-  guideFindings(workspace, { findings, advisories });
+  const toolsSpec = agentSide(agent, () => {
+    const spec = validatedToolsSpec(specRaw, findings);
+    filesPresetCapabilityCheck(workspace, brief, spec, findings);
+    guideFindings(workspace, agent);
+    return spec;
+  });
   if (mode === "admission") {
     // The fresh contract compares the kickoff, the brief, the battery and the controls against each
     // other and reads nothing else, so its diagnostics are made of author-written material and may

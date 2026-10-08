@@ -13,6 +13,15 @@
  * cases can locate a limit only where the checks that failed it are right, since a checker that
  * refuses a valid answer produces the same partial count. Nothing protected reaches the text, so
  * changing the failed task ids changes nothing the Builder can read.
+ *
+ * Hypothesis (commit-R, 2026-10-07): a fail the controller solved again is one fact spread over
+ * several batteries, and the Builder should read it once. Each of the latest battery's verified
+ * fails belongs to a group, the solves of its task under the same bytes and solver that decided
+ * whether it was solved again (`failGroups`), and the keep line states those groups, counted by how
+ * many of their solves failed, together with the battery whose completed review settled the task
+ * against its check. Read per battery, three solves of one fail rendered as three ordinary partial
+ * batteries, and a settlement stayed on the one row whose review made it while the keep line asked
+ * to keep the task. The groups are counted, never named, so the task-id invariance holds.
  */
 import { describe, expect, it } from "bun:test";
 import type {
@@ -20,6 +29,7 @@ import type {
   ClimbBatteriesRead,
   ClimbBattery,
   ClimbEffort,
+  FailGroup,
   FamilyEffort,
 } from "../src/run/climb-history.ts";
 import {
@@ -135,6 +145,9 @@ function historyOf(...rows: AdmittedClimbRow[]): ClimbBatteriesRead {
 }
 
 const readoutOf = (...rows: AdmittedClimbRow[]) => climbReadout(historyOf(...rows), BAND);
+/** The readout of `rows` whose latest admitted battery's verified fails fall in `fails`. */
+const failingOf = (fails: FailGroup[], ...rows: AdmittedClimbRow[]) =>
+  climbReadout(historyOf(...rows), BAND, fails);
 const render = (readout: ClimbReadout) => renderReadout(readout, "choose the next experiment");
 /** The rendered line of one battery, or "absent". */
 const lineOf = (text: string, runId: string) =>
@@ -405,16 +418,114 @@ describe("rendering", () => {
     expect(censored).not.toContain("demand more");
     expect(censored).not.toContain("Carry none of its tasks forward");
     expect(censored).not.toContain("read how its passing solves reached their answers");
-    // An unaccepted attempt is a fail, and a battery with no pass or a partial one says nothing more.
-    const silent = [
+    // An unaccepted attempt is a fail, so a battery holding one, like one with no pass or a partial
+    // one, found no limit to report as absent.
+    const failed = [
       row("r1", 0, { passed: 5, n: 6, unaccepted: 1 }),
       row("r1", 0, { passed: 0, n: 6 }),
       row("r1", 0, { passed: 3, n: 6 }),
     ];
-    for (const battery of silent) expect(render(readoutOf(battery))).not.toContain("found no limit");
+    for (const battery of failed) expect(render(readoutOf(battery))).not.toContain("found no limit");
     // Only the latest battery speaks: an earlier whole pass under a later partial one says nothing.
     const text = render(readoutOf(row("r1", 0, { passed: 6, n: 6 }), row("r2", 1, { passed: 3, n: 6 })));
     expect(text).not.toContain("found no limit");
+  });
+
+  it("asks to keep each task a battery failed, and names no task, check, location or cause", () => {
+    // In six chances to follow an earned fail, the Builder changed agent/ once and dropped or eased
+    // the failed task three times; the readout had given a partial battery its counts and families
+    // alone. Which task failed it already reads off the passing solves the traces source lists.
+    const keep =
+      "Keep each task that battery r2 failed as it is, under the same task id with its public input and checks unchanged, unless a review shows that a check refused a right answer or that the task leaves the answer open; a raise before you submit goes to the other tasks. A failed task may be where the solver stops, and a task dropped or eased after it fails can no longer show that.";
+    const failed = [
+      row("r2", 0, { passed: 3, n: 6, failed: ["secret-alpha"] }),
+      row("r2", 0, { passed: 0, n: 6 }),
+      // A battery whose every verified case passed still failed the attempt it could not submit.
+      row("r2", 0, { passed: 5, n: 6, unaccepted: 1 }),
+      row("r2", 0, { passed: 2, n: 3, slots: 6, wallBound: 1 }),
+    ];
+    for (const battery of failed) {
+      const text = render(readoutOf(battery));
+      expect(text).toContain(keep);
+      expect(text).not.toContain("secret-");
+      expectNoRestatedDuty(text);
+    }
+    // The latest battery decides: a full pass after a partial one asks for more, not to keep.
+    const passedAfter = render(
+      readoutOf(row("r1", 0, { passed: 3, n: 6 }), row("r2", 1, { passed: 6, n: 6 })),
+    );
+    expect(passedAfter).not.toContain("Keep each task");
+    expect(passedAfter).toContain("Battery r2 passed all 6 of its verified cases, so it found no limit.");
+    // A full pass, and one that lost cases only to non-results, failed nothing to keep.
+    for (const battery of [row("r2", 0, { passed: 6, n: 6 }), row("r2", 0, { passed: 1, n: 1, slots: 6 })]) {
+      expect(render(readoutOf(battery))).not.toContain("Keep each task");
+    }
+  });
+
+  it("states each verified fail's solves once, counted by group, beside the keep line", () => {
+    // Read per battery, a fail solved three times was three partial batteries and no line said so.
+    const keep = "Keep each task that battery r3 failed as it is";
+    const once = render(
+      failingOf(
+        [{ solves: 3, fails: 3, settledBy: null }],
+        row("r1", 0, { passed: 5, n: 6 }),
+        row("r2", 1, { passed: 5, n: 6, regrade: { of: "r1", reused: 5 } }),
+        row("r3", 2, { passed: 5, n: 6, regrade: { of: "r2", reused: 5 } }),
+      ),
+    );
+    expect(once).toContain(
+      `Battery r3's verified fails, counted over every solve of the same task under the same bytes and solver: 1 task failed 3 of 3 solves. ${keep}`,
+    );
+    expect(once.split("failed 3 of 3 solves")).toHaveLength(2);
+    // Groups that read alike are counted together, and a flip reads as the share it is.
+    const mixed = render(
+      failingOf(
+        [
+          { solves: 3, fails: 3, settledBy: null },
+          { solves: 2, fails: 1, settledBy: null },
+          { solves: 3, fails: 3, settledBy: null },
+        ],
+        row("r3", 0, { passed: 3, n: 6 }),
+      ),
+    );
+    expect(mixed).toContain(": 1 task failed 1 of 2 solves; 2 tasks failed 3 of 3 solves. Keep each task");
+  });
+
+  it("states a review's settlement over the solves after it, on the line that asks to keep the task", () => {
+    // The review settled the first solve's fail against its check; the two solves after it were
+    // never reviewed again, because their condition had been.
+    const text = render(
+      failingOf(
+        [
+          { solves: 3, fails: 3, settledBy: "r1" },
+          { solves: 3, fails: 3, settledBy: null },
+        ],
+        row("r1", 0, { passed: 4, n: 5, slots: 7, settled: 1 }),
+        row("r3", 1, { passed: 4, n: 6, slots: 7 }),
+      ),
+    );
+    expect(text).toContain(
+      ": 2 tasks failed 3 of 3 solves. The review of r1 settled 1 of these tasks against its check. Keep each task that battery r3 failed",
+    );
+  });
+
+  it("states no group where the latest battery failed no verified case", () => {
+    // A full pass has no keep line to carry one, and an attempt never submitted is never solved again.
+    const fullPass = render(failingOf([], row("r1", 0, { passed: 6, n: 6 })));
+    const unsubmitted = render(failingOf([], row("r1", 0, { passed: 5, n: 6, unaccepted: 1 })));
+    expect(fullPass).not.toContain("counted over every solve");
+    expect(unsubmitted).not.toContain("counted over every solve");
+    expect(unsubmitted).toContain("Keep each task that battery r1 failed as it is");
+  });
+
+  it("names no task in the groups: the same groups under other failed task ids render the same text", () => {
+    const groups = [{ solves: 3, fails: 3, settledBy: "r1" }];
+    const a = row("r1", 0, { passed: 5, n: 6, failed: ["secret-alpha"] });
+    const b = row("r1", 0, { passed: 5, n: 6, failed: ["secret-gamma"] });
+    const [readA, readB] = [failingOf(groups, a), failingOf(groups, b)];
+    expect(render(readA)).toBe(render(readB));
+    expect(history(readA, [a])).toBe(history(readB, [b]));
+    expect(render(readA)).not.toContain("secret-");
   });
 
   it("summarises no exclusion, names each excluded battery, and states one shared reason once", () => {

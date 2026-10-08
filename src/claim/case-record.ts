@@ -123,6 +123,10 @@ export type CaseRecordRow = CaseVerdict & {
   builderId: string;
   slug: string;
   buildInputsHash: string;
+  /** The exam this task posed: the agent, the correctness model, the tool tree and this task's own
+   *  bytes, hidden half included, but not the other tasks'. The solves that agree on a fail share
+   *  it (`unconfirmedSolves`). A row written before it existed lacks it. */
+  examHash?: string;
   backendPin: string;
   taskId: string;
   family: string;
@@ -254,8 +258,8 @@ export function caseRowDefect(value: JsonValue): string | null {
     const defect = conditionDefect(value.condition);
     if (defect !== null) return defect;
   }
-  for (const key of ["solverStartedAt", "solverEndedAt"]) {
-    if (key in value && !isString(value[key])) return `${key} must be a string instant when present`;
+  for (const key of ["examHash", "solverStartedAt", "solverEndedAt"]) {
+    if (key in value && !isString(value[key])) return `${key} must be a string when present`;
   }
   if (!Array.isArray(value.traces)) return "traces must be an array of digest-bound pointers";
   for (const pointer of value.traces) {

@@ -33,9 +33,11 @@ batteries on its line, signal in the first 8 and in all, full passes, swing, hou
 to the first signal battery, the median share of the solve wall its batteries used and the latest
 battery's share, the fails of its signal batteries as the review left them (held, settled against
 the check, unsettled), and its earned fails: how many passed another solve under the same solver
-(flips), how many the next battery carried unchanged, and how many of those passed there after the
-agent changed and are no flip (answered). Then one row per source and Builder
-model: signal of the first 8, the median wall share over runs, and the same earned-fail counts.`;
+(flips), how many failed every further solve the controller made of them (confirmed), how many the
+next battery carried unchanged, and how many confirmed fails then passed there after the agent
+changed (answered, read per confirmed fail); beside them, the verified fails the Judge contested,
+counted apart as instrument-dispute candidates. Then one row per source and Builder model: signal of
+the first 8, the median wall share over runs, and the same earned-fail counts.`;
 
 type RunScore = ReturnType<typeof scoreCampaign>[number];
 
@@ -130,10 +132,12 @@ function groupScores(scores: readonly RunScore[]) {
       followUp: {
         earned: sum((run) => run.followUp.earned),
         flips: sum((run) => run.followUp.flips),
+        confirmed: sum((run) => run.followUp.confirmed),
         last: sum((run) => run.followUp.last),
         carried: sum((run) => run.followUp.carried),
         passed: sum((run) => run.followUp.passed),
         answered: sum((run) => run.followUp.answered),
+        contested: sum((run) => run.followUp.contested),
       },
       firstSignal: { reached: reached.length, medianHours: median(reached) },
     };
@@ -141,7 +145,7 @@ function groupScores(scores: readonly RunScore[]) {
 }
 
 const followUpText = (f: RunScore["followUp"]) =>
-  `earned fails ${f.earned} (${f.flips} flips), ${f.carried} carried unchanged, ${f.answered} answered`;
+  `earned fails ${f.earned} (${f.flips} flips, ${f.confirmed} confirmed), ${f.carried} carried unchanged, ${f.answered} of ${f.confirmed} confirmed answered  contested fails ${f.contested}`;
 
 function scoreboard(args: CommandArgs): void {
   const [since, match] = [args.value("since") ?? "", args.value("match") ?? ""];

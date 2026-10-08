@@ -147,12 +147,14 @@ export async function call(tool: ReaderTool, args: Record<string, JsonValue>): P
 }
 
 /** A review of `runId` in `analysis` whose dispositions settle each named case against `bench`, the
- *  one check that decided it, unless the row says otherwise; an undefined field is left out. */
+ *  one check that decided it, unless the row says otherwise; an undefined field is left out. The
+ *  contested cases it settled nothing about are `unsettled`. */
 export function writeSettledReview(
   analysis: string,
   runId: string,
   rows: Array<{ [K in keyof CaseDisposition]?: CaseDisposition[K] | undefined }>,
   status = "completed",
+  unsettled: readonly string[] = [],
 ): void {
   const dispositions = rows.map((row) => ({
     family: "f",
@@ -164,6 +166,6 @@ export function writeSettledReview(
     ...row,
   }));
   mkdirSync(analysis, { recursive: true });
-  const review = { schema: EPOCH_REVIEW_SCHEMA, runId, status, findings: [], dispositions };
+  const review = { schema: EPOCH_REVIEW_SCHEMA, runId, status, findings: [], dispositions, unsettled };
   writeFileSync(join(analysis, `${runId}-epoch-review.json`), JSON.stringify(review));
 }

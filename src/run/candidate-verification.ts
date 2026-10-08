@@ -41,7 +41,7 @@ import type { VerifierLifetime } from "../verify/verifier-lifetime.ts";
 import { bindProductMeasurement, selectedProductDir } from "./product-versions.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import type { BatteryReuse } from "../correctness-bundle/recorded-solve.ts";
-import { recordedRegrade } from "./battery-reuse.ts";
+import { posedSolves, recordedRegrade } from "./battery-reuse.ts";
 
 interface PostBuildInput {
   repoRoot: string;
@@ -305,14 +305,18 @@ function batteryReuse(input: PostBuildInput): BatteryReuse | undefined {
   // A reused tree is a `measure` round: a remeasure, or a first measurement with no solve to regrade.
   const remeasure = input.build === "reused";
   if (!remeasure && input.build !== "candidate") return undefined;
-  const { reuse, reason } = recordedRegrade({
+  const exam = {
     repoRoot: input.repoRoot,
     slug: input.manifest.slug,
     runPin: input.runPin,
     built: input.slots.built,
     candidateDir: input.measureDir,
-    experimentAuthoring: input.experimentAuthoring,
-  });
+  };
+  // A remeasure carries the declaration of the battery it measures again, a repeat's included, and
+  // regrades every case the controller did not name.
+  const { reuse, reason } = remeasure
+    ? posedSolves(exam)
+    : recordedRegrade({ ...exam, experimentAuthoring: input.experimentAuthoring });
   if (reuse === null) return undefined;
   fullrunLine(`${input.manifest.slug}: ${remeasure ? "remeasure" : "regrade"} — ${reason}`);
   input.absentSteps.push(`blind solve of ${reuse.solves.size} recorded task(s): skipped — ${reason}`);

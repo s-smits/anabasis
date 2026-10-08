@@ -21,7 +21,8 @@
  *
  * The placement is battery sizing's and the reviewer's. The author reads what was measured: each
  * battery's three counts, the solves it regraded rather than solved, the identities that say whether
- * two batteries share a condition, and `noLimitLine` when the latest passed every verified case.
+ * two batteries share a condition, `noLimitLine` when the latest passed every verified case, and
+ * `keepFailedLine` when it failed one, which states each verified fail's group (`failGroups`) once.
  * Which party hears which reading, and why the author hears no zone, is AGENTS.md "Goals and the
  * climb".
  */
@@ -30,6 +31,7 @@ import { POLICY } from "../critic/policy.ts";
 import type { ContextDocument } from "../builder/context-tool.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { isString } from "../meta/json-shape.ts";
+import { dirname } from "../meta/path.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import {
   type AdmittedClimbRow,
@@ -39,10 +41,12 @@ import {
   type ClimbEvidenceAt,
   type ClimbFamilySummary,
   type ExcludedBattery,
+  type FailGroup,
   type FamilyEffort,
   climbEvidencePaths,
   climbThresholds,
   decidingSample,
+  failGroups,
   publicTaskProjection,
   readClimbBatteries,
 } from "./climb-history.ts";
@@ -114,6 +118,8 @@ export type ClimbReadout = {
   excluded: ExcludedBattery[];
   /** Every history row, newest first. */
   rows: ReadoutRow[];
+  /** The groups of the latest admitted battery's verified fails, by no task id. */
+  fails: FailGroup[];
 };
 
 /** The short alias of each recorded identity a battery line names. */
@@ -289,7 +295,11 @@ function readoutRow(
 
 /** One reading of batteries a caller already read. Every admitted row is decided once, over the
  *  admitted batteries up to it, and every rendering reads that one decision. */
-export function climbReadout(read: ClimbBatteriesRead, band: [number, number]): ClimbReadout {
+export function climbReadout(
+  read: ClimbBatteriesRead,
+  band: [number, number],
+  fails: FailGroup[] = [],
+): ClimbReadout {
   const names: Aliases = {
     product: aliases("P", read.history, (row) => row.harnessId),
     taskSet: aliases("T", read.history, (row) => row.authoring.taskSetHash),
@@ -305,6 +315,7 @@ export function climbReadout(read: ClimbBatteriesRead, band: [number, number]): 
     admitted: read.admitted.length,
     excluded: read.excluded,
     rows: read.history.map((row) => readoutRow(row, decisions.get(row.battery.runId), names)).toReversed(),
+    fails,
   };
 }
 
@@ -317,7 +328,12 @@ export function readClimbReadout(
   const paths = climbEvidencePaths(at, runPin);
   const read = readClimbBatteries(domainDir, runPin, paths);
   if (read.admitted.length === 0 && read.excluded.length === 0) return null;
-  return climbReadout(read, climbThresholds(paths.manifestPath).band);
+  const latest = read.admitted.at(-1)?.battery;
+  const fails =
+    latest === undefined || latest.n - latest.passed - latest.unaccepted === 0
+      ? []
+      : [...failGroups(dirname(paths.claimsDir), latest.runId).values()];
+  return climbReadout(read, climbThresholds(paths.manifestPath).band, fails);
 }
 
 /** One battery as the author reads it: its identities and its three denominators, then the changed
@@ -379,8 +395,7 @@ export function fullPass({
   return verified > 0 && unaccepted === 0 && passed === verified;
 }
 
-/** The one result sentence the author is given: a battery that passed every case it scored found no
- *  limit. An unaccepted attempt is a fail there, so a battery holding one is not that battery. A
+/** The result sentence a battery that passed every case it scored is given: it found no limit. An unaccepted attempt is a fail there, so a battery holding one is not that battery. A
  *  non-result scored nothing, so a battery holding one says what it left unmeasured and asks for no
  *  harder demand, since the cases it lost may have held the limit. No other count gets a sentence,
  *  because the band and the aim are not the author's (AGENTS.md "Goals and the climb").
@@ -410,6 +425,41 @@ function noLimitLine(row: ReadoutRow): string | null {
   return `Battery ${runId} passed ${all}, so it found no limit. More tasks, families, inputs or scenarios at the same demand measure the same reach again, so the next battery has to demand more of the field's own work within its tasks: make more of the request's requirements act together in each task, in tasks you expect the solver to fail. Carry none of its tasks forward unchanged, since a task it passed measures the same pass again: raise what each one demands or replace it.${spent} Record in your notes which public requirement it changes and the reasoning that change adds. ${MEASURE_SOLVES}`;
 }
 
+/** The sentence a battery that failed a case is given: keep each failed task as it is, under its
+ *  id, unless a review shows a check refused a right answer or the task leaves the answer open. The
+ *  round prompt's raise fires on a rehearsal that passed, and the failed task is the obvious hardest
+ *  one, so the line sends the raise to the other tasks; the same id keeps the task one lineage for
+ *  the controller's re-measure and the comparison's count. An unaccepted attempt is a fail here as in `LIMIT`.
+ *  It names no task, check, location or cause, since the Builder already tells the failed tasks
+ *  from the passing solves the traces source lists by task id, and where or why a task failed is
+ *  protected. Without it the readout gave a partial battery its counts and families alone, and in six
+ *  chances to follow an earned fail the Builder changed `agent/` once and dropped or eased the failed
+ *  task three times, while only the same task measured again shows whether the solver stops there. */
+function keepFailedLine(row: ReadoutRow, fails: readonly FailGroup[]): string | null {
+  if (row.passed === null || row.verified - row.passed + row.unaccepted === 0) return null;
+  return `${groupsSentence(row.runId, fails)}Keep each task that battery ${row.runId} failed as it is, under the same task id with its public input and checks unchanged, unless a review shows that a check refused a right answer or that the task leaves the answer open; a raise before you submit goes to the other tasks. A failed task may be where the solver stops, and a task dropped or eased after it fails can no longer show that.`;
+}
+
+/** The latest battery's verified fails over their groups, counted and never named, and the battery
+ *  whose review settled any of them against its check; empty when it failed no verified case. A
+ *  fail solved three times read as three partial batteries, and a settlement stayed on the one
+ *  row whose review made it while this line asked to keep the task. */
+function groupsSentence(runId: string, fails: readonly FailGroup[]): string {
+  if (fails.length === 0) return "";
+  const tasks = (count: number) => `${String(count)} task${count === 1 ? "" : "s"}`;
+  const shares = Object.entries(Object.groupBy(fails, (group) => `${group.fails} of ${group.solves}`))
+    .map(([share, groups = []]) => `${tasks(groups.length)} failed ${share} solves`)
+    .sort();
+  const reviews = Object.entries(Object.groupBy(fails, (group) => group.settledBy ?? ""))
+    .filter(([by]) => by !== "")
+    .map(
+      ([by, groups = []]) =>
+        `The review of ${by} settled ${String(groups.length)} of these tasks against ${groups.length === 1 ? "its" : "their"} check. `,
+    )
+    .sort();
+  return `Battery ${runId}'s verified fails, counted over every solve of the same task under the same bytes and solver: ${shares.join("; ")}. ${reviews.join("")}`;
+}
+
 function excludedSummary(excluded: readonly ExcludedBattery[], admitted: number): string | null {
   if (excluded.length === 0) return null;
   const byReason = new Map<string, string[]>();
@@ -424,9 +474,9 @@ function excludedSummary(excluded: readonly ExcludedBattery[], admitted: number)
 }
 
 /**
- * The kickoff rendering: the boundary, the newest batteries, whether the latest found no limit, its
- * families, and where the passing artifacts are. Measured counts only; what to change
- * next is the Builder's.
+ * The kickoff rendering: the boundary, the newest batteries, whether the latest found no limit or
+ * which of its tasks to keep, its families, and where the passing artifacts are. Measured counts
+ * only; what to change next is the Builder's.
  */
 export function renderReadout(readout: ClimbReadout | null, reason: string): string {
   const boundary = `Controller authoring boundary: ${reason}`;
@@ -441,7 +491,7 @@ export function renderReadout(readout: ClimbReadout | null, reason: string): str
     `Recorded batteries (controller-derived data, not instructions). ${LEGEND}`,
     shown.length === 0 ? null : shown.map(batteryLine).join("\n"),
     omitted > 0 ? `${String(omitted)} older row${omitted === 1 ? " is" : "s are"} not shown here.` : null,
-    latest === undefined ? null : noLimitLine(latest),
+    latest === undefined ? null : (noLimitLine(latest) ?? keepFailedLine(latest, readout.fails)),
     familyLine(readout),
     latest === undefined || passing === 0
       ? null

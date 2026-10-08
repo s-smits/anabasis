@@ -34,7 +34,11 @@ import { type CandidateCheckContext, loadValidatedBundle } from "../author/candi
 import type { BuilderCustomToolSemantic } from "../author/builder-execution.ts";
 import { defineTool } from "../solve/define-tool.ts";
 import { BUILT_AGENTS_FILE } from "../solve/built-starter.ts";
-import { applicableTruthChecks, projectFindingForAuthor } from "../correctness-bundle/brief.ts";
+import {
+  type ContractFinding,
+  applicableTruthChecks,
+  projectFindingForAuthor,
+} from "../correctness-bundle/brief.ts";
 import { typecheckGeneratedModule } from "../correctness-bundle/generated-module-typecheck.ts";
 import { briefPublicResources, publicRuleDecisions } from "../correctness-bundle/public-resources.ts";
 import { commitPublicTask } from "../correctness-bundle/task-split.ts";
@@ -45,9 +49,12 @@ import { compareCodeUnits } from "../meta/stable-json.ts";
 import { isRecord, isString } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { type AuthorFeedbackQuery, BuilderAuthorFeedback, authorFindingOverview } from "./author-feedback.ts";
+import { markHarnessSide, onHarnessSide } from "../author/feedback-routing.ts";
+import { PUBLIC_RESOURCES_FILE } from "../author/split-prompts.ts";
 import { characterWindow, LIST_WINDOW_ROWS, windowRange } from "./read-window.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import {
+  AGENT_DIR,
   BRIEF_FILE,
   CONTROLS_FILE,
   EVALUATOR_FILE,
@@ -99,6 +106,9 @@ interface HarnessInspectBinding {
   /** This round's task count and battery contract, the same bytes the round opened with. Absent
    *  only for isolated inspection tests. */
   contract?: string;
+  /** A split build's Harness Builder: it reads only the findings marked its own (`onHarnessSide`),
+   *  and not the coverage view, which joins the answer agent's checks and controls. */
+  harnessView?: boolean;
 }
 
 type Bundle = ReturnType<typeof loadValidatedBundle>;
@@ -106,6 +116,19 @@ type StaticStatus = "static-checks-clear" | "blocked";
 /** The model's validated arguments. Each view reads a family, an offset and a limit out of the
  *  same object, so it travels whole rather than as three positional undefineds each. */
 type InspectParams = Static<typeof Params>;
+/** Which findings a view shows its reader. */
+type FindingFilter = (finding: ContractFinding) => boolean;
+
+/** The bundle with the findings this binding's reader may see. */
+function visibleBundle(binding: HarnessInspectBinding, bundle: Bundle): Bundle {
+  if (binding.harnessView !== true) return bundle;
+  const { findings, advisories } = bundle;
+  return {
+    ...bundle,
+    findings: findings.filter(onHarnessSide),
+    advisories: advisories.filter(onHarnessSide),
+  };
+}
 
 /** The tool names agent/tools.ts must register, from the same derivation the conformance probe
  *  compares against at submit time, so a roster that satisfies this one satisfies that one. */
@@ -130,7 +153,7 @@ function toolsView(bundle: Bundle) {
 }
 
 /** The exact public task the solver receives for one case, with its recorded digest. */
-function taskView(bundle: Bundle, { taskId, family, offset, limit }: InspectParams) {
+function taskView(bundle: Bundle, { taskId, family, offset, limit }: InspectParams, harnessView = false) {
   const tasks: readonly BuildTask[] = bundle.battery?.tasks ?? [];
   if (tasks.length === 0) {
     return {
@@ -158,7 +181,8 @@ function taskView(bundle: Bundle, { taskId, family, offset, limit }: InspectPara
     taskId: task.taskId,
     family: task.family,
     publicTaskDigest: committed.publicTaskDigest,
-    hiddenChecks: task.hidden.length,
+    // How many hidden rows a task carries is the answer agent's, not the public projection's.
+    ...keyIfDefined("hiddenChecks", harnessView ? undefined : task.hidden.length),
   };
   if (windowed) {
     return {
@@ -184,7 +208,9 @@ function taskView(bundle: Bundle, { taskId, family, offset, limit }: InspectPara
 function typecheckModules(workspace: string) {
   const modules = GENERATED_MODULES.map(({ bundle, rel }) => {
     const present = existsSync(join(workspace, ...rel.split("/")));
-    return { module: rel, present, found: present ? typecheckGeneratedModule(workspace, bundle) : [] };
+    const found = present ? typecheckGeneratedModule(workspace, bundle) : [];
+    if (bundle === "agent") markHarnessSide(found);
+    return { module: rel, present, found };
   });
   return {
     modules: modules.map(({ module, present, found }) => ({ module, present, diagnostics: found.length })),
@@ -358,9 +384,10 @@ function coverageView(bundle: Bundle, { family, offset, limit }: InspectParams) 
 
 /** What the static checks found, before any of it is shaped for the page: the files, the merged
  *  validation and module findings, the installed tools, and the two verdicts drawn from them. */
-function readinessState(bundle: Bundle, workspace: string, rehearsal: Bundle) {
+function readinessState(bundle: Bundle, workspace: string, rehearsal: Bundle, shows: FindingFilter) {
   const { files, missing } = fileState(workspace);
   const typecheck = typecheckModules(workspace);
+  const diagnostics = typecheck.findings.filter(shows);
   const installedTools = installedToolsView(workspace);
   const modulesClear = typecheck.modules.every((module) => module.present && module.diagnostics === 0);
   const toolsClear = Array.isArray(installedTools) && installedTools.every((tool) => !("missing" in tool));
@@ -377,7 +404,7 @@ function readinessState(bundle: Bundle, workspace: string, rehearsal: Bundle) {
     files,
     missing,
     modules: typecheck.modules,
-    findings: [...bundle.findings, ...typecheck.findings],
+    findings: [...bundle.findings, ...diagnostics],
     installedTools,
     rehearsalReady,
     staticStatus,
@@ -393,8 +420,9 @@ function readinessView(
   workspace: string,
   { offset, limit }: InspectParams,
   rehearsal: Bundle,
+  shows: FindingFilter,
 ) {
-  const state = readinessState(bundle, workspace, rehearsal);
+  const state = readinessState(bundle, workspace, rehearsal, shows);
   const tasks: readonly BuildTask[] = rehearsal.battery?.tasks ?? [];
   const allFamilies = familyRows(tasks);
   const range = windowRange(allFamilies.length, offset, rowLimit(limit));
@@ -476,6 +504,20 @@ function readinessNextAction(
   return "Use coverage to reconcile public rules, declared check inputs and one-fact controls. Read each suggested task's exact public projection when its values matter, then run harness_trial on contrasting families. Static checks do not establish runtime behaviour or correctness.";
 }
 
+/** The readiness a split build's Harness Builder reads: its own half and the public projection's
+ *  families, without what readiness reads from correctness-model/ — the check groundings, the hidden
+ *  rows per check, the controls, the tools the checks run and the correctness model's module. */
+function harnessReadiness(view: ReturnType<typeof readinessView>) {
+  const { brief, tasks, controls: _controls, installedTools: _tools, modules, ...rest } = view;
+  const { hiddenChecksByCheckId: _hidden, ...publicTasks } = tasks;
+  return {
+    ...rest,
+    brief: brief === null ? null : { slug: brief.slug, artifactFields: brief.artifactFields },
+    modules: modules.filter(({ module }) => module.startsWith(AGENT_DIR)),
+    tasks: publicTasks,
+  };
+}
+
 function readinessResult(binding: HarnessInspectBinding, params: InspectParams) {
   const { workspace, context } = binding;
   const rehearsal = loadValidatedBundle(workspace, context, "rehearsal");
@@ -486,10 +528,11 @@ function readinessResult(binding: HarnessInspectBinding, params: InspectParams) 
       details: { action: params.action, findings: 0, receipt: { outcome: "completed", findings: 0 } },
     };
   }
-  const bundle = loadValidatedBundle(workspace, context, "admission");
-  const view = readinessView(bundle, workspace, params, rehearsal);
-  const body =
-    "files" in view && binding.contract !== undefined ? { ...view, contract: binding.contract } : view;
+  const bundle = visibleBundle(binding, loadValidatedBundle(workspace, context, "admission"));
+  const harness = binding.harnessView === true;
+  const view = readinessView(bundle, workspace, params, rehearsal, harness ? onHarnessSide : () => true);
+  const shown = harness ? harnessReadiness(view) : view;
+  const body = binding.contract === undefined ? shown : { ...shown, contract: binding.contract };
   const count = view.findings.totalFindings;
   return {
     text: capturedJsonStringify({ action: params.action, ...body }),
@@ -550,12 +593,28 @@ export function createHarnessInspectTool(binding: HarnessInspectBinding): AgentT
         });
       }
       if (params.action === "readiness") return readinessResult(binding, params);
-      const bundle = loadValidatedBundle(
-        binding.workspace,
-        binding.context,
-        params.action === "task" ? "rehearsal" : "admission",
+      if (params.action === "coverage" && binding.harnessView === true) {
+        return {
+          text: capturedJsonStringify({
+            action: params.action,
+            status: "blocked",
+            nextAction: `Coverage joins the answer agent's checks and controls, which are not yours to read; the public rules are in ${PUBLIC_RESOURCES_FILE}.`,
+          }),
+          details: { action: params.action, receipt: { outcome: "blocked", reason: "answer-agent-owned" } },
+        };
+      }
+      const bundle = visibleBundle(
+        binding,
+        loadValidatedBundle(
+          binding.workspace,
+          binding.context,
+          params.action === "task" ? "rehearsal" : "admission",
+        ),
       );
-      const body = params.action === "task" ? taskView(bundle, params) : coverageView(bundle, params);
+      const body =
+        params.action === "task"
+          ? taskView(bundle, params, binding.harnessView === true)
+          : coverageView(bundle, params);
       return {
         text: capturedJsonStringify({ action: params.action, ...body }),
         details: {

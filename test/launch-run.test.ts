@@ -519,6 +519,31 @@ describe("one-command run launcher", () => {
     expect(args[args.indexOf("--condition") + 1]).toBe("opus47");
   });
 
+  it("verifies an Opus 5 truss opening with the slots truss-opus-20260928T231751000Z-acef98 recorded", () => {
+    // The comparison's Opus 5 cell reruns that run's condition, so its opening's three slots are the
+    // contract: one slot moved off them is a different cell.
+    const options = parseOptions(["truss", "--model", "opus5"]);
+    const planned = required(planRuns(options, "/tmp/launch", "at")[0], "plan");
+    expect(planned.runId).toBe("truss-opus5-at");
+    const args = probeArgs(planned, options);
+    expect(args[args.indexOf("--condition") + 1]).toBe("opus5");
+    const plan = opened(planned, fullrunArgs(planned, options, source));
+    const recorded = {
+      kind: "claude",
+      model: "claude-opus-5",
+      reasoningEffort: "medium",
+      source: "operator",
+    };
+    const modelSlots = { builder: recorded, built: recorded, review: { ...recorded, enabled: true } };
+    expect(openingProblems({ ...openingFor(plan), modelSlots }, plan)).toEqual([]);
+    for (const slot of SLOTS) {
+      const moved = { ...modelSlots, [slot]: { ...modelSlots[slot], model: "claude-opus-5-5" } };
+      expect(openingProblems({ ...openingFor(plan), modelSlots: moved }, plan)).toEqual([
+        `${slot} model slot`,
+      ]);
+    }
+  });
+
   it("names a --prompt run standard, whether it is named standard, custom or not at all", () => {
     for (const names of [[], ["standard"], ["custom"]]) {
       const plans = planRuns(parseOptions([...names, "--prompt", "Write a CLI."]), "/tmp/launch", "at");
@@ -549,6 +574,7 @@ describe("one-command run launcher", () => {
     [["truss", "--budget", "0"], "--budget must be a positive integer"],
     [["truss", "--budget", "5", "--budget", "7"], 'option "--budget" may be passed only once'],
     [["truss", "--stop-after-ms", "4h"], "--stop-after-ms must be a positive integer"],
+    [["truss", "--max-batteries", "0"], "--max-batteries must be a positive integer"],
     [[...CUSTOM, "truss", "--run", "same"], RUN_REFUSAL],
     [["truss", "truss", "--run", "same"], RUN_REFUSAL],
     [["truss", "--run", "../old"], RUN_REFUSAL],
@@ -578,17 +604,51 @@ describe("one-command run launcher", () => {
 
   // "Continue from the truss run above" names the stopped run's project; the controller continues
   // it from recorded evidence under the same prompt, and the opening must say it did.
-  it("forwards a continued project and refuses an opening that created a fresh one instead", () => {
-    const options = parseOptions(["truss", "--project", "design-trusses-24"]);
+  it("forwards a continued project with its battery cap and refuses an opening that created a fresh one instead", () => {
+    const options = parseOptions(["truss", "--project", "design-trusses-24", "--max-batteries", "8"]);
     const planned = required(planRuns(options, "/tmp/launch", "continue")[0], "plan");
     const argv = fullrunArgs(planned, options, source);
-    expect(parseFullRunArgs(argv)).toMatchObject({ project: "design-trusses-24", prompt: PRESETS.truss });
+    expect(parseFullRunArgs(argv)).toMatchObject({
+      project: "design-trusses-24",
+      prompt: PRESETS.truss,
+      maxBatteries: 8,
+    });
+    // The probe digests the same command, so the opening's command digest attests the cap too.
+    expect(probeArgs(planned, options).join(" ")).toContain("--max-batteries 8");
     const plan = opened(planned, argv);
     const opening = openingFor(plan);
     opening.project = { id: "design-trusses-24", origin: "operator", requestDigest: plan.requestDigest };
     expect(openingProblems(opening, plan)).toEqual([]);
     opening.project = { id: "design-trusses-25", origin: "created", requestDigest: plan.requestDigest };
     expect(openingProblems(opening, plan)).toContain("continued project");
+  });
+
+  // A2 launches a split arm and a whole-Builder arm from one tree; the flag is the only difference,
+  // so the launcher must hand it to fullrun and the probe alike, and the opening must carry it.
+  it("carries --answer-agent to fullrun and the probe, and checks the opening ran it", () => {
+    const split = parseOptions(["truss", "--model", "opushmm", "--answer-agent", "true"]);
+    const whole = parseOptions(["truss", "--model", "opushmm", "--answer-agent", "false"]);
+    const planned = required(planRuns(split, "/tmp/launch", "split")[0], "plan");
+    const splitArgv = fullrunArgs(planned, split, source);
+    expect(parseFullRunArgs(splitArgv).answerAgent).toBe(true);
+    expect(parseFullRunArgs(fullrunArgs(planned, whole, source)).answerAgent).toBe(false);
+    // The probe re-plans from its own arguments and digests the command it derives from them.
+    const probed = parseOptions(probeArgs(planned, split));
+    const probedPlan = required(planRuns(probed, "/tmp/launch", "probe")[0], "probe plan");
+    expect(fullrunArgs(probedPlan, probed, source)).toEqual(splitArgv);
+    // The opening's command digest is the flag's witness: a whole-Builder opening is not the
+    // split launch's opening, and the launcher's check says so.
+    const plan = opened(planned, splitArgv);
+    const unflagged = opened(
+      planned,
+      fullrunArgs(planned, parseOptions(["truss", "--model", "opushmm"]), source),
+    );
+    expect(plan.commandDigest).not.toBe(unflagged.commandDigest);
+    expect(openingProblems(openingFor(plan), plan)).toEqual([]);
+    expect(openingProblems(openingFor(unflagged), plan)).toContain("command digest");
+    expect(() => parseOptions(["truss", "--answer-agent", "yes"])).toThrow(
+      "--answer-agent must be true or false",
+    );
   });
 
   it("captures the Claude token and nothing else, without shell, API-key or custom-route leakage", () => {

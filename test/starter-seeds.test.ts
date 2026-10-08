@@ -379,6 +379,7 @@ describe.if(osIsolationSupport().ok)("the Builder's toolkit on the starter's see
     ),
     record: openPathRecord(EPOCH_DIR, "seed-loop"),
     workDir: WORKSPACE,
+    installTree: ".toolchain",
   };
   const byName = new Map<string, AgentTool>(createBuilderTools(isolation).map((tool) => [tool.name, tool]));
   const run = async (name: string, params: Record<string, JsonValue>): Promise<string> => {

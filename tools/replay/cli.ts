@@ -9,7 +9,10 @@
  * reports. No model is called: each case runs `gradeCase`, the same entry the measured battery
  * used. The report is one JSON document on stdout, and also in the `--out` file when one is named;
  * it names the commit of the tree that graded it, and each replayed row carries the check rows its
- * grading reached. Verifier cleanup receipts go to a private
+ * grading reached and the tool runs under them, with their exit codes and stderr tails. The grading
+ * core, `replayCases`, is exported for a reader that stages a recorded program outside the campaign
+ * and grades it there, so that no Builder-written check runs inside `campaigns/`. Verifier cleanup
+ * receipts go to a private
  * directory under the host temp root, named in the report's `cleanup`, and never into the campaign:
  * the campaign's own receipt roots belong to the controller that holds its lock, so a replay neither
  * recovers another run's receipts nor leaves a killed replay's behind for that controller.
@@ -55,6 +58,7 @@ import { type BuildTask, type TaskBattery, validateTasks } from "../../src/corre
 import { publicTaskVerdict } from "../../src/correctness-bundle/verdict-binding.ts";
 import { resolveVerifier } from "../../src/correctness-bundle/verification-registry.ts";
 import type { CheckRun, CorrectnessModelResult } from "../../src/verify/correctness-model-result.ts";
+import type { VerifierExecutionEvidence } from "../../src/verify/verifier-port.ts";
 import { SOURCE_IDENTITY } from "../../src/run/source-identity.ts";
 import { writeJsonFile } from "../../src/meta/completed-json.ts";
 import {
@@ -82,9 +86,27 @@ export interface VerdictSide {
   failedCheckIds: string[];
 }
 
+/** One tool run the replayed grading reached: which check ran which tool, where the tool came from,
+ *  the bytes it hashed, how it ended and the end of its stderr. This is verifier output, so it goes
+ *  to the operator's report and to offline readers, never to a model the run itself prompts. */
+export type ReplayToolRun = Pick<
+  VerifierExecutionEvidence,
+  | "checkId"
+  | "toolId"
+  | "toolSource"
+  | "toolKind"
+  | "toolDigest"
+  | "exitCode"
+  | "signal"
+  | "timedOut"
+  | "outcome"
+  | "durationMs"
+  | "stderrTail"
+>;
+
 /** One replayed verdict row. `nonResultKind` names a host or verifier non-result, or one of the
  *  replay-owned refusals `task-missing`, `public-task-drift` and `not-replayed`. */
-type ReplayVerdict = VerdictSide & { taskId: string; checkRuns?: CheckRun[] };
+type ReplayVerdict = VerdictSide & { taskId: string; checkRuns?: CheckRun[]; toolRuns?: ReplayToolRun[] };
 
 interface RecordedCandidate {
   campaignDir: string;
@@ -137,6 +159,8 @@ export interface ReplayRow {
   same: boolean;
   /** The check rows the replayed grading reached, in order; empty when it graded nothing. */
   checkRuns: CheckRun[];
+  /** The tool runs under those checks, in the order the host ran them. */
+  toolRuns: ReplayToolRun[];
 }
 
 interface ReplaySummary {
@@ -233,7 +257,8 @@ export function recordedCases(recorded: RecordedCandidate): RecordedCases {
   return { sides, cases, skippedUnaccepted };
 }
 
-function loadContract(candidateDir: string): CandidateContract {
+/** The candidate's brief and tasks, each proved by its own validator before anything grades. */
+export function loadContract(candidateDir: string): CandidateContract {
   const briefUnknown = capturedJsonParse(readFileSync(join(candidateDir, BRIEF_FILE), "utf8"));
   const briefValidation = validateBrief(briefUnknown);
   if (!briefValidation.ok) {
@@ -252,6 +277,23 @@ function loadContract(candidateDir: string): CandidateContract {
     brief,
     tasks:
       /* SAFETY: validateTasks returned ok directly above, the only proof of this shape. */ battery.tasks as TaskBattery["tasks"],
+  };
+}
+
+function toolRunOf(run: VerifierExecutionEvidence): ReplayToolRun {
+  const { checkId, toolId, toolSource, toolKind, toolDigest, exitCode, signal, timedOut, outcome } = run;
+  return {
+    checkId,
+    toolId,
+    toolSource,
+    toolKind,
+    toolDigest,
+    exitCode,
+    signal,
+    timedOut,
+    outcome,
+    durationMs: run.durationMs,
+    stderrTail: run.stderrTail,
   };
 }
 
@@ -287,13 +329,19 @@ async function replayOne(
     ...publicTaskVerdict(task.taskId, graded.record, graded.verdict),
     nonResult: graded.record.runtimeNonResult,
     checkRuns: graded.checkRuns,
+    toolRuns: deps.verifier
+      .evidence()
+      .flatMap((run) => (run.subjectId === task.taskId ? [toolRunOf(run)] : [])),
   };
 }
 
-/** Grade `cases` under `recorded`'s bundle snapshot, which is the battery the artifacts came from
- *  unless `--under` named another. */
-async function replayCases(recorded: RecordedCandidate, cases: readonly ReplayCase[]): Promise<Replayed> {
-  const { brief, tasks } = loadContract(recorded.candidateDir);
+/** Grade `cases` under the program in `grader.candidateDir`: the bundle snapshot of the battery the
+ *  artifacts came from, the one `--under` named, or a copy a caller staged outside the campaign. */
+export async function replayCases(
+  grader: Pick<RecordedCandidate, "candidateDir" | "runId">,
+  cases: readonly ReplayCase[],
+): Promise<Replayed> {
+  const { brief, tasks } = loadContract(grader.candidateDir);
   const root = mkdtempSync(join(tmpdir(), "ana-replay-"));
   const verifierLifetime = createVerifierLifetime({ root });
   let result: Omit<Replayed, "cleanup">;
@@ -301,16 +349,16 @@ async function replayCases(recorded: RecordedCandidate, cases: readonly ReplayCa
   try {
     const evaluate = evaluateCheckProgram(
       brief,
-      await loadCorrectnessModel(recorded.candidateDir, verifierLifetime),
+      await loadCorrectnessModel(grader.candidateDir, verifierLifetime),
     );
     const externalChecks = externalChecksOf(brief);
     const { verifier, missingTools } = resolveVerifier({
-      toolTree: bundleSnapshotToolTree(recorded.candidateDir),
-      bundleDir: recorded.candidateDir,
+      toolTree: bundleSnapshotToolTree(grader.candidateDir),
+      bundleDir: grader.candidateDir,
       toolIds: externalChecks.map((check) => check.adapterId),
       verifierLifetime,
     });
-    const deps = { brief, evaluate, verifier, runId: recorded.runId, externalChecks, verifierLifetime };
+    const deps = { brief, evaluate, verifier, runId: grader.runId, externalChecks, verifierLifetime };
     const byId = new Map(tasks.map((task) => [task.taskId, task]));
     const rows: ReplayVerdict[] = [];
     for (const one of cases) {
@@ -377,7 +425,14 @@ export function diffVerdicts(
           }
         : replayedSideOf(verdict);
     const same = sameSide(side, replayedSide);
-    rows.push({ taskId, recorded: side, replayed: replayedSide, same, checkRuns: verdict?.checkRuns ?? [] });
+    rows.push({
+      taskId,
+      recorded: side,
+      replayed: replayedSide,
+      same,
+      checkRuns: verdict?.checkRuns ?? [],
+      toolRuns: verdict?.toolRuns ?? [],
+    });
   }
   const same = rows.filter((row) => row.same).length;
   return {

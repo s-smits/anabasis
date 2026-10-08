@@ -103,7 +103,7 @@ export interface ExamRequest {
   readonly checks: readonly CheckRow[];
   /** Existing tasks of the domain, shown whole on request, for their shape. */
   readonly examples: readonly Task[];
-  /** An instance as a package: the caller's statement, rule ids and check program for it. */
+  /** An instance as a package: the caller's rule ids and check program for it. */
   readonly pack: (task: Task) => TaskPackage;
   readonly verify: Verifier;
   /** One solve of the task under the stronger condition and under the test condition. The caller

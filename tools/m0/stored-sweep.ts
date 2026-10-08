@@ -257,11 +257,10 @@ export function contractOf(brief: PackBrief, answerFormat: JsonValue): Contract 
   };
 }
 
-/** A v1 task as a package: its statement is its id under the brief's domain, since v1's tasks carry
- *  none, and its rule ids are those its family's checks cite. */
-export function packageOf(brief: PackBrief, checks: string, task: Task): TaskPackage {
+/** A v1 task as a package: its rule ids are those its family's checks cite. */
+export function packageOf(checks: string, task: Task): TaskPackage {
   const cited = applicableTruthChecks(readBrief(checks), task).flatMap((check) => check.citedDecisionIds);
-  return { ...task, statement: `${brief.domain}: ${task.taskId}`, ruleIds: [...new Set(cited)], checks };
+  return { ...task, ruleIds: [...new Set(cited)], checks };
 }
 
 /**

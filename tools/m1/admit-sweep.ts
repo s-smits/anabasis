@@ -20,8 +20,7 @@
  * - The contract is the check program's brief: its public rule decisions are the rules. Its answer
  *   format is the schema the sweep's record tool took, as the first decided solve recorded it, since
  *   the brief's own `artifactSchema` is prose that v1 compiled.
- * - A task's statement is its id under the brief's domain, since v1's tasks carry none, and its rule
- *   ids are those its family's checks cite.
+ * - A task's rule ids are those its family's checks cite.
  * - Gate 4's controls are the first three v1 wrote for the task, edited from the author's accepted
  *   answer rather than from the stronger solve's, each with the check v1 named for it to fail. A
  *   task v1 gave fewer than three is refused.
@@ -171,7 +170,7 @@ async function main(): Promise<void> {
   };
 
   try {
-    const packages = tasks.map((task) => packageOf(brief, checks, task));
+    const packages = tasks.map((task) => packageOf(checks, task));
     const versions = new Map(packages.map((task) => [task.taskId, taskVersion(task)]));
     const why = new Map<string, string>();
     const queue = [...packages];

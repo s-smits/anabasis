@@ -1,8 +1,8 @@
 /**
  * A task: a package of six parts, scored only after five gates.
  *
- * The statement, the inputs, the rule ids and the family are what the solver reads. The check is a
- * program it never sees, with hidden values only the check's own runs receive. The reject controls
+ * The id, the family and the inputs are what the solver reads; the rule ids are the contract rules
+ * the check enforces, which gate 1 holds it to. The check is a program the solver never sees, with hidden values only the check's own runs receive. The reject controls
  * come last: three one-fact edits of the answer gate 2 accepted, each naming the check it must fail.
  *
  * Gate 1 checks the package's shape, gate 2 is a pass by the stronger condition, gate 3 reruns the
@@ -22,8 +22,9 @@
  * admitted every task that reached it; cost stays a reported column.
  *
  * Departure from the plan, which hashes statement, inputs, check and controls into the task
- * version at gate 1: the version here also covers the rule ids and the family, since the solver
- * reads both, and leaves out the controls. They do not exist until after gate 2, and neither a solve
+ * version at gate 1: a task carries no statement, since v1's tasks have none and a stand-in would be
+ * hashed without a reader; the version covers the family, which the solver reads, and the rule ids,
+ * which gate 1 holds the check to, and leaves out the controls. They do not exist until after gate 2, and neither a solve
  * nor a verdict reads them, so they cannot change a result. Gate 4 logs their digest instead, so an
  * admission names the control set it rested on.
  */
@@ -48,8 +49,6 @@ import {
 
 /** The task's public part and its hidden values, as the verifier takes them, with the rest. */
 export interface TaskPackage extends Task {
-  /** What is asked, in the contract's terms. */
-  readonly statement: string;
   /** The contract rules the check enforces. */
   readonly ruleIds: readonly string[];
   /** The check program's directory: its `brief.json`, its `evaluator.ts` and whatever they read. */
@@ -161,7 +160,6 @@ export function packageGate(contract: Contract, task: TaskPackage): Passed | Ref
 function packageFault(contract: Contract, task: TaskPackage): string | null {
   const absent = (
     [
-      ["statement", task.statement.trim() === ""],
       ["family", task.family.trim() === ""],
       ["inputs", task.publicInput === null],
       ["rule ids", task.ruleIds.length === 0],

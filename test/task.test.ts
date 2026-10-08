@@ -83,7 +83,6 @@ function pkg(changes: Partial<TaskPackage> = {}): TaskPackage {
     family: "beams",
     publicInput: { gapM: 4 },
     hidden: [],
-    statement: "Size a beam across the gap.",
     ruleIds: ["span-rule", "load-rule"],
     checks: program(["beams"], ["span-rule"]),
     ...changes,
@@ -133,7 +132,6 @@ describe("gate 1, gate", () => {
     const version = (changes: Partial<TaskPackage>) => taskVersion({ ...task, ...changes });
     expect(packageGate(CONTRACT, task)).toEqual({ outcome: "passed" });
     expect(version({ checks: program(["beams"], ["span-rule"]) })).toBe(version({}));
-    expect(version({ statement: "Size a beam." })).not.toBe(version({}));
     expect(version({ ruleIds: ["span-rule"] })).not.toBe(version({}));
     const changed = program(["beams"], ["span-rule"], "export const checks = { spans: () => true };");
     expect(version({ checks: changed })).not.toBe(version({}));
@@ -182,7 +180,6 @@ describe("gate 1, gate", () => {
       const gate = packageGate(CONTRACT, pkg(changes));
       return gate.outcome === "refused" ? gate.reason : "passed";
     };
-    expect(reason({ statement: "  " })).toBe("no statement");
     expect(reason({ publicInput: null })).toBe("no inputs");
     expect(reason({ ruleIds: [] })).toBe("no rule ids");
     expect(reason({ checks: join(root, "nowhere") })).toBe("no brief.json");

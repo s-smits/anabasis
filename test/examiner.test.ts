@@ -158,7 +158,6 @@ function setup(responses: FauxResponseStep[], test: (base: number, nth: number) 
   models.setProvider(faux.provider);
   const pack = (task: Task): TaskPackage => ({
     ...task,
-    statement: `Fixture: ${task.taskId}`,
     ruleIds: ["R1", "R2"],
     checks,
   });

@@ -41,7 +41,7 @@ export interface Condition {
   readonly contract: string;
   /** The harness version a Builder session ended on. */
   readonly harness: string;
-  /** The task version: statement, inputs and check. */
+  /** The task version: family, inputs, rule ids and check. */
   readonly task: string;
   /**
    * `provider/model`, a key of `prices`, exactly as the backend is asked for it. A provider may serve

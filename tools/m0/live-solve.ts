@@ -159,7 +159,7 @@ async function main(): Promise<number> {
     const condition: Condition = {
       contract: contractHash(contract),
       harness: harness.digest,
-      task: taskVersion(packageOf(brief, checks, task)),
+      task: taskVersion(packageOf(checks, task)),
       model: priceKey(model),
       effort,
       prices: freezePrices([model]),

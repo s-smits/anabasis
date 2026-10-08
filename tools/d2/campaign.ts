@@ -12,8 +12,7 @@
  * as `live-solve.ts` keeps its check program: the log holds hidden values and the checks' verdicts.
  *
  * What is stood in for is what `admit-sweep.ts` and `live-solve.ts` stand in: the contract is the
- * check program's brief with the answer format the sweep's record tool took, a task's statement is
- * its id under the brief's domain, and the limits are the sweep's `config.yaml` with a disk cap. The
+ * check program's brief with the answer format the sweep's record tool took, and the limits are the sweep's `config.yaml` with a disk cap. The
  * test condition's model and effort are the stored cycle's, and its harness state is the cycle's
  * `hb-bundles` folder, which is the harness a round's session starts from.
  *
@@ -148,7 +147,7 @@ export async function openCampaign(args: CampaignArgs) {
   // Read once: each is a walk of a tree of thousands of files, and neither moves inside a run.
   const verifierTools = hashJsonValue(treeContent(tools));
   const host = hashJsonValue(["src", "vendor"].map((part) => treeContent(join(REPO, part))));
-  const pack = (task: Task): TaskPackage => packageOf(brief, checks, task);
+  const pack = (task: Task): TaskPackage => packageOf(checks, task);
   /** Every task the pack holds or a session wrote into the log, by version. */
   const packages = (): Map<string, TaskPackage> => {
     const written = read(log).flatMap(({ kind, data }) => {

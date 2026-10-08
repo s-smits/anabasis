@@ -5,7 +5,7 @@ import { asRecord } from "../meta/json-shape.ts";
 import type { PiTool } from "../backends/pi-session.ts";
 import { BuilderExecutionRecorder } from "./builder-execution.ts";
 import { hasText } from "../meta/text.ts";
-import { MOVE_TO_AUTHORING, NO_SUBMIT_REMINDER_MS } from "./builder-continuation.ts";
+import { MOVE_TO_AUTHORING, NO_SUBMIT_REMINDER_MS, stopFact } from "./builder-continuation.ts";
 import { availableParallelism, loadavg } from "../meta/os.ts";
 
 /** The session the receipts are written against: who records, which turn is open, how a checkpoint
@@ -55,10 +55,14 @@ function closedResult(reason: Closure): AgentToolResult<unknown> {
  *  So the clock remembers the last clear `correctness_check` and states how long ago it was, while
  *  no submit has followed, in place of the authoring ask. `submits` is the round's submit count
  *  rather than whether it has submitted at all, so a refused submit made before that clear preview
- *  does not silence it. */
+ *  does not silence it.
+ *
+ *  A run with a hard stop states it beside each mark (`stopFact`): the minutes since the round
+ *  opened are not the minutes left, and a Builder told only the first read them as the second. */
 export function sessionClock(
   submits: () => number = () => 0,
-  now: () => number = () => performance.now(),
+  stopAt: number | null = null,
+  now: () => number = () => Date.now(),
   load: () => string = hostLoad,
 ): (clearPreview: boolean) => string | null {
   const opened = now();
@@ -78,6 +82,7 @@ export function sessionClock(
     if (Math.floor(minutes / 30) > marks) {
       marks = Math.floor(minutes / 30);
       lines.push(`Round clock: ${String(minutes)} min since this round opened; ${load()}.`);
+      if (stopAt !== null) lines.push(stopFact(stopAt, at));
       if (since !== null) lines.push(since);
     }
     if (!asked && elapsed >= NO_SUBMIT_REMINDER_MS && submits() === 0) {

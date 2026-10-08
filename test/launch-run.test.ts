@@ -251,9 +251,11 @@ function batchFixture({
 }
 
 describe("one-command run launcher", () => {
-  it("starts a separate operator timer before the controller launch without forwarding a retired wall", async () => {
+  it("starts a separate operator timer before the controller launch, and hands fullrun the instant it falls", async () => {
     const fixture = batchFixture({ args: ["truss", "--kill-after-ms", "180000"] });
     const [result] = await launchBatch(fixture.plans, fixture.options, fixture.context, fixture.command);
+    // The fixture writes the opening from the arguments fullrun was started with, so a stop that
+    // moved the command digest would leave the launch unconfirmed here.
     expect(launched(result).started).toBe(true);
     const timer = required(
       fixture.calls.find((args) => args.includes("--deadline")),
@@ -267,7 +269,15 @@ describe("one-command run launcher", () => {
     expect(fixture.calls.indexOf(timer)).toBeLessThan(fixture.calls.indexOf(launch));
     expect(launch).not.toContain("--kill-after-ms");
     expect(launch).not.toContain("--wall-deadline-ms");
-    expect(Number(timer[timer.indexOf("--deadline") + 1])).toBeGreaterThan(Date.now());
+    const deadline = required(timer[timer.indexOf("--deadline") + 1], "deadline");
+    expect(Number(deadline)).toBeGreaterThan(Date.now());
+    // The Builder is told the instant the timer was armed for, not a remainder a restart would stale.
+    const fullrun = launch.slice(launch.indexOf("fullrun") + 2);
+    expect(fullrun.slice(fullrun.indexOf("--stop-at"), fullrun.indexOf("--stop-at") + 2)).toEqual([
+      "--stop-at",
+      deadline,
+    ]);
+    expect(parseFullRunArgs(fullrun).stopAt).toBe(Number(deadline));
     // The timer runs a copy inside the run worktree, so removing the launcher's tree cannot break it.
     // The copy keeps the skills layout, so the parser it imports is the launcher's own.
     const staged = join(required(fixture.plans[0], "plan").dir, ".scratch/quick-run/stop-timer");
@@ -278,6 +288,14 @@ describe("one-command run launcher", () => {
         readFileSync(join(import.meta.dir, "../.claude/skills", name), "utf8"),
       );
     }
+  });
+
+  it("launches with no stop argument when no stop timer is armed", async () => {
+    const fixture = batchFixture({ args: ["truss"] });
+    await launchBatch(fixture.plans, fixture.options, fixture.context, fixture.command);
+    expect(fixture.calls.some((args) => args.includes("--deadline") || args.includes("--stop-at"))).toBe(
+      false,
+    );
   });
 
   it("refuses a misspelled or relative stop-timer argument with exit 2 before scheduling anything", () => {

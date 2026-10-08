@@ -355,8 +355,14 @@ describe("the whole loop through the Builder runtime interface, with no provider
         }),
         judge: null,
       });
+    const STOP_AT = Date.now() + 3_600_000;
     const run = async (runId: string, maxBatteries: number) => {
-      const { repoRoot, ...runArgs } = args(root, runId, 6, 2, ["--max-batteries", String(maxBatteries)]);
+      const { repoRoot, ...runArgs } = args(root, runId, 6, 2, [
+        "--max-batteries",
+        String(maxBatteries),
+        "--stop-at",
+        String(STOP_AT),
+      ]);
       return await runFullRun(runArgs, repoRoot, scriptedDeps(turn, cut));
     };
     const capped = (cap: number, round: number) =>
@@ -371,7 +377,7 @@ describe("the whole loop through the Builder runtime interface, with no provider
       ["measure", true],
     ]);
     expect(first.terminal).toBe(capped(1, 2));
-    expect(opening("a")).toMatchObject({ maxBatteries: 1, answerAgent: false });
+    expect(opening("a")).toMatchObject({ maxBatteries: 1, answerAgent: false, stopAt: STOP_AT });
 
     // A continuation counts only its own new batteries: counting the remeasure, or the predecessor's
     // battery, would have stopped it after round two.

@@ -151,7 +151,7 @@ export const HELP = `Usage: bun .claude/skills/launch-run/scripts/launch.ts [${P
   --max-iterations N              Optional controller round cap
   --max-batteries N               Optional: the run stops after its Nth new battery and that battery's remeasures
   --stop-after-ms N               Optional time boundary: the controller stops after the first completed round past N ms
-  --kill-after-ms N               Operator SIGTERM at N ms after launch begins; 30 s grace then service removal
+  --kill-after-ms N               Operator SIGTERM N ms after its timer is armed, told to fullrun as --stop-at; 30 s grace
   --run ID                       One preset and condition only
   --project ID                   Continue this existing project; one preset and condition only
   --answer-agent true|false       Split build: an answer agent writes correctness-model/; default false

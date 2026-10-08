@@ -155,7 +155,7 @@ export async function runFullRun(
   safeguardTempRootPressure(safeguardContext);
   removeRunTempRootAtExit();
   const state: ControllerRunState = { opening: null, iterations: [], absentSteps: [] };
-  const builderConversation = new BuilderConversation();
+  const builderConversation = new BuilderConversation(args.stopAt);
   try {
     state.providerBudget = new ProviderResourceBudget(providerTurnBudget, {
       campaignRoot: campaignDir(repoRoot, launch.project.id),

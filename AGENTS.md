@@ -1025,8 +1025,8 @@ select product bytes and nothing else.
 ```text
 bun run fullrun -- --prompt "<request>" --provider-turn-budget N [--project <id>]
   [--context <path> ...] [--expected-source <commit>:<digest>] [--run <runId>]
-  [--max-iterations N] [--max-batteries N] [--stop-after-ms N] [--max-builder-turns N] [--expected-tasks N]
-  [--iteration-budget N|none] [--product-policy fixed] [--dcg true|false]
+  [--max-iterations N] [--max-batteries N] [--stop-after-ms N] [--stop-at <epoch ms>] [--max-builder-turns N]
+  [--expected-tasks N] [--iteration-budget N|none] [--product-policy fixed] [--dcg true|false]
   [--withhold-instruments true|false]
   [--builder-backend <kind>] [--built-backend <kind>] [--review-backend <kind|disabled|inherit>]
 ```

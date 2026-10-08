@@ -82,12 +82,10 @@ function turnUnderTest(replies: (attempt: number) => AgentTurnResult) {
     state: freshState(),
     recorder,
     prompt: "build",
-    kickoff: "Build the thing.",
     turn: 1,
     onTurnEvent: () => {},
     checkpoint: () => {},
-    maxTurns: 8,
-    openedAtMs: Date.now(),
+    round: { kickoff: "Build the thing.", maxTurns: 8, openedAtMs: Date.now(), stopAt: null },
     authoring: { workspace: "/nonexistent-workspace", paths: [], openingIdentity: "opening" },
     waitMs: async (ms: number): Promise<void> => {
       waits.push(ms);

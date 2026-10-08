@@ -23,8 +23,9 @@
  * reject control is an edit of it: one field replaced or one passage rewritten, made by the host
  * from the change the Examiner names (`changedAnswer`), so a control is one fact apart from the
  * answer by construction and no author copies an answer out three times. It is told a gate's reason
- * when a gate refuses, because gates 1, 3 and 4 judge its own package and the checks it writes
- * controls for, and nothing of a solver.
+ * when a gate refuses. Gates 1, 3 and 4 judge its own package and the checks it writes controls
+ * for; gate 2's one reason is a check that could not run on the stronger solver's answer, which is
+ * the instance's fault or the check's and says nothing of the solver being measured.
  *
  * A task's limit is set the plain way here, the plan's option A of decision 15: the Examiner sets it
  * and learns from the words. Option B, the host setting it from the stronger solve, changes a task
@@ -88,7 +89,9 @@ export interface ExamLimits {
   readonly concurrency: number;
   /** Instances the session may put to gate 2, each of which costs a stronger solve. */
   readonly candidates: number;
-  /** Feasible tasks at which the host has what it needs and ends the session: the plan's 24. */
+  /** Feasible tasks told a word of their test-side solves, at which the host has what it needs and
+   *  ends the session: the plan's 24. A feasible task whose solves did not all count is not among
+   *  them, since the supply rule could not be read on it. */
   readonly feasible: number;
 }
 
@@ -150,6 +153,8 @@ interface Desk {
   readonly seen: Set<string>;
   readonly waiting: Map<string, Waiting>;
   readonly feasible: string[];
+  /** Feasible tasks told too easy, wall-bound or scored: the ones the supply rule reads. */
+  screened: number;
   readonly words: Map<string, Word>;
   /** Referee failures, kept for the host. */
   readonly faults: string[];
@@ -165,8 +170,22 @@ const CONTROL_TRIES = 3;
 /** The most of an example or an accepted answer one result shows. */
 const SHOWN_CHARS = 20_000;
 const ENDINGS = ["finished", "supplied", "killed", "wall", "crashed", "turns"] as const;
+const SUPPLIED = "The host has the tasks it needs. The session ends here.";
 
 const shown = (value: JsonValue) => capturedJsonStringify(value, null, 2).slice(0, SHOWN_CHARS);
+
+/** Whether the host has the tasks it asked for. */
+function supplied(desk: Desk): boolean {
+  return desk.screened >= desk.request.limits.feasible;
+}
+
+/** A harness that cannot list its tools fails every task before its first turn. That is the host's
+ *  to mend and no task's fault, so it ends the session where a task's own fail would be a word. */
+function refuseBroken(ending: Practised["ending"]): void {
+  if (ending.outcome === "fail" && ending.kind === "broken-harness") {
+    throw new Error(`the harness is broken, so no solve of any task counts: ${ending.reason}`);
+  }
+}
 
 /** Stop the session on what a solve or the verifier threw, and tell the Examiner only that. */
 function halted(desk: Desk, error: unknown): Error {
@@ -207,6 +226,7 @@ async function gated(desk: Desk, instance: Task, kill: AbortSignal): Promise<str
   if (packaged.outcome === "refused") return refused(packaged.reason);
 
   const { solve, ending } = await request.strong(task, version, kill);
+  refuseBroken(ending);
   if (ending.outcome === "non-result" && ending.kind !== "check") {
     told(desk, task, version, "undecided", { solve, kind: ending.kind });
     return `${task.taskId}: undecided: the host could not finish a solve of it, which says nothing of the task.`;
@@ -251,6 +271,7 @@ function proposeTool(desk: Desk): AgentTool {
     }),
     executionMode: "sequential",
     execute: async (_id, args, signal) => {
+      if (supplied(desk)) throw new Error(SUPPLIED);
       const left = request.limits.candidates - desk.proposed;
       if (left <= 0) {
         throw new Error(
@@ -321,7 +342,8 @@ async function worded(desk: Desk, tasks: readonly Waiting[], kill: AbortSignal):
   const jobs = tasks.flatMap((waiting) => Array.from({ length: solves }, () => waiting));
   const ran = await pooled(jobs, request.limits.concurrency, async ({ task, version }) => {
     const { solve, ending } = await request.test(task, version, kill);
-    const fail = ending.outcome === "fail" && ending.kind !== "broken-harness";
+    refuseBroken(ending);
+    const fail = ending.outcome === "fail";
     let defect = ending.outcome === "non-result" && ending.kind === "check";
     if (fail && request.referee !== undefined) {
       try {
@@ -353,6 +375,7 @@ async function worded(desk: Desk, tasks: readonly Waiting[], kill: AbortSignal):
       // One harness screens here, so it stands on both sides of the two-harness rule.
       const state = screen([counted, counted], fails);
       word = state === "admitted" ? "scored" : state === "too-easy" ? "too easy" : state;
+      desk.screened += 1;
     }
     told(desk, task, version, word, {
       solves: mine.map(({ solve }) => solve),
@@ -363,7 +386,6 @@ async function worded(desk: Desk, tasks: readonly Waiting[], kill: AbortSignal):
 }
 
 function controlsTool(desk: Desk): AgentTool {
-  const { request } = desk;
   return tool({
     name: "write_controls",
     label: "Write controls",
@@ -402,6 +424,7 @@ function controlsTool(desk: Desk): AgentTool {
     }),
     executionMode: "sequential",
     execute: async (_id, args, signal) => {
+      if (supplied(desk)) throw new Error(SUPPLIED);
       const kill = signal ?? desk.halt.signal;
       const lines: string[] = [];
       const passed: Waiting[] = [];
@@ -419,12 +442,9 @@ function controlsTool(desk: Desk): AgentTool {
       } catch (error) {
         throw halted(desk, error);
       }
-      const supplied = desk.feasible.length >= request.limits.feasible;
       return {
-        ...text(
-          `${lines.join("\n")}${supplied ? "\n\nThe host has the tasks it needs. The session ends here." : ""}`,
-        ),
-        terminate: supplied,
+        ...text(`${lines.join("\n")}${supplied(desk) ? `\n\n${SUPPLIED}` : ""}`),
+        terminate: supplied(desk),
       };
     },
   });
@@ -470,12 +490,17 @@ function finishTool(desk: Desk): AgentTool {
 export async function examine(request: ExamRequest): Promise<Examined> {
   const { log, limits, model } = request;
   const began = performance.now();
+  // A session's id prefixes its tasks' ids, and the Referee finds a task's accepted answer by them.
+  if (read(log).some(({ kind, data }) => kind === "exam.started" && data.session === request.id)) {
+    throw new Error(`session ${request.id} is in the log already; a session's id names one session`);
+  }
   const desk: Desk = {
     request,
     proposed: 0,
     seen: new Set(),
     waiting: new Map(),
     feasible: [],
+    screened: 0,
     words: new Map(),
     faults: [],
     halt: new AbortController(),
@@ -506,7 +531,6 @@ export async function examine(request: ExamRequest): Promise<Examined> {
   const user = (content: string): AgentMessage => ({ role: "user", content, timestamp: Date.now() });
   const system = createInitialSystemMessage(SYSTEM_PROMPT, tools.map(toToolDeclaration));
   const home = mkdtempSync(join(tmpdir(), "ana-examiner-"));
-  const supplied = () => desk.feasible.length >= limits.feasible;
   let crash: string | null = null;
   const timer = setTimeout(() => wall.abort(), limits.wallSeconds * 1000);
   try {
@@ -522,9 +546,12 @@ export async function examine(request: ExamRequest): Promise<Examined> {
         toolExecution: "sequential",
         finishTurn: ({ message }) => {
           if (message.role === "assistant") turns.push(message);
-          return turns.length >= limits.turns ? { action: "end" } : undefined;
+          // The session ends at `finish` and at supply even beside another call in the turn, where
+          // pi would go on and a further instance would cost a further solve.
+          const over = desk.note !== null || supplied(desk) || turns.length >= limits.turns;
+          return over ? { action: "end" } : undefined;
         },
-        getFollowUpMessages: async () => (desk.note === null && !supplied() ? [user(NUDGE)] : []),
+        getFollowUpMessages: async () => (desk.note === null && !supplied(desk) ? [user(NUDGE)] : []),
       },
       traceSink(log, "exam", request.id, () => turns.length),
       signal,
@@ -540,7 +567,7 @@ export async function examine(request: ExamRequest): Promise<Examined> {
   crash ??= desk.fatal?.message ?? null;
   const by = {
     finished: desk.note !== null,
-    supplied: supplied(),
+    supplied: supplied(desk),
     killed: request.kill?.aborted === true,
     wall: wall.signal.aborted,
     crashed: crash !== null,

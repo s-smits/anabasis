@@ -61,19 +61,19 @@ const instance = (base: number | null) => ({
 });
 const propose = (...bases: (number | null)[]) => call("propose_tasks", { tasks: bases.map(instance) });
 /** Three controls of the task `id`, each one change to the accepted answer. */
-const controls = (id: string, wrong = "41") =>
-  call("write_controls", {
-    sets: [
-      {
-        task: id,
-        controls: [
-          { check: "check-product", path: "$.answer", value: JSON.stringify(wrong) },
-          { check: "check-unit", path: "$.unit", value: '"kg"' },
-          { check: "check-product", path: "$.answer", value: '"0"' },
-        ],
-      },
-    ],
-  });
+const controlSets = (id: string, wrong = "41") => ({
+  sets: [
+    {
+      task: id,
+      controls: [
+        { check: "check-product", path: "$.answer", value: JSON.stringify(wrong) },
+        { check: "check-unit", path: "$.unit", value: '"kg"' },
+        { check: "check-product", path: "$.answer", value: '"0"' },
+      ],
+    },
+  ],
+});
+const controls = (id: string, wrong = "41") => call("write_controls", controlSets(id, wrong));
 
 afterAll(() => {
   for (const dir of scratches) rmSync(dir, { recursive: true, force: true });
@@ -295,6 +295,7 @@ describe("an Examiner session", () => {
     const examined = await examine({ ...s.request, limits: { ...LIMITS, feasible: 2 } });
     expect(s.sent[1]).toContain("x-1-003: undecided: the host could not finish a solve of it");
     expect(s.sent[2]).toContain("x-1-001: too easy");
+    expect(JSON.stringify(s.of("exam.call").at(-1))).toContain("x-1-002: wall-bound");
     expect(examined.ended).toBe("supplied");
     expect(Object.values(examined.words).sort()).toEqual(["too easy", "undecided", "wall-bound"]);
     // The second feasible task ended the session: the last turn was never asked for.
@@ -305,7 +306,7 @@ describe("an Examiner session", () => {
   });
 
   it("refuses a task whose controls do not hold in three tries", async () => {
-    // A control the checks pass: the accepted answer's unit rewritten to itself by another route.
+    // The second control names the wrong check: the unit's change is refused by the unit's check.
     const passing = call("write_controls", {
       sets: [
         {
@@ -376,6 +377,52 @@ describe("an Examiner session", () => {
     expect(JSON.stringify(s.of("exam.call"))).not.toContain("check-unit");
     expect(s.sent).toHaveLength(1);
   });
+  it("counts toward its tasks only those whose test-side solves all counted", async () => {
+    // Base 2's first test-side solve ends in nothing countable; base 4's all pass.
+    const s = setup(
+      [propose(2, 4), controls("x-1-001", "1"), controls("x-1-002", "1"), finish],
+      (base, nth) => (base === 2 && nth === 0 ? UNFINISHED : PASS),
+    );
+    const examined = await examine({ ...s.request, limits: { ...LIMITS, feasible: 2 } });
+    expect(s.sent[2]).toContain("x-1-001: undecided");
+    // Both tasks are feasible and stay held, and the host does not yet have two it can read.
+    expect(examined).toMatchObject({ ended: "finished" });
+    expect(examined.feasible).toHaveLength(2);
+    expect(supply(read(s.log))).toMatchObject({ feasible: 1, reading: "unfinished" });
+  });
+
+  it("ends at supply though another call shares the turn, and takes no instance after it", async () => {
+    const both = fauxAssistantMessage(
+      [
+        fauxToolCall("write_controls", controlSets("x-1-001", "1")),
+        fauxToolCall("propose_tasks", { tasks: [instance(11), instance(12)] }),
+      ],
+      toolUse,
+    );
+    const s = setup([propose(2), both, propose(13), finish]);
+    const examined = await examine({ ...s.request, limits: { ...LIMITS, feasible: 1 } });
+    expect(examined.ended).toBe("supplied");
+    // One stronger solve, of the one task: the two instances beside the controls were not taken.
+    expect(s.solves).toEqual({ strong: 1, test: 3 });
+    expect(JSON.stringify(s.of("exam.call").at(-1))).toContain("The host has the tasks it needs");
+    expect(s.of("exam.turn")).toHaveLength(2);
+  });
+
+  it("ends on a broken harness and not on a word, and takes one session to an id", async () => {
+    const broken: Ending = { outcome: "fail", kind: "broken-harness", reason: "no tools" };
+    const strong = setup([propose(5, 6), finish]);
+    await expect(
+      examine({ ...strong.request, strong: async () => ({ solve: "s", ending: broken }) }),
+    ).rejects.toThrow("the harness is broken, so no solve of any task counts: no tools");
+    // No task was told too hard for it, and none was moved.
+    expect(strong.of("exam.word")).toEqual([]);
+    expect([...taskStates(read(strong.log)).values()]).toEqual(["held", "held"]);
+    const test = setup([propose(5), controls("x-1-001", "1"), finish], () => broken);
+    await expect(examine(test.request)).rejects.toThrow("the harness is broken");
+    expect(test.of("exam.finished")[0]).toMatchObject({ ended: "crashed" });
+    await expect(examine(test.request)).rejects.toThrow("session x-1 is in the log already");
+    expect(test.of("exam.started")).toHaveLength(1);
+  });
 });
 
 describe("D1b's supply reading", () => {
@@ -392,6 +439,7 @@ describe("D1b's supply reading", () => {
       feasible: 2,
       once: 2,
       twice: 1,
+      wallBound: 0,
       solves: { strong: 3, test: 6 },
       bracketed: 1,
       reading: "unfinished",
@@ -422,10 +470,11 @@ describe("D1b's supply reading", () => {
         ...told(4, 24),
         ...told(1, 1).map((event) => ({ ...event, data: { ...event.data, version: "late" } })),
       ]),
-    ).toMatchObject({
-      bracketed: 4,
-      once: 5,
-      reading: "stop",
-    });
+    ).toMatchObject({ feasible: 25, bracketed: 4, once: 4, twice: 4, reading: "stop" });
+    // A wall-bound task has fails and is not bracketed, and is named apart for that.
+    const walled = told(0, 24).map((event, index) =>
+      index === 0 ? { ...event, data: { ...event.data, word: "wall-bound", fails: 2 } } : event,
+    );
+    expect(supply(walled)).toMatchObject({ bracketed: 0, once: 1, twice: 1, wallBound: 1, reading: "stop" });
   });
 });

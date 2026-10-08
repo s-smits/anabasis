@@ -6,13 +6,15 @@
  *
  * Everything is read from `exam.word`, the one event per task that says what its author was told
  * and on which solves. A task is feasible here when it passed gates 1 to 4 and its test-side solves
- * all ended in a pass or a fail, which are the tasks told too easy, wall-bound or scored. Bracketed
- * is `scored`, by whatever the session's screening asked for; once and twice in three are counted
- * beside it from the fails, so the rule can be read at either before the plan's decision 26 is
- * made. A wall-bound task is counted apart and is not bracketed, as decision 21 stands.
+ * all ended in a pass or a fail, which are the tasks told too easy, wall-bound or scored.
  *
- * The rule is read over the first `of` feasible tasks in the order they were told, and is
- * `unfinished` until there are that many: a share of fewer says less than the rule assumes.
+ * The rule is read over the first `of` feasible tasks in the order they were told, and so is every
+ * count beside it; it is `unfinished` until there are that many, since a share of fewer says less
+ * than the rule assumes. Bracketed is `scored`, by whatever the session's screening asked for. Once
+ * and twice in three count the tasks with at least that many fails of any kind, so the rule can be
+ * read at either before the plan's decision 26 is made, and `wallBound` names those among them
+ * whose only fails ended at the wall: they are counted apart and are not bracketed, as decision 21
+ * stands.
  */
 import type { LogEvent } from "../kernel/log.ts";
 import { isNumber, isString } from "../meta/json-shape.ts";
@@ -55,8 +57,9 @@ export function supply(events: readonly LogEvent[], of = FEASIBLE) {
     proposed: written.size,
     words: countBy(tasks, ({ word }) => word),
     feasible: feasible.length,
-    once: feasible.filter(({ fails }) => fails >= 1).length,
-    twice: feasible.filter(({ fails }) => fails >= 2).length,
+    once: read.filter(({ fails }) => fails >= 1).length,
+    twice: read.filter(({ fails }) => fails >= 2).length,
+    wallBound: read.filter(({ word }) => word === "wall-bound").length,
     solves: {
       // Every task of a session that passed gate 1 was put to the stronger condition once.
       strong: events.filter(

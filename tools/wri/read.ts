@@ -1,0 +1,927 @@
+/**
+ * The deterministic read of one campaign's log for a whole-run investigation: six rows of
+ * identities the primary reviewer settles, and the triggers that say which of the thirty lanes of
+ * `.claude/skills/whole-run-investigation/references/lanes.md` have something to read.
+ *
+ * v1's readers walked a campaign folder of some forty record kinds: claims, promotions, epochs,
+ * batteries, case records, Builder executions, reviews. v2 keeps one append-only log, and everything
+ * a lane starts from is a fold of it, so this file replaces v1's thirteen readers and reads nothing
+ * else: no harness state, no pack, no file beside the log.
+ *
+ * A trigger is a capitalised name, the lane it starts and one line of counts. It says a lane has
+ * something to read and never what the answer is: a lane that contradicts its trigger from the
+ * bytes has done its job. A trigger that did not fire says this arithmetic found nothing, and not
+ * that the property is absent. No trigger carries an answer, a task's text or a hidden value.
+ */
+import { type Condition, conditionsOf } from "#src/kernel/condition.ts";
+import type { LogEvent } from "#src/kernel/log.ts";
+import { taskStates } from "#src/kernel/task.ts";
+import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
+import { countBy, median } from "#src/meta/tally.ts";
+import { plural } from "#src/meta/text.ts";
+
+export interface Trigger {
+  readonly lane: number;
+  /** The capitalised name a lane's `Starts from` paragraph cites. */
+  readonly name: keyof typeof TRIGGERS;
+  readonly detail: string;
+}
+
+export interface Row {
+  readonly id: string;
+  readonly title: string;
+  readonly lines: readonly string[];
+}
+
+export interface Overview {
+  readonly rows: readonly Row[];
+  readonly triggers: readonly Trigger[];
+}
+
+/** One solve as the log holds it: what it ran under, how it ended and what it called. */
+interface Solve {
+  readonly id: string;
+  readonly index: number;
+  readonly version: string;
+  readonly harness: string;
+  readonly condition: string;
+  readonly side: string;
+  readonly wallSeconds: number;
+  outcome: string | null;
+  kind: string | null;
+  seconds: number;
+  cpu: number | null;
+  readonly calls: string[];
+  errors: number;
+  /** Whether the provider named the model that served it. */
+  attested: boolean;
+}
+
+/** One call of a Builder's tool, at its place in the log. */
+interface Call {
+  readonly index: number;
+  readonly tool: string;
+  readonly args: JsonObject | null;
+}
+
+/** A Builder session, the window of the log that is its round, and the round's report. */
+interface Build {
+  readonly session: string;
+  readonly from: number;
+  until: number;
+  readonly parent: string;
+  readonly practice: ReadonlySet<string>;
+  finished: JsonObject | null;
+  report: JsonObject | null;
+  readonly calls: Call[];
+}
+
+/** A round's test-side solves, apart by what each was for. */
+interface Round {
+  readonly practice: readonly Solve[];
+  readonly screening: readonly Solve[];
+  readonly scoring: readonly Solve[];
+  readonly counted: readonly Solve[];
+  /** Scored versions this round did not admit itself. */
+  readonly carried: readonly string[];
+  readonly scoredSet: ReadonlySet<string>;
+}
+
+interface Index {
+  readonly events: readonly LogEvent[];
+  readonly conditions: ReadonlyMap<string, Condition>;
+  readonly solves: readonly Solve[];
+  readonly verdicts: ReadonlyMap<string, JsonObject>;
+  readonly rulings: ReadonlyMap<string, JsonObject>;
+  readonly diagnoses: ReadonlyMap<string, JsonObject>;
+  readonly states: ReadonlyMap<string, string>;
+  readonly builds: readonly Build[];
+  readonly anchor: ReadonlySet<string>;
+  readonly of: (kind: LogEvent["kind"]) => JsonObject[];
+}
+
+/** The share of a wall past which a miss is read as bound by it, as v1's climb read it. */
+const WALL_BOUND_SHARE = 0.95;
+/** A pass under this share of its wall, on few calls, is the lead v1 read for a published recipe. */
+const SMALL_WALL_SHARE = 0.05;
+const FEW_CALLS = 3;
+/** Minutes of silence in the log worth a line. */
+const SILENCE_MINUTES = 20;
+/** Informative pairs below which a sign test at the plan's level can hardly clear it. */
+const FEW_INFORMATIVE = 5;
+/** The condition's fields a pair may not differ in: every one but the harness and the task. */
+const PAIRED = ["contract", "model", "effort", "compaction", "verifierTools", "sandbox", "host"] as const;
+const DEFECT = "check-defect";
+const TOO_HARD = "too hard";
+const TEST = "test";
+const BUILD_END = "build.finished";
+const EXAM_END = "exam.finished";
+
+/** Every trigger this reader can print, and the lane it starts. `lanes.md` names each one in the
+ *  `Starts from` paragraph of that lane, and `test/wri-catalogue.test.ts` holds the two together. */
+export const TRIGGERS = {
+  "INSTRUMENT AUTHORED": 1,
+  "PASSES UNREAD": 1,
+  "VERIFIER TOOLS MOVED": 2,
+  "TOOL MISSING": 2,
+  "NO CHECKER READING": 3,
+  "CHECKER READ WITH FAULTS": 3,
+  "CONTROL COVERAGE": 3,
+  "REFUSED UNREAD": 4,
+  "CHECK DEFECT RULED": 4,
+  "RULED UNCLEAR": 4,
+  "FAILS ON ONE CHECK": 5,
+  "DEFECT RULED BESIDE PASSES": 5,
+  "CHECKER NOT FROZEN": 6,
+  "FROZEN DESPITE FAULTS": 6,
+  "READ AT ANOTHER VERSION": 6,
+  "TASKS CARRIED": 6,
+  "SUPPLY THIN": 7,
+  "GATE REFUSED": 7,
+  "TOO HARD": 8,
+  "TOO HARD FLAGGED": 8,
+  "WITNESS PAST HALF ITS WALL": 8,
+  "CONTROLS REFUSED": 9,
+  "CONTROLS NOT ON RECORD": 9,
+  "TOO EASY": 10,
+  "WALL-BOUND TASKS": 10,
+  "PASSES AT A SMALL WALL SHARE": 11,
+  "BRACKETED BY SESSION": 12,
+  "HARNESS CHANGED": 13,
+  "BROKEN AT END": 13,
+  "MEASURED AN EARLIER STATE": 13,
+  "NEVER CHECKED": 14,
+  "TOOLS CALLED": 14,
+  "TOOL CALLS ERRED": 14,
+  "TOOLS EDITED": 15,
+  "NO PRACTICE": 16,
+  "FINAL BYTES NEVER PRACTISED": 16,
+  "SESSION ENDED": 16,
+  "PRACTICE FAILS": 17,
+  "PRACTISED TASK MEASURED": 18,
+  "SHELL COMMANDS": 18,
+  "WIN AT A SMALL WALL SHARE": 19,
+  "PAIR DIFFERS BEYOND HARNESS": 20,
+  "SCORED SET CARRIED": 21,
+  "ADMITTED BY": 21,
+  "FEW INFORMATIVE PAIRS": 22,
+  "SET SHORT": 22,
+  "ANCHOR NOT HELD": 23,
+  "FLIPS": 24,
+  "HOST CODE MOVED": 20,
+  "CHAIN": 25,
+  "STEP NOT BUILT ON": 25,
+  "WALL SHARE": 26,
+  "WALL-BOUND MISSES": 26,
+  "LONG SOLVE, LITTLE CPU": 26,
+  "NON-RESULTS": 27,
+  "SOLVE NEVER FINISHED": 27,
+  "MISSES WITHOUT A VERDICT": 27,
+  "SESSION CRASHED": 27,
+  "SILENCE": 28,
+  "SPEND LED BY A ROLE": 28,
+  "DIAGNOSES": 29,
+  "REPLAY MOVED THE VERDICT": 29,
+  "FLAGGED AND STILL COUNTED": 30,
+  "REVIEW FAULTS": 30,
+  "EARNED WITHOUT A PROBE": 30,
+} as const;
+
+const text = (value: JsonValue | undefined): string => (isString(value) ? value : "");
+const count = (value: JsonValue | undefined): number => (isNumber(value) ? value : 0);
+const items = (value: JsonValue | undefined): readonly JsonValue[] => (Array.isArray(value) ? value : []);
+const strings = (value: JsonValue | undefined): string[] => items(value).filter(isString);
+const short = (digest: string): string => digest.slice(0, 8);
+const share = (part: number, whole: number): string => `${String(part)} of ${String(whole)}`;
+const percent = (part: number): string => `${(part * 100).toFixed(1)}%`;
+const fired = (name: keyof typeof TRIGGERS, detail: string): Trigger => ({
+  lane: TRIGGERS[name],
+  name,
+  detail,
+});
+
+function records(value: JsonValue | undefined): JsonObject[] {
+  return items(value).flatMap((item) => {
+    const record = asRecord(item);
+    return record === null ? [] : [record];
+  });
+}
+
+function tally(counts: Readonly<Record<string, number>>): string {
+  const named = Object.entries(counts).sort(([left], [right]) => left.localeCompare(right));
+  return named.map(([name, number]) => `${name} ${String(number)}`).join(", ") || "none";
+}
+
+function solvesOf(events: readonly LogEvent[], conditions: ReadonlyMap<string, Condition>): Solve[] {
+  const solves = new Map<string, Solve>();
+  for (const [index, { kind, data }] of events.entries()) {
+    const id = text(data.solve);
+    if (kind === "solve.started") {
+      const condition = conditions.get(text(data.condition));
+      solves.set(id, {
+        id,
+        index,
+        version: condition?.task ?? "",
+        harness: condition?.harness ?? "",
+        condition: text(data.condition),
+        side: condition?.side ?? "",
+        wallSeconds: count(asRecord(data.limits)?.wallSeconds),
+        outcome: null,
+        kind: null,
+        seconds: 0,
+        cpu: null,
+        calls: [],
+        errors: 0,
+        attested: false,
+      });
+    }
+    const solve = solves.get(id);
+    if (solve !== undefined && kind === "solve.call") {
+      solve.calls.push(text(data.tool));
+      solve.errors += data.isError === true ? 1 : 0;
+    }
+    if (solve !== undefined && kind === "solve.finished") {
+      const ending = asRecord(data.ending);
+      const cpu = asRecord(data.cpu)?.seconds;
+      solve.outcome = text(ending?.outcome);
+      solve.kind = isString(ending?.kind) ? ending.kind : null;
+      solve.seconds = count(data.seconds);
+      solve.cpu = isNumber(cpu) ? cpu : null;
+      solve.attested = items(data.responseModels).length > 0;
+    }
+  }
+  return [...solves.values()];
+}
+
+function buildsOf(events: readonly LogEvent[]): Build[] {
+  const builds: Build[] = [];
+  for (const [index, { kind, data }] of events.entries()) {
+    const session = text(data.session);
+    if (kind === "build.started") {
+      const last = builds.at(-1);
+      if (last !== undefined) last.until = index;
+      builds.push({
+        session,
+        from: index,
+        until: events.length,
+        parent: text(data.parent),
+        practice: new Set(strings(data.tasks)),
+        finished: null,
+        report: null,
+        calls: [],
+      });
+    }
+    const build = builds.find((each) => each.session === session);
+    if (build !== undefined && kind === "build.call") {
+      build.calls.push({ index, tool: text(data.tool), args: asRecord(data.args) });
+    }
+    if (build !== undefined && kind === BUILD_END) build.finished = data;
+    if (build !== undefined && kind === "comparison.reported") build.report = data;
+  }
+  return builds;
+}
+
+function indexOf(events: readonly LogEvent[]): Index {
+  const conditions = conditionsOf(events);
+  const last = (kind: LogEvent["kind"]) =>
+    new Map(events.flatMap((event) => (event.kind === kind ? [[text(event.data.solve), event.data]] : [])));
+  const of = (kind: LogEvent["kind"]) => events.flatMap((event) => (event.kind === kind ? [event.data] : []));
+  return {
+    events,
+    conditions,
+    solves: solvesOf(events, conditions),
+    verdicts: last("verdict"),
+    rulings: last("referee.finding"),
+    diagnoses: last("diagnosis.recorded"),
+    states: taskStates(events),
+    builds: buildsOf(events),
+    anchor: new Set(of("anchor.drawn").flatMap((data) => strings(data.tasks))),
+    of,
+  };
+}
+
+/** The answers some check refused: a format fault reached no check and is none. */
+function refusals(log: Index): Solve[] {
+  return log.solves.filter((solve) => {
+    const verdict = log.verdicts.get(solve.id);
+    return verdict?.kind === "fail" && items(verdict.blocking).length > 0;
+  });
+}
+
+/** A round's solves on the test side. A scored task's solves count from its admission on
+ *  (`src/builder/round.ts`), so the ones before it screened the task. */
+function roundOf(log: Index, build: Build): Round {
+  const window = log.solves.filter(
+    (solve) => solve.index > build.from && solve.index < build.until && solve.side === TEST,
+  );
+  const scoredSet = new Set(strings(build.report?.versions));
+  const admittedAt = new Map(
+    log.events.flatMap(({ kind, data }, index) =>
+      kind === "task.state" && data.state === "admitted" && data.session === build.session
+        ? [[text(data.version), index] as const]
+        : [],
+    ),
+  );
+  const after = (solve: Solve) => solve.index > (admittedAt.get(solve.version) ?? -1);
+  const scoring = window.filter((solve) => scoredSet.has(solve.version) && after(solve));
+  return {
+    practice: window.filter((solve) => build.practice.has(solve.version)),
+    screening: window.filter((solve) => admittedAt.has(solve.version) && !after(solve)),
+    scoring,
+    counted: [...scoring, ...window.filter((solve) => log.anchor.has(solve.version))],
+    carried: [...scoredSet].filter((version) => !admittedAt.has(version)),
+    scoredSet,
+  };
+}
+
+/** Lanes 1 to 6: the exam's instrument, which is the pack author's. */
+function instrumentTriggers(log: Index): Trigger[] {
+  const reading = log.of("checker.read").at(-1);
+  const frozen = log.of("contract.frozen").at(-1);
+  const rows = records(reading?.rows);
+  const authored = rows.filter((row) => row.instrument === "authored").length;
+  const passes = log.solves.filter((solve) => solve.outcome === "pass").length;
+  const trees = new Set([...log.conditions.values()].map((condition) => condition.verifierTools)).size;
+  const faults = strings(reading?.faults);
+  const lost = faults.filter((fault) => fault.includes("not on the verifier's tool path")).length;
+  const uncaught = rows.filter((row) => count(row.named) === 0 || count(row.caught) < count(row.named));
+  const refused = refusals(log);
+  const rulingOf = (solve: Solve) => text(log.rulings.get(solve.id)?.ruling) || "unread";
+  const ruled = countBy(refused, rulingOf);
+  const defects = refused.filter((solve) => rulingOf(solve) === DEFECT);
+  const defectChecks = countBy(defects, (solve) => text(log.rulings.get(solve.id)?.check));
+  const blocking = refused.flatMap((solve) => strings(log.verdicts.get(solve.id)?.blocking));
+  const [top] = Object.entries(countBy(blocking, (check) => check)).sort(([, a], [, b]) => b - a);
+  const lopsided = top !== undefined && new Set(blocking).size > 1 && top[1] > refused.length / 2;
+  const carried = log.of("task.proposed").filter((data) => isString(data.carried)).length;
+  return [
+    ...(authored > 0
+      ? [
+          fired(
+            "INSTRUMENT AUTHORED",
+            `${share(authored, rows.length)} checks decide by their author's own computation`,
+          ),
+        ]
+      : []),
+    ...(passes > 0 ? [fired("PASSES UNREAD", `${String(passes)} passes; no reviewer reads a pass`)] : []),
+    ...(trees > 1
+      ? [fired("VERIFIER TOOLS MOVED", `${String(trees)} tool trees decided verdicts in one log`)]
+      : []),
+    ...(lost > 0 ? [fired("TOOL MISSING", plural(lost, "check tool"))] : []),
+    ...(reading === undefined
+      ? [fired("NO CHECKER READING", "accept.ts has not read this campaign's checker")]
+      : []),
+    ...(faults.length > 0 ? [fired("CHECKER READ WITH FAULTS", plural(faults.length, "fault"))] : []),
+    ...(uncaught.length > 0
+      ? [
+          fired(
+            "CONTROL COVERAGE",
+            `${share(uncaught.length, rows.length)} checks refused no reject control naming them`,
+          ),
+        ]
+      : []),
+    ...((ruled.unread ?? 0) > 0
+      ? [
+          fired(
+            "REFUSED UNREAD",
+            `${share(ruled.unread ?? 0, refused.length)} refused answers no reviewer ruled on`,
+          ),
+        ]
+      : []),
+    ...(defects.length > 0
+      ? [
+          fired(
+            "CHECK DEFECT RULED",
+            `${share(defects.length, refused.length)}; by check: ${tally(defectChecks)}`,
+          ),
+        ]
+      : []),
+    ...((ruled.unclear ?? 0) > 0 ? [fired("RULED UNCLEAR", share(ruled.unclear ?? 0, refused.length))] : []),
+    ...(lopsided && passes > 0
+      ? [fired("FAILS ON ONE CHECK", `${top[0]} refused ${share(top[1], refused.length)}`)]
+      : []),
+    ...(defects.length > 0 && passes > 0
+      ? [fired("DEFECT RULED BESIDE PASSES", "a frozen alternative can settle what a ruling asserts")]
+      : []),
+    ...(frozen === undefined ? [fired("CHECKER NOT FROZEN", "no contract.frozen in the log")] : []),
+    ...(count(frozen?.faults) > 0
+      ? [fired("FROZEN DESPITE FAULTS", plural(count(frozen?.faults), "fault"))]
+      : []),
+    ...(frozen !== undefined && reading !== undefined && reading.checks !== frozen.checks
+      ? [fired("READ AT ANOTHER VERSION", "the last reading is of another check program than the frozen one")]
+      : []),
+    ...(carried > 0
+      ? [fired("TASKS CARRIED", `${plural(carried, "task")} came from another checker's campaign`)]
+      : []),
+  ];
+}
+
+/** Lanes 7 to 12: the tasks, which are the Examiner's and the pack's. */
+function taskTriggers(log: Index): Trigger[] {
+  const proposed = log.of("task.proposed").filter((data) => isString(data.session));
+  const written = new Set(proposed.map((data) => text(data.version)));
+  const gates = log.of("task.gate").filter((data) => written.has(text(data.version)));
+  const at = (gate: number, outcome: string) =>
+    gates.filter((data) => data.gate === gate && data.outcome === outcome);
+  const feasible = at(4, "passed").length;
+  const refusedAt = countBy(
+    gates.filter((data) => data.outcome === "refused"),
+    (data) => `gate ${String(count(data.gate))}`,
+  );
+  const hard = at(2, "too-hard");
+  const hardKinds = countBy(hard, (data) => text(data.kind) || "unrecorded");
+  const flagged = log
+    .of("exam.word")
+    .filter((data) => data.word === TOO_HARD && items(data.flagged).length > 0).length;
+  const witnesses = new Set(at(2, "passed").map((data) => text(data.solve)));
+  const slow = log.solves.filter((solve) => witnesses.has(solve.id) && solve.seconds > solve.wallSeconds / 2);
+  const controlKinds = countBy(
+    at(4, "refused").flatMap((data) =>
+      strings(data.kinds).length > 0 ? strings(data.kinds) : ["unrecorded"],
+    ),
+    (kind) => kind,
+  );
+  const bare = at(4, "passed").filter((data) => !Array.isArray(data.set)).length;
+  const words = countBy(log.of("exam.word"), (data) => text(data.word));
+  const [easy, bound] = [words["too easy"] ?? 0, words["wall-bound"] ?? 0];
+  const screened = easy + bound + (words.scored ?? 0);
+  const passed = log.solves.filter((solve) => solve.side === TEST && solve.outcome === "pass");
+  const quick = passed.filter((solve) => solve.seconds < solve.wallSeconds * SMALL_WALL_SHARE);
+  const sequences = new Set(quick.map((solve) => solve.calls.join(">"))).size;
+  const bracketed = log.of(EXAM_END).map((data) => {
+    const scored = Object.values(asRecord(data.words) ?? {}).filter((word) => word === "scored").length;
+    return `${text(data.session)} ${share(scored, count(data.proposed))}`;
+  });
+  return [
+    ...(proposed.length > 0 && feasible * 2 < proposed.length
+      ? [fired("SUPPLY THIN", `${share(feasible, proposed.length)} proposed tasks passed gate 4`)]
+      : []),
+    ...(Object.keys(refusedAt).length > 0 ? [fired("GATE REFUSED", tally(refusedAt))] : []),
+    ...(hard.length > 0
+      ? [fired("TOO HARD", `${share(hard.length, proposed.length)}; ended: ${tally(hardKinds)}`)]
+      : []),
+    ...(flagged > 0
+      ? [fired("TOO HARD FLAGGED", `${plural(flagged, "task")} closed on a refusal ruled a check defect`)]
+      : []),
+    ...(slow.length > 0 ? [fired("WITNESS PAST HALF ITS WALL", share(slow.length, witnesses.size))] : []),
+    ...(Object.keys(controlKinds).length > 0 ? [fired("CONTROLS REFUSED", tally(controlKinds))] : []),
+    ...(bare > 0
+      ? [fired("CONTROLS NOT ON RECORD", `${plural(bare, "task")} passed gate 4 with a digest alone`)]
+      : []),
+    ...(easy > 0 ? [fired("TOO EASY", share(easy, screened))] : []),
+    ...(bound > 0 ? [fired("WALL-BOUND TASKS", share(bound, screened))] : []),
+    ...(passed.length > 0 && quick.length * 2 > passed.length
+      ? [
+          fired(
+            "PASSES AT A SMALL WALL SHARE",
+            `${share(quick.length, passed.length)} test-side passes, in ${plural(sequences, "call sequence")}`,
+          ),
+        ]
+      : []),
+    ...(bracketed.length > 0 ? [fired("BRACKETED BY SESSION", bracketed.join("; "))] : []),
+  ];
+}
+
+/** Lanes 13 to 19: the harness, which is the Builder's. */
+function harnessTriggers(log: Index): Trigger[] {
+  return log.builds.flatMap((build) => {
+    const { session, finished, parent, calls } = build;
+    const round = roundOf(log, build);
+    const changed = finished?.changed === true;
+    const child = text(finished?.harness);
+    const written = [
+      ...new Set(calls.flatMap(({ tool, args }) => (tool === "write_file" ? [text(args?.path)] : []))),
+    ];
+    const toolFiles = written.filter((path) => path.includes("tools"));
+    const edits = calls.filter(({ tool }) => tool === "write_file" || tool === "bash");
+    const practised = calls.findLast(({ tool }) => tool === "practice")?.index;
+    const late = edits.filter(({ index }) => practised !== undefined && index > practised).length;
+    const fresh = log.solves.filter((solve) => changed && solve.harness === child && solve.side === TEST);
+    const erring = fresh.filter((solve) => solve.errors > 0).length;
+    const ended = finished === null ? "never finished" : text(finished.ended);
+    const failed = round.practice.filter((solve) => solve.outcome === "fail");
+    const earned = failed.filter((fail) => log.rulings.get(fail.id)?.ruling === "earned").length;
+    const answered = failed.filter((fail) =>
+      round.practice.some(
+        (later) => later.version === fail.version && later.index > fail.index && later.outcome === "pass",
+      ),
+    ).length;
+    const exposed = [...round.scoredSet, ...log.anchor].filter((version) =>
+      build.practice.has(version),
+    ).length;
+    const shell = calls.filter(({ tool }) => tool === "bash").length;
+    const lostBefore = new Set(
+      round.scoring
+        .filter((solve) => solve.harness === parent && solve.outcome === "fail")
+        .map((solve) => solve.version),
+    );
+    const quickWins = round.scoring.filter(
+      (solve) =>
+        solve.harness !== parent &&
+        solve.outcome === "pass" &&
+        lostBefore.has(solve.version) &&
+        solve.seconds < solve.wallSeconds * SMALL_WALL_SHARE &&
+        solve.calls.length <= FEW_CALLS,
+    ).length;
+    return [
+      ...(changed
+        ? [
+            fired(
+              "HARNESS CHANGED",
+              `${session}: ${short(parent)} to ${short(child)}; written by write_file: ${written.join(", ") || "nothing"}`,
+            ),
+          ]
+        : []),
+      ...(isString(finished?.broken)
+        ? [
+            fired(
+              child === "" ? "BROKEN AT END" : "MEASURED AN EARLIER STATE",
+              `${session}: what the session left does not open`,
+            ),
+          ]
+        : []),
+      ...(changed && !calls.some(({ tool }) => tool === "check_harness")
+        ? [fired("NEVER CHECKED", `${session}: no check_harness call`)]
+        : []),
+      ...(fresh.length > 0
+        ? [
+            fired(
+              "TOOLS CALLED",
+              `${session}: ${tally(
+                countBy(
+                  fresh.flatMap((solve) => solve.calls),
+                  (tool) => tool,
+                ),
+              )}`,
+            ),
+          ]
+        : []),
+      ...(erring * 4 > fresh.length
+        ? [
+            fired(
+              "TOOL CALLS ERRED",
+              `${session}: in ${share(erring, fresh.length)} solves under the new harness`,
+            ),
+          ]
+        : []),
+      ...(toolFiles.length > 0 ? [fired("TOOLS EDITED", `${session}: ${toolFiles.join(", ")}`)] : []),
+      ...(changed && practised === undefined
+        ? [fired("NO PRACTICE", `${session}: the harness changed and no practice solve ran`)]
+        : []),
+      ...(late > 0
+        ? [
+            fired(
+              "FINAL BYTES NEVER PRACTISED",
+              `${session}: ${plural(late, "edit")} after the last practice`,
+            ),
+          ]
+        : []),
+      ...(ended === "finished" ? [] : [fired("SESSION ENDED", `${session}: ${ended}`)]),
+      ...(failed.length > 0
+        ? [
+            fired(
+              "PRACTICE FAILS",
+              `${session}: ${plural(failed.length, "fail")}, ${String(earned)} ruled earned, ${String(answered)} passed in a later practice`,
+            ),
+          ]
+        : []),
+      ...(exposed > 0
+        ? [
+            fired(
+              "PRACTISED TASK MEASURED",
+              `${session}: ${plural(exposed, "task")} both practised and measured`,
+            ),
+          ]
+        : []),
+      ...(shell > 0 ? [fired("SHELL COMMANDS", `${session}: ${plural(shell, "command")} to read`)] : []),
+      ...(quickWins > 0
+        ? [
+            fired(
+              "WIN AT A SMALL WALL SHARE",
+              `${session}: ${String(quickWins)} passed solves of tasks the parent failed, in few calls`,
+            ),
+          ]
+        : []),
+    ];
+  });
+}
+
+/** Lanes 20 to 25: the comparison, which is the host's. */
+function comparisonTriggers(log: Index): Trigger[] {
+  const hosts = new Set([...log.conditions.values()].map((condition) => condition.host)).size;
+  const reported = log.builds.filter((build) => build.report !== null);
+  const perRound = reported.flatMap((build) => {
+    const { session, parent } = build;
+    const round = roundOf(log, build);
+    // The fields, beyond the harness, in which the round's counted solves differ among themselves.
+    const ran = round.counted.flatMap((solve) => log.conditions.get(solve.condition) ?? []);
+    const moved = PAIRED.filter((field) => ran.some((condition) => condition[field] !== ran[0]?.[field]));
+    const failedUnder = (old: boolean) =>
+      new Set(
+        round.screening
+          .filter((solve) => (solve.harness === parent) === old && solve.outcome === "fail")
+          .map((solve) => solve.version),
+      );
+    const [byOld, byNew] = [failedUnder(true), failedUnder(false)];
+    const both = [...byOld].filter((version) => byNew.has(version)).length;
+    const scored = asRecord(build.report?.scored);
+    const informative = count(scored?.wins) + count(scored?.losses);
+    const [lacking, unscreened] = [items(build.report?.short).length, items(build.report?.unscreened).length];
+    const anchor = asRecord(build.report?.anchor);
+    const seen = new Map<string, Set<string>>();
+    for (const solve of round.counted.filter((each) => each.outcome === "pass" || each.outcome === "fail")) {
+      const key = `${solve.version} ${solve.harness}`;
+      seen.set(key, (seen.get(key) ?? new Set()).add(text(solve.outcome)));
+    }
+    const flips = [...seen.values()].filter((outcomes) => outcomes.size > 1).length;
+    return [
+      ...(moved.length > 0 ? [fired("PAIR DIFFERS BEYOND HARNESS", `${session}: ${moved.join(", ")}`)] : []),
+      ...(round.carried.length > 0
+        ? [
+            fired(
+              "SCORED SET CARRIED",
+              `${session}: ${share(round.carried.length, round.scoredSet.size)} scored tasks were admitted outside this round`,
+            ),
+          ]
+        : []),
+      ...(round.screening.length > 0
+        ? [
+            fired(
+              "ADMITTED BY",
+              `${session}: the parent's fails ${String(byOld.size - both)}, the child's ${String(byNew.size - both)}, both ${String(both)}`,
+            ),
+          ]
+        : []),
+      ...(scored !== null && informative < FEW_INFORMATIVE
+        ? [
+            fired(
+              "FEW INFORMATIVE PAIRS",
+              `${session}: ${share(informative, informative + count(scored.ties))} tasks tell the harnesses apart`,
+            ),
+          ]
+        : []),
+      ...(lacking + unscreened > 0
+        ? [
+            fired(
+              "SET SHORT",
+              `${session}: ${String(lacking)} short of solves, ${String(unscreened)} unscreened`,
+            ),
+          ]
+        : []),
+      ...(anchor !== null && anchor.reading !== "held"
+        ? [
+            fired(
+              "ANCHOR NOT HELD",
+              `${session}: ${text(anchor.reading)}, ${String(count(anchor.informative))} informative`,
+            ),
+          ]
+        : []),
+      ...(flips > 0
+        ? [
+            fired(
+              "FLIPS",
+              `${session}: ${share(flips, seen.size)} task and harness pairs both passed and failed`,
+            ),
+          ]
+        : []),
+    ];
+  });
+  const chain = reported.map((build) => {
+    const fresh = isString(build.report?.fresh) ? short(build.report.fresh) : "none";
+    return `${build.session} ${short(build.parent)}>${fresh} ${text(build.report?.reading)}`;
+  });
+  const parents = new Set(log.builds.map((build) => build.parent));
+  const steps = reported.filter((build) => build.report?.reading === "step" && build !== log.builds.at(-1));
+  const unbuilt = steps.filter((build) => !parents.has(text(build.report?.fresh))).length;
+  return [
+    ...(hosts > 1
+      ? [fired("HOST CODE MOVED", `${String(hosts)} versions of the host's code in one log`)]
+      : []),
+    ...perRound,
+    ...(chain.length > 0 ? [fired("CHAIN", chain.join("; "))] : []),
+    ...(unbuilt > 0
+      ? [fired("STEP NOT BUILT ON", `${plural(unbuilt, "step")} no later session started from`)]
+      : []),
+  ];
+}
+
+/** Lanes 26 to 28: the solve, its failure and the cost. */
+function solveTriggers(log: Index): Trigger[] {
+  const done = log.solves.filter((solve) => solve.outcome !== null);
+  const missed = done.filter((solve) => solve.outcome === "fail");
+  const walled = missed.filter(
+    (solve) => solve.kind === "wall-ended" || solve.seconds > solve.wallSeconds * WALL_BOUND_SHARE,
+  ).length;
+  const wallShares = log.builds.flatMap((build) => {
+    const { scoring } = roundOf(log, build);
+    const under = (old: boolean) =>
+      median(
+        scoring
+          .filter((solve) => (solve.harness === build.parent) === old && solve.wallSeconds > 0)
+          .map((solve) => solve.seconds / solve.wallSeconds),
+      );
+    const [before, after] = [under(true), under(false)];
+    return before === null || after === null
+      ? []
+      : [
+          fired(
+            "WALL SHARE",
+            `${build.session}: median ${percent(before)} under the parent, ${percent(after)} under the child`,
+          ),
+        ];
+  });
+  const starved = done.filter(
+    (solve) => solve.cpu !== null && solve.seconds > 60 && solve.cpu < solve.seconds * 0.02,
+  );
+  const non = done.filter((solve) => solve.outcome === "non-result");
+  const unjudged = countBy(
+    missed.filter((solve) => solve.kind !== "rejected"),
+    (solve) => solve.kind ?? "unkinded",
+  );
+  const ends = [...log.of(BUILD_END), ...log.of(EXAM_END)];
+  const crashed = ends.filter((data) => isString(data.crash) || data.ended === "crashed");
+  const times = log.events.map((event) => Date.parse(event.at));
+  const gaps = times.flatMap((at, index) =>
+    at - (times[index - 1] ?? at) > SILENCE_MINUTES * 60_000 ? [index] : [],
+  );
+  const spent = (kind: LogEvent["kind"]) => log.of(kind).reduce((sum, data) => sum + count(data.metered), 0);
+  const spend = Object.entries({
+    solver: spent("solve.finished"),
+    builder: spent(BUILD_END),
+    examiner: spent(EXAM_END),
+    referee: spent("referee.finding"),
+    diagnoser: spent("diagnosis.recorded"),
+  }).sort(([, a], [, b]) => b - a);
+  const total = spend.reduce((sum, [, dollars]) => sum + dollars, 0);
+  const [[leader, most] = ["", 0]] = spend;
+  return [
+    ...(walled > 0 ? [fired("WALL-BOUND MISSES", share(walled, missed.length))] : []),
+    ...wallShares,
+    ...(starved.length > 0 ? [fired("LONG SOLVE, LITTLE CPU", plural(starved.length, "solve"))] : []),
+    ...(non.length > 0
+      ? [
+          fired(
+            "NON-RESULTS",
+            `${share(non.length, done.length)}; ${tally(countBy(non, (solve) => solve.kind ?? "unkinded"))}`,
+          ),
+        ]
+      : []),
+    ...(log.solves.length > done.length
+      ? [fired("SOLVE NEVER FINISHED", plural(log.solves.length - done.length, "solve"))]
+      : []),
+    ...(Object.keys(unjudged).length > 0 ? [fired("MISSES WITHOUT A VERDICT", tally(unjudged))] : []),
+    ...(crashed.length > 0
+      ? [fired("SESSION CRASHED", crashed.map((data) => text(data.session)).join(", "))]
+      : []),
+    ...(gaps.length > 0
+      ? [
+          fired(
+            "SILENCE",
+            `${plural(gaps.length, "gap")} over ${String(SILENCE_MINUTES)} minutes, the first before ${log.events[gaps[0] ?? 0]?.at ?? ""}`,
+          ),
+        ]
+      : []),
+    ...(total > 0 && leader !== "solver" && most > total / 2
+      ? [fired("SPEND LED BY A ROLE", `${leader}: ${percent(most / total)} of metered dollars`)]
+      : []),
+  ];
+}
+
+/** Lanes 29 and 30: the review loop. */
+function reviewTriggers(log: Index): Trigger[] {
+  const diagnoses = [...log.diagnoses.values()];
+  const abstained = diagnoses.filter((data) => isString(data.abstain)).length;
+  const owners = countBy(
+    diagnoses.filter((data) => isString(data.owner)),
+    (data) => text(data.owner),
+  );
+  const moved = [...log.rulings].filter(([solve, data]) => {
+    const replay = asRecord(data.replay);
+    return replay !== null && replay.kind !== log.verdicts.get(solve)?.kind;
+  }).length;
+  const disputed = new Set(
+    [...log.states].flatMap(([version, state]) => (state === "disputed" ? [version] : [])),
+  );
+  const flagged = new Set(log.builds.flatMap((build) => strings(build.report?.flagged)));
+  const standing = [...flagged].filter((version) => !disputed.has(version)).length;
+  const ends = [...log.of(BUILD_END), ...log.of(EXAM_END), ...log.of("comparison.reported")];
+  const faults = ends.reduce((sum, data) => sum + items(data.reviewFaults).length, 0);
+  const unprobed = [...log.rulings.values()].filter(
+    (data) => data.ruling === "earned" && items(data.probes).length === 0 && count(data.turns) > 0,
+  ).length;
+  return [
+    ...(diagnoses.length > 0
+      ? [
+          fired(
+            "DIAGNOSES",
+            `${String(diagnoses.length)}, ${String(abstained)} abstained; owners: ${tally(owners)}`,
+          ),
+        ]
+      : []),
+    ...(moved > 0 ? [fired("REPLAY MOVED THE VERDICT", plural(moved, "ruling"))] : []),
+    ...(standing > 0
+      ? [
+          fired(
+            "FLAGGED AND STILL COUNTED",
+            `${plural(standing, "task")} with a fail ruled a check defect stayed in a comparison`,
+          ),
+        ]
+      : []),
+    ...(faults > 0 ? [fired("REVIEW FAULTS", plural(faults, "reviewer failure"))] : []),
+    ...(unprobed > 0 ? [fired("EARNED WITHOUT A PROBE", share(unprobed, log.rulings.size))] : []),
+  ];
+}
+
+/** Rows A to F: the identities every finding binds to. */
+function rowsOf(log: Index): Row[] {
+  const conditions = [...log.conditions.values()];
+  const distinct = (pick: (condition: Condition) => string) => String(new Set(conditions.map(pick)).size);
+  const frozen = log.of("contract.frozen").at(-1);
+  const proposals = log.of("task.proposed");
+  const having = (field: string) => String(proposals.filter((data) => isString(data[field])).length);
+  const done = log.solves.filter((solve) => solve.outcome !== null);
+  const partition = (side: string) =>
+    tally(
+      countBy(
+        done.filter((solve) => solve.side === side),
+        (solve) => `${solve.outcome ?? ""} ${solve.kind ?? ""}`.trim(),
+      ),
+    );
+  const sessions = log.builds.map((build) => {
+    const child = isString(build.finished?.harness) ? short(build.finished.harness) : "none";
+    const ended = text(build.finished?.ended) || "never";
+    return `${build.session}: ${short(build.parent)} > ${child}, ended ${ended}, ${String(count(build.finished?.practiceSolves))} practice solves, reading ${text(build.report?.reading) || "none"}`;
+  });
+  return [
+    {
+      id: "A",
+      title: "campaign and log",
+      lines: [
+        `${plural(log.events.length, "event")}, ${log.events[0]?.at ?? ""} to ${log.events.at(-1)?.at ?? ""}`,
+        `${plural(log.builds.length, "Builder session")}, ${plural(log.of("exam.started").length, "Examiner session")}, ${plural(log.of("comparison.reported").length, "report")}`,
+      ],
+    },
+    {
+      id: "B",
+      title: "checker identity",
+      lines: [
+        frozen === undefined
+          ? "not frozen"
+          : `frozen: contract ${short(text(frozen.contract))}, check program ${short(text(frozen.checks))}`,
+        `${plural(log.of("checker.read").length, "reading")}; contracts among conditions: ${distinct((condition) => condition.contract)}`,
+      ],
+    },
+    {
+      id: "C",
+      title: "conditions",
+      lines: [
+        `${plural(conditions.length, "condition")}: ${tally(countBy(conditions, (condition) => `${condition.side} ${condition.model}`))}`,
+        `host code ${distinct((condition) => condition.host)}, sandbox ${distinct((condition) => condition.sandbox)}, verifier tools ${distinct((condition) => condition.verifierTools)}, harnesses ${distinct((condition) => condition.harness)}`,
+        `${share(done.filter((solve) => !solve.attested).length, done.length)} finished solves name no response model`,
+      ],
+    },
+    {
+      id: "D",
+      title: "task sets",
+      lines: [
+        `${plural(proposals.length, "task")}: ${having("session")} written by a session, ${having("carried")} carried, the rest the pack's`,
+        `states: ${tally(countBy([...log.states.values()], (state) => state))}; anchor ${String(log.anchor.size)}`,
+      ],
+    },
+    {
+      id: "E",
+      title: "case partition",
+      lines: [
+        `test side: ${partition(TEST)}`,
+        `strong side: ${partition("strong")}`,
+        `${plural(log.solves.length - done.length, "solve")} never finished`,
+      ],
+    },
+    { id: "F", title: "sessions and the harness chain", lines: sessions },
+  ];
+}
+
+/** The rows and the triggers of one log. */
+export function overview(events: readonly LogEvent[]): Overview {
+  const log = indexOf(events);
+  return {
+    rows: rowsOf(log),
+    triggers: [
+      ...instrumentTriggers(log),
+      ...taskTriggers(log),
+      ...harnessTriggers(log),
+      ...comparisonTriggers(log),
+      ...solveTriggers(log),
+      ...reviewTriggers(log),
+    ],
+  };
+}
+
+/** The overview as the brief prints it: each row, then each trigger on a line of its own. */
+export function rendered({ rows, triggers }: Overview): string {
+  return [
+    ...rows.flatMap((row) => [`${row.id}. ${row.title}`, ...row.lines.map((line) => `   ${line}`)]),
+    "",
+    ...triggers.map((trigger) => `${trigger.name} (lane ${String(trigger.lane)}): ${trigger.detail}`),
+  ].join("\n");
+}

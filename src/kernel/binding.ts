@@ -31,6 +31,7 @@
  */
 import { isNumber, isString } from "../meta/json-shape.ts";
 import { countBy } from "../meta/tally.ts";
+import { gatesOf } from "./history.ts";
 import { frontierOf, ladder, type Rule, type Stand } from "./ladder.ts";
 import type { LogEvent } from "./log.ts";
 
@@ -111,10 +112,8 @@ export function binding(
   const words = countBy([...told.values()], (word) => word);
   // A refusal at gate 2 or 3 is a check's: it could not run on an answer, or did not repeat.
   const byChecks = new Set(
-    events.flatMap(({ kind, data }) =>
-      kind === "task.gate" && data.outcome === "refused" && (data.gate === 2 || data.gate === 3)
-        ? [data.version]
-        : [],
+    gatesOf(events).flatMap(({ version, gate, outcome }) =>
+      outcome === "refused" && (gate === 2 || gate === 3) ? [version] : [],
     ),
   );
   const unsound = [...told].filter(([version, word]) => word === "refused" && byChecks.has(version)).length;

@@ -36,6 +36,7 @@ import { contractHash } from "#src/kernel/contract.ts";
 import { frontierOf, type Rule, type Stand } from "#src/kernel/ladder.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
 import { freezePrices, priceKey } from "#src/kernel/meter.ts";
+import { gatesOf, lastGate, proposalsOf, writtenTasks } from "#src/kernel/history.ts";
 import { type RejectControl, type TaskPackage, taskSets, taskStates, taskVersion } from "#src/kernel/task.ts";
 import { checkProgramVersion, openVerifier, type Task } from "#src/kernel/verify.ts";
 import { existsSync, mkdirSync, readFileSync } from "#src/meta/filesystem.ts";
@@ -121,12 +122,12 @@ export function screeningRule(values: { readonly screen: string; readonly fails:
   return { solves: Number(values.screen), fails: Number(values.fails) };
 }
 
-/** The task sets a log holds: the feasible versions, and among them the anchor's, the released, the
- *  ones still held outside the anchor (`candidates`) and the ones a round admitted. The last two
- *  together are the live pool, which every round screens again under its own two harnesses
- *  (`src/builder/round.ts`). */
+/** The task sets a log holds, as the kernel's fold gives them (`taskSets`): the feasible versions,
+ *  and among them the anchor's, the released, the ones still held outside the anchor (`candidates`)
+ *  and the ones a round admitted. The last two together are the live pool (`poolOf`), which every
+ *  round screens again under its own two harnesses (`src/builder/round.ts`). */
 export function setsOf(events: readonly LogEvent[]) {
-  const { states, feasible, anchor } = taskSets(events);
+  const { states, feasible, anchor, candidates } = taskSets(events);
   const inState = (state: string) => [...feasible].filter((version) => states.get(version) === state);
   return {
     feasible: [...feasible],
@@ -135,26 +136,13 @@ export function setsOf(events: readonly LogEvent[]) {
     anchor: [...anchor].filter((version) => ["held", "disputed"].includes(states.get(version) ?? "")),
     released: inState("released"),
     admitted: inState("admitted"),
-    candidates: inState("held").filter((version) => !anchor.has(version)),
+    candidates: [...candidates],
   };
 }
 
-/** The tasks a log's sessions wrote, each whole in its proposal: an Examiner's instances, which no
- *  pack holds. */
-export function writtenTasks(events: readonly LogEvent[]): Task[] {
-  return events.flatMap(({ kind, data }) => {
-    const task = asRecord(kind === "task.proposed" ? data.task : null);
-    return task !== null && isString(task.taskId) && isString(task.family)
-      ? [
-          {
-            taskId: task.taskId,
-            family: task.family,
-            publicInput: task.publicInput ?? null,
-            hidden: task.hidden ?? null,
-          },
-        ]
-      : [];
-  });
+/** The live pool of those sets: what is held outside the anchor, and what a round admitted. */
+export function poolOf(sets: Pick<ReturnType<typeof setsOf>, "candidates" | "admitted">): string[] {
+  return [...sets.candidates, ...sets.admitted];
 }
 
 /** A task a session wrote that stood feasible in its log, with what gates it again under another
@@ -183,27 +171,26 @@ export function carriable(events: readonly LogEvent[]) {
   const written = new Map(writtenTasks(events).map((task) => [task.taskId, task]));
   const answerOf = (solve: JsonValue | undefined) =>
     events.findLast(({ kind, data }) => kind === "verdict" && data.solve === solve)?.data.answer;
-  const gate = (version: JsonValue | undefined, number: number) =>
-    events.findLast(
-      ({ kind, data }) => kind === "task.gate" && data.version === version && data.gate === number,
-    )?.data;
+  const gates = gatesOf(events);
+  const [seconds, thirds, fourths] = [lastGate(gates, 2), lastGate(gates, 3), lastGate(gates, 4)];
   const feasible: Carriable[] = [];
   const recovered: Omit<Carriable, "controls">[] = [];
   const waiting: Omit<Carriable, "controls">[] = [];
   let bare = 0;
-  for (const { kind, data } of events) {
-    const task = kind === "task.proposed" && isString(data.taskId) ? written.get(data.taskId) : undefined;
+  for (const { taskId, version } of proposalsOf(events)) {
+    const task = taskId === null ? undefined : written.get(taskId);
     if (task === undefined) continue;
-    const second = gate(data.version, 2);
-    const accepted = answerOf(second?.solve);
-    if (!isString(second?.solve) || accepted === undefined) continue;
-    const witness = { task, solve: second.solve, accepted };
-    const fourth = gate(data.version, 4);
-    if (second.outcome === "too-hard" && second.kind === "rejected") recovered.push(witness);
-    else if (fourth?.outcome === "passed" && Array.isArray(fourth.set)) {
-      feasible.push({ ...witness, controls: fourth.set.flatMap(controlOf) });
+    const second = seconds.get(version);
+    const solve = second?.data.solve;
+    const accepted = answerOf(solve);
+    if (!isString(solve) || accepted === undefined) continue;
+    const witness = { task, solve, accepted };
+    const fourth = fourths.get(version);
+    if (second?.outcome === "too-hard" && second.data.kind === "rejected") recovered.push(witness);
+    else if (fourth?.outcome === "passed" && Array.isArray(fourth.data.set)) {
+      feasible.push({ ...witness, controls: fourth.data.set.flatMap(controlOf) });
     } else if (fourth?.outcome === "passed") bare += 1;
-    else if (fourth === undefined && gate(data.version, 3)?.outcome === "passed") waiting.push(witness);
+    else if (fourth === undefined && thirds.get(version)?.outcome === "passed") waiting.push(witness);
   }
   return { feasible, recovered, waiting, bare };
 }
@@ -231,12 +218,11 @@ export function reachOf(events: readonly LogEvent[], stand: Stand): Task[] {
     }),
   );
   const written = new Map(writtenTasks(events).map((task) => [task.taskId, task]));
-  return events.flatMap(({ kind, data }) => {
-    const task = kind === "task.proposed" && isString(data.taskId) ? written.get(data.taskId) : undefined;
-    if (task === undefined || !isString(data.version) || states.get(data.version) !== "too-hard") return [];
-    const last = events.findLast(
-      (event) => event.kind === "task.gate" && event.data.version === data.version && event.data.gate === 2,
-    )?.data.solve;
+  const witness = lastGate(gatesOf(events), 2);
+  return proposalsOf(events).flatMap(({ taskId, version }) => {
+    const task = taskId === null ? undefined : written.get(taskId);
+    if (task === undefined || states.get(version) !== "too-hard") return [];
+    const last = witness.get(version)?.data.solve;
     return isString(last) && here.has(last) ? [] : [task];
   });
 }

@@ -23,6 +23,7 @@
  *
  * No verb starts a solve, a session or a round, and none appends to a log.
  */
+import { writtenTasks } from "#src/kernel/history.ts";
 import { read } from "#src/kernel/log.ts";
 import { openVerifier, spelled } from "#src/kernel/verify.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
@@ -33,7 +34,6 @@ import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { plural } from "#src/meta/text.ts";
 import { treeContent } from "#src/solve/harness.ts";
-import { writtenTasks } from "../d2/campaign.ts";
 import { readPack } from "../m0/stored-sweep.ts";
 import { catalogueText, lanesOf, ownersOf, REFERENCES } from "./catalogue.ts";
 import {

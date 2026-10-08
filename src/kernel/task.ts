@@ -99,11 +99,16 @@ interface Fold {
 }
 
 /** What a log holds of its tasks, from the one fold: each version's state, the versions that passed
- *  every logged gate, and the versions the anchor's draws named. */
+ *  every logged gate, the versions the anchor's draws named, and the pool a round screens. */
 export interface TaskSets {
   readonly states: Map<string, TaskState>;
   readonly feasible: ReadonlySet<string>;
   readonly anchor: ReadonlySet<string>;
+  /** The live pool: the feasible versions held or admitted outside the anchor, in the order they
+   *  were proposed. Every round screens it again under its own two harnesses. */
+  readonly pool: readonly string[];
+  /** The pool's versions still held: no round has admitted them yet. */
+  readonly candidates: readonly string[];
 }
 
 /** Gate 5's outcome. A task the stronger condition has not passed never reaches it: it waits at gate 2. */
@@ -375,16 +380,25 @@ export function taskStates(events: readonly LogEvent[]): Map<string, TaskState> 
   return taskSets(events).states;
 }
 
-/** The same fold with the two sets every reader of a campaign asks for beside the states, so that
- *  what is feasible and what is the anchor's are said in one place. */
+/** The same fold with the sets every reader of a campaign asks for beside the states, so that what
+ *  is feasible, what is the anchor's and what a round has left to screen are said in one place. */
 export function taskSets(events: readonly LogEvent[]): TaskSets {
   const fold: Fold = { tasks: new Map(), drawn: null };
   for (const event of events) step(fold, event);
   const tasks = [...fold.tasks];
+  const anchor = new Set(fold.drawn);
+  const pool = tasks.filter(
+    ([version, task]) =>
+      task.passed === LOGGED_GATES &&
+      (task.state === "held" || task.state === "admitted") &&
+      !anchor.has(version),
+  );
   return {
     states: new Map(tasks.map(([version, task]) => [version, task.state])),
     feasible: new Set(tasks.flatMap(([version, task]) => (task.passed === LOGGED_GATES ? [version] : []))),
-    anchor: new Set(fold.drawn),
+    anchor,
+    pool: pool.map(([version]) => version),
+    candidates: pool.flatMap(([version, task]) => (task.state === "held" ? [version] : [])),
   };
 }
 

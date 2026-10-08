@@ -27,6 +27,7 @@
  * It starts no solve and calls no model. Not run here: see `campaign.ts`.
  */
 import { settleReading, stopRule, toLabel } from "#src/builder/round.ts";
+import { writtenTasks } from "#src/kernel/history.ts";
 import { read } from "#src/kernel/log.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
@@ -34,7 +35,7 @@ import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
 import { labelled } from "#src/review/rejections.ts";
-import { openCampaign, writtenTasks } from "./campaign.ts";
+import { openCampaign } from "./campaign.ts";
 
 const { values } = parseArgs({
   options: {

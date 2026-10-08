@@ -35,7 +35,7 @@ import { contractHash } from "#src/kernel/contract.ts";
 import { ladder } from "#src/kernel/ladder.ts";
 import { append, read } from "#src/kernel/log.ts";
 import { parseArgs } from "#src/meta/process.ts";
-import { frontier, openCampaign, SCREENING_OPTIONS, screeningRule, setsOf } from "./campaign.ts";
+import { frontier, openCampaign, poolOf, SCREENING_OPTIONS, screeningRule, setsOf } from "./campaign.ts";
 import { ROUND_OPTIONS } from "./round.ts";
 
 const { values } = parseArgs({
@@ -105,7 +105,7 @@ async function main(): Promise<void> {
   const sets = setsOf(read(log));
   const now = ladder(read(log), stands, rule);
   console.log(
-    `${String(sets.feasible.length)} feasible: ${String(sets.anchor.length)} anchor, ${String(sets.released.length)} released for practice (${String(now.practice.length)} the frontier is not known to clear), ${String(sets.candidates.length + sets.admitted.length)} in the pool`,
+    `${String(sets.feasible.length)} feasible: ${String(sets.anchor.length)} anchor, ${String(sets.released.length)} released for practice (${String(now.practice.length)} the frontier is not known to clear), ${String(poolOf(sets).length)} in the pool`,
   );
   console.log(
     `against the frontier ${stands.harness.slice(0, 8)}: ${String(now.pool.stops.length)} stop it, ${String(now.pool.clears.length)} it clears, ${String(now.pool.walled.length)} ended at the wall, ${String(now.pool.unknown.length)} no solve has placed; ${String(now.reach.length)} wait for a witness`,

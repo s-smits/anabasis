@@ -71,6 +71,7 @@
  */
 import { anchor, draw, gain, type Paired, pairsOf, scored, solveSeconds } from "../kernel/compare.ts";
 import { conditionsOf } from "../kernel/condition.ts";
+import { movesOf } from "../kernel/history.ts";
 import { endingsOf, lastReports, standing } from "../kernel/ladder.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { screen, taskSets, taskStates } from "../kernel/task.ts";
@@ -363,10 +364,8 @@ function readingOf(p: number, level: number, guard: ReturnType<typeof anchor>["r
 /** The task versions session `id` moved, each with the state it moved it to. */
 function movedBy(events: readonly LogEvent[], id: string): Map<string, string> {
   return new Map(
-    events.flatMap(({ kind, data }): [string, string][] =>
-      kind === TASK_STATE && data.session === id && isString(data.version) && isString(data.state)
-        ? [[data.version, data.state]]
-        : [],
+    movesOf(events).flatMap(({ version, state, session }): [string, string][] =>
+      session === id ? [[version, state]] : [],
     ),
   );
 }

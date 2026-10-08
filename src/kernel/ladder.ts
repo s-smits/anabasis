@@ -156,15 +156,10 @@ export function standing(endings: readonly Counted[], rule: Rule): Standing {
 
 /** Every task of a log by how it stands where the solver does. */
 export function ladder(events: readonly LogEvent[], stand: Stand, rule: Rule): Ladder {
-  const { states, feasible, anchor } = taskSets(events);
+  const { states, pool: live } = taskSets(events);
   const against = (version: string) => standing(endingsOf(events, version, stand), rule);
   const pool: Record<Standing, string[]> = { stops: [], clears: [], walled: [], unknown: [] };
-  for (const version of feasible) {
-    const state = states.get(version);
-    if ((state === "held" || state === "admitted") && !anchor.has(version)) {
-      pool[against(version)].push(version);
-    }
-  }
+  for (const version of live) pool[against(version)].push(version);
   const inState = (wanted: string) =>
     [...states].flatMap(([version, state]) => (state === wanted ? [version] : []));
   return {

@@ -55,7 +55,7 @@ import { claimed } from "#src/examiner/session.ts";
 import { sweepOf } from "#src/kernel/compare.ts";
 import { type SolveDirs, solveDirs } from "#src/solve/command.ts";
 import { releaseDiskCap } from "#src/verify/disk-cap.ts";
-import { carriable, setsOf } from "../d2/campaign.ts";
+import { carriable, poolOf, setsOf } from "../d2/campaign.ts";
 import { ROUND_OPTIONS } from "../d2/round.ts";
 import { EXAMINE, logEvents, processes, ROUND, type Run, runs, standing, writers } from "./pulse.ts";
 import { seedCut } from "./seed.ts";
@@ -132,7 +132,7 @@ export function preflight(sets: ReturnType<typeof setsOf>, asked: Asked) {
   const scoring = asked.target !== "0";
   // The live pool: what is held outside the anchor, and what an earlier round admitted, which every
   // round screens again (`src/builder/round.ts`).
-  const toScreen = sets.candidates.length + sets.admitted.length;
+  const toScreen = poolOf(sets).length;
   const refusals = [
     ...said([
       [

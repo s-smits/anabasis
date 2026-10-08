@@ -16,11 +16,12 @@
  * know, since it names them in its controls. Nothing of a solver's answer or trace is here, and
  * nothing of the harness.
  */
+import { proposalsOf } from "../kernel/history.ts";
 import { type Rule, type Stand, solvesOf, standing } from "../kernel/ladder.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import type { Counted } from "../kernel/solve.ts";
 import { taskSets } from "../kernel/task.ts";
-import { asRecord, isString } from "../meta/json-shape.ts";
+import { isString } from "../meta/json-shape.ts";
 import { countBy } from "../meta/tally.ts";
 
 /** What a state that is not a standing says of a task. */
@@ -82,13 +83,11 @@ export function tally(
  *  controls, which the opening message hands over whole. */
 export function measured(events: readonly LogEvent[], stand: Stand, rule: Rule): string[] {
   const { states, feasible } = taskSets(events);
-  return events.flatMap(({ kind, data }) => {
-    const task = asRecord(kind === "task.proposed" && isString(data.session) ? data.task : null);
-    const { version } = data;
-    if (task === null || !isString(version) || !isString(task.taskId)) return [];
+  return proposalsOf(events).flatMap(({ session, version, taskId, task }) => {
+    if (session === null || taskId === null) return [];
     const state = states.get(version) ?? "";
     if (state === "refused" || state === "stale") return [];
-    const name = `${task.taskId} (family ${isString(task.family) ? task.family : ""})`;
+    const name = `${taskId} (family ${task?.family ?? ""})`;
     const settled = SETTLED.get(state);
     if (settled !== undefined) return [`${name}: ${settled}`];
     if (!feasible.has(version)) return [];

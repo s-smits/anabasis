@@ -28,6 +28,7 @@
  */
 import { departure } from "#src/kernel/acceptance.ts";
 import { contractHash } from "#src/kernel/contract.ts";
+import { gatesOf } from "#src/kernel/history.ts";
 import { append, type EventKind, read } from "#src/kernel/log.ts";
 import {
   CONTROLS,
@@ -122,8 +123,7 @@ async function main(): Promise<void> {
   });
   if (moved !== null) throw new Error(`${log}: ${moved}`);
   const known = taskStates(logged);
-  const gatesOf = (version: string) =>
-    logged.flatMap(({ kind, data }) => (kind === "task.gate" && data.version === version ? [data] : []));
+  const gatedBefore = gatesOf(logged);
   /** One task through the gates, each step appended to the log. Returns why it stopped where it did. */
   const admit = async (task: TaskPackage, version: string): Promise<string> => {
     const record = (kind: EventKind, data: JsonObject) => append(log, kind, { version, ...data });
@@ -132,7 +132,7 @@ async function main(): Promise<void> {
       return why;
     };
     const state = known.get(version);
-    const earlier = gatesOf(version);
+    const earlier = gatedBefore.filter((gate) => gate.version === version);
     if (state !== undefined && state !== "held") return `already ${state}`;
     // A gate an earlier run logged as not passed, with the state that follows it never written.
     const ended = earlier.find((gate) => gate.outcome !== "passed");

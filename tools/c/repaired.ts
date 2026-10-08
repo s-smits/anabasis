@@ -29,6 +29,7 @@
  * It needs the repaired pack and its tool tree on disk, and the Mac's verifier wall.
  */
 import { controlFault, frozenChecker, regraded, runControls } from "#src/kernel/acceptance.ts";
+import { writtenTasks } from "#src/kernel/history.ts";
 import { read } from "#src/kernel/log.ts";
 import { checkProgramVersion, openVerifier } from "#src/kernel/verify.ts";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "#src/meta/filesystem.ts";
@@ -39,7 +40,6 @@ import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { plural } from "#src/meta/text.ts";
 import { labelled, repairReading } from "#src/review/rejections.ts";
-import { writtenTasks } from "../d2/campaign.ts";
 import { checkProgram, packControls, readPack } from "../m0/stored-sweep.ts";
 
 const { values } = parseArgs({

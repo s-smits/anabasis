@@ -39,8 +39,6 @@ type Table = (version: string, fresh: boolean, nth: number) => Ending;
 const FIXTURE = new URL("fixtures/harness-min", import.meta.url).pathname;
 const CONTRACT: Contract = {
   answerFormat: { type: "object", properties: { answer: { type: "string" } }, required: ["answer"] },
-  tools: [],
-  install: "",
   conventions: "",
   rules: [{ id: "R1", statement: "The answer is the base times six." }],
   scope: "Fixture.",

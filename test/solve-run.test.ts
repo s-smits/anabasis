@@ -30,8 +30,6 @@ const CONTRACT: Contract = {
     properties: { answer: { type: "string" } },
     required: ["answer"],
   },
-  tools: [],
-  install: "",
   conventions: "",
   rules: [],
   scope: "Fixture.",

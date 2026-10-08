@@ -249,8 +249,6 @@ export function readPack(bundle: string) {
 export function contractOf(brief: PackBrief, answerFormat: JsonValue): Contract {
   return {
     answerFormat,
-    tools: [],
-    install: "",
     conventions: "",
     rules: brief.ruleDecisions.filter((rule) => rule.visibility === "public"),
     scope: brief.domain,

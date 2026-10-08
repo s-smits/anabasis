@@ -31,8 +31,6 @@ const CONTRACT: Contract = {
     properties: { answer: { type: "string" }, unit: { type: "string" } },
     required: ["answer", "unit"],
   },
-  tools: [],
-  install: "",
   conventions: "SI units.",
   rules: [
     { id: "R1", statement: "The answer is the base times six." },

@@ -28,8 +28,6 @@ const CANARY = "hidden-canary-r7";
 const TASK: Task = { taskId: "t-1", family: "beam", publicInput: { load: 5 }, hidden: { limit: CANARY } };
 const CONTRACT: Contract = {
   answerFormat: {},
-  tools: [],
-  install: "",
   conventions: "SI units.",
   rules: [{ id: "R1", statement: "A span is at most 12 m." }],
   scope: "Fixture.",

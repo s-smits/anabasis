@@ -20,9 +20,6 @@ export interface Rule {
 export interface Contract {
   /** The schema every answer must follow. */
   readonly answerFormat: JsonValue;
-  /** The practitioner's tools by name and version, and the script that installs them on both trees. */
-  readonly tools: readonly { readonly name: string; readonly version: string }[];
-  readonly install: string;
   /** Whatever a practitioner would take as given. */
   readonly conventions: string;
   /** The requirements a task may cite. */

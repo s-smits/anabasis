@@ -33,8 +33,6 @@ const CONTRACT: Contract = {
     required: ["depth"],
     additionalProperties: false,
   },
-  tools: [{ name: "solver", version: "1.0" }],
-  install: "true",
   conventions: "SI units",
   rules: [
     { id: "span-rule", statement: "The beam spans the gap." },

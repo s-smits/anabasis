@@ -44,8 +44,6 @@ const CHECK = "check-canary-51c2";
 const REASON = "reason-canary-9d07";
 const CONTRACT: Contract = {
   answerFormat: { type: "object", properties: { answer: { type: "string" } }, required: ["answer"] },
-  tools: [],
-  install: "",
   conventions: "SI units.",
   rules: [{ id: "R1", statement: "The answer is the base times six." }],
   scope: "Fixture.",

@@ -13,8 +13,6 @@ const CONTRACT: Contract = {
     properties: { span: { type: "number" } },
     required: ["span"],
   },
-  tools: [],
-  install: "",
   conventions: "",
   rules: [],
   scope: "Beams.",

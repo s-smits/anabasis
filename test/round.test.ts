@@ -187,6 +187,7 @@ async function setup(responses: FauxResponseStep[], table: Table, more: readonly
     defects: 3,
     concurrency: 1,
     solve,
+    refereeDecides: true,
   };
   const of = (kind: EventKind) =>
     read(log)
@@ -237,6 +238,7 @@ describe("a round", () => {
         anchor: { wins: 0, losses: 0, ties: 3, informative: 1, reading: "held" },
         versions: SCORED,
         disputed: [],
+        flagged: [],
         short: [],
         unscreened: [],
         reading: "step",
@@ -315,6 +317,28 @@ describe("a round", () => {
       { version: "s1", reason: "the Referee ruled a check defect: check-7" },
       { version: "a2", reason: "its own check could not run on an answer" },
     ]);
+  });
+
+  it("lets an advising Referee flag a task and decide nothing", async () => {
+    const s = await setup([edit, finish], step);
+    const referee = async (_solve: string, version: string): Promise<RefereeFinding> => ({
+      ruling: version === "s1" ? "check-defect" : "earned",
+      check: version === "s1" ? "check-7" : null,
+      rule: version === "s1" ? null : "R1",
+      field: version === "s1" ? null : "answer",
+      reason: "r",
+      probes: [],
+    });
+    const report = await round({ ...s.request, referee, refereeDecides: false });
+    // The fail stands and the task is counted: a person reads it before the reading is read.
+    expect(report).toMatchObject({
+      scored: { wins: 4, losses: 0 },
+      disputed: [],
+      flagged: ["s1"],
+      reading: "step",
+    });
+    expect(taskStates(read(s.log)).get("s1")).toBe("admitted");
+    expect(s.of("comparison.reported")[0]).toMatchObject({ flagged: ["s1"] });
   });
 
   it("reports a task short when its solves end in nothing countable, and leaves it out", async () => {

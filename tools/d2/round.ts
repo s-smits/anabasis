@@ -17,7 +17,11 @@
  * solves and two fails (its decision 26), the sign test at 0.10, an anchor floor of 8 and a stop
  * past three check defects. The anchor's level defaults to the scored set's; a guard may be asked
  * to fire sooner with `--anchor-level`. `--reviewer` gives the Builder the Referee and the
- * Diagnoser on its practice fails and the round the Referee on screening and scoring fails.
+ * Diagnoser on its practice fails and the round the Referee on screening and scoring fails. There
+ * the Referee advises: a fail it rules a check defect stands and its task is reported as flagged,
+ * for the hand reading the plan keeps as the gate. `--referee-decides` lets such a ruling dispute
+ * the task, once its rulings have cleared the operator's bar against hand labels
+ * (`src/review/agreement.ts`).
  *
  * Run again with the same `--session`, a round goes on from its log. Its report and the plan's
  * three-session reading are printed from the log.
@@ -46,6 +50,7 @@ const { values } = parseArgs({
     reviewer: { type: "string" },
     "reviewer-effort": { type: "string", default: "high" },
     admitted: { type: "boolean", default: false },
+    "referee-decides": { type: "boolean", default: false },
     target: { type: "string", default: "24" },
     solves: { type: "string", default: "3" },
     screen: { type: "string", default: "3" },
@@ -135,6 +140,7 @@ async function main(): Promise<void> {
     ...(reviewers === null
       ? {}
       : { referee: (solve, version, kill) => reviewers.referee(solve, packageOf(version), kill) }),
+    refereeDecides: values["referee-decides"],
   });
   console.log(JSON.stringify(report, null, 2));
   console.log(JSON.stringify(stopRule(read(campaign.log)), null, 2));

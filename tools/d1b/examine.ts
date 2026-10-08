@@ -8,7 +8,9 @@
  * The Examiner writes task instances against the pack's contract and checker. The stronger condition
  * is the campaign's harness under `--strong`; the test condition is the stored cycle's model and
  * effort on the same harness, so the one thing the pair changes is the solver. The pack's own tasks
- * are the examples. `--reviewer` adds the Referee to a feasible task's test-side fails.
+ * are the examples. `--reviewer` adds the Referee to a feasible task's test-side fails, as an
+ * adviser: its check-defect rulings are noted beside the task's word. `--referee-decides` lets one
+ * dispute the task.
  *
  * The session stops at `--feasible` tasks past gate 4 (the plan's 24), at `--candidates` instances
  * put to the stronger solver, or at its minutes and turns. The supply reading is printed from the
@@ -38,6 +40,7 @@ const { values } = parseArgs({
     strong: { type: "string" },
     "strong-effort": { type: "string" },
     reviewer: { type: "string" },
+    "referee-decides": { type: "boolean", default: false },
     "reviewer-effort": { type: "string", default: "high" },
     feasible: { type: "string", default: "24" },
     candidates: { type: "string", default: "72" },
@@ -94,6 +97,7 @@ async function main(): Promise<void> {
     test: (task, _version, kill) => campaign.solveOnce(task, harness, campaign.test, kill),
     screening: { solves: Number(values.screen), fails: Number(values.fails) },
     ...(referee === undefined ? {} : { referee }),
+    refereeDecides: values["referee-decides"],
     model: modelNamed(examiner),
     effort: effort(values["examiner-effort"]),
     limits: {

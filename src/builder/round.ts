@@ -20,11 +20,15 @@
  * harness was not made beside this round's, and may rest on another condition, since the host's
  * code is part of one and is edited between rounds.
  *
- * A fail is put to the Referee when the caller has one. A fail it rules a check defect disputes the
- * task, as does a check that could not run, and a disputed task is neither admitted nor compared.
- * The Referee reads both harnesses' fails: a defect on the old side would make a win as surely as
- * one on the new side makes a loss. Past `defects` disputed tasks outside the anchor the round
- * stops, which is the plan's rule that more than three check defects send the work to the contract.
+ * A fail is put to the Referee when the caller has one. Whether its ruling decides is the caller's
+ * word (`refereeDecides`), and the plan's: the hand reading is the gate until the Referee's rulings
+ * have cleared the operator's bar against hand labels (`src/review/agreement.ts`). Deciding, a fail
+ * it rules a check defect disputes the task; advising, the fail stands and the task is reported as
+ * flagged, for the person who reads the fails before the reading is read. A check that could not
+ * run disputes its task either way. A disputed task is neither admitted nor compared. The Referee
+ * reads both harnesses' fails: a defect on the old side would make a win as surely as one on the
+ * new side makes a loss. Past `defects` disputed tasks outside the anchor the round stops, which is
+ * the plan's rule that more than three check defects send the work to the contract.
  *
  * The round keeps no state of its own. What is left to do is read from the log each time it is run:
  * a session that finished is not run again, a task screened is not screened again, and a solve
@@ -89,6 +93,8 @@ export interface RoundRequest {
   readonly solve: (version: string, harness: string, digest: string, kill: AbortSignal) => Promise<Practised>;
   /** The Referee, when the caller has a reader for it. */
   readonly referee?: (solve: string, version: string, kill: AbortSignal) => Promise<RefereeFinding>;
+  /** Whether a check-defect ruling disputes its task, or only flags it for a person to read. */
+  readonly refereeDecides: boolean;
 }
 
 /**
@@ -117,6 +123,8 @@ export interface RoundReport {
   /** Task versions left out: disputed, short of `solves` counted solves, or candidates whose
    *  screening solves did not all end in a pass or a fail. */
   readonly disputed: readonly string[];
+  /** Task versions still counted that an advising Referee ruled a check defect on. */
+  readonly flagged: readonly string[];
   readonly short: readonly string[];
   readonly unscreened: readonly string[];
   readonly reading: RoundReading;
@@ -150,6 +158,19 @@ const STOP_SESSIONS = 3;
 /** The fewest pooled tasks the rule's bound is trusted on: one scored set of the plan's size. */
 const STOP_TASKS = 24;
 const REPORTED = "comparison.reported";
+/** A report's fields, as its event carries them beside the round's own. */
+const REPORT_KEYS = [
+  "old",
+  "fresh",
+  "scored",
+  "anchor",
+  "versions",
+  "disputed",
+  "flagged",
+  "short",
+  "unscreened",
+  "reading",
+] as const satisfies readonly (keyof RoundReport)[];
 /** The kinds of fail a solver owns outright, as `solve.ts` types them. */
 const FAILS = ["rejected", "wall-ended", "context-ended", "no-answer"] as const;
 
@@ -289,29 +310,8 @@ function movedBy(events: readonly LogEvent[], id: string): Map<string, string> {
 function reported(events: readonly LogEvent[], id: string): RoundReport | null {
   const data = events.findLast((event) => event.kind === REPORTED && event.data.session === id)?.data;
   if (data === undefined) return null;
-  const {
-    old,
-    fresh,
-    scored: tested,
-    anchor: guarded,
-    versions,
-    disputed,
-    short,
-    unscreened,
-    reading,
-  } = data;
   // SAFETY: only `round` writes this event, from the report it returns.
-  return {
-    old,
-    fresh,
-    scored: tested,
-    anchor: guarded,
-    versions,
-    disputed,
-    short,
-    unscreened,
-    reading,
-  } as unknown as RoundReport;
+  return Object.fromEntries(REPORT_KEYS.map((key) => [key, data[key]])) as unknown as RoundReport;
 }
 
 /** A whole number of at least `least`, which a count read from a command line may not be. */
@@ -393,6 +393,7 @@ function floor(request: RoundRequest) {
     ),
   ]);
   const faults: string[] = [];
+  const flagged = new Set<string>();
   const failure: { thrown: Error | null } = { thrown: null };
   // The tasks this round disputed, kept beside the log so that a job does not read the whole of it.
   const dropped = new Set(
@@ -419,8 +420,10 @@ function floor(request: RoundRequest) {
     }
     try {
       const finding = await request.referee(solve, task, kill);
-      if (finding.ruling === "check-defect") {
+      if (finding.ruling === "check-defect" && request.refereeDecides) {
         dispute(task, solve, `the Referee ruled a check defect: ${finding.check ?? "no check named"}`);
+      } else if (finding.ruling === "check-defect") {
+        flagged.add(task);
       }
     } catch (error) {
       // An unread fail stands as a fail: the Referee removes a comparison, and its absence removes none.
@@ -446,7 +449,7 @@ function floor(request: RoundRequest) {
     if (failure.thrown !== null) throw failure.thrown;
     if (kill.aborted) throw new Error("the round was killed; run it again and it goes on from its log");
   };
-  return { drain, going, settle, defects, dropped, faults };
+  return { drain, going, settle, defects, dropped, faults, flagged };
 }
 
 /**
@@ -537,7 +540,15 @@ export async function round(request: RoundRequest): Promise<RoundReport> {
     });
     return told_;
   };
-  const nothing = { scored: null, anchor: null, versions: [], disputed: [], short: [], unscreened: [] };
+  const nothing = {
+    scored: null,
+    anchor: null,
+    versions: [],
+    disputed: [],
+    flagged: [],
+    short: [],
+    unscreened: [],
+  };
   if (built.kept === null) return report({ ...nothing, reading: "no-change" });
   const fresh = built.kept;
   const counted = () => since(read(log), id);
@@ -558,7 +569,13 @@ export async function round(request: RoundRequest): Promise<RoundReport> {
   }
   work.settle();
   if (!work.going()) {
-    return report({ ...nothing, disputed: [...work.dropped], unscreened, reading: "check-defects" });
+    return report({
+      ...nothing,
+      disputed: [...work.dropped],
+      flagged: [...work.flagged],
+      unscreened,
+      reading: "check-defects",
+    });
   }
 
   const events = counted();
@@ -587,6 +604,7 @@ export async function round(request: RoundRequest): Promise<RoundReport> {
     anchor: guarded,
     versions: test.pairs.map(({ task }) => task),
     disputed: [...work.dropped],
+    flagged: [...work.flagged].filter((version) => !work.dropped.has(version)),
     short: [...test.short, ...guard.short],
     unscreened,
     reading: readingOf(tested.p, request.level, guarded.reading),

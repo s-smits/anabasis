@@ -187,6 +187,7 @@ function setup(responses: FauxResponseStep[], test: (base: number, nth: number) 
       return solved("test", task, test(base, nth), { answer: SOLVER, unit: "N" });
     },
     screening: { solves: 3, fails: 2 },
+    refereeDecides: true,
     model: faux.getModel(),
     effort: "medium",
     limits: LIMITS,
@@ -353,6 +354,17 @@ describe("an Examiner session", () => {
     expect(s.sent[3]).toContain("x-1-002: refused: a check was at fault on a solver's answer");
     expect(examined.feasible).toEqual([]);
     expect([...taskStates(read(s.log)).values()]).toEqual(["disputed", "disputed"]);
+
+    // Advising, the Referee's ruling is noted beside the word and the task stays as it was.
+    const advised = setup([propose(6), controls("x-1-001", "1"), finish], () => FAIL);
+    const told = await examine({ ...advised.request, referee, refereeDecides: false });
+    expect(Object.values(told.words)).toEqual(["scored"]);
+    expect(told.feasible).toHaveLength(1);
+    expect(advised.of("exam.word").at(-1)).toMatchObject({
+      word: "scored",
+      flagged: ["test-1", "test-2", "test-3"],
+    });
+    expect([...taskStates(read(advised.log)).values()]).toEqual(["held"]);
   });
 
   it("takes no instance past its proposals, and ends when a solve throws without saying why", async () => {

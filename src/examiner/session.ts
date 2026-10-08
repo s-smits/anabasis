@@ -112,8 +112,11 @@ export interface ExamRequest {
   readonly test: (task: TaskPackage, version: string, kill: AbortSignal) => Promise<Practised>;
   /** Test-side solves of a feasible task, and the fails among them that make it scored. */
   readonly screening: { readonly solves: number; readonly fails: number };
-  /** The Referee, when the caller has a reader for it: a fail it rules a check defect disputes the task. */
+  /** The Referee, when the caller has a reader for it, and whether a fail it rules a check defect
+   *  disputes the task or is only noted beside its word: the hand reading is the gate until the
+   *  Referee's rulings have cleared the operator's bar (`src/review/agreement.ts`). */
   readonly referee?: (solve: string, task: TaskPackage, kill: AbortSignal) => Promise<RefereeFinding>;
+  readonly refereeDecides: boolean;
   readonly model: Model<Api>;
   readonly effort: ThinkingLevel;
   readonly limits: ExamLimits;
@@ -343,16 +346,16 @@ async function worded(desk: Desk, tasks: readonly Waiting[], kill: AbortSignal):
   const ran = await pooled(jobs, request.limits.concurrency, async ({ task, version }) => {
     const { solve, ending } = await request.test(task, version, kill);
     refuseBroken(ending);
-    const fail = ending.outcome === "fail";
-    let defect = ending.outcome === "non-result" && ending.kind === "check";
-    if (fail && request.referee !== undefined) {
+    const faulty = ending.outcome === "non-result" && ending.kind === "check";
+    let ruled = false;
+    if (ending.outcome === "fail" && request.referee !== undefined) {
       try {
-        defect = (await request.referee(solve, task, kill)).ruling === "check-defect";
+        ruled = (await request.referee(solve, task, kill)).ruling === "check-defect";
       } catch (error) {
         desk.faults.push(`${solve}: ${errorMessage(error)}`);
       }
     }
-    return { version, solve, ending, defect };
+    return { version, solve, ending, defect: faulty || (ruled && request.refereeDecides), ruled };
   });
   return tasks.map(({ task, version }) => {
     const mine = ran.filter((each) => each.version === version);
@@ -380,6 +383,8 @@ async function worded(desk: Desk, tasks: readonly Waiting[], kill: AbortSignal):
     told(desk, task, version, word, {
       solves: mine.map(({ solve }) => solve),
       fails: counted.filter(({ outcome }) => outcome === "fail").length,
+      // Fails an advising Referee ruled a check defect, for the person who reads them.
+      flagged: mine.flatMap((each) => (each.ruled ? [each.solve] : [])),
     });
     return `${task.taskId}: ${word}${word === "refused" ? ": a check was at fault on a solver's answer" : ""}`;
   });

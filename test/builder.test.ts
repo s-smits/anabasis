@@ -419,14 +419,18 @@ describe("a Builder session", () => {
 
   it("is not given the correctness model a v1 state carries, whose battery holds hidden values", async () => {
     const s = await setup([finish]);
-    mkdirSync(join(s.parent, "correctness-model"));
-    writeFileSync(join(s.parent, "correctness-model", "tasks.json"), '[{"hidden":{}}]');
+    // A v1 state keeps it at its root and again under each bundle snapshot.
+    const kept = ["correctness-model", ".bundle-snapshots/4cc4dd31/correctness-model"];
+    for (const dir of kept) {
+      mkdirSync(join(s.parent, dir), { recursive: true });
+      writeFileSync(join(s.parent, dir, "tasks.json"), '[{"hidden":{}}]');
+    }
     let given: boolean[] = [];
     await session(s.request, s, (bench) => {
-      given = ["agent", "correctness-model"].map((name) => existsSync(join(bench.home, "harness", name)));
+      given = ["agent", ...kept].map((name) => existsSync(join(bench.home, "harness", name)));
       return s.walled(bench);
     });
-    expect(given).toEqual([true, false]);
+    expect(given).toEqual([true, false, false]);
   });
 
   it("installs into its own copy of the parent's programs, and freezes no script or link naming its home", async () => {

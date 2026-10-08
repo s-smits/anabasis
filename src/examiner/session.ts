@@ -341,7 +341,15 @@ async function controlled(desk: Desk, taskId: string, edits: readonly ControlEdi
       return `${taskId}: its controls do not hold: ${result.reason}. Write them again.`;
     }
   }
-  append(request.log, GATE, { version, gate: 4, ...result });
+  // The controls that held are logged whole beside their digest: a campaign under a repaired
+  // checker gates the task again from them with no session to write them a second time
+  // (`tools/c/carry.ts`).
+  append(request.log, GATE, {
+    version,
+    gate: 4,
+    ...result,
+    ...(result.outcome === "passed" ? { set: controls.map((control) => ({ ...control })) } : {}),
+  });
   desk.waiting.delete(taskId);
   if (result.outcome === "passed") return null;
   append(request.log, STATE, { version, state: "refused", session: request.id });

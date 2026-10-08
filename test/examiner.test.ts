@@ -261,6 +261,12 @@ describe("an Examiner session", () => {
       [3, "passed"],
       [4, "passed"],
     ]);
+    // Gate 4 keeps the controls whole: each changed answer and the check that refused it.
+    expect(gates[3]?.set).toEqual([
+      { answer: { answer: "41", unit: "N" }, expectedCheckId: "check-product" },
+      { answer: { answer: "42", unit: "kg" }, expectedCheckId: "check-unit" },
+      { answer: { answer: "0", unit: "N" }, expectedCheckId: "check-product" },
+    ]);
     expect(gates[3]?.controls).toMatch(/^[0-9a-f]{64}$/);
     // The instance is in the log whole, so a later solve of it needs nothing else.
     expect(s.of("task.proposed")[0]).toMatchObject({

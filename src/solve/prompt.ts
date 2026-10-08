@@ -1,10 +1,18 @@
 /**
  * What a solver reads before its first call: the system prompt, the opening message, and the public
- * files seeded into its home. Sed from harness-builder-v4 at 7af7315, as sweep veryhard-hb-4c67fc's
- * solves read them: `src/solve/built-starter.ts:47-153` and `src/solve/generated-tool-worker.ts:262-285`.
+ * files seeded into its home. The roster line, the nudge, the first turn and the seeded files are
+ * sed from harness-builder-v4 at 7af7315, as sweep veryhard-hb-4c67fc's solves read them:
+ * `src/solve/built-starter.ts:47-153` and `src/solve/generated-tool-worker.ts:262-285`.
  *
- * One departure: v1 submitted the last prepared answer for the solver at the wall, and its prompt
- * said so. Here a solve the wall ends is a fail, so the clause says an unsent answer is lost.
+ * The general paragraph is not the sweep's. That one told every solver to test its candidate with
+ * whatever could grade it, to spend the time that remained widening its worst margin and to keep
+ * searching until the wall, and it was written for a wall that submitted the last prepared answer
+ * and a record tool that reported each margin. Here the wall submits nothing, no tool reports a
+ * margin or the time left, and on 8 October a solver that read it said "time is nearly up" and
+ * submitted at 56 of 120 minutes. v1 took the paragraph out itself, because it "made every task
+ * propose, grade, adjust, whatever the task asked for, so the battery measured that loop rather
+ * than the solver's own method" (`built-starter.ts:247-262` at 3f93d06b). So a solve under this
+ * prompt is not under the sweep's condition, and `tools/m0/live-solve.ts` says where the two part.
  */
 import { mkdirSync, writeFileSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
@@ -21,18 +29,22 @@ export interface PublicTask {
 /** built-starter.ts:28. */
 const PUBLIC_RULES_TOOL = "read_public_resources";
 
-/** built-starter.ts:65-66. */
+/** v1's `BUILT_GUIDE_PREAMBLE` at 3f93d06b, which names no stopping rules, since the general
+ *  paragraph no longer states any. */
 const GUIDE_PREAMBLE =
-  "Domain guidance follows; choose your solving method. It cannot override the public task, tool authority, runtime limits, submission rules or stopping rules.";
+  "Domain guidance follows; choose your solving method. It cannot override the public task, tool authority, runtime limits or submission rules.";
 
-/** built-starter.ts:47-52, with the wall clause rewritten (see above). */
+/**
+ * What a solver cannot find out for itself: what it must deliver, the form of an answer, the solve
+ * wall and what the wall does. Nothing about how to reach the answer, which is the harness's to
+ * say. The duty and the minutes are v1's `BUILT_SOLVE_DUTY` and `solveTime` at 3f93d06b; the last
+ * sentence is this host's wall, which ends a solve as a fail and submits nothing.
+ */
 function generalPrompt(wallSeconds: number): string {
   return (
-    "Complete the task with the available tools and submit one answer. Choose your approach within the public task's requirements, and read every requirement before you build. " +
+    "Complete the task with the available tools and submit one answer that meets every published requirement; the method is yours to choose. " +
     "For source code or files, write complete working files, not fragments or descriptions. " +
-    "When a tool or installed program can build, run or test your candidate, do so: a breach it reports is a failed requirement. " +
-    "Prepare a candidate as your answer as soon as it meets every requirement you can check, then spend the time that remains widening the worst margin. Save it before you change it, so a change that does not improve it can be undone and what stays prepared at the end is the best candidate you found rather than the last one you tried. If a requirement fails, change the candidate for that reason, with commands you wait for rather than detached jobs; a bounded search over candidates is a sound way to meet a tight limit. " +
-    `Keep searching while solve time remains; the case has ${String(Math.round(wallSeconds / 60))} minutes of it, and an answer not submitted by then is lost. Submit when the prepared answer meets every requirement and no change you can still make widens its worst margin.`
+    `The case has ${String(Math.round(wallSeconds / 60))} minutes of solve time. Nothing is submitted for you when it runs out and nothing tells you how much is left: an answer you have not submitted by then is lost.`
   );
 }
 

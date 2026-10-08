@@ -8,7 +8,8 @@
  * Without `--live` no model is called. The condition is built and printed, and what the solver would
  * read is held against what the stored solve read: the tools, built on a mounted wall as a solve
  * builds them, row by row in order (name, label, description, parameters, execution mode); the
- * system prompt, which may differ only in the wall clause `prompt.ts` names; the first turn's
+ * system prompt's roster line and guide, since its general paragraph and the guide's preamble are
+ * this host's own (`prompt.ts`) and a live solve is not under the sweep's prompt; the first turn's
  * template, the nudge and the turn cap, against the digests and `maxTurns` v1 recorded; and the
  * public resources, against the head of the stored `read_public_resources` result, the part of it
  * v1's trace kept. With `--live` the solve runs, and
@@ -314,18 +315,32 @@ function turnParity(stored: StoredRuntime): string {
     : `turns apart: ${apart.join("; ")}`;
 }
 
-/** The stored system prompt against this host's, given this host's tool names: the sentences apart. */
+/** The stored system prompt against this host's, given this host's tool names. Both are the general
+ *  paragraph, the roster line, then the guide's preamble and the guide. The general paragraph and the
+ *  preamble are this host's own (`prompt.ts`), so they are named and not compared; the roster line
+ *  and the guide are held to the stored ones. */
 function promptParity(stored: StoredRuntime, tools: readonly AgentTool[], guide: string | null): string {
-  const names = tools.map((tool) => tool.name);
-  const sentences = (text: string) => new Set(text.split(/(?<=[.:;])\s+/));
-  const before = sentences(stored.contractCondition.systemPrompt);
-  const after = sentences(systemPrompt(LIMITS.wallSeconds, names, guide));
-  const gone = [...before].filter((sentence) => !after.has(sentence));
-  const added = [...after].filter((sentence) => !before.has(sentence));
-  const wallOnly = gone.length === 1 && added.length === 1 && added[0]?.includes("is lost") === true;
-  return wallOnly
-    ? "same prompt, but for the wall clause"
-    : `prompt apart:\n- ${gone.join("\n- ")}\n+ ${added.join("\n+ ")}`;
+  const parts = (text: string) => {
+    const paragraphs = text.split("\n\n");
+    return { roster: paragraphs[1] ?? "", guide: paragraphs.slice(3).join("\n\n") };
+  };
+  const before = parts(stored.contractCondition.systemPrompt);
+  const after = parts(
+    systemPrompt(
+      LIMITS.wallSeconds,
+      tools.map((tool) => tool.name),
+      guide,
+    ),
+  );
+  const apart = [
+    ...(before.roster === after.roster
+      ? []
+      : [`roster\n  stored ${before.roster}\n  here   ${after.roster}`]),
+    ...(before.guide === after.guide ? [] : ["the guide"]),
+  ];
+  return apart.length === 0
+    ? "same roster line and guide; the general paragraph and the guide's preamble are this host's own"
+    : `prompt apart beyond the general paragraph and the guide's preamble: ${apart.join("; ")}`;
 }
 
 /** This host's resources against the head of the stored result, with whitespace runs folded. */

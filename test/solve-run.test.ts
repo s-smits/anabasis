@@ -271,7 +271,7 @@ describe.skipIf(!darwin)("a solve end to end", () => {
     expect(await solve(request, noWait)).toEqual({ outcome: "fail", kind: "no-answer" });
     expect(finished()[0]?.data.turns).toBe(4);
     expect(sent).toHaveLength(4);
-    expect(sent[0]).toContain("the case has 5 minutes of it");
+    expect(sent[0]).toContain("The case has 5 minutes of solve time. Nothing is submitted for you");
     expect(sent[1]).not.toContain(NUDGE);
     expect(sent[2]).toContain(JSON.stringify(NUDGE));
   }, 120_000);

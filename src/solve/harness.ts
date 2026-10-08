@@ -22,7 +22,7 @@ import { existsSync, lstatSync, readlinkSync, realpathSync, writeFileSync } from
 import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "../meta/json-runtime.ts";
 import { type JsonValue, asRecord, isRecord, isString } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
-import { basename, dirname, join, resolve, sep } from "../meta/path.ts";
+import { basename, dirname, join, resolve } from "../meta/path.ts";
 import { containsPath } from "../meta/path-containment.ts";
 import { capturedExecPath } from "../meta/process.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
@@ -71,8 +71,8 @@ interface ToolRow {
 
 const KINDS: ReadonlySet<string> = new Set(["reader", "advisor", "artifact-writer"]);
 const SHIM = Bun.fileURLToPath(new URL("./harness-shim.ts", import.meta.url));
-/** The host's own source, which the shim imports from. */
-const HOST_SOURCE = dirname(dirname(SHIM));
+/** The host's own source and installed packages, which the shim imports from. */
+const HOST_ROOTS = [dirname(dirname(SHIM)), join(dirname(dirname(dirname(SHIM))), "node_modules")];
 const MARKER = "@@ana-harness-result@@";
 /** The tail of a call's output kept for the result line and an error's context; a tool printing
  *  without end is cut by the command's timeout, not by the host's memory. */
@@ -223,8 +223,9 @@ function keptTreeContent(toolTree: string) {
  * The bundle is built by the host, outside every wall, from files a Builder wrote. Left alone, Bun
  * runs a macro import in this process as it bundles, and inlines any file an import names, a text
  * import of a check program among them, into the module the solver's tools then run. So macros are
- * off, and every file the bundle loads must sit, links followed, inside the harness, inside an
- * installed package, or in the host's own source, which the shim imports.
+ * off, and every file the bundle loads must sit, links followed, inside the harness, its installed
+ * packages among it, or in the host's own source and packages, which the shim imports. A package linked in from
+ * elsewhere is outside it, as v1's states link theirs into the run that built them.
  *
  * The question is asked of each file as it is loaded and not of each import as it is resolved. A
  * guard on resolution has to trust some importers, an installed package's among them, and a Builder
@@ -234,7 +235,6 @@ function keptTreeContent(toolTree: string) {
  */
 async function bundle(entry: string): Promise<string> {
   const root = realpathSync(dirname(dirname(entry)));
-  const inPackage = (path: string) => path.split(sep).includes("node_modules");
   const result = await Bun.build({
     entrypoints: [entry],
     target: "bun",
@@ -254,8 +254,7 @@ async function bundle(entry: string): Promise<string> {
           }));
           build.onLoad({ filter: /.*/ }, ({ path }) => {
             const file = realpathSync(path);
-            const own = containsPath(file, root) || containsPath(file, HOST_SOURCE) || inPackage(file);
-            if (own) return undefined;
+            if ([root, ...HOST_ROOTS].some((own) => containsPath(file, own))) return undefined;
             throw new Error(
               `an import reaches ${basename(file)}, which is outside the harness: its tools are built from its own files and installed packages`,
             );

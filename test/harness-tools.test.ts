@@ -167,6 +167,19 @@ describe("a v1 harness state", () => {
         'import secret from "../../../host-secret.txt" with { type: "text" };\nexport default secret;\n',
       );
       await expect(openHarness(packaged)).rejects.toThrow("host-secret.txt, which is outside the harness");
+      // A package linked in from another checkout's packages is outside it too, as v1's states link
+      // theirs into the run that built them.
+      const borrowed = tools("borrowed", 'import six from "sixfold";\nexport const SIX = six;');
+      const elsewhere = join(root, "elsewhere", "node_modules", "sixfold");
+      mkdirSync(elsewhere, { recursive: true });
+      writeFileSync(
+        join(elsewhere, "package.json"),
+        '{"name":"sixfold","version":"1.0.0","main":"index.cjs"}',
+      );
+      writeFileSync(join(elsewhere, "index.cjs"), "module.exports = 6;\n");
+      mkdirSync(join(borrowed, "node_modules"));
+      symlinkSync(elsewhere, join(borrowed, "node_modules", "sixfold"));
+      await expect(openHarness(borrowed)).rejects.toThrow("index.cjs, which is outside the harness");
       const guide = tools("guide", "");
       rmSync(join(guide, "agent", "BUILT_AGENTS.md"));
       symlinkSync(secret, join(guide, "agent", "BUILT_AGENTS.md"));

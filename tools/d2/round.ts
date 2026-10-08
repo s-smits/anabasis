@@ -23,6 +23,9 @@
  * the task, once its rulings have cleared the operator's bar against hand labels
  * (`src/review/agreement.ts`).
  *
+ * Every solve is the cycle's own model at its effort, unless `--solver` and `--solver-effort` name
+ * another to solve in its place.
+ *
  * The session starts from the cycle's harness, or with `--parent <digest>` from a harness an
  * earlier session of the campaign kept, so that a step can be built on.
  *
@@ -39,7 +42,8 @@ import { read } from "#src/kernel/log.ts";
 import type { TaskPackage } from "#src/kernel/task.ts";
 import { join } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
-import { LIMITS, modelNamed, openCampaign, setsOf, stayAwake } from "./campaign.ts";
+import { modelNamed } from "../m0/stored-sweep.ts";
+import { LIMITS, openCampaign, setsOf, stayAwake } from "./campaign.ts";
 
 const { values } = parseArgs({
   options: {
@@ -51,6 +55,8 @@ const { values } = parseArgs({
     session: { type: "string" },
     builder: { type: "string" },
     "builder-effort": { type: "string", default: "high" },
+    solver: { type: "string" },
+    "solver-effort": { type: "string", default: "high" },
     reviewer: { type: "string" },
     "reviewer-effort": { type: "string", default: "high" },
     admitted: { type: "boolean", default: false },
@@ -83,7 +89,13 @@ async function main(): Promise<void> {
   ) {
     throw new Error("name --root, --sweep, --cycle, --bundle, --name, --session and --builder");
   }
-  const campaign = await openCampaign({ root, sweep, cycle, bundle, name });
+  // SAFETY: an effort is one of pi's levels, and a backend refuses one it does not serve.
+  const effort = (flag: string) => flag as ThinkingLevel;
+  const solver =
+    values.solver === undefined
+      ? undefined
+      : { model: values.solver, effort: effort(values["solver-effort"]) };
+  const campaign = await openCampaign({ root, sweep, cycle, bundle, name, solver });
   const sets = setsOf(read(campaign.log));
   const packages = campaign.packages();
   const packageOf = (version: string): TaskPackage => {
@@ -93,8 +105,6 @@ async function main(): Promise<void> {
     }
     return task;
   };
-  // SAFETY: an effort is one of pi's levels, and a backend refuses one it does not serve.
-  const effort = (flag: string) => flag as ThinkingLevel;
   const reviewer = values.reviewer;
   const reviewers =
     reviewer === undefined

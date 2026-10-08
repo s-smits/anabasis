@@ -46,6 +46,7 @@ import {
   packageOf,
   readPack,
   recordedAnswerFormat,
+  modelNamed,
   rowModel,
   sweepOptions,
   sweepResources,
@@ -59,6 +60,8 @@ export interface CampaignArgs {
   readonly cycle: string;
   readonly bundle: string;
   readonly name: string;
+  /** The model and effort that solve in the cycle's place, when not its own. */
+  readonly solver?: { readonly model: string; readonly effort: ThinkingLevel } | undefined;
 }
 
 /** A harness as a solve is handed it. */
@@ -88,14 +91,6 @@ export const LIMITS: Limits = {
 const REPO = resolve(import.meta.dir, "..", "..");
 /** The agent runtime's packages, pinned in `package.json`; the SDK pins the Claude Code binary. */
 const RUNTIME = ["@anthropic-ai/claude-agent-sdk", "@earendil-works/pi-agent-core", "@earendil-works/pi-ai"];
-
-/** `provider/model`, as a condition names a model, resolved on this host's backends. */
-export function modelNamed(name: string): Model<Api> {
-  const [provider = "", ...id] = name.split("/");
-  const model = backends(sweepOptions()).getModel(provider, id.join("/"));
-  if (model === undefined) throw new Error(`no backend serves ${name}`);
-  return model;
-}
 
 /** The task sets a log holds: the feasible versions, and among them the anchor's, the released and
  *  the ones still held outside the anchor, which are a round's candidates. */
@@ -229,7 +224,12 @@ export async function openCampaign(args: CampaignArgs) {
     contract,
     resources,
     parent: join(args.root, "hb-bundles", `${args.sweep}-${args.cycle}`),
-    test: { model: rowModel(row), effort: runtime.modelWorker.modelSelection.effort, side: "test" } as const,
+    test: {
+      ...(args.solver === undefined
+        ? { model: rowModel(row), effort: runtime.modelWorker.modelSelection.effort }
+        : { model: modelNamed(args.solver.model), effort: args.solver.effort }),
+      side: "test",
+    } as const,
     verify,
     pack,
     packages,

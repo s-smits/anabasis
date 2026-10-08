@@ -20,7 +20,7 @@
  * effort are those it recorded, and its contract, task and resources are the bundle's, as
  * `admit-sweep.ts` reads them. `--harness` solves under another state instead, such as a Builder's
  * kept one, and the read-back sets its ending beside the stored solve's: the pilot's informal reading
- * of old against new until M2. The limits are the sweep's `config.yaml` and `maxTurns`, but for the
+ * of old against new until M2. `--solver` and `--solver-effort` solve on another model in its place. The limits are the sweep's `config.yaml` and `maxTurns`, but for the
  * disk cap, which the sweep did not have.
  * The harness's digest binds its tool tree, so it is the condition's `solverTools` too. The condition's `sandbox` stands in for the policy's digest with its profile, platform and cap,
  * since the policy names each solve's own directories.
@@ -55,6 +55,7 @@ import {
   packageOf,
   readPack,
   recordedAnswerFormat,
+  modelNamed,
   rowModel,
   sweepOptions,
   sweepResources,
@@ -69,6 +70,8 @@ const { values } = parseArgs({
     task: { type: "string" },
     bundle: { type: "string" },
     harness: { type: "string" },
+    solver: { type: "string" },
+    "solver-effort": { type: "string", default: "high" },
     live: { type: "boolean", default: false },
   },
 });
@@ -151,8 +154,12 @@ async function main(): Promise<number> {
     const resources = sweepResources(brief);
     const harnessDir = state ?? join(root, "hb-bundles", `${sweep}-${row.cycle}`);
     const harness = await openHarness(harnessDir);
-    const model = rowModel(row);
-    const effort = stored.modelWorker.modelSelection.effort;
+    const model = values.solver === undefined ? rowModel(row) : modelNamed(values.solver);
+    const effort =
+      values.solver === undefined
+        ? stored.modelWorker.modelSelection.effort
+        : // SAFETY: an effort is one of pi's levels, and a backend refuses one it does not serve.
+          (values["solver-effort"] as ThinkingLevel);
     const pins = parseJsonAs<{ dependencies: Record<string, string> }>(
       readFileSync(join(REPO, "package.json"), "utf8"),
     ).dependencies;
@@ -196,8 +203,8 @@ async function main(): Promise<number> {
       capturedSpawn(["caffeinate", "-s", "-w", String(runtimeProcess.pid)]).unref();
     }
 
-    // The state's digest in the name, so a solve under another state keeps the stored one's log.
-    const name = `${row.taskId}-${row.cycle}-${harness.digest.slice(0, 8)}`;
+    // The model and the state's digest in the name, so a solve under another keeps the stored one's log.
+    const name = `${row.taskId}-${row.cycle}-${model.id}-${harness.digest.slice(0, 8)}`;
     const log = join(scratch, `${name}.jsonl`);
     recordCondition(log, condition);
     const ending = await solve({

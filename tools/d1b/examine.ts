@@ -25,7 +25,8 @@ import { read } from "#src/kernel/log.ts";
 import { readBrief } from "#src/kernel/verify.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { openHarness } from "#src/solve/harness.ts";
-import { LIMITS, modelNamed, openCampaign, stayAwake } from "../d2/campaign.ts";
+import { LIMITS, openCampaign, stayAwake } from "../d2/campaign.ts";
+import { modelNamed } from "../m0/stored-sweep.ts";
 
 const { values } = parseArgs({
   options: {

@@ -195,8 +195,14 @@ export function sweepOptions(home = homedir()): BackendOptions {
 
 /** The model a row ran, from the backends this system runs on. */
 export function rowModel(row: Row): Model<Api> {
-  const model = backends(sweepOptions()).getModel(row.provider, row.model);
-  if (model === undefined) throw new Error(`no backend serves ${row.provider}/${row.model}`);
+  return modelNamed(`${row.provider}/${row.model}`);
+}
+
+/** `provider/model`, as a condition names a model, resolved on this host's backends. */
+export function modelNamed(name: string): Model<Api> {
+  const [provider = "", ...id] = name.split("/");
+  const model = backends(sweepOptions()).getModel(provider, id.join("/"));
+  if (model === undefined) throw new Error(`no backend serves ${name}`);
   return model;
 }
 

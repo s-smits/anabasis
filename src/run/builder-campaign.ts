@@ -713,7 +713,7 @@ export async function runBuilderCampaign(
               advisory: controller.openingContext(side),
               freshContext: controller.freshContext(side),
             }),
-            answerRecord: () => recording(builderExecutionEvidenceWriter(input.campaignDir)),
+            record: () => recording(builderExecutionEvidenceWriter(input.campaignDir)),
             stall: () => {
               controller.terminalClause ??= "authoring-stalled";
             },

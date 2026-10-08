@@ -14,7 +14,7 @@ import { runBuilderSession } from "../src/author/builder-session.ts";
 import type { CampaignFeedback } from "../src/author/campaign-types.ts";
 import type { PiTool } from "../src/backends/pi-session.ts";
 import { controllerValidatedFindings } from "../src/correctness-bundle/brief.ts";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 import type { ResolvedSlots } from "../src/backends/resolve.ts";
 import { answerWallMs } from "../src/run/builder-backend.ts";
@@ -194,6 +194,15 @@ describe("an answer pass", () => {
   });
 });
 
+/** The epoch's execution records in the order their sessions claimed them. */
+function executionRecords(campaignDir: string): Array<{ submits: Array<{ outcome: string }> }> {
+  const order = (name: string) => Number(/-(\d+)\.json$/.exec(name)?.[1] ?? 1);
+  return readdirSync(campaignDir)
+    .filter((name) => /^builder-execution(?:-\d+)?\.json$/.test(name))
+    .sort((a, b) => order(a) - order(b))
+    .map((name) => JSON.parse(readFileSync(join(campaignDir, name), "utf8")));
+}
+
 /** The gate that refuses a starter correctness model once, as a census row would. */
 function refusesOnce() {
   let calls = 0;
@@ -266,6 +275,14 @@ describe("a split build's round", () => {
       "The answer agent revised the correctness model after your last submit",
     );
     expect(gate.calls()).toBe(2);
+    // Every pass keeps its own execution record, the handed-back harness pass's refused submit too.
+    const records = executionRecords(campaignDir);
+    expect(records).toHaveLength(turns.length);
+    const submitted = records.filter((record) => record.submits.length > 0);
+    expect(submitted.map((record) => record.submits.map((row) => row.outcome))).toEqual([
+      ["refused"],
+      ["accepted"],
+    ]);
   });
 
   it("ends as stalled when the correctness model never validates within its passes", async () => {

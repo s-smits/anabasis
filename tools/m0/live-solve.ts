@@ -13,7 +13,8 @@
  * public resources, against the head of the stored `read_public_resources` result, the part of it
  * v1's trace kept. With `--live` the solve runs, and
  * its log is read back: the ending, the meter's billed dollars against Claude Code's reported cost
- * (exit test 2 asks within 1%), and the events the solve wrote (exit test 3).
+ * (exit test 2 asks within 1%), and the events the solve wrote (exit test 3). A live solve on a Mac
+ * runs under `caffeinate -s`.
  *
  * The solve is the stored one's: its harness state is `hb-bundles/<sweep>-<cycle>`, its model and
  * effort are those it recorded, and its contract, task and resources are the bundle's, as
@@ -37,7 +38,7 @@ import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import type { JsonValue } from "#src/meta/json-shape.ts";
 import { tmpdir } from "#src/meta/os.ts";
 import { dirname, join, resolve } from "#src/meta/path.ts";
-import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
+import { capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { canonicalJson, hashJsonValue } from "#src/meta/stable-json.ts";
 import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { countBy } from "#src/meta/tally.ts";
@@ -182,6 +183,11 @@ async function main(): Promise<number> {
     ];
     for (const line of parity) console.log(line);
     if (!live) return parity.every((line) => line.startsWith("same")) ? 0 : 1;
+    // The plan runs every solve under `caffeinate -s`, so the Mac cannot sleep inside the wall; it
+    // exits with this process, and unreferenced it does not hold this one open.
+    if (runtimeProcess.platform === "darwin") {
+      capturedSpawn(["caffeinate", "-s", "-w", String(runtimeProcess.pid)]).unref();
+    }
 
     const log = join(REPO, ".ana", "live", `${row.taskId}-${row.cycle}.jsonl`);
     mkdirSync(dirname(log), { recursive: true });

@@ -30,6 +30,7 @@ import { BuildAgentTurnNonResult, openBuildSession } from "./build-agent.ts";
 import { CampaignBudgetExhausted } from "../run/controller-ledger.ts";
 import type { ModelAttemptGate } from "../run/campaign-budget.ts";
 import type { ProviderResourceBudget } from "../run/provider-resource-budget.ts";
+import { ControllerSignalAbort } from "../run/controller-abort-clause.ts";
 import { type BuilderExecutionEvidence, BuilderExecutionRecorder } from "./builder-execution.ts";
 import { sessionClock, withCustomToolReceipts } from "./builder-tool-receipts.ts";
 import {
@@ -395,15 +396,21 @@ function conversationEnding(state: SessionState, failure: { error: unknown } | n
   return error instanceof BuildAgentTurnNonResult && error.status === "failed" ? "turn-non-result" : null;
 }
 
-/** The exit class written on the settled execution record. */
+/** The exit class written on the settled execution record. A session that threw after the
+ *  controller cancelled the run's turns on its closing signal (the operator's stop, SIGTERM or
+ *  SIGINT) is labelled from that cause, whatever the turn threw on its way out: its prose is the
+ *  model's own, which `turn-non-result` says it is not. */
 function classifyExit(
   state: SessionState,
-  failure: SessionClosing["failure"],
-): "recorded" | "turn-non-result" | Exclude<RoundEnding, "accepted" | "turn-non-result"> {
+  closing: Pick<SessionClosing, "deps" | "failure">,
+): BuilderExecutionEvidence["outcome"] {
   if (state.accepted !== null) return "recorded";
-  if (failure !== null) return "turn-non-result";
-  const ending = settledEnding(state);
-  return ending === "accepted" ? "recorded" : ending;
+  if (closing.failure === null) {
+    const ending = settledEnding(state);
+    return ending === "accepted" ? "recorded" : ending;
+  }
+  const cause: unknown = closing.deps.providerBudget?.cancellationSignal.reason;
+  return cause instanceof ControllerSignalAbort ? "signal-terminated" : "turn-non-result";
 }
 
 async function finishBuilderSession(
@@ -419,7 +426,7 @@ async function finishBuilderSession(
     );
     return new BuilderSessionLifecycleError();
   }
-  deps.onExecution?.(recorder.finish(classifyExit(state, failure)));
+  deps.onExecution?.(recorder.finish(classifyExit(state, closing)));
   return undefined;
 }
 

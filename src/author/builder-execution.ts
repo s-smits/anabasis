@@ -209,6 +209,9 @@ export interface BuilderExecutionEvidence {
     /** The run's model budget ran out inside the round. */
     | "budget-limited"
     | "turn-non-result"
+    /** The controller's closing signal (the operator's stop, SIGTERM or SIGINT) cancelled the
+     *  session; unlike a non-result, its prose is the model's own. */
+    | "signal-terminated"
     | "evidence-unavailable"
     | "in-flight"
     | "recorded-at-terminal";

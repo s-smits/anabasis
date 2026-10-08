@@ -6,7 +6,8 @@
  *     --bundle ../anabasis-cycles-4c67fc/fixture/round4-veryhard-repaired
  *
  * `--bundle` is the repaired pack, laid out as the one the campaign was opened over: its check
- * program, its tasks and its tool tree. Every answer the log holds a checker's verdict for is
+ * program, its tasks and its tool tree. The tasks an Examiner session wrote are taken from the log,
+ * since no pack holds them. Every answer the log holds a checker's verdict for is
  * graded again under it (`regraded` in `src/kernel/acceptance.ts`), and each verdict that moved is
  * printed with the tasks they belong to. No solve is run and nothing is written: the log stays the
  * frozen checker's, and the repaired one takes a campaign of its own (`accept.ts`), where these
@@ -27,6 +28,7 @@ import { tmpdir } from "#src/meta/os.ts";
 import { join } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
+import { writtenTasks } from "../d2/campaign.ts";
 import { checkProgram, readPack } from "../m0/stored-sweep.ts";
 
 const { values } = parseArgs({
@@ -45,7 +47,10 @@ async function main(): Promise<void> {
   try {
     const checks = checkProgram(bundle, join(dir, "checks"));
     const verify = openVerifier({ checks, tools: join(bundle, ".toolchain") });
-    const rows = await regraded(events, readPack(bundle).tasks, verify, Number(values.jobs));
+    // The tasks an Examiner session wrote are in the log and in no pack; the repaired pack's own
+    // stand where both name one.
+    const held = [...writtenTasks(events), ...readPack(bundle).tasks];
+    const rows = await regraded(events, held, verify, Number(values.jobs));
     const moved = rows.filter(({ was, now }) => was !== now);
     console.log(`${String(rows.length)} logged verdicts, ${String(moved.length)} moved`);
     if (moved.length > 0) console.log("solve\ttask\twas\tnow");

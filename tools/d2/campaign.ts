@@ -123,6 +123,24 @@ export function setsOf(events: readonly LogEvent[]) {
   };
 }
 
+/** The tasks a log's sessions wrote, each whole in its proposal: an Examiner's instances, which no
+ *  pack holds. */
+export function writtenTasks(events: readonly LogEvent[]): Task[] {
+  return events.flatMap(({ kind, data }) => {
+    const task = asRecord(kind === "task.proposed" ? data.task : null);
+    return task !== null && isString(task.taskId) && isString(task.family)
+      ? [
+          {
+            taskId: task.taskId,
+            family: task.family,
+            publicInput: task.publicInput ?? null,
+            hidden: task.hidden ?? null,
+          },
+        ]
+      : [];
+  });
+}
+
 export async function openCampaign(args: CampaignArgs) {
   const dir = join(REPO, ".ana", "d2", args.name);
   mkdirSync(dir, { recursive: true });
@@ -151,22 +169,8 @@ export async function openCampaign(args: CampaignArgs) {
   const host = hashJsonValue(["src", "vendor"].map((part) => treeContent(join(REPO, part))));
   const pack = (task: Task): TaskPackage => packageOf(checks, task);
   /** Every task the pack holds or a session wrote into the log, by version. */
-  const packages = (): Map<string, TaskPackage> => {
-    const written = read(log).flatMap(({ kind, data }) => {
-      const task = asRecord(kind === "task.proposed" ? data.task : null);
-      return task !== null && isString(task.taskId) && isString(task.family)
-        ? [
-            {
-              taskId: task.taskId,
-              family: task.family,
-              publicInput: task.publicInput ?? null,
-              hidden: task.hidden ?? null,
-            },
-          ]
-        : [];
-    });
-    return new Map([...tasks, ...written].map((task) => [taskVersion(pack(task)), pack(task)]));
-  };
+  const packages = (): Map<string, TaskPackage> =>
+    new Map([...tasks, ...writtenTasks(read(log))].map((task) => [taskVersion(pack(task)), pack(task)]));
   let solves = 0;
   /** One live solve of a task under a harness, by a solver, its condition recorded first. */
   const solveOnce = (

@@ -4,7 +4,7 @@
 // Referee's reading stops at its guard. The tests run in order: the second freezes what the first
 // read, and the last regrades what the third logged.
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
-import { read } from "../src/kernel/log.ts";
+import { append, read } from "../src/kernel/log.ts";
 import {
   cpSync,
   existsSync,
@@ -241,11 +241,16 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
     cpSync(bundle, repaired, { recursive: true });
     writeFileSync(join(repaired, "correctness-model", "evaluator.ts"), REPAIRED);
     const log = join(campaign, "log.jsonl");
+    // A task an Examiner session wrote is in the log and in no pack, and its verdicts are read too.
+    const written = { taskId: "x-1-001", family: "fixture", publicInput: { base: 4 }, hidden: null };
+    append(log, "task.proposed", { version: "vx", taskId: "x-1-001", session: "x-1", task: written });
+    append(log, "verdict", { solve: "x-solve", task: "x-1-001", answer: { answer: "24" }, kind: "pass" });
     const before = readFileSync(log, "utf8");
     const { code, said } = command("tools/c/repaired.ts", { log, bundle: repaired });
     // Of the two refused answers, 17 for 18 is within the repaired check's margin and 11 for 12
-    // is not; both accepted answers stand.
-    expect(said).toContain("4 logged verdicts, 1 moved");
+    // is not; the three accepted answers stand, the written task's among them.
+    expect(said).toContain("5 logged verdicts, 1 moved");
+    expect(said).not.toContain("no task");
     expect(said).toContain("s-c02-t-2\tt-2\tfail check-product\tpass");
     expect(said).not.toContain("s-c02-t-1\t");
     expect(said).toContain("tasks with a moved verdict: t-2");

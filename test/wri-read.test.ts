@@ -124,6 +124,10 @@ describe("the whole-run investigation's reader", () => {
     expect(lines).toContain("0 of 8 finished solves name no response model");
     expect(lines).toContain("states: admitted 1, held 1, released 1; anchor 1");
     expect(lines).toContain("0 feasible tasks held outside the anchor, for a round to screen");
+    // The admitted task is the pool, and the parent's three fails of it are on record.
+    expect(lines).toContain(
+      "against hp, where the campaign stands: 1 of the pool stop it, 0 it clears, 0 ended at the wall, 0 no solve has placed; 0 wait for a witness",
+    );
     expect(lines).toContain(
       "metered dollars: solver 8.00, builder 2.00, examiner 0.00, referee 0.00, diagnoser 0.00",
     );
@@ -166,8 +170,10 @@ describe("the whole-run investigation's reader", () => {
     expect(detail("READING MOVES WITHOUT FLAGGED")).toBe(
       "b-1: no-step with 1 flagged task counted, not-scored without",
     );
-    expect(detail("NO CANDIDATES HELD")).toBe(
-      "no feasible task is held outside the anchor: a round has nothing to screen, and scores only what another route admitted",
+    // The pool holds the task this round admitted, which the next round screens again.
+    expect(detail("NO CANDIDATES HELD")).toBeUndefined();
+    expect(detail("WHAT BINDS")).toBe(
+      "tasks: 1 of the pool can be scored and a step takes 4: no Examiner session has written against this harness",
     );
     expect(detail("ANCHOR NOT HELD")).toBe("b-1: not-tested, 0 informative");
     expect(detail("WALL SHARE")).toBe("b-1: median 50.0% under the parent, 50.0% under the child");
@@ -240,8 +246,9 @@ describe("the whole-run investigation's reader", () => {
     }
     record("build.started", { session: "b-3", parent: "hp", tasks: ["t1"] });
     record("build.finished", { session: "b-3", ended: "finished", harness: "he", changed: true });
-    // Of two candidates, the one the draw puts last is the only one screened.
-    const [, last = ""] = screeningOrder(["c1", "c2"], "c1", "b-3");
+    // The pool is the two new candidates and the task an earlier round admitted. Of the three,
+    // the one the draw puts last is the only one screened.
+    const last = screeningOrder(["t2", "c1", "c2"], "c1", "b-3").at(-1) ?? "";
     solve(last, "hp", "pass");
     solve(last, "he", "pass");
     record("comparison.reported", { session: "b-3", versions: [], scored: null, reading: "no-change" });
@@ -249,7 +256,7 @@ describe("the whole-run investigation's reader", () => {
       (trigger) => trigger.name === "SCREENED OUT OF THE DRAWN ORDER",
     );
     expect(said?.detail).toBe(
-      "b-3: 1 of 1 screened tasks are not among the first 1 of the draw over 2 candidates",
+      "b-3: 1 of 1 screened tasks are not among the first 1 of the draw over 3 candidates",
     );
   });
 
@@ -282,6 +289,104 @@ describe("the whole-run investigation's reader", () => {
     expect(overview([]).triggers.map((trigger) => trigger.name)).toEqual([
       "NO CHECKER READING",
       "CHECKER NOT FROZEN",
+    ]);
+  });
+});
+
+describe("the reader on a campaign whose exam follows its harness", () => {
+  const log: LogEvent[] = [];
+  const put = (kind: EventKind, data: JsonObject) => {
+    log.push({ at: new Date(START + log.length * 1_000).toISOString(), kind, data });
+  };
+  let made = 0;
+  /** One finished solve, on the test side unless told. */
+  const ran = (task: string, harness: string, outcome: "pass" | "fail", side: Condition["side"] = "test") => {
+    const under = { ...condition(task, harness), side };
+    const id = `m${String((made += 1))}`;
+    put("condition.recorded", { id: conditionId(under), condition: requireJsonValue(under) });
+    put("solve.started", { solve: id, condition: conditionId(under), limits: { wallSeconds: 100 } });
+    put("solve.finished", {
+      solve: id,
+      ending: outcome === "pass" ? { outcome } : { outcome, kind: "rejected" },
+      seconds: 50,
+    });
+    return id;
+  };
+  for (const version of ["t2", "t3", "a1"]) {
+    put("task.proposed", { version });
+    for (const gate of [1, 2, 3, 4]) put("task.gate", { version, gate, outcome: "passed", controls: "d" });
+  }
+  put("anchor.drawn", { tasks: ["a1"] });
+  // A task a session wrote, which the stronger solver did not pass under the first harness.
+  put("exam.started", { session: "x-1", standsOn: "hp" });
+  put("task.proposed", { version: "r1", taskId: "r1", session: "x-1", task: { taskId: "r1" } });
+  put("task.gate", { version: "r1", gate: 1, outcome: "passed" });
+  put("task.gate", { version: "r1", gate: 2, outcome: "too-hard", solve: ran("r1", "hp", "fail", "strong") });
+  put("task.state", { version: "r1", state: "too-hard", session: "x-1" });
+  put("exam.word", { session: "x-1", version: "r1", word: "too hard" });
+  // Round one: both harnesses fail t2 twice, and both pass t3 three times.
+  put("build.started", { session: "b-1", parent: "hp", tasks: [] });
+  put("build.finished", { session: "b-1", ended: "finished", harness: "hc", changed: true });
+  for (const harness of ["hp", "hc"]) for (const _nth of [1, 2]) ran("t2", harness, "fail");
+  put("task.state", { version: "t2", state: "admitted", session: "b-1" });
+  for (const harness of ["hp", "hc"]) for (const _nth of [1, 2, 3]) ran("t3", harness, "pass");
+  put("task.state", { version: "t3", state: "too-easy", session: "b-1" });
+  ran("t2", "hp", "fail");
+  ran("t2", "hc", "fail");
+  const report = { level: 0.1, screening: { solves: 3, fails: 2 }, short: [], unscreened: [] };
+  put("comparison.reported", { ...report, session: "b-1", versions: ["t2"], fresh: "hc", reading: "step" });
+  // A session after the step that still stood on the first harness, and tried the reach task again.
+  put("exam.started", { session: "x-2", standsOn: "hp", reach: ["r1"] });
+  put("task.gate", { version: "r1", gate: 2, outcome: "passed", solve: ran("r1", "hp", "pass", "strong") });
+  put("task.gate", { version: "r1", gate: 3, outcome: "passed" });
+  put("task.state", { version: "r1", state: "held", session: "x-2" });
+  // Round two starts from the step. Its parent's three fails of t2 are on record, so it admits the
+  // task again with no screening solve, and scores it on fresh ones.
+  put("build.started", { session: "b-2", parent: "hc", tasks: [] });
+  put("build.finished", { session: "b-2", ended: "finished", harness: "hd", changed: true });
+  put("task.state", { version: "t2", state: "admitted", session: "b-2", carried: true });
+  ran("t2", "hc", "fail");
+  ran("t2", "hd", "pass");
+  put("comparison.reported", {
+    ...report,
+    session: "b-2",
+    versions: ["t2"],
+    fresh: "hd",
+    reading: "no-step",
+  });
+  const seenLater = overview(log);
+  const of = (name: keyof typeof TRIGGERS) =>
+    seenLater.triggers.flatMap((trigger) => (trigger.name === name ? [trigger.detail] : []));
+
+  it("names the parent's solves a round read from the log, and what it kept and retired", () => {
+    expect(of("PARENT SIDE ON RECORD")).toEqual([
+      "b-2: 3 solves of the parent on 1 task were made before the round and read by its screening; 1 admitted on them with no screening solve of the round, 0 retired",
+    ]);
+    // The second round's admission rests on the parent's fails, though it made no screening solve.
+    expect(of("ADMITTED BY")).toEqual([
+      "b-1: the parent's fails 0, the child's 0, both 1; 2 of 2 candidates screened, the first of the draw",
+      "b-2: the parent's fails 1, the child's 0, both 0; 1 of 1 candidate screened, the first of the draw",
+    ]);
+    expect(of("RETIRED BY A ROUND")).toEqual(["b-1: 1, 0 of them admitted by an earlier round"]);
+    expect(of("SCORED SET CARRIED")).toEqual([]);
+  });
+
+  it("reads a reach task by its last stronger solve, and names a session that stood behind the step", () => {
+    expect(of("TOO HARD")).toEqual([]);
+    expect(of("WITNESSED ON A LATER TRY")).toEqual([
+      "1 of 1 tasks a stronger solve had failed were passed when tried again",
+    ]);
+    expect(of("EXAMINER BEHIND THE FRONTIER")).toEqual(["x-2 stood on hp, and the last step had left hc"]);
+  });
+
+  it("says where the campaign stands and what binds its climb", () => {
+    const lines = seenLater.rows.flatMap((row) => row.lines);
+    expect(lines).toContain(
+      "against hc, where the campaign stands: 1 of the pool stop it, 0 it clears, 0 ended at the wall, 0 no solve has placed; 0 wait for a witness",
+    );
+    // No session wrote against the harness the step left: the one after it stood on the first.
+    expect(of("WHAT BINDS")).toEqual([
+      "tasks: 1 of the pool can be scored and a step takes 4: no Examiner session has written against this harness",
     ]);
   });
 });

@@ -52,7 +52,7 @@ import { runTextSyncOrThrow, terminateAndReapProcessGroupId } from "#src/meta/su
 import { spent } from "#src/builder/round.ts";
 import { sessionDirs } from "#src/builder/session.ts";
 import { claimed } from "#src/examiner/session.ts";
-import { signP } from "#src/kernel/compare.ts";
+import { sweepOf } from "#src/kernel/compare.ts";
 import { type SolveDirs, solveDirs } from "#src/solve/command.ts";
 import { releaseDiskCap } from "#src/verify/disk-cap.ts";
 import { carriable, setsOf } from "../d2/campaign.ts";
@@ -81,7 +81,6 @@ export interface Host {
 export interface Asked extends Host {
   /** `--target`, as given: only "0" asks for no scored task. */
   readonly target: string | undefined;
-  readonly admitted: boolean;
   /** `--level` and `--anchor-floor`, as given or as the round defaults them. */
   readonly level: number;
   readonly anchorFloor: number;
@@ -131,7 +130,9 @@ function refused(asked: Host): string[] {
 /** Why a round should not start, and what its reader should know when it does. */
 export function preflight(sets: ReturnType<typeof setsOf>, asked: Asked) {
   const scoring = asked.target !== "0";
-  const toScreen = sets.candidates.length + (asked.admitted ? sets.admitted.length : 0);
+  // The live pool: what is held outside the anchor, and what an earlier round admitted, which every
+  // round screens again (`src/builder/round.ts`).
+  const toScreen = sets.candidates.length + sets.admitted.length;
   const refusals = [
     ...said([
       [
@@ -141,7 +142,7 @@ export function preflight(sets: ReturnType<typeof setsOf>, asked: Asked) {
       [sets.feasible.length > 0 && sets.anchor.length === 0, "no anchor is drawn: run tools/d2/prepare.ts"],
       [
         scoring && toScreen === 0 && sets.anchor.length > 0,
-        `no task is held outside the anchor, so the round has nothing to screen and cannot step: run an Examiner session (${EXAMINE}), or pass --target 0 for a round that reads its anchor alone`,
+        `the pool is empty, with no task held outside the anchor and none admitted, so the round has nothing to screen and cannot step: run an Examiner session (${EXAMINE}), or pass --target 0 for a round that reads its anchor alone`,
       ],
     ]),
     ...refused(asked),
@@ -150,8 +151,7 @@ export function preflight(sets: ReturnType<typeof setsOf>, asked: Asked) {
   // round paid to (2026-10-08): exam-1 held one task to screen, and four anchor tasks under a floor
   // of eight.
   const most = Math.min(toScreen, Number(asked.target ?? ROUND_OPTIONS.target.default));
-  let sweep = 1;
-  while (signP(sweep, 0) > asked.level) sweep += 1;
+  const sweep = sweepOf(asked.level);
   const notes = said([
     [
       true,
@@ -253,7 +253,6 @@ export async function launch(args: readonly string[]): Promise<void> {
       name: { type: "string" },
       session: { type: "string" },
       target: { type: "string" },
-      admitted: { type: "boolean", default: false },
       level: ROUND_OPTIONS.level,
       "anchor-floor": ROUND_OPTIONS["anchor-floor"],
       examiner: { type: "string" },
@@ -288,7 +287,6 @@ export async function launch(args: readonly string[]): Promise<void> {
     : preflight(setsOf(events ?? []), {
         ...host,
         target: isString(target) ? target : undefined,
-        admitted: values.admitted === true,
         level: Number(values.level),
         anchorFloor: Number(values["anchor-floor"]),
       });

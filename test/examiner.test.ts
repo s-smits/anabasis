@@ -22,7 +22,7 @@ import { asRecord, isFunction, type JsonObject, type JsonValue } from "../src/me
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import type { RefereeFinding } from "../src/review/referee.ts";
-import { carriable } from "../tools/d2/campaign.ts";
+import { carriable, writtenTasks } from "../tools/d2/campaign.ts";
 
 /** A solver-side secret no Examiner may be shown: the text of a measured solve's answer. */
 const SOLVER = "solver-canary-7f3a";
@@ -167,6 +167,8 @@ function setup(responses: FauxResponseStep[], test: (base: number, nth: number) 
     checks: CHECKS,
     examples: [EXAMPLE],
     waiting: [],
+    reach: [],
+    standsOn: { harness: "h1", setting: "s1" },
     pack,
     verify,
     strong: async (task) => {
@@ -476,6 +478,86 @@ describe("an Examiner session", () => {
     expect(test.of("exam.started")).toHaveLength(1);
   });
 
+  it("puts a reach task to the stronger solver again, and hands over the one that passes now", async () => {
+    // The first session's stronger solver fails both tasks. The second session's passes a base of
+    // 200, as a stronger solve under a better harness would, and still fails 300.
+    const s = setup([propose(200, 300), finish, controls("x-1-001", "1"), propose(4, 5, 6), finish]);
+    await examine(s.request);
+    const [first, second] = [s.versionOf("x-1-001", 200), s.versionOf("x-1-002", 300)];
+    expect([...taskStates(read(s.log)).values()]).toEqual(["too-hard", "too-hard"]);
+    const reach = writtenTasks(read(s.log));
+    const { strong } = s.request;
+    const examined = await examine({
+      ...s.request,
+      id: "x-2",
+      reach,
+      standsOn: { harness: "h2", setting: "s1" },
+      strong: async (task, version, kill) => {
+        if (baseOf(task) !== 200) return await strong(task, version, kill);
+        s.solves.strong += 1;
+        const solve = `strong-${String(s.solves.strong)}`;
+        const answer = { answer: "1200", unit: "N" };
+        append(s.log, "solve.started", { solve, task: task.taskId });
+        append(s.log, "verdict", { solve, task: task.taskId, answer, kind: "pass" });
+        append(s.log, "solve.finished", { solve, ending: PASS });
+        return { solve, ending: PASS };
+      },
+    });
+    expect(s.of("exam.started")[1]).toMatchObject({
+      standsOn: "h2",
+      setting: "s1",
+      reach: ["x-1-001", "x-1-002"],
+    });
+    // Both were solved again before the Examiner's first turn, which is told of each as it stands.
+    const opening = s.sent[2] ?? "";
+    expect(opening).toContain("or the stronger solver passes the task only now");
+    expect(opening).toContain(String.raw`x-1-001:\n{\n  \"family\": \"fixture\"`);
+    expect(opening).toContain(String.raw`\"answer\": \"1200\"`);
+    expect(opening).toContain(
+      "- x-1-002 (family fixture): too hard for now: no stronger solve of it has passed",
+    );
+    const gatesOf = (version: string) =>
+      s
+        .of("task.gate")
+        .filter((gate) => gate.version === version)
+        .map(({ gate, outcome }) => [gate, outcome]);
+    // One history under one version: the failed witness, then the one that passed, then the rest.
+    expect(gatesOf(first)).toEqual([
+      [1, "passed"],
+      [2, "too-hard"],
+      [2, "passed"],
+      [3, "passed"],
+      [4, "passed"],
+    ]);
+    expect(gatesOf(second)).toEqual([
+      [1, "passed"],
+      [2, "too-hard"],
+      [2, "too-hard"],
+    ]);
+    const states = taskStates(read(s.log));
+    expect([states.get(first), states.get(second)]).toEqual(["held", "too-hard"]);
+    // The task that still has no witness was not moved a second time, and its word says it was a
+    // second try.
+    expect(s.of("task.state").filter(({ version }) => version === second)).toHaveLength(1);
+    expect(s.of("exam.word").filter(({ version }) => version === second)[1]).toMatchObject({
+      session: "x-2",
+      word: "too hard",
+      again: true,
+    });
+    expect(examined.words[first]).toBe("too easy");
+    expect(examined.feasible).toEqual([first]);
+    // Each second try cost a candidate's solve: of four candidates two were left, so the third
+    // instance proposed was not taken.
+    expect(s.sent[4]).toContain("An instance was not taken: this session can propose no further task.");
+    expect(s.of("exam.finished")[1]).toMatchObject({ proposed: 2 });
+    // Four stronger solves in the first count as two tasks and two second tries.
+    expect(supply(read(s.log))).toMatchObject({
+      proposed: 4,
+      tooHard: { rejected: 1 },
+      solves: { strong: 6 },
+    });
+  });
+
   it("is a crashed session when the provider fails its turn, and the next takes up the task it left", async () => {
     // The first live session, 2026-10-08: the provider's session limit failed the Examiner's turn
     // after one task's stronger solve had passed, and before its controls were written.
@@ -490,7 +572,9 @@ describe("an Examiner session", () => {
     const examined = await examine({ ...s.request, id: "x-2", waiting });
     // The second Examiner never wrote the task, so it is shown it whole beside its accepted answer.
     const opening = s.sent[2] ?? "";
-    expect(opening).toContain("ended before their reject controls were written");
+    expect(opening).toContain("an earlier session ended before they were written");
+    // A task still short of its controls has no standing to report.
+    expect(opening).not.toContain("Tasks earlier sessions wrote");
     expect(opening).toContain(String.raw`x-1-001:\n{\n  \"family\": \"fixture\"`);
     expect(opening).toContain(String.raw`\"answer\": \"42\"`);
     const version = s.versionOf("x-1-001", 7);

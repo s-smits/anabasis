@@ -1,17 +1,20 @@
 /**
- * One round over a campaign, the plan's D2: a Builder session from the campaign's harness, the
- * screening of held tasks under the old and the new harness, the scoring solves, and the readings.
+ * One round over a campaign, the plan's D2: a Builder session from the harness the campaign stands
+ * on, the screening of the live pool under the old and the new harness, the scoring solves, and
+ * the readings.
  *
  *   bun tools/d2/round.ts --root ../anabasis-cycles-4c67fc --sweep veryhard-hb-4c67fc --cycle c01 \
  *     --bundle ../anabasis-cycles-4c67fc/fixture/round4-veryhard-workspace --name truss --session b-1 \
  *     --builder claude/claude-opus-5-5 --reviewer claude/claude-opus-5-5
  *
  * The sets are the log's (`prepare.ts`): the released tasks are the Builder's practice, the anchor
- * is the anchor, and every feasible task still held outside it is a candidate. Candidates are
+ * is the anchor, and the live pool is every feasible task held or admitted outside it. The pool is
  * screened in an order drawn by the contract's hash and the session's id, and never in the order of
- * what an earlier solve showed of them, so that neither harness's fails choose which come first.
- * Tasks already admitted, by a stored sweep's solves say, are scored only with `--admitted`: they
- * were chosen by other harnesses' fails, which is fit for a plumbing run and for nothing else.
+ * what an earlier solve showed of it, so that neither harness's fails choose which come first. A
+ * task an earlier round admitted is in the pool like any other: this round admits it again or
+ * retires it, on the parent's solves the log already holds and the child's own
+ * (`src/builder/round.ts`). Until 2026-10-08 a round scored only what it screened itself, and an
+ * `--admitted` flag scored an earlier admission as it stood, chosen by other harnesses' fails.
  *
  * The defaults are the plan's: 24 scored tasks, three scoring solves a harness, screening on three
  * solves and two fails (its decision 26), the sign test at 0.10, an anchor floor of 8 and a stop
@@ -28,8 +31,11 @@
  * Every solve is the cycle's own model at its effort, unless `--solver` and `--solver-effort` name
  * another to solve in its place.
  *
- * The session starts from the cycle's harness, or with `--parent <digest>` from a harness an
- * earlier session of the campaign kept, so that a step can be built on.
+ * The session starts from the frontier: the harness the campaign's last step left, or the cycle's
+ * while no round has stepped (`src/kernel/ladder.ts`). So a step is built on without being asked
+ * for, and a round that read no step is followed by another from the same parent. `--parent
+ * <digest>` names another harness an earlier session kept: the operator's way to build on one the
+ * plan's rules did not call a step, and a cross round's (`model-condition-comparison`).
  *
  * Run again with the same `--session`, a round goes on from its log. Its report and the plan's
  * three-session reading are printed from the log.
@@ -45,10 +51,21 @@ import type { BuildRequest, Practised } from "#src/builder/session.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { read } from "#src/kernel/log.ts";
 import type { TaskPackage } from "#src/kernel/task.ts";
+import { existsSync } from "#src/meta/filesystem.ts";
+import { isString } from "#src/meta/json-shape.ts";
 import { join } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
-import { type Kept, LIMITS, openCampaign, setsOf, stayAwake } from "./campaign.ts";
+import {
+  frontier,
+  type Kept,
+  LIMITS,
+  openCampaign,
+  SCREENING_OPTIONS,
+  screeningRule,
+  setsOf,
+  stayAwake,
+} from "./campaign.ts";
 
 export type Campaign = Awaited<ReturnType<typeof openCampaign>>;
 
@@ -56,6 +73,8 @@ export type Campaign = Awaited<ReturnType<typeof openCampaign>>;
 interface Seats {
   readonly builder: Pick<BuildRequest, "model" | "models">;
   readonly solve: (task: TaskPackage, harness: Kept, kill: AbortSignal | undefined) => Promise<Practised>;
+  /** The setting those solves record, which names whose solves on record the round may read. */
+  readonly setting: string;
 }
 
 /** Who sits in a round's seats, once its campaign is open and its parent harness is known. */
@@ -79,12 +98,10 @@ export const ROUND_OPTIONS = {
   "solver-effort": { type: "string", default: "high" },
   reviewer: { type: "string" },
   "reviewer-effort": { type: "string", default: "high" },
-  admitted: { type: "boolean", default: false },
   "referee-decides": { type: "boolean", default: false },
   target: { type: "string", default: "24" },
   solves: { type: "string", default: "3" },
-  screen: { type: "string", default: "3" },
-  fails: { type: "string", default: "2" },
+  ...SCREENING_OPTIONS,
   level: { type: "string", default: "0.1" },
   "anchor-level": { type: "string" },
   "anchor-floor": { type: "string", default: "8" },
@@ -101,6 +118,7 @@ const hosted: Seated = (campaign, { builder }) => {
   return {
     builder: { model: modelNamed(builder), models: campaign.builder },
     solve: (task, harness, kill) => campaign.solveOnce(task, harness, campaign.test, kill),
+    setting: campaign.setting(campaign.test),
   };
 };
 
@@ -139,7 +157,17 @@ export async function roundCommand(args: readonly string[], seated: Seated = hos
     reviewer === undefined
       ? null
       : campaign.reviewers(campaign.reader(modelNamed(reviewer), effort(values["reviewer-effort"])));
-  const parent = values.parent === undefined ? campaign.parent : join(campaign.states, values.parent);
+  // A session the log already holds goes on from the harness it started from, wherever the
+  // frontier has moved since: its own step moves it.
+  const began = read(campaign.log).find(
+    ({ kind, data }) => kind === "build.started" && data.session === session,
+  )?.data.parent;
+  const startedFrom =
+    isString(began) && existsSync(join(campaign.states, began))
+      ? join(campaign.states, began)
+      : campaign.parent;
+  const named = values.parent === undefined ? null : join(campaign.states, values.parent);
+  const parent = named ?? (isString(began) ? startedFrom : (await frontier(campaign)).dir);
   const seats = seated(campaign, { builder: values.builder, parent });
   stayAwake();
   const report = await round({
@@ -168,11 +196,14 @@ export async function roundCommand(args: readonly string[], seated: Seated = hos
             diagnose: (solve, task, kill) => reviewers.diagnose(solve, packageOf(task.version), kill),
           }),
     },
-    scored: values.admitted ? sets.admitted : [],
-    candidates: screeningOrder(sets.candidates, contractHash(campaign.contract), session),
+    candidates: screeningOrder(
+      [...sets.candidates, ...sets.admitted],
+      contractHash(campaign.contract),
+      session,
+    ),
     anchor: sets.anchor,
     target: Number(values.target),
-    screening: { solves: Number(values.screen), fails: Number(values.fails) },
+    screening: screeningRule(values),
     solves: Number(values.solves),
     level: Number(values.level),
     anchorLevel: Number(values["anchor-level"] ?? values.level),
@@ -180,6 +211,7 @@ export async function roundCommand(args: readonly string[], seated: Seated = hos
     defects: Number(values.defects),
     concurrency: LIMITS.concurrency,
     solve: (version, dir, digest, kill) => seats.solve(packageOf(version), { dir, digest }, kill),
+    setting: seats.setting,
     ...(reviewers === null
       ? {}
       : { referee: (solve, version, kill) => reviewers.referee(solve, packageOf(version), kill) }),

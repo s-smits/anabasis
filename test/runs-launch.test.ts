@@ -24,7 +24,6 @@ const SETS = {
 };
 const ASKED: Asked = {
   target: undefined,
-  admitted: false,
   // A level one win clears and a floor the anchor meets: a round of this size can read step.
   level: 0.5,
   anchorFloor: 2,
@@ -53,10 +52,8 @@ describe("a launch's preflight", () => {
     const anchorOnly = preflight(bare, { ...ASKED, target: "0" });
     expect(anchorOnly.refusals).toEqual([]);
     expect(anchorOnly.notes[1]).toContain("cannot read step");
-    // Admitted tasks are scored only when the round is asked to.
-    const admitted = { ...bare, admitted: ["s1"] };
-    expect(preflight(admitted, ASKED).refusals).toHaveLength(1);
-    expect(preflight(admitted, { ...ASKED, admitted: true }).refusals).toEqual([]);
+    // A task an earlier round admitted is in the pool: this round screens it again.
+    expect(preflight({ ...bare, admitted: ["s1"] }, ASKED).refusals).toEqual([]);
   });
 
   // As exam-1 stood on 2026-10-08: an anchor under the round's floor of eight, and one task held.

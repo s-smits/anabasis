@@ -24,11 +24,19 @@ import type { Api, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
 import { backends, compactionMode } from "#src/backends/models.ts";
 import { type Practised, practised } from "#src/builder/session.ts";
 import { departure } from "#src/kernel/acceptance.ts";
-import { type Condition, type Limits, recordCondition } from "#src/kernel/condition.ts";
+import {
+  type Condition,
+  conditionsOf,
+  type Limits,
+  recordCondition,
+  type Setting,
+  settingId,
+} from "#src/kernel/condition.ts";
 import { contractHash } from "#src/kernel/contract.ts";
+import { frontierOf, type Rule, type Stand } from "#src/kernel/ladder.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
 import { freezePrices, priceKey } from "#src/kernel/meter.ts";
-import { type RejectControl, type TaskPackage, taskStates, taskVersion } from "#src/kernel/task.ts";
+import { type RejectControl, type TaskPackage, taskSets, taskStates, taskVersion } from "#src/kernel/task.ts";
 import { checkProgramVersion, openVerifier, type Task } from "#src/kernel/verify.ts";
 import { existsSync, mkdirSync, readFileSync } from "#src/meta/filesystem.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
@@ -40,7 +48,7 @@ import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { diagnose } from "#src/review/diagnoser.ts";
 import type { Reader } from "#src/review/reader.ts";
 import { referee } from "#src/review/referee.ts";
-import { treeContent } from "#src/solve/harness.ts";
+import { openHarness, treeContent } from "#src/solve/harness.ts";
 import { HOST_SOLVE_ISOLATION_PROFILE_ID } from "#src/verify/solve-sandbox.ts";
 import {
   checkProgram,
@@ -97,22 +105,28 @@ const REPO = resolve(import.meta.dir, "..", "..");
 /** The agent runtime's packages, pinned in `package.json`; the SDK pins the Claude Code binary. */
 const RUNTIME = ["@anthropic-ai/claude-agent-sdk", "@earendil-works/pi-agent-core", "@earendil-works/pi-ai"];
 
-/** The task sets a log holds: the feasible versions, and among them the anchor's, the released and
- *  the ones still held outside the anchor, which are a round's candidates. */
+/**
+ * Gate 5's rule as every command of a campaign takes it: the solves of a task under a harness that
+ * are read, and the fails among them that keep it (the plan's decision 26). A round screens by it,
+ * an Examiner session's word is read by it, and `prepare.ts` places tasks by it, so the three are
+ * declared once and cannot drift apart.
+ */
+export const SCREENING_OPTIONS = {
+  screen: { type: "string", default: "3" },
+  fails: { type: "string", default: "2" },
+} as const;
+
+/** The rule those two flags name. */
+export function screeningRule(values: { readonly screen: string; readonly fails: string }): Rule {
+  return { solves: Number(values.screen), fails: Number(values.fails) };
+}
+
+/** The task sets a log holds: the feasible versions, and among them the anchor's, the released, the
+ *  ones still held outside the anchor (`candidates`) and the ones a round admitted. The last two
+ *  together are the live pool, which every round screens again under its own two harnesses
+ *  (`src/builder/round.ts`). */
 export function setsOf(events: readonly LogEvent[]) {
-  const states = taskStates(events);
-  const feasible = new Set(
-    events.flatMap(({ kind, data }) =>
-      kind === "task.gate" && data.gate === 4 && data.outcome === "passed" && isString(data.version)
-        ? [data.version]
-        : [],
-    ),
-  );
-  const anchor = new Set(
-    events.flatMap(({ kind, data }) =>
-      kind === "anchor.drawn" && Array.isArray(data.tasks) ? data.tasks.filter(isString) : [],
-    ),
-  );
+  const { states, feasible, anchor } = taskSets(events);
   const inState = (state: string) => [...feasible].filter((version) => states.get(version) === state);
   return {
     feasible: [...feasible],
@@ -194,6 +208,39 @@ export function carriable(events: readonly LogEvent[]) {
   return { feasible, recovered, waiting, bare };
 }
 
+/**
+ * The reach tasks an Examiner session puts to the stronger solver again: the tasks a session wrote
+ * that wait in `too-hard`, whose last stronger solve ran elsewhere than where the stronger solver
+ * stands now. So a task is tried again when the harness has moved, and also when the stronger
+ * solver itself is another model or runs at another effort, which is the other way a witness
+ * grows. One that solve already failed where the solver stands is not paid for twice.
+ */
+export function reachOf(events: readonly LogEvent[], stand: Stand): Task[] {
+  const states = taskStates(events);
+  const conditions = conditionsOf(events);
+  /** The solves that ran where the stronger solver stands now. */
+  const here = new Set(
+    events.flatMap(({ kind, data }) => {
+      const ran = conditions.get(isString(data.condition) ? data.condition : "");
+      return kind === "solve.started" &&
+        isString(data.solve) &&
+        ran?.harness === stand.harness &&
+        settingId(ran) === stand.setting
+        ? [data.solve]
+        : [];
+    }),
+  );
+  const written = new Map(writtenTasks(events).map((task) => [task.taskId, task]));
+  return events.flatMap(({ kind, data }) => {
+    const task = kind === "task.proposed" && isString(data.taskId) ? written.get(data.taskId) : undefined;
+    if (task === undefined || !isString(data.version) || states.get(data.version) !== "too-hard") return [];
+    const last = events.findLast(
+      (event) => event.kind === "task.gate" && event.data.version === data.version && event.data.gate === 2,
+    )?.data.solve;
+    return isString(last) && here.has(last) ? [] : [task];
+  });
+}
+
 /** A control as gate 4 logged it, or none where the row is not one. */
 function controlOf(row: JsonValue): RejectControl[] {
   const control = asRecord(row);
@@ -232,6 +279,24 @@ export async function openCampaign(args: CampaignArgs) {
   /** Every task the pack holds or a session wrote into the log, by version. */
   const packages = (): Map<string, TaskPackage> =>
     new Map([...tasks, ...writtenTasks(read(log))].map((task) => [taskVersion(pack(task)), pack(task)]));
+  /** What every solve by `by` runs under whatever its task and harness: its condition less those. */
+  const settingOf = (by: Solver): Setting => ({
+    contract: contractHash(contract),
+    model: priceKey(by.model),
+    effort: by.effort,
+    prices: freezePrices([by.model]),
+    runtime: Object.fromEntries(RUNTIME.map((name) => [name, pins[name] ?? "unpinned"])),
+    compaction: compactionMode(by.model, sweepOptions()),
+    verifierTools,
+    sandbox: hashJsonValue({
+      profile: HOST_SOLVE_ISOLATION_PROFILE_ID,
+      platform: runtimeProcess.platform,
+      diskBytes: LIMITS.diskBytes,
+    }),
+    limits: LIMITS,
+    host,
+    side: by.side,
+  });
   let solves = 0;
   /** One live solve of a task under a harness, by a solver, its condition recorded first. */
   const solveOnce = (
@@ -241,24 +306,10 @@ export async function openCampaign(args: CampaignArgs) {
     kill: AbortSignal | undefined,
   ): Promise<Practised> => {
     const condition: Condition = {
-      contract: contractHash(contract),
+      ...settingOf(by),
       harness: harness.digest,
       task: taskVersion(task),
-      model: priceKey(by.model),
-      effort: by.effort,
-      prices: freezePrices([by.model]),
-      runtime: Object.fromEntries(RUNTIME.map((name) => [name, pins[name] ?? "unpinned"])),
-      compaction: compactionMode(by.model, sweepOptions()),
       solverTools: harness.digest,
-      verifierTools,
-      sandbox: hashJsonValue({
-        profile: HOST_SOLVE_ISOLATION_PROFILE_ID,
-        platform: runtimeProcess.platform,
-        diskBytes: LIMITS.diskBytes,
-      }),
-      limits: LIMITS,
-      host,
-      side: by.side,
     };
     solves += 1;
     return practised({
@@ -307,6 +358,9 @@ export async function openCampaign(args: CampaignArgs) {
     pack,
     packages,
     solveOnce,
+    /** The setting of every solve by `by`, as an id: with a harness's digest, where it stands
+     *  (`src/kernel/ladder.ts`). */
+    setting: (by: Solver) => settingId(settingOf(by)),
     reviewers,
     reader: (model: Model<Api>, effort: ThinkingLevel): Reader => ({
       model,
@@ -316,6 +370,23 @@ export async function openCampaign(args: CampaignArgs) {
     builder: hostSession({ webSearch: true }),
     examiner: hostSession({ webSearch: false }),
   };
+}
+
+/**
+ * The harness a campaign stands on, as a solve is handed it: the one its last step left, kept under
+ * its digest among the campaign's states, or the stored cycle's while no round has stepped. It is
+ * where a round's session starts, and the harness an Examiner session's witness and test solves
+ * run under, so that what is feasible and what is too easy are read against where the campaign is
+ * and not where it began (`src/kernel/ladder.ts`).
+ */
+export async function frontier(campaign: {
+  readonly log: string;
+  readonly states: string;
+  readonly parent: string;
+}): Promise<Kept> {
+  const stepped = frontierOf(read(campaign.log));
+  const dir = stepped === null ? campaign.parent : join(campaign.states, stepped);
+  return { dir, digest: (await openHarness(dir)).digest };
 }
 
 /**

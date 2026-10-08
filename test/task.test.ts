@@ -430,6 +430,36 @@ describe("the task states", () => {
     expect(() => taskStates([...refusedAt3, state("admitted")])).toThrow("cannot go from held to admitted");
   });
 
+  it("leaves a task no stronger solve has passed open for another, under a later harness", () => {
+    const reach = [proposed, gate(1), gate(2, "too-hard"), state("too-hard")];
+    // A second stronger solve that fails changes nothing, and one that passes takes the task on.
+    expect(taskStates([...reach, gate(2, "too-hard")]).get("v1")).toBe("too-hard");
+    const witnessed = [...reach, gate(2, "too-hard"), gate(2), gate(3), state("held")];
+    expect(taskStates([...witnessed, gate(4)]).get("v1")).toBe("held");
+    expect(taskStates([...drawn, ...witnessed, gate(4), state("admitted")]).get("v1")).toBe("admitted");
+    expect(taskStates([...reach, gate(2), gate(3, "refused"), state("refused")]).get("v1")).toBe("refused");
+    // It skips no gate on the way, and is screened only from held.
+    expect(() => taskStates([...reach, gate(3)])).toThrow("logs gate 3 out of order, after passing 1");
+    expect(() => taskStates([...reach, gate(2), gate(3), gate(4), state("admitted")])).toThrow(
+      "task v1 cannot go from too-hard to admitted",
+    );
+    // Any other gate that did not pass still ends a task's gates.
+    expect(() => taskStates([...reach, gate(2), gate(3, "refused"), gate(3)])).toThrow(
+      "task v1 logs gate 3 after its gates ended",
+    );
+  });
+
+  it("screens an admitted task again each round: it stays, or it retires for good", () => {
+    const admitted = [...drawn, ...feasible, state("admitted")];
+    expect(taskStates([...admitted, state("admitted")]).get("v1")).toBe("admitted");
+    expect(taskStates([...admitted, state("admitted"), state("too-easy")]).get("v1")).toBe("too-easy");
+    expect(taskStates([...admitted, state("wall-bound")]).get("v1")).toBe("wall-bound");
+    expect(() => taskStates([...admitted, state("too-easy"), state("admitted")])).toThrow(
+      "task v1 cannot go from too-easy to admitted",
+    );
+    expect(() => taskStates([...admitted, state("held")])).toThrow("task v1 cannot go from admitted to held");
+  });
+
   it("never releases or admits a task the anchor drew, and draws only proposed, feasible tasks", () => {
     expect(() => taskStates([...feasible, draw("v1"), state("released")])).toThrow(
       "task v1 is an anchor task, so it is never released",

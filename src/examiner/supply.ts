@@ -16,6 +16,7 @@
  * whose only fails ended at the wall: they are counted apart and are not bracketed, as decision 21
  * stands.
  */
+import { toldOf } from "../kernel/binding.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import { isNumber, isString } from "../meta/json-shape.ts";
 import { countBy } from "../meta/tally.ts";
@@ -36,17 +37,7 @@ export type SupplyReading = "go" | "revise" | "stop" | "unfinished";
 export function supply(events: readonly LogEvent[], of = FEASIBLE) {
   // A task is told one word at a time, and the last stands: a feasible task is told again once its
   // controls hold and it is screened.
-  const told = new Map<string, { word: string; fails: number; solves: number }>();
-  for (const { kind, data } of events) {
-    if (kind === "exam.word" && isString(data.version) && isString(data.word)) {
-      told.set(data.version, {
-        word: data.word,
-        fails: isNumber(data.fails) ? data.fails : 0,
-        solves: Array.isArray(data.solves) ? data.solves.length : 0,
-      });
-    }
-  }
-  const tasks = [...told.values()];
+  const tasks = [...toldOf(events).values()];
   const feasible = tasks.filter(({ word }) => SCREENED.has(word));
   const read = feasible.slice(0, of);
   const bracketed = read.filter(({ word }) => word === "scored").length;
@@ -64,6 +55,14 @@ export function supply(events: readonly LogEvent[], of = FEASIBLE) {
         ? [data]
         : [],
     );
+  /** Each task's last gate 2, the stronger solve it stands on. */
+  const witness = new Map(
+    events.flatMap(({ kind, data }) =>
+      kind === "task.gate" && data.gate === 2 && written.has(data.version)
+        ? [[data.version, data] as const]
+        : [],
+    ),
+  );
   return {
     proposed: written.size,
     words: countBy(tasks, ({ word }) => word),
@@ -85,16 +84,15 @@ export function supply(events: readonly LogEvent[], of = FEASIBLE) {
     // refused answer is the one a reviewer can read for a check's fault. `controls` is the kinds
     // of fault in the controls gate 4 refused (`controlsGate`), a refusal under each kind it holds.
     // A log written before either was recorded counts as unrecorded.
-    tooHard: countBy(gates(2, "too-hard"), ({ kind }) => (isString(kind) ? kind : "unrecorded")),
+    // A reach task is put to the stronger solver again when the harness has moved, so a task is
+    // counted by its last such solve, and one that has passed since is not counted.
+    tooHard: countBy(
+      [...witness.values()].filter(({ outcome }) => outcome === "too-hard"),
+      ({ kind }) => (isString(kind) ? kind : "unrecorded"),
+    ),
     // The too-hard tasks whose refusal an advising Referee ruled a check defect: tasks a repair of
     // the checker might give back (`tools/c/carry.ts` counts those it would).
-    tooHardFlagged: events.filter(
-      ({ kind, data }) =>
-        kind === "exam.word" &&
-        data.word === "too hard" &&
-        Array.isArray(data.flagged) &&
-        data.flagged.length > 0,
-    ).length,
+    tooHardFlagged: tasks.filter(({ word, flagged }) => word === "too hard" && flagged).length,
     controls: countBy(
       gates(4, "refused").flatMap(({ kinds }) =>
         Array.isArray(kinds) && kinds.length > 0 ? kinds.filter(isString) : ["unrecorded"],
@@ -106,11 +104,10 @@ export function supply(events: readonly LogEvent[], of = FEASIBLE) {
     twice: read.filter(({ fails }) => fails >= 2).length,
     wallBound: read.filter(({ word }) => word === "wall-bound").length,
     solves: {
-      // Every task of a session that passed gate 1 was put to the stronger condition once.
-      strong: events.filter(
-        ({ kind, data }) =>
-          kind === "task.gate" && data.gate === 1 && data.outcome === "passed" && written.has(data.version),
-      ).length,
+      // Every task of a session that passed gate 1 was put to the stronger condition once, and a
+      // reach task once more each time a later session tried it again.
+      strong:
+        gates(1, "passed").length + gates(2, "too-hard").length + gates(2, "passed").length - witness.size,
       test: tasks.reduce((sum, { solves }) => sum + solves, 0),
     },
     bracketed,

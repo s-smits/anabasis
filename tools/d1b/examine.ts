@@ -5,13 +5,21 @@
  *     --bundle ../anabasis-cycles-4c67fc/fixture/round4-veryhard-workspace --name truss --session x-1 \
  *     --examiner claude/claude-opus-5-5 --strong claude/claude-opus-5-5
  *
- * The Examiner writes task instances against the pack's contract and checker. The stronger condition
- * is the campaign's harness under `--strong`; the test condition is the stored cycle's model and
- * effort on the same harness, so the one thing the pair changes is the solver. The pack's own tasks
- * are the examples. `--reviewer` adds the Referee to a feasible task's test-side fails, as an
- * adviser: its check-defect rulings are noted beside the task's word. `--referee-decides` lets one
- * dispute the task. With a reviewer the Referee also reads the refusal that closes a task as too
- * hard, one reading a task, and there it only ever notes.
+ * The Examiner writes task instances against the pack's contract and checker. Both conditions run
+ * the harness the campaign stands on, its last step's or the stored cycle's while none has stepped
+ * (`src/kernel/ladder.ts`): the stronger one under `--strong`, the test one under the stored
+ * cycle's model and effort, so the one thing the pair changes is the solver. The examples are the
+ * pack's own tasks and the ones earlier sessions wrote, and the opening message says how each of
+ * those stands against the solver now. `--reviewer` adds the Referee to a feasible task's test-side
+ * fails, as an adviser: its check-defect rulings are noted beside the task's word.
+ * `--referee-decides` lets one dispute the task. With a reviewer the Referee also reads the refusal
+ * of a stronger solve that did not pass, one reading a task, and there it only ever notes.
+ *
+ * A task the stronger solve did not pass waits as a reach task. A session whose harness is another
+ * than that solve ran under puts each such task to the stronger solver again before its Examiner
+ * starts, each at the cost of one of the session's `--candidates`, and one that passes now is
+ * handed to the Examiner for its controls. `--reach` is the most it tries again, by default half
+ * the candidates, oldest first; the rest wait for the next session. `--reach 0` tries none.
  *
  * The session stops at `--feasible` tasks past gate 4 (the plan's 24), at `--candidates` instances
  * put to the stronger solver, or at its minutes and turns. The supply reading is printed from the
@@ -30,8 +38,17 @@ import { read } from "#src/kernel/log.ts";
 import { readBrief } from "#src/kernel/verify.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { parseArgs } from "#src/meta/process.ts";
-import { openHarness } from "#src/solve/harness.ts";
-import { carriable, LIMITS, openCampaign, stayAwake } from "../d2/campaign.ts";
+import {
+  carriable,
+  frontier,
+  LIMITS,
+  openCampaign,
+  reachOf,
+  SCREENING_OPTIONS,
+  screeningRule,
+  stayAwake,
+  writtenTasks,
+} from "../d2/campaign.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
 
 const { values } = parseArgs({
@@ -53,8 +70,8 @@ const { values } = parseArgs({
     candidates: { type: "string", default: "72" },
     minutes: { type: "string", default: "1440" },
     turns: { type: "string", default: "200" },
-    screen: { type: "string", default: "3" },
-    fails: { type: "string", default: "2" },
+    ...SCREENING_OPTIONS,
+    reach: { type: "string" },
   },
 });
 
@@ -73,7 +90,13 @@ async function main(): Promise<void> {
     throw new Error("name --root, --sweep, --cycle, --bundle, --name, --session, --examiner and --strong");
   }
   const campaign = await openCampaign({ root, sweep, cycle, bundle, name });
-  const harness = { dir: campaign.parent, digest: (await openHarness(campaign.parent)).digest };
+  // The harness the campaign stands on: what is feasible and what is too easy are read against
+  // where it is, and a reach task is tried again under it (`src/kernel/ladder.ts`).
+  const harness = await frontier(campaign);
+  const before = read(campaign.log);
+  // Each reach task tried again costs a candidate's solve, so by default they take at most half of
+  // the session's candidates and the Examiner is left room to write.
+  const reach = Number(values.reach ?? Math.floor(Number(values.candidates) / 2));
   // SAFETY: an effort is one of pi's levels, and a backend refuses one it does not serve.
   const effort = (flag: string | undefined) => (flag ?? campaign.test.effort) as ThinkingLevel;
   const stronger = {
@@ -97,13 +120,17 @@ async function main(): Promise<void> {
       assertion: campaign.brief.truthChecks[index]?.assertion ?? "",
       families: check.execution.families,
     })),
-    examples: campaign.tasks,
-    waiting: carriable(read(campaign.log)).waiting,
+    // The pack's tasks, and the ones earlier sessions wrote, which the opening message says the
+    // standing of.
+    examples: [...campaign.tasks, ...writtenTasks(before)],
+    waiting: carriable(before).waiting,
+    reach: reachOf(before, { harness: harness.digest, setting: campaign.setting(stronger) }).slice(0, reach),
+    standsOn: { harness: harness.digest, setting: campaign.setting(campaign.test) },
     pack: campaign.pack,
     verify: campaign.verify,
     strong: (task, _version, kill) => campaign.solveOnce(task, harness, stronger, kill),
     test: (task, _version, kill) => campaign.solveOnce(task, harness, campaign.test, kill),
-    screening: { solves: Number(values.screen), fails: Number(values.fails) },
+    screening: screeningRule(values),
     ...keyIfDefined("referee", referee),
     refereeDecides: values["referee-decides"],
     model: modelNamed(examiner),

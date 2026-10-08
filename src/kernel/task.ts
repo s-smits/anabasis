@@ -11,11 +11,22 @@
  * condition. Screening only chooses what is scored, so its solves never count in a score. Each task
  * version's state is a view over the log.
  *
- * The gates run in order and a gate that does not pass ends them: gate n passes only after gates 1 to
- * n - 1 have, and no gate is logged after one that did not pass. The task stays held until a state
- * event moves it, and it can never be feasible, so `refused` or `too-hard` is where it can go. A
- * reviewer's probe logged the four gates in reverse and then refused gate 3, and the old fold, which
- * kept a set of cleared gates, still admitted the task.
+ * The gates run in order and a gate that refuses ends them: gate n passes only after gates 1 to
+ * n - 1 have, and no gate is logged after one that refused. Such a task can never be feasible, and
+ * `refused` is where it goes. A reviewer's probe logged the four gates in reverse and then refused
+ * gate 3, and the old fold, which kept a set of cleared gates, still admitted the task.
+ *
+ * Gate 2 is the one gate that may be tried again. A task the stronger solve did not pass has no
+ * witness yet, which is a fact about that solve under that harness and not about the task. It goes
+ * to `too-hard` and waits there as a reach task: when the campaign's harness has improved, the
+ * stronger solve is made again under it, and a pass sends the task on through gates 3 and 4 like
+ * any other (`src/examiner/session.ts`). Until 2026-10-08 `too-hard` was where a task ended, and
+ * the first live sessions lost 14 of 25 tasks there: the tasks a better harness is for.
+ *
+ * A scored task does not stay scored for good either. Each round screens the whole live pool again
+ * under its own two harnesses (`src/builder/round.ts`), so an admitted task is admitted again by
+ * the round that scores it, and one both of a round's harnesses pass goes to `too-easy`: the
+ * campaign's harness has got past it.
  *
  * The pair is the model pair: the one thing the stronger condition changes is the solver. The budget
  * pair is cut as a bracket, since on truss no test-side solve passed within one budget and it
@@ -87,7 +98,15 @@ interface Fold {
   drawn: Set<string> | null;
 }
 
-/** Gate 5's outcome. A task the stronger condition failed never reaches it: gate 2 marks it too hard. */
+/** What a log holds of its tasks, from the one fold: each version's state, the versions that passed
+ *  every logged gate, and the versions the anchor's draws named. */
+export interface TaskSets {
+  readonly states: Map<string, TaskState>;
+  readonly feasible: ReadonlySet<string>;
+  readonly anchor: ReadonlySet<string>;
+}
+
+/** Gate 5's outcome. A task the stronger condition has not passed never reaches it: it waits at gate 2. */
 export type Screening = "admitted" | "too-easy" | "wall-bound";
 
 /** Reruns of the check on the accepted answer at gate 3. Gate 2 passed it, so each must pass too. */
@@ -98,6 +117,9 @@ export const CONTROLS = 3;
 
 /** The gates logged as `task.gate`. Gate 5 is screening, and its outcome is the state it logs. */
 const LOGGED_GATES = 4;
+/** The gate a stronger solve passes, and the state and outcome of a task it has not passed yet. */
+const WITNESS_GATE = 2;
+const REACH = "too-hard";
 
 /**
  * The states of a task version. `wall-bound` is not one of the plan's: a task whose only screening
@@ -133,9 +155,9 @@ export type TaskState = (typeof TASK_STATES)[number];
  */
 const NEXT: Readonly<Record<TaskState, readonly TaskState[]>> = {
   held: ["refused", "too-hard", "too-easy", "wall-bound", "admitted", "released", "disputed", "stale"],
-  admitted: ["released", "disputed", "stale"],
+  admitted: ["admitted", "too-easy", "wall-bound", "released", "disputed", "stale"],
   refused: [],
-  "too-hard": [],
+  "too-hard": ["held", "refused", "stale"],
   "too-easy": [],
   "wall-bound": [],
   released: ["disputed"],
@@ -350,9 +372,20 @@ export function foldsEvent(kind: EventKind): boolean {
  * before `anchor.drawn` or one the anchor drew, is refused, as a torn line is.
  */
 export function taskStates(events: readonly LogEvent[]): Map<string, TaskState> {
+  return taskSets(events).states;
+}
+
+/** The same fold with the two sets every reader of a campaign asks for beside the states, so that
+ *  what is feasible and what is the anchor's are said in one place. */
+export function taskSets(events: readonly LogEvent[]): TaskSets {
   const fold: Fold = { tasks: new Map(), drawn: null };
   for (const event of events) step(fold, event);
-  return new Map([...fold.tasks].map(([version, task]) => [version, task.state]));
+  const tasks = [...fold.tasks];
+  return {
+    states: new Map(tasks.map(([version, task]) => [version, task.state])),
+    feasible: new Set(tasks.flatMap(([version, task]) => (task.passed === LOGGED_GATES ? [version] : []))),
+    anchor: new Set(fold.drawn),
+  };
 }
 
 function step(fold: Fold, { at, kind, data }: LogEvent): void {
@@ -392,12 +425,15 @@ function draw(fold: Fold, at: string, data: JsonObject): void {
 /** A `task.gate` event on the task, or why the history may not log it. */
 function gate(task: Folded, data: JsonObject): string | null {
   const number = Number(data.gate);
-  if (task.state !== "held" || task.ended) return `logs gate ${number} after its gates ended`;
+  if ((task.state !== "held" && task.state !== REACH) || task.ended) {
+    return `logs gate ${number} after its gates ended`;
+  }
   if (number !== task.passed + 1 || number > LOGGED_GATES) {
     return `logs gate ${number} out of order, after passing ${task.passed}`;
   }
   if (data.outcome !== "passed") {
-    task.ended = true;
+    // A stronger solve that did not pass leaves gate 2 open, to be tried again under a later harness.
+    task.ended = !(number === WITNESS_GATE && data.outcome === REACH);
     return null;
   }
   if (number === LOGGED_GATES && !isString(data.controls)) return "passed gate 4 on no named control set";

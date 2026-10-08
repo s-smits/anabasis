@@ -5,11 +5,21 @@
  *
  * A round is four steps over one log.
  * 1. The session (`session.ts`): it practises on released tasks and freezes a harness.
- * 2. Screening, the task's gate 5: candidates are solved under both harnesses, and one that either
- *    harness fails often enough is admitted (`screen`). Admission is symmetric and comes after the
- *    session, since it needs the new harness, and before any scoring solve, which counts only from
- *    the admission on. Candidates are taken in the caller's order, as many at a time as the scored
- *    set still lacks, so no more are screened than the set needs.
+ * 2. Screening, the task's gate 5, over the whole live pool: every feasible task held or admitted
+ *    outside the anchor, whichever round admitted it before. A task either harness fails often
+ *    enough is admitted (`screen`), by this round, and one both pass goes to `too-easy`: the
+ *    campaign has got past it. Admission is symmetric and comes after the session, since it needs
+ *    the new harness, and before any scoring solve, which counts only from this round's admission
+ *    on. The parent's side is read from the solves the log already holds of a task under that
+ *    harness, an earlier round's or an Examiner session's, and only what is missing is solved: a
+ *    task those solves already stop is admitted whatever the child does, so it is admitted with no
+ *    solve at all. Tasks are taken in the caller's order, as many at a time as the scored set
+ *    still lacks, so no more are screened than the set needs.
+ *
+ *    This is what moves the exam with the harness (`src/kernel/ladder.ts`). After a step the next
+ *    round's parent is the harness that stepped: the tasks it still fails are carried at no
+ *    screening cost, the tasks it now passes are screened against the new child and mostly
+ *    retire, and what the pool then lacks is the Examiner's to write.
  * 3. Scoring: each scored task and each anchor task is solved `solves` times under each harness.
  * 4. The reading: the scored set's sign test, its pooled gain and the anchor's test, logged as
  *    `comparison.reported` and `anchor.scored`.
@@ -61,9 +71,9 @@
  */
 import { anchor, draw, gain, type Paired, pairsOf, scored, solveSeconds } from "../kernel/compare.ts";
 import { conditionsOf } from "../kernel/condition.ts";
+import { endingsOf, lastReports, standing } from "../kernel/ladder.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
-import type { Counted } from "../kernel/solve.ts";
-import { screen, taskStates } from "../kernel/task.ts";
+import { screen, taskSets, taskStates } from "../kernel/task.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
 import { join } from "../meta/path.ts";
 import { asError, errorMessage } from "../meta/runtime-values.ts";
@@ -76,9 +86,8 @@ export interface RoundRequest {
   readonly session: BuildRequest;
   /** Runs the session: `build`, unless a caller without a command wall stands in for it. */
   readonly builder?: (request: BuildRequest) => Promise<Built>;
-  /** Task versions admitted by another route, scored as they stand. */
-  readonly scored: readonly string[];
-  /** Feasible task versions still held, screened in this order until the scored set is full. */
+  /** The live pool: feasible task versions held or admitted, outside the anchor, screened in this
+   *  order until the scored set is full. */
   readonly candidates: readonly string[];
   /** The anchor's task versions, as `anchor.drawn` named them. */
   readonly anchor: readonly string[];
@@ -101,6 +110,10 @@ export interface RoundRequest {
    *  digested as `digest`. The caller builds the condition and records it, names the solve so that
    *  no two share an id, and hands `kill` to the solve. A throw stops the round. */
   readonly solve: (version: string, harness: string, digest: string, kill: AbortSignal) => Promise<Practised>;
+  /** The setting `solve` records in each condition (`settingId`): the solver, its limits and the
+   *  host. Screening reads the parent's solves the log already holds, and only those made under
+   *  this setting are this solver's. */
+  readonly setting: string;
   /** The Referee, when the caller has a reader for it. */
   readonly referee?: (solve: string, version: string, kill: AbortSignal) => Promise<RefereeFinding>;
   /** Whether a check-defect ruling disputes its task, or only flags it for a person to read. */
@@ -237,8 +250,6 @@ const ANCHOR_SCORED = "anchor.scored";
 const TASK_STATE = "task.state";
 const NOTHING_TO_LABEL: ToLabel = { flagged: [], others: [] };
 const DEFECT = "check-defect";
-/** The kinds of fail a solver owns outright, as `solve.ts` types them. */
-const FAILS = ["rejected", "wall-ended", "context-ended", "no-answer"] as const;
 
 /**
  * The order a round screens its candidates in: drawn by the contract's hash and the session's id,
@@ -301,36 +312,6 @@ function since(events: readonly LogEvent[], session: string): LogEvent[] {
   const next = events.findIndex((_event, index) => index > began && starts(index, false));
   const until = next === -1 ? events.length : next;
   return events.filter(({ kind }, index) => !kind.startsWith("solve.") || (index >= began && index < until));
-}
-
-/** A task version's counted test-side solves under one harness, as their endings. */
-function endingsOf(events: readonly LogEvent[], version: string, harness: string): Counted[] {
-  const conditions = conditionsOf(events);
-  const ran = new Set(
-    events.flatMap(({ kind, data }) => {
-      const condition = conditions.get(isString(data.condition) ? data.condition : "");
-      return kind === "solve.started" &&
-        isString(data.solve) &&
-        condition?.task === version &&
-        condition.harness === harness &&
-        condition.side === "test"
-        ? [data.solve]
-        : [];
-    }),
-  );
-  return events.flatMap(({ kind, data }): Counted[] => {
-    const ending = asRecord(data.ending);
-    if (kind !== "solve.finished" || !isString(data.solve) || !ran.has(data.solve)) return [];
-    if (ending?.outcome === "pass") return [{ outcome: "pass" }];
-    if (ending?.outcome !== "fail") return [];
-    if (ending.kind === "broken-harness") {
-      return [
-        { outcome: "fail", kind: "broken-harness", reason: isString(ending.reason) ? ending.reason : "" },
-      ];
-    }
-    const failed = FAILS.find((known) => known === ending.kind);
-    return failed === undefined ? [] : [{ outcome: "fail", kind: failed }];
-  });
 }
 
 /** The solves still to run, by what each task has: slot by slot over the tasks, the two harnesses
@@ -409,10 +390,10 @@ function counts(value: number, least: number): boolean {
 /** Refuse, before a session is spent, a request whose sets could not be screened or scored. */
 function refuseUnscorable(request: RoundRequest, old: string): void {
   const { session, screening } = request;
-  const versions = [...request.scored, ...request.candidates, ...request.anchor];
+  const versions = [...request.candidates, ...request.anchor];
   const twice = versions.find((version, index) => versions.indexOf(version) !== index);
   if (twice !== undefined) {
-    throw new Error(`task ${twice} is listed twice among the scored, candidate and anchor tasks`);
+    throw new Error(`task ${twice} is listed twice among the tasks to screen and the anchor's`);
   }
   const practised = new Set(session.tasks.map(({ version }) => version));
   const seen = versions.find((version) => practised.has(version));
@@ -438,28 +419,33 @@ function refuseUnscorable(request: RoundRequest, old: string): void {
     throw new Error("a sign test's level lies between 0 and 1, and the anchor's floor is a whole number");
   }
   const events = read(session.log);
-  const states = taskStates(events);
+  // The anchor is the log's as much as the caller's: a task its draw named is never screened,
+  // whatever list it arrives in.
+  const { states, anchor: drawn } = taskSets(events);
   const mine = movedBy(events, session.id);
-  for (const [listed, state, name] of [
-    [request.scored, "admitted", "a scored"],
-    [request.candidates, "held", "a candidate"],
-    [request.anchor, "held", "an anchor"],
+  const anchored = request.candidates.find((version) => drawn.has(version));
+  if (anchored !== undefined) {
+    throw new Error(`task ${anchored} is the anchor's, and an anchor task is never screened`);
+  }
+  for (const [listed, fit, name] of [
+    [request.candidates, ["held", "admitted"], "a task to screen is held or admitted"],
+    [request.anchor, ["held"], "an anchor task is held"],
   ] as const) {
     // A disputed task is in no comparison, whoever disputed it, and a task this round already moved
     // is where the round left it when the round is run again.
-    const settled = (version: string) =>
-      states.get(version) === state || states.get(version) === "disputed" || mine.has(version);
+    const settled = (version: string) => {
+      const state = states.get(version) ?? "";
+      return fit.some((wanted) => wanted === state) || state === "disputed" || mine.has(version);
+    };
     const wrong = listed.find((version) => !settled(version));
     if (wrong !== undefined) {
-      throw new Error(
-        `task ${wrong} is ${states.get(wrong) ?? "not proposed"}, and ${name} task is ${state}`,
-      );
+      throw new Error(`task ${wrong} is ${states.get(wrong) ?? "not proposed"}, and ${name}`);
     }
   }
   // The log is asked what it would refuse of the sets it can already name: an anchor task never
   // drawn. It is asked without its solves, which are other rounds' and may rest on other conditions.
   const bare = events.filter(({ kind }) => !kind.startsWith("solve."));
-  pairsOf(bare, [...request.scored, ...request.anchor], old, old);
+  pairsOf(bare, request.anchor, old, old);
 }
 
 /** Each solve of `events` by the task version its condition names. */
@@ -570,12 +556,7 @@ function floor(request: RoundRequest) {
   const kill = AbortSignal.any([halt.signal, ...(request.session.kill ? [request.session.kill] : [])]);
   // The anchor is the log's as much as the caller's: a caller that lists only the anchor tasks still
   // held leaves out one this round disputed, which is no less an anchor task for that.
-  const anchored = new Set([
-    ...request.anchor,
-    ...read(log).flatMap(({ kind, data }) =>
-      kind === "anchor.drawn" && Array.isArray(data.tasks) ? data.tasks.filter(isString) : [],
-    ),
-  ]);
+  const anchored = new Set([...request.anchor, ...taskSets(read(log)).anchor]);
   const faults: string[] = [];
   const flagged = new Set<string>();
   let thrown: Error | null = null;
@@ -646,11 +627,14 @@ function floor(request: RoundRequest) {
 }
 
 /**
- * Step 2. Candidates are screened as many at a time as the scored set still lacks, each under both
- * harnesses, and moved to the state `screen` gives them. One whose screening solves did not all end
- * in a pass or a fail, or which a broken harness would have screened, stays held and is returned.
+ * Step 2. The pool is screened as many tasks at a time as the scored set still lacks, each under
+ * both harnesses, and moved to the state `screen` gives it. The parent's side is the latest solves
+ * the whole log holds of the task under that harness, and the child's the round's own. A task the
+ * parent's solves on record already stop is admitted with no solve: either harness's fails admit,
+ * so nothing the child did could change it. One whose screening solves did not all end in a pass or
+ * a fail, or which a broken harness would have screened, stays as it was and is returned.
  */
-async function screenCandidates(
+async function screenPool(
   request: RoundRequest,
   work: ReturnType<typeof floor>,
   harnesses: { readonly old: Kept; readonly fresh: Kept },
@@ -659,28 +643,43 @@ async function screenCandidates(
   const { log, id } = request.session;
   const { old, fresh } = harnesses;
   const { solves, fails } = request.screening;
-  const waiting = request.candidates.filter((version) => taskStates(read(log)).get(version) === "held");
+  const states = taskStates(read(log));
+  const settled = movedBy(read(log), id);
+  // A task this round already moved is where the round left it when the round is run again.
+  const waiting = request.candidates.filter((version) => {
+    const state = states.get(version);
+    return (state === "held" || state === "admitted") && !settled.has(version);
+  });
   const unscreened: string[] = [];
   const had = (events: readonly LogEvent[], task: string) => ({
     task,
-    old: endingsOf(events, task, old.digest).slice(0, solves),
-    fresh: endingsOf(events, task, fresh.digest).slice(0, solves),
+    old: endingsOf(events, task, { harness: old.digest, setting: request.setting }).slice(-solves),
+    fresh: endingsOf(since(events, id), task, { harness: fresh.digest, setting: request.setting }).slice(
+      0,
+      solves,
+    ),
   });
   while (work.going()) {
     const batch = waiting.splice(0, Math.max(0, request.target - admitted().length));
     if (batch.length === 0) break;
-    const before = since(read(log), id);
+    const before = read(log);
+    const open: string[] = [];
+    for (const version of batch) {
+      if (standing(had(before, version).old, request.screening) === "stops") {
+        append(log, TASK_STATE, { version, state: "admitted", session: id, carried: true });
+      } else open.push(version);
+    }
     await work.drain(
       unsolved(
-        batch.map((task) => had(before, task)),
+        open.map((task) => had(before, task)),
         solves,
         old,
         fresh,
       ),
     );
     if (!work.going()) break;
-    const after = since(read(log), id);
-    const live = batch.filter((each) => !work.dropped.has(each));
+    const after = read(log);
+    const live = open.filter((each) => !work.dropped.has(each));
     let broken = 0;
     for (const version of live) {
       const tests = had(after, version);
@@ -698,7 +697,7 @@ async function screenCandidates(
       }
     }
     // A harness that broke on every task of a batch will break on the next batch too, at the other
-    // harness's full cost a task: the rest of the candidates are left held.
+    // harness's full cost a task: the rest of the pool is left as it was.
     if (live.length > 0 && broken === live.length) break;
   }
   return unscreened;
@@ -756,14 +755,13 @@ export async function round(request: RoundRequest): Promise<RoundReport> {
   if (built.kept === null) return report({ ...nothing, reading: "no-change" });
   const fresh = built.kept;
   const counted = () => since(read(log), id);
-  /** The scored set as it stands: the caller's, and what this round's screening admitted. */
+  /** The scored set as it stands: what this round's screening admitted, and no other round's. */
   const admitted = () => {
     const events = read(log);
     const states = taskStates(events);
-    const here = movedBy(events, id)
-      .entries()
-      .flatMap(([version, state]) => (state === "admitted" ? [version] : []));
-    return [...new Set([...request.scored, ...here])].filter((version) => states.get(version) === "admitted");
+    return [...movedBy(events, id)].flatMap(([version, state]) =>
+      state === "admitted" && states.get(version) === "admitted" ? [version] : [],
+    );
   };
 
   const practised = new Set(session.tasks.map(({ version }) => version));
@@ -775,7 +773,7 @@ export async function round(request: RoundRequest): Promise<RoundReport> {
   const flagged = (kept: (version: string) => boolean) =>
     [...new Set([...work.flagged, ...flaggedFails(counted()).map(({ version }) => version)])].filter(kept);
 
-  const unscreened = await screenCandidates(request, work, { old, fresh }, admitted);
+  const unscreened = await screenPool(request, work, { old, fresh }, admitted);
   for (let pass = 0; pass < PASSES && work.going(); pass += 1) {
     const { pairs } = pairsOf(counted(), [...admitted(), ...request.anchor], old.digest, fresh.digest);
     await work.drain(unsolved(pairs, solves, old, fresh));
@@ -817,10 +815,7 @@ export function toLabel(events: readonly LogEvent[], id: string): ToLabel {
   if (report === null) return NOTHING_TO_LABEL;
   if (report.scored === null) return NOTHING_TO_LABEL;
   const window = since(events, id);
-  const anchored = window.flatMap(({ kind, data }) =>
-    kind === "anchor.drawn" && Array.isArray(data.tasks) ? data.tasks.filter(isString) : [],
-  );
-  const counted = new Set([...report.versions, ...anchored]);
+  const counted = new Set([...report.versions, ...taskSets(events).anchor]);
   const flagged = new Set(
     flaggedFails(window).flatMap(({ solve, version }) => (report.flagged.includes(version) ? [solve] : [])),
   );
@@ -905,13 +900,10 @@ export function settleReading(log: string, id: string, labels: ReadonlyMap<strin
     anchorLevel: numbered(scoredAt?.level, "anchor level"),
     anchorFloor: numbered(scoredAt?.floor, "anchor floor"),
   };
-  const anchored = before.flatMap(({ kind, data }) =>
-    kind === "anchor.drawn" && Array.isArray(data.tasks) ? data.tasks.filter(isString) : [],
-  );
   const settled: RoundReport = {
     old: report.old,
     fresh: report.fresh,
-    ...compared(terms, { scored: report.versions, anchor: anchored }, () => []),
+    ...compared(terms, { scored: report.versions, anchor: [...taskSets(before).anchor] }, () => []),
     disputed: [...new Set([...report.disputed, ...disputed])],
     unscreened: report.unscreened,
     settled: { labelled: labels.size, defects: defects.length, disputed },
@@ -934,14 +926,7 @@ export function settleReading(log: string, id: string, labels: ReadonlyMap<strin
  * gone stale since is still the scored task it was, and within the round's own window of solves.
  */
 export function stopRule(events: readonly LogEvent[]) {
-  const last = new Map<string, number>();
-  for (const [index, { kind, data }] of events.entries()) {
-    if (kind === REPORTED && isString(data.session)) last.set(data.session, index);
-  }
-  const reports = [...last.entries()].flatMap(([session, index]) => {
-    const data = events[index]?.data;
-    return data === undefined || data.reading === "check-defects" ? [] : [{ session, index, data }];
-  });
+  const reports = lastReports(events).filter(({ data }) => data.reading !== "check-defects");
   const pairs = reports.flatMap(({ session, index, data }) => {
     const versions = Array.isArray(data.versions) ? data.versions.filter(isString) : [];
     if (!isString(data.old) || !isString(data.fresh) || !isNumber(data.solves)) return [];

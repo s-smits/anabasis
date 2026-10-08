@@ -125,6 +125,8 @@ export function scriptedSeats(script: Script, graded: readonly Control[], straye
         ],
         0,
       ),
+      // Every scripted solver is the same model at the same price, so one names the setting of all.
+      setting: campaign.setting({ ...campaign.test, ...scripted([], 0) }),
       solve: async (task, harness, kill) => {
         const sides = anchor.has(taskVersion(task)) ? script.anchor : script.held;
         const wanted = harness.dir === parent ? sides.old : sides.fresh;

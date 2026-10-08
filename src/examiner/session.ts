@@ -12,11 +12,21 @@
  * 4. three reject controls, which the Examiner writes as edits of that answer.
  *
  * A task past gate 4 is feasible. It is then solved under the test condition and the Examiner is
- * told one word of it. That word is a supply reading and the author's feedback, and it moves no
- * task: D1b has one harness, and a task admitted or dropped on one harness's solves would be chosen
- * by that harness's fails, which is the selection the plan's symmetric admission exists to prevent.
- * So a feasible task stays held, the word is logged as `exam.word`, and a round screens the task
- * again under both of its harnesses (`src/builder/round.ts`).
+ * told what was measured: a word, how many of the solves failed and what stopped them. That is a
+ * supply reading and the author's feedback, and it moves no task: a session has one harness, and a
+ * task admitted or dropped on one harness's solves would be chosen by that harness's fails, which
+ * is the selection the plan's symmetric admission exists to prevent. So a feasible task stays
+ * held, the word is logged as `exam.word`, and a round screens the task under both of its
+ * harnesses, where those solves count as its parent's side (`src/builder/round.ts`).
+ *
+ * The harness is the one the campaign stands on, the caller's to name (`standsOn`), and three
+ * things follow it (`src/kernel/ladder.ts`). The witness and the test solves run under it, so
+ * feasible and too easy are read against where the campaign is. A reach task, one an earlier
+ * stronger solve did not pass, is put to the stronger solver again when that solve ran under
+ * another harness than this one: each costs one stronger solve and counts against the session's
+ * candidates, and one that passes now is handed to the Examiner for its controls. And the opening
+ * message says how every task earlier sessions wrote stands now (`record.ts`), since an Examiner
+ * is a new process each session and was told nothing of them.
  *
  * What the Examiner is never given: a harness, a solver's trace, or the measured solver's answers.
  * It has no shell and reads no file. It does read the stronger solve's accepted answer, since a
@@ -61,6 +71,7 @@ import { Type } from "typebox";
 import { REPORTED_COST } from "../backends/claude.ts";
 import type { Practised } from "../builder/session.ts";
 import type { Contract } from "../kernel/contract.ts";
+import type { Stand } from "../kernel/ladder.ts";
 import { append, type EventKind, type LogEvent, read } from "../kernel/log.ts";
 import { dollars, freezePrices, priceKey, tokensOf } from "../kernel/meter.ts";
 import type { Counted } from "../kernel/solve.ts";
@@ -88,6 +99,7 @@ import type { RefereeFinding } from "../review/referee.ts";
 import { text, tool } from "../solve/answer.ts";
 import { failedTurn, loopCompaction, traceSink } from "../solve/run.ts";
 import { type CheckRow, firstMessage, NUDGE, SYSTEM_PROMPT } from "./prompt.ts";
+import { measured, stoppedBy, tally } from "./record.ts";
 
 /** The log kinds a candidate task's gates and states are recorded under. */
 const GATE: EventKind = "task.gate";
@@ -120,6 +132,12 @@ export interface ExamRequest {
   readonly examples: readonly Task[];
   /** Tasks earlier sessions left past gate 3, each with the answer the checks accepted. */
   readonly waiting: readonly { readonly task: Task; readonly accepted: JsonValue }[];
+  /** Reach tasks to put to the stronger solver again: ones whose last stronger solve ran under
+   *  another harness than this session's. */
+  readonly reach: readonly Task[];
+  /** Where the measured solver stands in this session: the harness its solves run under and their
+   *  setting. The campaign's earlier tasks are read against it. */
+  readonly standsOn: Stand;
   /** An instance as a package: the caller's rule ids and check program for it. */
   readonly pack: (task: Task) => TaskPackage;
   readonly verify: Verifier;
@@ -169,6 +187,8 @@ interface Waiting {
 interface Desk {
   readonly request: ExamRequest;
   proposed: number;
+  /** Reach tasks put to the stronger solver again, each of which cost a candidate's solve. */
+  again: number;
   /** The instances proposed so far, by content, so that one is not paid for twice. */
   readonly seen: Set<string>;
   readonly waiting: Map<string, Waiting>;
@@ -234,24 +254,26 @@ function told(desk: Desk, task: Pick<Task, "taskId">, version: string, word: Wor
   return word;
 }
 
-/** Gates 1 to 3 for one instance: the line the Examiner is told, with the task left waiting for its
- *  controls when it is feasible so far. */
-async function gated(desk: Desk, instance: Task, kill: AbortSignal): Promise<string> {
+/**
+ * Gates 2 and 3 for one task: one solve under the stronger condition, and the checks again on its
+ * answer. It returns the line the Examiner is told, and leaves the task waiting for its controls
+ * when it is feasible so far. `again` is a reach task put to the stronger solver once more: it is
+ * in `too-hard` already, and a pass takes it out.
+ */
+async function witnessed(
+  desk: Desk,
+  task: TaskPackage,
+  version: string,
+  given: { readonly kill: AbortSignal; readonly again: boolean },
+): Promise<string> {
   const { request } = desk;
   const { log } = request;
-  const task = request.pack(instance);
-  const version = taskVersion(task);
+  const { kill, again } = given;
   const record = (kind: EventKind, data: JsonObject) => append(log, kind, { version, ...data });
   const refused = (reason: string) => {
     record(STATE, { state: "refused", session: request.id });
     return `${task.taskId}: ${told(desk, task, version, "refused", { reason })}: ${reason}`;
   };
-  const { taskId, family, publicInput, hidden } = instance;
-  record("task.proposed", { taskId, session: request.id, task: { taskId, family, publicInput, hidden } });
-  const packaged = packageGate(request.contract, task);
-  record(GATE, { gate: 1, ...packaged });
-  if (packaged.outcome === "refused") return refused(packaged.reason);
-
   const { solve, ending } = await request.strong(task, version, kill);
   refuseBroken(ending);
   if (ending.outcome === "non-result" && ending.kind !== "check") {
@@ -263,11 +285,12 @@ async function gated(desk: Desk, instance: Task, kill: AbortSignal): Promise<str
     return refused(`a check could not run on a solver's answer: ${ending.reason}`);
   }
   if (ending.outcome === "fail") {
-    // An answer a check refused closes the task as too hard, and a check that refuses a right
-    // answer does the same: in v1 most of a solver's misses were a check's (36 of 47, v1 #124),
-    // and the first sessions here lost 14 of 25 tasks at this gate. The Referee, where the caller
-    // has one, reads that refusal and is noted beside the word. It advises: the task is closed
-    // either way, and the note is for whoever owns the checker.
+    // The task has no witness yet. That says something of this solve under this harness, and of
+    // the task only that it is not easy: in v1 most of a solver's misses were a check's (36 of 47,
+    // v1 #124), and the first sessions here lost 14 of 25 tasks at this gate for good. It waits as
+    // a reach task, and is put to the stronger solver again when the campaign's harness has
+    // improved. The Referee, where the caller has one, reads a refused answer and is noted beside
+    // the word, for whoever owns the checker.
     const flagged: string[] = [];
     if (ending.kind === "rejected" && request.referee !== undefined) {
       try {
@@ -277,8 +300,10 @@ async function gated(desk: Desk, instance: Task, kill: AbortSignal): Promise<str
       }
     }
     record(GATE, { gate: 2, outcome: "too-hard", solve, kind: ending.kind });
-    record(STATE, { state: "too-hard", session: request.id });
-    return `${task.taskId}: ${told(desk, task, version, "too hard", { solve, kind: ending.kind, flagged })}`;
+    if (!again) record(STATE, { state: "too-hard", session: request.id });
+    told(desk, task, version, "too hard", { solve, kind: ending.kind, flagged, again });
+    const how = stoppedBy(read(log), [{ solve, ending }]);
+    return `${task.taskId}: too hard for now: the stronger solver did not pass it${how === "" ? "" : ` (${how})`}.`;
   }
   const accepted = read(log).findLast(({ kind, data }) => kind === "verdict" && data.solve === solve)?.data
     .answer;
@@ -288,8 +313,26 @@ async function gated(desk: Desk, instance: Task, kill: AbortSignal): Promise<str
   const repeated = await determinismGate(request.verify, task, accepted);
   record(GATE, { gate: 3, ...repeated });
   if (repeated.outcome === "refused") return refused(repeated.reason);
+  if (again) record(STATE, { state: "held", session: request.id });
   desk.waiting.set(task.taskId, { task, version, accepted, tries: 0 });
   return `${task.taskId}: feasible so far. The answer the checks accepted:\n${shown(accepted)}\nWrite its ${String(CONTROLS)} reject controls with write_controls.`;
+}
+
+/** Gates 1 to 3 for one instance the Examiner proposed: the line it is told. */
+async function gated(desk: Desk, instance: Task, kill: AbortSignal): Promise<string> {
+  const { request } = desk;
+  const task = request.pack(instance);
+  const version = taskVersion(task);
+  const record = (kind: EventKind, data: JsonObject) => append(request.log, kind, { version, ...data });
+  const { taskId, family, publicInput, hidden } = instance;
+  record("task.proposed", { taskId, session: request.id, task: { taskId, family, publicInput, hidden } });
+  const packaged = packageGate(request.contract, task);
+  record(GATE, { gate: 1, ...packaged });
+  if (packaged.outcome === "refused") {
+    record(STATE, { state: "refused", session: request.id });
+    return `${task.taskId}: ${told(desk, task, version, "refused", { reason: packaged.reason })}: ${packaged.reason}`;
+  }
+  return await witnessed(desk, task, version, { kill, again: false });
 }
 
 function proposeTool(desk: Desk): AgentTool {
@@ -298,7 +341,7 @@ function proposeTool(desk: Desk): AgentTool {
     name: "propose_tasks",
     label: "Propose tasks",
     description:
-      "Put task instances through the host's gates: shape, one solve by the stronger solver, and the checks again on its answer. Each instance is a family, a public input and hidden values, in the shape of the existing tasks. For each it returns refused with the gate's reason, too hard, or feasible so far with the answer the checks accepted. Each instance costs a long solve, and several in one call are solved side by side.",
+      "Put task instances through the host's gates: shape, one solve by the stronger solver, and the checks again on its answer. Each instance is a family, a public input and hidden values, in the shape of the existing tasks. For each it returns refused with the gate's reason, too hard for now with how the stronger solve ended, or feasible so far with the answer the checks accepted. Each instance costs a long solve, and several in one call are solved side by side.",
     parameters: Type.Object({
       tasks: Type.Array(
         Type.Object({
@@ -312,7 +355,7 @@ function proposeTool(desk: Desk): AgentTool {
     executionMode: "sequential",
     execute: async (_id, args, signal) => {
       if (supplied(desk)) throw new Error(SUPPLIED);
-      const left = request.limits.candidates - desk.proposed;
+      const left = request.limits.candidates - desk.proposed - desk.again;
       if (left <= 0) {
         throw new Error(
           "This session can propose no further task. Write the controls still waited for, or call finish.",
@@ -431,7 +474,11 @@ async function worded(desk: Desk, tasks: readonly Waiting[], kill: AbortSignal):
       // Fails an advising Referee ruled a check defect, for the person who reads them.
       flagged: mine.flatMap((each) => (each.ruled ? [each.solve] : [])),
     });
-    return `${task.taskId}: ${word}${word === "refused" ? ": a check was at fault on a solver's answer" : ""}`;
+    if (word === "refused") return `${task.taskId}: refused: a check was at fault on a solver's answer`;
+    const solved = mine.flatMap(({ solve, ending }) =>
+      ending.outcome === "non-result" ? [] : [{ solve, ending }],
+    );
+    return `${task.taskId}: ${word}${word === "undecided" ? "" : `: ${tally(read(request.log), solved)}`}`;
   });
 }
 
@@ -439,7 +486,7 @@ function controlsTool(desk: Desk): AgentTool {
   return tool({
     name: "write_controls",
     label: "Write controls",
-    description: `Write the ${String(CONTROLS)} reject controls of feasible tasks. A control is one change to the task's accepted answer, a field replaced or a passage rewritten, and the id of the check that must refuse the changed answer. The host makes the change, so send the change and not the answer. When a task's controls hold it is solved by the solver being measured, which takes as long as its solves, and the result is the one word: too easy, wall-bound or scored.`,
+    description: `Write the ${String(CONTROLS)} reject controls of feasible tasks. A control is one change to the task's accepted answer, a field replaced or a passage rewritten, and the id of the check that must refuse the changed answer. The host makes the change, so send the change and not the answer. When a task's controls hold it is solved by the solver being measured, which takes as long as its solves, and the result is what was measured: too easy, wall-bound or scored, with the fails among its solves and what stopped them.`,
     parameters: Type.Object({
       sets: Type.Array(
         Type.Object({
@@ -554,6 +601,7 @@ export async function examine(request: ExamRequest): Promise<Examined> {
   const desk: Desk = {
     request,
     proposed: 0,
+    again: 0,
     seen: new Set(),
     waiting: new Map(
       request.waiting.map(({ task, accepted }) => {
@@ -577,6 +625,9 @@ export async function examine(request: ExamRequest): Promise<Examined> {
     screening: request.screening,
     checks: request.checks.map(({ id }) => id),
     examples: request.examples.map(({ taskId }) => taskId),
+    standsOn: request.standsOn.harness,
+    setting: request.standsOn.setting,
+    reach: request.reach.map(({ taskId }) => taskId),
   });
   const tools = [proposeTool(desk), controlsTool(desk), exampleTool(desk), finishTool(desk)];
   const wall = new AbortController();
@@ -596,20 +647,31 @@ export async function examine(request: ExamRequest): Promise<Examined> {
   // session here, the tasks' hidden expectations included.
   const home = mkdtempSync(join(tmpdir(), "ana-claude-cli-examiner-"));
   let crash: string | null = null;
-  const timer = setTimeout(() => wall.abort(), limits.wallSeconds * 1000);
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const models = request.models(home);
     const stream: StreamFn = (asked, context, options) => models.streamSimple(asked, context, options);
+    // The reach tasks come first, before the Examiner's wall starts: each is a stronger solve under
+    // the harness the campaign stands on now, and one that passes waits for its controls like a
+    // task an earlier session left past gate 3.
+    const again = request.reach.slice(0, limits.candidates);
+    desk.again = again.length;
+    try {
+      await pooled(again, limits.concurrency, (task) => {
+        const packed = request.pack(task);
+        return witnessed(desk, packed, taskVersion(packed), { kill: signal, again: true });
+      });
+    } catch (error) {
+      throw halted(desk, error);
+    }
+    timer = setTimeout(() => wall.abort(), limits.wallSeconds * 1000);
     await runAgentLoop(
       [
         user(
-          firstMessage(
-            request.contract,
-            request.checks,
-            request.examples,
-            limits,
-            request.waiting.map(handed),
-          ),
+          firstMessage(request.contract, request.checks, request.examples, limits, {
+            waiting: [...desk.waiting.values()].map(handed),
+            earlier: measured(read(log), request.standsOn, request.screening),
+          }),
         ),
       ],
       { messages: system === undefined ? [] : [system], tools },

@@ -66,6 +66,13 @@ export function signP(wins: number, losses: number): number {
   return Math.min(1, tail);
 }
 
+/** The smallest scored set a sign test at `level` can read a step on: that many tasks, all won. */
+export function sweepOf(level: number): number {
+  let sweep = 1;
+  while (signP(sweep, 0) > level) sweep += 1;
+  return sweep;
+}
+
 /** Each task once: won, lost or tied by how often each harness passed it. A task solved more often
  *  under one harness than the other is refused, since the harness with more solves has more chances. */
 export function tally(pairs: readonly Paired[]): Tally {

@@ -67,12 +67,39 @@ export interface Condition {
   readonly side: "test" | "strong";
 }
 
+/**
+ * What a solve ran under apart from its task and its harness: the solver, its limits, the checker's
+ * side and the host. A comparison holds all of it still (`compare.ts`), and so does every reading
+ * of how a task stands against a harness (`ladder.ts`): a solve another model made, or the same
+ * model under other limits or other host code, is no solve of this solver's.
+ */
+export type Setting = Omit<Condition, "task" | "harness" | "solverTools">;
+
 /** The condition's identity: the hash of its canonical JSON, so field order does not move it. */
 export function conditionId(condition: Condition): string {
   if (condition.prices[condition.model] === undefined) {
     throw new Error(`the condition runs ${condition.model} but prices no such model`);
   }
   return hashJsonValue(condition);
+}
+
+/** A setting's identity. A whole condition may be passed: its task and its harness are left out. */
+export function settingId(setting: Setting): string {
+  const { contract, model, effort, prices, runtime, compaction } = setting;
+  const { verifierTools, sandbox, limits, host, side } = setting;
+  return hashJsonValue({
+    contract,
+    model,
+    effort,
+    prices,
+    runtime,
+    compaction,
+    verifierTools,
+    sandbox,
+    limits,
+    host,
+    side,
+  });
 }
 
 /** The fields two conditions differ in, by name: what a comparison of their solves compares. */

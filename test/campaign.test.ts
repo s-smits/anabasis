@@ -15,7 +15,7 @@ import {
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
-import { carriable, openCampaign, setsOf } from "../tools/d2/campaign.ts";
+import { carriable, frontier, openCampaign, setsOf } from "../tools/d2/campaign.ts";
 
 const REPO = resolve(import.meta.dir, "..");
 const FIXTURE = new URL("fixtures/harness-min", import.meta.url).pathname;
@@ -132,7 +132,15 @@ describe("a campaign", () => {
       const ran = Bun.spawnSync({ cmd: [capturedExecPath, "tools/d2/prepare.ts", ...flags], cwd: REPO });
       return `${ran.stdout.toString()}${ran.stderr.toString()}`.trim();
     };
-    const summary = "7 feasible: 3 anchor, 2 released for practice, 2 held for screening, 0 admitted";
+    // While no round has stepped the campaign stands on the stored cycle's harness.
+    const stands = await frontier(campaign);
+    expect(stands.dir).toBe(campaign.parent);
+    // No solve has placed a task yet, so the draws are blind and the ladder says so.
+    const summary = [
+      "7 feasible: 3 anchor, 2 released for practice (2 the frontier is not known to clear), 2 in the pool",
+      `against the frontier ${stands.digest.slice(0, 8)}: 0 stop it, 0 it clears, 0 ended at the wall, 2 no solve has placed; 0 wait for a witness`,
+      "what binds: tasks. 2 of the pool can be scored and a step takes 4: no Examiner session has written against this harness",
+    ].join("\n");
     expect(prepare()).toBe(summary);
     const sets = setsOf(read(campaign.log));
     expect([sets.anchor.length, sets.released.length, sets.candidates.length]).toEqual([3, 2, 2]);
@@ -146,6 +154,14 @@ describe("a campaign", () => {
     expect(prepare()).toBe(summary);
     expect(read(campaign.log).filter((event) => event.kind === "anchor.drawn")).toHaveLength(1);
     expect(setsOf(read(campaign.log)).released).toEqual(sets.released);
+
+    // A round that read a step moves the frontier to the harness it kept, and one that did not
+    // leaves it there.
+    const kept = join(campaign.states, stands.digest);
+    cpSync(campaign.parent, kept, { recursive: true });
+    append(campaign.log, "comparison.reported", { session: "b-1", reading: "step", fresh: stands.digest });
+    append(campaign.log, "comparison.reported", { session: "b-2", reading: "no-step", fresh: "other" });
+    expect(await frontier(campaign)).toEqual({ dir: kept, digest: stands.digest });
   });
 
   it("reads from a log what a campaign under a repaired checker can take with no solve", () => {

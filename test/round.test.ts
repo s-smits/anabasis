@@ -13,7 +13,7 @@ import { Type } from "typebox";
 import { type RoundRequest, round, settleReading, stopRule, toLabel } from "../src/builder/round.ts";
 import { type BuildRequest, type Built, type Practised, session } from "../src/builder/session.ts";
 import type { Bench } from "../src/builder/tools.ts";
-import { type Condition, recordCondition } from "../src/kernel/condition.ts";
+import { type Condition, recordCondition, settingId } from "../src/kernel/condition.ts";
 import type { Contract } from "../src/kernel/contract.ts";
 import { append, type EventKind, read } from "../src/kernel/log.ts";
 import type { Ending } from "../src/kernel/solve.ts";
@@ -26,7 +26,7 @@ import {
   rmSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
-import type { JsonObject } from "../src/meta/json-shape.ts";
+import { isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import type { RefereeFinding } from "../src/review/referee.ts";
@@ -35,8 +35,9 @@ import { openHarness } from "../src/solve/harness.ts";
 
 const COMPARISON_REPORTED = "comparison.reported";
 
-/** How a solve of `version` under the old or the new harness ends, by how many came before it. */
-type Table = (version: string, fresh: boolean, nth: number) => Ending;
+/** How a solve of `version` under the old or the new harness ends, by how many came before it. A
+ *  table that tells more than two harnesses apart reads the digest. */
+type Table = (version: string, fresh: boolean, nth: number, digest: string) => Ending;
 
 const FIXTURE = new URL("fixtures/harness-min", import.meta.url).pathname;
 const CONTRACT: Contract = {
@@ -65,6 +66,7 @@ const scratches: string[] = [];
 const toolUse = { stopReason: "toolUse" } as const;
 const call = (name: string, args: JsonObject) => fauxAssistantMessage(fauxToolCall(name, args), toolUse);
 const edit = call("write_file", { path: "agent/BUILT_AGENTS.md", content: "Multiply first.\n" });
+const again = call("write_file", { path: "agent/BUILT_AGENTS.md", content: "Multiply first, then check.\n" });
 const finish = call("finish", { note: "A shorter guide." });
 
 afterAll(() => {
@@ -109,6 +111,16 @@ async function setup(responses: FauxResponseStep[], table: Table, more: readonly
     host: code.value,
     side: "test",
   });
+  // What earlier rounds left on record: three fails of each admitted task under the parent. They
+  // are the parent's side of this round's screening, so the round admits those tasks again with no
+  // solve of its own, and counts none of these.
+  for (const version of [...SCORED, ...more]) {
+    for (const nth of [1, 2, 3]) {
+      const solve = `earlier-${version}-${String(nth)}`;
+      record("solve.started", { solve, condition: recordCondition(log, condition(version, old)) });
+      record("solve.finished", { solve, ending: FAIL, seconds: 60 });
+    }
+  }
   /** Every solve asked for, in order. */
   const asked: { version: string; fresh: boolean }[] = [];
   const counts = new Map<string, number>();
@@ -118,7 +130,7 @@ async function setup(responses: FauxResponseStep[], table: Table, more: readonly
     const nth = counts.get(key) ?? 0;
     counts.set(key, nth + 1);
     asked.push({ version, fresh });
-    const ending = table(version, fresh, nth);
+    const ending = table(version, fresh, nth, digest);
     const id = `r-${String(asked.length)}-${String(read(log).length)}`;
     record("solve.started", { solve: id, condition: recordCondition(log, condition(version, digest)) });
     // What the provider wrote for the solve: nothing, when it turned the solve away.
@@ -180,10 +192,13 @@ async function setup(responses: FauxResponseStep[], table: Table, more: readonly
   const request: RoundRequest = {
     session: build,
     builder,
-    scored: SCORED,
-    candidates: [],
+    candidates: SCORED,
     anchor: ANCHOR,
     target: 4,
+    // Read when a round is asked for, so that a test that moves the host's code moves this too.
+    get setting() {
+      return settingId(condition("any", "any"));
+    },
     screening: { solves: 3, fails: 2 },
     solves: 2,
     level: 0.1,
@@ -198,11 +213,13 @@ async function setup(responses: FauxResponseStep[], table: Table, more: readonly
     read(log)
       .filter((event) => event.kind === kind)
       .map(({ data }) => data);
-  return { request, log, old, asked, of, code, sessions: () => sessions };
+  /** The round's own finished solves, without the ones on record before it. */
+  const solved = () => of("solve.finished").filter(({ solve: id }) => isString(id) && id.startsWith("r-"));
+  return { request, log, old, asked, of, solved, code, sessions: () => sessions };
 }
 
 /** The new harness passes every scored task the old one fails; the anchor moves with neither. */
-const step: Table = (version, fresh, nth) => {
+const step = (version: string, fresh: boolean, nth: number): Ending => {
   if (version.startsWith("s")) return fresh ? PASS : FAIL;
   if (version === "a1") return nth === 0 ? PASS : FAIL;
   return PASS;
@@ -286,6 +303,62 @@ describe("a round", () => {
     expect(s.of(COMPARISON_REPORTED)).toHaveLength(1);
   });
 
+  it("moves the exam with the harness: a task the new parent passes retires, and one it still fails is carried", async () => {
+    // Two rounds, the second from the harness the first left. The first parent fails every scored
+    // task. The first child passes s1 to s3 and still fails s4; the second child passes all four.
+    // The table learns the first child's digest from the first solve under a harness not the setup's.
+    const children: string[] = [];
+    const s = await setup([edit, finish, again, finish], (version, fresh, _nth, digest) => {
+      if (!version.startsWith("s")) return PASS;
+      if (!fresh) return FAIL;
+      if (children.length === 0) children.push(digest);
+      return version === "s4" && digest === children[0] ? FAIL : PASS;
+    });
+    const one = await round(s.request);
+    expect([one.fresh]).toEqual(children);
+    // The parent's three fails on record admitted each task with no screening solve.
+    expect(s.of("task.state").filter((moved) => moved.session === "b-1")).toEqual(
+      SCORED.map((version) => ({ version, state: "admitted", session: "b-1", carried: true })),
+    );
+    expect(one).toMatchObject({ scored: { wins: 3, losses: 0, ties: 1 }, versions: SCORED });
+    const before = s.asked.length;
+    const two = await round({
+      ...s.request,
+      session: {
+        ...s.request.session,
+        id: "b-2",
+        parent: join(s.request.session.states, one.fresh ?? ""),
+      },
+    });
+    expect(two.old).toBe(one.fresh ?? "");
+    const states = taskStates(read(s.log));
+    // s1 to s3: the new parent's two passes on record were topped up to three and the child solved
+    // three, all passes, so the campaign has got past them. s4: the new parent's two fails on record
+    // admitted it again with no screening solve.
+    expect(SCORED.map((version) => states.get(version))).toEqual([
+      "too-easy",
+      "too-easy",
+      "too-easy",
+      "admitted",
+    ]);
+    expect(s.of("task.state").filter((moved) => moved.session === "b-2")).toContainEqual({
+      version: "s4",
+      state: "admitted",
+      session: "b-2",
+      carried: true,
+    });
+    // Only s4 is scored, on solves made after this round admitted it: the parent's earlier fails
+    // placed it and are counted nowhere.
+    expect(two).toMatchObject({
+      versions: ["s4"],
+      scored: { wins: 1, losses: 0, ties: 0 },
+      unscreened: [],
+    });
+    // Three tasks at one top-up and three child solves, s4 at two scoring solves a harness, and the
+    // anchor's three at two a harness.
+    expect(s.asked.length - before).toBe(3 * 4 + 4 + 12);
+  });
+
   it("goes on from its log when a solve stopped it: the session is not run again, nor a counted solve", async () => {
     let stop = 10;
     const s = await setup([edit, finish], (version, fresh, nth) => {
@@ -300,7 +373,7 @@ describe("a round", () => {
     expect(s.sessions()).toBe(1);
     expect(s.of("build.started")).toHaveLength(1);
     // Nine solves counted before the stop, the tenth thrown, and nineteen after it.
-    expect(s.of("solve.finished")).toHaveLength(28);
+    expect(s.solved()).toHaveLength(28);
     expect(s.asked).toHaveLength(29);
   });
 
@@ -491,7 +564,7 @@ describe("a round", () => {
 
   it("reads a round that scored no task as not scored, which is not a test that found no gain", async () => {
     const s = await setup([edit, finish], step);
-    const report = await round({ ...s.request, scored: [], target: 0 });
+    const report = await round({ ...s.request, target: 0 });
     expect(report).toMatchObject({
       scored: { wins: 0, losses: 0, ties: 0, p: 1 },
       versions: [],
@@ -520,7 +593,7 @@ describe("a round", () => {
     const report = await round(s.request);
     expect(report).toMatchObject({ scored: { wins: 4, losses: 0 }, short: [], reading: "step" });
     expect(s.sessions()).toBe(1);
-    expect(s.of("solve.finished").filter(({ ending }) => ending !== undefined)).toHaveLength(s.asked.length);
+    expect(s.solved().filter(({ ending }) => ending !== undefined)).toHaveLength(s.asked.length);
 
     // A solve the provider cut after it had written something is a non-result of that task alone.
     const cut: Ending = { outcome: "non-result", kind: "provider", reason: "WebSocket closed 1000" };
@@ -554,7 +627,7 @@ describe("a round", () => {
       return PASS;
     };
     const s = await setup([edit, finish], table);
-    const report = await round({ ...s.request, scored: [], candidates: CANDIDATES, target: 2 });
+    const report = await round({ ...s.request, candidates: CANDIDATES, target: 2 });
     const states = taskStates(read(s.log));
     expect(CANDIDATES.map((version) => states.get(version))).toEqual([
       "admitted",
@@ -578,7 +651,7 @@ describe("a round", () => {
     expect(order).toHaveLength(24 + 8);
     expect(s.of("task.state").filter((moved) => moved.session === "b-1")).toHaveLength(4);
     // Run again, it screens nothing and solves nothing.
-    expect(await round({ ...s.request, scored: [], candidates: CANDIDATES, target: 2 })).toEqual(report);
+    expect(await round({ ...s.request, candidates: CANDIDATES, target: 2 })).toEqual(report);
     expect(s.asked.filter(({ version }) => version.startsWith("c"))).toHaveLength(32);
   });
 
@@ -588,7 +661,7 @@ describe("a round", () => {
         ? { outcome: "non-result", kind: "provider", reason: "x" }
         : FAIL,
     );
-    const report = await round({ ...s.request, scored: [], candidates: ["c1", "c2"], target: 1 });
+    const report = await round({ ...s.request, candidates: ["c1", "c2"], target: 1 });
     expect(report).toMatchObject({ unscreened: ["c1"], versions: ["c2"] });
     expect(taskStates(read(s.log)).get("c1")).toBe("held");
   });
@@ -623,12 +696,15 @@ describe("a round", () => {
     const more = ["s5", "s6", "s7", "s8"];
     const s = await setup([edit, finish, edit, finish, edit, finish], flat, more);
     for (const [index, id] of ["b-1", "b-2", "b-3"].entries()) {
-      // The host's code is edited between rounds, as it will be: each round's solves name another host.
+      // The host's code is edited between rounds, as it will be: each round's solves name another
+      // host, so the second and third read none of the parent's solves on record and screen every
+      // task again under both harnesses. One fail in three keeps a task here.
       s.code.value = `h${String(index + 1)}`;
       const report = await round({
         ...s.request,
-        scored: [...SCORED, ...more],
+        candidates: [...SCORED, ...more],
         target: 8,
+        screening: { solves: 3, fails: 1 },
         session: { ...s.request.session, id },
       });
       expect(report).toMatchObject({
@@ -642,16 +718,18 @@ describe("a round", () => {
         stop: id === "b-3",
       });
     }
-    // The second and third rounds reused no solve of the first, though the harnesses were the same.
+    // The second and third rounds counted no solve of the first, though the harnesses were the same.
+    // Each round made its 44 counted solves, and the two under other host code their 48 screening
+    // solves besides: the first round's parent side was on record under its own.
     expect(s.sessions()).toBe(3);
-    expect(s.asked).toHaveLength(3 * 2 * 2 * 11);
+    expect(s.asked).toHaveLength(3 * 2 * 2 * 11 + 2 * 2 * 3 * 8);
     // Read again after its scored tasks were released for practice, the rule reads the same rounds.
     for (const version of SCORED) append(s.log, "task.state", { version, state: "released" });
     expect(stopRule(read(s.log))).toMatchObject({ sessions: 3, tasks: 24, stop: true });
     // And a finished round, run again after later rounds, still says what it said.
-    const first = await round({ ...s.request, scored: [...SCORED, ...more], target: 8 });
+    const first = await round({ ...s.request, candidates: [...SCORED, ...more], target: 8 });
     expect(first).toMatchObject({ scored: { ties: 8 }, reading: "no-step" });
-    expect(s.asked).toHaveLength(3 * 2 * 2 * 11);
+    expect(s.asked).toHaveLength(3 * 2 * 2 * 11 + 2 * 2 * 3 * 8);
   });
 
   it("stops neither on a bound over too few tasks nor on three sessions with no task", async () => {
@@ -680,11 +758,11 @@ describe("a round", () => {
       if (stop === 8) throw new Error("the verifier could not decide, so the run stops");
       return fresh ? PASS : FAIL;
     });
-    const asked = { ...s.request, scored: [], candidates: ["c1", "c2"], target: 2, defects: 0 };
+    const asked = { ...s.request, candidates: ["c1", "c2"], target: 2, defects: 0 };
     await expect(round(asked)).rejects.toThrow("the verifier could not decide");
     expect(taskStates(read(s.log)).get("a2")).toBe("disputed");
     // Run again as a command would ask: the admitted tasks as scored, the anchor without its disputed task.
-    const report = await round({ ...asked, scored: ["c1", "c2"], candidates: [], anchor: ["a1", "a3"] });
+    const report = await round({ ...asked, anchor: ["a1", "a3"] });
     expect(report).toMatchObject({
       versions: ["c1", "c2"],
       scored: { wins: 2, losses: 0, p: 0.25 },
@@ -704,7 +782,7 @@ describe("a round", () => {
       reading: "step",
     });
     expect(s.asked).toHaveLength(28);
-    expect(s.of("solve.finished")).toHaveLength(28);
+    expect(s.solved()).toHaveLength(28);
   });
 
   it("stops screening when a whole batch cannot be screened, and leaves the rest held", async () => {
@@ -712,7 +790,7 @@ describe("a round", () => {
     const s = await setup([edit, finish], (_version, fresh) =>
       fresh ? { outcome: "fail", kind: "broken-harness", reason: "no tools" } : FAIL,
     );
-    const report = await round({ ...s.request, scored: [], candidates: CANDIDATES, target: 2 });
+    const report = await round({ ...s.request, candidates: CANDIDATES, target: 2 });
     expect(report).toMatchObject({ unscreened: ["c1", "c2"], versions: [], scored: { wins: 0, losses: 0 } });
     expect(s.asked.filter(({ version }) => version === "c3" || version === "c4")).toEqual([]);
     expect(CANDIDATES.map((version) => taskStates(read(s.log)).get(version))).toEqual(Array(4).fill("held"));
@@ -749,16 +827,20 @@ describe("a round", () => {
 
   it("refuses, before any session, a set it could not score", async () => {
     const s = await setup([edit, finish], step);
-    await expect(round({ ...s.request, scored: [...SCORED, "p1"] })).rejects.toThrow(
+    await expect(round({ ...s.request, candidates: [...SCORED, "p1"] })).rejects.toThrow(
       "task p1 is a practice task, and a round scores no task its session saw",
     );
-    await expect(round({ ...s.request, scored: [...SCORED, "a1"] })).rejects.toThrow(
+    await expect(round({ ...s.request, candidates: [...SCORED, "a1"] })).rejects.toThrow(
       "task a1 is listed twice",
     );
-    await expect(round({ ...s.request, scored: ["a1"], anchor: [] })).rejects.toThrow(
-      "task a1 is held, and a scored task is admitted",
+    await expect(round({ ...s.request, candidates: ["a1"], anchor: [] })).rejects.toThrow(
+      "task a1 is the anchor's, and an anchor task is never screened",
     );
-    await expect(round({ ...s.request, anchor: ["s1"], scored: [] })).rejects.toThrow(
+    append(s.log, "task.state", { version: "c1", state: "too-easy" });
+    await expect(round({ ...s.request, candidates: ["c1"] })).rejects.toThrow(
+      "task c1 is too-easy, and a task to screen is held or admitted",
+    );
+    await expect(round({ ...s.request, anchor: ["s1"], candidates: [] })).rejects.toThrow(
       "task s1 is admitted, and an anchor task is held",
     );
     // A flag misread on a command line is no number, and a round that ran no solve would say it had.

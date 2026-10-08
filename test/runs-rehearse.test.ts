@@ -166,7 +166,7 @@ describe("a rehearsal's script", () => {
       "--anchor=fail:pass",
       "--session",
       "r-1",
-      "--admitted",
+      "--referee-decides",
     ];
     const { tokens } = parseArgs({
       args,
@@ -179,7 +179,7 @@ describe("a rehearsal's script", () => {
       "sim",
       "--session",
       "r-1",
-      "--admitted",
+      "--referee-decides",
     ]);
   });
 });
@@ -208,6 +208,7 @@ describe("a rehearsal's seats", () => {
     const campaign = {
       log,
       test: { effort: "medium", side: "test" },
+      setting: () => "scripted",
       solveOnce: async (_task: TaskPackage, _harness: Kept, by: Parameters<Campaign["solveOnce"]>[2]) => {
         const context = normalizeContext({ messages: [{ role: "user", content: "Solve.", timestamp: 0 }] });
         const turn = await by.models?.("").streamSimple(by.model, context).result();

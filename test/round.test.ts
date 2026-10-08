@@ -562,6 +562,58 @@ describe("a round", () => {
     expect(taskStates(read(earned.s.log)).get("s1")).toBe("admitted");
   });
 
+  it("settles a round the same after a later round took its tasks on", async () => {
+    // b-1 reads flags-decide, and b-2 runs before a person has labelled its fails. From the same
+    // parent b-2 admits b-1's four scored tasks again, on the parent's fails on record. From b-1's
+    // child it retires them, since both of its harnesses pass them. `prepare.ts` then tops the
+    // anchor up with c1, which was never b-1's to solve. The labels that settle b-1 a step at once
+    // settle it a step after either: simulated on 2026-10-08, the first read `not-scored` with
+    // every task short, and the second cannot be read at all with a retired task in the set.
+    const later = async (from: "the same parent" | "its child", label: "earned" | "check-defect") => {
+      const s = await setup([edit, finish, again, finish], step);
+      const one = await round({ ...s.request, referee: logging(s.log), refereeDecides: false });
+      expect(one.reading).toBe("flags-decide");
+      const parent =
+        from === "its child" ? join(s.request.session.states, one.fresh ?? "") : s.request.session.parent;
+      await round({ ...s.request, session: { ...s.request.session, id: "b-2", parent } });
+      append(s.log, "anchor.drawn", { tasks: ["c1"] });
+      const { flagged } = toLabel(read(s.log), "b-1");
+      expect(flagged).toHaveLength(2);
+      const settled = settleReading(s.log, "b-1", new Map(flagged.map((solve) => [solve, label])));
+      return { s, one, settled };
+    };
+    for (const from of ["the same parent", "its child"] as const) {
+      const { s, one, settled } = await later(from, "earned");
+      expect(settled).toMatchObject({
+        versions: SCORED,
+        scored: { wins: 4, losses: 0, ties: 0 },
+        anchor: one.anchor,
+        short: [],
+        counted: "step",
+        reading: "step",
+        settled: { labelled: 2, defects: 0, disputed: [] },
+      });
+      // The three-session rule pools b-1's four tasks as its report found them, and b-2's own.
+      expect(stopRule(read(s.log))).toMatchObject({
+        sessions: 2,
+        tasks: from === "its child" ? 4 : 8,
+        points: 100,
+      });
+    }
+    // A fail labelled a check defect takes its task out of b-1's comparison though b-2 retired the
+    // task, which no state follows: it leaves on the label alone.
+    const { s, settled } = await later("its child", "check-defect");
+    expect(settled).toMatchObject({
+      versions: ["s2", "s3", "s4"],
+      scored: { wins: 3, losses: 0, p: 0.125 },
+      disputed: ["s1"],
+      reading: "no-step",
+      settled: { labelled: 2, defects: 2, disputed: ["s1"] },
+    });
+    expect(taskStates(read(s.log)).get("s1")).toBe("too-easy");
+    expect(stopRule(read(s.log))).toMatchObject({ sessions: 2, tasks: 3 });
+  });
+
   it("reads a round that scored no task as not scored, which is not a test that found no gain", async () => {
     const s = await setup([edit, finish], step);
     const report = await round({ ...s.request, target: 0 });

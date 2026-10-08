@@ -250,6 +250,8 @@ const ANCHOR_SCORED = "anchor.scored";
 const TASK_STATE = "task.state";
 const NOTHING_TO_LABEL: ToLabel = { flagged: [], others: [] };
 const DEFECT = "check-defect";
+/** The states a task may be disputed from (`src/kernel/task.ts`). */
+const DISPUTABLE = ["held", "admitted", "released"];
 
 /**
  * The order a round screens its candidates in: drawn by the contract's hash and the session's id,
@@ -312,6 +314,20 @@ function since(events: readonly LogEvent[], session: string): LogEvent[] {
   const next = events.findIndex((_event, index) => index > began && starts(index, false));
   const until = next === -1 ? events.length : next;
   return events.filter(({ kind }, index) => !kind.startsWith("solve.") || (index >= began && index < until));
+}
+
+/**
+ * The log as session `id`'s round is read once it has reported: up to its own report, and within
+ * its window. What comes after is other sessions': a later round admits the round's tasks again or
+ * retires them (`screenPool`), and `tools/d2/prepare.ts` draws into the anchor and releases from
+ * the pool before each round. Read with those, a round settled after the next one ran lost every
+ * scored task to the later admission, which its own solves all precede: on 2026-10-08 a simulated
+ * round whose labels settled it a step at once was settled `not-scored` on the same labels after
+ * a later round had carried its seven tasks. A round with no report yet is read whole.
+ */
+function asReported(events: readonly LogEvent[], id: string): LogEvent[] {
+  const own = events.findIndex(({ kind, data }) => kind === REPORTED && data.session === id);
+  return since(own === -1 ? events : events.slice(0, own + 1), id);
 }
 
 /** The solves still to run, by what each task has: slot by slot over the tasks, the two harnesses
@@ -487,9 +503,18 @@ function compared(
   flagged: (among: ReadonlySet<string>) => string[],
 ) {
   const { log, id, old, fresh, solves } = terms;
-  const events = since(read(log), id);
+  const all = read(log);
+  const events = asReported(all, id);
+  // A dispute stands whenever it was made: a settling's own come after the round's report.
+  const states = taskStates(all);
   const setOf = (listed: readonly string[]) => {
-    const { pairs, disputed } = pairsOf(events, listed, old, fresh);
+    const disputed = listed.filter((task) => states.get(task) === "disputed");
+    const { pairs } = pairsOf(
+      events,
+      listed.filter((task) => !disputed.includes(task)),
+      old,
+      fresh,
+    );
     return { ...whole(pairs, solves), disputed };
   };
   const test = setOf(lists.scored);
@@ -814,8 +839,8 @@ export function toLabel(events: readonly LogEvent[], id: string): ToLabel {
   const report = reported(events, id);
   if (report === null) return NOTHING_TO_LABEL;
   if (report.scored === null) return NOTHING_TO_LABEL;
-  const window = since(events, id);
-  const counted = new Set([...report.versions, ...taskSets(events).anchor]);
+  const window = asReported(events, id);
+  const counted = new Set([...report.versions, ...taskSets(window).anchor]);
   const flagged = new Set(
     flaggedFails(window).flatMap(({ solve, version }) => (report.flagged.includes(version) ? [solve] : [])),
   );
@@ -843,6 +868,9 @@ export function toLabel(events: readonly LogEvent[], id: string): ToLabel {
  * fail labelled earned stands, on a person's word over a reviewer's. The two tests are then read
  * again from the same solves, with no task flagged, and logged as the round's last report with
  * what was settled. Run again it returns that report.
+ *
+ * The round is read as its own report found it (`asReported`), so the labels settle the same
+ * reading whether they come at once or after later rounds have taken the round's tasks on.
  */
 export function settleReading(log: string, id: string, labels: ReadonlyMap<string, Ruling>): RoundReport {
   const before = read(log);
@@ -873,8 +901,12 @@ export function settleReading(log: string, id: string, labels: ReadonlyMap<strin
   const disputed: string[] = [];
   for (const solve of defects) {
     const version = versionOf.get(solve) ?? "";
-    if (taskStates(read(log)).get(version) === "disputed") continue;
+    const state = taskStates(read(log)).get(version);
+    if (state === "disputed" || disputed.includes(version)) continue;
     disputed.push(version);
+    // A task a later round retired is in no later comparison as it is, and no state follows the
+    // one it ended in: it leaves this comparison on the label alone.
+    if (!DISPUTABLE.some((from) => from === state)) continue;
     append(log, TASK_STATE, {
       version,
       state: "disputed",
@@ -903,7 +935,15 @@ export function settleReading(log: string, id: string, labels: ReadonlyMap<strin
   const settled: RoundReport = {
     old: report.old,
     fresh: report.fresh,
-    ...compared(terms, { scored: report.versions, anchor: [...taskSets(before).anchor] }, () => []),
+    // The anchor as the round found it: a later draw's tasks were never this round's to solve.
+    ...compared(
+      terms,
+      {
+        scored: report.versions.filter((version) => !disputed.includes(version)),
+        anchor: [...taskSets(asReported(before, id)).anchor],
+      },
+      () => [],
+    ),
     disputed: [...new Set([...report.disputed, ...disputed])],
     unscreened: report.unscreened,
     settled: { labelled: labels.size, defects: defects.length, disputed },
@@ -922,15 +962,16 @@ export function settleReading(log: string, id: string, labels: ReadonlyMap<strin
  * outage left with no scored task, counts among the three with no task to pool, and so is never
  * flat by itself: no tasks is no evidence of a flat gain.
  *
- * Each round is read as its report found it: from the log up to that report, so a task released or
- * gone stale since is still the scored task it was, and within the round's own window of solves.
+ * Each round is read as its own report found it (`asReported`): from the log up to that report, so
+ * a task released, admitted again, retired or gone stale since is still the scored task it was,
+ * and within the round's own window of solves. A settled round's tasks are its last report's.
  */
 export function stopRule(events: readonly LogEvent[]) {
   const reports = lastReports(events).filter(({ data }) => data.reading !== "check-defects");
   const pairs = reports.flatMap(({ session, index, data }) => {
     const versions = Array.isArray(data.versions) ? data.versions.filter(isString) : [];
     if (!isString(data.old) || !isString(data.fresh) || !isNumber(data.solves)) return [];
-    const then = since(events.slice(0, index + 1), session);
+    const then = asReported(events.slice(0, index + 1), session);
     return whole(pairsOf(then, versions, data.old, data.fresh).pairs, data.solves).pairs;
   });
   const pooled = gain(pairs);

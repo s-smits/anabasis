@@ -86,6 +86,15 @@ export function supply(events: readonly LogEvent[], of = FEASIBLE) {
     // of fault in the controls gate 4 refused (`controlsGate`), a refusal under each kind it holds.
     // A log written before either was recorded counts as unrecorded.
     tooHard: countBy(gates(2, "too-hard"), ({ kind }) => (isString(kind) ? kind : "unrecorded")),
+    // The too-hard tasks whose refusal an advising Referee ruled a check defect: tasks a repair of
+    // the checker might give back (`tools/c/carry.ts` counts those it would).
+    tooHardFlagged: events.filter(
+      ({ kind, data }) =>
+        kind === "exam.word" &&
+        data.word === "too hard" &&
+        Array.isArray(data.flagged) &&
+        data.flagged.length > 0,
+    ).length,
     controls: countBy(
       gates(4, "refused").flatMap(({ kinds }) =>
         Array.isArray(kinds) && kinds.length > 0 ? kinds.filter(isString) : ["unrecorded"],

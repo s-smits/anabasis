@@ -338,6 +338,39 @@ describe("an Examiner session", () => {
     expect([...taskStates(read(s.log)).values()]).toEqual(["refused"]);
   });
 
+  it("has a Referee read the refusal that closes a task as too hard, and closes it all the same", async () => {
+    let asked = 0;
+    const referee = async (): Promise<RefereeFinding> => {
+      asked += 1;
+      return {
+        ruling: "check-defect",
+        check: "check-product",
+        rule: null,
+        field: null,
+        reason: "r",
+        probes: [],
+      };
+    };
+    const s = setup([propose(200), finish]);
+    const examined = await examine({ ...s.request, referee });
+    // Deciding or advising elsewhere, here the Referee only notes: the task has no accepted answer.
+    expect(Object.values(examined.words)).toEqual(["too hard"]);
+    expect(s.of("exam.word")[0]).toMatchObject({ word: "too hard", kind: "rejected", flagged: ["strong-1"] });
+    expect([...taskStates(read(s.log)).values()]).toEqual(["too-hard"]);
+    expect(supply(read(s.log))).toMatchObject({ tooHard: { rejected: 1 }, tooHardFlagged: 1 });
+    expect(asked).toBe(1);
+
+    // A solve its wall ended left no refused answer, and the Referee is not asked.
+    const walled = setup([propose(5), finish]);
+    await examine({
+      ...walled.request,
+      referee,
+      strong: async () => ({ solve: "strong-w", ending: { outcome: "fail", kind: "wall-ended" } }),
+    });
+    expect(walled.of("exam.word")[0]).toMatchObject({ word: "too hard", kind: "wall-ended", flagged: [] });
+    expect(asked).toBe(1);
+  });
+
   it("disputes a feasible task a check is at fault on, by the check itself or by the Referee's ruling", async () => {
     const s = setup(
       [propose(4, 6), controls("x-1-001", "1"), controls("x-1-002", "1"), finish],
@@ -457,6 +490,7 @@ describe("D1b's supply reading", () => {
       refusedAt: { "gate 1": 1 },
       // The stronger solve of base 200 ended in an answer the check refused; no controls were refused.
       tooHard: { rejected: 1 },
+      tooHardFlagged: 0,
       controls: {},
       feasible: 2,
       once: 2,

@@ -10,7 +10,8 @@
  * effort on the same harness, so the one thing the pair changes is the solver. The pack's own tasks
  * are the examples. `--reviewer` adds the Referee to a feasible task's test-side fails, as an
  * adviser: its check-defect rulings are noted beside the task's word. `--referee-decides` lets one
- * dispute the task.
+ * dispute the task. With a reviewer the Referee also reads the refusal that closes a task as too
+ * hard, one reading a task, and there it only ever notes.
  *
  * The session stops at `--feasible` tasks past gate 4 (the plan's 24), at `--candidates` instances
  * put to the stronger solver, or at its minutes and turns. The supply reading is printed from the

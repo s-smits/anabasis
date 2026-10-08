@@ -249,9 +249,22 @@ async function gated(desk: Desk, instance: Task, kill: AbortSignal): Promise<str
     return refused(`a check could not run on a solver's answer: ${ending.reason}`);
   }
   if (ending.outcome === "fail") {
+    // An answer a check refused closes the task as too hard, and a check that refuses a right
+    // answer does the same: in v1 most of a solver's misses were a check's (36 of 47, v1 #124),
+    // and the first sessions here lost 14 of 25 tasks at this gate. The Referee, where the caller
+    // has one, reads that refusal and is noted beside the word. It advises: the task is closed
+    // either way, and the note is for whoever owns the checker.
+    const flagged: string[] = [];
+    if (ending.kind === "rejected" && request.referee !== undefined) {
+      try {
+        if ((await request.referee(solve, task, kill)).ruling === "check-defect") flagged.push(solve);
+      } catch (error) {
+        desk.faults.push(`${solve}: ${errorMessage(error)}`);
+      }
+    }
     record(GATE, { gate: 2, outcome: "too-hard", solve, kind: ending.kind });
     record(STATE, { state: "too-hard", session: request.id });
-    return `${task.taskId}: ${told(desk, task, version, "too hard", { solve, kind: ending.kind })}`;
+    return `${task.taskId}: ${told(desk, task, version, "too hard", { solve, kind: ending.kind, flagged })}`;
   }
   const accepted = read(log).findLast(({ kind, data }) => kind === "verdict" && data.solve === solve)?.data
     .answer;

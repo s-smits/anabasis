@@ -66,6 +66,7 @@ function setup(responses: ReturnType<typeof fauxAssistantMessage>[]) {
   );
   writeFileSync(join(checks, "evaluator.ts"), "// span <= 10\n");
   const sent: string[] = [];
+  const signals: (AbortSignal | undefined)[] = [];
   const faux = fauxProvider({
     models: [
       {
@@ -76,8 +77,9 @@ function setup(responses: ReturnType<typeof fauxAssistantMessage>[]) {
     ],
   });
   faux.setResponses(
-    responses.map((message) => (context: unknown) => {
+    responses.map((message) => (context: unknown, options?: { signal?: AbortSignal }) => {
       sent.push(JSON.stringify(context));
+      signals.push(options?.signal);
       return message;
     }),
   );
@@ -86,7 +88,7 @@ function setup(responses: ReturnType<typeof fauxAssistantMessage>[]) {
   const reader: Reader = { model: faux.getModel(), effort: "medium", models: () => models };
   const log = join(scratch, "log.jsonl");
   const record = (kind: EventKind, data: JsonObject) => append(log, kind, data);
-  return { checks, log, reader, sent, record, calls: () => sent.length };
+  return { checks, log, reader, sent, signals, record, calls: () => sent.length };
 }
 
 describe("the probe", () => {
@@ -175,6 +177,16 @@ describe("the Referee", () => {
     const s = setup([fauxAssistantMessage("The check looks right to me.")]);
     failed(s.record);
     expect((await referee(s.reader, fail(s))).ruling).toBe("unclear");
+  });
+
+  // Claude Code keeps its query open for a prompt after the loop ends; the session's signal is what
+  // closes it, so a reader that returned with its signal live left the process running.
+  it("ends the model's query once the session returns", async () => {
+    const s = setup([fauxAssistantMessage("The check looks right to me.")]);
+    failed(s.record);
+    await referee(s.reader, fail(s));
+    expect(s.signals).toHaveLength(1);
+    expect(s.signals[0]?.aborted).toBe(true);
   });
 });
 

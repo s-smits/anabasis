@@ -46,6 +46,9 @@ export async function readOnce(
 ): Promise<JsonObject> {
   const home = mkdtempSync(join(tmpdir(), "ana-reader-"));
   const turns: AssistantMessage[] = [];
+  // A record tool ends the loop while Claude Code still waits on its result, and only this signal
+  // ends that query: on 8 October a live Referee's Claude Code outlived its ruling by two hours.
+  const done = new AbortController();
   try {
     const models = reader.models(home);
     const head = createInitialSystemMessage(system, tools.map(toToolDeclaration));
@@ -63,10 +66,11 @@ export async function readOnce(
         },
       },
       () => {},
-      undefined,
+      done.signal,
       (model, context, options) => models.streamSimple(model, context, options),
     );
   } finally {
+    done.abort();
     rmSync(home, { recursive: true, force: true });
   }
   const tokens = tokensOf(turns.map((turn) => turn.usage));

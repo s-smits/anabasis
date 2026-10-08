@@ -4,6 +4,7 @@
 // fails on released tasks, against a pass under the same condition, quoting what it read or abstaining.
 import { afterAll, describe, expect, it } from "bun:test";
 import { createModels, fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai";
+import { type Condition, recordCondition } from "../src/kernel/condition.ts";
 import type { Contract } from "../src/kernel/contract.ts";
 import { append, type EventKind, read } from "../src/kernel/log.ts";
 import type { Task, Verdict } from "../src/kernel/verify.ts";
@@ -34,6 +35,30 @@ const CONTRACT: Contract = {
   scope: "Fixture.",
 };
 const ANSWER = { span: 12, members: [{ area: 3 }] };
+/** The test condition of task version v1; the Diagnoser reads a solve's task version from it. */
+const CONDITION: Condition = {
+  contract: "c1",
+  harness: "h1",
+  task: "v1",
+  model: "faux/faux-reader",
+  effort: "medium",
+  prices: { "faux/faux-reader": { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 } },
+  runtime: {},
+  compaction: "off",
+  solverTools: "h1",
+  verifierTools: "v1",
+  sandbox: "p1",
+  limits: {
+    wallSeconds: 7_200,
+    turns: 24,
+    shellDefaultSeconds: 300,
+    shellMaxSeconds: 900,
+    concurrency: 3,
+    diskBytes: 2 * 1024 ** 3,
+  },
+  host: "h",
+  side: "test",
+};
 /** A check that refuses spans over 10, where the rule allows 12. */
 const verify = async (_task: Task, answer: JsonValue | undefined): Promise<Verdict> => {
   const span = (answer as { span?: number } | undefined)?.span ?? 0;
@@ -404,8 +429,12 @@ describe("the Referee's agreement with hand labels", () => {
 describe("the Diagnoser", () => {
   const diagnosis = (args: JsonObject) =>
     fauxAssistantMessage(fauxToolCall("record_diagnosis", args), toolUse);
-  const solved = (record: ReturnType<typeof setup>["record"]) => {
-    record("solve.started", { solve: "s-0", task: "t-1" });
+  /** A solve of t-1 begun under `condition`, which the log records as a live solve's is. */
+  const started = (s: ReturnType<typeof setup>, solve: string, condition = CONDITION) =>
+    s.record("solve.started", { solve, condition: recordCondition(s.log, condition), task: "t-1" });
+  const solved = (s: ReturnType<typeof setup>) => {
+    const { record } = s;
+    started(s, "s-0");
     record("solve.call", {
       solve: "s-0",
       turn: 1,
@@ -416,7 +445,7 @@ describe("the Diagnoser", () => {
       ms: 3,
     });
     record("solve.finished", { solve: "s-0", ending: { outcome: "pass" } });
-    record("solve.started", { solve: "s-1", task: "t-1" });
+    started(s, "s-1");
     record("solve.call", {
       solve: "s-1",
       turn: 1,
@@ -444,7 +473,6 @@ describe("the Diagnoser", () => {
   };
   const fail = (s: ReturnType<typeof setup>) => ({
     solve: "s-1",
-    version: "v1",
     task: TASK,
     contract: CONTRACT,
     log: s.log,
@@ -452,12 +480,29 @@ describe("the Diagnoser", () => {
 
   it("refuses a task that is not released, and a fail the Referee has not ruled earned", async () => {
     const s = setup([]);
-    solved(s.record);
+    solved(s);
     s.record("referee.finding", { solve: "s-1", ruling: "earned" });
     await expect(diagnose(s.reader, fail(s))).rejects.toThrow("task v1 is not released");
     released(s.record);
     s.record("referee.finding", { solve: "s-1", ruling: "unclear" });
     await expect(diagnose(s.reader, fail(s))).rejects.toThrow("has not ruled the fail of s-1 earned");
+    expect(s.calls()).toBe(0);
+  });
+
+  it("takes the task version from the solve's logged condition, never from the caller", async () => {
+    const s = setup([]);
+    released(s.record);
+    // A solve of the anchor's version v0, which is feasible and not released, and one of no recorded
+    // condition: with v1 released, neither may be read under its name.
+    started(s, "s-anchor", { ...CONDITION, task: "v0" });
+    s.record("solve.started", { solve: "s-bare", task: "t-1" });
+    for (const solve of ["s-anchor", "s-bare"]) s.record("referee.finding", { solve, ruling: "earned" });
+    await expect(diagnose(s.reader, { ...fail(s), solve: "s-anchor" })).rejects.toThrow(
+      "task v0 is not released",
+    );
+    await expect(diagnose(s.reader, { ...fail(s), solve: "s-bare" })).rejects.toThrow(
+      "the log records no condition for s-bare",
+    );
     expect(s.calls()).toBe(0);
   });
 
@@ -475,7 +520,7 @@ describe("the Diagnoser", () => {
       diagnosis(recorded),
     ]);
     released(s.record);
-    solved(s.record);
+    solved(s);
     s.record("referee.finding", { solve: "s-1", ruling: "earned" });
     expect(await diagnose(s.reader, fail(s))).toEqual({
       ...recorded,
@@ -499,7 +544,7 @@ describe("the Diagnoser", () => {
   it("contrasts only with a pass under the failed solve's own condition", async () => {
     const s = setup([diagnosis({ abstainReason: "Nothing to compare." })]);
     released(s.record);
-    s.record("solve.started", { solve: "s-strong", condition: "stronger", task: "t-1" });
+    started(s, "s-strong", { ...CONDITION, side: "strong" });
     s.record("solve.call", {
       solve: "s-strong",
       turn: 1,
@@ -508,7 +553,7 @@ describe("the Diagnoser", () => {
       text: "stronger path",
     });
     s.record("solve.finished", { solve: "s-strong", ending: { outcome: "pass" } });
-    s.record("solve.started", { solve: "s-1", condition: "test", task: "t-1" });
+    started(s, "s-1");
     s.record("solve.finished", { solve: "s-1", ending: { outcome: "fail", kind: "wall-ended" } });
     s.record("referee.finding", { solve: "s-1", ruling: "earned" });
     await diagnose(s.reader, fail(s));
@@ -532,7 +577,7 @@ describe("the Diagnoser", () => {
       diagnosis(quoting),
     ]);
     released(s.record);
-    s.record("solve.started", { solve: "s-1", task: "t-1" });
+    started(s, "s-1");
     for (let call = 1; call <= 40; call += 1) {
       s.record("solve.call", {
         solve: "s-1",
@@ -557,7 +602,7 @@ describe("the Diagnoser", () => {
   it("abstains when the reader says what evidence is missing", async () => {
     const s = setup([diagnosis({ abstainReason: "No tool output shows how the span was chosen." })]);
     released(s.record);
-    solved(s.record);
+    solved(s);
     s.record("referee.finding", { solve: "s-1", ruling: "earned" });
     expect(await diagnose(s.reader, fail(s))).toEqual({
       abstain: "No tool output shows how the span was chosen.",

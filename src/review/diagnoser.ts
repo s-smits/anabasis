@@ -6,7 +6,8 @@
  *
  * It reads released tasks only. The Builder works on released tasks and is scored on tasks it never
  * saw, so a diagnosis of a scored task would teach the Builder about one; the task fold says which
- * is which (`task.ts`). It reads nothing protected: the public task, the public rules, the answer
+ * is which (`task.ts`), and the solve's logged condition says which task version it ran, so the
+ * caller names a solve and nothing else. It reads nothing protected: the public task, the public rules, the answer
  * and the trace, never the hidden values, the check program or which checks refused.
  *
  * Sed from harness-builder-v4 at 7af7315, `src/review/diagnosis-reader.ts`: the system prompt, the
@@ -33,6 +34,7 @@
  */
 import { Type } from "typebox";
 import type { Contract } from "../kernel/contract.ts";
+import { conditionsOf } from "../kernel/condition.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { taskStates } from "../kernel/task.ts";
 import type { Task } from "../kernel/verify.ts";
@@ -41,11 +43,9 @@ import { asRecord, isString, type JsonObject } from "../meta/json-shape.ts";
 import { text, tool } from "../solve/answer.ts";
 import { type Reader, readOnce } from "./reader.ts";
 
-/** One earned fail to diagnose, on a task version the log has released. */
+/** One earned fail to diagnose. */
 export interface DiagnosisCase {
   readonly solve: string;
-  /** The task version, as the log's task events name it. */
-  readonly version: string;
   readonly task: Task;
   readonly contract: Contract;
   readonly log: string;
@@ -185,17 +185,25 @@ function excerpts(events: readonly LogEvent[], fail: DiagnosisCase) {
   };
 }
 
-/** Why this fail may not be diagnosed, or null when it may. */
-function refusal(events: readonly LogEvent[], fail: DiagnosisCase): string | null {
-  if (taskStates(events).get(fail.version) !== "released") {
-    return `task ${fail.version} is not released, and the Diagnoser reads released tasks only`;
+/** The released task version the failed solve ran; throws with why the fail may not be diagnosed.
+ *  The version is the solve's logged condition's: a solve's own events name its task by id, and a
+ *  version the caller supplied would let a scored task through under a released one's name. */
+function releasedVersion(events: readonly LogEvent[], fail: DiagnosisCase): string {
+  const started = events.find((event) => event.kind === "solve.started" && event.data.solve === fail.solve);
+  const version = conditionsOf(events).get(stringOf(started?.data.condition))?.task;
+  if (version === undefined) {
+    throw new Error(`the log records no condition for ${fail.solve}, so the task version it ran is unknown`);
+  }
+  if (taskStates(events).get(version) !== "released") {
+    throw new Error(`task ${version} is not released, and the Diagnoser reads released tasks only`);
   }
   const ruling = events.findLast(
     (event) => event.kind === "referee.finding" && event.data.solve === fail.solve,
   );
-  return ruling?.data.ruling === "earned"
-    ? null
-    : `the Referee has not ruled the fail of ${fail.solve} earned`;
+  if (ruling?.data.ruling !== "earned") {
+    throw new Error(`the Referee has not ruled the fail of ${fail.solve} earned`);
+  }
+  return version;
 }
 
 const squash = (value: string) => value.replace(/\s+/g, " ").trim();
@@ -326,8 +334,7 @@ function diagnosisTool(shown: Shown, found: { diagnosis?: Diagnosis }) {
 /** Diagnose one earned fail on a released task and log it; throws when the fail may not be read. */
 export async function diagnose(reader: Reader, fail: DiagnosisCase): Promise<Diagnosis> {
   const events = read(fail.log);
-  const why = refusal(events, fail);
-  if (why !== null) throw new Error(why);
+  const version = releasedVersion(events, fail);
   const { shown, record, calls } = excerpts(events, fail);
   const { hidden: _hidden, ...task } = fail.task;
   const packet = [
@@ -349,7 +356,7 @@ export async function diagnose(reader: Reader, fail: DiagnosisCase): Promise<Dia
   append(fail.log, "diagnosis.recorded", {
     solve: fail.solve,
     task: fail.task.taskId,
-    version: fail.version,
+    version,
     ...(diagnosis as unknown as JsonObject),
     record,
     ...meter,

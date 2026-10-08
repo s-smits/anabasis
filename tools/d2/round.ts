@@ -39,9 +39,8 @@
  * Not run here: see `campaign.ts`.
  */
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
-import { type RoundReport, round, stopRule } from "#src/builder/round.ts";
+import { type RoundReport, round, screeningOrder, stopRule } from "#src/builder/round.ts";
 import type { BuildRequest, Practised } from "#src/builder/session.ts";
-import { draw } from "#src/kernel/compare.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { read } from "#src/kernel/log.ts";
 import type { TaskPackage } from "#src/kernel/task.ts";
@@ -139,7 +138,6 @@ export async function roundCommand(args: readonly string[], seated: Seated = hos
     reviewer === undefined
       ? null
       : campaign.reviewers(campaign.reader(modelNamed(reviewer), effort(values["reviewer-effort"])));
-  const seed = `${contractHash(campaign.contract)}:${session}`;
   const parent = values.parent === undefined ? campaign.parent : join(campaign.states, values.parent);
   const seats = seated(campaign, { builder: values.builder, parent });
   stayAwake();
@@ -170,7 +168,7 @@ export async function roundCommand(args: readonly string[], seated: Seated = hos
           }),
     },
     scored: values.admitted ? sets.admitted : [],
-    candidates: draw(sets.candidates, sets.candidates.length, seed),
+    candidates: screeningOrder(sets.candidates, contractHash(campaign.contract), session),
     anchor: sets.anchor,
     target: Number(values.target),
     screening: { solves: Number(values.screen), fails: Number(values.fails) },

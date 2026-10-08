@@ -56,7 +56,7 @@
  * how its three-session rule reads the rounds so far; promotion and a next session are the
  * operator's, behind gate G4.
  */
-import { anchor, gain, type Paired, pairsOf, scored, solveSeconds } from "../kernel/compare.ts";
+import { anchor, draw, gain, type Paired, pairsOf, scored, solveSeconds } from "../kernel/compare.ts";
 import { conditionsOf } from "../kernel/condition.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import type { Counted } from "../kernel/solve.ts";
@@ -198,6 +198,16 @@ const REPORT_KEYS = [
 ] as const satisfies readonly (keyof RoundReport)[];
 /** The kinds of fail a solver owns outright, as `solve.ts` types them. */
 const FAILS = ["rejected", "wall-ended", "context-ended", "no-answer"] as const;
+
+/**
+ * The order a round screens its candidates in: drawn by the contract's hash and the session's id,
+ * both fixed before any solve of the round, so that neither harness's fails choose which come
+ * first. The log holds both, so the order needs no record of its own: a reader draws it again and
+ * sets the tasks that were screened beside it (`tools/wri/read.ts`).
+ */
+export function screeningOrder(candidates: readonly string[], contract: string, session: string): string[] {
+  return draw(candidates, candidates.length, `${contract}:${session}`);
+}
 
 /** Why a round will not go on with session `id` from this log, or null when it never started or
  *  ended whole. A launcher asks before it starts the round, and a stop to say what it cut. */

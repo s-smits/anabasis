@@ -8,6 +8,7 @@ import {
   cpSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   realpathSync,
   rmSync,
   writeFileSync,
@@ -162,6 +163,30 @@ describe("a campaign", () => {
     append(campaign.log, "comparison.reported", { session: "b-1", reading: "step", fresh: stands.digest });
     append(campaign.log, "comparison.reported", { session: "b-2", reading: "no-step", fresh: "other" });
     expect(await frontier(campaign)).toEqual({ dir: kept, digest: stands.digest });
+  });
+
+  it("says which harnesses a campaign keeps when --parent names none of them", async () => {
+    layOut();
+    const campaign = await openCampaign(ARGS);
+    const digest = "ab".repeat(32);
+    mkdirSync(join(campaign.states, digest), { recursive: true });
+    // The round as the operator runs it. It is refused before a seat is taken or a session starts.
+    const round = (parent: string) => {
+      const flags = Object.entries({ ...ARGS, session: "b-9", builder: "faux/none", parent }).flatMap(
+        ([flag, value]) => [`--${flag}`, value],
+      );
+      const ran = Bun.spawnSync({ cmd: [capturedExecPath, "tools/d2/round.ts", ...flags], cwd: REPO });
+      return `${ran.stdout.toString()}${ran.stderr.toString()}`;
+    };
+    // A digest cut short, as every reader prints one: the whole one is named beside it.
+    const short = round(digest.slice(0, 8));
+    expect(short).toContain("--parent abababab is no harness this campaign keeps");
+    expect(short).toContain(
+      `whole: ${readdirSync(campaign.states).sort().join(", ")}. abababab begins ${digest}.`,
+    );
+    // Nor is another folder of the campaign a harness, wherever the name leads.
+    expect(round("../checks")).toContain("--parent ../checks is no harness this campaign keeps");
+    expect(read(campaign.log).filter(({ kind }) => kind === "build.started")).toEqual([]);
   });
 
   it("reads from a log what a campaign under a repaired checker can take with no solve", () => {

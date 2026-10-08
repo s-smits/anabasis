@@ -35,7 +35,9 @@
  * while no round has stepped (`src/kernel/ladder.ts`). So a step is built on without being asked
  * for, and a round that read no step is followed by another from the same parent. `--parent
  * <digest>` names another harness an earlier session kept: the operator's way to build on one the
- * plan's rules did not call a step, and a cross round's (`model-condition-comparison`).
+ * plan's rules did not call a step, and a cross round's (`model-condition-comparison`). It takes
+ * the whole digest, the name of the harness's folder under the campaign's `states/`, and a name
+ * that is none of those is refused with the ones there are.
  *
  * Run again with the same `--session`, a round goes on from its log. Its report and the plan's
  * three-session reading are printed from the log.
@@ -51,7 +53,7 @@ import type { BuildRequest, Practised } from "#src/builder/session.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { read } from "#src/kernel/log.ts";
 import type { TaskPackage } from "#src/kernel/task.ts";
-import { existsSync } from "#src/meta/filesystem.ts";
+import { existsSync, readdirSync } from "#src/meta/filesystem.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { join } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
@@ -166,7 +168,22 @@ export async function roundCommand(args: readonly string[], seated: Seated = hos
     isString(began) && existsSync(join(campaign.states, began))
       ? join(campaign.states, began)
       : campaign.parent;
-  const named = values.parent === undefined ? null : join(campaign.states, values.parent);
+  // `--parent` names a harness by the folder a session froze it under, which is its whole digest.
+  // Any other name is answered with the ones there are: on 2026-10-08 a digest cut to its first
+  // eight characters, as every reader prints one, ended a simulated round in a bare `ENOENT`.
+  const kept = existsSync(campaign.states) ? readdirSync(campaign.states).sort() : [];
+  const asked = values.parent;
+  if (asked !== undefined && !kept.includes(asked)) {
+    const begun = kept.filter((digest) => asked !== "" && digest.startsWith(asked));
+    const from =
+      "With no --parent a round starts from the harness the last step left, or from the cycle's while no round has stepped";
+    throw new Error(
+      kept.length === 0
+        ? `--parent ${asked} is no harness this campaign keeps: no session has kept one under ${campaign.states} yet. ${from}`
+        : `--parent ${asked} is no harness this campaign keeps. It takes one of the digests under ${campaign.states}, whole: ${kept.join(", ")}.${begun.length === 1 ? ` ${asked} begins ${String(begun[0])}.` : ""} ${from}`,
+    );
+  }
+  const named = asked === undefined ? null : join(campaign.states, asked);
   const parent = named ?? (isString(began) ? startedFrom : (await frontier(campaign)).dir);
   const seats = seated(campaign, { builder: values.builder, parent });
   stayAwake();

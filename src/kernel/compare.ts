@@ -25,7 +25,7 @@
  * comparable only when their conditions differ in the one thing being compared (`condition.ts`).
  */
 import { sha256 } from "../meta/digest.ts";
-import { asRecord, isString } from "../meta/json-shape.ts";
+import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
 import { conditionsOf, fieldsApart } from "./condition.ts";
 import type { LogEvent } from "./log.ts";
@@ -36,6 +36,8 @@ export interface Paired {
   readonly task: string;
   readonly old: readonly boolean[];
   readonly fresh: readonly boolean[];
+  /** Each of those solves' seconds, in the same order; null where the log has none. */
+  readonly seconds?: { readonly old: readonly (number | null)[]; readonly fresh: readonly (number | null)[] };
 }
 
 export interface Tally {
@@ -128,6 +130,20 @@ export function gain(pairs: readonly Paired[]): { readonly points: number; reado
   return { points: mean, upper: Math.min(100, mean + (quantile * spread) / Math.sqrt(count)) };
 }
 
+/** Each harness's mean seconds over the set's counted solves, null for none timed. v1 found pass
+ *  counts could not separate two harnesses at this size and read solve time beside them; it is
+ *  reported here, and nothing decides on it. */
+export function solveSeconds(pairs: readonly Paired[]): {
+  readonly old: number | null;
+  readonly fresh: number | null;
+} {
+  const mean = (side: "old" | "fresh") => {
+    const timed = pairs.flatMap((pair) => pair.seconds?.[side] ?? []).filter(isNumber);
+    return timed.length === 0 ? null : timed.reduce((sum, each) => sum + each, 0) / timed.length;
+  };
+  return { old: mean("old"), fresh: mean("fresh") };
+}
+
 /** `count` of `versions`, chosen by `seed` and nothing else. Each version is ranked by the hash of
  *  the seed and itself, so a draw replays from the log that records its seed, and a version added
  *  to the pool moves no other's rank. The seed is to be fixed before the pool exists, the frozen
@@ -200,17 +216,23 @@ export function pairsOf(
           `task ${task}: its solves differ in ${moved.join(", ")}, and a comparison holds everything but the harness`,
         );
       }
-      const passes = (harness: string) =>
+      const counted = (harness: string) =>
         later.flatMap(({ kind, data }) => {
           const outcome = asRecord(data.ending)?.outcome;
           const under = conditions.get(ran.get(isString(data.solve) ? data.solve : "") ?? "");
           return kind === "solve.finished" &&
             under?.harness === harness &&
             (outcome === "pass" || outcome === "fail")
-            ? [outcome === "pass"]
+            ? [{ pass: outcome === "pass", seconds: isNumber(data.seconds) ? data.seconds : null }]
             : [];
         });
-      return { task, old: passes(old), fresh: passes(fresh) };
+      const [before, after] = [counted(old), counted(fresh)];
+      return {
+        task,
+        old: before.map(({ pass }) => pass),
+        fresh: after.map(({ pass }) => pass),
+        seconds: { old: before.map(({ seconds }) => seconds), fresh: after.map(({ seconds }) => seconds) },
+      };
     });
   return { pairs, disputed };
 }

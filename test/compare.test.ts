@@ -1,7 +1,7 @@
 // The comparison's arithmetic against the plan's own figures, and its view over the log: what counts
 // in a score, and what it refuses to compare.
 import { describe, expect, it } from "bun:test";
-import { anchor, draw, gain, pairsOf, scored, signP, tally } from "../src/kernel/compare.ts";
+import { anchor, draw, gain, pairsOf, scored, signP, solveSeconds, tally } from "../src/kernel/compare.ts";
 import { type Condition, conditionId, fieldsApart } from "../src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
@@ -146,14 +146,18 @@ describe("the pairs a comparison reads from the log", () => {
   ];
   let solves = 0;
   /** One solve of `condition`'s task, recorded as the runner records one. */
-  const solve = (condition: Condition, outcome: "pass" | "fail" | "non-result") => {
+  const solve = (condition: Condition, outcome: "pass" | "fail" | "non-result", seconds?: number) => {
     solves += 1;
     const [id, name] = [conditionId(condition), `s-${String(solves)}`];
     return [
       // SAFETY: a condition is strings, numbers and records of them.
       event("condition.recorded", { id, condition: condition as unknown as JsonObject }),
       event("solve.started", { solve: name, condition: id, task: "t" }),
-      event("solve.finished", { solve: name, ending: { outcome } }),
+      event("solve.finished", {
+        solve: name,
+        ending: { outcome },
+        ...(seconds === undefined ? {} : { seconds }),
+      }),
     ];
   };
   const fresh: Condition = { ...base, harness: "new", solverTools: "new" };
@@ -175,26 +179,31 @@ describe("the pairs a comparison reads from the log", () => {
   it("counts a task's solves from its admission, the test side's passes and fails only", () => {
     const log = [
       ...admitted,
-      ...solve(base, "pass"),
-      ...solve(fresh, "non-result"),
-      ...solve(fresh, "pass"),
-      ...solve({ ...fresh, side: "strong" }, "pass"),
-      ...solve(base, "fail"),
+      ...solve(base, "pass", 600),
+      ...solve(fresh, "non-result", 60),
+      ...solve(fresh, "pass", 300),
+      ...solve({ ...fresh, side: "strong" }, "pass", 60),
+      ...solve(base, "fail", 900),
       ...solve(fresh, "pass"),
       ...solve({ ...base, task: "v0" }, "pass"),
       ...solve({ ...fresh, task: "v0" }, "fail"),
     ];
-    expect(pairsOf(log, ["v1", "v0"], "old", "new")).toEqual({
+    const untimed = { old: [null], fresh: [null] };
+    const counted = pairsOf(log, ["v1", "v0"], "old", "new");
+    expect(counted).toEqual({
       pairs: [
-        { task: "v1", old: [P, F], fresh: [P, P] },
-        { task: "v0", old: [P], fresh: [F] },
+        { task: "v1", old: [P, F], fresh: [P, P], seconds: { old: [600, 900], fresh: [300, null] } },
+        { task: "v0", old: [P], fresh: [F], seconds: untimed },
       ],
       disputed: [],
     });
+    // Each harness's mean over the counted solves the log timed.
+    expect(solveSeconds(counted.pairs)).toEqual({ old: 750, fresh: 300 });
+    expect(solveSeconds([])).toEqual({ old: null, fresh: null });
     // A check defect ruled on the scored task takes it out on both sides, and it is named.
     const disputed = [...log, event("task.state", { version: "v1", state: "disputed" })];
     expect(pairsOf(disputed, ["v1", "v0"], "old", "new")).toEqual({
-      pairs: [{ task: "v0", old: [P], fresh: [F] }],
+      pairs: [{ task: "v0", old: [P], fresh: [F], seconds: untimed }],
       disputed: ["v1"],
     });
   });

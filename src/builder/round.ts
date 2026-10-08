@@ -49,7 +49,7 @@
  * how its three-session rule reads the rounds so far; promotion and a next session are the
  * operator's, behind gate G4.
  */
-import { anchor, gain, type Paired, pairsOf, scored } from "../kernel/compare.ts";
+import { anchor, gain, type Paired, pairsOf, scored, solveSeconds } from "../kernel/compare.ts";
 import { conditionsOf } from "../kernel/condition.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import type { Counted } from "../kernel/solve.ts";
@@ -115,8 +115,11 @@ export interface RoundReport {
   readonly old: string;
   /** The digest of the harness the session left; null when it left none to compare. */
   readonly fresh: string | null;
-  /** The scored set's tally, test and pooled gain; null when the round never scored. */
-  readonly scored: (ReturnType<typeof scored> & ReturnType<typeof gain>) | null;
+  /** The scored set's tally, test, pooled gain and each harness's mean solve seconds; null when the
+   *  round never scored. */
+  readonly scored:
+    | (ReturnType<typeof scored> & ReturnType<typeof gain> & { seconds: ReturnType<typeof solveSeconds> })
+    | null;
   readonly anchor: ReturnType<typeof anchor> | null;
   /** The task versions tallied in the scored set. */
   readonly versions: readonly string[];
@@ -278,12 +281,20 @@ function unsolved(tasks: readonly Had[], solves: number, old: Kept, fresh: Kept)
  *  can leave a task one solve over on a side, and a tally needs as many of each. */
 function whole(pairs: readonly Paired[], solves: number) {
   const enough = ({ old, fresh }: Paired) => old.length >= solves && fresh.length >= solves;
+  const cut = <T>(list: readonly T[] = []) => list.slice(0, solves);
   return {
-    pairs: pairs.flatMap((pair) =>
-      enough(pair)
-        ? [{ task: pair.task, old: pair.old.slice(0, solves), fresh: pair.fresh.slice(0, solves) }]
-        : [],
-    ),
+    pairs: pairs.flatMap((pair) => {
+      const { task, old, fresh, seconds } = pair;
+      if (!enough(pair)) return [];
+      return [
+        {
+          task,
+          old: cut(old),
+          fresh: cut(fresh),
+          seconds: { old: cut(seconds?.old), fresh: cut(seconds?.fresh) },
+        },
+      ];
+    }),
     short: pairs.flatMap((pair) => (enough(pair) ? [] : [pair.task])),
   };
 }
@@ -585,7 +596,7 @@ export async function round(request: RoundRequest): Promise<RoundReport> {
   };
   const test = setOf(admitted());
   const guard = setOf(request.anchor);
-  const tested = { ...scored(test.pairs), ...gain(test.pairs) };
+  const tested = { ...scored(test.pairs), ...gain(test.pairs), seconds: solveSeconds(test.pairs) };
   const guarded = anchor(guard.pairs, request.anchorLevel, request.anchorFloor);
   append(log, "anchor.scored", {
     session: id,

@@ -119,7 +119,7 @@ async function setup(responses: FauxResponseStep[], table: Table, more: readonly
     const ending = table(version, fresh, nth);
     const id = `r-${String(asked.length)}-${String(read(log).length)}`;
     record("solve.started", { solve: id, condition: recordCondition(log, condition(version, digest)) });
-    record("solve.finished", { solve: id, ending });
+    record("solve.finished", { solve: id, ending, seconds: fresh ? 30 : 60 });
     return { solve: id, ending };
   };
   const faux = fauxProvider({
@@ -235,7 +235,15 @@ describe("a round", () => {
         reviewFaults: [],
         old: s.old,
         fresh: report.fresh,
-        scored: { wins: 4, losses: 0, ties: 0, p: 0.0625, points: 100, upper: 100 },
+        scored: {
+          wins: 4,
+          losses: 0,
+          ties: 0,
+          p: 0.0625,
+          points: 100,
+          upper: 100,
+          seconds: { old: 60, fresh: 30 },
+        },
         anchor: { wins: 0, losses: 0, ties: 3, informative: 1, reading: "held" },
         versions: SCORED,
         disputed: [],

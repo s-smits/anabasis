@@ -23,6 +23,9 @@
  * the task, once its rulings have cleared the operator's bar against hand labels
  * (`src/review/agreement.ts`).
  *
+ * The session starts from the cycle's harness, or with `--parent <digest>` from a harness an
+ * earlier session of the campaign kept, so that a step can be built on.
+ *
  * Run again with the same `--session`, a round goes on from its log. Its report and the plan's
  * three-session reading are printed from the log.
  *
@@ -34,6 +37,7 @@ import { draw } from "#src/kernel/compare.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { read } from "#src/kernel/log.ts";
 import type { TaskPackage } from "#src/kernel/task.ts";
+import { join } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { LIMITS, modelNamed, openCampaign, setsOf, stayAwake } from "./campaign.ts";
 
@@ -62,6 +66,7 @@ const { values } = parseArgs({
     "practice-solves": { type: "string", default: "24" },
     minutes: { type: "string", default: "240" },
     turns: { type: "string", default: "300" },
+    parent: { type: "string" },
   },
 });
 
@@ -100,7 +105,7 @@ async function main(): Promise<void> {
   const report = await round({
     session: {
       id: session,
-      parent: campaign.parent,
+      parent: values.parent === undefined ? campaign.parent : join(campaign.states, values.parent),
       states: campaign.states,
       tasks: sets.released.map((version) => ({ version, task: packageOf(version) })),
       contract: campaign.contract,

@@ -55,8 +55,8 @@ interface SplitBuild {
     feedback: BuilderAuthorFeedback,
     conversation: BuilderConversation | undefined,
   ) => SideSession;
-  /** A fresh execution record for each answer pass. */
-  readonly answerRecord: () => Pick<BuilderSessionDeps, "onExecution" | "onCheckpoint">;
+  /** A fresh execution record for each pass, either side's. */
+  readonly record: () => Pick<BuilderSessionDeps, "onExecution" | "onCheckpoint">;
   readonly stall: () => void;
 }
 
@@ -189,7 +189,7 @@ function answerSession(
     },
     {
       ...shared,
-      ...split.answerRecord(),
+      ...split.record(),
       conversation,
       tools: [...split.files.answer, ...side.tools],
       feedback,
@@ -216,6 +216,7 @@ function harnessSession(
     },
     {
       ...shared,
+      ...split.record(),
       tools: [...split.files.harness, ...side.tools],
       submit: harnessSubmit(split.deps.submit, handBack),
       feedback,

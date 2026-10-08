@@ -202,6 +202,23 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
     expect(repaired.code).not.toBe(0);
     writeFileSync(evaluator, EVALUATOR);
     expect(accept().code).toBe(0);
+
+    // Nor does the frozen log take tasks gated under another pack's checks.
+    const other = join(root, "other");
+    cpSync(bundle, other, { recursive: true });
+    writeFileSync(join(other, "correctness-model", "evaluator.ts"), REPAIRED);
+    const log = join(accepted, "log.jsonl");
+    const before = readFileSync(log, "utf8");
+    const admitted = command("tools/m1/admit-sweep.ts", {
+      root,
+      sweep: "s",
+      bundle: other,
+      stronger: "c01",
+      log,
+    });
+    expect(admitted.said).toContain("the log froze another check program");
+    expect(admitted.code).not.toBe(0);
+    expect(readFileSync(log, "utf8")).toBe(before);
   });
 
   it("logs the stored rejections, draws the fails to label, and holds the Referee until they are", () => {

@@ -26,6 +26,8 @@
  *   task v1 gave fewer than three is refused.
  * - The check program is the bundle's, copied once without its battery (`checkProgram`).
  */
+import { departure } from "#src/kernel/acceptance.ts";
+import { contractHash } from "#src/kernel/contract.ts";
 import { append, type EventKind, read } from "#src/kernel/log.ts";
 import {
   CONTROLS,
@@ -39,12 +41,13 @@ import {
   taskStates,
   taskVersion,
 } from "#src/kernel/task.ts";
-import { openVerifier } from "#src/kernel/verify.ts";
+import { checkProgramVersion, openVerifier } from "#src/kernel/verify.ts";
 import { mkdirSync, mkdtempSync, rmSync } from "#src/meta/filesystem.ts";
 import type { JsonObject, JsonValue } from "#src/meta/json-shape.ts";
 import { tmpdir } from "#src/meta/os.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
+import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { countBy } from "#src/meta/tally.ts";
 import {
   checkProgram,
@@ -111,6 +114,13 @@ async function main(): Promise<void> {
   // What the log already holds of each task, so a run a verifier stopped part way goes on from the
   // gate it reached and a task is never proposed twice.
   const logged = read(log);
+  // A campaign's log whose checker the operator froze takes no task under another: the tasks would
+  // carry versions no solve of that campaign can be asked for (`tools/c/accept.ts --freeze`).
+  const moved = departure(logged, {
+    contract: contractHash(contract),
+    checks: hashJsonValue(checkProgramVersion(checks)),
+  });
+  if (moved !== null) throw new Error(`${log}: ${moved}`);
   const known = taskStates(logged);
   const gatesOf = (version: string) =>
     logged.flatMap(({ kind, data }) => (kind === "task.gate" && data.version === version ? [data] : []));

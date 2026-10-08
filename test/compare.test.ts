@@ -52,6 +52,22 @@ describe("the anchor", () => {
       reading: "held",
     });
     expect(anchor([...pairs(0, 4, 4), ...easy(16)], 0.1, 8).reading).toBe("lost");
+    // One win against three losses is held at 0.10 and lost at a looser level the caller may give.
+    expect(anchor([...pairs(1, 3, 4), ...easy(16)], 0.1, 8).reading).toBe("held");
+    expect(anchor([...pairs(1, 3, 4), ...easy(16)], 0.35, 8).reading).toBe("lost");
+  });
+
+  it("is not tested by tasks both harnesses always fail, which can show neither a win nor a loss", () => {
+    const dead = Array.from({ length: 20 }, (_, i) => ({
+      task: `d${String(i)}`,
+      old: [F, F, F],
+      fresh: [F, F, F],
+    }));
+    expect(anchor([...dead, ...easy(4)], 0.1, 8)).toMatchObject({ informative: 0, reading: "not-tested" });
+    expect(anchor([...dead, ...pairs(1, 0, 2)], 0.1, 8)).toMatchObject({
+      informative: 3,
+      reading: "not-tested",
+    });
   });
 
   it("is not tested, rather than held, below the floor of informative tasks", () => {
@@ -145,10 +161,19 @@ describe("the pairs a comparison reads from the log", () => {
       ...solve({ ...base, task: "v0" }, "pass"),
       ...solve({ ...fresh, task: "v0" }, "fail"),
     ];
-    expect(pairsOf(log, ["v1", "v0"], "old", "new")).toEqual([
-      { task: "v1", old: [P, F], fresh: [P, P] },
-      { task: "v0", old: [P], fresh: [F] },
-    ]);
+    expect(pairsOf(log, ["v1", "v0"], "old", "new")).toEqual({
+      pairs: [
+        { task: "v1", old: [P, F], fresh: [P, P] },
+        { task: "v0", old: [P], fresh: [F] },
+      ],
+      disputed: [],
+    });
+    // A check defect ruled on the scored task takes it out on both sides, and it is named.
+    const disputed = [...log, event("task.state", { version: "v1", state: "disputed" })];
+    expect(pairsOf(disputed, ["v1", "v0"], "old", "new")).toEqual({
+      pairs: [{ task: "v0", old: [P], fresh: [F] }],
+      disputed: ["v1"],
+    });
   });
 
   it("refuses a released task, and solves that differ in more than the harness", () => {

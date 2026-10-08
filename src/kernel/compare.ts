@@ -8,9 +8,11 @@
  *
  * The anchor is the set no screening chose, and it guards the other direction. The plan asks that
  * a step "hold" it and names no test, so it is read here as the same sign test turned round: the
- * anchor is lost when its losses beat its wins at the same level. An anchor task both harnesses
- * pass on every solve informs nothing, and below a floor of informative tasks the anchor is not
- * tested, which is not the same as held.
+ * anchor is lost when its losses beat its wins at the level the caller gives it, which need not be
+ * the win test's: a guard may be asked to fire sooner. An anchor task both harnesses pass on every
+ * solve informs nothing, and neither does one both fail on every solve: neither can show a win or a
+ * loss. The anchor is drawn from unscreened tasks, so both kinds are common in it. Below a floor of
+ * informative tasks the anchor is not tested, which is not the same as held.
  *
  * How many tasks, how many solves, the level and the floor are the caller's: they wait on D1's
  * supply and noise. Nothing here decides a step; it reports the two readings.
@@ -89,7 +91,10 @@ export function anchor(
   floor: number,
 ): Tally & { readonly informative: number; readonly reading: AnchorReading } {
   const counts = tally(pairs);
-  const informative = pairs.filter(({ old, fresh }) => ![...old, ...fresh].every(Boolean)).length;
+  const informative = pairs.filter(({ old, fresh }) => {
+    const solves = [...old, ...fresh];
+    return solves.some(Boolean) && !solves.every(Boolean);
+  }).length;
   const reading =
     informative < floor ? "not-tested" : signP(counts.losses, counts.wins) <= level ? "lost" : "held";
   return { ...counts, informative, reading };
@@ -97,7 +102,8 @@ export function anchor(
 
 /** `count` of `versions`, chosen by `seed` and nothing else. Each version is ranked by the hash of
  *  the seed and itself, so a draw replays from the log that records its seed, and a version added
- *  to the pool moves no other's rank. */
+ *  to the pool moves no other's rank. The seed is to be fixed before the pool exists, the frozen
+ *  contract's hash for one: a seed chosen once the pool is known can be searched for. */
 export function draw(versions: readonly string[], count: number, seed: string): string[] {
   const pool = [...new Set(versions)];
   if (pool.length < count) {
@@ -112,65 +118,71 @@ export function draw(versions: readonly string[], count: number, seed: string): 
 
 /**
  * The pairs a comparison of harness `old` with harness `fresh` reads, for `versions`, from the log
- * alone. Only the test side's pass and fail endings count; a non-result was run again. Refused: a
- * version that is neither admitted nor the anchor's, and a task whose solves ran under conditions
- * that differ in more than the harness.
+ * alone. Only the test side's pass and fail endings count; a non-result was run again. A version a
+ * check defect was ruled on is left out on both sides and named in `disputed`, so a ruling can
+ * remove a comparison and cannot make a win. Refused: any other version that is neither admitted
+ * nor the anchor's, and a task whose solves ran under conditions that differ in more than the
+ * harness.
  */
 export function pairsOf(
   events: readonly LogEvent[],
   versions: readonly string[],
   old: string,
   fresh: string,
-): Paired[] {
+): { readonly pairs: Paired[]; readonly disputed: string[] } {
   const conditions = conditionsOf(events);
   const states = taskStates(events);
-  return versions.map((task) => {
-    const from = events.findLastIndex(
-      ({ kind, data }) =>
-        (kind === "task.state" && data.version === task && data.state === "admitted") ||
-        (kind === "anchor.drawn" && Array.isArray(data.tasks) && data.tasks.includes(task)),
-    );
-    const state = states.get(task);
-    if (from === -1 || (state !== "admitted" && state !== "held")) {
-      throw new Error(
-        `task ${task} is ${state ?? "not proposed"}; only an admitted task or an anchor task is scored`,
+  const disputed = versions.filter((task) => states.get(task) === "disputed");
+  const pairs = versions
+    .filter((task) => !disputed.includes(task))
+    .map((task) => {
+      const from = events.findLastIndex(
+        ({ kind, data }) =>
+          (kind === "task.state" && data.version === task && data.state === "admitted") ||
+          (kind === "anchor.drawn" && Array.isArray(data.tasks) && data.tasks.includes(task)),
       );
-    }
-    const later = events.slice(from);
-    const ran = new Map<string, string>();
-    for (const { kind, data } of later) {
-      const id = isString(data.condition) ? data.condition : "";
-      const condition = conditions.get(id);
-      if (
-        kind === "solve.started" &&
-        isString(data.solve) &&
-        condition?.task === task &&
-        condition.side === "test" &&
-        (condition.harness === old || condition.harness === fresh)
-      ) {
-        ran.set(data.solve, id);
+      const state = states.get(task);
+      if (from === -1 || (state !== "admitted" && state !== "held")) {
+        throw new Error(
+          `task ${task} is ${state ?? "not proposed"}; only an admitted task or an anchor task is scored`,
+        );
       }
-    }
-    const [first, ...rest] = [...new Set(ran.values())].map((id) => conditions.get(id));
-    const apart = rest.flatMap((other) =>
-      first === undefined || other === undefined ? [] : fieldsApart(first, other),
-    );
-    const moved = [...new Set(apart)].filter((field) => !COMPARED.has(field));
-    if (moved.length > 0) {
-      throw new Error(
-        `task ${task}: its solves differ in ${moved.join(", ")}, and a comparison holds everything but the harness`,
+      const later = events.slice(from);
+      const ran = new Map<string, string>();
+      for (const { kind, data } of later) {
+        const id = isString(data.condition) ? data.condition : "";
+        const condition = conditions.get(id);
+        if (
+          kind === "solve.started" &&
+          isString(data.solve) &&
+          condition?.task === task &&
+          condition.side === "test" &&
+          (condition.harness === old || condition.harness === fresh)
+        ) {
+          ran.set(data.solve, id);
+        }
+      }
+      const [first, ...rest] = [...new Set(ran.values())].map((id) => conditions.get(id));
+      const apart = rest.flatMap((other) =>
+        first === undefined || other === undefined ? [] : fieldsApart(first, other),
       );
-    }
-    const passes = (harness: string) =>
-      later.flatMap(({ kind, data }) => {
-        const outcome = asRecord(data.ending)?.outcome;
-        const under = conditions.get(ran.get(isString(data.solve) ? data.solve : "") ?? "");
-        return kind === "solve.finished" &&
-          under?.harness === harness &&
-          (outcome === "pass" || outcome === "fail")
-          ? [outcome === "pass"]
-          : [];
-      });
-    return { task, old: passes(old), fresh: passes(fresh) };
-  });
+      const moved = [...new Set(apart)].filter((field) => !COMPARED.has(field));
+      if (moved.length > 0) {
+        throw new Error(
+          `task ${task}: its solves differ in ${moved.join(", ")}, and a comparison holds everything but the harness`,
+        );
+      }
+      const passes = (harness: string) =>
+        later.flatMap(({ kind, data }) => {
+          const outcome = asRecord(data.ending)?.outcome;
+          const under = conditions.get(ran.get(isString(data.solve) ? data.solve : "") ?? "");
+          return kind === "solve.finished" &&
+            under?.harness === harness &&
+            (outcome === "pass" || outcome === "fail")
+            ? [outcome === "pass"]
+            : [];
+        });
+      return { task, old: passes(old), fresh: passes(fresh) };
+    });
+  return { pairs, disputed };
 }

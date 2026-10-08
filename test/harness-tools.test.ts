@@ -98,6 +98,26 @@ describe("a v1 harness state", () => {
   });
 
   // The shim drops v1's nullable-number rewrite on this behaviour of the pinned pi.
+  it("has one digest wherever it sits, though the bundle names where each file was read", async () => {
+    const root = mkdtempSync(join(tmpdir(), "ana-harness-place-"));
+    try {
+      const places = [join(root, "a"), join(root, "deeper", "b")];
+      for (const place of places) cpSync(FIXTURE, place, { recursive: true });
+      const [here, there] = await Promise.all(places.map((place) => openHarness(place)));
+      expect(here?.module).not.toBe(there?.module);
+      expect(here?.digest).toBe(there?.digest ?? "");
+      expect(here?.digest).toBe((await openHarness(FIXTURE)).digest);
+      // A changed line of a tool is still another harness.
+      writeFileSync(
+        join(places[0] ?? "", "agent", "helper.ts"),
+        "export function scaled(base: number, factor: number): number {\n  return base * factor + 1;\n}\n",
+      );
+      expect((await openHarness(places[0] ?? "")).digest).not.toBe(there?.digest ?? "");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("needs no nullable-number rewrite: pi keeps null and zero exact through the union", () => {
     const parameters = Type.Object({
       a: Type.Union([Type.Number(), Type.Null()]),

@@ -105,6 +105,12 @@ try {
 }
 `;
 
+/** Bun writes each bundled file's path, relative to where the host was started, on a comment line
+ *  of its own. The digest leaves those lines out: with them, one harness had another digest in every
+ *  directory it was copied to and from every directory the host was run in, and a condition names
+ *  its harness by this digest. The module that runs keeps them. */
+const BUNDLED_PATH = /^\/\/ .+\.(?:[cm]?[jt]sx?|json)$/gm;
+
 export async function openHarness(dir: string): Promise<Harness> {
   const guideFile = join(dir, "agent", "BUILT_AGENTS.md");
   const guide = existsSync(guideFile) ? await Bun.file(guideFile).text() : null;
@@ -127,7 +133,15 @@ export async function openHarness(dir: string): Promise<Harness> {
   const toolchain = resolve(dir, ".toolchain");
   const toolTree = existsSync(toolchain) ? toolchain : null;
   const tree = toolTree === null ? null : treeContent(toolTree);
-  return { guide, presets, kinds, toolTree, module, digest: hashJsonValue({ module, spec, guide, tree }) };
+  const located = module.replace(BUNDLED_PATH, "");
+  return {
+    guide,
+    presets,
+    kinds,
+    toolTree,
+    module,
+    digest: hashJsonValue({ module: located, spec, guide, tree }),
+  };
 }
 
 /**

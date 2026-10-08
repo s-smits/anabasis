@@ -59,6 +59,8 @@ const SET_OF = new Map([
   ["admitted", "scored"],
 ]);
 const OUTCOMES = ["pass", "fail", "non-result", "unfinished"];
+const ANCHOR_DRAWN = "anchor.drawn";
+const REPORTED = "comparison.reported";
 /** What a round is given beside its solves' conditions. Its harness is none of them: a Builder
  *  makes it, so it differs wherever these do, and between two sessions that were given the same. */
 const GIVEN: readonly (readonly [name: string, of: (round: Round) => string])[] = [
@@ -83,10 +85,12 @@ const brief = (digest: string) => digest.slice(0, 8);
 
 /**
  * Every test-side solve the log holds: its condition, the set its task was in when the solve
- * started, and how it ended. A task is the anchor's by the draw, practice once released and scored
- * once admitted; any other is being screened.
+ * started, and how it ended. A task is the anchor's from its draw on, practice once released and
+ * scored once admitted; any other is being screened. The anchor is topped up before each round
+ * (`tools/d2/prepare.ts`), so a task a round screened and left held may be drawn after it, and its
+ * screening solves are that round's screening still.
  */
-function solvesOf(events: readonly LogEvent[], anchor: readonly string[]) {
+function solvesOf(events: readonly LogEvent[]) {
   const conditions = conditionsOf(events);
   const endings = new Map(
     events.flatMap(({ kind, data }) => {
@@ -95,10 +99,11 @@ function solvesOf(events: readonly LogEvent[], anchor: readonly string[]) {
       return kind === "solve.finished" ? [[word(data.solve), said] as const] : [];
     }),
   );
-  const sets = new Map(anchor.map((task) => [task, "anchor"]));
+  const sets = new Map<string, string>();
   const solves: { readonly under: Condition; readonly set: string; readonly ending: string }[] = [];
   for (const { kind, data } of events) {
     const under = conditions.get(word(data.condition));
+    if (kind === ANCHOR_DRAWN) for (const task of strings(data.tasks)) sets.set(task, "anchor");
     if (kind === "task.state") sets.set(word(data.version), SET_OF.get(word(data.state)) ?? "screened");
     if (kind === "solve.started" && under?.side === "test") {
       const ending = endings.get(word(data.solve)) ?? "unfinished";
@@ -123,24 +128,35 @@ export function roundOf(
   const from = events.findIndex(({ kind, data }) => kind === "build.started" && data.session === session);
   const started = events[from]?.data;
   if (started === undefined) throw new Error(`${name} holds no Builder session ${session}`);
-  // The log as the round counts it (`since` in src/builder/round.ts): of the solves, only those
-  // from its session's start to the next session's.
-  const next = events.findIndex(({ kind }, index) => index > from && kind === "build.started");
+  // The log as the round counts it (`asReported` in src/builder/round.ts): of the solves, only
+  // those from its session's start to its own report, or to the next session's start while it has
+  // none. What follows a report in a round's window is an Examiner session's, and since the exam
+  // follows the frontier its test-side solves run under the harness the round's step left: read to
+  // the next session, a simulated round's 27 screening and 18 anchor solves under its fresh harness
+  // were said as 60 and 24 (2026-10-08).
+  const ends = [
+    events.findIndex(({ kind }, index) => index > from && kind === "build.started"),
+    events.findIndex(
+      ({ kind, data }, index) => index > from && kind === REPORTED && data.session === session,
+    ),
+  ].filter((index) => index !== -1);
+  const until = Math.min(events.length, ...ends);
   const own = events.filter(
-    ({ kind }, index) => !kind.startsWith("solve.") || (index > from && (next === -1 || index < next)),
+    ({ kind }, index) => !kind.startsWith("solve.") || (index > from && index < until),
   );
   const mine = (kind: EventKind) =>
     events.findLast((event) => event.kind === kind && event.data.session === session)?.data;
-  const [built, anchored, report] = [
-    mine("build.finished"),
-    mine("anchor.scored"),
-    mine("comparison.reported"),
-  ];
+  const [built, anchored, report] = [mine("build.finished"), mine("anchor.scored"), mine(REPORTED)];
   const parent = word(started.parent);
   const fresh = built?.changed === true && isString(built.harness) ? built.harness : "";
-  const anchor = events.flatMap(({ kind, data }) => (kind === "anchor.drawn" ? strings(data.tasks) : []));
+  // The anchor is the log's, every draw of it: two rounds of one campaign are then read on the
+  // tasks both solved, and a task drawn after a round is one that round left unresolved.
+  const anchor = events.flatMap(({ kind, data }) => (kind === ANCHOR_DRAWN ? strings(data.tasks) : []));
+  const drawnThen = events
+    .slice(0, until)
+    .flatMap(({ kind, data }) => (kind === ANCHOR_DRAWN ? strings(data.tasks) : [])).length;
 
-  const solves = solvesOf(own, anchor);
+  const solves = solvesOf(own);
   const condition = solves.at(-1)?.under;
   if (condition === undefined) throw new Error(`${name} has started no solve yet: nothing to compare`);
   // Passes, fails by kind, non-results by kind and solves with no ending yet, each counted apart: a
@@ -180,7 +196,7 @@ export function roundOf(
     anchor,
     pairs: pairsOf(own, anchor, parent, fresh).pairs,
     said: [
-      `contract ${brief(condition.contract)} · source ${brief(condition.host)} · anchor of ${String(anchor.length)}: ${anchor.map(brief).join(" ")}`,
+      `contract ${brief(condition.contract)} · source ${brief(condition.host)} · anchor of ${String(anchor.length)}${drawnThen < anchor.length ? `, ${String(drawnThen)} of them drawn when it ran` : ""}: ${anchor.map(brief).join(" ")}`,
       `Builder ${builder}${built === undefined ? ", still building" : `, ended at ${word(built.ended)}`}`,
       `solver ${condition.model}, ${condition.effort}, ${condition.compaction}`,
       `harness ${brief(parent)} > ${fresh === "" ? "none kept" : `${brief(fresh)}, ${writer}`}`,
@@ -258,7 +274,7 @@ export function compared(a: Round, b: Round): string[] {
 
 /** `bun run runs compare`. */
 export function compareRuns(names: readonly string[]): void {
-  const logs = runs().filter((run) => run.end === "comparison.reported");
+  const logs = runs().filter((run) => run.end === REPORTED);
   const chosen = [...new Set(names.flatMap((name) => logs.filter((run) => run.name.includes(name))))];
   const rounds = chosen.flatMap((run) => {
     const events = logEvents(run.path);

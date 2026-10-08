@@ -42,10 +42,22 @@ const OPUS: Given = {
 };
 const SOL: Given = { ...OPUS, builder: "q/sol", solver: "q/sol", fresh: "h-s", old: "pppp", made: "ffff" };
 
+/** What a test adds to a round's log: events, and solves of a task under a harness. */
+interface Added {
+  readonly record: (kind: EventKind, data: JsonObject) => void;
+  readonly solve: (task: string, harness: string, ending: string) => void;
+}
+
 /** The log of one round given `given`: its tasks' gates, the anchor's draw, a Builder session with
  *  one practice solve, a task screened and scored, the anchor's solves and the round's report. A
- *  round after `before` in the same log proposes and screens nothing: its tasks are the log's. */
-function round(session: string, given: Given, before: readonly LogEvent[] = []): LogEvent[] {
+ *  round after `before` in the same log proposes and screens nothing: its tasks are the log's.
+ *  `screening` adds to the round's screening, and `later` to what follows its report. */
+function round(
+  session: string,
+  given: Given,
+  before: readonly LogEvent[] = [],
+  more: { readonly screening?: (to: Added) => void; readonly later?: (to: Added) => void } = {},
+): LogEvent[] {
   const events = [...before];
   const first = before.length === 0;
   const record = (kind: EventKind, data: JsonObject) => {
@@ -103,6 +115,7 @@ function round(session: string, given: Given, before: readonly LogEvent[] = []):
     solve("t1", given.parent, "f");
     record("task.state", { version: "t1", state: "admitted", session });
   }
+  more.screening?.({ record, solve });
   solve("t1", given.parent, "f");
   solve("t1", given.fresh, "p");
   for (const [index, task] of given.anchor.entries()) {
@@ -125,6 +138,7 @@ function round(session: string, given: Given, before: readonly LogEvent[] = []):
     scored: { wins: 1, losses: 0, ties: 0, p: 0.5 },
     versions: ["t1"],
   });
+  more.later?.({ record, solve });
   return events;
 }
 
@@ -147,6 +161,57 @@ describe("the runs comparison", () => {
       "scored fresh: 1 pass",
       "anchor old: 2 pass, 1 fail rejected, 1 non-result killed",
       "anchor fresh: 2 pass, 1 fail rejected, 1 unfinished",
+    ]);
+  });
+
+  it("counts a round's own solves alone when an Examiner session and a draw follow its report", () => {
+    const feasible = ({ record }: Added, version: string) => {
+      record("task.proposed", { version });
+      for (const gate of [1, 2, 3, 4]) {
+        record("task.gate", { version, gate, outcome: "passed", controls: "d" });
+      }
+    };
+    const log = round("b-1", OPUS, [], {
+      // u1 is screened once a harness and stays held: its solves did not all count.
+      screening: (to) => {
+        feasible(to, "u1");
+        to.solve("u1", OPUS.parent, "p");
+        to.solve("u1", OPUS.fresh, "n");
+      },
+      // After the step an Examiner session writes x1 and solves it under the harness the round
+      // left, inside the round's window, and `prepare.ts` draws x1 and u1 into the anchor.
+      later: (to) => {
+        to.record("exam.started", { session: "x-2", standsOn: OPUS.fresh });
+        feasible(to, "x1");
+        to.solve("x1", OPUS.fresh, "f");
+        to.solve("x1", OPUS.fresh, "p");
+        to.record("anchor.drawn", { tasks: ["x1", "u1"] });
+      },
+    });
+    expect(roundOf("b", log, "b-1", writes).said).toEqual([
+      "contract c1 · source host-1 · anchor of 6, 4 of them drawn when it ran: a1 a2 a3 a4 x1 u1",
+      "Builder p/opus, high (wall 1800s, turns 40, practice solves 1), ended at wall",
+      "solver p/opus, medium, off",
+      "harness h-parent > h-a, which declares an artifact-writer",
+      "anchor held: 0 won, 1 lost, 3 tied (informative 1, floor 1, solves a side 1)",
+      "reported step, for a target its log does not hold: scored 1 won, 0 lost, 0 tied on 1 task, p 0.5",
+      "practice h-draft: 1 pass",
+      // u1's two solves are the round's screening, though the task is the anchor's now, and x1's
+      // two are no solve of the round.
+      "screened old: 1 pass, 1 fail rejected",
+      "screened fresh: 1 non-result killed",
+      "scored old: 1 fail rejected",
+      "scored fresh: 1 pass",
+      "anchor old: 3 pass, 1 fail rejected",
+      "anchor fresh: 2 pass, 2 fail rejected",
+    ]);
+    // A second round of the same log, started from the harness the first left. Both are read on
+    // the log's anchor, and the two tasks drawn since, which neither solved, are unresolved.
+    const two = round("b-2", { ...OPUS, parent: OPUS.fresh, fresh: "h-b" }, log);
+    const said = compared(roundOf("r:b-1", two, "b-1", writes), roundOf("r:b-2", two, "b-2", writes));
+    expect(said.slice(-2)).toEqual([
+      "  fresh h-a against old h-a: replicas, which differ by solve noise",
+      "    anchor tasks: both fail 1, both pass 2, r:b-2 ahead 1, unresolved 2",
     ]);
   });
 

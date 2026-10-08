@@ -85,7 +85,7 @@ It is refused on a loaded host, beside another writer of the same log, for a mis
 under a `--session` the log already holds: an Examiner session's id names one session, and its
 tasks carry it.
 
-Its notes say two things worth reading before spend.
+Its notes say three things worth reading before spend.
 
 - **What it is handed.** A task an earlier session left past gate 3, with no controls written, goes
   to this session with its accepted answer. Its stronger solve is paid, so do not propose it again.
@@ -94,6 +94,11 @@ Its notes say two things worth reading before spend.
 - **Where its tasks can go.** Before `prepare.ts` has drawn the anchor, they stand a chance of it.
   After, they are a round's to screen. A round needs tasks outside the anchor to step, so either
   order can be the right one: say which was meant.
+- **Whether anyone reads a too-hard task.** Gate 2 closes a task as too hard on one refusal of its
+  stronger solve. With `--reviewer <model>` the Referee reads that refusal, one call a task, and
+  the session counts those it rules a check's fault. Without it the word is all that is kept. The
+  second session on exam-1 was launched with no reviewer and closed five of six candidates so, for
+  $34.54 of stronger solves. A launch with none now says so.
 
 A session ended by its provider reads `crashed` in `exam.finished`, with what the provider said. A
 solve the provider failed leaves its task `undecided`, which says nothing of the task and is not

@@ -173,7 +173,10 @@ export function preflight(sets: ReturnType<typeof setsOf>, asked: Asked) {
 
 /** The same for an Examiner session on a campaign whose log is `events`, or null where the
  *  campaign has none here. It needs no set: what it writes is what a round later screens. */
-export function examPreflight(events: readonly LogEvent[] | null, asked: Host) {
+export function examPreflight(
+  events: readonly LogEvent[] | null,
+  asked: Host & { /** Whether `--reviewer` names a model. */ readonly reviewer: boolean },
+) {
   const sets = setsOf(events ?? []);
   const waiting = carriable(events ?? []).waiting.map(({ task }) => task.taskId);
   const refusals = [
@@ -197,6 +200,13 @@ export function examPreflight(events: readonly LogEvent[] | null, asked: Host) {
     [
       events !== null && sets.anchor.length === 0,
       "no anchor is drawn: run tools/d2/prepare.ts after this session, and its tasks stand a chance of the anchor",
+    ],
+    // The plan's decision 51 asks for a reviewer on these sessions. x-2 was launched with none and
+    // closed five of its six candidates as too hard: five stronger solves, $34.54 billed, that no
+    // Referee read (exam-1, 2026-10-08).
+    [
+      events !== null && !asked.reviewer,
+      "no --reviewer: a task whose stronger solve a check refuses is closed as too hard, and no Referee reads whether the check was at fault",
     ],
   ]);
   return { refusals, notes };
@@ -247,6 +257,7 @@ export async function launch(args: readonly string[]): Promise<void> {
       level: ROUND_OPTIONS.level,
       "anchor-floor": ROUND_OPTIONS["anchor-floor"],
       examiner: { type: "string" },
+      reviewer: { type: "string" },
     },
   });
   const { name, session, target, "env-file": envFile } = values;
@@ -273,7 +284,7 @@ export async function launch(args: readonly string[]): Promise<void> {
     spent: (examining ? claimed : spent)(events ?? [], session),
   };
   const { refusals, notes } = examining
-    ? examPreflight(events, host)
+    ? examPreflight(events, { ...host, reviewer: isString(values.reviewer) })
     : preflight(setsOf(events ?? []), {
         ...host,
         target: isString(target) ? target : undefined,

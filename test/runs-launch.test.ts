@@ -123,8 +123,10 @@ describe("an Examiner session's preflight", () => {
     event("task.gate", { version: "v1", gate: 3, outcome: "passed" }),
   ];
 
+  const REVIEWED = { ...ASKED, reviewer: true };
+
   it("needs the campaign's log and no set in it, and says what the session is handed", () => {
-    expect(examPreflight(left, ASKED)).toEqual({
+    expect(examPreflight(left, REVIEWED)).toEqual({
       refusals: [],
       notes: [
         "x-1-001 passed gate 3 in an earlier session and is handed to this one for its controls",
@@ -140,16 +142,25 @@ describe("an Examiner session's preflight", () => {
       ),
       event("anchor.drawn", { tasks: ["a1"] }),
     ];
-    expect(examPreflight(drawn, ASKED).notes[1]).toContain("is not drawn into the anchor");
-    expect(examPreflight(null, ASKED)).toEqual({
+    expect(examPreflight(drawn, REVIEWED).notes[1]).toContain("is not drawn into the anchor");
+    expect(examPreflight(null, { ...ASKED, reviewer: false })).toEqual({
       refusals: [expect.stringContaining("the campaign has no log in this worktree")],
       notes: [],
     });
+    // With no reviewer a too-hard word is all that is kept of a refused stronger solve.
+    expect(examPreflight(left, { ...ASKED, reviewer: false }).notes.at(-1)).toContain(
+      "no --reviewer: a task whose stronger solve a check refuses is closed as too hard",
+    );
   });
 
   it("refuses a session id the log holds, a loaded host and a second writer, as a round's does", () => {
     expect(claimed(left, "x-2")).toBeNull();
-    const again = examPreflight(left, { ...ASKED, spent: claimed(left, "x-1"), load: 14.2, running: [41] });
+    const again = examPreflight(left, {
+      ...REVIEWED,
+      spent: claimed(left, "x-1"),
+      load: 14.2,
+      running: [41],
+    });
     expect(again.refusals).toEqual([
       "this campaign's log is already being written here, by pid 41",
       expect.stringContaining("load is 14.2 on 12 cores"),

@@ -117,7 +117,15 @@ const SAID: Partial<
   "exam.word": (data) => `· ${word(data.taskId)} is told "${word(data.word)}"`,
   "anchor.scored": (data) =>
     `◆ anchor ${word(data.reading)}: ${word(data.wins)} won, ${word(data.losses)} lost, ${word(data.ties)} tied`,
-  "comparison.reported": (data) => `◆ reported ${word(data.reading)}`,
+  // A report that scored nothing, or whose reading does not stand without its flagged tasks, is one to
+  // look at before it is believed (`src/builder/round.ts`).
+  "comparison.reported": (data) => {
+    const second = asRecord(data.unflagged)?.reading;
+    if (second !== undefined && second !== data.reading) {
+      return `⚠ reported ${word(data.reading)}, and ${word(second)} without its flagged tasks`;
+    }
+    return `${data.reading === "not-scored" ? "⚠" : "◆"} reported ${word(data.reading)}`;
+  },
 };
 
 /** Where a run stands: reported, closed, inside a Builder or Examiner session, or solving. */

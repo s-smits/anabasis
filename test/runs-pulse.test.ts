@@ -66,6 +66,21 @@ describe("the runs pulse", () => {
     const done = pulse(round, reported, false, { lines: 5, open: true, quiet: false }, START + 6 * 60_000);
     expect(done.status).toStartWith("r1  reported held");
     expect(done.said).toEqual(["◆ reported held"]);
+    // A reading that does not stand without its flagged tasks, and a round that scored nothing, are
+    // each something to look at.
+    const says = (data: JsonObject) =>
+      pulse(
+        round,
+        [...built, event(5, "comparison.reported", data)],
+        false,
+        { ...done.seen, lines: 5 },
+        START,
+      ).said;
+    expect(says({ reading: "step", unflagged: { reading: "no-step" } })).toEqual([
+      "⚠ reported step, and no-step without its flagged tasks",
+    ]);
+    expect(says({ reading: "step", unflagged: { reading: "step" } })).toEqual(["◆ reported step"]);
+    expect(says({ reading: "not-scored", unflagged: null })).toEqual(["⚠ reported not-scored"]);
   });
 
   it("folds the same line twice into one, as an anchor's two harnesses start a task", () => {

@@ -116,7 +116,8 @@ ran it. Beside the campaign's log:
 
 Starting proves the process stayed up for eight seconds. It proves no model turn and no outcome.
 Watch with `bun run runs pulse <name>`: its first `build.started` is the first sign of model work,
-and "the process is gone before comparison.reported" is a round to read in its `.err`.
+and "the process is gone before comparison.reported" is a round to read in its `.err`. For an
+Examiner session the same line names `exam.finished`.
 
 `bun run runs zip` carries the receipts and outputs at every level.
 

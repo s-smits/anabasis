@@ -65,7 +65,7 @@ import { CORRECTNESS_MODEL_DIR } from "../meta/bundle-layout.ts";
 import { cpSync, mkdirSync, rmSync, writeFileSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
-import { basename, join, resolve } from "../meta/path.ts";
+import { basename, dirname, join, resolve } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import type { Diagnosis } from "../review/diagnoser.ts";
 import type { RefereeFinding } from "../review/referee.ts";
@@ -378,11 +378,17 @@ export async function session(
   };
 }
 
+/** The directories of session `id` of the campaign whose log is `log`, named for both. Named for
+ *  the id alone, a session stopped on one campaign refused its id to every campaign on the host:
+ *  its root stayed mounted, and the claim on a root is how a second session under one id is refused. */
+export const sessionDirs = (log: string, id: string): SolveDirs =>
+  solveDirs(`build-${basename(dirname(log))}-${id}`);
+
 /** One session under the solver's command wall and disk cap: mount, run, tear down. The Builder's
  *  home is the capped root's, as a solve's is, so its edits last between commands and are closed to
  *  every other solve. */
 export async function build(request: BuildRequest): Promise<Built> {
-  const dirs = solveDirs(`build-${request.id}`);
+  const dirs = sessionDirs(request.log, request.id);
   // Before the try: a claim refused because another round's session holds this id cleans up nothing.
   const release = await mountDiskCap({ root: dirs.root, bytes: request.limits.diskBytes });
   try {

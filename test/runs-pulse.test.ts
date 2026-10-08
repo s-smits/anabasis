@@ -104,8 +104,12 @@ describe("the runs pulse", () => {
       { pid: 3, cwd: "/wt", args: ["bun", "tools/d2/round.ts", "--name", "r10"] },
       { pid: 4, cwd: "/other", args: ["bun", "tools/d2/round.ts", "--name", "r1"] },
       { pid: 5, cwd: "/wt", args: ["bun", "tools/m0/live-solve.ts", "--task", "r1", "--cycle", "c01"] },
+      // A rehearsal is a round on a seed. The script runner that started it holds no log open.
+      { pid: 6, cwd: "/wt", args: ["bun", "tools/runs/cli.ts", "rehearse", "--name", "r1"] },
+      { pid: 7, cwd: "/wt", args: ["bun", "run", "runs", "rehearse", "--name", "r1"] },
+      { pid: 8, cwd: "/wt", args: ["bun", "tools/runs/cli.ts", "pulse", "--name", "r1"] },
     ];
-    expect(writers(round, running).map(({ pid }) => pid)).toEqual([1, 2]);
+    expect(writers(round, running).map(({ pid }) => pid)).toEqual([1, 2, 6]);
     const solve: Run = { ...round, name: "r1-c01-opus-1234", end: "solve.finished" };
     expect(writers(solve, running).map(({ pid }) => pid)).toEqual([5]);
   });

@@ -76,6 +76,11 @@ const GIB = 2 ** 30;
 
 const runsAs = (args: readonly string[], tools: readonly string[]) =>
   args.some((arg) => tools.some((tool) => arg.endsWith(tool)));
+/** Whether a process writes a campaign's log: a round, an Examiner session, or a rehearsal
+ *  (`rehearse.ts`), which is a round on a seed run as a verb of this CLI. A stop releases what a
+ *  run that is not being written left mounted, so a writer missed here would lose its roots. */
+const campaigns = (args: readonly string[]) =>
+  runsAs(args, CAMPAIGN) || (runsAs(args, ["tools/runs/cli.ts"]) && args.includes("rehearse"));
 
 const minutes = (ms: number) => `${String(Math.round(ms / 60_000))}m`;
 const dollars = (value: number) => `$${value.toFixed(2)}`;
@@ -261,7 +266,7 @@ export function processes(): {
   const table = runTextSyncOrThrow(["ps", "-axo", "pid=,args="]).split("\n");
   const found = table.flatMap((row) => {
     const [pid = "", ...args] = row.trim().split(/\s+/);
-    return runsAs(args, [...CAMPAIGN, LIVE]) ? [{ pid, args }] : [];
+    return campaigns(args) || runsAs(args, [LIVE]) ? [{ pid, args }] : [];
   });
   if (found.length === 0) return [];
   // lsof exits 1 when a process left between the two reads, so its answer is read as given.
@@ -280,7 +285,7 @@ export function writers(run: Run, running: ReturnType<typeof processes>) {
   const flag = (args: readonly string[], name: string) => args[args.indexOf(name) + 1];
   const writes = (args: readonly string[]) =>
     run.end === "comparison.reported"
-      ? runsAs(args, CAMPAIGN) && flag(args, "--name") === run.name
+      ? campaigns(args) && flag(args, "--name") === run.name
       : runsAs(args, [LIVE]) &&
         run.name.startsWith(`${String(flag(args, "--task"))}-${String(flag(args, "--cycle"))}-`);
   return running.filter(({ cwd, args }) => cwd === run.tree && writes(args));

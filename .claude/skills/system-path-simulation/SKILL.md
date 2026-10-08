@@ -75,7 +75,8 @@ and why the next was not needed.
   the staged check program, its verdict;
 - screening, admission, the interleaved scoring, the sign test, the anchor's test, the report and
   the three-session rule;
-- going on from the log after a kill.
+- going on from the log after a kill or a `bun run runs stop`, which finds a rehearsal as it finds
+  a round and releases what its solves held.
 
 Skipped, and so unproven by any rehearsal:
 
@@ -108,7 +109,8 @@ a check that cannot run to dispute a task.
 
 ## What the first rehearsals settled
 
-About a dozen rounds and one kill on 2026-10-08, under five minutes of host time and no model call.
+About fifteen rounds run to their report, one kill and five stops on 2026-10-08, under ten minutes
+of host time and no model call.
 
 What a round of this size can read:
 
@@ -131,11 +133,16 @@ What the product did:
 
 - **A hard kill is survived.** `kill -9` 13 seconds into a round left 8 solves started and 4
   finished. Run again with the same `--session`, it went on from its log and reported as scripted.
-- **A kill or a stop leaves disk images attached.** The four solves in flight at the kill stayed
-  mounted, as did the Builder roots of two sessions stopped hours earlier with `bun run runs stop`.
-  A Builder's root is named for its session id alone, so another campaign on the host that asks for
-  that id is refused with a bare `EEXIST`. Until that is mended, give a rehearsal a session id no
-  other campaign on the host has used, and read `mount | grep ana-built-bash` after a kill.
+- **A kill or a stop left disk images attached.** The four solves in flight at the kill stayed
+  mounted, as did the Builder roots of two sessions stopped hours earlier with `bun run runs stop`,
+  a third of a gigabyte each. A Builder's root was named for its session id alone, so another
+  campaign on the host that asked for that id was refused with a bare `EEXIST`. Both are mended:
+  `bun run runs stop <name> --yes` releases what a run's unfinished solves and sessions left,
+  whenever it was stopped or killed, and a Builder's root is named for its campaign too.
+- **The mend failed its first rehearsal.** A stop two seconds into four solves gave up at its first
+  root: three had a folder and an image and no volume, and a detach of that exits 1. A release now
+  passes over a root with nothing mounted. Four more stops, from a third of a second in to after the
+  solves ended, left nothing, and a stopped round went on under its session and read `step`.
 - **The pulse read a seed as a paid run**, with its source's dollars and its source's solves in
   flight. It now says `(a seed)`.
 - **A reader caught a planted contradiction.** Two rehearsed rounds made one harness pass the anchor
@@ -149,8 +156,6 @@ What the product did:
   log. Nothing does it, and an Examiner session is rehearsed only live.
 - **A live Builder over scripted solves**, which would prove the Builder's seat for a dollar or two.
 - **Practice solves and reviewers in a rehearsal.**
-- **A rehearsal the pulse knows is running.** It is no writer the pulse looks for, so for its half
-  minute it reads closed, and `bun run runs stop` does not find it.
 - **A rehearsal in the test suite.** The tests hold the script and the seed. The joins were walked
   on the truss pack by hand, and no fixture pack walks them on every gate.
 - **Linux.** Every rehearsal so far ran on the Darwin wall and its disk images.

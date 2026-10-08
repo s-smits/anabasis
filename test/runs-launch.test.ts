@@ -1,9 +1,9 @@
 // A launch is refused while its round could report nothing or would confound its own times, and a
 // stop ends the run's own process and what it started, and no sibling.
 import { describe, expect, it } from "bun:test";
-import { existsSync, mkdtempSync, rmSync } from "../src/meta/filesystem.ts";
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
-import { join } from "../src/meta/path.ts";
+import { basename, dirname, join } from "../src/meta/path.ts";
 import {
   processGroupExists,
   runTextSyncOrThrow,
@@ -11,8 +11,9 @@ import {
 } from "../src/meta/subprocess.ts";
 import { spent } from "../src/builder/round.ts";
 import { claimed } from "../src/examiner/session.ts";
-import type { LogEvent } from "../src/kernel/log.ts";
-import { type Asked, examPreflight, family, preflight, start } from "../tools/runs/launch.ts";
+import { append, type LogEvent } from "../src/kernel/log.ts";
+import { type Asked, examPreflight, family, leftOpen, preflight, start } from "../tools/runs/launch.ts";
+import { seedCampaign } from "../tools/runs/seed.ts";
 
 const SETS = {
   feasible: ["a1", "a2", "p1", "c1"],
@@ -147,6 +148,34 @@ describe("a stop", () => {
     );
     expect(family(table, 10)).toEqual([10, 11, 13, 12]);
     expect(family(table, 12)).toEqual([12]);
+  });
+
+  // What a stop releases. A Builder's root was once named for its session id alone, and one left
+  // mounted refused that id to every campaign on the host with a bare EEXIST (2026-10-08).
+  it("names what a run's unfinished solves and Builder session left, and nothing of a seed's source", () => {
+    const root = mkdtempSync(join(tmpdir(), "ana-runs-launch-test-"));
+    try {
+      const path = join(root, "r1", "log.jsonl");
+      mkdirSync(dirname(path));
+      append(path, "solve.started", { solve: "s-1" });
+      append(path, "solve.finished", { solve: "s-1" });
+      append(path, "solve.started", { solve: "s-2" });
+      append(path, "build.started", { session: "b-1" });
+      append(path, "build.finished", { session: "b-1" });
+      append(path, "build.started", { session: "b-2" });
+      const left = (run: Parameters<typeof leftOpen>[0]) => leftOpen(run).map((dirs) => basename(dirs.root));
+      expect(left({ path })).toEqual(["solve-s-2", "solve-build-r1-b-2"]);
+      // A seed of that run where it stands. The solve and the session the run has open are still
+      // the run's, and may be live: a stop of the seed names only what the seed started.
+      const copy = join(root, "sim-r1", "log.jsonl");
+      seedCampaign(dirname(path), dirname(copy), {});
+      expect(left({ path: copy, seed: true })).toEqual([]);
+      append(copy, "solve.started", { solve: "s-3" });
+      append(copy, "build.started", { session: "b-2" });
+      expect(left({ path: copy, seed: true })).toEqual(["solve-s-3", "solve-build-sim-r1-b-2"]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it("ends a started process and its children, which ran in a group of their own", async () => {

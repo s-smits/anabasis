@@ -84,8 +84,12 @@ bun run runs rehearse ... --session r-2 --parent <the report's fresh digest> --a
 
 Start the rehearsal in the background, `kill -9` it part-way, and run the same command again. A kill
 after `build.finished` goes on from the log. A kill inside the Builder session spends the session's
-id, as a stop does (launch-run). Afterwards read `mount | grep ana-built-bash`: a root still listed
-there for a solve of the seed is one the kill left.
+id, as a stop does (launch-run).
+
+A kill leaves the capped root of each solve it fell in mounted. `bun run runs stop sim-<what>` names
+them, and with `--yes` releases them. The same command while the rehearsal runs is the stop a paid
+round gets: it ends the process and what it started, then releases. A seed's stop reads only what
+the seed wrote after its cut, so what its source still has open is never touched.
 
 ## Plant a condition for a reader
 

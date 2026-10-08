@@ -19,7 +19,7 @@
  */
 import { read } from "#src/kernel/log.ts";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
-import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
+import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { asRecord } from "#src/meta/json-shape.ts";
 import { join, resolve } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
@@ -55,6 +55,10 @@ export function keptLines(lines: readonly string[], cut: Cut): number {
   if (start === -1) throw new Error(`the log holds no session ${cut.before}`);
   return start;
 }
+
+/** How many of the first events of the seed in `folder` its source wrote: where its log was cut. */
+export const seedCut = (folder: string): number =>
+  parseJsonAs<{ events: number }>(readFileSync(join(folder, SEED_FILE), "utf8")).events;
 
 /** Copy the campaign in `from` to the folder `to`, its log cut, and say what the seed holds. */
 export function seedCampaign(from: string, to: string, cut: Cut) {

@@ -9,7 +9,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { describe, expect, it } from "bun:test";
 import { runtimeProcess } from "../src/meta/process.ts";
-import { mountDiskCap } from "../src/verify/disk-cap.ts";
+import { mountDiskCap, releaseDiskCap } from "../src/verify/disk-cap.ts";
 import { commandIsolationPolicy, stageCommandIsolation } from "../src/verify/solve-command-isolation.ts";
 import { solveIsolationPolicy } from "../src/verify/solve-sandbox.ts";
 
@@ -45,6 +45,29 @@ describe("the disk cap", () => {
         await release();
       }
       expect(spawnSync("/sbin/mount", []).stdout).not.toContain(root);
+      expect(existsSync(root)).toBe(false);
+      expect(existsSync(`${root}.sparseimage`)).toBe(false);
+      rmSync(parent, { recursive: true, force: true });
+    },
+  );
+
+  // A solve that is killed never runs its own release. A stop of its run does, and has the root's
+  // name from the log and nothing else: four killed solves and two stopped Builder sessions stayed
+  // mounted on one host until then (2026-10-08).
+  it.skipIf(runtimeProcess.platform !== "darwin")(
+    "is released from its root's name alone, mounted or already detached, and the root can be claimed again",
+    async () => {
+      const parent = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-disk-cap-")));
+      const root = join(parent, "solve");
+      await mountDiskCap({ root, bytes: CAP_BYTES });
+      await releaseDiskCap(root);
+      expect(spawnSync("/sbin/mount", []).stdout).not.toContain(root);
+      expect(existsSync(root)).toBe(false);
+      expect(existsSync(`${root}.sparseimage`)).toBe(false);
+      // A solve stopped inside its own release: the volume gone, the folder and the image left.
+      await mountDiskCap({ root, bytes: CAP_BYTES });
+      expect(spawnSync("/usr/bin/hdiutil", ["detach", root, "-quiet"]).status).toBe(0);
+      await releaseDiskCap(root);
       expect(existsSync(root)).toBe(false);
       expect(existsSync(`${root}.sparseimage`)).toBe(false);
       rmSync(parent, { recursive: true, force: true });

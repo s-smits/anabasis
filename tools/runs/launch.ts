@@ -35,8 +35,13 @@
  * is launched again with the same `--session`, unless the stop fell inside its Builder session: that
  * session never finished, the round refuses a second one under its id, and so does `launch`. An
  * Examiner session's id is spent wherever the stop fell, and the next is handed what it left.
+ *
+ * A stop also releases what the run held on the host: the capped root of each solve and Builder
+ * session its log started and never finished, which only the ended process would have let go. A
+ * named run that is not running is released the same way, so a run that was killed, or stopped
+ * before this was done, is cleaned up by stopping it again.
  */
-import { existsSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { isString } from "#src/meta/json-shape.ts";
@@ -45,9 +50,13 @@ import { dirname, join } from "#src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { runTextSyncOrThrow, terminateAndReapProcessGroupId } from "#src/meta/subprocess.ts";
 import { spent } from "#src/builder/round.ts";
+import { sessionDirs } from "#src/builder/session.ts";
 import { claimed } from "#src/examiner/session.ts";
+import { type SolveDirs, solveDirs } from "#src/solve/command.ts";
+import { releaseDiskCap } from "#src/verify/disk-cap.ts";
 import { carriable, setsOf } from "../d2/campaign.ts";
-import { EXAMINE, logEvents, processes, ROUND, runs, standing, writers } from "./pulse.ts";
+import { EXAMINE, logEvents, processes, ROUND, type Run, runs, standing, writers } from "./pulse.ts";
+import { seedCut } from "./seed.ts";
 
 const START_MS = 8000;
 /** The launcher's own flags; every other one is the round's. */
@@ -308,6 +317,28 @@ export function family(table: string, pid: number): number[] {
   return found;
 }
 
+/**
+ * The directories of the solves and Builder sessions a run started and never finished. A run that
+ * was stopped or killed leaves the capped root of each mounted: only its own process would have let
+ * it go. A seed's log begins as its source's, and what that run has open is the source's to hold.
+ */
+export function leftOpen(run: Pick<Run, "path" | "seed">): SolveDirs[] {
+  const events = logEvents(run.path).slice(run.seed === true ? seedCut(dirname(run.path)) : 0);
+  const open = (role: "solve" | "build", key: "solve" | "session") => {
+    const ended = new Set(
+      events.flatMap(({ kind, data }) => (kind === `${role}.finished` ? [data[key]] : [])),
+    );
+    return events.flatMap(({ kind, data }) => {
+      const id = data[key];
+      return kind === `${role}.started` && isString(id) && !ended.has(id) ? [id] : [];
+    });
+  };
+  return [
+    ...open("solve", "solve").map((id) => solveDirs(id)),
+    ...open("build", "session").map((id) => sessionDirs(run.path, id)),
+  ];
+}
+
 /** `bun run runs stop`. */
 export async function stop(args: readonly string[]): Promise<void> {
   const { values, positionals: names } = parseArgs({
@@ -318,11 +349,10 @@ export async function stop(args: readonly string[]): Promise<void> {
   if (names.length === 0) throw new Error("usage: bun run runs stop <name> ... [--yes]");
   const running = processes();
   const table = runTextSyncOrThrow(["ps", "-axo", "pid=,ppid="]);
-  const found = runs()
-    .filter((run) => names.includes(run.name))
-    .flatMap((run) =>
-      writers(run, running).map(({ pid, args: ran }) => ({ run, ran, pids: family(table, pid) })),
-    );
+  const named = runs().filter((run) => names.includes(run.name));
+  const found = named.flatMap((run) =>
+    writers(run, running).map(({ pid, args: ran }) => ({ run, ran, pids: family(table, pid) })),
+  );
   if (found.length === 0) console.log("none of these is running");
   for (const { run, ran, pids } of found) {
     console.log(
@@ -346,5 +376,24 @@ export async function stop(args: readonly string[]): Promise<void> {
       `  stopped, its log as it was. ${cut ?? "A round goes on from it when launched again with the same --session"}`,
     );
   }
-  if (found.length > 0 && !values.yes) console.log("nothing is ended without --yes");
+  // What a run was stopped or killed inside is still there, whenever that was: a mounted volume, or
+  // the folder and image of one. A run that is still being written holds its roots in use, and is
+  // left alone.
+  const still = processes();
+  let held = 0;
+  for (const run of named.filter((each) => writers(each, still).length === 0)) {
+    const left = leftOpen(run).filter(({ root }) => existsSync(root));
+    if (left.length === 0) continue;
+    held += left.length;
+    console.log(
+      `${run.name} in ${run.tree}: ${String(left.length)} capped root(s) its solves and sessions left behind`,
+    );
+    if (!values.yes) continue;
+    for (const { root, host } of left) {
+      await releaseDiskCap(root);
+      rmSync(host, { recursive: true, force: true });
+    }
+    console.log("  released");
+  }
+  if (found.length + held > 0 && !values.yes) console.log("nothing is ended or released without --yes");
 }

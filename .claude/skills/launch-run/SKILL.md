@@ -117,6 +117,11 @@ and ends nothing. With it, that process is ended first and then each one it star
 matched whole, and no process group is signalled unless one of those processes leads it: a round
 started by hand can share its group with a sibling round.
 
+A stop also releases what the run held on the host: the capped root, a disk image on macOS, of each
+solve and Builder session its log started and never finished. Only the ended process would have let
+those go. A named run that is not running is released the same way, so a run that was killed or that
+crashed is cleaned up by stopping it. Without `--yes` the roots are counted and left.
+
 A stop is abrupt: the round writes no ending, and its log is as it was. What the stop cost depends
 on where it fell, and the command says which.
 

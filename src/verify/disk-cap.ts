@@ -21,7 +21,7 @@
  * remaining paths a solve's commands can fill. The worker itself, host code under an allow-default
  * wall, writes outside the root as well.
  */
-import { mkdirSync, rmdirSync } from "../meta/filesystem.ts";
+import { mkdirSync, rmdirSync, statSync } from "../meta/filesystem.ts";
 import { dirname, resolve } from "../meta/path.ts";
 import { runtimeProcess } from "../meta/process.ts";
 
@@ -31,7 +31,7 @@ export interface DiskCap {
   readonly bytes: number;
 }
 
-/** Undo `mountDiskCap`: detach the volume, move its image away and remove the empty mountpoint. */
+/** Undo `mountDiskCap`: `releaseDiskCap` on its root. */
 export type ReleaseDiskCap = () => Promise<void>;
 
 /** hdiutil sizes in 512-byte sectors; its `-size 1b` means a sector too, not a byte. */
@@ -63,8 +63,7 @@ export async function mountDiskCap(cap: DiskCap): Promise<ReleaseDiskCap> {
   mkdirSync(dirname(root), { recursive: true });
   // Not recursive: a root another solve or Builder session already holds is refused, not shared.
   mkdirSync(root, { mode: 0o700 });
-  const removeRoot = (): void => rmdirSync(root);
-  if (runtimeProcess.platform !== "darwin") return async () => removeRoot();
+  if (runtimeProcess.platform !== "darwin") return () => releaseDiskCap(root);
   // Beside the root rather than inside it, so the image is not part of what it caps.
   const image = `${root}.sparseimage`;
   const sectors = String(Math.ceil(cap.bytes / SECTOR_BYTES));
@@ -97,15 +96,34 @@ export async function mountDiskCap(cap: DiskCap): Promise<ReleaseDiskCap> {
     await trash(image);
     throw new Error(attached);
   }
-  return async () => {
-    // A process the worker left behind can hold a file open on the volume, which refuses a plain
-    // detach with "resource busy"; the forced one closes those files under it.
-    const detached = await hdiutil(["detach", root, "-quiet"]);
-    if (detached !== null) {
-      const forced = await hdiutil(["detach", root, "-force", "-quiet"]);
-      if (forced !== null) throw new Error(forced);
+  return () => releaseDiskCap(root);
+}
+
+/**
+ * Let go of a root a cap was mounted at: detach its volume, move the image away and remove the
+ * empty mountpoint. The solve or session that mounted it does this when it ends. One that was
+ * stopped or killed never does, and its root stays attached until a stop of its run releases it
+ * (`tools/runs/launch.ts`): six such roots were mounted on one host on 2026-10-08, two of them a
+ * Builder's with a third of a gigabyte each.
+ *
+ * A root with no volume at it is released too. A solve stopped inside its mount or inside its own
+ * release leaves the folder and the image and nothing attached, and a detach of that exits 1 with
+ * "No such file or directory". Three of four solves stopped two seconds after they started were
+ * left so, and the stop gave up at the first (2026-10-08).
+ */
+export async function releaseDiskCap(root: string): Promise<void> {
+  if (runtimeProcess.platform === "darwin") {
+    // A mountpoint is on another device than its parent.
+    if (statSync(root).dev !== statSync(dirname(root)).dev) {
+      // A process the worker left behind can hold a file open on the volume, which refuses a plain
+      // detach with "resource busy"; the forced one closes those files under it.
+      const detached = await hdiutil(["detach", root, "-quiet"]);
+      if (detached !== null) {
+        const forced = await hdiutil(["detach", root, "-force", "-quiet"]);
+        if (forced !== null) throw new Error(forced);
+      }
     }
-    await trash(image);
-    removeRoot();
-  };
+    await trash(`${root}.sparseimage`);
+  }
+  rmdirSync(root);
 }

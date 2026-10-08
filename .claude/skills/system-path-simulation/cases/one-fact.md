@@ -13,7 +13,7 @@ before building anything.
 | Under what did two rounds run, and do they compare? | `bun run runs compare <name> ...` | nothing |
 | Does the checker stand on its controls? | `bun tools/c/accept.ts <pack flags> --name <campaign>` | its reading, as `checker.read` |
 | What would a solver of this task be shown? | `bun tools/m0/live-solve.ts <pack flags> --task <id>`, without `--live` | nothing |
-| What does the host still hold of a run? | `mount \| grep ana-built-bash`, `pgrep -fl tools/d2/round.ts` | nothing |
+| What does the host still hold of a run? | `bun run runs stop <name>` without `--yes`, which names its process and the roots it left; `mount \| grep ana-built-bash` for every run's | nothing |
 
 Three commands look like readers and are not. `tools/d2/prepare.ts` draws the anchor and releases
 the practice tasks, once and for good. `tools/c/accept.ts` appends what it read, and with `--freeze`

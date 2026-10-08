@@ -19,8 +19,9 @@
  *   the caller's care.
  * - The Builder's shell is the solver's command wall (`build`), so the repository, the operator's
  *   home and other solves' scratch are closed by the operating system.
- * - The installed programs are the parent's, read-only: `harness/.toolchain` is a link to the
- *   parent's tool tree, and a harness in which it is anything else is not frozen (`tools.ts`).
+ * - The installed programs are the session's own copy of the parent's, and nothing it installs
+ *   reaches the parent. A harness in which a link or a script names the home is not frozen
+ *   (`tools.ts`), since it runs from elsewhere.
  * - What the Builder reads of a solve is the paged trace (`src/review/trace.ts`) and an ending's
  *   outcome and kind. A verdict's checks and the Referee's reasons never reach a tool result.
  * - The log records what the session saw: `build.started` lists the practice task versions, and
@@ -54,7 +55,7 @@ import { append, read } from "../kernel/log.ts";
 import { dollars, freezePrices, priceKey, tokensOf } from "../kernel/meter.ts";
 import type { Ending } from "../kernel/solve.ts";
 import { taskStates } from "../kernel/task.ts";
-import { cpSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "../meta/filesystem.ts";
+import { cpSync, mkdirSync, rmSync, writeFileSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
 import { join, resolve } from "../meta/path.ts";
@@ -197,16 +198,15 @@ export async function session(
       `task ${exam.task.taskId} is ${states.get(exam.version) ?? "not proposed"}, and a Builder practises on released tasks only`,
     );
   }
-  // The parent's files are copied and its installed programs linked: copied, a program would run
-  // from another path than the one it was installed at, and each freeze would copy the tree again.
+  // A kept state's tool tree is a link to the copy kept of it, so the tree is copied from where it is.
   const toolTree = parentToolTree(request.parent);
+  const copy = { recursive: true, verbatimSymlinks: true } as const;
   const ownTree = resolve(request.parent, ".toolchain");
   cpSync(request.parent, join(dirs.home, "harness"), {
-    recursive: true,
-    verbatimSymlinks: true,
+    ...copy,
     filter: (source) => resolve(source) !== ownTree,
   });
-  if (toolTree !== null) symlinkSync(toolTree, join(dirs.home, "harness", ".toolchain"));
+  if (toolTree !== null) cpSync(toolTree, join(dirs.home, "harness", ".toolchain"), copy);
   mkdirSync(join(dirs.home, "practice"), { recursive: true });
   for (const { task } of request.tasks) {
     writeFileSync(
@@ -227,7 +227,7 @@ export async function session(
     request,
     home: dirs.home,
     parent: parent.digest,
-    toolTree,
+    tree: null,
     spent: 0,
     disputed: new Set(),
     faulty: new Set(),
@@ -372,7 +372,7 @@ export async function build(request: BuildRequest): Promise<Built> {
     const wall: CommandWall = {
       base,
       dirs,
-      toolTree: parentToolTree(request.parent),
+      toolTree: join(dirs.home, "harness", ".toolchain"),
       limits: request.limits,
       cpu: { seconds: 0, unmeasured: 0 },
     };

@@ -25,7 +25,6 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
-  readlinkSync,
   realpathSync,
   rmSync,
   symlinkSync,
@@ -411,16 +410,22 @@ describe("a Builder session", () => {
     expect(readdirSync(s.request.states)).toEqual([]);
   });
 
-  it("is given the parent's installed programs as a link, and freezes no harness that replaced them", async () => {
+  it("installs into its own copy of the parent's programs, and freezes no script or link naming its home", async () => {
+    const bin = (s: { home: string }) => join(s.home, "harness", ".toolchain", "bin");
     const s = await setup(
       [
         call("practice", { tasks: ["t-1"] }),
         () => {
-          // The Builder swaps the link for a tree of its own.
-          const link = join(s.home, "harness", ".toolchain");
-          rmSync(link);
-          mkdirSync(join(link, "bin"), { recursive: true });
-          writeFileSync(join(link, "bin", "hello"), "#!/bin/sh\necho other\n");
+          // An install as one writes itself by default: a launcher and a link by the home's path.
+          writeFileSync(join(bin(s), "greet"), `#!/bin/sh\nexec ${bin(s)}/hello\n`);
+          chmodSync(join(bin(s), "greet"), 0o755);
+          symlinkSync(join(bin(s), "hello"), join(bin(s), "linked"));
+          return call("practice", { tasks: ["t-1"] });
+        },
+        () => {
+          writeFileSync(join(bin(s), "greet"), '#!/bin/sh\nexec "$(dirname "$0")/hello"\n');
+          rmSync(join(bin(s), "linked"));
+          symlinkSync("hello", join(bin(s), "linked"));
           return call("practice", { tasks: ["t-1"] });
         },
         finish,
@@ -428,18 +433,23 @@ describe("a Builder session", () => {
       [],
       true,
     );
-    const tree = realpathSync(join(s.parent, ".toolchain"));
     const built = await session(s.request, s, s.walled);
-    // An untouched copy is the parent, by digest, and its state's programs are the parent's own.
-    expect(s.ran).toHaveLength(1);
+    // An untouched copy is the parent, by digest.
     expect(s.ran[0]?.digest).toBe(s.digest);
-    expect(readlinkSync(join(s.ran[0]?.dir ?? "", ".toolchain"))).toBe(tree);
-    expect((await openHarness(s.ran[0]?.dir ?? "")).digest).toBe(s.digest);
     expect(JSON.stringify(s.of("build.call")[1])).toContain(
-      "installed programs cannot be changed in this session",
+      "harness/.toolchain/bin/greet, harness/.toolchain/bin/linked name your home",
     );
-    expect(built).toMatchObject({ harness: null, changed: false });
-    expect(existsSync(join(tree, "bin", "hello"))).toBe(true);
+    // Written to run from where it is, what it installed runs from the state the solve was given.
+    expect(s.ran).toHaveLength(2);
+    expect(s.ran[1]?.digest).not.toBe(s.digest);
+    const greet = Bun.spawnSync([join(s.ran[1]?.dir ?? "", ".toolchain", "bin", "greet")]);
+    expect(greet.stdout.toString()).toBe("hello-from-the-tool-tree\n");
+    expect(built).toMatchObject({ harness: s.ran[1]?.digest, changed: true });
+    expect(existsSync(join(s.parent, ".toolchain", "bin", "greet"))).toBe(false);
+    // Four freezes kept two copies of the tree: the refused one is gone, and an unchanged tree is
+    // not copied again.
+    const trees = readdirSync(s.request.states).filter((name) => name.startsWith("tree-"));
+    expect(trees).toHaveLength(2);
   });
 
   it("ends when a practice solve could not be run, and does not show the Builder why", async () => {
@@ -601,7 +611,6 @@ describe("what a Builder is shown of a solve", () => {
 describe.skipIf(runtimeProcess.platform !== "darwin")("a Builder session under the command wall", () => {
   it("writes its harness through the wall, checks it, and cannot read the repository", async () => {
     // The scratch stands for the repository: the wall closes it, and the log and a canary sit in it.
-    // The parent sits in it too, so its tool tree is reached only by the wall's own allow.
     let canary = "";
     const s = await setup(
       [
@@ -610,10 +619,18 @@ describe.skipIf(runtimeProcess.platform !== "darwin")("a Builder session under t
         call("write_file", { path: "agent", content: "x" }),
         edit,
         call("bash", { command: 'cat "$HOME/harness/agent/BUILT_AGENTS.md"; ls "$HOME/practice"' }),
-        // The parent's installed program runs by name, and its tree takes no write.
+        // The parent's installed program runs by name, and so does one the Builder installs beside it.
         call("bash", {
-          command: 'hello; echo more >> "$HOME/harness/.toolchain/bin/hello"; echo "write:$?"',
+          command: [
+            'cd "$HOME/harness/.toolchain/bin"',
+            String.raw`printf '#!/bin/sh\necho installed-greeting\n' > real`,
+            String.raw`printf '#!/bin/sh\nexec "$(dirname "$0")/real"\n' > greet`,
+            String.raw`printf "#!/bin/sh\nexec $PWD/real\n" > named`,
+            "chmod +x real greet named && cd && hello && greet",
+          ].join(" && "),
         }),
+        call("check_harness", {}),
+        call("bash", { command: 'rm "$HOME/harness/.toolchain/bin/named"' }),
         call("check_harness", {}),
         finish,
       ],
@@ -633,13 +650,18 @@ describe.skipIf(runtimeProcess.platform !== "darwin")("a Builder session under t
     expect(calls[4]).toContain("Multiply before you record.");
     expect(calls[4]).toContain("t-1.json");
     expect(calls[5]).toContain("hello-from-the-tool-tree");
-    expect(calls[5]).not.toContain("write:0");
-    expect(calls[6]).toContain("The harness opens. Tools: ");
+    expect(calls[5]).toContain("installed-greeting");
+    expect(calls[6]).toContain("harness/.toolchain/bin/named name your home");
+    expect(calls[8]).toContain("The harness opens. Tools: ");
     expect(responses.join("\n")).not.toContain(CHECK);
     expect(built).toMatchObject({ changed: true, ended: "finished" });
     expect(readFileSync(join(built.dir ?? "", "agent", "BUILT_AGENTS.md"), "utf8")).toBe(GUIDE);
-    expect(readFileSync(join(s.parent, ".toolchain", "bin", "hello"), "utf8")).not.toContain("more");
-    // A check keeps no state: the one kept is the session's last.
-    expect(readdirSync(request.states)).toEqual([built.harness ?? ""]);
+    const greet = Bun.spawnSync([join(built.dir ?? "", ".toolchain", "bin", "greet")]);
+    expect(greet.stdout.toString()).toBe("installed-greeting\n");
+    expect(existsSync(join(s.parent, ".toolchain", "bin", "greet"))).toBe(false);
+    // A check keeps no state: the one kept is the session's last, beside the one copy of its tree.
+    const kept = readdirSync(request.states);
+    expect(kept.filter((name) => !name.startsWith("tree-"))).toEqual([built.harness ?? ""]);
+    expect(kept).toHaveLength(2);
   }, 120_000);
 });

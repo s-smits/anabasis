@@ -189,20 +189,25 @@ export function treeContent(dir: string) {
 /** Each tool tree's content by where it really is, with the stamp it was read under. */
 const TREES = new Map<string, { stamp: string; content: ReturnType<typeof treeContent> }>();
 
-/**
- * A tool tree's content, read once for as long as no file in it has been added, removed, resized,
- * rewritten or had its mode changed. Every solve opens its harness, and a tool tree runs to
- * thousands of files and gigabytes, so hashing it afresh each time was a full read of it per solve.
- * The stamp is what the runner's own moved-files check trusts (`run.ts`, `treeStamp`).
- */
-function keptTreeContent(toolTree: string) {
-  const real = realpathSync(toolTree);
-  const stamp = hashJsonValue(
+/** What a tool tree is read under: a file in it added, removed, resized, rewritten or with its mode
+ *  changed changes it. It is what the runner's own moved-files check trusts (`run.ts`, `treeStamp`). */
+export function toolTreeStamp(real: string): string {
+  return hashJsonValue(
     pathsUnder(real).map((path) => {
       const stat = lstatSync(join(real, path));
       return [path, stat.size, stat.mtimeMs, stat.mode, stat.ino];
     }),
   );
+}
+
+/**
+ * A tool tree's content, read once for as long as its stamp holds. Every solve opens its harness,
+ * and a tool tree runs to thousands of files and gigabytes, so hashing it afresh each time was a
+ * full read of it per solve.
+ */
+function keptTreeContent(toolTree: string) {
+  const real = realpathSync(toolTree);
+  const stamp = toolTreeStamp(real);
   const kept = TREES.get(real);
   if (kept?.stamp === stamp) return kept.content;
   const content = treeContent(real);

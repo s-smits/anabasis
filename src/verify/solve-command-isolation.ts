@@ -273,8 +273,9 @@ function commandReadAllows(
   // The adopted bundle's tool tree is a symlink into the candidate workspace under `campaigns/`,
   // which the run-data pattern denies by name, so without this the Builder's own install answers
   // `command not found`. Allowing it by path after the pattern denies restores that one tree and
-  // leaves the rest of the workspace closed, which a wider relaxation of the pattern would not.
-  const own = toolTree === null ? [] : canonicalForms(toolTree);
+  // leaves the rest of the workspace closed, which a wider relaxation of the pattern would not. A
+  // tree a Builder has yet to install is left out, as bwrap refuses to bind a missing path.
+  const own = toolTree === null || !existsSync(toolTree) ? [] : canonicalForms(toolTree);
   return [...new Set([...covered, ...own])].sort();
 }
 

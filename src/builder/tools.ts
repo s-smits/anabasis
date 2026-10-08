@@ -13,12 +13,13 @@
  * named file that links out of the harness and an import that lands outside it, so nothing here asks
  * that question a second time.
  *
- * The installed programs are the parent's. `harness/.toolchain` is a link to the parent's tool tree,
- * which the wall opens for reading and puts first on PATH, and a snapshot in which it is anything
- * else is refused. A program installed into a session's home carries that home's path in its
- * scripts and stops running once it is frozen elsewhere, and a tree kept under the scratch parent is
- * closed to every solve; so a session that installs programs needs a tree the wall lets it write at
- * the place solves will read it, which this one does not have.
+ * The installed programs are the session's own. `harness/.toolchain` starts as a copy of the
+ * parent's tool tree, which the wall puts first on PATH, and the Builder installs into it as it
+ * likes. A frozen harness links to a copy of that tree kept beside the states, made again only when
+ * the tree has changed since. A harness is frozen, and its solves run, away from the home it was
+ * built in, which is gone once the session ends; so a snapshot in which a link or a script names
+ * that home is refused, with how to write it instead. A compiled program is not read for it: a path
+ * built into one is as often a build's record as the place it runs from.
  *
  * `practice` is where the two reviewers meet the Builder. A fail goes to the Referee first; a fail
  * it rules a check defect does not count and its task leaves the session, and an earned fail goes on
@@ -40,22 +41,24 @@ import {
   lstatSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   readlinkSync,
   realpathSync,
   renameSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "../meta/filesystem.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { asRecord, isString } from "../meta/json-shape.ts";
-import { dirname, join } from "../meta/path.ts";
+import { dirname, join, resolve } from "../meta/path.ts";
 import { pooled } from "../meta/pool.ts";
 import { asError, errorMessage } from "../meta/runtime-values.ts";
 import type { Diagnosis } from "../review/diagnoser.ts";
 import { callList, callsOf, callText, solveOf, stringOf } from "../review/trace.ts";
 import { text, tool } from "../solve/answer.ts";
 import { type CommandWall, runWalled } from "../solve/command.ts";
-import { type Harness, harnessTools, openHarness } from "../solve/harness.ts";
+import { type Harness, harnessTools, openHarness, pathsUnder, toolTreeStamp } from "../solve/harness.ts";
 import { refuseOtherPresets } from "../solve/run.ts";
 import { shellTool } from "../solve/shell.ts";
 import { shellQuote } from "../verify/solve-command-isolation.ts";
@@ -77,9 +80,8 @@ export interface Bench {
   readonly home: string;
   /** The digest of the harness the session started from. */
   readonly parent: string;
-  /** The parent's tool tree, where it really is, which `harness/.toolchain` links to; null when the
-   *  parent has none. */
-  readonly toolTree: string | null;
+  /** The last copy kept of `harness/.toolchain`, and the stamp the tree had when it was copied. */
+  tree: { readonly stamp: string; readonly dir: string } | null;
   /** Practice solves spent. */
   spent: number;
   /** Task versions whose fail the Referee ruled a check defect in this session. */
@@ -145,6 +147,47 @@ export function parentToolTree(parent: string): string | null {
   return existsSync(tree) ? realpathSync(tree) : null;
 }
 
+/** Refuses the links and scripts in a copy of `harness/<under>` that name the session's home, where
+ *  the copy is not: a launcher an install wrote with its own absolute path, a console script's
+ *  interpreter, a link into the tree. Each would break where the harness is run. */
+function refuseNamingHome(dir: string, home: string, under: string): void {
+  const forms = [...new Set([home, realpathSync(home)])];
+  const named = pathsUnder(dir).filter((path) => {
+    const full = join(dir, path);
+    const stat = lstatSync(full);
+    if (stat.isSymbolicLink()) return forms.some((form) => readlinkSync(full).includes(form));
+    if (!stat.isFile() || (stat.mode & 0o111) === 0) return false;
+    const bytes = readFileSync(full);
+    return bytes.subarray(0, 2).toString() === "#!" && forms.some((form) => bytes.includes(form));
+  });
+  if (named.length > 0) {
+    throw new Error(
+      `${named.map((path) => join(under, path)).join(", ")} name your home, and a harness runs from elsewhere: a launcher finds its files from its own path, as "$(dirname "$0")" does, and a link names its target relatively`,
+    );
+  }
+}
+
+/** A copy of `harness/.toolchain` beside the states, for a frozen harness to link to; the last one
+ *  kept while the tree's stamp holds. A truss tree is 316 MB, which a copy at every freeze spent
+ *  again on each check and practice. Null when the harness has no tree. */
+function keptTree(bench: Bench): string | null {
+  const own = join(bench.home, "harness", ".toolchain");
+  if (!existsSync(own)) return null;
+  const real = realpathSync(own);
+  const stamp = toolTreeStamp(real);
+  if (bench.tree?.stamp === stamp) return bench.tree.dir;
+  const dir = realpathSync(mkdtempSync(join(bench.request.states, "tree-")));
+  try {
+    cpSync(real, dir, { recursive: true, verbatimSymlinks: true });
+    refuseNamingHome(dir, bench.home, "harness/.toolchain");
+  } catch (error) {
+    rmSync(dir, { recursive: true, force: true });
+    throw error;
+  }
+  bench.tree = { stamp, dir };
+  return dir;
+}
+
 /**
  * `harness/` as it stands, copied beside the kept states, opened as a solve would open it and, under
  * a wall, asked for its tools as a solve would ask. Throws, with the harness's own error, when a
@@ -161,19 +204,16 @@ async function frozen(bench: Bench): Promise<Snapshot> {
   mkdirSync(states, { recursive: true });
   const dir = realpathSync(mkdtempSync(join(states, "freezing-")));
   try {
-    cpSync(join(bench.home, "harness"), dir, { recursive: true, verbatimSymlinks: true });
+    const own = resolve(bench.home, "harness", ".toolchain");
+    cpSync(join(bench.home, "harness"), dir, {
+      recursive: true,
+      verbatimSymlinks: true,
+      filter: (source) => resolve(source) !== own,
+    });
     if (!lstatSync(dir).isDirectory()) throw new Error("harness/ is not a directory");
-    const link = join(dir, ".toolchain");
-    const entry = lstatSync(link, { throwIfNoEntry: false });
-    const given =
-      bench.toolTree === null
-        ? entry === undefined
-        : entry?.isSymbolicLink() === true && readlinkSync(link) === bench.toolTree;
-    if (!given) {
-      throw new Error(
-        "harness/.toolchain is not what the session was given, and installed programs cannot be changed in this session",
-      );
-    }
+    refuseNamingHome(dir, bench.home, "harness");
+    const tree = keptTree(bench);
+    if (tree !== null) symlinkSync(tree, join(dir, ".toolchain"));
     const harness = await openHarness(dir);
     refuseOtherPresets(harness);
     return { dir, harness, listed: (await bench.lists?.(harness)) ?? null };

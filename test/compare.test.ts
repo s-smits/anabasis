@@ -1,7 +1,7 @@
 // The comparison's arithmetic against the plan's own figures, and its view over the log: what counts
 // in a score, and what it refuses to compare.
 import { describe, expect, it } from "bun:test";
-import { anchor, draw, pairsOf, scored, signP, tally } from "../src/kernel/compare.ts";
+import { anchor, draw, gain, pairsOf, scored, signP, tally } from "../src/kernel/compare.ts";
 import { type Condition, conditionId, fieldsApart } from "../src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
@@ -13,6 +13,29 @@ const pairs = (wins: number, losses: number, ties: number) => [
   ...Array.from({ length: losses }, (_, i) => ({ task: `l${String(i)}`, old: [P, P, P], fresh: [P, F, P] })),
   ...Array.from({ length: ties }, (_, i) => ({ task: `t${String(i)}`, old: [P, F, P], fresh: [F, P, P] })),
 ];
+
+describe("the pooled gain", () => {
+  it("is the mean of the tasks' gains in points, bounded above at 90% over the tasks", () => {
+    // 6 wins of a third, 1 loss of a third and 17 ties, on three solves a harness.
+    const { points, upper } = gain(pairs(6, 1, 17));
+    expect(points).toBeCloseTo((100 * (6 - 1)) / 3 / 24, 10);
+    // Student's bound on 24 tasks: the 90th percentile on 23 degrees of freedom is 1.3195.
+    const gains = [
+      ...Array.from({ length: 6 }, () => 100 / 3),
+      -100 / 3,
+      ...Array.from({ length: 17 }, () => 0),
+    ];
+    const spread = Math.sqrt(gains.reduce((sum, each) => sum + (each - points) ** 2, 0) / 23);
+    expect(upper).toBeCloseTo(points + (1.3195 * spread) / Math.sqrt(24), 2);
+    expect(upper).toBeLessThan(10 + points);
+  });
+
+  it("bounds nothing on fewer than two tasks, and reads no spread as no doubt", () => {
+    expect(gain([])).toEqual({ points: 0, upper: 100 });
+    expect(gain(pairs(1, 0, 0))).toMatchObject({ upper: 100 });
+    expect(gain(pairs(0, 0, 5))).toEqual({ points: 0, upper: 0 });
+  });
+});
 
 describe("the sign test", () => {
   it("passes the plan's smallest wins at 0.10 and nothing one win short of them", () => {

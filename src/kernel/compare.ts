@@ -15,7 +15,8 @@
  * informative tasks the anchor is not tested, which is not the same as held.
  *
  * How many tasks, how many solves, the level and the floor are the caller's: they wait on D1's
- * supply and noise. Nothing here decides a step; it reports the two readings.
+ * supply and noise. Nothing here decides a step; it reports the two readings, and the pooled gain
+ * the plan's stop rule reads (`gain`).
  *
  * The pairs are a view over the log (`pairsOf`). A task's solves count from the event that set it
  * apart for scoring, its admission or the anchor's draw, so a screening solve, which comes before
@@ -47,6 +48,8 @@ export type AnchorReading = "held" | "lost" | "not-tested";
 
 /** What a harness and its tool tree move together; a comparison holds every other field still. */
 const COMPARED = new Set(["harness", "solverTools"]);
+/** The 90th percentile of the standard normal. */
+const Z90 = 1.2815515655446004;
 
 /** The chance of at least `wins` wins among `wins + losses` untied tasks, were either harness as
  *  likely to win each. No untied task is no evidence, and reads 1. */
@@ -71,8 +74,8 @@ export function tally(pairs: readonly Paired[]): Tally {
         `task ${task} has ${String(old.length)} solve(s) under the old harness and ${String(fresh.length)} under the new; a comparison needs as many of each`,
       );
     }
-    const gain = fresh.filter(Boolean).length - old.filter(Boolean).length;
-    counts[gain > 0 ? "wins" : gain < 0 ? "losses" : "ties"] += 1;
+    const ahead = fresh.filter(Boolean).length - old.filter(Boolean).length;
+    counts[ahead > 0 ? "wins" : ahead < 0 ? "losses" : "ties"] += 1;
   }
   return counts;
 }
@@ -98,6 +101,31 @@ export function anchor(
   const reading =
     informative < floor ? "not-tested" : signP(counts.losses, counts.wins) <= level ? "lost" : "held";
   return { ...counts, informative, reading };
+}
+
+/**
+ * The pooled gain in points: the mean over tasks of the new harness's pass rate less the old's, and
+ * the bound that mean stays under with 90% confidence, one-sided. The plan's stop rule reads the
+ * bound: after three Builder sessions, a pooled gain below ten points at that confidence ends the
+ * experiment. The task is the unit, as in the sign test, and the bound is Student's over the tasks'
+ * differences, its quantile by the Cornish-Fisher expansion to two terms, which is right to the third
+ * decimal from six tasks up.
+ *
+ * Fewer than two tasks bound nothing, and read as the largest gain there is. Tasks that all differ
+ * alike have no spread, so their bound is their mean: the caller's count of tasks is what says how
+ * much that is worth.
+ */
+export function gain(pairs: readonly Paired[]): { readonly points: number; readonly upper: number } {
+  const rate = (solves: readonly boolean[]) => solves.filter(Boolean).length / solves.length;
+  const gains = pairs.map(({ old, fresh }) => 100 * (rate(fresh) - rate(old)));
+  const count = gains.length;
+  if (count < 2) return { points: gains[0] ?? 0, upper: 100 };
+  const mean = gains.reduce((sum, each) => sum + each, 0) / count;
+  const spread = Math.sqrt(gains.reduce((sum, each) => sum + (each - mean) ** 2, 0) / (count - 1));
+  const freedom = count - 1;
+  const quantile =
+    Z90 + (Z90 ** 3 + Z90) / (4 * freedom) + (5 * Z90 ** 5 + 16 * Z90 ** 3 + 3 * Z90) / (96 * freedom ** 2);
+  return { points: mean, upper: Math.min(100, mean + (quantile * spread) / Math.sqrt(count)) };
 }
 
 /** `count` of `versions`, chosen by `seed` and nothing else. Each version is ranked by the hash of

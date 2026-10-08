@@ -1,6 +1,7 @@
 // A solve's commands, executed under the real command wall on a mounted cap: the home survives
-// between commands, each command's own folder does not, staged input reaches it, and neither the
-// host-only folder nor the repository can be read, and no command outlives the shell limits.
+// between commands, each command's own folder does not, staged input reaches it, neither the
+// host-only folder, the repository nor a reviewer's Claude home can be read, and no command outlives
+// the shell limits.
 import { describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
@@ -27,10 +28,13 @@ async function run(wall: CommandWall, command: string, stage?: (work: string) =>
 
 describe("a solve's walled commands", () => {
   it.skipIf(runtimeProcess.platform !== "darwin")(
-    "keep the home, drop each command's folder, and read neither the host folder nor the repository",
+    "keep the home, drop each command's folder, and read neither the host folder, the repository nor a reader's home",
     async () => {
       const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-repo-")));
       writeFileSync(join(repoRoot, "secret"), "repo-canary");
+      // Where a reader or the Examiner keeps its Claude Code session, as `readOnce` names it.
+      const reader = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-claude-cli-reader-")));
+      writeFileSync(join(reader, "session"), "reader-canary");
       const dirs = solveDirs(`test-${String(runtimeProcess.pid)}-${String(Date.now())}`);
       const release = await mountDiskCap({ root: dirs.root, bytes: CAP_BYTES });
       try {
@@ -61,6 +65,8 @@ describe("a solve's walled commands", () => {
         expect(host.output).not.toContain("host-canary");
         const repo = await run(wall, `cat ${JSON.stringify(join(repoRoot, "secret"))} 2>&1; true`);
         expect(repo.output).not.toContain("repo-canary");
+        const read = await run(wall, `cat ${JSON.stringify(join(reader, "session"))} 2>&1; true`);
+        expect(read.output).toContain("Operation not permitted");
 
         // Every command is held to the condition's shell limits here, whoever launched it: one that
         // names no timeout runs for the default, and one that names too long a timeout for the maximum.
@@ -70,6 +76,7 @@ describe("a solve's walled commands", () => {
         await release();
         rmSync(dirs.host, { recursive: true, force: true });
         rmSync(repoRoot, { recursive: true, force: true });
+        rmSync(reader, { recursive: true, force: true });
       }
     },
     60_000,

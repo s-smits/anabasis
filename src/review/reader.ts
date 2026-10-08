@@ -56,7 +56,9 @@ export async function readOnce(
   packet: string,
   tools: readonly AgentTool[],
 ): Promise<JsonObject> {
-  const home = mkdtempSync(join(tmpdir(), "ana-reader-"));
+  // A name every solver's wall denies (`wall-policy.ts`): the reader's Claude Code keeps what it was
+  // sent here, hidden expectations included.
+  const home = mkdtempSync(join(tmpdir(), "ana-claude-cli-reader-"));
   const turns: AssistantMessage[] = [];
   // A record tool ends the loop while Claude Code still waits on its result, and only this signal
   // ends that query: on 8 October a live Referee's Claude Code outlived its ruling by two hours.

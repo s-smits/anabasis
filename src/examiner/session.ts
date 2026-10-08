@@ -535,7 +535,9 @@ export async function examine(request: ExamRequest): Promise<Examined> {
   const turns: AssistantMessage[] = [];
   const user = (content: string): AgentMessage => ({ role: "user", content, timestamp: Date.now() });
   const system = createInitialSystemMessage(SYSTEM_PROMPT, tools.map(toToolDeclaration));
-  const home = mkdtempSync(join(tmpdir(), "ana-examiner-"));
+  // A name every solver's wall denies (`wall-policy.ts`): the Examiner's Claude Code keeps its
+  // session here, the tasks' hidden expectations included.
+  const home = mkdtempSync(join(tmpdir(), "ana-claude-cli-examiner-"));
   let crash: string | null = null;
   const timer = setTimeout(() => wall.abort(), limits.wallSeconds * 1000);
   try {

@@ -61,8 +61,15 @@ interface Memory {
 
 /** The command a round runs as: what a launch starts and what a running round is known by. */
 export const ROUND = "tools/d2/round.ts";
+/** The commands that write a campaign's log for hours, each naming it with `--name`. An Examiner
+ *  session was read as closed while it ran, the first time one did (exam-1, 2026-10-08). */
+const CAMPAIGN = [ROUND, "tools/d1b/examine.ts"];
+const LIVE = "tools/m0/live-solve.ts";
 const QUIET_MS = 20 * 60_000;
 const GIB = 2 ** 30;
+
+const runsAs = (args: readonly string[], tools: readonly string[]) =>
+  args.some((arg) => tools.some((tool) => arg.endsWith(tool)));
 
 const minutes = (ms: number) => `${String(Math.round(ms / 60_000))}m`;
 const dollars = (value: number) => `$${value.toFixed(2)}`;
@@ -222,7 +229,8 @@ export function runs(): Run[] {
   ]);
 }
 
-/** Each running round and live solve: its process, its arguments and the worktree it runs in. */
+/** Each running round, Examiner session and live solve: its process, its arguments and the worktree
+ *  it runs in. */
 export function processes(): {
   readonly pid: number;
   readonly cwd: string;
@@ -231,9 +239,7 @@ export function processes(): {
   const table = runTextSyncOrThrow(["ps", "-axo", "pid=,args="]).split("\n");
   const found = table.flatMap((row) => {
     const [pid = "", ...args] = row.trim().split(/\s+/);
-    return args.some((arg) => arg.endsWith(ROUND) || arg.endsWith("tools/m0/live-solve.ts"))
-      ? [{ pid, args }]
-      : [];
+    return runsAs(args, [...CAMPAIGN, LIVE]) ? [{ pid, args }] : [];
   });
   if (found.length === 0) return [];
   // lsof exits 1 when a process left between the two reads, so its answer is read as given.
@@ -252,8 +258,8 @@ export function writers(run: Run, running: ReturnType<typeof processes>) {
   const flag = (args: readonly string[], name: string) => args[args.indexOf(name) + 1];
   const writes = (args: readonly string[]) =>
     run.end === "comparison.reported"
-      ? args.some((arg) => arg.endsWith(ROUND)) && flag(args, "--name") === run.name
-      : args.some((arg) => arg.endsWith("live-solve.ts")) &&
+      ? runsAs(args, CAMPAIGN) && flag(args, "--name") === run.name
+      : runsAs(args, [LIVE]) &&
         run.name.startsWith(`${String(flag(args, "--task"))}-${String(flag(args, "--cycle"))}-`);
   return running.filter(({ cwd, args }) => cwd === run.tree && writes(args));
 }

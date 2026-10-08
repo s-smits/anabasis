@@ -4,7 +4,7 @@
 import { describe, expect, it } from "bun:test";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
-import { pulse, type Run } from "../tools/runs/pulse.ts";
+import { pulse, type Run, writers } from "../tools/runs/pulse.ts";
 
 const round: Run = { name: "r1", tree: "/wt", path: "/wt/.ana/d2/r1/log.jsonl", end: "comparison.reported" };
 const START = Date.parse("2026-10-08T12:00:00Z");
@@ -77,5 +77,18 @@ describe("the runs pulse", () => {
     const look = pulse(round, anchor, true, { lines: 5, open: true, quiet: false }, START + 6 * 60_000);
     expect(look.said).toEqual(["· wind-01 started on claude/claude-opus-5 (×2)"]);
     expect(look.status).toContain("2 running");
+  });
+
+  it("knows a campaign's log is written by a round or an Examiner session of its name, in its worktree", () => {
+    const running = [
+      { pid: 1, cwd: "/wt", args: ["bun", "tools/d2/round.ts", "--name", "r1", "--session", "b-1"] },
+      { pid: 2, cwd: "/wt", args: ["bun", "tools/d1b/examine.ts", "--name", "r1", "--session", "x-1"] },
+      { pid: 3, cwd: "/wt", args: ["bun", "tools/d2/round.ts", "--name", "r10"] },
+      { pid: 4, cwd: "/other", args: ["bun", "tools/d2/round.ts", "--name", "r1"] },
+      { pid: 5, cwd: "/wt", args: ["bun", "tools/m0/live-solve.ts", "--task", "r1", "--cycle", "c01"] },
+    ];
+    expect(writers(round, running).map(({ pid }) => pid)).toEqual([1, 2]);
+    const solve: Run = { ...round, name: "r1-c01-opus-1234", end: "solve.finished" };
+    expect(writers(solve, running).map(({ pid }) => pid)).toEqual([5]);
   });
 });

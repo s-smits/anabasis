@@ -101,7 +101,8 @@ reads `closed`.
 
 ## Not here yet
 
-- Examiner sessions and live solves start from their own commands, with no preflight.
+- Examiner sessions and live solves start from their own commands, with no preflight. The pulse
+  and `stop` do know a running Examiner session, and a round is refused while one writes its log.
 - No timed stop. v1's launcher armed one through the service manager; a v2 round ends by its own
   limits (`--minutes`, `--turns`).
 - No probe turn before spend: a session or usage limit shows at the first turn, in the pulse.

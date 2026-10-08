@@ -125,6 +125,13 @@ const TOOL_CEILING_MS = 300_000;
 /** One check's whole run, its tools included. */
 const CHECK_WALL_MS = 2 * TOOL_CEILING_MS;
 
+/** A verdict in one line, a fail's checks in order, so that two verdicts can be set side by side. */
+export function spelled(verdict: Verdict): string {
+  if (verdict.kind === "fail") return `fail ${[...verdict.blocking].sort().join(",")}`;
+  if (verdict.kind === "faulty") return `faulty ${verdict.check}: ${verdict.reason}`;
+  return verdict.kind === "pass" ? "pass" : `non-result ${verdict.reason}`;
+}
+
 /** An external check names its tools inside its evidence declaration, because the tool is the
  *  instrument deciding it; an authored check names them at the execution level, where they are
  *  ordinary dependencies. Callers that only need to know what has to be installed and hashed ask

@@ -40,8 +40,7 @@ import {
   taskVersion,
 } from "#src/kernel/task.ts";
 import { openVerifier } from "#src/kernel/verify.ts";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "#src/meta/filesystem.ts";
-import { parseJsonAs } from "#src/meta/json-runtime.ts";
+import { mkdirSync, mkdtempSync, rmSync } from "#src/meta/filesystem.ts";
 import type { JsonObject, JsonValue } from "#src/meta/json-shape.ts";
 import { tmpdir } from "#src/meta/os.ts";
 import { dirname, join } from "#src/meta/path.ts";
@@ -51,6 +50,7 @@ import {
   checkProgram,
   contractOf,
   packageOf,
+  packControls,
   readPack,
   recordedAnswerFormat,
   storedAnswer,
@@ -69,22 +69,13 @@ const { values } = parseArgs({
   },
 });
 
-/** v1's `controls.json`: answers the check must accept, and edits of them it must reject, each
- *  naming the check that must reject it. */
-interface PackControls {
-  readonly accept: readonly { taskId: string; artifact: JsonValue }[];
-  readonly reject: readonly { taskId: string; artifact: JsonValue; expectedCheckId: string }[];
-}
-
 async function main(): Promise<void> {
   const { root, sweep, bundle, stronger } = values;
   if (root === undefined || sweep === undefined || bundle === undefined || stronger === undefined) {
     throw new Error("name --root, --sweep, --bundle and --stronger");
   }
   const { brief, tasks } = readPack(bundle);
-  const controls = parseJsonAs<PackControls>(
-    readFileSync(join(bundle, "correctness-model", "controls.json"), "utf8"),
-  );
+  const controls = packControls(bundle);
   const dir = mkdtempSync(join(tmpdir(), "ana-admit-"));
   const checks = checkProgram(bundle, join(dir, "checks"));
   const verify = openVerifier({ checks, tools: join(bundle, ".toolchain") });
@@ -107,12 +98,12 @@ async function main(): Promise<void> {
   console.log(`old ${old}, new ${fresh}, stronger ${stronger}`);
 
   const v1Controls = (taskId: string): [JsonValue, RejectControl[]] => {
-    const accepted = controls.accept.find((control) => control.taskId === taskId)?.artifact ?? null;
-    const rejects = controls.reject.filter((control) => control.taskId === taskId).slice(0, CONTROLS);
-    return [
-      accepted,
-      rejects.map(({ artifact, expectedCheckId }) => ({ answer: artifact, expectedCheckId })),
-    ];
+    const own = controls.filter((control) => control.taskId === taskId);
+    const accepted = own.find((control) => control.refusedBy === null)?.answer ?? null;
+    const rejects = own.flatMap(({ answer, refusedBy }) =>
+      refusedBy === null ? [] : [{ answer, expectedCheckId: refusedBy }],
+    );
+    return [accepted, rejects.slice(0, CONTROLS)];
   };
 
   const log = values.log ?? join(dir, "log.jsonl");

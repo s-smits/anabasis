@@ -11,6 +11,7 @@
 import type { Api, Model } from "@earendil-works/pi-ai";
 import { claudeExecutable, SWEEP_COMPACT_WINDOW } from "#src/backends/claude.ts";
 import { type BackendOptions, backends } from "#src/backends/models.ts";
+import type { Control } from "#src/kernel/acceptance.ts";
 import type { Contract } from "#src/kernel/contract.ts";
 import { dollars, freezePrices, type PriceTable } from "#src/kernel/meter.ts";
 import type { Ending } from "#src/kernel/solve.ts";
@@ -70,6 +71,13 @@ interface PackBrief {
   readonly artifactSchema: readonly JsonObject[];
   readonly designRuleConstants: readonly JsonObject[];
   readonly designRuleSets?: readonly JsonObject[];
+}
+
+/** v1's `controls.json`: answers the checks must accept, and edits of them that a named check must
+ *  refuse. */
+interface PackControls {
+  readonly accept: readonly { taskId: string; artifact: JsonValue }[];
+  readonly reject: readonly { taskId: string; artifact: JsonValue; expectedCheckId: string }[];
 }
 
 /** A row and its two dollar readings. */
@@ -248,6 +256,22 @@ export function readPack(bundle: string) {
   const read = <T>(file: string) =>
     parseJsonAs<T>(readFileSync(join(bundle, "correctness-model", file), "utf8"));
   return { brief: read<PackBrief>("brief.json"), tasks: read<Task[]>("tasks.json") };
+}
+
+/** A pack's controls, each with the label its author gave it: the accept controls, then the reject
+ *  controls, in the file's order. */
+export function packControls(bundle: string): Control[] {
+  const { accept, reject } = parseJsonAs<PackControls>(
+    readFileSync(join(bundle, "correctness-model", "controls.json"), "utf8"),
+  );
+  return [
+    ...accept.map(({ taskId, artifact }) => ({ taskId, answer: artifact, refusedBy: null })),
+    ...reject.map(({ taskId, artifact, expectedCheckId }) => ({
+      taskId,
+      answer: artifact,
+      refusedBy: expectedCheckId,
+    })),
+  ];
 }
 
 /** The stand-in contract: the brief's public rule decisions are its rules, and its answer format is

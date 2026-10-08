@@ -11,7 +11,7 @@
  * its ending apart, since there is no verdict of v1's verifier to compare. Exits 1 on any mismatch. The dollars are compared, not matched: see
  * `stored-sweep.ts` for why the two differ.
  */
-import { openVerifier, type Task, type Verdict, type Verifier } from "#src/kernel/verify.ts";
+import { openVerifier, spelled, type Task, type Verdict, type Verifier } from "#src/kernel/verify.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
@@ -27,12 +27,6 @@ const { values } = parseArgs({
     jobs: { type: "string", default: "4" },
   },
 });
-
-function spelled(verdict: Verdict): string {
-  if (verdict.kind === "fail") return `fail ${[...verdict.blocking].sort().join(",")}`;
-  if (verdict.kind === "faulty") return `faulty ${verdict.check}: ${verdict.reason}`;
-  return verdict.kind === "pass" ? "pass" : `non-result ${verdict.reason}`;
-}
 
 async function main(): Promise<number> {
   const root = values.root;

@@ -417,6 +417,28 @@ describe("a Builder session", () => {
     expect(readdirSync(s.request.states)).toEqual([]);
   });
 
+  it("is measured by the last state it practised with when what it leaves does not open", async () => {
+    const s = await setup([
+      edit,
+      call("practice", { tasks: ["t-1"] }),
+      call(WRITE_FILE, { path: "agent/tools-spec.json", content: "{}" }),
+      finish,
+    ]);
+    const built = await session(s.request, s, s.walled);
+    // The edited guide is the state the practice ran with, and the spec written after it opens for
+    // no solve: the first is kept and compared, and the record says why the last was not.
+    expect(built).toMatchObject({ changed: true, ended: "finished" });
+    expect(built.harness).not.toBe(s.digest);
+    expect(built.dir).toBe(join(s.request.states, built.harness ?? ""));
+    expect(s.of("harness.version")).toMatchObject([{ version: built.harness, parent: s.digest }]);
+    expect(s.of(BUILD_FINISHED)[0]).toMatchObject({
+      practiceSolves: 1,
+      changed: true,
+      harness: built.harness,
+    });
+    expect(JSON.stringify(s.of(BUILD_FINISHED)[0]?.broken)).toContain("needs presets and tools lists");
+  });
+
   it("is not given the correctness model a v1 state carries, whose battery holds hidden values", async () => {
     const s = await setup([finish]);
     // A v1 state keeps it at its root and again under each bundle snapshot.

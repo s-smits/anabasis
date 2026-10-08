@@ -113,7 +113,8 @@ export type RoundReading =
 
 export interface RoundReport {
   readonly old: string;
-  /** The digest of the harness the session left; null when it left none to compare. */
+  /** The digest of the harness the session left; null when it left none to compare. Beside a
+   *  `broken` in the logged report, it is the last state the session practised with. */
   readonly fresh: string | null;
   /** The scored set's tally, test, pooled gain and each harness's mean solve seconds; null when the
    *  round never scored. */
@@ -178,7 +179,9 @@ const REPORT_KEYS = [
 const FAILS = ["rejected", "wall-ended", "context-ended", "no-answer"] as const;
 
 /** What session `id` left, from the log: undefined when it never ran, and otherwise the harness to
- *  compare, null when it left none, with why when what it left does not open. */
+ *  compare, null when it left none, with why when what it left does not open. A session whose last
+ *  state does not open leaves the last state it practised with, when it has one (`session.ts`), so
+ *  a harness and a `broken` may come back together. */
 async function left(events: readonly LogEvent[], request: BuildRequest, old: string) {
   const mine = events.filter(({ data }) => data.session === request.id);
   const started = mine.find(({ kind }) => kind === "build.started")?.data;

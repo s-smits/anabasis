@@ -83,6 +83,9 @@ export interface Bench {
   readonly parent: string;
   /** The last copy kept of `harness/.toolchain`, and the stamp the tree had when it was copied. */
   tree: { readonly stamp: string; readonly dir: string } | null;
+  /** The last state of `harness/` this session kept, which is one a solve could open: what its last
+   *  practice ran with. Null until a state is kept. */
+  opened: Snapshot | null;
   /** Practice solves spent. */
   spent: number;
   /** Task versions whose fail the Referee ruled a check defect in this session. */
@@ -246,11 +249,12 @@ export async function snapshot(bench: Bench): Promise<Snapshot> {
     rmSync(dir, { recursive: true, force: true });
     if (!existsSync(kept)) throw error;
   }
-  return {
+  bench.opened = {
     dir: kept,
     harness: { ...harness, toolTree: harness.toolTree === null ? null : join(kept, ".toolchain") },
     listed,
   };
+  return bench.opened;
 }
 
 function diagnosisText(diagnosis: Diagnosis): string {

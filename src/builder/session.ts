@@ -148,7 +148,8 @@ export interface BuildRequest {
 }
 
 export interface Built {
-  /** The digest of what the session left; null when a solve could not open it. */
+  /** The digest of what the session left, or of the last state it practised with when what it
+   *  left does not open; null when it has neither. */
   readonly harness: string | null;
   /** Where the frozen harness is kept; null when nothing changed or nothing opens. */
   readonly dir: string | null;
@@ -243,6 +244,7 @@ export async function session(
     home: dirs.home,
     parent: parent.digest,
     tree: null,
+    opened: null,
     spent: 0,
     disputed: new Set(),
     faulty: new Set(),
@@ -316,12 +318,20 @@ export async function session(
   if (last?.stopReason === "error" && !cut) crash ??= last.errorMessage ?? "the provider failed the turn";
   // Whatever ended the session, what `harness/` holds is frozen: a session cut at its wall still
   // made its edits, and the comparison is what says whether they count.
-  let frozen: Snapshot | null = null;
+  //
+  // Where what it holds does not open, the session is not lost with it: the last state it
+  // practised with is what is measured, and `broken` says why the final one was not. That a harness
+  // opens is all that is left of v1's submit gate, and there a round that ended refused measured
+  // nothing: 13 firmware rounds, 3,803 minutes, by v1 #113's count. A session cut at its wall half way
+  // through an edit ends so, and the state before it was one real solves ran on. A session that
+  // never practised has no such state, and leaves none.
+  let frozen: Snapshot | null;
   let broken: string | null = null;
   try {
     frozen = await snapshot(bench);
   } catch (error) {
     broken = errorMessage(error);
+    frozen = bench.opened;
   }
   const changed = frozen !== null && frozen.harness.digest !== parent.digest;
   if (frozen !== null && changed) {

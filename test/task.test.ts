@@ -239,17 +239,34 @@ describe("gate 4, controls", () => {
     expect(await refused([...controls.slice(0, 2), spans(answers[0] ?? {})])).toBe(
       "a control repeats the accepted answer or another control",
     );
-    expect(await refused(controls, FAIL, PASS)).toBe("the check passed control 2");
+    expect(await refused(controls, FAIL, PASS, FAIL)).toBe("the check passed control 2");
   });
 
   it("refuses junk the check fails for another reason, and junk outside the format before any check", async () => {
     const other: Verdict = { kind: "fail", blocking: ["loads"] };
-    expect(await refused(controls, FAIL, other)).toBe("control 2 failed loads, not spans");
+    expect(await refused(controls, FAIL, other, FAIL)).toBe("control 2 failed loads, not spans");
     const junk = [...controls.slice(0, 2), spans({ depth: "deep" })];
-    const verify = scripted();
+    const verify = scripted(FAIL, FAIL);
     const gate = await controlsGate(CONTRACT, verify, pkg(), accepted, junk);
-    expect(gate).toEqual({ outcome: "refused", reason: "control 3 does not follow the answer format" });
-    expect(verify.asked).toEqual([]);
+    expect(gate).toEqual({
+      outcome: "refused",
+      reason: "control 3 does not follow the answer format",
+      kinds: ["format"],
+    });
+    // No check read the control outside the format; the two inside it were put to theirs.
+    expect(verify.asked).toEqual(answers.slice(0, 2));
+  });
+
+  it("names every control that does not hold in one refusal, with the kinds of fault among them", async () => {
+    // Stopped at the first, the gate told an author one fault a try, and three faults outlast three tries.
+    const other: Verdict = { kind: "fail", blocking: ["loads"] };
+    const given = [...controls.slice(0, 2), spans({ depth: "deep" })];
+    expect(await controlsGate(CONTRACT, scripted(PASS, other), pkg(), accepted, given)).toEqual({
+      outcome: "refused",
+      reason:
+        "the check passed control 1; control 2 failed loads, not spans; control 3 does not follow the answer format",
+      kinds: ["format", "other-check", "passed"],
+    });
   });
 });
 
@@ -264,9 +281,10 @@ describe("a faulty check", () => {
       outcome: "refused",
       reason: "run 2: check spans: the check threw: no span",
     });
-    expect(await controlsGate(CONTRACT, scripted(FAIL, FAULTY), pkg(), accepted, controls)).toEqual({
+    expect(await controlsGate(CONTRACT, scripted(FAIL, FAULTY, FAIL), pkg(), accepted, controls)).toEqual({
       outcome: "refused",
       reason: "control 2: check spans: the check threw: no span",
+      kinds: ["faulty"],
     });
   });
 });

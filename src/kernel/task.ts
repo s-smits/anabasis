@@ -32,7 +32,7 @@ import { existsSync } from "../meta/filesystem.ts";
 import { type JsonObject, type JsonValue, isString } from "../meta/json-shape.ts";
 import { join } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
-import { hashJsonValue, stableJson } from "../meta/stable-json.ts";
+import { compareCodeUnits, hashJsonValue, stableJson } from "../meta/stable-json.ts";
 import { answerFormatFault, type Contract } from "./contract.ts";
 import type { EventKind, LogEvent } from "./log.ts";
 import type { Counted } from "./solve.ts";
@@ -66,6 +66,12 @@ export interface RejectControl {
  *  run (see `decided`). */
 type Passed = { readonly outcome: "passed" };
 type Refused = { readonly outcome: "refused"; readonly reason: string };
+/** What a control that does not hold is: the set's count, a repeat of another answer, an answer
+ *  outside the format, one the checks pass, one a check could not run on, or one refused by another
+ *  check than the one it names. */
+export type ControlFault = "count" | "repeat" | "format" | "passed" | "faulty" | "other-check";
+/** Gate 4's refusal: every fault in one reason, and the kinds among them. */
+type ControlsRefused = Refused & { readonly kinds: readonly ControlFault[] };
 
 /** A task version as the fold holds it: its state, how many gates it passed in order, and whether a
  *  gate that did not pass ended them. */
@@ -252,6 +258,15 @@ export async function determinismGate(
  * not charged with the Examiner's mistake.
  * Whether an edit changes exactly one fact is the Examiner's to get right. A pass names the
  * controls by their digest.
+ *
+ * A refusal names every control that does not hold, and `kinds` says of what kinds its faults are.
+ * A gate that stopped at the first told the author one fault a try, so a task could spend its
+ * three tries (`examiner/session.ts`) on three faults it might have mended in one, after its
+ * stronger solve was paid for. Of the first 11 tasks to reach this gate in live sessions, 6 were
+ * refused at it; what share went that way is not known, and the kinds are logged so that the next
+ * reading says. v1's submit gate ran every stage for the same reason (its
+ * src/gate/validation-pipeline.ts): ended at the first refusal, an author "repairs one stage per
+ * check and pays for the whole sequence again".
  */
 export async function controlsGate(
   contract: Contract,
@@ -259,28 +274,37 @@ export async function controlsGate(
   task: Task,
   accepted: JsonValue,
   controls: readonly RejectControl[],
-): Promise<(Passed & { readonly controls: string }) | Refused> {
-  const refused = (reason: string): Refused => ({ outcome: "refused", reason });
-  if (controls.length !== CONTROLS) return refused(`controls: ${controls.length}, not ${CONTROLS}`);
+): Promise<(Passed & { readonly controls: string }) | ControlsRefused> {
+  const refused = (found: readonly (readonly [ControlFault, string])[]): ControlsRefused => ({
+    outcome: "refused",
+    reason: found.map(([, reason]) => reason).join("; "),
+    kinds: [...new Set(found.map(([kind]) => kind))].sort(compareCodeUnits),
+  });
+  if (controls.length !== CONTROLS) {
+    return refused([["count", `controls: ${controls.length}, not ${CONTROLS}`]]);
+  }
   const answers = [accepted, ...controls.map((control) => control.answer)].map((answer) =>
     stableJson(answer),
   );
   if (new Set(answers).size < answers.length) {
-    return refused("a control repeats the accepted answer or another control");
+    return refused([["repeat", "a control repeats the accepted answer or another control"]]);
   }
-  const malformed = controls.findIndex((control) => answerFormatFault(contract, control.answer) !== null);
-  if (malformed !== -1) return refused(`control ${malformed + 1} does not follow the answer format`);
+  const found: (readonly [ControlFault, string])[] = [];
   for (const [index, { answer, expectedCheckId }] of controls.entries()) {
-    const verdict = await decided(verify, task, answer);
-    if (verdict.kind === "pass") return refused(`the check passed control ${index + 1}`);
-    if (verdict.kind === "faulty") {
-      return refused(`control ${index + 1}: check ${verdict.check}: ${verdict.reason}`);
+    const nth = `control ${index + 1}`;
+    if (answerFormatFault(contract, answer) !== null) {
+      found.push(["format", `${nth} does not follow the answer format`]);
+      continue;
     }
-    if (!verdict.blocking.includes(expectedCheckId)) {
-      return refused(`control ${index + 1} failed ${verdict.blocking.join(", ")}, not ${expectedCheckId}`);
+    const verdict = await decided(verify, task, answer);
+    if (verdict.kind === "pass") found.push(["passed", `the check passed ${nth}`]);
+    else if (verdict.kind === "faulty") {
+      found.push(["faulty", `${nth}: check ${verdict.check}: ${verdict.reason}`]);
+    } else if (!verdict.blocking.includes(expectedCheckId)) {
+      found.push(["other-check", `${nth} failed ${verdict.blocking.join(", ")}, not ${expectedCheckId}`]);
     }
   }
-  return { outcome: "passed", controls: hashJsonValue(controls) };
+  return found.length === 0 ? { outcome: "passed", controls: hashJsonValue(controls) } : refused(found);
 }
 
 /**

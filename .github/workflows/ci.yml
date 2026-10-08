@@ -1,0 +1,53 @@
+# Typecheck, lint, format and the suite, on each pull request and on main.
+#
+# Two runners, because the OS isolation has two mechanisms and each is exercised only on its own
+# platform: the Darwin job proves Seatbelt and the Builder sessions, which mount a disk image and run
+# on a Mac alone; the Linux job proves Bubblewrap. A whole suite passing on one says nothing of the
+# other.
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  darwin:
+    # macOS 15, as the Mac the solves run on: the disk cap moves a released image to the Trash with
+    # /usr/bin/trash, which macOS 14 does not have.
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun run lint
+      - run: bun run format:check
+      - run: bun run test
+
+  linux:
+    # A VM runner, not a container: Bubblewrap creates user and mount namespaces, which an ordinary
+    # container withholds.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - name: Install bubblewrap
+        # ubuntu-24.04 packages bubblewrap 0.9.0, above the 0.8.0 that carries --disable-userns.
+        run: sudo apt-get update && sudo apt-get install -y bubblewrap
+      - name: Allow unprivileged user namespaces
+        # Ubuntu 24.04 restricts them through AppArmor, and bwrap then fails with "setting up uid
+        # map: Permission denied".
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - run: bun install --frozen-lockfile
+      - run: bun run test

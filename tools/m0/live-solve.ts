@@ -18,7 +18,9 @@
  *
  * The solve is the stored one's: its harness state is `hb-bundles/<sweep>-<cycle>`, its model and
  * effort are those it recorded, and its contract, task and resources are the bundle's, as
- * `admit-sweep.ts` reads them. The limits are the sweep's `config.yaml` and `maxTurns`, but for the
+ * `admit-sweep.ts` reads them. `--harness` solves under another state instead, such as a Builder's
+ * kept one, and the read-back sets its ending beside the stored solve's: the pilot's informal reading
+ * of old against new until M2. The limits are the sweep's `config.yaml` and `maxTurns`, but for the
  * disk cap, which the sweep did not have.
  * The harness's digest binds its tool tree, so it is the condition's `solverTools` too. The condition's `sandbox` stands in for the policy's digest with its profile, platform and cap,
  * since the policy names each solve's own directories.
@@ -66,6 +68,7 @@ const { values } = parseArgs({
     cycle: { type: "string" },
     task: { type: "string" },
     bundle: { type: "string" },
+    harness: { type: "string" },
     live: { type: "boolean", default: false },
   },
 });
@@ -119,7 +122,7 @@ interface StoredTrace {
 }
 
 async function main(): Promise<number> {
-  const { root, sweep, cycle, task: taskId, bundle, live } = values;
+  const { root, sweep, cycle, task: taskId, bundle, harness: state, live } = values;
   if (
     root === undefined ||
     sweep === undefined ||
@@ -146,7 +149,7 @@ async function main(): Promise<number> {
     const checks = checkProgram(bundle, join(dir, "checks"));
     const contract = contractOf(brief, recordedAnswerFormat(row));
     const resources = sweepResources(brief);
-    const harnessDir = join(root, "hb-bundles", `${sweep}-${row.cycle}`);
+    const harnessDir = state ?? join(root, "hb-bundles", `${sweep}-${row.cycle}`);
     const harness = await openHarness(harnessDir);
     const model = rowModel(row);
     const effort = stored.modelWorker.modelSelection.effort;
@@ -193,10 +196,12 @@ async function main(): Promise<number> {
       capturedSpawn(["caffeinate", "-s", "-w", String(runtimeProcess.pid)]).unref();
     }
 
-    const log = join(scratch, `${row.taskId}-${row.cycle}.jsonl`);
+    // The state's digest in the name, so a solve under another state keeps the stored one's log.
+    const name = `${row.taskId}-${row.cycle}-${harness.digest.slice(0, 8)}`;
+    const log = join(scratch, `${name}.jsonl`);
     recordCondition(log, condition);
     const ending = await solve({
-      id: `${row.taskId}-${row.cycle}`,
+      id: name,
       condition: id,
       task,
       contract,

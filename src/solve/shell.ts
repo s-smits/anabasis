@@ -13,6 +13,7 @@ import { readdirSync, statSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
 import { asError } from "../meta/runtime-values.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
+import { plural } from "../meta/text.ts";
 import { toolTreeSearchDirs } from "../verify/solve-command-isolation.ts";
 import { type CommandWall, shellSeconds, wallOperations } from "./command.ts";
 
@@ -50,8 +51,10 @@ const SHELL_RULES = [
   "A command has a default time limit; pass timeout for a long build, never for a search.",
 ];
 
-/** What the harness would have allowed, appended to a command its own wall cut: time left to ask
- *  for, an ask above the maximum, or the maximum already in hand (built-bash.ts:82-96, verbatim). */
+/** What the host would have allowed, appended to a command its own wall cut: time left to ask
+ *  for, an ask above the maximum, or the maximum already in hand (built-bash.ts:82-96). v1's text
+ *  said "this harness allows", when a harness's `config.yaml` set the limit; here the host does,
+ *  and a Builder reads these lines about a harness it is editing. */
 function timeoutClause(
   asked: number,
   seconds: number,
@@ -59,12 +62,12 @@ function timeoutClause(
 ): string {
   const cheaper = "the move left is cheaper work rather than longer";
   if (seconds < shellMaxSeconds) {
-    return `\n\nThis harness allows ${shellMaxSeconds} s for one command, and ${shellDefaultSeconds} s when you pass none, so there is more time to ask for.`;
+    return `\n\nThe host allows ${shellMaxSeconds} s for one command, and ${shellDefaultSeconds} s when you pass none, so there is more time to ask for.`;
   }
   if (asked > shellMaxSeconds) {
-    return `\n\nYour ${asked} s is above the ${shellMaxSeconds} s this harness allows one command, so it ran as ${seconds} s — the most there is, and ${cheaper}.`;
+    return `\n\nYour ${asked} s is above the ${shellMaxSeconds} s the host allows one command, so it ran as ${seconds} s — the most there is, and ${cheaper}.`;
   }
-  return `\n\nThat is the whole ${shellMaxSeconds} s this harness allows one command, so ${cheaper}.`;
+  return `\n\nThat is the whole ${shellMaxSeconds} s the host allows one command, so ${cheaper}.`;
 }
 
 /** Whether the command could run this entry by name: a venv's sourced `activate` siblings are mode
@@ -107,7 +110,7 @@ export function shellDescription(toolTree: string | null, publicResourceFiles: n
   const resources =
     publicResourceFiles === 0
       ? ""
-      : ` and this domain's public rules under public/resources/ (${publicResourceFiles} file${publicResourceFiles === 1 ? "" : "s"})`;
+      : ` and this domain's public rules under public/resources/ (${plural(publicResourceFiles, "file")})`;
   const publicFolder = ` Your home directory already holds this task as public/task.json${resources}.`;
   return `${BASE_DESCRIPTION}${SCRATCH_FOLDER}${WALLS}${publicFolder}${installedPrograms(toolTree)} ${SHELL_RULES.join(" ")}`;
 }

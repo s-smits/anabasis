@@ -24,6 +24,7 @@
  */
 import type { Contract } from "../kernel/contract.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
+import { plural } from "../meta/text.ts";
 
 /** A check as its author's brief declares it and an Examiner is shown it: never its program. */
 export interface CheckRow {
@@ -67,11 +68,11 @@ export function firstMessage(
   const families = (row: CheckRow) => (row.families === "all" ? "every family" : row.families.join(", "));
   return [
     `Public rules of the domain:\n${contract.rules.map((rule) => `- ${rule.id}: ${rule.statement}`).join("\n") || "(none)"}`,
-    `Conventions: ${contract.conventions || "(none)"}`,
+    ...(contract.conventions === "" ? [] : [`Conventions: ${contract.conventions}`]),
     `Scope: ${contract.scope}`,
     `A solver's answer follows this schema: ${capturedJsonStringify(contract.answerFormat)}`,
     `The checks, by the id a reject control names:\n${checks.map((row) => `- ${row.id} (${families(row)}): ${row.assertion}`).join("\n") || "(none)"}`,
     `Existing tasks, for read_example:\n${examples.map(({ taskId, family }) => `- ${taskId} (family ${family})`).join("\n") || "(none)"}`,
-    `This session has ${String(Math.round(told.wallSeconds / 60))} minutes and ${String(told.turns)} turns.`,
+    `This session has ${plural(Math.round(told.wallSeconds / 60), "minute")} and ${plural(told.turns, "turn")}.`,
   ].join("\n\n");
 }

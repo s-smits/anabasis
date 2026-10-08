@@ -137,7 +137,7 @@ describe("the probe", () => {
     const probe = (path: string, value: string) => tool.execute("id", { path, value });
     const moved = await probe("$.span", "10");
     expect(moved.content).toEqual([
-      expect.objectContaining({ text: expect.stringContaining("1 check(s) moved: span") }),
+      expect.objectContaining({ text: expect.stringContaining("1 check moved: span") }),
     ]);
     await probe("$.members[0].area", "5");
     expect(rows.map((row) => row.moved)).toEqual([["span"], []]);
@@ -526,7 +526,7 @@ describe("the Diagnoser", () => {
     });
     expect(s.sent[0]).toContain("call 1 failed bash: ModuleNotFoundError: numpy");
     expect(s.sent[0]).toContain("Passing solve of the same task under the same condition");
-    expect(s.sent[0]).toContain("2 counted solve(s) of this task, 1 passed");
+    expect(s.sent[0]).toContain("2 counted solves of this task, 1 passed");
     expect(s.sent[0]).toContain(String.raw`ending: {\"outcome\":\"fail\",\"kind\":\"rejected\"}`);
     expect(s.sent[0]).not.toContain(CANARY);
     expect(s.sent[1]).toContain("firstDivergence must quote the failed solve's excerpt");
@@ -556,7 +556,7 @@ describe("the Diagnoser", () => {
     s.record("referee.finding", { solve: "s-1", ruling: "earned" });
     await diagnose(s.reader, fail(s));
     expect(s.sent[0]).toContain("No passing solve of this task is recorded under this condition.");
-    expect(s.sent[0]).toContain("1 counted solve(s) of this task, 0 passed");
+    expect(s.sent[0]).toContain("1 counted solve of this task, 0 passed");
     expect(s.sent[0]).not.toContain("stronger path");
   });
 

@@ -294,7 +294,7 @@ describe("a Builder session", () => {
       "Diagnosis (owner harness, confidence low): The guide never says to multiply.",
     );
     expect(practised).toContain("t-2: pass. Solve s-4.");
-    expect(practised).toContain("1 practice solve(s) left.");
+    expect(practised).toContain("1 practice solve left.");
     // The trace, listed and then one call whole.
     expect(s.sent[3]).toContain(String.raw`ending: fail (rejected)\nsubmitted answer: {\"answer\":\"41\"}`);
     expect(s.sent[4]).toContain("result: margin of s-3");
@@ -369,7 +369,7 @@ describe("a Builder session", () => {
     await session(s.request, s, s.walled);
     expect(s.exam).toBe("s-2");
     expect(s.sent[1]).toContain("s-2 is not a solve of one of this session's practice tasks");
-    expect(s.sent[2]).toContain("3 practice solve(s) are left, and this asks for 4");
+    expect(s.sent[2]).toContain("only 3 practice solves left, and this asks for 4");
     expect(s.sent[3]).toContain("t-9 is not one of this session's practice tasks: t-1, t-2");
     expect(s.of("build.finished")[0]).toMatchObject({ practiceSolves: 0 });
   });

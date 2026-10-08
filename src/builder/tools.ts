@@ -54,6 +54,7 @@ import { asRecord, isString } from "../meta/json-shape.ts";
 import { dirname, join, resolve } from "../meta/path.ts";
 import { pooled } from "../meta/pool.ts";
 import { asError, errorMessage } from "../meta/runtime-values.ts";
+import { plural } from "../meta/text.ts";
 import type { Diagnosis } from "../review/diagnoser.ts";
 import { callList, callsOf, callText, solveOf, stringOf } from "../review/trace.ts";
 import { text, tool } from "../solve/answer.ts";
@@ -324,7 +325,7 @@ export function practiceTool(bench: Bench): AgentTool {
       const left = request.limits.practiceSolves - bench.spent;
       if (chosen.length > left) {
         throw new Error(
-          `${String(left)} practice solve(s) are left, and this asks for ${String(chosen.length)}`,
+          `only ${plural(left, "practice solve")} left, and this asks for ${String(chosen.length)}`,
         );
       }
       // The session's wall, its kill and its halt all reach a solve through the loop's signal, so a
@@ -359,7 +360,7 @@ export function practiceTool(bench: Bench): AgentTool {
           ...lines,
         ].join("\n");
       });
-      return text(`${said.join("\n\n")}\n\n${String(left - chosen.length)} practice solve(s) left.`);
+      return text(`${said.join("\n\n")}\n\n${plural(left - chosen.length, "practice solve")} left.`);
     },
   });
 }

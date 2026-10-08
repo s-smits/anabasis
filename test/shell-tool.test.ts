@@ -79,13 +79,13 @@ describe("the solver's bash tool", () => {
 
         const sleep = "echo started; sleep 5";
         await expect(call(sleep)).rejects.toThrow(
-          "started\n\n\nCommand timed out after 1 seconds\n\nThis harness allows 2 s for one command, and 1 s when you pass none, so there is more time to ask for.",
+          "started\n\n\nCommand timed out after 1 seconds\n\nThe host allows 2 s for one command, and 1 s when you pass none, so there is more time to ask for.",
         );
         await expect(call(sleep, 9)).rejects.toThrow(
-          "Command timed out after 2 seconds\n\nYour 9 s is above the 2 s this harness allows one command, so it ran as 2 s — the most there is, and the move left is cheaper work rather than longer.",
+          "Command timed out after 2 seconds\n\nYour 9 s is above the 2 s the host allows one command, so it ran as 2 s — the most there is, and the move left is cheaper work rather than longer.",
         );
         await expect(call(sleep, 2)).rejects.toThrow(
-          "Command timed out after 2 seconds\n\nThat is the whole 2 s this harness allows one command, so the move left is cheaper work rather than longer.",
+          "Command timed out after 2 seconds\n\nThat is the whole 2 s the host allows one command, so the move left is cheaper work rather than longer.",
         );
 
         const failed = await call("echo partial; exit 3");

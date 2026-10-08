@@ -1,4 +1,5 @@
 import { truncateHead, truncateTail } from "../../vendor/pi-coding-agent/core/tools/truncate.ts";
+import { plural } from "./text.ts";
 
 /**
  * The one way this repository cuts a text to a size: pi's truncation, in UTF-8 bytes and whole
@@ -60,7 +61,7 @@ export function boundText(
   const truncated = bounded.length < whole.length;
   if (!truncated) return { text: bounded, truncated, totalBytes: cut.totalBytes, shown: bounded };
   const left = cut.totalBytes - encoder.encode(bounded).byteLength;
-  const omitted = `[…${left} byte${left === 1 ? "" : "s"} omitted]`;
+  const omitted = `[…${plural(left, "byte")} omitted]`;
   const shown =
     bounded === "" ? omitted : keep === "head" ? `${bounded} ${omitted}` : `${omitted} ${bounded}`;
   return { text: bounded, truncated, totalBytes: cut.totalBytes, shown };

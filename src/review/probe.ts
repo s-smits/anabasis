@@ -24,6 +24,7 @@ import { jsonPathTokens, resolveJsonPath } from "../meta/json-evidence.ts";
 import { capturedJsonParse, capturedStructuredClone } from "../meta/json-runtime.ts";
 import type { JsonValue } from "../meta/json-shape.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
+import { plural } from "../meta/text.ts";
 import { text, tool } from "../solve/answer.ts";
 
 /** review-probe.ts:57: each probe runs every applicable check, so eight keep a review from becoming
@@ -135,7 +136,7 @@ function rowText(row: ProbeRow): string {
     sideText("changed", row.changed),
     row.moved.length === 0
       ? `  no check changed its verdict for this replacement. That alone does not show ${row.path} is unread: a check that reads it may simply decide the new value the same way`
-      : `  ${String(row.moved.length)} check(s) moved: ${row.moved.join(", ")}`,
+      : `  ${plural(row.moved.length, "check")} moved: ${row.moved.join(", ")}`,
     ...(conclusive(row) ? [] : ["  inconclusive: a side reached no verdict, so this probe is not evidence"]),
   ].join("\n");
 }

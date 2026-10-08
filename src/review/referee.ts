@@ -160,7 +160,7 @@ function packet(fail: RefereeCase, verdict: LoggedVerdict, accepted: JsonValue |
   const { hidden, ...task } = fail.task;
   return [
     `Public rules:\n${fail.contract.rules.map((rule) => `- ${rule.id}: ${rule.statement}`).join("\n")}`,
-    `Conventions: ${fail.contract.conventions || "(none)"}`,
+    ...(fail.contract.conventions === "" ? [] : [`Conventions: ${fail.contract.conventions}`]),
     `Public task: ${capturedJsonStringify(task)}`,
     `Hidden values the checks may receive: ${capturedJsonStringify(hidden)}`,
     `Answer under review: ${capturedJsonStringify(verdict.answer)}`,

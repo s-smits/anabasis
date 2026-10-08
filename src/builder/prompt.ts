@@ -23,6 +23,7 @@
  */
 import type { Contract } from "../kernel/contract.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
+import { plural } from "../meta/text.ts";
 
 /** A practice task as the opening message lists it. */
 export interface Listed {
@@ -70,11 +71,11 @@ export function firstMessage(contract: Contract, tasks: readonly Listed[], told:
   );
   return [
     `Public rules of the domain:\n${contract.rules.map((rule) => `- ${rule.id}: ${rule.statement}`).join("\n") || "(none)"}`,
-    `Conventions: ${contract.conventions || "(none)"}`,
+    ...(contract.conventions === "" ? [] : [`Conventions: ${contract.conventions}`]),
     `Scope: ${contract.scope}`,
     `The solver's answer follows this schema: ${capturedJsonStringify(contract.answerFormat)}`,
     "The public resources every solve's home holds under public/resources/ are in resources.json.",
     `Practice tasks, each one's public part in practice/<task>.json:\n${listed.join("\n") || "(none)"}`,
-    `This session has ${String(told.practiceSolves)} practice solves, ${String(Math.round(told.wallSeconds / 60))} minutes and ${String(told.turns)} turns.`,
+    `This session has ${plural(told.practiceSolves, "practice solve")}, ${plural(Math.round(told.wallSeconds / 60), "minute")} and ${plural(told.turns, "turn")}.`,
   ].join("\n\n");
 }

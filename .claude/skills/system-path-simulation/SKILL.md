@@ -109,8 +109,8 @@ a check that cannot run to dispute a task.
 
 ## What the first rehearsals settled
 
-About fifteen rounds run to their report, one kill and five stops on 2026-10-08, under ten minutes
-of host time and no model call.
+About seventeen rounds run to their report, one kill and five stops on 2026-10-08, with no model
+call.
 
 What a round of this size can read:
 
@@ -128,6 +128,10 @@ What a round of this size can read:
 - **A step does not move the parent.** The next round starts from the cycle's harness again unless
   `--parent <digest>` names the stepped one, and scores the tasks already admitted only with
   `--admitted`.
+- **An Examiner session's "too easy" retires nothing.** After its second session `exam-1` held two
+  candidates, the two that session was told were too easy. A seed of the final log, rehearsed at
+  the round's defaults: 36 solves, `not-scored` when both pass again, `no-step` when both are won.
+  The prediction had said one candidate, from a count taken while the session ran.
 
 What the product did:
 

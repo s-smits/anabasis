@@ -64,7 +64,9 @@ export type Seated = (
   given: { readonly builder: string | undefined; readonly parent: string },
 ) => Seats;
 
-const OPTIONS = {
+/** A round's flags and their defaults. A launch reads the same ones (`tools/runs/launch.ts`), so
+ *  what it says a round can read is said of the round that would start. */
+export const ROUND_OPTIONS = {
   root: { type: "string" },
   sweep: { type: "string" },
   cycle: { type: "string" },
@@ -104,7 +106,7 @@ const hosted: Seated = (campaign, { builder }) => {
 
 /** `bun tools/d2/round.ts`, and under a simulation's `seated` the same round with its seats scripted. */
 export async function roundCommand(args: readonly string[], seated: Seated = hosted): Promise<RoundReport> {
-  const { values } = parseArgs({ args: [...args], options: OPTIONS });
+  const { values } = parseArgs({ args: [...args], options: ROUND_OPTIONS });
   const { root, sweep, cycle, bundle, name, session } = values;
   if (
     root === undefined ||

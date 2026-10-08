@@ -25,6 +25,9 @@ const SETS = {
 const ASKED: Asked = {
   target: undefined,
   admitted: false,
+  // A level one win clears and a floor the anchor meets: a round of this size can read step.
+  level: 0.5,
+  anchorFloor: 2,
   loaded: false,
   load: 3,
   cores: 12,
@@ -54,6 +57,20 @@ describe("a launch's preflight", () => {
     const admitted = { ...bare, admitted: ["s1"] };
     expect(preflight(admitted, ASKED).refusals).toHaveLength(1);
     expect(preflight(admitted, { ...ASKED, admitted: true }).refusals).toEqual([]);
+  });
+
+  // As exam-1 stood on 2026-10-08: an anchor under the round's floor of eight, and one task held.
+  it("says when a round is too small for either of its tests, at the round's own defaults", () => {
+    const small = { ...ASKED, level: 0.1, anchorFloor: 8 };
+    expect(preflight(SETS, small).notes.slice(1)).toEqual([
+      "at most 1 task(s) can be scored, and at --level 0.1 a step takes 4, all won: this round cannot read step. Its screening still retires each candidate both harnesses pass, as too-easy",
+      "the anchor holds 2 task(s) and --anchor-floor is 8: the anchor cannot be tested, so the round reads neither step nor anchor-lost",
+    ]);
+    const four = { ...SETS, candidates: ["c1", "c2", "c3", "c4"] };
+    expect(preflight(four, { ...small, anchorFloor: 2 }).notes).toHaveLength(1);
+    // A target under the sweep caps the scored set as few candidates do.
+    expect(preflight(four, { ...small, anchorFloor: 2, target: "3" }).notes[1]).toContain("at most 3");
+    expect(preflight(four, { ...small, anchorFloor: 2, level: 0.05 }).notes[1]).toContain("a step takes 5");
   });
 
   it("refuses an empty log, a campaign with no anchor, a loaded host, a second start and a missing env file", () => {

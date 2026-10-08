@@ -60,10 +60,19 @@ repeated. The round's report holds its target, so a later reader can tell.
 `--dry-run` prints the preflight and the command, and starts nothing. Use it to answer "is this
 campaign ready for a round?".
 
-The preflight says whether a round can start. What a round of this size can read is another
-question, and a free one: rehearse it on a seed first (system-path-simulation). A round that can
-start may still be unable to read `step`: with fewer than four tasks to screen at level 0.1, or at
-one solve a side over a parent that already passes its anchor.
+A round that can start may still be unable to read `step`, and the preflight says so in two notes
+where that is certain. Read them before spend.
+
+- **Too few tasks to score.** The scored set is at most the tasks held to screen, and at most
+  `--target`. At `--level 0.1` a step takes four, all won. Screening still retires each candidate
+  both harnesses pass as `too-easy`, so a round that cannot step can still spend its candidates.
+- **An anchor under its floor.** With fewer anchor tasks than `--anchor-floor` (8 unless given) the
+  anchor is never tested, and the round reads neither `step` nor `anchor-lost`.
+
+One thing it cannot say, since it depends on the solves: at `--solves 1` an anchor task informs the
+anchor only when the two harnesses disagree on it, so a parent that already passes its anchor
+leaves it untested. What a round of a given size reads is a free question: rehearse it on a seed
+first (system-path-simulation).
 
 ## An Examiner session
 

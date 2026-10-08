@@ -52,9 +52,11 @@ import { runTextSyncOrThrow, terminateAndReapProcessGroupId } from "#src/meta/su
 import { spent } from "#src/builder/round.ts";
 import { sessionDirs } from "#src/builder/session.ts";
 import { claimed } from "#src/examiner/session.ts";
+import { signP } from "#src/kernel/compare.ts";
 import { type SolveDirs, solveDirs } from "#src/solve/command.ts";
 import { releaseDiskCap } from "#src/verify/disk-cap.ts";
 import { carriable, setsOf } from "../d2/campaign.ts";
+import { ROUND_OPTIONS } from "../d2/round.ts";
 import { EXAMINE, logEvents, processes, ROUND, type Run, runs, standing, writers } from "./pulse.ts";
 import { seedCut } from "./seed.ts";
 
@@ -80,6 +82,9 @@ export interface Asked extends Host {
   /** `--target`, as given: only "0" asks for no scored task. */
   readonly target: string | undefined;
   readonly admitted: boolean;
+  /** `--level` and `--anchor-floor`, as given or as the round defaults them. */
+  readonly level: number;
+  readonly anchorFloor: number;
 }
 
 /** What a launch keeps of a round's start, in `launch-<session>.json` beside its log. The log holds
@@ -141,12 +146,26 @@ export function preflight(sets: ReturnType<typeof setsOf>, asked: Asked) {
     ]),
     ...refused(asked),
   ];
+  // What the round's two tests can say at this size is arithmetic, and rehearsals found it before a
+  // round paid to (2026-10-08): exam-1 held one task to screen, and four anchor tasks under a floor
+  // of eight.
+  const most = Math.min(toScreen, Number(asked.target ?? ROUND_OPTIONS.target.default));
+  let sweep = 1;
+  while (signP(sweep, 0) > asked.level) sweep += 1;
   const notes = said([
     [
       true,
       `${String(sets.anchor.length)} anchor · ${String(sets.released.length)} released for practice · ${String(sets.candidates.length)} held to screen · ${String(sets.admitted.length)} admitted`,
     ],
     [!scoring, "--target 0: the round scores no task and cannot read step. Its anchor is all it compares"],
+    [
+      scoring && most > 0 && most < sweep,
+      `at most ${String(most)} task(s) can be scored, and at --level ${String(asked.level)} a step takes ${String(sweep)}, all won: this round cannot read step. Its screening still retires each candidate both harnesses pass, as too-easy`,
+    ],
+    [
+      sets.anchor.length > 0 && sets.anchor.length < asked.anchorFloor,
+      `the anchor holds ${String(sets.anchor.length)} task(s) and --anchor-floor is ${String(asked.anchorFloor)}: the anchor cannot be tested, so the round reads neither step nor anchor-lost`,
+    ],
     [sets.released.length === 0, "no task is released: the Builder has nothing to practise on"],
   ]);
   return { refusals, notes };
@@ -225,6 +244,8 @@ export async function launch(args: readonly string[]): Promise<void> {
       session: { type: "string" },
       target: { type: "string" },
       admitted: { type: "boolean", default: false },
+      level: ROUND_OPTIONS.level,
+      "anchor-floor": ROUND_OPTIONS["anchor-floor"],
       examiner: { type: "string" },
     },
   });
@@ -257,6 +278,8 @@ export async function launch(args: readonly string[]): Promise<void> {
         ...host,
         target: isString(target) ? target : undefined,
         admitted: values.admitted === true,
+        level: Number(values.level),
+        anchorFloor: Number(values["anchor-floor"]),
       });
   for (const note of notes) console.log(`· ${note}`);
   if (run === undefined || refusals.length > 0) {

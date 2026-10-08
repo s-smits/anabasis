@@ -193,12 +193,12 @@ export function probeTool(verify: Verifier, task: Task, answer: JsonValue, rows:
     parameters: Type.Object({
       path: Type.String({
         description:
-          "A rooted path to an existing leaf of the answer, spelled as the checks spell theirs: `$.layout.members[0].area`. Array positions are bracketed; a key holding a dot or a slash is quoted: `$.files['src/main.cpp']`.",
+          "A rooted path to an existing leaf of the answer, spelled as the checks spell theirs: `$.items[0].value`. Array positions are bracketed; a key holding a dot or a slash is quoted: `$.files['src/main.cpp']`.",
       }),
       value: Type.Optional(
         Type.String({
           description:
-            'The replacement value as JSON text, e.g. `0.0001`, `"bolted"` or `null`. One field only. Omit it when you send `find` and `replace`.',
+            'The replacement value as JSON text, e.g. `0.0001`, `"high"` or `null`. One field only. Omit it when you send `find` and `replace`.',
         }),
       ),
       find: Type.Optional(

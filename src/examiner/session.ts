@@ -404,12 +404,12 @@ function controlsTool(desk: Desk): AgentTool {
               check: Type.String({ description: "The id of the check that must refuse the changed answer." }),
               path: Type.String({
                 description:
-                  "A rooted path to an existing leaf of the accepted answer: `$.layout.members[0].area`. Array positions are bracketed; a key holding a dot or a slash is quoted: `$.files['src/main.cpp']`.",
+                  "A rooted path to an existing leaf of the accepted answer: `$.items[0].value`. Array positions are bracketed; a key holding a dot or a slash is quoted: `$.files['src/main.cpp']`.",
               }),
               value: Type.Optional(
                 Type.String({
                   description:
-                    'The value that replaces the field, as JSON text: `0.0001`, `"bolted"` or `null`. Omit it when you send `find` and `replace`.',
+                    'The value that replaces the field, as JSON text: `0.0001`, `"high"` or `null`. Omit it when you send `find` and `replace`.',
                 }),
               ),
               find: Type.Optional(

@@ -229,7 +229,7 @@ function rulingTool(
       field: Type.Optional(
         Type.String({
           description:
-            "For earned: the path of the field of the answer that breaks the rule, spelled as the checks spell theirs: `$.layout.members[0].area`.",
+            "For earned: the path of the field of the answer that breaks the rule, spelled as the checks spell theirs: `$.items[0].value`.",
         }),
       ),
       reason: Type.String({ minLength: 1, maxLength: REASON_MAX_CHARS }),

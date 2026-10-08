@@ -26,7 +26,7 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
 import { backends, compactionMode } from "#src/backends/models.ts";
-import { type Condition, conditionId, type Limits } from "#src/kernel/condition.ts";
+import { type Condition, conditionId, type Limits, recordCondition } from "#src/kernel/condition.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { read } from "#src/kernel/log.ts";
 import { freezePrices, priceKey } from "#src/kernel/meter.ts";
@@ -193,6 +193,7 @@ async function main(): Promise<number> {
     }
 
     const log = join(scratch, `${row.taskId}-${row.cycle}.jsonl`);
+    recordCondition(log, condition);
     const ending = await solve({
       id: `${row.taskId}-${row.cycle}`,
       condition: id,

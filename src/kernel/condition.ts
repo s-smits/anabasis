@@ -6,7 +6,9 @@
  * host's, which a Built Harness used to declare for itself: on 7 October each harness state carried
  * its own `config.yaml` naming its wall, turn cap, shell timeouts and concurrency.
  */
+import type { JsonObject } from "../meta/json-shape.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
+import { append, type LogEvent, read } from "./log.ts";
 import type { PriceTable } from "./meter.ts";
 
 /**
@@ -69,4 +71,35 @@ export function conditionId(condition: Condition): string {
     throw new Error(`the condition runs ${condition.model} but prices no such model`);
   }
   return hashJsonValue(condition);
+}
+
+/**
+ * Log the condition under its id, once, and return the id. A solve's events name their condition by
+ * id alone, so without the record the log could not say which harness, task version or side a solve
+ * ran under, nor whether two conditions differ in the one thing being compared. The id is the
+ * record's hash, so a second record of it would say nothing new.
+ */
+export function recordCondition(log: string, condition: Condition): string {
+  const id = conditionId(condition);
+  if (!read(log).some((event) => event.kind === "condition.recorded" && event.data.id === id)) {
+    // SAFETY: a condition is strings, numbers and records of them.
+    append(log, "condition.recorded", { id, condition: condition as unknown as JsonObject });
+  }
+  return id;
+}
+
+/** Every condition the log records, by id. A record that does not hash to its id is refused: the id
+ *  is what every solve names, and a record edited under it would describe solves it never ran. */
+export function conditionsOf(events: readonly LogEvent[]): Map<string, Condition> {
+  const conditions = new Map<string, Condition>();
+  for (const event of events) {
+    if (event.kind === "condition.recorded") {
+      // SAFETY: only `recordCondition` writes the event, and the hash proves the record whole.
+      const condition = event.data.condition as unknown as Condition;
+      const id = conditionId(condition);
+      if (id !== event.data.id) throw new Error(`${event.at}: a condition does not hash to its id`);
+      conditions.set(id, condition);
+    }
+  }
+  return conditions;
 }

@@ -60,6 +60,11 @@ repeated. The round's report holds its target, so a later reader can tell.
 `--dry-run` prints the preflight and the command, and starts nothing. Use it to answer "is this
 campaign ready for a round?".
 
+The preflight says whether a round can start. What a round of this size can read is another
+question, and a free one: rehearse it on a seed first (system-path-simulation). A round that can
+start may still be unable to read `step`: with fewer than four tasks to screen at level 0.1, or at
+one solve a side over a parent that already passes its anchor.
+
 ## An Examiner session
 
 ```sh

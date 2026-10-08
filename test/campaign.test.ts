@@ -1,7 +1,7 @@
 // A campaign over a sweep laid out as v1's left one, as far as it goes without a model or a wall: it
 // opens, names its sets from the log, finds a task a session wrote beside the pack's own, and
 // `prepare.ts`, run as the operator runs it, draws the anchor and releases the practice tasks once.
-import { afterAll, describe, expect, it } from "bun:test";
+import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
 import { append, type LogEvent, read } from "../src/kernel/log.ts";
 import { taskStates, taskVersion } from "../src/kernel/task.ts";
 import {
@@ -15,7 +15,9 @@ import {
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
-import { carriable, frontier, openCampaign, setsOf } from "../tools/d2/campaign.ts";
+import { carriable, frontier, LIMITS, openCampaign, setsOf } from "../tools/d2/campaign.ts";
+import { LIMITS_OPTIONS, limitsNamed } from "../tools/d2/limits.ts";
+import { ROUND_OPTIONS, roundCommand } from "../tools/d2/round.ts";
 
 const REPO = resolve(import.meta.dir, "..");
 const FIXTURE = new URL("fixtures/harness-min", import.meta.url).pathname;
@@ -29,6 +31,10 @@ const TASKS = Array.from({ length: 7 }, (_, index) => ({
   publicInput: { base: index + 2 },
   hidden: null,
 }));
+
+// A test here runs a campaign's commands as the operator does, and each start reads the host's
+// source tree whole: over a second, so three of them pass Bun's own five.
+setDefaultTimeout(60_000);
 
 afterAll(() => {
   rmSync(root, { recursive: true, force: true });
@@ -88,6 +94,17 @@ function layOut(): void {
 }
 
 describe("a campaign", () => {
+  /** `prepare.ts` as the operator runs it, with whatever flags `more` adds, and what it printed. */
+  const prepare = (...more: string[]) => {
+    const flags = Object.entries({ ...ARGS, anchor: "3", practice: "2" }).flatMap(([flag, value]) => [
+      `--${flag}`,
+      value,
+    ]);
+    const cmd = [capturedExecPath, "tools/d2/prepare.ts", ...flags, ...more];
+    const ran = Bun.spawnSync({ cmd, cwd: REPO });
+    return `${ran.stdout.toString()}${ran.stderr.toString()}`.trim();
+  };
+
   it("opens over a stored sweep, names its sets from the log, and prepares them once", async () => {
     layOut();
     const campaign = await openCampaign(ARGS);
@@ -124,22 +141,20 @@ describe("a campaign", () => {
     expect(packages.get(extra)).toMatchObject({ taskId: "x-1-001", hidden: { seed: 1 }, ruleIds: ["R1"] });
     expect(versions.every((version) => packages.has(version))).toBe(true);
 
-    const prepare = () => {
-      const flags = Object.entries({ ...ARGS, anchor: "3", practice: "2" }).flatMap(([flag, value]) => [
-        `--${flag}`,
-        value,
-      ]);
-      const ran = Bun.spawnSync({ cmd: [capturedExecPath, "tools/d2/prepare.ts", ...flags], cwd: REPO });
-      return `${ran.stdout.toString()}${ran.stderr.toString()}`.trim();
-    };
     // While no round has stepped the campaign stands on the stored cycle's harness.
     const stands = await frontier(campaign);
     expect(stands.dir).toBe(campaign.parent);
     // No solve has placed a task yet, so the draws are blind and the ladder says so.
+    const against = `against the frontier ${stands.digest.slice(0, 8)}`;
+    const unsolved = "no solve under these limits is on record against this harness";
+    const binds =
+      "what binds: tasks. 2 of the pool can be scored and a step takes 4: no Examiner session has written against this harness";
+    // After the ladder, whether the wall binds.
     const summary = [
       "7 feasible: 3 anchor, 2 released for practice (2 the frontier is not known to clear), 2 in the pool",
-      `against the frontier ${stands.digest.slice(0, 8)}: 0 stop it, 0 it clears, 0 ended at the wall, 2 no solve has placed; 0 wait for a witness`,
-      "what binds: tasks. 2 of the pool can be scored and a step takes 4: no Examiner session has written against this harness",
+      `${against}: 0 stop it, 0 it clears, 0 ended at the wall, 2 no solve has placed; 0 wait for a witness`,
+      `against a wall of 120 minutes: 0 of 2 pool tasks walled, 0 tasks set aside as wall-bound outside the pool (Examiner sessions wrote 0 of the pool, 0 of the walled and 0 of the wall-bound); ${unsolved}`,
+      binds,
     ].join("\n");
     expect(prepare()).toBe(summary);
     const sets = setsOf(read(campaign.log));
@@ -162,6 +177,99 @@ describe("a campaign", () => {
     append(campaign.log, "comparison.reported", { session: "b-1", reading: "step", fresh: stands.digest });
     append(campaign.log, "comparison.reported", { session: "b-2", reading: "no-step", fresh: "other" });
     expect(await frontier(campaign)).toEqual({ dir: kept, digest: stands.digest });
+  });
+
+  it("returns a wall-bound task to the pool when it is prepared under a longer wall, and under nothing else", async () => {
+    const campaign = await openCampaign(ARGS);
+    const stands = await frontier(campaign);
+    const sets = setsOf(read(campaign.log));
+    // A round set one pool task aside as wall-bound, under the limits every campaign has run at.
+    const [bound = ""] = sets.candidates;
+    append(campaign.log, "task.state", {
+      version: bound,
+      state: "wall-bound",
+      session: "b-0",
+      limits: campaign.limits,
+    });
+    // Under the same wall it stays set aside, and the reading counts it.
+    const same = prepare();
+    expect(same).toContain("0 of 1 pool task walled, 1 task set aside as wall-bound outside the pool");
+    expect(same).not.toContain("returned to the pool");
+    expect(taskStates(read(campaign.log)).get(bound)).toBe("wall-bound");
+    // Under a longer wall it returns to the pool, with the limits it returned under on record.
+    const longer = prepare("--solve-minutes", "240").split("\n");
+    expect(longer[0]).toBe(
+      "1 wall-bound task returned to the pool: the wall named here is longer than the one that bound them, and no other limit is tighter",
+    );
+    expect(longer[2]).toStartWith(`against the frontier ${stands.digest.slice(0, 8)}: 0 stop it`);
+    expect(longer[3]).toStartWith(
+      "against a wall of 240 minutes: 0 of 2 pool tasks walled, 0 tasks set aside",
+    );
+    expect(taskStates(read(campaign.log)).get(bound)).toBe("held");
+    expect(read(campaign.log).at(-1)?.data).toMatchObject({
+      version: bound,
+      state: "held",
+      limits: { ...campaign.limits, wallSeconds: 240 * 60 },
+    });
+    // It is held like any other from then on: a second run moves nothing.
+    const events = read(campaign.log).length;
+    expect(prepare("--solve-minutes", "240")).not.toContain("returned to the pool");
+    expect(read(campaign.log)).toHaveLength(events);
+  });
+
+  it("holds every solve to the limits a command names, through one owner, and to the sweep's when it names none", async () => {
+    const plain = await openCampaign(ARGS);
+    expect(plain.limits).toEqual(LIMITS);
+    // The two flags' defaults are the sweep's limits, so a command that names neither runs under
+    // the setting every campaign ran under before the flags existed.
+    const defaults = {
+      "solve-minutes": LIMITS_OPTIONS["solve-minutes"].default,
+      "solve-turns": LIMITS_OPTIONS["solve-turns"].default,
+    };
+    expect(limitsNamed(defaults)).toEqual(LIMITS);
+    const unnamed = await openCampaign({ ...ARGS, limits: limitsNamed(defaults) });
+    expect(unnamed.setting(unnamed.test)).toBe(plain.setting(plain.test));
+    // A longer wall or more turns is another setting, on the test side and the stronger alike.
+    const named = limitsNamed({ "solve-minutes": "240", "solve-turns": "48" });
+    expect(named).toEqual({ ...LIMITS, wallSeconds: 14_400, turns: 48 });
+    const longer = await openCampaign({ ...ARGS, limits: named });
+    expect(longer.limits).toEqual(named);
+    expect(longer.setting(longer.test)).not.toBe(plain.setting(plain.test));
+    const strong = { ...plain.test, side: "strong" } as const;
+    expect(longer.setting(strong)).not.toBe(plain.setting(strong));
+    for (const [minutes, turns] of [
+      ["0", "24"],
+      ["1.5", "24"],
+      ["120", "0"],
+      ["two hours", "24"],
+    ] as const) {
+      expect(() => limitsNamed({ "solve-minutes": minutes, "solve-turns": turns })).toThrow(
+        "a solve's wall and its turns are whole numbers of at least one",
+      );
+    }
+
+    // A round takes the owner's two flags as they are, and a rehearsal is a round with other seats.
+    expect(ROUND_OPTIONS["solve-minutes"]).toBe(LIMITS_OPTIONS["solve-minutes"]);
+    expect(ROUND_OPTIONS["solve-turns"]).toBe(LIMITS_OPTIONS["solve-turns"]);
+    // Every command reads them through the owner: a wall it refuses is refused by each of them
+    // before a campaign is opened or a model is asked for.
+    const refused = "--solve-minutes 0 --solve-turns 24: a solve's wall and its turns are whole numbers";
+    const flags = [
+      ...Object.entries(ARGS).flatMap(([flag, value]) => [`--${flag}`, value]),
+      "--solve-minutes",
+      "0",
+    ];
+    const session = ["--session", "z-9"];
+    await expect(roundCommand([...flags, ...session])).rejects.toThrow(refused);
+    for (const command of [
+      ["tools/d2/prepare.ts"],
+      ["tools/d1b/examine.ts", ...session, "--examiner", "none/none", "--strong", "none/none"],
+    ]) {
+      const ran = Bun.spawnSync({ cmd: [capturedExecPath, ...command, ...flags], cwd: REPO });
+      expect(ran.exitCode).not.toBe(0);
+      expect(ran.stderr.toString()).toContain(refused);
+    }
+    expect(read(plain.log).some(({ data }) => data.session === "z-9")).toBe(false);
   });
 
   it("reads from a log what a campaign under a repaired checker can take with no solve", () => {

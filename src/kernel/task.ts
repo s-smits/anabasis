@@ -28,6 +28,14 @@
  * the round that scores it, and one both of a round's harnesses pass goes to `too-easy`: the
  * campaign's harness has got past it.
  *
+ * `wall-bound` is the third verdict that is evidence about something other than the task: every
+ * fail that kept it ended at the wall, under the limits those solves ran at. Until 2026-10-08 it
+ * was where a task ended, whatever wall a later round ran under. Since the limits are a campaign's
+ * to raise (`tools/d2/limits.ts`), the verdict holds under the limits that produced it: the state
+ * records them, and a task leaves it for `held`, to be screened again, only on an event that names
+ * limits with a longer wall and nothing tighter (`limits.ts`). A state logged before limits were
+ * recorded was measured under the campaign's first, the first test-side condition its log holds.
+ *
  * The pair is the model pair: the one thing the stronger condition changes is the solver. The budget
  * pair is cut as a bracket, since on truss no test-side solve passed within one budget and it
  * admitted every task that reached it; cost stays a reported column.
@@ -40,11 +48,13 @@
  * admission names the control set it rested on.
  */
 import { existsSync } from "../meta/filesystem.ts";
-import { type JsonObject, type JsonValue, isString } from "../meta/json-shape.ts";
+import { asRecord, type JsonObject, type JsonValue, isString } from "../meta/json-shape.ts";
 import { join } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { compareCodeUnits, hashJsonValue, stableJson } from "../meta/stable-json.ts";
 import { answerFormatFault, type Contract } from "./contract.ts";
+import type { Limits } from "./condition.ts";
+import { limitsIn, roomier } from "./limits.ts";
 import type { EventKind, LogEvent } from "./log.ts";
 import type { Counted } from "./solve.ts";
 import {
@@ -84,26 +94,32 @@ export type ControlFault = "count" | "repeat" | "format" | "passed" | "faulty" |
 /** Gate 4's refusal: every fault in one reason, and the kinds among them. */
 type ControlsRefused = Refused & { readonly kinds: readonly ControlFault[] };
 
-/** A task version as the fold holds it: its state, how many gates it passed in order, and whether a
- *  gate that did not pass ended them. */
+/** A task version as the fold holds it: its state, how many gates it passed in order, whether a
+ *  gate that did not pass ended them, and, while it is wall-bound, the limits the event that bound
+ *  it named: null where it named none. */
 interface Folded {
   state: TaskState;
   passed: number;
   ended: boolean;
+  bound: Limits | null;
 }
 
-/** The fold so far: each task version, and the versions the anchor drew, null until it is drawn. */
+/** The fold so far: each task version, the versions the anchor drew, null until it is drawn, and
+ *  the limits of the first test-side condition the log records, null until one is. */
 interface Fold {
   readonly tasks: Map<string, Folded>;
   drawn: Set<string> | null;
+  first: Limits | null;
 }
 
 /** What a log holds of its tasks, from the one fold: each version's state, the versions that passed
- *  every logged gate, and the versions the anchor's draws named. */
+ *  every logged gate, the versions the anchor's draws named, and of each wall-bound version the
+ *  limits it was measured under, null where the log holds none. */
 export interface TaskSets {
   readonly states: Map<string, TaskState>;
   readonly feasible: ReadonlySet<string>;
   readonly anchor: ReadonlySet<string>;
+  readonly bound: ReadonlyMap<string, Limits | null>;
 }
 
 /** Gate 5's outcome. A task the stronger condition has not passed never reaches it: it waits at gate 2. */
@@ -120,11 +136,13 @@ const LOGGED_GATES = 4;
 /** The gate a stronger solve passes, and the state and outcome of a task it has not passed yet. */
 const WITNESS_GATE = 2;
 const REACH = "too-hard";
+const WALL_BOUND = "wall-bound";
 
 /**
  * The states of a task version. `wall-bound` is not one of the plan's: a task whose only screening
  * fails ended at the wall is neither too easy nor admitted. Whether it may be admitted is the
- * operator's decision 21, held until the sweep's non-passes are counted by kind.
+ * operator's decision 21, held until the sweep's non-passes are counted by kind. Until then it
+ * waits, and returns to the pool under a longer wall.
  */
 export const TASK_STATES = [
   "held",
@@ -159,7 +177,7 @@ const NEXT: Readonly<Record<TaskState, readonly TaskState[]>> = {
   refused: [],
   "too-hard": ["held", "refused", "stale"],
   "too-easy": [],
-  "wall-bound": [],
+  "wall-bound": ["held"],
   released: ["disputed"],
   disputed: [],
   stale: [],
@@ -368,8 +386,9 @@ export function foldsEvent(kind: EventKind): boolean {
  * Each task version's state, folded from the log: `task.proposed` holds it, a passing `task.gate`
  * clears the next gate, and `task.state` moves it. A history that moves a task where it cannot go,
  * screens a task that is not feasible, logs its gates out of order or after one did not pass, passes
- * gate 4 on no named control set, draws a task not yet feasible into the anchor, or releases a task
- * before `anchor.drawn` or one the anchor drew, is refused, as a torn line is.
+ * gate 4 on no named control set, draws a task not yet feasible into the anchor, releases a task
+ * before `anchor.drawn` or one the anchor drew, or takes a task out of `wall-bound` under limits no
+ * roomier than bound it, is refused, as a torn line is.
  */
 export function taskStates(events: readonly LogEvent[]): Map<string, TaskState> {
   return taskSets(events).states;
@@ -378,13 +397,18 @@ export function taskStates(events: readonly LogEvent[]): Map<string, TaskState> 
 /** The same fold with the two sets every reader of a campaign asks for beside the states, so that
  *  what is feasible and what is the anchor's are said in one place. */
 export function taskSets(events: readonly LogEvent[]): TaskSets {
-  const fold: Fold = { tasks: new Map(), drawn: null };
+  const fold: Fold = { tasks: new Map(), drawn: null, first: null };
   for (const event of events) step(fold, event);
   const tasks = [...fold.tasks];
   return {
     states: new Map(tasks.map(([version, task]) => [version, task.state])),
     feasible: new Set(tasks.flatMap(([version, task]) => (task.passed === LOGGED_GATES ? [version] : []))),
     anchor: new Set(fold.drawn),
+    bound: new Map(
+      tasks.flatMap(([version, task]) =>
+        task.state === WALL_BOUND ? [[version, task.bound ?? fold.first] as const] : [],
+      ),
+    ),
   };
 }
 
@@ -393,13 +417,19 @@ function step(fold: Fold, { at, kind, data }: LogEvent): void {
     draw(fold, at, data);
     return;
   }
+  if (kind === "condition.recorded") {
+    // Read for one fact and never refused: the limits a campaign's solver first ran under.
+    const condition = asRecord(data.condition);
+    if (condition?.side === "test") fold.first ??= limitsIn(condition.limits);
+    return;
+  }
   if (!foldsEvent(kind)) return;
   const version = data.version;
   if (!isString(version)) throw new Error(`${at}: ${kind} names no task version`);
   const task = fold.tasks.get(version);
   if (kind === "task.proposed") {
     if (task !== undefined) throw new Error(`${at}: task ${version} is proposed twice`);
-    fold.tasks.set(version, { state: "held", passed: 0, ended: false });
+    fold.tasks.set(version, { state: "held", passed: 0, ended: false, bound: null });
     return;
   }
   if (task === undefined) throw new Error(`${at}: task ${version} is not proposed`);
@@ -452,6 +482,15 @@ function move(fold: Fold, version: string, task: Folded, data: JsonObject): stri
   if ((to === "released" || to === "admitted") && fold.drawn?.has(version) === true) {
     return `is an anchor task, so it is never ${to}`;
   }
+  const named = limitsIn(data.limits);
+  if (task.state === WALL_BOUND) {
+    // The verdict is evidence about the limits it was measured under, and only roomier ones lift it.
+    const then = task.bound ?? fold.first;
+    if (named === null || then === null || !roomier(named, then)) {
+      return "leaves wall-bound only under limits the log names, with a longer wall than bound it and no other limit tighter";
+    }
+  }
+  task.bound = to === WALL_BOUND ? named : null;
   task.state = to;
   return null;
 }

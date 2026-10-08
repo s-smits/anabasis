@@ -73,6 +73,9 @@ export interface CampaignArgs {
   readonly name: string;
   /** The model and effort that solve in the cycle's place, when not its own. */
   readonly solver?: { readonly model: string; readonly effort: ThinkingLevel } | undefined;
+  /** What every solve of this command is held to, when not `LIMITS`: a command's `--solve-minutes`
+   *  and `--solve-turns` (`limits.ts`). */
+  readonly limits?: Limits | undefined;
 }
 
 /** A harness as a solve is handed it. */
@@ -92,7 +95,8 @@ interface Solver {
 
 /** The sweep's `config.yaml` and its solves' `maxTurns`, with a disk cap the sweep did not have, as
  *  `live-solve.ts` has them, but four solves at a time where a parity solve runs alone. Concurrency
- *  is part of a condition, so a campaign's solves and a parity solve are not under the same one. */
+ *  is part of a condition, so a campaign's solves and a parity solve are not under the same one.
+ *  These are a campaign's limits until a command names a longer wall or more turns (`limits.ts`). */
 export const LIMITS: Limits = {
   wallSeconds: 7200,
   turns: 24,
@@ -275,6 +279,7 @@ export async function openCampaign(args: CampaignArgs) {
   // Read once: each is a walk of a tree of thousands of files, and neither moves inside a run.
   const verifierTools = hashJsonValue(treeContent(tools));
   const host = hashJsonValue(["src", "vendor"].map((part) => treeContent(join(REPO, part))));
+  const limits = args.limits ?? LIMITS;
   const pack = (task: Task): TaskPackage => packageOf(checks, task);
   /** Every task the pack holds or a session wrote into the log, by version. */
   const packages = (): Map<string, TaskPackage> =>
@@ -291,9 +296,9 @@ export async function openCampaign(args: CampaignArgs) {
     sandbox: hashJsonValue({
       profile: HOST_SOLVE_ISOLATION_PROFILE_ID,
       platform: runtimeProcess.platform,
-      diskBytes: LIMITS.diskBytes,
+      diskBytes: limits.diskBytes,
     }),
-    limits: LIMITS,
+    limits,
     host,
     side: by.side,
   });
@@ -322,7 +327,7 @@ export async function openCampaign(args: CampaignArgs) {
       resources,
       model: by.model,
       effort: by.effort,
-      limits: LIMITS,
+      limits,
       models: by.models ?? ((home) => backends(sweepOptions(home))),
       verify,
       log,
@@ -347,6 +352,8 @@ export async function openCampaign(args: CampaignArgs) {
     contract,
     checker,
     resources,
+    /** What every solve of this campaign's command is held to, which its settings hold. */
+    limits,
     parent: join(args.root, "hb-bundles", `${args.sweep}-${args.cycle}`),
     test: {
       ...(args.solver === undefined

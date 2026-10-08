@@ -20,8 +20,9 @@ import { type Condition, conditionsOf, settingId } from "#src/kernel/condition.t
 import { frontierOf, ladder, type Stand } from "#src/kernel/ladder.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { taskStates } from "#src/kernel/task.ts";
+import { wallShare } from "#src/kernel/wall.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
-import { countBy, median } from "#src/meta/tally.ts";
+import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
 
 export interface Trigger {
@@ -631,7 +632,11 @@ function climbOf(log: Index) {
   return {
     stand,
     placed: ladder(log.events, stand, rule),
-    short: binding(log.events, stand, { rule, least: sweepOf(count(report?.level) || 0.1) }),
+    short: binding(log.events, stand, {
+      rule,
+      least: sweepOf(count(report?.level) || 0.1),
+      limits: ran.limits,
+    }),
   };
 }
 
@@ -1001,11 +1006,7 @@ function solveTriggers(log: Index): Trigger[] {
   const wallShares = log.builds.flatMap((build) => {
     const { scoring } = roundOf(log, build);
     const under = (old: boolean) =>
-      median(
-        scoring
-          .filter((solve) => (solve.harness === build.parent) === old && solve.wallSeconds > 0)
-          .map((solve) => solve.seconds / solve.wallSeconds),
-      );
+      wallShare(scoring.filter((solve) => (solve.harness === build.parent) === old));
     const [before, after] = [under(true), under(false)];
     return before === null || after === null
       ? []

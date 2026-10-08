@@ -70,11 +70,12 @@
  * operator's, behind gate G4.
  */
 import { anchor, draw, gain, type Paired, pairsOf, scored, solveSeconds } from "../kernel/compare.ts";
-import { conditionsOf } from "../kernel/condition.ts";
+import { conditionsOf, settingId } from "../kernel/condition.ts";
 import { endingsOf, lastReports, standing } from "../kernel/ladder.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { screen, taskSets, taskStates } from "../kernel/task.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
+import { keysIf } from "../meta/optional-key.ts";
 import { join } from "../meta/path.ts";
 import { asError, errorMessage } from "../meta/runtime-values.ts";
 import type { RefereeFinding, Ruling } from "../review/referee.ts";
@@ -688,7 +689,20 @@ async function screenPool(
           throw new Error("its screening solves did not all end in a pass or a fail");
         }
         const state = screen([tests.old, tests.fresh], fails);
-        append(log, TASK_STATE, { version, state, session: id });
+        append(log, TASK_STATE, {
+          version,
+          state,
+          session: id,
+          // A wall-bound verdict is evidence about the limits its solves ran under, so it names
+          // them: under a longer wall the task returns to the pool (`src/kernel/limits.ts`).
+          ...keysIf(state === "wall-bound", () => ({
+            setting: request.setting,
+            limits:
+              conditionsOf(after)
+                .values()
+                .find((ran) => settingId(ran) === request.setting)?.limits ?? null,
+          })),
+        });
       } catch (error) {
         unscreened.push(version);
         work.faults.push(`${version}: ${errorMessage(error)}`);

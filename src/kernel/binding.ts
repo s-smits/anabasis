@@ -19,8 +19,10 @@
  *   by the largest count. `witness`: the stronger solver did not pass them, so the tasks have
  *   outrun the proof that they can be done, and they wait for a harness that lifts it. `checks`:
  *   a check could not run on an accepted answer or did not repeat. `limits`: the measured solver
- *   only ran out of time. `tasks`: the measured solver passes them, or their packages and controls
- *   did not hold, and the author has to ask more or write more carefully.
+ *   only ran out of time, under the limits the solver still runs at: a word told under a shorter
+ *   wall is a word about that wall, and is not read (`limits.ts`). `tasks`: the measured solver
+ *   passes them, or their packages and controls did not hold, and the author has to ask more or
+ *   write more carefully.
  * - `correctness-model`: a second session against the same harness, told what the first measured,
  *   still wrote mostly tasks the solver passes. What these checks can ask, this harness answers,
  *   and the exam grows only by a requirement with a check of its own. That is the operator's to
@@ -31,8 +33,10 @@
  */
 import { isNumber, isString } from "../meta/json-shape.ts";
 import { countBy } from "../meta/tally.ts";
+import type { Limits } from "./condition.ts";
 import { frontierOf, ladder, type Rule, type Stand } from "./ladder.ts";
 import type { LogEvent } from "./log.ts";
+import { outgrown } from "./wall.ts";
 
 export type Compartment = "harness" | "tasks" | "witness" | "checks" | "limits" | "correctness-model";
 
@@ -63,6 +67,7 @@ export interface Told {
 /** Sessions against one harness after which tasks the solver passes are read as the checks' span
  *  and no longer as their author's first try. */
 const TOLD_ONCE = 2;
+const WALL_BOUND = "wall-bound";
 
 /** The last `exam.word` of each task version: a task is told a word at each step it reaches, a
  *  reach task once more by each session that tries it again, and the last one stands. */
@@ -85,12 +90,14 @@ export function toldOf(events: readonly LogEvent[]): Map<string, Told> {
 /**
  * What binds the climb from where the solver stands. `least` is the smallest scored set a round can read a step
  * on, which is the comparison's arithmetic and the caller's to give. A session logged before
- * sessions named their harness stood on the campaign's first one.
+ * sessions named their harness stood on the campaign's first one. `limits` is what the solver's
+ * next solves would run under, where the caller knows it: without them no word is read against a
+ * wall.
  */
 export function binding(
   events: readonly LogEvent[],
   stand: Stand,
-  given: { readonly rule: Rule; readonly least: number },
+  given: { readonly rule: Rule; readonly least: number; readonly limits?: Limits },
 ): Binding {
   const placed = ladder(events, stand, given.rule);
   const first = frontierOf(events) === null;
@@ -103,9 +110,11 @@ export function binding(
         : [],
     ),
   );
+  // A wall-bound word from a session whose solver ran under a shorter wall says nothing of this one.
+  const lifted = given.limits === undefined ? new Set<string>() : outgrown(events, given.limits);
   const told = new Map(
     [...toldOf(events)].flatMap(([version, { word, session }]) =>
-      stood.has(session) ? [[version, word] as const] : [],
+      stood.has(session) && !(word === WALL_BOUND && lifted.has(session)) ? [[version, word] as const] : [],
     ),
   );
   const words = countBy([...told.values()], (word) => word);
@@ -140,7 +149,7 @@ export function binding(
       words["too hard"] ?? 0,
       "were not passed by the stronger solver, and wait for a harness that lifts it",
     ],
-    ["limits", words["wall-bound"] ?? 0, "only ran the measured solver out of time"],
+    ["limits", words[WALL_BOUND] ?? 0, "only ran the measured solver out of time"],
     stood.size >= TOLD_ONCE
       ? [
           "correctness-model",

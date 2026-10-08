@@ -20,6 +20,9 @@
  *   - an `--env-file` that is not there. The path is Bun's to read and is never opened here;
  *   - a `--session` whose Builder started and did not end whole, as the round itself would.
  *
+ * Its notes say when the `--solve-minutes` and `--solve-turns` it was given are not the limits the
+ * log's last solves ran under, since every standing then restarts (`tools/d2/limits.ts`).
+ *
  * An Examiner session meets the last four of these, its id being one the log holds already, and
  * needs the campaign's log and no set in it. Its notes say what it is handed and where its tasks
  * can go: a task an earlier session left past gate 3, and whether the anchor is drawn yet.
@@ -43,7 +46,9 @@
  */
 import { existsSync, readFileSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
+import type { Limits } from "#src/kernel/condition.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
+import { limitsLast } from "#src/kernel/wall.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { availableParallelism, loadavg } from "#src/meta/os.ts";
 import { dirname, join } from "#src/meta/path.ts";
@@ -56,6 +61,7 @@ import { sweepOf } from "#src/kernel/compare.ts";
 import { type SolveDirs, solveDirs } from "#src/solve/command.ts";
 import { releaseDiskCap } from "#src/verify/disk-cap.ts";
 import { carriable, setsOf } from "../d2/campaign.ts";
+import { LIMITS_OPTIONS, limitsNamed } from "../d2/limits.ts";
 import { ROUND_OPTIONS } from "../d2/round.ts";
 import { EXAMINE, logEvents, processes, ROUND, type Run, runs, standing, writers } from "./pulse.ts";
 import { seedCut } from "./seed.ts";
@@ -75,6 +81,10 @@ export interface Host {
   readonly missing: string | null;
   /** Why the command would refuse this session's id (`spent`, `claimed`), or null. */
   readonly spent: string | null;
+  /** The limits the command's solves would run under (`--solve-minutes`, `--solve-turns`), and the
+   *  ones the log's last test-side solves ran under, null before any. */
+  readonly limits: Limits;
+  readonly ran: Limits | null;
 }
 
 /** What a round's launch is asked for beside it. */
@@ -127,6 +137,19 @@ function refused(asked: Host): string[] {
   ]);
 }
 
+/** What a reader should know when a command's limits are not the ones the log's last solves ran
+ *  under: the solver is then another one, and what was placed is placed for the old one. */
+function restarted(asked: Host): string[] {
+  const { limits, ran } = asked;
+  const wall = (held: Limits) => `${String(held.wallSeconds / 60)} minutes and ${String(held.turns)} turns`;
+  return said([
+    [
+      ran !== null && (ran.wallSeconds !== limits.wallSeconds || ran.turns !== limits.turns),
+      `a solve here is held to ${wall(limits)}, and the log's last test-side solves ran under ${ran === null ? "none" : wall(ran)}: under other limits no standing carries over, so each task screened is solved under both harnesses and each reach task is put to the stronger solver again (tools/d2/limits.ts)`,
+    ],
+  ]);
+}
+
 /** Why a round should not start, and what its reader should know when it does. */
 export function preflight(sets: ReturnType<typeof setsOf>, asked: Asked) {
   const scoring = asked.target !== "0";
@@ -152,22 +175,25 @@ export function preflight(sets: ReturnType<typeof setsOf>, asked: Asked) {
   // of eight.
   const most = Math.min(toScreen, Number(asked.target ?? ROUND_OPTIONS.target.default));
   const sweep = sweepOf(asked.level);
-  const notes = said([
-    [
-      true,
-      `${String(sets.anchor.length)} anchor · ${String(sets.released.length)} released for practice · ${String(sets.candidates.length)} held to screen · ${String(sets.admitted.length)} admitted`,
-    ],
-    [!scoring, "--target 0: the round scores no task and cannot read step. Its anchor is all it compares"],
-    [
-      scoring && most > 0 && most < sweep,
-      `at most ${String(most)} task(s) can be scored, and at --level ${String(asked.level)} a step takes ${String(sweep)}, all won: this round cannot read step. Its screening still retires each candidate both harnesses pass, as too-easy`,
-    ],
-    [
-      sets.anchor.length > 0 && sets.anchor.length < asked.anchorFloor,
-      `the anchor holds ${String(sets.anchor.length)} task(s) and --anchor-floor is ${String(asked.anchorFloor)}: the anchor cannot be tested, so the round reads neither step nor anchor-lost`,
-    ],
-    [sets.released.length === 0, "no task is released: the Builder has nothing to practise on"],
-  ]);
+  const notes = [
+    ...said([
+      [
+        true,
+        `${String(sets.anchor.length)} anchor · ${String(sets.released.length)} released for practice · ${String(sets.candidates.length)} held to screen · ${String(sets.admitted.length)} admitted`,
+      ],
+      [!scoring, "--target 0: the round scores no task and cannot read step. Its anchor is all it compares"],
+      [
+        scoring && most > 0 && most < sweep,
+        `at most ${String(most)} task(s) can be scored, and at --level ${String(asked.level)} a step takes ${String(sweep)}, all won: this round cannot read step. Its screening still retires each candidate both harnesses pass, as too-easy`,
+      ],
+      [
+        sets.anchor.length > 0 && sets.anchor.length < asked.anchorFloor,
+        `the anchor holds ${String(sets.anchor.length)} task(s) and --anchor-floor is ${String(asked.anchorFloor)}: the anchor cannot be tested, so the round reads neither step nor anchor-lost`,
+      ],
+      [sets.released.length === 0, "no task is released: the Builder has nothing to practise on"],
+    ]),
+    ...restarted(asked),
+  ];
   return { refusals, notes };
 }
 
@@ -209,7 +235,7 @@ export function examPreflight(
       "no --reviewer: a task whose stronger solve a check refuses is closed as too hard, and no Referee reads whether the check was at fault",
     ],
   ]);
-  return { refusals, notes };
+  return { refusals, notes: [...notes, ...restarted(asked)] };
 }
 
 /** Start `cmd` in a process group of its own, its output under `base`, and return the process. */
@@ -255,6 +281,7 @@ export async function launch(args: readonly string[]): Promise<void> {
       target: { type: "string" },
       level: ROUND_OPTIONS.level,
       "anchor-floor": ROUND_OPTIONS["anchor-floor"],
+      ...LIMITS_OPTIONS,
       examiner: { type: "string" },
       reviewer: { type: "string" },
     },
@@ -281,6 +308,12 @@ export async function launch(args: readonly string[]): Promise<void> {
     running: run === undefined ? [] : writers(run, processes()).map(({ pid }) => pid),
     missing: isString(envFile) && !existsSync(envFile) ? envFile : null,
     spent: (examining ? claimed : spent)(events ?? [], session),
+    // The command's own reading of its two flags, so a wall it would refuse is refused here.
+    limits: limitsNamed({
+      "solve-minutes": String(values["solve-minutes"]),
+      "solve-turns": String(values["solve-turns"]),
+    }),
+    ran: limitsLast(events ?? []),
   };
   const { refusals, notes } = examining
     ? examPreflight(events, { ...host, reviewer: isString(values.reviewer) })

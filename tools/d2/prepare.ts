@@ -23,9 +23,17 @@
  * solve has placed. Which are taken is drawn by the contract's hash. Before any solve nothing is
  * placed, and the draw is the blind one it always was.
  *
- * It ends by printing the ladder against the frontier and which compartment binds the climb now:
- * the harness, the tasks, the witness, the checks, the limits or the correctness model
- * (`src/kernel/binding.ts`). That is a reading for whoever chooses the next command.
+ * Before either, it returns to the pool each task a round set aside as `wall-bound` under a
+ * shorter wall than the one named here: the verdict was that the solver ran out of time, under
+ * those limits, and it holds under no roomier ones (`src/kernel/limits.ts`). Name the
+ * `--solve-minutes` and `--solve-turns` the next round will run under (`limits.ts`): the ladder is
+ * read against the solver those limits make, and under the defaults nothing returns.
+ *
+ * It ends by printing the ladder against the frontier and two readings for whoever chooses the
+ * next command. Whether the wall binds: what it has marked, and the share of it the solver's
+ * passes and fails used (`src/kernel/wall.ts`). And which compartment binds the climb now: the
+ * harness, the tasks, the witness, the checks, the limits or the correctness model
+ * (`src/kernel/binding.ts`). Neither recommends a number, and neither decides.
  *
  * Not run here: see `campaign.ts`.
  */
@@ -34,8 +42,11 @@ import { draw, sweepOf } from "#src/kernel/compare.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { ladder } from "#src/kernel/ladder.ts";
 import { append, read } from "#src/kernel/log.ts";
+import { returning, wallLine, wallReading } from "#src/kernel/wall.ts";
 import { parseArgs } from "#src/meta/process.ts";
+import { plural } from "#src/meta/text.ts";
 import { frontier, openCampaign, SCREENING_OPTIONS, screeningRule, setsOf } from "./campaign.ts";
+import { LIMITS_OPTIONS, limitsNamed } from "./limits.ts";
 import { ROUND_OPTIONS } from "./round.ts";
 
 const { values } = parseArgs({
@@ -48,6 +59,7 @@ const { values } = parseArgs({
     anchor: { type: "string", default: "24" },
     practice: { type: "string", default: "6" },
     ...SCREENING_OPTIONS,
+    ...LIMITS_OPTIONS,
     level: ROUND_OPTIONS.level,
   },
 });
@@ -63,12 +75,23 @@ async function main(): Promise<void> {
   ) {
     throw new Error("name --root, --sweep, --cycle, --bundle and --name");
   }
-  const campaign = await openCampaign({ root, sweep, cycle, bundle, name });
+  const limits = limitsNamed(values);
+  const campaign = await openCampaign({ root, sweep, cycle, bundle, name, limits });
   const { log } = campaign;
   const seed = contractHash(campaign.contract);
   const rule = screeningRule(values);
   const kept = await frontier(campaign);
   const stands = { harness: kept.digest, setting: campaign.setting(campaign.test) };
+
+  const back = returning(read(log), limits);
+  for (const version of back) {
+    append(log, "task.state", { version, state: "held", setting: stands.setting, limits });
+  }
+  if (back.length > 0) {
+    console.log(
+      `${plural(back.length, "wall-bound task")} returned to the pool: the wall named here is longer than the one that bound them, and no other limit is tighter`,
+    );
+  }
 
   const before = setsOf(read(log));
   const wanted = Math.max(0, Number(values.anchor) - before.anchor.length);
@@ -110,8 +133,9 @@ async function main(): Promise<void> {
   console.log(
     `against the frontier ${stands.harness.slice(0, 8)}: ${String(now.pool.stops.length)} stop it, ${String(now.pool.clears.length)} it clears, ${String(now.pool.walled.length)} ended at the wall, ${String(now.pool.unknown.length)} no solve has placed; ${String(now.reach.length)} wait for a witness`,
   );
+  console.log(wallLine(wallReading(read(log), stands, { rule, limits }), limits));
   // Which compartment is short, for whoever chooses the next command (`src/kernel/binding.ts`).
-  const short = binding(read(log), stands, { rule, least: sweepOf(Number(values.level)) });
+  const short = binding(read(log), stands, { rule, least: sweepOf(Number(values.level)), limits });
   console.log(`what binds: ${short.binds}. ${short.why}`);
 }
 

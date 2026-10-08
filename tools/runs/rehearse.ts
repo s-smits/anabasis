@@ -29,7 +29,7 @@ import { asRecord, isString, type JsonObject, type JsonValue } from "#src/meta/j
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { openHarness } from "#src/solve/harness.ts";
-import { carriable, LIMITS, setsOf } from "../d2/campaign.ts";
+import { carriable, setsOf } from "../d2/campaign.ts";
 import { roundCommand, type Seated } from "../d2/round.ts";
 import { packControls, storedAnswer, sweepRows } from "../m0/stored-sweep.ts";
 import { passedOn } from "./launch.ts";
@@ -145,7 +145,7 @@ export function scriptedSeats(script: Script, graded: readonly Control[], straye
             [tool, answer],
             ["submit", {}],
           ],
-          LIMITS.turns + 1,
+          campaign.limits.turns + 1,
         );
         const done = await campaign.solveOnce(task, harness, { ...campaign.test, ...by }, kill);
         const { ending } = done;

@@ -29,7 +29,10 @@
  * (`src/review/agreement.ts`).
  *
  * Every solve is the cycle's own model at its effort, unless `--solver` and `--solver-effort` name
- * another to solve in its place.
+ * another to solve in its place. Every solve is held to the sweep's wall and turns, unless
+ * `--solve-minutes` and `--solve-turns` name others: a longer wall is another setting, under which
+ * every standing restarts, and `limits.ts` says what that costs in solves. `--minutes` and
+ * `--turns` are the Builder session's own.
  *
  * The session starts from the frontier: the harness the campaign's last step left, or the cycle's
  * while no round has stepped (`src/kernel/ladder.ts`). So a step is built on without being asked
@@ -56,10 +59,10 @@ import { isString } from "#src/meta/json-shape.ts";
 import { join } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
+import { LIMITS_OPTIONS, limitsNamed } from "./limits.ts";
 import {
   frontier,
   type Kept,
-  LIMITS,
   openCampaign,
   SCREENING_OPTIONS,
   screeningRule,
@@ -102,6 +105,7 @@ export const ROUND_OPTIONS = {
   target: { type: "string", default: "24" },
   solves: { type: "string", default: "3" },
   ...SCREENING_OPTIONS,
+  ...LIMITS_OPTIONS,
   level: { type: "string", default: "0.1" },
   "anchor-level": { type: "string" },
   "anchor-floor": { type: "string", default: "8" },
@@ -142,7 +146,8 @@ export async function roundCommand(args: readonly string[], seated: Seated = hos
     values.solver === undefined
       ? undefined
       : { model: values.solver, effort: effort(values["solver-effort"]) };
-  const campaign = await openCampaign({ root, sweep, cycle, bundle, name, solver });
+  const limits = limitsNamed(values);
+  const campaign = await openCampaign({ root, sweep, cycle, bundle, name, solver, limits });
   const sets = setsOf(read(campaign.log));
   const packages = campaign.packages();
   const packageOf = (version: string): TaskPackage => {
@@ -181,7 +186,7 @@ export async function roundCommand(args: readonly string[], seated: Seated = hos
       ...seats.builder,
       effort: effort(values["builder-effort"]),
       limits: {
-        ...LIMITS,
+        ...limits,
         wallSeconds: Number(values.minutes) * 60,
         turns: Number(values.turns),
         practiceSolves: Number(values["practice-solves"]),
@@ -209,7 +214,7 @@ export async function roundCommand(args: readonly string[], seated: Seated = hos
     anchorLevel: Number(values["anchor-level"] ?? values.level),
     anchorFloor: Number(values["anchor-floor"]),
     defects: Number(values.defects),
-    concurrency: LIMITS.concurrency,
+    concurrency: limits.concurrency,
     solve: (version, dir, digest, kill) => seats.solve(packageOf(version), { dir, digest }, kill),
     setting: seats.setting,
     ...(reviewers === null

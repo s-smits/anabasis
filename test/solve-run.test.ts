@@ -126,6 +126,7 @@ describe("an attempt's ending", () => {
     wallEnded: false,
     moved: false,
     homeBytes: 0,
+    summaries: [],
   };
   const stop = (text: string, errorMessage?: string) =>
     fauxAssistantMessage(text, errorMessage === undefined ? {} : { stopReason: "error", errorMessage });

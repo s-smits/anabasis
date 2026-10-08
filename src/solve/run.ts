@@ -22,7 +22,9 @@ import {
   type AgentMessage,
   type AgentTool,
   type AgentToolResult,
+  type PrepareRequest,
   runAgentLoop,
+  type StreamFn,
 } from "@earendil-works/pi-agent-core";
 import {
   type Api,
@@ -33,8 +35,10 @@ import {
   type Models,
   type ThinkingLevel,
   toToolDeclaration,
+  type Usage,
 } from "@earendil-works/pi-ai";
 import { REPORTED_COST } from "../backends/claude.ts";
+import { type Compacted, compactBeforeRequest } from "../backends/pi-compaction.ts";
 import type { Limits } from "../kernel/condition.ts";
 import { answerFormatFault, type Contract } from "../kernel/contract.ts";
 import { append } from "../kernel/log.ts";
@@ -96,6 +100,8 @@ export interface Played {
   /** The CPU time of the solve's commands, the solver's and the harness's (`command.ts`). */
   readonly cpu: { readonly seconds: number; readonly unmeasured: number };
   readonly turns: readonly AssistantMessage[];
+  /** What each compaction's summary spent (`pi-compaction.ts`). */
+  readonly summaries: readonly Usage[];
   readonly submitted: JsonValue | undefined;
   readonly wallEnded: boolean;
   readonly moved: boolean;
@@ -146,7 +152,7 @@ async function attemptSolve(request: SolveRequest, id: string): Promise<Ending> 
   });
   const played = await play(request, id);
   const ending = await judge(request, id, played);
-  const tokens = tokensOf(played.turns.map((turn) => turn.usage));
+  const tokens = tokensOf([...played.turns.map((turn) => turn.usage), ...played.summaries]);
   const reported = played.turns
     .flatMap((turn) => turn.diagnostics ?? [])
     .findLast((diagnostic) => diagnostic.type === REPORTED_COST)?.details;
@@ -189,6 +195,7 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
   const done = new AbortController();
   const signal = AbortSignal.any([wall.signal, done.signal, ...(request.kill ? [request.kill] : [])]);
   const turns: AssistantMessage[] = [];
+  const summaries: Usage[] = [];
   const desk = openDesk();
   const before = treeStamp(request.harness);
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -218,6 +225,7 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
     );
     const system = createInitialSystemMessage(prompt, tools.map(toToolDeclaration));
     const models = request.models(join(dirs.host, "model"));
+    const stream: StreamFn = (model, context, options) => models.streamSimple(model, context, options);
     const user = (content: string): AgentMessage => ({ role: "user", content, timestamp: Date.now() });
     let prompts = 1;
     // The wall is the solver's time, so it starts with the first turn rather than the setup.
@@ -236,10 +244,11 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
         },
         getFollowUpMessages: async () =>
           desk.submitted !== undefined || prompts++ >= limits.turns ? [] : [user(NUDGE)],
+        prepareRequest: loopCompaction(request.log, "solve", id, stream, summaries),
       },
       traceSink(request.log, "solve", id, () => turns.length),
       signal,
-      (model, context, options) => models.streamSimple(model, context, options),
+      stream,
     );
   } catch (error) {
     if (error instanceof BrokenHarness) broken = error.message;
@@ -258,6 +267,7 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
     harness: digest,
     cpu,
     turns,
+    summaries,
     submitted: desk.submitted,
     wallEnded: wall.signal.aborted,
     moved: treeStamp(request.harness) !== before,
@@ -334,6 +344,27 @@ export function traceSink(log: string, of: "solve" | "build" | "exam", id: strin
       });
     }
   };
+}
+
+/** The `prepareRequest` that compacts pi's own loop through `stream` (`pi-compaction.ts`): each
+ *  compaction into the log as `<of>.compacted`, between the turns it came between, and its
+ *  summary's usage into `summaries`, which the session's spend counts. */
+export function loopCompaction(
+  log: string,
+  of: "solve" | "build" | "exam",
+  id: string,
+  stream: StreamFn,
+  summaries: Usage[],
+): PrepareRequest {
+  return compactBeforeRequest(stream, ({ usages, ...compacted }: Compacted) => {
+    summaries.push(...usages);
+    append(log, `${of}.compacted`, {
+      ...(of === "solve" ? { solve: id } : { session: id }),
+      ...compacted,
+      // SAFETY: pi's usage is numbers.
+      usages: usages as unknown as JsonValue,
+    });
+  });
 }
 
 function traceText(content: readonly { type: string; text?: string }[]): string {

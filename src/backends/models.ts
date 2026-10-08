@@ -19,14 +19,9 @@ import { capturedJsonParse } from "../meta/json-runtime.ts";
 import { homedir } from "../meta/os.ts";
 import { join } from "../meta/path.ts";
 import { CLAUDE_PROVIDER, type ClaudeOptions, claudeCompactionMode, claudeProvider } from "./claude.ts";
+import { piCompactionMode } from "./pi-compaction.ts";
 
 const CODEX = "openai-codex";
-
-/**
- * pi's own loop, which serves Codex and OpenRouter, never compacts: a context that outgrows the model
- * ends the solve.
- */
-const PI_LOOP_COMPACTION = "off";
 
 /** What the host decides about the backends a process serves. */
 export interface BackendOptions {
@@ -61,10 +56,13 @@ export function backends(options: BackendOptions): MutableModels {
 }
 
 /** The compaction a solve on `model` runs under, as the condition pins it. */
-export function compactionMode(model: Pick<Model<Api>, "provider" | "id">, options: BackendOptions): string {
+export function compactionMode(
+  model: Pick<Model<Api>, "provider" | "id" | "contextWindow">,
+  options: BackendOptions,
+): string {
   return model.provider === CLAUDE_PROVIDER
     ? claudeCompactionMode(options.claude.compaction, model.id)
-    : PI_LOOP_COMPACTION;
+    : piCompactionMode(model);
 }
 
 function codexAuthFile(): string {

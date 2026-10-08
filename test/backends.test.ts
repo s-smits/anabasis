@@ -51,15 +51,17 @@ describe("the three backends", () => {
     await expect(backends(options).getAuth("openai-codex")).rejects.toThrow("Codex CLI");
   });
 
-  it("name the compaction each runs under: Claude Code's own as the host set it, and none in pi's loop", () => {
+  it("name the compaction each runs under: Claude Code's own as the host set it, and pi's in its own loop", () => {
     const sweep: BackendOptions = {
       claude: { ...options.claude, compaction: { window: SWEEP_COMPACT_WINDOW } },
     };
-    const claude = (id: string) => ({ provider: "claude", id });
+    const claude = (id: string) => ({ provider: "claude", id, contextWindow: 1_000_000 });
     expect(compactionMode(claude("claude-opus-5"), sweep)).toBe("autoCompactWindow=300000");
     expect(compactionMode(claude("claude-opus-5-5"), options)).toBe("off");
-    expect(compactionMode({ provider: "openai-codex", id: "gpt-5.5" }, sweep)).toBe("off");
-    expect(compactionMode({ provider: "openrouter", id: "z-ai/glm-5" }, sweep)).toBe("off");
+    const codex = { provider: "openai-codex", id: "gpt-5.5", contextWindow: 400_000 };
+    expect(compactionMode(codex, sweep)).toBe("pi window=300000 reserve=16384 keep=20000");
+    const glm = { provider: "openrouter", id: "z-ai/glm-5", contextWindow: 200_000 };
+    expect(compactionMode(glm, options)).toBe("pi window=200000 reserve=16384 keep=20000");
   });
 
   // The CLI clamps the window to the context it serves the id, without a word: a bare id gets 200K.
@@ -67,7 +69,7 @@ describe("the three backends", () => {
     const at = (window: number): BackendOptions => ({
       claude: { ...options.claude, compaction: { window } },
     });
-    const claude = (id: string) => ({ provider: "claude", id });
+    const claude = (id: string) => ({ provider: "claude", id, contextWindow: 200_000 });
     expect(() => compactionMode(claude("claude-haiku-4-5"), at(SWEEP_COMPACT_WINDOW))).toThrow(
       "claude-haiku-4-5 a 200000-token context",
     );

@@ -36,7 +36,12 @@
  * record and throws it again. An instance is logged whole with its proposal, hidden values too, so a
  * later solve of it needs the log and nothing beside it; no tool here returns a line of the log.
  */
-import { type AgentMessage, type AgentTool, runAgentLoop } from "@earendil-works/pi-agent-core";
+import {
+  type AgentMessage,
+  type AgentTool,
+  runAgentLoop,
+  type StreamFn,
+} from "@earendil-works/pi-agent-core";
 import {
   type Api,
   type AssistantMessage,
@@ -45,6 +50,7 @@ import {
   type Models,
   type ThinkingLevel,
   toToolDeclaration,
+  type Usage,
 } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { REPORTED_COST } from "../backends/claude.ts";
@@ -75,7 +81,7 @@ import { hashJsonValue } from "../meta/stable-json.ts";
 import { type Change, changedAnswer } from "../review/probe.ts";
 import type { RefereeFinding } from "../review/referee.ts";
 import { text, tool } from "../solve/answer.ts";
-import { traceSink } from "../solve/run.ts";
+import { loopCompaction, traceSink } from "../solve/run.ts";
 import { type CheckRow, firstMessage, NUDGE, SYSTEM_PROMPT } from "./prompt.ts";
 
 /** What an Examiner is told of a task. */
@@ -533,6 +539,7 @@ export async function examine(request: ExamRequest): Promise<Examined> {
     ...(request.kill ? [request.kill] : []),
   ]);
   const turns: AssistantMessage[] = [];
+  const summaries: Usage[] = [];
   const user = (content: string): AgentMessage => ({ role: "user", content, timestamp: Date.now() });
   const system = createInitialSystemMessage(SYSTEM_PROMPT, tools.map(toToolDeclaration));
   // A name every solver's wall denies (`wall-policy.ts`): the Examiner's Claude Code keeps its
@@ -542,6 +549,7 @@ export async function examine(request: ExamRequest): Promise<Examined> {
   const timer = setTimeout(() => wall.abort(), limits.wallSeconds * 1000);
   try {
     const models = request.models(home);
+    const stream: StreamFn = (asked, context, options) => models.streamSimple(asked, context, options);
     await runAgentLoop(
       [user(firstMessage(request.contract, request.checks, request.examples, limits))],
       { messages: system === undefined ? [] : [system], tools },
@@ -559,10 +567,11 @@ export async function examine(request: ExamRequest): Promise<Examined> {
           return over ? { action: "end" } : undefined;
         },
         getFollowUpMessages: async () => (desk.note === null && !supplied(desk) ? [user(NUDGE)] : []),
+        prepareRequest: loopCompaction(log, "exam", request.id, stream, summaries),
       },
       traceSink(log, "exam", request.id, () => turns.length),
       signal,
-      (asked, context, options) => models.streamSimple(asked, context, options),
+      stream,
     );
   } catch (error) {
     crash = errorMessage(error);
@@ -581,7 +590,7 @@ export async function examine(request: ExamRequest): Promise<Examined> {
     turns: turns.length >= limits.turns,
   };
   const ended = desk.fatal === null ? (ENDINGS.find((reason) => by[reason]) ?? "stopped") : "crashed";
-  const tokens = tokensOf(turns.map((turn) => turn.usage));
+  const tokens = tokensOf([...turns.map((turn) => turn.usage), ...summaries]);
   const reported = asRecord(
     turns.flatMap((turn) => turn.diagnostics ?? []).findLast((d) => d.type === REPORTED_COST)?.details,
   )?.totalCostUsd;

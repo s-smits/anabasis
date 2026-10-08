@@ -59,6 +59,8 @@ interface Memory {
   readonly logs: Record<string, Seen>;
 }
 
+/** The command a round runs as: what a launch starts and what a running round is known by. */
+export const ROUND = "tools/d2/round.ts";
 const QUIET_MS = 20 * 60_000;
 const GIB = 2 ** 30;
 
@@ -220,12 +222,16 @@ export function runs(): Run[] {
   ]);
 }
 
-/** The arguments of each running round and live solve, by the worktree it runs in. */
-function processes(): { readonly cwd: string; readonly args: readonly string[] }[] {
+/** Each running round and live solve: its process, its arguments and the worktree it runs in. */
+export function processes(): {
+  readonly pid: number;
+  readonly cwd: string;
+  readonly args: readonly string[];
+}[] {
   const table = runTextSyncOrThrow(["ps", "-axo", "pid=,args="]).split("\n");
   const found = table.flatMap((row) => {
     const [pid = "", ...args] = row.trim().split(/\s+/);
-    return args.some((arg) => arg.endsWith("tools/d2/round.ts") || arg.endsWith("tools/m0/live-solve.ts"))
+    return args.some((arg) => arg.endsWith(ROUND) || arg.endsWith("tools/m0/live-solve.ts"))
       ? [{ pid, args }]
       : [];
   });
@@ -238,18 +244,18 @@ function processes(): { readonly cwd: string; readonly args: readonly string[] }
     if (line.startsWith("p")) pid = line.slice(1);
     if (line.startsWith("n")) cwds.set(pid, line.slice(1));
   }
-  return found.map(({ pid: id, args }) => ({ cwd: cwds.get(id) ?? "", args }));
+  return found.map(({ pid: id, args }) => ({ pid: Number(id), cwd: cwds.get(id) ?? "", args }));
 }
 
-/** Whether a process in `running` writes `run`'s log. */
-function isOpen(run: Run, running: ReturnType<typeof processes>): boolean {
+/** The processes in `running` that write `run`'s log. */
+export function writers(run: Run, running: ReturnType<typeof processes>) {
   const flag = (args: readonly string[], name: string) => args[args.indexOf(name) + 1];
   const writes = (args: readonly string[]) =>
     run.end === "comparison.reported"
-      ? args.some((arg) => arg.endsWith("round.ts")) && flag(args, "--name") === run.name
+      ? args.some((arg) => arg.endsWith(ROUND)) && flag(args, "--name") === run.name
       : args.some((arg) => arg.endsWith("live-solve.ts")) &&
         run.name.startsWith(`${String(flag(args, "--task"))}-${String(flag(args, "--cycle"))}-`);
-  return running.some(({ cwd, args }) => cwd === run.tree && writes(args));
+  return running.filter(({ cwd, args }) => cwd === run.tree && writes(args));
 }
 
 function look(state: string, names: readonly string[]): void {
@@ -258,7 +264,11 @@ function look(state: string, names: readonly string[]): void {
     : { freeGiB: null, logs: {} };
   const running = processes();
   const now = Date.now();
-  const all = runs().map((run) => ({ run, open: isOpen(run, running), before: memory.logs[run.path] }));
+  const all = runs().map((run) => ({
+    run,
+    open: writers(run, running).length > 0,
+    before: memory.logs[run.path],
+  }));
   const chosen = all.filter(({ run, open, before }) =>
     names.length > 0 ? names.some((name) => run.name.includes(name)) : open || before?.open === true,
   );

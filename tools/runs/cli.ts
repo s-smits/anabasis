@@ -1,17 +1,21 @@
 /**
  * `bun run runs <verb>`, over every run log in the repository's worktrees: `pulse` says what each
- * gained since the last look (`pulse.ts`), `zip` bundles them for handover (`zip.ts`).
+ * gained since the last look (`pulse.ts`), `zip` bundles them for handover (`zip.ts`), `launch`
+ * starts a round once its log says it can report something and `stop` ends a run (`launch.ts`).
  */
 import { runtimeProcess } from "#src/meta/process.ts";
+import { launch, stop } from "./launch.ts";
 import { watch } from "./pulse.ts";
 import { zipRuns } from "./zip.ts";
 
+const VERBS = { pulse: watch, zip: zipRuns, launch, stop };
 const [verb, ...args] = Bun.argv.slice(2);
-if (verb === "pulse") {
-  await watch(args);
-} else if (verb === "zip") {
-  zipRuns(args);
-} else {
-  throw new Error("usage: bun run runs pulse|zip [<name> ...], each verb's options in its file's head");
+const run = Object.entries(VERBS).find(([name]) => name === verb)?.[1];
+if (run === undefined) {
+  throw new Error(
+    `usage: bun run runs ${Object.keys(VERBS).join("|")} ..., each verb's options in its file's head`,
+  );
 }
-runtimeProcess.exit(0);
+await run(args);
+// With the code a verb set: a refused launch is not a success.
+runtimeProcess.exit();

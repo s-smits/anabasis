@@ -178,6 +178,19 @@ const REPORT_KEYS = [
 /** The kinds of fail a solver owns outright, as `solve.ts` types them. */
 const FAILS = ["rejected", "wall-ended", "context-ended", "no-answer"] as const;
 
+/** Why a round will not go on with session `id` from this log, or null when it never started or
+ *  ended whole. A launcher asks before it starts the round, and a stop to say what it cut. */
+export function spent(events: readonly LogEvent[], id: string): string | null {
+  const mine = events.filter(({ data }) => data.session === id);
+  if (!mine.some(({ kind }) => kind === "build.started")) return null;
+  const ended = mine.findLast(({ kind }) => kind === "build.finished")?.data.ended;
+  if (ended === undefined) {
+    return `session ${id} started and never finished; a round does not run a second session under one id`;
+  }
+  if (ended !== "killed" && ended !== "crashed") return null;
+  return `session ${id} ${ended === "killed" ? "was killed" : "crashed"}, so what it froze is not compared; a round under a new session id starts again`;
+}
+
 /** What session `id` left, from the log: undefined when it never ran, and otherwise the harness to
  *  compare, null when it left none, with why when what it left does not open. A session whose last
  *  state does not open leaves the last state it practised with, when it has one (`session.ts`), so
@@ -190,19 +203,10 @@ async function left(events: readonly LogEvent[], request: BuildRequest, old: str
   if (started.parent !== old) {
     throw new Error(`session ${request.id} started from another harness than ${request.parent}`);
   }
-  if (finished === undefined) {
-    throw new Error(
-      `session ${request.id} started and never finished; a round does not run a second session under one id`,
-    );
-  }
-  const { ended } = finished;
-  if (ended === "killed" || ended === "crashed") {
-    throw new Error(
-      `session ${request.id} ${ended === "killed" ? "was killed" : "crashed"}, so what it froze is not compared; a round under a new session id starts again`,
-    );
-  }
-  const broken = isString(finished.broken) ? finished.broken : null;
-  if (finished.changed !== true || !isString(finished.harness)) return { kept: null, broken };
+  const why = spent(events, request.id);
+  if (why !== null) throw new Error(why);
+  const broken = isString(finished?.broken) ? finished.broken : null;
+  if (finished?.changed !== true || !isString(finished.harness)) return { kept: null, broken };
   const dir = join(request.states, finished.harness);
   if ((await openHarness(dir)).digest !== finished.harness) {
     throw new Error(`${dir} is not the harness session ${request.id} froze`);

@@ -32,6 +32,7 @@ function round(root: string): Run {
     writeFileSync(join(folder, path), content);
   };
   file("log.jsonl", `${LOG.map((event) => JSON.stringify(event)).join("\n")}\n`);
+  file("launch-b-1.json", "{}");
   file("checks/brief.json", "{}");
   file("checks/evaluator.ts", "export const check = 1;\n");
   file(`states/${DIGEST}/agent/tools-spec.json`, "{}");
@@ -80,6 +81,7 @@ describe("the runs zip", () => {
       };
       const light = [
         "brief tree/r1/checks/brief.json",
+        "log tree/r1/launch-b-1.json",
         "log tree/r1/log.jsonl",
         `harness tree/r1/states/${DIGEST}/agent/tools-spec.json`,
       ];

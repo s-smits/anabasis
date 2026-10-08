@@ -4,7 +4,8 @@
  *
  *   bun run runs zip [<name> ...] --light|--medium|--verbose [--out FILE] [--max-mb N] [--note FILE]
  *
- *   light    the log, each harness a session kept (`states/<digest>/`) and the brief
+ *   light    the log and each launch's receipt and output, each harness a session kept
+ *            (`states/<digest>/`) and the brief
  *   medium   and the checker (`checks/`, and the copy a harness holds when its Builder was given
  *            one) and the toolchain's own files (`states/tree-*`)
  *   verbose  and whatever else the run's folder holds, and the source each worktree ran at its commit
@@ -36,7 +37,12 @@ export type Level = (typeof LEVELS)[number];
  *  harness's `correctness-model/` is the checker wherever it lies: six of the twenty runs zipped on
  *  2026-10-08 kept one, and it was 5.4 of the 6.3 MB their harnesses came to. */
 const GROUPS: readonly (readonly [name: string, holds: string, level: Level, paths: RegExp])[] = [
-  ["log", "the run's whole record, one event a line", "light", /^[^/]+\.jsonl$/],
+  [
+    "log",
+    "the run's whole record, one event a line, and how each session was launched",
+    "light",
+    /^([^/]+\.jsonl|launch-[^/]+)$/,
+  ],
   ["brief", "the brief the tasks answer", "light", /^checks\/brief\.json$/],
   [
     "harness",

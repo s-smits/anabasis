@@ -19,7 +19,8 @@
  * to fire sooner with `--anchor-level`. `--reviewer` gives the Builder the Referee and the
  * Diagnoser on its practice fails and the round the Referee on screening and scoring fails. There
  * the Referee advises: a fail it rules a check defect stands and its task is reported as flagged,
- * for the hand reading the plan keeps as the gate. `--referee-decides` lets such a ruling dispute
+ * for the hand reading the plan keeps as the gate, and the report holds the reading without the
+ * flagged tasks beside the first (`unflagged`). `--referee-decides` lets such a ruling dispute
  * the task, once its rulings have cleared the operator's bar against hand labels
  * (`src/review/agreement.ts`).
  *

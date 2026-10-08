@@ -231,6 +231,7 @@ describe("a round", () => {
         session: "b-1",
         target: 4,
         solves: 2,
+        screening: { solves: 3, fails: 2 },
         level: 0.1,
         broken: null,
         reviewFaults: [],
@@ -249,6 +250,7 @@ describe("a round", () => {
         versions: SCORED,
         disputed: [],
         flagged: [],
+        unflagged: null,
         short: [],
         unscreened: [],
         reading: "step",
@@ -340,15 +342,64 @@ describe("a round", () => {
       probes: [],
     });
     const report = await round({ ...s.request, referee, refereeDecides: false });
-    // The fail stands and the task is counted: a person reads it before the reading is read.
+    // The fail stands and the task is counted: a person reads it before the reading is read. The
+    // second reading leaves the flagged task out, and three wins clear no test at 0.10: the step
+    // rests on the one fail a reviewer laid to a check.
     expect(report).toMatchObject({
       scored: { wins: 4, losses: 0 },
       disputed: [],
       flagged: ["s1"],
+      unflagged: {
+        scored: { wins: 3, losses: 0, p: 0.125 },
+        anchor: { reading: "held" },
+        reading: "no-step",
+      },
       reading: "step",
     });
     expect(taskStates(read(s.log)).get("s1")).toBe("admitted");
-    expect(s.of(COMPARISON_REPORTED)[0]).toMatchObject({ flagged: ["s1"] });
+    expect(s.of(COMPARISON_REPORTED)[0]).toMatchObject({
+      flagged: ["s1"],
+      unflagged: { reading: "no-step" },
+    });
+  });
+
+  it("keeps a flag across a stop: the first run's ruling is in the log and is reported", async () => {
+    let stop = 10;
+    const s = await setup([edit, finish], (version, fresh, nth) => {
+      stop -= 1;
+      if (stop === 0) throw new Error("the run stops");
+      return step(version, fresh, nth);
+    });
+    const earned = { check: null, rule: "R1", field: "answer", reason: "r", probes: [] };
+    // The Referee logs its ruling, as `src/review/referee.ts` does.
+    const flagging = async (solve: string, version: string): Promise<RefereeFinding> => {
+      const ruling = version === "s1" ? "check-defect" : "earned";
+      append(s.log, "referee.finding", { solve, ruling });
+      return { ...earned, ruling };
+    };
+    await expect(round({ ...s.request, referee: flagging, refereeDecides: false })).rejects.toThrow(
+      "the run stops",
+    );
+    // Run again, with a Referee that flags nothing: what the first run flagged is still flagged.
+    const report = await round({
+      ...s.request,
+      referee: async () => ({ ...earned, ruling: "earned" }),
+      refereeDecides: false,
+    });
+    expect(report).toMatchObject({ flagged: ["s1"], unflagged: { reading: "no-step" }, reading: "step" });
+  });
+
+  it("reads a round that scored no task as not scored, which is not a test that found no gain", async () => {
+    const s = await setup([edit, finish], step);
+    const report = await round({ ...s.request, scored: [], target: 0 });
+    expect(report).toMatchObject({
+      scored: { wins: 0, losses: 0, ties: 0, p: 1 },
+      versions: [],
+      reading: "not-scored",
+    });
+    expect(s.of(COMPARISON_REPORTED)[0]).toMatchObject({ target: 0, reading: "not-scored" });
+    // It counts among the sessions of the three-session rule, with no task to pool.
+    expect(stopRule(read(s.log))).toMatchObject({ sessions: 1, tasks: 0, stop: false });
   });
 
   it("reports a task short when its solves end in nothing countable, and leaves it out", async () => {

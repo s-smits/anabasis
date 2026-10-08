@@ -24,8 +24,10 @@
  * word (`refereeDecides`), and the plan's: the hand reading is the gate until the Referee's rulings
  * have cleared the operator's bar against hand labels (`src/review/agreement.ts`). Deciding, a fail
  * it rules a check defect disputes the task; advising, the fail stands and the task is reported as
- * flagged, for the person who reads the fails before the reading is read. A check that could not
- * run disputes its task either way. A disputed task is neither admitted nor compared. The Referee
+ * flagged, for the person who reads the fails before the reading is read. The report then holds a
+ * second reading beside the first, `unflagged`: the same tests with the flagged tasks left out, so
+ * that whoever reads it sees at once whether the reading rests on fails a reviewer laid to a check.
+ * A check that could not run disputes its task either way. A disputed task is neither admitted nor compared. The Referee
  * reads both harnesses' fails: a defect on the old side would make a win as surely as one on the
  * new side makes a loss. Past `defects` disputed tasks outside the anchor the round stops, which is
  * the plan's rule that more than three check defects send the work to the contract.
@@ -100,12 +102,15 @@ export interface RoundRequest {
 /**
  * How the plan's rules read a round. A step is the scored set's test clearing its level with the
  * anchor held. An anchor too thin to test is named apart, since not tested is not held, and whether
- * a step may rest on it is the operator's. `check-defects` is the round stopped on its disputes, and
- * `no-change` a session that left the harness it started from.
+ * a step may rest on it is the operator's. A round that scored no task is named apart for the same
+ * reason: it tested nothing, and `no-step` would say a test was made and found no gain. The eight
+ * truss rounds of 2026-10-08 scored no task and read `no-step` eight times. `check-defects` is the
+ * round stopped on its disputes, and `no-change` a session that left the harness it started from.
  */
 export type RoundReading =
   | "step"
   | "no-step"
+  | "not-scored"
   | "anchor-lost"
   | "anchor-not-tested"
   | "check-defects"
@@ -129,6 +134,12 @@ export interface RoundReport {
   readonly disputed: readonly string[];
   /** Task versions still counted that an advising Referee ruled a check defect on. */
   readonly flagged: readonly string[];
+  /** The two tests and their reading with the flagged tasks left out; null when none is flagged. */
+  readonly unflagged: {
+    readonly scored: ReturnType<typeof scored>;
+    readonly anchor: ReturnType<typeof anchor>;
+    readonly reading: RoundReading;
+  } | null;
   readonly short: readonly string[];
   readonly unscreened: readonly string[];
   readonly reading: RoundReading;
@@ -171,6 +182,7 @@ const REPORT_KEYS = [
   "versions",
   "disputed",
   "flagged",
+  "unflagged",
   "short",
   "unscreened",
   "reading",
@@ -388,6 +400,31 @@ function refuseUnscorable(request: RoundRequest, old: string): void {
 }
 
 /**
+ * The task versions an advising Referee ruled a check defect on: those this run of the round flagged,
+ * and those the log holds a ruling for on a solve of the round's window. A round that was stopped and
+ * run again keeps the first run's rulings in its log alone, and a report that listed only the second
+ * run's would count a flagged task as clean.
+ */
+function flaggedIn(events: readonly LogEvent[], here: ReadonlySet<string>): Set<string> {
+  const conditions = conditionsOf(events);
+  const versionOf = new Map(
+    events.flatMap(({ kind, data }): [string, string][] => {
+      const version = conditions.get(isString(data.condition) ? data.condition : "")?.task;
+      return kind === "solve.started" && isString(data.solve) && version !== undefined
+        ? [[data.solve, version]]
+        : [];
+    }),
+  );
+  const ruled = events.flatMap(({ kind, data }) => {
+    const version = versionOf.get(isString(data.solve) ? data.solve : "");
+    return kind === "referee.finding" && data.ruling === "check-defect" && version !== undefined
+      ? [version]
+      : [];
+  });
+  return new Set([...here, ...ruled]);
+}
+
+/**
  * What runs a round's solves: the jobs' pool, the Referee's part, and the reasons it stops taking
  * jobs. A solve that throws ends the pool and is thrown again by `settle` once every solve in
  * flight has returned.
@@ -546,6 +583,8 @@ export async function round(request: RoundRequest): Promise<RoundReport> {
       // The eight truss rounds of 2026-10-08 asked for no scored task, and their logs could not say so.
       target: request.target,
       solves,
+      // Gate 5's rule, which chose the scored set and which nothing else in the log holds.
+      screening: request.screening,
       level: request.level,
       broken: built.broken,
       reviewFaults: work.faults,
@@ -560,6 +599,7 @@ export async function round(request: RoundRequest): Promise<RoundReport> {
     versions: [],
     disputed: [],
     flagged: [],
+    unflagged: null,
     short: [],
     unscreened: [],
   };
@@ -576,6 +616,12 @@ export async function round(request: RoundRequest): Promise<RoundReport> {
     return [...new Set([...request.scored, ...here])].filter((version) => states.get(version) === "admitted");
   };
 
+  const practised = new Set(session.tasks.map(({ version }) => version));
+  /** The flagged task versions among those `kept` keeps. The session's Referee rules on practice
+   *  fails in the same window, and a practice task is in no comparison. */
+  const flagged = (kept: (version: string) => boolean) =>
+    [...flaggedIn(counted(), work.flagged)].filter(kept);
+
   const unscreened = await screenCandidates(request, work, { old, fresh }, admitted);
   for (let pass = 0; pass < PASSES && work.going(); pass += 1) {
     const { pairs } = pairsOf(counted(), [...admitted(), ...request.anchor], old.digest, fresh.digest);
@@ -586,7 +632,7 @@ export async function round(request: RoundRequest): Promise<RoundReport> {
     return report({
       ...nothing,
       disputed: [...work.dropped],
-      flagged: [...work.flagged],
+      flagged: flagged((version) => !practised.has(version) && !work.dropped.has(version)),
       unscreened,
       reading: "check-defects",
     });
@@ -599,8 +645,20 @@ export async function round(request: RoundRequest): Promise<RoundReport> {
   };
   const test = setOf(admitted());
   const guard = setOf(request.anchor);
-  const tested = { ...scored(test.pairs), ...gain(test.pairs), seconds: solveSeconds(test.pairs) };
-  const guarded = anchor(guard.pairs, request.anchorLevel, request.anchorFloor);
+  /** The two tests over the tasks `kept` keeps, and how the plan reads them. */
+  const readings = (kept: (task: string) => boolean) => {
+    const pairs = test.pairs.filter(({ task }) => kept(task));
+    const tested = scored(pairs);
+    const guarded = anchor(
+      guard.pairs.filter(({ task }) => kept(task)),
+      request.anchorLevel,
+      request.anchorFloor,
+    );
+    const reading: RoundReading =
+      pairs.length === 0 ? "not-scored" : readingOf(tested.p, request.level, guarded.reading);
+    return { scored: tested, anchor: guarded, reading };
+  };
+  const first = readings(() => true);
   append(log, "anchor.scored", {
     session: id,
     old: old.digest,
@@ -608,20 +666,23 @@ export async function round(request: RoundRequest): Promise<RoundReport> {
     solves,
     level: request.anchorLevel,
     floor: request.anchorFloor,
-    ...guarded,
+    ...first.anchor,
     tasks: guard.pairs.length,
     disputed: guard.disputed,
     short: guard.short,
   });
+  const compared = new Set([...test.pairs, ...guard.pairs].map(({ task }) => task));
+  const marked = flagged((version) => compared.has(version));
   return report({
-    scored: tested,
-    anchor: guarded,
+    scored: { ...first.scored, ...gain(test.pairs), seconds: solveSeconds(test.pairs) },
+    anchor: first.anchor,
     versions: test.pairs.map(({ task }) => task),
     disputed: [...work.dropped],
-    flagged: [...work.flagged].filter((version) => !work.dropped.has(version)),
+    flagged: marked,
+    unflagged: marked.length === 0 ? null : readings((task) => !marked.includes(task)),
     short: [...test.short, ...guard.short],
     unscreened,
-    reading: readingOf(tested.p, request.level, guarded.reading),
+    reading: first.reading,
   });
 }
 

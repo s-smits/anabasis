@@ -14,12 +14,14 @@ import {
   Type,
 } from "@earendil-works/pi-ai";
 import {
+  CLAUDE_COMPACTED,
   type ClaudeCompaction,
   claudeEffort,
   claudeProvider,
   REPORTED_COST,
   SWEEP_COMPACT_WINDOW,
 } from "../src/backends/claude.ts";
+import { read as readLog } from "../src/kernel/log.ts";
 import { dollars, freezePrices, priceKey, tokensOf } from "../src/kernel/meter.ts";
 import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { capturedJsonParse } from "../src/meta/json-runtime.ts";
@@ -28,6 +30,7 @@ import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
+import { traceSink } from "../src/solve/run.ts";
 
 /** What one launch of the CLI saw: its arguments, its environment and the SDK's lines to it. */
 interface Launch {
@@ -216,6 +219,30 @@ describe("the Claude backend", () => {
       const { billed } = dollars(prices, priceKey(haiku), tokensOf(turns.map((message) => message.usage)));
       expect(Math.abs(billed - reported) / reported).toBeLessThan(0.01);
     }
+  });
+
+  it("logs a compaction Claude Code ran before the turn, as v1's onCompaction read it", async () => {
+    const boundary = JSON.stringify({
+      type: "system",
+      subtype: "compact_boundary",
+      compact_metadata: { trigger: "auto", pre_tokens: 312_000, duration_ms: 4_200 },
+      session_id: "00000000-0000-4000-8000-000000000001",
+      uuid: "00000000-0000-4000-8000-0000000000ff",
+    });
+    replay("text.jsonl", (text) => text.replace("\n", `\n${boundary}\n`));
+    const message = await turn([opening]);
+    const types = message.diagnostics?.map((entry) => entry.type);
+    expect(types).toEqual([CLAUDE_COMPACTED, REPORTED_COST]);
+    const log = join(home, "trace.jsonl");
+    traceSink(log, "solve", "s-1", () => 1)({ type: "turn_end", message, toolResults: [] });
+    const compacted = readLog(log).find(({ kind }) => kind === "solve.compacted");
+    expect(compacted?.data).toEqual({
+      solve: "s-1",
+      tokensBefore: 312_000,
+      seconds: 4.2,
+      usages: [],
+      error: null,
+    });
   });
 
   it("fails the turn on a refusal, so it reads as the provider's non-result and not the solver's stop", async () => {

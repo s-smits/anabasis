@@ -37,7 +37,7 @@ import {
   toToolDeclaration,
   type Usage,
 } from "@earendil-works/pi-ai";
-import { REPORTED_COST } from "../backends/claude.ts";
+import { CLAUDE_COMPACTED, REPORTED_COST } from "../backends/claude.ts";
 import { type Compacted, compactBeforeRequest } from "../backends/pi-compaction.ts";
 import type { Limits } from "../kernel/condition.ts";
 import { answerFormatFault, type Contract } from "../kernel/contract.ts";
@@ -331,7 +331,13 @@ export function traceSink(log: string, of: "solve" | "build" | "exam", id: strin
         ms: call === undefined ? null : performance.now() - call.at,
       });
     } else if (event.type === "turn_end" && event.message.role === "assistant") {
-      const { stopReason, errorMessage: error, responseModel, usage, content } = event.message;
+      const { stopReason, errorMessage: error, responseModel, usage, content, diagnostics } = event.message;
+      // Claude Code compacts in its own CLI, before the turn; its summary is in the query's cost.
+      for (const { type, details } of diagnostics ?? []) {
+        if (type !== CLAUDE_COMPACTED) continue;
+        // SAFETY: the backend's own diagnostic, numbers and null.
+        append(log, `${of}.compacted`, { ...named, ...(details as JsonObject), usages: [], error: null });
+      }
       append(log, `${of}.turn`, {
         ...named,
         turn: turn(),

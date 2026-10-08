@@ -135,6 +135,13 @@ const sessions = new Map<string, Session>();
 export const REPORTED_COST = "claude-code-total-cost";
 
 /**
+ * The diagnostic a turn carries for each compaction Claude Code ran before it: `details.tokensBefore`
+ * and `details.seconds`, from the CLI's `compact_boundary`, as v1's `onCompaction` read it
+ * (`vendor/pi-claude-bridge/provider.ts:247` at 7af7315).
+ */
+export const CLAUDE_COMPACTED = "claude-code-compaction";
+
+/**
  * How Claude Code fits a full context: its own auto-compaction at a window of this many tokens, or not
  * at all, in which case a context that outgrows the model ends the query on the API's refusal.
  */
@@ -441,7 +448,14 @@ async function readMessages(
     if (next.done === true) throw new Error("Claude Code ended the query without a result");
     const message = next.value;
     if (message.type === "assistant" && message.parent_tool_use_id === null) take(message, model, turn);
-    else if (message.type === "stream_event" && message.event.type === "message_delta") {
+    else if (message.type === "system" && message.subtype === "compact_boundary") {
+      const { pre_tokens: tokensBefore, duration_ms: ms } = message.compact_metadata;
+      const details = { tokensBefore, seconds: ms === undefined ? null : ms / 1000 };
+      turn.diagnostics = [
+        ...(turn.diagnostics ?? []),
+        { type: CLAUDE_COMPACTED, timestamp: Date.now(), details },
+      ];
+    } else if (message.type === "stream_event" && message.event.type === "message_delta") {
       apiStop = message.event.delta.stop_reason;
       updateUsage(turn, message.event.usage, model);
     } else if (
@@ -455,6 +469,7 @@ async function readMessages(
     } else if (message.type === "result") {
       // The query stays open for a later prompt; the cost Claude Code reports is the query's so far.
       turn.diagnostics = [
+        ...(turn.diagnostics ?? []),
         { type: REPORTED_COST, timestamp: Date.now(), details: { totalCostUsd: message.total_cost_usd } },
       ];
       const end = apiStop === null ? undefined : FINAL_STOPS.get(apiStop);

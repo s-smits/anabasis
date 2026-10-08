@@ -662,7 +662,10 @@ describe("a Rule Author session", () => {
       propose({ rule: { ...RULE, id: "P1" } }),
       propose({ code: `import { readFileSync } from "node:fs";\n${NOTE_CODE}` }),
       propose({ check: { ...CHECK, tools: ["python3"], cites: ["R9"] } }),
-      propose({ code: `import { FACTOR } from "../reference/model.ts";\n${NOTE_CODE}` }),
+      propose({
+        check: { ...CHECK, cites: ["R3", "R1", "R1"] },
+        code: `import { FACTOR } from "../reference/model.ts";\n${NOTE_CODE}`,
+      }),
       finish,
     ]);
     const authored = await authorRule({ ...s.request, limits: { ...LIMITS, tries: 4 } });
@@ -687,6 +690,9 @@ describe("a Rule Author session", () => {
       [4, "interference", "reported", "record"],
     ]);
     expect(authored).toMatchObject({ tries: 4, candidate: { check: "check-note" } });
+    // The new rule is cited first, and each rule once, whatever the session repeated.
+    const left = readBrief(modelOf(authored.candidate?.dir ?? "")).truthChecks.at(-1);
+    expect(left?.citedDecisionIds).toEqual(["R3", "R1"]);
   });
 
   it("refuses at the shape gate an addition that takes an existing check's name or names a file elsewhere", async () => {

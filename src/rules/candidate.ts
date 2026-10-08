@@ -242,7 +242,8 @@ export function writeCandidate(pack: string, addition: Addition, to: string): vo
       {
         id: check.id,
         assertion: check.assertion,
-        citedDecisionIds: [rule.id, ...check.cites],
+        // The new rule first, and each rule once whatever the session repeated.
+        citedDecisionIds: [...new Set([rule.id, ...check.cites])],
         execution: {
           families: families ?? "all",
           artifactPaths: [...check.artifactPaths],

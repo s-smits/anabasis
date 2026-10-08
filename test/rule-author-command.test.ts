@@ -11,6 +11,7 @@ import {
   fauxProvider,
   fauxToolCall,
 } from "@earendil-works/pi-ai";
+import { contractHash } from "../src/kernel/contract.ts";
 import { append, type EventKind, read } from "../src/kernel/log.ts";
 import { taskVersion } from "../src/kernel/task.ts";
 import { checkProgramVersion } from "../src/kernel/verify.ts";
@@ -27,14 +28,18 @@ import type { JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
-import { additive, modelOf } from "../src/rules/candidate.ts";
+import { hashJsonValue } from "../src/meta/stable-json.ts";
+import { type Addition, additive, copyTools, modelOf, writeCandidate } from "../src/rules/candidate.ts";
 import { osIsolationSupport } from "../src/verify/os-isolation.ts";
 import { ruleCommand, type Seated } from "../tools/c/rule-author.ts";
 import { openCampaign } from "../tools/d2/campaign.ts";
+import { checkProgram, packControls, toolOnPath } from "../tools/m0/stored-sweep.ts";
 
 const REPO = resolve(import.meta.dir, "..");
 const FIXTURE = new URL("fixtures/harness-min", import.meta.url).pathname;
 const NAME = `test-rule-${String(runtimeProcess.pid)}`;
+/** The campaign a candidate pack is opened as. */
+const ADOPTED = `${NAME}-candidate`;
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-rule-command-")));
 const bundle = join(root, "bundle");
 const folder = join(REPO, ".ana", "d2", NAME);
@@ -55,15 +60,29 @@ const noted = (label: "accept" | "reject", note: string) => ({
   expect: label,
   change: { path: "$.note", value: JSON.stringify(note) },
 });
-const propose = call("propose_rule", {
+/** The addition the tests here make: the note names the task's base. */
+const ADDITION: Addition = {
   rule: { id: "R2", statement: "The note is the word base, a space and the task's base in decimal digits." },
   check: {
     id: "check-note",
     assertion: "The note names the task's base.",
-    answer_paths: ["$.note"],
-    public_input_paths: ["$.base"],
+    families: "all",
+    cites: [],
+    artifactPaths: ["$.note"],
+    publicInputPaths: ["$.base"],
+    tools: [],
   },
   code: "export const check = ({ artifact, publicTask }) => artifact.note === `base ${publicTask.publicInput.base}`;\n",
+};
+const propose = call("propose_rule", {
+  rule: ADDITION.rule,
+  check: {
+    id: ADDITION.check.id,
+    assertion: ADDITION.check.assertion,
+    answer_paths: [...ADDITION.check.artifactPaths],
+    public_input_paths: [...ADDITION.check.publicInputPaths],
+  },
+  code: ADDITION.code,
   controls: [noted("reject", "base 8"), noted("reject", "7"), noted("reject", "Base 7")],
 });
 
@@ -72,6 +91,7 @@ setDefaultTimeout(180_000);
 afterAll(() => {
   rmSync(root, { recursive: true, force: true });
   rmSync(folder, { recursive: true, force: true });
+  rmSync(join(REPO, ".ana", "d2", ADOPTED), { recursive: true, force: true });
 });
 
 /** The sweep, its one graded pass, the cycle's harness state and a pack of two tasks, one check and
@@ -240,6 +260,31 @@ describe("the Rule Author's command", () => {
   });
 });
 
+describe("a candidate pack", () => {
+  it("opens as a campaign under the contract and the check program its session logged for it", async () => {
+    // Built as a session's host builds one. What a session logs as the candidate's checker is the
+    // campaign's contract with the candidate's public rules, and its staged program's digest
+    // (`src/rules/session.ts`): the same two hashes a campaign opened over the candidate runs under.
+    const campaign = await openCampaign(ARGS);
+    const dir = join(root, "candidate");
+    writeCandidate(bundle, ADDITION, dir);
+    copyTools(bundle, dir);
+    const proof = additive(bundle, dir, "with-tools");
+    const rules = "rules" in proof ? proof.rules : [];
+    expect(rules.map(({ id }) => id)).toEqual(["R1", "R2"]);
+    const adopted = await openCampaign({ ...ARGS, bundle: dir, name: ADOPTED });
+    expect(adopted.checker).toEqual({
+      contract: contractHash({ ...campaign.contract, rules }),
+      checks: hashJsonValue(checkProgramVersion(checkProgram(dir, join(root, "candidate-checks")))),
+    });
+    expect(adopted.checker).not.toEqual(campaign.checker);
+    // Its tasks are the pack's, and its controls and tools are where the commands look for them.
+    expect(adopted.tasks).toEqual(campaign.tasks);
+    expect(packControls(dir)).toEqual(packControls(bundle));
+    expect(toolOnPath(dir)("no-such-tool")).toBe(false);
+  });
+});
+
 describe.skipIf(!osIsolationSupport().ok)("the Rule Author's command behind the verifier's wall", () => {
   it("leaves a candidate pack, adopts nothing, and says what the operator would do next", async () => {
     // One task a session wrote, feasible on a stronger solve's answer: the witness the controls
@@ -276,6 +321,10 @@ describe.skipIf(!osIsolationSupport().ok)("the Rule Author's command behind the 
     expect(checkProgramVersion(modelOf(bundle))).toEqual(before);
     // The campaign opens under the checker it had.
     expect((await openCampaign(ARGS)).checker).toEqual(campaign.checker);
+    // Opened as a campaign of its own, the candidate runs under the checker the session logged.
+    rmSync(join(REPO, ".ana", "d2", ADOPTED), { recursive: true, force: true });
+    const adopted = await openCampaign({ ...ARGS, bundle: dir, name: ADOPTED });
+    expect(held("rule.candidate")).toMatchObject([{ ...adopted.checker }]);
     expect(said.at(-1)).toBe(
       `Nothing is adopted: the campaign still runs under contract ${campaign.checker.contract} and check program ${campaign.checker.checks}. The next step is the operator's: read the candidate, and if the exam is to take it, give ${dir} as the pack to the command that adopts a changed pack into this campaign; otherwise leave or delete it.`,
     );

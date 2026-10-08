@@ -16,9 +16,10 @@
  * faults its author thought of, so controls cannot show that the answers a check refused were
  * wrong; that takes a reading of the refused answers themselves (`src/review/rejections.ts`).
  */
-import { isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
+import { isString, type JsonValue } from "../meta/json-shape.ts";
 import { pooled } from "../meta/pool.ts";
 import type { LogEvent } from "./log.ts";
+import { verdictsOf } from "./solves.ts";
 import {
   applicableTruthChecks,
   type Brief,
@@ -220,18 +221,6 @@ export function departure(events: readonly LogEvent[], own: Checker): string | n
     : `the log froze another ${moved.join(" and ")}; a changed checker takes a campaign of its own`;
 }
 
-/** The verdict a `verdict` event holds, when a check gave it. An answer outside the contract's
- *  format reached no check, and a non-result decided nothing: neither is a checker's verdict. */
-function loggedVerdict(data: JsonObject): Verdict | null {
-  if (data.kind === "pass") return { kind: "pass" };
-  if (data.kind === "fail" && Array.isArray(data.blocking) && data.blocking.length > 0) {
-    return { kind: "fail", blocking: data.blocking.filter(isString) };
-  }
-  return data.kind === "faulty" && isString(data.check) && isString(data.reason)
-    ? { kind: "faulty", check: data.check, reason: data.reason }
-    : null;
-}
-
 /**
  * Every answer the log holds a checker's verdict for, graded again by `verify` over `tasks`, a
  * repaired checker's own: the last verdict of each solve beside the repaired checker's of the same
@@ -248,17 +237,13 @@ export function regraded(
   width: number,
 ): Promise<Regraded[]> {
   const byId = new Map(tasks.map((task) => [task.taskId, task]));
-  const last = new Map(
-    events.flatMap(({ kind, data }) =>
-      kind === "verdict" && isString(data.solve) ? [[data.solve, data]] : [],
-    ),
-  );
-  const held = [...last].flatMap(([solve, data]) => {
-    const verdict = loggedVerdict(data);
-    return verdict === null || !isString(data.task) || data.answer === undefined
+  // A verdict no check gave is no checker's to grade again: an answer outside the contract's format
+  // reached none, and a non-result decided nothing (`verdictsOf`).
+  const held = [...verdictsOf(events).values()].flatMap(({ solve, task, answer, checker }) =>
+    checker === null || task === null || answer === undefined
       ? []
-      : [{ solve, task: data.task, answer: data.answer, was: spelled(verdict) }];
-  });
+      : [{ solve, task, answer, was: spelled(checker) }],
+  );
   return pooled(held, width, async ({ solve, task, answer, was }) => {
     const own = byId.get(task);
     const now = own === undefined ? "no task" : spelled(await decided(verify, own, answer));

@@ -21,10 +21,11 @@
  * does: the solves that score a task are made fresh, after its admission, and never the ones that
  * placed it.
  */
-import { asRecord, isString, type JsonObject } from "../meta/json-shape.ts";
-import { conditionsOf, settingId } from "./condition.ts";
+import { isString, type JsonObject } from "../meta/json-shape.ts";
+import { settingId } from "./condition.ts";
 import type { LogEvent } from "./log.ts";
 import type { Counted } from "./solve.ts";
+import { counted, ended, type Ran, ranUnder } from "./solves.ts";
 import { taskSets } from "./task.ts";
 
 /** Gate 5's rule: the solves of a task under a harness that are read, and the fails that stop it. */
@@ -56,9 +57,6 @@ export interface Ladder {
   readonly practice: readonly string[];
 }
 
-/** The kinds of fail a solver owns outright, as `solve.ts` types them. */
-const FAILS = ["rejected", "wall-ended", "context-ended", "no-answer"] as const;
-
 /**
  * The harness a campaign stands on: the one the last round that read `step` left, by its digest,
  * or null while no round has. A report a person's labels settled is its round's last, so a step
@@ -89,48 +87,28 @@ export function lastReports(
     });
 }
 
-/** A task version's counted solves where a solver stands, each with how it ended, oldest first. A
- *  setting holds its side, so a test solver's stand reads no stronger solve. */
+/** Whether a solve ran where a solver stands: under its harness and its setting. A setting holds
+ *  its side, so a test solver's stand reads no stronger solve. */
+function standsAt({ under }: Ran, stand: Stand): boolean {
+  return under.harness === stand.harness && settingId(under) === stand.setting;
+}
+
+/** The solves a log holds that ran where a solver stands, whatever their task. */
+export function solvesAt(events: readonly LogEvent[], stand: Stand): Ran[] {
+  return ranUnder(events).filter((solve) => standsAt(solve, stand));
+}
+
+/** A task version's counted solves where a solver stands, each with how it ended, in the order
+ *  they ended. */
 export function solvesOf(
   events: readonly LogEvent[],
   version: string,
   stand: Stand,
 ): { readonly solve: string; readonly ending: Counted }[] {
-  const under = new Set(
-    [...conditionsOf(events)].flatMap(([id, condition]) =>
-      condition.task === version &&
-      condition.harness === stand.harness &&
-      settingId(condition) === stand.setting
-        ? [id]
-        : [],
-    ),
-  );
-  const ran = new Set(
-    events.flatMap(({ kind, data }) =>
-      kind === "solve.started" &&
-      isString(data.solve) &&
-      isString(data.condition) &&
-      under.has(data.condition)
-        ? [data.solve]
-        : [],
-    ),
-  );
-  return events.flatMap(({ kind, data }) => {
-    const { solve } = data;
-    const ending = asRecord(data.ending);
-    if (kind !== "solve.finished" || !isString(solve) || !ran.has(solve)) return [];
-    const counted = (told: Counted) => [{ solve, ending: told }];
-    if (ending?.outcome === "pass") return counted({ outcome: "pass" });
-    if (ending?.outcome !== "fail") return [];
-    if (ending.kind === "broken-harness") {
-      return counted({
-        outcome: "fail",
-        kind: "broken-harness",
-        reason: isString(ending.reason) ? ending.reason : "",
-      });
-    }
-    const failed = FAILS.find((known) => known === ending.kind);
-    return failed === undefined ? [] : counted({ outcome: "fail", kind: failed });
+  const mine = ranUnder(events).filter((solve) => solve.under.task === version && standsAt(solve, stand));
+  return ended(mine).flatMap((solve) => {
+    const ending = counted(solve);
+    return ending === null ? [] : [{ solve: solve.id, ending }];
   });
 }
 

@@ -26,16 +26,16 @@ import { type Practised, practised } from "#src/builder/session.ts";
 import { departure } from "#src/kernel/acceptance.ts";
 import {
   type Condition,
-  conditionsOf,
   type Limits,
   recordCondition,
   type Setting,
   settingId,
 } from "#src/kernel/condition.ts";
 import { contractHash } from "#src/kernel/contract.ts";
-import { frontierOf, type Rule, type Stand } from "#src/kernel/ladder.ts";
+import { frontierOf, type Rule, type Stand, solvesAt } from "#src/kernel/ladder.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
 import { freezePrices, priceKey } from "#src/kernel/meter.ts";
+import { verdictsOf } from "#src/kernel/solves.ts";
 import { gatesOf, lastGate, proposalsOf, writtenTasks } from "#src/kernel/history.ts";
 import { type RejectControl, type TaskPackage, taskSets, taskStates, taskVersion } from "#src/kernel/task.ts";
 import { checkProgramVersion, openVerifier, type Task } from "#src/kernel/verify.ts";
@@ -169,8 +169,7 @@ export interface Carriable {
  */
 export function carriable(events: readonly LogEvent[]) {
   const written = new Map(writtenTasks(events).map((task) => [task.taskId, task]));
-  const answerOf = (solve: JsonValue | undefined) =>
-    events.findLast(({ kind, data }) => kind === "verdict" && data.solve === solve)?.data.answer;
+  const verdicts = verdictsOf(events);
   const gates = gatesOf(events);
   const [seconds, thirds, fourths] = [lastGate(gates, 2), lastGate(gates, 3), lastGate(gates, 4)];
   const feasible: Carriable[] = [];
@@ -182,7 +181,7 @@ export function carriable(events: readonly LogEvent[]) {
     if (task === undefined) continue;
     const second = seconds.get(version);
     const solve = second?.data.solve;
-    const accepted = answerOf(solve);
+    const accepted = isString(solve) ? verdicts.get(solve)?.answer : undefined;
     if (!isString(solve) || accepted === undefined) continue;
     const witness = { task, solve, accepted };
     const fourth = fourths.get(version);
@@ -204,19 +203,8 @@ export function carriable(events: readonly LogEvent[]) {
  */
 export function reachOf(events: readonly LogEvent[], stand: Stand): Task[] {
   const states = taskStates(events);
-  const conditions = conditionsOf(events);
   /** The solves that ran where the stronger solver stands now. */
-  const here = new Set(
-    events.flatMap(({ kind, data }) => {
-      const ran = conditions.get(isString(data.condition) ? data.condition : "");
-      return kind === "solve.started" &&
-        isString(data.solve) &&
-        ran?.harness === stand.harness &&
-        settingId(ran) === stand.setting
-        ? [data.solve]
-        : [];
-    }),
-  );
+  const here = new Set(solvesAt(events, stand).map(({ id }) => id));
   const written = new Map(writtenTasks(events).map((task) => [task.taskId, task]));
   const witness = lastGate(gatesOf(events), 2);
   return proposalsOf(events).flatMap(({ taskId, version }) => {

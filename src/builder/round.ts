@@ -70,10 +70,10 @@
  * operator's, behind gate G4.
  */
 import { anchor, draw, gain, type Paired, pairsOf, scored, solveSeconds } from "../kernel/compare.ts";
-import { conditionsOf } from "../kernel/condition.ts";
 import { movesOf } from "../kernel/history.ts";
 import { endingsOf, lastReports, standing } from "../kernel/ladder.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
+import { ranUnder, refusedBy, solvesIn, verdictsOf } from "../kernel/solves.ts";
 import { screen, taskSets, taskStates } from "../kernel/task.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
 import { join } from "../meta/path.ts";
@@ -449,15 +449,7 @@ function refuseUnscorable(request: RoundRequest, old: string): void {
 
 /** Each solve of `events` by the task version its condition names. */
 function versionBySolve(events: readonly LogEvent[]): Map<string, string> {
-  const conditions = conditionsOf(events);
-  return new Map(
-    events.flatMap(({ kind, data }): [string, string][] => {
-      const version = conditions.get(isString(data.condition) ? data.condition : "")?.task;
-      return kind === "solve.started" && isString(data.solve) && version !== undefined
-        ? [[data.solve, version]]
-        : [];
-    }),
-  );
+  return new Map(ranUnder(events).map(({ id, under }) => [id, under.task]));
 }
 
 /** The solves of a round's window the log holds a check-defect ruling for, each with its task
@@ -540,8 +532,8 @@ function compared(
  *  rounds of 2026-10-08), and is a non-result the round solves on from. */
 function unanswered(log: string, { solve, ending }: Practised): string | null {
   if (ending.outcome !== "non-result" || ending.kind !== "provider") return null;
-  const record = read(log).findLast(({ kind, data }) => kind === "solve.finished" && data.solve === solve);
-  return asRecord(record?.data.tokens)?.output === 0 ? ending.reason : null;
+  const record = solvesIn(read(log)).find(({ id }) => id === solve);
+  return asRecord(record?.end?.tokens)?.output === 0 ? ending.reason : null;
 }
 
 /**
@@ -819,17 +811,10 @@ export function toLabel(events: readonly LogEvent[], id: string): ToLabel {
     flaggedFails(window).flatMap(({ solve, version }) => (report.flagged.includes(version) ? [solve] : [])),
   );
   const version = versionBySolve(window);
-  const refused = window.flatMap(({ kind, data }) =>
-    kind === "verdict" &&
-    data.kind === "fail" &&
-    isString(data.solve) &&
-    Array.isArray(data.blocking) &&
-    data.blocking.length > 0 &&
-    counted.has(version.get(data.solve) ?? "")
-      ? [data.solve]
-      : [],
+  const refused = [...verdictsOf(window).values()].flatMap((verdict) =>
+    refusedBy(verdict).length > 0 && counted.has(version.get(verdict.solve) ?? "") ? [verdict.solve] : [],
   );
-  return { flagged: [...flagged], others: [...new Set(refused)].filter((solve) => !flagged.has(solve)) };
+  return { flagged: [...flagged], others: refused.filter((solve) => !flagged.has(solve)) };
 }
 
 /**

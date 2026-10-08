@@ -25,10 +25,11 @@
  * comparable only when their conditions differ in the one thing being compared (`condition.ts`).
  */
 import { sha256 } from "../meta/digest.ts";
-import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
+import { isNumber } from "../meta/json-shape.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
-import { conditionsOf, fieldsApart } from "./condition.ts";
+import { fieldsApart } from "./condition.ts";
 import type { LogEvent } from "./log.ts";
+import { ended, passed, ranUnder } from "./solves.ts";
 import { taskStates } from "./task.ts";
 
 /** One task version's counted solves under the old harness and under the new: true for a pass. */
@@ -178,7 +179,7 @@ export function pairsOf(
   old: string,
   fresh: string,
 ) {
-  const conditions = conditionsOf(events);
+  const solves = ranUnder(events);
   const states = taskStates(events);
   const disputed = versions.filter((task) => states.get(task) === "disputed");
   const pairs = versions.flatMap((task) => {
@@ -194,25 +195,15 @@ export function pairsOf(
         `task ${task} is ${state ?? "not proposed"}; only an admitted task or an anchor task is scored`,
       );
     }
-    const later = events.slice(from);
-    const ran = new Map<string, string>();
-    for (const { kind, data } of later) {
-      const id = isString(data.condition) ? data.condition : "";
-      const condition = conditions.get(id);
-      if (
-        kind === "solve.started" &&
-        isString(data.solve) &&
-        condition?.task === task &&
-        condition.side === "test" &&
-        (condition.harness === old || condition.harness === fresh)
-      ) {
-        ran.set(data.solve, id);
-      }
-    }
-    const [first, ...rest] = [...new Set(ran.values())].map((id) => conditions.get(id));
-    const apart = rest.flatMap((other) =>
-      first === undefined || other === undefined ? [] : fieldsApart(first, other),
+    const ran = solves.filter(
+      ({ started, under }) =>
+        started >= from &&
+        under.task === task &&
+        under.side === "test" &&
+        (under.harness === old || under.harness === fresh),
     );
+    const [first, ...rest] = new Map(ran.map(({ condition, under }) => [condition, under])).values();
+    const apart = rest.flatMap((other) => (first === undefined ? [] : fieldsApart(first, other)));
     const moved = [...new Set(apart)].filter((field) => !COMPARED.has(field));
     if (moved.length > 0) {
       throw new Error(
@@ -220,13 +211,10 @@ export function pairsOf(
       );
     }
     const counted = (harness: string) =>
-      later.flatMap(({ kind, data }) => {
-        const outcome = asRecord(data.ending)?.outcome;
-        const under = conditions.get(ran.get(isString(data.solve) ? data.solve : "") ?? "");
-        return kind === "solve.finished" &&
-          under?.harness === harness &&
-          (outcome === "pass" || outcome === "fail")
-          ? [{ pass: outcome === "pass", seconds: isNumber(data.seconds) ? data.seconds : null }]
+      ended(ran).flatMap((solve) => {
+        const pass = passed(solve);
+        return solve.under.harness === harness && pass !== null
+          ? [{ pass, seconds: isNumber(solve.end.seconds) ? solve.end.seconds : null }]
           : [];
       });
     const [before, after] = [counted(old), counted(fresh)];

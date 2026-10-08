@@ -22,8 +22,10 @@
  * asked for since 2026-10-08, and the reader says when one does not.
  */
 import { type Paired, pairsOf } from "#src/kernel/compare.ts";
-import { type Condition, conditionsOf, fieldsApart } from "#src/kernel/condition.ts";
+import { type Condition, fieldsApart } from "#src/kernel/condition.ts";
+import { movesOf } from "#src/kernel/history.ts";
 import type { EventKind, LogEvent } from "#src/kernel/log.ts";
+import { ranUnder } from "#src/kernel/solves.ts";
 import { TOOLS_SPEC_FILE } from "#src/meta/bundle-layout.ts";
 import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
@@ -87,25 +89,19 @@ const brief = (digest: string) => digest.slice(0, 8);
  * once admitted; any other is being screened.
  */
 function solvesOf(events: readonly LogEvent[], anchor: readonly string[]) {
-  const conditions = conditionsOf(events);
-  const endings = new Map(
-    events.flatMap(({ kind, data }) => {
-      const ending = asRecord(data.ending);
-      const said = [ending?.outcome, ending?.kind].filter(isString).join(" ");
-      return kind === "solve.finished" ? [[word(data.solve), said] as const] : [];
-    }),
-  );
-  const sets = new Map(anchor.map((task) => [task, "anchor"]));
-  const solves: { readonly under: Condition; readonly set: string; readonly ending: string }[] = [];
-  for (const { kind, data } of events) {
-    const under = conditions.get(word(data.condition));
-    if (kind === "task.state") sets.set(word(data.version), SET_OF.get(word(data.state)) ?? "screened");
-    if (kind === "solve.started" && under?.side === "test") {
-      const ending = endings.get(word(data.solve)) ?? "unfinished";
-      solves.push({ under, set: sets.get(under.task) ?? "screened", ending });
-    }
-  }
-  return solves;
+  const moves = movesOf(events);
+  return ranUnder(events).flatMap(({ under, started, finished, ending }) => {
+    if (under.side !== "test") return [];
+    const moved = moves.findLast(({ version, index }) => version === under.task && index < started);
+    const drawn = anchor.includes(under.task) ? "anchor" : "screened";
+    return [
+      {
+        under,
+        set: moved === undefined ? drawn : (SET_OF.get(moved.state) ?? "screened"),
+        ending: finished === null ? "unfinished" : [ending?.outcome, ending?.kind].filter(isString).join(" "),
+      },
+    ];
+  });
 }
 
 /**

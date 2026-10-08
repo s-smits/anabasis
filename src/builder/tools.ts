@@ -31,9 +31,9 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
 import { createBashTool } from "../../vendor/pi-coding-agent/core/tools/bash.ts";
-import { conditionsOf } from "../kernel/condition.ts";
 import { type LogEvent, read } from "../kernel/log.ts";
 import type { Ending } from "../kernel/solve.ts";
+import { ended, passed, ranUnder, verdictsOf } from "../kernel/solves.ts";
 import { taskStates } from "../kernel/task.ts";
 import {
   cpSync,
@@ -50,13 +50,13 @@ import {
   writeFileSync,
 } from "../meta/filesystem.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
-import { asRecord, isString } from "../meta/json-shape.ts";
+import { isString } from "../meta/json-shape.ts";
 import { dirname, join, resolve } from "../meta/path.ts";
 import { pooled } from "../meta/pool.ts";
 import { asError, errorMessage } from "../meta/runtime-values.ts";
 import { plural } from "../meta/text.ts";
 import type { Diagnosis } from "../review/diagnoser.ts";
-import { callList, callsOf, callText, solveOf, stringOf } from "../review/trace.ts";
+import { callList, callsOf, callText, closingOf, solveOf } from "../review/trace.ts";
 import { text, tool } from "../solve/answer.ts";
 import { type CommandWall, runWalled } from "../solve/command.ts";
 import { type Harness, harnessTools, openHarness, pathsUnder, toolTreeStamp } from "../solve/harness.ts";
@@ -122,29 +122,17 @@ export function endingText(ending: Ending): string {
     : `fail (${ending.kind})`;
 }
 
-/** A task version's counted test-side solves under one harness, by the log's condition records. */
+/** A task version's counted test-side solves under one harness, by the log's condition records,
+ *  in the order they ended. */
 export function record(events: readonly LogEvent[], version: string, harness: string) {
-  const conditions = conditionsOf(events);
-  const ran = new Set(
-    events.flatMap(({ kind, data }) => {
-      const condition = conditions.get(stringOf(data.condition));
-      return kind === "solve.started" &&
-        condition?.task === version &&
-        condition.harness === harness &&
-        condition.side === "test"
-        ? [stringOf(data.solve)]
-        : [];
-    }),
+  const mine = ranUnder(events).filter(
+    ({ under }) => under.task === version && under.harness === harness && under.side === "test",
   );
-  const counted = events.flatMap(({ kind, data }) => {
-    const outcome = asRecord(data.ending)?.outcome;
-    return kind === "solve.finished" &&
-      ran.has(stringOf(data.solve)) &&
-      (outcome === "pass" || outcome === "fail")
-      ? [{ solve: stringOf(data.solve), passed: outcome === "pass" }]
-      : [];
+  const counted = ended(mine).flatMap((solve) => {
+    const pass = passed(solve);
+    return pass === null ? [] : [{ solve: solve.id, pass }];
   });
-  return { solves: counted.map(({ solve }) => solve), passed: counted.filter(({ passed }) => passed).length };
+  return { solves: counted.map(({ solve }) => solve), passed: counted.filter(({ pass }) => pass).length };
 }
 
 /** The parent's tool tree, where it really is; null when the parent has none. */
@@ -393,19 +381,16 @@ export function traceTool(bench: Bench): AgentTool {
     executionMode: "parallel",
     execute: async (_id, args) => {
       const events = read(bench.request.log);
-      const own = solveOf(events, args.solve);
-      const started = own.find((event) => event.kind === "solve.started");
-      const condition = conditionsOf(events).get(stringOf(started?.data.condition));
-      if (condition?.side !== "test" || !versions.has(condition.task)) {
+      const ran = ranUnder(events).find(({ id }) => id === args.solve);
+      if (ran?.under.side !== "test" || !versions.has(ran.under.task)) {
         throw new Error(`${args.solve} is not a solve of one of this session's practice tasks`);
       }
+      const own = solveOf(events, args.solve);
       const calls = callsOf(own);
       if (args.call !== undefined) return text(callText(calls, args.call, args.from ?? 0));
-      const ending = asRecord(own.findLast((event) => event.kind === "solve.finished")?.data.ending);
-      const answer = own.findLast((event) => event.kind === "verdict")?.data.answer;
-      const closing = own
-        .flatMap((event) => (event.kind === "solve.turn" ? [stringOf(event.data.text)] : []))
-        .findLast((said) => said !== "");
+      const { ending } = ran;
+      const answer = verdictsOf(events).get(args.solve)?.answer;
+      const closing = closingOf(own);
       return text(
         [
           `ending: ${isString(ending?.outcome) ? `${ending.outcome}${isString(ending.kind) ? ` (${ending.kind})` : ""}` : "not recorded"}`,

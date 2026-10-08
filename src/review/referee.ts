@@ -28,7 +28,8 @@
  */
 import { Type } from "typebox";
 import type { Contract } from "../kernel/contract.ts";
-import { append, type LogEvent, read } from "../kernel/log.ts";
+import { append, read } from "../kernel/log.ts";
+import { type Judged, refusedBy, verdictsOf } from "../kernel/solves.ts";
 import {
   applicableTruthChecks,
   checkProgramFiles,
@@ -40,7 +41,7 @@ import {
 import { readFileSync } from "../meta/filesystem.ts";
 import { jsonPathTokens, resolveJsonPath } from "../meta/json-evidence.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
-import { isString, type JsonValue } from "../meta/json-shape.ts";
+import type { JsonValue } from "../meta/json-shape.ts";
 import { keyIfNotNull, keysIf } from "../meta/optional-key.ts";
 import { join } from "../meta/path.ts";
 import { text, tool } from "../solve/answer.ts";
@@ -100,12 +101,12 @@ interface LoggedVerdict {
   readonly fault: string | null;
 }
 
-/** The verdict the log holds for `solve`; null when no answer reached a check. */
-function loggedVerdict(events: readonly LogEvent[], solve: string): LoggedVerdict | null {
-  const data = events.findLast((event) => event.kind === "verdict" && event.data.solve === solve)?.data;
-  if (data?.answer === undefined) return null;
-  const blocking = Array.isArray(data.blocking) ? data.blocking.filter(isString) : [];
-  return { answer: data.answer, blocking, fault: isString(data.fault) ? data.fault : null };
+/** The verdict the log holds for a solve as the Referee reads it; null when no answer reached a
+ *  check. */
+function loggedVerdict(verdict: Judged | undefined): LoggedVerdict | null {
+  return verdict?.answer === undefined
+    ? null
+    : { answer: verdict.answer, blocking: refusedBy(verdict), fault: verdict.fault };
 }
 
 /** The host's own ruling, or null when the fail needs a reading. No answer at a check leaves no
@@ -298,15 +299,15 @@ function rulingTool(
  *  The accepted answer is the last the log holds for the task's id, which is how a verdict names
  *  its task. */
 export async function referee(reader: Reader, fail: RefereeCase): Promise<RefereeFinding> {
-  const events = read(fail.log);
-  const verdict = loggedVerdict(events, fail.solve);
+  const verdicts = verdictsOf(read(fail.log));
+  const verdict = loggedVerdict(verdicts.get(fail.solve));
   const replay = verdict?.fault === null ? await fail.verify(fail.task, verdict.answer) : null;
   const host = hostRuling(verdict, replay);
   const rows: ProbeRow[] = [];
   const found: RefereeFinding[] = [];
-  const accepted = events.findLast(
-    ({ kind, data }) => kind === "verdict" && data.task === fail.task.taskId && data.kind === "pass",
-  )?.data.answer;
+  const accepted = [...verdicts.values()].findLast(
+    ({ task, kind }) => task === fail.task.taskId && kind === "pass",
+  )?.answer;
   const meter =
     verdict === null || host !== null
       ? null

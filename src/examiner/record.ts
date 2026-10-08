@@ -20,8 +20,8 @@ import { proposalsOf } from "../kernel/history.ts";
 import { type Rule, type Stand, solvesOf, standing } from "../kernel/ladder.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import type { Counted } from "../kernel/solve.ts";
+import { refusedBy, verdictsOf } from "../kernel/solves.ts";
 import { taskSets } from "../kernel/task.ts";
-import { isString } from "../meta/json-shape.ts";
 import { countBy } from "../meta/tally.ts";
 
 /** What a state that is not a standing says of a task. */
@@ -45,17 +45,11 @@ export function stoppedBy(
   events: readonly LogEvent[],
   solves: readonly { readonly solve: string; readonly ending: Counted }[],
 ): string {
-  const blocking = new Map(
-    events.flatMap(({ kind, data }): [string, string[]][] =>
-      kind === "verdict" && isString(data.solve) && Array.isArray(data.blocking)
-        ? [[data.solve, data.blocking.filter(isString)]]
-        : [],
-    ),
-  );
+  const verdicts = verdictsOf(events);
   const stopped = countBy(
     solves.flatMap(({ solve, ending }) => {
       if (ending.outcome !== "fail") return [];
-      const checks = blocking.get(solve) ?? [];
+      const checks = refusedBy(verdicts.get(solve));
       return checks.length > 0
         ? checks.map((check) => `refused by ${check}`)
         : [UNJUDGED.get(ending.kind) ?? "failed"];

@@ -13,6 +13,7 @@
  * Quiet, no event for 20 minutes in an open run, is said when it starts and when it ends.
  */
 import type { EventKind, LogEvent } from "#src/kernel/log.ts";
+import { type Solve, solvesIn } from "#src/kernel/solves.ts";
 import {
   existsSync,
   readdirSync,
@@ -145,7 +146,7 @@ const SAID: Partial<
 };
 
 /** Where a run stands: reported, closed, inside a Builder or Examiner session, or solving. */
-function stage(log: readonly LogEvent[], open: boolean): string {
+function stage(log: readonly LogEvent[], solving: boolean, open: boolean): string {
   const report = log.findLast(({ kind }) => kind === "comparison.reported");
   if (report !== undefined) return `reported ${word(report.data.reading)}`;
   if (!open) return "closed";
@@ -153,27 +154,29 @@ function stage(log: readonly LogEvent[], open: boolean): string {
     (role) => count(log, `${role}.started`) > count(log, `${role}.finished`),
   );
   if (session !== undefined) return `${session} turn ${String(count(log, `${session}.turn`))}`;
-  return count(log, "solve.started") > count(log, "solve.finished") ? "solving" : "working";
+  return solving ? "solving" : "working";
 }
 
-/** The status line of a run whose log holds `log`. */
-function status(run: Run, log: readonly LogEvent[], open: boolean, now: number): string {
-  const endings = log.flatMap(({ kind, data }) =>
-    kind === "solve.finished" ? [asRecord(data.ending)?.outcome] : [],
-  );
-  const solves = ["pass", "fail", "non-result"].flatMap((outcome) => {
-    const n = endings.filter((ending) => ending === outcome).length;
+/** The status line of a run whose log holds `log`, of which `solves` are the solves. */
+function status(
+  run: Run,
+  { log, solves }: { readonly log: readonly LogEvent[]; readonly solves: readonly Solve[] },
+  open: boolean,
+  now: number,
+): string {
+  const said = ["pass", "fail", "non-result"].flatMap((outcome) => {
+    const n = solves.filter(({ ending }) => ending?.outcome === outcome).length;
     return n === 0 ? [] : [`${String(n)} ${outcome}`];
   });
-  const running = count(log, "solve.started") - endings.length;
-  if (running > 0) solves.push(`${String(running)} running`);
+  const running = solves.filter(({ finished }) => finished === null).length;
+  if (running > 0) said.push(`${String(running)} running`);
   const total = log.reduce((sum, event) => sum + spent(event), 0);
   const last = log.at(-1);
   const age = last === undefined ? "no events" : `${minutes(now - Date.parse(last.at))} since the last event`;
   return [
     // A seed's counts and dollars are its source's up to the cut, and a script's after it.
-    `${run.name}${run.seed === true ? " (a seed)" : ""}  ${stage(log, open)}`,
-    `solves ${solves.join(", ") || "none"}`,
+    `${run.name}${run.seed === true ? " (a seed)" : ""}  ${stage(log, running > 0, open)}`,
+    `solves ${said.join(", ") || "none"}`,
     dollars(total),
     age,
   ].join(" · ");
@@ -190,11 +193,8 @@ export function pulse(
   before: Seen | undefined,
   now: number,
 ): Look {
-  const tasks = new Map(
-    log.flatMap(({ kind, data }) =>
-      kind === "solve.started" ? [[word(data.solve), word(data.task)] as const] : [],
-    ),
-  );
+  const solves = solvesIn(log);
+  const tasks = new Map(solves.map(({ id, start }) => [id, word(start.task)]));
   const task = (solve: JsonValue | undefined) => tasks.get(word(solve)) ?? word(solve);
   const fresh = log.slice(before?.lines ?? log.length);
   const lines = fresh.flatMap(({ kind, data }) => SAID[kind]?.(data, task) ?? []);
@@ -208,13 +208,17 @@ export function pulse(
   const quiet = open && last !== undefined && now - Date.parse(last.at) > QUIET_MS;
   if (quiet && before?.quiet !== true) lines.push(`⚠ quiet for ${minutes(now - Date.parse(last.at))}`);
   if (!quiet && before?.quiet === true) lines.push("· not quiet any more");
-  const ended = count(log, run.end) > 0 && count(log, "solve.started") === count(log, "solve.finished");
+  const ended = count(log, run.end) > 0 && solves.every(({ finished }) => finished !== null);
   if (before?.open === true && !open && !ended) lines.push(`⚠ the process is gone before ${run.end}`);
   // An anchor starts each task on the old harness and the fresh one, so a line may come twice.
   const told = Object.entries(countBy(lines, (line) => line)).map(([line, n]) =>
     n === 1 ? line : `${line} (×${String(n)})`,
   );
-  return { status: status(run, log, open, now), said: told, seen: { lines: log.length, open, quiet } };
+  return {
+    status: status(run, { log, solves }, open, now),
+    said: told,
+    seen: { lines: log.length, open, quiet },
+  };
 }
 
 /** The whole lines of a log an append may be writing to: a torn last line is an append in flight. */

@@ -34,17 +34,17 @@
  */
 import { Type } from "typebox";
 import type { Contract } from "../kernel/contract.ts";
-import { conditionsOf } from "../kernel/condition.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
+import { passed, ranUnder, solvesIn, verdictsOf } from "../kernel/solves.ts";
 import { taskStates } from "../kernel/task.ts";
 import type { Task } from "../kernel/verify.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
-import { asRecord, type JsonObject } from "../meta/json-shape.ts";
+import type { JsonObject } from "../meta/json-shape.ts";
 import { plural } from "../meta/text.ts";
 import { text, tool } from "../solve/answer.ts";
 import { publicView } from "../solve/prompt.ts";
 import { type Reader, readOnce } from "./reader.ts";
-import { callList, callsOf, callText, solveOf, stringOf } from "./trace.ts";
+import { callList, callsOf, callText, closingOf, solveOf, stringOf, turnsOf } from "./trace.ts";
 
 /** One earned fail to diagnose. */
 export interface DiagnosisCase {
@@ -110,7 +110,7 @@ const SYSTEM_PROMPT = [
  *  completed ones after them, then the final assistant text. */
 function traceExcerpt(events: readonly LogEvent[]): string {
   const calls = callsOf(events);
-  const turns = events.flatMap((event) => (event.kind === "solve.turn" ? [event.data] : []));
+  const turns = turnsOf(events);
   const indexed = calls.map((call, index) => ({ call, index }));
   const failures = indexed.filter(({ call }) => call.isError === true);
   const after = indexed.filter(
@@ -121,7 +121,7 @@ function traceExcerpt(events: readonly LogEvent[]): string {
   );
   const names = calls.map((call) => stringOf(call.tool) + (call.isError === true ? "!" : "")).join(" ");
   const last = turns.at(-1);
-  const finalText = turns.map((turn) => stringOf(turn.text)).findLast((said) => said !== "") ?? "";
+  const finalText = closingOf(events) ?? "";
   return [
     `turns ${String(turns.length)}, stop ${stringOf(last?.stopReason) || "unrecorded"}, tool calls: ${names.slice(0, 400) || "none"}${names.length > 400 ? " [tool list clipped]" : ""}`,
     ...(stringOf(last?.error) === "" ? [] : [`turn error: ${stringOf(last?.error).slice(0, EXCERPT_CHARS)}`]),
@@ -140,37 +140,27 @@ function traceExcerpt(events: readonly LogEvent[]): string {
  *  the last pass among those solves, if any. A solve under another condition is left out of both:
  *  another model or another harness explains a difference before anything in the trace does. */
 function excerpts(events: readonly LogEvent[], fail: DiagnosisCase) {
-  const answer = events.findLast((event) => event.kind === "verdict" && event.data.solve === fail.solve)?.data
-    .answer;
-  const endings = new Map<string, JsonObject | null>();
-  for (const event of events) {
-    if (event.kind === "solve.finished") endings.set(stringOf(event.data.solve), asRecord(event.data.ending));
-  }
+  const answer = verdictsOf(events).get(fail.solve)?.answer;
+  const solves = solvesIn(events);
+  const own = solves.find(({ id }) => id === fail.solve);
   const failed = [
-    `ending: ${capturedJsonStringify(endings.get(fail.solve) ?? null)}`,
+    `ending: ${capturedJsonStringify(own?.ending ?? null)}`,
     traceExcerpt(solveOf(events, fail.solve)),
     answer === undefined ? "no answer was submitted" : `submitted answer: ${capturedJsonStringify(answer)}`,
   ].join("\n");
-  const started = events.filter((event) => event.kind === "solve.started");
-  const condition = started.find((event) => event.data.solve === fail.solve)?.data.condition;
-  const outcomes = started.flatMap((event) => {
-    const solve = stringOf(event.data.solve);
-    const outcome = endings.get(solve)?.outcome;
-    return event.data.task === fail.task.taskId &&
-      event.data.condition === condition &&
-      (outcome === "pass" || outcome === "fail")
-      ? [{ solve, outcome }]
+  const outcomes = solves.flatMap((solve) => {
+    const pass = passed(solve);
+    return solve.start.task === fail.task.taskId && solve.condition === own?.condition && pass !== null
+      ? [{ solve: solve.id, pass }]
       : [];
   });
-  const passing = outcomes.findLast(
-    ({ solve, outcome }) => outcome === "pass" && solve !== fail.solve,
-  )?.solve;
+  const passing = outcomes.findLast(({ solve, pass }) => pass && solve !== fail.solve)?.solve;
   return {
     shown: {
       failed,
       contrast: passing === undefined ? null : traceExcerpt(solveOf(events, passing)),
     } satisfies Shown,
-    record: { solves: outcomes.length, passed: outcomes.filter(({ outcome }) => outcome === "pass").length },
+    record: { solves: outcomes.length, passed: outcomes.filter(({ pass }) => pass).length },
     calls: {
       failed: callsOf(solveOf(events, fail.solve)),
       passing: passing === undefined ? null : callsOf(solveOf(events, passing)),
@@ -182,8 +172,7 @@ function excerpts(events: readonly LogEvent[], fail: DiagnosisCase) {
  *  The version is the solve's logged condition's: a solve's own events name its task by id, and a
  *  version the caller supplied would let a scored task through under a released one's name. */
 function releasedVersion(events: readonly LogEvent[], fail: DiagnosisCase): string {
-  const started = events.find((event) => event.kind === "solve.started" && event.data.solve === fail.solve);
-  const version = conditionsOf(events).get(stringOf(started?.data.condition))?.task;
+  const version = ranUnder(events).find(({ id }) => id === fail.solve)?.under.task;
   if (version === undefined) {
     throw new Error(`the log records no condition for ${fail.solve}, so the task version it ran is unknown`);
   }

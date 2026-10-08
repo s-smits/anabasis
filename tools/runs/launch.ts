@@ -53,6 +53,7 @@ import { spent } from "#src/builder/round.ts";
 import { sessionDirs } from "#src/builder/session.ts";
 import { claimed } from "#src/examiner/session.ts";
 import { sweepOf } from "#src/kernel/compare.ts";
+import { solvesIn } from "#src/kernel/solves.ts";
 import { type SolveDirs, solveDirs } from "#src/solve/command.ts";
 import { releaseDiskCap } from "#src/verify/disk-cap.ts";
 import { carriable, poolOf, setsOf } from "../d2/campaign.ts";
@@ -356,18 +357,15 @@ export function family(table: string, pid: number): number[] {
  */
 export function leftOpen(run: Pick<Run, "path" | "seed">): SolveDirs[] {
   const events = logEvents(run.path).slice(run.seed === true ? seedCut(dirname(run.path)) : 0);
-  const open = (role: "solve" | "build", key: "solve" | "session") => {
-    const ended = new Set(
-      events.flatMap(({ kind, data }) => (kind === `${role}.finished` ? [data[key]] : [])),
-    );
-    return events.flatMap(({ kind, data }) => {
-      const id = data[key];
-      return kind === `${role}.started` && isString(id) && !ended.has(id) ? [id] : [];
-    });
-  };
+  const ended = new Set(
+    events.flatMap(({ kind, data }) => (kind === "build.finished" ? [data.session] : [])),
+  );
   return [
-    ...open("solve", "solve").map((id) => solveDirs(id)),
-    ...open("build", "session").map((id) => sessionDirs(run.path, id)),
+    ...solvesIn(events).flatMap(({ id, finished }) => (finished === null ? [solveDirs(id)] : [])),
+    ...events.flatMap(({ kind, data }) => {
+      const id = data.session;
+      return kind === "build.started" && isString(id) && !ended.has(id) ? [sessionDirs(run.path, id)] : [];
+    }),
   ];
 }
 

@@ -60,6 +60,7 @@ import type { Contract } from "../kernel/contract.ts";
 import { append, read } from "../kernel/log.ts";
 import { dollars, freezePrices, priceKey, tokensOf } from "../kernel/meter.ts";
 import type { Ending } from "../kernel/solve.ts";
+import { ended as endedSolves, solvesIn } from "../kernel/solves.ts";
 import { taskStates } from "../kernel/task.ts";
 import { CORRECTNESS_MODEL_DIR } from "../meta/bundle-layout.ts";
 import { cpSync, mkdirSync, rmSync, writeFileSync } from "../meta/filesystem.ts";
@@ -69,7 +70,6 @@ import { basename, dirname, join, resolve } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import type { Diagnosis } from "../review/diagnoser.ts";
 import type { RefereeFinding } from "../review/referee.ts";
-import { stringOf } from "../review/trace.ts";
 import { type CommandWall, type SolveDirs, solveDirs } from "../solve/command.ts";
 import type { PublicResource } from "../solve/answer.ts";
 import { openHarness } from "../solve/harness.ts";
@@ -164,20 +164,16 @@ export interface Built {
 export async function practised(request: SolveRequest): Promise<Practised> {
   const ending = await solve(request);
   const events = read(request.log);
-  const last = events.findLast(
-    ({ kind, data }) => kind === "solve.finished" && stringOf(data.solve).startsWith(`${request.id}-`),
-  );
+  const last = endedSolves(solvesIn(events).filter(({ id }) => id.startsWith(`${request.id}-`))).at(-1);
   // The condition says which harness the solve ran, and the solve says which it opened. A harness
   // whose digest moved with where it sat once made the two differ, and a comparison counted by the
   // first would have scored solves of the second.
   const named = conditionsOf(events).get(request.condition)?.harness;
-  const opened = last?.data.harness;
+  const opened = last?.end.harness;
   if (named !== undefined && isString(opened) && opened !== named) {
-    throw new Error(
-      `solve ${stringOf(last?.data.solve)} opened harness ${opened} under a condition that names ${named}`,
-    );
+    throw new Error(`solve ${last?.id ?? ""} opened harness ${opened} under a condition that names ${named}`);
   }
-  return { solve: stringOf(last?.data.solve) || request.id, ending };
+  return { solve: last?.id ?? request.id, ending };
 }
 
 /** How a session may end, the first that holds winning: `finish` over a limit that fell in the same turn. */

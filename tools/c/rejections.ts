@@ -30,10 +30,10 @@
  */
 import { contractHash } from "#src/kernel/contract.ts";
 import { append, read } from "#src/kernel/log.ts";
+import { refusedBy, verdictsOf } from "#src/kernel/solves.ts";
 import { decided, spelled } from "#src/kernel/verify.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
-import { isString } from "#src/meta/json-shape.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { pooled } from "#src/meta/pool.ts";
 import { parseArgs } from "#src/meta/process.ts";
@@ -107,7 +107,7 @@ async function main(): Promise<void> {
           },
         ];
   });
-  const held = new Set(read(log).flatMap(({ kind, data }) => (kind === "verdict" ? [data.solve] : [])));
+  const held = verdictsOf(read(log));
   const apart = await pooled(
     [...accepted, ...rejected.map(stored)].filter(({ solve }) => !held.has(solve)),
     jobs,
@@ -138,11 +138,10 @@ async function main(): Promise<void> {
 
   const dir = dirname(log);
   const labelFile = join(dir, "labels.json");
-  const verdictOf = (solve: string) =>
-    read(log).findLast(({ kind, data }) => kind === "verdict" && data.solve === solve)?.data;
+  const verdictOf = (solve: string) => verdictsOf(read(log)).get(solve);
   const taskIn = (solve: string) => {
-    const task = verdictOf(solve)?.task;
-    if (!isString(task)) throw new Error(`the verdict of ${solve} names no task`);
+    const task = verdictOf(solve)?.task ?? null;
+    if (task === null) throw new Error(`the verdict of ${solve} names no task`);
     return taskOf(task);
   };
   if (values.draw !== undefined) {
@@ -156,7 +155,7 @@ async function main(): Promise<void> {
         task: taskIn(solve),
         rules: contract.rules,
         answer: verdict?.answer ?? null,
-        refusedBy: verdict?.blocking ?? [],
+        refusedBy: refusedBy(verdict),
       };
       writeFileSync(join(dir, "label", `${solve}.json`), `${capturedJsonStringify(packet, null, 2)}\n`);
     }

@@ -2,7 +2,7 @@
 // then the plan's kill tests end to end on the faux provider, under the real command wall and disk
 // cap: a pass whose trace and meter read back from the log and whose hidden value reaches nothing
 // the solver reads, the host's limits over the harness's, the wall, no answer, the reruns of a
-// refusal and of moved files, and the run stopping on the verifier's non-result.
+// provider's failed turn and of moved files, and the run stopping on the verifier's non-result.
 import { afterAll, describe, expect, it } from "bun:test";
 import {
   createModels,
@@ -188,7 +188,7 @@ describe("an attempt's ending", () => {
     });
   });
 
-  it("without an answer: the wall, then the context, then a refusal, else no answer", async () => {
+  it("without an answer: the wall, then the context, then a provider failure, else no answer", async () => {
     const overflow = stop("", "prompt is too long: 213462 tokens > 200000 maximum");
     expect(await ending({ wallEnded: true, turns: [overflow] }).ending).toMatchObject({ kind: "wall-ended" });
     expect(await ending({ turns: [overflow] }).ending).toEqual({ outcome: "fail", kind: "context-ended" });
@@ -196,7 +196,7 @@ describe("an attempt's ending", () => {
     expect(await ending({ turns: [length] }).ending).toMatchObject({ kind: "context-ended" });
     expect(await ending({ turns: [stop("", "overloaded_error")] }).ending).toEqual({
       outcome: "non-result",
-      kind: "refusal",
+      kind: "provider",
       reason: "overloaded_error",
     });
     expect(await ending({ turns: [stop("I am done.")] }).ending).toEqual({
@@ -291,14 +291,14 @@ describe.skipIf(!darwin)("a solve end to end", () => {
     expect(await solve(request, noWait)).toEqual({ outcome: "fail", kind: "no-answer" });
   }, 120_000);
 
-  it.concurrent("reruns a provider refusal three times, then reports it as a non-result", async () => {
-    const refusal = fauxAssistantMessage("", { stopReason: "error", errorMessage: "overloaded_error" });
-    const { request, finished } = setup([refusal, refusal, refusal, refusal]);
+  it.concurrent("reruns a failed provider turn three times, then reports it as the provider's non-result", async () => {
+    const closed = fauxAssistantMessage("", { stopReason: "error", errorMessage: "WebSocket closed 1000" });
+    const { request, finished } = setup([closed, closed, closed, closed]);
     const waits: number[] = [];
     const ending = await solve(request, async (rerun) => {
       waits.push(rerun);
     });
-    expect(ending).toEqual({ outcome: "non-result", kind: "refusal", reason: "overloaded_error" });
+    expect(ending).toEqual({ outcome: "non-result", kind: "provider", reason: "WebSocket closed 1000" });
     expect(waits).toEqual([1, 2, 3]);
     expect(finished()).toHaveLength(4);
   }, 120_000);

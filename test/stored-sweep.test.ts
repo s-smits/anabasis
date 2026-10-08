@@ -52,7 +52,7 @@ describe("a stored sweep", () => {
       ["unparsed", null, { outcome: "fail", kind: "no-answer" }],
       ["refused", null, { outcome: "fail", kind: "rejected" }],
       ["walled", null, { outcome: "fail", kind: "wall-ended" }],
-      ["stalled", null, { outcome: "non-result", kind: "refusal", reason: "non-result:provider-stall" }],
+      ["stalled", null, { outcome: "non-result", kind: "provider", reason: "non-result:provider-stall" }],
     ]);
 
     writeFileSync(

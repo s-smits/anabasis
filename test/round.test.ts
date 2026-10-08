@@ -404,7 +404,9 @@ describe("a round", () => {
 
   it("leaves a candidate held when its screening solves did not all count", async () => {
     const s = await setup([edit, finish], (version, fresh, nth) =>
-      version === "c1" && fresh && nth === 0 ? { outcome: "non-result", kind: "refusal", reason: "x" } : FAIL,
+      version === "c1" && fresh && nth === 0
+        ? { outcome: "non-result", kind: "provider", reason: "x" }
+        : FAIL,
     );
     const report = await round({ ...s.request, scored: [], candidates: ["c1", "c2"], target: 1 });
     expect(report).toMatchObject({ unscreened: ["c1"], versions: ["c2"] });

@@ -12,8 +12,9 @@
  * answer with the grading engine before submitting, so rejected answers are expected to be the rare
  * kind, and a report that counts fails without their kinds would hide where supply comes from.
  *
- * A non-result is an ending the solver does not own: the provider refused, the sandbox crashed, the
- * run was killed, files or tools moved during the solve, the task's own check failed on the answer
+ * A non-result is an ending the solver does not own: the provider failed the turn (it refused, was
+ * overloaded or closed the connection, as a Sol solve's did on 8 October with "WebSocket closed
+ * 1000"), the sandbox crashed, the run was killed, files or tools moved during the solve, the task's own check failed on the answer
  * (it threw or returned no verdict), or the verifier could not decide. It is never counted as a pass
  * or a fail. One from the solve's side is run again, up to three times with backoff. A faulty check
  * is the task's defect: the task is dropped and the run goes on. One from the verifier stops the
@@ -26,7 +27,7 @@ export type Ending =
   | { readonly outcome: "fail"; readonly kind: "broken-harness"; readonly reason: string }
   | {
       readonly outcome: "non-result";
-      readonly kind: "refusal" | "sandbox-crash" | "killed" | "moved-files" | "check" | "verifier";
+      readonly kind: "provider" | "sandbox-crash" | "killed" | "moved-files" | "check" | "verifier";
       readonly reason: string;
     };
 

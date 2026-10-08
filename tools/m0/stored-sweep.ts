@@ -111,8 +111,8 @@ export interface StoredTool {
 
 /** v1's non-result kinds (the sweep's `grade.py`, `solver_kind`), as this host types them. */
 const NON_RESULTS = new Map<string, Extract<Ending, { outcome: "non-result" }>["kind"]>([
-  ["non-result:provider", "refusal"],
-  ["non-result:provider-stall", "refusal"],
+  ["non-result:provider", "provider"],
+  ["non-result:provider-stall", "provider"],
   ["non-result:built", "sandbox-crash"],
   ["non-result:grader", "verifier"],
 ]);

@@ -417,7 +417,7 @@ export async function judge(request: SolveRequest, id: string, played: Played): 
   if (last?.stopReason === "error") {
     return {
       outcome: "non-result",
-      kind: "refusal",
+      kind: "provider",
       reason: last.errorMessage ?? "the provider failed the turn",
     };
   }

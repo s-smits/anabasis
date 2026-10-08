@@ -8,7 +8,8 @@
  * The Examiner writes task instances against the pack's contract and checker. Both conditions run
  * the harness the campaign stands on, its last step's or the stored cycle's while none has stepped
  * (`src/kernel/ladder.ts`): the stronger one under `--strong`, the test one under the stored
- * cycle's model and effort, so the one thing the pair changes is the solver. The examples are the
+ * cycle's model and effort or the `--solver` named in its place, so the one thing the pair changes
+ * is the solver. The examples are the
  * pack's own tasks and the ones earlier sessions wrote, and the opening message says how each of
  * those stands against the solver now. `--reviewer` adds the Referee to a feasible task's test-side
  * fails, as an adviser: its check-defect rulings are noted beside the task's word.
@@ -21,10 +22,13 @@
  * handed to the Examiner for its controls. `--reach` is the most it tries again, by default half
  * the candidates, oldest first; the rest wait for the next session. `--reach 0` tries none.
  *
- * Every solve of the session, the stronger solver's and the measured one's, is held to the
- * campaign's limits: name the `--solve-minutes` and `--solve-turns` its rounds run under
- * (`tools/d2/limits.ts`), or the session's words are of another solver than the one a round
- * measures. `--minutes` and `--turns` are the Examiner's own.
+ * The measured solver is the campaign's, and so are the limits of every solve of the session, the
+ * stronger solver's and the measured one's: name the `--solver`, `--solver-effort`,
+ * `--solve-minutes` and `--solve-turns` its rounds run under (`tools/d2/setting.ts`), or the
+ * session's words are of another solver than the one a round measures. Until 2026-10-08 a session
+ * took no flag for the solver and measured the stored cycle's, whatever a round had solved as. The
+ * stronger solver runs at the measured one's effort unless `--strong-effort` names its own.
+ * `--minutes` and `--turns` are the Examiner's own.
  *
  * The session stops at `--feasible` tasks past gate 4 (the plan's 24), at `--candidates` instances
  * put to the stronger solver, or at its minutes and turns. The supply reading is printed from the
@@ -53,49 +57,50 @@ import {
   stayAwake,
   writtenTasks,
 } from "../d2/campaign.ts";
-import { LIMITS_OPTIONS, limitsNamed } from "../d2/limits.ts";
+import { SETTING_OPTIONS, settingNamed } from "../d2/setting.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
 
-const { values } = parseArgs({
-  options: {
-    root: { type: "string" },
-    sweep: { type: "string" },
-    cycle: { type: "string" },
-    bundle: { type: "string" },
-    name: { type: "string" },
-    session: { type: "string" },
-    examiner: { type: "string" },
-    "examiner-effort": { type: "string", default: "high" },
-    strong: { type: "string" },
-    "strong-effort": { type: "string" },
-    reviewer: { type: "string" },
-    "referee-decides": { type: "boolean", default: false },
-    "reviewer-effort": { type: "string", default: "high" },
-    feasible: { type: "string", default: "24" },
-    candidates: { type: "string", default: "72" },
-    minutes: { type: "string", default: "1440" },
-    turns: { type: "string", default: "200" },
-    ...SCREENING_OPTIONS,
-    ...LIMITS_OPTIONS,
-    reach: { type: "string" },
-  },
-});
+const OPTIONS = {
+  root: { type: "string" },
+  sweep: { type: "string" },
+  cycle: { type: "string" },
+  bundle: { type: "string" },
+  name: { type: "string" },
+  session: { type: "string" },
+  examiner: { type: "string" },
+  "examiner-effort": { type: "string", default: "high" },
+  strong: { type: "string" },
+  "strong-effort": { type: "string" },
+  reviewer: { type: "string" },
+  "referee-decides": { type: "boolean", default: false },
+  "reviewer-effort": { type: "string", default: "high" },
+  feasible: { type: "string", default: "24" },
+  candidates: { type: "string", default: "72" },
+  minutes: { type: "string", default: "1440" },
+  turns: { type: "string", default: "200" },
+  ...SCREENING_OPTIONS,
+  ...SETTING_OPTIONS,
+  reach: { type: "string" },
+} as const;
 
-async function main(): Promise<void> {
-  const { root, sweep, cycle, bundle, name, session, examiner, strong } = values;
+/** `bun tools/d1b/examine.ts`. `session` runs the Examiner's session: `examine`, unless a caller
+ *  with no model stands in for it to read what the command would have asked of one. */
+export async function examineCommand(args: readonly string[], session = examine): Promise<void> {
+  const { values } = parseArgs({ args: [...args], options: OPTIONS });
+  const { root, sweep, cycle, bundle, name, session: id, examiner, strong } = values;
   if (
     root === undefined ||
     sweep === undefined ||
     cycle === undefined ||
     bundle === undefined ||
     name === undefined ||
-    session === undefined ||
+    id === undefined ||
     examiner === undefined ||
     strong === undefined
   ) {
     throw new Error("name --root, --sweep, --cycle, --bundle, --name, --session, --examiner and --strong");
   }
-  const campaign = await openCampaign({ root, sweep, cycle, bundle, name, limits: limitsNamed(values) });
+  const campaign = await openCampaign({ root, sweep, cycle, bundle, name, ...settingNamed(values) });
   // The harness the campaign stands on: what is feasible and what is too easy are read against
   // where it is, and a reach task is tried again under it (`src/kernel/ladder.ts`).
   const harness = await frontier(campaign);
@@ -118,8 +123,8 @@ async function main(): Promise<void> {
   // The brief's rows in the verifier's reading and in the pack's are the same rows in the same order.
   const declared = readBrief(campaign.checks).truthChecks;
   stayAwake();
-  const examined = await examine({
-    id: session,
+  const examined = await session({
+    id,
     contract: campaign.contract,
     checks: declared.map((check, index) => ({
       id: check.id,
@@ -155,4 +160,4 @@ async function main(): Promise<void> {
   console.log(JSON.stringify(supply(read(campaign.log)), null, 2));
 }
 
-await main();
+if (import.meta.main) await examineCommand(Bun.argv.slice(2));

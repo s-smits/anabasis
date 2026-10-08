@@ -43,7 +43,7 @@ const ASKED: Asked = {
   missing: null,
   spent: null,
   solves: 3,
-  limits: LIMITS,
+  named: { solver: undefined, limits: LIMITS },
   ran: null,
 };
 
@@ -139,16 +139,25 @@ describe("a launch under limits the log's last solves did not run under", () => 
   it("says that every standing restarts, for a round and for an Examiner session", () => {
     // No solve on record, or the same limits: nothing restarts, and nothing is said.
     expect(preflight(SETS, ASKED).notes.join("\n")).not.toContain("no standing carries over");
-    expect(preflight(SETS, { ...ASKED, ran: LIMITS }).notes.join("\n")).not.toContain("carries over");
+    const ran = { model: "p/m", effort: "high", limits: LIMITS };
+    expect(preflight(SETS, { ...ASKED, ran }).notes.join("\n")).not.toContain("carries over");
     const note =
-      "a solve here is held to 240 minutes and 24 turns, and the log's last test-side solves ran under 120 minutes and 24 turns: under other limits no standing carries over, so each task screened is solved under both harnesses and each reach task is put to the stronger solver again (tools/d2/limits.ts)";
-    expect(preflight(SETS, { ...ASKED, limits: longer, ran: LIMITS }).notes.at(-1)).toBe(note);
-    const exam = examPreflight([], { ...ASKED, limits: longer, ran: LIMITS, reviewer: true });
+      "a solve here is held to 240 minutes and 24 turns, and the log's last test-side solves ran under 120 minutes and 24 turns: under other limits no standing carries over, so each task screened is solved under both harnesses and each reach task is put to the stronger solver again (tools/d2/setting.ts)";
+    const under = (limits: typeof LIMITS) => ({ solver: undefined, limits });
+    expect(preflight(SETS, { ...ASKED, named: under(longer), ran }).notes.at(-1)).toBe(note);
+    const exam = examPreflight([], { ...ASKED, named: under(longer), ran, reviewer: true });
     expect(exam.notes.at(-1)).toBe(note);
     // More turns are other limits too.
-    expect(
-      preflight(SETS, { ...ASKED, limits: { ...LIMITS, turns: 48 }, ran: LIMITS }).notes.at(-1),
-    ).toContain("held to 120 minutes and 48 turns");
+    expect(preflight(SETS, { ...ASKED, named: under({ ...LIMITS, turns: 48 }), ran }).notes.at(-1)).toContain(
+      "held to 120 minutes and 48 turns",
+    );
+    // Another solver than the log's last is said the same way, and the same one is not.
+    const other = { solver: { model: "p/other", effort: "high" as const }, limits: LIMITS };
+    expect(preflight(SETS, { ...ASKED, named: other, ran }).notes.at(-1)).toContain(
+      "solves here are p/other at high, and the log's last test-side solves were p/m at high: another solver's standings do not carry over",
+    );
+    const same = { solver: { model: "p/m", effort: "high" as const }, limits: LIMITS };
+    expect(preflight(SETS, { ...ASKED, named: same, ran }).notes.join("\n")).not.toContain("carry over");
   });
 
   it("refuses a wall the command itself would refuse, before anything starts", async () => {

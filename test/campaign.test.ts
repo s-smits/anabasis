@@ -16,7 +16,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
 import { carriable, frontier, LIMITS, openCampaign, setsOf } from "../tools/d2/campaign.ts";
-import { LIMITS_OPTIONS, limitsNamed } from "../tools/d2/limits.ts";
+import { SETTING_OPTIONS, settingNamed } from "../tools/d2/setting.ts";
 import { ROUND_OPTIONS, roundCommand } from "../tools/d2/round.ts";
 
 const REPO = resolve(import.meta.dir, "..");
@@ -224,17 +224,27 @@ describe("a campaign", () => {
     // The two flags' defaults are the sweep's limits, so a command that names neither runs under
     // the setting every campaign ran under before the flags existed.
     const defaults = {
-      "solve-minutes": LIMITS_OPTIONS["solve-minutes"].default,
-      "solve-turns": LIMITS_OPTIONS["solve-turns"].default,
+      "solver-effort": SETTING_OPTIONS["solver-effort"].default,
+      "solve-minutes": SETTING_OPTIONS["solve-minutes"].default,
+      "solve-turns": SETTING_OPTIONS["solve-turns"].default,
     };
-    expect(limitsNamed(defaults)).toEqual(LIMITS);
-    const unnamed = await openCampaign({ ...ARGS, limits: limitsNamed(defaults) });
+    // With no --solver the effort flag names nothing: the stored cycle's model solves at its effort.
+    expect(settingNamed(defaults)).toEqual({ solver: undefined, limits: LIMITS });
+    const unnamed = await openCampaign({ ...ARGS, ...settingNamed(defaults) });
     expect(unnamed.setting(unnamed.test)).toBe(plain.setting(plain.test));
     // A longer wall or more turns is another setting, on the test side and the stronger alike.
-    const named = limitsNamed({ "solve-minutes": "240", "solve-turns": "48" });
+    const named = settingNamed({ ...defaults, "solve-minutes": "240", "solve-turns": "48" }).limits;
     expect(named).toEqual({ ...LIMITS, wallSeconds: 14_400, turns: 48 });
     const longer = await openCampaign({ ...ARGS, limits: named });
     expect(longer.limits).toEqual(named);
+    // Another solver is another setting too, and every command that names it stands where a round
+    // that named it stood.
+    const other = settingNamed({
+      ...defaults,
+      solver: "anthropic/claude-sonnet-5-5",
+      "solver-effort": "low",
+    });
+    expect(other.solver).toEqual({ model: "anthropic/claude-sonnet-5-5", effort: "low" });
     expect(longer.setting(longer.test)).not.toBe(plain.setting(plain.test));
     const strong = { ...plain.test, side: "strong" } as const;
     expect(longer.setting(strong)).not.toBe(plain.setting(strong));
@@ -244,14 +254,15 @@ describe("a campaign", () => {
       ["120", "0"],
       ["two hours", "24"],
     ] as const) {
-      expect(() => limitsNamed({ "solve-minutes": minutes, "solve-turns": turns })).toThrow(
+      expect(() => settingNamed({ ...defaults, "solve-minutes": minutes, "solve-turns": turns })).toThrow(
         "a solve's wall and its turns are whole numbers of at least one",
       );
     }
 
-    // A round takes the owner's two flags as they are, and a rehearsal is a round with other seats.
-    expect(ROUND_OPTIONS["solve-minutes"]).toBe(LIMITS_OPTIONS["solve-minutes"]);
-    expect(ROUND_OPTIONS["solve-turns"]).toBe(LIMITS_OPTIONS["solve-turns"]);
+    // A round takes the owner's four flags as they are, and a rehearsal is a round with other seats.
+    for (const flag of ["solver", "solver-effort", "solve-minutes", "solve-turns"] as const) {
+      expect(ROUND_OPTIONS[flag]).toBe(SETTING_OPTIONS[flag]);
+    }
     // Every command reads them through the owner: a wall it refuses is refused by each of them
     // before a campaign is opened or a model is asked for.
     const refused = "--solve-minutes 0 --solve-turns 24: a solve's wall and its turns are whole numbers";

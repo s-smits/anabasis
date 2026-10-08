@@ -30,9 +30,10 @@
  *
  * Every solve is the cycle's own model at its effort, unless `--solver` and `--solver-effort` name
  * another to solve in its place. Every solve is held to the sweep's wall and turns, unless
- * `--solve-minutes` and `--solve-turns` name others: a longer wall is another setting, under which
- * every standing restarts, and `limits.ts` says what that costs in solves. `--minutes` and
- * `--turns` are the Builder session's own.
+ * `--solve-minutes` and `--solve-turns` name others. The four are the campaign's, and every
+ * command of it takes them from one owner (`setting.ts`): another solver or a longer wall is
+ * another setting, under which every standing restarts, and that file says what it costs in
+ * solves. `--minutes` and `--turns` are the Builder session's own.
  *
  * The session starts from the frontier: the harness the campaign's last step left, or the cycle's
  * while no round has stepped (`src/kernel/ladder.ts`). So a step is built on without being asked
@@ -62,7 +63,6 @@ import { isString } from "#src/meta/json-shape.ts";
 import { join } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
-import { LIMITS_OPTIONS, limitsNamed } from "./limits.ts";
 import {
   frontier,
   type Kept,
@@ -72,6 +72,7 @@ import {
   setsOf,
   stayAwake,
 } from "./campaign.ts";
+import { SETTING_OPTIONS, settingNamed } from "./setting.ts";
 
 export type Campaign = Awaited<ReturnType<typeof openCampaign>>;
 
@@ -100,15 +101,13 @@ export const ROUND_OPTIONS = {
   session: { type: "string" },
   builder: { type: "string" },
   "builder-effort": { type: "string", default: "high" },
-  solver: { type: "string" },
-  "solver-effort": { type: "string", default: "high" },
+  ...SETTING_OPTIONS,
   reviewer: { type: "string" },
   "reviewer-effort": { type: "string", default: "high" },
   "referee-decides": { type: "boolean", default: false },
   target: { type: "string", default: "24" },
   solves: { type: "string", default: "3" },
   ...SCREENING_OPTIONS,
-  ...LIMITS_OPTIONS,
   level: { type: "string", default: "0.1" },
   "anchor-level": { type: "string" },
   "anchor-floor": { type: "string", default: "8" },
@@ -145,12 +144,9 @@ export async function roundCommand(args: readonly string[], seated: Seated = hos
   }
   // SAFETY: an effort is one of pi's levels, and a backend refuses one it does not serve.
   const effort = (flag: string) => flag as ThinkingLevel;
-  const solver =
-    values.solver === undefined
-      ? undefined
-      : { model: values.solver, effort: effort(values["solver-effort"]) };
-  const limits = limitsNamed(values);
-  const campaign = await openCampaign({ root, sweep, cycle, bundle, name, solver, limits });
+  const setting = settingNamed(values);
+  const { limits } = setting;
+  const campaign = await openCampaign({ root, sweep, cycle, bundle, name, ...setting });
   const sets = setsOf(read(campaign.log));
   const packages = campaign.packages();
   const packageOf = (version: string): TaskPackage => {

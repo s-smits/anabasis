@@ -24,8 +24,10 @@
  * `src/kernel/size.ts`): the most tasks it can score, the smallest results that clear its level,
  * and the chance of one for a few stated effects. A launch reads the log alone and knows no
  * standing, so every task to screen counts as one the round may admit. They also say when the
- * `--solve-minutes` and `--solve-turns` it was given are not the limits the log's last solves ran
- * under, since every standing then restarts (`tools/d2/limits.ts`).
+ * `--solve-minutes` and `--solve-turns` it was given are not the limits the log's last test-side
+ * solves ran under, or the `--solver` and `--solver-effort` it names are not who made them, since
+ * every standing then restarts (`tools/d2/setting.ts`). A launch that names no `--solver` solves
+ * as the stored cycle's own, which it does not open, and says nothing of the solver.
  *
  * An Examiner session meets the last four of these, its id being one the log holds already, and
  * needs the campaign's log and no set in it. Its notes say what it is handed and where its tasks
@@ -50,10 +52,9 @@
  */
 import { existsSync, readFileSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
-import type { Limits } from "#src/kernel/condition.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { roundSize, sizeLines } from "#src/kernel/size.ts";
-import { limitsLast } from "#src/kernel/wall.ts";
+import { solverLast } from "#src/kernel/wall.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { availableParallelism, loadavg } from "#src/meta/os.ts";
 import { dirname, join } from "#src/meta/path.ts";
@@ -65,8 +66,8 @@ import { claimed } from "#src/examiner/session.ts";
 import { type SolveDirs, solveDirs } from "#src/solve/command.ts";
 import { releaseDiskCap } from "#src/verify/disk-cap.ts";
 import { carriable, setsOf } from "../d2/campaign.ts";
-import { LIMITS_OPTIONS, limitsNamed } from "../d2/limits.ts";
 import { ROUND_OPTIONS } from "../d2/round.ts";
+import { type NamedSetting, restarts, SETTING_OPTIONS, settingNamed } from "../d2/setting.ts";
 import { EXAMINE, logEvents, processes, ROUND, type Run, runs, standing, writers } from "./pulse.ts";
 import { seedCut } from "./seed.ts";
 
@@ -85,10 +86,10 @@ export interface Host {
   readonly missing: string | null;
   /** Why the command would refuse this session's id (`spent`, `claimed`), or null. */
   readonly spent: string | null;
-  /** The limits the command's solves would run under (`--solve-minutes`, `--solve-turns`), and the
-   *  ones the log's last test-side solves ran under, null before any. */
-  readonly limits: Limits;
-  readonly ran: Limits | null;
+  /** Who the command's solves would be by and what they would be held to, as its four flags name
+   *  them (`tools/d2/setting.ts`), and who the log's last test-side solve was by, null before any. */
+  readonly named: NamedSetting;
+  readonly ran: ReturnType<typeof solverLast>;
 }
 
 /** What a round's launch is asked for beside it. */
@@ -142,19 +143,6 @@ function refused(asked: Host): string[] {
   ]);
 }
 
-/** What a reader should know when a command's limits are not the ones the log's last solves ran
- *  under: the solver is then another one, and what was placed is placed for the old one. */
-function restarted(asked: Host): string[] {
-  const { limits, ran } = asked;
-  const wall = (held: Limits) => `${String(held.wallSeconds / 60)} minutes and ${String(held.turns)} turns`;
-  return said([
-    [
-      ran !== null && (ran.wallSeconds !== limits.wallSeconds || ran.turns !== limits.turns),
-      `a solve here is held to ${wall(limits)}, and the log's last test-side solves ran under ${ran === null ? "none" : wall(ran)}: under other limits no standing carries over, so each task screened is solved under both harnesses and each reach task is put to the stronger solver again (tools/d2/limits.ts)`,
-    ],
-  ]);
-}
-
 /** Why a round should not start, and what its reader should know when it does. */
 export function preflight(sets: ReturnType<typeof setsOf>, asked: Asked) {
   const scoring = asked.target !== "0";
@@ -202,7 +190,7 @@ export function preflight(sets: ReturnType<typeof setsOf>, asked: Asked) {
       ],
       [sets.released.length === 0, "no task is released: the Builder has nothing to practise on"],
     ]),
-    ...restarted(asked),
+    ...restarts(asked.named, asked.ran),
   ];
   return { refusals, notes };
 }
@@ -245,7 +233,7 @@ export function examPreflight(
       "no --reviewer: a task whose stronger solve a check refuses is closed as too hard, and no Referee reads whether the check was at fault",
     ],
   ]);
-  return { refusals, notes: [...notes, ...restarted(asked)] };
+  return { refusals, notes: [...notes, ...restarts(asked.named, asked.ran)] };
 }
 
 /** Start `cmd` in a process group of its own, its output under `base`, and return the process. */
@@ -292,7 +280,7 @@ export async function launch(args: readonly string[]): Promise<void> {
       level: ROUND_OPTIONS.level,
       "anchor-floor": ROUND_OPTIONS["anchor-floor"],
       solves: ROUND_OPTIONS.solves,
-      ...LIMITS_OPTIONS,
+      ...SETTING_OPTIONS,
       examiner: { type: "string" },
       reviewer: { type: "string" },
     },
@@ -319,12 +307,14 @@ export async function launch(args: readonly string[]): Promise<void> {
     running: run === undefined ? [] : writers(run, processes()).map(({ pid }) => pid),
     missing: isString(envFile) && !existsSync(envFile) ? envFile : null,
     spent: (examining ? claimed : spent)(events ?? [], session),
-    // The command's own reading of its two flags, so a wall it would refuse is refused here.
-    limits: limitsNamed({
+    // The command's own reading of its four flags, so a wall it would refuse is refused here.
+    named: settingNamed({
+      solver: isString(values.solver) ? values.solver : undefined,
+      "solver-effort": String(values["solver-effort"]),
       "solve-minutes": String(values["solve-minutes"]),
       "solve-turns": String(values["solve-turns"]),
     }),
-    ran: limitsLast(events ?? []),
+    ran: solverLast(events ?? []),
   };
   const { refusals, notes } = examining
     ? examPreflight(events, { ...host, reviewer: isString(values.reviewer) })

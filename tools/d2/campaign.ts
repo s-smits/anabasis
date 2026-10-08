@@ -71,10 +71,11 @@ export interface CampaignArgs {
   readonly cycle: string;
   readonly bundle: string;
   readonly name: string;
-  /** The model and effort that solve in the cycle's place, when not its own. */
+  /** The model and effort that solve in the cycle's place, when not its own: a command's `--solver`
+   *  and `--solver-effort` (`setting.ts`). */
   readonly solver?: { readonly model: string; readonly effort: ThinkingLevel } | undefined;
   /** What every solve of this command is held to, when not `LIMITS`: a command's `--solve-minutes`
-   *  and `--solve-turns` (`limits.ts`). */
+   *  and `--solve-turns` (`setting.ts`). */
   readonly limits?: Limits | undefined;
 }
 
@@ -96,7 +97,7 @@ interface Solver {
 /** The sweep's `config.yaml` and its solves' `maxTurns`, with a disk cap the sweep did not have, as
  *  `live-solve.ts` has them, but four solves at a time where a parity solve runs alone. Concurrency
  *  is part of a condition, so a campaign's solves and a parity solve are not under the same one.
- *  These are a campaign's limits until a command names a longer wall or more turns (`limits.ts`). */
+ *  These are a campaign's limits until a command names a longer wall or more turns (`setting.ts`). */
 export const LIMITS: Limits = {
   wallSeconds: 7200,
   turns: 24,
@@ -302,6 +303,13 @@ export async function openCampaign(args: CampaignArgs) {
     host,
     side: by.side,
   });
+  /** The condition a solve of a task under a harness by a solver is recorded under. */
+  const conditionOf = (task: TaskPackage, harness: Kept, by: Solver): Condition => ({
+    ...settingOf(by),
+    harness: harness.digest,
+    task: taskVersion(task),
+    solverTools: harness.digest,
+  });
   let solves = 0;
   /** One live solve of a task under a harness, by a solver, its condition recorded first. */
   const solveOnce = (
@@ -310,17 +318,11 @@ export async function openCampaign(args: CampaignArgs) {
     by: Solver,
     kill: AbortSignal | undefined,
   ): Promise<Practised> => {
-    const condition: Condition = {
-      ...settingOf(by),
-      harness: harness.digest,
-      task: taskVersion(task),
-      solverTools: harness.digest,
-    };
     solves += 1;
     return practised({
       // No two solves of a campaign share an id, whichever process made them.
       id: `${args.name}-${Date.now().toString(36)}-${String(solves)}`,
-      condition: recordCondition(log, condition),
+      condition: recordCondition(log, conditionOf(task, harness, by)),
       task,
       contract,
       harness: harness.dir,
@@ -365,6 +367,9 @@ export async function openCampaign(args: CampaignArgs) {
     pack,
     packages,
     solveOnce,
+    /** What `solveOnce` records a solve under, for a reader that sets a log beside this command's
+     *  flags without a solve of its own. */
+    conditionOf,
     /** The setting of every solve by `by`, as an id: with a harness's digest, where it stands
      *  (`src/kernel/ladder.ts`). */
     setting: (by: Solver) => settingId(settingOf(by)),

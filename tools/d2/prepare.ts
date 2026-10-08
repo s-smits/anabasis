@@ -23,11 +23,17 @@
  * solve has placed. Which are taken is drawn by the contract's hash. Before any solve nothing is
  * placed, and the draw is the blind one it always was.
  *
- * Before either, it returns to the pool each task a round set aside as `wall-bound` under a
+ * Name the `--solver`, `--solver-effort`, `--solve-minutes` and `--solve-turns` the next round
+ * will run under (`setting.ts`): the ladder is read where that solver stands, and a campaign run
+ * under two solvers has two sets of standings. Named otherwise than the round, this reads another
+ * solver's: on 2026-10-08, when it took no such flag, it read seven tasks `no solve has placed`
+ * after a round under another solver had placed all seven. It says so when the log's last
+ * test-side solves ran as another solver or under other limits than the ones named here.
+ *
+ * Before either draw, it returns to the pool each task a round set aside as `wall-bound` under a
  * shorter wall than the one named here: the verdict was that the solver ran out of time, under
- * those limits, and it holds under no roomier ones (`src/kernel/limits.ts`). Name the
- * `--solve-minutes` and `--solve-turns` the next round will run under (`limits.ts`): the ladder is
- * read against the solver those limits make, and under the defaults nothing returns.
+ * those limits, and it holds under no roomier ones (`src/kernel/limits.ts`). Under the defaults
+ * nothing returns.
  *
  * It ends by printing the ladder against the frontier and four readings for whoever chooses the
  * next command. Whether the wall binds: what it has marked, and the share of it the solver's
@@ -46,12 +52,13 @@ import { contractHash } from "#src/kernel/contract.ts";
 import { ladder } from "#src/kernel/ladder.ts";
 import { append, read } from "#src/kernel/log.ts";
 import { roundSize, shortLines, sizeLines } from "#src/kernel/size.ts";
-import { returning, wallLine, wallReading } from "#src/kernel/wall.ts";
+import { priceKey } from "#src/kernel/meter.ts";
+import { returning, solverLast, wallLine, wallReading } from "#src/kernel/wall.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
 import { frontier, openCampaign, SCREENING_OPTIONS, screeningRule, setsOf } from "./campaign.ts";
-import { LIMITS_OPTIONS, limitsNamed } from "./limits.ts";
 import { ROUND_OPTIONS } from "./round.ts";
+import { restarts, SETTING_OPTIONS, settingNamed } from "./setting.ts";
 
 const { values } = parseArgs({
   options: {
@@ -63,7 +70,7 @@ const { values } = parseArgs({
     anchor: { type: "string", default: "24" },
     practice: { type: "string", default: "6" },
     ...SCREENING_OPTIONS,
-    ...LIMITS_OPTIONS,
+    ...SETTING_OPTIONS,
     level: ROUND_OPTIONS.level,
     target: ROUND_OPTIONS.target,
     solves: ROUND_OPTIONS.solves,
@@ -81,8 +88,9 @@ async function main(): Promise<void> {
   ) {
     throw new Error("name --root, --sweep, --cycle, --bundle and --name");
   }
-  const limits = limitsNamed(values);
-  const campaign = await openCampaign({ root, sweep, cycle, bundle, name, limits });
+  const setting = settingNamed(values);
+  const { limits } = setting;
+  const campaign = await openCampaign({ root, sweep, cycle, bundle, name, ...setting });
   const { log } = campaign;
   const seed = contractHash(campaign.contract);
   const rule = screeningRule(values);
@@ -139,6 +147,9 @@ async function main(): Promise<void> {
   console.log(
     `against the frontier ${stands.harness.slice(0, 8)}: ${String(now.pool.stops.length)} stop it, ${String(now.pool.clears.length)} it clears, ${String(now.pool.walled.length)} ended at the wall, ${String(now.pool.unknown.length)} no solve has placed; ${String(now.reach.length)} wait for a witness`,
   );
+  // Whose standings those are, when the log's last solves were another solver's (`setting.ts`).
+  const solver = { model: priceKey(campaign.test.model), effort: campaign.test.effort };
+  for (const line of restarts({ solver, limits }, solverLast(read(log)))) console.log(line);
   const [level, target] = [Number(values.level), Number(values.target)];
   console.log(wallLine(wallReading(read(log), stands, { rule, limits }), limits));
   const size = roundSize(

@@ -10,7 +10,7 @@ import { limitsIn, roomier } from "../src/kernel/limits.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import type { Counted } from "../src/kernel/solve.ts";
 import { taskSets, taskStates } from "../src/kernel/task.ts";
-import { limitsLast, outgrown, returning, wallLine, wallReading, wallShare } from "../src/kernel/wall.ts";
+import { outgrown, returning, solverLast, wallLine, wallReading, wallShare } from "../src/kernel/wall.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
 
@@ -243,15 +243,28 @@ describe("whether the wall binds", () => {
     expect(wallLine(none, LONG)).toEndWith("no solve under these limits is on record against this harness");
   });
 
-  it("names the limits a log's last test-side solves ran under", () => {
-    expect(limitsLast([])).toBeNull();
-    expect(limitsLast(log)).toEqual(LONG);
+  it("names who solved last on the test side of a log, and under what limits", () => {
+    expect(solverLast([])).toBeNull();
+    expect(solverLast(log)).toEqual({ model: "faux/solver", effort: "medium", limits: LONG });
+    const record = (ran: Condition) =>
+      event("condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) });
+    // A stronger solve is no solve of the measured solver's, and a condition no solve started
+    // under says nothing of who solved.
     const strong = condition("t1", { ...SHORT, wallSeconds: 60 }, "strong");
     const after = [
       ...solved("t1", SHORT, [P]),
-      event("condition.recorded", { id: conditionId(strong), condition: requireJsonValue(strong) }),
+      record(strong),
+      event("solve.started", { solve: "strong-1", condition: conditionId(strong) }),
+      record(condition("t9", LONG)),
     ];
-    expect(limitsLast(after)).toEqual(SHORT);
+    expect(solverLast(after)).toMatchObject({ limits: SHORT });
+    // A condition is recorded once, so a later solve under an earlier one is the last all the same.
+    const again = [
+      ...solved("t1", SHORT, [P]),
+      ...solved("t2", LONG, [P]),
+      event("solve.started", { solve: "again", condition: conditionId(condition("t1", SHORT)) }),
+    ];
+    expect(solverLast(again)).toMatchObject({ limits: SHORT });
   });
 });
 

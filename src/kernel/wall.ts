@@ -59,13 +59,29 @@ export function wallShare(solves: readonly Timed[]): number | null {
   );
 }
 
-/** The limits the test-side solver last ran under in a log, or null before any solve: what a
- *  command about to run under other limits is set against. */
-export function limitsLast(events: readonly LogEvent[]): Limits | null {
-  const last = events.findLast(
-    ({ kind, data }) => kind === "condition.recorded" && asRecord(data.condition)?.side === "test",
+/** Who solved last on the test side of a log, and under what limits: the model, the effort and the
+ *  limits of the condition its last test-side solve started under, or null before any. It is what a
+ *  command about to solve as another solver, or under other limits, is set against
+ *  (`tools/d2/setting.ts`). */
+export function solverLast(
+  events: readonly LogEvent[],
+): { readonly model: string; readonly effort: string; readonly limits: Limits } | null {
+  const tested = new Map(
+    events.flatMap(({ kind, data }) => {
+      const condition = asRecord(data.condition);
+      return kind === "condition.recorded" && isString(data.id) && condition?.side === "test"
+        ? [[data.id, condition] as const]
+        : [];
+    }),
   );
-  return limitsIn(asRecord(last?.data.condition)?.limits);
+  const started = events.findLast(
+    ({ kind, data }) => kind === "solve.started" && isString(data.condition) && tested.has(data.condition),
+  )?.data.condition;
+  const ran = tested.get(isString(started) ? started : "");
+  const limits = limitsIn(ran?.limits);
+  return ran !== undefined && isString(ran.model) && isString(ran.effort) && limits !== null
+    ? { model: ran.model, effort: ran.effort, limits }
+    : null;
 }
 
 /** The wall-bound task versions a campaign whose solver runs under `limits` returns to its pool:

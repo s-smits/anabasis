@@ -31,7 +31,7 @@
  * `wall-bound` is the third verdict that is evidence about something other than the task: every
  * fail that kept it ended at the wall, under the limits those solves ran at. Until 2026-10-08 it
  * was where a task ended, whatever wall a later round ran under. Since the limits are a campaign's
- * to raise (`tools/d2/limits.ts`), the verdict holds under the limits that produced it: the state
+ * to raise (`tools/d2/setting.ts`), the verdict holds under the limits that produced it: the state
  * records them, and a task leaves it for `held`, to be screened again, only on an event that names
  * limits with a longer wall and nothing tighter (`limits.ts`). A state logged before limits were
  * recorded was measured under the campaign's first, the first test-side condition its log holds.

@@ -412,6 +412,18 @@ describe("a Builder session", () => {
     expect(readdirSync(s.request.states)).toEqual([]);
   });
 
+  it("is not given the correctness model a v1 state carries, whose battery holds hidden values", async () => {
+    const s = await setup([finish]);
+    mkdirSync(join(s.parent, "correctness-model"));
+    writeFileSync(join(s.parent, "correctness-model", "tasks.json"), '[{"hidden":{}}]');
+    let given: boolean[] = [];
+    await session(s.request, s, (bench) => {
+      given = ["agent", "correctness-model"].map((name) => existsSync(join(bench.home, "harness", name)));
+      return s.walled(bench);
+    });
+    expect(given).toEqual([true, false]);
+  });
+
   it("installs into its own copy of the parent's programs, and freezes no script or link naming its home", async () => {
     const bin = (s: { home: string }) => join(s.home, "harness", ".toolchain", "bin");
     const s = await setup(

@@ -61,6 +61,7 @@ import { append, read } from "../kernel/log.ts";
 import { dollars, freezePrices, priceKey, tokensOf } from "../kernel/meter.ts";
 import type { Ending } from "../kernel/solve.ts";
 import { taskStates } from "../kernel/task.ts";
+import { CORRECTNESS_MODEL_DIR } from "../meta/bundle-layout.ts";
 import { cpSync, mkdirSync, rmSync, writeFileSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
@@ -208,12 +209,14 @@ export async function session(
     );
   }
   // A kept state's tool tree is a link to the copy kept of it, so the tree is copied from where it is.
+  // A v1 state carries its correctness model, whose battery holds every task's hidden values; no
+  // harness reads it, and the checks are the host's, so the Builder is not given it.
   const toolTree = parentToolTree(request.parent);
   const copy = { recursive: true, verbatimSymlinks: true } as const;
-  const ownTree = resolve(request.parent, ".toolchain");
+  const left = new Set([".toolchain", CORRECTNESS_MODEL_DIR].map((name) => resolve(request.parent, name)));
   cpSync(request.parent, join(dirs.home, "harness"), {
     ...copy,
-    filter: (source) => resolve(source) !== ownTree,
+    filter: (source) => !left.has(resolve(source)),
   });
   if (toolTree !== null) cpSync(toolTree, join(dirs.home, "harness", ".toolchain"), copy);
   mkdirSync(join(dirs.home, "practice"), { recursive: true });

@@ -155,19 +155,27 @@ describe("guardPath decisions", () => {
 });
 
 // A split build divides the Builder along the hash line. The Harness Builder must not be able to
-// read a hidden expectation, a check or a reference artifact, recover one from the workspace
-// history or write around the wall; the answer agent writes nothing the Harness Builder owns.
+// read a hidden expectation, a check, a reference artifact or an instrument the answer agent
+// installed, recover one from the workspace history or write around the wall; the answer agent
+// writes nothing the Harness Builder owns. One rule holds both: every root the answer agent may
+// write is a root the Harness Builder is denied both ways, so no install path of its own choosing
+// lands where the Harness Builder reads.
 describe("a split build's wall", () => {
   const harness = deriveCandidateIsolation(binding, "harness");
   const answer = deriveCandidateIsolation(binding, "answer");
-  const decide = (split: typeof harness, mode: Mode, path: string) => guardPath(split, mode, mode, path);
+  const decide = (split: typeof harness, mode: Mode | "exec", path: string) =>
+    guardPath(split, mode, mode, path);
   const at = (...parts: string[]) => join(iterationDir, ...parts);
+  /** An instrument the answer agent installed where the verifier's tool search finds it. */
+  const installed = at(".toolchain", "answer", "bin", "truss-verify");
 
-  it("keeps the Harness Builder out of the correctness model, the answer scratch and the history both ways", () => {
+  it("keeps the Harness Builder out of everything the answer agent writes or installs, and the history, both ways", () => {
     const walled = [
       at("correctness-model", "tasks.json"),
       at("correctness-model", "reference", "best-design.json"),
       at("answer", "search", "log.txt"),
+      installed,
+      at(".toolchain", "answer", "home", ".local", "lib", "truss_verify.py"),
       at(".git", "objects", "ab", "cdef"),
     ];
     for (const path of walled) {
@@ -181,17 +189,24 @@ describe("a split build's wall", () => {
     expect(decide(harness, "write", at("agent", "tools.ts"))).toMatchObject({ decision: "allow" });
     expect(decide(harness, "read", at("public", "tasks.json"))).toMatchObject({ decision: "allow" });
     expect(decide(harness, "write", at("MEMORY.md"))).toMatchObject({ decision: "allow" });
+    // The Harness Builder keeps the rest of the tool tree for its own installs.
+    for (const path of [at(".toolchain", "bin", "python3"), at(".toolchain", "home", ".local", "x")]) {
+      for (const mode of ["read", "write"] as const) {
+        expect(decide(harness, mode, path), `${mode} ${path}`).toMatchObject({ decision: "allow" });
+      }
+    }
     expect(decide(harness, "write", at("agent", "node_modules", "x.js"))).toMatchObject({
       reason: "deny/module-shadow",
     });
   });
 
-  it("lets the answer agent write only the correctness model, its scratch and the tool tree", () => {
-    for (const path of [
-      at("correctness-model", "tasks.json"),
-      at("answer", "search.py"),
-      at(".toolchain", "bin", "solver"),
-    ]) {
+  it("lets the answer agent write only inside what the Harness Builder is walled from", () => {
+    expect(answer.allow.write.length).toBeGreaterThan(0);
+    for (const { path } of answer.allow.write) {
+      expect(harness.readDenyRoots, path).toContain(path);
+      expect(harness.writeDenyRoots, path).toContain(path);
+    }
+    for (const path of [at("correctness-model", "tasks.json"), at("answer", "search.py"), installed]) {
       expect(decide(answer, "write", path), path).toMatchObject({ decision: "allow" });
     }
     for (const path of [
@@ -199,6 +214,9 @@ describe("a split build's wall", () => {
       at("MEMORY.md"),
       at("SCRATCHPAD.md"),
       at("scratch", "x.py"),
+      at(".toolchain", "lib", "truss_verify.py"),
+      at(".toolchain", "bin", "solver"),
+      at(".toolchain", "home", ".local", "bin", "solver"),
     ]) {
       expect(decide(answer, "write", path), path).toMatchObject({
         decision: "deny",
@@ -206,6 +224,10 @@ describe("a split build's wall", () => {
       });
     }
     expect(decide(answer, "read", at("agent", "tools.ts"))).toMatchObject({ decision: "allow" });
+    expect(decide(answer, "read", at(".toolchain", "bin", "python3"))).toMatchObject({ decision: "allow" });
+    // A shell opens at the workspace root unless told otherwise; the OS wall still decides its writes.
+    expect(decide(answer, "exec", iterationDir)).toMatchObject({ decision: "allow" });
+    expect(decide(answer, "exec", at("agent"))).toMatchObject({ decision: "deny" });
   });
 
   it("leaves the whole Builder's policy as it was", () => {

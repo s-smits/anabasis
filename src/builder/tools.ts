@@ -50,6 +50,8 @@ export interface BuilderIsolation {
   policy: CandidateAccessPolicy;
   record: PathRecord;
   workDir: string;
+  /** The workspace-relative tree this side installs into and keeps HOME in. */
+  installTree: string;
   safeguardContext?: SafeguardContext;
 }
 
@@ -295,7 +297,7 @@ export function createBuilderTools(isolation: BuilderIsolation): AgentTool[] {
     makeTool({
       name: "bash",
       label: "bash",
-      description: bashDescription(policy, pathCard),
+      description: bashDescription(policy, pathCard, isolation.installTree),
       parameters: schema(
         { command: { type: "string" }, cwd: { type: "string" }, timeout: { type: "number" } },
         ["command"],

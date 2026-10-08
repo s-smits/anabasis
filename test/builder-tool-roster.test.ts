@@ -41,7 +41,7 @@ function stubIsolation(): BuilderIsolation {
     },
     count: () => 0,
   };
-  return { policy, record, workDir: "/stub/repo/campaigns/bb3/epoch-1/02-bb3" };
+  return { policy, record, workDir: "/stub/repo/campaigns/bb3/epoch-1/02-bb3", installTree: ".toolchain" };
 }
 
 describe("the Builder file toolkit", () => {

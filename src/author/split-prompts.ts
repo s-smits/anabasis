@@ -10,6 +10,7 @@
  *  starting from them — says which routes exist, not which one a domain needs. */
 
 import { DCG_RULES } from "../solve/dcg-rules.ts";
+import { ANSWER_TOOL_TREE } from "../verify/wall-policy.ts";
 import {
   INTENT_CLAUSE,
   NO_GRADER_IN_REACH,
@@ -57,7 +58,7 @@ export function answerSystemPrompt({ webSearch, wallMs }: { webSearch: boolean; 
     ...ANSWER_INTENT,
     "",
     "The file tools work from the workspace root. Read STARTER.md first; it maps the loop and links the reference files in starter-pack/. You write correctness-model/, which is submitted, and answer/, your scratch for searches, seed projects and experiments; keep your notes for the next pass in " +
-      `${ANSWER_NOTES_FILE}. Install tools under .toolchain. agent/, MEMORY.md and SCRATCHPAD.md are the Harness Builder's, and it cannot read correctness-model/ or answer/.`,
+      `${ANSWER_NOTES_FILE}. Install tools under ${ANSWER_TOOL_TREE}, where the checks find them. agent/, MEMORY.md and SCRATCHPAD.md are the Harness Builder's, and it cannot read correctness-model/, answer/ or ${ANSWER_TOOL_TREE}/.`,
     `Your wall is ${wallHours(wallMs)}. Your pass ends when you reply without a tool call: the controller then checks the correctness model and hands its public projection to the Harness Builder, whose submit runs every gate, and findings about the correctness model come back to you. Once the wall has passed your tools refuse; end your turn.`,
     "",
     ...SCOPE_CLAUSE,

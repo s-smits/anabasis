@@ -27,7 +27,7 @@ export type { Static, TSchema };
 const TOOL_TEXT_LIMITS = { name: 128, label: 256, description: 4_000, evidence: 64 * 1024 } as const;
 
 /** draft-tool.ts:16, the brand the caller checks a factory's tools for. */
-const DRAFT_TOOL = Symbol.for("anabasis/draft-tool/v1");
+export const DRAFT_TOOL = Symbol.for("anabasis/draft-tool/v1");
 
 /** define-tool.ts:13. */
 export type Evidence<D = unknown> = { text: string; details?: D; terminate?: boolean };

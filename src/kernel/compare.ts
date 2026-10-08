@@ -117,7 +117,7 @@ export function anchor(
  * alike have no spread, so their bound is their mean: the caller's count of tasks is what says how
  * much that is worth.
  */
-export function gain(pairs: readonly Paired[]): { readonly points: number; readonly upper: number } {
+export function gain(pairs: readonly Paired[]) {
   const rate = (solves: readonly boolean[]) => solves.filter(Boolean).length / solves.length;
   const gains = pairs.map(({ old, fresh }) => 100 * (rate(fresh) - rate(old)));
   const count = gains.length;
@@ -133,10 +133,7 @@ export function gain(pairs: readonly Paired[]): { readonly points: number; reado
 /** Each harness's mean seconds over the set's counted solves, null for none timed. v1 found pass
  *  counts could not separate two harnesses at this size and read solve time beside them; it is
  *  reported here, and nothing decides on it. */
-export function solveSeconds(pairs: readonly Paired[]): {
-  readonly old: number | null;
-  readonly fresh: number | null;
-} {
+export function solveSeconds(pairs: readonly Paired[]) {
   const mean = (side: "old" | "fresh") => {
     const timed = pairs.flatMap((pair) => pair.seconds?.[side] ?? []).filter(isNumber);
     return timed.length === 0 ? null : timed.reduce((sum, each) => sum + each, 0) / timed.length;
@@ -173,66 +170,67 @@ export function pairsOf(
   versions: readonly string[],
   old: string,
   fresh: string,
-): { readonly pairs: Paired[]; readonly disputed: string[] } {
+) {
   const conditions = conditionsOf(events);
   const states = taskStates(events);
   const disputed = versions.filter((task) => states.get(task) === "disputed");
-  const pairs = versions
-    .filter((task) => !disputed.includes(task))
-    .map((task) => {
-      const from = events.findLastIndex(
-        ({ kind, data }) =>
-          (kind === "task.state" && data.version === task && data.state === "admitted") ||
-          (kind === "anchor.drawn" && Array.isArray(data.tasks) && data.tasks.includes(task)),
+  const pairs = versions.flatMap((task) => {
+    if (disputed.includes(task)) return [];
+    const from = events.findLastIndex(
+      ({ kind, data }) =>
+        (kind === "task.state" && data.version === task && data.state === "admitted") ||
+        (kind === "anchor.drawn" && Array.isArray(data.tasks) && data.tasks.includes(task)),
+    );
+    const state = states.get(task);
+    if (from === -1 || (state !== "admitted" && state !== "held")) {
+      throw new Error(
+        `task ${task} is ${state ?? "not proposed"}; only an admitted task or an anchor task is scored`,
       );
-      const state = states.get(task);
-      if (from === -1 || (state !== "admitted" && state !== "held")) {
-        throw new Error(
-          `task ${task} is ${state ?? "not proposed"}; only an admitted task or an anchor task is scored`,
-        );
+    }
+    const later = events.slice(from);
+    const ran = new Map<string, string>();
+    for (const { kind, data } of later) {
+      const id = isString(data.condition) ? data.condition : "";
+      const condition = conditions.get(id);
+      if (
+        kind === "solve.started" &&
+        isString(data.solve) &&
+        condition?.task === task &&
+        condition.side === "test" &&
+        (condition.harness === old || condition.harness === fresh)
+      ) {
+        ran.set(data.solve, id);
       }
-      const later = events.slice(from);
-      const ran = new Map<string, string>();
-      for (const { kind, data } of later) {
-        const id = isString(data.condition) ? data.condition : "";
-        const condition = conditions.get(id);
-        if (
-          kind === "solve.started" &&
-          isString(data.solve) &&
-          condition?.task === task &&
-          condition.side === "test" &&
-          (condition.harness === old || condition.harness === fresh)
-        ) {
-          ran.set(data.solve, id);
-        }
-      }
-      const [first, ...rest] = [...new Set(ran.values())].map((id) => conditions.get(id));
-      const apart = rest.flatMap((other) =>
-        first === undefined || other === undefined ? [] : fieldsApart(first, other),
+    }
+    const [first, ...rest] = [...new Set(ran.values())].map((id) => conditions.get(id));
+    const apart = rest.flatMap((other) =>
+      first === undefined || other === undefined ? [] : fieldsApart(first, other),
+    );
+    const moved = [...new Set(apart)].filter((field) => !COMPARED.has(field));
+    if (moved.length > 0) {
+      throw new Error(
+        `task ${task}: its solves differ in ${moved.join(", ")}, and a comparison holds everything but the harness`,
       );
-      const moved = [...new Set(apart)].filter((field) => !COMPARED.has(field));
-      if (moved.length > 0) {
-        throw new Error(
-          `task ${task}: its solves differ in ${moved.join(", ")}, and a comparison holds everything but the harness`,
-        );
-      }
-      const counted = (harness: string) =>
-        later.flatMap(({ kind, data }) => {
-          const outcome = asRecord(data.ending)?.outcome;
-          const under = conditions.get(ran.get(isString(data.solve) ? data.solve : "") ?? "");
-          return kind === "solve.finished" &&
-            under?.harness === harness &&
-            (outcome === "pass" || outcome === "fail")
-            ? [{ pass: outcome === "pass", seconds: isNumber(data.seconds) ? data.seconds : null }]
-            : [];
-        });
-      const [before, after] = [counted(old), counted(fresh)];
-      return {
+    }
+    const counted = (harness: string) =>
+      later.flatMap(({ kind, data }) => {
+        const outcome = asRecord(data.ending)?.outcome;
+        const under = conditions.get(ran.get(isString(data.solve) ? data.solve : "") ?? "");
+        return kind === "solve.finished" &&
+          under?.harness === harness &&
+          (outcome === "pass" || outcome === "fail")
+          ? [{ pass: outcome === "pass", seconds: isNumber(data.seconds) ? data.seconds : null }]
+          : [];
+      });
+    const [before, after] = [counted(old), counted(fresh)];
+    return [
+      {
         task,
         old: before.map(({ pass }) => pass),
         fresh: after.map(({ pass }) => pass),
         seconds: { old: before.map(({ seconds }) => seconds), fresh: after.map(({ seconds }) => seconds) },
-      };
-    });
+      },
+    ];
+  });
   return { pairs, disputed };
 }

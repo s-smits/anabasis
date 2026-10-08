@@ -43,10 +43,10 @@ const LIMITS = {
   diskBytes: 64 * 1024 * 1024,
 };
 const darwin = runtimeProcess.platform === "darwin";
-const noWait = async () => {};
 const toolUse = { stopReason: "toolUse" } as const;
-
 const scratches: string[] = [];
+
+const noWait = async () => {};
 afterAll(() => {
   for (const dir of scratches) rmSync(dir, { recursive: true, force: true });
 });
@@ -69,12 +69,12 @@ function setup(responses: FauxResponseStep[], overrides: Partial<SolveRequest> =
   });
   faux.setResponses(
     responses.map((step) =>
-      typeof step === "function"
-        ? step
-        : (context: unknown) => {
+      "role" in step
+        ? (context) => {
             sent.push(JSON.stringify(context));
             return step;
-          },
+          }
+        : step,
     ),
   );
   const models = createModels();

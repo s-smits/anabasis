@@ -6,8 +6,8 @@
  * host's, which a Built Harness used to declare for itself: on 7 October each harness state carried
  * its own `config.yaml` naming its wall, turn cap, shell timeouts and concurrency.
  */
-import type { JsonObject } from "../meta/json-shape.ts";
-import { hashJsonValue, sameJsonValue } from "../meta/stable-json.ts";
+import type { OpenRecord } from "../meta/json-shape.ts";
+import { hashJsonValue, requireJsonValue, sameJsonValue } from "../meta/stable-json.ts";
 import { append, type LogEvent, read } from "./log.ts";
 import type { PriceTable } from "./meter.ts";
 
@@ -15,7 +15,7 @@ import type { PriceTable } from "./meter.ts";
  * What the host holds every solve to. A harness never sets one: a file or a prompt that asks for a
  * longer wall, more turns, more concurrency or more disk changes nothing.
  */
-export interface Limits {
+export type Limits = {
   readonly wallSeconds: number;
   /** The prompts a solver is given, the opening one and each nudge after a turn that ended without a
    *  submit, before the solve stops without an answer of its own: v1's `maxTurns`. */
@@ -34,7 +34,7 @@ export interface Limits {
    * `solveIsolationPolicy`, so a change here moves `sandbox` too.
    */
   readonly diskBytes: number;
-}
+};
 
 export interface Condition {
   /** The contract frozen in round 0. */
@@ -77,7 +77,7 @@ export function conditionId(condition: Condition): string {
 
 /** The fields two conditions differ in, by name: what a comparison of their solves compares. */
 export function fieldsApart(a: Condition, b: Condition): string[] {
-  const other: Readonly<Record<string, unknown>> = { ...b };
+  const other: OpenRecord = { ...b };
   return Object.entries(a).flatMap(([field, value]) => (sameJsonValue(value, other[field]) ? [] : [field]));
 }
 
@@ -90,8 +90,7 @@ export function fieldsApart(a: Condition, b: Condition): string[] {
 export function recordCondition(log: string, condition: Condition): string {
   const id = conditionId(condition);
   if (!read(log).some((event) => event.kind === "condition.recorded" && event.data.id === id)) {
-    // SAFETY: a condition is strings, numbers and records of them.
-    append(log, "condition.recorded", { id, condition: condition as unknown as JsonObject });
+    append(log, "condition.recorded", { id, condition: requireJsonValue(condition) });
   }
   return id;
 }

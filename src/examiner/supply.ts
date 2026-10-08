@@ -20,10 +20,14 @@ import type { LogEvent } from "../kernel/log.ts";
 import { isNumber, isString } from "../meta/json-shape.ts";
 import { countBy } from "../meta/tally.ts";
 
-/** The plan's supply rule: the feasible tasks it is read over, and its two thresholds. */
+/** The plan's supply rule: the feasible tasks it is read over, and the reading each count of
+ *  scored tasks among them reaches, highest first. */
 const FEASIBLE = 24;
-const GO = 8;
-const REVISE = 5;
+const THRESHOLDS: readonly (readonly [number, SupplyReading])[] = [
+  [8, "go"],
+  [5, "revise"],
+  [0, "stop"],
+];
 /** The words of a task whose screening solves all counted. */
 const SCREENED = new Set(["too easy", "wall-bound", "scored"]);
 
@@ -46,8 +50,8 @@ export function supply(events: readonly LogEvent[], of = FEASIBLE) {
   const feasible = tasks.filter(({ word }) => SCREENED.has(word));
   const read = feasible.slice(0, of);
   const bracketed = read.filter(({ word }) => word === "scored").length;
-  const reading: SupplyReading =
-    read.length < of ? "unfinished" : bracketed >= GO ? "go" : bracketed >= REVISE ? "revise" : "stop";
+  const reached = THRESHOLDS.find(([least]) => bracketed >= least)?.[1] ?? "stop";
+  const reading: SupplyReading = read.length < of ? "unfinished" : reached;
   const written = new Set(
     events.flatMap(({ kind, data }) =>
       kind === "task.proposed" && isString(data.session) ? [data.version] : [],

@@ -30,13 +30,17 @@ import {
   symlinkSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
-import type { JsonObject } from "../src/meta/json-shape.ts";
+import { isFunction, type JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import type { RefereeFinding } from "../src/review/referee.ts";
 import { publicResource, text, tool } from "../src/solve/answer.ts";
 import { openHarness } from "../src/solve/harness.ts";
+
+const BUILD_CALL = "build.call";
+const BUILD_FINISHED = "build.finished";
+const WRITE_FILE = "write_file";
 
 const FIXTURE = new URL("fixtures/harness-min", import.meta.url).pathname;
 /** A check's id and a Referee's reason: verifier-side text no Builder may be shown. */
@@ -65,7 +69,7 @@ const GUIDE = "Multiply before you record.\n";
 const scratches: string[] = [];
 const toolUse = { stopReason: "toolUse" } as const;
 const call = (name: string, args: JsonObject) => fauxAssistantMessage(fauxToolCall(name, args), toolUse);
-const edit = call("write_file", { path: "agent/BUILT_AGENTS.md", content: GUIDE });
+const edit = call(WRITE_FILE, { path: "agent/BUILT_AGENTS.md", content: GUIDE });
 const finish = call("finish", { note: "A shorter guide." });
 
 afterAll(() => {
@@ -157,13 +161,14 @@ async function setup(responses: FauxResponseStep[], endings: Ending[] = [], tree
     ],
   });
   faux.setResponses(
-    responses.map((step) =>
-      typeof step === "function"
-        ? step
-        : (context: unknown) => {
-            sent.push(JSON.stringify(context));
-            return step;
-          },
+    responses.map(
+      (step): FauxResponseStep =>
+        isFunction(step)
+          ? step
+          : (context) => {
+              sent.push(JSON.stringify(context));
+              return step;
+            },
     ),
   );
   const models = createModels();
@@ -193,7 +198,7 @@ async function setup(responses: FauxResponseStep[], endings: Ending[] = [], tree
   /** The walled write, stood in for: the same tool name, writing as the host. */
   const walled = (bench: Bench) => [
     tool({
-      name: "write_file",
+      name: WRITE_FILE,
       label: "write",
       description: "Writes a file under harness/.",
       parameters: Type.Object({ path: Type.String(), content: Type.String() }),
@@ -307,7 +312,7 @@ describe("a Builder session", () => {
       { version: built.harness, parent: s.digest, session: "b-1", note: "A shorter guide." },
     ]);
     expect(s.of("build.started")[0]).toMatchObject({ session: "b-1", parent: s.digest, tasks: ["v1", "v2"] });
-    expect(s.of("build.finished")[0]).toMatchObject({
+    expect(s.of(BUILD_FINISHED)[0]).toMatchObject({
       ended: "finished",
       harness: built.harness,
       changed: true,
@@ -315,8 +320,8 @@ describe("a Builder session", () => {
       disputed: [],
       turns: 5,
     });
-    expect(s.of("build.call").map(({ tool: name }) => name)).toEqual([
-      "write_file",
+    expect(s.of(BUILD_CALL).map(({ tool: name }) => name)).toEqual([
+      WRITE_FILE,
       "practice",
       "read_trace",
       "read_trace",
@@ -354,7 +359,7 @@ describe("a Builder session", () => {
     expect(s.sent[2]).toContain("t-2 is no longer a practice task");
     expect(diagnosed).toBe(0);
     expect(s.sent.join("\n")).not.toContain(CHECK);
-    expect(s.of("build.finished")[0]).toMatchObject({ practiceSolves: 1, disputed: ["v2"], changed: false });
+    expect(s.of(BUILD_FINISHED)[0]).toMatchObject({ practiceSolves: 1, disputed: ["v2"], changed: false });
     expect(built).toMatchObject({ changed: false, dir: null, harness: s.digest });
     expect(s.of("harness.version")).toEqual([]);
   });
@@ -371,21 +376,21 @@ describe("a Builder session", () => {
     expect(s.sent[1]).toContain("s-2 is not a solve of one of this session's practice tasks");
     expect(s.sent[2]).toContain("only 3 practice solves left, and this asks for 4");
     expect(s.sent[3]).toContain("t-9 is not one of this session's practice tasks: t-1, t-2");
-    expect(s.of("build.finished")[0]).toMatchObject({ practiceSolves: 0 });
+    expect(s.of(BUILD_FINISHED)[0]).toMatchObject({ practiceSolves: 0 });
   });
 
   it("spends no solve on a harness a solve could not open", async () => {
     const spec = readFileSync(join(FIXTURE, "agent", "tools-spec.json"), "utf8");
     const s = await setup([
-      call("write_file", { path: "agent/tools-spec.json", content: "{}" }),
+      call(WRITE_FILE, { path: "agent/tools-spec.json", content: "{}" }),
       call("practice", { tasks: ["t-1"] }),
       // A preset no v2 solve serves: every solve would end on it before its first turn.
-      call("write_file", {
+      call(WRITE_FILE, {
         path: "agent/tools-spec.json",
         content: spec.replace('"shell"', '"shell", "python"'),
       }),
       call("practice", { tasks: ["t-1"] }),
-      call("write_file", { path: "agent/tools-spec.json", content: spec }),
+      call(WRITE_FILE, { path: "agent/tools-spec.json", content: spec }),
       () => {
         // Between two turns the Builder puts a link to a host file where its guide was.
         const guide = join(s.home, "harness", "agent", "BUILT_AGENTS.md");
@@ -403,11 +408,11 @@ describe("a Builder session", () => {
     expect(s.sent[4]).toContain(
       "the harness does not open: a v2 solve serves the shell preset alone, not python",
     );
-    const last = JSON.stringify(s.of("build.call").at(-2));
+    const last = JSON.stringify(s.of(BUILD_CALL).at(-2));
     expect(last).toContain("agent/BUILT_AGENTS.md links outside the harness");
     expect(built).toMatchObject({ harness: null, dir: null, changed: false });
-    expect(s.of("build.finished")[0]).toMatchObject({ practiceSolves: 0, harness: null });
-    expect(JSON.stringify(s.of("build.finished")[0]?.broken)).toContain("links outside the harness");
+    expect(s.of(BUILD_FINISHED)[0]).toMatchObject({ practiceSolves: 0, harness: null });
+    expect(JSON.stringify(s.of(BUILD_FINISHED)[0]?.broken)).toContain("links outside the harness");
     // Nothing a refused freeze copied is left beside the kept states.
     expect(readdirSync(s.request.states)).toEqual([]);
   });
@@ -450,7 +455,7 @@ describe("a Builder session", () => {
     const built = await session(s.request, s, s.walled);
     // An untouched copy is the parent, by digest.
     expect(s.ran[0]?.digest).toBe(s.digest);
-    expect(JSON.stringify(s.of("build.call")[1])).toContain(
+    expect(JSON.stringify(s.of(BUILD_CALL)[1])).toContain(
       "harness/.toolchain/bin/greet, harness/.toolchain/bin/linked name your home",
     );
     // Written to run from where it is, what it installed runs from the state the solve was given.
@@ -489,11 +494,11 @@ describe("a Builder session", () => {
     ).rejects.toThrow(stop);
     expect(reached).toBe(true);
     // The session's record is written before it throws, and names the cause for the host alone.
-    expect(s.of("build.finished")[0]).toMatchObject({ ended: "crashed", crash: stop, changed: false });
-    expect(JSON.stringify(s.of("build.call")[0])).toContain("A practice solve could not be run");
-    expect(JSON.stringify(s.of("build.call"))).not.toContain(CHECK);
+    expect(s.of(BUILD_FINISHED)[0]).toMatchObject({ ended: "crashed", crash: stop, changed: false });
+    expect(JSON.stringify(s.of(BUILD_CALL)[0])).toContain("A practice solve could not be run");
+    expect(JSON.stringify(s.of(BUILD_CALL))).not.toContain(CHECK);
     expect(s.sent.join("\n")).not.toContain(CHECK);
-    expect(s.of("build.call").map(({ tool: name }) => name)).toEqual(["practice"]);
+    expect(s.of(BUILD_CALL).map(({ tool: name }) => name)).toEqual(["practice"]);
   });
 
   it("is a crashed session when the provider fails a turn, and one session to an id", async () => {
@@ -502,7 +507,7 @@ describe("a Builder session", () => {
     const built = await session(s.request, s, s.walled);
     // What it wrote before the failure is frozen and logged, and named for what it is: half a session.
     expect(built).toMatchObject({ changed: true, ended: "crashed" });
-    expect(s.of("build.finished")[0]).toMatchObject({ ended: "crashed", crash: "overloaded" });
+    expect(s.of(BUILD_FINISHED)[0]).toMatchObject({ ended: "crashed", crash: "overloaded" });
     await expect(session(s.request, s, s.walled)).rejects.toThrow("session b-1 is in the log already");
     expect(s.of("build.started")).toHaveLength(1);
   });
@@ -511,7 +516,7 @@ describe("a Builder session", () => {
     const both = fauxAssistantMessage(
       [
         fauxToolCall("finish", { note: "Done." }),
-        fauxToolCall("write_file", { path: "agent/BUILT_AGENTS.md", content: GUIDE }),
+        fauxToolCall(WRITE_FILE, { path: "agent/BUILT_AGENTS.md", content: GUIDE }),
       ],
       toolUse,
     );
@@ -524,7 +529,7 @@ describe("a Builder session", () => {
   it("freezes no harness whose tools do not list, and shows the Builder no path of the host's", async () => {
     const s = await setup([
       call("practice", { tasks: ["t-1"] }),
-      call("write_file", { path: "agent/tools.ts", content: 'import "./missing.ts";\n' }),
+      call(WRITE_FILE, { path: "agent/tools.ts", content: 'import "./missing.ts";\n' }),
       call("practice", { tasks: ["t-1"] }),
       finish,
     ]);
@@ -536,16 +541,14 @@ describe("a Builder session", () => {
       return s.walled(bench);
     };
     const built = await session(s.request, s, walled);
-    expect(JSON.stringify(s.of("build.call")[0])).toContain(
-      "the harness does not open: domain tool mismatch",
-    );
+    expect(JSON.stringify(s.of(BUILD_CALL)[0])).toContain("the harness does not open: domain tool mismatch");
     expect(built).toMatchObject({ harness: null, changed: false });
     expect(s.ran).toEqual([]);
     // A bundle that fails names the file by where the harness keeps it, never by where the host froze it.
-    const unresolved = JSON.stringify(s.of("build.call")[2]);
+    const unresolved = JSON.stringify(s.of(BUILD_CALL)[2]);
     expect(unresolved).toContain("the harness does not open");
-    expect(JSON.stringify(s.of("build.call"))).not.toContain(s.request.states);
-    expect(JSON.stringify(s.of("build.call"))).not.toContain(s.scratch);
+    expect(JSON.stringify(s.of(BUILD_CALL))).not.toContain(s.request.states);
+    expect(JSON.stringify(s.of(BUILD_CALL))).not.toContain(s.scratch);
   });
 
   it("takes its wall to a practice solve in flight", async () => {
@@ -569,8 +572,8 @@ describe("a Builder session", () => {
     );
     expect(flown).toBe(1);
     expect(built).toMatchObject({ ended: "wall", changed: false });
-    expect(s.of("build.finished")[0]).toMatchObject({ ended: "wall", practiceSolves: 1 });
-    expect(Number(s.of("build.finished")[0]?.seconds)).toBeLessThan(4);
+    expect(s.of(BUILD_FINISHED)[0]).toMatchObject({ ended: "wall", practiceSolves: 1 });
+    expect(Number(s.of(BUILD_FINISHED)[0]?.seconds)).toBeLessThan(4);
   });
 
   it("takes a task out of practice when its own check could not run", async () => {
@@ -583,7 +586,7 @@ describe("a Builder session", () => {
     expect(s.sent[1]).toContain("The task's own check could not run on this answer");
     expect(s.sent[2]).toContain("t-2 is no longer a practice task");
     expect(s.sent.join("\n")).not.toContain(CHECK);
-    expect(s.of("build.finished")[0]).toMatchObject({
+    expect(s.of(BUILD_FINISHED)[0]).toMatchObject({
       practiceSolves: 1,
       faultyChecks: ["v2"],
       disputed: [],
@@ -629,8 +632,8 @@ describe.skipIf(runtimeProcess.platform !== "darwin")("a Builder session under t
     const s = await setup(
       [
         () => call("bash", { command: `cat '${canary}' 2>&1; echo "read:$?"` }),
-        call("write_file", { path: "../escape.txt", content: "x" }),
-        call("write_file", { path: "agent", content: "x" }),
+        call(WRITE_FILE, { path: "../escape.txt", content: "x" }),
+        call(WRITE_FILE, { path: "agent", content: "x" }),
         edit,
         call("bash", { command: 'cat "$HOME/harness/agent/BUILT_AGENTS.md"; ls "$HOME/practice"' }),
         // The parent's installed program runs by name, and so does one the Builder installs beside it.
@@ -656,7 +659,7 @@ describe.skipIf(runtimeProcess.platform !== "darwin")("a Builder session under t
     const request = { ...s.request, id: `b-${String(runtimeProcess.pid)}-${s.scratch.slice(-6)}` };
     const responses = s.sent;
     const built = await build(request);
-    const calls = s.of("build.call").map(({ text: said }) => JSON.stringify(said));
+    const calls = s.of(BUILD_CALL).map(({ text: said }) => JSON.stringify(said));
     expect(calls[0]).toContain("Operation not permitted");
     expect(calls[0]).toContain("read:1");
     expect(calls[1]).toContain("path names a file under harness/");

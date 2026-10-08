@@ -39,6 +39,7 @@ export interface Agreement {
 
 /** The last ruling the log holds for each labelled solve, set against its label. */
 export function agreement(events: readonly LogEvent[], labels: ReadonlyMap<string, Ruling>): Agreement {
+  // SAFETY: both levels are built from RULINGS, so every Ruling key is present at each.
   const table = Object.fromEntries(
     RULINGS.map((label) => [label, Object.fromEntries(RULINGS.map((ruling) => [ruling, 0]))]),
   ) as Record<Ruling, Record<Ruling, number>>;

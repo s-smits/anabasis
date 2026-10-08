@@ -31,6 +31,7 @@ import { openVerifier, type Task } from "#src/kernel/verify.ts";
 import { existsSync, mkdirSync, readFileSync } from "#src/meta/filesystem.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
+import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { join, resolve } from "#src/meta/path.ts";
 import { capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
@@ -47,6 +48,7 @@ import {
   recordedAnswerFormat,
   modelNamed,
   rowModel,
+  storedRuntime,
   sweepOptions,
   sweepResources,
   sweepRows,
@@ -128,9 +130,7 @@ export async function openCampaign(args: CampaignArgs) {
   const { brief, tasks } = readPack(args.bundle);
   const row = sweepRows(args.root, args.sweep).find((each) => each.cycle === args.cycle);
   if (row === undefined) throw new Error(`${args.sweep} graded no solve in ${args.cycle}`);
-  const runtime = parseJsonAs<{ modelWorker: { modelSelection: { effort: ThinkingLevel } } }>(
-    readFileSync(join(row.solve, "harness", "cases", row.taskId, "built-runtime.json"), "utf8"),
-  );
+  const runtime = storedRuntime(row);
   const contract = contractOf(brief, recordedAnswerFormat(row));
   const resources = sweepResources(brief);
   const tools = join(args.bundle, ".toolchain");
@@ -203,7 +203,7 @@ export async function openCampaign(args: CampaignArgs) {
       verify,
       log,
       repoRoot: REPO,
-      ...(kill === undefined ? {} : { kill }),
+      ...keyIfDefined("kill", kill),
     });
   };
   /** The two reviewers on one reader. */

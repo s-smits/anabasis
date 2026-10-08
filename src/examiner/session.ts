@@ -84,6 +84,10 @@ import { text, tool } from "../solve/answer.ts";
 import { loopCompaction, traceSink } from "../solve/run.ts";
 import { type CheckRow, firstMessage, NUDGE, SYSTEM_PROMPT } from "./prompt.ts";
 
+/** The log kinds a candidate task's gates and states are recorded under. */
+const GATE: EventKind = "task.gate";
+const STATE: EventKind = "task.state";
+
 /** What an Examiner is told of a task. */
 export type Word = "refused" | "too hard" | "too easy" | "wall-bound" | "scored" | "undecided";
 
@@ -225,13 +229,13 @@ async function gated(desk: Desk, instance: Task, kill: AbortSignal): Promise<str
   const version = taskVersion(task);
   const record = (kind: EventKind, data: JsonObject) => append(log, kind, { version, ...data });
   const refused = (reason: string) => {
-    record("task.state", { state: "refused", session: request.id });
+    record(STATE, { state: "refused", session: request.id });
     return `${task.taskId}: ${told(desk, task, version, "refused", { reason })}: ${reason}`;
   };
   const { taskId, family, publicInput, hidden } = instance;
   record("task.proposed", { taskId, session: request.id, task: { taskId, family, publicInput, hidden } });
   const packaged = packageGate(request.contract, task);
-  record("task.gate", { gate: 1, ...packaged });
+  record(GATE, { gate: 1, ...packaged });
   if (packaged.outcome === "refused") return refused(packaged.reason);
 
   const { solve, ending } = await request.strong(task, version, kill);
@@ -241,21 +245,21 @@ async function gated(desk: Desk, instance: Task, kill: AbortSignal): Promise<str
     return `${task.taskId}: undecided: the host could not finish a solve of it, which says nothing of the task.`;
   }
   if (ending.outcome === "non-result") {
-    record("task.gate", { gate: 2, outcome: "refused", solve, reason: ending.reason });
+    record(GATE, { gate: 2, outcome: "refused", solve, reason: ending.reason });
     return refused(`a check could not run on a solver's answer: ${ending.reason}`);
   }
   if (ending.outcome === "fail") {
-    record("task.gate", { gate: 2, outcome: "too-hard", solve, kind: ending.kind });
-    record("task.state", { state: "too-hard", session: request.id });
+    record(GATE, { gate: 2, outcome: "too-hard", solve, kind: ending.kind });
+    record(STATE, { state: "too-hard", session: request.id });
     return `${task.taskId}: ${told(desk, task, version, "too hard", { solve, kind: ending.kind })}`;
   }
   const accepted = read(log).findLast(({ kind, data }) => kind === "verdict" && data.solve === solve)?.data
     .answer;
   if (accepted === undefined) throw new Error(`solve ${solve} passed and left no answer in the log`);
-  record("task.gate", { gate: 2, outcome: "passed", solve });
+  record(GATE, { gate: 2, outcome: "passed", solve });
 
   const repeated = await determinismGate(request.verify, task, accepted);
-  record("task.gate", { gate: 3, ...repeated });
+  record(GATE, { gate: 3, ...repeated });
   if (repeated.outcome === "refused") return refused(repeated.reason);
   desk.waiting.set(task.taskId, { task, version, accepted, tries: 0 });
   return `${task.taskId}: feasible so far. The answer the checks accepted:\n${shown(accepted)}\nWrite its ${String(CONTROLS)} reject controls with write_controls.`;
@@ -337,10 +341,10 @@ async function controlled(desk: Desk, taskId: string, edits: readonly ControlEdi
       return `${taskId}: its controls do not hold: ${result.reason}. Write them again.`;
     }
   }
-  append(request.log, "task.gate", { version, gate: 4, ...result });
+  append(request.log, GATE, { version, gate: 4, ...result });
   desk.waiting.delete(taskId);
   if (result.outcome === "passed") return null;
-  append(request.log, "task.state", { version, state: "refused", session: request.id });
+  append(request.log, STATE, { version, state: "refused", session: request.id });
   return `${taskId}: ${told(desk, task, version, "refused", { reason: result.reason })}: ${result.reason}`;
 }
 
@@ -371,7 +375,7 @@ async function worded(desk: Desk, tasks: readonly Waiting[], kill: AbortSignal):
     const defect = mine.find((each) => each.defect);
     let word: Word = "undecided";
     if (defect !== undefined) {
-      append(request.log, "task.state", {
+      append(request.log, STATE, {
         version,
         state: "disputed",
         session: request.id,
@@ -522,8 +526,7 @@ export async function examine(request: ExamRequest): Promise<Examined> {
     session: request.id,
     model: priceKey(model),
     effort: request.effort,
-    // SAFETY: the limits are plain numbers.
-    limits: limits as unknown as JsonObject,
+    limits: { ...limits },
     screening: request.screening,
     checks: request.checks.map(({ id }) => id),
     examples: request.examples.map(({ taskId }) => taskId),
@@ -606,8 +609,7 @@ export async function examine(request: ExamRequest): Promise<Examined> {
     reviewFaults: desk.faults,
     crash,
     turns: turns.length,
-    // SAFETY: the token classes are numbers.
-    tokens: tokens as unknown as JsonObject,
+    tokens: { ...tokens },
     ...dollars(freezePrices([model]), priceKey(model), tokens),
     reportedCost: isNumber(reported) ? reported : null,
     seconds: (performance.now() - began) / 1000,

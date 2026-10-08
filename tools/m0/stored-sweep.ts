@@ -8,7 +8,7 @@
  * with its cached part inside and no split, so billed cannot be recomputed from it; metered needs
  * no split, since it charges the classes alike.
  */
-import type { Api, Model } from "@earendil-works/pi-ai";
+import type { Api, Model, ThinkingLevel } from "@earendil-works/pi-ai";
 import { claudeExecutable, SWEEP_COMPACT_WINDOW } from "#src/backends/claude.ts";
 import { type BackendOptions, backends } from "#src/backends/models.ts";
 import type { Control } from "#src/kernel/acceptance.ts";
@@ -17,6 +17,7 @@ import { dollars, freezePrices, type PriceTable } from "#src/kernel/meter.ts";
 import type { Ending } from "#src/kernel/solve.ts";
 import type { TaskPackage } from "#src/kernel/task.ts";
 import { applicableTruthChecks, readBrief, type Task, type Verdict } from "#src/kernel/verify.ts";
+import { CONTROLS_FILE } from "#src/meta/bundle-layout.ts";
 import { cpSync, existsSync, readFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, parseJsonAs } from "#src/meta/json-runtime.ts";
 import type { JsonObject, JsonValue } from "#src/meta/json-shape.ts";
@@ -87,13 +88,37 @@ interface Priced {
   readonly metered: number;
 }
 
+/** What v1 recorded of a stored solve's starting state (`built-runtime.json`). */
+export interface StoredRuntime {
+  readonly modelWorker: { modelSelection: { effort: ThinkingLevel } };
+  readonly contractCondition: {
+    systemPrompt: string;
+    tools: StoredTool[];
+    firstTurnTemplateDigest: string;
+    nudgeDigest: string;
+    maxTurns: number;
+  };
+}
+
+/** One tool as v1 sent it to the model (`BuiltAgentInterfaceTool`, built-starter.ts:83-86). */
+export interface StoredTool {
+  readonly name: string;
+  readonly label: string;
+  readonly description: string;
+  readonly parameters: JsonValue;
+  readonly executionMode?: string;
+}
+
 /** v1's non-result kinds (the sweep's `grade.py`, `solver_kind`), as this host types them. */
-const NON_RESULTS: Readonly<Record<string, Extract<Ending, { outcome: "non-result" }>["kind"]>> = {
-  "non-result:provider": "refusal",
-  "non-result:provider-stall": "refusal",
-  "non-result:built": "sandbox-crash",
-  "non-result:grader": "verifier",
-};
+const NON_RESULTS = new Map<string, Extract<Ending, { outcome: "non-result" }>["kind"]>([
+  ["non-result:provider", "refusal"],
+  ["non-result:provider-stall", "refusal"],
+  ["non-result:built", "sandbox-crash"],
+  ["non-result:grader", "verifier"],
+]);
+
+/** The files of a v1 `correctness-model` that are its battery rather than its check program. */
+const BATTERY_FILES = new Set(["tasks.json", "controls.json"]);
 
 /**
  * Every solve the sweep graded, each typed. v1's verifier decided only some: the rest it graded
@@ -142,7 +167,7 @@ function endingOf(
   expected: Verdict | null,
 ): Ending {
   if (kind.startsWith("non-result:")) {
-    const typed = NON_RESULTS[kind];
+    const typed = NON_RESULTS.get(kind);
     if (typed === undefined) throw new Error(`v1 graded a solve ${kind}, which this reader does not know`);
     return { outcome: "non-result", kind: typed, reason: kind };
   }
@@ -153,9 +178,6 @@ function endingOf(
   if (!stored.answerPresent || !stored.answerParses) return { outcome: "fail", kind: "no-answer" };
   return { outcome: "fail", kind: "rejected" };
 }
-
-/** The files of a v1 `correctness-model` that are its battery rather than its check program. */
-const BATTERY_FILES = new Set(["tasks.json", "controls.json"]);
 
 /**
  * A v1 bundle's check program, copied to `to` without its battery: the verifier hands a check its
@@ -175,14 +197,18 @@ export function checkProgram(bundle: string, to: string): string {
  * answer format.
  */
 export function recordedAnswerFormat(row: Row): JsonValue {
-  const runtime = parseJsonAs<{
-    contractCondition: { tools: { description: string; parameters: JsonValue }[] };
-  }>(readFileSync(join(row.solve, "harness", "cases", row.taskId, "built-runtime.json"), "utf8"));
-  const writer = runtime.contractCondition.tools.find((tool) =>
+  const writer = storedRuntime(row).contractCondition.tools.find((tool) =>
     tool.description.startsWith("Role: artifact-writer."),
   );
   if (writer === undefined) throw new Error(`${row.solve} records no artifact-writer`);
   return writer.parameters;
+}
+
+/** What v1 recorded of the solve's starting state. */
+export function storedRuntime(row: Row): StoredRuntime {
+  return parseJsonAs<StoredRuntime>(
+    readFileSync(join(row.solve, "harness", "cases", row.taskId, "built-runtime.json"), "utf8"),
+  );
 }
 
 /** The answer the solve left, or none when it left no file or one that does not read as JSON. */
@@ -261,9 +287,7 @@ export function readPack(bundle: string) {
 /** A pack's controls, each with the label its author gave it: the accept controls, then the reject
  *  controls, in the file's order. */
 export function packControls(bundle: string): Control[] {
-  const { accept, reject } = parseJsonAs<PackControls>(
-    readFileSync(join(bundle, "correctness-model", "controls.json"), "utf8"),
-  );
+  const { accept, reject } = parseJsonAs<PackControls>(readFileSync(join(bundle, CONTROLS_FILE), "utf8"));
   return [
     ...accept.map(({ taskId, artifact }) => ({ taskId, answer: artifact, refusedBy: null })),
     ...reject.map(({ taskId, artifact, expectedCheckId }) => ({
@@ -297,7 +321,10 @@ export function packageOf(checks: string, task: Task): TaskPackage {
  * rebuilt from its declared fields alone, in their order, and a field the row lacks is left out.
  */
 export function sweepResources(brief: PackBrief): PublicResource[] {
-  const rows = (list: readonly JsonObject[], keys: readonly string[]) => list.map((row) => pick(row, keys));
+  const rows = (list: readonly JsonObject[], keys: readonly string[]): JsonObject[] =>
+    list.map((row) =>
+      Object.fromEntries(keys.flatMap((key) => (row[key] === undefined ? [] : [[key, row[key]]]))),
+    );
   const named: [string, JsonValue[]][] = [
     [
       "public-validity-rules",
@@ -306,7 +333,14 @@ export function sweepResources(brief: PackBrief): PublicResource[] {
         publicInputPaths: check.execution.publicInputPaths,
       })),
     ],
-    ["public-rule-decisions", publicDecisions(brief)],
+    // public-resources.ts:113-117 and 66-75.
+    [
+      "public-rule-decisions",
+      rows(
+        brief.ruleDecisions.filter((decision) => decision.visibility === "public"),
+        ["id", "visibility", "statement", "families", "publicInputPaths"],
+      ),
+    ],
     [
       "artifact-schema",
       rows(brief.artifactSchema, [
@@ -328,16 +362,4 @@ export function sweepResources(brief: PackBrief): PublicResource[] {
     ],
   ];
   return named.flatMap(([name, content]) => (content.length > 0 ? [publicResource(name, content)] : []));
-}
-
-/** public-resources.ts:113-117 and 66-75. */
-function publicDecisions(brief: PackBrief): JsonObject[] {
-  return brief.ruleDecisions
-    .filter((decision) => decision.visibility === "public")
-    .map((decision) => pick(decision, ["id", "visibility", "statement", "families", "publicInputPaths"]));
-}
-
-/** A row rebuilt from the named fields alone, in their order, leaving out those it lacks. */
-function pick(row: JsonObject, keys: readonly string[]): JsonObject {
-  return Object.fromEntries(keys.flatMap((key) => (row[key] === undefined ? [] : [[key, row[key]]])));
 }

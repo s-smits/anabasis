@@ -22,7 +22,7 @@ import { Type } from "typebox";
 import type { Task, Verdict, Verifier } from "../kernel/verify.ts";
 import { jsonPathTokens, resolveJsonPath } from "../meta/json-evidence.ts";
 import { capturedJsonParse, capturedStructuredClone } from "../meta/json-runtime.ts";
-import type { JsonValue } from "../meta/json-shape.ts";
+import { isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { plural } from "../meta/text.ts";
 import { text, tool } from "../solve/answer.ts";
@@ -44,13 +44,13 @@ export interface Change {
 }
 
 /** The one passage of a text field that `find` names, rewritten to `replace`. */
-export interface ProbeEdit {
+export type ProbeEdit = {
   readonly find: string;
   readonly replace: string;
-}
+};
 
 /** What one probe ran and what the checks said. */
-export interface ProbeRow {
+export type ProbeRow = {
   /** 1-based, and what a ruling cites. */
   readonly id: number;
   readonly path: string;
@@ -62,7 +62,7 @@ export interface ProbeRow {
   readonly changed: Verdict;
   /** Checks whose verdict the one changed field moved. */
   readonly moved: readonly string[];
-}
+};
 
 /** review-probe.ts:95-100: both sides decided, so the comparison carries information. A check that
  *  throws or times out settles with no blocking checks, which reads exactly like "nothing moved". */
@@ -92,8 +92,8 @@ export function withReplacedField(answer: JsonValue, path: string, value: JsonVa
   const copy: JsonValue = capturedStructuredClone(answer);
   // SAFETY: the path resolves in `answer`, so each step of its clone is an array or a record holding
   // the next key, and an array takes its position as a string key too.
-  const parent = keys.reduce<unknown>((at, key) => (at as Record<string, unknown>)[key], copy);
-  (parent as Record<string, JsonValue>)[leaf] = value;
+  const parent = keys.reduce((at, key) => at[key] as JsonObject, copy as JsonObject);
+  parent[leaf] = value;
   return copy;
 }
 
@@ -105,7 +105,7 @@ export function withReplacedField(answer: JsonValue, path: string, value: JsonVa
  */
 export function editedPassage(answer: JsonValue, path: string, edit: ProbeEdit): string | null {
   const field = resolveJsonPath(answer, path).value;
-  if (typeof field !== "string") return null;
+  if (!isString(field)) return null;
   const at = field.indexOf(edit.find);
   return edit.find === "" || at === -1 || at !== field.lastIndexOf(edit.find)
     ? null
@@ -114,12 +114,10 @@ export function editedPassage(answer: JsonValue, path: string, edit: ProbeEdit):
 
 function sideText(label: string, verdict: Verdict): string {
   const detail =
-    verdict.kind === "fail"
-      ? verdict.blocking.length === 0
-        ? ""
-        : `, blocked by ${verdict.blocking.join(", ")}`
-      : verdict.kind === "pass"
-        ? ""
+    verdict.kind === "pass" || (verdict.kind === "fail" && verdict.blocking.length === 0)
+      ? ""
+      : verdict.kind === "fail"
+        ? `, blocked by ${verdict.blocking.join(", ")}`
         : `: ${verdict.kind === "faulty" ? `${verdict.check} ${verdict.reason}` : verdict.reason}`;
   return `  ${label}: ${verdict.kind}${detail}`;
 }

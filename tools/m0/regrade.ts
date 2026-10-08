@@ -12,6 +12,7 @@
  * `stored-sweep.ts` for why the two differ.
  */
 import { openVerifier, spelled, type Task, type Verdict, type Verifier } from "#src/kernel/verify.ts";
+import { TASKS_FILE } from "#src/meta/bundle-layout.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
@@ -67,7 +68,7 @@ async function main(): Promise<number> {
         const checks = checkProgram(report.candidate, join(scratch, String(verifiers.size)));
         verify = openVerifier({ checks, tools: join(report.candidate, ".toolchain") });
         verifiers.set(report.candidate, verify);
-        const battery = join(report.candidate, "correctness-model", "tasks.json");
+        const battery = join(report.candidate, TASKS_FILE);
         tasks.set(report.candidate, parseJsonAs<Task[]>(readFileSync(battery, "utf8")));
       }
       const task = tasks.get(report.candidate)?.find((candidate) => candidate.taskId === row.taskId);

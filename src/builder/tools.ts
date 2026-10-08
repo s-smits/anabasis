@@ -106,6 +106,8 @@ export interface Bench {
 const HEAD_CHARS = 4_000;
 /** What the walled write exits with when its target is a directory; `mkdir` and `cp` exit 1. */
 const IS_DIRECTORY = 3;
+/** The harness's tool tree, as a path in the Builder's home. */
+export const HOME_TOOL_TREE = "harness/.toolchain";
 
 /** An ending as the Builder is shown it: the outcome and its kind. A non-result's reason can name a
  *  check, so only a broken harness's reason, which is the harness's own, is shown. */
@@ -172,7 +174,7 @@ function refuseNamingHome(dir: string, home: string, under: string): void {
  *  kept while the tree's stamp holds. A truss tree is 316 MB, which a copy at every freeze spent
  *  again on each check and practice. Null when the harness has no tree. */
 function keptTree(bench: Bench): string | null {
-  const own = join(bench.home, "harness", ".toolchain");
+  const own = join(bench.home, HOME_TOOL_TREE);
   if (!existsSync(own)) return null;
   const real = realpathSync(own);
   const stamp = toolTreeStamp(real);
@@ -180,7 +182,7 @@ function keptTree(bench: Bench): string | null {
   const dir = realpathSync(mkdtempSync(join(bench.request.states, "tree-")));
   try {
     cpSync(real, dir, { recursive: true, verbatimSymlinks: true });
-    refuseNamingHome(dir, bench.home, "harness/.toolchain");
+    refuseNamingHome(dir, bench.home, HOME_TOOL_TREE);
   } catch (error) {
     rmSync(dir, { recursive: true, force: true });
     throw error;
@@ -205,7 +207,7 @@ async function frozen(bench: Bench): Promise<Snapshot> {
   mkdirSync(states, { recursive: true });
   const dir = realpathSync(mkdtempSync(join(states, "freezing-")));
   try {
-    const own = resolve(bench.home, "harness", ".toolchain");
+    const own = resolve(bench.home, HOME_TOOL_TREE);
     cpSync(join(bench.home, "harness"), dir, {
       recursive: true,
       verbatimSymlinks: true,

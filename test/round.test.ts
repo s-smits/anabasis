@@ -33,6 +33,8 @@ import type { RefereeFinding } from "../src/review/referee.ts";
 import { text, tool } from "../src/solve/answer.ts";
 import { openHarness } from "../src/solve/harness.ts";
 
+const COMPARISON_REPORTED = "comparison.reported";
+
 /** How a solve of `version` under the old or the new harness ends, by how many came before it. */
 type Table = (version: string, fresh: boolean, nth: number) => Ending;
 
@@ -224,7 +226,7 @@ describe("a round", () => {
       { version: "s2", fresh: false },
     ]);
     expect(s.of("build.started")[0]).toMatchObject({ tasks: ["p1"] });
-    expect(s.of("comparison.reported")).toEqual([
+    expect(s.of(COMPARISON_REPORTED)).toEqual([
       {
         session: "b-1",
         solves: 2,
@@ -262,7 +264,7 @@ describe("a round", () => {
     expect(await round(s.request)).toEqual(report);
     expect(s.sessions()).toBe(1);
     expect(s.asked).toHaveLength(28);
-    expect(s.of("comparison.reported")).toHaveLength(1);
+    expect(s.of(COMPARISON_REPORTED)).toHaveLength(1);
   });
 
   it("goes on from its log when a solve stopped it: the session is not run again, nor a counted solve", async () => {
@@ -273,7 +275,7 @@ describe("a round", () => {
       return step(version, fresh, nth);
     });
     await expect(round(s.request)).rejects.toThrow("the verifier could not decide s3");
-    expect(s.of("comparison.reported")).toEqual([]);
+    expect(s.of(COMPARISON_REPORTED)).toEqual([]);
     const report = await round(s.request);
     expect(report).toMatchObject({ scored: { wins: 4, losses: 0 }, reading: "step" });
     expect(s.sessions()).toBe(1);
@@ -319,7 +321,7 @@ describe("a round", () => {
     expect(s.asked.filter(({ version }) => version === "s1")).toEqual([{ version: "s1", fresh: false }]);
     expect(refereed.filter((version) => version === "s1")).toHaveLength(1);
     // A fail the Referee could not read stands, and the host is told.
-    expect(s.of("comparison.reported")[0]?.reviewFaults).toHaveLength(2);
+    expect(s.of(COMPARISON_REPORTED)[0]?.reviewFaults).toHaveLength(2);
     expect(s.of("task.state").filter(({ state }) => state === "disputed")).toMatchObject([
       { version: "s1", reason: "the Referee ruled a check defect: check-7" },
       { version: "a2", reason: "its own check could not run on an answer" },
@@ -345,7 +347,7 @@ describe("a round", () => {
       reading: "step",
     });
     expect(taskStates(read(s.log)).get("s1")).toBe("admitted");
-    expect(s.of("comparison.reported")[0]).toMatchObject({ flagged: ["s1"] });
+    expect(s.of(COMPARISON_REPORTED)[0]).toMatchObject({ flagged: ["s1"] });
   });
 
   it("reports a task short when its solves end in nothing countable, and leaves it out", async () => {
@@ -426,7 +428,7 @@ describe("a round", () => {
       { version: "s1", fresh: false },
       { version: "s2", fresh: true },
     ]);
-    expect(s.of("comparison.reported")).toMatchObject([
+    expect(s.of(COMPARISON_REPORTED)).toMatchObject([
       { disputed: ["s1", "s2"], scored: null, reading: "check-defects" },
     ]);
     expect(stopRule(read(s.log))).toMatchObject({ sessions: 0, stop: false });
@@ -507,7 +509,7 @@ describe("a round", () => {
       disputed: ["a2"],
       reading: "no-step",
     });
-    expect(s.of("comparison.reported")).toHaveLength(1);
+    expect(s.of(COMPARISON_REPORTED)).toHaveLength(1);
   });
 
   it("runs four solves side by side to the same reading", async () => {
@@ -558,7 +560,7 @@ describe("a round", () => {
     const s = await setup([finish], step);
     expect(await round(s.request)).toMatchObject({ fresh: null, scored: null, reading: "no-change" });
     expect(s.asked).toEqual([]);
-    expect(s.of("comparison.reported")).toMatchObject([
+    expect(s.of(COMPARISON_REPORTED)).toMatchObject([
       { session: "b-1", old: s.old, fresh: null, scored: null, broken: null, reading: "no-change" },
     ]);
   });
@@ -604,7 +606,7 @@ describe("a round", () => {
       "session b-1 crashed, so what it froze is not compared",
     );
     expect(crashed.asked).toEqual([]);
-    expect(crashed.of("comparison.reported")).toEqual([]);
+    expect(crashed.of(COMPARISON_REPORTED)).toEqual([]);
   });
 
   it("reports a session that left a harness no solve could open, and compares nothing", async () => {
@@ -613,7 +615,7 @@ describe("a round", () => {
       step,
     );
     expect(await round(s.request)).toMatchObject({ fresh: null, reading: "no-change" });
-    expect(JSON.stringify(s.of("comparison.reported")[0]?.broken)).toContain(
+    expect(JSON.stringify(s.of(COMPARISON_REPORTED)[0]?.broken)).toContain(
       "agent/tools-spec.json needs presets",
     );
     expect(s.asked).toEqual([]);

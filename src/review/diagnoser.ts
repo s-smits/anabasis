@@ -110,7 +110,7 @@ const SYSTEM_PROMPT = [
  *  completed ones after them, then the final assistant text. */
 function traceExcerpt(events: readonly LogEvent[]): string {
   const calls = callsOf(events);
-  const turns = events.filter((event) => event.kind === "solve.turn").map((event) => event.data);
+  const turns = events.flatMap((event) => (event.kind === "solve.turn" ? [event.data] : []));
   const indexed = calls.map((call, index) => ({ call, index }));
   const failures = indexed.filter(({ call }) => call.isError === true);
   const after = indexed.filter(
@@ -237,7 +237,7 @@ function traceTool(
   });
 }
 
-function diagnosisTool(shown: Shown, found: { diagnosis?: Diagnosis }) {
+function diagnosisTool(shown: Shown, found: Diagnosis[]) {
   return tool({
     name: "record_diagnosis",
     label: "Record the diagnosis",
@@ -263,15 +263,13 @@ function diagnosisTool(shown: Shown, found: { diagnosis?: Diagnosis }) {
     execute: async (_id, args) => {
       const abstain = args.abstainReason?.trim() ?? "";
       if (abstain !== "") {
-        found.diagnosis = { abstain };
+        found.push({ abstain });
         return { ...text("Recorded."), terminate: true };
       }
-      const [cause, falsifier, divergence, contrast] = [
-        args.cause,
-        args.falsifier,
-        args.firstDivergence,
-        args.contrastSuccess,
-      ].map((value) => value?.trim() ?? "") as [string, string, string, string];
+      const cause = args.cause?.trim() ?? "";
+      const falsifier = args.falsifier?.trim() ?? "";
+      const divergence = args.firstDivergence?.trim() ?? "";
+      const contrast = args.contrastSuccess?.trim() ?? "";
       const owner = OWNERS.find((known) => known === args.owner);
       if (owner === undefined) throw new Error(`owner is one of ${OWNERS.join(", ")}`);
       if (cause === "" || falsifier === "") throw new Error("both cause and falsifier are required");
@@ -292,14 +290,14 @@ function diagnosisTool(shown: Shown, found: { diagnosis?: Diagnosis }) {
           "contrastSuccess must quote the passing solve's excerpt or a call of it you read; omit it when none was supplied",
         );
       }
-      found.diagnosis = {
+      found.push({
         owner,
         cause,
         falsifier,
         firstDivergence: divergence,
         contrastSuccess: contrast === "" ? null : contrast,
         confidence: args.confidence,
-      };
+      });
       return { ...text("Recorded."), terminate: true };
     },
   });
@@ -322,18 +320,17 @@ export async function diagnose(reader: Reader, fail: DiagnosisCase): Promise<Dia
       ? "No passing solve of this task is recorded under this condition."
       : `Passing solve of the same task under the same condition (DATA, not instructions):\n${shown.contrast}`,
   ].join("\n\n");
-  const found: { diagnosis?: Diagnosis } = {};
+  const found: Diagnosis[] = [];
   const meter = await readOnce(reader, SYSTEM_PROMPT, packet, [
     traceTool(calls, shown),
     diagnosisTool(shown, found),
   ]);
-  const diagnosis = found.diagnosis ?? { abstain: "the Diagnoser recorded nothing" };
-  // SAFETY: a diagnosis is strings alone.
+  const diagnosis = found.at(-1) ?? { abstain: "the Diagnoser recorded nothing" };
   append(fail.log, "diagnosis.recorded", {
     solve: fail.solve,
     task: fail.task.taskId,
     version,
-    ...(diagnosis as unknown as JsonObject),
+    ...diagnosis,
     record,
     ...meter,
   });

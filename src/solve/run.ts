@@ -115,15 +115,15 @@ const RERUNS = 3;
  *  its traces the same way and its own investigation named that as a loss. */
 const TRACE_TEXT_BYTES = 64 * 1024;
 /** Each tool's authority, as v1's prompt named it (built-starter.ts:518-522, built-presets.ts:20-24). */
-const ROLES: Readonly<Record<string, string>> = {
-  read_public_resources: "reader",
-  bash: "writer",
-  save_candidate: "reader",
-  restore_candidate: "writer",
-  inspect_draft: "reader",
-  preview_artifact: "reader",
-  submit: "submission",
-};
+const ROLES = new Map([
+  ["read_public_resources", "reader"],
+  ["bash", "writer"],
+  ["save_candidate", "reader"],
+  ["restore_candidate", "writer"],
+  ["inspect_draft", "reader"],
+  ["preview_artifact", "reader"],
+  ["submit", "submission"],
+]);
 
 const backoff = (rerun: number) => Bun.sleep(30_000 * 2 ** (rerun - 1));
 
@@ -146,8 +146,7 @@ async function attemptSolve(request: SolveRequest, id: string): Promise<Ending> 
     task: request.task.taskId,
     model: priceKey(model),
     effort: request.effort,
-    // SAFETY: the limits are plain numbers.
-    limits: request.limits as unknown as JsonObject,
+    limits: request.limits,
     load: loadavg(),
   });
   const played = await play(request, id);
@@ -161,8 +160,7 @@ async function attemptSolve(request: SolveRequest, id: string): Promise<Ending> 
     solve: id,
     ending,
     turns: played.turns.length,
-    // SAFETY: the token classes are numbers.
-    tokens: tokens as unknown as JsonObject,
+    tokens: { ...tokens },
     ...dollars(freezePrices([model]), priceKey(model), tokens),
     reportedCost: isNumber(reportedCost) ? reportedCost : null,
     responseModels: [...new Set(played.turns.flatMap((turn) => turn.responseModel ?? []))],
@@ -300,7 +298,7 @@ export async function solverTools(
     ...(request.resources.length > 0 ? [publicResourcesTool(request.resources)] : []),
     ...(harness.presets.includes("shell") ? [shellTool(wall, files)] : []),
     ...deskTools(desk),
-  ].map((tool) => ({ role: ROLES[tool.name], tool }));
+  ].map((tool) => ({ role: ROLES.get(tool.name), tool }));
   return [...domain, ...host].map(({ role, tool }) => ({
     ...tool,
     description: `Role: ${String(role)}. ${tool.description}`,
@@ -344,8 +342,7 @@ export function traceSink(log: string, of: "solve" | "build" | "exam", id: strin
         stopReason,
         error: error ?? null,
         responseModel: responseModel ?? null,
-        // SAFETY: pi's usage is numbers.
-        usage: usage as unknown as JsonObject,
+        usage: { ...usage },
         text: traceText(content),
       });
     }
@@ -367,8 +364,7 @@ export function loopCompaction(
     append(log, `${of}.compacted`, {
       ...(of === "solve" ? { solve: id } : { session: id }),
       ...compacted,
-      // SAFETY: pi's usage is numbers.
-      usages: usages as unknown as JsonValue,
+      usages: usages.map((usage) => ({ ...usage })),
     });
   });
 }
@@ -397,13 +393,11 @@ export async function judge(request: SolveRequest, id: string, played: Played): 
   if (played.submitted !== undefined) {
     const fault = answerFormatFault(request.contract, played.submitted);
     const verdict = fault === null ? await request.verify(request.task, played.submitted) : null;
-    // SAFETY: a verdict is strings alone.
-    const logged = (verdict ?? { kind: "fail", fault }) as unknown as JsonObject;
     append(request.log, "verdict", {
       solve: id,
       task: request.task.taskId,
       answer: played.submitted,
-      ...logged,
+      ...(verdict ?? { kind: "fail", fault }),
     });
     if (verdict?.kind === "non-result") {
       return { outcome: "non-result", kind: "verifier", reason: verdict.reason };

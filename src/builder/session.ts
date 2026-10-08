@@ -64,7 +64,7 @@ import { taskStates } from "../kernel/task.ts";
 import { CORRECTNESS_MODEL_DIR } from "../meta/bundle-layout.ts";
 import { cpSync, mkdirSync, rmSync, writeFileSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
-import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
+import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { join, resolve } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import type { Diagnosis } from "../review/diagnoser.ts";
@@ -81,6 +81,7 @@ import { firstMessage, NUDGE, SYSTEM_PROMPT } from "./prompt.ts";
 import {
   type Bench,
   finishTool,
+  HOME_TOOL_TREE,
   parentToolTree,
   practiceTool,
   record,
@@ -218,7 +219,7 @@ export async function session(
     ...copy,
     filter: (source) => !left.has(resolve(source)),
   });
-  if (toolTree !== null) cpSync(toolTree, join(dirs.home, "harness", ".toolchain"), copy);
+  if (toolTree !== null) cpSync(toolTree, join(dirs.home, HOME_TOOL_TREE), copy);
   mkdirSync(join(dirs.home, "practice"), { recursive: true });
   writeFileSync(join(dirs.home, "resources.json"), `${capturedJsonStringify(request.resources, null, 2)}\n`);
   for (const { task } of request.tasks) {
@@ -233,8 +234,7 @@ export async function session(
     tasks: request.tasks.map(({ version }) => version),
     model: priceKey(model),
     effort: request.effort,
-    // SAFETY: the limits are plain numbers.
-    limits: limits as unknown as JsonObject,
+    limits: { ...limits },
   });
   const bench: Bench = {
     request,
@@ -356,8 +356,7 @@ export async function session(
     disputed: [...bench.disputed],
     faultyChecks: [...bench.faulty],
     reviewFaults: bench.faults,
-    // SAFETY: the token classes are numbers.
-    tokens: tokens as unknown as JsonObject,
+    tokens: { ...tokens },
     ...dollars(freezePrices([model]), priceKey(model), tokens),
     reportedCost: isNumber(reported) ? reported : null,
     seconds: (performance.now() - began) / 1000,
@@ -388,7 +387,7 @@ export async function build(request: BuildRequest): Promise<Built> {
     const wall: CommandWall = {
       base,
       dirs,
-      toolTree: join(dirs.home, "harness", ".toolchain"),
+      toolTree: join(dirs.home, HOME_TOOL_TREE),
       limits: request.limits,
       cpu: { seconds: 0, unmeasured: 0 },
     };

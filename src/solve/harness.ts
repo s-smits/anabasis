@@ -17,6 +17,7 @@
  */
 import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { TSchema } from "@earendil-works/pi-ai";
+import { AGENT_DIR, GENERATED_TOOLS_FILE, TOOLS_SPEC_FILE } from "../meta/bundle-layout.ts";
 import { sha256OfFile } from "../meta/digest.ts";
 import { existsSync, lstatSync, readlinkSync, realpathSync, writeFileSync } from "../meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "../meta/json-runtime.ts";
@@ -28,6 +29,7 @@ import { capturedExecPath } from "../meta/process.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { shellQuote } from "../verify/solve-command-isolation.ts";
 import { type CommandWall, runWalled } from "./command.ts";
+import { DRAFT_TOOL } from "./harness-shim.ts";
 import { type PublicTask, publicView } from "./prompt.ts";
 
 export type ToolKind = "reader" | "advisor" | "artifact-writer";
@@ -92,7 +94,7 @@ try {
   const { createDomainHarness } = await import("./harness.mjs");
   const tools = createDomainHarness(input.task)?.tools;
   if (!Array.isArray(tools)) throw new Error("createDomainHarness must return tools");
-  if (tools.some((tool) => tool?.[Symbol.for("anabasis/draft-tool/v1")] !== true))
+  if (tools.some((tool) => tool?.[Symbol.for(${capturedJsonStringify(DRAFT_TOOL.description)})] !== true))
     throw new Error("createDomainHarness tools must be created with defineDraftTool");
   if (input.name === null) {
     out({ tools: tools.map(({ name, label, description, parameters, executionMode }) => ({ name, label, description, parameters, executionMode })) });
@@ -129,30 +131,31 @@ export async function openHarness(dir: string): Promise<Harness> {
   // The three files the host reads by name are the harness's own: a guide or a spec linked to a host
   // file would be read here, outside every wall, and handed to the solver.
   const root = realpathSync(dir);
-  for (const name of ["BUILT_AGENTS.md", "tools-spec.json", "tools.ts"]) {
-    const file = join(dir, "agent", name);
+  const guideName = `${AGENT_DIR}BUILT_AGENTS.md`;
+  for (const name of [guideName, TOOLS_SPEC_FILE, GENERATED_TOOLS_FILE]) {
+    const file = join(dir, name);
     if (existsSync(file) && !containsPath(realpathSync(file), root)) {
-      throw new Error(`agent/${name} links outside the harness`);
+      throw new Error(`${name} links outside the harness`);
     }
   }
-  const guideFile = join(dir, "agent", "BUILT_AGENTS.md");
+  const guideFile = join(dir, guideName);
   const guide = existsSync(guideFile) ? await Bun.file(guideFile).text() : null;
-  const spec = capturedJsonParse(await Bun.file(join(dir, "agent", "tools-spec.json")).text());
+  const spec = capturedJsonParse(await Bun.file(join(dir, TOOLS_SPEC_FILE)).text());
   const fields = asRecord(spec);
   const presets = Array.isArray(fields?.presets) && fields.presets.every(isString) ? fields.presets : null;
   const declared = Array.isArray(fields?.tools) ? fields.tools : null;
   if (presets === null || declared === null) {
-    throw new Error("agent/tools-spec.json needs presets and tools lists");
+    throw new Error(`${TOOLS_SPEC_FILE} needs presets and tools lists`);
   }
   const kinds = new Map<string, ToolKind>();
   for (const row of declared) {
     if (!isRecord(row) || !isString(row.name) || !isString(row.kind) || !KINDS.has(row.kind)) {
-      throw new Error(`agent/tools-spec.json row ${capturedJsonStringify(row)} needs a name and a kind`);
+      throw new Error(`${TOOLS_SPEC_FILE} row ${capturedJsonStringify(row)} needs a name and a kind`);
     }
     // SAFETY: KINDS just admitted the kind.
     kinds.set(row.name, row.kind as ToolKind);
   }
-  const module = await bundle(join(dir, "agent", "tools.ts"));
+  const module = await bundle(join(dir, GENERATED_TOOLS_FILE));
   const toolchain = resolve(dir, ".toolchain");
   const toolTree = existsSync(toolchain) ? toolchain : null;
   const tree = toolTree === null ? null : keptTreeContent(toolTree);

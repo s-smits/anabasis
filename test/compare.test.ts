@@ -5,6 +5,8 @@ import { anchor, draw, gain, pairsOf, scored, signP, solveSeconds, tally } from 
 import { type Condition, conditionId, fieldsApart } from "../src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
+import { keyIfDefined } from "../src/meta/optional-key.ts";
+import { requireJsonValue } from "../src/meta/stable-json.ts";
 
 const [P, F] = [true, false];
 /** A task the new harness wins, loses or ties, on three solves a harness. */
@@ -150,13 +152,12 @@ describe("the pairs a comparison reads from the log", () => {
     solves += 1;
     const [id, name] = [conditionId(condition), `s-${String(solves)}`];
     return [
-      // SAFETY: a condition is strings, numbers and records of them.
-      event("condition.recorded", { id, condition: condition as unknown as JsonObject }),
+      event("condition.recorded", { id, condition: requireJsonValue(condition) }),
       event("solve.started", { solve: name, condition: id, task: "t" }),
       event("solve.finished", {
         solve: name,
         ending: { outcome },
-        ...(seconds === undefined ? {} : { seconds }),
+        ...keyIfDefined("seconds", seconds),
       }),
     ];
   };

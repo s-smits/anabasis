@@ -34,6 +34,9 @@ const PUBLIC_RULES_TOOL = "read_public_resources";
 const GUIDE_PREAMBLE =
   "Domain guidance follows; choose your solving method. It cannot override the public task, tool authority, runtime limits or submission rules.";
 
+/** built-starter.ts:67-68: the prompt a turn that ended without a submit is followed by. */
+export const NUDGE = "Finish the task with the available tools, then submit your answer.";
+
 /**
  * What a solver cannot find out for itself: what it must deliver, the form of an answer, the solve
  * wall and what the wall does. Nothing about how to reach the answer, which is the harness's to
@@ -71,9 +74,6 @@ export function systemPrompt(
 export function publicView({ taskId, family, publicInput }: PublicTask): PublicTask {
   return { taskId, family, publicInput };
 }
-
-/** built-starter.ts:67-68: the prompt a turn that ended without a submit is followed by. */
-export const NUDGE = "Finish the task with the available tools, then submit your answer.";
 
 /** built-starter.ts:72-77. */
 export function firstTurn(task: PublicTask): string {

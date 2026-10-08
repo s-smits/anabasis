@@ -38,7 +38,7 @@ import { openVerifier } from "#src/kernel/verify.ts";
 import { sha256 } from "#src/meta/digest.ts";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "#src/meta/filesystem.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
-import type { JsonValue } from "#src/meta/json-shape.ts";
+import { isNumber } from "#src/meta/json-shape.ts";
 import { join, resolve } from "#src/meta/path.ts";
 import { capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { canonicalJson, hashJsonValue } from "#src/meta/stable-json.ts";
@@ -59,6 +59,9 @@ import {
   modelNamed,
   rowModel,
   sweepOptions,
+  type StoredRuntime,
+  type StoredTool,
+  storedRuntime,
   sweepResources,
   sweepRows,
 } from "./stored-sweep.ts";
@@ -99,27 +102,6 @@ const REPO = resolve(import.meta.dir, "..", "..");
 /** The agent runtime's packages, pinned in `package.json`; the SDK pins the Claude Code binary. */
 const RUNTIME = ["@anthropic-ai/claude-agent-sdk", "@earendil-works/pi-agent-core", "@earendil-works/pi-ai"];
 
-/** What v1 recorded of the stored solve's starting state (`built-runtime.json`). */
-interface StoredRuntime {
-  readonly modelWorker: { modelSelection: { effort: ThinkingLevel } };
-  readonly contractCondition: {
-    systemPrompt: string;
-    tools: StoredTool[];
-    firstTurnTemplateDigest: string;
-    nudgeDigest: string;
-    maxTurns: number;
-  };
-}
-
-/** One tool as v1 sent it to the model (`BuiltAgentInterfaceTool`, built-starter.ts:83-86). */
-interface StoredTool {
-  readonly name: string;
-  readonly label: string;
-  readonly description: string;
-  readonly parameters: JsonValue;
-  readonly executionMode?: string;
-}
-
 /** The head of what the stored solve's first `read_public_resources` call returned. */
 interface StoredTrace {
   readonly toolCalls: readonly { toolName: string; resultPreview: string }[];
@@ -139,7 +121,7 @@ async function main(): Promise<number> {
   const row = sweepRows(root, sweep).find((each) => each.cycle === cycle && each.taskId === taskId);
   if (row === undefined) throw new Error(`${sweep} graded no ${taskId} in ${cycle}`);
   const caseDir = join(row.solve, "harness", "cases", row.taskId);
-  const stored = parseJsonAs<StoredRuntime>(readFileSync(join(caseDir, "built-runtime.json"), "utf8"));
+  const stored = storedRuntime(row);
   const { brief, tasks } = readPack(bundle);
   const task = tasks.find((each) => each.taskId === taskId);
   if (task === undefined) throw new Error(`${bundle} has no task ${taskId}`);
@@ -280,8 +262,9 @@ function toolParity(storedTools: readonly StoredTool[], tools: readonly AgentToo
       apart.push(`#${String(index)}: stored ${before?.name ?? "none"}, here ${after?.name ?? "none"}`);
       continue;
     }
-    for (const key of Object.keys(before) as (keyof typeof before)[]) {
-      const [was, is] = [String(before[key]), String(after[key])];
+    const afterFields = new Map(Object.entries(after));
+    for (const [key, value] of Object.entries(before)) {
+      const [was, is] = [String(value), String(afterFields.get(key))];
       if (was === is) continue;
       let at = 0;
       while (was[at] === is[at]) at++;
@@ -363,7 +346,7 @@ function readBack(log: string, outcome: string, storedOutcome: string): number {
   const reported = finished?.reportedCost;
   console.log(`${outcome}, stored ${storedOutcome}`);
   // Claude Code reports its cost only in the result that ends a query, which a submit ends before.
-  if (typeof reported !== "number") {
+  if (!isNumber(reported)) {
     console.log(`billed $${billed.toFixed(4)}, none reported: the solve ended before Claude Code's result`);
     return 1;
   }

@@ -23,6 +23,7 @@ import { examine } from "#src/examiner/session.ts";
 import { supply } from "#src/examiner/supply.ts";
 import { read } from "#src/kernel/log.ts";
 import { readBrief } from "#src/kernel/verify.ts";
+import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { openHarness } from "#src/solve/harness.ts";
 import { LIMITS, openCampaign, stayAwake } from "../d2/campaign.ts";
@@ -97,7 +98,7 @@ async function main(): Promise<void> {
     strong: (task, _version, kill) => campaign.solveOnce(task, harness, stronger, kill),
     test: (task, _version, kill) => campaign.solveOnce(task, harness, campaign.test, kill),
     screening: { solves: Number(values.screen), fails: Number(values.fails) },
-    ...(referee === undefined ? {} : { referee }),
+    ...keyIfDefined("referee", referee),
     refereeDecides: values["referee-decides"],
     model: modelNamed(examiner),
     effort: effort(values["examiner-effort"]),

@@ -54,7 +54,7 @@ import { conditionsOf } from "../kernel/condition.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import type { Counted } from "../kernel/solve.ts";
 import { screen, taskStates } from "../kernel/task.ts";
-import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
+import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { join } from "../meta/path.ts";
 import { asError, errorMessage } from "../meta/runtime-values.ts";
 import type { RefereeFinding } from "../review/referee.ts";
@@ -177,15 +177,6 @@ const REPORT_KEYS = [
 /** The kinds of fail a solver owns outright, as `solve.ts` types them. */
 const FAILS = ["rejected", "wall-ended", "context-ended", "no-answer"] as const;
 
-/** Refuse a session that did not run its course. */
-function ranItsCourse(id: string, ended: string): void {
-  if (ended === "killed" || ended === "crashed") {
-    throw new Error(
-      `session ${id} ${ended === "killed" ? "was killed" : "crashed"}, so what it froze is not compared; a round under a new session id starts again`,
-    );
-  }
-}
-
 /** What session `id` left, from the log: undefined when it never ran, and otherwise the harness to
  *  compare, null when it left none, with why when what it left does not open. */
 async function left(events: readonly LogEvent[], request: BuildRequest, old: string) {
@@ -201,7 +192,12 @@ async function left(events: readonly LogEvent[], request: BuildRequest, old: str
       `session ${request.id} started and never finished; a round does not run a second session under one id`,
     );
   }
-  ranItsCourse(request.id, isString(finished.ended) ? finished.ended : "");
+  const { ended } = finished;
+  if (ended === "killed" || ended === "crashed") {
+    throw new Error(
+      `session ${request.id} ${ended === "killed" ? "was killed" : "crashed"}, so what it froze is not compared; a round under a new session id starts again`,
+    );
+  }
   const broken = isString(finished.broken) ? finished.broken : null;
   if (finished.changed !== true || !isString(finished.harness)) return { kept: null, broken };
   const dir = join(request.states, finished.harness);
@@ -269,9 +265,7 @@ function unsolved(tasks: readonly Had[], solves: number, old: Kept, fresh: Kept)
         { had: task.fresh.length, under: fresh },
       ];
       if ((index + slot) % 2 === 1) sides.reverse();
-      for (const side of sides) {
-        if (side.had <= slot) jobs.push({ task: task.task, under: side.under });
-      }
+      jobs.push(...sides.flatMap(({ had, under }) => (had <= slot ? [{ task: task.task, under }] : [])));
     }
   }
   return jobs;
@@ -405,7 +399,7 @@ function floor(request: RoundRequest) {
   ]);
   const faults: string[] = [];
   const flagged = new Set<string>();
-  const failure: { thrown: Error | null } = { thrown: null };
+  let thrown: Error | null = null;
   // The tasks this round disputed, kept beside the log so that a job does not read the whole of it.
   const dropped = new Set(
     movedBy(read(log), id)
@@ -414,7 +408,7 @@ function floor(request: RoundRequest) {
   );
   /** The disputed tasks the plan's rule counts: those outside the anchor. */
   const defects = () => [...dropped].filter((version) => !anchored.has(version));
-  const going = () => failure.thrown === null && !kill.aborted && defects().length <= request.defects;
+  const going = () => thrown === null && !kill.aborted && defects().length <= request.defects;
   const dispute = (version: string, solve: string, reason: string) => {
     if (dropped.has(version) || taskStates(read(log)).get(version) === "disputed") return;
     dropped.add(version);
@@ -448,7 +442,7 @@ function floor(request: RoundRequest) {
         try {
           await run(job);
         } catch (error) {
-          failure.thrown ??= asError(error);
+          thrown ??= asError(error);
           halt.abort();
         }
       }
@@ -457,7 +451,7 @@ function floor(request: RoundRequest) {
   };
   /** Throw what stopped the solves, if a solve or a kill did. */
   const settle = () => {
-    if (failure.thrown !== null) throw failure.thrown;
+    if (thrown !== null) throw thrown;
     if (kill.aborted) throw new Error("the round was killed; run it again and it goes on from its log");
   };
   return { drain, going, settle, defects, dropped, faults, flagged };
@@ -546,8 +540,8 @@ export async function round(request: RoundRequest): Promise<RoundReport> {
       level: request.level,
       broken: built.broken,
       reviewFaults: work.faults,
-      // SAFETY: a report is strings, numbers and lists and records of them.
-      ...(told_ as unknown as JsonObject),
+      // A report is strings, numbers and lists and records of them.
+      ...asRecord(told_),
     });
     return told_;
   };

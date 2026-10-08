@@ -21,7 +21,7 @@ async function run(wall: CommandWall, command: string, stage?: (work: string) =>
   const result = await runWalled(wall, command, {
     onData,
     timeout,
-    ...(stage === undefined ? {} : { stage: ({ work }: { work: string }) => stage(work) }),
+    stage: ({ work }) => stage?.(work),
   });
   return { exitCode: result.exitCode, output };
 }

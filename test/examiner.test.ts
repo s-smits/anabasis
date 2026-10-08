@@ -18,7 +18,7 @@ import type { Ending } from "../src/kernel/solve.ts";
 import { type TaskPackage, taskStates, taskVersion } from "../src/kernel/task.ts";
 import type { Task, Verifier } from "../src/kernel/verify.ts";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
-import { asRecord, type JsonObject, type JsonValue } from "../src/meta/json-shape.ts";
+import { asRecord, isFunction, type JsonObject, type JsonValue } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import type { RefereeFinding } from "../src/review/referee.ts";
@@ -143,13 +143,14 @@ function setup(responses: FauxResponseStep[], test: (base: number, nth: number) 
     ],
   });
   faux.setResponses(
-    responses.map((step) =>
-      typeof step === "function"
-        ? step
-        : (context: unknown) => {
-            sent.push(JSON.stringify(context));
-            return step;
-          },
+    responses.map(
+      (step): FauxResponseStep =>
+        isFunction(step)
+          ? step
+          : (context) => {
+              sent.push(JSON.stringify(context));
+              return step;
+            },
     ),
   );
   const models = createModels();

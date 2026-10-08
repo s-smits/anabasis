@@ -40,7 +40,8 @@ import {
 import { readFileSync } from "../meta/filesystem.ts";
 import { jsonPathTokens, resolveJsonPath } from "../meta/json-evidence.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
-import { isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
+import { isString, type JsonValue } from "../meta/json-shape.ts";
+import { keyIfNotNull, keysIf } from "../meta/optional-key.ts";
 import { join } from "../meta/path.ts";
 import { text, tool } from "../solve/answer.ts";
 import { conclusive, type ProbeRow, probeTool } from "./probe.ts";
@@ -70,6 +71,13 @@ export interface RefereeFinding {
   readonly reason: string;
   /** The probes the ruling cites. */
   readonly probes: readonly number[];
+}
+
+/** What a ruling may name of one refusing check: the fields of the answer it reads and the public
+ *  rules it cites. */
+interface Refusing {
+  readonly fields: readonly string[];
+  readonly rules: readonly string[];
 }
 
 const REASON_MAX_CHARS = 700;
@@ -202,18 +210,11 @@ function readProgramTool(checks: string) {
   });
 }
 
-/** What a ruling may name of one refusing check: the fields of the answer it reads and the public
- *  rules it cites. */
-interface Refusing {
-  readonly fields: readonly string[];
-  readonly rules: readonly string[];
-}
-
 function rulingTool(
   refusing: ReadonlyMap<string, Refusing>,
   answer: JsonValue,
   rows: readonly ProbeRow[],
-  found: { finding?: RefereeFinding },
+  found: RefereeFinding[],
 ) {
   return tool({
     name: "record_ruling",
@@ -278,14 +279,14 @@ function rulingTool(
         }
       }
       const earned = args.ruling === "earned";
-      found.finding = {
+      found.push({
         ruling: args.ruling,
         check: args.ruling === "check-defect" ? (args.check ?? null) : null,
         rule: earned ? (args.rule ?? null) : null,
         field: earned ? (args.field ?? null) : null,
         reason: args.reason.trim(),
         probes: [...new Set(args.probes)].sort((a, b) => a - b),
-      };
+      });
       return { ...text("Recorded."), terminate: true };
     },
   });
@@ -302,7 +303,7 @@ export async function referee(reader: Reader, fail: RefereeCase): Promise<Refere
   const replay = verdict?.fault === null ? await fail.verify(fail.task, verdict.answer) : null;
   const host = hostRuling(verdict, replay);
   const rows: ProbeRow[] = [];
-  const found: { finding?: RefereeFinding } = {};
+  const found: RefereeFinding[] = [];
   const accepted = events.findLast(
     ({ kind, data }) => kind === "verdict" && data.task === fail.task.taskId && data.kind === "pass",
   )?.data.answer;
@@ -333,7 +334,7 @@ export async function referee(reader: Reader, fail: RefereeCase): Promise<Refere
           ),
         ]);
   const finding = host ??
-    found.finding ?? {
+    found.at(-1) ?? {
       ruling: "unclear",
       check: null,
       rule: null,
@@ -341,13 +342,12 @@ export async function referee(reader: Reader, fail: RefereeCase): Promise<Refere
       reason: "the Referee recorded no ruling",
       probes: [],
     };
-  // SAFETY: a finding is strings and numbers, and a replay and probe rows add verdicts, all JSON.
   append(fail.log, "referee.finding", {
     solve: fail.solve,
     task: fail.task.taskId,
-    ...(finding as unknown as JsonObject),
-    ...(replay === null ? {} : { replay }),
-    ...(meter === null ? {} : { ...meter, probeRows: rows as unknown as JsonValue }),
+    ...finding,
+    ...keyIfNotNull("replay", replay),
+    ...keysIf(meter !== null, () => ({ ...meter, probeRows: rows })),
   });
   return finding;
 }

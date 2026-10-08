@@ -324,6 +324,7 @@ describe("the reader on a campaign whose exam follows its harness", () => {
   put("task.gate", { version: "r1", gate: 2, outcome: "too-hard", solve: ran("r1", "hp", "fail", "strong") });
   put("task.state", { version: "r1", state: "too-hard", session: "x-1" });
   put("exam.word", { session: "x-1", version: "r1", word: "too hard" });
+  put("exam.finished", { session: "x-1", proposed: 1, words: { r1: "too hard" } });
   // Round one: both harnesses fail t2 twice, and both pass t3 three times.
   put("build.started", { session: "b-1", parent: "hp", tasks: [] });
   put("build.finished", { session: "b-1", ended: "finished", harness: "hc", changed: true });
@@ -340,6 +341,7 @@ describe("the reader on a campaign whose exam follows its harness", () => {
   put("task.gate", { version: "r1", gate: 2, outcome: "passed", solve: ran("r1", "hp", "pass", "strong") });
   put("task.gate", { version: "r1", gate: 3, outcome: "passed" });
   put("task.state", { version: "r1", state: "held", session: "x-2" });
+  put("exam.finished", { session: "x-2", proposed: 0, words: { r1: "scored" } });
   // Round two starts from the step. Its parent's three fails of t2 are on record, so it admits the
   // task again with no screening solve, and scores it on fresh ones.
   put("build.started", { session: "b-2", parent: "hc", tasks: [] });
@@ -377,6 +379,9 @@ describe("the reader on a campaign whose exam follows its harness", () => {
       "1 of 1 tasks a stronger solve had failed were passed when tried again",
     ]);
     expect(of("EXAMINER BEHIND THE FRONTIER")).toEqual(["x-2 stood on hp, and the last step had left hc"]);
+    // x-2 proposed nothing and bracketed the task it tried again: one of the one it put to the
+    // stronger solver, and not one of none.
+    expect(of("BRACKETED BY SESSION")).toEqual(["x-1 0 of 1; x-2 1 of 1"]);
   });
 
   it("says where the campaign stands and what binds its climb", () => {

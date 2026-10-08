@@ -136,6 +136,7 @@ const TOO_HARD = "too hard";
 const TEST = "test";
 const BUILD_END = "build.finished";
 const EXAM_END = "exam.finished";
+const EXAM_START = "exam.started";
 
 /** Every trigger this reader can print, and the lane it starts. `lanes.md` names each one in the
  *  `Starts from` paragraph of that lane, and `test/wri-catalogue.test.ts` holds the two together. */
@@ -546,7 +547,7 @@ function taskTriggers(log: Index): Trigger[] {
   // wrote against a solver the campaign has left behind.
   const behind = log.events.flatMap(({ kind, data }, index) => {
     const stood = frontierOf(log.events.slice(0, index));
-    if (kind !== "exam.started" || stood === null || data.standsOn === stood) return [];
+    if (kind !== EXAM_START || stood === null || data.standsOn === stood) return [];
     return [
       `${text(data.session)} stood on ${isString(data.standsOn) ? short(data.standsOn) : "no named harness"}, and the last step had left ${short(stood)}`,
     ];
@@ -563,9 +564,20 @@ function taskTriggers(log: Index): Trigger[] {
           `${build.session}: ${String(round.retired.length)}, ${String(once)} of them admitted by an earlier round`,
         ];
   });
+  // A session's words cover the tasks it proposed and the reach tasks it put to the stronger
+  // solver again, which it did not propose: both are what its scored words are a share of. Over
+  // its proposals alone, a simulated session that wrote two tasks and tried two again read
+  // "4 of 2" (2026-10-08).
+  const triedAgain = new Map(
+    log.of(EXAM_START).map((data) => {
+      const [listed, most] = [items(data.reach).length, asRecord(data.limits)?.candidates];
+      return [text(data.session), isNumber(most) ? Math.min(listed, most) : listed];
+    }),
+  );
   const bracketed = log.of(EXAM_END).map((data) => {
     const scored = Object.values(asRecord(data.words) ?? {}).filter((word) => word === "scored").length;
-    return `${text(data.session)} ${share(scored, count(data.proposed))}`;
+    const put = count(data.proposed) + (triedAgain.get(text(data.session)) ?? 0);
+    return `${text(data.session)} ${share(scored, put)}`;
   });
   return [
     ...(proposed.length > 0 && feasible * 2 < proposed.length
@@ -626,7 +638,7 @@ function climbOf(log: Index) {
   if (ran === undefined || harness === undefined) return null;
   const stand: Stand = { harness, setting: settingId(ran) };
   const report = log.builds.findLast((build) => build.report !== null)?.report;
-  const asked = asRecord(report?.screening) ?? asRecord(log.of("exam.started").at(-1)?.screening);
+  const asked = asRecord(report?.screening) ?? asRecord(log.of(EXAM_START).at(-1)?.screening);
   const rule = { solves: count(asked?.solves) || SCREENING_SOLVES, fails: count(asked?.fails) || 2 };
   return {
     stand,
@@ -1176,7 +1188,7 @@ function rowsOf(log: Index): Row[] {
       title: "campaign and log",
       lines: [
         `${plural(log.events.length, "event")}, ${log.events[0]?.at ?? ""} to ${log.events.at(-1)?.at ?? ""}`,
-        `${plural(log.builds.length, "Builder session")}, ${plural(log.of("exam.started").length, "Examiner session")}, ${plural(log.of("comparison.reported").length, "report")}`,
+        `${plural(log.builds.length, "Builder session")}, ${plural(log.of(EXAM_START).length, "Examiner session")}, ${plural(log.of("comparison.reported").length, "report")}`,
         `metered dollars: ${spendOf(log)
           .map(([role, dollars]) => `${role} ${dollars.toFixed(2)}`)
           .join(", ")}`,

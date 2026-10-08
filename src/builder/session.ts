@@ -64,6 +64,7 @@ import type { Diagnosis } from "../review/diagnoser.ts";
 import type { RefereeFinding } from "../review/referee.ts";
 import { stringOf } from "../review/trace.ts";
 import { type CommandWall, type SolveDirs, solveDirs } from "../solve/command.ts";
+import type { PublicResource } from "../solve/answer.ts";
 import { openHarness } from "../solve/harness.ts";
 import { type PublicTask, publicView } from "../solve/prompt.ts";
 import { type SolveRequest, solve, traceSink } from "../solve/run.ts";
@@ -111,6 +112,8 @@ export interface BuildRequest {
   /** Released tasks, and nothing else. */
   readonly tasks: readonly PracticeTask[];
   readonly contract: Contract;
+  /** The public resources each solve's home holds, which the session's home holds as one file. */
+  readonly resources: readonly PublicResource[];
   readonly model: Model<Api>;
   readonly effort: ThinkingLevel;
   readonly limits: BuildLimits;
@@ -208,6 +211,7 @@ export async function session(
   });
   if (toolTree !== null) cpSync(toolTree, join(dirs.home, "harness", ".toolchain"), copy);
   mkdirSync(join(dirs.home, "practice"), { recursive: true });
+  writeFileSync(join(dirs.home, "resources.json"), `${capturedJsonStringify(request.resources, null, 2)}\n`);
   for (const { task } of request.tasks) {
     writeFileSync(
       join(dirs.home, "practice", `${task.taskId.replace(/[^A-Za-z0-9._-]+/g, "-")}.json`),

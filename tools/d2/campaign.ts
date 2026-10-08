@@ -227,6 +227,7 @@ export async function openCampaign(args: CampaignArgs) {
     brief,
     tasks,
     contract,
+    resources,
     parent: join(args.root, "hb-bundles", `${args.sweep}-${args.cycle}`),
     test: { model: rowModel(row), effort: runtime.modelWorker.modelSelection.effort, side: "test" } as const,
     verify,

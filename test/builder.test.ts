@@ -35,7 +35,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import type { RefereeFinding } from "../src/review/referee.ts";
-import { text, tool } from "../src/solve/answer.ts";
+import { publicResource, text, tool } from "../src/solve/answer.ts";
 import { openHarness } from "../src/solve/harness.ts";
 
 const FIXTURE = new URL("fixtures/harness-min", import.meta.url).pathname;
@@ -179,6 +179,7 @@ async function setup(responses: FauxResponseStep[], endings: Ending[] = [], tree
     states: join(scratch, "states"),
     tasks: TASKS,
     contract: CONTRACT,
+    resources: [publicResource("span table", { maxSpan: 12 })],
     model: faux.getModel(),
     effort: "medium",
     limits: LIMITS,
@@ -284,6 +285,9 @@ describe("a Builder session", () => {
     expect(s.sent[0]).toContain("t-2 (family fixture): not yet solved under the harness you start from.");
     expect(s.sent[0]).toContain("3 practice solves, 10 minutes and 12 turns");
     expect(readFileSync(join(s.home, "practice", "t-1.json"), "utf8")).toContain('"base": 7');
+    // The solver's public resources, in the home as one file, which the opening message names.
+    expect(readFileSync(join(s.home, "resources.json"), "utf8")).toContain('"maxSpan": 12');
+    expect(s.sent[0]).toContain("are in resources.json");
     // The practice result: endings, records under both harnesses, the diagnosis, the budget.
     const practised = s.sent[2] ?? "";
     expect(practised).toContain("t-1: fail (rejected). Solve s-3.");

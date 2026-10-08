@@ -140,6 +140,7 @@ async function setup(responses: FauxResponseStep[], table: Table, more: readonly
     states: join(scratch, "states"),
     tasks: [{ version: "p1", task: { taskId: "t-p1", family: "fixture", publicInput: { base: 7 } } }],
     contract: CONTRACT,
+    resources: [],
     model: faux.getModel(),
     effort: "medium",
     limits: LIMITS,

@@ -104,6 +104,7 @@ async function main(): Promise<void> {
       states: campaign.states,
       tasks: sets.released.map((version) => ({ version, task: packageOf(version) })),
       contract: campaign.contract,
+      resources: campaign.resources,
       model: modelNamed(builder),
       effort: effort(values["builder-effort"]),
       limits: {

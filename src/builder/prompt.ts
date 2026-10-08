@@ -48,7 +48,7 @@ export const NUDGE =
  *  solver's (`src/solve/shell.ts`, `WALLS` and `SHELL_RULES`) with the answer left out: the command
  *  wall is the same one. */
 export const SHELL_WALLS =
-  " The command runs in a fresh private folder that is removed when it ends; what should last belongs in your home directory, where harness/ and practice/ are. It has network access, so a package your tools import, or a program the solver runs, can be installed under harness/. It can write your home directory, $TMPDIR and /tmp, and read the host's own toolchains and public runtime roots, but no repository or private data. Keep scripts and results in $HOME; do not scan the filesystem. A command has a default time limit; pass timeout for a long build, never for a search.";
+  " The command runs in a fresh private folder that is removed when it ends; what should last belongs in your home directory, where harness/, practice/ and resources.json are. It has network access, so a package your tools import, or a program the solver runs, can be installed under harness/. It can write your home directory, $TMPDIR and /tmp, and read the host's own toolchains and public runtime roots, but no repository or private data. Keep scripts and results in $HOME; do not scan the filesystem. A command has a default time limit; pass timeout for a long build, never for a search.";
 
 /** The opening message: the domain's public contract, the practice tasks with their record under the
  *  harness the session starts from, and the session's limits. A task's public part is a file in
@@ -64,6 +64,7 @@ export function firstMessage(contract: Contract, tasks: readonly Listed[], told:
     `Conventions: ${contract.conventions || "(none)"}`,
     `Scope: ${contract.scope}`,
     `The solver's answer follows this schema: ${capturedJsonStringify(contract.answerFormat)}`,
+    "The public resources every solve's home holds under public/resources/ are in resources.json.",
     `Practice tasks, each one's public part in practice/<task>.json:\n${listed.join("\n") || "(none)"}`,
     `This session has ${String(told.practiceSolves)} practice solves, ${String(Math.round(told.wallSeconds / 60))} minutes and ${String(told.turns)} turns.`,
   ].join("\n\n");

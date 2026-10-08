@@ -22,7 +22,7 @@
  * wall, writes outside the root as well.
  */
 import { mkdirSync, rmdirSync } from "../meta/filesystem.ts";
-import { resolve } from "../meta/path.ts";
+import { dirname, resolve } from "../meta/path.ts";
 import { runtimeProcess } from "../meta/process.ts";
 
 export interface DiskCap {
@@ -60,7 +60,9 @@ async function trash(path: string): Promise<void> {
  */
 export async function mountDiskCap(cap: DiskCap): Promise<ReleaseDiskCap> {
   const root = resolve(cap.root);
-  mkdirSync(root, { recursive: true, mode: 0o700 });
+  mkdirSync(dirname(root), { recursive: true });
+  // Not recursive: a root another solve or Builder session already holds is refused, not shared.
+  mkdirSync(root, { mode: 0o700 });
   const removeRoot = (): void => rmdirSync(root);
   if (runtimeProcess.platform !== "darwin") return async () => removeRoot();
   // Beside the root rather than inside it, so the image is not part of what it caps.

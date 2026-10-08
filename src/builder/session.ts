@@ -75,7 +75,7 @@ import type { PublicResource } from "../solve/answer.ts";
 import { openHarness } from "../solve/harness.ts";
 import { type PublicTask, publicView } from "../solve/prompt.ts";
 import { loopCompaction, type SolveRequest, solve, traceSink } from "../solve/run.ts";
-import { mountDiskCap, type ReleaseDiskCap } from "../verify/disk-cap.ts";
+import { mountDiskCap } from "../verify/disk-cap.ts";
 import { solveIsolationPolicy } from "../verify/solve-sandbox.ts";
 import { firstMessage, NUDGE, SYSTEM_PROMPT } from "./prompt.ts";
 import {
@@ -376,9 +376,9 @@ export async function session(
  *  every other solve. */
 export async function build(request: BuildRequest): Promise<Built> {
   const dirs = solveDirs(`build-${request.id}`);
-  let release: ReleaseDiskCap | null = null;
+  // Before the try: a claim refused because another round's session holds this id cleans up nothing.
+  const release = await mountDiskCap({ root: dirs.root, bytes: request.limits.diskBytes });
   try {
-    release = await mountDiskCap({ root: dirs.root, bytes: request.limits.diskBytes });
     for (const dir of [dirs.home, dirs.runs, dirs.host]) mkdirSync(dir, { recursive: true });
     const base = solveIsolationPolicy({
       repoRoot: request.repoRoot,
@@ -394,7 +394,7 @@ export async function build(request: BuildRequest): Promise<Built> {
     };
     return await session(request, dirs, (bench) => walledTools(bench, wall));
   } finally {
-    await release?.();
+    await release();
     rmSync(dirs.host, { recursive: true, force: true });
   }
 }

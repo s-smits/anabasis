@@ -6,7 +6,7 @@
 import { spawnTextSync as spawnSync } from "./helpers/bun-spawn-sync.ts";
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
-import { join } from "../src/meta/path.ts";
+import { dirname, join } from "../src/meta/path.ts";
 import { describe, expect, it } from "bun:test";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { mountDiskCap } from "../src/verify/disk-cap.ts";
@@ -50,4 +50,14 @@ describe("the disk cap", () => {
       rmSync(parent, { recursive: true, force: true });
     },
   );
+
+  // Two rounds once ran a Builder session under one id: the second claim failed to mount, and its
+  // cleanup removed the first's command profiles under it.
+  it("refuses a root another solve already holds, before touching it", async () => {
+    const root = join(mkdtempSync(join(tmpdir(), "ana-disk-cap-")), "solve");
+    mkdirSync(root);
+    await expect(mountDiskCap({ root, bytes: CAP_BYTES })).rejects.toThrow("EEXIST");
+    expect(existsSync(root)).toBe(true);
+    rmSync(dirname(root), { recursive: true, force: true });
+  });
 });

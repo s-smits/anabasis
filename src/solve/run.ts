@@ -103,8 +103,11 @@ export interface Played {
 }
 
 const RERUNS = 3;
-/** The text of a result or a turn the trace keeps. */
-const TRACE_TEXT_BYTES = 4096;
+/** The text of a result or a turn the trace keeps: more than pi's own tools return of an output
+ *  (50 KB), so the trace holds what the solver read. At 4 KB it held the head of a long result, and
+ *  whoever read a fail afterwards, a person or the Diagnoser, read less than the solver had. v1 cut
+ *  its traces the same way and its own investigation named that as a loss. */
+const TRACE_TEXT_BYTES = 64 * 1024;
 /** Each tool's authority, as v1's prompt named it (built-starter.ts:518-522, built-presets.ts:20-24). */
 const ROLES: Readonly<Record<string, string>> = {
   read_public_resources: "reader",

@@ -740,6 +740,37 @@ describe("a round", () => {
     expect(s.asked.filter(({ version }) => version.startsWith("c"))).toHaveLength(32);
   });
 
+  it("calls an admission carried only when the round made no solve of the task", async () => {
+    // Both candidates fail under the parent and pass under the child. The round is stopped at its
+    // eighth screening solve, with two fails of each under the parent among its own solves. Run
+    // again it admits both on those fails with no further screening solve, and neither admission
+    // is `carried`: that word is for a task admitted on solves made before the round.
+    let stop = 8;
+    const s = await setup([edit, finish], (version, fresh, nth) => {
+      stop -= 1;
+      if (stop === 0) throw new Error("the run stops");
+      if (!version.startsWith("c")) return step(version, fresh, nth);
+      return fresh ? PASS : FAIL;
+    });
+    const asked = { ...s.request, candidates: ["c1", "c2"], target: 2 };
+    await expect(round(asked)).rejects.toThrow("the run stops");
+    expect(s.asked.filter(({ fresh }) => !fresh).map(({ version }) => version)).toEqual([
+      "c1",
+      "c2",
+      "c1",
+      "c2",
+    ]);
+    const report = await round(asked);
+    expect(s.of("task.state").filter((moved) => moved.session === "b-1")).toEqual([
+      { version: "c1", state: "admitted", session: "b-1" },
+      { version: "c2", state: "admitted", session: "b-1" },
+    ]);
+    // Seven screening solves before the stop and the one that threw, then two scoring solves of
+    // each task under each harness and the anchor's: no screening solve after the round went on.
+    expect(s.asked).toHaveLength(8 + 2 * 2 * 2 + 3 * 2 * 2);
+    expect(report).toMatchObject({ versions: ["c1", "c2"], scored: { wins: 2, losses: 0 } });
+  });
+
   it("leaves a candidate held when its screening solves did not all count", async () => {
     const s = await setup([edit, finish], (version, fresh, nth) =>
       version === "c1" && fresh && nth === 0

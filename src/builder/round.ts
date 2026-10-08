@@ -77,6 +77,7 @@ import { endingsOf, lastReports, standing } from "../kernel/ladder.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { screen, taskSets, taskStates } from "../kernel/task.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
+import { keyIfTruthy } from "../meta/optional-key.ts";
 import { join } from "../meta/path.ts";
 import { asError, errorMessage } from "../meta/runtime-values.ts";
 import type { RefereeFinding, Ruling } from "../review/referee.ts";
@@ -681,7 +682,8 @@ function floor(request: RoundRequest) {
  * both harnesses, and moved to the state `screen` gives it. The parent's side is the latest solves
  * the whole log holds of the task under that harness, and the child's the round's own. A task the
  * parent's solves on record already stop is admitted with no solve: either harness's fails admit,
- * so nothing the child did could change it. One whose screening solves did not all end in a pass or
+ * so nothing the child did could change it. Its admission says `carried` when the round had made
+ * no solve of the task at all. One whose screening solves did not all end in a pass or
  * a fail, or which a broken harness would have screened, stays as it was and is returned.
  */
 async function screenPool(
@@ -713,10 +715,21 @@ async function screenPool(
     const batch = waiting.splice(0, Math.max(0, request.target - admitted().length));
     if (batch.length === 0) break;
     const before = read(log);
+    // The tasks this round has started a solve of. A run of it that was stopped may have left the
+    // parent's fails of a task among its own solves, and that task is admitted on them when the
+    // round goes on: with no further solve, and not `carried`, which says a task was admitted on
+    // solves made before the round and none of its own. On 2026-10-08 a simulated round killed in
+    // its screening and run again marked five of its seven admissions so.
+    const begun = new Set(versionBySolve(since(before, id)).values());
     const open: string[] = [];
     for (const version of batch) {
       if (standing(had(before, version).old, request.screening) === "stops") {
-        append(log, TASK_STATE, { version, state: "admitted", session: id, carried: true });
+        append(log, TASK_STATE, {
+          version,
+          state: "admitted",
+          session: id,
+          ...keyIfTruthy("carried", !begun.has(version)),
+        });
       } else open.push(version);
     }
     await work.drain(

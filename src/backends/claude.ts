@@ -548,7 +548,7 @@ function close(key: string, session: Session): void {
   session.early.clear();
 }
 
-function emptyTurn(model: Model<Api>): AssistantMessage {
+export function emptyTurn(model: Model<Api>): AssistantMessage {
   return {
     role: "assistant",
     content: [],

@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { fauxAssistantMessage, fauxProvider, normalizeContext } from "@earendil-works/pi-ai";
 import { claudeExecutable, SWEEP_COMPACT_WINDOW } from "../src/backends/claude.ts";
-import { type BackendOptions, backends, compactionMode } from "../src/backends/models.ts";
+import { type BackendOptions, backends, compactionMode, retried } from "../src/backends/models.ts";
 import { mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
@@ -78,5 +79,28 @@ describe("the three backends", () => {
       "autoCompactWindow=300000",
     );
     expect(compactionMode(claude("claude-fable-5-1"), at(1_000_000))).toBe("autoCompactWindow=1000000");
+  });
+});
+
+describe("a pi-served provider's calls", () => {
+  const context = normalizeContext({
+    messages: [{ role: "user", content: "Solve the task.", timestamp: 0 }],
+  });
+  const failed = (errorMessage: string) => fauxAssistantMessage("", { stopReason: "error", errorMessage });
+
+  it("are tried again in place when the transport drops, and answer with the last attempt", async () => {
+    const faux = fauxProvider();
+    faux.setResponses([failed("WebSocket closed 1000"), fauxAssistantMessage("Done.")]);
+    const message = await retried(faux.provider).streamSimple(faux.getModel(), context).result();
+    expect(message.stopReason).toBe("stop");
+    expect(faux.state.callCount).toBe(2);
+  });
+
+  it("are not tried again on a failure no retry would mend", async () => {
+    const faux = fauxProvider();
+    faux.setResponses([failed("invalid_request_error: unknown parameter")]);
+    const message = await retried(faux.provider).streamSimple(faux.getModel(), context).result();
+    expect(message.errorMessage).toContain("unknown parameter");
+    expect(faux.state.callCount).toBe(1);
   });
 });

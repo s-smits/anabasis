@@ -5,11 +5,16 @@
  */
 import {
   type Api,
+  type AssistantMessage,
   type CredentialStore,
+  createAssistantMessageEventStream,
   createModels,
   type Model,
   type MutableModels,
   type OAuthCredential,
+  type Provider,
+  type RetryPolicy,
+  retryAssistantCall,
 } from "@earendil-works/pi-ai";
 import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-codex";
 import { openrouterProvider } from "@earendil-works/pi-ai/providers/openrouter";
@@ -18,10 +23,21 @@ import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { capturedJsonParse } from "../meta/json-runtime.ts";
 import { homedir } from "../meta/os.ts";
 import { join } from "../meta/path.ts";
-import { CLAUDE_PROVIDER, type ClaudeOptions, claudeCompactionMode, claudeProvider } from "./claude.ts";
+import { errorMessage } from "../meta/runtime-values.ts";
+import {
+  CLAUDE_PROVIDER,
+  type ClaudeOptions,
+  claudeCompactionMode,
+  claudeProvider,
+  emptyTurn,
+} from "./claude.ts";
 import { piCompactionMode } from "./pi-compaction.ts";
 
 const CODEX = "openai-codex";
+
+/** Pi coding-agent's retry of a transient provider failure, which v1 had through pi's session:
+ *  three more attempts, at 2, 4 and 8 s. */
+const RETRY: RetryPolicy = { enabled: true, maxRetries: 3, baseDelayMs: 2_000 };
 
 /** What the host decides about the backends a process serves. */
 export interface BackendOptions {
@@ -49,10 +65,40 @@ const codexLogin: CredentialStore = {
 
 export function backends(options: BackendOptions): MutableModels {
   const models = createModels({ credentials: codexLogin });
-  models.setProvider(openaiCodexProvider());
-  models.setProvider(openrouterProvider());
+  models.setProvider(retried(openaiCodexProvider()));
+  models.setProvider(retried(openrouterProvider()));
   models.setProvider(claudeProvider(options.claude));
   return models;
+}
+
+/**
+ * `provider` with a transient failure of a model call retried in place, by pi's own classifier. pi's
+ * loop has no retry of its own, so a dropped call failed the turn and the whole solve was run
+ * again: on 8 October Codex closed its WebSocket mid-response ("WebSocket closed 1000") 229 s and
+ * 6,038 s into two Sol solves, and pi rethrows a close once the response has begun. The stream
+ * answers with the last attempt's message alone, which pi's loop takes as a whole message.
+ */
+export function retried<T extends Api>(provider: Provider<T>): Provider<T> {
+  return {
+    ...provider,
+    streamSimple: (model, context, options) => {
+      const stream = createAssistantMessageEventStream();
+      const call = () => provider.streamSimple(model, context, options).result();
+      const settle = (message: AssistantMessage) => {
+        const { stopReason: reason } = message;
+        if (reason === "error" || reason === "aborted") {
+          stream.push({ type: "error", reason, error: message });
+        } else if (reason !== "pending") {
+          stream.push({ type: "done", reason, message });
+        }
+        stream.end(message);
+      };
+      retryAssistantCall(call, RETRY, options?.signal).then(settle, (error: unknown) =>
+        settle({ ...emptyTurn(model), stopReason: "error", errorMessage: errorMessage(error) }),
+      );
+      return stream;
+    },
+  };
 }
 
 /** The compaction a solve on `model` runs under, as the condition pins it. */

@@ -143,6 +143,13 @@ What the product did:
   root: three had a folder and an image and no volume, and a detach of that exits 1. A release now
   passes over a root with nothing mounted. Four more stops, from a third of a second in to after the
   solves ended, left nothing, and a stopped round went on under its session and read `step`.
+- **Claude Code went on after its solve closed.** The host folders the day's solves left behind
+  each held a log Claude Code wrote after its solve's teardown, and 14 of 35 held a call made after
+  the one that ended the solve. A live seat on the small model showed why for cents: closed on a
+  parked `submit`, Claude Code lived two to three seconds more and called `submit` twice again,
+  each a model request no meter read. An abort closes its stdin and gives it two seconds, which it
+  spends on its turn. The close now interrupts the turn first, and the same probe then called
+  nothing and was gone inside a second. A leftover nobody asked about was the lead.
 - **The pulse read a seed as a paid run**, with its source's dollars and its source's solves in
   flight. It now says `(a seed)`.
 - **A reader caught a planted contradiction.** Two rehearsed rounds made one harness pass the anchor

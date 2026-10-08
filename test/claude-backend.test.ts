@@ -80,12 +80,17 @@ function replay(name: string, edit: (text: string) => string = (text) => text): 
   writeFileSync(join(home, "replay.jsonl"), edit(text));
 }
 
-/** The one launch since the test began. */
+/** The one launch since the test began: the last to start, since the launch of the test before may
+ *  still be writing what its close sent it. */
 function launched(): Launch {
   const launch: Launch = { argv: [], env: {}, stdin: [], cwd: "" };
-  for (const line of readFileSync(join(home, "launch.jsonl"), "utf8").trim().split("\n")) {
-    const entry = asRecord(capturedJsonParse(line));
-    const { argv, env, stdin, cwd } = entry ?? {};
+  const entries = readFileSync(join(home, "launch.jsonl"), "utf8")
+    .trim()
+    .split("\n")
+    .map((line) => asRecord(capturedJsonParse(line)) ?? {});
+  const last = entries.findLast((entry) => Array.isArray(entry.argv))?.pid;
+  for (const entry of entries.filter(({ pid }) => pid === last)) {
+    const { argv, env, stdin, cwd } = entry;
     if (isString(cwd)) launch.cwd = cwd;
     if (Array.isArray(argv)) launch.argv = argv.filter(isString);
     launch.env = asRecord(env) ?? launch.env;
@@ -289,15 +294,21 @@ describe("the Claude backend", () => {
   });
 
   // A submit ends pi's loop while Claude Code still waits on the call's result; the solve's abort,
-  // not a later turn, is what ends that query.
-  it("ends a query left open when the solve's signal aborts between turns", async () => {
+  // not a later turn, is what ends that query. It interrupts the turn first: Claude Code left to
+  // find its stdin closed goes on with the turn and asks the model again.
+  it("interrupts and ends a query left open when the solve's signal aborts between turns", async () => {
     replay("parallel-tools.jsonl");
     const context = (messages: Message[]) =>
       normalizeContext({ systemPrompt: "You are a solver.", messages, tools: [read] });
     const options = solveOptions();
     const first = await sweep.streamSimple(recorded, context([opening]), options).result();
     expect(first.stopReason).toBe("toolUse");
+    const interrupted = () =>
+      launched().stdin.some((sent) => asRecord(sent.request)?.subtype === "interrupt");
+    expect(interrupted()).toBe(false);
     solve.abort();
+    for (let waited = 0; waited < 2000 && !interrupted(); waited += 20) await Bun.sleep(20);
+    expect(interrupted()).toBe(true);
     const next = { ...options, signal: new AbortController().signal };
     const after = await sweep
       .streamSimple(recorded, context([opening, first, ...answered(first)]), next)

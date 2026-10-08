@@ -16,8 +16,10 @@
  *   `--labels`, which stand over them. A refusal may be withdrawn only from an answer ruled a check
  *   defect. One withdrawn from an answer ruled earned, or from one nobody read, and an accepted
  *   answer newly refused, each count against the repair.
- * - The repaired pack's own controls are put to it twice (`acceptance`), as `accept.ts` puts a
- *   campaign's: a repair that passes a reject control or refuses an accept control is no repair.
+ * - The repaired pack's own controls are put to it twice, and to the old checker, whose staged
+ *   check program stands beside the log. A control that held under the old checker and does not
+ *   under the repaired one counts against the repair: it passes a reject control or refuses an
+ *   accept control. One that held under neither is stale and is counted apart.
  *
  * It exits 1 when anything counts against the repair. That is a reading and no refusal: the log
  * stays the frozen checker's, the repaired one takes a campaign of its own (`accept.ts --freeze`),
@@ -26,19 +28,19 @@
  *
  * It needs the repaired pack and its tool tree on disk, and the Mac's verifier wall.
  */
-import { acceptance, frozenChecker, regraded, runControls } from "#src/kernel/acceptance.ts";
+import { controlFault, frozenChecker, regraded, runControls } from "#src/kernel/acceptance.ts";
 import { read } from "#src/kernel/log.ts";
-import { checkProgramVersion, openVerifier, readBrief } from "#src/kernel/verify.ts";
-import { mkdtempSync, readFileSync, rmSync } from "#src/meta/filesystem.ts";
+import { checkProgramVersion, openVerifier } from "#src/kernel/verify.ts";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { tmpdir } from "#src/meta/os.ts";
-import { join } from "#src/meta/path.ts";
+import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { plural } from "#src/meta/text.ts";
 import { labelled, repairReading } from "#src/review/rejections.ts";
 import { writtenTasks } from "../d2/campaign.ts";
-import { checkProgram, packControls, readPack, toolOnPath } from "../m0/stored-sweep.ts";
+import { checkProgram, packControls, readPack } from "../m0/stored-sweep.ts";
 
 const { values } = parseArgs({
   options: {
@@ -78,10 +80,40 @@ async function main(): Promise<number> {
     );
     const reading = repairReading(rows, events, labels);
     console.log(capturedJsonStringify(reading, null, 2));
+    // The repaired pack's controls under both checkers. A control counts against the repair when
+    // it held under the old checker and does not under this one: the repair broke it. One that did
+    // not hold before says nothing of the repair: on 8 October all 35 of the truss pack's accept
+    // controls had gone stale, and counted here they refused every repair of it.
     const pack = readPack(bundle).tasks;
-    const runs = await runControls(verify, pack, packControls(bundle), Number(values.jobs));
-    const { faults } = acceptance(readBrief(checks), pack, runs, [], toolOnPath(bundle));
+    const controls = packControls(bundle);
+    const jobs = Number(values.jobs);
+    const now = await runControls(verify, pack, controls, jobs);
+    const old = join(dirname(log), "checks");
+    const before = existsSync(old)
+      ? await runControls(
+          openVerifier({ checks: old, tools: join(bundle, ".toolchain") }),
+          pack,
+          controls,
+          jobs,
+        )
+      : null;
+    const heldBefore = (index: number) => {
+      const run = before?.[index];
+      return run === undefined || controlFault(run) === null;
+    };
+    const failing = now.flatMap((run, index) => {
+      const fault = controlFault(run);
+      return fault === null ? [] : [{ fault, broken: heldBefore(index) }];
+    });
+    const faults = failing.flatMap(({ fault, broken }) => (broken ? [fault] : []));
     for (const fault of faults) console.log(`fault: ${fault}`);
+    const stale = failing.length - faults.length;
+    if (stale > 0) {
+      console.log(
+        `${plural(stale, "control")} did not hold under the old checker either, and ${stale === 1 ? "says" : "say"} nothing of the repair`,
+      );
+    }
+    if (before === null) console.log(`no check program beside ${log}: every control fault is counted`);
     const against = reading.against.length + faults.length;
     console.log(
       against === 0

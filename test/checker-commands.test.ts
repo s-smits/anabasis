@@ -356,6 +356,24 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
     const stands = command("tools/c/repaired.ts", { log, bundle: repaired, labels });
     expect(stands.said).toContain("the repair stands on what was read");
     expect(stands.code).toBe(0);
+    // A control that held under neither checker is stale, and says nothing of the repair.
+    const repairedModel = join(repaired, "correctness-model");
+    controls("13", repairedModel, "25");
+    const stale = command("tools/c/repaired.ts", { log, bundle: repaired, labels });
+    expect(stale.said).toContain(
+      "1 control did not hold under the old checker either, and says nothing of the repair",
+    );
+    expect(stale.said).toContain("the repair stands on what was read");
+    expect(stale.code).toBe(0);
+    // One the old checker refused and the repaired one lets through is the repair's own fault.
+    controls("12.5", repairedModel);
+    const broke = command("tools/c/repaired.ts", { log, bundle: repaired, labels });
+    expect(broke.said).toContain(
+      "fault: a reject control of t-1 names check-product, which did not refuse it: pass",
+    );
+    expect(broke.said).toContain("1 finding against the repair");
+    expect(broke.code).toBe(1);
+    controls("13", repairedModel);
     expect(readFileSync(log, "utf8")).toBe(before);
   });
 

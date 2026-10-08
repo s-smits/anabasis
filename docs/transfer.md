@@ -64,7 +64,7 @@ A second Builder on the local branch `claude/builder-session` did the same job a
 | harness_reset | builder/harness-reset.ts:10 | reset to the seed | missing | no mid-session reset; whatever ended the session, what `harness/` holds is frozen |
 | harness_trial | builder/harness-trial.ts:322 | practice solve | replaced | `practice`: real solves of released tasks under the test condition. It returns the ending, the task's record under this harness and the parent, and the Referee's and Diagnoser's readings, never a check (decision 16). `read_trace` pages a practice solve. |
 | correctness_check, submit | gate/check-tool.ts:179; gate/submit-tool.ts:168 | previews or runs the submit gates | replaced | `finish`; the one gate is that the frozen harness opens and lists its tools as a solve would |
-| submit gates over correctness-model | gate/validation-pipeline.ts and others | bundle, admission, conformance, census, F2 | replaced | fixed contract plus the task gates in task.ts (plan:68) |
+| submit gates over correctness-model | gate/validation-pipeline.ts and others | bundle, admission, conformance, census, F2 | replaced | fixed contract plus the task gates in task.ts (plan:68) Nothing in v2 accepts a checker as a whole before it is used; `src/kernel/acceptance.ts` reads one (open #24) and decides nothing |
 | session and turn loop | author/builder-session.ts:314; author/builder-turn-loop.ts:25; author/builder-start-prompt.ts | the session and its limits | ported | `session()` over pi's `runAgentLoop`; the prompt takes `INTENT_CLAUSE` from builder-start-prompt.ts and keeps the rule of `NO_GRADER_IN_REACH`, said by the public rules, since this Builder sees no check; the wall, turns and practice solves are the round's flags |
 | Builder backend | run/builder-backend.ts; backends/claude-backend.ts:337 | Builder transport | replaced | the same `Models` as the solver; the Claude backend's cost as `reportedCost`. v1's Builder was a Claude Code session with Claude Code's tools; here it is sent its own prompt without Claude Code's before it, and keeps WebSearch |
 | command guard | builder/command-guard.ts | refuses destructive commands | dropped | the wall holds and the session works on a copy (the simpler, more lenient choice) |
@@ -75,11 +75,11 @@ A second Builder on the local branch `claude/builder-session` did the same job a
 
 | v1 part | v1 location | does | v2 | v2 owner, or why |
 |---|---|---|---|---|
-| Builder writes battery and checker | starter correctness-model/ | the author writes its own exam | replaced | the Examiner writes task instances; contract and checker stay fixed (plan:68, :328) |
+| Builder writes battery and checker | starter correctness-model/ | the author writes its own exam | replaced | the Examiner writes task instances; contract and checker stay fixed (plan:68, :328) No role in v2 writes or repairs a checker: the operator owns it for now, and the plan's decisions 38 and 47 settle who does |
 | Examiner session | none in v1 | writes task instances | open #9 | `src/examiner/session.ts`: instances through gates 1 to 4, one word back (D1b, plan:316) |
 | difficulty guidance prompts | author/task-battery-difficulty.ts:57, :61 | difficulty to aim for | open #9 | the Examiner's prompt, `src/examiner/prompt.ts` |
 | validateTasks | truth/tasks.ts:283 | task schema | replaced | packageGate (gate 1; decisions 23, 25) |
-| controls, probes | truth/controls.ts:350; truth/run-controls.ts:439; truth/probes.ts:99 | runs controls against the checker | ported | controlsGate. Who writes controls for Examiner tasks is open. |
+| controls, probes | truth/controls.ts:350; truth/run-controls.ts:439; truth/probes.ts:99 | runs controls against the checker | ported | controlsGate. Who writes controls for Examiner tasks is open. The whole pack's controls, twice, with each check's tally: `tools/c/accept.ts` (open #24) |
 | reference solve (F2) | truth/reference-solve.ts:326 | proves a task solvable | replaced | gate 2, a stronger condition passes (plan:151) |
 | climb battery admission | run/climb-battery-admission.ts:266 | admits by difficulty | replaced | screen and task states; a driver exists over stored solves only (`tools/m1/admit-sweep.ts`) |
 | band placement, fingerprint, claimability | claim/*.ts | band, identity, discrimination | replaced | bracket, `taskVersion`, M2's sign test |
@@ -115,6 +115,8 @@ A second Builder on the local branch `claude/builder-session` did the same job a
 | Judge | truth/judge*.ts and others | second grading | dropped | plan:72, plan:47 |
 | diagnosis reader, review probe | review/*.ts | reads failed traces; reviewer loop | ported | `src/review/diagnoser.ts`, `probe.ts`, `reader.ts`; M3 waits on G4. The reader's and the Examiner's Claude homes are named `ana-claude-cli-`, which every solver's wall denies; the tool examples name no task domain. A reviewer and an Examiner are sent their own prompt alone and have no built-in tool |
 | Referee | none in v1 | rules on disputes | open #8, #11 | `src/review/referee.ts`; the round's Referee advises on screening and scoring fails, and disputes a task only with `--referee-decides` |
+| acceptance of a checker | gate/validation-pipeline.ts census and grounding, at submit | every check seen to say no, every control its label | open #24 | `acceptance()` in `src/kernel/acceptance.ts`, run over a stored pack by `tools/c/accept.ts` with no model: controls twice, each check's passes and refusals over controls and stored verdicts, its instrument, its tools on the verifier's path. A fault is reported, never decided on |
+| reading of a pack's rejections | none in v1 before a pack was used; `notes/` censuses after | whether the answers a checker refused were wrong | open #24 | `tools/c/rejections.ts`: the sweep's rejected answers logged as this verifier grades them, a seeded sample labelled blind by a person, then the Referee on every one; `src/review/rejections.ts` counts, `agreement.ts` sets rulings against labels. Not run with a model |
 | outcome and triage reports | tools/outcome, tools/runs, tools/run-triage | run reports | missing | fail kinds, flip and repeat rates, supply (plan:254-255, :297, :332). The round's report carries each harness's mean solve seconds over the scored set, beside the tally |
 | export | run/bundle-export.ts | an adopted harness as a directory with its own `solve` and `check` | deferred | M4: an export follows adoption. It is also the input format a second domain would take (v1's documented output) |
 | Harbor task format | `harbor/` in v1 at `3f93d06`, after 7af7315 | each exported task in Harbor's format | unsure | no plan line |
@@ -144,6 +146,7 @@ Ranked by how much each delays a live round once the open stack lands.
 2. **The first live round.** `tools/d2/round.ts`, `tools/d1b/examine.ts` and `admit-sweep --log` have never run against a model, and #5's Builder has not run live either.
 3. **Model preflight.**
 4. **Run reports:** fail kinds, flip and repeat rates, supply.
-5. **The unsure rows** above, to decide.
+5. **The checker's owner.** Nothing writes, repairs or accepts a check program; Phase C's two commands read one (open #24), and the plan's decision 38 names who acts on what they find.
+6. **The unsure rows** above, to decide.
 
 Not ranked, as G4 has not passed: the **deferred** rows. They are adopt or hold (select a kept version as the product, or keep the one before), and the controller loop (M4): the fullrun entry, rounds, the next move, terminal stops, the lock, resume, and the Builder's MEMORY.md carried forward.

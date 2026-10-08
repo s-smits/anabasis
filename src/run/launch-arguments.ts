@@ -33,6 +33,9 @@ export interface FullRunArgs {
    *  round in flight still records its battery, so nothing is killed. The alternative is a manual
    *  kill, which discards every accepted artifact the round has not yet verified. */
   stopAfterMs?: number;
+  /** The launcher's hard stop, epoch ms (`--kill-after-ms` arms it): the Builder is told when it
+   *  falls. An instant rather than a remainder, so it is the run's own and left out of the digest. */
+  stopAt?: number;
   /** Builder session turns per iteration; absent, a round has no turn cap. A staged rehearsal sets a
    *  small value so the session settles at the ceiling instead of running to a submit. */
   maxBuilderTurns?: number;
@@ -61,7 +64,7 @@ export interface FullRunArgs {
 }
 
 const FULL_RUN_USAGE =
-  'usage: fullrun --prompt "<request>" --provider-turn-budget N [--project <id>] [--context <path> ...] [--expected-source <commit>:<digest>] [--run <runId>] [--max-iterations N] [--max-batteries N] [--stop-after-ms N] [--max-builder-turns N] [--expected-tasks N] [--iteration-budget N|none] [--product-policy fixed] [--dcg true|false] [--withhold-instruments true|false] [--answer-agent true|false] [--builder-backend <kind>] [--built-backend <kind>] [--review-backend <kind|disabled|inherit>]';
+  'usage: fullrun --prompt "<request>" --provider-turn-budget N [--project <id>] [--context <path> ...] [--expected-source <commit>:<digest>] [--run <runId>] [--max-iterations N] [--max-batteries N] [--stop-after-ms N] [--stop-at <epoch ms>] [--max-builder-turns N] [--expected-tasks N] [--iteration-budget N|none] [--product-policy fixed] [--dcg true|false] [--withhold-instruments true|false] [--answer-agent true|false] [--builder-backend <kind>] [--built-backend <kind>] [--review-backend <kind|disabled|inherit>]';
 
 /** What one flag does to the arguments. The flag name is passed back in so the appliers below
  *  can stay one line each and still name themselves in their refusals. */
@@ -105,12 +108,13 @@ function sourceIdentity(value: string): NonNullable<FullRunArgs["expectedSource"
   return { commit: value.slice(0, 40), sourceDigest: value.slice(41) };
 }
 
-/** The six flags that are a plain count. */
+/** The seven flags that are a plain count. */
 function counted(
   field:
     | "maxIterations"
     | "maxBatteries"
     | "stopAfterMs"
+    | "stopAt"
     | "maxBuilderTurns"
     | "expectedTasks"
     | "providerTurnBudget",
@@ -143,6 +147,7 @@ const FLAGS = new Map<string, Apply>([
   ["--max-iterations", counted("maxIterations")],
   ["--max-batteries", counted("maxBatteries")],
   ["--stop-after-ms", counted("stopAfterMs")],
+  ["--stop-at", counted("stopAt")],
   ["--max-builder-turns", counted("maxBuilderTurns")],
   ["--expected-tasks", counted("expectedTasks")],
   ["--provider-turn-budget", counted("providerTurnBudget")],
@@ -226,9 +231,9 @@ export function parseFullRunArgs(argv: string[]): FullRunArgs {
 
 /** The condition's digest, which the opening records as `command.digest` and the launcher's probe
  *  predicts. It leaves out the request text, which `requestDigest` stands for, and the run's own
- *  identity (its id, source and project), which the opening records beside it, so two runs of one
- *  condition share it and a pair that differs in it moved a flag. */
-export function commandDigest(args: FullRunArgs, requestDigest: string): string {
+ *  identity (its id, source, project and stop instant), which the opening records beside it, so
+ *  two runs of one condition share it and a pair that differs in it moved a flag. */
+export function commandDigest({ stopAt: _instant, ...args }: FullRunArgs, requestDigest: string): string {
   return hashJsonValue({
     ...args,
     prompt: null,

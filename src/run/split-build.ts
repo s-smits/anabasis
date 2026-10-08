@@ -238,7 +238,7 @@ async function harnessPass(split: SplitBuild, pass: number) {
 
 /** The round's sessions in turn, until the Harness Builder's submit settles or the passes run out. */
 export async function runSplitBuild(split: SplitBuild): Promise<SessionOutcome> {
-  const conversation = new BuilderConversation();
+  const conversation = new BuilderConversation(split.deps.conversation?.stopAt);
   let returned: ContractFinding[] = [];
   let last: SessionOutcome | null = null;
   try {

@@ -14,7 +14,8 @@ import type { LogEvent } from "../kernel/log.ts";
 import { isString } from "../meta/json-shape.ts";
 import type { Ruling } from "./referee.ts";
 
-const RULINGS = ["earned", "check-defect", "unclear"] as const;
+/** The Referee's three rulings, which are a person's three labels too. */
+export const RULINGS = ["earned", "check-defect", "unclear"] as const;
 
 /** The bar, frozen before the Referee reads a labelled fail. */
 export interface Bar {

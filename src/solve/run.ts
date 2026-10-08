@@ -264,6 +264,13 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
   };
 }
 
+/** A v2 solve serves the shell preset alone, so a harness that names another fails every solve. The
+ *  Builder's freeze asks the same question, before a practice solve is spent on the answer. */
+export function refuseOtherPresets(harness: Pick<Harness, "presets">): void {
+  const other = harness.presets.filter((preset) => preset !== "shell");
+  if (other.length > 0) throw new Error(`a v2 solve serves the shell preset alone, not ${other.join(", ")}`);
+}
+
 /** The harness's domain tools, its artifact-writer bound to the contract, then the host's own, each
  *  description led by its authority as v1's prompt gave it (built-starter.ts:120-153). */
 export async function solverTools(
@@ -273,8 +280,7 @@ export async function solverTools(
   desk: Desk,
   files: number,
 ): Promise<AgentTool[]> {
-  const other = harness.presets.filter((preset) => preset !== "shell");
-  if (other.length > 0) throw new Error(`a v2 solve serves the shell preset alone, not ${other.join(", ")}`);
+  refuseOtherPresets(harness);
   const domain = (await harnessTools(harness, request.task, wall)).map(({ kind, tool }) => ({
     role: kind,
     tool: kind === "artifact-writer" ? recordTool(tool, request.contract, desk) : tool,

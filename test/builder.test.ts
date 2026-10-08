@@ -18,10 +18,14 @@ import type { Contract } from "../src/kernel/contract.ts";
 import { append, type EventKind, read } from "../src/kernel/log.ts";
 import type { Ending } from "../src/kernel/solve.ts";
 import {
+  chmodSync,
   cpSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
+  readlinkSync,
   realpathSync,
   rmSync,
   symlinkSync,
@@ -60,20 +64,21 @@ const TASKS: PracticeTask[] = [
   { version: "v1", task: { taskId: "t-1", family: "fixture", publicInput: { base: 7 } } },
   { version: "v2", task: { taskId: "t-2", family: "fixture", publicInput: { base: 9 } } },
 ];
+const GUIDE = "Multiply before you record.\n";
+const scratches: string[] = [];
 const toolUse = { stopReason: "toolUse" } as const;
 const call = (name: string, args: JsonObject) => fauxAssistantMessage(fauxToolCall(name, args), toolUse);
-const GUIDE = "Multiply before you record.\n";
 const edit = call("write_file", { path: "agent/BUILT_AGENTS.md", content: GUIDE });
 const finish = call("finish", { note: "A shorter guide." });
 
-const scratches: string[] = [];
 afterAll(() => {
   for (const dir of scratches) rmSync(dir, { recursive: true, force: true });
 });
 
 /** A scratch with the fixture harness as the parent, and a log in which v1 and v2 are released, v0
- *  is the anchor's and v3 is admitted. `endings` are what the practice solves end in, in order. */
-async function setup(responses: FauxResponseStep[], endings: Ending[] = []) {
+ *  is the anchor's and v3 is admitted. `endings` are what the practice solves end in, in order.
+ *  With `tree`, the parent has an installed program. */
+async function setup(responses: FauxResponseStep[], endings: Ending[] = [], tree = false) {
   const scratch = realpathSync(mkdtempSync(join(tmpdir(), "ana-builder-")));
   scratches.push(scratch);
   const parent = join(scratch, "parent");
@@ -81,6 +86,11 @@ async function setup(responses: FauxResponseStep[], endings: Ending[] = []) {
   const host = join(scratch, "host");
   const log = join(scratch, "log.jsonl");
   cpSync(FIXTURE, parent, { recursive: true });
+  if (tree) {
+    mkdirSync(join(parent, ".toolchain", "bin"), { recursive: true });
+    writeFileSync(join(parent, ".toolchain", "bin", "hello"), "#!/bin/sh\necho hello-from-the-tool-tree\n");
+    chmodSync(join(parent, ".toolchain", "bin", "hello"), 0o755);
+  }
   mkdirSync(home);
   mkdirSync(host);
   const record_ = (kind: EventKind, data: JsonObject) => append(log, kind, data);
@@ -162,6 +172,8 @@ async function setup(responses: FauxResponseStep[], endings: Ending[] = []) {
   const models = createModels();
   models.setProvider(faux.provider);
   const queue = [...endings];
+  /** Where and under which digest each practice solve was asked to run. */
+  const ran: { dir: string; digest: string }[] = [];
   const request: BuildRequest = {
     id: "b-1",
     parent: parent,
@@ -174,7 +186,8 @@ async function setup(responses: FauxResponseStep[], endings: Ending[] = []) {
     models: () => models,
     log: log,
     repoRoot: scratch,
-    practise: async (task, _dir, harness) => {
+    practise: async (task, dir, harness) => {
+      ran.push({ dir, digest: harness });
       const ending = queue.shift() ?? { outcome: "pass" };
       return { solve: solved(task.version, harness, ending), ending };
     },
@@ -201,6 +214,7 @@ async function setup(responses: FauxResponseStep[], endings: Ending[] = []) {
       .map(({ data }) => data);
   return {
     scratch,
+    parent,
     home: home,
     host: host,
     request,
@@ -210,6 +224,7 @@ async function setup(responses: FauxResponseStep[], endings: Ending[] = []) {
     of,
     digest,
     exam,
+    ran,
   };
 }
 
@@ -226,7 +241,14 @@ describe("a Builder session", () => {
   });
 
   it("is given the parent's record, practises, reads a trace, and leaves a frozen version", async () => {
-    const earned: RefereeFinding = { ruling: "earned", check: null, reason: REASON, probes: [] };
+    const earned: RefereeFinding = {
+      ruling: "earned",
+      check: null,
+      rule: "R1",
+      field: "answer",
+      reason: REASON,
+      probes: [],
+    };
     const s = await setup(
       [
         edit,
@@ -311,7 +333,14 @@ describe("a Builder session", () => {
     const built = await session(
       {
         ...s.request,
-        referee: async () => ({ ruling: "check-defect", check: CHECK, reason: REASON, probes: [1] }),
+        referee: async () => ({
+          ruling: "check-defect",
+          check: CHECK,
+          rule: null,
+          field: null,
+          reason: REASON,
+          probes: [1],
+        }),
         diagnose: async () => {
           diagnosed += 1;
           return { abstain: "never asked" };
@@ -344,31 +373,141 @@ describe("a Builder session", () => {
     expect(s.of("build.finished")[0]).toMatchObject({ practiceSolves: 0 });
   });
 
-  it("spends no solve on a harness that does not open, or whose agent files link out of it", async () => {
+  it("spends no solve on a harness a solve could not open", async () => {
+    const spec = readFileSync(join(FIXTURE, "agent", "tools-spec.json"), "utf8");
     const s = await setup([
       call("write_file", { path: "agent/tools-spec.json", content: "{}" }),
       call("practice", { tasks: ["t-1"] }),
+      // A preset no v2 solve serves: every solve would end on it before its first turn.
       call("write_file", {
         path: "agent/tools-spec.json",
-        content: readFileSync(join(FIXTURE, "agent", "tools-spec.json"), "utf8"),
+        content: spec.replace('"shell"', '"shell", "python"'),
       }),
-      (context: unknown) => {
-        // Between two turns the Builder plants a link from its agent files to a host file.
-        void context;
-        symlinkSync(join(s.scratch, "log.jsonl"), join(s.home, "harness", "agent", "leak.ts"));
+      call("practice", { tasks: ["t-1"] }),
+      call("write_file", { path: "agent/tools-spec.json", content: spec }),
+      () => {
+        // Between two turns the Builder puts a link to a host file where its guide was.
+        const guide = join(s.home, "harness", "agent", "BUILT_AGENTS.md");
+        rmSync(guide);
+        symlinkSync(join(s.scratch, "log.jsonl"), guide);
         return call("practice", { tasks: ["t-1"] });
       },
       finish,
     ]);
     const built = await session(s.request, s, s.walled);
+    expect(spec).toContain('"shell"');
     expect(s.sent[2]).toContain(
       "the harness does not open: agent/tools-spec.json needs presets and tools lists",
     );
+    expect(s.sent[4]).toContain(
+      "the harness does not open: a v2 solve serves the shell preset alone, not python",
+    );
     const last = JSON.stringify(s.of("build.call").at(-2));
-    expect(last).toContain("agent/leak.ts links outside the harness");
+    expect(last).toContain("agent/BUILT_AGENTS.md links outside the harness");
     expect(built).toMatchObject({ harness: null, dir: null, changed: false });
     expect(s.of("build.finished")[0]).toMatchObject({ practiceSolves: 0, harness: null });
     expect(JSON.stringify(s.of("build.finished")[0]?.broken)).toContain("links outside the harness");
+    // Nothing a refused freeze copied is left beside the kept states.
+    expect(readdirSync(s.request.states)).toEqual([]);
+  });
+
+  it("is given the parent's installed programs as a link, and freezes no harness that replaced them", async () => {
+    const s = await setup(
+      [
+        call("practice", { tasks: ["t-1"] }),
+        () => {
+          // The Builder swaps the link for a tree of its own.
+          const link = join(s.home, "harness", ".toolchain");
+          rmSync(link);
+          mkdirSync(join(link, "bin"), { recursive: true });
+          writeFileSync(join(link, "bin", "hello"), "#!/bin/sh\necho other\n");
+          return call("practice", { tasks: ["t-1"] });
+        },
+        finish,
+      ],
+      [],
+      true,
+    );
+    const tree = realpathSync(join(s.parent, ".toolchain"));
+    const built = await session(s.request, s, s.walled);
+    // An untouched copy is the parent, by digest, and its state's programs are the parent's own.
+    expect(s.ran).toHaveLength(1);
+    expect(s.ran[0]?.digest).toBe(s.digest);
+    expect(readlinkSync(join(s.ran[0]?.dir ?? "", ".toolchain"))).toBe(tree);
+    expect((await openHarness(s.ran[0]?.dir ?? "")).digest).toBe(s.digest);
+    expect(JSON.stringify(s.of("build.call")[1])).toContain(
+      "installed programs cannot be changed in this session",
+    );
+    expect(built).toMatchObject({ harness: null, changed: false });
+    expect(existsSync(join(tree, "bin", "hello"))).toBe(true);
+  });
+
+  it("ends when a practice solve could not be run, and does not show the Builder why", async () => {
+    const s = await setup([call("practice", { tasks: ["t-1", "t-2"] }), finish]);
+    const stop = `the verifier could not decide t-1, so the run stops: ${CHECK}: threw`;
+    const kills: AbortSignal[] = [];
+    await expect(
+      session(
+        {
+          ...s.request,
+          practise: async (_task, _dir, _digest, kill) => {
+            kills.push(kill);
+            throw new Error(stop);
+          },
+        },
+        s,
+        s.walled,
+      ),
+    ).rejects.toThrow(stop);
+    // The session's record is written before it throws, and names the cause for the host alone.
+    expect(s.of("build.finished")[0]).toMatchObject({ ended: "crashed", crash: stop, changed: false });
+    expect(JSON.stringify(s.of("build.call")[0])).toContain("A practice solve could not be run");
+    expect(JSON.stringify(s.of("build.call"))).not.toContain(CHECK);
+    expect(s.sent.join("\n")).not.toContain(CHECK);
+    expect(s.of("build.call").map(({ tool: name }) => name)).toEqual(["practice"]);
+    expect(kills.every((kill) => kill.aborted)).toBe(true);
+  });
+
+  it("takes its wall to a practice solve in flight", async () => {
+    const s = await setup([call("practice", { tasks: ["t-1"] }), finish]);
+    let flown = 0;
+    const built = await session(
+      {
+        ...s.request,
+        limits: { ...LIMITS, wallSeconds: 1 },
+        // A solve that ends only when it is killed, as a solve under its own longer wall would.
+        practise: async (_task, _dir, _digest, kill) => {
+          flown += 1;
+          if (!kill.aborted) {
+            await new Promise((resolve) => kill.addEventListener("abort", resolve, { once: true }));
+          }
+          return { solve: "s-killed", ending: { outcome: "non-result", kind: "killed", reason: "killed" } };
+        },
+      },
+      s,
+      s.walled,
+    );
+    expect(flown).toBe(1);
+    expect(built).toMatchObject({ ended: "wall", changed: false });
+    expect(s.of("build.finished")[0]).toMatchObject({ ended: "wall", practiceSolves: 1 });
+    expect(Number(s.of("build.finished")[0]?.seconds)).toBeLessThan(4);
+  });
+
+  it("takes a task out of practice when its own check could not run", async () => {
+    const s = await setup(
+      [call("practice", { tasks: ["t-2"] }), call("practice", { tasks: ["t-2"] }), finish],
+      [{ outcome: "non-result", kind: "check", reason: `${CHECK}: threw` }],
+    );
+    await session(s.request, s, s.walled);
+    expect(s.sent[1]).toContain("t-2: no result (check). Solve s-3.");
+    expect(s.sent[1]).toContain("The task's own check could not run on this answer");
+    expect(s.sent[2]).toContain("t-2 is no longer a practice task");
+    expect(s.sent.join("\n")).not.toContain(CHECK);
+    expect(s.of("build.finished")[0]).toMatchObject({
+      practiceSolves: 1,
+      faultyChecks: ["v2"],
+      disputed: [],
+    });
   });
 
   it("is nudged when it stops without finishing, up to its turns, and freezes what it left", async () => {
@@ -377,8 +516,16 @@ describe("a Builder session", () => {
     const built = await session({ ...s.request, limits: { ...LIMITS, turns: 3 } }, s, s.walled);
     expect(built).toMatchObject({ changed: true, ended: "turns" });
     expect(s.sent[2]).toContain("You have not called finish.");
-    expect(s.of("build.turn")).toHaveLength(4);
+    expect(s.of("build.turn")).toHaveLength(3);
     expect(s.of("harness.version")[0]).toMatchObject({ note: null, parent: s.digest });
+  });
+
+  it("ends at its turns though it never stops calling tools", async () => {
+    const s = await setup(Array.from({ length: 12 }, () => edit));
+    const built = await session({ ...s.request, limits: { ...LIMITS, turns: 4 } }, s, s.walled);
+    expect(built).toMatchObject({ changed: true, ended: "turns" });
+    expect(s.of("build.turn")).toHaveLength(4);
+    expect(s.sent.join("\n")).not.toContain("You have not called finish.");
   });
 });
 
@@ -398,28 +545,45 @@ describe("what a Builder is shown of a solve", () => {
 describe.skipIf(runtimeProcess.platform !== "darwin")("a Builder session under the command wall", () => {
   it("writes its harness through the wall, checks it, and cannot read the repository", async () => {
     // The scratch stands for the repository: the wall closes it, and the log and a canary sit in it.
+    // The parent sits in it too, so its tool tree is reached only by the wall's own allow.
     let canary = "";
-    const s = await setup([
-      () => call("bash", { command: `cat '${canary}' 2>&1; echo "read:$?"` }),
-      call("write_file", { path: "../escape.txt", content: "x" }),
-      edit,
-      call("bash", { command: 'cat "$HOME/harness/agent/BUILT_AGENTS.md"; ls "$HOME/practice"' }),
-      call("check_harness", {}),
-      finish,
-    ]);
+    const s = await setup(
+      [
+        () => call("bash", { command: `cat '${canary}' 2>&1; echo "read:$?"` }),
+        call("write_file", { path: "../escape.txt", content: "x" }),
+        call("write_file", { path: "agent", content: "x" }),
+        edit,
+        call("bash", { command: 'cat "$HOME/harness/agent/BUILT_AGENTS.md"; ls "$HOME/practice"' }),
+        // The parent's installed program runs by name, and its tree takes no write.
+        call("bash", {
+          command: 'hello; echo more >> "$HOME/harness/.toolchain/bin/hello"; echo "write:$?"',
+        }),
+        call("check_harness", {}),
+        finish,
+      ],
+      [],
+      true,
+    );
     canary = join(s.scratch, "canary.txt");
     writeFileSync(canary, CHECK);
     const request = { ...s.request, id: `b-${String(runtimeProcess.pid)}-${s.scratch.slice(-6)}` };
     const responses = s.sent;
     const built = await build(request);
     const calls = s.of("build.call").map(({ text: said }) => JSON.stringify(said));
+    expect(calls[0]).toContain("Operation not permitted");
     expect(calls[0]).toContain("read:1");
-    expect(calls[1]).toContain("path is relative to harness/ and has no .. step");
-    expect(calls[3]).toContain("Multiply before you record.");
-    expect(calls[3]).toContain("t-1.json");
-    expect(calls[4]).toContain("The harness opens. Tools: ");
+    expect(calls[1]).toContain("path names a file under harness/");
+    expect(calls[2]).toContain("harness/agent is a directory");
+    expect(calls[4]).toContain("Multiply before you record.");
+    expect(calls[4]).toContain("t-1.json");
+    expect(calls[5]).toContain("hello-from-the-tool-tree");
+    expect(calls[5]).not.toContain("write:0");
+    expect(calls[6]).toContain("The harness opens. Tools: ");
     expect(responses.join("\n")).not.toContain(CHECK);
     expect(built).toMatchObject({ changed: true, ended: "finished" });
     expect(readFileSync(join(built.dir ?? "", "agent", "BUILT_AGENTS.md"), "utf8")).toBe(GUIDE);
+    expect(readFileSync(join(s.parent, ".toolchain", "bin", "hello"), "utf8")).not.toContain("more");
+    // A check keeps no state: the one kept is the session's last.
+    expect(readdirSync(request.states)).toEqual([built.harness ?? ""]);
   }, 120_000);
 });

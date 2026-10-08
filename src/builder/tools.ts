@@ -9,15 +9,23 @@
  * walled command and no tool here reads a path for the Builder in the host's name.
  *
  * One read is the host's own: a snapshot of `harness/` is opened and bundled by the host, as a solve
- * opens any harness. A link under `agent/` to a file outside the harness would be bundled into the
- * solver's tools, and a tool could then print a check program into a trace the Builder reads. So a
- * snapshot whose `agent/` links out of it is refused. `.toolchain` is left alone: it is read only by
- * walled commands, and an interpreter's links legitimately leave the tree.
+ * opens any harness. `openHarness` builds a harness's tools from its own files alone: it refuses a
+ * named file that links out of the harness and an import that lands outside it, so nothing here asks
+ * that question a second time.
+ *
+ * The installed programs are the parent's. `harness/.toolchain` is a link to the parent's tool tree,
+ * which the wall opens for reading and puts first on PATH, and a snapshot in which it is anything
+ * else is refused. A program installed into a session's home carries that home's path in its
+ * scripts and stops running once it is frozen elsewhere, and a tree kept under the scratch parent is
+ * closed to every solve; so a session that installs programs needs a tree the wall lets it write at
+ * the place solves will read it, which this one does not have.
  *
  * `practice` is where the two reviewers meet the Builder. A fail goes to the Referee first; a fail
  * it rules a check defect does not count and its task leaves the session, and an earned fail goes on
  * to the Diagnoser. What comes back names the ending, the task's record and the Diagnoser's
- * reading, and never a check, a verdict's detail or the Referee's reasons.
+ * reading, and never a check, a verdict's detail or the Referee's reasons. A practice solve that
+ * could not be run at all, the verifier failing to decide for one, ends the session: its error can
+ * name a check, so it is kept for the host and the Builder is told only that the session ends.
  */
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
@@ -32,6 +40,7 @@ import {
   lstatSync,
   mkdirSync,
   mkdtempSync,
+  readlinkSync,
   realpathSync,
   renameSync,
   rmSync,
@@ -39,14 +48,14 @@ import {
 } from "../meta/filesystem.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { asRecord, isString } from "../meta/json-shape.ts";
-import { join } from "../meta/path.ts";
-import { containsPath } from "../meta/path-containment.ts";
-import { errorMessage } from "../meta/runtime-values.ts";
+import { dirname, join } from "../meta/path.ts";
+import { asError, errorMessage } from "../meta/runtime-values.ts";
 import type { Diagnosis } from "../review/diagnoser.ts";
 import { callList, callsOf, callText, solveOf, stringOf } from "../review/trace.ts";
 import { text, tool } from "../solve/answer.ts";
 import { type CommandWall, runWalled } from "../solve/command.ts";
-import { type Harness, harnessTools, openHarness, pathsUnder } from "../solve/harness.ts";
+import { type Harness, harnessTools, openHarness } from "../solve/harness.ts";
+import { refuseOtherPresets } from "../solve/run.ts";
 import { shellTool } from "../solve/shell.ts";
 import { shellQuote } from "../verify/solve-command-isolation.ts";
 import { SHELL_WALLS } from "./prompt.ts";
@@ -65,18 +74,29 @@ export interface Bench {
   readonly home: string;
   /** The digest of the harness the session started from. */
   readonly parent: string;
+  /** The parent's tool tree, where it really is, which `harness/.toolchain` links to; null when the
+   *  parent has none. */
+  readonly toolTree: string | null;
   /** Practice solves spent. */
   spent: number;
   /** Task versions whose fail the Referee ruled a check defect in this session. */
   readonly disputed: Set<string>;
+  /** Task versions whose own check could not run on a practice answer. */
+  readonly faulty: Set<string>;
   /** Reviewer failures, kept for the host: their text may name a check, so the Builder is not shown it. */
   readonly faults: string[];
+  /** Aborted when a practice solve could not be run, which ends the session. */
+  readonly halt: AbortController;
+  /** What that practice solve threw; the session throws it again once its record is written. */
+  fatal: Error | null;
   /** `finish`'s note; null until it is called. */
   note: string | null;
 }
 
 /** What a submitted answer or a closing text shows of itself in a trace's head. */
 const HEAD_CHARS = 4_000;
+/** What the walled write exits with when its target is a directory; `mkdir` and `cp` exit 1. */
+const IS_DIRECTORY = 3;
 
 /** An ending as the Builder is shown it: the outcome and its kind. A non-result's reason can name a
  *  check, so only a broken harness's reason, which is the harness's own, is shown. */
@@ -113,50 +133,70 @@ export function record(events: readonly LogEvent[], version: string, harness: st
   return { solves: counted.map(({ solve }) => solve), passed: counted.filter(({ passed }) => passed).length };
 }
 
-/** Whether `path` is a link that resolves outside `root`; a link to nothing reaches nothing. */
-function leaves(root: string, path: string): boolean {
-  if (!lstatSync(path).isSymbolicLink()) return false;
-  try {
-    return !containsPath(realpathSync(path), root);
-  } catch {
-    return false;
-  }
+/** The parent's tool tree, where it really is; null when the parent has none. */
+export function parentToolTree(parent: string): string | null {
+  const tree = join(parent, ".toolchain");
+  return existsSync(tree) ? realpathSync(tree) : null;
 }
 
 /**
- * Freeze `harness/` as it stands and keep the copy under its digest in the caller's `states`, so
- * every harness a practice solve ran with can be opened again. Throws, with the harness's own error,
- * when a solve could not open it. Links are copied as they are: a stored state carries links that
- * resolve to nothing, and following one would copy what it points at.
+ * `harness/` as it stands, copied beside the kept states and opened as a solve would open it. Throws,
+ * with the harness's own error, when a solve could not. Links are copied as they are: a stored state
+ * carries links that resolve to nothing, and following one would copy what it points at. The copy is
+ * the caller's to keep or to remove.
  *
- * The copy is not kept in the session's own scratch. The command wall closes the parent of every
- * solve's scratch after it reopens a harness's tool tree, so a tree kept there is one no practice
- * solve could run a program from.
+ * Every question is asked of the copy, which no command of the Builder's can reach, and none of
+ * `harness/` itself, which a process a command left behind could still be changing.
  */
-export async function snapshot(bench: Bench): Promise<Snapshot> {
+async function frozen(bench: Bench): Promise<Snapshot> {
   const { states } = bench.request;
   mkdirSync(states, { recursive: true });
   const dir = realpathSync(mkdtempSync(join(states, "freezing-")));
   try {
     cpSync(join(bench.home, "harness"), dir, { recursive: true, verbatimSymlinks: true });
-    const stray = pathsUnder(join(dir, "agent")).find((path) => leaves(dir, join(dir, "agent", path)));
-    if (stray !== undefined) {
+    if (!lstatSync(dir).isDirectory()) throw new Error("harness/ is not a directory");
+    const link = join(dir, ".toolchain");
+    const entry = lstatSync(link, { throwIfNoEntry: false });
+    const given =
+      bench.toolTree === null
+        ? entry === undefined
+        : entry?.isSymbolicLink() === true && readlinkSync(link) === bench.toolTree;
+    if (!given) {
       throw new Error(
-        `agent/${stray} links outside the harness, and a solve's tools are built only from files inside it`,
+        "harness/.toolchain is not what the session was given, and installed programs cannot be changed in this session",
       );
     }
     const harness = await openHarness(dir);
-    const kept = join(realpathSync(states), harness.digest);
-    if (existsSync(kept)) rmSync(dir, { recursive: true, force: true });
-    else renameSync(dir, kept);
-    return {
-      dir: kept,
-      harness: { ...harness, toolTree: harness.toolTree === null ? null : join(kept, ".toolchain") },
-    };
+    refuseOtherPresets(harness);
+    return { dir, harness };
   } catch (error) {
     rmSync(dir, { recursive: true, force: true });
     throw new Error(`the harness does not open: ${errorMessage(error)}`, { cause: error });
   }
+}
+
+/**
+ * Freeze `harness/` and keep the copy under its digest in the caller's `states`, so every harness a
+ * practice solve ran with can be opened again.
+ *
+ * The copy is not kept in the session's own scratch. The command wall closes the parent of every
+ * solve's scratch after it reopens a harness's tool tree, so a state kept there is one no practice
+ * solve could run a program from.
+ */
+export async function snapshot(bench: Bench): Promise<Snapshot> {
+  const { dir, harness } = await frozen(bench);
+  const kept = join(dirname(dir), harness.digest);
+  try {
+    renameSync(dir, kept);
+  } catch (error) {
+    // A state already kept under this digest, by this session or one beside it, is the same harness.
+    rmSync(dir, { recursive: true, force: true });
+    if (!existsSync(kept)) throw error;
+  }
+  return {
+    dir: kept,
+    harness: { ...harness, toolTree: harness.toolTree === null ? null : join(kept, ".toolchain") },
+  };
 }
 
 /** `run` over `items`, `width` at a time, wave after wave, results in the items' order. */
@@ -181,14 +221,19 @@ function diagnosisText(diagnosis: Diagnosis): string {
   ].join("\n");
 }
 
-/** One practice solve and what the reviewers read of its fail. */
-async function practise(bench: Bench, task: PracticeTask, frozen: Snapshot) {
+/** One practice solve and what the reviewers read of its fail. Throws only what the solve itself
+ *  threw: a reviewer that fails is noted for the host and the solve stands. */
+async function practise(bench: Bench, task: PracticeTask, kept: Snapshot, kill: AbortSignal) {
   const { request } = bench;
-  const { solve, ending } = await request.practise(task, frozen.dir, frozen.harness.digest);
+  const { solve, ending } = await request.practise(task, kept.dir, kept.harness.digest, kill);
   const lines: string[] = [];
+  if (ending.outcome === "non-result" && ending.kind === "check") {
+    bench.faulty.add(task.version);
+    lines.push("The task's own check could not run on this answer: the task leaves this session's practice.");
+  }
   if (ending.outcome === "fail" && ending.kind !== "broken-harness" && request.referee !== undefined) {
     try {
-      const finding = await request.referee(solve, task);
+      const finding = await request.referee(solve, task, kill);
       if (finding.ruling === "check-defect") {
         bench.disputed.add(task.version);
         lines.push(
@@ -199,7 +244,7 @@ async function practise(bench: Bench, task: PracticeTask, frozen: Snapshot) {
           "The Referee could not settle whether this fail counts, so it is counted and not diagnosed.",
         );
       } else if (request.diagnose !== undefined) {
-        lines.push(diagnosisText(await request.diagnose(solve, task)));
+        lines.push(diagnosisText(await request.diagnose(solve, task, kill)));
       }
     } catch (error) {
       bench.faults.push(`${solve}: ${errorMessage(error)}`);
@@ -224,7 +269,7 @@ export function practiceTool(bench: Bench): AgentTool {
       }),
     }),
     executionMode: "sequential",
-    execute: async (_id, args) => {
+    execute: async (_id, args, signal) => {
       const unknown = args.tasks.find((id) => !offered.has(id));
       if (unknown !== undefined) {
         throw new Error(
@@ -234,7 +279,8 @@ export function practiceTool(bench: Bench): AgentTool {
       const chosen = args.tasks.flatMap((id) => offered.get(id) ?? []);
       const states = taskStates(read(request.log));
       const closed = chosen.find(
-        ({ version }) => states.get(version) !== "released" || bench.disputed.has(version),
+        ({ version }) =>
+          states.get(version) !== "released" || bench.disputed.has(version) || bench.faulty.has(version),
       );
       if (closed !== undefined) throw new Error(`${closed.task.taskId} is no longer a practice task`);
       const left = request.limits.practiceSolves - bench.spent;
@@ -243,14 +289,30 @@ export function practiceTool(bench: Bench): AgentTool {
           `${String(left)} practice solve(s) are left, and this asks for ${String(chosen.length)}`,
         );
       }
-      const frozen = await snapshot(bench);
+      // The session's wall, its kill and its halt all reach a solve through the loop's signal, so a
+      // practice in flight ends with the session and not a solve's whole wall after it.
+      const kill = signal ?? bench.halt.signal;
+      const kept = await snapshot(bench);
+      if (kill.aborted) throw new Error("The session has ended.");
       bench.spent += chosen.length;
-      const solved = await inWaves(chosen, request.limits.concurrency, (task) =>
-        practise(bench, task, frozen),
-      );
+      const solved = await inWaves(chosen, request.limits.concurrency, async (task) => {
+        if (bench.fatal !== null) return [];
+        try {
+          return [await practise(bench, task, kept, kill)];
+        } catch (error) {
+          bench.fatal ??= asError(error);
+          bench.halt.abort();
+          return [];
+        }
+      });
+      if (bench.fatal !== null) {
+        throw new Error(
+          "A practice solve could not be run, which is the host's fault and not the harness's. The session ends here.",
+        );
+      }
       const events = read(request.log);
-      const said = solved.map(({ task, solve, ending, lines }) => {
-        const [now, before] = [frozen.harness.digest, bench.parent].map((harness) =>
+      const said = solved.flat().map(({ task, solve, ending, lines }) => {
+        const [now, before] = [kept.harness.digest, bench.parent].map((harness) =>
           record(events, task.version, harness),
         );
         return [
@@ -342,16 +404,20 @@ function writeTool(wall: CommandWall): AgentTool {
     }),
     executionMode: "sequential",
     execute: async (_id, args, signal) => {
-      if (args.path.startsWith("/") || args.path.split("/").includes("..")) {
-        throw new Error("path is relative to harness/ and has no .. step");
+      const steps = args.path.split("/");
+      if (steps.some((step) => step === "" || step === "." || step === "..")) {
+        throw new Error("path names a file under harness/, with no empty, . or .. step");
       }
       const target = `"$HOME/harness/"${shellQuote(args.path)}`;
       const output: Buffer[] = [];
-      const { exitCode } = await runWalled(wall, `mkdir -p "$(dirname ${target})" && cp content ${target}`, {
+      // `cp` into a directory would leave a file named `content` inside it and report success.
+      const command = `[ ! -d ${target} ] || exit ${String(IS_DIRECTORY)}; mkdir -p "$(dirname ${target})" && cp content ${target}`;
+      const { exitCode } = await runWalled(wall, command, {
         onData: (data) => output.push(data),
         signal,
         stage: ({ work }) => writeFileSync(join(work, "content"), args.content),
       });
+      if (exitCode === IS_DIRECTORY) throw new Error(`not written: harness/${args.path} is a directory`);
       if (exitCode !== 0) {
         throw new Error(`not written: ${Buffer.concat(output).toString("utf8").slice(0, 2_000)}`);
       }
@@ -371,17 +437,20 @@ function checkTool(bench: Bench, wall: CommandWall): AgentTool {
     parameters: Type.Object({}),
     executionMode: "sequential",
     execute: async () => {
-      const { harness } = await snapshot(bench);
-      const sample = bench.request.tasks[0];
-      const tools =
-        sample === undefined
-          ? [...harness.kinds.keys()]
-          : (await harnessTools(harness, sample.task, { ...wall, toolTree: harness.toolTree })).map(
-              ({ tool: listed }) => listed.name,
-            );
-      return text(
-        `The harness opens. Tools: ${tools.join(", ") || "none"}. Guide: ${String(harness.guide?.length ?? 0)} characters.`,
-      );
+      const { dir, harness } = await frozen(bench);
+      try {
+        const sample = bench.request.tasks[0];
+        const tools =
+          sample === undefined
+            ? [...harness.kinds.keys()]
+            : (await harnessTools(harness, sample.task, wall)).map(({ tool: listed }) => listed.name);
+        return text(
+          `The harness opens. Tools: ${tools.join(", ") || "none"}. Guide: ${String(harness.guide?.length ?? 0)} characters.`,
+        );
+      } finally {
+        // A check keeps nothing: only a state a solve ran with, or the session's last, is kept.
+        rmSync(dir, { recursive: true, force: true });
+      }
     },
   });
 }

@@ -19,6 +19,8 @@
  *   the caller's care.
  * - The Builder's shell is the solver's command wall (`build`), so the repository, the operator's
  *   home and other solves' scratch are closed by the operating system.
+ * - The installed programs are the parent's, read-only: `harness/.toolchain` is a link to the
+ *   parent's tool tree, and a harness in which it is anything else is not frozen (`tools.ts`).
  * - What the Builder reads of a solve is the paged trace (`src/review/trace.ts`) and an ending's
  *   outcome and kind. A verdict's checks and the Referee's reasons never reach a tool result.
  * - The log records what the session saw: `build.started` lists the practice task versions, and
@@ -27,6 +29,13 @@
  * The session's own turns and calls are logged as `build.turn` and `build.call`. What catches a
  * Builder that went wrong is a reader of that record, and the model's own transcript is deleted
  * with the session's scratch.
+ *
+ * The session ends at `finish`, at its wall, at its turns, or when a practice solve could not be run
+ * at all. A solve's turn cap counts prompts, as v1's did; here it counts the model's turns, since a
+ * Builder that never stops calling tools would otherwise have no cap but its wall. The wall, the
+ * kill and the halt reach a practice solve in flight, so the session ends when they fall and not a
+ * solve's whole wall later. A practice solve that throws is the verifier failing to decide, which
+ * stops a run: the session writes its record, freezes what it has, and throws it again.
  */
 import { type AgentMessage, type AgentTool, runAgentLoop } from "@earendil-works/pi-agent-core";
 import {
@@ -45,10 +54,10 @@ import { append, read } from "../kernel/log.ts";
 import { dollars, freezePrices, priceKey, tokensOf } from "../kernel/meter.ts";
 import type { Ending } from "../kernel/solve.ts";
 import { taskStates } from "../kernel/task.ts";
-import { cpSync, mkdirSync, rmSync, writeFileSync } from "../meta/filesystem.ts";
+import { cpSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { asRecord, isNumber, type JsonObject } from "../meta/json-shape.ts";
-import { join } from "../meta/path.ts";
+import { join, resolve } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import type { Diagnosis } from "../review/diagnoser.ts";
 import type { RefereeFinding } from "../review/referee.ts";
@@ -63,6 +72,7 @@ import { firstMessage, NUDGE, SYSTEM_PROMPT } from "./prompt.ts";
 import {
   type Bench,
   finishTool,
+  parentToolTree,
   practiceTool,
   record,
   type Snapshot,
@@ -84,7 +94,8 @@ export interface Practised {
 }
 
 /** The host's limits on a session: a solve's, read for the Builder's own wall, turns and shell, and
- *  the practice solves it may spend. `concurrency` is how many practice solves run at once. */
+ *  the practice solves it may spend. `turns` caps the model's turns, where a solve's caps its
+ *  prompts. `concurrency` is how many practice solves run at once. */
 export interface BuildLimits extends Limits {
   readonly practiceSolves: number;
 }
@@ -108,12 +119,18 @@ export interface BuildRequest {
   /** The repository, closed to every command. */
   readonly repoRoot: string;
   /** One solve of a released task under the test condition, with the harness frozen in `harness`
-   *  and digested as `digest`. The caller builds the condition and records it (`recordCondition`). */
-  readonly practise: (task: PracticeTask, harness: string, digest: string) => Promise<Practised>;
+   *  and digested as `digest`. The caller builds the condition and records it (`recordCondition`),
+   *  and hands `kill` to the solve, which the session aborts when it ends. A throw ends the session. */
+  readonly practise: (
+    task: PracticeTask,
+    harness: string,
+    digest: string,
+    kill: AbortSignal,
+  ) => Promise<Practised>;
   /** The reviewers, when the caller has a reader for them. Without a Referee nothing is diagnosed,
-   *  since the Diagnoser reads only what the Referee ruled earned. */
-  readonly referee?: (solve: string, task: PracticeTask) => Promise<RefereeFinding>;
-  readonly diagnose?: (solve: string, task: PracticeTask) => Promise<Diagnosis>;
+   *  since the Diagnoser reads only what the Referee ruled earned. `kill` is for their readers. */
+  readonly referee?: (solve: string, task: PracticeTask, kill: AbortSignal) => Promise<RefereeFinding>;
+  readonly diagnose?: (solve: string, task: PracticeTask, kill: AbortSignal) => Promise<Diagnosis>;
   /** Aborts when the run is killed. */
   readonly kill?: AbortSignal;
 }
@@ -124,7 +141,8 @@ export interface Built {
   /** Where the frozen harness is kept; null when nothing changed or nothing opens. */
   readonly dir: string | null;
   readonly changed: boolean;
-  /** How the session ended: by `finish`, at a limit, or otherwise. */
+  /** How the session ended: by `finish`, at a limit, or otherwise. A session a practice solve
+   *  halted is logged as crashed and returns nothing: it throws. */
   readonly ended: "finished" | "wall" | "turns" | "killed" | "crashed" | "stopped";
 }
 
@@ -164,7 +182,16 @@ export async function session(
       `task ${exam.task.taskId} is ${states.get(exam.version) ?? "not proposed"}, and a Builder practises on released tasks only`,
     );
   }
-  cpSync(request.parent, join(dirs.home, "harness"), { recursive: true, verbatimSymlinks: true });
+  // The parent's files are copied and its installed programs linked: copied, a program would run
+  // from another path than the one it was installed at, and each freeze would copy the tree again.
+  const toolTree = parentToolTree(request.parent);
+  const ownTree = resolve(request.parent, ".toolchain");
+  cpSync(request.parent, join(dirs.home, "harness"), {
+    recursive: true,
+    verbatimSymlinks: true,
+    filter: (source) => resolve(source) !== ownTree,
+  });
+  if (toolTree !== null) symlinkSync(toolTree, join(dirs.home, "harness", ".toolchain"));
   mkdirSync(join(dirs.home, "practice"), { recursive: true });
   for (const { task } of request.tasks) {
     writeFileSync(
@@ -185,9 +212,13 @@ export async function session(
     request,
     home: dirs.home,
     parent: parent.digest,
+    toolTree,
     spent: 0,
     disputed: new Set(),
+    faulty: new Set(),
     faults: [],
+    halt: new AbortController(),
+    fatal: null,
     note: null,
   };
   const tools = [...walled(bench), practiceTool(bench), traceTool(bench), finishTool(bench)];
@@ -202,12 +233,18 @@ export async function session(
     limits,
   );
   const wall = new AbortController();
-  const signal = AbortSignal.any([wall.signal, ...(request.kill ? [request.kill] : [])]);
+  // Aborted when the loop returns, whatever returned it, so the model's own process is closed.
+  const done = new AbortController();
+  const signal = AbortSignal.any([
+    wall.signal,
+    done.signal,
+    bench.halt.signal,
+    ...(request.kill ? [request.kill] : []),
+  ]);
   const turns: AssistantMessage[] = [];
   const user = (content: string): AgentMessage => ({ role: "user", content, timestamp: Date.now() });
   const system = createInitialSystemMessage(SYSTEM_PROMPT, tools.map(toToolDeclaration));
   const models = request.models(join(dirs.host, "model"));
-  let prompts = 1;
   let crash: string | null = null;
   const timer = setTimeout(() => wall.abort(), limits.wallSeconds * 1000);
   try {
@@ -222,9 +259,9 @@ export async function session(
         toolExecution: "sequential",
         finishTurn: ({ message }) => {
           if (message.role === "assistant") turns.push(message);
+          return turns.length >= limits.turns ? { action: "end" } : undefined;
         },
-        getFollowUpMessages: async () =>
-          bench.note !== null || prompts++ >= limits.turns ? [] : [user(NUDGE)],
+        getFollowUpMessages: async () => (bench.note === null ? [user(NUDGE)] : []),
       },
       traceSink(log, "build", request.id, () => turns.length),
       signal,
@@ -234,7 +271,9 @@ export async function session(
     crash = errorMessage(error);
   } finally {
     clearTimeout(timer);
+    done.abort();
   }
+  crash ??= bench.fatal?.message ?? null;
   // Whatever ended the session, what `harness/` holds is frozen: a session cut at its wall still
   // made its edits, and the comparison is what says whether they count.
   let frozen: Snapshot | null = null;
@@ -253,13 +292,16 @@ export async function session(
       note: bench.note,
     });
   }
-  const ended = endedBy({
-    finished: bench.note !== null,
-    killed: request.kill?.aborted === true,
-    wall: wall.signal.aborted,
-    crashed: crash !== null,
-    turns: prompts > limits.turns,
-  });
+  const ended =
+    bench.fatal === null
+      ? endedBy({
+          finished: bench.note !== null,
+          killed: request.kill?.aborted === true,
+          wall: wall.signal.aborted,
+          crashed: crash !== null,
+          turns: turns.length >= limits.turns,
+        })
+      : "crashed";
   const tokens = tokensOf(turns.map((turn) => turn.usage));
   const reported = asRecord(
     turns.flatMap((turn) => turn.diagnostics ?? []).findLast((d) => d.type === REPORTED_COST)?.details,
@@ -274,6 +316,7 @@ export async function session(
     turns: turns.length,
     practiceSolves: bench.spent,
     disputed: [...bench.disputed],
+    faultyChecks: [...bench.faulty],
     reviewFaults: bench.faults,
     // SAFETY: the token classes are numbers.
     tokens: tokens as unknown as JsonObject,
@@ -281,6 +324,7 @@ export async function session(
     reportedCost: isNumber(reported) ? reported : null,
     seconds: (performance.now() - began) / 1000,
   });
+  if (bench.fatal !== null) throw bench.fatal;
   return {
     harness: frozen?.harness.digest ?? null,
     dir: changed ? (frozen?.dir ?? null) : null,
@@ -306,7 +350,7 @@ export async function build(request: BuildRequest): Promise<Built> {
     const wall: CommandWall = {
       base,
       dirs,
-      toolTree: null,
+      toolTree: parentToolTree(request.parent),
       limits: request.limits,
       cpu: { seconds: 0, unmeasured: 0 },
     };

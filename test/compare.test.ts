@@ -1,12 +1,42 @@
 // The comparison's arithmetic against the plan's own figures, and its view over the log: what counts
 // in a score, and what it refuses to compare.
 import { describe, expect, it } from "bun:test";
-import { anchor, draw, gain, pairsOf, scored, signP, solveSeconds, tally } from "../src/kernel/compare.ts";
+import {
+  anchor,
+  bestKnown,
+  draw,
+  gain,
+  pairings,
+  pairsOf,
+  scored,
+  signP,
+  solveSeconds,
+  tally,
+} from "../src/kernel/compare.ts";
 import { type Condition, conditionId, fieldsApart } from "../src/kernel/condition.ts";
+import {
+  beats,
+  type Contract,
+  contractHash,
+  type Objective,
+  objectiveLine,
+  objectiveValue,
+} from "../src/kernel/contract.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
+import { firstTurn } from "../src/solve/prompt.ts";
+import { contractOf } from "../tools/m0/stored-sweep.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
+
+/** Lighter is better, and two masses within one percent of the larger, or a tenth of a unit, are equal. */
+const MASS: Objective = {
+  quantity: "mass",
+  direction: "minimise",
+  path: "$.mass",
+  verifiedBy: "check-mass",
+  margin: { absolute: 0.1, relative: 0.01 },
+};
 
 const [P, F] = [true, false];
 /** A task the new harness wins, loses or ties, on three solves a harness. */
@@ -61,6 +91,131 @@ describe("the sign test", () => {
     expect(() => tally([{ task: "t", old: [P, P, P], fresh: [P, P] }])).toThrow(
       "task t has 3 solve(s) under the old harness and 2 under the new",
     );
+  });
+});
+
+describe("a stated objective", () => {
+  const contract: Contract = {
+    answerFormat: { type: "object" },
+    conventions: "",
+    rules: [{ id: "R1", statement: "The truss carries its load." }],
+    scope: "Fixture.",
+  };
+
+  it("is part of the contract's identity, and is told in one sentence", () => {
+    expect(contractHash({ ...contract, objective: MASS })).not.toBe(contractHash(contract));
+    expect(objectiveLine(MASS)).toBe(
+      "Objective: minimise mass. Among answers that meet every rule, a lower mass is the better answer. An answer reports it at $.mass.",
+    );
+    expect(objectiveLine({ ...MASS, quantity: "yield", direction: "maximise", path: "$.yield" })).toContain(
+      "a higher yield is the better answer",
+    );
+  });
+
+  it("is refused where it could not decide between two answers", () => {
+    const unfit = (part: Partial<Objective>) => () =>
+      contractHash({ ...contract, objective: { ...MASS, ...part } });
+    expect(unfit({ quantity: " " })).toThrow("the contract's objective names no quantity");
+    expect(unfit({ path: "mass" })).toThrow("reads mass, which is no rooted path into an answer");
+    expect(unfit({ verifiedBy: "" })).toThrow("names no check that verifies the reported value");
+    expect(unfit({ margin: { absolute: -1, relative: 0 } })).toThrow("has a margin that is not two amounts");
+    expect(unfit({ margin: { absolute: 0, relative: Number.NaN } })).toThrow("has a margin");
+    // SAFETY: a contract read from a pack's brief may hold any word here.
+    expect(unfit({ direction: "least" as Objective["direction"] })).toThrow(
+      "has the direction least, and one is minimise or maximise",
+    );
+  });
+
+  it("reads the value a valid answer reports, and none where it reports no finite number", () => {
+    expect(objectiveValue(MASS, { mass: 41.5, members: [] })).toBe(41.5);
+    expect(objectiveValue(MASS, { mass: "41.5" })).toBeNull();
+    expect(objectiveValue(MASS, { weight: 41.5 })).toBeNull();
+    expect(objectiveValue(MASS, undefined)).toBeNull();
+    expect(objectiveValue({ ...MASS, path: "$.report.mass" }, { report: { mass: 3 } })).toBe(3);
+  });
+
+  it("reaches a solver with its task, and a contract from its pack's brief", () => {
+    const task = { taskId: "t-1", family: "truss", publicInput: { span: 12 } };
+    const plain = firstTurn(task);
+    expect(plain).toStartWith("Task t-1 (family truss).");
+    expect(plain).not.toContain("Objective");
+    expect(firstTurn(task, MASS)).toBe(`${plain}\n\n${objectiveLine(MASS)}`);
+    const brief = {
+      domain: "Fixture",
+      ruleDecisions: [{ id: "R1", statement: "It carries its load.", visibility: "public" }],
+      truthChecks: [],
+      artifactSchema: [],
+      designRuleConstants: [],
+    };
+    expect(contractOf(brief, { type: "object" }).objective).toBeUndefined();
+    expect(contractOf({ ...brief, objective: MASS }, { type: "object" }).objective).toEqual(MASS);
+  });
+
+  it("calls one value better only past the margin, in the stated direction", () => {
+    expect(beats(MASS, 90, 100)).toBe(1);
+    expect(beats(MASS, 100, 90)).toBe(-1);
+    // One percent of the larger value: 99.5 against 100 is inside it, and 98.9 is past it.
+    expect(beats(MASS, 99.5, 100)).toBe(0);
+    expect(beats(MASS, 98.9, 100)).toBe(1);
+    // Near zero the absolute part is the margin.
+    expect(beats(MASS, 1, 1.05)).toBe(0);
+    expect(beats(MASS, 1, 1.2)).toBe(1);
+    expect(beats({ ...MASS, direction: "maximise" }, 90, 100)).toBe(-1);
+    // A value an answer did not report beats nothing and is beaten by nothing.
+    expect(beats(MASS, null, 100)).toBe(0);
+    expect(beats(MASS, 100, null)).toBe(0);
+  });
+});
+
+describe("a task's pairings", () => {
+  const valued = (old: (number | null)[], fresh: (number | null)[]) => ({
+    task: "t",
+    old: old.map((value) => value !== null),
+    fresh: fresh.map((value) => value !== null),
+    values: { old, fresh },
+  });
+
+  it("gives a valid answer the pair over a rejected one, whatever either reports", () => {
+    // Two solves a side: the new harness is valid twice, the old once.
+    const pair = valued([100, null], [120, 130]);
+    // Without an objective only the two pairs against the rejected answer are won.
+    expect(pairings(pair)).toEqual({ fresh: 2, old: 0 });
+    // With one, the old harness's lighter valid answer wins its two pairs, and the task is tied.
+    expect(pairings(pair, MASS)).toEqual({ fresh: 2, old: 2 });
+    expect(tally([pair], MASS)).toEqual({ wins: 0, losses: 0, ties: 1 });
+    expect(tally([pair])).toEqual({ wins: 1, losses: 0, ties: 0 });
+  });
+
+  it("separates two harnesses that both always pass, by the objective past its margin", () => {
+    const lighter = valued([100, 101], [90, 91]);
+    expect(pairings(lighter, MASS)).toEqual({ fresh: 4, old: 0 });
+    // The same answers are a tie where two valid answers are equal.
+    expect(scored([lighter])).toMatchObject({ wins: 0, ties: 1, p: 1 });
+    expect(scored([lighter], MASS)).toMatchObject({ wins: 1, ties: 0, p: 0.5 });
+    // Inside the margin nobody wins a pair, and a mixed task goes to whoever wins more of them.
+    expect(pairings(valued([100, 100], [99.5, 100.4]), MASS)).toEqual({ fresh: 0, old: 0 });
+    expect(pairings(valued([100, 80], [90, 90]), MASS)).toEqual({ fresh: 2, old: 2 });
+    expect(pairings(valued([100, 95], [90, 97]), MASS)).toEqual({ fresh: 3, old: 1 });
+    expect(tally([valued([100, 95], [90, 97])], MASS)).toEqual({ wins: 1, losses: 0, ties: 0 });
+  });
+
+  it("decides nothing between two rejected answers, or on a value an answer did not report", () => {
+    expect(pairings(valued([null, null], [null, null]), MASS)).toEqual({ fresh: 0, old: 0 });
+    const unreported = { task: "t", old: [P], fresh: [P], values: { old: [null], fresh: [50] } };
+    expect(pairings(unreported, MASS)).toEqual({ fresh: 0, old: 0 });
+  });
+
+  it("reads as the old rule did where no objective is stated: the harness that passes more often", () => {
+    // Every split of up to four solves a side: more pairs won exactly when more answers are valid.
+    for (let solves = 1; solves <= 4; solves += 1) {
+      for (let valid = 0; valid <= solves; valid += 1) {
+        for (let other = 0; other <= solves; other += 1) {
+          const side = (passes: number) => Array.from({ length: solves }, (_, nth) => nth < passes);
+          const won = pairings({ task: "t", old: side(other), fresh: side(valid) });
+          expect(Math.sign(won.fresh - won.old)).toBe(Math.sign(valid - other));
+        }
+      }
+    }
   });
 });
 
@@ -216,6 +371,31 @@ describe("the pairs a comparison reads from the log", () => {
     // Each harness's mean over the counted solves the log timed.
     expect(solveSeconds(counted.pairs)).toEqual({ old: 750, fresh: 300 });
     expect(solveSeconds([])).toEqual({ old: null, fresh: null });
+    // Under a contract that states an objective, each counted solve carries the value its answer
+    // reports: the answer its verdict holds, and none for a rejected one.
+    const reported = [
+      ...log,
+      event("verdict", { solve: "s-3", task: "t", kind: "pass", answer: { mass: 100 } }),
+      event("verdict", { solve: "s-7", task: "t", kind: "fail", answer: { mass: 60 }, blocking: ["c"] }),
+      event("verdict", { solve: "s-5", task: "t", kind: "pass", answer: { mass: 90 } }),
+      event("verdict", { solve: "s-8", task: "t", kind: "pass", answer: { members: 4 } }),
+    ];
+    const [valued] = pairsOf(reported, ["v1"], "old", "new", MASS).pairs;
+    expect(valued?.values).toEqual({ old: [100, null], fresh: [90, null] });
+    // The new harness wins three of four pairings: two over the rejected answer, one by mass.
+    expect(valued === undefined ? null : pairings(valued, MASS)).toEqual({ fresh: 3, old: 0 });
+    expect(pairsOf(reported, ["v1"], "old", "new").pairs[0]?.values).toBeUndefined();
+    // The best valid answer of a task is the lightest any test-side solve of it reported, under
+    // either harness; a rejected answer's 60 is nobody's best.
+    expect(bestKnown(reported, MASS)).toEqual(new Map([["v1", { value: 90, solve: "s-5", harness: "new" }]]));
+    const lighter = [
+      ...reported,
+      ...solve(base, "pass"),
+      event("verdict", { solve: `s-${String(solves)}`, task: "t", kind: "pass", answer: { mass: 89.5 } }),
+    ];
+    // Inside the margin the first one found stays the best known.
+    expect(bestKnown(lighter, MASS).get("v1")).toMatchObject({ value: 90, solve: "s-5" });
+    expect(bestKnown(log, MASS).size).toBe(0);
     // A check defect ruled on the scored task takes it out on both sides, and it is named.
     const disputed = [...log, event("task.state", { version: "v1", state: "disputed" })];
     expect(pairsOf(disputed, ["v1", "v0"], "old", "new")).toEqual({

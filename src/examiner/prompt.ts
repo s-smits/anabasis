@@ -29,7 +29,7 @@
  * 21 says whether such a task may be scored, and `undecided`, for a task the host could not finish
  * a solve of, which is nobody's verdict on the task.
  */
-import type { Contract } from "../kernel/contract.ts";
+import { type Contract, objectiveLine } from "../kernel/contract.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { plural } from "../meta/text.ts";
 
@@ -89,6 +89,11 @@ export function firstMessage(
     ...(contract.conventions === "" ? [] : [`Conventions: ${contract.conventions}`]),
     `Scope: ${contract.scope}`,
     `A solver's answer follows this schema: ${capturedJsonStringify(contract.answerFormat)}`,
+    ...(contract.objective === undefined
+      ? []
+      : [
+          `${objectiveLine(contract.objective)} The solver is told this with every task, and two valid answers are compared on it: a task on which a better method reaches a better value is one that can tell two solvers apart even when both pass.`,
+        ]),
     `The checks, by the id a reject control names:\n${checks.map((row) => `- ${row.id} (${families(row)}): ${row.assertion}`).join("\n") || "(none)"}`,
     `Existing tasks, for read_example:\n${examples.map(({ taskId, family }) => `- ${taskId} (family ${family})`).join("\n") || "(none)"}`,
     ...(earlier.length === 0

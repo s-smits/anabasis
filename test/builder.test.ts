@@ -330,6 +330,55 @@ describe("a Builder session", () => {
     expect(record(s.events(), "v1", built.harness ?? "")).toEqual({ solves: ["s-3"], passed: 0 });
   });
 
+  it("is told the objective, what a valid practice answer reports and the best known of its task", async () => {
+    const objective = {
+      quantity: "mass",
+      direction: "minimise",
+      path: "$.mass",
+      verifiedBy: "check-mass",
+      margin: { absolute: 0, relative: 0.01 },
+    } as const;
+    const s = await setup([call("practice", { tasks: ["t-1", "t-1", "t-2"] }), finish]);
+    // Each practice solve passes, and its verdict holds the answer with the mass it reports; the
+    // third reports none.
+    const masses = [120, 95, null];
+    await session(
+      {
+        ...s.request,
+        contract: { ...CONTRACT, objective },
+        practise: async (task, dir, harness, kill) => {
+          const made = await s.request.practise(task, dir, harness, kill);
+          const mass = masses.shift() ?? null;
+          append(s.request.log, "verdict", {
+            solve: made.solve,
+            task: task.task.taskId,
+            kind: "pass",
+            answer: mass === null ? { answer: "42" } : { answer: "42", mass },
+          });
+          return made;
+        },
+      },
+      s,
+      s.walled,
+    );
+    expect(s.sent[0]).toContain(
+      "Objective: minimise mass. Among answers that meet every rule, a lower mass is the better answer. An answer reports it at $.mass. The solver is told the same sentence with each task.",
+    );
+    const practised = s.sent[1] ?? "";
+    expect(practised).toContain(String.raw`t-1: pass. Solve s-3.\nIts answer is valid and reports mass 120.`);
+    expect(practised).toContain(String.raw`t-1: pass. Solve s-4.\nIts answer is valid and reports mass 95.`);
+    // Both solves of the task are set against the best valid value any solve of it has reported.
+    expect(
+      practised.split("Best valid mass any solve of this task has reported: 95 (solve s-4)."),
+    ).toHaveLength(3);
+    expect(practised).toContain("Its answer is valid and reports no mass at $.mass.");
+    // Under a contract that states no objective nothing of it is said.
+    const plain = await setup([call("practice", { tasks: ["t-1"] }), finish]);
+    await session(plain.request, plain, plain.walled);
+    expect(plain.sent.join("\n")).not.toContain("Objective:");
+    expect(plain.sent[1]).not.toContain("Its answer is valid");
+  });
+
   it("takes a task out of practice when the Referee rules its fail a check defect", async () => {
     const s = await setup(
       [call("practice", { tasks: ["t-2"] }), call("practice", { tasks: ["t-2"] }), finish],

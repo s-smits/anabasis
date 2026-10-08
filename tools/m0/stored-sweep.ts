@@ -12,7 +12,7 @@ import type { Api, Model, ThinkingLevel } from "@earendil-works/pi-ai";
 import { claudeExecutable, SWEEP_COMPACT_WINDOW } from "#src/backends/claude.ts";
 import { type BackendOptions, backends } from "#src/backends/models.ts";
 import type { Control } from "#src/kernel/acceptance.ts";
-import type { Contract } from "#src/kernel/contract.ts";
+import type { Contract, Objective } from "#src/kernel/contract.ts";
 import type { Witness } from "#src/kernel/epoch.ts";
 import { dollars, freezePrices, type PriceTable } from "#src/kernel/meter.ts";
 import type { Ending } from "#src/kernel/solve.ts";
@@ -24,6 +24,7 @@ import {
   type Task,
   type Verdict,
 } from "#src/kernel/verify.ts";
+import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { CONTROLS_FILE } from "#src/meta/bundle-layout.ts";
 import { cpSync, existsSync, readFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, parseJsonAs } from "#src/meta/json-runtime.ts";
@@ -81,6 +82,8 @@ interface PackBrief {
   readonly artifactSchema: readonly JsonObject[];
   readonly designRuleConstants: readonly JsonObject[];
   readonly designRuleSets?: readonly JsonObject[];
+  /** The stated objective, where the pack's author gave one (`src/kernel/contract.ts`). */
+  readonly objective?: Objective;
 }
 
 /** v1's `controls.json`: answers the checks must accept, and edits of them that a named check must
@@ -370,6 +373,8 @@ export function contractOf(brief: PackBrief, answerFormat: JsonValue): Contract 
     conventions: "",
     rules: brief.ruleDecisions.filter((rule) => rule.visibility === "public"),
     scope: brief.domain,
+    // v1's packs state none: their tasks set a limit and never asked for the best design.
+    ...keyIfDefined("objective", brief.objective),
   };
 }
 

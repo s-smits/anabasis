@@ -21,7 +21,7 @@
  * trace and the reviewers' readings, and is told that one solve is weak evidence, because in v1's
  * record a fail repeated on the same bytes 5 times in 21.
  */
-import type { Contract } from "../kernel/contract.ts";
+import { type Contract, objectiveLine } from "../kernel/contract.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { plural } from "../meta/text.ts";
 
@@ -74,6 +74,11 @@ export function firstMessage(contract: Contract, tasks: readonly Listed[], told:
     ...(contract.conventions === "" ? [] : [`Conventions: ${contract.conventions}`]),
     `Scope: ${contract.scope}`,
     `The solver's answer follows this schema: ${capturedJsonStringify(contract.answerFormat)}`,
+    ...(contract.objective === undefined
+      ? []
+      : [
+          `${objectiveLine(contract.objective)} The solver is told the same sentence with each task. Two harnesses are compared on it wherever both give a valid answer, so a harness that only passes is not enough.`,
+        ]),
     "The public resources every solve's home holds under public/resources/ are in resources.json.",
     `Practice tasks, each one's public part in practice/<task>.json:\n${listed.join("\n") || "(none)"}`,
     `This session has ${plural(told.practiceSolves, "practice solve")}, ${plural(Math.round(told.wallSeconds / 60), "minute")} and ${plural(told.turns, "turn")}.`,

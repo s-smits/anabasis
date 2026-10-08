@@ -215,6 +215,8 @@ describe("an Examiner session", () => {
     expect(s.sent[0]).toContain("check-product (every family): The answer is six times the base.");
     expect(s.sent[0]).toContain("e-1 (family fixture)");
     expect(s.sent[0]).toContain("10 minutes and 12 turns");
+    // A contract with no objective says nothing of one.
+    expect(s.sent[0]).not.toContain("Objective:");
     // How many tasks are wanted is not the Examiner's to know: no prompt and no tool text says 24.
     expect((s.sent[0] ?? "").replace(/"timestamp":\d+/g, "")).not.toContain("24");
     expect(s.sent[1]).toContain(String.raw`\"seed\": 5`);
@@ -228,6 +230,21 @@ describe("an Examiner session", () => {
       proposed: 0,
       note: "Stacked two requirements.",
     });
+  });
+
+  it("is told the domain's objective in the words a solver is told it", async () => {
+    const s = setup([finish]);
+    const objective = {
+      quantity: "mass",
+      direction: "minimise",
+      path: "$.mass",
+      verifiedBy: "check-product",
+      margin: { absolute: 0, relative: 0.01 },
+    } as const;
+    await examine({ ...s.request, contract: { ...CONTRACT, objective } });
+    expect(s.sent[0]).toContain(
+      "Objective: minimise mass. Among answers that meet every rule, a lower mass is the better answer. An answer reports it at $.mass. The solver is told this with every task",
+    );
   });
 
   it("puts an instance through its gates in order and tells its author one word of it", async () => {

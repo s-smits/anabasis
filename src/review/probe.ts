@@ -4,6 +4,12 @@
  * `src/review/review-probe.ts`: the budget, the value cap, the one-grammar path and its refusals,
  * the symmetric move and the conclusive rule are v1's, as is most of the tool's text.
  *
+ * A change is a whole replacement value, or an edit of one passage inside a text field (v1's
+ * `editedPassage`, github.com/s-smits/anabasis at 3f93d06b, `src/review/review-probe.ts:264-282`).
+ * When an answer is a source file, the field two readings of a rule disagree about is that whole
+ * file, and the thing in dispute is one line of it: most of v1's firmware fails were valid code a
+ * stand-in refused, which no whole-field replacement of bounded size can test.
+ *
  * Departures:
  * - v1 probed an accept control the candidate published. A v2 Referee reviews one failing answer,
  *   so the probe starts from that answer and runs the run's own verifier, not a control census.
@@ -23,16 +29,25 @@ import { text, tool } from "../solve/answer.ts";
 /** review-probe.ts:57: each probe runs every applicable check, so eight keep a review from becoming
  *  a second battery. */
 export const PROBE_BUDGET = 8;
-/** review-probe.ts:59: a replacement value is one field, not a redesigned answer. */
-const VALUE_MAX_CHARS = 400;
+/** review-probe.ts:87-90 at 3f93d06b: a replacement value is one field, not a redesigned answer, and
+ *  each half of an edit is one passage. */
+const VALUE_MAX_CHARS = 4_000;
+
+/** The one passage of a text field that `find` names, rewritten to `replace`. */
+export interface ProbeEdit {
+  readonly find: string;
+  readonly replace: string;
+}
 
 /** What one probe ran and what the checks said. */
 export interface ProbeRow {
   /** 1-based, and what a ruling cites. */
   readonly id: number;
   readonly path: string;
-  /** The JSON text of the substituted value, as the Referee wrote it. */
-  readonly value: string;
+  /** The JSON text of the substituted value, as the Referee wrote it; null for an edit. */
+  readonly value: string | null;
+  /** The passage edited inside the text field at `path`; null for a whole replacement. */
+  readonly edit: ProbeEdit | null;
   readonly original: Verdict;
   readonly changed: Verdict;
   /** Checks whose verdict the one changed field moved. */
@@ -72,6 +87,21 @@ export function withReplacedField(answer: JsonValue, path: string, value: JsonVa
   return copy;
 }
 
+/**
+ * The text at `path` with the one passage `find` names rewritten to `replace`; null where the field
+ * is not text holding `find` exactly once. Overlapping occurrences count, since `aa` in `aaa` names
+ * two passages and editing either would be a guess. The text is sliced, not passed through
+ * `String.replace`, which reads `$&` in a replacement as a pattern, and code is full of dollar signs.
+ */
+export function editedPassage(answer: JsonValue, path: string, edit: ProbeEdit): string | null {
+  const field = resolveJsonPath(answer, path).value;
+  if (typeof field !== "string") return null;
+  const at = field.indexOf(edit.find);
+  return edit.find === "" || at === -1 || at !== field.lastIndexOf(edit.find)
+    ? null
+    : `${field.slice(0, at)}${edit.replace}${field.slice(at + edit.find.length)}`;
+}
+
 function sideText(label: string, verdict: Verdict): string {
   const detail =
     verdict.kind === "fail"
@@ -87,7 +117,11 @@ function sideText(label: string, verdict: Verdict): string {
 /** review-probe.ts:224-238. */
 function rowText(row: ProbeRow): string {
   return [
-    `probe ${String(row.id)}: ${row.path} replaced with ${row.value}`,
+    // An edit is named by its size: the Referee wrote both halves, and the field around them can
+    // run to thousands of characters (review-probe.ts:398-399).
+    row.edit === null
+      ? `probe ${String(row.id)}: ${row.path} replaced with ${String(row.value)}`
+      : `probe ${String(row.id)}: ${row.path} edited, its one passage of ${String(row.edit.find.length)} characters rewritten as ${String(row.edit.replace.length)}`,
     sideText("original", row.original),
     sideText("changed", row.changed),
     row.moved.length === 0
@@ -105,32 +139,58 @@ export function probeTool(verify: Verifier, task: Task, answer: JsonValue, rows:
     name: "probe_check",
     label: "Probe the checks",
     description:
-      "Run the task's checks over the answer under review and over a copy of it with a single field changed, and return which checks moved their verdict. Use it instead of arguing a check's behaviour from source: choose a replacement that the public rules decide one way, so a check reading that field would have to decide it that way too, and read what the checks actually did. No check moving is not by itself proof that nothing reads the field, since a check that reads it can decide the new value the same way. The path must already exist in the answer and the value must differ from the one it carries. Cite the probe numbers you relied on when you record your ruling.",
+      "Run the task's checks over the answer under review and over a copy of it with a single field changed, and return which checks moved their verdict. Use it instead of arguing a check's behaviour from source: choose a change that the public rules decide one way, so a check reading that field would have to decide it that way too, and read what the checks actually did. Send `value` to replace the field whole, or `find` and `replace` to rewrite one passage inside a text field, which is how one line of a source file is changed. No check moving is not by itself proof that nothing reads the field, since a check that reads it can decide the new value the same way. The path must already exist in the answer and the change must change it. Cite the probe numbers you relied on when you record your ruling.",
     parameters: Type.Object({
       path: Type.String({
         description:
-          "A rooted path to an existing leaf of the answer, spelled as the checks spell theirs: `$.layout.members[0].area`. Array positions are bracketed.",
+          "A rooted path to an existing leaf of the answer, spelled as the checks spell theirs: `$.layout.members[0].area`. Array positions are bracketed; a key holding a dot or a slash is quoted: `$.files['src/main.cpp']`.",
       }),
-      value: Type.String({
-        description:
-          'The replacement value as JSON text, e.g. `0.0001`, `"bolted"` or `null`. One field only.',
-      }),
+      value: Type.Optional(
+        Type.String({
+          description:
+            'The replacement value as JSON text, e.g. `0.0001`, `"bolted"` or `null`. One field only. Omit it when you send `find` and `replace`.',
+        }),
+      ),
+      find: Type.Optional(
+        Type.String({
+          description:
+            "Exact text inside the string field at `path`, occurring there exactly once; include enough of its surroundings to make it unique. Sent with `replace`, in place of `value`.",
+        }),
+      ),
+      replace: Type.Optional(
+        Type.String({ description: "The text that takes the place of `find`; empty deletes it." }),
+      ),
     }),
     executionMode: "sequential",
     execute: async (_id, args) => {
       if (rows.length >= PROBE_BUDGET) {
         throw new Error(`a review runs at most ${String(PROBE_BUDGET)} probes`);
       }
-      if (args.value.length > VALUE_MAX_CHARS) {
+      const edit =
+        args.find === undefined || args.replace === undefined
+          ? null
+          : { find: args.find, replace: args.replace };
+      if ((args.value === undefined) === (edit === null)) {
+        throw new Error("send either `value`, or `find` with `replace`");
+      }
+      if ([args.value, args.find, args.replace].some((part) => (part?.length ?? 0) > VALUE_MAX_CHARS)) {
         throw new Error(
-          `value must be at most ${String(VALUE_MAX_CHARS)} characters: a probe changes one field`,
+          `a value and each half of an edit are at most ${String(VALUE_MAX_CHARS)} characters: a probe changes one field or one passage`,
         );
       }
       let value: JsonValue;
-      try {
-        value = capturedJsonParse(args.value);
-      } catch {
-        throw new Error("value must be JSON text; quote a string value");
+      if (edit === null) {
+        try {
+          value = capturedJsonParse(args.value ?? "");
+        } catch {
+          throw new Error("value must be JSON text; quote a string value");
+        }
+      } else {
+        const edited = editedPassage(answer, args.path, edit);
+        if (edited === null) {
+          throw new Error(`${args.path} is not a text field holding \`find\` exactly once`);
+        }
+        value = edited;
       }
       const changed = withReplacedField(answer, args.path, value);
       if (changed === null) throw new Error(`${args.path} is not an existing field of the answer`);
@@ -142,7 +202,8 @@ export function probeTool(verify: Verifier, task: Task, answer: JsonValue, rows:
       const row = {
         id: rows.length + 1,
         path: args.path,
-        value: args.value,
+        value: args.value ?? null,
+        edit,
         original: before,
         changed: after,
         moved: movedChecks(before, after),

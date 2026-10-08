@@ -12,7 +12,14 @@ import type { JsonObject, JsonValue } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { diagnose } from "../src/review/diagnoser.ts";
-import { PROBE_BUDGET, type ProbeRow, probeTool, withReplacedField } from "../src/review/probe.ts";
+import { agreement, clears } from "../src/review/agreement.ts";
+import {
+  editedPassage,
+  PROBE_BUDGET,
+  type ProbeRow,
+  probeTool,
+  withReplacedField,
+} from "../src/review/probe.ts";
 import type { Reader } from "../src/review/reader.ts";
 import { referee } from "../src/review/referee.ts";
 
@@ -114,9 +121,41 @@ describe("the probe", () => {
     await expect(probe("$.span", "ten")).rejects.toThrow("value must be JSON text");
     await expect(probe("$.depth", "1")).rejects.toThrow("$.depth is not an existing field");
     await expect(probe("$.span", "12")).rejects.toThrow("already carries that value");
-    await expect(probe("$.span", JSON.stringify("x".repeat(400)))).rejects.toThrow("at most 400 characters");
+    await expect(probe("$.span", JSON.stringify("x".repeat(4_000)))).rejects.toThrow(
+      "at most 4000 characters",
+    );
     while (rows.length < PROBE_BUDGET) await probe("$.span", String(rows.length));
     await expect(probe("$.span", "1")).rejects.toThrow(`at most ${String(PROBE_BUDGET)} probes`);
+  });
+
+  it("rewrites one passage inside a text field, where the thing in dispute is one line of a file", async () => {
+    // A stand-in that refuses valid code: it rejects any call of `min`, which the rules allow.
+    const source = { files: { "main.cpp": "int a = min(x, 3);\nint b = max(x, 3);\n" } };
+    const standIn = async (_task: Task, answer: JsonValue | undefined): Promise<Verdict> =>
+      JSON.stringify(answer).includes("min(") ? { kind: "fail", blocking: ["compiles"] } : { kind: "pass" };
+    const rows: ProbeRow[] = [];
+    const tool = probeTool(standIn, TASK, source, rows);
+    const path = "$.files['main.cpp']";
+    const edited = await tool.execute("id", { path, find: "min(x, 3)", replace: "(x < 3 ? x : 3)" });
+    expect(edited.content).toEqual([
+      expect.objectContaining({
+        text: expect.stringContaining("edited, its one passage of 9 characters rewritten as 15"),
+      }),
+    ]);
+    expect(rows[0]).toMatchObject({ value: null, edit: { find: "min(x, 3)" }, moved: ["compiles"] });
+    expect(editedPassage(source, path, { find: "min", replace: "MIN" })).toContain("int a = MIN(x, 3);");
+    // `(x, 3)` names two passages, so editing either would be a guess; and a dollar sign is text.
+    expect(editedPassage(source, path, { find: "(x, 3)", replace: "()" })).toBeNull();
+    expect(editedPassage(source, path, { find: "max", replace: "$&$1" })).toContain("int b = $&$1(x, 3);");
+    await expect(tool.execute("id", { path, find: "(x, 3)", replace: "" })).rejects.toThrow(
+      "is not a text field holding `find` exactly once",
+    );
+    await expect(tool.execute("id", { path, value: '""', find: "min", replace: "" })).rejects.toThrow(
+      "send either `value`, or `find` with `replace`",
+    );
+    await expect(tool.execute("id", { path })).rejects.toThrow(
+      "send either `value`, or `find` with `replace`",
+    );
   });
 });
 
@@ -150,6 +189,8 @@ describe("the Referee", () => {
     expect(finding).toEqual({
       ruling: "check-defect",
       check: "span",
+      rule: null,
+      field: null,
       reason: "R1 allows 12; the check stops at 10.",
       probes: [1],
     });
@@ -177,7 +218,13 @@ describe("the Referee", () => {
   it("replays the checks once, and the first probe reuses that run", async () => {
     const s = setup([
       fauxAssistantMessage(fauxToolCall("probe_check", { path: "$.span", value: "10" }), toolUse),
-      ruling({ ruling: "earned", reason: "12 m is over the check's 10.", probes: [1] }),
+      ruling({
+        ruling: "earned",
+        rule: "R1",
+        field: "$.span",
+        reason: "12 m is over the check's 10.",
+        probes: [1],
+      }),
     ]);
     failed(s.record);
     const answers: JsonValue[] = [];
@@ -213,11 +260,82 @@ describe("the Referee", () => {
     expect(await referee(s.reader, fail(s))).toEqual({
       ruling: "earned",
       check: null,
+      rule: null,
+      field: null,
       reason: "no answer reached a check",
       probes: [],
     });
     expect(s.calls()).toBe(0);
     expect(read(s.log).map((event) => event.kind)).toEqual(["referee.finding"]);
+    // An answer outside the contract's format broke the contract before any check ran.
+    s.record("verdict", {
+      solve: "s-1",
+      task: "t-1",
+      answer: ANSWER,
+      kind: "fail",
+      fault: "span is not a number",
+    });
+    expect(await referee(s.reader, fail(s))).toMatchObject({
+      ruling: "earned",
+      reason: "the answer does not follow the contract's format: span is not a number",
+    });
+    expect(s.calls()).toBe(0);
+  });
+
+  it("holds an earned ruling to the rule the answer breaks and the field that breaks it", async () => {
+    const earned = (rest: JsonObject) =>
+      ruling({ ruling: "earned", reason: "Over the limit.", probes: [], ...rest });
+    const s = setup([
+      earned({}),
+      earned({ rule: "R9", field: "$.span" }),
+      earned({ rule: "R1", field: "$.depth" }),
+      earned({ rule: "R1", field: "$.members[0].area" }),
+      earned({ rule: "R1", field: "$.span" }),
+    ]);
+    failed(s.record);
+    expect(await referee(s.reader, fail(s))).toMatchObject({ ruling: "earned", rule: "R1", field: "$.span" });
+    expect(s.sent[1]).toContain("names the public rule the answer breaks, one a refusing check cites: R1");
+    expect(s.sent[2]).toContain("one a refusing check cites: R1");
+    expect(s.sent[3]).toContain("a path that exists in the answer");
+    expect(s.sent[4]).toContain("no refusing check that cites R1 reads $.members[0].area");
+    expect(read(s.log).at(-1)?.data).toMatchObject({
+      ruling: "earned",
+      rule: "R1",
+      field: "$.span",
+      turns: 5,
+    });
+  });
+
+  it("sets an answer the checks accepted for the task beside the one under review", async () => {
+    const unclear = ruling({ ruling: "unclear", reason: "Not settled.", probes: [] });
+    const s = setup([unclear, unclear]);
+    failed(s.record);
+    await referee(s.reader, fail(s));
+    expect(s.sent[0]).toContain("No answer the checks accepted for this task is recorded.");
+    s.record("verdict", { solve: "s-0", task: "t-1", answer: { span: 9, members: [] }, kind: "pass" });
+    s.record("verdict", { solve: "s-9", task: "t-2", answer: { span: 1, members: [] }, kind: "pass" });
+    await referee(s.reader, fail(s));
+    expect(s.sent[1]).toContain(
+      String.raw`An answer the checks accepted for this task: {\"span\":9,\"members\":[]}`,
+    );
+  });
+
+  it("ends a reading at its wall, and says so in the finding", async () => {
+    // The replay is the host's and runs before the reading; the probe's second run outlasts the wall.
+    const s = setup([
+      fauxAssistantMessage(fauxToolCall("probe_check", { path: "$.span", value: "10" }), toolUse),
+      ruling({ ruling: "earned", rule: "R1", field: "$.span", reason: "Too late.", probes: [1] }),
+    ]);
+    failed(s.record);
+    let runs = 0;
+    const slow = async (task: Task, answer: JsonValue | undefined): Promise<Verdict> => {
+      runs += 1;
+      if (runs > 1) await Bun.sleep(400);
+      return verify(task, answer);
+    };
+    const finding = await referee({ ...s.reader, wallSeconds: 0.05 }, { ...fail(s), verify: slow });
+    expect(finding.ruling).toBe("unclear");
+    expect(read(s.log).at(-1)?.data).toMatchObject({ walled: true, ruling: "unclear" });
   });
 
   it("leaves the fail unclear when the reader never rules", async () => {
@@ -234,6 +352,52 @@ describe("the Referee", () => {
     await referee(s.reader, fail(s));
     expect(s.signals).toHaveLength(1);
     expect(s.signals[0]?.aborted).toBe(true);
+  });
+});
+
+describe("the Referee's agreement with hand labels", () => {
+  const at = "2026-10-08T00:00:00.000Z";
+  const ruled = (solve: string, ruling: string) => ({
+    at,
+    kind: "referee.finding" as const,
+    data: { solve, ruling },
+  });
+  const events = [
+    ruled("a", "unclear"),
+    ruled("a", "check-defect"),
+    ruled("b", "earned"),
+    ruled("c", "earned"),
+    ruled("d", "check-defect"),
+    ruled("e", "unclear"),
+  ];
+  const labels = new Map([
+    ["a", "check-defect"],
+    ["b", "check-defect"],
+    ["c", "earned"],
+    ["d", "earned"],
+    ["e", "earned"],
+  ] as const);
+
+  it("counts the last ruling of each labelled fail against its label", () => {
+    const measured = agreement(events, labels);
+    expect(measured.table["check-defect"]).toEqual({ earned: 1, "check-defect": 1, unclear: 0 });
+    expect(measured.table.earned).toEqual({ earned: 1, "check-defect": 1, unclear: 1 });
+    expect(measured).toMatchObject({ caught: 0.5, unruled: [] });
+    expect(measured.voided).toBeCloseTo(1 / 3);
+  });
+
+  it("clears a bar written beforehand, and nothing when a label is unruled or a rate has no fails", () => {
+    const measured = agreement(events, labels);
+    expect(clears(measured, { fails: 5, caught: 0.5, voided: 0.4 })).toBe(true);
+    expect(clears(measured, { fails: 5, caught: 0.8, voided: 0.4 })).toBe(false);
+    expect(clears(measured, { fails: 5, caught: 0.5, voided: 0.1 })).toBe(false);
+    expect(clears(measured, { fails: 6, caught: 0.5, voided: 0.4 })).toBe(false);
+    expect(
+      clears(agreement(events, new Map([...labels, ["z", "earned"]])), { fails: 1, caught: 0, voided: 1 }),
+    ).toBe(false);
+    const noDefects = agreement(events, new Map([["c", "earned"]] as const));
+    expect(noDefects.caught).toBeNull();
+    expect(clears(noDefects, { fails: 1, caught: 0, voided: 1 })).toBe(false);
   });
 });
 

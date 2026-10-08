@@ -175,8 +175,11 @@ verdicts may be compared at all; it routes to `host` (`src/kernel/verify.ts`,
 
 **3. Check discrimination and controls.**
 
-Starts from `NO CHECKER READING (lane 3)`, `CHECKER READ WITH FAULTS (lane 3)` and
-`CONTROL COVERAGE (lane 3)`.
+Starts from `NO CHECKER READING (lane 3)`, `CHECKER READ WITH FAULTS (lane 3)`,
+`CONTROL COVERAGE (lane 3)` and `RULE ADDITION REFUSED (lane 3)`. The last counts the additions a
+Rule Author session put to its gates and had refused (`rule.gate`), by gate and by the kind of
+control fault. Read it as what a session-written check got wrong before it could be left as a
+candidate; no refused addition touched the campaign's checker.
 
 The question is whether each check has been seen to refuse what it should and pass what it should,
 and whether the controls that would show it are still right. Read the last `checker.read`: its
@@ -195,7 +198,12 @@ the checker can be frozen as it stands; it routes to `pack/controls` for a stale
 
 **4. False rejection among fails.**
 
-Starts from `REFUSED UNREAD (lane 4)`, `CHECK DEFECT RULED (lane 4)` and `RULED UNCLEAR (lane 4)`.
+Starts from `REFUSED UNREAD (lane 4)`, `CHECK DEFECT RULED (lane 4)`, `RULED UNCLEAR (lane 4)` and
+`CANDIDATE INTERFERENCE (lane 4)`. The last is a Rule Author's candidate graded over every
+accepted answer on record once its session was over (`rule.gate` with `over: record`). Each
+refusal is an answer the campaign's checks accept and the added check would not: decide from the
+new rule's statement alone whether it settles that refusal, and take `refuses-all`, an answer the
+check could not run on, or `refuses-none` as a reason to read the check before anyone adopts it.
 
 The question is whether a refused answer was wrong or a right one the checks refused. Every
 reading of a comparison rests on it: a refusal that is the check's fault makes a win when it falls
@@ -235,7 +243,13 @@ the checker's owner as the repair's accept controls.
 **6. Checker identity, freeze and repair closure.**
 
 Starts from `CHECKER NOT FROZEN (lane 6)`, `FROZEN DESPITE FAULTS (lane 6)`,
-`READ AT ANOTHER VERSION (lane 6)` and `TASKS CARRIED (lane 6)`.
+`READ AT ANOTHER VERSION (lane 6)`, `TASKS CARRIED (lane 6)`, `RULE CANDIDATE LEFT (lane 6)` and
+`RULE SESSION ENDED (lane 6)`. A candidate is the campaign's pack with one rule and one check
+added, kept under the campaign's `candidates/`, and no event adopts it: every result is still
+counted under the check program the candidate names as its base, and a candidate over another
+base than the campaign runs under now is stale. `RULE SESSION ENDED` names the Rule Author
+sessions that left no candidate and how each ended; one that finished after no addition is its
+author's reading that the checks already judge what the field asks.
 
 The question is under which checker each result was counted, and whether a repair closed what it
 was made for. A campaign whose checker is not frozen can have its staged `checks/` edited between

@@ -70,6 +70,7 @@ import {
 import { authorRule, type RuleRequest } from "../src/rules/session.ts";
 import { storedIn } from "../tools/c/rule-author.ts";
 import { checkProgram, contractOf, packControls, readPack } from "../tools/m0/stored-sweep.ts";
+import { overview } from "../tools/wri/read.ts";
 
 /** What no Rule Author may be sent, each planted where a campaign's log or its pack holds it: the
  *  text of a measured solve's answer, the digest of the harness the campaign stands on, a
@@ -619,6 +620,15 @@ describe("a Rule Author session", () => {
       "Of the 1 other accepted answer you can read that check-note applies to, it refuses 1 (x-1-002) and could not run on 0.",
     );
     s.expectWalled();
+    // The investigation's reader finds the candidate and its reading in the log as this session
+    // wrote it, and names no answer.
+    const triggers = overview(read(s.log)).triggers.flatMap(({ name, detail }) =>
+      name === "CANDIDATE INTERFERENCE" || name === "RULE CANDIDATE LEFT" ? [detail] : [],
+    );
+    expect(triggers).toEqual([
+      "r-1: check-note refuses 2 of 4 accepted answers on record and could not run on 0, which leaves 1 task with none accepted; 1 more the existing checks no longer accept; reading refuses-some",
+      `r-1: rule R3 with check check-note over check program ${s.request.base.checks.slice(0, 8)}, as check program ${checker.checks.slice(0, 8)} in candidates/r-1; no event of this log adopts it`,
+    ]);
     // Nothing but the candidate is left beside it.
     expect(existsSync(`${dir}.tries`)).toBe(false);
     // The candidate is a pack the existing commands read: its brief and tasks, its controls, and
@@ -758,6 +768,14 @@ describe("a Rule Author session", () => {
     ]);
     // Three tries were spent on three refusals, so nothing held and nothing is left.
     expect(authored).toEqual({ ended: "finished", tries: 3, candidate: null });
+    // The investigation's reader counts the refusals from the log as this session wrote it.
+    const triggers = overview(read(s.log)).triggers.flatMap(({ name, detail }) =>
+      name === "RULE ADDITION REFUSED" || name === "RULE SESSION ENDED" ? [detail] : [],
+    );
+    expect(triggers).toEqual([
+      "3 of 3 additions put to the gates; by gate: controls 3; control faults: accept-refused 1, count 1, format 1, other-check 1, passed 1, repeat 1",
+      "r-1 ended finished after 3 additions",
+    ]);
     expect(existsSync(join(s.candidates, "r-1"))).toBe(false);
   });
 

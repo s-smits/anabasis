@@ -18,11 +18,12 @@
 import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { TSchema } from "@earendil-works/pi-ai";
 import { sha256OfFile } from "../meta/digest.ts";
-import { existsSync, lstatSync, readlinkSync, writeFileSync } from "../meta/filesystem.ts";
+import { existsSync, lstatSync, readlinkSync, realpathSync, writeFileSync } from "../meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "../meta/json-runtime.ts";
 import { type JsonValue, asRecord, isRecord, isString } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
-import { join, resolve } from "../meta/path.ts";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "../meta/path.ts";
+import { containsPath } from "../meta/path-containment.ts";
 import { capturedExecPath } from "../meta/process.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { shellQuote } from "../verify/solve-command-isolation.ts";
@@ -70,6 +71,8 @@ interface ToolRow {
 
 const KINDS: ReadonlySet<string> = new Set(["reader", "advisor", "artifact-writer"]);
 const SHIM = Bun.fileURLToPath(new URL("./harness-shim.ts", import.meta.url));
+/** The host's own source, which the shim imports from. */
+const HOST_SOURCE = dirname(dirname(SHIM));
 const MARKER = "@@ana-harness-result@@";
 /** The tail of a call's output kept for the result line and an error's context; a tool printing
  *  without end is cut by the command's timeout, not by the host's memory. */
@@ -112,6 +115,15 @@ try {
 const BUNDLED_PATH = /^\/\/ .+\.(?:[cm]?[jt]sx?|json)$/gm;
 
 export async function openHarness(dir: string): Promise<Harness> {
+  // The three files the host reads by name are the harness's own: a guide or a spec linked to a host
+  // file would be read here, outside every wall, and handed to the solver.
+  const root = realpathSync(dir);
+  for (const name of ["BUILT_AGENTS.md", "tools-spec.json", "tools.ts"]) {
+    const file = join(dir, "agent", name);
+    if (existsSync(file) && !containsPath(realpathSync(file), root)) {
+      throw new Error(`agent/${name} links outside the harness`);
+    }
+  }
   const guideFile = join(dir, "agent", "BUILT_AGENTS.md");
   const guide = existsSync(guideFile) ? await Bun.file(guideFile).text() : null;
   const spec = capturedJsonParse(await Bun.file(join(dir, "agent", "tools-spec.json")).text());
@@ -132,7 +144,7 @@ export async function openHarness(dir: string): Promise<Harness> {
   const module = await bundle(join(dir, "agent", "tools.ts"));
   const toolchain = resolve(dir, ".toolchain");
   const toolTree = existsSync(toolchain) ? toolchain : null;
-  const tree = toolTree === null ? null : treeContent(toolTree);
+  const tree = toolTree === null ? null : keptTreeContent(toolTree);
   const located = module.replace(BUNDLED_PATH, "");
   return {
     guide,
@@ -164,16 +176,54 @@ export function treeContent(dir: string) {
   });
 }
 
-/** v1's bundling (generated-tool-worker-process.ts:103-112), with the two imports a harness makes
- *  of the host resolved to the shim, and the output kept in memory rather than in a temporary
- *  directory, since every call stages it afresh. */
+/** Each tool tree's content by where it really is, with the stamp it was read under. */
+const TREES = new Map<string, { stamp: string; content: ReturnType<typeof treeContent> }>();
+
+/**
+ * A tool tree's content, read once for as long as no file in it has been added, removed, resized,
+ * rewritten or had its mode changed. Every solve opens its harness, and a tool tree runs to
+ * thousands of files and gigabytes, so hashing it afresh each time was a full read of it per solve.
+ * The stamp is what the runner's own moved-files check trusts (`run.ts`, `treeStamp`).
+ */
+function keptTreeContent(toolTree: string) {
+  const real = realpathSync(toolTree);
+  const stamp = hashJsonValue(
+    pathsUnder(real).map((path) => {
+      const stat = lstatSync(join(real, path));
+      return [path, stat.size, stat.mtimeMs, stat.mode, stat.ino];
+    }),
+  );
+  const kept = TREES.get(real);
+  if (kept?.stamp === stamp) return kept.content;
+  const content = treeContent(real);
+  TREES.set(real, { stamp, content });
+  return content;
+}
+
+/**
+ * v1's bundling (generated-tool-worker-process.ts:103-112), with the two imports a harness makes of
+ * the host resolved to the shim, and the output kept in memory rather than in a temporary directory,
+ * since every call stages it afresh.
+ *
+ * The bundle is built by the host, outside every wall, from files a Builder wrote. Left alone, Bun
+ * runs a macro import in this process as it bundles, and inlines any file an import names, a text
+ * import of a check program among them, into the module the solver's tools then run. So macros are
+ * off, and an import must land inside the harness or inside an installed package. Bun resolves a
+ * macro's module without asking a plugin, so the guard below could not have refused one.
+ */
 async function bundle(entry: string): Promise<string> {
+  const root = realpathSync(dirname(dirname(entry)));
+  const inPackage = (path: string) => path.split(sep).includes("node_modules");
   const result = await Bun.build({
     entrypoints: [entry],
     target: "bun",
     format: "esm",
     splitting: false,
     sourcemap: "none",
+    // SAFETY: Bun 1.4.2 takes `macros: false` and fails a build that imports one, though its types do
+    // not declare the option; `test/harness-tools.test.ts` fails if a later Bun stops honouring it.
+    ...({ macros: false } as object),
+    throw: false,
     plugins: [
       {
         name: "harness-shim",
@@ -181,6 +231,19 @@ async function bundle(entry: string): Promise<string> {
           build.onResolve({ filter: /^(@ana\/agent-bundle|@earendil-works\/pi-ai)$/ }, () => ({
             path: SHIM,
           }));
+          build.onResolve({ filter: /.*/ }, ({ path, importer, kind }) => {
+            // The host's own files and an installed package's import what they need.
+            if (kind === "entry-point-build" || containsPath(importer, HOST_SOURCE) || inPackage(importer)) {
+              return undefined;
+            }
+            // Where the import lands, links followed. A module of the runtime's own has no file.
+            const resolved = Bun.resolveSync(path, dirname(importer));
+            const target = isAbsolute(resolved) ? realpathSync(resolved) : null;
+            if (target === null || containsPath(target, root) || inPackage(target)) return undefined;
+            throw new Error(
+              `${path}, imported by ${relative(root, importer)}, lands outside the harness: its tools are built from its own files and installed packages`,
+            );
+          });
         },
       },
     ],

@@ -57,6 +57,13 @@ export function supply(events: readonly LogEvent[], of = FEASIBLE) {
       kind === "task.proposed" && isString(data.session) ? [data.version] : [],
     ),
   );
+  /** The gate events of the sessions' own tasks that ended in `outcome` at `gate`. */
+  const gates = (gate: number, outcome: string) =>
+    events.flatMap(({ kind, data }) =>
+      kind === "task.gate" && data.gate === gate && data.outcome === outcome && written.has(data.version)
+        ? [data]
+        : [],
+    );
   return {
     proposed: written.size,
     words: countBy(tasks, ({ word }) => word),
@@ -72,6 +79,18 @@ export function supply(events: readonly LogEvent[], of = FEASIBLE) {
           : [],
       ),
       (gate) => `gate ${String(gate)}`,
+    ),
+    // Why the two gates that cost most said no. `tooHard` is how the stronger solve that closed a
+    // task ended: a check refused its answer, or its wall, its context or no answer ended it. A
+    // refused answer is the one a reviewer can read for a check's fault. `controls` is the kinds
+    // of fault in the controls gate 4 refused (`controlsGate`), a refusal under each kind it holds.
+    // A log written before either was recorded counts as unrecorded.
+    tooHard: countBy(gates(2, "too-hard"), ({ kind }) => (isString(kind) ? kind : "unrecorded")),
+    controls: countBy(
+      gates(4, "refused").flatMap(({ kinds }) =>
+        Array.isArray(kinds) && kinds.length > 0 ? kinds.filter(isString) : ["unrecorded"],
+      ),
+      (kind) => kind,
     ),
     feasible: feasible.length,
     once: read.filter(({ fails }) => fails >= 1).length,

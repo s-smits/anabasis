@@ -327,7 +327,8 @@ describe("an Examiner session", () => {
     expect(s.sent[5]).toContain("x-1-001 is not waiting for controls.");
     expect(examined.feasible).toEqual([]);
     expect(s.solves.test).toBe(0);
-    expect(s.of("task.gate").at(-1)).toMatchObject({ gate: 4, outcome: "refused" });
+    expect(s.of("task.gate").at(-1)).toMatchObject({ gate: 4, outcome: "refused", kinds: ["other-check"] });
+    expect(supply(read(s.log))).toMatchObject({ refusedAt: { "gate 4": 1 }, controls: { "other-check": 1 } });
     expect([...taskStates(read(s.log)).values()]).toEqual(["refused"]);
   });
 
@@ -448,6 +449,9 @@ describe("D1b's supply reading", () => {
       words: { scored: 1, "too hard": 1, refused: 1, "too easy": 1 },
       // The instance with no base is no package: gate 1 refused it before any solve.
       refusedAt: { "gate 1": 1 },
+      // The stronger solve of base 200 ended in an answer the check refused; no controls were refused.
+      tooHard: { rejected: 1 },
+      controls: {},
       feasible: 2,
       once: 2,
       twice: 1,

@@ -24,7 +24,7 @@
  * - `correctness-model`: a second session against the same harness, told what the first measured,
  *   still wrote mostly tasks the solver passes. What these checks can ask, this harness answers,
  *   and the exam grows only by a requirement with a check of its own. That is the operator's to
- *   add, and takes a campaign of its own (`tools/c/accept.ts`).
+ *   add: a pack that holds it is adopted into the campaign (`tools/c/accept.ts --freeze`).
  *
  * It is a reading and it decides nothing. The counts it rests on are returned beside it, and two
  * sessions is a small number to call a correctness model spent on.
@@ -134,7 +134,11 @@ export function binding(
   }
   const easy = words["too easy"] ?? 0;
   const classes: readonly (readonly [Compartment, number, string])[] = [
-    ["checks", unsound, "were refused because a check could not run on an accepted answer or did not repeat"],
+    [
+      "checks",
+      unsound,
+      "were refused because a check could not run on an accepted answer or did not repeat; a repaired pack is adopted into the campaign with tools/c/accept.ts --freeze",
+    ],
     [
       "witness",
       words["too hard"] ?? 0,
@@ -145,7 +149,7 @@ export function binding(
       ? [
           "correctness-model",
           easy,
-          "are passed by the measured solver, in a session told what the one before measured",
+          "are passed by the measured solver, in a session told what the one before measured; a pack with a further requirement is adopted into the campaign with tools/c/accept.ts --freeze",
         ]
       : ["tasks", easy, "are passed by the measured solver"],
     ["tasks", (words.refused ?? 0) - unsound, "were refused on their own packages or controls"],

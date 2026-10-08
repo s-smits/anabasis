@@ -140,8 +140,10 @@ describe("a rehearsal's script", () => {
     const set = [{ answer: { answer: "0" }, expectedCheckId: "check-product" }];
     const events = [
       event("task.proposed", { version: "v9", taskId: "x-1-001", session: "x-1", task: written }),
+      event("task.gate", { version: "v9", gate: 1, outcome: "passed" }),
       event("verdict", { solve: "s-9", task: "x-1-001", answer: { answer: "24" }, kind: "pass" }),
       event("task.gate", { version: "v9", gate: 2, solve: "s-9", outcome: "passed" }),
+      event("task.gate", { version: "v9", gate: 3, outcome: "passed" }),
       event("task.gate", { version: "v9", gate: 4, outcome: "passed", controls: "d", set }),
     ];
     const graded = [

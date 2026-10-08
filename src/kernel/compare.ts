@@ -20,7 +20,8 @@
  *
  * The pairs are a view over the log (`pairsOf`). A task's solves count from the event that set it
  * apart for scoring, its admission or the anchor's draw, so a screening solve, which comes before
- * admission, never counts in a score. The log's condition records say which harness each solve ran
+ * admission, never counts in a score. Only a solve of the version itself counts: a solve of the
+ * version it continues, graded again under an adopted checker, places a task and scores none. The log's condition records say which harness each solve ran
  * under, and a task whose solves differ in anything but the harness is refused: two solves are
  * comparable only when their conditions differ in the one thing being compared (`condition.ts`).
  */
@@ -29,7 +30,7 @@ import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
 import { conditionsOf, fieldsApart } from "./condition.ts";
 import type { LogEvent } from "./log.ts";
-import { taskStates } from "./task.ts";
+import { taskSets } from "./task.ts";
 
 /** One task version's counted solves under the old harness and under the new: true for a pass. */
 export interface Paired {
@@ -179,14 +180,17 @@ export function pairsOf(
   fresh: string,
 ) {
   const conditions = conditionsOf(events);
-  const states = taskStates(events);
+  const { states, anchor: drawn } = taskSets(events);
   const disputed = versions.filter((task) => states.get(task) === "disputed");
   const pairs = versions.flatMap((task) => {
     if (disputed.includes(task)) return [];
+    // A version that continues an anchor task under a later checker is the anchor's from its own
+    // proposal (`task.ts`), which no draw names.
     const from = events.findLastIndex(
       ({ kind, data }) =>
         (kind === "task.state" && data.version === task && data.state === "admitted") ||
-        (kind === "anchor.drawn" && Array.isArray(data.tasks) && data.tasks.includes(task)),
+        (kind === "anchor.drawn" && Array.isArray(data.tasks) && data.tasks.includes(task)) ||
+        (kind === "task.proposed" && data.version === task && isString(data.continues) && drawn.has(task)),
     );
     const state = states.get(task);
     if (from === -1 || (state !== "admitted" && state !== "held")) {

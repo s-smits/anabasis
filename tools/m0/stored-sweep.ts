@@ -13,16 +13,24 @@ import { claudeExecutable, SWEEP_COMPACT_WINDOW } from "#src/backends/claude.ts"
 import { type BackendOptions, backends } from "#src/backends/models.ts";
 import type { Control } from "#src/kernel/acceptance.ts";
 import type { Contract } from "#src/kernel/contract.ts";
+import type { Witness } from "#src/kernel/epoch.ts";
 import { dollars, freezePrices, type PriceTable } from "#src/kernel/meter.ts";
 import type { Ending } from "#src/kernel/solve.ts";
-import type { TaskPackage } from "#src/kernel/task.ts";
-import { applicableTruthChecks, readBrief, type Task, type Verdict } from "#src/kernel/verify.ts";
+import { CONTROLS, type RejectControl, type TaskPackage } from "#src/kernel/task.ts";
+import {
+  applicableTruthChecks,
+  checkProgramVersion,
+  readBrief,
+  type Task,
+  type Verdict,
+} from "#src/kernel/verify.ts";
 import { CONTROLS_FILE } from "#src/meta/bundle-layout.ts";
 import { cpSync, existsSync, readFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, parseJsonAs } from "#src/meta/json-runtime.ts";
 import type { JsonObject, JsonValue } from "#src/meta/json-shape.ts";
 import { homedir } from "#src/meta/os.ts";
 import { basename, join } from "#src/meta/path.ts";
+import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { type PublicResource, publicResource } from "#src/solve/answer.ts";
 import { toolTreeSearchDirs } from "#src/verify/solve-command-isolation.ts";
 
@@ -192,6 +200,18 @@ export function checkProgram(bundle: string, to: string): string {
 }
 
 /**
+ * The digest a bundle's check program has once staged (`checkProgram`), read where the bundle
+ * stands: its files less the battery, as a campaign's freeze names them. A campaign is asked
+ * which pack it was opened over by this, and an adoption what it would stage.
+ */
+export function packProgram(bundle: string): string {
+  const files = Object.entries(checkProgramVersion(join(bundle, "correctness-model")));
+  return hashJsonValue(
+    Object.fromEntries(files.filter(([file]) => !file.split("/").some((part) => BATTERY_FILES.has(part)))),
+  );
+}
+
+/**
  * The answer format a solve's record tool took, as v1 recorded it byte for byte in the solve's
  * `built-runtime.json`: the artifact-writer's parameters, which v1 compiled from the brief's prose
  * `artifactSchema` rows (H public-artifact-writer.ts:57-64) and which a v2 contract holds as its
@@ -278,11 +298,19 @@ export function pricedRows(rows: readonly Row[]) {
   return { priced, unpriced };
 }
 
+/** A check program's brief as its pack wrote it, from the program's directory: a bundle's
+ *  `correctness-model`, or a campaign's staged copy of one. */
+export function packBrief(program: string): PackBrief {
+  return parseJsonAs<PackBrief>(readFileSync(join(program, "brief.json"), "utf8"));
+}
+
 /** A v1 check program's pack: its brief, its tasks and their hidden values, and its controls. */
 export function readPack(bundle: string) {
-  const read = <T>(file: string) =>
-    parseJsonAs<T>(readFileSync(join(bundle, "correctness-model", file), "utf8"));
-  return { brief: read<PackBrief>("brief.json"), tasks: read<Task[]>("tasks.json") };
+  const program = join(bundle, "correctness-model");
+  return {
+    brief: packBrief(program),
+    tasks: parseJsonAs<Task[]>(readFileSync(join(program, "tasks.json"), "utf8")),
+  };
 }
 
 /** Whether the bundle's tool tree holds a tool on the path a check is given, by its id. */
@@ -303,6 +331,35 @@ export function packControls(bundle: string): Control[] {
       refusedBy: expectedCheckId,
     })),
   ];
+}
+
+/**
+ * Gate 4's controls for a pack's task, as the pack holds them: the first three reject controls v1
+ * wrote for it, each with the check v1 named for it to fail, and the author's accepted answer they
+ * are edits of. Null for a task the pack wrote no reject control for.
+ */
+export function packSet(controls: readonly Control[], taskId: string) {
+  const own = controls.filter((control) => control.taskId === taskId);
+  const set = own.flatMap(({ answer, refusedBy }): RejectControl[] =>
+    refusedBy === null ? [] : [{ answer, expectedCheckId: refusedBy }],
+  );
+  const accepted = own.find((control) => control.refusedBy === null)?.answer ?? null;
+  return set.length === 0 ? null : { accepted, set: set.slice(0, CONTROLS) };
+}
+
+/** The answers a sweep's solves left that v1 graded a pass, by task: what may witness a pack's
+ *  task under another checker with no solve, as a stored solve stood in for gate 2's
+ *  (`tools/m1/admit-sweep.ts`). Each is named as `rejections.ts` names a stored solve. */
+export function sweepWitnesses(rows: readonly Row[]): Map<string, Witness[]> {
+  return Map.groupBy(
+    rows.flatMap((row) => {
+      const answer = row.expected?.kind === "pass" ? storedAnswer(row) : undefined;
+      return answer === undefined
+        ? []
+        : [{ taskId: row.taskId, solve: `${row.sweep}-${row.cycle}-${row.taskId}`, answer }];
+    }),
+    ({ taskId }) => taskId,
+  );
 }
 
 /** The stand-in contract: the brief's public rule decisions are its rules, and its answer format is

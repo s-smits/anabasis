@@ -121,8 +121,12 @@ async function main(): Promise<void> {
       families: check.execution.families,
     })),
     // The pack's tasks, and the ones earlier sessions wrote, which the opening message says the
-    // standing of.
-    examples: [...campaign.tasks, ...writtenTasks(before)],
+    // standing of. A pack's task an adoption carried is in the log too, and is listed once.
+    examples: [
+      ...new Map(
+        [...campaign.tasks, ...writtenTasks(before)].map((task) => [task.taskId, task] as const),
+      ).values(),
+    ],
     waiting: carriable(before).waiting,
     reach: reachOf(before, { harness: harness.digest, setting: campaign.setting(stronger) }).slice(0, reach),
     standsOn: { harness: harness.digest, setting: campaign.setting(campaign.test) },

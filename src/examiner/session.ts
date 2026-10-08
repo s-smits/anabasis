@@ -411,9 +411,9 @@ async function controlled(desk: Desk, taskId: string, edits: readonly ControlEdi
       return `${taskId}: its controls do not hold: ${result.reason}. Write them again.`;
     }
   }
-  // The controls that held are logged whole beside their digest: a campaign under a repaired
-  // checker gates the task again from them with no session to write them a second time
-  // (`tools/c/carry.ts`).
+  // The controls that held are logged whole beside their digest: when the campaign adopts a
+  // changed checker the task is gated again from them, with no session to write them a second
+  // time (`src/kernel/epoch.ts`).
   append(request.log, GATE, {
     version,
     gate: 4,

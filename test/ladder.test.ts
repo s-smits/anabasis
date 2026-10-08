@@ -5,10 +5,10 @@ import { describe, expect, it } from "bun:test";
 import { measured } from "../src/examiner/record.ts";
 import { binding } from "../src/kernel/binding.ts";
 import { type Condition, conditionId, settingId } from "../src/kernel/condition.ts";
-import { frontierOf, ladder, type Stand, standing } from "../src/kernel/ladder.ts";
+import { endingsOf, frontierOf, ladder, type Stand, standing } from "../src/kernel/ladder.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import type { Counted } from "../src/kernel/solve.ts";
-import { isString, type JsonObject } from "../src/meta/json-shape.ts";
+import { asRecord, isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
 import { reachOf } from "../tools/d2/campaign.ts";
 
@@ -189,6 +189,82 @@ describe("the ladder", () => {
   });
 });
 
+describe("a solve graded again under an adopted checker", () => {
+  /** t1 and t2 as CAMPAIGN leaves them, each continued by a version under the next checker, and
+   *  the solves `stood` names graded again, each for a version and with the ending it has there. */
+  const adopted = (stood: readonly (readonly [string, string, Counted])[]) => [
+    ...CAMPAIGN,
+    ...["t1", "t2"].flatMap((version) => [
+      ...feasible(`${version}b`).map((each, index) =>
+        index === 0 ? event(PROPOSED, { ...each.data, continues: version }) : each,
+      ),
+      state(version, "stale"),
+    ]),
+    ...stood.map(([solve, version, ending]) =>
+      event("verdict.regraded", { solve, version, ending: { ...ending } }),
+    ),
+  ];
+  /** The solves CAMPAIGN made of `version` under h on the test side, by their ids. */
+  const made = (version: string) => {
+    const under = new Set(
+      CAMPAIGN.flatMap(({ kind, data }) => {
+        const ran = asRecord(data.condition);
+        return kind === "condition.recorded" &&
+          ran?.task === version &&
+          ran.harness === "h" &&
+          ran.side === "test"
+          ? [data.id]
+          : [];
+      }),
+    );
+    return CAMPAIGN.flatMap(({ kind, data }) =>
+      kind === "solve.started" && isString(data.solve) && under.has(data.condition) ? [data.solve] : [],
+    );
+  };
+
+  it("stands for the version it was graded for, where the solve itself ran", () => {
+    const [f1 = "", f2 = ""] = made("t1");
+    const [p1 = "", p2 = "", p3 = ""] = made("t2");
+    // The repair withdrew one of t1's two refusals and kept t2's passes.
+    const log = adopted([
+      [f1, "t1b", P],
+      [f2, "t1b", F],
+      [p1, "t2b", P],
+      [p2, "t2b", P],
+      [p3, "t2b", P],
+    ]);
+    expect(endingsOf(log, "t1b", on("h"))).toEqual([P, F]);
+    expect(ladder(log, on("h"), RULE).pool).toEqual({
+      stops: [],
+      clears: ["t2b"],
+      walled: [],
+      unknown: ["t3", "t1b"],
+    });
+    // A fresh solve of the new version is read after the ones that were carried to it.
+    const fresh = [...log, ...solved("t1b", "h", [F])];
+    expect(endingsOf(fresh, "t1b", on("h"))).toEqual([P, F, F]);
+    expect(ladder(fresh, on("h"), RULE).pool.stops).toEqual(["t1b"]);
+    // The old version reads as it did, and no other stand reads the carried solves.
+    expect(endingsOf(log, "t1", on("h"))).toEqual([F, F]);
+    expect(endingsOf(log, "t1b", on("other"))).toEqual([]);
+    expect(endingsOf(log, "t1b", on("h", "strong"))).toEqual([]);
+  });
+
+  it("places nothing where the adoption logged no standing, and reads no regrading without one", () => {
+    // A rule was added: the old answers answered another question, and none stands for a version.
+    const log = [...adopted([]), event("verdict.regraded", { solve: made("t1")[0] ?? "", kind: "pass" })];
+    expect(ladder(log, on("h"), RULE).pool).toEqual({
+      stops: [],
+      clears: [],
+      walled: [],
+      unknown: ["t3", "t1b", "t2b"],
+    });
+    // A standing that names a solve the log does not hold, or a non-result, is no solve.
+    const stray = adopted([["no-such-solve", "t1b", F]]);
+    expect(endingsOf(stray, "t1b", on("h"))).toEqual([]);
+  });
+});
+
 describe("the reach tasks a session tries again", () => {
   /** The solve a `solve.started` event names. */
   const named = (started: LogEvent | undefined) => (isString(started?.data.solve) ? started.data.solve : "");
@@ -285,7 +361,12 @@ describe("what binds a climb", () => {
       event(GATE, { version: "n1", gate: 1, outcome: "passed" }),
       event(GATE, { version: "n1", gate: 2, outcome: "refused" }),
     ];
-    expect(binding(unsound, on("h"), given)).toMatchObject({ binds: "checks" });
+    const short = binding(unsound, on("h"), given);
+    expect(short.binds).toBe("checks");
+    // The reading names the command that moves the compartment.
+    expect(short.why).toBe(
+      "2 of the pool can be scored and a step takes 4: 2 of the 3 tasks written against this harness were refused because a check could not run on an accepted answer or did not repeat; a repaired pack is adopted into the campaign with tools/c/accept.ts --freeze",
+    );
     // The last word of a task stands: one told too hard and later scored is no longer short.
     expect(binding([...told("too hard"), word("x-1", "n0", "scored")], on("h"), given).words).toEqual({
       scored: 1,
@@ -303,8 +384,8 @@ describe("what binds a climb", () => {
     const second = [...first, exam("x-2", "h"), word("x-2", "n3", "too easy")];
     const spent = binding(second, on("h"), given);
     expect(spent).toMatchObject({ binds: "correctness-model", sessions: 2, words: { "too easy": 3 } });
-    expect(spent.why).toContain(
-      "3 of the 3 tasks written against this harness are passed by the measured solver",
+    expect(spent.why).toBe(
+      "2 of the pool can be scored and a step takes 4: 3 of the 3 tasks written against this harness are passed by the measured solver, in a session told what the one before measured; a pack with a further requirement is adopted into the campaign with tools/c/accept.ts --freeze",
     );
   });
 
@@ -367,5 +448,38 @@ describe("what an Examiner is told of earlier tasks", () => {
     expect(measured(log, on("h1"), RULE)[0]).toBe(
       "w1 (family fixture): scored: 2 of 2 solves failed, refused by check-a (2)",
     );
+  });
+
+  it("says a task carried into an adopted checker once, as the version that continues it stands", () => {
+    const before = solved("w1", "h2", [F]);
+    const first = before.flatMap(({ kind, data }) =>
+      kind === "solve.started" && isString(data.solve) ? [data.solve] : [],
+    )[0];
+    const log = [
+      ...feasible("w1", "x-1"),
+      ...before,
+      // The adopted checker's version of w1: the session's task still, and no session's proposal.
+      event(PROPOSED, {
+        version: "w1b",
+        taskId: "w1",
+        continues: "w1",
+        wrote: "x-1",
+        task: { taskId: "w1", family: "fixture" },
+      }),
+      ...[1, 2, 3, 4].map((gate) => event(GATE, { version: "w1b", gate, outcome: "passed", controls: "d" })),
+      state("w1", "stale"),
+      // Its one solve on record, graded again: another check refuses the answer now.
+      event("verdict.regraded", {
+        solve: first ?? "",
+        version: "w1b",
+        kind: "fail",
+        blocking: ["check-b"],
+        ending: { ...F },
+      }),
+      ...solved("w1b", "h2", [F]),
+    ];
+    expect(measured(log, on("h2"), RULE)).toEqual([
+      "w1 (family fixture): scored: 2 of 2 solves failed, refused by check-b, refused by check-a",
+    ]);
   });
 });

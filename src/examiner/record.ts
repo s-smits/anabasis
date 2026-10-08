@@ -15,6 +15,10 @@
  * many of the solves read failed, and which checks refused them. The checks are the Examiner's to
  * know, since it names them in its controls. Nothing of a solver's answer or trace is here, and
  * nothing of the harness.
+ *
+ * A task carried into an adopted checker (`src/kernel/epoch.ts`) is said once, as the version that
+ * continues it stands: its proposal names the session that wrote the task (`wrote`), and a solve
+ * graded again for it is said with the checks that refuse its answer now.
  */
 import { type Rule, type Stand, solvesOf, standing } from "../kernel/ladder.ts";
 import type { LogEvent } from "../kernel/log.ts";
@@ -44,10 +48,11 @@ export function stoppedBy(
   events: readonly LogEvent[],
   solves: readonly { readonly solve: string; readonly ending: Counted }[],
 ): string {
+  // The last record of a solve's answer stands: its own verdict, or an adopted checker's of it.
   const blocking = new Map(
     events.flatMap(({ kind, data }): [string, string[]][] =>
-      kind === "verdict" && isString(data.solve) && Array.isArray(data.blocking)
-        ? [[data.solve, data.blocking.filter(isString)]]
+      (kind === "verdict" || kind === "verdict.regraded") && isString(data.solve) && isString(data.kind)
+        ? [[data.solve, Array.isArray(data.blocking) ? data.blocking.filter(isString) : []]]
         : [],
     ),
   );
@@ -83,7 +88,8 @@ export function tally(
 export function measured(events: readonly LogEvent[], stand: Stand, rule: Rule): string[] {
   const { states, feasible } = taskSets(events);
   return events.flatMap(({ kind, data }) => {
-    const task = asRecord(kind === "task.proposed" && isString(data.session) ? data.task : null);
+    const written = kind === "task.proposed" && (isString(data.session) || isString(data.wrote));
+    const task = asRecord(written ? data.task : null);
     const { version } = data;
     if (task === null || !isString(version) || !isString(task.taskId)) return [];
     const state = states.get(version) ?? "";

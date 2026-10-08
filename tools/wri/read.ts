@@ -17,9 +17,10 @@ import { screeningOrder } from "#src/builder/round.ts";
 import { binding, toldOf } from "#src/kernel/binding.ts";
 import { signP, sweepOf } from "#src/kernel/compare.ts";
 import { type Condition, conditionsOf, settingId } from "#src/kernel/condition.ts";
+import { epochsOf } from "#src/kernel/epoch.ts";
 import { frontierOf, ladder, type Stand } from "#src/kernel/ladder.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
-import { taskStates } from "#src/kernel/task.ts";
+import { taskSets, taskStates } from "#src/kernel/task.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { countBy, median } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
@@ -156,6 +157,9 @@ export const TRIGGERS = {
   "FROZEN DESPITE FAULTS": 6,
   "READ AT ANOTHER VERSION": 6,
   "TASKS CARRIED": 6,
+  "REFUSALS WITHDRAWN": 6,
+  "ACCEPTED NEWLY REFUSED": 6,
+  "ADOPTION CUT SHORT": 6,
   "SUPPLY THIN": 7,
   "GATE REFUSED": 7,
   "TOO HARD": 8,
@@ -324,8 +328,9 @@ function indexOf(events: readonly LogEvent[]): Index {
   const last = (kind: LogEvent["kind"]) =>
     new Map(events.flatMap((event) => (event.kind === kind ? [[text(event.data.solve), event.data]] : [])));
   const of = (kind: LogEvent["kind"]) => events.flatMap((event) => (event.kind === kind ? [event.data] : []));
-  const states = taskStates(events);
-  const anchor = new Set(of("anchor.drawn").flatMap((data) => strings(data.tasks)));
+  // The anchor's versions are the fold's: the ones a draw named, and each later version that
+  // continues one of them under an adopted checker (`src/kernel/task.ts`).
+  const { states, anchor } = taskSets(events);
   const feasible = of("task.gate").flatMap((data) =>
     data.gate === 4 && data.outcome === "passed" ? [text(data.version)] : [],
   );
@@ -423,6 +428,34 @@ function roundOf(log: Index, build: Build): Round {
   };
 }
 
+/**
+ * The checkers a log froze after its first, each with what its adoption did
+ * (`src/kernel/epoch.ts`): the counts its `checker.adopted` closed it with, as one line, or that
+ * the adoption was cut short. Counts and ids of checkers only: no task's id and no answer.
+ */
+function adoptionsOf(log: Index) {
+  return epochsOf(log.events)
+    .slice(1)
+    .map(({ checker, asked, adopted }, index) => {
+      const tasks = asRecord(adopted?.tasks ?? null);
+      const withdrawn = asRecord(adopted?.withdrawn ?? null);
+      const [feasible, waiting, reach] = [count(tasks?.feasible), count(tasks?.waiting), count(tasks?.reach)];
+      return {
+        name: `epoch ${String(index + 2)}`,
+        checker: `contract ${short(checker.contract)}, check program ${short(checker.checks)}`,
+        asked: asked === "same" ? "the same thing" : "another thing",
+        cut: adopted === null,
+        carried: `${plural(feasible + waiting + reach, "task")} went on with no solve: ${String(feasible)} feasible, ${String(waiting)} waiting for controls, ${String(reach)} for a witness (${String(items(adopted?.lost).length)} had one before, ${String(items(adopted?.recovered).length)} given one by an answer on record); ${plural(count(adopted?.stood), "solve")} on record stand for them by regrade`,
+        moved: count(adopted?.moved),
+        withdrawn: {
+          total: count(withdrawn?.[DEFECT]) + count(withdrawn?.earned) + count(withdrawn?.unread),
+          said: `${String(count(withdrawn?.[DEFECT]))} ruled a check defect, ${String(count(withdrawn?.earned))} ruled earned, ${String(count(withdrawn?.unread))} read by nobody`,
+        },
+        tightened: count(adopted?.tightened),
+      };
+    });
+}
+
 /** Lanes 1 to 6: the exam's instrument, which is the pack author's. */
 function instrumentTriggers(log: Index): Trigger[] {
   const reading = log.of("checker.read").at(-1);
@@ -443,6 +476,17 @@ function instrumentTriggers(log: Index): Trigger[] {
   const [top] = Object.entries(countBy(blocking, (check) => check)).sort(([, a], [, b]) => b - a);
   const lopsided = top !== undefined && new Set(blocking).size > 1 && top[1] > refused.length / 2;
   const carried = log.of("task.proposed").filter((data) => isString(data.carried)).length;
+  const adoptions = adoptionsOf(log);
+  // Each freeze given over faults: a first one over its reading's, a later one over what counted
+  // against the pack it adopted.
+  const overruled = log.of("contract.frozen").flatMap((data) => {
+    if (count(data.faults) === 0) return [];
+    return [
+      isNumber(data.epoch)
+        ? `epoch ${String(data.epoch)}: ${plural(count(data.faults), "finding")}`
+        : plural(count(data.faults), "fault"),
+    ];
+  });
   return [
     ...(authored > 0
       ? [
@@ -493,15 +537,35 @@ function instrumentTriggers(log: Index): Trigger[] {
       ? [fired("DEFECT RULED BESIDE PASSES", "a frozen alternative can settle what a ruling asserts")]
       : []),
     ...(frozen === undefined ? [fired("CHECKER NOT FROZEN", "no contract.frozen in the log")] : []),
-    ...(count(frozen?.faults) > 0
-      ? [fired("FROZEN DESPITE FAULTS", plural(count(frozen?.faults), "fault"))]
-      : []),
+    ...(overruled.length > 0 ? [fired("FROZEN DESPITE FAULTS", overruled.join("; "))] : []),
     ...(frozen !== undefined && reading !== undefined && reading.checks !== frozen.checks
       ? [fired("READ AT ANOTHER VERSION", "the last reading is of another check program than the frozen one")]
       : []),
+    // A log from before 2026-10-08 took a repaired checker's tasks from another campaign's log.
     ...(carried > 0
-      ? [fired("TASKS CARRIED", `${plural(carried, "task")} came from another checker's campaign`)]
+      ? [fired("TASKS CARRIED", `${plural(carried, "task")} came from another campaign's log`)]
       : []),
+    ...adoptions.flatMap((adoption) => [
+      ...(adoption.cut
+        ? [
+            fired(
+              "ADOPTION CUT SHORT",
+              `${adoption.name}: its freeze is in the log and nothing closes it; the campaign opens once accept.ts is run again`,
+            ),
+          ]
+        : [fired("TASKS CARRIED", `${adoption.name}: ${adoption.carried}`)]),
+      ...(adoption.withdrawn.total > 0
+        ? [fired("REFUSALS WITHDRAWN", `${adoption.name}: ${adoption.withdrawn.said}`)]
+        : []),
+      ...(adoption.tightened > 0
+        ? [
+            fired(
+              "ACCEPTED NEWLY REFUSED",
+              `${adoption.name}: ${plural(adoption.tightened, "answer")}, the solver asked ${adoption.asked}`,
+            ),
+          ]
+        : []),
+    ]),
   ];
 }
 
@@ -1154,7 +1218,10 @@ function rowsOf(log: Index): Row[] {
   const conditions = [...log.conditions.values()];
   const distinct = (pick: (condition: Condition) => string) => String(new Set(conditions.map(pick)).size);
   const frozen = log.of("contract.frozen").at(-1);
-  const proposals = log.of("task.proposed");
+  const adoptions = adoptionsOf(log);
+  // A version that continues another under an adopted checker is no further task.
+  const versions = log.of("task.proposed");
+  const proposals = versions.filter((data) => !isString(data.continues));
   const having = (field: string) => String(proposals.filter((data) => isString(data[field])).length);
   const done = log.solves.filter((solve) => solve.outcome !== null);
   const partition = (side: string) =>
@@ -1190,6 +1257,16 @@ function rowsOf(log: Index): Row[] {
           ? "not frozen"
           : `frozen: contract ${short(text(frozen.contract))}, check program ${short(text(frozen.checks))}`,
         `${plural(log.of("checker.read").length, "reading")}; contracts among conditions: ${distinct((condition) => condition.contract)}`,
+        ...(adoptions.length === 0
+          ? []
+          : [
+              `${plural(adoptions.length + 1, "checker epoch")} in this log: each result was counted under the checker frozen before it`,
+            ]),
+        ...adoptions.map((adoption) =>
+          adoption.cut
+            ? `${adoption.name} (${adoption.checker}): its adoption was cut short`
+            : `${adoption.name} (${adoption.checker}; the solver asked ${adoption.asked}): ${adoption.carried}; ${plural(adoption.moved, "verdict")} moved`,
+        ),
       ],
     },
     {
@@ -1206,7 +1283,12 @@ function rowsOf(log: Index): Row[] {
       title: "task sets",
       lines: [
         `${plural(proposals.length, "task")}: ${having("session")} written by a session, ${having("carried")} carried, the rest the pack's`,
-        `states: ${tally(countBy([...log.states.values()], (state) => state))}; anchor ${String(log.anchor.size)}`,
+        ...(versions.length === proposals.length
+          ? []
+          : [
+              `${plural(versions.length - proposals.length, "later version")} of those tasks under an adopted checker; the versions they continue are stale`,
+            ]),
+        `states: ${tally(countBy([...log.states.values()], (state) => state))}; anchor ${String([...log.anchor].filter((version) => log.states.get(version) !== "stale").length)}`,
         `${plural(log.candidates.length, "feasible task")} held outside the anchor, for a round to screen`,
         ...(climb === null
           ? []

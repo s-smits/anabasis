@@ -54,5 +54,8 @@ prompted with, below verbose.
   and a wall reached under a heavy load is not the wall reached on an idle host.
 
 `checks/` at medium is the checker's own source and reference, and it stays out of any prompt
-written for a Builder or a solver. A `correctness-model/` inside a harness is a copy of it that the
-run's Builder could read: two runs that differ in having one differ in what their Builders knew.
+written for a Builder or a solver. A campaign that changed its checker holds each later one under
+`epochs/`, by the first digits of its digest: the log's `contract.frozen` events say which was
+frozen when, and a result is read under the one frozen before it. A `correctness-model/` inside a
+harness is a copy of it that the run's Builder could read: two runs that differ in having one
+differ in what their Builders knew.

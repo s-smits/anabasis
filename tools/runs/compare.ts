@@ -24,6 +24,7 @@
 import { type Paired, pairsOf } from "#src/kernel/compare.ts";
 import { type Condition, conditionsOf, fieldsApart } from "#src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "#src/kernel/log.ts";
+import { taskSets } from "#src/kernel/task.ts";
 import { TOOLS_SPEC_FILE } from "#src/meta/bundle-layout.ts";
 import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
@@ -138,7 +139,9 @@ export function roundOf(
   ];
   const parent = word(started.parent);
   const fresh = built?.changed === true && isString(built.harness) ? built.harness : "";
-  const anchor = events.flatMap(({ kind, data }) => (kind === "anchor.drawn" ? strings(data.tasks) : []));
+  // The anchor's versions as the fold names them: the drawn ones, and each version that continues
+  // one under an adopted checker (`src/kernel/task.ts`).
+  const anchor = [...taskSets(events).anchor];
 
   const solves = solvesOf(own, anchor);
   const condition = solves.at(-1)?.under;

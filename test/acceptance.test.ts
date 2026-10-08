@@ -2,7 +2,15 @@
 // the answer alone, and controls labelled as v1's `controls.json` labels them. No wall and no tool
 // runs here; the reading is what is under test.
 import { describe, expect, it } from "bun:test";
-import { acceptance, type Control, type Graded, runControls } from "../src/kernel/acceptance.ts";
+import {
+  acceptance,
+  type Control,
+  departure,
+  frozenChecker,
+  type Graded,
+  runControls,
+} from "../src/kernel/acceptance.ts";
+import type { LogEvent } from "../src/kernel/log.ts";
 import type { Brief, Task, Verifier } from "../src/kernel/verify.ts";
 import { asRecord, isNumber } from "../src/meta/json-shape.ts";
 
@@ -112,5 +120,29 @@ describe("a checker's acceptance", () => {
   it("stops on a control of a task the pack does not hold", async () => {
     const gone: Control = { taskId: "gone", answer: {}, refusedBy: null };
     await expect(runControls(verify, [roof], [gone], 1)).rejects.toThrow("a control names gone");
+  });
+});
+
+describe("a frozen checker", () => {
+  const froze = (contract: string, checks: string): LogEvent => ({
+    at: "2026-10-08T00:00:00.000Z",
+    kind: "contract.frozen",
+    data: { contract, checks },
+  });
+  const own = { contract: "c-1", checks: "p-1" };
+
+  it("is the last one the log froze, and none before the operator's word", () => {
+    expect(frozenChecker([])).toBeNull();
+    expect(departure([], own)).toBeNull();
+    expect(frozenChecker([froze("c-0", "p-0"), froze("c-1", "p-1")])).toEqual(own);
+    expect(departure([froze("c-1", "p-1")], own)).toBeNull();
+  });
+
+  it("names what of a campaign's checker is not what the log froze", () => {
+    const repaired = "a changed checker takes a campaign of its own";
+    expect(departure([froze("c-1", "p-0")], own)).toBe(`the log froze another check program; ${repaired}`);
+    expect(departure([froze("c-0", "p-0")], own)).toBe(
+      `the log froze another contract and check program; ${repaired}`,
+    );
   });
 });

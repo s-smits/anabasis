@@ -16,8 +16,9 @@
  * faults its author thought of, so controls cannot show that the answers a check refused were
  * wrong; that takes a reading of the refused answers themselves (`src/review/rejections.ts`).
  */
-import type { JsonValue } from "../meta/json-shape.ts";
+import { isString, type JsonValue } from "../meta/json-shape.ts";
 import { pooled } from "../meta/pool.ts";
+import type { LogEvent } from "./log.ts";
 import {
   applicableTruthChecks,
   type Brief,
@@ -68,6 +69,12 @@ export interface Acceptance {
   readonly checks: readonly CheckReading[];
   /** What stands between the checker and its acceptance, one sentence each. */
   readonly faults: readonly string[];
+}
+
+/** A checker by what it is: its contract's hash, and the digest of its program's files. */
+export interface Checker {
+  readonly contract: string;
+  readonly checks: string;
 }
 
 /** Every control through the checks, twice, `width` at once. A control of a task the pack does not
@@ -152,4 +159,27 @@ export function acceptance(
     ]),
   ];
   return { checks, faults };
+}
+
+/** The checker the log holds as frozen, by its last `contract.frozen`; null when none is. */
+export function frozenChecker(events: readonly LogEvent[]): Checker | null {
+  const data = events.findLast(({ kind }) => kind === "contract.frozen")?.data;
+  return isString(data?.contract) && isString(data.checks)
+    ? { contract: data.contract, checks: data.checks }
+    : null;
+}
+
+/** Why `own` is not the checker the log froze, or null when it is, or when none is frozen. A frozen
+ *  contract changes only through the operator (`contract.ts`), and a repaired check program is
+ *  another checker: its campaign is another campaign, with nothing of this one's counted under it. */
+export function departure(events: readonly LogEvent[], own: Checker): string | null {
+  const frozen = frozenChecker(events);
+  if (frozen === null) return null;
+  const moved = [
+    ...(frozen.contract === own.contract ? [] : ["contract"]),
+    ...(frozen.checks === own.checks ? [] : ["check program"]),
+  ];
+  return moved.length === 0
+    ? null
+    : `the log froze another ${moved.join(" and ")}; a changed checker takes a campaign of its own`;
 }

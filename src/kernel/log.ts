@@ -27,7 +27,7 @@ import { capturedJsonParse, capturedJsonStringify } from "../meta/json-runtime.t
 import { asRecord, type JsonObject, type JsonValue, isString } from "../meta/json-shape.ts";
 import { foldsEvent, taskStates } from "./task.ts";
 
-/** The plan's events, and sixteen that are not among them. `anchor.drawn` names the task versions the
+/** The plan's events, and seventeen that are not among them. `anchor.drawn` names the task versions the
  *  anchor drew, which are never released, and a task may be released straight from held only once
  *  it is drawn, so the draw is an event the task states can see. `solve.turn` and `solve.call` are
  *  a solve's trace, one per model turn and one per tool call, so the trace is in the log rather than
@@ -37,9 +37,12 @@ import { foldsEvent, taskStates } from "./task.ts";
  *  (`src/builder/session.ts`). `solve.compacted`, `build.compacted` and `exam.compacted` are a compaction
  *  in pi's own loop, and what its summary spent (`src/backends/pi-compaction.ts`). The five `exam.*` kinds are an Examiner session's: the same four,
  *  and `exam.word`, the one word a task's author is told of it, with the solves it rests on
- *  (`src/examiner/session.ts`). */
+ *  (`src/examiner/session.ts`). `checker.read` is what a campaign's check program was seen to do, by
+ *  the version it was read at (`acceptance.ts`); `contract.frozen` is the operator's word that the
+ *  contract and that version stand, and a campaign whose own differ from it does not open. */
 export const EVENT_KINDS = [
   "world.accepted",
+  "checker.read",
   "contract.frozen",
   "condition.recorded",
   "harness.version",

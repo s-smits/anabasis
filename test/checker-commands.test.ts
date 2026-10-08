@@ -1,7 +1,8 @@
 // Phase C's two commands, run as the operator runs them over a sweep laid out as v1's left one: a
 // pack of two tasks and one check, three stored solves, and the pack's controls. The verifier runs
 // behind its wall, so the suite is skipped where the host has none. No model is called: the
-// Referee's reading stops at its guard.
+// Referee's reading stops at its guard. The two tests of the checker's acceptance run in order: the
+// second freezes what the first read.
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
 import { read } from "../src/kernel/log.ts";
 import {
@@ -25,6 +26,10 @@ const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-checker-")));
 const bundle = join(root, "bundle");
 const model = join(bundle, "correctness-model");
 const campaign = join(REPO, ".ana", "d2", NAME);
+/** The campaign the checker is accepted and frozen under, apart from the one its rejections are
+ *  logged in. */
+const ACCEPTED = `${NAME}-accepted`;
+const accepted = join(REPO, ".ana", "d2", ACCEPTED);
 const FORMAT = { type: "object", properties: { answer: { type: "string" } }, required: ["answer"] };
 const EVALUATOR = `export const checks = {
   "check-product": (req) => req.artifact.answer === String(req.publicTask.publicInput.base * 6),
@@ -36,6 +41,7 @@ setDefaultTimeout(180_000);
 afterAll(() => {
   rmSync(root, { recursive: true, force: true });
   rmSync(campaign, { recursive: true, force: true });
+  rmSync(accepted, { recursive: true, force: true });
 });
 
 /** One stored solve as v1 left it: its result, its trace, its answer and what its record tool took. */
@@ -125,36 +131,68 @@ function layOut(): void {
   controls("13");
 }
 
-/** A command as the operator runs it: its exit code and everything it printed. */
-function run(command: string, flags: Record<string, string>) {
+/** A command as the operator runs it: its exit code and everything it printed. `bare` are flags
+ *  that take no value. */
+function run(command: string, flags: Record<string, string>, ...bare: string[]) {
   const args = Object.entries({ root, sweep: "s", bundle, ...flags }).flatMap(([flag, value]) => [
     `--${flag}`,
     value,
   ]);
-  const ran = Bun.spawnSync({ cmd: [capturedExecPath, command, ...args], cwd: REPO });
+  const ran = Bun.spawnSync({ cmd: [capturedExecPath, command, ...args, ...bare], cwd: REPO });
   return { code: ran.exitCode, said: `${ran.stdout.toString()}${ran.stderr.toString()}` };
 }
+
+const accept = (...bare: string[]) => run("tools/c/accept.ts", { name: ACCEPTED }, ...bare);
+/** What the accepted campaign's log holds of one kind. */
+const held = (kind: string) =>
+  read(join(accepted, "log.jsonl")).flatMap((event) => (event.kind === kind ? [event.data] : []));
 
 // Laid out at load, as `verify.test.ts` writes its tree.
 layOut();
 
 describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack", () => {
-  it("accepts a checker whose controls get their labels, and names the control that does not", () => {
-    const sound = run("tools/c/accept.ts", {});
+  it("records a checker's reading, and names the control that does not get its label", () => {
+    const sound = accept();
     // Three controls and three stored verdicts: the check let three answers pass and refused three.
     expect(sound.said).toContain("3 controls twice, 3 stored verdicts");
     expect(sound.said).toContain("check-product\tauthored\t3\t3\t1 of 1");
     expect(sound.said).toContain("no fault");
     expect(sound.code).toBe(0);
+    const [reading] = held("checker.read");
+    expect(reading).toMatchObject({ controls: 3, stored: 3, faults: [] });
 
-    // A reject control whose edit is still a right answer: the check it names lets it pass.
+    // A reject control whose edit is still a right answer: the check it names lets it pass, and the
+    // operator's word does not freeze a checker read so.
     controls("12");
-    const mislabelled = run("tools/c/accept.ts", {});
-    expect(mislabelled.said).toContain(
-      "fault: a reject control of t-1 names check-product, which did not refuse it: pass",
-    );
+    const mislabelled = accept("--freeze");
+    const fault = "a reject control of t-1 names check-product, which did not refuse it: pass";
+    expect(mislabelled.said).toContain(`fault: ${fault}`);
+    expect(mislabelled.said).toContain("not frozen");
     expect(mislabelled.code).toBe(1);
+    expect(held("checker.read").at(-1)?.faults).toContain(fault);
+    expect(held("contract.frozen")).toEqual([]);
     controls("13");
+  });
+
+  it("freezes the checker on the operator's word, and opens no campaign under another", () => {
+    expect(accept("--freeze").said).toContain("frozen: contract ");
+    // Given twice, the word is in the log once, under the hashes the readings were made at.
+    expect(accept("--freeze").code).toBe(0);
+    const [frozen, ...more] = held("contract.frozen");
+    expect(more).toEqual([]);
+    expect(Object.keys(frozen ?? {})).toEqual(["contract", "checks"]);
+    expect(held("checker.read").at(-1)).toMatchObject(frozen ?? {});
+
+    // A check repaired in the campaign's own copy is another checker.
+    const evaluator = join(accepted, "checks", "evaluator.ts");
+    writeFileSync(evaluator, EVALUATOR.replace("* 6", "* 7"));
+    const repaired = accept();
+    expect(repaired.said).toContain(
+      "the log froze another check program; a changed checker takes a campaign of its own",
+    );
+    expect(repaired.code).not.toBe(0);
+    writeFileSync(evaluator, EVALUATOR);
+    expect(accept().code).toBe(0);
   });
 
   it("logs the stored rejections, draws the fails to label, and holds the Referee until they are", () => {

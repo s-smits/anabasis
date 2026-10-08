@@ -28,7 +28,6 @@
  * nor a verdict reads them, so they cannot change a result. Gate 4 logs their digest instead, so an
  * admission names the control set it rested on.
  */
-import { sha256OfFile } from "../meta/digest.ts";
 import { existsSync } from "../meta/filesystem.ts";
 import { type JsonObject, type JsonValue, isString } from "../meta/json-shape.ts";
 import { join } from "../meta/path.ts";
@@ -41,6 +40,7 @@ import {
   applicableTruthChecks,
   checkEvaluationRequest,
   checkProgramFiles,
+  checkProgramVersion,
   decided,
   readBrief,
   type Task,
@@ -216,9 +216,7 @@ export function taskVersion(task: TaskPackage): string {
   const { checks, ...parts } = task;
   let program: JsonValue;
   try {
-    program = Object.fromEntries(
-      checkProgramFiles(checks).map((file) => [file, sha256OfFile(join(checks, file))]),
-    );
+    program = checkProgramVersion(checks);
   } catch (error) {
     program = { unreadable: errorMessage(error) };
   }

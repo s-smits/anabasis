@@ -3,6 +3,7 @@
  * `.ana/d2/<name>`, over a stored sweep's pack. It is what the D1b and D2 commands share, so that
  * each builds its conditions, its solves and its reviewers the same way:
  *
+ *   bun tools/c/accept.ts      ... --name <name> [--freeze]                     what the checker has been seen to do; the operator's word that it stands
  *   bun tools/m1/admit-sweep.ts ... --log .ana/d2/<name>/log.jsonl --feasible   the pack's tasks, gates 1 to 4
  *   bun tools/d1b/examine.ts   ... --name <name> --session x-1                  an Examiner session
  *   bun tools/d2/prepare.ts    ... --name <name>                                the anchor's draw, the releases
@@ -22,12 +23,13 @@
 import type { Api, Model, ThinkingLevel } from "@earendil-works/pi-ai";
 import { backends, compactionMode } from "#src/backends/models.ts";
 import { type Practised, practised } from "#src/builder/session.ts";
+import { departure } from "#src/kernel/acceptance.ts";
 import { type Condition, type Limits, recordCondition } from "#src/kernel/condition.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
 import { freezePrices, priceKey } from "#src/kernel/meter.ts";
 import { type TaskPackage, taskStates, taskVersion } from "#src/kernel/task.ts";
-import { openVerifier, type Task } from "#src/kernel/verify.ts";
+import { checkProgramVersion, openVerifier, type Task } from "#src/kernel/verify.ts";
 import { existsSync, mkdirSync, readFileSync } from "#src/meta/filesystem.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
@@ -132,6 +134,12 @@ export async function openCampaign(args: CampaignArgs) {
   if (row === undefined) throw new Error(`${args.sweep} graded no solve in ${args.cycle}`);
   const runtime = storedRuntime(row);
   const contract = contractOf(brief, recordedAnswerFormat(row));
+  // The checker this campaign runs under: its contract and its staged check program. Once the
+  // operator has frozen one in the log (`tools/c/accept.ts --freeze`), a campaign whose own is
+  // another does not open, since what the log counted was counted under the frozen one.
+  const checker = { contract: contractHash(contract), checks: hashJsonValue(checkProgramVersion(checks)) };
+  const moved = departure(read(log), checker);
+  if (moved !== null) throw new Error(`${log}: ${moved}`);
   const resources = sweepResources(brief);
   const tools = join(args.bundle, ".toolchain");
   const verify = openVerifier({ checks, tools });
@@ -221,6 +229,7 @@ export async function openCampaign(args: CampaignArgs) {
     brief,
     tasks,
     contract,
+    checker,
     resources,
     parent: join(args.root, "hb-bundles", `${args.sweep}-${args.cycle}`),
     test: {

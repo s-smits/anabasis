@@ -29,6 +29,7 @@ import {
   readFileSync,
   rmSync,
 } from "../meta/filesystem.ts";
+import { sha256OfFile } from "../meta/digest.ts";
 import { jsonPathTokens } from "../meta/json-evidence.ts";
 import {
   capturedJsonParse,
@@ -264,6 +265,14 @@ export function checkProgramFiles(checks: string): string[] {
       throw new Error(`the check program's ${path} is neither a file nor a directory`);
     });
   return walk("").sort(compareCodeUnits);
+}
+
+/** A check program's version: the sha256 of each of its files, by its path under the directory.
+ *  Every file counts, since the verifier copies them all into each check's cell. */
+export function checkProgramVersion(checks: string): Record<string, string> {
+  return Object.fromEntries(
+    checkProgramFiles(checks).map((file) => [file, sha256OfFile(join(checks, file))]),
+  );
 }
 
 /** A check program's declaration of its checks, as its author wrote it. */

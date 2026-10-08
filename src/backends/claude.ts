@@ -112,7 +112,9 @@ const FINAL_STOPS: ReadonlyMap<string, TurnEnd> = new Map([
  * The models the sweep asked Claude Code for by their long-context id, which is what gives them a
  * million-token window on a subscription token; the CLI serves a bare id at its own default window,
  * under which a 300K compaction window is clamped. v1 measured each (`vendor/pi-claude-bridge/models.ts:17-50`
- * at 7af7315, under the `plan: "pro"` settings of `provider.ts:60`); every other model went bare.
+ * at 7af7315, under the `plan: "pro"` settings of `provider.ts:60`); every other model went bare. Opus
+ * 5.5 and Sonnet 5.5 came after; on 2026-10-08 the CLI served each a million tokens under its
+ * `[1m]` id.
  */
 const LONG_CONTEXT = new Set([
   "claude-opus-5",
@@ -120,6 +122,8 @@ const LONG_CONTEXT = new Set([
   "claude-fable-5",
   "claude-fable-5-1",
   "claude-sonnet-5",
+  "claude-opus-5-5",
+  "claude-sonnet-5-5",
 ]);
 
 const sessions = new Map<string, Session>();
@@ -168,7 +172,8 @@ const BARE_WINDOW = 200_000;
 /**
  * The compaction a condition pins for a Claude solve on `modelId`, in the words the CLI's own
  * settings use. A window the id's served context cannot hold is refused, where the CLI would clamp it
- * without a word: `claude-opus-5-5` goes bare, so a 300K window there ran at 200K.
+ * without a word: a bare id such as `claude-haiku-4-5` is served 200K, under which a 300K window
+ * would run.
  */
 export function claudeCompactionMode(compaction: ClaudeCompaction, modelId: string): string {
   if (compaction === "off") return "off";

@@ -175,16 +175,18 @@ describe("the Claude backend", () => {
   });
 
   it("asks for the long-context id of a model the sweep ran at a million tokens", async () => {
-    replay("text.jsonl");
-    const opus = sweep.getModels().find((entry) => entry.id === "claude-opus-5");
-    if (opus === undefined) throw new Error("pi's Anthropic catalog has no claude-opus-5");
     const context = normalizeContext({
       systemPrompt: "You are a solver.",
       messages: [opening],
       tools: [read],
     });
-    await sweep.streamSimple(opus, context, solveOptions()).result();
-    expect(flag(launched(), "--model")).toBe("claude-opus-5[1m]");
+    for (const id of ["claude-opus-5", "claude-opus-5-5", "claude-sonnet-5-5"]) {
+      replay("text.jsonl");
+      const model = sweep.getModels().find((entry) => entry.id === id);
+      if (model === undefined) throw new Error(`pi's Anthropic catalog has no ${id}`);
+      await sweep.streamSimple(model, context, { ...solveOptions(), sessionId: `solve-${id}` }).result();
+      expect(flag(launched(), "--model")).toBe(`${id}[1m]`);
+    }
   });
 
   it("switches Claude Code's compaction off when the condition says off, and refuses a window it would drop", async () => {

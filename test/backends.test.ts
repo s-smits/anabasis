@@ -68,11 +68,13 @@ describe("the three backends", () => {
       claude: { ...options.claude, compaction: { window } },
     });
     const claude = (id: string) => ({ provider: "claude", id });
-    expect(() => compactionMode(claude("claude-opus-5-5"), at(SWEEP_COMPACT_WINDOW))).toThrow(
-      "claude-opus-5-5 a 200000-token context",
+    expect(() => compactionMode(claude("claude-haiku-4-5"), at(SWEEP_COMPACT_WINDOW))).toThrow(
+      "claude-haiku-4-5 a 200000-token context",
     );
-    expect(() => compactionMode(claude("claude-sonnet-5-5"), at(SWEEP_COMPACT_WINDOW))).toThrow("clamped");
-    expect(compactionMode(claude("claude-opus-5-5"), at(200_000))).toBe("autoCompactWindow=200000");
+    expect(compactionMode(claude("claude-haiku-4-5"), at(200_000))).toBe("autoCompactWindow=200000");
+    expect(compactionMode(claude("claude-opus-5-5"), at(SWEEP_COMPACT_WINDOW))).toBe(
+      "autoCompactWindow=300000",
+    );
     expect(compactionMode(claude("claude-fable-5-1"), at(1_000_000))).toBe("autoCompactWindow=1000000");
   });
 });

@@ -42,6 +42,8 @@ interface GoalState {
   readonly maxTurns: number | undefined;
   /** Zero for a caller that keeps no start time; under a minute is not stated. */
   readonly elapsedMs: number;
+  /** The run's hard stop, epoch ms; null when the run has none. */
+  readonly stopAt: number | null;
 }
 
 const persist =
@@ -49,7 +51,15 @@ const persist =
 
 const progress = `A turn that changes no file, runs no check and learns nothing that changes the next action made no progress; take the next concrete step instead of restating the plan. ${POLICY.loop.stalledTurns} turns in a row without a successful tool call end the round.`;
 
-/** The goal's facts: how far the round has come, and what is left of a cap when there is one. */
+/** The run's hard stop as one instant and the minutes left to it at `now`. One instant rather than
+ *  a remainder, so no restatement can go stale; the minutes are read against it each time. */
+export function stopFact(stopAt: number, now: number): string {
+  const left = Math.max(0, Math.floor((stopAt - now) / 60_000));
+  return `Run stop: this run is stopped at ${new Date(stopAt).toISOString()}, ${String(left)} min from now, whether or not a candidate has been submitted.`;
+}
+
+/** The goal's facts: how far the round has come, and what is left of a cap or of the run when
+ *  either has a bound. */
 function goalFacts(goal: GoalState): string {
   const whole = Math.floor(goal.elapsedMs / 60_000);
   const minutes = whole < 1 ? "" : `, ${whole} minute${whole === 1 ? "" : "s"}`;
@@ -61,7 +71,8 @@ function goalFacts(goal: GoalState): string {
     goal.maxTurns === undefined
       ? ""
       : ` ${Math.max(0, goal.maxTurns - goal.activeTurn)} of ${goal.maxTurns} turns remain.`;
-  return `This round so far: turn ${goal.activeTurn}${minutes}, ${submits}.${cap}`;
+  const stop = goal.stopAt === null ? "" : ` ${stopFact(goal.stopAt, Date.now())}`;
+  return `This round so far: turn ${goal.activeTurn}${minutes}, ${submits}.${cap}${stop}`;
 }
 
 /** The one action the round's state asks for. A previous submit changes it from "author a

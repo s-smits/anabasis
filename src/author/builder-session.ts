@@ -237,8 +237,6 @@ interface RoundContext {
   readonly state: SessionState;
   readonly recorder: BuilderExecutionRecorder;
   readonly checkpoint: () => void;
-  /** The operator's turn cap; absent, the round has none. */
-  readonly maxTurns: number | undefined;
 }
 
 /** Session cleanup failed after the model path had already settled. The evidence row names that
@@ -458,7 +456,7 @@ function roundRoster(
   feedback: BuilderAuthorFeedback,
   input: BuilderSessionInput,
 ): PiTool[] {
-  const { deps, state, recorder, checkpoint, maxTurns } = context;
+  const { deps, state, recorder, checkpoint } = context;
   // A settled round gets no review: acceptance froze its bytes and the round ends with this turn,
   // so advice from the reviewer would reach nobody who could still act on it.
   const { afterTool } = deps;
@@ -473,7 +471,7 @@ function roundRoster(
             recorder,
             workspace: input.workspace,
             feedback,
-            ...keyIfDefined("maxTurns", maxTurns),
+            ...keyIfDefined("maxTurns", input.maxTurns),
           }),
         ];
   const wall = input.split?.role === "answer" ? performance.now() + input.split.wallMs : null;
@@ -483,7 +481,7 @@ function roundRoster(
     checkpoint,
     closed: () => settledClosure(state) ?? (wall !== null && performance.now() >= wall ? "wall" : null),
     // A session with no submit is never asked to submit, so the clock counts it as one that has.
-    clock: sessionClock(() => (deps.submit === undefined ? 1 : state.attempts)),
+    clock: sessionClock(() => (deps.submit === undefined ? 1 : state.attempts), deps.conversation?.stopAt),
     afterTool:
       afterTool === undefined
         ? undefined
@@ -499,10 +497,16 @@ async function runRoundTurns(
   input: BuilderSessionInput,
   firstPrompt: string,
 ): Promise<number> {
-  const { deps, state, recorder, checkpoint, maxTurns } = context;
+  const { deps, state, recorder, checkpoint } = context;
+  const { maxTurns } = input;
   // The session's own start, read once. The continuation states elapsed time because a turn count
   // measures none: a session that reads and installs for a night crosses no turn count at all.
-  const openedAtMs = Date.now();
+  const round = {
+    kickoff: input.kickoff,
+    maxTurns,
+    openedAtMs: Date.now(),
+    stopAt: deps.conversation?.stopAt ?? null,
+  };
   const deadline = deps.turnTimeoutMs === undefined ? null : performance.now() + deps.turnTimeoutMs;
   const onTurnEvent = turnEventRecorder(recorder, checkpoint);
   // Captured once at open, because the next-turn note compares the owned paths against this
@@ -523,9 +527,7 @@ async function runRoundTurns(
       turn: turns + 1,
       onTurnEvent,
       checkpoint,
-      kickoff: input.kickoff,
-      ...keyIfDefined("maxTurns", maxTurns),
-      openedAtMs,
+      round,
       ...keyIfDefined("observer", deps.observer),
       // The operator's cap applies across the whole session, so each new turn receives only what
       // is left of it rather than a fresh copy.
@@ -546,10 +548,10 @@ async function runRoundTurns(
   return turns;
 }
 
-function roundContext(input: BuilderSessionInput, deps: BuilderSessionDeps): RoundContext {
+function roundContext(deps: BuilderSessionDeps): RoundContext {
   const recorder = new BuilderExecutionRecorder();
   const checkpoint = (): void => deps.onCheckpoint?.(recorder.finish("in-flight"));
-  return { deps, state: freshSessionState(), recorder, checkpoint, maxTurns: input.maxTurns };
+  return { deps, state: freshSessionState(), recorder, checkpoint };
 }
 
 /** The round's entry: its roster composed and recorded, through the entry gate, before any
@@ -564,7 +566,7 @@ function enterRound(context: RoundContext, input: BuilderSessionInput) {
 /** A round's entry gate alone, with no session opened, so a split build checks both sides' rosters
  *  before its first answer pass rather than after it. */
 export function checkRoundEntry(input: BuilderSessionInput, deps: BuilderSessionDeps): void {
-  enterRound(roundContext(input, deps), input);
+  enterRound(roundContext(deps), input);
 }
 
 /** Run one Builder round until it settles. Like a Codex goal, a round has no turn ceiling of its
@@ -574,7 +576,7 @@ export async function runBuilderSession(
   input: BuilderSessionInput,
   deps: BuilderSessionDeps,
 ): Promise<BuilderSessionOutcome> {
-  const context = roundContext(input, deps);
+  const context = roundContext(deps);
   const { state, recorder, checkpoint } = context;
   const { roster, prompts } = enterRound(context, input);
   const systemPrompt = prompts.system;

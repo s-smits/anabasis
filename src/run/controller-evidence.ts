@@ -284,6 +284,8 @@ function writeControllerOpening(input: {
     // The battery cap the run stops itself at, legible here and not only inside the digest, so the
     // reader of a paired arm or of a continuation reads the count each run was given.
     ...keyIfDefined("maxBatteries", input.args.maxBatteries),
+    // The hard stop the Builder was told of (--stop-at), epoch ms, which the digest leaves out.
+    ...keyIfDefined("stopAt", input.args.stopAt),
     // Whether an answer agent wrote the correctness model (--answer-agent), so a reader can tell a
     // split run from a whole one without the command digest. Absent means false, as at launch.
     answerAgent: input.args.answerAgent === true,

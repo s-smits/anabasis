@@ -1,9 +1,12 @@
 /**
- * Launch a round once its log says it can report something, and stop a run: v1's launch-run, on
- * v2's records.
+ * Launch a round once its log says it can report something, or an Examiner session, and stop a
+ * run: v1's launch-run, on v2's records.
  *
  *   bun run runs launch [--env-file FILE] [--loaded] [--dry-run] <the flags of tools/d2/round.ts>
+ *   bun run runs launch [--env-file FILE] [--loaded] [--dry-run] <the flags of tools/d1b/examine.ts>
  *   bun run runs stop <name> ... [--yes]
+ *
+ * Flags that hold `--examiner` are an Examiner session's, and any others a round's.
  *
  * `launch` runs in the worktree whose source should run. Before it starts anything it reads the
  * campaign's sets from the log and the host, and refuses:
@@ -17,7 +20,11 @@
  *   - an `--env-file` that is not there. The path is Bun's to read and is never opened here;
  *   - a `--session` whose Builder started and did not end whole, as the round itself would.
  *
- * It then starts `round.ts` with the same flags, niced, in a process group of its own, with its
+ * An Examiner session meets the last four of these, its id being one the log holds already, and
+ * needs the campaign's log and no set in it. Its notes say what it is handed and where its tasks
+ * can go: a task an earlier session left past gate 3, and whether the anchor is drawn yet.
+ *
+ * It then starts the command with the same flags, niced, in a process group of its own, with its
  * output in `.ana/d2/<name>/launch-<session>.out` and `.err`, and writes `launch-<session>.json`
  * beside them: the flags, the commit and the load it started under. Starting proves the process
  * stayed up for `START_MS`, and no model work.
@@ -26,37 +33,44 @@
  * nothing else: a round started by hand can share its process group with a sibling. A name is
  * matched whole. Without `--yes` it prints what it would end. A round goes on from its log when it
  * is launched again with the same `--session`, unless the stop fell inside its Builder session: that
- * session never finished, the round refuses a second one under its id, and so does `launch`.
+ * session never finished, the round refuses a second one under its id, and so does `launch`. An
+ * Examiner session's id is spent wherever the stop fell, and the next is handed what it left.
  */
 import { existsSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
+import type { LogEvent } from "#src/kernel/log.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { availableParallelism, loadavg } from "#src/meta/os.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { runTextSyncOrThrow, terminateAndReapProcessGroupId } from "#src/meta/subprocess.ts";
 import { spent } from "#src/builder/round.ts";
-import { setsOf } from "../d2/campaign.ts";
-import { logEvents, processes, ROUND, runs, standing, writers } from "./pulse.ts";
+import { claimed } from "#src/examiner/session.ts";
+import { carriable, setsOf } from "../d2/campaign.ts";
+import { EXAMINE, logEvents, processes, ROUND, runs, standing, writers } from "./pulse.ts";
 
 const START_MS = 8000;
 /** The launcher's own flags; every other one is the round's. */
 const OWN = new Set(["env-file", "loaded", "dry-run"]);
 
-/** What a launch is asked for and finds on the host. */
-export interface Asked {
-  /** `--target`, as given: only "0" asks for no scored task. */
-  readonly target: string | undefined;
-  readonly admitted: boolean;
+/** What any launch finds on the host and in the log's sessions. */
+export interface Host {
   readonly loaded: boolean;
   readonly load: number;
   readonly cores: number;
-  /** The processes already writing this round's log. */
+  /** The processes already writing this campaign's log. */
   readonly running: readonly number[];
   /** The `--env-file` that is not there, or null. */
   readonly missing: string | null;
-  /** Why the round would refuse this session's id (`spent`), or null. */
+  /** Why the command would refuse this session's id (`spent`, `claimed`), or null. */
   readonly spent: string | null;
+}
+
+/** What a round's launch is asked for beside it. */
+export interface Asked extends Host {
+  /** `--target`, as given: only "0" asks for no scored task. */
+  readonly target: string | undefined;
+  readonly admitted: boolean;
 }
 
 /** What a launch keeps of a round's start, in `launch-<session>.json` beside its log. The log holds
@@ -81,30 +95,43 @@ export function receiptOf(log: string, session: string): Receipt | null {
   return existsSync(file) ? parseJsonAs<Receipt>(readFileSync(file, "utf8")) : null;
 }
 
-/** Why a round should not start, and what its reader should know when it does. */
-export function preflight(sets: ReturnType<typeof setsOf>, asked: Asked) {
-  const scoring = asked.target !== "0";
-  const toScreen = sets.candidates.length + (asked.admitted ? sets.admitted.length : 0);
-  const said = (rows: readonly (readonly [boolean, string])[]) =>
-    rows.flatMap(([holds, text]) => (holds ? [text] : []));
-  const refusals = said([
+const said = (rows: readonly (readonly [boolean, string])[]) =>
+  rows.flatMap(([holds, text]) => (holds ? [text] : []));
+
+/** Why nothing should start on this host or under this session's id, whatever the command. */
+function refused(asked: Host): string[] {
+  return said([
     [
-      sets.feasible.length === 0,
-      "the log holds no feasible task: put the pack's tasks in it with tools/m1/admit-sweep.ts --log <log> --feasible",
+      asked.running.length > 0,
+      `this campaign's log is already being written here, by pid ${asked.running.join(", ")}`,
     ],
-    [sets.feasible.length > 0 && sets.anchor.length === 0, "no anchor is drawn: run tools/d2/prepare.ts"],
-    [
-      scoring && toScreen === 0 && sets.anchor.length > 0,
-      "no task is held outside the anchor, so the round has nothing to screen and cannot step: run an Examiner session (tools/d1b/examine.ts), or pass --target 0 for a round that reads its anchor alone",
-    ],
-    [asked.running.length > 0, `the round is already running here, as pid ${asked.running.join(", ")}`],
     [
       asked.load > asked.cores && !asked.loaded,
-      `the host's load is ${asked.load.toFixed(1)} on ${String(asked.cores)} cores: a round started into it slows every other and reaches walls an idle host would not. Wait, or pass --loaded when its times will not be compared`,
+      `the host's load is ${asked.load.toFixed(1)} on ${String(asked.cores)} cores: what starts into it slows every other run and reaches walls an idle host would not. Wait, or pass --loaded when its times will not be compared`,
     ],
     [asked.missing !== null, `${String(asked.missing)} is not there`],
     [asked.spent !== null, `${String(asked.spent)}. Pass another --session`],
   ]);
+}
+
+/** Why a round should not start, and what its reader should know when it does. */
+export function preflight(sets: ReturnType<typeof setsOf>, asked: Asked) {
+  const scoring = asked.target !== "0";
+  const toScreen = sets.candidates.length + (asked.admitted ? sets.admitted.length : 0);
+  const refusals = [
+    ...said([
+      [
+        sets.feasible.length === 0,
+        "the log holds no feasible task: put the pack's tasks in it with tools/m1/admit-sweep.ts --log <log> --feasible",
+      ],
+      [sets.feasible.length > 0 && sets.anchor.length === 0, "no anchor is drawn: run tools/d2/prepare.ts"],
+      [
+        scoring && toScreen === 0 && sets.anchor.length > 0,
+        `no task is held outside the anchor, so the round has nothing to screen and cannot step: run an Examiner session (${EXAMINE}), or pass --target 0 for a round that reads its anchor alone`,
+      ],
+    ]),
+    ...refused(asked),
+  ];
   const notes = said([
     [
       true,
@@ -112,6 +139,37 @@ export function preflight(sets: ReturnType<typeof setsOf>, asked: Asked) {
     ],
     [!scoring, "--target 0: the round scores no task and cannot read step. Its anchor is all it compares"],
     [sets.released.length === 0, "no task is released: the Builder has nothing to practise on"],
+  ]);
+  return { refusals, notes };
+}
+
+/** The same for an Examiner session on a campaign whose log is `events`, or null where the
+ *  campaign has none here. It needs no set: what it writes is what a round later screens. */
+export function examPreflight(events: readonly LogEvent[] | null, asked: Host) {
+  const sets = setsOf(events ?? []);
+  const waiting = carriable(events ?? []).waiting.map(({ task }) => task.taskId);
+  const refusals = [
+    ...said([
+      [
+        events === null,
+        "the campaign has no log in this worktree: open it with tools/c/accept.ts and tools/m1/admit-sweep.ts --log <log> --feasible",
+      ],
+    ]),
+    ...refused(asked),
+  ];
+  const notes = said([
+    [
+      waiting.length > 0,
+      `${waiting.join(", ")} passed gate 3 in an earlier session and is handed to this one for its controls`,
+    ],
+    [
+      sets.anchor.length > 0,
+      "the anchor is drawn: what this session writes is a round's to screen, and is not drawn into the anchor",
+    ],
+    [
+      events !== null && sets.anchor.length === 0,
+      "no anchor is drawn: run tools/d2/prepare.ts after this session, and its tasks stand a chance of the anchor",
+    ],
   ]);
   return { refusals, notes };
 }
@@ -142,14 +200,16 @@ export async function launch(args: readonly string[]): Promise<void> {
       session: { type: "string" },
       target: { type: "string" },
       admitted: { type: "boolean", default: false },
+      examiner: { type: "string" },
     },
   });
   const { name, session, target, "env-file": envFile } = values;
   if (!isString(name) || !isString(session)) {
     throw new Error(
-      `usage: bun run runs launch [--env-file FILE] [--loaded] [--dry-run] <the flags of ${ROUND}>`,
+      `usage: bun run runs launch [--env-file FILE] [--loaded] [--dry-run] <the flags of ${ROUND} or of ${EXAMINE}>`,
     );
   }
+  const examining = isString(values.examiner);
   const own = new Set(
     tokens.flatMap((token) => {
       if (token.kind !== "option" || !OWN.has(token.name)) return [];
@@ -163,17 +223,22 @@ export async function launch(args: readonly string[]): Promise<void> {
   );
   const load = loadavg()[0] ?? 0;
   const cores = availableParallelism();
-  const events = run === undefined ? [] : logEvents(run.path);
-  const { refusals, notes } = preflight(setsOf(events), {
-    target: isString(target) ? target : undefined,
-    admitted: values.admitted === true,
+  const events = run === undefined ? null : logEvents(run.path);
+  const host: Host = {
     loaded: values.loaded === true,
     load,
     cores,
     running: run === undefined ? [] : writers(run, processes()).map(({ pid }) => pid),
     missing: isString(envFile) && !existsSync(envFile) ? envFile : null,
-    spent: spent(events, session),
-  });
+    spent: (examining ? claimed : spent)(events ?? [], session),
+  };
+  const { refusals, notes } = examining
+    ? examPreflight(events, host)
+    : preflight(setsOf(events ?? []), {
+        ...host,
+        target: isString(target) ? target : undefined,
+        admitted: values.admitted === true,
+      });
   for (const note of notes) console.log(`· ${note}`);
   if (run === undefined || refusals.length > 0) {
     // A refusal is an answer and not a fault of this command, so it is said without a stack.
@@ -188,7 +253,7 @@ export async function launch(args: readonly string[]): Promise<void> {
     "19",
     capturedExecPath,
     ...(isString(envFile) ? [`--env-file=${envFile}`] : []),
-    ROUND,
+    examining ? EXAMINE : ROUND,
     ...flags,
   ];
   if (values["dry-run"] === true) {
@@ -245,9 +310,11 @@ export async function stop(args: readonly string[]): Promise<void> {
   const table = runTextSyncOrThrow(["ps", "-axo", "pid=,ppid="]);
   const found = runs()
     .filter((run) => names.includes(run.name))
-    .flatMap((run) => writers(run, running).map(({ pid }) => ({ run, pids: family(table, pid) })));
+    .flatMap((run) =>
+      writers(run, running).map(({ pid, args: ran }) => ({ run, ran, pids: family(table, pid) })),
+    );
   if (found.length === 0) console.log("none of these is running");
-  for (const { run, pids } of found) {
+  for (const { run, ran, pids } of found) {
     console.log(
       `${run.name} in ${run.tree}: pid ${String(pids[0])} and the ${String(pids.length - 1)} it started`,
     );
@@ -260,7 +327,11 @@ export async function stop(args: readonly string[]): Promise<void> {
     // that session's id: say so here, where the operator decides what to launch next.
     const events = logEvents(run.path);
     const session = events.findLast(({ kind }) => kind === "build.started")?.data.session;
-    const cut = isString(session) ? spent(events, session) : null;
+    const cut = ran.some((arg) => arg.endsWith(EXAMINE))
+      ? "An Examiner session's id names one session: the next takes another --session, and is handed the tasks this one left past gate 3"
+      : isString(session)
+        ? spent(events, session)
+        : null;
     console.log(
       `  stopped, its log as it was. ${cut ?? "A round goes on from it when launched again with the same --session"}`,
     );

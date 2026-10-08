@@ -61,9 +61,11 @@ interface Memory {
 
 /** The command a round runs as: what a launch starts and what a running round is known by. */
 export const ROUND = "tools/d2/round.ts";
-/** The commands that write a campaign's log for hours, each naming it with `--name`. An Examiner
- *  session was read as closed while it ran, the first time one did (exam-1, 2026-10-08). */
-const CAMPAIGN = [ROUND, "tools/d1b/examine.ts"];
+/** The command an Examiner session runs as. With a round's it is what writes a campaign's log for
+ *  hours, each naming it with `--name`: an Examiner session was read as closed while it ran, the
+ *  first time one did (exam-1, 2026-10-08). */
+export const EXAMINE = "tools/d1b/examine.ts";
+const CAMPAIGN = [ROUND, EXAMINE];
 const LIVE = "tools/m0/live-solve.ts";
 const QUIET_MS = 20 * 60_000;
 const GIB = 2 ** 30;

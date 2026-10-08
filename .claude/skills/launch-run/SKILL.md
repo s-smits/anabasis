@@ -1,6 +1,6 @@
 ---
 name: launch-run
-description: "Launch an authorised Anabasis v2 round through one command that first reads whether the round can report anything, or stop a named run. Use when the operator asks to launch, start, relaunch or stop a round or a run, to check whether a campaign is ready for one, or why a launch was refused. Owns the preflight, the start and the stop; whole-run-investigation reads what a run did."
+description: "Launch an authorised Anabasis v2 round or Examiner session through one command that first reads whether it can start and what it can report, or stop a named run. Use when the operator asks to launch, start, relaunch or stop a round, an Examiner session or a run, to check whether a campaign is ready for one, or why a launch was refused. Owns the preflight, the start and the stop; whole-run-investigation reads what a run did."
 ---
 
 # Launch a round
@@ -14,6 +14,9 @@ bun run runs launch [--env-file <file>] [--loaded] [--dry-run] <the flags of too
 
 Run it in the worktree whose source should run. Every flag but its own three goes to `round.ts`
 unchanged, so `tools/d2/round.ts` stays the one owner of a round's flags and defaults.
+
+Flags that hold `--examiner` are an Examiner session's and go to `tools/d1b/examine.ts` the same
+way: see "An Examiner session" below.
 
 ## What comes before a round
 
@@ -57,6 +60,31 @@ repeated. The round's report holds its target, so a later reader can tell.
 `--dry-run` prints the preflight and the command, and starts nothing. Use it to answer "is this
 campaign ready for a round?".
 
+## An Examiner session
+
+```sh
+bun run runs launch [--env-file <file>] [--loaded] [--dry-run] <the flags of tools/d1b/examine.ts>
+```
+
+It needs the campaign's log and no set in it, since what it writes is what a round later screens.
+It is refused on a loaded host, beside another writer of the same log, for a missing env file, and
+under a `--session` the log already holds: an Examiner session's id names one session, and its
+tasks carry it.
+
+Its notes say two things worth reading before spend.
+
+- **What it is handed.** A task an earlier session left past gate 3, with no controls written, goes
+  to this session with its accepted answer. Its stronger solve is paid, so do not propose it again.
+  The first session against a model (exam-1, 2026-10-08) left one this way when the provider's
+  session limit ended it one turn after a 15-minute solve passed.
+- **Where its tasks can go.** Before `prepare.ts` has drawn the anchor, they stand a chance of it.
+  After, they are a round's to screen. A round needs tasks outside the anchor to step, so either
+  order can be the right one: say which was meant.
+
+A session ended by its provider reads `crashed` in `exam.finished`, with what the provider said. A
+solve the provider failed leaves its task `undecided`, which says nothing of the task and is not
+taken up again: only a task past gate 3 is.
+
 ## What a launch leaves
 
 The round runs niced, in a process group of its own, and outlives the command and the session that
@@ -91,6 +119,9 @@ on where it fell, and the command says which.
   with the same `--session`, the round goes on from its log. A solve counted is not solved again.
 - **Inside the Builder session**: that session never finished, so its id is spent. The next launch
   needs another `--session` and pays for a Builder again.
+- **An Examiner session**, wherever the stop fell: its id is spent. The next takes another
+  `--session` and is handed the tasks this one left past gate 3. A stronger solve still running
+  when it was stopped is lost.
 
 So when there is a choice, stop a round after its `build.finished`. Whether a run should be stopped
 at all is a reading (whole-run-investigation); this command only carries out an authorised one, and
@@ -101,8 +132,7 @@ reads `closed`.
 
 ## Not here yet
 
-- Examiner sessions and live solves start from their own commands, with no preflight. The pulse
-  and `stop` do know a running Examiner session, and a round is refused while one writes its log.
+- Live solves start from their own command, with no preflight.
 - No timed stop. v1's launcher armed one through the service manager; a v2 round ends by its own
   limits (`--minutes`, `--turns`).
 - No probe turn before spend: a session or usage limit shows at the first turn, in the pulse.

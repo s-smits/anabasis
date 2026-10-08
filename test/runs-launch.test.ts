@@ -10,7 +10,9 @@ import {
   terminateAndReapProcessGroupId,
 } from "../src/meta/subprocess.ts";
 import { spent } from "../src/builder/round.ts";
-import { type Asked, family, preflight, start } from "../tools/runs/launch.ts";
+import { claimed } from "../src/examiner/session.ts";
+import type { LogEvent } from "../src/kernel/log.ts";
+import { type Asked, examPreflight, family, preflight, start } from "../tools/runs/launch.ts";
 
 const SETS = {
   feasible: ["a1", "a2", "p1", "c1"],
@@ -63,7 +65,7 @@ describe("a launch's preflight", () => {
     expect(preflight(SETS, loaded).refusals).toEqual([expect.stringContaining("load is 14.2 on 12 cores")]);
     expect(preflight(SETS, { ...loaded, loaded: true }).refusals).toEqual([]);
     expect(preflight(SETS, { ...ASKED, running: [41] }).refusals).toEqual([
-      "the round is already running here, as pid 41",
+      "this campaign's log is already being written here, by pid 41",
     ]);
     expect(preflight(SETS, { ...ASKED, missing: "gone.env" }).refusals).toEqual(["gone.env is not there"]);
     expect(preflight({ ...SETS, released: [] }, ASKED).notes[1]).toContain("nothing to practise on");
@@ -81,6 +83,59 @@ describe("a launch's preflight", () => {
     expect(spent([started, ended("wall")], "b-1")).toBeNull();
     expect(preflight(SETS, { ...ASKED, spent: "session b-1 was cut" }).refusals).toEqual([
       "session b-1 was cut. Pass another --session",
+    ]);
+  });
+});
+
+describe("an Examiner session's preflight", () => {
+  const at = "2026-10-08T00:00:00.000Z";
+  const event = (kind: LogEvent["kind"], data: LogEvent["data"]): LogEvent => ({ at, kind, data });
+  /** A session's task as far as gate 3: the log of exam-1 when the provider's limit ended x-1. */
+  const left = [
+    event("exam.started", { session: "x-1" }),
+    event("task.proposed", {
+      version: "v1",
+      taskId: "x-1-001",
+      session: "x-1",
+      task: { taskId: "x-1-001", family: "fixture", publicInput: {}, hidden: null },
+    }),
+    event("task.gate", { version: "v1", gate: 1, outcome: "passed" }),
+    event("verdict", { solve: "s-1", task: "x-1-001", answer: { answer: "1" }, kind: "pass" }),
+    event("task.gate", { version: "v1", gate: 2, outcome: "passed", solve: "s-1" }),
+    event("task.gate", { version: "v1", gate: 3, outcome: "passed" }),
+  ];
+
+  it("needs the campaign's log and no set in it, and says what the session is handed", () => {
+    expect(examPreflight(left, ASKED)).toEqual({
+      refusals: [],
+      notes: [
+        "x-1-001 passed gate 3 in an earlier session and is handed to this one for its controls",
+        expect.stringContaining("no anchor is drawn: run tools/d2/prepare.ts after this session"),
+      ],
+    });
+    // A pack's task through its four gates and drawn: this session's tasks come after the anchor.
+    const drawn = [
+      ...left,
+      event("task.proposed", { version: "a1" }),
+      ...[1, 2, 3, 4].map((gate) =>
+        event("task.gate", { version: "a1", gate, outcome: "passed", controls: "d" }),
+      ),
+      event("anchor.drawn", { tasks: ["a1"] }),
+    ];
+    expect(examPreflight(drawn, ASKED).notes[1]).toContain("is not drawn into the anchor");
+    expect(examPreflight(null, ASKED)).toEqual({
+      refusals: [expect.stringContaining("the campaign has no log in this worktree")],
+      notes: [],
+    });
+  });
+
+  it("refuses a session id the log holds, a loaded host and a second writer, as a round's does", () => {
+    expect(claimed(left, "x-2")).toBeNull();
+    const again = examPreflight(left, { ...ASKED, spent: claimed(left, "x-1"), load: 14.2, running: [41] });
+    expect(again.refusals).toEqual([
+      "this campaign's log is already being written here, by pid 41",
+      expect.stringContaining("load is 14.2 on 12 cores"),
+      "session x-1 is in the log already; a session's id names one session. Pass another --session",
     ]);
   });
 });

@@ -61,7 +61,7 @@ import { Type } from "typebox";
 import { REPORTED_COST } from "../backends/claude.ts";
 import type { Practised } from "../builder/session.ts";
 import type { Contract } from "../kernel/contract.ts";
-import { append, type EventKind, read } from "../kernel/log.ts";
+import { append, type EventKind, type LogEvent, read } from "../kernel/log.ts";
 import { dollars, freezePrices, priceKey, tokensOf } from "../kernel/meter.ts";
 import type { Counted } from "../kernel/solve.ts";
 import {
@@ -537,13 +537,20 @@ function finishTool(desk: Desk): AgentTool {
   });
 }
 
+/** Why no Examiner session starts under `id` on this log, or null. A session's id prefixes its
+ *  tasks' ids, and the Referee finds a task's accepted answer by them. A launcher asks before it
+ *  starts one. */
+export function claimed(events: readonly LogEvent[], id: string): string | null {
+  return events.some(({ kind, data }) => kind === "exam.started" && data.session === id)
+    ? `session ${id} is in the log already; a session's id names one session`
+    : null;
+}
+
 export async function examine(request: ExamRequest): Promise<Examined> {
   const { log, limits, model } = request;
   const began = performance.now();
-  // A session's id prefixes its tasks' ids, and the Referee finds a task's accepted answer by them.
-  if (read(log).some(({ kind, data }) => kind === "exam.started" && data.session === request.id)) {
-    throw new Error(`session ${request.id} is in the log already; a session's id names one session`);
-  }
+  const why = claimed(read(log), request.id);
+  if (why !== null) throw new Error(why);
   const desk: Desk = {
     request,
     proposed: 0,

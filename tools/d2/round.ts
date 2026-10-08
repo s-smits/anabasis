@@ -128,7 +128,7 @@ async function main(): Promise<void> {
         turns: Number(values.turns),
         practiceSolves: Number(values["practice-solves"]),
       },
-      models: campaign.models,
+      models: campaign.builder,
       log: campaign.log,
       repoRoot: campaign.repo,
       practise: (task, dir, digest, kill) =>

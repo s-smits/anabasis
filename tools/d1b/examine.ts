@@ -108,7 +108,7 @@ async function main(): Promise<void> {
       candidates: Number(values.candidates),
       feasible: Number(values.feasible),
     },
-    models: campaign.models,
+    models: campaign.examiner,
     log: campaign.log,
   });
   console.log(JSON.stringify({ ended: examined.ended, feasible: examined.feasible.length }, null, 2));

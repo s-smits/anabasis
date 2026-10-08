@@ -16,6 +16,11 @@
  * directory and git state into its prompt. A nudge is a further user message into the same query, where v1 resumed the session in a
  * fresh one (`provider.ts:525-560`); the model reads the same history either way.
  *
+ * Those are a solver's options. The Builder, the Examiner and the reviewers run through the same
+ * query with tools that are all the host's, and are sent their own prompt without Claude Code's
+ * before it (`ClaudeOptions.preset`); v1's Builder was a Claude Code session with Claude Code's
+ * tools, which no session here is.
+ *
  * One difference is left, and it reaches no model: v1 spawned its worker with an empty environment
  * (`pi-built-process.ts:529-533`) and spread that into Claude Code's (`provider.ts:420`); here HOME, the
  * solve's own, PATH and TMPDIR are set as well.
@@ -167,6 +172,12 @@ export interface ClaudeOptions {
   /** Claude Code's HOME, which holds its configuration and transcripts: one per solve, outside the
    *  command wall, so no command reads them and no host Claude state reaches the query. */
   readonly home: string;
+  /** Whether Claude Code's own prompt precedes the session's, and whether the CLI's WebSearch stands
+   *  beside the session's tools. Left out, both hold, as they did for the sweep's solver. A session
+   *  whose tools are all the host's turns the first off: Claude Code's prompt is a coding
+   *  assistant's, about a repository and tools such a session does not have. */
+  readonly preset?: boolean;
+  readonly webSearch?: boolean;
 }
 
 /**
@@ -307,6 +318,7 @@ function open(
   const prompt = makePromptStream();
   const abort = new AbortController();
   const effort = claudeEffort(model, options.reasoning);
+  const own = getCurrentSystemPrompt(context.messages).trim();
   // Claude Code's working directory, which its prompt names: the solve's own, as v1's was its worker's.
   mkdirSync(claude.home, { recursive: true });
   const live = query({
@@ -319,15 +331,16 @@ function open(
       // Thinking arrives summarized rather than omitted whenever an effort is set (`provider.ts:405-408`).
       ...keyIfDefined("extraArgs", effort && { "thinking-display": "summarized" }),
       // Claude Code's own prompt with the harness's appended, as the sweep ran (`provider.ts:439-442`):
-      // the solver reads the same preamble around the same Built prompt.
-      systemPrompt: {
-        type: "preset",
-        preset: "claude_code",
-        ...keyIfTruthy("append", getCurrentSystemPrompt(context.messages).trim()),
-      },
+      // the solver reads the same preamble around the same Built prompt. With the preset off the
+      // session's prompt is the whole of it.
+      systemPrompt:
+        claude.preset === false
+          ? own
+          : { type: "preset", preset: "claude_code", ...keyIfTruthy("append", own) },
       // The harness's pi tools and the CLI's WebSearch are the only tools: no other built-in, no setting
-      // file, no skill, no other MCP server (`provider.ts:430-434,445`).
-      tools: CLI_TOOLS,
+      // file, no skill, no other MCP server (`provider.ts:430-434,445`). With WebSearch off there is
+      // no built-in at all.
+      tools: claude.webSearch === false ? [] : CLI_TOOLS,
       skills: [],
       mcpServers: { [SERVER]: createToolServer(SERVER, tools) },
       permissionMode: "bypassPermissions",

@@ -177,6 +177,42 @@ describe("the Claude backend", () => {
     expect(env.ANTHROPIC_API_KEY).toBeUndefined();
   });
 
+  // A Builder, an Examiner and a reviewer run on the host's tools alone: Claude Code's coding prompt
+  // is not theirs, and only a Builder keeps the CLI's search.
+  it("sends a session its own prompt alone, and no built-in tool, when the options say so", async () => {
+    const context = normalizeContext({
+      systemPrompt: "You are the Examiner.",
+      messages: [opening],
+      tools: [read],
+    });
+    const started = async (webSearch: boolean) => {
+      replay("text.jsonl");
+      const provider = claudeProvider({ executable, compaction: "off", home, preset: false, webSearch });
+      const options = { ...solveOptions(), sessionId: `own-${String(solves)}-${String(webSearch)}` };
+      await provider.streamSimple(recorded, context, options).result();
+      const launch = launched();
+      const init = asRecord(
+        launch.stdin.find((line) => asRecord(line.request)?.subtype === "initialize")?.request,
+      );
+      return {
+        tools: flag(launch, "--tools"),
+        system: init?.systemPrompt,
+        appended: init?.appendSystemPrompt,
+      };
+    };
+    expect(await started(false)).toEqual({
+      tools: "",
+      system: ["You are the Examiner."],
+      appended: undefined,
+    });
+    writeFileSync(join(home, "launch.jsonl"), "");
+    expect(await started(true)).toEqual({
+      tools: "WebSearch",
+      system: ["You are the Examiner."],
+      appended: undefined,
+    });
+  });
+
   it("asks for the long-context id of a model the sweep ran at a million tokens", async () => {
     const context = normalizeContext({
       systemPrompt: "You are a solver.",

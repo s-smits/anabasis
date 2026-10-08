@@ -527,7 +527,8 @@ field a condition should hold and does not, and `environment` for load.
 **21. Selection and the symmetry of screening.**
 
 Starts from `SCORED SET CARRIED (lane 21)`, `ADMITTED BY (lane 21)`,
-`ADMITTED ON FLAGGED FAILS (lane 21)` and `SCREENING RULE NOT ON RECORD (lane 21)`.
+`ADMITTED ON FLAGGED FAILS (lane 21)`, `SCREENED OUT OF THE DRAWN ORDER (lane 21)` and
+`SCREENING RULE NOT ON RECORD (lane 21)`.
 
 The question is whether the way tasks entered the scored set favours a side. A task is admitted
 when either harness fails it often enough in screening, and its counted solves start after the
@@ -543,8 +544,12 @@ refused the parent's answer in screening is likely to refuse it again in scoring
 spares the child the task arrives in the tally as a win the check made. A scored set carried
 from an earlier admission, by a stored sweep's solves or an earlier round's, was chosen by other
 harnesses' fails: the round's own header calls that fit for a plumbing run and nothing else.
-Candidates are screened in an order drawn from the contract's hash and the session's id; confirm
-the order, since an order chosen after seeing solves is a second look. The rule itself, how many
+Candidates are screened in an order drawn from the contract's hash and the session's id, since
+an order chosen after seeing solves is a second look. The order has no record of its own and
+needs none: the reader draws it again from those two values over the tasks then held outside the
+anchor, and `ADMITTED BY` says whether the tasks that were screened are the first so many of the
+draw. `SCREENED OUT OF THE DRAWN ORDER` fires when they are not, which a driver other than
+`tools/d2/round.ts` or a candidate list edited by hand would produce. The rule itself, how many
 solves a harness and how many fails admit, is in the report's `screening` and its `target`; a
 report without them was written before the round recorded either, and the rule is then the
 driver's defaults or whatever its command line said, which the log does not hold; a round the
@@ -720,7 +725,8 @@ that does not repeat, and `harness/guide` or `harness/tools` for a repair on the
 **30. Rulings, routing and what each role was told.**
 
 Starts from `FLAGGED AND STILL COUNTED (lane 30)`, `READING MOVES WITHOUT FLAGGED (lane 30)`,
-`FLAGGED FAILS BY SIDE (lane 30)`, `REVIEW FAULTS (lane 30)` and `EARNED WITHOUT A PROBE (lane 30)`.
+`FLAGGED FAILS BY SIDE (lane 30)`, `SETTLED BY HAND (lane 30)`, `REVIEW FAULTS (lane 30)` and
+`EARNED WITHOUT A PROBE (lane 30)`.
 
 The question is what became of each ruling, and whether each role was told enough to act and no
 more than it may know. A check-defect ruling disputes its task only when the Referee decides,
@@ -730,11 +736,17 @@ comparison, on which side their flagged fails fell, and whether removing them wo
 reading. `FLAGGED FAILS BY SIDE` counts the first two: a flagged fail under the parent makes a
 win and one under the child a loss, so flags that fall on one side are the ones that move a
 tally. The report answers the last itself: `unflagged` holds the two tests and their reading
-with the flagged tasks left out, and the trigger fires when that reading differs from the first.
-Neither reading is the true one until the flagged fails have been read: the first counts fails a
-reviewer laid to a check, and the second drops tasks on one reviewer's word. A report with flags
-and no `unflagged` was written before the round kept one, and a round stopped and run again
-before then lists only the second run's flags. A flag nobody read is a ruling that changed
+with the flagged tasks left out, `counted` the reading with them in, and where the two differ
+the round reads `flags-decide` and claims neither: counted, the reading rests on fails a reviewer
+laid to a check, and left out, on one reviewer's word. A person settles it with
+`tools/d2/settle.ts`: a fail labelled a check defect disputes its task, a flagged fail labelled
+earned stands, and the report is written once more as the labels leave it, with `settled`
+saying how many fails were labelled and what they disputed. `SETTLED BY HAND` sets the two
+reports side by side. Read whether every flagged fail was labelled, whether the labels were made
+from the packets or from the rulings, and whether a task disputed for a check's fault was taken
+to the checker's owner: a dispute removes a task from the tally and repairs nothing. A report
+with flags and no `unflagged` was written before the round kept one, and a round stopped and
+run again before then lists only the second run's flags. A flag nobody read is a ruling that changed
 nothing. Count the rulings that recur: the
 same check ruled a defect across sessions is a repair owed, and lane 6 reads whether one was
 made. Then read what each role was told. The Builder is told a task's record, a ruling's kind

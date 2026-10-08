@@ -79,10 +79,19 @@ describe("the runs pulse", () => {
         { ...done.seen, lines: 5 },
         START,
       ).said;
-    expect(says({ reading: "step", unflagged: { reading: "no-step" } })).toEqual([
-      "⚠ reported step, and no-step without its flagged tasks",
+    expect(says({ reading: "flags-decide", counted: "step", unflagged: { reading: "no-step" } })).toEqual([
+      "⚠ reported flags-decide: step with its flagged tasks, no-step without",
     ]);
-    expect(says({ reading: "step", unflagged: { reading: "step" } })).toEqual(["◆ reported step"]);
+    // A report written before the round named the counted reading holds it as its reading.
+    expect(says({ reading: "step", unflagged: { reading: "no-step" } })).toEqual([
+      "⚠ reported step: step with its flagged tasks, no-step without",
+    ]);
+    expect(says({ reading: "step", counted: "step", unflagged: { reading: "step" } })).toEqual([
+      "◆ reported step",
+    ]);
+    expect(says({ reading: "no-step", settled: { labelled: 2, defects: 2 } })).toEqual([
+      "◆ settled by hand as no-step: 2 labelled, 2 a check defect",
+    ]);
     expect(says({ reading: "not-scored", unflagged: null })).toEqual(["⚠ reported not-scored"]);
   });
 

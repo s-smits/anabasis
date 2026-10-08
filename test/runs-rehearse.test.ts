@@ -117,7 +117,7 @@ describe("a replay", () => {
       line("task.gate", { version: "v1", gate, outcome: "passed", controls: "d" }),
     );
     expect(replayed(at("replayed", [LINES[0] ?? "", ...gates, ...LINES.slice(1, 3)]))).toBe(
-      "7 events · 0 conditions · 0 anchor, 0 released, 1 held, 0 admitted · 0 written and feasible, 0 waiting for controls · 0 reported",
+      "7 events · 0 conditions · 0 anchor, 0 released, 1 held, 0 admitted · 0 written and feasible, 0 waiting for controls · 0 reported · 2 lanes with something to read",
     );
     expect(() => replayed(at("strange", [line("round.imagined", {})]))).toThrow("is not a log event");
     // A gate for a task the log never proposed is a fold's refusal, not a line's.

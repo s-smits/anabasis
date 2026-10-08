@@ -7,6 +7,7 @@ import { type Condition, conditionId } from "../src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
+import { screeningOrder } from "../src/builder/round.ts";
 import { overview, rendered, TRIGGERS } from "../tools/wri/read.ts";
 
 const START = Date.parse("2026-10-08T12:00:00Z");
@@ -147,7 +148,9 @@ describe("the whole-run investigation's reader", () => {
 
   it("reads a round's solves by what each was for", () => {
     // Two screening fails under the parent chose the task; the fail after the admission scores it.
-    expect(detail("ADMITTED BY")).toBe("b-1: the parent's fails 1, the child's 0, both 0");
+    expect(detail("ADMITTED BY")).toBe(
+      "b-1: the parent's fails 1, the child's 0, both 0; 1 of 1 candidate screened, the first of the draw",
+    );
     expect(detail("FEW INFORMATIVE PAIRS")).toBe(
       "b-1: 1 of 1 tasks tell the harnesses apart; at level 0.1 the least sweep that clears is 4-0, and no result with a loss clears on 1 pair",
     );
@@ -226,6 +229,53 @@ describe("the whole-run investigation's reader", () => {
     expect(said("ANCHOR RATE BY ROUND")).toBe("hp: 1 of 1 in b-1, 0 of 1 in b-2");
     expect(said("CHAIN")).toBe("b-1 hp>hc no-step; b-2 hp>hd not-scored");
     expect(later.filter((trigger) => trigger.name === "FEW INFORMATIVE PAIRS")).toHaveLength(1);
+  });
+
+  it("replays the screening order, and names a round that screened out of it", () => {
+    for (const version of ["c1", "c2"]) {
+      record("task.proposed", { version });
+      for (const gate of [1, 2, 3, 4]) {
+        record("task.gate", { version, gate, outcome: "passed", controls: "d" });
+      }
+    }
+    record("build.started", { session: "b-3", parent: "hp", tasks: ["t1"] });
+    record("build.finished", { session: "b-3", ended: "finished", harness: "he", changed: true });
+    // Of two candidates, the one the draw puts last is the only one screened.
+    const [, last = ""] = screeningOrder(["c1", "c2"], "c1", "b-3");
+    solve(last, "hp", "pass");
+    solve(last, "he", "pass");
+    record("comparison.reported", { session: "b-3", versions: [], scored: null, reading: "no-change" });
+    const said = overview(events).triggers.findLast(
+      (trigger) => trigger.name === "SCREENED OUT OF THE DRAWN ORDER",
+    );
+    expect(said?.detail).toBe(
+      "b-3: 1 of 1 screened tasks are not among the first 1 of the draw over 2 candidates",
+    );
+  });
+
+  it("says what a person's labels settled, beside what the round's own report read", () => {
+    // The first round's report, written again as the labels left it.
+    record("comparison.reported", {
+      session: "b-1",
+      fresh: "hc",
+      versions: [],
+      scored: { wins: 0, losses: 0, ties: 0 },
+      flagged: [],
+      unflagged: null,
+      counted: "not-scored",
+      reading: "not-scored",
+      settled: { labelled: 1, defects: 1, disputed: ["t2"] },
+    });
+    const later = overview(events).triggers;
+    const said = (name: keyof typeof TRIGGERS) => later.find((trigger) => trigger.name === name)?.detail;
+    expect(said("SETTLED BY HAND")).toBe(
+      "b-1: 1 fail labelled, 1 a check defect, 1 task disputed; the round's own report read no-step, the settled one reads not-scored",
+    );
+    // The round's own report still says the reading moved without its flagged task.
+    expect(said("READING MOVES WITHOUT FLAGGED")).toBe(
+      "b-1: no-step with 1 flagged task counted, not-scored without",
+    );
+    expect(said("CHAIN")).toStartWith("b-1 hp>hc not-scored");
   });
 
   it("says of an empty log only that it has no checker on record", () => {

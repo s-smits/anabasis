@@ -24,6 +24,7 @@ Five narrower questions need no lanes. Start there when one of them is the whole
 | Is there enough supply for a round? | `bun tools/d1b/supply.ts --log <log>` |
 | Does the checker stand on its controls and the stored answers? | `bun tools/c/accept.ts --name <campaign>` |
 | What does a repaired checker move, and does the repair stand? | `bun tools/c/repaired.ts --log <log> --bundle <repaired pack>` |
+| A report reads `flags-decide`: which reading holds? | `bun tools/d2/settle.ts <the campaign's flags> --session <id>`, then label the fails it draws |
 | Which sessions ran, from which parent, with which reading? | `bun tools/wri/wri.ts read --log <log>`, row F and the `CHAIN` line |
 
 ## The procedure
@@ -150,9 +151,10 @@ decisions and predictions. The primary then treats the note as research.
   repair the checker, run the Examiner again. Order the synthesis by that.
 - **Read the instrument before the tally.** A reading whose refusals were ruled a check defect and
   still counted is not a reading yet. In a simulated campaign a too-strict check gave 6 wins to 0
-  and a `step`; the same campaign under the repaired check gave 1 win and `no-step`. A report with
-  flagged tasks holds both readings, `reading` and `unflagged.reading`: where they differ, the
-  flagged fails are read by hand before either is believed.
+  and a `step`; the same campaign under the repaired check gave 1 win and `no-step`. A round whose
+  reading differs with and without its flagged tasks now reads `flags-decide` and claims neither.
+  Only a person's labels settle it (`tools/d2/settle.ts`), and the settled report says what was
+  labelled and what it disputed. An investigation proposes that reading; it never makes it.
 - **Read `not-scored` and an empty `no-step` as no test.** A round that scored no task says
   nothing of its harness. Row D's count of tasks held outside the anchor says whether the next
   round can do better.

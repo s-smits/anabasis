@@ -13,6 +13,7 @@
  * bytes has done its job. A trigger that did not fire says this arithmetic found nothing, and not
  * that the property is absent. No trigger carries an answer, a task's text or a hidden value.
  */
+import { screeningOrder } from "#src/builder/round.ts";
 import { signP } from "#src/kernel/compare.ts";
 import { type Condition, conditionsOf } from "#src/kernel/condition.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
@@ -73,7 +74,10 @@ interface Build {
   readonly parent: string;
   readonly practice: ReadonlySet<string>;
   finished: JsonObject | null;
+  /** The round's last report: its own, or the one a person's labels settled. */
   report: JsonObject | null;
+  /** The round's own report, which a settling leaves in the log. */
+  own: JsonObject | null;
   readonly calls: Call[];
 }
 
@@ -166,6 +170,7 @@ export const TRIGGERS = {
   "SCORED SET CARRIED": 21,
   "ADMITTED BY": 21,
   "SCREENING RULE NOT ON RECORD": 21,
+  "SCREENED OUT OF THE DRAWN ORDER": 21,
   "ADMITTED ON FLAGGED FAILS": 21,
   "NOTHING SCORED": 22,
   "FEW INFORMATIVE PAIRS": 22,
@@ -191,6 +196,7 @@ export const TRIGGERS = {
   "FLAGGED AND STILL COUNTED": 30,
   "READING MOVES WITHOUT FLAGGED": 30,
   "FLAGGED FAILS BY SIDE": 30,
+  "SETTLED BY HAND": 30,
   "REVIEW FAULTS": 30,
   "EARNED WITHOUT A PROBE": 30,
 } as const;
@@ -276,6 +282,7 @@ function buildsOf(events: readonly LogEvent[]): Build[] {
         practice: new Set(strings(data.tasks)),
         finished: null,
         report: null,
+        own: null,
         calls: [],
       });
     }
@@ -284,7 +291,10 @@ function buildsOf(events: readonly LogEvent[]): Build[] {
       build.calls.push({ index, tool: text(data.tool), args: asRecord(data.args) });
     }
     if (build !== undefined && kind === BUILD_END) build.finished = data;
-    if (build !== undefined && kind === "comparison.reported") build.report = data;
+    if (build !== undefined && kind === "comparison.reported") {
+      build.own ??= data;
+      build.report = data;
+    }
   }
   return builds;
 }
@@ -658,6 +668,25 @@ function comparisonTriggers(log: Index): Trigger[] {
           .map((solve) => solve.version),
       );
     const [byOld, byNew] = [failedUnder(true), failedUnder(false)];
+    // The order a round screens in is drawn from the contract's hash and the session's id, so it
+    // replays from the log: the tasks that were screened should be the first so many of the draw
+    // over the tasks then held outside the anchor.
+    const then = taskStates(log.events.slice(0, build.from));
+    const feasibleThen = log.events.flatMap(({ kind, data }, index) =>
+      index < build.from && kind === "task.gate" && data.gate === 4 && data.outcome === "passed"
+        ? [text(data.version)]
+        : [],
+    );
+    const heldThen = feasibleThen.filter(
+      (version) => then.get(version) === "held" && !log.anchor.has(version),
+    );
+    const window = log.solves.filter(
+      (solve) => solve.index > build.from && solve.index < build.until && solve.side === TEST,
+    );
+    const screenedThen = heldThen.filter((version) => window.some((solve) => solve.version === version));
+    const contract = log.conditions.get(window[0]?.condition ?? "")?.contract ?? "";
+    const drawn = new Set(screeningOrder(heldThen, contract, session).slice(0, screenedThen.length));
+    const outOfOrder = screenedThen.filter((version) => !drawn.has(version)).length;
     const defect = (solve: Solve) => log.rulings.get(solve.id)?.ruling === DEFECT;
     // Admitted tasks whose screening fails were every one ruled a check's fault: chosen by the exam.
     const screened = Map.groupBy(
@@ -665,7 +694,10 @@ function comparisonTriggers(log: Index): Trigger[] {
       (solve) => solve.version,
     );
     const onFlags = [...screened.values()].filter((fails) => fails.every(defect)).length;
-    const countedDefects = round.counted.filter((solve) => solve.outcome === "fail" && defect(solve));
+    // A task disputed since, by the Referee or by a person's label, is in no comparison.
+    const countedDefects = round.counted.filter(
+      (solve) => solve.outcome === "fail" && defect(solve) && log.states.get(solve.version) !== "disputed",
+    );
     const underOld = countedDefects.filter((solve) => solve.harness === parent).length;
     const both = [...byOld].filter((version) => byNew.has(version)).length;
     const scored = asRecord(build.report?.scored);
@@ -699,7 +731,7 @@ function comparisonTriggers(log: Index): Trigger[] {
         ? [
             fired(
               "ADMITTED BY",
-              `${session}: the parent's fails ${String(byOld.size - both)}, the child's ${String(byNew.size - both)}, both ${String(both)}`,
+              `${session}: the parent's fails ${String(byOld.size - both)}, the child's ${String(byNew.size - both)}, both ${String(both)}; ${String(screenedThen.length)} of ${plural(heldThen.length, "candidate")} screened${outOfOrder === 0 ? ", the first of the draw" : ""}`,
             ),
           ]
         : []),
@@ -716,6 +748,14 @@ function comparisonTriggers(log: Index): Trigger[] {
             fired(
               "FLAGGED FAILS BY SIDE",
               `${session}: ${plural(countedDefects.length, "counted fail")} ruled a check defect, ${String(underOld)} under the parent and ${String(countedDefects.length - underOld)} under the child`,
+            ),
+          ]
+        : []),
+      ...(outOfOrder > 0
+        ? [
+            fired(
+              "SCREENED OUT OF THE DRAWN ORDER",
+              `${session}: ${share(outOfOrder, screenedThen.length)} screened tasks are not among the first ${String(screenedThen.length)} of the draw over ${plural(heldThen.length, "candidate")}`,
             ),
           ]
         : []),
@@ -946,15 +986,29 @@ function reviewTriggers(log: Index): Trigger[] {
         ]
       : []),
     ...log.builds.flatMap((build) => {
-      const second = asRecord(build.report?.unflagged);
-      return second === null || second.reading === build.report?.reading
-        ? []
-        : [
-            fired(
-              "READING MOVES WITHOUT FLAGGED",
-              `${build.session}: ${text(build.report?.reading)} with ${plural(items(build.report?.flagged).length, "flagged task")} counted, ${text(second.reading)} without`,
-            ),
-          ];
+      // A report written before the round named the counted reading holds it as its reading.
+      const own = build.own;
+      const second = asRecord(own?.unflagged);
+      const counted = text(own?.counted) || text(own?.reading);
+      const settled = asRecord(build.report?.settled);
+      return [
+        ...(second === null || second.reading === counted
+          ? []
+          : [
+              fired(
+                "READING MOVES WITHOUT FLAGGED",
+                `${build.session}: ${counted} with ${plural(items(own?.flagged).length, "flagged task")} counted, ${text(second.reading)} without${own?.reading === "flags-decide" ? "; the round claims neither" : ""}`,
+              ),
+            ]),
+        ...(settled === null
+          ? []
+          : [
+              fired(
+                "SETTLED BY HAND",
+                `${build.session}: ${plural(count(settled.labelled), "fail")} labelled, ${String(count(settled.defects))} a check defect, ${plural(items(settled.disputed).length, "task")} disputed; the round's own report read ${text(own?.reading)}, the settled one reads ${text(build.report?.reading)}`,
+              ),
+            ]),
+      ];
     }),
     ...(faults > 0 ? [fired("REVIEW FAULTS", plural(faults, "reviewer failure"))] : []),
     ...(unprobed > 0 ? [fired("EARNED WITHOUT A PROBE", share(unprobed, log.rulings.size))] : []),

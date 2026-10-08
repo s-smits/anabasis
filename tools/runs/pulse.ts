@@ -131,9 +131,14 @@ const SAID: Partial<
   // A report that scored nothing, or whose reading does not stand without its flagged tasks, is one to
   // look at before it is believed (`src/builder/round.ts`).
   "comparison.reported": (data) => {
-    const second = asRecord(data.unflagged)?.reading;
-    if (second !== undefined && second !== data.reading) {
-      return `⚠ reported ${word(data.reading)}, and ${word(second)} without its flagged tasks`;
+    const settled = asRecord(data.settled);
+    if (settled !== null) {
+      return `◆ settled by hand as ${word(data.reading)}: ${word(settled.labelled)} labelled, ${word(settled.defects)} a check defect`;
+    }
+    // A report written before the round named the counted reading holds it as its reading.
+    const [first, second] = [data.counted ?? data.reading, asRecord(data.unflagged)?.reading];
+    if (second !== undefined && second !== first) {
+      return `⚠ reported ${word(data.reading)}: ${word(first)} with its flagged tasks, ${word(second)} without`;
     }
     return `${data.reading === "not-scored" ? "⚠" : "◆"} reported ${word(data.reading)}`;
   },

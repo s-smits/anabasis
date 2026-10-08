@@ -118,6 +118,19 @@ describe("a checker's acceptance", () => {
     ]);
   });
 
+  it("names a check that could not run as the fault, and asks for no control in its place", async () => {
+    // The roof task's short answers break `span` itself: its tool wrote nothing.
+    const broken: Verifier = async (task, answer) =>
+      isNumber(asRecord(answer)?.span)
+        ? { kind: "faulty", check: "span", reason: "the tool wrote nothing" }
+        : verify(task, answer);
+    const runs = await runControls(broken, [roof, mast], SOUND, 2);
+    expect(acceptance(brief, [roof, mast], runs, [], everyTool).faults).toEqual([
+      "a reject control of roof-1 names span, which did not refuse it: faulty span: the tool wrote nothing",
+      "span could not run on an answer, so what it refuses and passes is not read: the tool wrote nothing",
+    ]);
+  });
+
   it("stops on a control of a task the pack does not hold", async () => {
     const gone: Control = { taskId: "gone", answer: {}, refusedBy: null };
     await expect(runControls(verify, [roof], [gone], 1)).rejects.toThrow("a control names gone");

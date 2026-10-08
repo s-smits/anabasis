@@ -158,13 +158,29 @@ export function acceptance(
         .length,
     };
   });
+  // A check that could not run is the fault, and what it then never refused or passed is not a
+  // second one: said so, the remedy reads as another control. v1's gate told a Builder to add a
+  // reject when twelve existed and the check's tool could not write its output (a buffer run
+  // of 8 October, as its sessions were recounted that day).
+  const unrun = new Map(
+    graded
+      .flatMap(({ verdict }) => (verdict.kind === "faulty" ? [verdict] : []))
+      .toReversed()
+      .map(({ check, reason }) => [check, reason]),
+  );
   const faults = [
     ...runs.flatMap((run) => mislabelled(run) ?? []),
     ...checks.flatMap(({ id, missing, passed, refused, caught }) => [
       ...missing.map((tool) => `${id} names ${tool}, which is not on the verifier's tool path`),
-      ...(refused === 0 ? [`${id} has refused nothing: no control and no stored answer`] : []),
-      ...(passed === 0 ? [`${id} has let nothing pass: no control and no stored answer`] : []),
-      ...(refused > 0 && caught === 0 ? [`${id} has refused no reject control that names it`] : []),
+      ...(unrun.has(id)
+        ? [
+            `${id} could not run on an answer, so what it refuses and passes is not read: ${unrun.get(id) ?? ""}`,
+          ]
+        : [
+            ...(refused === 0 ? [`${id} has refused nothing: no control and no stored answer`] : []),
+            ...(passed === 0 ? [`${id} has let nothing pass: no control and no stored answer`] : []),
+            ...(refused > 0 && caught === 0 ? [`${id} has refused no reject control that names it`] : []),
+          ]),
     ]),
   ];
   return { checks, faults };

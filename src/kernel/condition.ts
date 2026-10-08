@@ -59,7 +59,9 @@ export interface Condition {
   /** The digest of the sandbox's policy: what a solve may read, write, run and fill on disk. */
   readonly sandbox: string;
   readonly limits: Limits;
-  /** The host's own code version. */
+  /** The host's code a solve runs through, by content: `src` and `vendor` as the files stand. A
+   *  commit that touches neither opens no new condition, and an uncommitted change to either does,
+   *  where a commit id did the opposite on both counts. */
   readonly host: string;
   /** Which side of the pair: the test condition, or the stronger one. */
   readonly side: "test" | "strong";

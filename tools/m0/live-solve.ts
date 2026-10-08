@@ -39,7 +39,6 @@ import type { JsonValue } from "#src/meta/json-shape.ts";
 import { join, resolve } from "#src/meta/path.ts";
 import { capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { canonicalJson, hashJsonValue } from "#src/meta/stable-json.ts";
-import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { openDesk } from "#src/solve/answer.ts";
 import { solveDirs } from "#src/solve/command.ts";
@@ -171,7 +170,9 @@ async function main(): Promise<number> {
         diskBytes: LIMITS.diskBytes,
       }),
       limits: LIMITS,
-      host: runTextSyncOrThrow(["git", "-C", REPO, "rev-parse", "HEAD"]).trim(),
+      // The files as they stand, not the commit: a commit to tests or tools runs no other solve, and
+      // an uncommitted change to the runner does.
+      host: hashJsonValue(["src", "vendor"].map((part) => treeContent(join(REPO, part)))),
       side: "test",
     };
     const id = conditionId(condition);

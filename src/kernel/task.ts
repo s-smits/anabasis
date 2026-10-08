@@ -38,6 +38,7 @@ import type { EventKind, LogEvent } from "./log.ts";
 import type { Counted } from "./solve.ts";
 import {
   applicableTruthChecks,
+  checkEvaluationRequest,
   checkProgramFiles,
   decided,
   readBrief,
@@ -149,7 +150,8 @@ const NEEDS_FEASIBLE: ReadonlySet<TaskState> = new Set([
 /**
  * Gate 1, shape: every part but the controls is present, and every rule id is in the contract. A check
  * program none of whose checks applies to the family would pass any answer, and a check that
- * enforces a rule the task does not list holds the solver to a rule it was never shown.
+ * enforces a rule the task does not list holds the solver to a rule it was never shown. A check that
+ * declares a hidden value of its own must find one in the task, and a declared path must read.
  */
 export function packageGate(contract: Contract, task: TaskPackage): Passed | Refused {
   const reason = packageFault(contract, task);
@@ -192,6 +194,13 @@ function packageFault(contract: Contract, task: TaskPackage): string | null {
     const unlisted = cited.find((id) => !task.ruleIds.includes(id));
     if (unlisted !== undefined) {
       return `check ${check.id} enforces ${unlisted}, which the task does not list`;
+    }
+    // A check that needs a hidden value of its own and finds none cannot run, and the verifier
+    // reads that as its own failure, which stops a run: the task's fault is caught here instead.
+    try {
+      checkEvaluationRequest(check, { publicTask: task, artifact: null, hidden: task.hidden });
+    } catch (error) {
+      return `the task gives check ${check.id} nothing to run on: ${errorMessage(error)}`;
     }
   }
   return null;

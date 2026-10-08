@@ -41,6 +41,7 @@ import type { Task } from "../kernel/verify.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { asRecord, type JsonObject } from "../meta/json-shape.ts";
 import { text, tool } from "../solve/answer.ts";
+import { publicView } from "../solve/prompt.ts";
 import { type Reader, readOnce } from "./reader.ts";
 import { callList, callsOf, callText, solveOf, stringOf } from "./trace.ts";
 
@@ -308,7 +309,9 @@ export async function diagnose(reader: Reader, fail: DiagnosisCase): Promise<Dia
   const events = read(fail.log);
   const version = releasedVersion(events, fail);
   const { shown, record, calls } = excerpts(events, fail);
-  const { hidden: _hidden, ...task } = fail.task;
+  // What a solver read of the task and no more: a caller's task may be a package, with its check
+  // program's path and its rule ids beside the hidden values.
+  const task = publicView(fail.task);
   const packet = [
     `Public rules:\n${fail.contract.rules.map((rule) => `- ${rule.id}: ${rule.statement}`).join("\n")}`,
     `Public task: ${capturedJsonStringify(task)}`,

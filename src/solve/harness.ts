@@ -22,7 +22,7 @@ import { existsSync, lstatSync, readlinkSync, realpathSync, writeFileSync } from
 import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "../meta/json-runtime.ts";
 import { type JsonValue, asRecord, isRecord, isString } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "../meta/path.ts";
+import { basename, dirname, join, resolve, sep } from "../meta/path.ts";
 import { containsPath } from "../meta/path-containment.ts";
 import { capturedExecPath } from "../meta/process.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
@@ -114,6 +114,17 @@ try {
  *  its harness by this digest. The module that runs keeps them. */
 const BUNDLED_PATH = /^\/\/ .+\.(?:[cm]?[jt]sx?|json)$/gm;
 
+/** A harness's module as its digest reads it: without the path comments, and with the harness's own
+ *  directory, which Bun writes out whole wherever a bundled CommonJS file reads `__dirname` or
+ *  `__filename`, replaced by one name. Otherwise a harness with such a package had one digest where
+ *  it was edited, another where it was frozen and a third where it was kept. */
+function located(module: string, dir: string): string {
+  const places = [...new Set([realpathSync(dir), resolve(dir)])].sort((a, b) => b.length - a.length);
+  return places
+    .reduce((text, place) => text.replaceAll(place, "<harness>"), module)
+    .replace(BUNDLED_PATH, "");
+}
+
 export async function openHarness(dir: string): Promise<Harness> {
   // The three files the host reads by name are the harness's own: a guide or a spec linked to a host
   // file would be read here, outside every wall, and handed to the solver.
@@ -145,14 +156,13 @@ export async function openHarness(dir: string): Promise<Harness> {
   const toolchain = resolve(dir, ".toolchain");
   const toolTree = existsSync(toolchain) ? toolchain : null;
   const tree = toolTree === null ? null : keptTreeContent(toolTree);
-  const located = module.replace(BUNDLED_PATH, "");
   return {
     guide,
     presets,
     kinds,
     toolTree,
     module,
-    digest: hashJsonValue({ module: located, spec, guide, tree }),
+    digest: hashJsonValue({ module: located(module, dir), spec, guide, tree }),
   };
 }
 
@@ -208,8 +218,14 @@ function keptTreeContent(toolTree: string) {
  * The bundle is built by the host, outside every wall, from files a Builder wrote. Left alone, Bun
  * runs a macro import in this process as it bundles, and inlines any file an import names, a text
  * import of a check program among them, into the module the solver's tools then run. So macros are
- * off, and an import must land inside the harness or inside an installed package. Bun resolves a
- * macro's module without asking a plugin, so the guard below could not have refused one.
+ * off, and every file the bundle loads must sit, links followed, inside the harness, inside an
+ * installed package, or in the host's own source, which the shim imports.
+ *
+ * The question is asked of each file as it is loaded and not of each import as it is resolved. A
+ * guard on resolution has to trust some importers, an installed package's among them, and a Builder
+ * writes `node_modules` under its harness: a package there importing `../../../log.jsonl` as text
+ * passed such a guard, and the log, with every hidden value in it, was bundled into the solver's
+ * tools. Whatever names a file, by whatever route it resolves, it is loaded here or not at all.
  */
 async function bundle(entry: string): Promise<string> {
   const root = realpathSync(dirname(dirname(entry)));
@@ -231,17 +247,12 @@ async function bundle(entry: string): Promise<string> {
           build.onResolve({ filter: /^(@ana\/agent-bundle|@earendil-works\/pi-ai)$/ }, () => ({
             path: SHIM,
           }));
-          build.onResolve({ filter: /.*/ }, ({ path, importer, kind }) => {
-            // The host's own files and an installed package's import what they need.
-            if (kind === "entry-point-build" || containsPath(importer, HOST_SOURCE) || inPackage(importer)) {
-              return undefined;
-            }
-            // Where the import lands, links followed. A module of the runtime's own has no file.
-            const resolved = Bun.resolveSync(path, dirname(importer));
-            const target = isAbsolute(resolved) ? realpathSync(resolved) : null;
-            if (target === null || containsPath(target, root) || inPackage(target)) return undefined;
+          build.onLoad({ filter: /.*/ }, ({ path }) => {
+            const file = realpathSync(path);
+            const own = containsPath(file, root) || containsPath(file, HOST_SOURCE) || inPackage(file);
+            if (own) return undefined;
             throw new Error(
-              `${path}, imported by ${relative(root, importer)}, lands outside the harness: its tools are built from its own files and installed packages`,
+              `an import reaches ${basename(file)}, which is outside the harness: its tools are built from its own files and installed packages`,
             );
           });
         },

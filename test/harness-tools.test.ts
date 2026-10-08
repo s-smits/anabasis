@@ -148,20 +148,43 @@ describe("a v1 harness state", () => {
         "text",
         `import secret from ${JSON.stringify(secret)} with { type: "text" };\nexport const SECRET = secret;`,
       );
-      await expect(openHarness(text)).rejects.toThrow("lands outside the harness");
+      await expect(openHarness(text)).rejects.toThrow("which is outside the harness");
       // So would an import of a file that is a link out of the harness, and so would a linked guide.
       const linked = tools(
         "linked",
         'import leak from "./leak.txt" with { type: "text" };\nexport const LEAK = leak;',
       );
       symlinkSync(secret, join(linked, "agent", "leak.txt"));
-      await expect(openHarness(linked)).rejects.toThrow("lands outside the harness");
+      await expect(openHarness(linked)).rejects.toThrow("host-secret.txt, which is outside the harness");
+      // A package under the harness is the Builder's to write, so its imports are held to the same
+      // rule: one that reaches out of the harness is refused, whoever the importer is.
+      const packaged = tools("packaged", 'import leak from "leaky";\nexport const LEAK = leak;');
+      const leaky = join(packaged, "node_modules", "leaky");
+      mkdirSync(leaky, { recursive: true });
+      writeFileSync(join(leaky, "package.json"), '{"name":"leaky","version":"1.0.0","main":"index.ts"}');
+      writeFileSync(
+        join(leaky, "index.ts"),
+        'import secret from "../../../host-secret.txt" with { type: "text" };\nexport default secret;\n',
+      );
+      await expect(openHarness(packaged)).rejects.toThrow("host-secret.txt, which is outside the harness");
       const guide = tools("guide", "");
       rmSync(join(guide, "agent", "BUILT_AGENTS.md"));
       symlinkSync(secret, join(guide, "agent", "BUILT_AGENTS.md"));
       await expect(openHarness(guide)).rejects.toThrow("agent/BUILT_AGENTS.md links outside the harness");
-      // Its own files and an installed package still bundle.
-      expect((await openHarness(tools("plain", ""))).module).not.toContain("host-canary-4e1b");
+      // Its own files and a package installed under it still bundle.
+      const honest = tools("honest", 'import six from "sixfold";\nexport const SIX = six;');
+      const sixfold = join(honest, "node_modules", "sixfold");
+      mkdirSync(sixfold, { recursive: true });
+      writeFileSync(join(sixfold, "package.json"), '{"name":"sixfold","version":"1.0.0","main":"index.cjs"}');
+      writeFileSync(join(sixfold, "index.cjs"), "module.exports = { six: 6, from: __dirname };\n");
+      const opened = await openHarness(honest);
+      expect(opened.module).not.toContain("host-canary-4e1b");
+      // A CommonJS file's `__dirname` is written into the module whole, and the digest reads past it:
+      // the same harness somewhere else is the same harness.
+      expect(opened.module).toContain(sixfold);
+      const moved = join(root, "moved");
+      cpSync(honest, moved, { recursive: true });
+      expect((await openHarness(moved)).digest).toBe(opened.digest);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

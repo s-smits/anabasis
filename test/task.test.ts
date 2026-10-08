@@ -13,7 +13,14 @@ import {
   taskVersion,
 } from "../src/kernel/task.ts";
 import type { Task, Verdict, Verifier } from "../src/kernel/verify.ts";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "../src/meta/filesystem.ts";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "../src/meta/filesystem.ts";
 import { hashJsonValue } from "../src/meta/stable-json.ts";
 import type { JsonObject, JsonValue } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
@@ -131,6 +138,21 @@ describe("gate 1, gate", () => {
     const changed = program(["beams"], ["span-rule"], "export const checks = { spans: () => true };");
     expect(version({ checks: changed })).not.toBe(version({}));
     expect(version({ checks: join(root, "nowhere") })).not.toBe(version({}));
+  });
+
+  it("refuses a task that gives a check no hidden value of the check's own to run on", () => {
+    // A check that declares its hidden operand required, as v1's reference-comparing checks do.
+    const dir = program(["beams"], ["span-rule"]);
+    const brief = JSON.parse(readFileSync(join(dir, "brief.json"), "utf8"));
+    brief.truthChecks[0].execution.hidden = "required";
+    writeFileSync(join(dir, "brief.json"), JSON.stringify(brief));
+    expect(packageGate(CONTRACT, pkg({ checks: dir, hidden: [] }))).toEqual({
+      outcome: "refused",
+      reason: "the task gives check spans nothing to run on: check-hidden-operand-missing: spans",
+    });
+    expect(packageGate(CONTRACT, pkg({ checks: dir, hidden: { spans: 4 } })).outcome).toBe("refused");
+    const served = [{ checkId: "spans", expectation: { depthM: 0.4 } }];
+    expect(packageGate(CONTRACT, pkg({ checks: dir, hidden: served }))).toEqual({ outcome: "passed" });
   });
 
   it("versions every file of the check program, in nested directories too", () => {

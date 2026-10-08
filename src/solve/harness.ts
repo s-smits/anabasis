@@ -155,6 +155,11 @@ export async function openHarness(dir: string): Promise<Harness> {
     // SAFETY: KINDS just admitted the kind.
     kinds.set(row.name, row.kind as ToolKind);
   }
+  // v1's tools-artifact-writer-missing: three of four Sol Builders on 2026-10-08 froze a harness
+  // with no writer, and every solve under it ended with no answer.
+  if (![...kinds.values()].includes("artifact-writer")) {
+    throw new Error(`${TOOLS_SPEC_FILE} declares no artifact-writer: submit takes only an answer one prepared`);
+  }
   const module = await bundle(join(dir, GENERATED_TOOLS_FILE));
   const toolchain = resolve(dir, ".toolchain");
   const toolTree = existsSync(toolchain) ? toolchain : null;

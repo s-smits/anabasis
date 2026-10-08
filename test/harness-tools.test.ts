@@ -77,6 +77,20 @@ describe("a v1 harness state", () => {
     expect(harness.digest).toMatch(/^[0-9a-f]{64}$/);
   });
 
+  it("refuses a spec with no artifact-writer, since submit takes only an answer one prepared", async () => {
+    const dir = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-harness-writer-")));
+    try {
+      cpSync(FIXTURE, dir, { recursive: true });
+      const spec = join(dir, "agent", "tools-spec.json");
+      const { tools } = parseJsonAs<{ tools: { kind: string }[] }>(readFileSync(spec, "utf8"));
+      const readers = tools.map((row) => ({ ...row, kind: row.kind === "artifact-writer" ? "reader" : row.kind }));
+      writeFileSync(spec, JSON.stringify({ presets: ["shell"], tools: readers }));
+      await expect(openHarness(dir)).rejects.toThrow("declares no artifact-writer");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("changes its digest with any file or mode in the tool tree, as with the module", async () => {
     const dir = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-harness-tree-")));
     try {

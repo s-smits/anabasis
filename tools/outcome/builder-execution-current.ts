@@ -31,6 +31,7 @@ const CURRENT_EXECUTION_OUTCOMES = new Set([
   "no-progress",
   "budget-limited",
   "turn-non-result",
+  "signal-terminated",
   "evidence-unavailable",
   "in-flight",
   "recorded-at-terminal",

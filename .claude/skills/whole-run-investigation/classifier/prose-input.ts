@@ -196,7 +196,8 @@ export const CENSUS_SCHEMA = "builder-prose-census/v1";
 export const SOLVE_CENSUS_SCHEMA = "built-solve-prose-census/v1";
 /** Execution outcomes that record an environment failure rather than authoring work. Their prose
  *  rows are the provider talking, not the Builder: a session closed on a provider limit can capture
- *  "You've hit your session limit" as its only row. Rows from these sessions carry no posture. */
+ *  "You've hit your session limit" as its only row. Rows from these sessions carry no posture. A
+ *  session the controller's closing signal ended (`signal-terminated`) is not one of them. */
 export const NON_EVIDENCE_OUTCOMES = new Set(["turn-non-result", "evidence-unavailable"]);
 const ROW_KINDS = ["message", "reasoning", "prompt", "compaction"] as const;
 /** The rows in the Builder's own words. `prompt` and `compaction` rows record what the controller

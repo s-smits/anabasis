@@ -323,9 +323,14 @@ function readBack(log: string, outcome: string, storedOutcome: string): number {
   console.log(`log: ${JSON.stringify(countBy(events, (event) => event.kind))}`);
   const finished = events.findLast((event) => event.kind === "solve.finished")?.data;
   const billed = Number(finished?.billed);
-  const reported = Number(finished?.reportedCost);
-  const apart = Math.abs(billed - reported) / reported;
+  const reported = finished?.reportedCost;
   console.log(`${outcome}, stored ${storedOutcome}`);
+  // Claude Code reports its cost only in the result that ends a query, which a submit ends before.
+  if (typeof reported !== "number") {
+    console.log(`billed $${billed.toFixed(4)}, none reported: the solve ended before Claude Code's result`);
+    return 1;
+  }
+  const apart = Math.abs(billed - reported) / reported;
   console.log(
     `billed $${billed.toFixed(4)}, reported $${reported.toFixed(4)}: ${(apart * 100).toFixed(2)}% apart`,
   );

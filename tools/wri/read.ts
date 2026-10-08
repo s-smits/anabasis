@@ -166,6 +166,7 @@ export const TRIGGERS = {
   "SCORED SET CARRIED": 21,
   "ADMITTED BY": 21,
   "SCREENING RULE NOT ON RECORD": 21,
+  "ADMITTED ON FLAGGED FAILS": 21,
   "NOTHING SCORED": 22,
   "FEW INFORMATIVE PAIRS": 22,
   "SET SHORT": 22,
@@ -189,6 +190,7 @@ export const TRIGGERS = {
   "REPLAY MOVED THE VERDICT": 29,
   "FLAGGED AND STILL COUNTED": 30,
   "READING MOVES WITHOUT FLAGGED": 30,
+  "FLAGGED FAILS BY SIDE": 30,
   "REVIEW FAULTS": 30,
   "EARNED WITHOUT A PROBE": 30,
 } as const;
@@ -517,19 +519,28 @@ function harnessTriggers(log: Index): Trigger[] {
       ...new Set(calls.flatMap(({ tool, args }) => (tool === "write_file" ? [text(args?.path)] : []))),
     ];
     const toolFiles = written.filter((path) => path.includes("tools"));
-    const edits = calls.filter(({ tool }) => tool === "write_file" || tool === "bash");
-    const practised = calls.findLast(({ tool }) => tool === "practice")?.index;
-    const late = edits.filter(({ index }) => practised !== undefined && index > practised).length;
+    // A practice solve's condition names the state it ran under, so the log says by digest whether
+    // the harness that was measured is one the Builder tried: an edit made with the shell leaves no
+    // call to count, and a digest misses none.
+    const practisedUnder = new Set(round.practice.map((solve) => solve.harness));
+    const lastPractice = round.practice.at(-1);
     const fresh = log.solves.filter((solve) => changed && solve.harness === child && solve.side === TEST);
     const erring = fresh.filter((solve) => solve.errors > 0).length;
     const ended = finished === null ? "never finished" : text(finished.ended);
     const failed = round.practice.filter((solve) => solve.outcome === "fail");
     const earned = failed.filter((fail) => log.rulings.get(fail.id)?.ruling === "earned").length;
-    const answered = failed.filter((fail) =>
+    // A fail followed by a pass of the same task: under other bytes it may be the change answering
+    // the fail, and under the same bytes it is the solver's variance and answers nothing.
+    const laterPass = (fail: Solve, same: boolean) =>
       round.practice.some(
-        (later) => later.version === fail.version && later.index > fail.index && later.outcome === "pass",
-      ),
-    ).length;
+        (later) =>
+          later.version === fail.version &&
+          later.index > fail.index &&
+          later.outcome === "pass" &&
+          (later.harness === fail.harness) === same,
+      );
+    const answered = failed.filter((fail) => laterPass(fail, false)).length;
+    const flipped = failed.filter((fail) => laterPass(fail, true)).length;
     const exposed = [...round.scoredSet, ...log.anchor].filter((version) =>
       build.practice.has(version),
     ).length;
@@ -589,14 +600,14 @@ function harnessTriggers(log: Index): Trigger[] {
           ]
         : []),
       ...(toolFiles.length > 0 ? [fired("TOOLS EDITED", `${session}: ${toolFiles.join(", ")}`)] : []),
-      ...(changed && practised === undefined
+      ...(changed && lastPractice === undefined
         ? [fired("NO PRACTICE", `${session}: the harness changed and no practice solve ran`)]
         : []),
-      ...(late > 0
+      ...(changed && child !== "" && lastPractice !== undefined && !practisedUnder.has(child)
         ? [
             fired(
               "FINAL BYTES NEVER PRACTISED",
-              `${session}: ${plural(late, "edit")} after the last practice`,
+              `${session}: no practice solve ran under ${short(child)}, the harness measured; the last ran under ${short(lastPractice.harness)}`,
             ),
           ]
         : []),
@@ -605,7 +616,7 @@ function harnessTriggers(log: Index): Trigger[] {
         ? [
             fired(
               "PRACTICE FAILS",
-              `${session}: ${plural(failed.length, "fail")}, ${String(earned)} ruled earned, ${String(answered)} passed in a later practice`,
+              `${session}: ${plural(failed.length, "fail")}, ${String(earned)} ruled earned; the same task passed later under changed bytes ${String(answered)}, under the same bytes ${String(flipped)}`,
             ),
           ]
         : []),
@@ -647,6 +658,15 @@ function comparisonTriggers(log: Index): Trigger[] {
           .map((solve) => solve.version),
       );
     const [byOld, byNew] = [failedUnder(true), failedUnder(false)];
+    const defect = (solve: Solve) => log.rulings.get(solve.id)?.ruling === DEFECT;
+    // Admitted tasks whose screening fails were every one ruled a check's fault: chosen by the exam.
+    const screened = Map.groupBy(
+      round.screening.filter((solve) => solve.outcome === "fail"),
+      (solve) => solve.version,
+    );
+    const onFlags = [...screened.values()].filter((fails) => fails.every(defect)).length;
+    const countedDefects = round.counted.filter((solve) => solve.outcome === "fail" && defect(solve));
+    const underOld = countedDefects.filter((solve) => solve.harness === parent).length;
     const both = [...byOld].filter((version) => byNew.has(version)).length;
     const scored = asRecord(build.report?.scored);
     const informative = count(scored?.wins) + count(scored?.losses);
@@ -680,6 +700,22 @@ function comparisonTriggers(log: Index): Trigger[] {
             fired(
               "ADMITTED BY",
               `${session}: the parent's fails ${String(byOld.size - both)}, the child's ${String(byNew.size - both)}, both ${String(both)}`,
+            ),
+          ]
+        : []),
+      ...(onFlags > 0
+        ? [
+            fired(
+              "ADMITTED ON FLAGGED FAILS",
+              `${session}: ${share(onFlags, screened.size)} tasks were admitted on fails all ruled a check defect`,
+            ),
+          ]
+        : []),
+      ...(countedDefects.length > 0
+        ? [
+            fired(
+              "FLAGGED FAILS BY SIDE",
+              `${session}: ${plural(countedDefects.length, "counted fail")} ruled a check defect, ${String(underOld)} under the parent and ${String(countedDefects.length - underOld)} under the child`,
             ),
           ]
         : []),

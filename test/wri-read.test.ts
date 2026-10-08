@@ -74,7 +74,8 @@ record("task.state", { version: "t1", state: "released" });
 record("build.started", { session: "b-1", parent: "hp", tasks: ["t1"] });
 record("build.call", { session: "b-1", tool: "write_file", args: { path: "agent/tools.mjs" } });
 record("build.call", { session: "b-1", tool: "practice", args: { task: "t1" } });
-solve("t1", "hc", "fail");
+// The practice solve runs under the state as it then stood, hb; the edit after it makes hc.
+solve("t1", "hb", "fail");
 record("build.call", { session: "b-1", tool: "write_file", args: { path: "agent/BUILT_AGENTS.md" } });
 record("build.finished", { session: "b-1", ended: "finished", harness: "hc", changed: true, metered: 2 });
 // Screening: the parent fails t2 twice and the child passes it, so the parent's fails admit it.
@@ -153,6 +154,12 @@ describe("the whole-run investigation's reader", () => {
     expect(detail("SCREENING RULE NOT ON RECORD")).toBe(
       "b-1: 3 screening solves, and the report names neither how many a harness nor how many fails admit",
     );
+    // The one fail ruled a check defect is the parent's, counted after the admission; the two that
+    // admitted the task were read by nobody.
+    expect(detail("FLAGGED FAILS BY SIDE")).toBe(
+      "b-1: 1 counted fail ruled a check defect, 1 under the parent and 0 under the child",
+    );
+    expect(detail("ADMITTED ON FLAGGED FAILS")).toBeUndefined();
     expect(detail("READING MOVES WITHOUT FLAGGED")).toBe(
       "b-1: no-step with 1 flagged task counted, not-scored without",
     );
@@ -169,8 +176,12 @@ describe("the whole-run investigation's reader", () => {
       "b-1: hp to hc; written by write_file: agent/tools.mjs, agent/BUILT_AGENTS.md",
     );
     expect(detail("TOOLS EDITED")).toBe("b-1: agent/tools.mjs");
-    expect(detail("FINAL BYTES NEVER PRACTISED")).toBe("b-1: 1 edit after the last practice");
-    expect(detail("PRACTICE FAILS")).toBe("b-1: 1 fail, 0 ruled earned, 0 passed in a later practice");
+    expect(detail("FINAL BYTES NEVER PRACTISED")).toBe(
+      "b-1: no practice solve ran under hc, the harness measured; the last ran under hb",
+    );
+    expect(detail("PRACTICE FAILS")).toBe(
+      "b-1: 1 fail, 0 ruled earned; the same task passed later under changed bytes 0, under the same bytes 0",
+    );
     expect(detail("NEVER CHECKED")).toBe("b-1: no check_harness call");
   });
 

@@ -431,7 +431,9 @@ The question is what the Builder did with each practice verdict before it stoppe
 session's `build.call` rows in order: edits, `check_harness`, `practice` and what each practice
 returned, the task's record under this harness and under the parent, the Referee's ruling and the
 Diagnoser's reading of a fail. A session that edited after its last practice was measured on
-bytes it never tried; one that never practised was measured on belief. The Builder is told one
+bytes it never tried; one that never practised was measured on belief. The trigger reads this by
+digest: a practice solve's condition names the state it ran under, so the harness that was
+measured either is one of those states or is not, whichever tool made the last edit. The Builder is told one
 solve is weak evidence and to read the record: say whether it practised a task again after a
 change, and whether it decided beforehand which tasks a change should move. A session cut at its
 wall or its turns is a whole session and is compared; say how many practice solves and turns it
@@ -452,7 +454,8 @@ led to a change once in six chances, and its second blocker was that an earned f
 followed up. For each practice fail ruled earned, follow it: what the Diagnoser named as owner
 and first divergence, what the Builder changed next (the part, from `build.call`), whether the
 same task was practised again under the changed harness and how it came out there. A pass on the
-next solve after a fail with no edit between them is a flip and answers nothing. A fail ruled a
+next solve after a fail with no edit between them is a flip and answers nothing: the trigger
+counts the later passes under changed bytes apart from those under the same bytes. A fail ruled a
 check defect is not the Builder's to build around and leaves practice; one the Builder built
 around anyway is a harness fitted to the exam's fault. Keep the count honest: fails, of which
 ruled earned, of which followed by an edit to the part the diagnosis named, of which passed
@@ -523,8 +526,8 @@ field a condition should hold and does not, and `environment` for load.
 
 **21. Selection and the symmetry of screening.**
 
-Starts from `SCORED SET CARRIED (lane 21)`, `ADMITTED BY (lane 21)` and
-`SCREENING RULE NOT ON RECORD (lane 21)`.
+Starts from `SCORED SET CARRIED (lane 21)`, `ADMITTED BY (lane 21)`,
+`ADMITTED ON FLAGGED FAILS (lane 21)` and `SCREENING RULE NOT ON RECORD (lane 21)`.
 
 The question is whether the way tasks entered the scored set favours a side. A task is admitted
 when either harness fails it often enough in screening, and its counted solves start after the
@@ -534,7 +537,10 @@ from the log. First, every counted solve of a scored task follows that task's `a
 Second, the admission was symmetric in practice: say how many tasks were admitted on the
 parent's fails alone, on the child's alone, on both. A set admitted almost wholly on the parent's
 fails is what an improved child produces, and also what a child fitted to the practice tasks'
-kind produces; it is evidence of neither until the fresh solves are read. A scored set carried
+kind produces; it is evidence of neither until the fresh solves are read. A task whose screening fails were
+every one ruled a check defect was admitted by the exam and by neither harness: a check that
+refused the parent's answer in screening is likely to refuse it again in scoring, and where it
+spares the child the task arrives in the tally as a win the check made. A scored set carried
 from an earlier admission, by a stored sweep's solves or an earlier round's, was chosen by other
 harnesses' fails: the round's own header calls that fit for a plumbing run and nothing else.
 Candidates are screened in an order drawn from the contract's hash and the session's id; confirm
@@ -714,14 +720,16 @@ that does not repeat, and `harness/guide` or `harness/tools` for a repair on the
 **30. Rulings, routing and what each role was told.**
 
 Starts from `FLAGGED AND STILL COUNTED (lane 30)`, `READING MOVES WITHOUT FLAGGED (lane 30)`,
-`REVIEW FAULTS (lane 30)` and `EARNED WITHOUT A PROBE (lane 30)`.
+`FLAGGED FAILS BY SIDE (lane 30)`, `REVIEW FAULTS (lane 30)` and `EARNED WITHOUT A PROBE (lane 30)`.
 
 The question is what became of each ruling, and whether each role was told enough to act and no
 more than it may know. A check-defect ruling disputes its task only when the Referee decides,
 which waits on its rulings clearing the operator's bar against hand labels; advising, the fail
 stands and the task is flagged for a person. So read the flagged tasks: how many stayed in a
 comparison, on which side their flagged fails fell, and whether removing them would move the
-reading. The report answers the last itself: `unflagged` holds the two tests and their reading
+reading. `FLAGGED FAILS BY SIDE` counts the first two: a flagged fail under the parent makes a
+win and one under the child a loss, so flags that fall on one side are the ones that move a
+tally. The report answers the last itself: `unflagged` holds the two tests and their reading
 with the flagged tasks left out, and the trigger fires when that reading differs from the first.
 Neither reading is the true one until the flagged fails have been read: the first counts fails a
 reviewer laid to a check, and the second drops tasks on one reviewer's word. A report with flags

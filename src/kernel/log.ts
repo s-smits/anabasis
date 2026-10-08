@@ -27,14 +27,16 @@ import { capturedJsonParse, capturedJsonStringify } from "../meta/json-runtime.t
 import { asRecord, type JsonObject, type JsonValue, isString } from "../meta/json-shape.ts";
 import { foldsEvent, taskStates } from "./task.ts";
 
-/** The plan's events, and eight that are not among them. `anchor.drawn` names the task versions the
+/** The plan's events, and thirteen that are not among them. `anchor.drawn` names the task versions the
  *  anchor drew, which are never released, and a task may be released straight from held only once
  *  it is drawn, so the draw is an event the task states can see. `solve.turn` and `solve.call` are
  *  a solve's trace, one per model turn and one per tool call, so the trace is in the log rather than
  *  in a file beside it. `condition.recorded` holds a condition under the id its solves name
  *  (`condition.ts`), so a comparison can be checked from the log alone. The four `build.*` kinds are
  *  a Builder session's: what it was given, its own turns and calls, and how it ended
- *  (`src/builder/session.ts`). */
+ *  (`src/builder/session.ts`). The five `exam.*` kinds are an Examiner session's: the same four,
+ *  and `exam.word`, the one word a task's author is told of it, with the solves it rests on
+ *  (`src/examiner/session.ts`). */
 export const EVENT_KINDS = [
   "world.accepted",
   "contract.frozen",
@@ -44,6 +46,11 @@ export const EVENT_KINDS = [
   "build.turn",
   "build.call",
   "build.finished",
+  "exam.started",
+  "exam.turn",
+  "exam.call",
+  "exam.word",
+  "exam.finished",
   "task.proposed",
   "task.gate",
   "task.state",

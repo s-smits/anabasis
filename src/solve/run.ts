@@ -297,8 +297,9 @@ export async function solverTools(
 }
 
 /** Every model turn and every tool call into the log, as they end: a solve's as `solve.turn` and
- *  `solve.call` under `solve`, a Builder session's as `build.turn` and `build.call` under `session`. */
-export function traceSink(log: string, of: "solve" | "build", id: string, turn: () => number) {
+ *  `solve.call` under `solve`, a Builder's or an Examiner's session as `build.` or `exam.turn` and
+ *  `.call` under `session`. */
+export function traceSink(log: string, of: "solve" | "build" | "exam", id: string, turn: () => number) {
   const named = of === "solve" ? { solve: id } : { session: id };
   const calls = new Map<string, { args: JsonValue; at: number }>();
   return (event: AgentEvent) => {

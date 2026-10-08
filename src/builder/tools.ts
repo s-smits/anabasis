@@ -49,6 +49,7 @@ import {
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { asRecord, isString } from "../meta/json-shape.ts";
 import { dirname, join } from "../meta/path.ts";
+import { pooled } from "../meta/pool.ts";
 import { asError, errorMessage } from "../meta/runtime-values.ts";
 import type { Diagnosis } from "../review/diagnoser.ts";
 import { callList, callsOf, callText, solveOf, stringOf } from "../review/trace.ts";
@@ -199,19 +200,6 @@ export async function snapshot(bench: Bench): Promise<Snapshot> {
   };
 }
 
-/** `run` over `items`, `width` at a time, wave after wave, results in the items' order. */
-async function inWaves<Item, Result>(
-  items: readonly Item[],
-  width: number,
-  run: (item: Item) => Promise<Result>,
-): Promise<Result[]> {
-  const results: Result[] = [];
-  for (let from = 0; from < items.length; from += Math.max(1, width)) {
-    results.push(...(await Promise.all(items.slice(from, from + Math.max(1, width)).map(run))));
-  }
-  return results;
-}
-
 function diagnosisText(diagnosis: Diagnosis): string {
   if ("abstain" in diagnosis) return `The Diagnoser abstained: ${diagnosis.abstain}`;
   return [
@@ -295,7 +283,7 @@ export function practiceTool(bench: Bench): AgentTool {
       const kept = await snapshot(bench);
       if (kill.aborted) throw new Error("The session has ended.");
       bench.spent += chosen.length;
-      const solved = await inWaves(chosen, request.limits.concurrency, async (task) => {
+      const solved = await pooled(chosen, request.limits.concurrency, async (task) => {
         if (bench.fatal !== null) return [];
         try {
           return [await practise(bench, task, kept, kill)];

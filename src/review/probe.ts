@@ -33,6 +33,15 @@ export const PROBE_BUDGET = 8;
  *  each half of an edit is one passage. */
 const VALUE_MAX_CHARS = 4_000;
 
+/** One change to an answer, as a tool is sent it: a field replaced whole by `value`, JSON text, or
+ *  one passage of a text field rewritten by `find` and `replace`. */
+export interface Change {
+  readonly path: string;
+  readonly value?: string | undefined;
+  readonly find?: string | undefined;
+  readonly replace?: string | undefined;
+}
+
 /** The one passage of a text field that `find` names, rewritten to `replace`. */
 export interface ProbeEdit {
   readonly find: string;
@@ -131,6 +140,47 @@ function rowText(row: ProbeRow): string {
   ].join("\n");
 }
 
+/**
+ * The answer with the one change made. Throws, in words for the model that sent it, a change that
+ * is not one: both forms or neither, a value that is not JSON, a path the answer does not hold, a
+ * passage that is not there exactly once, or a change that changes nothing. A probe and a reject
+ * control are both an answer with one fact moved, and this is what holds each to one.
+ */
+export function changedAnswer(answer: JsonValue, change: Change): JsonValue {
+  const edit =
+    change.find === undefined || change.replace === undefined
+      ? null
+      : { find: change.find, replace: change.replace };
+  if ((change.value === undefined) === (edit === null)) {
+    throw new Error("send either `value`, or `find` with `replace`");
+  }
+  if ([change.value, change.find, change.replace].some((part) => (part?.length ?? 0) > VALUE_MAX_CHARS)) {
+    throw new Error(
+      `a value and each half of an edit are at most ${String(VALUE_MAX_CHARS)} characters: one field or one passage changes`,
+    );
+  }
+  let value: JsonValue;
+  if (edit === null) {
+    try {
+      value = capturedJsonParse(change.value ?? "");
+    } catch {
+      throw new Error("value must be JSON text; quote a string value");
+    }
+  } else {
+    const edited = editedPassage(answer, change.path, edit);
+    if (edited === null) {
+      throw new Error(`${change.path} is not a text field holding \`find\` exactly once`);
+    }
+    value = edited;
+  }
+  const changed = withReplacedField(answer, change.path, value);
+  if (changed === null) throw new Error(`${change.path} is not an existing field of the answer`);
+  if (hashJsonValue(changed) === hashJsonValue(answer)) {
+    throw new Error(`the answer already carries that value at ${change.path}`);
+  }
+  return changed;
+}
+
 /** The probe tool over one answer; `rows` collects every probe that ran, in order. Probes run one at
  *  a time, as v1's did, so ids and the budget stay exact. */
 export function probeTool(verify: Verifier, task: Task, answer: JsonValue, rows: ProbeRow[]): AgentTool {
@@ -170,33 +220,7 @@ export function probeTool(verify: Verifier, task: Task, answer: JsonValue, rows:
         args.find === undefined || args.replace === undefined
           ? null
           : { find: args.find, replace: args.replace };
-      if ((args.value === undefined) === (edit === null)) {
-        throw new Error("send either `value`, or `find` with `replace`");
-      }
-      if ([args.value, args.find, args.replace].some((part) => (part?.length ?? 0) > VALUE_MAX_CHARS)) {
-        throw new Error(
-          `a value and each half of an edit are at most ${String(VALUE_MAX_CHARS)} characters: a probe changes one field or one passage`,
-        );
-      }
-      let value: JsonValue;
-      if (edit === null) {
-        try {
-          value = capturedJsonParse(args.value ?? "");
-        } catch {
-          throw new Error("value must be JSON text; quote a string value");
-        }
-      } else {
-        const edited = editedPassage(answer, args.path, edit);
-        if (edited === null) {
-          throw new Error(`${args.path} is not a text field holding \`find\` exactly once`);
-        }
-        value = edited;
-      }
-      const changed = withReplacedField(answer, args.path, value);
-      if (changed === null) throw new Error(`${args.path} is not an existing field of the answer`);
-      if (hashJsonValue(changed) === hashJsonValue(answer)) {
-        throw new Error(`the answer already carries that value at ${args.path}`);
-      }
+      const changed = changedAnswer(answer, args);
       original ??= verify(task, answer);
       const [before, after] = [await original, await verify(task, changed)];
       const row = {

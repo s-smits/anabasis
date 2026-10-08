@@ -9,8 +9,8 @@
  * The first cycle is the old harness and the last the new. Gate 3 reruns the check on the stronger
  * solve's stored answer. A verifier non-result stops the run, as it would a live one.
  *
- * With `--log` the history is appended to that log and kept, and a task the log already holds is
- * left as it is. With `--feasible` a task stops after gate 4 and stays held: that is how a pack's
+ * With `--log` the history is appended to that log and kept, and a task the log already holds goes
+ * on from the gate it reached: a run the verifier stopped part way strands no task half gated. With `--feasible` a task stops after gate 4 and stays held: that is how a pack's
  * tasks enter a campaign's log (`tools/d2/campaign.ts`), where a round screens them under its own
  * two harnesses and a stored cycle's solves choose nothing.
  *
@@ -118,17 +118,30 @@ async function main(): Promise<void> {
 
   const log = values.log ?? join(dir, "log.jsonl");
   mkdirSync(dirname(log), { recursive: true });
-  const held = taskStates(read(log));
+  // What the log already holds of each task, so a run a verifier stopped part way goes on from the
+  // gate it reached and a task is never proposed twice.
+  const logged = read(log);
+  const known = taskStates(logged);
+  const gatesOf = (version: string) =>
+    logged.flatMap(({ kind, data }) => (kind === "task.gate" && data.version === version ? [data] : []));
   /** One task through the gates, each step appended to the log. Returns why it stopped where it did. */
   const admit = async (task: TaskPackage, version: string): Promise<string> => {
     const record = (kind: EventKind, data: JsonObject) => append(log, kind, { version, ...data });
-    const gated = (gate: number, result: JsonObject) => record("task.gate", { gate, ...result });
     const settle = (state: TaskState, why = "") => {
       record("task.state", { state });
       return why;
     };
-    if (held.has(version)) return "already in the log";
-    record("task.proposed", { taskId: task.taskId });
+    const state = known.get(version);
+    const earlier = gatesOf(version);
+    if (state !== undefined && state !== "held") return `already ${state}`;
+    // A gate an earlier run logged as not passed, with the state that follows it never written.
+    const ended = earlier.find((gate) => gate.outcome !== "passed");
+    if (ended !== undefined) return settle(ended.outcome === "too-hard" ? "too-hard" : "refused", "settled");
+    const reached = earlier.length;
+    const gated = (gate: number, result: JsonObject) => {
+      if (gate > reached) record("task.gate", { gate, ...result });
+    };
+    if (state === undefined) record("task.proposed", { taskId: task.taskId });
     const packaged = packageGate(contract, task);
     gated(1, packaged);
     if (packaged.outcome === "refused") return settle("refused", `gate 1: ${packaged.reason}`);
@@ -146,6 +159,7 @@ async function main(): Promise<void> {
       [4, () => controlsGate(contract, verify, task, ...v1Controls(task.taskId))],
     ] as const;
     for (const [number, run] of gates) {
+      if (number <= reached) continue;
       const result = await run();
       gated(number, result);
       if (result.outcome === "refused") return settle("refused", `gate ${number}: ${result.reason}`);

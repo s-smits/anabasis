@@ -75,8 +75,9 @@ interface Solver {
   readonly side: Condition["side"];
 }
 
-/** The sweep's `config.yaml` and its solves' `maxTurns`, with a disk cap the sweep did not have:
- *  `live-solve.ts`'s limits, so a campaign's solves and its parity solves share a condition. */
+/** The sweep's `config.yaml` and its solves' `maxTurns`, with a disk cap the sweep did not have, as
+ *  `live-solve.ts` has them, but four solves at a time where a parity solve runs alone. Concurrency
+ *  is part of a condition, so a campaign's solves and a parity solve are not under the same one. */
 export const LIMITS: Limits = {
   wallSeconds: 7200,
   turns: 24,
@@ -116,7 +117,9 @@ export function setsOf(events: readonly LogEvent[]) {
   const inState = (state: string) => [...feasible].filter((version) => states.get(version) === state);
   return {
     feasible: [...feasible],
-    anchor: [...anchor].filter((version) => states.get(version) === "held"),
+    // A disputed anchor task is in no comparison and is an anchor task still: a round counts its
+    // check defects outside the anchor, and must know this one was inside.
+    anchor: [...anchor].filter((version) => ["held", "disputed"].includes(states.get(version) ?? "")),
     released: inState("released"),
     admitted: inState("admitted"),
     candidates: inState("held").filter((version) => !anchor.has(version)),

@@ -180,7 +180,7 @@ function packet(fail: RefereeCase, verdict: LoggedVerdict, accepted: JsonValue |
 }
 
 /** A window of one check-program file, or the list of them with no path. */
-function readProgramTool(checks: string) {
+export function readProgramTool(checks: string) {
   return tool({
     name: "read_check_program",
     label: "Read the check program",

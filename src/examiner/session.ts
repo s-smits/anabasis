@@ -212,7 +212,31 @@ const SHOWN_CHARS = 20_000;
 const ENDINGS = ["finished", "supplied", "killed", "wall", "crashed", "turns"] as const;
 const SUPPLIED = "The host has the tasks it needs. The session ends here.";
 
-const shown = (value: JsonValue) => capturedJsonStringify(value, null, 2).slice(0, SHOWN_CHARS);
+/** One change to an accepted answer as a tool takes it (`changedAnswer` in `src/review/probe.ts`):
+ *  the fields of a reject control here, and of a control a Rule Author writes for its check
+ *  (`src/rules/session.ts`). */
+export const CHANGE_FIELDS = {
+  path: Type.String({
+    description:
+      "A rooted path to an existing leaf of the accepted answer: `$.items[0].value`. Array positions are bracketed; a key holding a dot or a slash is quoted: `$.files['src/main.cpp']`.",
+  }),
+  value: Type.Optional(
+    Type.String({
+      description:
+        'The value that replaces the field, as JSON text: `0.0001`, `"high"` or `null`. Omit it when you send `find` and `replace`.',
+    }),
+  ),
+  find: Type.Optional(
+    Type.String({
+      description:
+        "Exact text inside the string field at `path`, occurring there exactly once. Sent with `replace`, in place of `value`: how one line of a source file is changed.",
+    }),
+  ),
+  replace: Type.Optional(Type.String({ description: "The text that takes the place of `find`." })),
+};
+
+/** A task or an accepted answer as a tool's result shows it. */
+export const shown = (value: JsonValue) => capturedJsonStringify(value, null, 2).slice(0, SHOWN_CHARS);
 
 /** A task an earlier session left waiting, as the opening message shows it: whole, since this
  *  session's Examiner did not write it, and with the answer its controls are edits of. */
@@ -494,25 +518,7 @@ function controlsTool(desk: Desk): AgentTool {
           controls: Type.Array(
             Type.Object({
               check: Type.String({ description: "The id of the check that must refuse the changed answer." }),
-              path: Type.String({
-                description:
-                  "A rooted path to an existing leaf of the accepted answer: `$.items[0].value`. Array positions are bracketed; a key holding a dot or a slash is quoted: `$.files['src/main.cpp']`.",
-              }),
-              value: Type.Optional(
-                Type.String({
-                  description:
-                    'The value that replaces the field, as JSON text: `0.0001`, `"high"` or `null`. Omit it when you send `find` and `replace`.',
-                }),
-              ),
-              find: Type.Optional(
-                Type.String({
-                  description:
-                    "Exact text inside the string field at `path`, occurring there exactly once. Sent with `replace`, in place of `value`: how one line of a source file is changed.",
-                }),
-              ),
-              replace: Type.Optional(
-                Type.String({ description: "The text that takes the place of `find`." }),
-              ),
+              ...CHANGE_FIELDS,
             }),
           ),
         }),

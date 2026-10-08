@@ -27,7 +27,7 @@ import { capturedJsonParse, capturedJsonStringify } from "../meta/json-runtime.t
 import { asRecord, type JsonObject, type JsonValue, isString } from "../meta/json-shape.ts";
 import { foldsEvent, taskStates } from "./task.ts";
 
-/** The plan's events, and seventeen that are not among them. `anchor.drawn` names the task versions the
+/** The plan's events, and twenty-four that are not among them. `anchor.drawn` names the task versions the
  *  anchor drew, which are never released, and a task may be released straight from held only once
  *  it is drawn, so the draw is an event the task states can see. `solve.turn` and `solve.call` are
  *  a solve's trace, one per model turn and one per tool call, so the trace is in the log rather than
@@ -39,7 +39,11 @@ import { foldsEvent, taskStates } from "./task.ts";
  *  and `exam.word`, the one word a task's author is told of it, with the solves it rests on
  *  (`src/examiner/session.ts`). `checker.read` is what a campaign's check program was seen to do, by
  *  the version it was read at (`acceptance.ts`); `contract.frozen` is the operator's word that the
- *  contract and that version stand, and a campaign whose own differ from it does not open. */
+ *  contract and that version stand, and a campaign whose own differ from it does not open. The seven
+ *  `rule.*` kinds are a Rule Author session's (`src/rules/session.ts`): the same four as a Builder's
+ *  or an Examiner's, `rule.gate`, one for each gate a proposed addition met, and `rule.candidate`,
+ *  the reading of the candidate pack a session left for the operator. They move no task and no
+ *  checker: a candidate is adopted elsewhere or not at all. */
 export const EVENT_KINDS = [
   "world.accepted",
   "checker.read",
@@ -57,6 +61,13 @@ export const EVENT_KINDS = [
   "exam.compacted",
   "exam.word",
   "exam.finished",
+  "rule.started",
+  "rule.turn",
+  "rule.call",
+  "rule.compacted",
+  "rule.gate",
+  "rule.candidate",
+  "rule.finished",
   "task.proposed",
   "task.gate",
   "task.state",
